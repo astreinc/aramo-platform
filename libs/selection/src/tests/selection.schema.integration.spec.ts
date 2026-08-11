@@ -9,9 +9,9 @@ import {
 
 import { PrismaService } from '../lib/prisma/prisma.service.js';
 import {
-  ENGAGEMENT_STATE_VALUES,
-  type EngagementStateValue,
-} from '../lib/engagement-state.js';
+  SELECTION_STATE_VALUES,
+  type SelectionStateValue,
+} from '../lib/selection-state.js';
 
 // M5 PR-1 §4.9 — schema-invariant integration spec for libs/engagement.
 //
@@ -46,12 +46,16 @@ const ENGAGEMENT_MIGRATION_PATH = resolve(
   __dirname,
   '../../prisma/migrations/20260525120000_init_engagement_model/migration.sql',
 );
+const ENGAGEMENT_T2P2_MIGRATION_PATH = resolve(
+  __dirname,
+  '../../prisma/migrations/20260813120000_t2p2_relocate_engagement_to_selection/migration.sql',
+);
 
 const TENANT = '11111111-1111-7111-8111-111111111111';
 const TALENT = 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa';
 const REQUISITION = 'cccccccc-cccc-7ccc-8ccc-cccccccccccc';
 
-const LEGAL_TRANSITIONS: ReadonlyArray<[EngagementStateValue, EngagementStateValue]> = [
+const LEGAL_TRANSITIONS: ReadonlyArray<[SelectionStateValue, SelectionStateValue]> = [
   ['surfaced', 'evaluated'],
   ['evaluated', 'engaged'],
   ['evaluated', 'maybe'],
@@ -66,7 +70,7 @@ const LEGAL_TRANSITIONS: ReadonlyArray<[EngagementStateValue, EngagementStateVal
 
 // Ten representative illegal transitions — spans terminal-out (4),
 // skip-forward (3), backwards (2), and a Loop-2-only branch (1).
-const ILLEGAL_TRANSITIONS: ReadonlyArray<[EngagementStateValue, EngagementStateValue]> = [
+const ILLEGAL_TRANSITIONS: ReadonlyArray<[SelectionStateValue, SelectionStateValue]> = [
   ['maybe', 'engaged'],                          // terminal -> any
   ['passed', 'engaged'],                         // terminal -> any
   ['not_interested', 'engaged'],                 // terminal -> any
@@ -80,7 +84,7 @@ const ILLEGAL_TRANSITIONS: ReadonlyArray<[EngagementStateValue, EngagementStateV
 ];
 
 describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
-  'TalentJobEngagement — schema invariants (real Postgres 17)',
+  'TalentSelection — schema invariants (real Postgres 17)',
   () => {
     let container: StartedPostgreSqlContainer;
     let client: PrismaService;
@@ -94,17 +98,17 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       return `99999999-9999-7999-8999-${seq}`;
     }
 
-    async function seed(state: EngagementStateValue, id?: string): Promise<string> {
+    async function seed(state: SelectionStateValue, id?: string): Promise<string> {
       const rowId = id ?? nextId();
       await client.$executeRawUnsafe(
-        `INSERT INTO engagement."TalentJobEngagement" (
+        `INSERT INTO selection."TalentSelection" (
            id, tenant_id, talent_id, requisition_id, state
          ) VALUES (
            '${rowId}'::uuid,
            '${TENANT}'::uuid,
            '${TALENT}'::uuid,
            '${REQUISITION}'::uuid,
-           '${state}'::engagement."EngagementState"
+           '${state}'::selection."SelectionState"
          )`,
       );
       return rowId;
@@ -114,14 +118,19 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       container = await new PostgreSqlContainer('postgres:17').start();
       const url = container.getConnectionUri();
 
-      const migrationSql = readFileSync(ENGAGEMENT_MIGRATION_PATH, 'utf8');
+      const migrations = [
+        readFileSync(ENGAGEMENT_MIGRATION_PATH, 'utf8'),
+        readFileSync(ENGAGEMENT_T2P2_MIGRATION_PATH, 'utf8'),
+      ];
 
       client = new PrismaService(url);
       await client.$connect();
-      for (const stmt of splitDdl(migrationSql)) {
-        const trimmed = stmt.trim();
-        if (trimmed.length === 0) continue;
-        await client.$executeRawUnsafe(trimmed);
+      for (const migrationSql of migrations) {
+        for (const stmt of splitDdl(migrationSql)) {
+          const trimmed = stmt.trim();
+          if (trimmed.length === 0) continue;
+          await client.$executeRawUnsafe(trimmed);
+        }
       }
     }, 180_000);
 
@@ -131,7 +140,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     });
 
     it('accepts INSERT with each of the 11 enum values as starting state', async () => {
-      for (const state of ENGAGEMENT_STATE_VALUES) {
+      for (const state of SELECTION_STATE_VALUES) {
         await expect(seed(state)).resolves.toMatch(
           /^99999999-9999-7999-8999-[0-9a-f]{12}$/,
         );
@@ -143,7 +152,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const otherReq = 'cccccccc-cccc-7ccc-8ccc-ccccccccc000';
       await expect(
         client.$executeRawUnsafe(
-          `UPDATE engagement."TalentJobEngagement"
+          `UPDATE selection."TalentSelection"
              SET requisition_id = '${otherReq}'::uuid
              WHERE id = '${id}'::uuid`,
         ),
@@ -157,7 +166,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const otherTalent = 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaa000';
       await expect(
         client.$executeRawUnsafe(
-          `UPDATE engagement."TalentJobEngagement"
+          `UPDATE selection."TalentSelection"
              SET talent_id = '${otherTalent}'::uuid
              WHERE id = '${id}'::uuid`,
         ),
@@ -169,7 +178,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const otherExam = 'dddddddd-dddd-7ddd-8ddd-ddddddddd000';
       await expect(
         client.$executeRawUnsafe(
-          `UPDATE engagement."TalentJobEngagement"
+          `UPDATE selection."TalentSelection"
              SET examination_id = '${otherExam}'::uuid
              WHERE id = '${id}'::uuid`,
         ),
@@ -181,12 +190,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       async (from, to) => {
         const id = await seed(from);
         await client.$executeRawUnsafe(
-          `UPDATE engagement."TalentJobEngagement"
-             SET state = '${to}'::engagement."EngagementState"
+          `UPDATE selection."TalentSelection"
+             SET state = '${to}'::selection."SelectionState"
              WHERE id = '${id}'::uuid`,
         );
         const rows = await client.$queryRawUnsafe<{ state: string }[]>(
-          `SELECT state FROM engagement."TalentJobEngagement" WHERE id = '${id}'::uuid`,
+          `SELECT state FROM selection."TalentSelection" WHERE id = '${id}'::uuid`,
         );
         expect(rows[0]?.state).toBe(to);
       },
@@ -198,8 +207,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         const id = await seed(from);
         await expect(
           client.$executeRawUnsafe(
-            `UPDATE engagement."TalentJobEngagement"
-               SET state = '${to}'::engagement."EngagementState"
+            `UPDATE selection."TalentSelection"
+               SET state = '${to}'::selection."SelectionState"
                WHERE id = '${id}'::uuid`,
           ),
         ).rejects.toThrow(/Illegal engagement state transition/);
@@ -210,14 +219,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const id = '99999999-9999-7999-8999-baadbaadbaad';
       await expect(
         client.$executeRawUnsafe(
-          `INSERT INTO engagement."TalentJobEngagement" (
+          `INSERT INTO selection."TalentSelection" (
              id, tenant_id, talent_id, requisition_id, state
            ) VALUES (
              '${id}'::uuid,
              '${TENANT}'::uuid,
              '${TALENT}'::uuid,
              '${REQUISITION}'::uuid,
-             'definitely_not_a_state'::engagement."EngagementState"
+             'definitely_not_a_state'::selection."SelectionState"
            )`,
         ),
       ).rejects.toThrow(/invalid input value for enum/i);

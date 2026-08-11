@@ -1,4 +1,4 @@
-// M5 PR-7 §4.2 — typed event_payload shape for TalentEngagementEvent
+// M5 PR-7 §4.2 — typed event_payload shape for TalentSelectionEvent
 // rows of event_type='response_received' (Ruling 2 + 3).
 //
 // Name defensively prefixed `Engagement` per Ruling 2: avoids type-
@@ -14,15 +14,15 @@
 //   - recorded_by_user_id: which recruiter recorded the response —
 //     derived from authContext.sub at the controller boundary.
 //   - outreach_event_ref_id: UUID reference to the prior outreach_sent
-//     TalentEngagementEvent this response is responding to. Repository
+//     TalentSelectionEvent this response is responding to. Repository
 //     validates the reference at write time per Ruling 4 (must exist
 //     in same tenant + same engagement + event_type='outreach_sent').
 //
-// Stored as Postgres jsonb in event_payload. TalentEngagementEventView
+// Stored as Postgres jsonb in event_payload. TalentSelectionEventView
 // types event_payload as `unknown`; consumers narrow at the consumption
 // site (M5 PR-2 design).
 
-export interface EngagementResponseReceivedPayload {
+export interface SelectionResponseReceivedPayload {
   response_received_at: string;
   recorded_by_user_id: string;
   outreach_event_ref_id: string;

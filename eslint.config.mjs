@@ -234,8 +234,14 @@ export default [
   // directive Ruling 4 + §4.12.
   {
     files: [
-      'libs/engagement/src/lib/engagement-event.ts',
-      'libs/engagement/src/tests/engagement-event.repository.integration.spec.ts',
+      // T2-P2 — Selection domain barrel (@aramo/selection). Carries the
+      // canonical engagement-outreach vocabulary in OutreachSentPayload /
+      // OutreachDraftedPayload re-exports; same rationale as the
+      // libs/engagement/src/index.ts facade-barrel entry below. Mirrored in
+      // scripts/verify-vocabulary.sh.
+      'libs/selection/src/index.ts',
+      'libs/selection/src/lib/selection-event.ts',
+      'libs/selection/src/tests/selection-event.repository.integration.spec.ts',
       'libs/evidence/src/tests/evidence.repository.cross-schema-validator.integration.spec.ts',
       // M5 PR-4 — HTTP surface specs + Pact consumer/provider tests for the
       // engagement endpoints. Same canonical-vocabulary rationale as the
@@ -267,7 +273,7 @@ export default [
       'libs/engagement/src/index.ts',
       'libs/engagement/src/lib/dto/outreach-send-request.dto.ts',
       'libs/engagement/src/lib/dto/outreach-send-response.dto.ts',
-      'libs/engagement/src/lib/dto/outreach-sent-payload.ts',
+      'libs/selection/src/lib/dto/outreach-sent-payload.ts',
       // Outreach Draft/Preview Directive v1.0 / Amendment v1.1 — the draft
       // half of the split. Same canonical engagement-outreach vocabulary
       // rationale as the outreach-send DTOs above (`outreach_drafted` event
@@ -275,13 +281,13 @@ export default [
       // standalone entity name).
       'libs/engagement/src/lib/dto/outreach-draft-request.dto.ts',
       'libs/engagement/src/lib/dto/outreach-draft-response.dto.ts',
-      'libs/engagement/src/lib/dto/outreach-drafted-payload.ts',
-      'libs/engagement/src/lib/delivery/delivery-provider.interface.ts',
-      'libs/engagement/src/lib/delivery/send-stub.provider.ts',
+      'libs/selection/src/lib/dto/outreach-drafted-payload.ts',
+      'libs/selection/src/lib/delivery/delivery-provider.interface.ts',
+      'libs/selection/src/lib/delivery/send-stub.provider.ts',
       'libs/engagement/src/lib/engagement.controller.ts',
-      'libs/engagement/src/lib/engagement.repository.ts',
-      'libs/engagement/src/tests/engagement.repository.spec.ts',
-      'libs/engagement/src/tests/engagement.repository.integration.spec.ts',
+      'libs/selection/src/lib/selection.repository.ts',
+      'libs/selection/src/tests/selection.repository.spec.ts',
+      'libs/selection/src/tests/selection.repository.integration.spec.ts',
       'apps/api/src/tests/outreach-send.negative-shape.spec.ts',
       'apps/api/src/tests/outreach-send.integration.spec.ts',
       'pact/provider/src/verify-api.ts',
@@ -293,7 +299,7 @@ export default [
       // M5 PR-6 entries above.
       'libs/engagement/src/lib/dto/record-response-request.dto.ts',
       'libs/engagement/src/lib/dto/record-response-response.dto.ts',
-      'libs/engagement/src/lib/dto/engagement-response-received-payload.ts',
+      'libs/selection/src/lib/dto/selection-response-received-payload.ts',
       'apps/api/src/tests/response-received.negative-shape.spec.ts',
       'apps/api/src/tests/response-received.integration.spec.ts',
       // M5 PR-8a — conversation-started specs traverse /outreach + /response to reach
@@ -301,7 +307,7 @@ export default [
       'apps/api/src/tests/conversation-started.negative-shape.spec.ts',
       'apps/api/src/tests/conversation-started.integration.spec.ts',
       'libs/engagement/src/lib/dto/record-conversation-started-response.dto.ts',
-      'libs/engagement/src/lib/dto/engagement-conversation-started-payload.ts',
+      'libs/selection/src/lib/dto/selection-conversation-started-payload.ts',
       // M5 PR-9b — consent-at-send refusal integration spec carries the
       // canonical `outreach` engagement-endpoint vocabulary by design
       // (the spec exercises POST /v1/engagements/{id}/outreach as the

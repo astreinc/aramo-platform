@@ -8,14 +8,14 @@ import {
 } from '@testcontainers/postgresql';
 import { makeMockLogger } from '@aramo/common';
 
-import { EngagementEventRepository } from '../lib/engagement-event.repository.js';
+import { SelectionEventRepository } from '../lib/selection-event.repository.js';
 import { PrismaService } from '../lib/prisma/prisma.service.js';
 
-// M5 PR-2 §4.11 — integration spec for EngagementEventRepository.
+// M5 PR-2 §4.11 — integration spec for SelectionEventRepository.
 //
 // Brings up a Postgres 17 testcontainer, applies the engagement init
 // migration (PR-1) + the add_engagement_event_log migration (PR-2),
-// constructs EngagementEventRepository, and asserts:
+// constructs SelectionEventRepository, and asserts:
 //   - appendEvent round-trips against real Postgres.
 //   - Intra-schema FK constraint: appending with a non-existent
 //     engagement_id is rejected by Postgres.
@@ -37,6 +37,10 @@ const ENGAGEMENT_EVENT_LOG_MIGRATION_PATH = resolve(
   __dirname,
   '../../prisma/migrations/20260525150000_add_engagement_event_log/migration.sql',
 );
+const ENGAGEMENT_T2P2_MIGRATION_PATH = resolve(
+  __dirname,
+  '../../prisma/migrations/20260813120000_t2p2_relocate_engagement_to_selection/migration.sql',
+);
 
 const TENANT_A = '11111111-1111-7111-8111-111111111111';
 const TENANT_B = '22222222-2222-7222-8222-222222222222';
@@ -53,11 +57,11 @@ function nextEventId(): string {
 }
 
 describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
-  'EngagementEventRepository — integration (real Postgres 17)',
+  'SelectionEventRepository — integration (real Postgres 17)',
   () => {
     let container: StartedPostgreSqlContainer;
     let client: PrismaService;
-    let repo: EngagementEventRepository;
+    let repo: SelectionEventRepository;
 
     beforeAll(async () => {
       container = await new PostgreSqlContainer('postgres:17').start();
@@ -66,6 +70,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const migrations = [
         readFileSync(ENGAGEMENT_INIT_MIGRATION_PATH, 'utf8'),
         readFileSync(ENGAGEMENT_EVENT_LOG_MIGRATION_PATH, 'utf8'),
+        readFileSync(ENGAGEMENT_T2P2_MIGRATION_PATH, 'utf8'),
       ];
 
       client = new PrismaService(url);
@@ -78,7 +83,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         }
       }
 
-      repo = new EngagementEventRepository(client, makeMockLogger());
+      repo = new SelectionEventRepository(client, makeMockLogger());
 
       // Seed parent engagements for FK resolution.
       await seedEngagement(client, {
@@ -132,7 +137,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           event_type: 'outreach_sent',
           event_payload: {},
         }),
-      ).rejects.toThrow(/foreign key|TalentEngagementEvent_engagement_id_fkey/i);
+      ).rejects.toThrow(/foreign key|TalentSelectionEvent_engagement_id_fkey/i);
     });
 
     it('absolute-immutability trigger rejects raw SQL UPDATE on any column', async () => {
@@ -146,7 +151,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       });
       await expect(
         client.$executeRawUnsafe(
-          `UPDATE engagement."TalentEngagementEvent"
+          `UPDATE selection."TalentSelectionEvent"
              SET event_payload = '{"snippet":"changed"}'::jsonb
              WHERE id = '${id}'::uuid`,
         ),
@@ -159,13 +164,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const id = nextEventId();
       await expect(
         client.$executeRawUnsafe(
-          `INSERT INTO engagement."TalentEngagementEvent" (
+          `INSERT INTO selection."TalentSelectionEvent" (
              id, tenant_id, engagement_id, event_type, event_payload
            ) VALUES (
              '${id}'::uuid,
              '${TENANT_A}'::uuid,
              '${ENGAGEMENT_A}'::uuid,
-             'definitely_not_an_event_type'::engagement."EngagementEventType",
+             'definitely_not_an_event_type'::selection."SelectionEventType",
              '{}'::jsonb
            )`,
         ),
@@ -243,14 +248,14 @@ async function seedEngagement(
   },
 ): Promise<void> {
   await client.$executeRawUnsafe(
-    `INSERT INTO engagement."TalentJobEngagement" (
+    `INSERT INTO selection."TalentSelection" (
        id, tenant_id, talent_id, requisition_id, state
      ) VALUES (
        '${opts.id}'::uuid,
        '${opts.tenant_id}'::uuid,
        '${opts.talent_id}'::uuid,
        '${opts.requisition_id}'::uuid,
-       'surfaced'::engagement."EngagementState"
+       'surfaced'::selection."SelectionState"
      )`,
   );
 }

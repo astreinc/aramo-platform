@@ -6,7 +6,7 @@ import { PrismaService } from './prisma/prisma.service.js';
 //
 // Mirrors libs/consent OutboxPublisherRepository verbatim (read + bulk-
 // mark-published; no insertInTx — emission is inline tx.outboxEvent.create
-// inside each EngagementRepository write-method `$transaction`).
+// inside each SelectionRepository write-method `$transaction`).
 //
 // findUnpublishedEvents returns up to `limit` rows with `published_at IS
 // NULL`, ordered by created_at ASC so the publisher emits in event order.
@@ -24,7 +24,7 @@ export interface UnpublishedOutboxEvent {
 }
 
 @Injectable()
-export class EngagementOutboxRepository {
+export class SelectionOutboxRepository {
   constructor(private readonly prisma: PrismaService) {}
 
   async findUnpublishedEvents(input: { limit: number }): Promise<UnpublishedOutboxEvent[]> {

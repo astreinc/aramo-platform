@@ -1,5 +1,5 @@
-// EngagementEventType — closed-list runtime const tuple + derived type
-// for TalentEngagementEvent (M5 PR-2).
+// SelectionEventType — closed-list runtime const tuple + derived type
+// for TalentSelectionEvent (M5 PR-2).
 //
 // Per M5 PR-2 directive §4.3 + Charter v1.2 §4.4 Ruling D (engagement
 // event-log scope). Five event types covering the M5 engagement
@@ -26,7 +26,7 @@
 // list at compile time and at runtime. Future event types are added
 // via explicit directive amendment.
 
-export const ENGAGEMENT_EVENT_TYPE_VALUES = [
+export const SELECTION_EVENT_TYPE_VALUES = [
   'state_transition',
   'outreach_drafted',
   'outreach_sent',
@@ -34,4 +34,4 @@ export const ENGAGEMENT_EVENT_TYPE_VALUES = [
   'conversation_started',
 ] as const;
 
-export type EngagementEventTypeValue = (typeof ENGAGEMENT_EVENT_TYPE_VALUES)[number];
+export type SelectionEventTypeValue = (typeof SELECTION_EVENT_TYPE_VALUES)[number];

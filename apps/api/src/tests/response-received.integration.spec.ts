@@ -64,13 +64,14 @@ const MIGRATIONS = [
   M('libs/evidence/prisma/migrations/20260522090000_init_evidence_model/migration.sql'),
   M('libs/submittal/prisma/migrations/20260523120000_init_submittal_model/migration.sql'),
   M('libs/submittal/prisma/migrations/20260523200000_add_submittal_revoke/migration.sql'),
-  M('libs/engagement/prisma/migrations/20260525120000_init_engagement_model/migration.sql'),
-  M('libs/engagement/prisma/migrations/20260525150000_add_engagement_event_log/migration.sql'),
+  M('libs/selection/prisma/migrations/20260525120000_init_engagement_model/migration.sql'),
+  M('libs/selection/prisma/migrations/20260525150000_add_engagement_event_log/migration.sql'),
   // M6 PR-2 §3 — engagement + submittal OutboxEvent migrations required
   // because state-transition write methods now emit an in-tx outbox row.
-  M('libs/engagement/prisma/migrations/20260531000000_add_outbox_event/migration.sql'),
+  M('libs/selection/prisma/migrations/20260531000000_add_outbox_event/migration.sql'),
   // Outreach Draft/Preview Amendment v1.1 §3 — the outreach_drafted enum value.
-  M('libs/engagement/prisma/migrations/20260609000000_add_outreach_drafted_event_type/migration.sql'),
+  M('libs/selection/prisma/migrations/20260609000000_add_outreach_drafted_event_type/migration.sql'),
+  M('libs/selection/prisma/migrations/20260813120000_t2p2_relocate_engagement_to_selection/migration.sql'),
   M('libs/submittal/prisma/migrations/20260531000000_add_outbox_event/migration.sql'),
   M('libs/submittal/prisma/migrations/20260812120000_t2p1_relocate_submittal_to_submittal_schema/migration.sql'),
   M('libs/ai-draft/prisma/migrations/20260525170000_init/migration.sql'),
@@ -286,8 +287,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     }, 60_000);
 
     beforeEach(async () => {
-      await setup.query('TRUNCATE TABLE engagement."TalentEngagementEvent" CASCADE');
-      await setup.query('TRUNCATE TABLE engagement."TalentJobEngagement" CASCADE');
+      await setup.query('TRUNCATE TABLE selection."TalentSelectionEvent" CASCADE');
+      await setup.query('TRUNCATE TABLE selection."TalentSelection" CASCADE');
       await setup.query('TRUNCATE TABLE consent."IdempotencyKey" CASCADE');
     });
 
@@ -355,7 +356,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
     async function countEvents(engagementId: string): Promise<number> {
       const r = await setup.query<{ count: string }>(
-        `SELECT COUNT(*)::text AS count FROM engagement."TalentEngagementEvent"
+        `SELECT COUNT(*)::text AS count FROM selection."TalentSelectionEvent"
          WHERE engagement_id = $1::uuid`,
         [engagementId],
       );
@@ -364,7 +365,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
     async function readEngagementState(engagementId: string): Promise<string> {
       const r = await setup.query<{ state: string }>(
-        `SELECT state::text AS state FROM engagement."TalentJobEngagement" WHERE id = $1::uuid`,
+        `SELECT state::text AS state FROM selection."TalentSelection" WHERE id = $1::uuid`,
         [engagementId],
       );
       return r.rows[0]?.state ?? '';
@@ -472,7 +473,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const { engagementId } = await createAndAdvanceToAwaitingResponse();
       // Pick a state_transition event from this engagement's event log.
       const rows = await setup.query<{ id: string }>(
-        `SELECT id::text AS id FROM engagement."TalentEngagementEvent"
+        `SELECT id::text AS id FROM selection."TalentSelectionEvent"
          WHERE engagement_id = $1::uuid AND event_type = 'state_transition' LIMIT 1`,
         [engagementId],
       );
@@ -502,15 +503,15 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const ghostEventId = '00000000-0000-7000-8000-bbbb0e000099';
       const ghostEngagementId = '00000000-0000-7000-8000-bbbb00000099';
       await setup.query(
-        `INSERT INTO engagement."TalentJobEngagement"
+        `INSERT INTO selection."TalentSelection"
            (id, tenant_id, talent_id, requisition_id, examination_id, state, created_at)
-         VALUES ($1, $2, $3, $4, NULL, 'awaiting_response'::engagement."EngagementState", NOW())`,
+         VALUES ($1, $2, $3, $4, NULL, 'awaiting_response'::selection."SelectionState", NOW())`,
         [ghostEngagementId, ghostTenant, TALENT_A, REQ_A],
       );
       await setup.query(
-        `INSERT INTO engagement."TalentEngagementEvent"
+        `INSERT INTO selection."TalentSelectionEvent"
            (id, tenant_id, engagement_id, event_type, event_payload, created_at)
-         VALUES ($1, $2, $3, 'outreach_sent'::engagement."EngagementEventType", $4::jsonb, NOW())`,
+         VALUES ($1, $2, $3, 'outreach_sent'::selection."SelectionEventType", $4::jsonb, NOW())`,
         [ghostEventId, ghostTenant, ghostEngagementId, JSON.stringify({ delivery_channel: 'email' })],
       );
       const res = await fetch(`http://127.0.0.1:${port}/v1/engagements/${engagementId}/response`, {

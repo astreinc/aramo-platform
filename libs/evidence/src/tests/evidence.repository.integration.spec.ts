@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import { AramoError, makeMockLogger } from '@aramo/common';
-import { EngagementEventRepository } from '@aramo/engagement';
+import { SelectionEventRepository } from '@aramo/selection';
 import {
   ExaminationRepository,
   PrismaService as ExaminationPrismaService,
@@ -242,7 +242,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       const examRepo = new ExaminationRepository(examPrisma, undefined as never);
       const talentEvidenceRepo = new TalentEvidenceRepository(talentEvidencePrisma);
-      // M5 PR-2 — EngagementEventRepository required by EvidenceRepository
+      // M5 PR-2 — SelectionEventRepository required by EvidenceRepository
       // constructor. Existing tests in this spec do not exercise the
       // cross-schema engagement_event_refs validator (all test seeds use
       // `[]::jsonb`; all BuildPackageInput shapes omit engagement_event_refs
@@ -253,7 +253,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // engagement migration to be applied here.
       const engagementEventRepoStub = {
         findByTenantAndId: async () => null,
-      } as unknown as EngagementEventRepository;
+      } as unknown as SelectionEventRepository;
       repo = new EvidenceRepository(
         prisma,
         examRepo,

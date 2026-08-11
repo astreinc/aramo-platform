@@ -2,7 +2,7 @@
 //
 // A deliberate, committed breach of the Portal⊥ATS import wall for the NEW
 // scope:portal FE app (Portal P1 PR-3 §PR-3.1): apps/portal-web (scope:portal)
-// importing a scope:ats lib (@aramo/engagement). It exists ONLY to PROVE that
+// importing a scope:ats lib (@aramo/selection). It exists ONLY to PROVE that
 // @nx/enforce-module-boundaries rejects such an import for portal-web — the
 // self-testing negative control, mirroring the platform-web control and the I15
 // CIP⊥ATS control.
@@ -19,6 +19,6 @@
 // then lints THIS file with `eslint --no-ignore` and asserts the boundary rule
 // fires (CI-red on a PORTAL→ATS breach). If this ever lints clean, the wall is
 // broken.
-import * as engagementAtsLib from '@aramo/engagement';
+import * as selectionAtsLib from '@aramo/selection';
 
-export const PORTAL_WEB_NEGATIVE_CONTROL_REFERENCE = engagementAtsLib;
+export const PORTAL_WEB_NEGATIVE_CONTROL_REFERENCE = selectionAtsLib;

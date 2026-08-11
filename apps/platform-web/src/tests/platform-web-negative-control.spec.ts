@@ -11,7 +11,7 @@ import { describe, expect, it } from 'vitest';
 // mechanism FIRES on a breach.
 //
 // The committed fixture (../platform-negative-control/platform-imports-ats.fixture.ts)
-// is a scope:platform file (this app) importing a scope:ats lib (`engagement`).
+// is a scope:platform file (this app) importing a scope:ats lib (`selection`).
 // We lint it with `eslint --no-ignore` and assert @nx/enforce-module-boundaries
 // rejects it — a PLATFORM→ATS import is CI-red.
 //

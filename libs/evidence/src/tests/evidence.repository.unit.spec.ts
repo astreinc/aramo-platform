@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { AramoError, makeMockLogger } from '@aramo/common';
-import { EngagementEventRepository } from '@aramo/engagement';
+import { SelectionEventRepository } from '@aramo/selection';
 import {
   ExaminationRepository,
   type TalentJobExaminationFullView,
@@ -170,7 +170,7 @@ function buildRepo(
   const talentEvidenceMock = {
     findTalentRateExpectationById: rateFind,
   } as unknown as TalentEvidenceRepository;
-  // M5 PR-2 — EngagementEventRepository for the cross-schema validator.
+  // M5 PR-2 — SelectionEventRepository for the cross-schema validator.
   // Unit tests do not exercise engagement_event_refs (BuildPackageInput
   // shape in this spec omits the field, which the validator treats as
   // pass-through). A minimal mock satisfies the constructor; tests for
@@ -178,7 +178,7 @@ function buildRepo(
   // libs/evidence/src/tests/evidence.repository.cross-schema-validator.integration.spec.ts.
   const engagementEventMock = {
     findByTenantAndId: vi.fn().mockResolvedValue(null),
-  } as unknown as EngagementEventRepository;
+  } as unknown as SelectionEventRepository;
   return new EvidenceRepository(
     prismaCreate as unknown as PrismaService,
     examRepoMock,

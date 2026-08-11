@@ -6,18 +6,18 @@ import { RequisitionRepository } from '@aramo/requisition';
 import { recordUsage } from '@aramo/metering';
 import { TalentRecordRepository } from '@aramo/talent-record';
 
-import { canTransition, type EngagementStateValue } from './engagement-state.js';
-import type { EngagementEventTypeValue } from './engagement-event.js';
-import type { EngagementConversationStartedPayload } from './dto/engagement-conversation-started-payload.js';
-import type { EngagementResponseReceivedPayload } from './dto/engagement-response-received-payload.js';
+import { canTransition, type SelectionStateValue } from './selection-state.js';
+import type { SelectionEventTypeValue } from './selection-event.js';
+import type { SelectionConversationStartedPayload } from './dto/selection-conversation-started-payload.js';
+import type { SelectionResponseReceivedPayload } from './dto/selection-response-received-payload.js';
 import type { OutreachDraftedPayload } from './dto/outreach-drafted-payload.js';
 import type { OutreachSentPayload } from './dto/outreach-sent-payload.js';
-import type { TalentJobEngagementView } from './dto/talent-job-engagement.view.js';
-import type { TalentEngagementEventView } from './dto/talent-engagement-event.view.js';
-import { EngagementEventRepository } from './engagement-event.repository.js';
+import type { TalentSelectionView } from './dto/talent-selection.view.js';
+import type { TalentSelectionEventView } from './dto/talent-selection-event.view.js';
+import { SelectionEventRepository } from './selection-event.repository.js';
 import { PrismaService } from './prisma/prisma.service.js';
 
-// Repository for the TalentJobEngagement model (M5 PR-1 Directive v1.0
+// Repository for the TalentSelection model (M5 PR-1 Directive v1.0
 // §4.4 + M5 PR-3 Directive v1.0 §4.1 + Amendment v1.1 §2).
 //
 // Surface scope (closed):
@@ -47,7 +47,7 @@ import { PrismaService } from './prisma/prisma.service.js';
 // Validation order: talent_id → requisition_id → examination_id.
 //
 // Atomic transaction (Ruling 6): both write methods use prisma.$transaction
-// to pair the TalentJobEngagement write with the TalentEngagementEvent
+// to pair the TalentSelection write with the TalentSelectionEvent
 // audit-log row. Either both rows land or neither does.
 //
 // Tenant isolation (Architecture §7.2): three of the four read methods
@@ -66,17 +66,17 @@ import { PrismaService } from './prisma/prisma.service.js';
 // logging at entry + hit/miss/result-count + validator-refusal + success
 // paths.
 
-interface TalentJobEngagementRow {
+interface TalentSelectionRow {
   id: string;
   tenant_id: string;
   talent_id: string;
   requisition_id: string;
   examination_id: string | null;
-  state: EngagementStateValue;
+  state: SelectionStateValue;
   created_at: Date;
 }
 
-function projectView(row: TalentJobEngagementRow): TalentJobEngagementView {
+function projectView(row: TalentSelectionRow): TalentSelectionView {
   return {
     id: row.id,
     tenant_id: row.tenant_id,
@@ -99,8 +99,8 @@ export interface CreateEngagementInput {
 }
 
 export interface CreateEngagementResult {
-  engagement: TalentJobEngagementView;
-  event: TalentEngagementEventView;
+  engagement: TalentSelectionView;
+  event: TalentSelectionEventView;
 }
 
 // M5 PR-3 §4.1 — transitionState input/output shapes.
@@ -112,13 +112,13 @@ export interface TransitionStateInput {
   engagement_id: string;
   event_id: string;
   tenant_id: string;
-  to_state: EngagementStateValue;
+  to_state: SelectionStateValue;
   visible_requisition_ids?: ReadonlySet<string> | null;
 }
 
 export interface TransitionStateResult {
-  engagement: TalentJobEngagementView;
-  event: TalentEngagementEventView;
+  engagement: TalentSelectionView;
+  event: TalentSelectionEventView;
 }
 
 // Outreach Draft/Preview Directive v1.0 / Amendment v1.1 §1 —
@@ -146,7 +146,7 @@ export interface DraftOutreachInput {
 }
 
 export interface DraftOutreachResult {
-  draft_event: TalentEngagementEventView;
+  draft_event: TalentSelectionEventView;
 }
 
 // M5 PR-6 §4.4 — sendOutreach input/output shapes (Ruling 1 Sub-Q1b).
@@ -154,8 +154,8 @@ export interface DraftOutreachResult {
 // Single repository method paired with the EngagementController
 // sendOutreach endpoint. Three-write atomic transaction:
 //   1. engagement.update(state = 'awaiting_response')
-//   2. talentEngagementEvent.create(event_type = 'outreach_sent', payload = OutreachSentPayload)
-//   3. talentEngagementEvent.create(event_type = 'state_transition', payload = { from_state, to_state })
+//   2. talentSelectionEvent.create(event_type = 'outreach_sent', payload = OutreachSentPayload)
+//   3. talentSelectionEvent.create(event_type = 'state_transition', payload = { from_state, to_state })
 //
 // Pre-transaction guards:
 //   - findByTenantAndId(engagement_id, tenant_id) → null ⇒ NOT_FOUND 404.
@@ -185,9 +185,9 @@ export interface SendOutreachInput {
 }
 
 export interface SendOutreachResult {
-  engagement: TalentJobEngagementView;
-  outreach_event: TalentEngagementEventView;
-  transition_event: TalentEngagementEventView;
+  engagement: TalentSelectionView;
+  outreach_event: TalentSelectionEventView;
+  transition_event: TalentSelectionEventView;
 }
 
 // M5 PR-7 §4.3 — recordResponse input/output shapes (Ruling 1).
@@ -195,9 +195,9 @@ export interface SendOutreachResult {
 // Single repository method paired with the EngagementController
 // recordResponse endpoint. Three-write atomic transaction:
 //   1. engagement.update(state = 'responded')
-//   2. talentEngagementEvent.create(event_type = 'response_received',
-//      payload = EngagementResponseReceivedPayload)
-//   3. talentEngagementEvent.create(event_type = 'state_transition',
+//   2. talentSelectionEvent.create(event_type = 'response_received',
+//      payload = SelectionResponseReceivedPayload)
+//   3. talentSelectionEvent.create(event_type = 'state_transition',
 //      payload = { from_state, to_state })
 //
 // Pre-transaction guards (in order):
@@ -223,15 +223,15 @@ export interface RecordResponseInput {
   tenant_id: string;
   response_event_id: string;
   transition_event_id: string;
-  response_payload: EngagementResponseReceivedPayload;
+  response_payload: SelectionResponseReceivedPayload;
   // R7 BE-prereq §3 — passed through to internal findByTenantAndId.
   visible_requisition_ids?: ReadonlySet<string> | null;
 }
 
 export interface RecordResponseResult {
-  engagement: TalentJobEngagementView;
-  response_event: TalentEngagementEventView;
-  transition_event: TalentEngagementEventView;
+  engagement: TalentSelectionView;
+  response_event: TalentSelectionEventView;
+  transition_event: TalentSelectionEventView;
 }
 
 // M5 PR-8a §4.3 — recordConversationStarted input/output shapes (Ruling 1 + 5).
@@ -239,9 +239,9 @@ export interface RecordResponseResult {
 // Single repository method paired with the EngagementController
 // recordConversationStarted endpoint. Three-write atomic transaction:
 //   1. engagement.update(state = 'in_conversation')
-//   2. talentEngagementEvent.create(event_type = 'conversation_started',
-//      payload = EngagementConversationStartedPayload)
-//   3. talentEngagementEvent.create(event_type = 'state_transition',
+//   2. talentSelectionEvent.create(event_type = 'conversation_started',
+//      payload = SelectionConversationStartedPayload)
+//   3. talentSelectionEvent.create(event_type = 'state_transition',
 //      payload = { from_state, to_state })
 //
 // Pre-transaction guards (in order; SIMPLER than PR-7 — no cross-event
@@ -263,27 +263,27 @@ export interface RecordConversationStartedInput {
   tenant_id: string;
   conversation_event_id: string;
   transition_event_id: string;
-  conversation_payload: EngagementConversationStartedPayload;
+  conversation_payload: SelectionConversationStartedPayload;
   // R7 BE-prereq §3 — passed through to internal findByTenantAndId.
   visible_requisition_ids?: ReadonlySet<string> | null;
 }
 
 export interface RecordConversationStartedResult {
-  engagement: TalentJobEngagementView;
-  conversation_event: TalentEngagementEventView;
-  transition_event: TalentEngagementEventView;
+  engagement: TalentSelectionView;
+  conversation_event: TalentSelectionEventView;
+  transition_event: TalentSelectionEventView;
 }
 
-interface TalentEngagementEventRow {
+interface TalentSelectionEventRow {
   id: string;
   tenant_id: string;
   engagement_id: string;
-  event_type: EngagementEventTypeValue;
+  event_type: SelectionEventTypeValue;
   event_payload: unknown;
   created_at: Date;
 }
 
-function projectEventView(row: TalentEngagementEventRow): TalentEngagementEventView {
+function projectEventView(row: TalentSelectionEventRow): TalentSelectionEventView {
   return {
     id: row.id,
     tenant_id: row.tenant_id,
@@ -295,15 +295,15 @@ function projectEventView(row: TalentEngagementEventRow): TalentEngagementEventV
 }
 
 @Injectable()
-export class EngagementRepository {
+export class SelectionRepository {
   constructor(
     private readonly prisma: PrismaService,
-    // M5 PR-3 — EngagementEventRepository unused here directly (the atomic
-    // transaction issues prisma.talentEngagementEvent.create inline), but
+    // M5 PR-3 — SelectionEventRepository unused here directly (the atomic
+    // transaction issues prisma.talentSelectionEvent.create inline), but
     // retained in the constructor for module-graph clarity and future
     // M5 PR-5/6/7 consumers that may delegate event-append to the
     // dedicated repository.
-    private readonly engagementEventRepository: EngagementEventRepository,
+    private readonly engagementEventRepository: SelectionEventRepository,
     // Pattern C cross-schema validator dep. engagement.talent_id IS a
     // TalentRecord.id (4e-engagement-key); createEngagement validates it
     // against the tenant-scoped TalentRecord. (The dead Core TalentRepository
@@ -321,12 +321,12 @@ export class EngagementRepository {
 
   // ---- Read methods (M5 PR-1; preserved verbatim) -----------------------
 
-  async findById(id: string): Promise<TalentJobEngagementView | null> {
+  async findById(id: string): Promise<TalentSelectionView | null> {
     const startedAt = Date.now();
-    const row = await this.prisma.talentJobEngagement.findUnique({
+    const row = await this.prisma.talentSelection.findUnique({
       where: { id },
     });
-    const view = row === null ? null : projectView(row as TalentJobEngagementRow);
+    const view = row === null ? null : projectView(row as TalentSelectionRow);
     this.logger.log({
       event: 'engagement.findById',
       engagement_id: id,
@@ -350,12 +350,12 @@ export class EngagementRepository {
     tenant_id: string;
     id: string;
     visible_requisition_ids?: ReadonlySet<string> | null;
-  }): Promise<TalentJobEngagementView | null> {
+  }): Promise<TalentSelectionView | null> {
     const startedAt = Date.now();
-    const row = await this.prisma.talentJobEngagement.findFirst({
+    const row = await this.prisma.talentSelection.findFirst({
       where: { tenant_id: input.tenant_id, id: input.id },
     });
-    let view = row === null ? null : projectView(row as TalentJobEngagementRow);
+    let view = row === null ? null : projectView(row as TalentSelectionRow);
     if (
       view !== null &&
       input.visible_requisition_ids instanceof Set &&
@@ -381,14 +381,14 @@ export class EngagementRepository {
     tenant_id: string;
     talent_id: string;
     visible_requisition_ids?: ReadonlySet<string> | null;
-  }): Promise<TalentJobEngagementView[]> {
+  }): Promise<TalentSelectionView[]> {
     const startedAt = Date.now();
     const visIds = input.visible_requisition_ids;
     const reqFilter =
       visIds instanceof Set
         ? { requisition_id: { in: Array.from(visIds) } }
         : {};
-    const rows = await this.prisma.talentJobEngagement.findMany({
+    const rows = await this.prisma.talentSelection.findMany({
       where: {
         tenant_id: input.tenant_id,
         talent_id: input.talent_id,
@@ -396,7 +396,7 @@ export class EngagementRepository {
       },
       orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
     });
-    const views = (rows as TalentJobEngagementRow[]).map((r) => projectView(r));
+    const views = (rows as TalentSelectionRow[]).map((r) => projectView(r));
     this.logger.log({
       event: 'engagement.findByTenantAndTalent',
       tenant_id: input.tenant_id,
@@ -411,7 +411,7 @@ export class EngagementRepository {
     tenant_id: string;
     requisition_id: string;
     visible_requisition_ids?: ReadonlySet<string> | null;
-  }): Promise<TalentJobEngagementView[]> {
+  }): Promise<TalentSelectionView[]> {
     const startedAt = Date.now();
     if (
       input.visible_requisition_ids instanceof Set &&
@@ -430,14 +430,14 @@ export class EngagementRepository {
       });
       return [];
     }
-    const rows = await this.prisma.talentJobEngagement.findMany({
+    const rows = await this.prisma.talentSelection.findMany({
       where: {
         tenant_id: input.tenant_id,
         requisition_id: input.requisition_id,
       },
       orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
     });
-    const views = (rows as TalentJobEngagementRow[]).map((r) => projectView(r));
+    const views = (rows as TalentSelectionRow[]).map((r) => projectView(r));
     this.logger.log({
       event: 'engagement.findByTenantAndRequisition',
       tenant_id: input.tenant_id,
@@ -455,21 +455,21 @@ export class EngagementRepository {
   async findByTenant(input: {
     tenant_id: string;
     visible_requisition_ids?: ReadonlySet<string> | null;
-  }): Promise<TalentJobEngagementView[]> {
+  }): Promise<TalentSelectionView[]> {
     const startedAt = Date.now();
     const visIds = input.visible_requisition_ids;
     const reqFilter =
       visIds instanceof Set
         ? { requisition_id: { in: Array.from(visIds) } }
         : {};
-    const rows = await this.prisma.talentJobEngagement.findMany({
+    const rows = await this.prisma.talentSelection.findMany({
       where: {
         tenant_id: input.tenant_id,
         ...reqFilter,
       },
       orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
     });
-    const views = (rows as TalentJobEngagementRow[]).map((r) => projectView(r));
+    const views = (rows as TalentSelectionRow[]).map((r) => projectView(r));
     this.logger.log({
       event: 'engagement.findByTenant',
       tenant_id: input.tenant_id,
@@ -498,12 +498,12 @@ export class EngagementRepository {
     }
     return this.prisma.$transaction(async (tx) => {
       // TR-2a-B3b (Group-2 §2.3b reconcile re-key amendment) — the transaction-local
-      // GUC that tells the TalentJobEngagement immutability trigger this is the
+      // GUC that tells the TalentSelection immutability trigger this is the
       // sanctioned supersession re-key of talent_id (loser→survivor). SET LOCAL only
       // here, in the repoint method — the grep-enumerable scope contract.
       await tx.$executeRawUnsafe(`SET LOCAL app.reconcile = 'on'`);
       const rows = await tx.$queryRawUnsafe<Array<{ id: string }>>(
-        `UPDATE "engagement"."TalentJobEngagement" SET talent_id = $1::uuid
+        `UPDATE "selection"."TalentSelection" SET talent_id = $1::uuid
            WHERE talent_id = $2::uuid AND tenant_id = $3::uuid ${idFilter}
          RETURNING id`,
         ...params,
@@ -522,7 +522,7 @@ export class EngagementRepository {
     talent_record_id: string;
   }): Promise<string[]> {
     const rows = await this.prisma.$queryRawUnsafe<Array<{ id: string }>>(
-      `SELECT id FROM "engagement"."TalentJobEngagement"
+      `SELECT id FROM "selection"."TalentSelection"
         WHERE talent_id = $1::uuid AND tenant_id = $2::uuid`,
       args.talent_record_id,
       args.tenant_id,
@@ -645,7 +645,7 @@ export class EngagementRepository {
     // creates the row in surfaced; the from_state on the initial event
     // is null because there is no prior state).
     const [engagementRow, eventRow] = await this.prisma.$transaction([
-      this.prisma.talentJobEngagement.create({
+      this.prisma.talentSelection.create({
         data: {
           id: input.id,
           tenant_id: input.tenant_id,
@@ -655,7 +655,7 @@ export class EngagementRepository {
           state: 'surfaced',
         },
       }),
-      this.prisma.talentEngagementEvent.create({
+      this.prisma.talentSelectionEvent.create({
         data: {
           id: input.event_id,
           tenant_id: input.tenant_id,
@@ -688,8 +688,8 @@ export class EngagementRepository {
 
     // ---- Step 4 + 5: project + return + success log -------------------
     const result: CreateEngagementResult = {
-      engagement: projectView(engagementRow as TalentJobEngagementRow),
-      event: projectEventView(eventRow as TalentEngagementEventRow),
+      engagement: projectView(engagementRow as TalentSelectionRow),
+      event: projectEventView(eventRow as TalentSelectionEventRow),
     };
     this.logger.log({
       event: 'engagement.created',
@@ -731,7 +731,7 @@ export class EngagementRepository {
       });
       throw new AramoError(
         'NOT_FOUND',
-        'TalentJobEngagement not found',
+        'TalentSelection not found',
         404,
         {
           requestId: 'engagement-transition',
@@ -768,11 +768,11 @@ export class EngagementRepository {
     // ---- Step 3: atomic transaction (engagement.update + event.create
     // + outbox.create) — M6 PR-2 §3 in-tx outbox emission.
     const [updatedRow, eventRow] = await this.prisma.$transaction([
-      this.prisma.talentJobEngagement.update({
+      this.prisma.talentSelection.update({
         where: { id: input.engagement_id },
         data: { state: input.to_state },
       }),
-      this.prisma.talentEngagementEvent.create({
+      this.prisma.talentSelectionEvent.create({
         data: {
           id: input.event_id,
           tenant_id: input.tenant_id,
@@ -807,8 +807,8 @@ export class EngagementRepository {
 
     // ---- Step 4 + 5: project + return + success log -------------------
     const result: TransitionStateResult = {
-      engagement: projectView(updatedRow as TalentJobEngagementRow),
-      event: projectEventView(eventRow as TalentEngagementEventRow),
+      engagement: projectView(updatedRow as TalentSelectionRow),
+      event: projectEventView(eventRow as TalentSelectionEventRow),
     };
     this.logger.log({
       event: 'engagement.transitioned',
@@ -855,7 +855,7 @@ export class EngagementRepository {
       });
       throw new AramoError(
         'NOT_FOUND',
-        'TalentJobEngagement not found',
+        'TalentSelection not found',
         404,
         {
           requestId: 'engagement-outreach-draft',
@@ -868,7 +868,7 @@ export class EngagementRepository {
     // DRAFT requires the engagement be in a send-eligible state — i.e.
     // canTransition(state, 'awaiting_response') (only `engaged` qualifies).
     // No stranded drafts: you can only draft what you can send.
-    const SEND_TARGET: EngagementStateValue = 'awaiting_response';
+    const SEND_TARGET: SelectionStateValue = 'awaiting_response';
     if (!canTransition(current.state, SEND_TARGET)) {
       this.logger.log({
         event: 'engagement.outreach_draft_refused',
@@ -896,7 +896,7 @@ export class EngagementRepository {
     // ---- Step 3: append the PENDING outreach_drafted event ------------
     // Single create — no $transaction (one row), no state change, no
     // outbox. The draft is PENDING until SEND.
-    const draftRow = await this.prisma.talentEngagementEvent.create({
+    const draftRow = await this.prisma.talentSelectionEvent.create({
       data: {
         id: input.draft_event_id,
         tenant_id: input.tenant_id,
@@ -907,7 +907,7 @@ export class EngagementRepository {
     });
 
     const result: DraftOutreachResult = {
-      draft_event: projectEventView(draftRow as TalentEngagementEventRow),
+      draft_event: projectEventView(draftRow as TalentSelectionEventRow),
     };
     this.logger.log({
       event: 'engagement.outreach_drafted',
@@ -956,7 +956,7 @@ export class EngagementRepository {
       });
       throw new AramoError(
         'NOT_FOUND',
-        'TalentJobEngagement not found',
+        'TalentSelection not found',
         404,
         {
           requestId: 'engagement-outreach',
@@ -1009,7 +1009,7 @@ export class EngagementRepository {
     }
 
     // ---- Step 2: canTransition guard (engaged → awaiting_response) ----
-    const TO_STATE: EngagementStateValue = 'awaiting_response';
+    const TO_STATE: SelectionStateValue = 'awaiting_response';
     if (!canTransition(current.state, TO_STATE)) {
       this.logger.log({
         event: 'engagement.outreach_refused',
@@ -1039,11 +1039,11 @@ export class EngagementRepository {
     // one outbox row per state_transition (Amendment §2.3).
     const [updatedRow, outreachEventRow, transitionEventRow] =
       await this.prisma.$transaction([
-        this.prisma.talentJobEngagement.update({
+        this.prisma.talentSelection.update({
           where: { id: input.engagement_id },
           data: { state: TO_STATE },
         }),
-        this.prisma.talentEngagementEvent.create({
+        this.prisma.talentSelectionEvent.create({
           data: {
             id: input.outreach_event_id,
             tenant_id: input.tenant_id,
@@ -1052,7 +1052,7 @@ export class EngagementRepository {
             event_payload: input.outreach_payload as never,
           },
         }),
-        this.prisma.talentEngagementEvent.create({
+        this.prisma.talentSelectionEvent.create({
           data: {
             id: input.transition_event_id,
             tenant_id: input.tenant_id,
@@ -1087,9 +1087,9 @@ export class EngagementRepository {
 
     // ---- Step 4 + 5: project + return + success log ------------------
     const result: SendOutreachResult = {
-      engagement: projectView(updatedRow as TalentJobEngagementRow),
-      outreach_event: projectEventView(outreachEventRow as TalentEngagementEventRow),
-      transition_event: projectEventView(transitionEventRow as TalentEngagementEventRow),
+      engagement: projectView(updatedRow as TalentSelectionRow),
+      outreach_event: projectEventView(outreachEventRow as TalentSelectionEventRow),
+      transition_event: projectEventView(transitionEventRow as TalentSelectionEventRow),
     };
     this.logger.log({
       event: 'engagement.outreach_sent',
@@ -1138,7 +1138,7 @@ export class EngagementRepository {
       });
       throw new AramoError(
         'NOT_FOUND',
-        'TalentJobEngagement not found',
+        'TalentSelection not found',
         404,
         {
           requestId: 'engagement-record-response',
@@ -1191,7 +1191,7 @@ export class EngagementRepository {
     }
 
     // ---- Step 3: canTransition guard (awaiting_response → responded) -
-    const TO_STATE: EngagementStateValue = 'responded';
+    const TO_STATE: SelectionStateValue = 'responded';
     if (!canTransition(current.state, TO_STATE)) {
       this.logger.log({
         event: 'engagement.response_recording_refused',
@@ -1220,11 +1220,11 @@ export class EngagementRepository {
     // + state_transition + outbox) — M6 PR-2 §3 in-tx outbox emission.
     const [updatedRow, responseEventRow, transitionEventRow] =
       await this.prisma.$transaction([
-        this.prisma.talentJobEngagement.update({
+        this.prisma.talentSelection.update({
           where: { id: input.engagement_id },
           data: { state: TO_STATE },
         }),
-        this.prisma.talentEngagementEvent.create({
+        this.prisma.talentSelectionEvent.create({
           data: {
             id: input.response_event_id,
             tenant_id: input.tenant_id,
@@ -1233,7 +1233,7 @@ export class EngagementRepository {
             event_payload: input.response_payload as never,
           },
         }),
-        this.prisma.talentEngagementEvent.create({
+        this.prisma.talentSelectionEvent.create({
           data: {
             id: input.transition_event_id,
             tenant_id: input.tenant_id,
@@ -1268,9 +1268,9 @@ export class EngagementRepository {
 
     // ---- Step 5 + 6: project + return + success log ------------------
     const result: RecordResponseResult = {
-      engagement: projectView(updatedRow as TalentJobEngagementRow),
-      response_event: projectEventView(responseEventRow as TalentEngagementEventRow),
-      transition_event: projectEventView(transitionEventRow as TalentEngagementEventRow),
+      engagement: projectView(updatedRow as TalentSelectionRow),
+      response_event: projectEventView(responseEventRow as TalentSelectionEventRow),
+      transition_event: projectEventView(transitionEventRow as TalentSelectionEventRow),
     };
     this.logger.log({
       event: 'engagement.response_recorded',
@@ -1329,7 +1329,7 @@ export class EngagementRepository {
       });
       throw new AramoError(
         'NOT_FOUND',
-        'TalentJobEngagement not found',
+        'TalentSelection not found',
         404,
         {
           requestId: 'engagement-record-conversation-started',
@@ -1342,7 +1342,7 @@ export class EngagementRepository {
     // Also handles natural-key dedup: an engagement already in
     // 'in_conversation' cannot transition to 'in_conversation' again
     // (canTransition returns false because the matrix has no self-loop).
-    const TO_STATE: EngagementStateValue = 'in_conversation';
+    const TO_STATE: SelectionStateValue = 'in_conversation';
     if (!canTransition(current.state, TO_STATE)) {
       this.logger.log({
         event: 'engagement.conversation_started_recording_refused',
@@ -1371,11 +1371,11 @@ export class EngagementRepository {
     // + state_transition + outbox) — M6 PR-2 §3 in-tx outbox emission.
     const [updatedRow, conversationEventRow, transitionEventRow] =
       await this.prisma.$transaction([
-        this.prisma.talentJobEngagement.update({
+        this.prisma.talentSelection.update({
           where: { id: input.engagement_id },
           data: { state: TO_STATE },
         }),
-        this.prisma.talentEngagementEvent.create({
+        this.prisma.talentSelectionEvent.create({
           data: {
             id: input.conversation_event_id,
             tenant_id: input.tenant_id,
@@ -1384,7 +1384,7 @@ export class EngagementRepository {
             event_payload: input.conversation_payload as never,
           },
         }),
-        this.prisma.talentEngagementEvent.create({
+        this.prisma.talentSelectionEvent.create({
           data: {
             id: input.transition_event_id,
             tenant_id: input.tenant_id,
@@ -1419,9 +1419,9 @@ export class EngagementRepository {
 
     // ---- Step 4 + 5: project + return + success log ------------------
     const result: RecordConversationStartedResult = {
-      engagement: projectView(updatedRow as TalentJobEngagementRow),
-      conversation_event: projectEventView(conversationEventRow as TalentEngagementEventRow),
-      transition_event: projectEventView(transitionEventRow as TalentEngagementEventRow),
+      engagement: projectView(updatedRow as TalentSelectionRow),
+      conversation_event: projectEventView(conversationEventRow as TalentSelectionEventRow),
+      transition_event: projectEventView(transitionEventRow as TalentSelectionEventRow),
     };
     this.logger.log({
       event: 'engagement.conversation_started_recorded',

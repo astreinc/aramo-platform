@@ -4,7 +4,7 @@ import { ConsentRepository } from '@aramo/consent';
 import { PipelineRepository } from '@aramo/pipeline';
 import { SubmittalRepository } from '@aramo/submittal';
 import { EvidenceRepository } from '@aramo/evidence';
-import { EngagementRepository } from '@aramo/engagement';
+import { SelectionRepository } from '@aramo/selection';
 import { ExaminationRepository } from '@aramo/examination';
 import { TalentEvidenceRepository } from '@aramo/talent-evidence';
 import { SavedListRepository } from '@aramo/saved-list';
@@ -90,7 +90,7 @@ export class RecordReconcileOrchestrator {
     private readonly pipeline: PipelineRepository,
     private readonly submittal: SubmittalRepository,
     private readonly evidence: EvidenceRepository,
-    private readonly engagement: EngagementRepository,
+    private readonly engagement: SelectionRepository,
     private readonly examination: ExaminationRepository,
     private readonly talentEvidence: TalentEvidenceRepository,
     private readonly savedList: SavedListRepository,

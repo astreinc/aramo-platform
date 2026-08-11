@@ -220,11 +220,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       // Engagement + event (T).
       await db.query(
-        `INSERT INTO engagement."TalentJobEngagement" (id, tenant_id, talent_id, requisition_id) VALUES ($1::uuid,$2::uuid,$3::uuid,$4::uuid)`,
+        `INSERT INTO selection."TalentSelection" (id, tenant_id, talent_id, requisition_id) VALUES ($1::uuid,$2::uuid,$3::uuid,$4::uuid)`,
         [ENG, T, TALENT, REQ1],
       );
       await db.query(
-        `INSERT INTO engagement."TalentEngagementEvent" (id, tenant_id, engagement_id, event_type, event_payload) VALUES ($1::uuid,$2::uuid,$3::uuid,'state_transition','{}'::jsonb)`,
+        `INSERT INTO selection."TalentSelectionEvent" (id, tenant_id, engagement_id, event_type, event_payload) VALUES ($1::uuid,$2::uuid,$3::uuid,'state_transition','{}'::jsonb)`,
         [uuidv7(), T, ENG],
       );
       // Submittal + event (T).
@@ -388,8 +388,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(del('requisition."RequisitionLifecycleEvent"')).toBe(1);
       expect(del('submittal."TalentSubmittalEvent"')).toBe(1);
       expect(del('submittal."TalentSubmittalRecord"')).toBe(1);
-      expect(del('engagement."TalentEngagementEvent"')).toBe(1);
-      expect(del('engagement."TalentJobEngagement"')).toBe(1);
+      expect(del('selection."TalentSelectionEvent"')).toBe(1);
+      expect(del('selection."TalentSelection"')).toBe(1);
       expect(del('pipeline."PipelineStatusHistory"')).toBe(1);
       expect(del('pipeline."Pipeline"')).toBe(1);
       expect(del('requisition."RequisitionAssignment"')).toBe(1);
@@ -534,8 +534,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(await count('requisition."RequisitionLifecycleEvent"', 'tenant_id=$1::uuid', [T])).toBe(0);
       expect(await count('pipeline."Pipeline"', 'tenant_id=$1::uuid', [T])).toBe(0);
       expect(await count('pipeline."PipelineStatusHistory"', 'tenant_id=$1::uuid', [T])).toBe(0);
-      expect(await count('engagement."TalentJobEngagement"', 'tenant_id=$1::uuid', [T])).toBe(0);
-      expect(await count('engagement."TalentEngagementEvent"', 'tenant_id=$1::uuid', [T])).toBe(0);
+      expect(await count('selection."TalentSelection"', 'tenant_id=$1::uuid', [T])).toBe(0);
+      expect(await count('selection."TalentSelectionEvent"', 'tenant_id=$1::uuid', [T])).toBe(0);
       expect(await count('submittal."TalentSubmittalRecord"', 'tenant_id=$1::uuid', [T])).toBe(0);
       expect(await count('submittal."TalentSubmittalEvent"', 'tenant_id=$1::uuid', [T])).toBe(0);
 
