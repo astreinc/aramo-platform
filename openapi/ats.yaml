@@ -1892,6 +1892,50 @@ paths:
       security:
         - BearerAuth: []
 
+  /v1/placements/{id}/assignment/commercials:
+    get:
+      operationId: getPlacementAssignmentCommercials
+      summary: Read the commercial projection (rates + derived margin) of a placement's assignment (Track 5 / T5-P2).
+      description: |
+        Returns the CURRENT effective commercial terms of the placement's
+        ContractAssignment — the stored actuals (`pay_rate_amount`, `bill_rate_amount`,
+        `currency`, `rate_period`) plus the DEC-5 derived views (`spread_amount`,
+        `margin_percent`, `markup_percent`), computed on read. Money and percentages
+        are scale-2 decimal strings (never float); `margin_percent` / `markup_percent`
+        are null on a zero denominator (bill=0 / pay=0). A placement with no assignment
+        or no active commercial version returns `{ "commercials": null }` — a coherent
+        absence, never a fabricated row.
+
+        Guarded by scope `assignment:commercials:read` — a DEDICATED financial scope
+        that `assignment:read` / `placement:read` / `requisition:read` do NOT satisfy
+        (least-visibility). The placement is first loaded under the actor-visibility
+        predicate — a not-found / not-visible / cross-tenant placement returns 404
+        (never 403) before any commercial figure is read.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssignmentCommercialResponse'
+        '403':
+          description: Insufficient permissions or tenant not entitled.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+
 components:
   securitySchemes:
     # Duplicated byte-for-byte from openapi/common.yaml per locked invariant
@@ -2185,6 +2229,72 @@ components:
           # A coherent absence when the placement has no ContractAssignment.
           oneOf:
             - $ref: '#/components/schemas/ContractAssignmentView'
+            - type: 'null'
+    # Track 5 / T5-P2 — the commercial projection of the CURRENT effective
+    # AssignmentRateVersion. Stored actuals + DEC-5 derived views (computed on read,
+    # never stored). Money + percentages are scale-2 decimal strings (never float);
+    # margin_percent / markup_percent are null on a zero denominator.
+    AssignmentCommercialView:
+      type: object
+      additionalProperties: false
+      required: [contract_assignment_id, assignment_rate_version_id, requisition_id, talent_record_id, pay_rate_amount, bill_rate_amount, currency, rate_period, spread_amount, margin_percent, markup_percent, effective_from, effective_to, change_reason, recorded_by, created_at]
+      properties:
+        contract_assignment_id:
+          type: string
+          format: uuid
+        assignment_rate_version_id:
+          type: string
+          format: uuid
+        requisition_id:
+          type: string
+          format: uuid
+        talent_record_id:
+          type: string
+          format: uuid
+        pay_rate_amount:
+          type: string
+          description: Decimal(12,2) money string (never a float).
+        bill_rate_amount:
+          type: string
+          description: Decimal(12,2) money string (never a float).
+        currency:
+          type: string
+          description: An active ISO-4217 currency code (uppercase).
+        rate_period:
+          type: string
+          enum: [HOURLY, DAILY, WEEKLY, MONTHLY, ANNUAL]
+        spread_amount:
+          type: string
+          description: bill - pay, scale-2 decimal string.
+        margin_percent:
+          # ((bill - pay) / bill) * 100; null when bill == 0.
+          type: [string, 'null']
+        markup_percent:
+          # ((bill - pay) / pay) * 100; null when pay == 0.
+          type: [string, 'null']
+        effective_from:
+          type: string
+          format: date-time
+        effective_to:
+          type: [string, 'null']
+          format: date-time
+        change_reason:
+          type: [string, 'null']
+        recorded_by:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+    AssignmentCommercialResponse:
+      type: object
+      additionalProperties: false
+      required: [commercials]
+      properties:
+        commercials:
+          # A coherent absence when the placement has no assignment / no active version.
+          oneOf:
+            - $ref: '#/components/schemas/AssignmentCommercialView'
             - type: 'null'
     # M3 PR-8 §4.4 — match-list response envelope. The endpoint emits
     # TalentJobExaminationSummary items only (Full is NOT referenced from

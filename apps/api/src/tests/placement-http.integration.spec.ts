@@ -358,6 +358,125 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('E1-b PlacementCon
     expect((res as unknown as Record<string, unknown>).capacity).toBeUndefined();
   });
 
+  // ---- T5-P2 assignment:commercials:read — the commercial projection ----
+  const commAuth = (t: string) => auth(['assignment:commercials:read'], t);
+
+  // A/F/G/H/J/K — exact stored actuals + DEC-5 derived views. T5_TERMS = pay 80.00,
+  // bill 120.00 → spread 40.00, margin 33.33, markup 50.00. Non-vacuous (row exists).
+  it('T5-P2 read correctness — current effective projection: exact actuals + spread 40.00, margin 33.33, markup 50.00', async () => {
+    const t = randomUUID();
+    const id = await driveToStarted(t);
+    expect(await prisma.assignmentRateVersion.count({ where: { tenant_id: t } })).toBe(1);
+    const res = await ctrl.getAssignmentCommercials(commAuth(t), 'r', id, reqSeeAll);
+    expect(res.commercials).not.toBeNull();
+    const c = res.commercials!;
+    expect(c.pay_rate_amount).toBe('80.00');
+    expect(c.bill_rate_amount).toBe('120.00');
+    expect(c.currency).toBe('USD');
+    expect(c.rate_period).toBe('HOURLY');
+    expect(c.spread_amount).toBe('40.00');
+    expect(c.margin_percent).toBe('33.33');
+    expect(c.markup_percent).toBe('50.00');
+    expect(c.effective_to).toBeNull(); // L — initial active version, open window
+  });
+
+  // D (tenant) — same assignment id in another tenant is a tenant-safe 404.
+  it('T5-P2 tenant isolation — same id in another tenant is 404 (never 403, never the row)', async () => {
+    const t = randomUUID();
+    const id = await driveToStarted(t);
+    await expect(ctrl.getAssignmentCommercials(commAuth(randomUUID()), 'r', id, reqSeeAll)).rejects.toMatchObject({ code: 'NOT_FOUND', statusCode: 404 });
+  });
+
+  // E — coherent absence: a visible placement with no assignment returns null.
+  it('T5-P2 coherent absence — visible placement, no assignment → { commercials: null }', async () => {
+    const t = randomUUID();
+    const id = await ctrl.create(auth(MANAGER_PLACEMENT, t), 'r', body()).then((v) => v.id);
+    const res = await ctrl.getAssignmentCommercials(commAuth(t), 'r', id, reqSeeAll);
+    expect(res.commercials).toBeNull();
+  });
+
+  // M — a read emits NO outbox event.
+  it('T5-P2 read-only — the commercial read emits no outbox event', async () => {
+    const t = randomUUID();
+    const id = await driveToStarted(t);
+    const before = await prisma.outboxEvent.count({ where: { tenant_id: t } });
+    await ctrl.getAssignmentCommercials(commAuth(t), 'r', id, reqSeeAll);
+    expect(await prisma.outboxEvent.count({ where: { tenant_id: t } })).toBe(before);
+  });
+
+  // O — the commercial scope cannot reveal a hidden (non-visible) assignment.
+  it('T5-P2 boundary O — a placement not in the actor visible set is 404 (commercial scope cannot reveal it)', async () => {
+    const t = randomUUID();
+    const id = await driveToStarted(t);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const reqSeeNone: any = { resolveVisibleRequisitionIds: async () => new Set<string>() };
+    await expect(ctrl.getAssignmentCommercials(commAuth(t), 'r', id, reqSeeNone)).rejects.toMatchObject({ code: 'NOT_FOUND', statusCode: 404 });
+  });
+
+  // Seed an additional AssignmentRateVersion directly (INSERT is allowed by the
+  // append-only trigger; the unique key is (tenant, assignment, effective_from)).
+  async function seedVersion(t: string, ca: { id: string; requisition_id: string; talent_record_id: string }, effective_from: Date, effective_to: Date | null): Promise<void> {
+    await prisma.assignmentRateVersion.create({
+      data: {
+        id: randomUUID(),
+        tenant_id: t,
+        contract_assignment_id: ca.id,
+        requisition_id: ca.requisition_id,
+        talent_record_id: ca.talent_record_id,
+        pay_rate_amount: '90.00',
+        bill_rate_amount: '140.00',
+        currency: 'USD',
+        rate_period: 'HOURLY',
+        effective_from,
+        effective_to,
+        recorded_by: randomUUID(),
+      },
+    });
+  }
+
+  // §9.B — a FUTURE version is ignored; the current (initial) version is returned.
+  it('T5-P2 resolver — a future-effective version is ignored (current returned)', async () => {
+    const t = randomUUID();
+    const id = await driveToStarted(t);
+    const ca = await prisma.contractAssignment.findFirstOrThrow({ where: { tenant_id: t, placement_process_id: id } });
+    await seedVersion(t, ca, new Date(Date.now() + 86_400_000), null); // effective_from in the future
+    const res = await ctrl.getAssignmentCommercials(commAuth(t), 'r', id, reqSeeAll);
+    expect(res.commercials!.pay_rate_amount).toBe('80.00'); // the INITIAL, not the 90.00 future one
+    expect(res.commercials!.markup_percent).toBe('50.00');
+  });
+
+  // §9.C — an EXPIRED version (effective_to in the past) is ignored.
+  it('T5-P2 resolver — an expired version is ignored (current returned)', async () => {
+    const t = randomUUID();
+    const id = await driveToStarted(t);
+    const ca = await prisma.contractAssignment.findFirstOrThrow({ where: { tenant_id: t, placement_process_id: id } });
+    await seedVersion(t, ca, new Date(Date.now() - 172_800_000), new Date(Date.now() - 86_400_000)); // ended yesterday
+    const res = await ctrl.getAssignmentCommercials(commAuth(t), 'r', id, reqSeeAll);
+    expect(res.commercials!.pay_rate_amount).toBe('80.00');
+  });
+
+  // §6/§8/§9.F — TWO simultaneously-effective versions FAIL CLOSED (server-integrity
+  // 500), never silently picking a winner; no financial values leaked, no row mutated,
+  // no outbox event. T5-P2 detects corrupt state; T6 owns prevention.
+  it('T5-P2 ambiguity — two effective versions fail closed (500), no leak, no mutation, no outbox', async () => {
+    const t = randomUUID();
+    const id = await driveToStarted(t);
+    const ca = await prisma.contractAssignment.findFirstOrThrow({ where: { tenant_id: t, placement_process_id: id } });
+    await seedVersion(t, ca, new Date(Date.now() - 60_000), null); // second ACTIVE version (effective_to null)
+    const before = await prisma.outboxEvent.count({ where: { tenant_id: t } });
+    const err = await ctrl.getAssignmentCommercials(commAuth(t), 'r', id, reqSeeAll).then(() => null).catch((e) => e);
+    expect(err).toMatchObject({ code: 'INTERNAL_ERROR', statusCode: 500 });
+    // No competing financial values leaked anywhere in the error.
+    const errStr = JSON.stringify({ message: err?.message, context: err?.context });
+    for (const v of ['80.00', '120.00', '90.00', '140.00']) expect(errStr).not.toContain(v);
+    // No mutation: both versions present, both effective_to still null.
+    const rows = await prisma.assignmentRateVersion.findMany({ where: { tenant_id: t, contract_assignment_id: ca.id } });
+    expect(rows).toHaveLength(2);
+    expect(rows.every((r) => r.effective_to === null)).toBe(true);
+    // No outbox event from the read.
+    expect(await prisma.outboxEvent.count({ where: { tenant_id: t } })).toBe(before);
+  });
+
   it('matrix: MANAGER set (account_manager/tenant_admin/tenant_owner) CAN terminate with a valid reason (a terminal edge)', async () => {
     const t = randomUUID();
     const id = await ctrl.create(auth(MANAGER_PLACEMENT, t), 'r', body()).then((v) => v.id);
@@ -655,6 +774,18 @@ describe('E1-b placement matrix — read/create guard boundary (real RolesGuard 
     expect(denial(getAssignment, [])).toMatchObject({ code: 'INSUFFICIENT_PERMISSIONS', statusCode: 403 });
     // placement:read (which guards the placement item/events reads) does NOT satisfy assignment:read.
     expect(denial(getAssignment, ['placement:read'])).toMatchObject({ code: 'INSUFFICIENT_PERMISSIONS', statusCode: 403 });
+  });
+
+  it('T5-P2: GET .../assignment/commercials requires assignment:commercials:read — WITH it passes; WITHOUT 403; assignment:read / placement:read / commercials:write do NOT satisfy it', () => {
+    const h = PlacementController.prototype.getAssignmentCommercials as unknown as (...a: unknown[]) => unknown;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect(guard.canActivate(ctx(h, ['assignment:commercials:read']) as any)).toBe(true);
+    expect(denial(h, [])).toMatchObject({ code: 'INSUFFICIENT_PERMISSIONS', statusCode: 403 });
+    // B/C — a lesser financial-blind scope does NOT satisfy the dedicated read scope.
+    expect(denial(h, ['assignment:read'])).toMatchObject({ code: 'INSUFFICIENT_PERMISSIONS', statusCode: 403 });
+    expect(denial(h, ['placement:read'])).toMatchObject({ code: 'INSUFFICIENT_PERMISSIONS', statusCode: 403 });
+    // N — write does NOT imply read.
+    expect(denial(h, ['assignment:commercials:write'])).toMatchObject({ code: 'INSUFFICIENT_PERMISSIONS', statusCode: 403 });
   });
 
   it('a no-placement-grant principal (e.g. super_admin / any role outside the matrix) is denied read AND create', () => {
