@@ -1,6 +1,6 @@
-import type { EngagementStateValue } from '../engagement-state.js';
+import type { SelectionStateValue } from '../selection-state.js';
 
-// Typed view projection for TalentJobEngagement reads (M5 PR-1
+// Typed view projection for TalentSelection reads (M5 PR-1
 // Directive v1.0 §4.5). The repository projects raw rows through this
 // shape on read; per-PR observability standard logs the canonical
 // fields visible here.
@@ -9,12 +9,12 @@ import type { EngagementStateValue } from '../engagement-state.js';
 // (engagement may exist before examination is computed; pin-verify
 // lands at M5 PR-8). `created_at` carries through as Date — the
 // repository surfaces persisted Postgres timestamps unmodified.
-export interface TalentJobEngagementView {
+export interface TalentSelectionView {
   id: string;
   tenant_id: string;
   talent_id: string;
   requisition_id: string;
   examination_id: string | null;
-  state: EngagementStateValue;
+  state: SelectionStateValue;
   created_at: Date;
 }

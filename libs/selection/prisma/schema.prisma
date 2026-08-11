@@ -62,10 +62,10 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  schemas  = ["engagement"]
+  schemas  = ["selection"]
 }
 
-enum EngagementState {
+enum SelectionState {
   surfaced
   evaluated
   engaged
@@ -78,27 +78,27 @@ enum EngagementState {
   ready_for_submittal
   submitted
 
-  @@schema("engagement")
+  @@schema("selection")
 }
 
 // M5 PR-2 — TalentEngagementEvent event-log enum. Four event-type values
 // per the M5 PR-2 directive §4.1 + Charter v1.2 §4.4 Ruling D event-log
 // scope. Closed-list; future event types added via explicit directive
 // amendments.
-enum EngagementEventType {
+enum SelectionEventType {
   state_transition
   outreach_drafted
   outreach_sent
   response_received
   conversation_started
 
-  @@schema("engagement")
+  @@schema("selection")
 }
 
 // §2.3b Part 2 Loops 1-5 — TalentJobEngagement (workflow-state entity).
 // Cross-schema references (`talent_id`, `requisition_id`,
 // `examination_id`) are UUID-only per Architecture §7.3.
-model TalentJobEngagement {
+model TalentSelection {
   // Identity. UUID v7 generated app-side (PR-2 precedent — Postgres 17
   // has no native uuidv7() function).
   id              String  @id @db.Uuid
@@ -113,7 +113,7 @@ model TalentJobEngagement {
 
   // Workflow state. Default `surfaced` per Loop 1 (`null -> surfaced ->
   // evaluated` — matching engine creates row in `surfaced`).
-  state           EngagementState @default(surfaced)
+  state           SelectionState @default(surfaced)
 
   // Snapshot creation timestamp. No updated_at — only the `state`
   // column is mutable per the column-scoped immutability trigger.
@@ -129,9 +129,9 @@ model TalentJobEngagement {
 
   // M5 PR-2 — back-reference for the TalentEngagementEvent intra-schema
   // FK. Relation-only field; no column added at the DB layer.
-  events          TalentEngagementEvent[]
+  events          TalentSelectionEvent[]
 
-  @@schema("engagement")
+  @@schema("selection")
 }
 
 // M6 PR-2 — OutboxEvent (engagement schema). Per Architecture v2.0 §7.6,
@@ -151,7 +151,7 @@ model OutboxEvent {
   published_at  DateTime? @db.Timestamptz
 
   @@index([published_at])
-  @@schema("engagement")
+  @@schema("selection")
 }
 
 // M5 PR-2 — TalentEngagementEvent event-log entity. Per Charter v1.2 §4.4
@@ -180,17 +180,17 @@ model OutboxEvent {
 // evidence summaries" — event-log payloads fall under this scope; the
 // payload shape varies per event_type and is typed at the application
 // layer when consumed).
-model TalentEngagementEvent {
+model TalentSelectionEvent {
   // Identity. UUID v7 generated app-side.
   id              String              @id @db.Uuid
   tenant_id       String              @db.Uuid
 
   // Intra-schema FK to TalentJobEngagement.
   engagement_id   String              @db.Uuid
-  engagement      TalentJobEngagement @relation(fields: [engagement_id], references: [id])
+  engagement TalentSelection @relation(fields: [engagement_id], references: [id])
 
   // Closed-list event type per the EngagementEventType enum.
-  event_type      EngagementEventType
+  event_type      SelectionEventType
 
   // Per-event-type JSONB payload. Shape varies; typed at consumption
   // sites in M5 PR-3+ when concrete event-emit paths land.
@@ -205,5 +205,5 @@ model TalentEngagementEvent {
   // event-log read for a given engagement.
   @@index([tenant_id, engagement_id])
   @@index([engagement_id, created_at])
-  @@schema("engagement")
+  @@schema("selection")
 }

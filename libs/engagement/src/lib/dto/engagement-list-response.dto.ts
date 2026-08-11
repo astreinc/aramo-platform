@@ -1,4 +1,4 @@
-import type { TalentJobEngagementView } from './talent-job-engagement.view.js';
+import type { TalentSelectionView as TalentJobEngagementView } from '@aramo/selection';
 
 // R7 BE-prereq P1 §1 — HTTP response DTO for GET /v1/engagements 200.
 //

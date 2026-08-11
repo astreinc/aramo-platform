@@ -5,15 +5,15 @@ import type { RequisitionRepository } from '@aramo/requisition';
 import type { TalentRecordRepository } from '@aramo/talent-record';
 
 import {
-  EngagementRepository,
+  SelectionRepository,
   type CreateEngagementInput,
   type DraftOutreachInput,
   type RecordConversationStartedInput,
   type RecordResponseInput,
   type SendOutreachInput,
   type TransitionStateInput,
-} from '../lib/engagement.repository.js';
-import type { EngagementEventRepository } from '../lib/engagement-event.repository.js';
+} from '../lib/selection.repository.js';
+import type { SelectionEventRepository } from '../lib/selection-event.repository.js';
 import type { PrismaService } from '../lib/prisma/prisma.service.js';
 
 // makeMockLogger from @aramo/common returns a no-op object suitable for
@@ -29,14 +29,14 @@ function makeSpyLogger(): AramoLogger & { log: ReturnType<typeof vi.fn> } {
   } as unknown as AramoLogger & { log: ReturnType<typeof vi.fn> };
 }
 
-// M5 PR-1 §4.9 + M5 PR-3 §4.6 — unit spec for EngagementRepository.
+// M5 PR-1 §4.9 + M5 PR-3 §4.6 — unit spec for SelectionRepository.
 //
 // PR-1 surface: 4 read methods (findById, findByTenantAndId,
 //   findByTenantAndTalent, findByTenantAndRequisition).
 // PR-3 surface: 2 write methods (createEngagement, transitionState).
 //
-// Vitest mocks PrismaService.talentJobEngagement +
-// .talentEngagementEvent + .$transaction. Cross-schema validator deps
+// Vitest mocks PrismaService.talentSelection +
+// .talentSelectionEvent + .$transaction. Cross-schema validator deps
 // (talentRecordRepository, requisitionRepository, examinationRepository) are
 // mocked per-test for the three-pattern validator design (Amendment
 // v1.1 §2). Integration tests against real Postgres + real repositories
@@ -83,7 +83,7 @@ function makeEventRow(overrides: Record<string, unknown> = {}): Record<string, u
 }
 
 interface MockPrismaService {
-  talentJobEngagement: {
+  talentSelection: {
     findUnique: ReturnType<typeof vi.fn>;
     findFirst: ReturnType<typeof vi.fn>;
     findMany: ReturnType<typeof vi.fn>;
@@ -96,7 +96,7 @@ interface MockPrismaService {
     delete: ReturnType<typeof vi.fn>;
     deleteMany: ReturnType<typeof vi.fn>;
   };
-  talentEngagementEvent: {
+  talentSelectionEvent: {
     create: ReturnType<typeof vi.fn>;
   };
   // M6 PR-2 §3 — in-transaction outbox emission. Each $transaction
@@ -119,7 +119,7 @@ interface MockPrismaService {
 
 function makeMockPrisma(): MockPrismaService {
   const prisma: MockPrismaService = {
-    talentJobEngagement: {
+    talentSelection: {
       findUnique: vi.fn(),
       findFirst: vi.fn(),
       findMany: vi.fn(),
@@ -132,7 +132,7 @@ function makeMockPrisma(): MockPrismaService {
       delete: vi.fn(),
       deleteMany: vi.fn(),
     },
-    talentEngagementEvent: {
+    talentSelectionEvent: {
       create: vi.fn(),
     },
     outboxEvent: {
@@ -178,19 +178,19 @@ function makeMockExaminationRepo(): ExaminationRepository & {
   } as unknown as ExaminationRepository & { findById: ReturnType<typeof vi.fn> };
 }
 
-function makeMockEngagementEventRepo(): EngagementEventRepository {
-  return {} as unknown as EngagementEventRepository;
+function makeMockEngagementEventRepo(): SelectionEventRepository {
+  return {} as unknown as SelectionEventRepository;
 }
 
-describe('EngagementRepository — read surface (M5 PR-1)', () => {
+describe('SelectionRepository — read surface (M5 PR-1)', () => {
   let prisma: MockPrismaService;
   let logger: ReturnType<typeof makeSpyLogger>;
-  let repo: EngagementRepository;
+  let repo: SelectionRepository;
 
   beforeEach(() => {
     prisma = makeMockPrisma();
     logger = makeSpyLogger();
-    repo = new EngagementRepository(
+    repo = new SelectionRepository(
       prisma as unknown as PrismaService,
       makeMockEngagementEventRepo(),
       makeMockTalentRecordRepo(),
@@ -210,13 +210,13 @@ describe('EngagementRepository — read surface (M5 PR-1)', () => {
   });
 
   it('findById hits findUnique and emits hit-event when row exists', async () => {
-    prisma.talentJobEngagement.findUnique.mockResolvedValue(makeRow());
+    prisma.talentSelection.findUnique.mockResolvedValue(makeRow());
     const view = await repo.findById(ENGAGEMENT_1);
     expect(view).not.toBeNull();
     expect(view?.id).toBe(ENGAGEMENT_1);
     expect(view?.state).toBe('surfaced');
-    expect(prisma.talentJobEngagement.findUnique).toHaveBeenCalledTimes(1);
-    expect(prisma.talentJobEngagement.findUnique).toHaveBeenCalledWith({
+    expect(prisma.talentSelection.findUnique).toHaveBeenCalledTimes(1);
+    expect(prisma.talentSelection.findUnique).toHaveBeenCalledWith({
       where: { id: ENGAGEMENT_1 },
     });
     const events = logger.log.mock.calls.map((c) => (c[0] as { event?: string }).event);
@@ -230,7 +230,7 @@ describe('EngagementRepository — read surface (M5 PR-1)', () => {
   });
 
   it('findById returns null and emits miss-event when row absent', async () => {
-    prisma.talentJobEngagement.findUnique.mockResolvedValue(null);
+    prisma.talentSelection.findUnique.mockResolvedValue(null);
     const view = await repo.findById(ENGAGEMENT_1);
     expect(view).toBeNull();
     const logEntry = logger.log.mock.calls[0]?.[0] as { hit: boolean };
@@ -238,13 +238,13 @@ describe('EngagementRepository — read surface (M5 PR-1)', () => {
   });
 
   it('findByTenantAndId scopes by tenant_id via findFirst', async () => {
-    prisma.talentJobEngagement.findFirst.mockResolvedValue(makeRow());
+    prisma.talentSelection.findFirst.mockResolvedValue(makeRow());
     const view = await repo.findByTenantAndId({
       tenant_id: TENANT_A,
       id: ENGAGEMENT_1,
     });
     expect(view).not.toBeNull();
-    expect(prisma.talentJobEngagement.findFirst).toHaveBeenCalledWith({
+    expect(prisma.talentSelection.findFirst).toHaveBeenCalledWith({
       where: { tenant_id: TENANT_A, id: ENGAGEMENT_1 },
     });
   });
@@ -254,13 +254,13 @@ describe('EngagementRepository — read surface (M5 PR-1)', () => {
       makeRow({ id: ENGAGEMENT_2, created_at: new Date('2026-05-25T11:00:00Z') }),
       makeRow({ id: ENGAGEMENT_1, created_at: new Date('2026-05-25T10:00:00Z') }),
     ];
-    prisma.talentJobEngagement.findMany.mockResolvedValue(rows);
+    prisma.talentSelection.findMany.mockResolvedValue(rows);
     const views = await repo.findByTenantAndTalent({
       tenant_id: TENANT_A,
       talent_id: TALENT_A,
     });
     expect(views).toHaveLength(2);
-    expect(prisma.talentJobEngagement.findMany).toHaveBeenCalledWith({
+    expect(prisma.talentSelection.findMany).toHaveBeenCalledWith({
       where: { tenant_id: TENANT_A, talent_id: TALENT_A },
       orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
     });
@@ -269,22 +269,22 @@ describe('EngagementRepository — read surface (M5 PR-1)', () => {
   });
 
   it('findByTenantAndRequisition scopes by tenant + requisition via findMany', async () => {
-    prisma.talentJobEngagement.findMany.mockResolvedValue([makeRow()]);
+    prisma.talentSelection.findMany.mockResolvedValue([makeRow()]);
     const views = await repo.findByTenantAndRequisition({
       tenant_id: TENANT_A,
       requisition_id: REQUISITION_A,
     });
     expect(views).toHaveLength(1);
-    expect(prisma.talentJobEngagement.findMany).toHaveBeenCalledWith({
+    expect(prisma.talentSelection.findMany).toHaveBeenCalledWith({
       where: { tenant_id: TENANT_A, requisition_id: REQUISITION_A },
       orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
     });
   });
 
   it('no write method is invoked across any read path (read-method invariant preserved)', async () => {
-    prisma.talentJobEngagement.findUnique.mockResolvedValue(makeRow());
-    prisma.talentJobEngagement.findFirst.mockResolvedValue(makeRow());
-    prisma.talentJobEngagement.findMany.mockResolvedValue([makeRow()]);
+    prisma.talentSelection.findUnique.mockResolvedValue(makeRow());
+    prisma.talentSelection.findFirst.mockResolvedValue(makeRow());
+    prisma.talentSelection.findMany.mockResolvedValue([makeRow()]);
 
     await repo.findById(ENGAGEMENT_1);
     await repo.findByTenantAndId({ tenant_id: TENANT_A, id: ENGAGEMENT_1 });
@@ -297,20 +297,20 @@ describe('EngagementRepository — read surface (M5 PR-1)', () => {
     // Read methods alone do NOT invoke write primitives (PR-3 write
     // paths exist on the same repository but are tested separately;
     // this assertion is scoped to read-method invocation only).
-    expect(prisma.talentJobEngagement.create).not.toHaveBeenCalled();
-    expect(prisma.talentJobEngagement.createMany).not.toHaveBeenCalled();
-    expect(prisma.talentJobEngagement.createManyAndReturn).not.toHaveBeenCalled();
-    expect(prisma.talentJobEngagement.update).not.toHaveBeenCalled();
-    expect(prisma.talentJobEngagement.updateMany).not.toHaveBeenCalled();
-    expect(prisma.talentJobEngagement.upsert).not.toHaveBeenCalled();
-    expect(prisma.talentJobEngagement.delete).not.toHaveBeenCalled();
-    expect(prisma.talentJobEngagement.deleteMany).not.toHaveBeenCalled();
-    expect(prisma.talentEngagementEvent.create).not.toHaveBeenCalled();
+    expect(prisma.talentSelection.create).not.toHaveBeenCalled();
+    expect(prisma.talentSelection.createMany).not.toHaveBeenCalled();
+    expect(prisma.talentSelection.createManyAndReturn).not.toHaveBeenCalled();
+    expect(prisma.talentSelection.update).not.toHaveBeenCalled();
+    expect(prisma.talentSelection.updateMany).not.toHaveBeenCalled();
+    expect(prisma.talentSelection.upsert).not.toHaveBeenCalled();
+    expect(prisma.talentSelection.delete).not.toHaveBeenCalled();
+    expect(prisma.talentSelection.deleteMany).not.toHaveBeenCalled();
+    expect(prisma.talentSelectionEvent.create).not.toHaveBeenCalled();
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
   it('cross-tenant findByTenantAndTalent returns empty array', async () => {
-    prisma.talentJobEngagement.findMany.mockResolvedValue([]);
+    prisma.talentSelection.findMany.mockResolvedValue([]);
     const views = await repo.findByTenantAndTalent({
       tenant_id: TENANT_B,
       talent_id: TALENT_A,
@@ -321,13 +321,13 @@ describe('EngagementRepository — read surface (M5 PR-1)', () => {
   });
 });
 
-describe('EngagementRepository.createEngagement (M5 PR-3 unit)', () => {
+describe('SelectionRepository.createEngagement (M5 PR-3 unit)', () => {
   let prisma: MockPrismaService;
   let talentRecordRepo: ReturnType<typeof makeMockTalentRecordRepo>;
   let requisitionRepo: ReturnType<typeof makeMockRequisitionRepo>;
   let examRepo: ReturnType<typeof makeMockExaminationRepo>;
   let logger: ReturnType<typeof makeSpyLogger>;
-  let repo: EngagementRepository;
+  let repo: SelectionRepository;
 
   const validInput: CreateEngagementInput = {
     id: ENGAGEMENT_1,
@@ -344,7 +344,7 @@ describe('EngagementRepository.createEngagement (M5 PR-3 unit)', () => {
     requisitionRepo = makeMockRequisitionRepo();
     examRepo = makeMockExaminationRepo();
     logger = makeSpyLogger();
-    repo = new EngagementRepository(
+    repo = new SelectionRepository(
       prisma as unknown as PrismaService,
       makeMockEngagementEventRepo(),
       talentRecordRepo,
@@ -495,8 +495,8 @@ describe('EngagementRepository.createEngagement (M5 PR-3 unit)', () => {
     // (engagement.create + event.create). Mocks return the operation
     // objects themselves; we assert that both create methods were
     // called to produce those operation arguments.
-    expect(prisma.talentJobEngagement.create).toHaveBeenCalledTimes(1);
-    expect(prisma.talentEngagementEvent.create).toHaveBeenCalledTimes(1);
+    expect(prisma.talentSelection.create).toHaveBeenCalledTimes(1);
+    expect(prisma.talentSelectionEvent.create).toHaveBeenCalledTimes(1);
   });
 
   it('VALIDATION_ERROR on malformed UUID input', async () => {
@@ -510,10 +510,10 @@ describe('EngagementRepository.createEngagement (M5 PR-3 unit)', () => {
   });
 });
 
-describe('EngagementRepository.transitionState (M5 PR-3 unit)', () => {
+describe('SelectionRepository.transitionState (M5 PR-3 unit)', () => {
   let prisma: MockPrismaService;
   let logger: ReturnType<typeof makeSpyLogger>;
-  let repo: EngagementRepository;
+  let repo: SelectionRepository;
 
   const validInput: TransitionStateInput = {
     engagement_id: ENGAGEMENT_1,
@@ -525,7 +525,7 @@ describe('EngagementRepository.transitionState (M5 PR-3 unit)', () => {
   beforeEach(() => {
     prisma = makeMockPrisma();
     logger = makeSpyLogger();
-    repo = new EngagementRepository(
+    repo = new SelectionRepository(
       prisma as unknown as PrismaService,
       makeMockEngagementEventRepo(),
       makeMockTalentRecordRepo(),
@@ -536,7 +536,7 @@ describe('EngagementRepository.transitionState (M5 PR-3 unit)', () => {
   });
 
   it('happy path — surfaced → evaluated is legal; $transaction invoked', async () => {
-    prisma.talentJobEngagement.findFirst.mockResolvedValue(makeRow({ state: 'surfaced' }));
+    prisma.talentSelection.findFirst.mockResolvedValue(makeRow({ state: 'surfaced' }));
     prisma.$transaction.mockResolvedValue([
       makeRow({ state: 'evaluated' }),
       makeEventRow({ event_payload: { from_state: 'surfaced', to_state: 'evaluated' } }),
@@ -547,16 +547,16 @@ describe('EngagementRepository.transitionState (M5 PR-3 unit)', () => {
       from_state: 'surfaced',
       to_state: 'evaluated',
     });
-    expect(prisma.talentJobEngagement.update).toHaveBeenCalledWith({
+    expect(prisma.talentSelection.update).toHaveBeenCalledWith({
       where: { id: ENGAGEMENT_1 },
       data: { state: 'evaluated' },
     });
-    expect(prisma.talentEngagementEvent.create).toHaveBeenCalledTimes(1);
+    expect(prisma.talentSelectionEvent.create).toHaveBeenCalledTimes(1);
     expect(prisma.$transaction).toHaveBeenCalledTimes(1);
   });
 
   it('engagement-not-found → NOT_FOUND 404; no $transaction', async () => {
-    prisma.talentJobEngagement.findFirst.mockResolvedValue(null);
+    prisma.talentSelection.findFirst.mockResolvedValue(null);
     await expect(repo.transitionState(validInput)).rejects.toMatchObject({
       code: 'NOT_FOUND',
       statusCode: 404,
@@ -565,7 +565,7 @@ describe('EngagementRepository.transitionState (M5 PR-3 unit)', () => {
   });
 
   it('illegal transition (surfaced → submitted) → ENGAGEMENT_STATE_INVALID 422; no $transaction', async () => {
-    prisma.talentJobEngagement.findFirst.mockResolvedValue(makeRow({ state: 'surfaced' }));
+    prisma.talentSelection.findFirst.mockResolvedValue(makeRow({ state: 'surfaced' }));
     const badInput: TransitionStateInput = { ...validInput, to_state: 'submitted' };
     await expect(repo.transitionState(badInput)).rejects.toMatchObject({
       code: 'ENGAGEMENT_STATE_INVALID',
@@ -582,7 +582,7 @@ describe('EngagementRepository.transitionState (M5 PR-3 unit)', () => {
   });
 
   it('emits transition_started + transitioned log events on happy path', async () => {
-    prisma.talentJobEngagement.findFirst.mockResolvedValue(makeRow({ state: 'surfaced' }));
+    prisma.talentSelection.findFirst.mockResolvedValue(makeRow({ state: 'surfaced' }));
     prisma.$transaction.mockResolvedValue([
       makeRow({ state: 'evaluated' }),
       makeEventRow(),
@@ -594,7 +594,7 @@ describe('EngagementRepository.transitionState (M5 PR-3 unit)', () => {
   });
 
   it('emits transition_refused on illegal transition', async () => {
-    prisma.talentJobEngagement.findFirst.mockResolvedValue(makeRow({ state: 'surfaced' }));
+    prisma.talentSelection.findFirst.mockResolvedValue(makeRow({ state: 'surfaced' }));
     const badInput: TransitionStateInput = { ...validInput, to_state: 'submitted' };
     await expect(repo.transitionState(badInput)).rejects.toBeInstanceOf(AramoError);
     const events = logger.log.mock.calls.map((c) => (c[0] as { event: string }).event);
@@ -603,10 +603,10 @@ describe('EngagementRepository.transitionState (M5 PR-3 unit)', () => {
 });
 
 // Outreach Draft/Preview Amendment v1.1 §1 — draftOutreach unit tests.
-describe('EngagementRepository.draftOutreach (Outreach Draft/Preview unit)', () => {
+describe('SelectionRepository.draftOutreach (Outreach Draft/Preview unit)', () => {
   let prisma: MockPrismaService;
   let logger: ReturnType<typeof makeSpyLogger>;
-  let repo: EngagementRepository;
+  let repo: SelectionRepository;
 
   const DRAFT_EVENT_ID = '00000000-0000-7000-8000-0000dddd0001';
 
@@ -629,7 +629,7 @@ describe('EngagementRepository.draftOutreach (Outreach Draft/Preview unit)', () 
   beforeEach(() => {
     prisma = makeMockPrisma();
     logger = makeSpyLogger();
-    repo = new EngagementRepository(
+    repo = new SelectionRepository(
       prisma as unknown as PrismaService,
       makeMockEngagementEventRepo(),
       makeMockTalentRecordRepo(),
@@ -640,8 +640,8 @@ describe('EngagementRepository.draftOutreach (Outreach Draft/Preview unit)', () 
   });
 
   it('happy path — engaged engagement; appends ONE outreach_drafted event; NO $transaction, NO state update, NO outbox', async () => {
-    prisma.talentJobEngagement.findFirst.mockResolvedValue(makeRow({ state: 'engaged' }));
-    prisma.talentEngagementEvent.create.mockResolvedValue(
+    prisma.talentSelection.findFirst.mockResolvedValue(makeRow({ state: 'engaged' }));
+    prisma.talentSelectionEvent.create.mockResolvedValue(
       makeEventRow({
         id: DRAFT_EVENT_ID,
         event_type: 'outreach_drafted',
@@ -652,34 +652,34 @@ describe('EngagementRepository.draftOutreach (Outreach Draft/Preview unit)', () 
     expect(result.draft_event.event_type).toBe('outreach_drafted');
     expect(result.draft_event.id).toBe(DRAFT_EVENT_ID);
     // Generation only — a single append, no transaction / state / outbox.
-    expect(prisma.talentEngagementEvent.create).toHaveBeenCalledTimes(1);
+    expect(prisma.talentSelectionEvent.create).toHaveBeenCalledTimes(1);
     expect(prisma.$transaction).not.toHaveBeenCalled();
-    expect(prisma.talentJobEngagement.update).not.toHaveBeenCalled();
+    expect(prisma.talentSelection.update).not.toHaveBeenCalled();
     expect(prisma.outboxEvent.create).not.toHaveBeenCalled();
   });
 
   it('NOT_FOUND 404 if engagement absent; no event append', async () => {
-    prisma.talentJobEngagement.findFirst.mockResolvedValue(null);
+    prisma.talentSelection.findFirst.mockResolvedValue(null);
     await expect(repo.draftOutreach(validInput)).rejects.toMatchObject({
       code: 'NOT_FOUND',
       statusCode: 404,
     });
-    expect(prisma.talentEngagementEvent.create).not.toHaveBeenCalled();
+    expect(prisma.talentSelectionEvent.create).not.toHaveBeenCalled();
   });
 
   // Amendment v1.1 Ruling 2 — DRAFT gated to engaged.
   it('ENGAGEMENT_STATE_INVALID 422 if not engaged (canTransition false); no event append', async () => {
-    prisma.talentJobEngagement.findFirst.mockResolvedValue(makeRow({ state: 'surfaced' }));
+    prisma.talentSelection.findFirst.mockResolvedValue(makeRow({ state: 'surfaced' }));
     await expect(repo.draftOutreach(validInput)).rejects.toMatchObject({
       code: 'ENGAGEMENT_STATE_INVALID',
       statusCode: 422,
     });
-    expect(prisma.talentEngagementEvent.create).not.toHaveBeenCalled();
+    expect(prisma.talentSelectionEvent.create).not.toHaveBeenCalled();
   });
 
   it('multi-draft — two draftOutreach calls append two outreach_drafted rows', async () => {
-    prisma.talentJobEngagement.findFirst.mockResolvedValue(makeRow({ state: 'engaged' }));
-    prisma.talentEngagementEvent.create
+    prisma.talentSelection.findFirst.mockResolvedValue(makeRow({ state: 'engaged' }));
+    prisma.talentSelectionEvent.create
       .mockResolvedValueOnce(makeEventRow({ id: DRAFT_EVENT_ID, event_type: 'outreach_drafted' }))
       .mockResolvedValueOnce(
         makeEventRow({ id: '00000000-0000-7000-8000-0000dddd0002', event_type: 'outreach_drafted' }),
@@ -689,16 +689,16 @@ describe('EngagementRepository.draftOutreach (Outreach Draft/Preview unit)', () 
       ...validInput,
       draft_event_id: '00000000-0000-7000-8000-0000dddd0002',
     });
-    expect(prisma.talentEngagementEvent.create).toHaveBeenCalledTimes(2);
+    expect(prisma.talentSelectionEvent.create).toHaveBeenCalledTimes(2);
   });
 });
 
 // M5 PR-6 §4.16 + Outreach Draft/Preview Amendment v1.1 §2 —
-// EngagementRepository.sendOutreach unit tests.
-describe('EngagementRepository.sendOutreach (Outreach Draft/Preview unit)', () => {
+// SelectionRepository.sendOutreach unit tests.
+describe('SelectionRepository.sendOutreach (Outreach Draft/Preview unit)', () => {
   let prisma: MockPrismaService;
   let logger: ReturnType<typeof makeSpyLogger>;
-  let repo: EngagementRepository;
+  let repo: SelectionRepository;
   let eventRepoFindByTenantAndId: ReturnType<typeof vi.fn>;
 
   const OUTREACH_EVENT_ID = '00000000-0000-7000-8000-0000eeee0010';
@@ -742,8 +742,8 @@ describe('EngagementRepository.sendOutreach (Outreach Draft/Preview unit)', () =
     eventRepoFindByTenantAndId = vi.fn().mockResolvedValue(validDraftRefRow());
     const eventRepo = {
       findByTenantAndId: eventRepoFindByTenantAndId,
-    } as unknown as EngagementEventRepository;
-    repo = new EngagementRepository(
+    } as unknown as SelectionEventRepository;
+    repo = new SelectionRepository(
       prisma as unknown as PrismaService,
       eventRepo,
       makeMockTalentRecordRepo(),
@@ -754,7 +754,7 @@ describe('EngagementRepository.sendOutreach (Outreach Draft/Preview unit)', () =
   });
 
   it('happy path — engaged → awaiting_response; $transaction invoked; payload (incl. final_text) preserved', async () => {
-    prisma.talentJobEngagement.findFirst.mockResolvedValue(makeRow({ state: 'engaged' }));
+    prisma.talentSelection.findFirst.mockResolvedValue(makeRow({ state: 'engaged' }));
     prisma.$transaction.mockResolvedValue([
       makeRow({ state: 'awaiting_response' }),
       makeEventRow({
@@ -776,7 +776,7 @@ describe('EngagementRepository.sendOutreach (Outreach Draft/Preview unit)', () =
   });
 
   it('NOT_FOUND 404 if engagement absent; no draft-ref lookup; no $transaction', async () => {
-    prisma.talentJobEngagement.findFirst.mockResolvedValue(null);
+    prisma.talentSelection.findFirst.mockResolvedValue(null);
     await expect(repo.sendOutreach(validInput)).rejects.toMatchObject({
       code: 'NOT_FOUND',
       statusCode: 404,
@@ -787,7 +787,7 @@ describe('EngagementRepository.sendOutreach (Outreach Draft/Preview unit)', () =
 
   // Amendment v1.1 §2 — source-draft cross-event-ref validation.
   it('ENGAGEMENT_REFERENCE_NOT_FOUND 422 if draft ref does not resolve; no $transaction', async () => {
-    prisma.talentJobEngagement.findFirst.mockResolvedValue(makeRow({ state: 'engaged' }));
+    prisma.talentSelection.findFirst.mockResolvedValue(makeRow({ state: 'engaged' }));
     eventRepoFindByTenantAndId.mockResolvedValue(null);
     await expect(repo.sendOutreach(validInput)).rejects.toMatchObject({
       code: 'ENGAGEMENT_REFERENCE_NOT_FOUND',
@@ -797,7 +797,7 @@ describe('EngagementRepository.sendOutreach (Outreach Draft/Preview unit)', () =
   });
 
   it('ENGAGEMENT_REFERENCE_NOT_FOUND 422 if referenced event is not outreach_drafted', async () => {
-    prisma.talentJobEngagement.findFirst.mockResolvedValue(makeRow({ state: 'engaged' }));
+    prisma.talentSelection.findFirst.mockResolvedValue(makeRow({ state: 'engaged' }));
     eventRepoFindByTenantAndId.mockResolvedValue({
       ...validDraftRefRow(),
       event_type: 'outreach_sent',
@@ -810,7 +810,7 @@ describe('EngagementRepository.sendOutreach (Outreach Draft/Preview unit)', () =
   });
 
   it('ENGAGEMENT_STATE_INVALID 422 if current state is not engaged (canTransition false)', async () => {
-    prisma.talentJobEngagement.findFirst.mockResolvedValue(makeRow({ state: 'surfaced' }));
+    prisma.talentSelection.findFirst.mockResolvedValue(makeRow({ state: 'surfaced' }));
     await expect(repo.sendOutreach(validInput)).rejects.toMatchObject({
       code: 'ENGAGEMENT_STATE_INVALID',
       statusCode: 422,
@@ -819,22 +819,22 @@ describe('EngagementRepository.sendOutreach (Outreach Draft/Preview unit)', () =
   });
 
   it('atomic transaction shape — engagement.update + outreach_sent + state_transition creates', async () => {
-    prisma.talentJobEngagement.findFirst.mockResolvedValue(makeRow({ state: 'engaged' }));
+    prisma.talentSelection.findFirst.mockResolvedValue(makeRow({ state: 'engaged' }));
     prisma.$transaction.mockResolvedValue([
       makeRow({ state: 'awaiting_response' }),
       makeEventRow({ event_type: 'outreach_sent', event_payload: validInput.outreach_payload }),
       makeEventRow({ event_type: 'state_transition', event_payload: { from_state: 'engaged', to_state: 'awaiting_response' } }),
     ]);
     await repo.sendOutreach(validInput);
-    expect(prisma.talentJobEngagement.update).toHaveBeenCalledWith({
+    expect(prisma.talentSelection.update).toHaveBeenCalledWith({
       where: { id: ENGAGEMENT_1 },
       data: { state: 'awaiting_response' },
     });
-    expect(prisma.talentEngagementEvent.create).toHaveBeenCalledTimes(2);
+    expect(prisma.talentSelectionEvent.create).toHaveBeenCalledTimes(2);
   });
 
   it('emits outreach_started + outreach_sent log events on happy path', async () => {
-    prisma.talentJobEngagement.findFirst.mockResolvedValue(makeRow({ state: 'engaged' }));
+    prisma.talentSelection.findFirst.mockResolvedValue(makeRow({ state: 'engaged' }));
     prisma.$transaction.mockResolvedValue([
       makeRow({ state: 'awaiting_response' }),
       makeEventRow({ event_type: 'outreach_sent', event_payload: validInput.outreach_payload }),
@@ -847,11 +847,11 @@ describe('EngagementRepository.sendOutreach (Outreach Draft/Preview unit)', () =
   });
 });
 
-// M5 PR-7 §4.12 — EngagementRepository.recordResponse unit tests.
-describe('EngagementRepository.recordResponse (M5 PR-7 unit)', () => {
+// M5 PR-7 §4.12 — SelectionRepository.recordResponse unit tests.
+describe('SelectionRepository.recordResponse (M5 PR-7 unit)', () => {
   let prisma: MockPrismaService;
   let logger: ReturnType<typeof makeSpyLogger>;
-  let repo: EngagementRepository;
+  let repo: SelectionRepository;
   let eventRepoFindByTenantAndId: ReturnType<typeof vi.fn>;
 
   const OUTREACH_REF_ID = '00000000-0000-7000-8000-0000eeee0020';
@@ -888,8 +888,8 @@ describe('EngagementRepository.recordResponse (M5 PR-7 unit)', () => {
     eventRepoFindByTenantAndId = vi.fn();
     const eventRepo = {
       findByTenantAndId: eventRepoFindByTenantAndId,
-    } as unknown as EngagementEventRepository;
-    repo = new EngagementRepository(
+    } as unknown as SelectionEventRepository;
+    repo = new SelectionRepository(
       prisma as unknown as PrismaService,
       eventRepo,
       makeMockTalentRecordRepo(),
@@ -900,7 +900,7 @@ describe('EngagementRepository.recordResponse (M5 PR-7 unit)', () => {
   });
 
   it('happy path — awaiting_response → responded; $transaction invoked with 3 ops', async () => {
-    prisma.talentJobEngagement.findFirst.mockResolvedValue(makeRow({ state: 'awaiting_response' }));
+    prisma.talentSelection.findFirst.mockResolvedValue(makeRow({ state: 'awaiting_response' }));
     eventRepoFindByTenantAndId.mockResolvedValue(validOutreachRefRow());
     prisma.$transaction.mockResolvedValue([
       makeRow({ state: 'responded' }),
@@ -924,15 +924,15 @@ describe('EngagementRepository.recordResponse (M5 PR-7 unit)', () => {
       to_state: 'responded',
     });
     expect(prisma.$transaction).toHaveBeenCalledTimes(1);
-    expect(prisma.talentJobEngagement.update).toHaveBeenCalledWith({
+    expect(prisma.talentSelection.update).toHaveBeenCalledWith({
       where: { id: ENGAGEMENT_1 },
       data: { state: 'responded' },
     });
-    expect(prisma.talentEngagementEvent.create).toHaveBeenCalledTimes(2);
+    expect(prisma.talentSelectionEvent.create).toHaveBeenCalledTimes(2);
   });
 
   it('NOT_FOUND 404 if engagement absent; no cross-event lookup; no $transaction', async () => {
-    prisma.talentJobEngagement.findFirst.mockResolvedValue(null);
+    prisma.talentSelection.findFirst.mockResolvedValue(null);
     await expect(repo.recordResponse(validInput)).rejects.toMatchObject({
       code: 'NOT_FOUND',
       statusCode: 404,
@@ -942,7 +942,7 @@ describe('EngagementRepository.recordResponse (M5 PR-7 unit)', () => {
   });
 
   it('ENGAGEMENT_REFERENCE_NOT_FOUND 422 if cross-event ref null', async () => {
-    prisma.talentJobEngagement.findFirst.mockResolvedValue(makeRow({ state: 'awaiting_response' }));
+    prisma.talentSelection.findFirst.mockResolvedValue(makeRow({ state: 'awaiting_response' }));
     eventRepoFindByTenantAndId.mockResolvedValue(null);
     await expect(repo.recordResponse(validInput)).rejects.toMatchObject({
       code: 'ENGAGEMENT_REFERENCE_NOT_FOUND',
@@ -958,7 +958,7 @@ describe('EngagementRepository.recordResponse (M5 PR-7 unit)', () => {
   });
 
   it('ENGAGEMENT_REFERENCE_NOT_FOUND 422 if cross-event ref has wrong engagement_id', async () => {
-    prisma.talentJobEngagement.findFirst.mockResolvedValue(makeRow({ state: 'awaiting_response' }));
+    prisma.talentSelection.findFirst.mockResolvedValue(makeRow({ state: 'awaiting_response' }));
     eventRepoFindByTenantAndId.mockResolvedValue({
       ...validOutreachRefRow(),
       engagement_id: '00000000-0000-7000-8000-0000eeee9999', // different engagement
@@ -971,7 +971,7 @@ describe('EngagementRepository.recordResponse (M5 PR-7 unit)', () => {
   });
 
   it('ENGAGEMENT_REFERENCE_NOT_FOUND 422 if cross-event ref has wrong event_type', async () => {
-    prisma.talentJobEngagement.findFirst.mockResolvedValue(makeRow({ state: 'awaiting_response' }));
+    prisma.talentSelection.findFirst.mockResolvedValue(makeRow({ state: 'awaiting_response' }));
     eventRepoFindByTenantAndId.mockResolvedValue({
       ...validOutreachRefRow(),
       event_type: 'state_transition', // wrong event type
@@ -984,7 +984,7 @@ describe('EngagementRepository.recordResponse (M5 PR-7 unit)', () => {
   });
 
   it('ENGAGEMENT_STATE_INVALID 422 if current state is not awaiting_response (e.g., surfaced)', async () => {
-    prisma.talentJobEngagement.findFirst.mockResolvedValue(makeRow({ state: 'surfaced' }));
+    prisma.talentSelection.findFirst.mockResolvedValue(makeRow({ state: 'surfaced' }));
     eventRepoFindByTenantAndId.mockResolvedValue(validOutreachRefRow());
     await expect(repo.recordResponse(validInput)).rejects.toMatchObject({
       code: 'ENGAGEMENT_STATE_INVALID',
@@ -1001,7 +1001,7 @@ describe('EngagementRepository.recordResponse (M5 PR-7 unit)', () => {
   });
 
   it('atomic transaction shape — $transaction called with engagement.update + response_received event.create + state_transition event.create', async () => {
-    prisma.talentJobEngagement.findFirst.mockResolvedValue(makeRow({ state: 'awaiting_response' }));
+    prisma.talentSelection.findFirst.mockResolvedValue(makeRow({ state: 'awaiting_response' }));
     eventRepoFindByTenantAndId.mockResolvedValue(validOutreachRefRow());
     prisma.$transaction.mockResolvedValue([
       makeRow({ state: 'responded' }),
@@ -1009,13 +1009,13 @@ describe('EngagementRepository.recordResponse (M5 PR-7 unit)', () => {
       makeEventRow({ event_type: 'state_transition' }),
     ]);
     await repo.recordResponse(validInput);
-    expect(prisma.talentJobEngagement.update).toHaveBeenCalledTimes(1);
-    expect(prisma.talentEngagementEvent.create).toHaveBeenCalledTimes(2);
+    expect(prisma.talentSelection.update).toHaveBeenCalledTimes(1);
+    expect(prisma.talentSelectionEvent.create).toHaveBeenCalledTimes(2);
     expect(prisma.$transaction).toHaveBeenCalledTimes(1);
   });
 });
 
-// M5 PR-8a §4.12 — EngagementRepository.recordConversationStarted unit tests.
+// M5 PR-8a §4.12 — SelectionRepository.recordConversationStarted unit tests.
 //
 // SMALLER than PR-7 (4 tests vs 6) because PR-8a has no cross-event
 // reference validation per Ruling 3 — the
@@ -1026,10 +1026,10 @@ describe('EngagementRepository.recordResponse (M5 PR-7 unit)', () => {
 //   3. ENGAGEMENT_STATE_INVALID: includes natural-key dedup
 //      (in_conversation → in_conversation refused by canTransition).
 //   4. atomic transaction shape.
-describe('EngagementRepository.recordConversationStarted (M5 PR-8a unit)', () => {
+describe('SelectionRepository.recordConversationStarted (M5 PR-8a unit)', () => {
   let prisma: MockPrismaService;
   let logger: ReturnType<typeof makeSpyLogger>;
-  let repo: EngagementRepository;
+  let repo: SelectionRepository;
 
   const CONVERSATION_EVENT_ID = '00000000-0000-7000-8000-0000eeee0030';
   const TRANSITION_EVENT_ID = '00000000-0000-7000-8000-0000eeee0031';
@@ -1050,7 +1050,7 @@ describe('EngagementRepository.recordConversationStarted (M5 PR-8a unit)', () =>
   beforeEach(() => {
     prisma = makeMockPrisma();
     logger = makeSpyLogger();
-    repo = new EngagementRepository(
+    repo = new SelectionRepository(
       prisma as unknown as PrismaService,
       makeMockEngagementEventRepo(),
       makeMockTalentRecordRepo(),
@@ -1061,7 +1061,7 @@ describe('EngagementRepository.recordConversationStarted (M5 PR-8a unit)', () =>
   });
 
   it('happy path — responded → in_conversation; $transaction invoked with 3 ops', async () => {
-    prisma.talentJobEngagement.findFirst.mockResolvedValue(makeRow({ state: 'responded' }));
+    prisma.talentSelection.findFirst.mockResolvedValue(makeRow({ state: 'responded' }));
     prisma.$transaction.mockResolvedValue([
       makeRow({ state: 'in_conversation' }),
       makeEventRow({
@@ -1084,15 +1084,15 @@ describe('EngagementRepository.recordConversationStarted (M5 PR-8a unit)', () =>
       to_state: 'in_conversation',
     });
     expect(prisma.$transaction).toHaveBeenCalledTimes(1);
-    expect(prisma.talentJobEngagement.update).toHaveBeenCalledWith({
+    expect(prisma.talentSelection.update).toHaveBeenCalledWith({
       where: { id: ENGAGEMENT_1 },
       data: { state: 'in_conversation' },
     });
-    expect(prisma.talentEngagementEvent.create).toHaveBeenCalledTimes(2);
+    expect(prisma.talentSelectionEvent.create).toHaveBeenCalledTimes(2);
   });
 
   it('NOT_FOUND 404 if engagement absent; no $transaction', async () => {
-    prisma.talentJobEngagement.findFirst.mockResolvedValue(null);
+    prisma.talentSelection.findFirst.mockResolvedValue(null);
     await expect(repo.recordConversationStarted(validInput)).rejects.toMatchObject({
       code: 'NOT_FOUND',
       statusCode: 404,
@@ -1103,7 +1103,7 @@ describe('EngagementRepository.recordConversationStarted (M5 PR-8a unit)', () =>
   it('ENGAGEMENT_STATE_INVALID 422 if current state is not responded (e.g., awaiting_response); also covers natural-key dedup', async () => {
     // Illegal-state path: awaiting_response → in_conversation refused
     // (canTransition matrix only allows awaiting_response → responded).
-    prisma.talentJobEngagement.findFirst.mockResolvedValue(makeRow({ state: 'awaiting_response' }));
+    prisma.talentSelection.findFirst.mockResolvedValue(makeRow({ state: 'awaiting_response' }));
     await expect(repo.recordConversationStarted(validInput)).rejects.toMatchObject({
       code: 'ENGAGEMENT_STATE_INVALID',
       statusCode: 422,
@@ -1119,7 +1119,7 @@ describe('EngagementRepository.recordConversationStarted (M5 PR-8a unit)', () =>
 
     // Natural-key dedup path: in_conversation → in_conversation refused
     // (canTransition matrix has no self-loop on in_conversation).
-    prisma.talentJobEngagement.findFirst.mockResolvedValue(makeRow({ state: 'in_conversation' }));
+    prisma.talentSelection.findFirst.mockResolvedValue(makeRow({ state: 'in_conversation' }));
     try {
       await repo.recordConversationStarted(validInput);
     } catch (err) {
@@ -1132,20 +1132,20 @@ describe('EngagementRepository.recordConversationStarted (M5 PR-8a unit)', () =>
   });
 
   it('atomic transaction shape — $transaction called with engagement.update + conversation_started event.create + state_transition event.create (3 ops, correct order)', async () => {
-    prisma.talentJobEngagement.findFirst.mockResolvedValue(makeRow({ state: 'responded' }));
+    prisma.talentSelection.findFirst.mockResolvedValue(makeRow({ state: 'responded' }));
     prisma.$transaction.mockResolvedValue([
       makeRow({ state: 'in_conversation' }),
       makeEventRow({ event_type: 'conversation_started' }),
       makeEventRow({ event_type: 'state_transition' }),
     ]);
     await repo.recordConversationStarted(validInput);
-    expect(prisma.talentJobEngagement.update).toHaveBeenCalledTimes(1);
-    expect(prisma.talentEngagementEvent.create).toHaveBeenCalledTimes(2);
+    expect(prisma.talentSelection.update).toHaveBeenCalledTimes(1);
+    expect(prisma.talentSelectionEvent.create).toHaveBeenCalledTimes(2);
     expect(prisma.$transaction).toHaveBeenCalledTimes(1);
     // Verify ordering: update first, then two event.create — by reading
     // the createOrder via mock.invocationCallOrder.
-    const updateOrder = prisma.talentJobEngagement.update.mock.invocationCallOrder[0] ?? 0;
-    const createOrders = prisma.talentEngagementEvent.create.mock.invocationCallOrder;
+    const updateOrder = prisma.talentSelection.update.mock.invocationCallOrder[0] ?? 0;
+    const createOrders = prisma.talentSelectionEvent.create.mock.invocationCallOrder;
     expect(createOrders.length).toBe(2);
     expect(createOrders[0]).toBeGreaterThan(updateOrder);
     expect(createOrders[1]).toBeGreaterThan(createOrders[0] ?? 0);

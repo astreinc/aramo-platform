@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { AramoError, type AramoLogger } from '@aramo/common';
-import { EngagementEventRepository } from '@aramo/engagement';
+import { SelectionEventRepository } from '@aramo/selection';
 import {
   ExaminationRepository,
   type TalentJobExaminationFullView,
@@ -127,7 +127,7 @@ export class EvidenceRepository {
     // engagement_event_refs validator at buildPackage Step 6b. Provider
     // lives in EngagementModule (libs/engagement), imported by
     // EvidenceModule per M5 PR-2 directive §4.9.
-    private readonly engagementEventRepository: EngagementEventRepository,
+    private readonly engagementEventRepository: SelectionEventRepository,
     // M4-close HK-PR-4 — structured logger injected via DI. Provider
     // lives in EvidenceModule keyed by the 'EvidenceRepositoryLogger'
     // token; factory context is EvidenceRepository.name.

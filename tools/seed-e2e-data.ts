@@ -36,7 +36,7 @@ import {
 import { PipelineRepository } from '@aramo/pipeline';
 import { ActivityRepository } from '@aramo/activity';
 import { TaskRepository } from '@aramo/task';
-import { EngagementRepository } from '@aramo/engagement';
+import { SelectionRepository } from '@aramo/selection';
 
 // Boot the COMPILED AppModule (the exact graph the running API uses) so the
 // repos resolve to the same dist wiring as @aramo/* (node_modules symlinks →
@@ -99,7 +99,7 @@ async function main(): Promise<void> {
     const pipeline = app.get(PipelineRepository);
     const activity = app.get(ActivityRepository);
     const task = app.get(TaskRepository);
-    const engagement = app.get(EngagementRepository);
+    const engagement = app.get(SelectionRepository);
 
     const ports: SeedPorts = {
       // Idempotency: a READ-ONLY probe for a tagged requisition (a read, not a

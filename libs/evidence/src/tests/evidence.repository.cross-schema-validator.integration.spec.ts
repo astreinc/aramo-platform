@@ -8,9 +8,9 @@ import {
 } from '@testcontainers/postgresql';
 import { AramoError, makeMockLogger } from '@aramo/common';
 import {
-  EngagementEventRepository,
+  SelectionEventRepository,
   PrismaService as EngagementPrismaService,
-} from '@aramo/engagement';
+} from '@aramo/selection';
 import {
   ExaminationRepository,
   PrismaService as ExaminationPrismaService,
@@ -66,11 +66,15 @@ const EXAMINATION_LIVE_LIST_MIGRATION_PATH = resolve(
 );
 const ENGAGEMENT_INIT_MIGRATION_PATH = resolve(
   __dirname,
-  '../../../engagement/prisma/migrations/20260525120000_init_engagement_model/migration.sql',
+  '../../../selection/prisma/migrations/20260525120000_init_engagement_model/migration.sql',
 );
 const ENGAGEMENT_EVENT_LOG_MIGRATION_PATH = resolve(
   __dirname,
-  '../../../engagement/prisma/migrations/20260525150000_add_engagement_event_log/migration.sql',
+  '../../../selection/prisma/migrations/20260525150000_add_engagement_event_log/migration.sql',
+);
+const ENGAGEMENT_T2P2_MIGRATION_PATH = resolve(
+  __dirname,
+  '../../../selection/prisma/migrations/20260813120000_t2p2_relocate_engagement_to_selection/migration.sql',
 );
 
 const TENANT_A = '11111111-1111-7111-8111-111111111111';
@@ -161,6 +165,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         readFileSync(EXAMINATION_LIVE_LIST_MIGRATION_PATH, 'utf8'),
         readFileSync(ENGAGEMENT_INIT_MIGRATION_PATH, 'utf8'),
         readFileSync(ENGAGEMENT_EVENT_LOG_MIGRATION_PATH, 'utf8'),
+        readFileSync(ENGAGEMENT_T2P2_MIGRATION_PATH, 'utf8'),
       ];
 
       setupClient = new PrismaService(url);
@@ -187,7 +192,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       const examRepo = new ExaminationRepository(examPrisma, undefined as never);
       const talentEvidenceRepo = new TalentEvidenceRepository(talentEvidencePrisma);
-      const engagementEventRepo = new EngagementEventRepository(
+      const engagementEventRepo = new SelectionEventRepository(
         engagementPrisma,
         makeMockLogger(),
       );
@@ -395,14 +400,14 @@ async function seedEngagement(
   opts: { id: string; tenant_id: string },
 ): Promise<void> {
   await client.$executeRawUnsafe(
-    `INSERT INTO engagement."TalentJobEngagement" (
+    `INSERT INTO selection."TalentSelection" (
        id, tenant_id, talent_id, requisition_id, state
      ) VALUES (
        '${opts.id}'::uuid,
        '${opts.tenant_id}'::uuid,
        '${TALENT_A}'::uuid,
        '${JOB_ID}'::uuid,
-       'surfaced'::engagement."EngagementState"
+       'surfaced'::selection."SelectionState"
      )`,
   );
 }
@@ -418,13 +423,13 @@ async function seedEngagementEvent(
   },
 ): Promise<void> {
   await client.$executeRawUnsafe(
-    `INSERT INTO engagement."TalentEngagementEvent" (
+    `INSERT INTO selection."TalentSelectionEvent" (
        id, tenant_id, engagement_id, event_type, event_payload
      ) VALUES (
        '${opts.id}'::uuid,
        '${opts.tenant_id}'::uuid,
        '${opts.engagement_id}'::uuid,
-       '${opts.event_type}'::engagement."EngagementEventType",
+       '${opts.event_type}'::selection."SelectionEventType",
        '${JSON.stringify(opts.event_payload)}'::jsonb
      )`,
   );

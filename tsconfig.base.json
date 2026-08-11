@@ -72,6 +72,7 @@
       "@aramo/requisition": ["libs/requisition/src/index.ts"],
       "@aramo/resume-parse": ["libs/resume-parse/src/index.ts"],
       "@aramo/saved-list": ["libs/saved-list/src/index.ts"],
+      "@aramo/selection": ["libs/selection/src/index.ts"],
       "@aramo/settings": ["libs/settings/src/index.ts"],
       "@aramo/skills-taxonomy": ["libs/skills-taxonomy/src/index.ts"],
       "@aramo/sourced-talent": ["libs/sourced-talent/src/index.ts"],

@@ -11,14 +11,14 @@ import { describe, expect, it } from 'vitest';
 //
 // The committed fixture (../platform-negative-control/platform-imports-ats.fixture.ts)
 // is a scope:platform file (this app, `platform-admin`) importing a scope:ats
-// lib (`engagement`). We lint it with `eslint --no-ignore` and assert
+// lib (`selection`). We lint it with `eslint --no-ignore` and assert
 // @nx/enforce-module-boundaries rejects it — a PLATFORM→ATS import is CI-red.
 //
 // Isolation (so it never reds a real target):
 //   - eslint.config.mjs `ignores` ('**/platform-negative-control/**') keeps it
 //     out of the real lint:nx-boundaries gate.
 //   - apps/platform-admin/tsconfig.app.json `exclude` keeps it out of the build
-//     (platform-admin's build tsconfig does not map @aramo/engagement). It stays
+//     (platform-admin's build tsconfig does not map @aramo/selection). It stays
 //     committed, so it is in the nx project graph.
 //
 // The @nx/enforce-module-boundaries rule SKIPS silently when no cached project

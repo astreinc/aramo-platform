@@ -2,16 +2,16 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { AramoLogger } from '@aramo/common';
 
 import {
-  EngagementEventRepository,
+  SelectionEventRepository,
   type AppendEventInput,
-} from '../lib/engagement-event.repository.js';
+} from '../lib/selection-event.repository.js';
 import type { PrismaService } from '../lib/prisma/prisma.service.js';
 
-// M5 PR-2 §4.11 — unit spec for EngagementEventRepository.
+// M5 PR-2 §4.11 — unit spec for SelectionEventRepository.
 //
 // 5 methods exercised: appendEvent (sole write) + 4 read methods.
 // Spies confirm:
-//   - appendEvent calls prisma.talentEngagementEvent.create exactly once,
+//   - appendEvent calls prisma.talentSelectionEvent.create exactly once,
 //     never update/upsert/delete (architectural append-only invariant;
 //     DB-trigger reinforces — see schema-invariant integration spec).
 //   - Each read method invokes only the appropriate read primitive
@@ -47,7 +47,7 @@ function makeSpyLogger(): AramoLogger & { log: ReturnType<typeof vi.fn> } {
 }
 
 interface MockPrisma {
-  talentEngagementEvent: {
+  talentSelectionEvent: {
     create: ReturnType<typeof vi.fn>;
     createMany: ReturnType<typeof vi.fn>;
     createManyAndReturn: ReturnType<typeof vi.fn>;
@@ -64,7 +64,7 @@ interface MockPrisma {
 
 function makeMockPrisma(): MockPrisma {
   return {
-    talentEngagementEvent: {
+    talentSelectionEvent: {
       create: vi.fn(),
       createMany: vi.fn(),
       createManyAndReturn: vi.fn(),
@@ -80,15 +80,15 @@ function makeMockPrisma(): MockPrisma {
   };
 }
 
-describe('EngagementEventRepository (M5 PR-2 unit)', () => {
+describe('SelectionEventRepository (M5 PR-2 unit)', () => {
   let prisma: MockPrisma;
   let logger: ReturnType<typeof makeSpyLogger>;
-  let repo: EngagementEventRepository;
+  let repo: SelectionEventRepository;
 
   beforeEach(() => {
     prisma = makeMockPrisma();
     logger = makeSpyLogger();
-    repo = new EngagementEventRepository(prisma as unknown as PrismaService, logger);
+    repo = new SelectionEventRepository(prisma as unknown as PrismaService, logger);
   });
 
   it('exposes exactly the 5 enumerated methods', () => {
@@ -108,11 +108,11 @@ describe('EngagementEventRepository (M5 PR-2 unit)', () => {
       event_payload: { from: 'surfaced', to: 'evaluated' },
     };
 
-    it('calls prisma.talentEngagementEvent.create exactly once', async () => {
-      prisma.talentEngagementEvent.create.mockResolvedValue(makeRow());
+    it('calls prisma.talentSelectionEvent.create exactly once', async () => {
+      prisma.talentSelectionEvent.create.mockResolvedValue(makeRow());
       await repo.appendEvent(input);
-      expect(prisma.talentEngagementEvent.create).toHaveBeenCalledTimes(1);
-      expect(prisma.talentEngagementEvent.create).toHaveBeenCalledWith({
+      expect(prisma.talentSelectionEvent.create).toHaveBeenCalledTimes(1);
+      expect(prisma.talentSelectionEvent.create).toHaveBeenCalledWith({
         data: {
           id: input.id,
           tenant_id: input.tenant_id,
@@ -124,7 +124,7 @@ describe('EngagementEventRepository (M5 PR-2 unit)', () => {
     });
 
     it('returns projected view with all 6 fields', async () => {
-      prisma.talentEngagementEvent.create.mockResolvedValue(makeRow());
+      prisma.talentSelectionEvent.create.mockResolvedValue(makeRow());
       const view = await repo.appendEvent(input);
       expect(view.id).toBe(EVENT_1);
       expect(view.tenant_id).toBe(TENANT_A);
@@ -135,7 +135,7 @@ describe('EngagementEventRepository (M5 PR-2 unit)', () => {
     });
 
     it('emits append_started and appended log events', async () => {
-      prisma.talentEngagementEvent.create.mockResolvedValue(makeRow());
+      prisma.talentSelectionEvent.create.mockResolvedValue(makeRow());
       await repo.appendEvent(input);
       const events = logger.log.mock.calls.map((c) => (c[0] as { event: string }).event);
       expect(events).toContain('engagement_event.append_started');
@@ -143,19 +143,19 @@ describe('EngagementEventRepository (M5 PR-2 unit)', () => {
     });
 
     it('never invokes update/upsert/delete primitives', async () => {
-      prisma.talentEngagementEvent.create.mockResolvedValue(makeRow());
+      prisma.talentSelectionEvent.create.mockResolvedValue(makeRow());
       await repo.appendEvent(input);
-      expect(prisma.talentEngagementEvent.update).not.toHaveBeenCalled();
-      expect(prisma.talentEngagementEvent.updateMany).not.toHaveBeenCalled();
-      expect(prisma.talentEngagementEvent.upsert).not.toHaveBeenCalled();
-      expect(prisma.talentEngagementEvent.delete).not.toHaveBeenCalled();
-      expect(prisma.talentEngagementEvent.deleteMany).not.toHaveBeenCalled();
+      expect(prisma.talentSelectionEvent.update).not.toHaveBeenCalled();
+      expect(prisma.talentSelectionEvent.updateMany).not.toHaveBeenCalled();
+      expect(prisma.talentSelectionEvent.upsert).not.toHaveBeenCalled();
+      expect(prisma.talentSelectionEvent.delete).not.toHaveBeenCalled();
+      expect(prisma.talentSelectionEvent.deleteMany).not.toHaveBeenCalled();
     });
   });
 
   describe('findById', () => {
     it('returns view on hit; emits hit-event', async () => {
-      prisma.talentEngagementEvent.findUnique.mockResolvedValue(makeRow());
+      prisma.talentSelectionEvent.findUnique.mockResolvedValue(makeRow());
       const view = await repo.findById(EVENT_1);
       expect(view).not.toBeNull();
       expect(view?.id).toBe(EVENT_1);
@@ -165,7 +165,7 @@ describe('EngagementEventRepository (M5 PR-2 unit)', () => {
     });
 
     it('returns null on miss; emits miss-event', async () => {
-      prisma.talentEngagementEvent.findUnique.mockResolvedValue(null);
+      prisma.talentSelectionEvent.findUnique.mockResolvedValue(null);
       const view = await repo.findById(EVENT_1);
       expect(view).toBeNull();
       const last = logger.log.mock.calls[0]?.[0] as { hit: boolean };
@@ -173,22 +173,22 @@ describe('EngagementEventRepository (M5 PR-2 unit)', () => {
     });
 
     it('does not invoke any write primitive', async () => {
-      prisma.talentEngagementEvent.findUnique.mockResolvedValue(makeRow());
+      prisma.talentSelectionEvent.findUnique.mockResolvedValue(makeRow());
       await repo.findById(EVENT_1);
-      expect(prisma.talentEngagementEvent.create).not.toHaveBeenCalled();
-      expect(prisma.talentEngagementEvent.update).not.toHaveBeenCalled();
-      expect(prisma.talentEngagementEvent.upsert).not.toHaveBeenCalled();
-      expect(prisma.talentEngagementEvent.delete).not.toHaveBeenCalled();
+      expect(prisma.talentSelectionEvent.create).not.toHaveBeenCalled();
+      expect(prisma.talentSelectionEvent.update).not.toHaveBeenCalled();
+      expect(prisma.talentSelectionEvent.upsert).not.toHaveBeenCalled();
+      expect(prisma.talentSelectionEvent.delete).not.toHaveBeenCalled();
     });
   });
 
   describe('findByEngagementId', () => {
     it('returns rows ordered ASC by created_at; emits result_count', async () => {
       const rows = [makeRow({ id: 'a' }), makeRow({ id: 'b' })];
-      prisma.talentEngagementEvent.findMany.mockResolvedValue(rows);
+      prisma.talentSelectionEvent.findMany.mockResolvedValue(rows);
       const views = await repo.findByEngagementId(ENGAGEMENT_A);
       expect(views).toHaveLength(2);
-      expect(prisma.talentEngagementEvent.findMany).toHaveBeenCalledWith({
+      expect(prisma.talentSelectionEvent.findMany).toHaveBeenCalledWith({
         where: { engagement_id: ENGAGEMENT_A },
         orderBy: [{ created_at: 'asc' }, { id: 'asc' }],
       });
@@ -197,21 +197,21 @@ describe('EngagementEventRepository (M5 PR-2 unit)', () => {
     });
 
     it('does not invoke any write primitive', async () => {
-      prisma.talentEngagementEvent.findMany.mockResolvedValue([]);
+      prisma.talentSelectionEvent.findMany.mockResolvedValue([]);
       await repo.findByEngagementId(ENGAGEMENT_A);
-      expect(prisma.talentEngagementEvent.create).not.toHaveBeenCalled();
+      expect(prisma.talentSelectionEvent.create).not.toHaveBeenCalled();
     });
   });
 
   describe('findByTenantAndEngagementId', () => {
     it('scopes by tenant + engagement; emits result_count', async () => {
-      prisma.talentEngagementEvent.findMany.mockResolvedValue([makeRow()]);
+      prisma.talentSelectionEvent.findMany.mockResolvedValue([makeRow()]);
       const views = await repo.findByTenantAndEngagementId({
         tenant_id: TENANT_A,
         engagement_id: ENGAGEMENT_A,
       });
       expect(views).toHaveLength(1);
-      expect(prisma.talentEngagementEvent.findMany).toHaveBeenCalledWith({
+      expect(prisma.talentSelectionEvent.findMany).toHaveBeenCalledWith({
         where: { tenant_id: TENANT_A, engagement_id: ENGAGEMENT_A },
         orderBy: [{ created_at: 'asc' }, { id: 'asc' }],
       });
@@ -220,16 +220,16 @@ describe('EngagementEventRepository (M5 PR-2 unit)', () => {
 
   describe('findByTenantAndId (cross-schema validator consumer)', () => {
     it('scopes by tenant_id via findFirst', async () => {
-      prisma.talentEngagementEvent.findFirst.mockResolvedValue(makeRow());
+      prisma.talentSelectionEvent.findFirst.mockResolvedValue(makeRow());
       const view = await repo.findByTenantAndId({ tenant_id: TENANT_A, id: EVENT_1 });
       expect(view).not.toBeNull();
-      expect(prisma.talentEngagementEvent.findFirst).toHaveBeenCalledWith({
+      expect(prisma.talentSelectionEvent.findFirst).toHaveBeenCalledWith({
         where: { tenant_id: TENANT_A, id: EVENT_1 },
       });
     });
 
     it('returns null on cross-tenant lookup', async () => {
-      prisma.talentEngagementEvent.findFirst.mockResolvedValue(null);
+      prisma.talentSelectionEvent.findFirst.mockResolvedValue(null);
       const view = await repo.findByTenantAndId({ tenant_id: TENANT_B, id: EVENT_1 });
       expect(view).toBeNull();
     });

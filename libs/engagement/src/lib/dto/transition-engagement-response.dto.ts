@@ -1,4 +1,4 @@
-import type { TalentJobEngagementView } from './talent-job-engagement.view.js';
+import type { TalentSelectionView as TalentJobEngagementView } from '@aramo/selection';
 
 // M5 PR-4 §4.2 — HTTP response DTO for
 // POST /v1/engagements/{id}/transitions 200.

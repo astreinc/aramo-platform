@@ -1,5 +1,5 @@
 // Outreach Draft/Preview Directive v1.0 / Amendment v1.1 §1+§2 — typed
-// event_payload shape for TalentEngagementEvent rows of
+// event_payload shape for TalentSelectionEvent rows of
 // event_type='outreach_drafted'.
 //
 // Appended by POST /v1/engagements/{id}/outreach/draft. Represents a

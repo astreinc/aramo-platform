@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest';
 //
 // The committed fixture (../auth-negative-control/auth-imports-ats.fixture.ts) is
 // a scope:auth file (this lib, `auth-core`) importing a scope:ats lib
-// (`engagement`). We lint it with `eslint --no-ignore` and assert
+// (`selection`). We lint it with `eslint --no-ignore` and assert
 // @nx/enforce-module-boundaries rejects it — a scope:auth → scope:ats import is
 // CI-red.
 //
@@ -18,7 +18,7 @@ import { describe, expect, it } from 'vitest';
 //   - eslint.config.mjs `ignores` ('**/auth-negative-control/**') keeps it out
 //     of the real lint:nx-boundaries gate.
 //   - libs/auth-core/tsconfig.lib.json `exclude` keeps it out of the build
-//     (auth-core's build tsconfig does not map @aramo/engagement → it must not be
+//     (auth-core's build tsconfig does not map @aramo/selection → it must not be
 //     compiled). It stays committed, so it is in the nx project graph.
 //
 // The @nx/enforce-module-boundaries rule SKIPS silently when no cached project

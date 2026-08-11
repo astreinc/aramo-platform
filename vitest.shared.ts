@@ -73,6 +73,12 @@ export default defineConfig({
       '@aramo/attachment': resolve(root, 'libs/attachment/src/index.ts'),
       '@aramo/audit': resolve(root, 'libs/audit/src/index.ts'),
       '@aramo/engagement': resolve(root, 'libs/engagement/src/index.ts'),
+      // T2-P2 — canonical Selection domain (@aramo/selection). The
+      // libs/engagement facade + relocated consumers (evidence,
+      // outbox-publisher, record-reconcile, seed-e2e) resolve the domain
+      // here; the engagement alias above stays for the frozen controller
+      // facade + wire DTOs.
+      '@aramo/selection': resolve(root, 'libs/selection/src/index.ts'),
       // PR-A1b §2 — new leaf lib hosting EntitlementGuard + @RequireCapability
       // decorator. Mirrors tsconfig.base.json @aramo/entitlement alias so
       // vitest runtime resolves the AppModule import (apps/api wires

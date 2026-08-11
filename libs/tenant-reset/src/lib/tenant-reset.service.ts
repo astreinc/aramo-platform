@@ -82,9 +82,10 @@ const DELETE_INVENTORY: readonly DeleteStep[] = [
   // §2.2.3 — Submittals (event child first — Restrict FK).
   { item: 3, label: `submittal."TalentSubmittalEvent"`, where: `tenant_id = $1::uuid`, scoping: 'tenant' },
   { item: 3, label: `submittal."TalentSubmittalRecord"`, where: `tenant_id = $1::uuid`, scoping: 'tenant' },
-  // §2.2.4 — Selection (currently `engagement`) workflow rows (event child first).
-  { item: 4, label: `engagement."TalentEngagementEvent"`, where: `tenant_id = $1::uuid`, scoping: 'tenant' },
-  { item: 4, label: `engagement."TalentJobEngagement"`, where: `tenant_id = $1::uuid`, scoping: 'tenant' },
+  // §2.2.4 — Selection workflow rows (event child first). Physical schema is
+  // `selection` post-T2-P2; the frozen /v1/engagements wire surface is P3 scope.
+  { item: 4, label: `selection."TalentSelectionEvent"`, where: `tenant_id = $1::uuid`, scoping: 'tenant' },
+  { item: 4, label: `selection."TalentSelection"`, where: `tenant_id = $1::uuid`, scoping: 'tenant' },
   // §2.2.5 — PipelineStatusHistory, then Pipeline.
   { item: 5, label: `pipeline."PipelineStatusHistory"`, where: `tenant_id = $1::uuid`, scoping: 'tenant' },
   { item: 5, label: `pipeline."Pipeline"`, where: `tenant_id = $1::uuid`, scoping: 'tenant' },
@@ -149,8 +150,8 @@ const LOCK_TABLES: readonly string[] = [
   `requisition."RequisitionNumberSequence"`,
   `pipeline."Pipeline"`,
   `pipeline."PipelineStatusHistory"`,
-  `engagement."TalentJobEngagement"`,
-  `engagement."TalentEngagementEvent"`,
+  `selection."TalentSelection"`,
+  `selection."TalentSelectionEvent"`,
   `submittal."TalentSubmittalRecord"`,
   `submittal."TalentSubmittalEvent"`,
   // §2.2.7 (T0 v1.1) — freeze the E2 pre-start tables for the reset transaction.

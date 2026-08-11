@@ -11,7 +11,7 @@ import type { Queue } from 'bullmq';
 import { v7 as uuidv7 } from 'uuid';
 import { PrismaService as CanonicalizationPrismaService } from '@aramo/canonicalization';
 import { PrismaService as ConsentPrismaService, OutboxPublisherRepository } from '@aramo/consent';
-import { PrismaService as EngagementPrismaService } from '@aramo/engagement';
+import { PrismaService as EngagementPrismaService } from '@aramo/selection';
 import { PrismaService as PlacementPrismaService } from '@aramo/placement';
 import { PrismaService as SubmittalPrismaService } from '@aramo/submittal';
 
@@ -37,9 +37,9 @@ import { OUTBOX_PUBLISHER_QUEUE_NAME } from '../lib/outbox-publisher.queue.const
 //
 // MIGRATIONS apply-list (12 files, dependency-ordered):
 //   1. libs/consent/prisma/migrations/20260429164414_initial_consent_schema/migration.sql
-//   2. libs/engagement/prisma/migrations/20260525120000_init_engagement_model/migration.sql
-//   3. libs/engagement/prisma/migrations/20260525150000_add_engagement_event_log/migration.sql
-//   4. libs/engagement/prisma/migrations/20260531000000_add_outbox_event/migration.sql
+//   2. libs/selection/prisma/migrations/20260525120000_init_engagement_model/migration.sql
+//   3. libs/selection/prisma/migrations/20260525150000_add_engagement_event_log/migration.sql
+//   4. libs/selection/prisma/migrations/20260531000000_add_outbox_event/migration.sql
 //   5. libs/submittal/prisma/migrations/20260523120000_init_submittal_model/migration.sql
 //   6. libs/submittal/prisma/migrations/20260523200000_add_submittal_revoke/migration.sql
 //   7. libs/submittal/prisma/migrations/20260526140602_add_submittal_event_log/migration.sql
@@ -56,9 +56,11 @@ import { OUTBOX_PUBLISHER_QUEUE_NAME } from '../lib/outbox-publisher.queue.const
 
 const MIGRATION_FILES: ReadonlyArray<readonly [string, string]> = [
   ['consent', '../../../consent/prisma/migrations/20260429164414_initial_consent_schema/migration.sql'],
-  ['engagement-init', '../../../engagement/prisma/migrations/20260525120000_init_engagement_model/migration.sql'],
-  ['engagement-event-log', '../../../engagement/prisma/migrations/20260525150000_add_engagement_event_log/migration.sql'],
-  ['engagement-outbox', '../../../engagement/prisma/migrations/20260531000000_add_outbox_event/migration.sql'],
+  ['engagement-init', '../../../selection/prisma/migrations/20260525120000_init_engagement_model/migration.sql'],
+  ['engagement-event-log', '../../../selection/prisma/migrations/20260525150000_add_engagement_event_log/migration.sql'],
+  ['engagement-outbox', '../../../selection/prisma/migrations/20260531000000_add_outbox_event/migration.sql'],
+  // T2-P2 — relocate + rename the engagement objects into the selection schema.
+  ['selection-t2p2', '../../../selection/prisma/migrations/20260813120000_t2p2_relocate_engagement_to_selection/migration.sql'],
   ['submittal-init', '../../../submittal/prisma/migrations/20260523120000_init_submittal_model/migration.sql'],
   ['submittal-revoke', '../../../submittal/prisma/migrations/20260523200000_add_submittal_revoke/migration.sql'],
   ['submittal-event-log', '../../../submittal/prisma/migrations/20260526140602_add_submittal_event_log/migration.sql'],
@@ -75,7 +77,7 @@ const MIGRATION_FILES: ReadonlyArray<readonly [string, string]> = [
 const TENANT_A = '11111111-1111-7111-8111-111111111111';
 
 // The multi-schema publisher graph transitively pulls in ExaminationModule
-// (SubmittalModule + EngagementModule both import it). ExaminationRepository
+// (SubmittalModule + SelectionModule both import it). ExaminationRepository
 // injects the REQUISITION_STATE_READER port, which — by design (T1-a, the
 // CIP⊥ATS wall) — is bound ONLY at the apps/api composition root via a @Global
 // module. This spec composes the publisher without apps/api, so it must supply

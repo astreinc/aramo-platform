@@ -1,5 +1,5 @@
-import type { TalentEngagementEventView } from './talent-engagement-event.view.js';
-import type { TalentJobEngagementView } from './talent-job-engagement.view.js';
+import type { TalentSelectionEventView as TalentEngagementEventView } from '@aramo/selection';
+import type { TalentSelectionView as TalentJobEngagementView } from '@aramo/selection';
 
 // M5 PR-6 §4.2 — HTTP response DTO for POST /v1/engagements/{id}/outreach.
 //

@@ -1,5 +1,5 @@
 {
-  "aliasTotals": { "apps": 2, "libs": 60, "total": 62 },
+  "aliasTotals": { "apps": 2, "libs": 61, "total": 63 },
   "aliases": {
     "@aramo/activity": "libs/activity/src/index.ts",
     "@aramo/ai-draft": "libs/ai-draft/src/index.ts",
@@ -50,6 +50,7 @@
     "@aramo/requisition": "libs/requisition/src/index.ts",
     "@aramo/resume-parse": "libs/resume-parse/src/index.ts",
     "@aramo/saved-list": "libs/saved-list/src/index.ts",
+    "@aramo/selection": "libs/selection/src/index.ts",
     "@aramo/settings": "libs/settings/src/index.ts",
     "@aramo/skills-taxonomy": "libs/skills-taxonomy/src/index.ts",
     "@aramo/sourced-talent": "libs/sourced-talent/src/index.ts",
@@ -286,22 +287,13 @@
     ],
     "@aramo/engagement": [
       "CreateEngagementRequestDto",
-      "DELIVERY_PROVIDER_TOKEN",
-      "ENGAGEMENT_EVENT_TYPE_VALUES",
-      "ENGAGEMENT_STATE_VALUES",
       "EngagementController",
-      "EngagementEventRepository",
       "EngagementModule",
-      "EngagementOutboxRepository",
-      "EngagementRepository",
       "OutreachDraftRequestDto",
       "OutreachSendRequestDto",
-      "PrismaService",
       "RecordConversationStartedRequestDto",
       "RecordResponseRequestDto",
-      "SendStubDeliveryProvider",
-      "TransitionEngagementRequestDto",
-      "canTransition"
+      "TransitionEngagementRequestDto"
     ],
     "@aramo/entitlement": [
       "CAPABILITY_VALUES",
@@ -708,6 +700,18 @@
       "SavedListPrismaService",
       "SavedListRepository",
       "isSavedListItemType"
+    ],
+    "@aramo/selection": [
+      "DELIVERY_PROVIDER_TOKEN",
+      "PrismaService",
+      "SELECTION_EVENT_TYPE_VALUES",
+      "SELECTION_STATE_VALUES",
+      "SelectionEventRepository",
+      "SelectionModule",
+      "SelectionOutboxRepository",
+      "SelectionRepository",
+      "SendStubDeliveryProvider",
+      "canTransition"
     ],
     "@aramo/settings": [
       "KNOWN_SETTINGS",
@@ -1657,31 +1661,7 @@
       { "project": "contact", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
-        "from": "libs/engagement/src/tests/engagement-event.repository.integration.spec.ts",
-        "project": "engagement",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "libs/engagement/src/tests/engagement-event.repository.spec.ts",
-        "project": "engagement",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
         "from": "libs/engagement/src/tests/engagement.controller.spec.ts",
-        "project": "engagement",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "libs/engagement/src/tests/engagement.repository.integration.spec.ts",
-        "project": "engagement",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "libs/engagement/src/tests/engagement.repository.spec.ts",
         "project": "engagement",
         "status": "excluded"
       },
@@ -1915,6 +1895,31 @@
       },
       { "project": "resume-parse", "status": "production" },
       { "project": "saved-list", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/selection/src/tests/selection-event.repository.integration.spec.ts",
+        "project": "selection",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/selection/src/tests/selection-event.repository.spec.ts",
+        "project": "selection",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/selection/src/tests/selection.repository.integration.spec.ts",
+        "project": "selection",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/selection/src/tests/selection.repository.spec.ts",
+        "project": "selection",
+        "status": "excluded"
+      },
+      { "project": "selection", "status": "production" },
       { "project": "settings", "status": "production" },
       { "project": "skills-taxonomy", "status": "production" },
       {
@@ -2065,72 +2070,7 @@
       { "project": "saved-list", "status": "production" },
       { "project": "visibility", "status": "production" }
     ],
-    "@aramo/engagement": [
-      { "from": "tools/seed-e2e-data.ts", "project": "(unscoped)", "status": "unscoped" },
-      { "project": "api", "status": "production" },
-      {
-        "excludedBy": "src/platform-negative-control/**",
-        "from": "apps/platform-web/src/platform-negative-control/platform-imports-ats.fixture.ts",
-        "project": "aramo-platform-web",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/portal-negative-control/**",
-        "from": "apps/portal-web/src/portal-negative-control/portal-imports-ats.fixture.ts",
-        "project": "aramo-portal-web",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/auth-negative-control/**",
-        "from": "libs/auth-core/src/auth-negative-control/auth-imports-ats.fixture.ts",
-        "project": "auth-core",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "libs/evidence/src/tests/evidence.repository.cross-schema-validator.integration.spec.ts",
-        "project": "evidence",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "libs/evidence/src/tests/evidence.repository.integration.spec.ts",
-        "project": "evidence",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "libs/evidence/src/tests/evidence.repository.unit.spec.ts",
-        "project": "evidence",
-        "status": "excluded"
-      },
-      { "project": "evidence", "status": "production" },
-      {
-        "excludedBy": "src/i15-negative-control/**",
-        "from": "libs/matching/src/i15-negative-control/cip-imports-ats.fixture.ts",
-        "project": "matching",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "libs/outbox-publisher/src/tests/outbox-publisher.integration.spec.ts",
-        "project": "outbox-publisher",
-        "status": "excluded"
-      },
-      { "project": "outbox-publisher", "status": "production" },
-      {
-        "excludedBy": "src/platform-negative-control/**",
-        "from": "apps/platform-admin/src/platform-negative-control/platform-imports-ats.fixture.ts",
-        "project": "platform-admin",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "libs/submittal/src/tests/submittal.repository.integration.spec.ts",
-        "project": "submittal",
-        "status": "excluded"
-      }
-    ],
+    "@aramo/engagement": [{ "project": "api", "status": "production" }],
     "@aramo/entitlement": [
       { "project": "activity", "status": "production" },
       { "project": "api", "status": "production" },
@@ -2201,19 +2141,6 @@
       { "project": "api", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
-        "from": "libs/engagement/src/tests/engagement.repository.integration.spec.ts",
-        "project": "engagement",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "libs/engagement/src/tests/engagement.repository.spec.ts",
-        "project": "engagement",
-        "status": "excluded"
-      },
-      { "project": "engagement", "status": "production" },
-      {
-        "excludedBy": "src/tests/**/*",
         "from": "libs/evidence/src/tests/evidence.repository.cross-schema-validator.integration.spec.ts",
         "project": "evidence",
         "status": "excluded"
@@ -2250,6 +2177,19 @@
         "status": "excluded"
       },
       { "project": "matching", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/selection/src/tests/selection.repository.integration.spec.ts",
+        "project": "selection",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/selection/src/tests/selection.repository.spec.ts",
+        "project": "selection",
+        "status": "excluded"
+      },
+      { "project": "selection", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/submittal/src/tests/submittal.repository.integration.spec.ts",
@@ -2984,8 +2924,8 @@
       { "project": "api", "status": "production" }
     ],
     "@aramo/metering": [
-      { "project": "engagement", "status": "production" },
       { "project": "pipeline", "status": "production" },
+      { "project": "selection", "status": "production" },
       { "project": "submittal", "status": "production" }
     ],
     "@aramo/object-storage": [
@@ -3315,24 +3255,24 @@
         "status": "excluded"
       },
       { "project": "api", "status": "production" },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "libs/engagement/src/tests/engagement.repository.integration.spec.ts",
-        "project": "engagement",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "libs/engagement/src/tests/engagement.repository.spec.ts",
-        "project": "engagement",
-        "status": "excluded"
-      },
-      { "project": "engagement", "status": "production" },
       { "project": "export", "status": "production" },
       { "project": "import", "status": "production" },
       { "project": "pipeline", "status": "production" },
       { "project": "reporting", "status": "production" },
       { "project": "saved-list", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/selection/src/tests/selection.repository.integration.spec.ts",
+        "project": "selection",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/selection/src/tests/selection.repository.spec.ts",
+        "project": "selection",
+        "status": "excluded"
+      },
+      { "project": "selection", "status": "production" },
       { "project": "visibility", "status": "production" }
     ],
     "@aramo/resume-parse": [
@@ -3359,6 +3299,79 @@
     "@aramo/saved-list": [
       { "project": "api", "status": "production" },
       { "project": "reporting", "status": "production" }
+    ],
+    "@aramo/selection": [
+      { "from": "tools/seed-e2e-data.ts", "project": "(unscoped)", "status": "unscoped" },
+      { "project": "api", "status": "production" },
+      {
+        "excludedBy": "src/platform-negative-control/**",
+        "from": "apps/platform-web/src/platform-negative-control/platform-imports-ats.fixture.ts",
+        "project": "aramo-platform-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/portal-negative-control/**",
+        "from": "apps/portal-web/src/portal-negative-control/portal-imports-ats.fixture.ts",
+        "project": "aramo-portal-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/auth-negative-control/**",
+        "from": "libs/auth-core/src/auth-negative-control/auth-imports-ats.fixture.ts",
+        "project": "auth-core",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/engagement/src/tests/engagement.controller.spec.ts",
+        "project": "engagement",
+        "status": "excluded"
+      },
+      { "project": "engagement", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/evidence/src/tests/evidence.repository.cross-schema-validator.integration.spec.ts",
+        "project": "evidence",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/evidence/src/tests/evidence.repository.integration.spec.ts",
+        "project": "evidence",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/evidence/src/tests/evidence.repository.unit.spec.ts",
+        "project": "evidence",
+        "status": "excluded"
+      },
+      { "project": "evidence", "status": "production" },
+      {
+        "excludedBy": "src/i15-negative-control/**",
+        "from": "libs/matching/src/i15-negative-control/cip-imports-ats.fixture.ts",
+        "project": "matching",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/outbox-publisher/src/tests/outbox-publisher.integration.spec.ts",
+        "project": "outbox-publisher",
+        "status": "excluded"
+      },
+      { "project": "outbox-publisher", "status": "production" },
+      {
+        "excludedBy": "src/platform-negative-control/**",
+        "from": "apps/platform-admin/src/platform-negative-control/platform-imports-ats.fixture.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/submittal/src/tests/submittal.repository.integration.spec.ts",
+        "project": "submittal",
+        "status": "excluded"
+      }
     ],
     "@aramo/settings": [
       {
@@ -3500,24 +3513,25 @@
         "project": "engagement",
         "status": "excluded"
       },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "libs/engagement/src/tests/engagement.repository.integration.spec.ts",
-        "project": "engagement",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "libs/engagement/src/tests/engagement.repository.spec.ts",
-        "project": "engagement",
-        "status": "excluded"
-      },
       { "project": "engagement", "status": "production" },
       { "project": "export", "status": "production" },
       { "project": "import", "status": "production" },
       { "project": "portal", "status": "production" },
       { "project": "reporting", "status": "production" },
       { "project": "saved-list", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/selection/src/tests/selection.repository.integration.spec.ts",
+        "project": "selection",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/selection/src/tests/selection.repository.spec.ts",
+        "project": "selection",
+        "status": "excluded"
+      },
+      { "project": "selection", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/talent-reconcile/src/tests/reconcile-plan.spec.ts",
@@ -4068,6 +4082,13 @@
       "name": "saved-list",
       "root": "libs/saved-list",
       "sourceRoot": "libs/saved-list/src",
+      "tags": ["scope:ats"],
+      "targets": ["build", "lint", "test"]
+    },
+    {
+      "name": "selection",
+      "root": "libs/selection",
+      "sourceRoot": "libs/selection/src",
       "tags": ["scope:ats"],
       "targets": ["build", "lint", "test"]
     },

@@ -1,15 +1,15 @@
 import { describe, it, expect } from 'vitest';
 
 import {
-  ENGAGEMENT_STATE_VALUES,
+  SELECTION_STATE_VALUES,
   canTransition,
-  type EngagementStateValue,
-} from '../lib/engagement-state.js';
+  type SelectionStateValue,
+} from '../lib/selection-state.js';
 
 // M5 PR-1 §4.9 — state-guard unit spec per Amendment v1.1 §4.
 //
 // Verifies:
-//   - ENGAGEMENT_STATE_VALUES exports exactly 11 values.
+//   - SELECTION_STATE_VALUES exports exactly 11 values.
 //   - All 11 values match Amendment v1.1 §2 verbatim Group 2 §2.3b
 //     Part 2 Loops 1-5 ordering.
 //   - canTransition accepts all 10 legal transitions per Amendment
@@ -19,7 +19,7 @@ import {
 //   - Terminal states (`maybe`, `passed`, `not_interested`,
 //     `submitted`) reject all 11 outgoing transitions.
 
-const EXPECTED_VALUES: ReadonlyArray<EngagementStateValue> = [
+const EXPECTED_VALUES: ReadonlyArray<SelectionStateValue> = [
   'surfaced',
   'evaluated',
   'engaged',
@@ -33,7 +33,7 @@ const EXPECTED_VALUES: ReadonlyArray<EngagementStateValue> = [
   'submitted',
 ];
 
-const LEGAL_TRANSITIONS: ReadonlyArray<[EngagementStateValue, EngagementStateValue]> = [
+const LEGAL_TRANSITIONS: ReadonlyArray<[SelectionStateValue, SelectionStateValue]> = [
   ['surfaced', 'evaluated'],
   ['evaluated', 'engaged'],
   ['evaluated', 'maybe'],
@@ -46,24 +46,24 @@ const LEGAL_TRANSITIONS: ReadonlyArray<[EngagementStateValue, EngagementStateVal
   ['ready_for_submittal', 'submitted'],
 ];
 
-const TERMINAL_STATES: ReadonlyArray<EngagementStateValue> = [
+const TERMINAL_STATES: ReadonlyArray<SelectionStateValue> = [
   'maybe',
   'passed',
   'not_interested',
   'submitted',
 ];
 
-describe('ENGAGEMENT_STATE_VALUES — Amendment v1.1 §2 verbatim', () => {
+describe('SELECTION_STATE_VALUES — Amendment v1.1 §2 verbatim', () => {
   it('exports exactly 11 values', () => {
-    expect(ENGAGEMENT_STATE_VALUES).toHaveLength(11);
+    expect(SELECTION_STATE_VALUES).toHaveLength(11);
   });
 
   it('matches the Amendment v1.1 §2 verbatim Group 2 §2.3b Part 2 ordering', () => {
-    expect([...ENGAGEMENT_STATE_VALUES]).toEqual([...EXPECTED_VALUES]);
+    expect([...SELECTION_STATE_VALUES]).toEqual([...EXPECTED_VALUES]);
   });
 
   it('every expected value is present (set equality)', () => {
-    const actual = new Set<string>(ENGAGEMENT_STATE_VALUES);
+    const actual = new Set<string>(SELECTION_STATE_VALUES);
     for (const expected of EXPECTED_VALUES) {
       expect(actual.has(expected)).toBe(true);
     }
@@ -85,8 +85,8 @@ describe('canTransition — Amendment v1.1 §3 / §4 transition matrix', () => {
     );
     let illegalCount = 0;
     let legalCount = 0;
-    for (const from of ENGAGEMENT_STATE_VALUES) {
-      for (const to of ENGAGEMENT_STATE_VALUES) {
+    for (const from of SELECTION_STATE_VALUES) {
+      for (const to of SELECTION_STATE_VALUES) {
         const expected = legalSet.has(`${from}->${to}`);
         const actual = canTransition(from, to);
         expect(actual).toBe(expected);
@@ -100,14 +100,14 @@ describe('canTransition — Amendment v1.1 §3 / §4 transition matrix', () => {
 
   it('every terminal state rejects all 11 outgoing transitions', () => {
     for (const from of TERMINAL_STATES) {
-      for (const to of ENGAGEMENT_STATE_VALUES) {
+      for (const to of SELECTION_STATE_VALUES) {
         expect(canTransition(from, to)).toBe(false);
       }
     }
   });
 
   it('self-transitions are always rejected', () => {
-    for (const value of ENGAGEMENT_STATE_VALUES) {
+    for (const value of SELECTION_STATE_VALUES) {
       expect(canTransition(value, value)).toBe(false);
     }
   });

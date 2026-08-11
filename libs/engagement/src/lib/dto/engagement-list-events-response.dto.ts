@@ -1,4 +1,4 @@
-import type { TalentEngagementEventView } from './talent-engagement-event.view.js';
+import type { TalentSelectionEventView as TalentEngagementEventView } from '@aramo/selection';
 
 // M5 PR-4 §4.2 — HTTP response DTO for
 // GET /v1/engagements/{id}/events 200.
