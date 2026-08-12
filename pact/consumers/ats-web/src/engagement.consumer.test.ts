@@ -24,7 +24,7 @@ import {
 // actually calls — 8 of the 9 live endpoints. Per endpoint, R7 discipline:
 //   - happy path (request/response derived from the FE call site + the
 //     live controller DTOs, NOT the retired ats-thin files);
-//   - illegal-state 422 ENGAGEMENT_STATE_INVALID (the state machine is
+//   - illegal-state 422 SELECTION_STATE_INVALID (the state machine is
 //     live + settled: libs/engagement/src/lib/engagement-state.ts);
 //   - idempotency replay + conflict pair for each POST requiring an
 //     Idempotency-Key (M5 PR-9 Ruling 2 naming);
@@ -35,7 +35,7 @@ import {
 //     (outreach_event_ref_id).
 //
 // EXCLUDED (Directive §2.3 / R2 — demand gate is endpoint-level):
-//   - POST /v1/engagements (create) — ats-web has NO call site for it
+//   - POST /v1/selections (create) — ats-web has NO call site for it
 //     (engagements are minted server-side via other flows, not the
 //     composer). engagement-api.ts exposes list/get/events + transitions/
 //     response/conversation/outreach-draft/outreach-send only.
@@ -115,7 +115,7 @@ function eventView(engagementId: string, eventType: string) {
 // Engagement-domain error aliases — thin semantic wrappers over the shared
 // errorBody (same code + message example → byte-identical pact output).
 function stateInvalidError() {
-  return errorBody('ENGAGEMENT_STATE_INVALID', 'Illegal engagement state transition');
+  return errorBody('SELECTION_STATE_INVALID', 'Illegal engagement state transition');
 }
 
 function idempotencyConflictError() {
@@ -127,19 +127,19 @@ function consentNotGrantedError() {
 }
 
 function referenceNotFoundError() {
-  return errorBody('ENGAGEMENT_REFERENCE_NOT_FOUND', 'reference not found');
+  return errorBody('SELECTION_REFERENCE_NOT_FOUND', 'reference not found');
 }
 
 // ======================================================================
-// GET /v1/engagements?talent_id= — happy
+// GET /v1/selections?talent_id= — happy
 // ======================================================================
-describe('ats-web → GET /v1/engagements', () => {
+describe('ats-web → GET /v1/selections', () => {
   it('returns 200 with the talent\'s visible engagements', async () => {
     await provider
       .addInteraction()
       .given('an ats-web recruiter and an engagement in surfaced state exist for the talent')
       .uponReceiving('a list engagements read filtered by talent_id')
-      .withRequest('GET', `/v1/engagements`, (b) => {
+      .withRequest('GET', `/v1/selections`, (b) => {
         b.query({ talent_id: TALENT_ID }).headers({ Cookie: like(ACCESS_COOKIE) });
       })
       .willRespondWith(200, (b) => {
@@ -147,7 +147,7 @@ describe('ats-web → GET /v1/engagements', () => {
       })
       .executeTest(async (mock) => {
         const res = await fetch(
-          `${mock.url}/v1/engagements?talent_id=${encodeURIComponent(TALENT_ID)}`,
+          `${mock.url}/v1/selections?talent_id=${encodeURIComponent(TALENT_ID)}`,
           { headers: { Cookie: ACCESS_COOKIE } },
         );
         expect(res.status).toBe(200);
@@ -158,22 +158,22 @@ describe('ats-web → GET /v1/engagements', () => {
 });
 
 // ======================================================================
-// GET /v1/engagements/:id — happy
+// GET /v1/selections/:id — happy
 // ======================================================================
-describe('ats-web → GET /v1/engagements/:id', () => {
+describe('ats-web → GET /v1/selections/:id', () => {
   it('returns 200 with the engagement view', async () => {
     await provider
       .addInteraction()
       .given('an ats-web recruiter and an engagement in surfaced state exist for the talent')
       .uponReceiving('a single engagement read by id')
-      .withRequest('GET', `/v1/engagements/${SURFACED_ID}`, (b) => {
+      .withRequest('GET', `/v1/selections/${SURFACED_ID}`, (b) => {
         b.headers({ Cookie: like(ACCESS_COOKIE) });
       })
       .willRespondWith(200, (b) => {
         b.jsonBody(engagementView(SURFACED_ID, 'surfaced'));
       })
       .executeTest(async (mock) => {
-        const res = await fetch(`${mock.url}/v1/engagements/${SURFACED_ID}`, {
+        const res = await fetch(`${mock.url}/v1/selections/${SURFACED_ID}`, {
           headers: { Cookie: ACCESS_COOKIE },
         });
         expect(res.status).toBe(200);
@@ -184,15 +184,15 @@ describe('ats-web → GET /v1/engagements/:id', () => {
 });
 
 // ======================================================================
-// GET /v1/engagements/:id/events — happy
+// GET /v1/selections/:id/events — happy
 // ======================================================================
-describe('ats-web → GET /v1/engagements/:id/events', () => {
+describe('ats-web → GET /v1/selections/:id/events', () => {
   it('returns 200 with the engagement event log', async () => {
     await provider
       .addInteraction()
       .given('an ats-web recruiter and an engagement with a recorded event exist')
       .uponReceiving('an engagement event-log read')
-      .withRequest('GET', `/v1/engagements/${EVENTS_ID}/events`, (b) => {
+      .withRequest('GET', `/v1/selections/${EVENTS_ID}/events`, (b) => {
         b.headers({ Cookie: like(ACCESS_COOKIE) });
       })
       .willRespondWith(200, (b) => {
@@ -200,7 +200,7 @@ describe('ats-web → GET /v1/engagements/:id/events', () => {
       })
       .executeTest(async (mock) => {
         const res = await fetch(
-          `${mock.url}/v1/engagements/${EVENTS_ID}/events`,
+          `${mock.url}/v1/selections/${EVENTS_ID}/events`,
           { headers: { Cookie: ACCESS_COOKIE } },
         );
         expect(res.status).toBe(200);
@@ -211,15 +211,15 @@ describe('ats-web → GET /v1/engagements/:id/events', () => {
 });
 
 // ======================================================================
-// POST /v1/engagements/:id/transitions — happy + illegal-state + idempotency
+// POST /v1/selections/:id/transitions — happy + illegal-state + idempotency
 // ======================================================================
-describe('ats-web → POST /v1/engagements/:id/transitions', () => {
+describe('ats-web → POST /v1/selections/:id/transitions', () => {
   it('returns 200 and advances the engagement to the target state', async () => {
     await provider
       .addInteraction()
       .given('an ats-web recruiter and an engagement in surfaced state exist for the talent')
       .uponReceiving('a legal transition surfaced -> evaluated')
-      .withRequest('POST', `/v1/engagements/${SURFACED_ID}/transitions`, (b) => {
+      .withRequest('POST', `/v1/selections/${SURFACED_ID}/transitions`, (b) => {
         b.headers({
           Cookie: like(ACCESS_COOKIE),
           'Idempotency-Key': uuid(TRANSITION_EVENT_ID),
@@ -231,7 +231,7 @@ describe('ats-web → POST /v1/engagements/:id/transitions', () => {
       })
       .executeTest(async (mock) => {
         const res = await fetch(
-          `${mock.url}/v1/engagements/${SURFACED_ID}/transitions`,
+          `${mock.url}/v1/selections/${SURFACED_ID}/transitions`,
           {
             method: 'POST',
             headers: {
@@ -248,12 +248,12 @@ describe('ats-web → POST /v1/engagements/:id/transitions', () => {
       });
   });
 
-  it('returns 422 ENGAGEMENT_STATE_INVALID for an illegal transition', async () => {
+  it('returns 422 SELECTION_STATE_INVALID for an illegal transition', async () => {
     await provider
       .addInteraction()
       .given('an ats-web recruiter and an engagement in surfaced state exist for the talent')
       .uponReceiving('an illegal transition surfaced -> engaged')
-      .withRequest('POST', `/v1/engagements/${SURFACED_ID}/transitions`, (b) => {
+      .withRequest('POST', `/v1/selections/${SURFACED_ID}/transitions`, (b) => {
         b.headers({
           Cookie: like(ACCESS_COOKIE),
           'Idempotency-Key': uuid('00000000-0000-7000-8000-e00000000009'),
@@ -265,7 +265,7 @@ describe('ats-web → POST /v1/engagements/:id/transitions', () => {
       })
       .executeTest(async (mock) => {
         const res = await fetch(
-          `${mock.url}/v1/engagements/${SURFACED_ID}/transitions`,
+          `${mock.url}/v1/selections/${SURFACED_ID}/transitions`,
           {
             method: 'POST',
             headers: {
@@ -278,7 +278,7 @@ describe('ats-web → POST /v1/engagements/:id/transitions', () => {
         );
         expect(res.status).toBe(422);
         const body = (await res.json()) as { error: { code: string } };
-        expect(body.error.code).toBe('ENGAGEMENT_STATE_INVALID');
+        expect(body.error.code).toBe('SELECTION_STATE_INVALID');
       });
   });
 
@@ -287,7 +287,7 @@ describe('ats-web → POST /v1/engagements/:id/transitions', () => {
       .addInteraction()
       .given('a prior engagement-transition response is cached under an Idempotency-Key')
       .uponReceiving('a transition replay with the same Idempotency-Key and body')
-      .withRequest('POST', `/v1/engagements/${SURFACED_ID}/transitions`, (b) => {
+      .withRequest('POST', `/v1/selections/${SURFACED_ID}/transitions`, (b) => {
         b.headers({
           Cookie: like(ACCESS_COOKIE),
           'Idempotency-Key': uuid(K_TRANSITION_REPLAY),
@@ -299,7 +299,7 @@ describe('ats-web → POST /v1/engagements/:id/transitions', () => {
       })
       .executeTest(async (mock) => {
         const res = await fetch(
-          `${mock.url}/v1/engagements/${SURFACED_ID}/transitions`,
+          `${mock.url}/v1/selections/${SURFACED_ID}/transitions`,
           {
             method: 'POST',
             headers: {
@@ -321,7 +321,7 @@ describe('ats-web → POST /v1/engagements/:id/transitions', () => {
       .addInteraction()
       .given('an Idempotency-Key was used with a different engagement-transition body')
       .uponReceiving('a transition with a conflicting Idempotency-Key')
-      .withRequest('POST', `/v1/engagements/${SURFACED_ID}/transitions`, (b) => {
+      .withRequest('POST', `/v1/selections/${SURFACED_ID}/transitions`, (b) => {
         b.headers({
           Cookie: like(ACCESS_COOKIE),
           'Idempotency-Key': uuid(K_TRANSITION_CONFLICT),
@@ -333,7 +333,7 @@ describe('ats-web → POST /v1/engagements/:id/transitions', () => {
       })
       .executeTest(async (mock) => {
         const res = await fetch(
-          `${mock.url}/v1/engagements/${SURFACED_ID}/transitions`,
+          `${mock.url}/v1/selections/${SURFACED_ID}/transitions`,
           {
             method: 'POST',
             headers: {
@@ -352,20 +352,20 @@ describe('ats-web → POST /v1/engagements/:id/transitions', () => {
 });
 
 // ======================================================================
-// POST /v1/engagements/:id/response — happy + illegal-state + idempotency
+// POST /v1/selections/:id/response — happy + illegal-state + idempotency
 // ======================================================================
 const RESPONSE_BODY = {
   response_received_at: '2026-05-25T11:00:00.000Z',
   outreach_event_ref_id: OUTREACH_SENT_EVENT_ID,
 };
 
-describe('ats-web → POST /v1/engagements/:id/response', () => {
+describe('ats-web → POST /v1/selections/:id/response', () => {
   it('returns 200 with the advanced engagement + response_event', async () => {
     await provider
       .addInteraction()
       .given('an ats-web recruiter and an engagement in awaiting_response state with a prior outreach_sent event exist')
       .uponReceiving('a record-response for the talent')
-      .withRequest('POST', `/v1/engagements/${AWAITING_ID}/response`, (b) => {
+      .withRequest('POST', `/v1/selections/${AWAITING_ID}/response`, (b) => {
         b.headers({
           Cookie: like(ACCESS_COOKIE),
           'Idempotency-Key': uuid('00000000-0000-7000-8000-e00000000021'),
@@ -379,7 +379,7 @@ describe('ats-web → POST /v1/engagements/:id/response', () => {
         });
       })
       .executeTest(async (mock) => {
-        const res = await fetch(`${mock.url}/v1/engagements/${AWAITING_ID}/response`, {
+        const res = await fetch(`${mock.url}/v1/selections/${AWAITING_ID}/response`, {
           method: 'POST',
           headers: {
             Cookie: ACCESS_COOKIE,
@@ -394,12 +394,12 @@ describe('ats-web → POST /v1/engagements/:id/response', () => {
       });
   });
 
-  it('returns 422 ENGAGEMENT_STATE_INVALID when the engagement is not awaiting_response', async () => {
+  it('returns 422 SELECTION_STATE_INVALID when the engagement is not awaiting_response', async () => {
     await provider
       .addInteraction()
       .given('an ats-web recruiter and an engagement in responded state with a prior outreach_sent event exist')
       .uponReceiving('a record-response on an engagement past awaiting_response')
-      .withRequest('POST', `/v1/engagements/${RESPONDED_ID}/response`, (b) => {
+      .withRequest('POST', `/v1/selections/${RESPONDED_ID}/response`, (b) => {
         b.headers({
           Cookie: like(ACCESS_COOKIE),
           'Idempotency-Key': uuid('00000000-0000-7000-8000-e00000000022'),
@@ -413,7 +413,7 @@ describe('ats-web → POST /v1/engagements/:id/response', () => {
         b.jsonBody(stateInvalidError());
       })
       .executeTest(async (mock) => {
-        const res = await fetch(`${mock.url}/v1/engagements/${RESPONDED_ID}/response`, {
+        const res = await fetch(`${mock.url}/v1/selections/${RESPONDED_ID}/response`, {
           method: 'POST',
           headers: {
             Cookie: ACCESS_COOKIE,
@@ -427,7 +427,7 @@ describe('ats-web → POST /v1/engagements/:id/response', () => {
         });
         expect(res.status).toBe(422);
         const body = (await res.json()) as { error: { code: string } };
-        expect(body.error.code).toBe('ENGAGEMENT_STATE_INVALID');
+        expect(body.error.code).toBe('SELECTION_STATE_INVALID');
       });
   });
 
@@ -436,7 +436,7 @@ describe('ats-web → POST /v1/engagements/:id/response', () => {
       .addInteraction()
       .given('a prior response-received response is cached under an Idempotency-Key')
       .uponReceiving('a record-response replay with the same Idempotency-Key and body')
-      .withRequest('POST', `/v1/engagements/${AWAITING_ID}/response`, (b) => {
+      .withRequest('POST', `/v1/selections/${AWAITING_ID}/response`, (b) => {
         b.headers({
           Cookie: like(ACCESS_COOKIE),
           'Idempotency-Key': uuid(K_RESPONSE_REPLAY),
@@ -450,7 +450,7 @@ describe('ats-web → POST /v1/engagements/:id/response', () => {
         });
       })
       .executeTest(async (mock) => {
-        const res = await fetch(`${mock.url}/v1/engagements/${AWAITING_ID}/response`, {
+        const res = await fetch(`${mock.url}/v1/selections/${AWAITING_ID}/response`, {
           method: 'POST',
           headers: {
             Cookie: ACCESS_COOKIE,
@@ -470,7 +470,7 @@ describe('ats-web → POST /v1/engagements/:id/response', () => {
       .addInteraction()
       .given('an Idempotency-Key was used with a different response-received body')
       .uponReceiving('a record-response with a conflicting Idempotency-Key')
-      .withRequest('POST', `/v1/engagements/${AWAITING_ID}/response`, (b) => {
+      .withRequest('POST', `/v1/selections/${AWAITING_ID}/response`, (b) => {
         b.headers({
           Cookie: like(ACCESS_COOKIE),
           'Idempotency-Key': uuid(K_RESPONSE_CONFLICT),
@@ -481,7 +481,7 @@ describe('ats-web → POST /v1/engagements/:id/response', () => {
         b.jsonBody(idempotencyConflictError());
       })
       .executeTest(async (mock) => {
-        const res = await fetch(`${mock.url}/v1/engagements/${AWAITING_ID}/response`, {
+        const res = await fetch(`${mock.url}/v1/selections/${AWAITING_ID}/response`, {
           method: 'POST',
           headers: {
             Cookie: ACCESS_COOKIE,
@@ -496,12 +496,12 @@ describe('ats-web → POST /v1/engagements/:id/response', () => {
       });
   });
 
-  it('returns 422 ENGAGEMENT_REFERENCE_NOT_FOUND when outreach_event_ref_id does not resolve', async () => {
+  it('returns 422 SELECTION_REFERENCE_NOT_FOUND when outreach_event_ref_id does not resolve', async () => {
     await provider
       .addInteraction()
       .given('an ats-web recruiter and an engagement in awaiting_response state with a prior outreach_sent event exist')
       .uponReceiving('a record-response referencing an unknown outreach_event_ref_id')
-      .withRequest('POST', `/v1/engagements/${AWAITING_ID}/response`, (b) => {
+      .withRequest('POST', `/v1/selections/${AWAITING_ID}/response`, (b) => {
         b.headers({
           Cookie: like(ACCESS_COOKIE),
           'Idempotency-Key': uuid('00000000-0000-7000-8000-e00000000023'),
@@ -515,7 +515,7 @@ describe('ats-web → POST /v1/engagements/:id/response', () => {
         b.jsonBody(referenceNotFoundError());
       })
       .executeTest(async (mock) => {
-        const res = await fetch(`${mock.url}/v1/engagements/${AWAITING_ID}/response`, {
+        const res = await fetch(`${mock.url}/v1/selections/${AWAITING_ID}/response`, {
           method: 'POST',
           headers: {
             Cookie: ACCESS_COOKIE,
@@ -529,23 +529,23 @@ describe('ats-web → POST /v1/engagements/:id/response', () => {
         });
         expect(res.status).toBe(422);
         const body = (await res.json()) as { error: { code: string } };
-        expect(body.error.code).toBe('ENGAGEMENT_REFERENCE_NOT_FOUND');
+        expect(body.error.code).toBe('SELECTION_REFERENCE_NOT_FOUND');
       });
   });
 });
 
 // ======================================================================
-// POST /v1/engagements/:id/conversation — happy + illegal-state + idempotency
+// POST /v1/selections/:id/conversation — happy + illegal-state + idempotency
 // ======================================================================
 const CONVERSATION_BODY = { conversation_started_at: '2026-05-25T12:00:00.000Z' };
 
-describe('ats-web → POST /v1/engagements/:id/conversation', () => {
+describe('ats-web → POST /v1/selections/:id/conversation', () => {
   it('returns 200 with the advanced engagement + conversation_event', async () => {
     await provider
       .addInteraction()
       .given('an ats-web recruiter and an engagement in responded state with a prior outreach_sent event exist')
       .uponReceiving('a record-conversation-started for the talent')
-      .withRequest('POST', `/v1/engagements/${RESPONDED_ID}/conversation`, (b) => {
+      .withRequest('POST', `/v1/selections/${RESPONDED_ID}/conversation`, (b) => {
         b.headers({
           Cookie: like(ACCESS_COOKIE),
           'Idempotency-Key': uuid('00000000-0000-7000-8000-e00000000031'),
@@ -559,7 +559,7 @@ describe('ats-web → POST /v1/engagements/:id/conversation', () => {
         });
       })
       .executeTest(async (mock) => {
-        const res = await fetch(`${mock.url}/v1/engagements/${RESPONDED_ID}/conversation`, {
+        const res = await fetch(`${mock.url}/v1/selections/${RESPONDED_ID}/conversation`, {
           method: 'POST',
           headers: {
             Cookie: ACCESS_COOKIE,
@@ -574,12 +574,12 @@ describe('ats-web → POST /v1/engagements/:id/conversation', () => {
       });
   });
 
-  it('returns 422 ENGAGEMENT_STATE_INVALID when the engagement is not responded', async () => {
+  it('returns 422 SELECTION_STATE_INVALID when the engagement is not responded', async () => {
     await provider
       .addInteraction()
       .given('an ats-web recruiter and an engagement in engaged state exist')
       .uponReceiving('a record-conversation-started on an engagement not in responded')
-      .withRequest('POST', `/v1/engagements/${ENGAGED_ID}/conversation`, (b) => {
+      .withRequest('POST', `/v1/selections/${ENGAGED_ID}/conversation`, (b) => {
         b.headers({
           Cookie: like(ACCESS_COOKIE),
           'Idempotency-Key': uuid('00000000-0000-7000-8000-e00000000032'),
@@ -590,7 +590,7 @@ describe('ats-web → POST /v1/engagements/:id/conversation', () => {
         b.jsonBody(stateInvalidError());
       })
       .executeTest(async (mock) => {
-        const res = await fetch(`${mock.url}/v1/engagements/${ENGAGED_ID}/conversation`, {
+        const res = await fetch(`${mock.url}/v1/selections/${ENGAGED_ID}/conversation`, {
           method: 'POST',
           headers: {
             Cookie: ACCESS_COOKIE,
@@ -601,7 +601,7 @@ describe('ats-web → POST /v1/engagements/:id/conversation', () => {
         });
         expect(res.status).toBe(422);
         const body = (await res.json()) as { error: { code: string } };
-        expect(body.error.code).toBe('ENGAGEMENT_STATE_INVALID');
+        expect(body.error.code).toBe('SELECTION_STATE_INVALID');
       });
   });
 
@@ -610,7 +610,7 @@ describe('ats-web → POST /v1/engagements/:id/conversation', () => {
       .addInteraction()
       .given('a prior conversation-started response is cached under an Idempotency-Key')
       .uponReceiving('a record-conversation-started replay with the same Idempotency-Key and body')
-      .withRequest('POST', `/v1/engagements/${RESPONDED_ID}/conversation`, (b) => {
+      .withRequest('POST', `/v1/selections/${RESPONDED_ID}/conversation`, (b) => {
         b.headers({
           Cookie: like(ACCESS_COOKIE),
           'Idempotency-Key': uuid(K_CONVERSATION_REPLAY),
@@ -624,7 +624,7 @@ describe('ats-web → POST /v1/engagements/:id/conversation', () => {
         });
       })
       .executeTest(async (mock) => {
-        const res = await fetch(`${mock.url}/v1/engagements/${RESPONDED_ID}/conversation`, {
+        const res = await fetch(`${mock.url}/v1/selections/${RESPONDED_ID}/conversation`, {
           method: 'POST',
           headers: {
             Cookie: ACCESS_COOKIE,
@@ -644,7 +644,7 @@ describe('ats-web → POST /v1/engagements/:id/conversation', () => {
       .addInteraction()
       .given('an Idempotency-Key was used with a different conversation-started body')
       .uponReceiving('a record-conversation-started with a conflicting Idempotency-Key')
-      .withRequest('POST', `/v1/engagements/${RESPONDED_ID}/conversation`, (b) => {
+      .withRequest('POST', `/v1/selections/${RESPONDED_ID}/conversation`, (b) => {
         b.headers({
           Cookie: like(ACCESS_COOKIE),
           'Idempotency-Key': uuid(K_CONVERSATION_CONFLICT),
@@ -655,7 +655,7 @@ describe('ats-web → POST /v1/engagements/:id/conversation', () => {
         b.jsonBody(idempotencyConflictError());
       })
       .executeTest(async (mock) => {
-        const res = await fetch(`${mock.url}/v1/engagements/${RESPONDED_ID}/conversation`, {
+        const res = await fetch(`${mock.url}/v1/selections/${RESPONDED_ID}/conversation`, {
           method: 'POST',
           headers: {
             Cookie: ACCESS_COOKIE,
@@ -672,7 +672,7 @@ describe('ats-web → POST /v1/engagements/:id/conversation', () => {
 });
 
 // ======================================================================
-// POST /v1/engagements/:id/outreach/draft — happy + illegal-state + idempotency
+// POST /v1/selections/:id/outreach/draft — happy + illegal-state + idempotency
 // ======================================================================
 const DRAFT_BODY = { prompt: 'Reach out to the talent about the role.' };
 
@@ -684,13 +684,13 @@ function draftResponse() {
   };
 }
 
-describe('ats-web → POST /v1/engagements/:id/outreach/draft', () => {
+describe('ats-web → POST /v1/selections/:id/outreach/draft', () => {
   it('returns 200 with the generated draft', async () => {
     await provider
       .addInteraction()
       .given('an ats-web recruiter and an engagement in engaged state with contacting consent granted exist')
       .uponReceiving('an outreach draft generation')
-      .withRequest('POST', `/v1/engagements/${ENGAGED_DRAFT_ID}/outreach/draft`, (b) => {
+      .withRequest('POST', `/v1/selections/${ENGAGED_DRAFT_ID}/outreach/draft`, (b) => {
         b.headers({
           Cookie: like(ACCESS_COOKIE),
           'Idempotency-Key': uuid('00000000-0000-7000-8000-e00000000041'),
@@ -702,7 +702,7 @@ describe('ats-web → POST /v1/engagements/:id/outreach/draft', () => {
       })
       .executeTest(async (mock) => {
         const res = await fetch(
-          `${mock.url}/v1/engagements/${ENGAGED_DRAFT_ID}/outreach/draft`,
+          `${mock.url}/v1/selections/${ENGAGED_DRAFT_ID}/outreach/draft`,
           {
             method: 'POST',
             headers: {
@@ -719,12 +719,12 @@ describe('ats-web → POST /v1/engagements/:id/outreach/draft', () => {
       });
   });
 
-  it('returns 422 ENGAGEMENT_STATE_INVALID when the engagement cannot reach awaiting_response', async () => {
+  it('returns 422 SELECTION_STATE_INVALID when the engagement cannot reach awaiting_response', async () => {
     await provider
       .addInteraction()
       .given('an ats-web recruiter and an engagement in surfaced state exist for the talent')
       .uponReceiving('an outreach draft on an engagement that cannot be contacted')
-      .withRequest('POST', `/v1/engagements/${SURFACED_ID}/outreach/draft`, (b) => {
+      .withRequest('POST', `/v1/selections/${SURFACED_ID}/outreach/draft`, (b) => {
         b.headers({
           Cookie: like(ACCESS_COOKIE),
           'Idempotency-Key': uuid('00000000-0000-7000-8000-e00000000042'),
@@ -736,7 +736,7 @@ describe('ats-web → POST /v1/engagements/:id/outreach/draft', () => {
       })
       .executeTest(async (mock) => {
         const res = await fetch(
-          `${mock.url}/v1/engagements/${SURFACED_ID}/outreach/draft`,
+          `${mock.url}/v1/selections/${SURFACED_ID}/outreach/draft`,
           {
             method: 'POST',
             headers: {
@@ -749,7 +749,7 @@ describe('ats-web → POST /v1/engagements/:id/outreach/draft', () => {
         );
         expect(res.status).toBe(422);
         const body = (await res.json()) as { error: { code: string } };
-        expect(body.error.code).toBe('ENGAGEMENT_STATE_INVALID');
+        expect(body.error.code).toBe('SELECTION_STATE_INVALID');
       });
   });
 
@@ -758,7 +758,7 @@ describe('ats-web → POST /v1/engagements/:id/outreach/draft', () => {
       .addInteraction()
       .given('a prior outreach-draft response is cached under an Idempotency-Key')
       .uponReceiving('an outreach draft replay with the same Idempotency-Key and body')
-      .withRequest('POST', `/v1/engagements/${ENGAGED_DRAFT_ID}/outreach/draft`, (b) => {
+      .withRequest('POST', `/v1/selections/${ENGAGED_DRAFT_ID}/outreach/draft`, (b) => {
         b.headers({
           Cookie: like(ACCESS_COOKIE),
           'Idempotency-Key': uuid(K_DRAFT_REPLAY),
@@ -770,7 +770,7 @@ describe('ats-web → POST /v1/engagements/:id/outreach/draft', () => {
       })
       .executeTest(async (mock) => {
         const res = await fetch(
-          `${mock.url}/v1/engagements/${ENGAGED_DRAFT_ID}/outreach/draft`,
+          `${mock.url}/v1/selections/${ENGAGED_DRAFT_ID}/outreach/draft`,
           {
             method: 'POST',
             headers: {
@@ -792,7 +792,7 @@ describe('ats-web → POST /v1/engagements/:id/outreach/draft', () => {
       .addInteraction()
       .given('an Idempotency-Key was used with a different outreach-draft body')
       .uponReceiving('an outreach draft with a conflicting Idempotency-Key')
-      .withRequest('POST', `/v1/engagements/${ENGAGED_DRAFT_ID}/outreach/draft`, (b) => {
+      .withRequest('POST', `/v1/selections/${ENGAGED_DRAFT_ID}/outreach/draft`, (b) => {
         b.headers({
           Cookie: like(ACCESS_COOKIE),
           'Idempotency-Key': uuid(K_DRAFT_CONFLICT),
@@ -804,7 +804,7 @@ describe('ats-web → POST /v1/engagements/:id/outreach/draft', () => {
       })
       .executeTest(async (mock) => {
         const res = await fetch(
-          `${mock.url}/v1/engagements/${ENGAGED_DRAFT_ID}/outreach/draft`,
+          `${mock.url}/v1/selections/${ENGAGED_DRAFT_ID}/outreach/draft`,
           {
             method: 'POST',
             headers: {
@@ -823,7 +823,7 @@ describe('ats-web → POST /v1/engagements/:id/outreach/draft', () => {
 });
 
 // ======================================================================
-// POST /v1/engagements/:id/outreach/send — happy + illegal-state + idempotency
+// POST /v1/selections/:id/outreach/send — happy + illegal-state + idempotency
 // ======================================================================
 const SEND_BODY = {
   draft_event_id: OUTREACH_DRAFTED_EVENT_ID,
@@ -838,13 +838,13 @@ function sendResponse() {
   };
 }
 
-describe('ats-web → POST /v1/engagements/:id/outreach/send', () => {
+describe('ats-web → POST /v1/selections/:id/outreach/send', () => {
   it('returns 200 with the advanced engagement + outreach_sent event + delivery_id', async () => {
     await provider
       .addInteraction()
       .given('an ats-web recruiter and an engagement in engaged state with a prior outreach_drafted event and contacting consent granted exist')
       .uponReceiving('an outreach send from an approved draft')
-      .withRequest('POST', `/v1/engagements/${ENGAGED_SEND_ID}/outreach/send`, (b) => {
+      .withRequest('POST', `/v1/selections/${ENGAGED_SEND_ID}/outreach/send`, (b) => {
         b.headers({
           Cookie: like(ACCESS_COOKIE),
           'Idempotency-Key': uuid('00000000-0000-7000-8000-e00000000051'),
@@ -856,7 +856,7 @@ describe('ats-web → POST /v1/engagements/:id/outreach/send', () => {
       })
       .executeTest(async (mock) => {
         const res = await fetch(
-          `${mock.url}/v1/engagements/${ENGAGED_SEND_ID}/outreach/send`,
+          `${mock.url}/v1/selections/${ENGAGED_SEND_ID}/outreach/send`,
           {
             method: 'POST',
             headers: {
@@ -874,12 +874,12 @@ describe('ats-web → POST /v1/engagements/:id/outreach/send', () => {
       });
   });
 
-  it('returns 422 ENGAGEMENT_STATE_INVALID when the engagement cannot reach awaiting_response', async () => {
+  it('returns 422 SELECTION_STATE_INVALID when the engagement cannot reach awaiting_response', async () => {
     await provider
       .addInteraction()
       .given('an ats-web recruiter and an engagement in surfaced state exist for the talent')
       .uponReceiving('an outreach send on an engagement that cannot be contacted')
-      .withRequest('POST', `/v1/engagements/${SURFACED_ID}/outreach/send`, (b) => {
+      .withRequest('POST', `/v1/selections/${SURFACED_ID}/outreach/send`, (b) => {
         b.headers({
           Cookie: like(ACCESS_COOKIE),
           'Idempotency-Key': uuid('00000000-0000-7000-8000-e00000000052'),
@@ -891,7 +891,7 @@ describe('ats-web → POST /v1/engagements/:id/outreach/send', () => {
       })
       .executeTest(async (mock) => {
         const res = await fetch(
-          `${mock.url}/v1/engagements/${SURFACED_ID}/outreach/send`,
+          `${mock.url}/v1/selections/${SURFACED_ID}/outreach/send`,
           {
             method: 'POST',
             headers: {
@@ -904,7 +904,7 @@ describe('ats-web → POST /v1/engagements/:id/outreach/send', () => {
         );
         expect(res.status).toBe(422);
         const body = (await res.json()) as { error: { code: string } };
-        expect(body.error.code).toBe('ENGAGEMENT_STATE_INVALID');
+        expect(body.error.code).toBe('SELECTION_STATE_INVALID');
       });
   });
 
@@ -913,7 +913,7 @@ describe('ats-web → POST /v1/engagements/:id/outreach/send', () => {
       .addInteraction()
       .given('a prior outreach-send response is cached under an Idempotency-Key')
       .uponReceiving('an outreach send replay with the same Idempotency-Key and body')
-      .withRequest('POST', `/v1/engagements/${ENGAGED_SEND_ID}/outreach/send`, (b) => {
+      .withRequest('POST', `/v1/selections/${ENGAGED_SEND_ID}/outreach/send`, (b) => {
         b.headers({
           Cookie: like(ACCESS_COOKIE),
           'Idempotency-Key': uuid(K_SEND_REPLAY),
@@ -925,7 +925,7 @@ describe('ats-web → POST /v1/engagements/:id/outreach/send', () => {
       })
       .executeTest(async (mock) => {
         const res = await fetch(
-          `${mock.url}/v1/engagements/${ENGAGED_SEND_ID}/outreach/send`,
+          `${mock.url}/v1/selections/${ENGAGED_SEND_ID}/outreach/send`,
           {
             method: 'POST',
             headers: {
@@ -947,7 +947,7 @@ describe('ats-web → POST /v1/engagements/:id/outreach/send', () => {
       .addInteraction()
       .given('an Idempotency-Key was used with a different outreach-send body')
       .uponReceiving('an outreach send with a conflicting Idempotency-Key')
-      .withRequest('POST', `/v1/engagements/${ENGAGED_SEND_ID}/outreach/send`, (b) => {
+      .withRequest('POST', `/v1/selections/${ENGAGED_SEND_ID}/outreach/send`, (b) => {
         b.headers({
           Cookie: like(ACCESS_COOKIE),
           'Idempotency-Key': uuid(K_SEND_CONFLICT),
@@ -959,7 +959,7 @@ describe('ats-web → POST /v1/engagements/:id/outreach/send', () => {
       })
       .executeTest(async (mock) => {
         const res = await fetch(
-          `${mock.url}/v1/engagements/${ENGAGED_SEND_ID}/outreach/send`,
+          `${mock.url}/v1/selections/${ENGAGED_SEND_ID}/outreach/send`,
           {
             method: 'POST',
             headers: {
@@ -981,7 +981,7 @@ describe('ats-web → POST /v1/engagements/:id/outreach/send', () => {
       .addInteraction()
       .given('an ats-web recruiter and an engagement in engaged state with a prior outreach_drafted event but contacting consent not granted exist')
       .uponReceiving('an outreach send blocked by the binding consent gate')
-      .withRequest('POST', `/v1/engagements/${ENGAGED_SEND_NO_CONSENT_ID}/outreach/send`, (b) => {
+      .withRequest('POST', `/v1/selections/${ENGAGED_SEND_NO_CONSENT_ID}/outreach/send`, (b) => {
         b.headers({
           Cookie: like(ACCESS_COOKIE),
           'Idempotency-Key': uuid('00000000-0000-7000-8000-e00000000053'),
@@ -993,7 +993,7 @@ describe('ats-web → POST /v1/engagements/:id/outreach/send', () => {
       })
       .executeTest(async (mock) => {
         const res = await fetch(
-          `${mock.url}/v1/engagements/${ENGAGED_SEND_NO_CONSENT_ID}/outreach/send`,
+          `${mock.url}/v1/selections/${ENGAGED_SEND_NO_CONSENT_ID}/outreach/send`,
           {
             method: 'POST',
             headers: {
@@ -1010,12 +1010,12 @@ describe('ats-web → POST /v1/engagements/:id/outreach/send', () => {
       });
   });
 
-  it('returns 422 ENGAGEMENT_REFERENCE_NOT_FOUND when draft_event_id does not resolve', async () => {
+  it('returns 422 SELECTION_REFERENCE_NOT_FOUND when draft_event_id does not resolve', async () => {
     await provider
       .addInteraction()
       .given('an ats-web recruiter and an engagement in engaged state exist')
       .uponReceiving('an outreach send referencing an unknown draft_event_id')
-      .withRequest('POST', `/v1/engagements/${ENGAGED_ID}/outreach/send`, (b) => {
+      .withRequest('POST', `/v1/selections/${ENGAGED_ID}/outreach/send`, (b) => {
         b.headers({
           Cookie: like(ACCESS_COOKIE),
           'Idempotency-Key': uuid('00000000-0000-7000-8000-e00000000054'),
@@ -1030,7 +1030,7 @@ describe('ats-web → POST /v1/engagements/:id/outreach/send', () => {
       })
       .executeTest(async (mock) => {
         const res = await fetch(
-          `${mock.url}/v1/engagements/${ENGAGED_ID}/outreach/send`,
+          `${mock.url}/v1/selections/${ENGAGED_ID}/outreach/send`,
           {
             method: 'POST',
             headers: {
@@ -1046,7 +1046,7 @@ describe('ats-web → POST /v1/engagements/:id/outreach/send', () => {
         );
         expect(res.status).toBe(422);
         const body = (await res.json()) as { error: { code: string } };
-        expect(body.error.code).toBe('ENGAGEMENT_REFERENCE_NOT_FOUND');
+        expect(body.error.code).toBe('SELECTION_REFERENCE_NOT_FOUND');
       });
   });
 });

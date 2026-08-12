@@ -14,7 +14,7 @@ import { EngagementController } from './engagement.controller.js';
 // (repositories, PrismaService, delivery port, state/event closed-lists,
 // prisma `selection` schema + migrations) is canonical in @aramo/selection.
 // This module retains ONLY the frozen EngagementController (the
-// /v1/engagements HTTP surface + engagement:* wire contract, P3-deferred)
+// /v1/selections HTTP surface + engagement:* wire contract, P3-deferred)
 // and delegates every domain dependency to SelectionModule.
 //
 // Module-graph wiring (unchanged from the pre-split EngagementModule minus

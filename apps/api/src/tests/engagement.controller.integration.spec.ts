@@ -37,16 +37,16 @@ import {
 // → EngagementRepository → Postgres → response).
 //
 // Scope per directive §4.11:
-//   POST /v1/engagements:
+//   POST /v1/selections:
 //     - happy: 201 + engagement row + initial event row persisted.
-//     - Pattern C refusal (no overlay): 422 ENGAGEMENT_REFERENCE_NOT_FOUND.
-//   POST /v1/engagements/{id}/transitions:
+//     - Pattern C refusal (no overlay): 422 SELECTION_REFERENCE_NOT_FOUND.
+//   POST /v1/selections/{id}/transitions:
 //     - happy: 200 + state column updated + event row appended.
-//     - illegal transition: 422 ENGAGEMENT_STATE_INVALID + no state
+//     - illegal transition: 422 SELECTION_STATE_INVALID + no state
 //       change + no event row added (atomicity check).
-//   GET /v1/engagements/{id}:
+//   GET /v1/selections/{id}:
 //     - happy + cross-tenant 404.
-//   GET /v1/engagements/{id}/events:
+//   GET /v1/selections/{id}/events:
 //     - happy with seeded events + cross-tenant 404.
 
 type SignKey = CryptoKey | KeyObject;
@@ -122,6 +122,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     let port = 0;
     let savedEnv: Partial<Record<string, string | undefined>> = {};
     let recruiterJwt: string;
+    // §18-E token-transition proof (T2-P3): three additional tokens minted
+    // from the SAME signing key exercise the scope-flip recovery boundary.
+    let oldEngagementJwt: string; // pre-flip: carries engagement:* (no selection:read)
+    let expiredSelectionJwt: string; // post-flip scope but EXPIRED (deterministic fixture)
+    let freshSelectionJwt: string; // post-refresh: carries selection:* (as the catalog re-derives)
     let setupClient: Client;
 
     beforeAll(async () => {
@@ -221,7 +226,61 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         // D4b-composed. requisition:read:all bypasses the D4b
         // visibility check so the happy-path tests proceed (the
         // D4b-narrowing proofs live in their own dedicated spec).
+        scopes: ['selection:read', 'selection:write', 'selection:outreach', 'requisition:read:all'],
+      })
+        .setProtectedHeader({ alg: ALG })
+        .setIssuedAt()
+        .setIssuer(ISSUER)
+        .setAudience(AUDIENCE)
+        .setExpirationTime('1h')
+        .sign(privateKey);
+
+      // ---- §18-E token-transition fixtures (T2-P3) --------------------
+      // Same signing key / issuer / audience as recruiterJwt so all four
+      // tokens are guard-valid on signature; only scopes and expiry vary.
+      // requisition:read:all is carried on every token so the D4b
+      // visibility check never masks the scope-boundary result.
+      const nowSec = Math.floor(Date.now() / 1000);
+
+      // (steps 1-2) OLD token: the pre-flip principal — engagement:* only.
+      oldEngagementJwt = await new SignJWT({
+        sub: RECRUITER_A,
+        consumer_type: 'recruiter',
+        actor_kind: 'user',
+        tenant_id: TENANT_A,
         scopes: ['engagement:read', 'engagement:write', 'engagement:outreach', 'requisition:read:all'],
+      })
+        .setProtectedHeader({ alg: ALG })
+        .setIssuedAt()
+        .setIssuer(ISSUER)
+        .setAudience(AUDIENCE)
+        .setExpirationTime('1h')
+        .sign(privateKey);
+
+      // (steps 3-4) EXPIRED token: correct post-flip scopes but past-dated
+      // — the 15-minute access-TTL lapse modelled deterministically (no wait).
+      expiredSelectionJwt = await new SignJWT({
+        sub: RECRUITER_A,
+        consumer_type: 'recruiter',
+        actor_kind: 'user',
+        tenant_id: TENANT_A,
+        scopes: ['selection:read', 'requisition:read:all'],
+      })
+        .setProtectedHeader({ alg: ALG })
+        .setIssuedAt(nowSec - 3600)
+        .setIssuer(ISSUER)
+        .setAudience(AUDIENCE)
+        .setExpirationTime(nowSec - 1800)
+        .sign(privateKey);
+
+      // (steps 7-8) FRESH token: what the refresh path re-mints after
+      // re-deriving scopes from the flipped catalog (recruiter → selection:*).
+      freshSelectionJwt = await new SignJWT({
+        sub: RECRUITER_A,
+        consumer_type: 'recruiter',
+        actor_kind: 'user',
+        tenant_id: TENANT_A,
+        scopes: ['selection:read', 'requisition:read:all'],
       })
         .setProtectedHeader({ alg: ALG })
         .setIssuedAt()
@@ -252,8 +311,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       }
     }, 60_000);
 
-    it('POST /v1/engagements happy: 201 + engagement + event rows persisted', async () => {
-      const res = await fetch(`http://127.0.0.1:${port}/v1/engagements`, {
+    it('POST /v1/selections happy: 201 + engagement + event rows persisted', async () => {
+      const res = await fetch(`http://127.0.0.1:${port}/v1/selections`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${recruiterJwt}`,
@@ -273,7 +332,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(Number(evRows.rows[0]?.count ?? 0)).toBe(1);
     });
 
-    it('POST /v1/engagements Pattern C refusal: 422 when no overlay for tenant', async () => {
+    it('POST /v1/selections Pattern C refusal: 422 when no overlay for tenant', async () => {
       // Sign a JWT for TENANT_B (no overlay for TALENT_A).
       const kp = await generateKeyPair(ALG);
       const tenantBPublic = await exportSPKI(kp.publicKey as never);
@@ -284,7 +343,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // a non-existent talent_id to force Pattern C null overlay.
       const ghostTalent = '99999999-9999-7999-8999-999999999999';
       void tenantBPublic;
-      const res = await fetch(`http://127.0.0.1:${port}/v1/engagements`, {
+      const res = await fetch(`http://127.0.0.1:${port}/v1/selections`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${recruiterJwt}`,
@@ -295,12 +354,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       });
       expect(res.status).toBe(422);
       const body = (await res.json()) as { error: { code: string } };
-      expect(body.error?.code).toBe('ENGAGEMENT_REFERENCE_NOT_FOUND');
+      expect(body.error?.code).toBe('SELECTION_REFERENCE_NOT_FOUND');
     });
 
-    it('POST /v1/engagements/{id}/transitions happy: surfaced → evaluated', async () => {
+    it('POST /v1/selections/{id}/transitions happy: surfaced → evaluated', async () => {
       // First create an engagement.
-      const createRes = await fetch(`http://127.0.0.1:${port}/v1/engagements`, {
+      const createRes = await fetch(`http://127.0.0.1:${port}/v1/selections`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${recruiterJwt}`,
@@ -313,7 +372,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const engagementId = createBody.engagement.id;
 
       const res = await fetch(
-        `http://127.0.0.1:${port}/v1/engagements/${engagementId}/transitions`,
+        `http://127.0.0.1:${port}/v1/selections/${engagementId}/transitions`,
         {
           method: 'POST',
           headers: {
@@ -329,8 +388,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(body.engagement.state).toBe('evaluated');
     });
 
-    it('POST /v1/engagements/{id}/transitions illegal: 422 + no state change', async () => {
-      const createRes = await fetch(`http://127.0.0.1:${port}/v1/engagements`, {
+    it('POST /v1/selections/{id}/transitions illegal: 422 + no state change', async () => {
+      const createRes = await fetch(`http://127.0.0.1:${port}/v1/selections`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${recruiterJwt}`,
@@ -349,7 +408,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const before = Number(evCountBefore.rows[0]?.count ?? 0);
 
       const res = await fetch(
-        `http://127.0.0.1:${port}/v1/engagements/${engagementId}/transitions`,
+        `http://127.0.0.1:${port}/v1/selections/${engagementId}/transitions`,
         {
           method: 'POST',
           headers: {
@@ -362,7 +421,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       );
       expect(res.status).toBe(422);
       const body = (await res.json()) as { error: { code: string } };
-      expect(body.error?.code).toBe('ENGAGEMENT_STATE_INVALID');
+      expect(body.error?.code).toBe('SELECTION_STATE_INVALID');
 
       // Atomicity: event row count unchanged.
       const evCountAfter = await setupClient.query<{ count: string }>(
@@ -372,8 +431,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(Number(evCountAfter.rows[0]?.count ?? 0)).toBe(before);
     });
 
-    it('GET /v1/engagements/{id}: 200 happy + 404 unknown', async () => {
-      const createRes = await fetch(`http://127.0.0.1:${port}/v1/engagements`, {
+    it('GET /v1/selections/{id}: 200 happy + 404 unknown', async () => {
+      const createRes = await fetch(`http://127.0.0.1:${port}/v1/selections`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${recruiterJwt}`,
@@ -385,20 +444,20 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const createBody = (await createRes.json()) as { engagement: { id: string } };
 
       const hit = await fetch(
-        `http://127.0.0.1:${port}/v1/engagements/${createBody.engagement.id}`,
+        `http://127.0.0.1:${port}/v1/selections/${createBody.engagement.id}`,
         { headers: { Authorization: `Bearer ${recruiterJwt}` } },
       );
       expect(hit.status).toBe(200);
 
       const miss = await fetch(
-        `http://127.0.0.1:${port}/v1/engagements/99999999-9999-7999-8999-999999999999`,
+        `http://127.0.0.1:${port}/v1/selections/99999999-9999-7999-8999-999999999999`,
         { headers: { Authorization: `Bearer ${recruiterJwt}` } },
       );
       expect(miss.status).toBe(404);
     });
 
-    it('GET /v1/engagements/{id}/events: 200 with at least the initial event + 404 unknown engagement', async () => {
-      const createRes = await fetch(`http://127.0.0.1:${port}/v1/engagements`, {
+    it('GET /v1/selections/{id}/events: 200 with at least the initial event + 404 unknown engagement', async () => {
+      const createRes = await fetch(`http://127.0.0.1:${port}/v1/selections`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${recruiterJwt}`,
@@ -410,7 +469,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const createBody = (await createRes.json()) as { engagement: { id: string } };
 
       const hit = await fetch(
-        `http://127.0.0.1:${port}/v1/engagements/${createBody.engagement.id}/events`,
+        `http://127.0.0.1:${port}/v1/selections/${createBody.engagement.id}/events`,
         { headers: { Authorization: `Bearer ${recruiterJwt}` } },
       );
       expect(hit.status).toBe(200);
@@ -418,10 +477,62 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(body.events.length).toBeGreaterThanOrEqual(1);
 
       const miss = await fetch(
-        `http://127.0.0.1:${port}/v1/engagements/99999999-9999-7999-8999-999999999999/events`,
+        `http://127.0.0.1:${port}/v1/selections/99999999-9999-7999-8999-999999999999/events`,
         { headers: { Authorization: `Bearer ${recruiterJwt}` } },
       );
       expect(miss.status).toBe(404);
+    });
+
+    // -----------------------------------------------------------------
+    // §18-E — token-transition recovery boundary (T2-P3)
+    //
+    // The full 8-step recovery spans two services + the FE client. This
+    // spec proves the apps/api-observable boundary + recovery (steps 1-4,
+    // 7-8) deterministically against real Postgres + the real JwtAuthGuard
+    // / @RequireScopes('selection:read') on GET /v1/selections. The two
+    // steps that live outside apps/api are covered by existing tests and
+    // are cited in the Gate-5 proof, not re-implemented here:
+    //   step 5 (401 → client refresh + retry):
+    //     libs/fe-foundation/src/api/client.spec.ts
+    //     'a 401 triggers POST /refresh, then retries ...'
+    //   step 6 (refresh re-derives scopes from the catalog):
+    //     apps/auth-service/src/tests/refresh-orchestrator.service.spec.ts
+    //     'orchestrates normal refresh: re-derive scopes, rotate, sign, audit'
+    //   The catalog that step 6 reads now grants recruiter → selection:*
+    //     (libs/identity/prisma/seed.ts), which is why the freshSelectionJwt
+    //     below is the token a real refresh re-mints.
+    // -----------------------------------------------------------------
+    describe('§18-E token-transition recovery boundary', () => {
+      const listUrl = () => `http://127.0.0.1:${port}/v1/selections`;
+
+      it('steps 1-2: a pre-flip engagement:* token is refused 403 by the selection:* route', async () => {
+        const res = await fetch(listUrl(), {
+          headers: { Authorization: `Bearer ${oldEngagementJwt}` },
+        });
+        // The token is signature-valid and unexpired; the ONLY thing it
+        // lacks is selection:read → @RequireScopes denies with 403.
+        expect(res.status).toBe(403);
+      });
+
+      it('steps 3-4: an expired (post-flip-scoped) token yields 401 on a protected request', async () => {
+        const res = await fetch(listUrl(), {
+          headers: { Authorization: `Bearer ${expiredSelectionJwt}` },
+        });
+        // Correct scopes, but the 15-minute access TTL has lapsed →
+        // signature verify rejects the exp claim → 401 (the refresh trigger).
+        expect(res.status).toBe(401);
+      });
+
+      it('steps 7-8: the refresh-re-minted selection:* token is accepted 200 on retry', async () => {
+        const res = await fetch(listUrl(), {
+          headers: { Authorization: `Bearer ${freshSelectionJwt}` },
+        });
+        // The token a real refresh re-mints from the flipped catalog
+        // carries selection:read → the retried request succeeds.
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as { items: unknown[] };
+        expect(Array.isArray(body.items)).toBe(true);
+      });
     });
   },
 );

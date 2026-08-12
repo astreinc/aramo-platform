@@ -1,7 +1,7 @@
 import type { TalentSelectionEventView as TalentEngagementEventView } from '@aramo/selection';
 import type { TalentSelectionView as TalentJobEngagementView } from '@aramo/selection';
 
-// M5 PR-6 §4.2 — HTTP response DTO for POST /v1/engagements/{id}/outreach.
+// M5 PR-6 §4.2 — HTTP response DTO for POST /v1/selections/{id}/outreach.
 //
 // Response shape per directive §4.1 step 9:
 //   - engagement: the updated TalentJobEngagement view (state column
@@ -13,7 +13,7 @@ import type { TalentSelectionView as TalentJobEngagementView } from '@aramo/sele
 //
 // The state_transition event row (engaged → awaiting_response) is NOT
 // projected on this response — readers can fetch it via
-// GET /v1/engagements/{id}/events (which already exists at PR-4).
+// GET /v1/selections/{id}/events (which already exists at PR-4).
 
 export interface OutreachSendResponseDto {
   engagement: TalentJobEngagementView;

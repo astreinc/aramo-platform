@@ -1,6 +1,6 @@
 import { IsDateString, IsNotEmpty, IsUUID } from 'class-validator';
 
-// M5 PR-7 §4.2 — HTTP request DTO for POST /v1/engagements/{id}/response.
+// M5 PR-7 §4.2 — HTTP request DTO for POST /v1/selections/{id}/response.
 //
 // Body shape per directive §4.2 + Ruling 3 (minimum-viable closed list):
 //   - response_received_at: required ISO-8601 timestamp the recruiter

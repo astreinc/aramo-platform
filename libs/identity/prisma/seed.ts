@@ -197,9 +197,9 @@ export const SEED_IDS = {
     // Ruling B: outreach SoD). Continues the 0x90 reporting range:
     // 0x9a / 0x9b / 0x9c. Closes the documented A1a-2 deferral
     // (scope.dto.ts:23-25 prior to this PR).
-    'engagement:read': '01900000-0000-7000-8000-00000000009a',
-    'engagement:write': '01900000-0000-7000-8000-00000000009b',
-    'engagement:outreach': '01900000-0000-7000-8000-00000000009c',
+    'selection:read': '01900000-0000-7000-8000-00000000009a',
+    'selection:write': '01900000-0000-7000-8000-00000000009b',
+    'selection:outreach': '01900000-0000-7000-8000-00000000009c',
     // Search PR-1 — 3 per-entity quick-search scopes (continue the 0x90
     // range: 0x9d / 0x9e / 0x9f). talent:search is REUSED (0x6c above), so
     // only company/requisition/contact get new scope ids. Granted via
@@ -1241,14 +1241,14 @@ const REPORTING_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
 //     + activity:read etc.) — they SEE engagement workflow state but neither
 //     drive it nor send outreach.
 const ENGAGEMENT_SEED_BUNDLES: ReadonlyArray<readonly [string, readonly string[]]> = [
-  ['tenant_owner', ['engagement:read', 'engagement:write', 'engagement:outreach']],
-  ['tenant_admin', ['engagement:read', 'engagement:write', 'engagement:outreach']],
-  ['account_manager', ['engagement:read', 'engagement:write', 'engagement:outreach']],
-  ['recruiting_manager', ['engagement:read', 'engagement:write', 'engagement:outreach']],
-  ['recruiter', ['engagement:read', 'engagement:write', 'engagement:outreach']],
-  ['lead_recruiter', ['engagement:read', 'engagement:write', 'engagement:outreach']],
-  ['delivery_manager', ['engagement:read']],
-  ['back_office', ['engagement:read']],
+  ['tenant_owner', ['selection:read', 'selection:write', 'selection:outreach']],
+  ['tenant_admin', ['selection:read', 'selection:write', 'selection:outreach']],
+  ['account_manager', ['selection:read', 'selection:write', 'selection:outreach']],
+  ['recruiting_manager', ['selection:read', 'selection:write', 'selection:outreach']],
+  ['recruiter', ['selection:read', 'selection:write', 'selection:outreach']],
+  ['lead_recruiter', ['selection:read', 'selection:write', 'selection:outreach']],
+  ['delivery_manager', ['selection:read']],
+  ['back_office', ['selection:read']],
 ];
 
 // R7 BE-prereq — deterministic RoleScope row IDs for the 20 engagement-
@@ -2131,9 +2131,9 @@ export async function runIdentitySeed(
   // LIST), write on create/transitions/response/conversation, outreach on the
   // outreach route. NO scope.created audit events (mirrors the Reporting-Scope-
   // Seed precedent).
-  await upsertScope(prisma, SEED_IDS.scopes['engagement:read'], 'engagement:read', 'Read engagements (GET /v1/engagements LIST, GET /v1/engagements/:id, GET /v1/engagements/:id/events). 8 roles: write-tier 6 + read-only 2 (delivery_manager / back_office). D4b-composed at read time (engagement visible iff its requisition_id is in the actor visible-requisition set).');
-  await upsertScope(prisma, SEED_IDS.scopes['engagement:write'], 'engagement:write', 'Mutate engagements (POST create / transitions / response / conversation). 6 roles: TA / TO / AM / RM / LR / recruiter[floor]. Write-path visibility: the controller (create) + the repo findByTenantAndId (the 4 mutate-existing) compose D4b — invisible-requisition engagements return 404.');
-  await upsertScope(prisma, SEED_IDS.scopes['engagement:outreach'], 'engagement:outreach', 'Send outbound engagement outreach (POST /v1/engagements/:id/outreach). Separate from :write per outreach SoD — the only engagement write with external side-effects (AI draft + consent-at-send + outbound delivery + LLM cost). Same 6 roles as :write.');
+  await upsertScope(prisma, SEED_IDS.scopes['selection:read'], 'selection:read', 'Read engagements (GET /v1/selections LIST, GET /v1/selections/:id, GET /v1/selections/:id/events). 8 roles: write-tier 6 + read-only 2 (delivery_manager / back_office). D4b-composed at read time (engagement visible iff its requisition_id is in the actor visible-requisition set).');
+  await upsertScope(prisma, SEED_IDS.scopes['selection:write'], 'selection:write', 'Mutate engagements (POST create / transitions / response / conversation). 6 roles: TA / TO / AM / RM / LR / recruiter[floor]. Write-path visibility: the controller (create) + the repo findByTenantAndId (the 4 mutate-existing) compose D4b — invisible-requisition engagements return 404.');
+  await upsertScope(prisma, SEED_IDS.scopes['selection:outreach'], 'selection:outreach', 'Send outbound engagement outreach (POST /v1/selections/:id/outreach). Separate from :write per outreach SoD — the only engagement write with external side-effects (AI draft + consent-at-send + outbound delivery + LLM cost). Same 6 roles as :write.');
   // Search PR-1 — 3 per-entity quick-search scopes (Lead rulings R1/R2).
   // Gate the ?q= trigram filter on the per-entity LIST endpoints WHEN q is
   // present (the no-q LIST keeps its :read gate). talent:search is REUSED

@@ -1,6 +1,6 @@
 import { IsDateString, IsNotEmpty } from 'class-validator';
 
-// M5 PR-8a §4.2 — HTTP request DTO for POST /v1/engagements/{id}/conversation.
+// M5 PR-8a §4.2 — HTTP request DTO for POST /v1/selections/{id}/conversation.
 //
 // Body shape per directive §4.2 + Ruling 3 (minimum-viable closed list):
 //   - conversation_started_at: required ISO-8601 timestamp the recruiter

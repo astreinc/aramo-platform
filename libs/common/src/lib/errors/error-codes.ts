@@ -114,7 +114,7 @@
 //
 // M5 PR-3 adds two codes (parity-quad × 2 per Aramo-M5-PR-3-Directive-
 // v1_0-LOCKED.md §4.5 + Ruling 8):
-//   - ENGAGEMENT_REFERENCE_NOT_FOUND (HTTP 422) — EngagementRepository
+//   - SELECTION_REFERENCE_NOT_FOUND (HTTP 422) — EngagementRepository
 //     .createEngagement refuses when any of the 3 cross-schema validator
 //     patterns fails: Pattern C (TalentRepository.findOverlayByTenant
 //     returns null), Pattern A (JobDomainRepository.findRequisitionById
@@ -125,7 +125,7 @@
 //     overlay-existence is the tenant-visibility proxy; the other two
 //     follow the M5 PR-2 evidence-builder app-layer tenant-check
 //     precedent).
-//   - ENGAGEMENT_STATE_INVALID (HTTP 422) — EngagementRepository
+//   - SELECTION_STATE_INVALID (HTTP 422) — EngagementRepository
 //     .transitionState refuses when canTransition(from, to) returns
 //     false. Application-layer guard atop the M5 PR-1 column-scoped DB
 //     trigger (defense-in-depth: the trigger would also reject, but the
@@ -156,7 +156,7 @@
 // layer guard atop the canonical 5-state DB trigger (defense-in-depth:
 // the trigger would also reject, but the application-layer guard
 // returns a structured error before the SQL UPDATE attempt). Mirrors
-// the M5 PR-3 ENGAGEMENT_STATE_INVALID precedent verbatim at the
+// the M5 PR-3 SELECTION_STATE_INVALID precedent verbatim at the
 // submittal-side. Total: 25 codes.
 //
 // M5 PR-9b adds CONSENT_NOT_GRANTED_AT_SEND (HTTP 403) for
@@ -206,7 +206,7 @@
 //     the link is rejected.
 // 422 (Unprocessable) fits — the request is well-formed (the id is a
 // valid UUID), but the referenced data is invalid for domain reasons.
-// Mirrors the M5 PR-3 ENGAGEMENT_REFERENCE_NOT_FOUND (422) and M4
+// Mirrors the M5 PR-3 SELECTION_REFERENCE_NOT_FOUND (422) and M4
 // PR-4 EXAMINATION_PINNED_OUTDATED precedents for cross-schema
 // validator rejections. The linker is ASSOCIATE-ONLY: it never
 // resolves identity (no findTalentByEmail surface) and never creates
@@ -285,14 +285,19 @@ export const ERROR_CODES = [
   'OVERRIDE_INVALID',  // M4 PR-5 — invalid override payload or non-overridable field
   'REVOKE_NOT_ALLOWED',  // M4 PR-7 / M5 PR-8b2 — submittal in terminal state (confirmed | revoked) cannot be revoked
   'ENGAGEMENT_EVENT_REF_NOT_FOUND',  // M5 PR-2 — engagement_event_refs entry not found in tenant
-  'ENGAGEMENT_REFERENCE_NOT_FOUND',  // M5 PR-3 — createEngagement cross-schema validator (Pattern A/B/C)
-  'ENGAGEMENT_STATE_INVALID',  // M5 PR-3 — transitionState canTransition guard failed
+  'ENGAGEMENT_REFERENCE_NOT_FOUND',  // M5 PR-3 — createEngagement cross-schema validator (Pattern A/B/C). T2-P3: RETAINED deprecated-compatible; superseded on the public surface by SELECTION_REFERENCE_NOT_FOUND.
+  'ENGAGEMENT_STATE_INVALID',  // M5 PR-3 — transitionState canTransition guard failed. T2-P3: RETAINED deprecated-compatible; superseded on the public surface by SELECTION_STATE_INVALID.
+  // T2-P3 — Selection public-contract error codes (additive). Emitted by the
+  // /v1/selections surface. ENGAGEMENT_* above are retained (deprecated, no
+  // longer emitted). ENGAGEMENT_EVENT_REF_NOT_FOUND stays Evidence-owned (NOT flipped).
+  'SELECTION_REFERENCE_NOT_FOUND',  // T2-P3 — createSelection cross-schema validator (Pattern A/B/C)
+  'SELECTION_STATE_INVALID',  // T2-P3 — transitionState canTransition guard failed
   'AI_PROVIDER_UNAVAILABLE',  // M5 PR-6 — outreach sendOutreach LLM transport / vendor-internal failure
   'AI_RATE_LIMITED',  // M5 PR-6 — outreach sendOutreach LLM rate-limit response
   'SUBMITTAL_STATE_INVALID',  // M5 PR-8b2 — submittal canTransition guard failed (mainline + sibling-revoke)
   'CONSENT_NOT_GRANTED_AT_SEND',  // M5 PR-9b — outreach-send runtime consent-at-send refusal (Plan v1.5 §M5 Track B item 3 closure)
   'TENANT_CAPABILITY_NOT_ENTITLED',  // PR-A1b — EntitlementGuard refusal when the tenant lacks the @RequireCapability the route demands (distinct from scope-axis INSUFFICIENT_PERMISSIONS per Ruling 1)
-  'INVALID_PIPELINE_TRANSITION',  // PR-A5a — pipeline state-machine canTransition guard rejected an illegal status change; the load-bearing refusal of A5a (mirrors SUBMITTAL_STATE_INVALID / ENGAGEMENT_STATE_INVALID at the ATS-domain layer)
+  'INVALID_PIPELINE_TRANSITION',  // PR-A5a — pipeline state-machine canTransition guard rejected an illegal status change; the load-bearing refusal of A5a (mirrors SUBMITTAL_STATE_INVALID / SELECTION_STATE_INVALID at the ATS-domain layer)
   'REQUISITION_NO_OPENINGS',  // RESERVED, no longer emitted — T4-B2 §7 retired the pipeline-transition over-capacity refusal (pipeline no longer decrements capacity; stored openings_available dropped in §6; over-capacity is now a representable DERIVED state, not a 409). Kept in the registry for compatibility (still referenced by the ats-web pipeline error-message map).
   'TALENT_LINK_INVALID',  // PR-A5b-2 — TalentRecord-to-Core-Talent linker cross-schema validator refusal; details.reason ∈ {'core_talent_not_found','tenant_overlay_missing'} (the keystone's ASSOCIATE-NOT-RESOLVE refusal point)
   'SAVED_LIST_ITEM_TYPE_MISMATCH',  // PR-A6 — saved-list add-entry homogeneity-invariant refusal: entry's item_type differs from parent SavedList.item_type (the typed-polymorphism A4-shape integrity check at the list-side)
@@ -306,7 +311,7 @@ export const ERROR_CODES = [
   'COGNITO_PROVISION_FAILED',  // AUTHZ-2 — Cognito AdminCreateUser upstream failure (Pattern A; the load-bearing external integration). HTTP 502. Distinct from INTERNAL_ERROR so the platform-admin UI can surface "Cognito unavailable, retry" vs. a generic 500. Mirrors OBJECT_STORAGE_UPLOAD_FAILED at the IdP boundary.
   'INVITATION_ALREADY_EXISTS',  // AUTHZ-2 — re-invite refusal for the (email, tenant_id) pair when the User already holds a membership in the tenant with the same role set. HTTP 409. AdminGetUser is the idempotency check; Cognito is NOT re-created. The two same-tenant-different-roles / new-tenant / drift cases (Ruling 8) do NOT raise this — they reconcile.
   'MANAGEMENT_CYCLE_REJECTED',  // AUTHZ-D4a — set-management-edge refusal: the proposed (manager_user_id, report_user_id) edge would create a cycle in the management graph (e.g. A manages B; attempting B manages A, or the transitive A→B→C; attempting C→A). The cycle check walks upward from report_user_id; if manager_user_id appears in the ancestor set, the edge is rejected. HTTP 409 (mirrors SUBMITTAL_ALREADY_CONFIRMED / IMPORT_ALREADY_REVERTED for state-conflict refusals).
-  'TALENT_RECORD_SUPERSEDED',  // TR-2a-B3a (DDR-3 §3) — outreach-send refusal: the engagement's TalentRecord was superseded by a late-merge reconcile (record_status='superseded'); the surviving record speaks for the human, so the husk is non-operational. HTTP 422 (a state-invalid refusal — mirrors ENGAGEMENT_STATE_INVALID). Writer-less in B3a; the B3b reconcile writer produces the state.
+  'TALENT_RECORD_SUPERSEDED',  // TR-2a-B3a (DDR-3 §3) — outreach-send refusal: the engagement's TalentRecord was superseded by a late-merge reconcile (record_status='superseded'); the surviving record speaks for the human, so the husk is non-operational. HTTP 422 (a state-invalid refusal — mirrors SELECTION_STATE_INVALID). Writer-less in B3a; the B3b reconcile writer produces the state.
   // TR-6 B2 (DDR D5 + PC Exit Accounting §5.1) — advisory-resolution domain refusal codes.
   // These REPLACE the AramoExceptionFilter status-collapse (409→IDEMPOTENCY_KEY_CONFLICT,
   // 400→VALIDATION_ERROR) on the advisory surface ONLY: the semantically-false generic
@@ -430,7 +435,7 @@ export const ERROR_CODES = [
   // — the from-state has no such outgoing edge (e.g. the prohibited
   // OFFER_ACCEPTED → READY_TO_START), or a non-state column mutation. Caller
   // remedy: correct the requested transition. Mirrors SUBMITTAL_STATE_INVALID /
-  // ENGAGEMENT_STATE_INVALID (422). details.reason carries from_state/to_state.
+  // SELECTION_STATE_INVALID (422). details.reason carries from_state/to_state.
   'PLACEMENT_STATE_INVALID',
   // PLACEMENT_ALREADY_LIVE (409): a second PlacementProcess was attempted for a
   // (tenant_id, submittal_id) that already has a LIVE attempt (any non-terminal

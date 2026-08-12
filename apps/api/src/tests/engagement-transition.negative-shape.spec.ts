@@ -29,7 +29,7 @@ import {
 import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
 
 // M5 PR-4 §4.10 — negative-shape integration test for POST
-// /v1/engagements/{id}/transitions. F23 standing pattern.
+// /v1/selections/{id}/transitions. F23 standing pattern.
 //
 // Note: this spec exercises a state-transition response which carries
 // the `outreach_sent` event-type vocabulary in event payloads — covered
@@ -118,7 +118,7 @@ function splitDdl(sql: string): string[] {
 }
 
 describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
-  'POST /v1/engagements/{id}/transitions — negative-shape (no Match-Class vocabulary leak)',
+  'POST /v1/selections/{id}/transitions — negative-shape (no Match-Class vocabulary leak)',
   () => {
     let container: StartedPostgreSqlContainer;
     let app: INestApplication;
@@ -202,7 +202,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         tenant_id: TENANT_ID,
         // R7 BE-prereq: engagement endpoints now scope-gated.
         // requisition:read:all bypasses D4b visibility.
-        scopes: ['engagement:read', 'engagement:write', 'engagement:outreach', 'requisition:read:all'],
+        scopes: ['selection:read', 'selection:write', 'selection:outreach', 'requisition:read:all'],
       })
         .setProtectedHeader({ alg: ALG })
         .setIssuedAt()
@@ -232,7 +232,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
     it('200 engagement-transition response contains no Match-Class vocabulary keys anywhere', async () => {
       // Create an engagement first.
-      const createRes = await fetch(`http://127.0.0.1:${port}/v1/engagements`, {
+      const createRes = await fetch(`http://127.0.0.1:${port}/v1/selections`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${recruiterJwt}`,
@@ -247,7 +247,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       // Transition surfaced → evaluated.
       const res = await fetch(
-        `http://127.0.0.1:${port}/v1/engagements/${engagementId}/transitions`,
+        `http://127.0.0.1:${port}/v1/selections/${engagementId}/transitions`,
         {
           method: 'POST',
           headers: {
@@ -264,7 +264,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       walk(body, '$', hits);
       expect(
         hits,
-        `Match-Class vocabulary leaked into POST /v1/engagements/{id}/transitions response: ${hits.map((h) => h.path).join(', ')}`,
+        `Match-Class vocabulary leaked into POST /v1/selections/{id}/transitions response: ${hits.map((h) => h.path).join(', ')}`,
       ).toEqual([]);
     });
   },

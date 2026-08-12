@@ -1,5 +1,5 @@
 // Outreach Draft/Preview Directive v1.0 / Amendment v1.1 §1 — HTTP
-// response DTO for POST /v1/engagements/{id}/outreach/draft.
+// response DTO for POST /v1/selections/{id}/outreach/draft.
 //
 // Returns the generated draft text + the id of the persisted
 // outreach_drafted event (which SEND later references via

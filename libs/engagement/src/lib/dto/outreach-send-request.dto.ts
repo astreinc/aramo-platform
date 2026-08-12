@@ -1,7 +1,7 @@
 import { IsNotEmpty, IsOptional, IsString, IsUUID } from 'class-validator';
 
 // Outreach Draft/Preview Directive v1.0 / Amendment v1.1 §2 — HTTP request
-// DTO for POST /v1/engagements/{id}/outreach/send.
+// DTO for POST /v1/selections/{id}/outreach/send.
 //
 // The delivery half of the draft→preview→send split. SEND no longer takes
 // a prompt (that moved to POST .../outreach/draft, OutreachDraftRequestDto);
@@ -11,7 +11,7 @@ import { IsNotEmpty, IsOptional, IsString, IsUUID } from 'class-validator';
 //     from. The repository validates it resolves to an outreach_drafted
 //     event on the SAME engagement + SAME tenant (cross-event-ref guard,
 //     mirroring recordResponse's outreach_event_ref_id validation) →
-//     ENGAGEMENT_REFERENCE_NOT_FOUND 422 otherwise.
+//     SELECTION_REFERENCE_NOT_FOUND 422 otherwise.
 //   - final_text: required non-empty string — the text actually delivered.
 //     May differ from the source draft's draft_text (the recruiter edited);
 //     both persist (editable-trail invariant).

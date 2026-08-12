@@ -83,7 +83,7 @@ const DELETE_INVENTORY: readonly DeleteStep[] = [
   { item: 3, label: `submittal."TalentSubmittalEvent"`, where: `tenant_id = $1::uuid`, scoping: 'tenant' },
   { item: 3, label: `submittal."TalentSubmittalRecord"`, where: `tenant_id = $1::uuid`, scoping: 'tenant' },
   // §2.2.4 — Selection workflow rows (event child first). Physical schema is
-  // `selection` post-T2-P2; the frozen /v1/engagements wire surface is P3 scope.
+  // `selection` post-T2-P2; the frozen /v1/selections wire surface is P3 scope.
   { item: 4, label: `selection."TalentSelectionEvent"`, where: `tenant_id = $1::uuid`, scoping: 'tenant' },
   { item: 4, label: `selection."TalentSelection"`, where: `tenant_id = $1::uuid`, scoping: 'tenant' },
   // §2.2.5 — PipelineStatusHistory, then Pipeline.
