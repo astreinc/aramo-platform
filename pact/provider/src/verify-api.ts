@@ -846,6 +846,13 @@ const PLACEMENT_ASSIGNMENT_RATE_VERSION_MIGRATION = resolve(
   ROOT,
   'libs/placement/prisma/migrations/20260810130000_t5_assignment_rate_version/migration.sql',
 );
+// Track 6 / T6-B1 — the effective-window substrate. Applied so the provider schema
+// carries the cancelled_* columns the regenerated client selects, plus the interval
+// CHECK, btree_gist overlap EXCLUDE, and governed effective_to first-close trigger.
+const PLACEMENT_EFFECTIVE_WINDOW_MIGRATION = resolve(
+  ROOT,
+  'libs/placement/prisma/migrations/20260812140000_t6_b1_effective_window_substrate/migration.sql',
+);
 // Track 4 / T4-B2 §6 — the dedicated stored openings_available DROP. Applied here so
 // the provider schema matches the retired-column reality; the requisition read is
 // derived and does not depend on the physical column.
@@ -3049,6 +3056,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         PLACEMENT_ASSIGNMENT_END_REASON_MIGRATION,
         // Track 5 / T5-P1 — the additive AssignmentRateVersion table.
         PLACEMENT_ASSIGNMENT_RATE_VERSION_MIGRATION,
+        // Track 6 / T6-B1 — effective-window substrate (after the ARV table exists).
+        PLACEMENT_EFFECTIVE_WINDOW_MIGRATION,
         // T4-B2 §6 — retire the stored openings_available column (derived-only).
         REQUISITION_DROP_OPENINGS_AVAILABLE_MIGRATION,
         // T8-P1 — the external-identity partial-unique index (applied last;

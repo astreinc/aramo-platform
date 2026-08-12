@@ -535,22 +535,27 @@ export class PlacementRepository {
     return row;
   }
 
-  // Track 5 / T5-P2 — the CURRENT-effective commercial projection of the assignment
-  // on a placement. Reads the tenant-scoped ContractAssignment to resolve the
-  // assignment id + lineage, then the CURRENT effective AssignmentRateVersion
-  // (effective_from <= now AND (effective_to IS NULL OR effective_to > now)), and
-  // derives spread/margin/markup ON READ (deriveCommercialMetrics — never stored).
-  // Returns null on coherent absence: no assignment, or no active version. Visibility
+  // Track 6 / T6-B1 — the canonical point-in-time commercial projection of the
+  // assignment on a placement. Reads the tenant-scoped ContractAssignment to resolve
+  // the assignment id + lineage, then the AS-OF effective AssignmentRateVersion
+  // (cancelled_at IS NULL AND effective_from <= asOf AND (effective_to IS NULL OR
+  // effective_to > asOf)), and derives spread/margin/markup ON READ
+  // (deriveCommercialMetrics — never stored). asOf defaults to the current instant so
+  // every existing caller keeps its "now" behaviour; historical (asOf < now) and
+  // future-preview (asOf > now) resolution are expressed by an explicit asOf and are
+  // internal-only in B1 (no new route/param). Returns null on coherent absence: no
+  // assignment, or no selectable version. Cancelled versions are ignored. Visibility
   // is enforced by the caller loading the placement through findByIdForActor FIRST
-  // (house pattern), so this can never reveal a non-visible row. NOTE: at-most-one
-  // active version is NOT a DB invariant (the only unique key is
-  // (tenant,assignment,effective_from); T6 owns overlap prevention). For T5-P1 data
-  // exactly one active version exists; the resolver is deterministic (latest
-  // effective_from wins) so a read never breaks on a hypothetical overlap.
+  // (house pattern) — placement_process_id stays the public anchor and the assignment
+  // UUID is never a public visibility boundary. NOTE: from T6-B1 a btree_gist EXCLUDE
+  // prevents overlapping non-cancelled windows at the DB, so sanctioned writes can no
+  // longer create ambiguity; the AT-MOST-TWO fetch + fail-closed check below is
+  // retained as legacy/corruption defence, never a winner-picker.
   async findAssignmentCommercialProjection(
     tenant_id: string,
     placement_process_id: string,
     requestId: string,
+    asOf: Date = new Date(),
   ): Promise<AssignmentCommercialView | null> {
     const assignment = await this.prisma.contractAssignment.findFirst({
       where: { tenant_id, placement_process_id },
@@ -558,17 +563,16 @@ export class PlacementRepository {
     });
     if (assignment === null) return null;
 
-    const now = new Date();
-    // Fetch AT MOST TWO effective versions so overlap is DETECTED, not silently
-    // collapsed to a latest-wins winner. T5-P2 is read-side detection only; T6 owns
-    // prevention/correction. There is no DB invariant guaranteeing a single active
-    // version (only unique key = (tenant, assignment, effective_from)).
+    // Fetch AT MOST TWO effective versions so a legacy/corrupt overlap is DETECTED,
+    // not silently collapsed to a latest-wins winner. Cancelled versions never
+    // participate in resolution (they also drop out of the DB overlap constraint).
     const active = await this.prisma.assignmentRateVersion.findMany({
       where: {
         tenant_id,
         contract_assignment_id: assignment.id,
-        effective_from: { lte: now },
-        OR: [{ effective_to: null }, { effective_to: { gt: now } }],
+        cancelled_at: null,
+        effective_from: { lte: asOf },
+        OR: [{ effective_to: null }, { effective_to: { gt: asOf } }],
       },
       orderBy: { effective_from: 'desc' },
       take: 2,

@@ -37,6 +37,18 @@ const EXACT_ALLOWLIST = new Set<string>([
   // DELETE-reject trigger carries the same exact-value escape so governed tenant
   // reset can delete the child (registered in tenant-reset.service.ts).
   'libs/placement/prisma/migrations/20260810130000_t5_assignment_rate_version/migration.sql',
+  // Track 6 / T6-B1 — the effective-window migration CREATE OR REPLACEs the same
+  // ARV mutation trigger, preserving the tenant_reset DELETE escape byte-for-byte
+  // while adding the governed effective_to first-close UPDATE branch.
+  'libs/placement/prisma/migrations/20260812140000_t6_b1_effective_window_substrate/migration.sql',
+  // Track 6 / T6-B1 — the effective-window integration proof exercises the
+  // tenant-reset DELETE escape (§12.3 regression + defensive-corruption cleanup)
+  // via raw SET LOCAL.
+  'libs/placement/src/tests/t6-b1-effective-window.integration.spec.ts',
+  // Track 6 / T6-B1 — the placement-http resolver spec cleans up its injected
+  // legacy-overlap fixture via the tenant-reset escape inside a self-restoring DDL
+  // window (§10 defensive proof).
+  'apps/api/src/tests/placement-http.integration.spec.ts',
 ]);
 
 describe('reset-marker confinement — exact-path default-deny (§2.4)', () => {

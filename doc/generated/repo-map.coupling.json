@@ -2288,6 +2288,24 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/commercial-revision-marker-confinement.spec.ts",
+      "status": "excluded",
+      "to": "apps/api/src/tests/placement-http.integration.spec.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/commercial-revision-marker-confinement.spec.ts",
+      "status": "excluded",
+      "to": "libs/placement/prisma/migrations/20260812140000_t6_b1_effective_window_substrate/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/commercial-revision-marker-confinement.spec.ts",
+      "status": "excluded",
+      "to": "libs/placement/src/tests/t6-b1-effective-window.integration.spec.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/conversation-started.integration.spec.ts",
       "status": "excluded",
       "to": "libs/ai-draft/prisma/migrations/20260525170000_init/migration.sql"
@@ -4022,6 +4040,12 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/placement-http.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/placement/prisma/migrations/20260812140000_t6_b1_effective_window_substrate/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/placement-offer-openapi-conformance.spec.ts",
       "status": "excluded",
       "to": "openapi/ats.yaml"
@@ -4186,6 +4210,12 @@
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/pre-start-requirement/marker-confinement.spec.ts",
       "status": "excluded",
+      "to": "apps/api/src/tests/placement-http.integration.spec.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/pre-start-requirement/marker-confinement.spec.ts",
+      "status": "excluded",
       "to": "libs/placement/prisma/migrations/20260806090000_placement_tenant_reset_escape/migration.sql"
     },
     {
@@ -4193,6 +4223,18 @@
       "from": "apps/api/src/tests/pre-start-requirement/marker-confinement.spec.ts",
       "status": "excluded",
       "to": "libs/placement/prisma/migrations/20260810130000_t5_assignment_rate_version/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/pre-start-requirement/marker-confinement.spec.ts",
+      "status": "excluded",
+      "to": "libs/placement/prisma/migrations/20260812140000_t6_b1_effective_window_substrate/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/pre-start-requirement/marker-confinement.spec.ts",
+      "status": "excluded",
+      "to": "libs/placement/src/tests/t6-b1-effective-window.integration.spec.ts"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -13983,6 +14025,11 @@
       "from": "pact/provider/src/verify-api.ts",
       "status": "unscoped",
       "to": "libs/placement/prisma/migrations/20260810130000_t5_assignment_rate_version/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "libs/placement/prisma/migrations/20260812140000_t6_b1_effective_window_substrate/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",
