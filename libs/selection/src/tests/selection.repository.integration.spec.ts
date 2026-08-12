@@ -450,7 +450,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(Number(evRows[0]?.count ?? 0n)).toBe(1);
     });
 
-    it('createEngagement Pattern C refusal — TalentRecord absent in tenant → ENGAGEMENT_REFERENCE_NOT_FOUND 422; no rows', async () => {
+    it('createEngagement Pattern C refusal — TalentRecord absent in tenant → SELECTION_REFERENCE_NOT_FOUND 422; no rows', async () => {
       // TALENT_A has no TalentRecord in TENANT_B → findById returns null.
       const promise = repo.createEngagement({
         id: CREATE_TALENT_REFUSE_ID,
@@ -465,7 +465,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         await promise;
       } catch (err) {
         const e = err as AramoError;
-        expect(e.code).toBe('ENGAGEMENT_REFERENCE_NOT_FOUND');
+        expect(e.code).toBe('SELECTION_REFERENCE_NOT_FOUND');
         expect(e.statusCode).toBe(422);
         expect(e.context.details?.['field']).toBe('talent_id');
       }
@@ -511,7 +511,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(noEng).toBeNull();
     });
 
-    it('createEngagement Pattern A refusal — requisition absent → ENGAGEMENT_REFERENCE_NOT_FOUND 422', async () => {
+    it('createEngagement Pattern A refusal — requisition absent → SELECTION_REFERENCE_NOT_FOUND 422', async () => {
       const ghostReq = '99999999-9999-7999-8999-999999999999';
       const promise = repo.createEngagement({
         id: CREATE_REQ_NULL_ID,
@@ -526,14 +526,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         await promise;
       } catch (err) {
         const e = err as AramoError;
-        expect(e.code).toBe('ENGAGEMENT_REFERENCE_NOT_FOUND');
+        expect(e.code).toBe('SELECTION_REFERENCE_NOT_FOUND');
         expect(e.context.details?.['field']).toBe('requisition_id');
       }
       const noEng = await repo.findById(CREATE_REQ_NULL_ID);
       expect(noEng).toBeNull();
     });
 
-    it('createEngagement Pattern A refusal — requisition cross-tenant → ENGAGEMENT_REFERENCE_NOT_FOUND 422', async () => {
+    it('createEngagement Pattern A refusal — requisition cross-tenant → SELECTION_REFERENCE_NOT_FOUND 422', async () => {
       // Seed a TENANT_B requisition; lookup from TENANT_A finds the row
       // but row.tenant_id mismatch → refuse.
       const reqTenantB = 'cccccccc-cccc-7ccc-8ccc-ccccccccc000';
@@ -553,14 +553,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         await promise;
       } catch (err) {
         const e = err as AramoError;
-        expect(e.code).toBe('ENGAGEMENT_REFERENCE_NOT_FOUND');
+        expect(e.code).toBe('SELECTION_REFERENCE_NOT_FOUND');
         expect(e.context.details?.['field']).toBe('requisition_id');
       }
       const noEng = await repo.findById(CREATE_REQ_XTENANT_ID);
       expect(noEng).toBeNull();
     });
 
-    it('createEngagement Pattern B refusal — examination absent → ENGAGEMENT_REFERENCE_NOT_FOUND 422', async () => {
+    it('createEngagement Pattern B refusal — examination absent → SELECTION_REFERENCE_NOT_FOUND 422', async () => {
       const ghostExam = '99999999-9999-7999-8999-999999999998';
       const promise = repo.createEngagement({
         id: CREATE_EXAM_NULL_ID,
@@ -575,12 +575,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         await promise;
       } catch (err) {
         const e = err as AramoError;
-        expect(e.code).toBe('ENGAGEMENT_REFERENCE_NOT_FOUND');
+        expect(e.code).toBe('SELECTION_REFERENCE_NOT_FOUND');
         expect(e.context.details?.['field']).toBe('examination_id');
       }
     });
 
-    it('createEngagement Pattern B refusal — examination cross-tenant → ENGAGEMENT_REFERENCE_NOT_FOUND 422', async () => {
+    it('createEngagement Pattern B refusal — examination cross-tenant → SELECTION_REFERENCE_NOT_FOUND 422', async () => {
       // EXAM_TENANT_B was seeded in TENANT_B; lookup from TENANT_A
       // returns the row but tenant_id mismatch → refuse.
       const promise = repo.createEngagement({
@@ -596,7 +596,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         await promise;
       } catch (err) {
         const e = err as AramoError;
-        expect(e.code).toBe('ENGAGEMENT_REFERENCE_NOT_FOUND');
+        expect(e.code).toBe('SELECTION_REFERENCE_NOT_FOUND');
         expect(e.context.details?.['field']).toBe('examination_id');
       }
     });
@@ -647,7 +647,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(Number(evRowsAfter[0]?.count ?? 0n)).toBe(beforeCount + 1);
     });
 
-    it('transitionState illegal (surfaced → submitted): ENGAGEMENT_STATE_INVALID 422; NO state change + NO event appended', async () => {
+    it('transitionState illegal (surfaced → submitted): SELECTION_STATE_INVALID 422; NO state change + NO event appended', async () => {
       const stateBefore = await repo.findById(TRANSITION_ILLEGAL_ID);
       const evRowsBefore = await setupClient.$queryRawUnsafe<{ count: bigint }[]>(
         `SELECT COUNT(*)::bigint AS count FROM selection."TalentSelectionEvent" WHERE engagement_id = '${TRANSITION_ILLEGAL_ID}'::uuid`,
@@ -665,7 +665,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         await promise;
       } catch (err) {
         const e = err as AramoError;
-        expect(e.code).toBe('ENGAGEMENT_STATE_INVALID');
+        expect(e.code).toBe('SELECTION_STATE_INVALID');
         expect(e.statusCode).toBe(422);
         expect(e.context.details?.['from_state']).toBe('surfaced');
         expect(e.context.details?.['to_state']).toBe('submitted');

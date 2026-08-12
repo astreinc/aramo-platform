@@ -29,7 +29,7 @@ import {
 } from './talent-record-fixtures.js';
 import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
 
-// M5 PR-6 §4.16 — POST /v1/engagements/{id}/outreach HTTP integration spec.
+// M5 PR-6 §4.16 — POST /v1/selections/{id}/outreach HTTP integration spec.
 //
 // Boots AppModule via NestJS Test against a Postgres 17 testcontainer
 // with the full migration set (now including ai-draft event log),
@@ -137,7 +137,7 @@ function splitDdl(sql: string): string[] {
 }
 
 describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
-  'POST /v1/engagements/{id}/outreach/draft + /send — HTTP integration (real Postgres 17)',
+  'POST /v1/selections/{id}/outreach/draft + /send — HTTP integration (real Postgres 17)',
   () => {
     let container: StartedPostgreSqlContainer;
     let app: INestApplication;
@@ -242,7 +242,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         // R7 BE-prereq: engagement endpoints now scope-gated +
         // D4b-composed. requisition:read:all bypasses the D4b
         // visibility check so the happy-path tests proceed.
-        scopes: ['engagement:read', 'engagement:write', 'engagement:outreach', 'requisition:read:all'],
+        scopes: ['selection:read', 'selection:write', 'selection:outreach', 'requisition:read:all'],
       })
         .setProtectedHeader({ alg: ALG })
         .setIssuedAt()
@@ -323,7 +323,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     });
 
     async function createAndAdvanceToEngaged(): Promise<string> {
-      const createRes = await fetch(`http://127.0.0.1:${port}/v1/engagements`, {
+      const createRes = await fetch(`http://127.0.0.1:${port}/v1/selections`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${recruiterJwt}`,
@@ -336,7 +336,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const createBody = (await createRes.json()) as { engagement: { id: string } };
       const id = createBody.engagement.id;
       const transition = async (to_state: string): Promise<void> => {
-        const r = await fetch(`http://127.0.0.1:${port}/v1/engagements/${id}/transitions`, {
+        const r = await fetch(`http://127.0.0.1:${port}/v1/selections/${id}/transitions`, {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${recruiterJwt}`,
@@ -374,7 +374,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       id: string,
       opts: { key?: string; prompt?: string; max_tokens?: number } = {},
     ): Promise<Response> {
-      return fetch(`http://127.0.0.1:${port}/v1/engagements/${id}/outreach/draft`, {
+      return fetch(`http://127.0.0.1:${port}/v1/selections/${id}/outreach/draft`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${recruiterJwt}`,
@@ -393,7 +393,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       draftEventId: string,
       opts: { key?: string; final_text?: string; jwt?: string } = {},
     ): Promise<Response> {
-      return fetch(`http://127.0.0.1:${port}/v1/engagements/${id}/outreach/send`, {
+      return fetch(`http://127.0.0.1:${port}/v1/selections/${id}/outreach/send`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${opts.jwt ?? recruiterJwt}`,
@@ -534,8 +534,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(body.error?.code).toBe('AI_RATE_LIMITED');
     });
 
-    it('DRAFT illegal state: 422 ENGAGEMENT_STATE_INVALID when engagement in surfaced state (gated to engaged)', { timeout: 60_000 }, async () => {
-      const createRes = await fetch(`http://127.0.0.1:${port}/v1/engagements`, {
+    it('DRAFT illegal state: 422 SELECTION_STATE_INVALID when engagement in surfaced state (gated to engaged)', { timeout: 60_000 }, async () => {
+      const createRes = await fetch(`http://127.0.0.1:${port}/v1/selections`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${recruiterJwt}`,
@@ -550,15 +550,15 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const res = await draftOutreach(id);
       expect(res.status).toBe(422);
       const body = (await res.json()) as { error: { code: string } };
-      expect(body.error?.code).toBe('ENGAGEMENT_STATE_INVALID');
+      expect(body.error?.code).toBe('SELECTION_STATE_INVALID');
     });
 
-    it('SEND: ENGAGEMENT_REFERENCE_NOT_FOUND 422 when draft_event_id is unknown', { timeout: 60_000 }, async () => {
+    it('SEND: SELECTION_REFERENCE_NOT_FOUND 422 when draft_event_id is unknown', { timeout: 60_000 }, async () => {
       const id = await createAndAdvanceToEngaged();
       const res = await sendOutreach(id, '99999999-9999-7999-8999-999999999999');
       expect(res.status).toBe(422);
       const body = (await res.json()) as { error: { code: string } };
-      expect(body.error?.code).toBe('ENGAGEMENT_REFERENCE_NOT_FOUND');
+      expect(body.error?.code).toBe('SELECTION_REFERENCE_NOT_FOUND');
     });
 
     it('DRAFT NOT_FOUND 404 when engagement does not exist', { timeout: 30_000 }, async () => {
@@ -570,7 +570,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
     it('INSUFFICIENT_PERMISSIONS 403 with portal JWT (both draft + send)', { timeout: 30_000 }, async () => {
       const draftRes = await fetch(
-        `http://127.0.0.1:${port}/v1/engagements/00000000-0000-7000-8000-000000000aaa/outreach/draft`,
+        `http://127.0.0.1:${port}/v1/selections/00000000-0000-7000-8000-000000000aaa/outreach/draft`,
         {
           method: 'POST',
           headers: {
@@ -587,7 +587,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       );
 
       const sendRes = await fetch(
-        `http://127.0.0.1:${port}/v1/engagements/00000000-0000-7000-8000-000000000aaa/outreach/send`,
+        `http://127.0.0.1:${port}/v1/selections/00000000-0000-7000-8000-000000000aaa/outreach/send`,
         {
           method: 'POST',
           headers: {
@@ -616,7 +616,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const second = await sendOutreach(id, draftEventId);
       expect(second.status).toBe(422);
       expect(((await second.json()) as { error: { code: string } }).error?.code).toBe(
-        'ENGAGEMENT_STATE_INVALID',
+        'SELECTION_STATE_INVALID',
       );
     });
 

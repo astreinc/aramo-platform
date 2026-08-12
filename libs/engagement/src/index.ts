@@ -1,6 +1,6 @@
 // libs/engagement — controller-only frozen facade barrel (T2-P2).
 //
-// Post-split, this lib exposes ONLY the frozen /v1/engagements HTTP
+// Post-split, this lib exposes ONLY the frozen /v1/selections HTTP
 // surface: the EngagementModule (route wiring) + EngagementController +
 // the wire request/response DTOs. The Selection domain (repositories,
 // PrismaService, delivery port, views, typed payloads, state/event

@@ -57,7 +57,7 @@ import type { RecordConversationStartedResponseDto } from './dto/record-conversa
 // T2-P2 — the Selection domain is canonical in @aramo/selection. This
 // frozen EngagementController delegates to it; the domain symbols are
 // imported under their engagement-surface aliases so the frozen
-// /v1/engagements controller body (and the engagement:* wire contract)
+// /v1/selections controller body (and the engagement:* wire contract)
 // stays byte-identical pending the P3 atomic rename.
 
 // M5 PR-4 §4.1 — EngagementController.
@@ -65,17 +65,17 @@ import type { RecordConversationStartedResponseDto } from './dto/record-conversa
 // First HTTP-bearing surface in libs/engagement. Endpoints (9 total
 // after the Outreach Draft/Preview split replaces the atomic outreach
 // endpoint with draft + send):
-//   - GET  /v1/engagements                              (LIST — R7 BE-prereq)
-//   - POST /v1/engagements                              (create)
-//   - POST /v1/engagements/{id}/transitions             (state transition)
-//   - POST /v1/engagements/{id}/outreach/draft          (AI draft + persist PENDING — NO delivery)
-//   - POST /v1/engagements/{id}/outreach/send           (deliver approved draft + consent-at-send)
-//   - POST /v1/engagements/{id}/response                (record response)
-//   - POST /v1/engagements/{id}/conversation            (record conversation)
-//   - GET  /v1/engagements/{id}                         (read engagement)
-//   - GET  /v1/engagements/{id}/events                  (read event log)
+//   - GET  /v1/selections                              (LIST — R7 BE-prereq)
+//   - POST /v1/selections                              (create)
+//   - POST /v1/selections/{id}/transitions             (state transition)
+//   - POST /v1/selections/{id}/outreach/draft          (AI draft + persist PENDING — NO delivery)
+//   - POST /v1/selections/{id}/outreach/send           (deliver approved draft + consent-at-send)
+//   - POST /v1/selections/{id}/response                (record response)
+//   - POST /v1/selections/{id}/conversation            (record conversation)
+//   - GET  /v1/selections/{id}                         (read engagement)
+//   - GET  /v1/selections/{id}/events                  (read event log)
 //
-// The atomic POST /v1/engagements/{id}/outreach (prompt→draft→send in one
+// The atomic POST /v1/selections/{id}/outreach (prompt→draft→send in one
 // call, no preview) was REMOVED by the Outreach Draft/Preview Directive
 // v1.0 — leaving it live would let a caller send without preview, a hole
 // in the human-in-the-loop guarantee. The split makes draft→preview→send
@@ -85,7 +85,7 @@ import type { RecordConversationStartedResponseDto } from './dto/record-conversa
 // class-level JwtAuthGuard + RolesGuard (the submittal precedent —
 // scope-gated, recruiter-only, no @RequireCapability since the
 // engagement endpoints have no per-tenant entitlement axis); per-route
-// @RequireScopes(engagement:read / engagement:write / engagement:outreach)
+// @RequireScopes(selection:read / selection:write / selection:outreach)
 // + per-route consumer_type === 'recruiter' assertion (defense in
 // depth: the scope gate is the primary check; the consumer_type
 // assertion stays as a belt-and-suspenders constraint that platform
@@ -132,7 +132,7 @@ import type { RecordConversationStartedResponseDto } from './dto/record-conversa
 // Create-response shape (Ruling 9): { engagement } only. Repository-
 // layer CreateEngagementResult returns { engagement, event }; the
 // controller projects to entity-only. The initial event row is
-// accessible via GET /v1/engagements/{id}/events.
+// accessible via GET /v1/selections/{id}/events.
 //
 // Transition body shape (Ruling 10): { to_state, event_id }. id of the
 // parent engagement comes from the URL path. NO per-verb endpoints; a
@@ -159,7 +159,7 @@ async function resolveVisibleReqIds(
   return req.resolveVisibleRequisitionIds();
 }
 
-@Controller('v1/engagements')
+@Controller('v1/selections')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class EngagementController {
   constructor(
@@ -185,7 +185,7 @@ export class EngagementController {
     private readonly deliveryProvider: DeliveryProvider,
   ) {}
 
-  // ---- GET /v1/engagements (LIST — R7 BE-prereq P1) --------------------
+  // ---- GET /v1/selections (LIST — R7 BE-prereq P1) --------------------
   //
   // The actor's visible engagements (D4b-composed). Filter semantics:
   //   - no filter   → all visible engagements in tenant
@@ -196,7 +196,7 @@ export class EngagementController {
 
   @Get()
   @HttpCode(HttpStatus.OK)
-  @RequireScopes('engagement:read')
+  @RequireScopes('selection:read')
   async listEngagements(
     @AuthContext() authContext: AuthContextType,
     @Query('talent_id') talentIdFromQuery: string | undefined,
@@ -242,11 +242,11 @@ export class EngagementController {
     return { items };
   }
 
-  // ---- POST /v1/engagements --------------------------------------------
+  // ---- POST /v1/selections --------------------------------------------
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @RequireScopes('engagement:write')
+  @RequireScopes('selection:write')
   async createEngagement(
     @Body() body: CreateEngagementRequestDto,
     @Headers('Idempotency-Key') idempotencyKey: string | undefined,
@@ -326,11 +326,11 @@ export class EngagementController {
     return response;
   }
 
-  // ---- POST /v1/engagements/{id}/transitions ---------------------------
+  // ---- POST /v1/selections/{id}/transitions ---------------------------
 
   @Post(':id/transitions')
   @HttpCode(HttpStatus.OK)
-  @RequireScopes('engagement:write')
+  @RequireScopes('selection:write')
   async transitionEngagement(
     @Param('id') id: string,
     @Body() body: TransitionEngagementRequestDto,
@@ -401,7 +401,7 @@ export class EngagementController {
     return response;
   }
 
-  // ---- POST /v1/engagements/{id}/outreach/draft ------------------------
+  // ---- POST /v1/selections/{id}/outreach/draft ------------------------
   //
   // Outreach Draft/Preview Directive v1.0 / Amendment v1.1 §1 — the
   // GENERATION half of the human-in-the-loop split. Runs the LLM and
@@ -430,7 +430,7 @@ export class EngagementController {
 
   @Post(':id/outreach/draft')
   @HttpCode(HttpStatus.OK)
-  @RequireScopes('engagement:outreach')
+  @RequireScopes('selection:outreach')
   async draftOutreach(
     @Param('id') id: string,
     @Body() body: OutreachDraftRequestDto,
@@ -478,7 +478,7 @@ export class EngagementController {
     if (engagement === null) {
       throw new AramoError(
         'NOT_FOUND',
-        'TalentJobEngagement not found',
+        'TalentSelection not found',
         404,
         { requestId, details: { engagement_id: id } },
       );
@@ -490,14 +490,14 @@ export class EngagementController {
     if (!canTransition(engagement.state, 'awaiting_response')) {
       this.logger.log({
         event: 'engagement.outreach_draft_refused',
-        error_code: 'ENGAGEMENT_STATE_INVALID',
+        error_code: 'SELECTION_STATE_INVALID',
         tenant_id: authContext.tenant_id,
         engagement_id: id,
         from_state: engagement.state,
         to_state: 'awaiting_response',
       });
       throw new AramoError(
-        'ENGAGEMENT_STATE_INVALID',
+        'SELECTION_STATE_INVALID',
         `Illegal engagement state transition: ${engagement.state} -> awaiting_response`,
         422,
         {
@@ -672,7 +672,7 @@ export class EngagementController {
     return response;
   }
 
-  // ---- POST /v1/engagements/{id}/outreach/send -------------------------
+  // ---- POST /v1/selections/{id}/outreach/send -------------------------
   //
   // Outreach Draft/Preview Directive v1.0 / Amendment v1.1 §2 — the
   // DELIVERY half of the split. Takes the source draft event id + the
@@ -701,7 +701,7 @@ export class EngagementController {
 
   @Post(':id/outreach/send')
   @HttpCode(HttpStatus.OK)
-  @RequireScopes('engagement:outreach')
+  @RequireScopes('selection:outreach')
   async sendOutreach(
     @Param('id') id: string,
     @Body() body: OutreachSendRequestDto,
@@ -748,7 +748,7 @@ export class EngagementController {
     if (engagement === null) {
       throw new AramoError(
         'NOT_FOUND',
-        'TalentJobEngagement not found',
+        'TalentSelection not found',
         404,
         { requestId, details: { engagement_id: id } },
       );
@@ -796,14 +796,14 @@ export class EngagementController {
     if (!canTransition(engagement.state, 'awaiting_response')) {
       this.logger.log({
         event: 'engagement.outreach_send_refused',
-        error_code: 'ENGAGEMENT_STATE_INVALID',
+        error_code: 'SELECTION_STATE_INVALID',
         tenant_id: authContext.tenant_id,
         engagement_id: id,
         from_state: engagement.state,
         to_state: 'awaiting_response',
       });
       throw new AramoError(
-        'ENGAGEMENT_STATE_INVALID',
+        'SELECTION_STATE_INVALID',
         `Illegal engagement state transition: ${engagement.state} -> awaiting_response`,
         422,
         {
@@ -832,7 +832,7 @@ export class EngagementController {
     ) {
       this.logger.log({
         event: 'engagement.outreach_send_refused',
-        error_code: 'ENGAGEMENT_REFERENCE_NOT_FOUND',
+        error_code: 'SELECTION_REFERENCE_NOT_FOUND',
         tenant_id: authContext.tenant_id,
         engagement_id: id,
         draft_event_id: body.draft_event_id,
@@ -840,7 +840,7 @@ export class EngagementController {
         ref_event_type: draftRef?.event_type ?? null,
       });
       throw new AramoError(
-        'ENGAGEMENT_REFERENCE_NOT_FOUND',
+        'SELECTION_REFERENCE_NOT_FOUND',
         'draft_event_id not found, not in tenant, or not an outreach_drafted event',
         422,
         {
@@ -984,7 +984,7 @@ export class EngagementController {
     return response;
   }
 
-  // ---- POST /v1/engagements/{id}/response ------------------------------
+  // ---- POST /v1/selections/{id}/response ------------------------------
   //
   // M5 PR-7 §4.1 — recruiter records a talent response to a prior
   // outreach. Compressed-scope mirror of PR-6 sendOutreach:
@@ -1012,7 +1012,7 @@ export class EngagementController {
 
   @Post(':id/response')
   @HttpCode(HttpStatus.OK)
-  @RequireScopes('engagement:write')
+  @RequireScopes('selection:write')
   async recordResponse(
     @Param('id') id: string,
     @Body() body: RecordResponseRequestDto,
@@ -1105,7 +1105,7 @@ export class EngagementController {
     return response;
   }
 
-  // ---- POST /v1/engagements/{id}/conversation --------------------------
+  // ---- POST /v1/selections/{id}/conversation --------------------------
   //
   // M5 PR-8a §4.1 — recruiter records that an in-bound conversation has
   // begun with a talent who previously responded. Compressed-scope
@@ -1139,7 +1139,7 @@ export class EngagementController {
 
   @Post(':id/conversation')
   @HttpCode(HttpStatus.OK)
-  @RequireScopes('engagement:write')
+  @RequireScopes('selection:write')
   async recordConversationStarted(
     @Param('id') id: string,
     @Body() body: RecordConversationStartedRequestDto,
@@ -1229,11 +1229,11 @@ export class EngagementController {
     return response;
   }
 
-  // ---- GET /v1/engagements/{id} ----------------------------------------
+  // ---- GET /v1/selections/{id} ----------------------------------------
 
   @Get(':id')
   @HttpCode(HttpStatus.OK)
-  @RequireScopes('engagement:read')
+  @RequireScopes('selection:read')
   async getEngagement(
     @Param('id') id: string,
     @AuthContext() authContext: AuthContextType,
@@ -1261,7 +1261,7 @@ export class EngagementController {
     if (engagement === null) {
       throw new AramoError(
         'NOT_FOUND',
-        'TalentJobEngagement not found',
+        'TalentSelection not found',
         404,
         { requestId, details: { engagement_id: id } },
       );
@@ -1271,11 +1271,11 @@ export class EngagementController {
     return engagement;
   }
 
-  // ---- GET /v1/engagements/{id}/events ---------------------------------
+  // ---- GET /v1/selections/{id}/events ---------------------------------
 
   @Get(':id/events')
   @HttpCode(HttpStatus.OK)
-  @RequireScopes('engagement:read')
+  @RequireScopes('selection:read')
   async getEngagementEvents(
     @Param('id') id: string,
     @AuthContext() authContext: AuthContextType,
@@ -1301,7 +1301,7 @@ export class EngagementController {
     if (engagement === null) {
       throw new AramoError(
         'NOT_FOUND',
-        'TalentJobEngagement not found',
+        'TalentSelection not found',
         404,
         { requestId, details: { engagement_id: id } },
       );

@@ -1,7 +1,7 @@
 import type { TalentSelectionView as TalentJobEngagementView } from '@aramo/selection';
 
 // M5 PR-4 §4.2 — HTTP response DTO for
-// POST /v1/engagements/{id}/transitions 200.
+// POST /v1/selections/{id}/transitions 200.
 //
 // Per Ruling 9 + Ruling 11: response shape is { engagement } only. NO
 // state-isolation literal field (engagement_unrelated_columns_mutated)

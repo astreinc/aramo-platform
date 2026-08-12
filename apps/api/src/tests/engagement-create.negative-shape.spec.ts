@@ -28,7 +28,7 @@ import {
 } from './talent-record-fixtures.js';
 import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
 
-// M5 PR-4 §4.10 — negative-shape integration test for POST /v1/engagements.
+// M5 PR-4 §4.10 — negative-shape integration test for POST /v1/selections.
 // F23 standing pattern: walk the 201 response recursively and assert
 // no Match-Class forbidden keys leak.
 
@@ -116,7 +116,7 @@ function splitDdl(sql: string): string[] {
 }
 
 describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
-  'POST /v1/engagements — negative-shape (no Match-Class vocabulary leak)',
+  'POST /v1/selections — negative-shape (no Match-Class vocabulary leak)',
   () => {
     let container: StartedPostgreSqlContainer;
     let app: INestApplication;
@@ -184,7 +184,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         // R7 BE-prereq: engagement endpoints now scope-gated.
         // requisition:read:all bypasses D4b visibility — focus is
         // response shape / Match-Class leak scan, not authz axes.
-        scopes: ['engagement:read', 'engagement:write', 'engagement:outreach', 'requisition:read:all'],
+        scopes: ['selection:read', 'selection:write', 'selection:outreach', 'requisition:read:all'],
       })
         .setProtectedHeader({ alg: ALG })
         .setIssuedAt()
@@ -213,7 +213,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     }, 60_000);
 
     it('201 engagement-create response contains no Match-Class vocabulary keys anywhere', async () => {
-      const res = await fetch(`http://127.0.0.1:${port}/v1/engagements`, {
+      const res = await fetch(`http://127.0.0.1:${port}/v1/selections`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${recruiterJwt}`,
@@ -228,7 +228,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       walk(body, '$', hits);
       expect(
         hits,
-        `Match-Class vocabulary leaked into POST /v1/engagements response: ${hits.map((h) => h.path).join(', ')}`,
+        `Match-Class vocabulary leaked into POST /v1/selections response: ${hits.map((h) => h.path).join(', ')}`,
       ).toEqual([]);
     });
   },

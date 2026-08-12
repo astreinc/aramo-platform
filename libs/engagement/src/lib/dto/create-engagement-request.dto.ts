@@ -1,10 +1,10 @@
 import { IsOptional, IsUUID } from 'class-validator';
 
-// M5 PR-4 §4.2 — HTTP request DTO for POST /v1/engagements.
+// M5 PR-4 §4.2 — HTTP request DTO for POST /v1/selections.
 //
 // Body shape per directive §4.2:
 //   - talent_id: required UUID (Pattern C lookup via TalentRepository
-//     .findOverlayByTenant; overlay absence → ENGAGEMENT_REFERENCE_NOT_FOUND).
+//     .findOverlayByTenant; overlay absence → SELECTION_REFERENCE_NOT_FOUND).
 //   - requisition_id: required UUID (Pattern A lookup via
 //     RequisitionRepository.findStatusById; null = not in tenant → T1-a).
 //   - examination_id: optional UUID (Pattern B lookup via

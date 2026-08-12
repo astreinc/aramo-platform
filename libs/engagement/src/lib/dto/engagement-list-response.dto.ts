@@ -1,6 +1,6 @@
 import type { TalentSelectionView as TalentJobEngagementView } from '@aramo/selection';
 
-// R7 BE-prereq P1 §1 — HTTP response DTO for GET /v1/engagements 200.
+// R7 BE-prereq P1 §1 — HTTP response DTO for GET /v1/selections 200.
 //
 // Returns the actor's visible engagements (D4b-composed: engagement is
 // visible iff its requisition_id is in the actor's visible-requisition

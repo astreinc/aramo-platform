@@ -29,7 +29,7 @@ import {
 import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
 
 // M5 PR-7 §4.11 — negative-shape integration test for POST
-// /v1/engagements/{id}/response. F23 standing pattern: walk the 200
+// /v1/selections/{id}/response. F23 standing pattern: walk the 200
 // response recursively and assert no Match-Class forbidden keys leak.
 //
 // PR-7 doesn't invoke the AI/delivery providers, but the AppModule
@@ -122,7 +122,7 @@ function splitDdl(sql: string): string[] {
 }
 
 describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
-  'POST /v1/engagements/{id}/response — negative-shape (no Match-Class vocabulary leak)',
+  'POST /v1/selections/{id}/response — negative-shape (no Match-Class vocabulary leak)',
   () => {
     let container: StartedPostgreSqlContainer;
     let app: INestApplication;
@@ -212,7 +212,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         tenant_id: TENANT_ID,
         // R7 BE-prereq: engagement endpoints now scope-gated.
         // requisition:read:all bypasses D4b visibility.
-        scopes: ['engagement:read', 'engagement:write', 'engagement:outreach', 'requisition:read:all'],
+        scopes: ['selection:read', 'selection:write', 'selection:outreach', 'requisition:read:all'],
       })
         .setProtectedHeader({ alg: ALG })
         .setIssuedAt()
@@ -280,7 +280,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Build an engagement and walk it to awaiting_response state via
       // POST /outreach (which writes the outreach_sent event the
       // response endpoint references).
-      const createRes = await fetch(`http://127.0.0.1:${port}/v1/engagements`, {
+      const createRes = await fetch(`http://127.0.0.1:${port}/v1/selections`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${recruiterJwt}`,
@@ -294,7 +294,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const engagementId = createBody.engagement.id;
 
       const transition = async (to_state: string): Promise<void> => {
-        const r = await fetch(`http://127.0.0.1:${port}/v1/engagements/${engagementId}/transitions`, {
+        const r = await fetch(`http://127.0.0.1:${port}/v1/selections/${engagementId}/transitions`, {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${recruiterJwt}`,
@@ -310,7 +310,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       // Outreach Draft/Preview split: DRAFT then SEND.
       const draftRes = await fetch(
-        `http://127.0.0.1:${port}/v1/engagements/${engagementId}/outreach/draft`,
+        `http://127.0.0.1:${port}/v1/selections/${engagementId}/outreach/draft`,
         {
           method: 'POST',
           headers: {
@@ -324,7 +324,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(draftRes.status).toBe(200);
       const draftEventId = ((await draftRes.json()) as { draft_event_id: string }).draft_event_id;
       const outreachRes = await fetch(
-        `http://127.0.0.1:${port}/v1/engagements/${engagementId}/outreach/send`,
+        `http://127.0.0.1:${port}/v1/selections/${engagementId}/outreach/send`,
         {
           method: 'POST',
           headers: {
@@ -339,7 +339,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const outreachBody = (await outreachRes.json()) as { outreach_event: { id: string } };
 
       // Now record the response.
-      const res = await fetch(`http://127.0.0.1:${port}/v1/engagements/${engagementId}/response`, {
+      const res = await fetch(`http://127.0.0.1:${port}/v1/selections/${engagementId}/response`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${recruiterJwt}`,

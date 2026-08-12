@@ -21,7 +21,7 @@
 // examination/activity reads).
 //
 // Note: the engagement-domain scopes shipped at R7 BE-prereq (3 scopes:
-// engagement:read/write/outreach; outreach SoD per Lead ruling). The
+// selection:read/write/outreach; outreach SoD per Lead ruling). The
 // remaining `submittal:read` deferral (the bare GET /v1/submittals/:id
 // route) stays a separate carry — own follow-on PR.
 export const SEED_SCOPE_KEYS = [
@@ -163,9 +163,9 @@ export const SEED_SCOPE_KEYS = [
   // outreach is the only engagement write with EXTERNAL side-effects
   // (AI draft + consent-at-send + outbound delivery + LLM cost) — gets
   // its OWN scope so "record-but-not-send" is encodable.
-  'engagement:read',                    // 8 roles: write-tier 6 + read-only 2 (delivery_manager / back_office)
-  'engagement:write',                   // 6 write-tier roles: TA / TO / AM / RM / LR / recruiter (floor)
-  'engagement:outreach',                // 6 write-tier roles (mirrors :write; outreach SoD encoding)
+  'selection:read',                    // 8 roles: write-tier 6 + read-only 2 (delivery_manager / back_office)
+  'selection:write',                   // 6 write-tier roles: TA / TO / AM / RM / LR / recruiter (floor)
+  'selection:outreach',                // 6 write-tier roles (mirrors :write; outreach SoD encoding)
   // Search PR-1 — per-entity quick-search scopes (Lead rulings R1/R2). The
   // ?q= text-search parameter on the per-entity LIST endpoints is gated on
   // these scopes WHEN q is present (the no-q LIST keeps its existing :read

@@ -628,14 +628,14 @@ paths:
   #
   # Four endpoints exposing the M5 PR-1/2/3 engagement substrate at the
   # recruiter-facing ATS surface:
-  #   GET  /v1/engagements                   — LIST (R7 BE-prereq P1; D4b-composed)
-  #   POST /v1/engagements                   — create (Ruling 4 + Ruling 9)
-  #   POST /v1/engagements/{id}/transitions  — state transition (Ruling 10)
-  #   POST /v1/engagements/{id}/outreach     — outreach send (M5 PR-6)
-  #   POST /v1/engagements/{id}/response     — record response (M5 PR-7)
-  #   POST /v1/engagements/{id}/conversation — record conversation (M5 PR-8a)
-  #   GET  /v1/engagements/{id}              — read engagement (Ruling 5)
-  #   GET  /v1/engagements/{id}/events       — read event log (Ruling 5)
+  #   GET  /v1/selections                   — LIST (R7 BE-prereq P1; D4b-composed)
+  #   POST /v1/selections                   — create (Ruling 4 + Ruling 9)
+  #   POST /v1/selections/{id}/transitions  — state transition (Ruling 10)
+  #   POST /v1/selections/{id}/outreach     — outreach send (M5 PR-6)
+  #   POST /v1/selections/{id}/response     — record response (M5 PR-7)
+  #   POST /v1/selections/{id}/conversation — record conversation (M5 PR-8a)
+  #   GET  /v1/selections/{id}              — read engagement (Ruling 5)
+  #   GET  /v1/selections/{id}/events       — read event log (Ruling 5)
   #
   # All endpoints recruiter-only (Ruling 8); non-recruiter consumers 403'd
   # with INSUFFICIENT_PERMISSIONS. POST endpoints require Idempotency-Key
@@ -652,9 +652,9 @@ paths:
   # actor's visible-requisition set; invisible → 404 (the non-leak posture).
   # =========================================================================
 
-  /v1/engagements:
+  /v1/selections:
     get:
-      operationId: listEngagements
+      operationId: listSelections
       summary: List the actor's visible engagements (R7 BE-prereq P1).
       description: |
         Returns the engagements visible to the authenticated actor in the
@@ -711,7 +711,7 @@ paths:
         - BearerAuth: []
 
     post:
-      operationId: createEngagement
+      operationId: createSelection
       summary: Create a new TalentJobEngagement (M5 PR-4).
       description: |
         Creates a new TalentJobEngagement row in initial state
@@ -729,7 +729,7 @@ paths:
             null/mismatch → 422 ENGAGEMENT_REFERENCE_NOT_FOUND.
 
         Response shape: { engagement } only per Ruling 9. The initial
-        event row is accessible via GET /v1/engagements/{id}/events.
+        event row is accessible via GET /v1/selections/{id}/events.
 
         Refusal codes:
           - 422 ENGAGEMENT_REFERENCE_NOT_FOUND — cross-schema validator.
@@ -778,9 +778,9 @@ paths:
       security:
         - BearerAuth: []
 
-  /v1/engagements/{engagement_id}/transitions:
+  /v1/selections/{selection_id}/transitions:
     post:
-      operationId: transitionEngagement
+      operationId: transitionSelection
       summary: Transition an engagement to a new state (M5 PR-4).
       description: |
         Transitions an existing engagement's state column via the
@@ -791,7 +791,7 @@ paths:
         Pre-write guards (in order):
           1. consumer_type === 'recruiter' (403 INSUFFICIENT_PERMISSIONS).
           2. Idempotency-Key required + UUID-shaped.
-          3. engagement_id path param UUID validation.
+          3. selection_id path param UUID validation.
           4. Read current via findByTenantAndId (404 NOT_FOUND if null).
           5. canTransition guard (422 ENGAGEMENT_STATE_INVALID if illegal).
 
@@ -804,11 +804,11 @@ paths:
           - 422 ENGAGEMENT_STATE_INVALID — illegal transition (satisfies
             Plan v1.5 §M5 Track B item 1).
           - 409 IDEMPOTENCY_KEY_CONFLICT — same key, different body.
-          - 404 NOT_FOUND — engagement_id not visible in tenant.
+          - 404 NOT_FOUND — selection_id not visible in tenant.
           - 403 INSUFFICIENT_PERMISSIONS — non-recruiter consumer.
           - 400 VALIDATION_ERROR — DTO shape / Idempotency-Key issues.
       parameters:
-        - name: engagement_id
+        - name: selection_id
           in: path
           required: true
           schema:
@@ -858,12 +858,12 @@ paths:
         - BearerAuth: []
 
   # Outreach Draft/Preview Directive v1.0 / Amendment v1.1 — the atomic
-  # POST /v1/engagements/{id}/outreach (prompt→draft→send in one call, no
+  # POST /v1/selections/{id}/outreach (prompt→draft→send in one call, no
   # preview) was REMOVED and split into /outreach/draft + /outreach/send.
   # Leaving the atomic path live would let a caller send without preview,
   # defeating the human-in-the-loop guarantee — its removal is a
   # compliance requirement, and draft→preview→send is now the only path.
-  /v1/engagements/{engagement_id}/outreach/draft:
+  /v1/selections/{selection_id}/outreach/draft:
     post:
       operationId: draftOutreach
       summary: Generate + persist a PENDING AI outreach draft (no delivery).
@@ -880,7 +880,7 @@ paths:
         Guards (in order):
           1. consumer_type === 'recruiter' (403 INSUFFICIENT_PERMISSIONS).
           2. Idempotency-Key required + UUID-shaped.
-          3. engagement_id path param UUID validation + idempotency lookup.
+          3. selection_id path param UUID validation + idempotency lookup.
           4. Pre-read engagement (visibility) → 404 NOT_FOUND.
           5. DRAFT state-gate (Amendment v1.1 Ruling 2): the engagement
              MUST be in 'engaged' (the only send-eligible state) → 422
@@ -904,7 +904,7 @@ paths:
         400 VALIDATION_ERROR. NOTE: no 403 CONSENT_NOT_GRANTED_AT_SEND here
         — consent is a non-blocking warning at draft; it binds at SEND.
       parameters:
-        - name: engagement_id
+        - name: selection_id
           in: path
           required: true
           schema:
@@ -974,7 +974,7 @@ paths:
       security:
         - BearerAuth: []
 
-  /v1/engagements/{engagement_id}/outreach/send:
+  /v1/selections/{selection_id}/outreach/send:
     post:
       operationId: sendOutreach
       summary: Deliver a recruiter-approved outreach draft (consent-at-send).
@@ -997,7 +997,7 @@ paths:
         Guards (in order):
           1. consumer_type === 'recruiter' (403 INSUFFICIENT_PERMISSIONS).
           2. Idempotency-Key required + UUID-shaped (the SEND key).
-          3. engagement_id path param UUID validation + idempotency lookup.
+          3. selection_id path param UUID validation + idempotency lookup.
           4. Pre-read engagement (visibility) → 404 NOT_FOUND.
           5. State pre-gate BEFORE delivery (canTransition → 422). True
              single-send: a second send finds 'awaiting_response' and 422s
@@ -1017,7 +1017,7 @@ paths:
         VALIDATION_ERROR. NOTE: no AI error codes here — generation
         happened at /outreach/draft.
       parameters:
-        - name: engagement_id
+        - name: selection_id
           in: path
           required: true
           schema:
@@ -1085,7 +1085,7 @@ paths:
       security:
         - BearerAuth: []
 
-  /v1/engagements/{engagement_id}/response:
+  /v1/selections/{selection_id}/response:
     post:
       operationId: recordResponse
       summary: Record a talent response to a prior outreach (M5 PR-7).
@@ -1104,7 +1104,7 @@ paths:
         Pre-write guards (in order):
           1. consumer_type === 'recruiter' (403 INSUFFICIENT_PERMISSIONS).
           2. Idempotency-Key required + UUID-shaped.
-          3. engagement_id path param UUID validation.
+          3. selection_id path param UUID validation.
           4. Body hash for replay-vs-conflict.
           5. Idempotency lookup (replay short-circuit).
           6. NOT_FOUND guard (findByTenantAndId).
@@ -1124,11 +1124,11 @@ paths:
             doesn't resolve to a valid outreach_sent event in tenant +
             engagement.
           - 409 IDEMPOTENCY_KEY_CONFLICT — same key, different body.
-          - 404 NOT_FOUND — engagement_id not visible in tenant.
+          - 404 NOT_FOUND — selection_id not visible in tenant.
           - 403 INSUFFICIENT_PERMISSIONS — non-recruiter consumer.
           - 400 VALIDATION_ERROR — DTO shape / Idempotency-Key issues.
       parameters:
-        - name: engagement_id
+        - name: selection_id
           in: path
           required: true
           schema:
@@ -1178,7 +1178,7 @@ paths:
       security:
         - BearerAuth: []
 
-  /v1/engagements/{engagement_id}/conversation:
+  /v1/selections/{selection_id}/conversation:
     post:
       operationId: recordConversationStarted
       summary: Record that an in-bound conversation has begun (M5 PR-8a).
@@ -1202,7 +1202,7 @@ paths:
         Pre-write guards (in order):
           1. consumer_type === 'recruiter' (403 INSUFFICIENT_PERMISSIONS).
           2. Idempotency-Key required + UUID-shaped.
-          3. engagement_id path param UUID validation.
+          3. selection_id path param UUID validation.
           4. Body hash for replay-vs-conflict.
           5. Idempotency lookup (replay short-circuit).
           6. NOT_FOUND guard (findByTenantAndId).
@@ -1218,11 +1218,11 @@ paths:
             engagements in 'engaged' / 'awaiting_response' / earlier
             states).
           - 409 IDEMPOTENCY_KEY_CONFLICT — same key, different body.
-          - 404 NOT_FOUND — engagement_id not visible in tenant.
+          - 404 NOT_FOUND — selection_id not visible in tenant.
           - 403 INSUFFICIENT_PERMISSIONS — non-recruiter consumer.
           - 400 VALIDATION_ERROR — DTO shape / Idempotency-Key issues.
       parameters:
-        - name: engagement_id
+        - name: selection_id
           in: path
           required: true
           schema:
@@ -1273,9 +1273,9 @@ paths:
       security:
         - BearerAuth: []
 
-  /v1/engagements/{engagement_id}:
+  /v1/selections/{selection_id}:
     get:
-      operationId: getEngagement
+      operationId: getSelection
       summary: Read a TalentJobEngagement by id (M5 PR-4).
       description: |
         Tenant-scoped read of a single engagement via
@@ -1286,7 +1286,7 @@ paths:
         No Idempotency-Key handling per Ruling 5 (GET routes are
         side-effect-free).
       parameters:
-        - name: engagement_id
+        - name: selection_id
           in: path
           required: true
           schema:
@@ -1310,9 +1310,9 @@ paths:
       security:
         - BearerAuth: []
 
-  /v1/engagements/{engagement_id}/events:
+  /v1/selections/{selection_id}/events:
     get:
-      operationId: getEngagementEvents
+      operationId: getSelectionEvents
       summary: List event-log entries for an engagement (M5 PR-4).
       description: |
         Tenant-scoped read of the chronological event log for an
@@ -1321,11 +1321,11 @@ paths:
 
         Includes a parent-engagement existence pre-check (404 NOT_FOUND
         if the engagement itself is not visible in tenant) to avoid the
-        information-leak path where a non-existent engagement_id would
+        information-leak path where a non-existent selection_id would
         return an empty events array (same response shape as a
         newly-created engagement with no events yet).
       parameters:
-        - name: engagement_id
+        - name: selection_id
           in: path
           required: true
           schema:

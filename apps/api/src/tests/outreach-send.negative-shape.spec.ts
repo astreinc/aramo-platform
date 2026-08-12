@@ -29,7 +29,7 @@ import {
 import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
 
 // M5 PR-6 §4.15 — negative-shape integration test for POST
-// /v1/engagements/{id}/outreach. F23 standing pattern: walk the 200
+// /v1/selections/{id}/outreach. F23 standing pattern: walk the 200
 // response recursively and assert no Match-Class forbidden keys leak.
 //
 // AiDraftService + DeliveryProvider are overridden with mock returns so
@@ -128,7 +128,7 @@ function splitDdl(sql: string): string[] {
 }
 
 describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
-  'POST /v1/engagements/{id}/outreach/send — negative-shape (no Match-Class vocabulary leak)',
+  'POST /v1/selections/{id}/outreach/send — negative-shape (no Match-Class vocabulary leak)',
   () => {
     let container: StartedPostgreSqlContainer;
     let app: INestApplication;
@@ -218,7 +218,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         tenant_id: TENANT_ID,
         // R7 BE-prereq: engagement endpoints now scope-gated.
         // requisition:read:all bypasses D4b visibility.
-        scopes: ['engagement:read', 'engagement:write', 'engagement:outreach', 'requisition:read:all'],
+        scopes: ['selection:read', 'selection:write', 'selection:outreach', 'requisition:read:all'],
       })
         .setProtectedHeader({ alg: ALG })
         .setIssuedAt()
@@ -284,7 +284,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
     it('200 outreach-send response contains no Match-Class vocabulary keys anywhere', { timeout: 60_000 }, async () => {
       // Create an engagement and transition it: surfaced → evaluated → engaged.
-      const createRes = await fetch(`http://127.0.0.1:${port}/v1/engagements`, {
+      const createRes = await fetch(`http://127.0.0.1:${port}/v1/selections`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${recruiterJwt}`,
@@ -297,7 +297,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const createBody = (await createRes.json()) as { engagement: { id: string } };
       const engagementId = createBody.engagement.id;
 
-      await fetch(`http://127.0.0.1:${port}/v1/engagements/${engagementId}/transitions`, {
+      await fetch(`http://127.0.0.1:${port}/v1/selections/${engagementId}/transitions`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${recruiterJwt}`,
@@ -306,7 +306,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         },
         body: JSON.stringify({ to_state: 'evaluated', event_id: randomUUID() }),
       });
-      await fetch(`http://127.0.0.1:${port}/v1/engagements/${engagementId}/transitions`, {
+      await fetch(`http://127.0.0.1:${port}/v1/selections/${engagementId}/transitions`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${recruiterJwt}`,
@@ -319,7 +319,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Outreach Draft/Preview split: DRAFT then SEND. Walk the SEND
       // response (OutreachSendResponse) for Match-Class vocabulary leaks.
       const draftRes = await fetch(
-        `http://127.0.0.1:${port}/v1/engagements/${engagementId}/outreach/draft`,
+        `http://127.0.0.1:${port}/v1/selections/${engagementId}/outreach/draft`,
         {
           method: 'POST',
           headers: {
@@ -334,7 +334,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const draftBody = (await draftRes.json()) as { draft_event_id: string };
 
       const res = await fetch(
-        `http://127.0.0.1:${port}/v1/engagements/${engagementId}/outreach/send`,
+        `http://127.0.0.1:${port}/v1/selections/${engagementId}/outreach/send`,
         {
           method: 'POST',
           headers: {

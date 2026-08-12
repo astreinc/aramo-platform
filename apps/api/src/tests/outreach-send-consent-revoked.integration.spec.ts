@@ -28,7 +28,7 @@ import {
 } from './talent-record-fixtures.js';
 import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
 
-// M5 PR-9b §4.6 / Ruling 10 — POST /v1/engagements/{id}/outreach
+// M5 PR-9b §4.6 / Ruling 10 — POST /v1/selections/{id}/outreach
 // consent-at-send refusal integration spec. Plan v1.5 §M5 Track B item 3
 // closure: "Consent enforcement at message send time (not just engagement
 // creation)."
@@ -141,7 +141,7 @@ function splitDdl(sql: string): string[] {
 }
 
 describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
-  'POST /v1/engagements/{id}/outreach/send — consent-at-send refusal integration (Outreach Draft/Preview; relocated from atomic /outreach)',
+  'POST /v1/selections/{id}/outreach/send — consent-at-send refusal integration (Outreach Draft/Preview; relocated from atomic /outreach)',
   () => {
     let container: StartedPostgreSqlContainer;
     let app: INestApplication;
@@ -231,7 +231,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         // R7 BE-prereq: engagement endpoints now scope-gated +
         // D4b-composed. requisition:read:all bypasses the D4b
         // visibility check so the happy-path tests proceed.
-        scopes: ['engagement:read', 'engagement:write', 'engagement:outreach', 'requisition:read:all'],
+        scopes: ['selection:read', 'selection:write', 'selection:outreach', 'requisition:read:all'],
       })
         .setProtectedHeader({ alg: ALG })
         .setIssuedAt()
@@ -248,7 +248,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         // R7 BE-prereq: engagement endpoints now scope-gated +
         // D4b-composed. requisition:read:all bypasses the D4b
         // visibility check so the happy-path tests proceed.
-        scopes: ['engagement:read', 'engagement:write', 'engagement:outreach', 'requisition:read:all'],
+        scopes: ['selection:read', 'selection:write', 'selection:outreach', 'requisition:read:all'],
       })
         .setProtectedHeader({ alg: ALG })
         .setIssuedAt()
@@ -374,7 +374,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       talentId: string,
       reqId: string,
     ): Promise<string> {
-      const createRes = await fetch(`http://127.0.0.1:${port}/v1/engagements`, {
+      const createRes = await fetch(`http://127.0.0.1:${port}/v1/selections`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${jwt}`,
@@ -387,7 +387,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const createBody = (await createRes.json()) as { engagement: { id: string } };
       const id = createBody.engagement.id;
       const transition = async (to: string): Promise<void> => {
-        const r = await fetch(`http://127.0.0.1:${port}/v1/engagements/${id}/transitions`, {
+        const r = await fetch(`http://127.0.0.1:${port}/v1/selections/${id}/transitions`, {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${jwt}`,
@@ -420,7 +420,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       jwt: string,
       id: string,
     ): Promise<{ status: number; body: { draft_event_id?: string; consent_warning?: unknown } }> {
-      const res = await fetch(`http://127.0.0.1:${port}/v1/engagements/${id}/outreach/draft`, {
+      const res = await fetch(`http://127.0.0.1:${port}/v1/selections/${id}/outreach/draft`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${jwt}`,
@@ -440,7 +440,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       draftEventId: string,
       key: string = randomUUID(),
     ): Promise<Response> {
-      return fetch(`http://127.0.0.1:${port}/v1/engagements/${id}/outreach/send`, {
+      return fetch(`http://127.0.0.1:${port}/v1/selections/${id}/outreach/send`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${jwt}`,

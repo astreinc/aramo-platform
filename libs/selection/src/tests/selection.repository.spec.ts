@@ -395,11 +395,11 @@ describe('SelectionRepository.createEngagement (M5 PR-3 unit)', () => {
     expect(events).toContain('engagement.created');
   });
 
-  it('Pattern C refusal — TalentRecord not in tenant (null) → ENGAGEMENT_REFERENCE_NOT_FOUND 422 with field=talent_id', async () => {
+  it('Pattern C refusal — TalentRecord not in tenant (null) → SELECTION_REFERENCE_NOT_FOUND 422 with field=talent_id', async () => {
     arrangeAllValid();
     talentRecordRepo.findById.mockResolvedValue(null);
     await expect(repo.createEngagement(validInput)).rejects.toMatchObject({
-      code: 'ENGAGEMENT_REFERENCE_NOT_FOUND',
+      code: 'SELECTION_REFERENCE_NOT_FOUND',
       statusCode: 422,
     });
     try {
@@ -414,11 +414,11 @@ describe('SelectionRepository.createEngagement (M5 PR-3 unit)', () => {
     expect(examRepo.findById).not.toHaveBeenCalled();
   });
 
-  it('Pattern A refusal — requisition null → ENGAGEMENT_REFERENCE_NOT_FOUND 422 with field=requisition_id', async () => {
+  it('Pattern A refusal — requisition null → SELECTION_REFERENCE_NOT_FOUND 422 with field=requisition_id', async () => {
     arrangeAllValid();
     requisitionRepo.findStatusById.mockResolvedValue(null);
     await expect(repo.createEngagement(validInput)).rejects.toMatchObject({
-      code: 'ENGAGEMENT_REFERENCE_NOT_FOUND',
+      code: 'SELECTION_REFERENCE_NOT_FOUND',
       statusCode: 422,
     });
     try {
@@ -430,13 +430,13 @@ describe('SelectionRepository.createEngagement (M5 PR-3 unit)', () => {
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
-  it('Pattern A refusal — requisition cross-tenant → ENGAGEMENT_REFERENCE_NOT_FOUND 422', async () => {
+  it('Pattern A refusal — requisition cross-tenant → SELECTION_REFERENCE_NOT_FOUND 422', async () => {
     arrangeAllValid();
     // T1-a — findStatusById is tenant-scoped, so a requisition that exists only
     // in another tenant returns null for this tenant (the cross-tenant refusal).
     requisitionRepo.findStatusById.mockResolvedValue(null);
     await expect(repo.createEngagement(validInput)).rejects.toMatchObject({
-      code: 'ENGAGEMENT_REFERENCE_NOT_FOUND',
+      code: 'SELECTION_REFERENCE_NOT_FOUND',
       statusCode: 422,
     });
     try {
@@ -448,11 +448,11 @@ describe('SelectionRepository.createEngagement (M5 PR-3 unit)', () => {
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
-  it('Pattern B refusal — examination null → ENGAGEMENT_REFERENCE_NOT_FOUND 422 with field=examination_id', async () => {
+  it('Pattern B refusal — examination null → SELECTION_REFERENCE_NOT_FOUND 422 with field=examination_id', async () => {
     arrangeAllValid();
     examRepo.findById.mockResolvedValue(null);
     await expect(repo.createEngagement(validInput)).rejects.toMatchObject({
-      code: 'ENGAGEMENT_REFERENCE_NOT_FOUND',
+      code: 'SELECTION_REFERENCE_NOT_FOUND',
       statusCode: 422,
     });
     try {
@@ -464,11 +464,11 @@ describe('SelectionRepository.createEngagement (M5 PR-3 unit)', () => {
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
-  it('Pattern B refusal — examination cross-tenant → ENGAGEMENT_REFERENCE_NOT_FOUND 422', async () => {
+  it('Pattern B refusal — examination cross-tenant → SELECTION_REFERENCE_NOT_FOUND 422', async () => {
     arrangeAllValid();
     examRepo.findById.mockResolvedValue({ id: EXAM_A, tenant_id: TENANT_B });
     await expect(repo.createEngagement(validInput)).rejects.toMatchObject({
-      code: 'ENGAGEMENT_REFERENCE_NOT_FOUND',
+      code: 'SELECTION_REFERENCE_NOT_FOUND',
       statusCode: 422,
     });
     expect(prisma.$transaction).not.toHaveBeenCalled();
@@ -564,11 +564,11 @@ describe('SelectionRepository.transitionState (M5 PR-3 unit)', () => {
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
-  it('illegal transition (surfaced → submitted) → ENGAGEMENT_STATE_INVALID 422; no $transaction', async () => {
+  it('illegal transition (surfaced → submitted) → SELECTION_STATE_INVALID 422; no $transaction', async () => {
     prisma.talentSelection.findFirst.mockResolvedValue(makeRow({ state: 'surfaced' }));
     const badInput: TransitionStateInput = { ...validInput, to_state: 'submitted' };
     await expect(repo.transitionState(badInput)).rejects.toMatchObject({
-      code: 'ENGAGEMENT_STATE_INVALID',
+      code: 'SELECTION_STATE_INVALID',
       statusCode: 422,
     });
     try {
@@ -668,10 +668,10 @@ describe('SelectionRepository.draftOutreach (Outreach Draft/Preview unit)', () =
   });
 
   // Amendment v1.1 Ruling 2 — DRAFT gated to engaged.
-  it('ENGAGEMENT_STATE_INVALID 422 if not engaged (canTransition false); no event append', async () => {
+  it('SELECTION_STATE_INVALID 422 if not engaged (canTransition false); no event append', async () => {
     prisma.talentSelection.findFirst.mockResolvedValue(makeRow({ state: 'surfaced' }));
     await expect(repo.draftOutreach(validInput)).rejects.toMatchObject({
-      code: 'ENGAGEMENT_STATE_INVALID',
+      code: 'SELECTION_STATE_INVALID',
       statusCode: 422,
     });
     expect(prisma.talentSelectionEvent.create).not.toHaveBeenCalled();
@@ -786,33 +786,33 @@ describe('SelectionRepository.sendOutreach (Outreach Draft/Preview unit)', () =>
   });
 
   // Amendment v1.1 §2 — source-draft cross-event-ref validation.
-  it('ENGAGEMENT_REFERENCE_NOT_FOUND 422 if draft ref does not resolve; no $transaction', async () => {
+  it('SELECTION_REFERENCE_NOT_FOUND 422 if draft ref does not resolve; no $transaction', async () => {
     prisma.talentSelection.findFirst.mockResolvedValue(makeRow({ state: 'engaged' }));
     eventRepoFindByTenantAndId.mockResolvedValue(null);
     await expect(repo.sendOutreach(validInput)).rejects.toMatchObject({
-      code: 'ENGAGEMENT_REFERENCE_NOT_FOUND',
+      code: 'SELECTION_REFERENCE_NOT_FOUND',
       statusCode: 422,
     });
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
-  it('ENGAGEMENT_REFERENCE_NOT_FOUND 422 if referenced event is not outreach_drafted', async () => {
+  it('SELECTION_REFERENCE_NOT_FOUND 422 if referenced event is not outreach_drafted', async () => {
     prisma.talentSelection.findFirst.mockResolvedValue(makeRow({ state: 'engaged' }));
     eventRepoFindByTenantAndId.mockResolvedValue({
       ...validDraftRefRow(),
       event_type: 'outreach_sent',
     });
     await expect(repo.sendOutreach(validInput)).rejects.toMatchObject({
-      code: 'ENGAGEMENT_REFERENCE_NOT_FOUND',
+      code: 'SELECTION_REFERENCE_NOT_FOUND',
       statusCode: 422,
     });
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
-  it('ENGAGEMENT_STATE_INVALID 422 if current state is not engaged (canTransition false)', async () => {
+  it('SELECTION_STATE_INVALID 422 if current state is not engaged (canTransition false)', async () => {
     prisma.talentSelection.findFirst.mockResolvedValue(makeRow({ state: 'surfaced' }));
     await expect(repo.sendOutreach(validInput)).rejects.toMatchObject({
-      code: 'ENGAGEMENT_STATE_INVALID',
+      code: 'SELECTION_STATE_INVALID',
       statusCode: 422,
     });
     expect(prisma.$transaction).not.toHaveBeenCalled();
@@ -941,11 +941,11 @@ describe('SelectionRepository.recordResponse (M5 PR-7 unit)', () => {
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
-  it('ENGAGEMENT_REFERENCE_NOT_FOUND 422 if cross-event ref null', async () => {
+  it('SELECTION_REFERENCE_NOT_FOUND 422 if cross-event ref null', async () => {
     prisma.talentSelection.findFirst.mockResolvedValue(makeRow({ state: 'awaiting_response' }));
     eventRepoFindByTenantAndId.mockResolvedValue(null);
     await expect(repo.recordResponse(validInput)).rejects.toMatchObject({
-      code: 'ENGAGEMENT_REFERENCE_NOT_FOUND',
+      code: 'SELECTION_REFERENCE_NOT_FOUND',
       statusCode: 422,
     });
     try {
@@ -957,37 +957,37 @@ describe('SelectionRepository.recordResponse (M5 PR-7 unit)', () => {
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
-  it('ENGAGEMENT_REFERENCE_NOT_FOUND 422 if cross-event ref has wrong engagement_id', async () => {
+  it('SELECTION_REFERENCE_NOT_FOUND 422 if cross-event ref has wrong engagement_id', async () => {
     prisma.talentSelection.findFirst.mockResolvedValue(makeRow({ state: 'awaiting_response' }));
     eventRepoFindByTenantAndId.mockResolvedValue({
       ...validOutreachRefRow(),
       engagement_id: '00000000-0000-7000-8000-0000eeee9999', // different engagement
     });
     await expect(repo.recordResponse(validInput)).rejects.toMatchObject({
-      code: 'ENGAGEMENT_REFERENCE_NOT_FOUND',
+      code: 'SELECTION_REFERENCE_NOT_FOUND',
       statusCode: 422,
     });
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
-  it('ENGAGEMENT_REFERENCE_NOT_FOUND 422 if cross-event ref has wrong event_type', async () => {
+  it('SELECTION_REFERENCE_NOT_FOUND 422 if cross-event ref has wrong event_type', async () => {
     prisma.talentSelection.findFirst.mockResolvedValue(makeRow({ state: 'awaiting_response' }));
     eventRepoFindByTenantAndId.mockResolvedValue({
       ...validOutreachRefRow(),
       event_type: 'state_transition', // wrong event type
     });
     await expect(repo.recordResponse(validInput)).rejects.toMatchObject({
-      code: 'ENGAGEMENT_REFERENCE_NOT_FOUND',
+      code: 'SELECTION_REFERENCE_NOT_FOUND',
       statusCode: 422,
     });
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
-  it('ENGAGEMENT_STATE_INVALID 422 if current state is not awaiting_response (e.g., surfaced)', async () => {
+  it('SELECTION_STATE_INVALID 422 if current state is not awaiting_response (e.g., surfaced)', async () => {
     prisma.talentSelection.findFirst.mockResolvedValue(makeRow({ state: 'surfaced' }));
     eventRepoFindByTenantAndId.mockResolvedValue(validOutreachRefRow());
     await expect(repo.recordResponse(validInput)).rejects.toMatchObject({
-      code: 'ENGAGEMENT_STATE_INVALID',
+      code: 'SELECTION_STATE_INVALID',
       statusCode: 422,
     });
     try {
@@ -1019,11 +1019,11 @@ describe('SelectionRepository.recordResponse (M5 PR-7 unit)', () => {
 //
 // SMALLER than PR-7 (4 tests vs 6) because PR-8a has no cross-event
 // reference validation per Ruling 3 — the
-// ENGAGEMENT_REFERENCE_NOT_FOUND refusal path doesn't exist on this
+// SELECTION_REFERENCE_NOT_FOUND refusal path doesn't exist on this
 // surface. Tests cover the 4 internal repository outcomes:
 //   1. happy: responded → in_conversation, 3-write transaction succeeds.
 //   2. NOT_FOUND: engagement absent.
-//   3. ENGAGEMENT_STATE_INVALID: includes natural-key dedup
+//   3. SELECTION_STATE_INVALID: includes natural-key dedup
 //      (in_conversation → in_conversation refused by canTransition).
 //   4. atomic transaction shape.
 describe('SelectionRepository.recordConversationStarted (M5 PR-8a unit)', () => {
@@ -1100,12 +1100,12 @@ describe('SelectionRepository.recordConversationStarted (M5 PR-8a unit)', () => 
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
-  it('ENGAGEMENT_STATE_INVALID 422 if current state is not responded (e.g., awaiting_response); also covers natural-key dedup', async () => {
+  it('SELECTION_STATE_INVALID 422 if current state is not responded (e.g., awaiting_response); also covers natural-key dedup', async () => {
     // Illegal-state path: awaiting_response → in_conversation refused
     // (canTransition matrix only allows awaiting_response → responded).
     prisma.talentSelection.findFirst.mockResolvedValue(makeRow({ state: 'awaiting_response' }));
     await expect(repo.recordConversationStarted(validInput)).rejects.toMatchObject({
-      code: 'ENGAGEMENT_STATE_INVALID',
+      code: 'SELECTION_STATE_INVALID',
       statusCode: 422,
     });
     try {
@@ -1124,7 +1124,7 @@ describe('SelectionRepository.recordConversationStarted (M5 PR-8a unit)', () => 
       await repo.recordConversationStarted(validInput);
     } catch (err) {
       const e = err as AramoError;
-      expect(e.code).toBe('ENGAGEMENT_STATE_INVALID');
+      expect(e.code).toBe('SELECTION_STATE_INVALID');
       expect(e.context.details?.['from_state']).toBe('in_conversation');
       expect(e.context.details?.['to_state']).toBe('in_conversation');
     }
