@@ -397,6 +397,8 @@
     "apps/ats-web/src/pipeline/rollup.spec.ts",
     "apps/ats-web/src/pipeline/rollup.ts",
     "apps/ats-web/src/pipeline/types.ts",
+    "apps/ats-web/src/placement/AssignmentCommercialPanel.spec.tsx",
+    "apps/ats-web/src/placement/AssignmentCommercialPanel.tsx",
     "apps/ats-web/src/placement/AssignmentLifecyclePanel.spec.tsx",
     "apps/ats-web/src/placement/AssignmentLifecyclePanel.tsx",
     "apps/ats-web/src/placement/EndAssignmentDialog.tsx",

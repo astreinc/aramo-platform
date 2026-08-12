@@ -21,6 +21,9 @@ vi.mock('./placement-api', () => ({
   listPlacementEvents: vi.fn(),
   getPlacementAssignment: vi.fn(),
   endPlacementAssignment: vi.fn(),
+  // T5-P3 — PlacementDetailView now composes AssignmentCommercialPanel, which reads
+  // through this module; the mock must expose the export or the parent cannot render.
+  getPlacementAssignmentCommercials: vi.fn(),
 }));
 
 const getPlacementMock = vi.mocked(getPlacement);

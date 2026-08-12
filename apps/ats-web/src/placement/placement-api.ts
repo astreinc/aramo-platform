@@ -1,6 +1,7 @@
 import { apiClient } from '@aramo/fe-foundation';
 
 import type {
+  AssignmentCommercialResponse,
   ContractAssignmentEndReason,
   PlacementAssignmentResponse,
   PlacementEventListResponse,
@@ -52,6 +53,20 @@ export async function getPlacementAssignment(
 ): Promise<PlacementAssignmentResponse> {
   return apiClient.get<PlacementAssignmentResponse>(
     `/v1/placements/${encodeURIComponent(id)}/assignment`,
+  );
+}
+
+// Track 5 / T5-P3 — the commercial projection read (assignment:commercials:read, a
+// DEDICATED financial scope; assignment:read / placement:read do NOT satisfy it).
+// Returns a coherent { commercials: null } when the placement has no assignment or no
+// active commercial version. The BE derives spread/margin/markup and fails closed
+// (INTERNAL_ERROR) on overlapping effective versions — the client renders the returned
+// values verbatim and never recomputes or picks a version.
+export async function getPlacementAssignmentCommercials(
+  id: string,
+): Promise<AssignmentCommercialResponse> {
+  return apiClient.get<AssignmentCommercialResponse>(
+    `/v1/placements/${encodeURIComponent(id)}/assignment/commercials`,
   );
 }
 
