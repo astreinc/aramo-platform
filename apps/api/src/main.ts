@@ -4,6 +4,7 @@ import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import cookieParser from 'cookie-parser';
 import express from 'express';
+import { resolveReleaseRevision } from '@aramo/common';
 
 import { AppModule } from './app.module.js';
 import { registerBackgroundJobSchedules } from './jobs/registration.js';
@@ -58,7 +59,12 @@ async function bootstrap(): Promise<void> {
   // RedisConnectionConfig.isConfigured so REDIS_URL-less environments boot
   // silently.
   await registerBackgroundJobSchedules(app);
-  Logger.log('aramo-core api starting', 'Bootstrap');
+  // GLH-2-A (GLH-2 Release Integrity, R9) — resolve the build-stamped release
+  // revision BEFORE the socket opens. In a governed runtime a missing/malformed
+  // revision throws here (fail-closed) so an unstamped image never serves; a
+  // local runtime resolves the `dev` sentinel and boots normally.
+  const releaseRevision = resolveReleaseRevision();
+  Logger.log(`aramo-core api starting — release revision ${releaseRevision}`, 'Bootstrap');
   await app.listen(port);
 }
 

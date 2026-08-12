@@ -91,6 +91,16 @@
       "to": "openapi/auth.yaml"
     },
     {
+      "from": "apps/api/src/controllers/version.controller.ts",
+      "status": "production",
+      "to": "apps/api/src/talent-identity/portal-notice.controller.ts"
+    },
+    {
+      "from": "apps/api/src/controllers/version.controller.ts",
+      "status": "production",
+      "to": "ci/config/api-surface-manifest.json"
+    },
+    {
       "from": "apps/api/src/policy/requisition-lifecycle.package.ts",
       "status": "production",
       "to": "scripts/verify-vocabulary.sh"
@@ -8502,6 +8512,11 @@
     {
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
+      "to": "apps/api/src/controllers/version.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
       "to": "apps/api/src/placement/placement.controller.ts"
     },
     {
@@ -12061,6 +12076,21 @@
       "from": "libs/common/src/lib/util/identity-fingerprint.ts",
       "status": "production",
       "to": "libs/identity/src/lib/dns/dns.config.ts"
+    },
+    {
+      "from": "libs/common/src/lib/util/release-identity.ts",
+      "status": "production",
+      "to": "libs/common/src/lib/util/identity-fingerprint.ts"
+    },
+    {
+      "from": "libs/common/src/lib/util/release-identity.ts",
+      "status": "production",
+      "to": "libs/identity/src/lib/dns/dns.config.ts"
+    },
+    {
+      "from": "libs/common/src/lib/util/release-identity.ts",
+      "status": "production",
+      "to": "tools/provision-e2e-recruiter.lib.ts"
     },
     {
       "excludedBy": "src/tests/**/*",

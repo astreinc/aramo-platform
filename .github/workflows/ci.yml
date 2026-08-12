@@ -187,6 +187,12 @@ jobs:
         with:
           context: .
           file: ${{ matrix.dockerfile }}
+          # GLH-2-A (GLH-2 Release Integrity, R3) — stamp the exact SOURCE revision.
+          # On push→main this is github.sha (the merge-of-record commit). On a
+          # pull_request, github.sha is GitHub's synthetic merge commit, so use the
+          # true PR head SHA instead — one value, passed once, no `git rev-parse`.
+          build-args: |
+            GIT_REVISION=${{ github.event.pull_request.head.sha || github.sha }}
           push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
           tags: |
             ghcr.io/${{ github.repository_owner }}/aramo-${{ matrix.name }}:${{ github.sha }}
