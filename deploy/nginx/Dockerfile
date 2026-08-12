@@ -69,6 +69,11 @@ RUN set -eux; \
 
 # ---------- Stage 3: runtime nginx (SPAs + config baked in) ----------------------
 FROM nginx:stable-alpine AS runtime
+# GLH-2-A (GLH-2 Release Integrity, R3) — stamp the exact source revision into the
+# artifact (OCI revision label). nginx runs no Node service, so there is no runtime
+# ARAMO_RELEASE_REVISION / /version surface here — the label is the provenance.
+ARG GIT_REVISION=unknown
+LABEL org.opencontainers.image.revision=$GIT_REVISION
 # The compiled SPAs — the only application artifacts this image carries.
 COPY --from=web-builder /app/dist/apps/ats-web /srv/ats
 COPY --from=web-builder /app/dist/apps/platform-web /srv/admin

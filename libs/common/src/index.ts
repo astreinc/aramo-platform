@@ -21,11 +21,18 @@ export {
   loadIdentityAdmissionPolicy,
 } from './lib/util/identity-admission-policy.js';
 export type { IdentityAdmissionPolicy } from './lib/util/identity-admission-policy.js';
+// GLH-2-A (GLH-2 Release Integrity, R9) — the running-release identity primitive:
+// reads the build-stamped source revision (ARAMO_RELEASE_REVISION), validates it,
+// fail-closed in a governed runtime.
 export {
-  AramoError,
-  AramoExceptionFilter,
-  ERROR_CODES,
-} from './lib/errors/index.js';
+  ReleaseIdentityService,
+  resolveReleaseRevision,
+  isGovernedRuntime,
+  RELEASE_REVISION_ENV_VAR,
+  LOCAL_REVISION_SENTINEL,
+  REVISION_REGEX,
+} from './lib/util/release-identity.js';
+export { AramoError, AramoExceptionFilter, ERROR_CODES } from './lib/errors/index.js';
 export type { AramoErrorContext, ErrorCode } from './lib/errors/index.js';
 export { CONTACT_CHANNELS } from './lib/types/contact-channel.js';
 export type { ContactChannel } from './lib/types/contact-channel.js';
@@ -35,10 +42,7 @@ export type { ConsentScopeStatus } from './lib/types/consent-scope-status.js';
 // terms (ISO-4217 currency + RatePeriod). Single backend home so libs/requisition
 // and libs/placement consume them without a placement->requisition edge.
 export { isIso4217Currency } from './lib/types/iso-4217-currency.js';
-export {
-  RATE_PERIOD_VALUES,
-  isRatePeriod,
-} from './lib/types/rate-period.js';
+export { RATE_PERIOD_VALUES, isRatePeriod } from './lib/types/rate-period.js';
 export type { RatePeriod } from './lib/types/rate-period.js';
 // AUTHZ-D4b — structural VisibilityContext shape + Request augmentation
 // (see file header). Allows entity libs to consume the resolved context
@@ -63,13 +67,9 @@ export {
 // imports CrossSchemaConsistencyModule directly; CommonModule no longer
 // surfaces BullMQ Workers.
 export { CrossSchemaConsistencyModule } from './lib/cross-schema-consistency/cross-schema-consistency.module.js';
-export {
-  CrossSchemaConsistencyProcessor,
-} from './lib/cross-schema-consistency.processor.js';
+export { CrossSchemaConsistencyProcessor } from './lib/cross-schema-consistency.processor.js';
 export type { CrossSchemaConsistencyScanInput } from './lib/cross-schema-consistency.processor.js';
-export {
-  CrossSchemaConsistencyRepository,
-} from './lib/cross-schema-consistency.repository.js';
+export { CrossSchemaConsistencyRepository } from './lib/cross-schema-consistency.repository.js';
 export type {
   CrossSchemaPairResult,
   OrphanedReferenceSample,

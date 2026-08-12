@@ -7,6 +7,7 @@
     "apps/api/src/controllers/assignable-users.controller.ts": "AP",
     "apps/api/src/controllers/examine.controller.ts": "AP",
     "apps/api/src/controllers/me.controller.ts": "AP",
+    "apps/api/src/controllers/version.controller.ts": "IZ",
     "apps/api/src/controllers/public-invitation.controller.ts": "PZ",
     "apps/api/src/controllers/public-verification.controller.ts": "PZ",
     "apps/api/src/controllers/tenant-settings.controller.ts": "AP",
