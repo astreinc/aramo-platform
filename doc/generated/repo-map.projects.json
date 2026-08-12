@@ -217,8 +217,12 @@
       "ERROR_CODES",
       "IDENTITY_ADMISSION_POLICIES",
       "IDENTITY_MIGRATIONS",
+      "LOCAL_REVISION_SENTINEL",
       "RATE_PERIOD_VALUES",
+      "RELEASE_REVISION_ENV_VAR",
+      "REVISION_REGEX",
       "RedisConnectionConfig",
+      "ReleaseIdentityService",
       "RequestId",
       "RequestIdMiddleware",
       "assertModuleHasNoLlmImports",
@@ -226,6 +230,7 @@
       "createAramoLogger",
       "findNoLlmBoundaryViolations",
       "hashCanonicalizedBody",
+      "isGovernedRuntime",
       "isIso4217Currency",
       "isRatePeriod",
       "loadIdentityAdmissionPolicy",
@@ -234,7 +239,8 @@
       "normalizeEmail",
       "normalizePhone",
       "resolveAuthStorageMigrations",
-      "resolveIdentityMigrations"
+      "resolveIdentityMigrations",
+      "resolveReleaseRevision"
     ],
     "@aramo/company": [
       "CompanyController",
@@ -1517,6 +1523,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/tr2b-b2b-admit-arrivals.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/version.controller.spec.ts",
         "project": "api",
         "status": "excluded"
       },

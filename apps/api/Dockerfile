@@ -59,8 +59,16 @@ RUN set -eux; \
 
 # ---------- Stage 2: runtime (slim, non-root) ----------
 FROM node:24-bookworm-slim AS runtime
+# GLH-2-A (GLH-2 Release Integrity, R3/R9) — stamp the exact source revision into
+# the artifact (OCI revision label) and bake it for the runtime
+# (ARAMO_RELEASE_REVISION, read by @aramo/common ReleaseIdentity). Defaulted so a
+# local `docker build` without --build-arg still builds; a governed runtime with
+# an unstamped/`unknown` value fails closed at boot.
+ARG GIT_REVISION=unknown
+LABEL org.opencontainers.image.revision=$GIT_REVISION
 ENV NODE_ENV=production \
-    PORT=3000
+    PORT=3000 \
+    ARAMO_RELEASE_REVISION=$GIT_REVISION
 WORKDIR /app
 
 # Only the resolved prod node_modules (incl. @aramo symlinks) + built dist.

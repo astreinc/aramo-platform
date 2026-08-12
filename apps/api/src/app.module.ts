@@ -3,6 +3,7 @@ import { APP_INTERCEPTOR } from '@nestjs/core';
 import {
   CommonModule,
   CrossSchemaConsistencyModule,
+  ReleaseIdentityService,
   RequestIdMiddleware,
 } from '@aramo/common';
 import { VisibilityInterceptor, VisibilityModule } from '@aramo/visibility';
@@ -90,6 +91,7 @@ import { ExamineController } from './controllers/examine.controller.js';
 import { TenantSettingsController } from './controllers/tenant-settings.controller.js';
 import { AssignableUsersController } from './controllers/assignable-users.controller.js';
 import { MeController } from './controllers/me.controller.js';
+import { VersionController } from './controllers/version.controller.js';
 import { PublicInvitationController } from './controllers/public-invitation.controller.js';
 import { CompensationFieldMaskInterceptor } from './interceptors/compensation-field-mask.interceptor.js';
 import { TalentRecordEnrichmentInterceptor } from './talent-enrichment/talent-record-enrichment.interceptor.js';
@@ -465,6 +467,7 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     // tenant read composed on IdentityService — it never touches the token
     // surface (reads only; the session DTO stays frozen at 6 fields).
     MeController,
+    VersionController,
     // Invite-S2 (Pattern-2) — the PUBLIC (un-guarded) invitation-acceptance
     // endpoint (POST /v1/invitations/accept). No JwtAuthGuard — the invitee
     // has no session yet; authority is the single-use token in the body.
@@ -516,6 +519,9 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     IndeedApplyController,
   ],
   providers: [
+    // GLH-2-A (GLH-2 Release Integrity, R9) — the running-release identity service
+    // backing GET /version (the build-stamped source revision).
+    ReleaseIdentityService,
     // Inc-3 PR-3.7 (R12) — the tenant WRITE-freeze. Registered FIRST among the
     // APP_INTERCEPTORs so this blocking policy check runs before any response-
     // shaping or enrichment work is spent: a still-valid session (within the
