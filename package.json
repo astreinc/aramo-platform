@@ -51,6 +51,7 @@
     "env:passthrough-check": "node --import jiti/register ci/scripts/verify-env-passthrough.ts",
     "aggregate-gate:check": "node --import jiti/register ci/scripts/verify-aggregate-gate.ts",
     "contract-parity:check": "node --import jiti/register ci/scripts/verify-api-contract-parity.ts",
+    "release-manifest:selftest": "node --import jiti/register ci/scripts/release-manifest.ts --selftest",
     "identity-index:privacy-wall": "vitest run --root libs/identity-index privacy-wall && vitest run --root libs/platform-trust privacy-wall",
     "verify:vocabulary": "bash scripts/verify-vocabulary.sh",
     "prepush": "node --import jiti/register ci/scripts/prepush.ts"

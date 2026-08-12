@@ -62,6 +62,11 @@
     {
       "from": ".github/workflows/ci.yml",
       "status": "unscoped",
+      "to": "ci/scripts/release-manifest.ts"
+    },
+    {
+      "from": ".github/workflows/ci.yml",
+      "status": "unscoped",
       "to": "ci/scripts/verify-frontdoor-conf.ts"
     },
     { "from": ".github/workflows/ci.yml", "status": "unscoped", "to": "scripts/audit-check.sh" },
@@ -13480,6 +13485,7 @@
     { "from": "package.json", "status": "unscoped", "to": "ci/scripts/generate-placement-sql.ts" },
     { "from": "package.json", "status": "unscoped", "to": "ci/scripts/generate-repo-map.ts" },
     { "from": "package.json", "status": "unscoped", "to": "ci/scripts/prepush.ts" },
+    { "from": "package.json", "status": "unscoped", "to": "ci/scripts/release-manifest.ts" },
     { "from": "package.json", "status": "unscoped", "to": "ci/scripts/run-integration.ts" },
     { "from": "package.json", "status": "unscoped", "to": "ci/scripts/verify-aggregate-gate.ts" },
     {
@@ -15188,7 +15194,7 @@
   ],
   "scanScope": {
     "dirs": [".github/workflows", ".husky", "ci/scripts", "deploy", "scripts", "tools"],
-    "files": 57,
+    "files": 58,
     "huskyPresent": false
   },
   "scripts": [
@@ -15223,6 +15229,7 @@
         { "kind": "prose", "path": "ci/scripts/integration-roots.ts" },
         { "kind": "nx-target", "path": "ci/scripts/prepush.ts" },
         { "kind": "prose", "path": "ci/scripts/prepush.ts" },
+        { "kind": "prose", "path": "ci/scripts/release-manifest.ts" },
         { "kind": "prose", "path": "ci/scripts/verify-aggregate-gate.ts" },
         { "kind": "prose", "path": "ci/scripts/verify-env-passthrough.ts" },
         { "kind": "prose", "path": "ci/scripts/verify-placement-sql.ts" },
@@ -15447,6 +15454,14 @@
     { "name": "prisma:validate-auth-storage", "references": [] },
     { "name": "prisma:validate-identity", "references": [] },
     {
+      "name": "release-manifest:selftest",
+      "references": [
+        { "kind": "npm-run", "path": ".github/workflows/ci.yml" },
+        { "kind": "npm-run", "path": "ci/scripts/prepush.ts" },
+        { "kind": "prose", "path": "ci/scripts/prepush.ts" }
+      ]
+    },
+    {
       "name": "repo-map:check",
       "references": [
         { "kind": "npm-run", "path": ".github/workflows/ci.yml" },
@@ -15476,6 +15491,7 @@
         { "kind": "prose", "path": "ci/scripts/generate-repo-map.ts" },
         { "kind": "prose", "path": "ci/scripts/integration-roots.ts" },
         { "kind": "prose", "path": "ci/scripts/prepush.ts" },
+        { "kind": "prose", "path": "ci/scripts/release-manifest.ts" },
         { "kind": "prose", "path": "ci/scripts/verify-aggregate-gate.ts" },
         { "kind": "prose", "path": "ci/scripts/verify-api-contract-parity.ts" },
         { "kind": "prose", "path": "ci/scripts/verify-error-codes.ts" },
