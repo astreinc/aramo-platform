@@ -25,6 +25,7 @@ const MIGRATIONS = [
   '20260810110000_placement_assignment_aware_guard',
   '20260810120000_placement_assignment_end_reason',
   '20260810130000_t5_assignment_rate_version',
+  '20260812140000_t6_b1_effective_window_substrate',
 ].map((d) => resolve(__dirname, `../../prisma/migrations/${d}/migration.sql`));
 
 // Dollar-quote-aware, line-comment-blind statement splitter (the migrations keep

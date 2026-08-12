@@ -328,6 +328,19 @@ model AssignmentRateVersion {
   recorded_by   String  @db.Uuid
   change_reason String?
 
+  // Cancellation representation (Track 6 / T6-B1 §3). Same-row so the overlap
+  // exclusion constraint can drop cancelled rows via a single-table partial
+  // predicate (an index predicate cannot reach through a join). NULL for every
+  // existing and B1-created row: B1 writes NONE of these — the B3 cancellation
+  // operation owns their governed one-shot write. cancellation_reason_code is a
+  // nullable code (NOT a Postgres enum yet — B3 rules the vocabulary). The DB
+  // interval CHECK, the btree_gist overlap EXCLUDE, and the governed effective_to
+  // first-close trigger are migration-only (20260812140000), invisible to
+  // prisma:validate, mirroring the existing append-only trigger + pg_trgm precedent.
+  cancelled_at             DateTime? @db.Timestamptz(6)
+  cancelled_by             String?   @db.Uuid
+  cancellation_reason_code String?
+
   created_at DateTime @default(now()) @db.Timestamptz(6)
 
   // Version-ready idempotency floor: keyed on the effective instant so T6 can add
