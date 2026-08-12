@@ -1,7 +1,7 @@
 import type { TalentSelectionEventView as TalentEngagementEventView } from '@aramo/selection';
 
 // M5 PR-4 §4.2 — HTTP response DTO for
-// GET /v1/engagements/{id}/events 200.
+// GET /v1/selections/{id}/events 200.
 //
 // Returns the chronological event log for an engagement. Order: ASC by
 // created_at (mirrors EngagementEventRepository.findByEngagementId

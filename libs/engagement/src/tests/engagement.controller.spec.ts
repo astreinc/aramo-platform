@@ -241,9 +241,9 @@ describe('EngagementController.createEngagement (M5 PR-4 unit)', () => {
     ).rejects.toMatchObject({ code: 'VALIDATION_ERROR', statusCode: 400 });
   });
 
-  it('ENGAGEMENT_REFERENCE_NOT_FOUND propagates from repository with requestId re-binding', async () => {
+  it('SELECTION_REFERENCE_NOT_FOUND propagates from repository with requestId re-binding', async () => {
     m.engagementRepo.createEngagement.mockRejectedValue(
-      new AramoError('ENGAGEMENT_REFERENCE_NOT_FOUND', 'Talent not visible in tenant', 422, {
+      new AramoError('SELECTION_REFERENCE_NOT_FOUND', 'Talent not visible in tenant', 422, {
         requestId: 'engagement-create',
         details: { field: 'talent_id' },
       }),
@@ -253,7 +253,7 @@ describe('EngagementController.createEngagement (M5 PR-4 unit)', () => {
       throw new Error('expected throw');
     } catch (err) {
       const e = err as AramoError;
-      expect(e.code).toBe('ENGAGEMENT_REFERENCE_NOT_FOUND');
+      expect(e.code).toBe('SELECTION_REFERENCE_NOT_FOUND');
       expect(e.statusCode).toBe(422);
       expect(e.context.requestId).toBe(REQUEST_ID);
     }
@@ -327,9 +327,9 @@ describe('EngagementController.transitionEngagement (M5 PR-4 unit)', () => {
     ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
   });
 
-  it('ENGAGEMENT_STATE_INVALID propagates with requestId re-binding', async () => {
+  it('SELECTION_STATE_INVALID propagates with requestId re-binding', async () => {
     m.engagementRepo.transitionState.mockRejectedValue(
-      new AramoError('ENGAGEMENT_STATE_INVALID', 'illegal', 422, {
+      new AramoError('SELECTION_STATE_INVALID', 'illegal', 422, {
         requestId: 'engagement-transition',
         details: { from_state: 'surfaced', to_state: 'submitted' },
       }),
@@ -339,7 +339,7 @@ describe('EngagementController.transitionEngagement (M5 PR-4 unit)', () => {
       throw new Error('expected throw');
     } catch (err) {
       const e = err as AramoError;
-      expect(e.code).toBe('ENGAGEMENT_STATE_INVALID');
+      expect(e.code).toBe('SELECTION_STATE_INVALID');
       expect(e.context.requestId).toBe(REQUEST_ID);
     }
   });
@@ -512,7 +512,7 @@ describe('EngagementController.draftOutreach (Outreach Draft/Preview unit)', () 
 
   // Amendment v1.1 Ruling 2 — DRAFT is GATED to engaged: a non-engaged
   // engagement 422s BEFORE generateDraft (no stranded drafts, no wasted LLM).
-  it('ENGAGEMENT_STATE_INVALID 422 when engagement not in engaged state; generateDraft NOT called', async () => {
+  it('SELECTION_STATE_INVALID 422 when engagement not in engaged state; generateDraft NOT called', async () => {
     m.engagementRepo.findByTenantAndId.mockResolvedValue({
       id: ENGAGEMENT_1,
       tenant_id: TENANT_A,
@@ -524,7 +524,7 @@ describe('EngagementController.draftOutreach (Outreach Draft/Preview unit)', () 
     });
     await expect(
       m.controller.draftOutreach(ENGAGEMENT_1, body, VALID_IDEM_KEY, recruiterAuthContext(), REQUEST_ID),
-    ).rejects.toMatchObject({ code: 'ENGAGEMENT_STATE_INVALID', statusCode: 422 });
+    ).rejects.toMatchObject({ code: 'SELECTION_STATE_INVALID', statusCode: 422 });
     expect(m.aiDraftService.generateDraft).not.toHaveBeenCalled();
     expect(m.engagementRepo.draftOutreach).not.toHaveBeenCalled();
   });
@@ -696,7 +696,7 @@ describe('EngagementController.sendOutreach (Outreach Draft/Preview unit)', () =
 
   // True single-send: a second send finds state 'awaiting_response' and
   // 422s at the pre-gate BEFORE re-delivering.
-  it('ENGAGEMENT_STATE_INVALID 422 when not engaged; delivery NOT called (no double-send)', async () => {
+  it('SELECTION_STATE_INVALID 422 when not engaged; delivery NOT called (no double-send)', async () => {
     m.engagementRepo.findByTenantAndId.mockResolvedValue({
       id: ENGAGEMENT_1,
       tenant_id: TENANT_A,
@@ -708,21 +708,21 @@ describe('EngagementController.sendOutreach (Outreach Draft/Preview unit)', () =
     });
     await expect(
       m.controller.sendOutreach(ENGAGEMENT_1, body, VALID_IDEM_KEY, recruiterAuthContext(), REQUEST_ID),
-    ).rejects.toMatchObject({ code: 'ENGAGEMENT_STATE_INVALID', statusCode: 422 });
+    ).rejects.toMatchObject({ code: 'SELECTION_STATE_INVALID', statusCode: 422 });
     expect(m.deliveryProvider.deliver).not.toHaveBeenCalled();
     expect(m.engagementRepo.sendOutreach).not.toHaveBeenCalled();
   });
 
-  it('ENGAGEMENT_REFERENCE_NOT_FOUND 422 when draft_event_id does not resolve; delivery NOT called', async () => {
+  it('SELECTION_REFERENCE_NOT_FOUND 422 when draft_event_id does not resolve; delivery NOT called', async () => {
     m.eventRepo.findByTenantAndId.mockResolvedValue(null);
     await expect(
       m.controller.sendOutreach(ENGAGEMENT_1, body, VALID_IDEM_KEY, recruiterAuthContext(), REQUEST_ID),
-    ).rejects.toMatchObject({ code: 'ENGAGEMENT_REFERENCE_NOT_FOUND', statusCode: 422 });
+    ).rejects.toMatchObject({ code: 'SELECTION_REFERENCE_NOT_FOUND', statusCode: 422 });
     expect(m.deliveryProvider.deliver).not.toHaveBeenCalled();
     expect(m.engagementRepo.sendOutreach).not.toHaveBeenCalled();
   });
 
-  it('ENGAGEMENT_REFERENCE_NOT_FOUND 422 when referenced event is not an outreach_drafted', async () => {
+  it('SELECTION_REFERENCE_NOT_FOUND 422 when referenced event is not an outreach_drafted', async () => {
     m.eventRepo.findByTenantAndId.mockResolvedValue({
       id: DRAFT_EVENT_ID,
       tenant_id: TENANT_A,
@@ -733,7 +733,7 @@ describe('EngagementController.sendOutreach (Outreach Draft/Preview unit)', () =
     });
     await expect(
       m.controller.sendOutreach(ENGAGEMENT_1, body, VALID_IDEM_KEY, recruiterAuthContext(), REQUEST_ID),
-    ).rejects.toMatchObject({ code: 'ENGAGEMENT_REFERENCE_NOT_FOUND', statusCode: 422 });
+    ).rejects.toMatchObject({ code: 'SELECTION_REFERENCE_NOT_FOUND', statusCode: 422 });
     expect(m.deliveryProvider.deliver).not.toHaveBeenCalled();
   });
 
@@ -771,16 +771,16 @@ describe('EngagementController.sendOutreach (Outreach Draft/Preview unit)', () =
     expect(m.deliveryProvider.deliver).not.toHaveBeenCalled();
   });
 
-  it('ENGAGEMENT_STATE_INVALID 422 propagates from repository.sendOutreach', async () => {
+  it('SELECTION_STATE_INVALID 422 propagates from repository.sendOutreach', async () => {
     m.engagementRepo.sendOutreach.mockRejectedValue(
-      new AramoError('ENGAGEMENT_STATE_INVALID', 'illegal', 422, {
+      new AramoError('SELECTION_STATE_INVALID', 'illegal', 422, {
         requestId: 'engagement-outreach',
         details: { from_state: 'surfaced', to_state: 'awaiting_response' },
       }),
     );
     await expect(
       m.controller.sendOutreach(ENGAGEMENT_1, body, VALID_IDEM_KEY, recruiterAuthContext(), REQUEST_ID),
-    ).rejects.toMatchObject({ code: 'ENGAGEMENT_STATE_INVALID', statusCode: 422 });
+    ).rejects.toMatchObject({ code: 'SELECTION_STATE_INVALID', statusCode: 422 });
   });
 
   it('idempotency replay: returns prior body; delivery + repo NOT called', async () => {
@@ -885,7 +885,7 @@ describe('EngagementController.recordResponse (M5 PR-7 unit)', () => {
 
   it('NOT_FOUND 404 propagates with requestId re-binding', async () => {
     m.engagementRepo.recordResponse.mockRejectedValue(
-      new AramoError('NOT_FOUND', 'TalentJobEngagement not found', 404, {
+      new AramoError('NOT_FOUND', 'TalentSelection not found', 404, {
         requestId: 'engagement-record-response',
         details: { engagement_id: ENGAGEMENT_1 },
       }),
@@ -901,22 +901,22 @@ describe('EngagementController.recordResponse (M5 PR-7 unit)', () => {
     }
   });
 
-  it('ENGAGEMENT_STATE_INVALID 422 propagates (e.g., engagement already in responded)', async () => {
+  it('SELECTION_STATE_INVALID 422 propagates (e.g., engagement already in responded)', async () => {
     m.engagementRepo.recordResponse.mockRejectedValue(
-      new AramoError('ENGAGEMENT_STATE_INVALID', 'illegal transition', 422, {
+      new AramoError('SELECTION_STATE_INVALID', 'illegal transition', 422, {
         requestId: 'engagement-record-response',
         details: { from_state: 'responded', to_state: 'responded' },
       }),
     );
     await expect(
       m.controller.recordResponse(ENGAGEMENT_1, body, VALID_IDEM_KEY, recruiterAuthContext(), REQUEST_ID),
-    ).rejects.toMatchObject({ code: 'ENGAGEMENT_STATE_INVALID', statusCode: 422 });
+    ).rejects.toMatchObject({ code: 'SELECTION_STATE_INVALID', statusCode: 422 });
   });
 
-  it('ENGAGEMENT_REFERENCE_NOT_FOUND 422 propagates (cross-event ref refusal)', async () => {
+  it('SELECTION_REFERENCE_NOT_FOUND 422 propagates (cross-event ref refusal)', async () => {
     m.engagementRepo.recordResponse.mockRejectedValue(
       new AramoError(
-        'ENGAGEMENT_REFERENCE_NOT_FOUND',
+        'SELECTION_REFERENCE_NOT_FOUND',
         'outreach_event_ref_id not found, not in tenant, or not an outreach_sent event',
         422,
         {
@@ -930,7 +930,7 @@ describe('EngagementController.recordResponse (M5 PR-7 unit)', () => {
       throw new Error('expected throw');
     } catch (err) {
       const e = err as AramoError;
-      expect(e.code).toBe('ENGAGEMENT_REFERENCE_NOT_FOUND');
+      expect(e.code).toBe('SELECTION_REFERENCE_NOT_FOUND');
       expect(e.statusCode).toBe(422);
       expect(e.context.details?.['field']).toBe('outreach_event_ref_id');
     }
@@ -1055,7 +1055,7 @@ describe('EngagementController.recordConversationStarted (M5 PR-8a unit)', () =>
 
   it('NOT_FOUND 404 propagates with requestId re-binding', async () => {
     m.engagementRepo.recordConversationStarted.mockRejectedValue(
-      new AramoError('NOT_FOUND', 'TalentJobEngagement not found', 404, {
+      new AramoError('NOT_FOUND', 'TalentSelection not found', 404, {
         requestId: 'engagement-record-conversation-started',
         details: { engagement_id: ENGAGEMENT_1 },
       }),
@@ -1077,9 +1077,9 @@ describe('EngagementController.recordConversationStarted (M5 PR-8a unit)', () =>
     }
   });
 
-  it('ENGAGEMENT_STATE_INVALID 422 propagates (covers both illegal-state + natural-key dedup)', async () => {
+  it('SELECTION_STATE_INVALID 422 propagates (covers both illegal-state + natural-key dedup)', async () => {
     m.engagementRepo.recordConversationStarted.mockRejectedValue(
-      new AramoError('ENGAGEMENT_STATE_INVALID', 'illegal transition', 422, {
+      new AramoError('SELECTION_STATE_INVALID', 'illegal transition', 422, {
         requestId: 'engagement-record-conversation-started',
         details: { from_state: 'in_conversation', to_state: 'in_conversation' },
       }),
@@ -1092,7 +1092,7 @@ describe('EngagementController.recordConversationStarted (M5 PR-8a unit)', () =>
         recruiterAuthContext(),
         REQUEST_ID,
       ),
-    ).rejects.toMatchObject({ code: 'ENGAGEMENT_STATE_INVALID', statusCode: 422 });
+    ).rejects.toMatchObject({ code: 'SELECTION_STATE_INVALID', statusCode: 422 });
   });
 
   it('IDEMPOTENCY_KEY_CONFLICT 409 propagates from idempotency.lookup; repository NOT called', async () => {

@@ -177,7 +177,7 @@ export function TalentDetailView({ sessionOverride }: TalentDetailViewProps) {
       ),
     });
   }
-  if (scopes.includes('engagement:read')) {
+  if (scopes.includes('selection:read')) {
     tabs.push({
       id: 'engagements',
       label: 'Engagements',

@@ -145,7 +145,7 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     PolicyStartupModule,
     EngagementModule,
     // T2-P2 — the canonical Selection domain. EngagementModule is the frozen
-    // /v1/engagements controller facade (which imports SelectionModule for its
+    // /v1/selections controller facade (which imports SelectionModule for its
     // own controller); AppModule imports SelectionModule directly too so the
     // relocated RecordReconcileOrchestrator can inject SelectionRepository.
     SelectionModule,

@@ -2,7 +2,7 @@
 // event_payload shape for TalentSelectionEvent rows of
 // event_type='outreach_drafted'.
 //
-// Appended by POST /v1/engagements/{id}/outreach/draft. Represents a
+// Appended by POST /v1/selections/{id}/outreach/draft. Represents a
 // PENDING, NOT-yet-delivered AI draft the recruiter reviews (and may
 // edit) before SEND. NO delivery / outbox / state-transition is
 // associated with this event.

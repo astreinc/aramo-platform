@@ -188,8 +188,8 @@ export function EngagementDetailView({
   }
   if (engagement === null || session === null) return null;
 
-  const canWrite = hasScope(session, 'engagement:write');
-  const canOutreach = hasScope(session, 'engagement:outreach');
+  const canWrite = hasScope(session, 'selection:write');
+  const canOutreach = hasScope(session, 'selection:outreach');
   const outreachSentEvents = events.filter(
     (e) => e.event_type === 'outreach_sent',
   );

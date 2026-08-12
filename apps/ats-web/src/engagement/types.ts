@@ -157,7 +157,7 @@ export interface ConversationStartedPayload {
 
 // ---- request bodies ----------------------------------------------------
 
-// POST /v1/engagements/:id/transitions — { to_state, event_id }. The
+// POST /v1/selections/:id/transitions — { to_state, event_id }. The
 // event_id is a client-supplied UUID (the BE @IsUUID-validates it; create
 // generates it server-side, but transitions carry it in the body). Plus
 // the Idempotency-Key header (see ./engagement-api.ts).
@@ -166,7 +166,7 @@ export interface TransitionEngagementRequest {
   readonly event_id: string;
 }
 
-// POST /v1/engagements/:id/response — the outreach_event_ref_id references
+// POST /v1/selections/:id/response — the outreach_event_ref_id references
 // a prior outreach_sent event (RULING 3 — a response answers a SENT
 // outreach, not a draft). recorded_by_user_id is server-derived (NOT in
 // the FE body).
@@ -175,7 +175,7 @@ export interface RecordResponseRequest {
   readonly outreach_event_ref_id: string;
 }
 
-// POST /v1/engagements/:id/conversation — single field.
+// POST /v1/selections/:id/conversation — single field.
 export interface RecordConversationRequest {
   readonly conversation_started_at: string;
 }
@@ -203,7 +203,7 @@ export interface RecordConversationResponse {
 // PR#218 draft/send split (the atomic outreach path was removed — preview-
 // before-send is the only path).
 
-// POST /v1/engagements/:id/outreach/draft — the GENERATION half. The prompt
+// POST /v1/selections/:id/outreach/draft — the GENERATION half. The prompt
 // runs the LLM; max_tokens/system_message are optional provider passthroughs;
 // recipient_handle is an optional opaque correlation handle. Carried with an
 // Idempotency-Key header RE-MINTED per generation attempt (a changed prompt
@@ -230,7 +230,7 @@ export interface OutreachDraftResponse {
   readonly consent_warning?: OutreachDraftConsentWarning;
 }
 
-// POST /v1/engagements/:id/outreach/send — the DELIVERY half. Takes the
+// POST /v1/selections/:id/outreach/send — the DELIVERY half. Takes the
 // source draft_event_id + the recruiter-approved final_text (which may differ
 // from draft_text — the editable trail). Carried with an Idempotency-Key
 // header KEYED ON draft_event_id (stable across send retries → dedupes,

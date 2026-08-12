@@ -2886,6 +2886,12 @@
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/engagement.controller.integration.spec.ts",
       "status": "excluded",
+      "to": "apps/auth-service/src/tests/refresh-orchestrator.service.spec.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/engagement.controller.integration.spec.ts",
+      "status": "excluded",
       "to": "libs/consent/prisma/migrations/20260429164414_initial_consent_schema/migration.sql"
     },
     {
@@ -2911,6 +2917,18 @@
       "from": "apps/api/src/tests/engagement.controller.integration.spec.ts",
       "status": "excluded",
       "to": "libs/examination/prisma/migrations/20260521120000_add_live_list_index/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/engagement.controller.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/fe-foundation/src/api/client.spec.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/engagement.controller.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/seed.ts"
     },
     {
       "excludedBy": "src/tests/**/*",

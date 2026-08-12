@@ -3169,9 +3169,9 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           // requisition:read:all is already present above and bypasses
           // the D4b visibility check on engagement endpoints (provider
           // tests verify the API contract, not visibility scoping).
-          'engagement:read',
-          'engagement:write',
-          'engagement:outreach',
+          'selection:read',
+          'selection:write',
+          'selection:outreach',
           // PC-4 — talent-record CRUD scopes (RolesGuard @RequireScopes on
           // libs/talent-record/src/lib/talent-record.controller.ts). Additive;
           // existing interactions check their own scopes, so extra scopes are
@@ -3897,7 +3897,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           });
         },
 
-      // --- POST /v1/engagements (create) ---
+      // --- POST /v1/selections (create) ---
       'an idempotency key has been recorded with a prior engagement-create response':
         async () => {
           await withClient(async (c) => {
@@ -3926,7 +3926,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           });
         },
 
-      // --- POST /v1/engagements/:id/transitions ---
+      // --- POST /v1/selections/:id/transitions ---
       'an idempotency key has been recorded with a prior engagement-transition response':
         async () => {
           await withClient(async (c) => {
@@ -3955,7 +3955,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           });
         },
 
-      // --- POST /v1/engagements/:id/outreach ---
+      // --- POST /v1/selections/:id/outreach ---
       'an idempotency key has been recorded with a prior outreach-send response':
         async () => {
           await withClient(async (c) => {
@@ -3981,7 +3981,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           });
         },
 
-      // --- POST /v1/engagements/:id/response ---
+      // --- POST /v1/selections/:id/response ---
       'an idempotency key has been recorded with a prior response-received response':
         async () => {
           await withClient(async (c) => {
@@ -4011,7 +4011,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           });
         },
 
-      // --- POST /v1/engagements/:id/conversation ---
+      // --- POST /v1/selections/:id/conversation ---
       'an idempotency key has been recorded with a prior conversation-started response':
         async () => {
           await withClient(async (c) => {

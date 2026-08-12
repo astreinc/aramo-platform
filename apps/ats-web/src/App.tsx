@@ -291,7 +291,7 @@ export function App() {
                       path="engagements/:engagementId"
                       element={
                         <RouteGuard
-                          requireScope="engagement:read"
+                          requireScope="selection:read"
                           sessionStateOverride={state}
                         >
                           <EngagementDetailView />

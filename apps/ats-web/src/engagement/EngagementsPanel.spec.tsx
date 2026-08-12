@@ -62,7 +62,7 @@ describe('EngagementsPanel', () => {
 
   it('fetches engagements filtered on talent_id (NOT talent_record_id)', async () => {
     installFetch({
-      '/v1/engagements': { items: [makeEngagement()] },
+      '/v1/selections': { items: [makeEngagement()] },
       '/v1/requisitions/req-1': { title: 'Senior Engineer' },
     });
     renderPanel();
@@ -76,7 +76,7 @@ describe('EngagementsPanel', () => {
     expect(link).toHaveAttribute('href', '/engagements/eng-1');
     // The list filter used talent_id.
     const calls = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls;
-    const listCall = calls.find((c) => String(c[0]).includes('/v1/engagements'));
+    const listCall = calls.find((c) => String(c[0]).includes('/v1/selections'));
     const url = String(listCall?.[0]);
     expect(url).toContain('talent_id=tal-1');
     expect(url).not.toContain('talent_record_id');
@@ -84,7 +84,7 @@ describe('EngagementsPanel', () => {
 
   it('falls back to the requisition id when the title fetch fails (graceful N+1)', async () => {
     installFetch({
-      '/v1/engagements': { items: [makeEngagement()] },
+      '/v1/selections': { items: [makeEngagement()] },
       '/v1/requisitions/req-1': { status: 403, body: { message: 'no' } },
     });
     renderPanel();
@@ -94,7 +94,7 @@ describe('EngagementsPanel', () => {
   });
 
   it('renders the honest empty-state', async () => {
-    installFetch({ '/v1/engagements': { items: [] } });
+    installFetch({ '/v1/selections': { items: [] } });
     renderPanel();
     await waitFor(() =>
       expect(
@@ -105,7 +105,7 @@ describe('EngagementsPanel', () => {
 
   it('surfaces the error message when the list fetch 403s', async () => {
     installFetch({
-      '/v1/engagements': { status: 403, body: { message: 'no' } },
+      '/v1/selections': { status: 403, body: { message: 'no' } },
     });
     renderPanel();
     await waitFor(() =>

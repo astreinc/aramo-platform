@@ -29,7 +29,7 @@ import {
 import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
 
 // M5 PR-8a §4.11 — negative-shape integration test for POST
-// /v1/engagements/{id}/conversation. F23 standing pattern: walk the
+// /v1/selections/{id}/conversation. F23 standing pattern: walk the
 // 200 response recursively and assert no Match-Class forbidden keys
 // leak.
 //
@@ -123,7 +123,7 @@ function splitDdl(sql: string): string[] {
 }
 
 describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
-  'POST /v1/engagements/{id}/conversation — negative-shape (no Match-Class vocabulary leak)',
+  'POST /v1/selections/{id}/conversation — negative-shape (no Match-Class vocabulary leak)',
   () => {
     let container: StartedPostgreSqlContainer;
     let app: INestApplication;
@@ -212,7 +212,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         tenant_id: TENANT_ID,
         // R7 BE-prereq: engagement endpoints now scope-gated.
         // requisition:read:all bypasses D4b visibility.
-        scopes: ['engagement:read', 'engagement:write', 'engagement:outreach', 'requisition:read:all'],
+        scopes: ['selection:read', 'selection:write', 'selection:outreach', 'requisition:read:all'],
       })
         .setProtectedHeader({ alg: ALG })
         .setIssuedAt()
@@ -280,7 +280,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Build an engagement and walk it to responded state:
       // surfaced → evaluated → engaged → outreach (awaiting_response) →
       // response-received (responded).
-      const createRes = await fetch(`http://127.0.0.1:${port}/v1/engagements`, {
+      const createRes = await fetch(`http://127.0.0.1:${port}/v1/selections`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${recruiterJwt}`,
@@ -294,7 +294,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const engagementId = createBody.engagement.id;
 
       const transition = async (to_state: string): Promise<void> => {
-        const r = await fetch(`http://127.0.0.1:${port}/v1/engagements/${engagementId}/transitions`, {
+        const r = await fetch(`http://127.0.0.1:${port}/v1/selections/${engagementId}/transitions`, {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${recruiterJwt}`,
@@ -310,7 +310,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       // Outreach Draft/Preview split: DRAFT then SEND.
       const draftRes = await fetch(
-        `http://127.0.0.1:${port}/v1/engagements/${engagementId}/outreach/draft`,
+        `http://127.0.0.1:${port}/v1/selections/${engagementId}/outreach/draft`,
         {
           method: 'POST',
           headers: {
@@ -324,7 +324,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(draftRes.status).toBe(200);
       const draftEventId = ((await draftRes.json()) as { draft_event_id: string }).draft_event_id;
       const outreachRes = await fetch(
-        `http://127.0.0.1:${port}/v1/engagements/${engagementId}/outreach/send`,
+        `http://127.0.0.1:${port}/v1/selections/${engagementId}/outreach/send`,
         {
           method: 'POST',
           headers: {
@@ -338,7 +338,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(outreachRes.status).toBe(200);
       const outreachBody = (await outreachRes.json()) as { outreach_event: { id: string } };
 
-      const responseRes = await fetch(`http://127.0.0.1:${port}/v1/engagements/${engagementId}/response`, {
+      const responseRes = await fetch(`http://127.0.0.1:${port}/v1/selections/${engagementId}/response`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${recruiterJwt}`,
@@ -353,7 +353,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(responseRes.status).toBe(200);
 
       // Now record the conversation-started event.
-      const res = await fetch(`http://127.0.0.1:${port}/v1/engagements/${engagementId}/conversation`, {
+      const res = await fetch(`http://127.0.0.1:${port}/v1/selections/${engagementId}/conversation`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${recruiterJwt}`,

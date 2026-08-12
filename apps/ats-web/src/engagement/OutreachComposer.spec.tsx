@@ -10,8 +10,8 @@ import type { EngagementState } from './types';
 // waitFor the post-fetch signal first, MemoryRouter wrap (the composer uses
 // no router hooks but the precedent wraps for parity).
 
-const DRAFT = '/v1/engagements/eng-1/outreach/draft';
-const SEND = '/v1/engagements/eng-1/outreach/send';
+const DRAFT = '/v1/selections/eng-1/outreach/draft';
+const SEND = '/v1/selections/eng-1/outreach/send';
 
 interface Stub {
   readonly status?: number;

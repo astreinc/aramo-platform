@@ -133,7 +133,7 @@ export interface TransitionStateResult {
 // Pre-append guards:
 //   - findByTenantAndId(engagement_id, tenant_id) → null ⇒ NOT_FOUND 404.
 //   - canTransition(current.state, 'awaiting_response') ⇒ false ⇒
-//     ENGAGEMENT_STATE_INVALID 422 (Amendment v1.1 Ruling 2 — DRAFT is
+//     SELECTION_STATE_INVALID 422 (Amendment v1.1 Ruling 2 — DRAFT is
 //     GATED to `engaged`, the same precondition SEND enforces: "you can
 //     only draft what you can send", no stranded drafts).
 export interface DraftOutreachInput {
@@ -163,10 +163,10 @@ export interface DraftOutreachResult {
 //     v1.1 §2): source_draft_event_id MUST resolve to an event in the
 //     SAME tenant + SAME engagement + event_type='outreach_drafted'. Any
 //     of (null lookup / cross-engagement / cross-tenant / wrong-event-
-//     type) ⇒ ENGAGEMENT_REFERENCE_NOT_FOUND 422. Mirrors recordResponse's
+//     type) ⇒ SELECTION_REFERENCE_NOT_FOUND 422. Mirrors recordResponse's
 //     outreach_event_ref_id guard.
 //   - canTransition(current.state, 'awaiting_response') ⇒ false ⇒
-//     ENGAGEMENT_STATE_INVALID 422.
+//     SELECTION_STATE_INVALID 422.
 //
 // The transition target is hardcoded to 'awaiting_response' — the only
 // legal next state for an 'engaged' engagement per the 11-state matrix
@@ -207,9 +207,9 @@ export interface SendOutreachResult {
 //     in the SAME tenant + SAME engagement + with event_type =
 //     'outreach_sent'. Any of (null lookup / cross-engagement /
 //     cross-tenant / wrong-event-type) ⇒
-//     ENGAGEMENT_REFERENCE_NOT_FOUND 422.
+//     SELECTION_REFERENCE_NOT_FOUND 422.
 //   - canTransition(current.state, 'responded') ⇒ false ⇒
-//     ENGAGEMENT_STATE_INVALID 422. State-machine itself enforces
+//     SELECTION_STATE_INVALID 422. State-machine itself enforces
 //     single-response semantics (engagement already in 'responded'
 //     state cannot transition to 'responded' again — natural-key
 //     dedup atop the standard Idempotency-Key replay path).
@@ -248,7 +248,7 @@ export interface RecordResponseResult {
 // reference validation per Ruling 3):
 //   - findByTenantAndId(engagement_id, tenant_id) → null ⇒ NOT_FOUND 404.
 //   - canTransition(current.state, 'in_conversation') ⇒ false ⇒
-//     ENGAGEMENT_STATE_INVALID 422. State-machine itself enforces
+//     SELECTION_STATE_INVALID 422. State-machine itself enforces
 //     single-conversation semantics: an engagement already in
 //     'in_conversation' state cannot transition to 'in_conversation'
 //     again (natural-key dedup atop the standard Idempotency-Key replay
@@ -560,9 +560,9 @@ export class SelectionRepository {
       id: input.talent_id,
     });
     if (talentRecord === null) {
-      this.logRefused('ENGAGEMENT_REFERENCE_NOT_FOUND', input, 'talent_id');
+      this.logRefused('SELECTION_REFERENCE_NOT_FOUND', input, 'talent_id');
       throw new AramoError(
-        'ENGAGEMENT_REFERENCE_NOT_FOUND',
+        'SELECTION_REFERENCE_NOT_FOUND',
         'Talent not visible in tenant',
         422,
         {
@@ -609,9 +609,9 @@ export class SelectionRepository {
       id: input.requisition_id,
     });
     if (requisitionStatus === null) {
-      this.logRefused('ENGAGEMENT_REFERENCE_NOT_FOUND', input, 'requisition_id');
+      this.logRefused('SELECTION_REFERENCE_NOT_FOUND', input, 'requisition_id');
       throw new AramoError(
-        'ENGAGEMENT_REFERENCE_NOT_FOUND',
+        'SELECTION_REFERENCE_NOT_FOUND',
         'Requisition not found or not visible in tenant',
         422,
         {
@@ -625,9 +625,9 @@ export class SelectionRepository {
     if (input.examination_id !== undefined && input.examination_id !== null) {
       const examination = await this.examinationRepository.findById(input.examination_id);
       if (examination === null || examination.tenant_id !== input.tenant_id) {
-        this.logRefused('ENGAGEMENT_REFERENCE_NOT_FOUND', input, 'examination_id');
+        this.logRefused('SELECTION_REFERENCE_NOT_FOUND', input, 'examination_id');
         throw new AramoError(
-          'ENGAGEMENT_REFERENCE_NOT_FOUND',
+          'SELECTION_REFERENCE_NOT_FOUND',
           'TalentJobExamination not found or not visible in tenant',
           422,
           {
@@ -744,14 +744,14 @@ export class SelectionRepository {
     if (!canTransition(current.state, input.to_state)) {
       this.logger.log({
         event: 'engagement.transition_refused',
-        error_code: 'ENGAGEMENT_STATE_INVALID',
+        error_code: 'SELECTION_STATE_INVALID',
         tenant_id: input.tenant_id,
         engagement_id: input.engagement_id,
         from_state: current.state,
         to_state: input.to_state,
       });
       throw new AramoError(
-        'ENGAGEMENT_STATE_INVALID',
+        'SELECTION_STATE_INVALID',
         `Illegal engagement state transition: ${current.state} -> ${input.to_state}`,
         422,
         {
@@ -872,14 +872,14 @@ export class SelectionRepository {
     if (!canTransition(current.state, SEND_TARGET)) {
       this.logger.log({
         event: 'engagement.outreach_draft_refused',
-        error_code: 'ENGAGEMENT_STATE_INVALID',
+        error_code: 'SELECTION_STATE_INVALID',
         tenant_id: input.tenant_id,
         engagement_id: input.engagement_id,
         from_state: current.state,
         to_state: SEND_TARGET,
       });
       throw new AramoError(
-        'ENGAGEMENT_STATE_INVALID',
+        'SELECTION_STATE_INVALID',
         `Illegal engagement state transition: ${current.state} -> ${SEND_TARGET}`,
         422,
         {
@@ -983,7 +983,7 @@ export class SelectionRepository {
     ) {
       this.logger.log({
         event: 'engagement.outreach_refused',
-        error_code: 'ENGAGEMENT_REFERENCE_NOT_FOUND',
+        error_code: 'SELECTION_REFERENCE_NOT_FOUND',
         tenant_id: input.tenant_id,
         engagement_id: input.engagement_id,
         source_draft_event_id: input.source_draft_event_id,
@@ -993,7 +993,7 @@ export class SelectionRepository {
         ref_event_type: draftRef?.event_type ?? null,
       });
       throw new AramoError(
-        'ENGAGEMENT_REFERENCE_NOT_FOUND',
+        'SELECTION_REFERENCE_NOT_FOUND',
         'draft_event_id not found, not in tenant, or not an outreach_drafted event',
         422,
         {
@@ -1013,14 +1013,14 @@ export class SelectionRepository {
     if (!canTransition(current.state, TO_STATE)) {
       this.logger.log({
         event: 'engagement.outreach_refused',
-        error_code: 'ENGAGEMENT_STATE_INVALID',
+        error_code: 'SELECTION_STATE_INVALID',
         tenant_id: input.tenant_id,
         engagement_id: input.engagement_id,
         from_state: current.state,
         to_state: TO_STATE,
       });
       throw new AramoError(
-        'ENGAGEMENT_STATE_INVALID',
+        'SELECTION_STATE_INVALID',
         `Illegal engagement state transition: ${current.state} -> ${TO_STATE}`,
         422,
         {
@@ -1166,7 +1166,7 @@ export class SelectionRepository {
     ) {
       this.logger.log({
         event: 'engagement.response_recording_refused',
-        error_code: 'ENGAGEMENT_REFERENCE_NOT_FOUND',
+        error_code: 'SELECTION_REFERENCE_NOT_FOUND',
         tenant_id: input.tenant_id,
         engagement_id: input.engagement_id,
         outreach_event_ref_id: input.response_payload.outreach_event_ref_id,
@@ -1175,7 +1175,7 @@ export class SelectionRepository {
         ref_event_type: refEvent?.event_type ?? null,
       });
       throw new AramoError(
-        'ENGAGEMENT_REFERENCE_NOT_FOUND',
+        'SELECTION_REFERENCE_NOT_FOUND',
         'outreach_event_ref_id not found, not in tenant, or not an outreach_sent event',
         422,
         {
@@ -1195,14 +1195,14 @@ export class SelectionRepository {
     if (!canTransition(current.state, TO_STATE)) {
       this.logger.log({
         event: 'engagement.response_recording_refused',
-        error_code: 'ENGAGEMENT_STATE_INVALID',
+        error_code: 'SELECTION_STATE_INVALID',
         tenant_id: input.tenant_id,
         engagement_id: input.engagement_id,
         from_state: current.state,
         to_state: TO_STATE,
       });
       throw new AramoError(
-        'ENGAGEMENT_STATE_INVALID',
+        'SELECTION_STATE_INVALID',
         `Illegal engagement state transition: ${current.state} -> ${TO_STATE}`,
         422,
         {
@@ -1346,14 +1346,14 @@ export class SelectionRepository {
     if (!canTransition(current.state, TO_STATE)) {
       this.logger.log({
         event: 'engagement.conversation_started_recording_refused',
-        error_code: 'ENGAGEMENT_STATE_INVALID',
+        error_code: 'SELECTION_STATE_INVALID',
         tenant_id: input.tenant_id,
         engagement_id: input.engagement_id,
         from_state: current.state,
         to_state: TO_STATE,
       });
       throw new AramoError(
-        'ENGAGEMENT_STATE_INVALID',
+        'SELECTION_STATE_INVALID',
         `Illegal engagement state transition: ${current.state} -> ${TO_STATE}`,
         422,
         {
@@ -1480,7 +1480,7 @@ export class SelectionRepository {
 
   private logRefused(
     // TR-2a-B3a — createEngagement now also refuses a superseded TalentRecord.
-    code: 'ENGAGEMENT_REFERENCE_NOT_FOUND' | 'TALENT_RECORD_SUPERSEDED',
+    code: 'SELECTION_REFERENCE_NOT_FOUND' | 'TALENT_RECORD_SUPERSEDED',
     input: CreateEngagementInput,
     field: 'talent_id' | 'requisition_id' | 'examination_id',
   ): void {

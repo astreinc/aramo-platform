@@ -7,7 +7,7 @@ import {
 } from 'class-validator';
 
 // Outreach Draft/Preview Directive v1.0 / Amendment v1.1 §1 — HTTP request
-// DTO for POST /v1/engagements/{id}/outreach/draft.
+// DTO for POST /v1/selections/{id}/outreach/draft.
 //
 // This is the generation half of the draft→preview→send split. The body
 // is the prompt shape the atomic POST .../outreach formerly carried

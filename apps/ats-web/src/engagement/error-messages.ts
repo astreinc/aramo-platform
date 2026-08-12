@@ -43,7 +43,7 @@ export function transitionErrorMessage(error: unknown): string {
     }
     // The control only offers legal targets; this refusal is defense-in-
     // depth (the BE state machine is the source of truth).
-    if (error.code === 'ENGAGEMENT_STATE_INVALID' || error.status === 422) {
+    if (error.code === 'SELECTION_STATE_INVALID' || error.status === 422) {
       return 'That move is no longer allowed from the current state. Reload and try again.';
     }
   }
@@ -58,10 +58,10 @@ export function responseErrorMessage(error: unknown): string {
     if (error.status === 404) {
       return 'This engagement is no longer available.';
     }
-    if (error.code === 'ENGAGEMENT_REFERENCE_NOT_FOUND') {
+    if (error.code === 'SELECTION_REFERENCE_NOT_FOUND') {
       return 'The selected outreach could not be found. Reload and try again.';
     }
-    if (error.code === 'ENGAGEMENT_STATE_INVALID' || error.status === 422) {
+    if (error.code === 'SELECTION_STATE_INVALID' || error.status === 422) {
       return 'A response can only be recorded while awaiting a response. Reload and try again.';
     }
   }
@@ -76,7 +76,7 @@ export function conversationErrorMessage(error: unknown): string {
     if (error.status === 404) {
       return 'This engagement is no longer available.';
     }
-    if (error.code === 'ENGAGEMENT_STATE_INVALID' || error.status === 422) {
+    if (error.code === 'SELECTION_STATE_INVALID' || error.status === 422) {
       return 'A conversation can only be recorded after a response. Reload and try again.';
     }
   }
@@ -87,7 +87,7 @@ export function conversationErrorMessage(error: unknown): string {
 
 // Draft (the generation half). 502 AI_PROVIDER_UNAVAILABLE +
 // 429 AI_RATE_LIMITED are the LLM-transport failures; 422
-// ENGAGEMENT_STATE_INVALID is the state-machine refusal (drafting requires
+// SELECTION_STATE_INVALID is the state-machine refusal (drafting requires
 // the talent to be engaged). The soft consent_warning is NOT an error — it
 // rides on a 200 response and is surfaced non-blocking by the composer.
 export function outreachDraftErrorMessage(error: unknown): string {
@@ -104,7 +104,7 @@ export function outreachDraftErrorMessage(error: unknown): string {
     if (error.status === 404) {
       return 'This engagement is no longer available.';
     }
-    if (error.code === 'ENGAGEMENT_STATE_INVALID' || error.status === 422) {
+    if (error.code === 'SELECTION_STATE_INVALID' || error.status === 422) {
       return 'Outreach can only be drafted once the talent is engaged. Reload and try again.';
     }
   }
@@ -126,10 +126,10 @@ export function outreachSendErrorMessage(error: unknown): string {
     if (error.status === 404) {
       return 'This engagement is no longer available.';
     }
-    if (error.code === 'ENGAGEMENT_REFERENCE_NOT_FOUND') {
+    if (error.code === 'SELECTION_REFERENCE_NOT_FOUND') {
       return 'The draft could not be found. Reload and try again.';
     }
-    if (error.code === 'ENGAGEMENT_STATE_INVALID' || error.status === 422) {
+    if (error.code === 'SELECTION_STATE_INVALID' || error.status === 422) {
       return 'This outreach can no longer be sent from the current state. Reload and try again.';
     }
   }

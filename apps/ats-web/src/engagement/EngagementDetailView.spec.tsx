@@ -57,7 +57,7 @@ type FetchMap = Record<string, unknown | { status: number; body: unknown }>;
 
 // NOTE: patterns are matched by url.includes in INSERTION ORDER — the more
 // specific sub-routes (/transitions, /events, …) MUST precede the bare
-// /v1/engagements/eng-1 GET so they win.
+// /v1/selections/eng-1 GET so they win.
 function installFetch(map: FetchMap) {
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
     const url = typeof input === 'string' ? input : (input as Request).url;
@@ -85,19 +85,19 @@ function installFetch(map: FetchMap) {
 
 function baseMap(events: EngagementEventView[], extra: FetchMap = {}): FetchMap {
   return {
-    '/v1/engagements/eng-1/transitions': {
+    '/v1/selections/eng-1/transitions': {
       engagement: makeEngagement({ state: 'awaiting_response' }),
     },
-    '/v1/engagements/eng-1/response': {
+    '/v1/selections/eng-1/response': {
       engagement: makeEngagement({ state: 'responded' }),
       response_event: makeEvent('ev-resp', 'response_received', {}),
     },
-    '/v1/engagements/eng-1/conversation': {
+    '/v1/selections/eng-1/conversation': {
       engagement: makeEngagement({ state: 'in_conversation' }),
       conversation_event: makeEvent('ev-conv', 'conversation_started', {}),
     },
-    '/v1/engagements/eng-1/events': { events },
-    '/v1/engagements/eng-1': makeEngagement(),
+    '/v1/selections/eng-1/events': { events },
+    '/v1/selections/eng-1': makeEngagement(),
     '/v1/talent-records/tal-1': { id: 'tal-1', first_name: 'Ada', last_name: 'Lovelace' },
     '/v1/requisitions/req-1': { title: 'Senior Engineer' },
     ...extra,
@@ -128,7 +128,7 @@ describe('EngagementDetailView', () => {
 
   it('resolves the IDs-only header via the N+1 (talent name + requisition title + state)', async () => {
     installFetch(baseMap([]));
-    renderAt(makeSession(['engagement:read']));
+    renderAt(makeSession(['selection:read']));
     await waitFor(() =>
       expect(screen.getByText('Ada Lovelace')).toBeInTheDocument(),
     );
@@ -142,7 +142,7 @@ describe('EngagementDetailView', () => {
     installFetch(
       baseMap([makeEvent('e1', 'state_transition', { from_state: null, to_state: 'surfaced' })]),
     );
-    renderAt(makeSession(['engagement:read']));
+    renderAt(makeSession(['selection:read']));
     await waitFor(() =>
       expect(screen.getByText('Ada Lovelace')).toBeInTheDocument(),
     );
@@ -168,7 +168,7 @@ describe('EngagementDetailView', () => {
         makeEvent('e5', 'conversation_started', { conversation_started_at: '2026-06-04T00:00:00Z' }),
       ]),
     );
-    renderAt(makeSession(['engagement:read', 'engagement:write']));
+    renderAt(makeSession(['selection:read', 'selection:write']));
     await waitFor(() =>
       expect(screen.getByText('Ada Lovelace')).toBeInTheDocument(),
     );
@@ -192,7 +192,7 @@ describe('EngagementDetailView', () => {
         makeEvent('ev-sent', 'outreach_sent', { final_text: 'sent' }),
       ]),
     );
-    renderAt(makeSession(['engagement:read', 'engagement:write']));
+    renderAt(makeSession(['selection:read', 'selection:write']));
     await waitFor(() =>
       expect(screen.getByText('Ada Lovelace')).toBeInTheDocument(),
     );
@@ -208,7 +208,7 @@ describe('EngagementDetailView', () => {
 
   it('a transition POSTs { to_state, event_id } with an Idempotency-Key header', async () => {
     installFetch(baseMap([]));
-    renderAt(makeSession(['engagement:read', 'engagement:write']));
+    renderAt(makeSession(['selection:read', 'selection:write']));
     await waitFor(() =>
       expect(screen.getByText('Ada Lovelace')).toBeInTheDocument(),
     );
@@ -234,7 +234,7 @@ describe('EngagementDetailView', () => {
 
   it('the conversation logger POSTs conversation_started_at with an Idempotency-Key', async () => {
     installFetch(baseMap([]));
-    renderAt(makeSession(['engagement:read', 'engagement:write']));
+    renderAt(makeSession(['selection:read', 'selection:write']));
     await waitFor(() =>
       expect(screen.getByText('Ada Lovelace')).toBeInTheDocument(),
     );
@@ -262,9 +262,9 @@ describe('EngagementDetailView', () => {
 
   it('surfaces the detail error when the engagement fetch 404s', async () => {
     installFetch({
-      '/v1/engagements/eng-1': { status: 404, body: { message: 'no' } },
+      '/v1/selections/eng-1': { status: 404, body: { message: 'no' } },
     });
-    renderAt(makeSession(['engagement:read']));
+    renderAt(makeSession(['selection:read']));
     await waitFor(() =>
       expect(
         screen.getByText(/this engagement is not available/i),
