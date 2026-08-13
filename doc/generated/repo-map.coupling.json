@@ -9712,12 +9712,12 @@
     {
       "from": "doc/governance/current/Aramo-Repository-Baseline.md",
       "status": "unscoped",
-      "to": "doc/01-locked-baselines.md"
+      "to": "doc/go-live-known-limitations.md"
     },
     {
       "from": "doc/governance/current/Aramo-Repository-Baseline.md",
       "status": "unscoped",
-      "to": "doc/go-live-known-limitations.md"
+      "to": "doc/runbooks/t2p3b-selection-rebaseline-prod-reconciliation.md"
     },
     {
       "from": "doc/governance/current/Aramo-Repository-Baseline.md",
@@ -9727,12 +9727,12 @@
     {
       "from": "doc/governance/current/Aramo-Repository-Baseline.md",
       "status": "unscoped",
-      "to": "libs/submittal/prisma/schema.prisma"
+      "to": "scripts/verify-vocabulary.sh"
     },
     {
       "from": "doc/governance/current/Aramo-Repository-Baseline.md",
       "status": "unscoped",
-      "to": "scripts/verify-vocabulary.sh"
+      "to": "tools/db-sync-local.sh"
     },
     {
       "from": "doc/governance/recon/2026-08-09/SEG-01-governance.md",
