@@ -127,6 +127,11 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   // requisition already holds this (tenant_id, source_system, external_req_id).
   // HTTP 409 (write-time identity conflict).
   REQUISITION_EXTERNAL_IDENTITY_CONFLICT: 409,
+  // Track 6 / T6-B2 — post-start commercial revision conflict: the requested
+  // effective instant overlaps or duplicates an existing rate-version window for
+  // (tenant, contract_assignment). HTTP 409 (details.reason: window_overlap |
+  // duplicate_effective_from).
+  ASSIGNMENT_COMMERCIAL_REVISION_CONFLICT: 409,
 };
 
 // Base error class. Thrown anywhere in the app where a structured response

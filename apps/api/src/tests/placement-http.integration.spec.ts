@@ -510,6 +510,52 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('E1-b PlacementCon
     }
   });
 
+  // ===== Track 6 / T6-B2 — governed commercial revision (functional HTTP) =====
+  const revisionAuth = (t: string) => auth(['assignment:commercials:write'], t);
+  it('T6-B2 — a governed future revision closes the current window and returns the new open version; the series lists both DESC', async () => {
+    const t = randomUUID();
+    const id = await driveToStarted(t);
+    const res = await ctrl.createAssignmentCommercialRevision(revisionAuth(t), 'r', id, {
+      pay_rate_amount: '90.00', bill_rate_amount: '150.00', currency: 'USD', rate_period: 'HOURLY', effective_from: '2030-01-01T00:00:00Z', change_reason: 'rate correction',
+    });
+    expect(res.commercials.pay_rate_amount).toBe('90.00');
+    expect(res.commercials.markup_percent).toBe('66.67'); // (150-90)/90*100
+    expect(res.commercials.effective_to).toBeNull();
+    const series = await ctrl.listAssignmentCommercialRevisions(commAuth(t), 'r', id, reqSeeAll);
+    expect(series.items).toHaveLength(2);
+    expect(series.items[0].effective_to).toBeNull(); // current first (DESC)
+    expect(series.items[1].effective_to).not.toBeNull(); // the closed predecessor
+  });
+
+  it('T6-B2 — a revision at an instant reserved by a cancelled version fails closed 409 duplicate_effective_from', async () => {
+    const t = randomUUID();
+    const id = await driveToStarted(t);
+    const ca = await prisma.contractAssignment.findFirstOrThrow({ where: { tenant_id: t, placement_process_id: id } });
+    await prisma.assignmentRateVersion.create({
+      data: {
+        id: randomUUID(), tenant_id: t, contract_assignment_id: ca.id, requisition_id: ca.requisition_id, talent_record_id: ca.talent_record_id,
+        pay_rate_amount: '80.00', bill_rate_amount: '120.00', currency: 'USD', rate_period: 'HOURLY',
+        effective_from: new Date('2030-01-01T00:00:00Z'), recorded_by: randomUUID(), cancelled_at: new Date('2026-01-01T00:00:00Z'),
+      },
+    });
+    const err = await ctrl
+      .createAssignmentCommercialRevision(revisionAuth(t), 'r', id, {
+        pay_rate_amount: '90.00', bill_rate_amount: '150.00', currency: 'USD', rate_period: 'HOURLY', effective_from: '2030-01-01T00:00:00Z', change_reason: 'x',
+      })
+      .then(() => null)
+      .catch((e) => e);
+    expect(err).toMatchObject({ code: 'ASSIGNMENT_COMMERCIAL_REVISION_CONFLICT', statusCode: 409 });
+    expect(err.context.details.reason).toBe('duplicate_effective_from');
+  });
+
+  it('T6-B2 — the series read is 404 for a not-visible placement (visibility-first)', async () => {
+    const t = randomUUID();
+    const id = await driveToStarted(t);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const reqSeeNone: any = { resolveVisibleRequisitionIds: async () => new Set<string>() };
+    await expect(ctrl.listAssignmentCommercialRevisions(commAuth(t), 'r', id, reqSeeNone)).rejects.toMatchObject({ code: 'NOT_FOUND', statusCode: 404 });
+  });
+
   it('matrix: MANAGER set (account_manager/tenant_admin/tenant_owner) CAN terminate with a valid reason (a terminal edge)', async () => {
     const t = randomUUID();
     const id = await ctrl.create(auth(MANAGER_PLACEMENT, t), 'r', body()).then((v) => v.id);
@@ -819,6 +865,27 @@ describe('E1-b placement matrix — read/create guard boundary (real RolesGuard 
     expect(denial(h, ['placement:read'])).toMatchObject({ code: 'INSUFFICIENT_PERMISSIONS', statusCode: 403 });
     // N — write does NOT imply read.
     expect(denial(h, ['assignment:commercials:write'])).toMatchObject({ code: 'INSUFFICIENT_PERMISSIONS', statusCode: 403 });
+  });
+
+  it('T6-B2: POST .../commercials/revisions requires assignment:commercials:write — WITH it passes; WITHOUT 403; read / placement:* / assignment:update do NOT satisfy it', () => {
+    const h = PlacementController.prototype.createAssignmentCommercialRevision as unknown as (...a: unknown[]) => unknown;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect(guard.canActivate(ctx(h, ['assignment:commercials:write']) as any)).toBe(true);
+    expect(denial(h, [])).toMatchObject({ code: 'INSUFFICIENT_PERMISSIONS', statusCode: 403 });
+    // read does NOT imply write — the dedicated financial WRITE scope is required.
+    expect(denial(h, ['assignment:commercials:read'])).toMatchObject({ code: 'INSUFFICIENT_PERMISSIONS', statusCode: 403 });
+    // placement authority and the dormant assignment:update do NOT substitute (§9 no-reuse).
+    expect(denial(h, ['placement:activate', 'placement:transition', 'placement:terminate'])).toMatchObject({ code: 'INSUFFICIENT_PERMISSIONS', statusCode: 403 });
+    expect(denial(h, ['assignment:update'])).toMatchObject({ code: 'INSUFFICIENT_PERMISSIONS', statusCode: 403 });
+  });
+
+  it('T6-B2: GET .../commercials/revisions requires assignment:commercials:read — WITH it passes; WITHOUT 403; write does NOT imply read', () => {
+    const h = PlacementController.prototype.listAssignmentCommercialRevisions as unknown as (...a: unknown[]) => unknown;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect(guard.canActivate(ctx(h, ['assignment:commercials:read']) as any)).toBe(true);
+    expect(denial(h, [])).toMatchObject({ code: 'INSUFFICIENT_PERMISSIONS', statusCode: 403 });
+    expect(denial(h, ['assignment:commercials:write'])).toMatchObject({ code: 'INSUFFICIENT_PERMISSIONS', statusCode: 403 });
+    expect(denial(h, ['placement:read'])).toMatchObject({ code: 'INSUFFICIENT_PERMISSIONS', statusCode: 403 });
   });
 
   it('a no-placement-grant principal (e.g. super_admin / any role outside the matrix) is denied read AND create', () => {

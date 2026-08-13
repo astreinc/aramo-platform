@@ -28,6 +28,9 @@ const EXACT_ALLOWLIST = new Set<string>([
   // T6-B1 HTTP resolver proof — exercises the governed effective_to close via raw
   // SET LOCAL to build a valid non-overlapping future-version scenario.
   'apps/api/src/tests/placement-http.integration.spec.ts',
+  // T6-B2 — the FIRST production setter: the commercial-revision transaction in the
+  // placement repository SET LOCALs the marker to perform the governed first-close.
+  'libs/placement/src/lib/placement.repository.ts',
 ]);
 
 describe('commercial-revision-marker confinement — exact-path default-deny (T6-B1 §5.2)', () => {
