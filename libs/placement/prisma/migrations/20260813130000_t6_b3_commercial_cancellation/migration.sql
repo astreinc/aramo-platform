@@ -3,7 +3,7 @@
 -- AssignmentRateVersion mutation trigger with two NEW governed branches under a
 -- NEW transaction-local capability, while preserving the T6-B1 first-close branch
 -- and the tenant-reset DELETE escape byte-for-byte. No column is added to
--- AssignmentRateVersion (the cancellation columns already exist from B1); the
+-- AssignmentRateVersion (the cancellation columns already exist from B1). The
 -- non-partial (tenant_id, contract_assignment_id, effective_from) unique key is
 -- NOT altered (a cancelled row keeps reserving its exact instant -- directive §5).
 --
@@ -63,8 +63,8 @@ BEGIN
   END IF;
 
   -- Branch 2 (T6-B3) -- governed write-once CANCELLATION under the cancellation
-  -- marker. All THREE cancellation fields go NULL -> non-NULL together; every
-  -- commercial and interval column (incl. effective_to) is byte-identical.
+  -- marker. All THREE cancellation fields go NULL -> non-NULL together, and every
+  -- commercial and interval column (incl. effective_to) stays byte-identical.
   IF current_setting('app.assignment_commercial_cancellation', true) = 'authorized'
      AND OLD."cancelled_at" IS NULL              AND NEW."cancelled_at" IS NOT NULL
      AND OLD."cancelled_by" IS NULL              AND NEW."cancelled_by" IS NOT NULL
@@ -90,8 +90,8 @@ BEGIN
   -- Branch 3 (T6-B3) -- governed future-boundary RE-OPEN under the cancellation
   -- marker. Withdraws a NOT-YET-EFFECTIVE scheduled closure: bounded effective_to
   -- -> NULL, ONLY when the old boundary is still in the future by transaction-stable
-  -- database time. Never re-opens an effective/historical boundary; never touches a
-  -- cancelled row; every other column unchanged.
+  -- database time. Never re-opens an effective/historical boundary, never touches a
+  -- cancelled row, and leaves every other column unchanged.
   IF current_setting('app.assignment_commercial_cancellation', true) = 'authorized'
      AND OLD."effective_to" IS NOT NULL
      AND NEW."effective_to" IS NULL
