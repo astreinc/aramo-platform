@@ -24,6 +24,7 @@ const MIGRATIONS = [
   '20260810120000_placement_assignment_end_reason',
   '20260810130000_t5_assignment_rate_version',
   '20260812140000_t6_b1_effective_window_substrate',
+  '20260813130000_t6_b3_commercial_cancellation',
 ].map((d) => resolve(__dirname, `../../prisma/migrations/${d}/migration.sql`));
 
 function splitDdl(sql: string): string[] {
@@ -204,7 +205,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const s = await seedActiveOpen();
       await Promise.allSettled([
         revise(s, { effective_from: T_FUT1 }),
-        repo.endAssignment({ tenant_id: s.tenant, placement_process_id: s.ppid, end_reason: 'COMPLETED' }, 'x'),
+        repo.endAssignment({ tenant_id: s.tenant, placement_process_id: s.ppid, end_reason: 'COMPLETED', ended_by: randomUUID() }, 'x'),
       ]);
       // The end always commits; the revision either committed before it or was refused.
       const ca = await client.contractAssignment.findFirstOrThrow({ where: { id: s.aid } });

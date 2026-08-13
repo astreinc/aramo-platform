@@ -65,6 +65,18 @@ export type {
   ClassifyReasonInput,
 } from './lib/reasons/placement-reason-registry.js';
 
+// Track 6 / T6-B3 — the closed AssignmentRateVersion cancellation-reason vocabulary
+// (TEXT, no enum). user-selectable set + the reserved internal ASSIGNMENT_ENDED.
+export {
+  USER_CANCELLATION_REASON_CODES,
+  ASSIGNMENT_ENDED_CANCELLATION_REASON,
+  isUserCancellationReasonCode,
+} from './lib/reasons/commercial-cancellation-reasons.js';
+export type {
+  UserCancellationReasonCode,
+  CancellationReasonCode,
+} from './lib/reasons/commercial-cancellation-reasons.js';
+
 // Repository I/O types (not HTTP DTOs — §7).
 export type {
   CreatePlacementInput,
