@@ -229,7 +229,7 @@ describe('evaluateEntrustability — Blocking Conditions Rule (§2.5)', () => {
         blocking_conditions: {
           has_verified_contact_channel: false,
           consent_state_sufficient: true,
-          has_conflicting_active_engagement: false,
+          has_conflicting_active_selection: false,
         },
       }),
     );
@@ -245,7 +245,7 @@ describe('evaluateEntrustability — Blocking Conditions Rule (§2.5)', () => {
         blocking_conditions: {
           has_verified_contact_channel: true,
           consent_state_sufficient: false,
-          has_conflicting_active_engagement: false,
+          has_conflicting_active_selection: false,
         },
       }),
     );
@@ -255,19 +255,19 @@ describe('evaluateEntrustability — Blocking Conditions Rule (§2.5)', () => {
     );
   });
 
-  it('conflicting active engagement is HARD → STRETCH', () => {
+  it('conflicting active selection is HARD → STRETCH', () => {
     const result = evaluateEntrustability(
       entrustablePass({
         blocking_conditions: {
           has_verified_contact_channel: true,
           consent_state_sufficient: true,
-          has_conflicting_active_engagement: true,
+          has_conflicting_active_selection: true,
         },
       }),
     );
     expect(result.tier).toBe('STRETCH');
     expect(result.hard_failures.map((f) => f.criterion)).toContain(
-      'conflicting_active_engagement',
+      'conflicting_active_selection',
     );
   });
 });

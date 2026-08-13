@@ -279,7 +279,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         [TENANT_ID],
       );
 
-      // Portal P2 P2b — seed the two engagement tenants so the tenant_name
+      // Portal P2 P2b — seed the two selection tenants so the tenant_name
       // enrichment (TenantService.getTenantById) resolves a human name. Only
       // id/name/updated_at are NOT-NULL-without-default on identity.Tenant.
       await setup.query(
@@ -509,7 +509,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     const PORTAL_PROFILE_KEYS = new Set([
       'talent_id',
       'tenant_id',
-      // Portal P2 P2b — the engagement counterparty is now NAMED (ruling 2).
+      // Portal P2 P2b — the selection counterparty is now NAMED (ruling 2).
       'tenant_name',
       'tenant_status',
       'source_channel',
@@ -590,7 +590,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       }
     });
 
-    it('GET /v1/portal/records/:id/consent/history — 200: append-only events, engagement-class only (P2b)', async () => {
+    it('GET /v1/portal/records/:id/consent/history — 200: append-only events, selection-class only (P2b)', async () => {
       const res = await fetch(
         `http://127.0.0.1:${port}/v1/portal/records/${PORTAL_TALENT_ID}/consent/history`,
         { method: 'GET', headers: { Authorization: `Bearer ${portalJwt}` } },
@@ -606,7 +606,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         new Set(['events', 'next_cursor', 'is_anonymized']),
       );
       // The seeded 'matching' grant is present, and each event carries ONLY the
-      // 5 engagement-class fields — no actor/recruiter/trust leak.
+      // 5 selection-class fields — no actor/recruiter/trust leak.
       expect(body.events.length).toBeGreaterThanOrEqual(1);
       for (const ev of body.events) {
         expect(new Set(Object.keys(ev))).toEqual(

@@ -464,7 +464,7 @@ function makeEvidencePackageView(): Record<string, unknown> {
       conversation_summary: { recruiter_summary: 'Discussed.' },
       talent_confirmed: { spoken_to_recruiter: true },
     },
-    engagement_event_refs: [],
+    selection_event_refs: [],
     created_at: new Date('2026-05-23T12:00:00Z'),
   };
 }

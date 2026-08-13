@@ -12,7 +12,7 @@
 // append-only log of metered tenant activity. `event_type` is a free
 // string naming the metered transition; the value vocabulary aligns
 // with the M6 PR-2 outbox event_type vocabulary (e.g.
-// 'engagement.state_transition', 'submittal.state_transition') so a
+// 'selection.state_transition', 'submittal.state_transition') so a
 // later rollup read-layer can correlate. Aggregation / billing /
 // quota live in a future read-layer (Ruling 4 — write path only).
 //

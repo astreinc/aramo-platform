@@ -18,11 +18,11 @@ import { OUTBOX_PUBLISHER_QUEUE_NAME } from './outbox-publisher.queue.constants.
 //
 // Hosts the relocated outbox publisher BullMQ wiring per M6 PR-2 §4 /
 // Amendment §2.4. The publisher previously lived in libs/consent (M5
-// PR-11 placement) but moves here at M6 to drain consent + engagement +
+// PR-11 placement) but moves here at M6 to drain consent + selection +
 // submittal outbox tables without creating a consent →
-// engagement|submittal cycle (lint-nx-boundaries / import-x/no-cycle
+// selection|submittal cycle (lint-nx-boundaries / import-x/no-cycle
 // enforcement). The new lib is a leaf in the consumer direction —
-// imported only by apps/api; consent/engagement/submittal are NOT
+// imported only by apps/api; consent/selection/submittal are NOT
 // modified to import this lib.
 //
 // BullMQ wiring mirrors libs/consent ConsentModule + libs/matching

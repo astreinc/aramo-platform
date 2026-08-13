@@ -624,9 +624,9 @@ paths:
         - BearerAuth: []
 
   # =========================================================================
-  # M5 PR-4 — Engagement HTTP surface (Charter v1.2 §4.3 row 4).
+  # M5 PR-4 — Selection HTTP surface (Charter v1.2 §4.3 row 4).
   #
-  # Four endpoints exposing the M5 PR-1/2/3 engagement substrate at the
+  # Four endpoints exposing the M5 PR-1/2/3 selection substrate at the
   # recruiter-facing ATS surface:
   #   GET  /v1/selections                   — LIST (R7 BE-prereq P1; D4b-composed)
   #   POST /v1/selections                   — create (Ruling 4 + Ruling 9)
@@ -634,7 +634,7 @@ paths:
   #   POST /v1/selections/{id}/outreach     — outreach send (M5 PR-6)
   #   POST /v1/selections/{id}/response     — record response (M5 PR-7)
   #   POST /v1/selections/{id}/conversation — record conversation (M5 PR-8a)
-  #   GET  /v1/selections/{id}              — read engagement (Ruling 5)
+  #   GET  /v1/selections/{id}              — read selection (Ruling 5)
   #   GET  /v1/selections/{id}/events       — read event log (Ruling 5)
   #
   # All endpoints recruiter-only (Ruling 8); non-recruiter consumers 403'd
@@ -642,37 +642,37 @@ paths:
   # header (M4 PR-3 precedent).
   #
   # R7 BE-prereq (Amendment v1.1) — scope-gating + D4b visibility:
-  #   - engagement:read    gates the 3 GETs (LIST + read + events)
-  #   - engagement:write   gates create / transitions / response / conversation
-  #   - engagement:outreach gates the outreach send (SoD — external side-effects)
+  #   - selection:read    gates the 3 GETs (LIST + read + events)
+  #   - selection:write   gates create / transitions / response / conversation
+  #   - selection:outreach gates the outreach send (SoD — external side-effects)
   # The controller decorators (@RequireScopes(...)) carry the gate; openapi
   # documents shape, not authz (uniform with the rest of ATS — Amendment v1.1
   # §5 Ruling 5(c)).
-  # D4b visibility: engagement is visible iff its requisition_id is in the
+  # D4b visibility: selection is visible iff its requisition_id is in the
   # actor's visible-requisition set; invisible → 404 (the non-leak posture).
   # =========================================================================
 
   /v1/selections:
     get:
       operationId: listSelections
-      summary: List the actor's visible engagements (R7 BE-prereq P1).
+      summary: List the actor's visible selections (R7 BE-prereq P1).
       description: |
-        Returns the engagements visible to the authenticated actor in the
-        current tenant. D4b-composed: an engagement is visible iff its
+        Returns the selections visible to the authenticated actor in the
+        current tenant. D4b-composed: an selection is visible iff its
         requisition_id is in the actor's visible-requisition set (A3
         directly-assigned OR D4b pod-resolved).
 
         Filter semantics (both query params optional):
-          - no filter        → all visible engagements in tenant
-          - ?talent_id       → that talent's visible engagements
-          - ?requisition_id  → that requisition's engagements (empty if
+          - no filter        → all visible selections in tenant
+          - ?talent_id       → that talent's visible selections
+          - ?requisition_id  → that requisition's selections (empty if
                                the requisition itself is invisible to
                                the actor — no existence leak)
           - both             → the intersection (at most one row by the
                                natural key (tenant, talent, requisition))
 
         Refusal codes:
-          - 403 INSUFFICIENT_PERMISSIONS — missing engagement:read scope
+          - 403 INSUFFICIENT_PERMISSIONS — missing selection:read scope
             OR non-recruiter consumer.
       parameters:
         - name: talent_id
@@ -691,7 +691,7 @@ paths:
           description: Optional requisition_id filter.
       responses:
         '200':
-          description: Engagement list (D4b-scoped to the actor's visible set).
+          description: Selection list (D4b-scoped to the actor's visible set).
           content:
             application/json:
               schema:
@@ -702,7 +702,7 @@ paths:
                   items:
                     type: array
                     items:
-                      $ref: 'common.yaml#/components/schemas/TalentJobEngagementView'
+                      $ref: 'common.yaml#/components/schemas/TalentSelectionView'
         '401':
           $ref: 'common.yaml#/components/responses/Unauthorized'
         '403':
@@ -712,9 +712,9 @@ paths:
 
     post:
       operationId: createSelection
-      summary: Create a new TalentJobEngagement (M5 PR-4).
+      summary: Create a new TalentSelection (M5 PR-4).
       description: |
-        Creates a new TalentJobEngagement row in initial state
+        Creates a new TalentSelection row in initial state
         `surfaced` (Group 2 §2.3b Loop 1) and appends the initial
         state_transition event row atomically via prisma.$transaction.
 
@@ -722,17 +722,17 @@ paths:
         transaction opens (M5 PR-3 Amendment v1.1 §2, three substrate-
         derived patterns):
           - Pattern C (Talent): TalentRepository.findOverlayByTenant;
-            overlay absence → 422 ENGAGEMENT_REFERENCE_NOT_FOUND.
+            overlay absence → 422 SELECTION_REFERENCE_NOT_FOUND.
           - Pattern A (Requisition): findRequisitionById + tenant
-            check; null/mismatch → 422 ENGAGEMENT_REFERENCE_NOT_FOUND.
+            check; null/mismatch → 422 SELECTION_REFERENCE_NOT_FOUND.
           - Pattern B (Examination, nullable): findById + tenant check;
-            null/mismatch → 422 ENGAGEMENT_REFERENCE_NOT_FOUND.
+            null/mismatch → 422 SELECTION_REFERENCE_NOT_FOUND.
 
-        Response shape: { engagement } only per Ruling 9. The initial
+        Response shape: { selection } only per Ruling 9. The initial
         event row is accessible via GET /v1/selections/{id}/events.
 
         Refusal codes:
-          - 422 ENGAGEMENT_REFERENCE_NOT_FOUND — cross-schema validator.
+          - 422 SELECTION_REFERENCE_NOT_FOUND — cross-schema validator.
           - 409 IDEMPOTENCY_KEY_CONFLICT — same key, different body.
           - 403 INSUFFICIENT_PERMISSIONS — non-recruiter consumer.
           - 400 VALIDATION_ERROR — DTO shape / Idempotency-Key issues.
@@ -753,14 +753,14 @@ paths:
         content:
           application/json:
             schema:
-              $ref: 'common.yaml#/components/schemas/CreateEngagementRequest'
+              $ref: 'common.yaml#/components/schemas/CreateSelectionRequest'
       responses:
         '201':
-          description: Engagement created in initial state `surfaced`.
+          description: Selection created in initial state `surfaced`.
           content:
             application/json:
               schema:
-                $ref: 'common.yaml#/components/schemas/CreateEngagementResponse'
+                $ref: 'common.yaml#/components/schemas/CreateSelectionResponse'
         '400':
           $ref: 'common.yaml#/components/responses/BadRequest'
         '401':
@@ -781,11 +781,11 @@ paths:
   /v1/selections/{selection_id}/transitions:
     post:
       operationId: transitionSelection
-      summary: Transition an engagement to a new state (M5 PR-4).
+      summary: Transition an selection to a new state (M5 PR-4).
       description: |
-        Transitions an existing engagement's state column via the
+        Transitions an existing selection's state column via the
         repository's transitionState method. Atomic prisma.$transaction
-        pairs the engagement.update with a state_transition event row
+        pairs the selection.update with a state_transition event row
         append per M5 PR-3 substrate.
 
         Pre-write guards (in order):
@@ -793,15 +793,15 @@ paths:
           2. Idempotency-Key required + UUID-shaped.
           3. selection_id path param UUID validation.
           4. Read current via findByTenantAndId (404 NOT_FOUND if null).
-          5. canTransition guard (422 ENGAGEMENT_STATE_INVALID if illegal).
+          5. canTransition guard (422 SELECTION_STATE_INVALID if illegal).
 
         Column-scoped DB trigger (PR-1 substrate) is defense-in-depth.
 
-        Response shape: { engagement } only per Ruling 9 + Ruling 11
+        Response shape: { selection } only per Ruling 9 + Ruling 11
         (NO state-isolation literal field).
 
         Refusal codes:
-          - 422 ENGAGEMENT_STATE_INVALID — illegal transition (satisfies
+          - 422 SELECTION_STATE_INVALID — illegal transition (satisfies
             Plan v1.5 §M5 Track B item 1).
           - 409 IDEMPOTENCY_KEY_CONFLICT — same key, different body.
           - 404 NOT_FOUND — selection_id not visible in tenant.
@@ -830,14 +830,14 @@ paths:
         content:
           application/json:
             schema:
-              $ref: 'common.yaml#/components/schemas/TransitionEngagementRequest'
+              $ref: 'common.yaml#/components/schemas/TransitionSelectionRequest'
       responses:
         '200':
-          description: Engagement state transitioned; event row appended.
+          description: Selection state transitioned; event row appended.
           content:
             application/json:
               schema:
-                $ref: 'common.yaml#/components/schemas/TransitionEngagementResponse'
+                $ref: 'common.yaml#/components/schemas/TransitionSelectionResponse'
         '400':
           $ref: 'common.yaml#/components/responses/BadRequest'
         '401':
@@ -881,10 +881,10 @@ paths:
           1. consumer_type === 'recruiter' (403 INSUFFICIENT_PERMISSIONS).
           2. Idempotency-Key required + UUID-shaped.
           3. selection_id path param UUID validation + idempotency lookup.
-          4. Pre-read engagement (visibility) → 404 NOT_FOUND.
-          5. DRAFT state-gate (Amendment v1.1 Ruling 2): the engagement
+          4. Pre-read selection (visibility) → 404 NOT_FOUND.
+          5. DRAFT state-gate (Amendment v1.1 Ruling 2): the selection
              MUST be in 'engaged' (the only send-eligible state) → 422
-             ENGAGEMENT_STATE_INVALID otherwise. You can only draft what
+             SELECTION_STATE_INVALID otherwise. You can only draft what
              you can send (no stranded drafts; no wasted LLM tokens).
           6. SOFT consent pre-check (Amendment v1.1 Ruling 1): NON-BLOCKING
              — on denied the response carries `consent_warning`, but the
@@ -898,7 +898,7 @@ paths:
           - kind === 'provider_rate_limited' → 429 AI_RATE_LIMITED.
           - any other kind → 500 INTERNAL_ERROR pass-through.
 
-        Refusal codes: 422 ENGAGEMENT_STATE_INVALID, 502
+        Refusal codes: 422 SELECTION_STATE_INVALID, 502
         AI_PROVIDER_UNAVAILABLE, 429 AI_RATE_LIMITED, 409
         IDEMPOTENCY_KEY_CONFLICT, 404 NOT_FOUND, 403 INSUFFICIENT_PERMISSIONS,
         400 VALIDATION_ERROR. NOTE: no 403 CONSENT_NOT_GRANTED_AT_SEND here
@@ -983,7 +983,7 @@ paths:
         draft event id + the recruiter-approved (possibly-edited) final
         text; runs the BINDING consent-at-send check; delivers via the
         injected DeliveryProvider (SendStub at PR-6); then atomically
-        transitions the engagement from 'engaged' to 'awaiting_response'
+        transitions the selection from 'engaged' to 'awaiting_response'
         with a paired `outreach_sent` event (carrying the final sent text
         + a back-reference to the source draft) + `state_transition` event
         + outbox emit. The repository $transaction guarantees all writes
@@ -998,20 +998,20 @@ paths:
           1. consumer_type === 'recruiter' (403 INSUFFICIENT_PERMISSIONS).
           2. Idempotency-Key required + UUID-shaped (the SEND key).
           3. selection_id path param UUID validation + idempotency lookup.
-          4. Pre-read engagement (visibility) → 404 NOT_FOUND.
+          4. Pre-read selection (visibility) → 404 NOT_FOUND.
           5. State pre-gate BEFORE delivery (canTransition → 422). True
              single-send: a second send finds 'awaiting_response' and 422s
              WITHOUT re-delivering.
           6. Source-draft cross-event-ref validation: draft_event_id must
-             resolve to an outreach_drafted event on this engagement +
-             tenant → 422 ENGAGEMENT_REFERENCE_NOT_FOUND otherwise.
+             resolve to an outreach_drafted event on this selection +
+             tenant → 422 SELECTION_REFERENCE_NOT_FOUND otherwise.
           7. BINDING consent-at-send → 403 CONSENT_NOT_GRANTED_AT_SEND
              (denied) / 500 INTERNAL_ERROR (resolver fault).
           8. DeliveryProvider.deliver(final_text).
-          9. EngagementRepository.sendOutreach atomic transaction.
+          9. SelectionRepository.sendOutreach atomic transaction.
 
-        Refusal codes: 422 ENGAGEMENT_STATE_INVALID, 422
-        ENGAGEMENT_REFERENCE_NOT_FOUND, 403 CONSENT_NOT_GRANTED_AT_SEND, 403
+        Refusal codes: 422 SELECTION_STATE_INVALID, 422
+        SELECTION_REFERENCE_NOT_FOUND, 403 CONSENT_NOT_GRANTED_AT_SEND, 403
         INSUFFICIENT_PERMISSIONS, 500 INTERNAL_ERROR (consent resolver
         fault), 409 IDEMPOTENCY_KEY_CONFLICT, 404 NOT_FOUND, 400
         VALIDATION_ERROR. NOTE: no AI error codes here — generation
@@ -1042,7 +1042,7 @@ paths:
       responses:
         '200':
           description: |
-            Final text delivered (stub) + engagement transitioned to
+            Final text delivered (stub) + selection transitioned to
             'awaiting_response'; outreach_sent event persists the final
             text + source draft back-reference.
           content:
@@ -1094,11 +1094,11 @@ paths:
         outreach. Compressed-scope mirror of POST .../outreach: no AI
         consumption, no delivery side-effect, no new error codes.
 
-        Atomic 3-write transaction (EngagementRepository.recordResponse):
-          1. engagement.update(state = 'responded').
-          2. talentEngagementEvent.create(event_type='response_received',
-             event_payload=EngagementResponseReceivedPayload).
-          3. talentEngagementEvent.create(event_type='state_transition',
+        Atomic 3-write transaction (SelectionRepository.recordResponse):
+          1. selection.update(state = 'responded').
+          2. talentSelectionEvent.create(event_type='response_received',
+             event_payload=SelectionResponseReceivedPayload).
+          3. talentSelectionEvent.create(event_type='state_transition',
              event_payload={from_state, to_state}).
 
         Pre-write guards (in order):
@@ -1110,19 +1110,19 @@ paths:
           6. NOT_FOUND guard (findByTenantAndId).
           7. Cross-event reference validation (Ruling 4): the
              outreach_event_ref_id MUST resolve to an event in the same
-             tenant + same engagement + event_type='outreach_sent'.
-             Any of (null lookup / cross-engagement / cross-tenant /
-             wrong-event-type) → 422 ENGAGEMENT_REFERENCE_NOT_FOUND.
+             tenant + same selection + event_type='outreach_sent'.
+             Any of (null lookup / cross-selection / cross-tenant /
+             wrong-event-type) → 422 SELECTION_REFERENCE_NOT_FOUND.
           8. canTransition(current.state, 'responded') — natural-key
              dedup atop the standard Idempotency-Key replay path.
 
         Refusal codes (closed list):
-          - 422 ENGAGEMENT_STATE_INVALID — engagement not in
-            'awaiting_response' state (covers engagement already in
+          - 422 SELECTION_STATE_INVALID — selection not in
+            'awaiting_response' state (covers selection already in
             'responded' state — natural-key dedup).
-          - 422 ENGAGEMENT_REFERENCE_NOT_FOUND — outreach_event_ref_id
+          - 422 SELECTION_REFERENCE_NOT_FOUND — outreach_event_ref_id
             doesn't resolve to a valid outreach_sent event in tenant +
-            engagement.
+            selection.
           - 409 IDEMPOTENCY_KEY_CONFLICT — same key, different body.
           - 404 NOT_FOUND — selection_id not visible in tenant.
           - 403 INSUFFICIENT_PERMISSIONS — non-recruiter consumer.
@@ -1154,7 +1154,7 @@ paths:
       responses:
         '200':
           description: |
-            Response recorded; engagement transitioned to 'responded'.
+            Response recorded; selection transitioned to 'responded'.
           content:
             application/json:
               schema:
@@ -1192,11 +1192,11 @@ paths:
         response_received event is implicit).
 
         Atomic 3-write transaction
-        (EngagementRepository.recordConversationStarted):
-          1. engagement.update(state = 'in_conversation').
-          2. talentEngagementEvent.create(event_type='conversation_started',
-             event_payload=EngagementConversationStartedPayload).
-          3. talentEngagementEvent.create(event_type='state_transition',
+        (SelectionRepository.recordConversationStarted):
+          1. selection.update(state = 'in_conversation').
+          2. talentSelectionEvent.create(event_type='conversation_started',
+             event_payload=SelectionConversationStartedPayload).
+          3. talentSelectionEvent.create(event_type='state_transition',
              event_payload={from_state, to_state}).
 
         Pre-write guards (in order):
@@ -1208,14 +1208,14 @@ paths:
           6. NOT_FOUND guard (findByTenantAndId).
           7. canTransition(current.state, 'in_conversation') — natural-
              key dedup atop the standard Idempotency-Key replay path
-             (engagement already in 'in_conversation' refuses with
-             ENGAGEMENT_STATE_INVALID even with a fresh key).
+             (selection already in 'in_conversation' refuses with
+             SELECTION_STATE_INVALID even with a fresh key).
 
         Refusal codes (closed list):
-          - 422 ENGAGEMENT_STATE_INVALID — engagement not in
-            'responded' state (covers engagement already in
+          - 422 SELECTION_STATE_INVALID — selection not in
+            'responded' state (covers selection already in
             'in_conversation' state — natural-key dedup — and
-            engagements in 'engaged' / 'awaiting_response' / earlier
+            selections in 'engaged' / 'awaiting_response' / earlier
             states).
           - 409 IDEMPOTENCY_KEY_CONFLICT — same key, different body.
           - 404 NOT_FOUND — selection_id not visible in tenant.
@@ -1248,7 +1248,7 @@ paths:
       responses:
         '200':
           description: |
-            Conversation recorded; engagement transitioned to
+            Conversation recorded; selection transitioned to
             'in_conversation'.
           content:
             application/json:
@@ -1276,10 +1276,10 @@ paths:
   /v1/selections/{selection_id}:
     get:
       operationId: getSelection
-      summary: Read a TalentJobEngagement by id (M5 PR-4).
+      summary: Read a TalentSelection by id (M5 PR-4).
       description: |
-        Tenant-scoped read of a single engagement via
-        EngagementRepository.findByTenantAndId. Cross-tenant or
+        Tenant-scoped read of a single selection via
+        SelectionRepository.findByTenantAndId. Cross-tenant or
         non-existent → 404 NOT_FOUND (Architecture §7.2 — cross-tenant
         reads surface as invisibility, not 403).
 
@@ -1294,11 +1294,11 @@ paths:
             format: uuid
       responses:
         '200':
-          description: Engagement view.
+          description: Selection view.
           content:
             application/json:
               schema:
-                $ref: 'common.yaml#/components/schemas/TalentJobEngagementView'
+                $ref: 'common.yaml#/components/schemas/TalentSelectionView'
         '400':
           $ref: 'common.yaml#/components/responses/BadRequest'
         '401':
@@ -1313,17 +1313,17 @@ paths:
   /v1/selections/{selection_id}/events:
     get:
       operationId: getSelectionEvents
-      summary: List event-log entries for an engagement (M5 PR-4).
+      summary: List event-log entries for an selection (M5 PR-4).
       description: |
         Tenant-scoped read of the chronological event log for an
-        engagement via EngagementEventRepository
-        .findByTenantAndEngagementId. Order: ASC by created_at.
+        selection via SelectionEventRepository
+        .findByTenantAndSelectionId. Order: ASC by created_at.
 
-        Includes a parent-engagement existence pre-check (404 NOT_FOUND
-        if the engagement itself is not visible in tenant) to avoid the
+        Includes a parent-selection existence pre-check (404 NOT_FOUND
+        if the selection itself is not visible in tenant) to avoid the
         information-leak path where a non-existent selection_id would
         return an empty events array (same response shape as a
-        newly-created engagement with no events yet).
+        newly-created selection with no events yet).
       parameters:
         - name: selection_id
           in: path
@@ -1337,7 +1337,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: 'common.yaml#/components/schemas/EngagementListEventsResponse'
+                $ref: 'common.yaml#/components/schemas/SelectionListEventsResponse'
         '400':
           $ref: 'common.yaml#/components/responses/BadRequest'
         '401':
@@ -1412,7 +1412,7 @@ paths:
 
         R10 boundary (load-bearing, structural): emits ATS fields ONLY —
         company / contact / requisition / talent_record / pipeline.
-        NO Core tier / score / match / examination / engagement /
+        NO Core tier / score / match / examination / selection /
         submittal column appears. The export lib reads NO Core schema
         (the lint:nx-boundaries graph for libs/export has zero Core
         edges; the integration spec verifies it by omitting every

@@ -13,7 +13,7 @@ export default mergeConfig(
       // Pact tests run sequentially — they share a per-suite mock server
       pool: 'forks',
       isolate: true,
-      // PC-2 — the ats-web suite spans multiple domain files (engagement,
+      // PC-2 — the ats-web suite spans multiple domain files (selection,
       // submittal) that all write the SAME ats-web-aramo-core.json. pact-js
       // merges interactions off disk, but parallel file execution races the
       // write (observed: 41 of 58 interactions survived). Force sequential

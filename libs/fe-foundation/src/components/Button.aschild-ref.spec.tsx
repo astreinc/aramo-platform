@@ -9,7 +9,7 @@ import { Button } from './Button';
 // function component drops it ("Function components cannot be given refs …
 // Primitive.button.Slot"), leaving a Radix Popover trigger with a null anchor —
 // the content never positions and stays `visibility: hidden` in the browser
-// (defect #6, and its twin apps/ats-web/src/engagement/EngagementTransitionControl).
+// (defect #6, and its twin apps/ats-web/src/selection/SelectionTransitionControl).
 //
 // This lives in its OWN spec file on purpose: React emits the dropped-ref
 // warning once per component per module instance, so nothing may render Button

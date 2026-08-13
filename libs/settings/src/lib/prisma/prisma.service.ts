@@ -7,7 +7,7 @@ import { PrismaClient } from '../../../prisma/generated/client/client.js';
 // Per-module PrismaService for the settings module (Settings S1).
 //
 // Lazy-validation pattern (post-PR-17 uniform shape — mirrors entitlement /
-// identity / engagement / consent PrismaServices):
+// identity / selection / consent PrismaServices):
 //   1. Inert constructor — no env read, no throw. Stores the @Optional()
 //      databaseUrl argument and constructs the PrismaPg adapter with whatever
 //      connection string is currently resolvable.

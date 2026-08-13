@@ -16,7 +16,7 @@ import { SecretCacheService } from './secrets/secret-cache.service.js';
 //
 // Exports = [AiDraftService] only — DraftProvider, AnthropicProvider,
 // SecretCacheService, and AiDraftRepository are internal to the module.
-// Future consumers (M5 PR-6+ engagement drafting) consume AiDraftService
+// Future consumers (M5 PR-6+ selection drafting) consume AiDraftService
 // at the cross-lib boundary.
 //
 // Logger discipline (HK-PR-4 Style A): two named tokens

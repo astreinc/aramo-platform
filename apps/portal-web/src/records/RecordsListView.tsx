@@ -9,7 +9,7 @@ import {
 
 import { portalApi, type PortalRecordProfile } from '../portal-api';
 
-// Portal P1 PR-3 — the records list (engagement surface, P-R5). The talent's own
+// Portal P1 PR-3 — the records list (selection surface, P-R5). The talent's own
 // records across every tenant that holds them. This is also the link-consumed
 // landing (the backend consume redirects here authenticated). An empty list is a
 // VALID state (a portal user with no live records), shown as an honest empty

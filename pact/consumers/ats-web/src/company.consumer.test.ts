@@ -11,7 +11,7 @@ import {
 } from './support/ats-web-pact.js';
 
 // PC-5a — Pact consumer for ats-web, company domain (Gate-2a desk, part 1).
-// Merges into ats-web-aramo-core.json with engagement + submittal +
+// Merges into ats-web-aramo-core.json with selection + submittal +
 // examination + talent-record + (PC-5a) assignments + contact.
 //
 // Scope (PC-5 Directive §3 + Gate-5 ruling): the company CRUD spine +

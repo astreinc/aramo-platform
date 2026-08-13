@@ -54,7 +54,7 @@ interface ErasureStep {
 const INVENTORY: ErasureStep[] = [
   // ---- GROUP A operational non-cascade EVENT children (delete before parents) ----
   { label: 'submittal."TalentSubmittalEvent"', keyspace: 'record-child', where: `submittal_id IN (SELECT id FROM submittal."TalentSubmittalRecord" WHERE talent_id = ANY($1::uuid[]))` },
-  { label: 'selection."TalentSelectionEvent"', keyspace: 'record-child', where: `engagement_id IN (SELECT id FROM selection."TalentSelection" WHERE talent_id = ANY($1::uuid[]))` },
+  { label: 'selection."TalentSelectionEvent"', keyspace: 'record-child', where: `selection_id IN (SELECT id FROM selection."TalentSelection" WHERE talent_id = ANY($1::uuid[]))` },
   { label: 'examination."ExaminationOverride"', keyspace: 'record-child', where: `examination_id IN (SELECT id FROM examination."TalentJobExamination" WHERE talent_id = ANY($1::uuid[]))` },
   // ---- GROUP A operational holders (record keyspace) ----
   { label: 'pipeline."Pipeline"', keyspace: 'record', where: `talent_record_id = ANY($1::uuid[])` }, // cascades PipelineStatusHistory

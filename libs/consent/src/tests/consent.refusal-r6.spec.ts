@@ -8,15 +8,15 @@ import type { PrismaService } from '../lib/prisma/prisma.service.js';
 // 12-month staleness rule (Group 2 §2.7 Stale Consent, lines 2424-2447).
 // The resolver REPORTS staleness via result: "denied" + reason_code:
 // "stale_consent". It does NOT *act* on staleness — i.e., it triggers
-// no engagement halt, no propagation, no notification. Engagement-layer
-// enforcement is a separate concern (deferred until engagement entities
+// no selection halt, no propagation, no notification. Selection-layer
+// enforcement is a separate concern (deferred until selection entities
 // exist).
 //
 // This spec verifies the report-not-act semantic mechanically:
 //   - Stale contacting → result: denied + reason_code: stale_consent
 //   - Same call writes a single ConsentAuditEvent (the decision-log) and
 //     no other side effects (no outbox event, no propagation row)
-//   - Source code does not reference engagement entities (R4 invariant
+//   - Source code does not reference selection entities (R4 invariant
 //     also covers this; R6 is the "must not ACT" framing)
 
 const TENANT_ID = '00000000-0000-0000-0000-000000000001';
@@ -91,7 +91,7 @@ describe('Refusal R6 — no acting on stale consent (resolver reports, does not 
     const decision = await repo.resolveConsentState({
       tenant_id: TENANT_ID,
       talent_record_id: TALENT_ID,
-      operation: 'engagement',
+      operation: 'selection',
       channel: 'email',
       requestHash: 'r6-h-1',
       requestId: 'r6-req-1',
@@ -107,14 +107,14 @@ describe('Refusal R6 — no acting on stale consent (resolver reports, does not 
     await repo.resolveConsentState({
       tenant_id: TENANT_ID,
       talent_record_id: TALENT_ID,
-      operation: 'engagement',
+      operation: 'selection',
       channel: 'email',
       requestHash: 'r6-h-2',
       requestId: 'r6-req-2',
     });
     // Resolver path writes only the decision-log audit row. No outbox
-    // event for stale-consent (would be acting). Engagement halt is
-    // deferred to a future PR with engagement entities.
+    // event for stale-consent (would be acting). Selection halt is
+    // deferred to a future PR with selection entities.
     expect(tx.outboxEvent.create).not.toHaveBeenCalled();
   });
 
@@ -125,7 +125,7 @@ describe('Refusal R6 — no acting on stale consent (resolver reports, does not 
     await repo.resolveConsentState({
       tenant_id: TENANT_ID,
       talent_record_id: TALENT_ID,
-      operation: 'engagement',
+      operation: 'selection',
       channel: 'email',
       requestHash: 'r6-h-3',
       requestId: 'r6-req-3',
@@ -135,7 +135,7 @@ describe('Refusal R6 — no acting on stale consent (resolver reports, does not 
       data: { event_type: string };
     };
     // Only the decision-log type. No "consent.stale.detected" event,
-    // no "engagement.halted" event — those would be ACTING.
+    // no "selection.halted" event — those would be ACTING.
     expect(auditRow.data.event_type).toBe('consent.check.decision');
   });
 
@@ -146,7 +146,7 @@ describe('Refusal R6 — no acting on stale consent (resolver reports, does not 
     await repo.resolveConsentState({
       tenant_id: TENANT_ID,
       talent_record_id: TALENT_ID,
-      operation: 'engagement',
+      operation: 'selection',
       channel: 'email',
       requestHash: 'r6-h-4',
       requestId: 'r6-req-4',

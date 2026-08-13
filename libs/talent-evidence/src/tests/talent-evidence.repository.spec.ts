@@ -8,7 +8,7 @@ import { TalentEvidenceRepository } from '../lib/talent-evidence.repository.js';
 //     pairs for each of the 7 entities).
 //   - No update/delete/list method is exposed (closed surface per the
 //     PR-1 / PR-4 entity-foundation precedent).
-//   - TalentEngagementEvent has no method (deferred to M5 per directive
+//   - TalentSelectionEvent has no method (deferred to M5 per directive
 //     §2 Ruling 1; the 8th EvidenceReference target is intentionally
 //     unbuilt).
 //
@@ -95,9 +95,9 @@ describe('TalentEvidenceRepository — surface', () => {
     expect(offending).toEqual([]);
   });
 
-  it('exposes no method for TalentEngagementEvent (deferred to M5 per directive §2 Ruling 1)', () => {
+  it('exposes no method for TalentSelectionEvent (deferred to M5 per directive §2 Ruling 1)', () => {
     const methods = Object.getOwnPropertyNames(TalentEvidenceRepository.prototype);
-    const offending = methods.filter((m) => m.includes('EngagementEvent'));
+    const offending = methods.filter((m) => m.includes('SelectionEvent'));
     expect(offending).toEqual([]);
   });
 });

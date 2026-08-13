@@ -40,7 +40,7 @@ import { EXPORT_ENTITY_TYPES, type ExportEntityType } from './field-catalog.js';
 //
 // The R10 boundary is documented in ExportService — the service
 // reads ONLY the 5 ATS-domain repositories, and the lint:nx-boundaries
-// graph for libs/export records ZERO Core / engagement / submittal /
+// graph for libs/export records ZERO Core / selection / submittal /
 // examination / talent / job_domain edges.
 //
 // The OUTBOUND-VOCABULARY rule: response headers carry the canonical

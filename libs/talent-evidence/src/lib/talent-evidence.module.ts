@@ -10,7 +10,7 @@ import { TalentEvidenceRepository } from './talent-evidence.repository.js';
 // entity-foundation pattern verbatim.
 //
 // PR-5 adds no controllers, no HTTP endpoints, no Pact surface. Out of
-// scope per directive §5: TalentEngagementEvent (deferred to M5), the
+// scope per directive §5: TalentSelectionEvent (deferred to M5), the
 // §14.4 sensitive-field treatment for TalentWorkAuthorization (deferred
 // to follow-up F16), SkillTaxonomy / ingestion-source foundations
 // (forward-reference UUIDs only), any FK constraint, any controller /

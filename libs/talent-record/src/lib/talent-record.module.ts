@@ -35,7 +35,7 @@ import { ResumeTextService } from './resume-text/resume-text.service.js';
 // TalentLinkService is the ATS↔identity-index link adapter; it composes
 // TalentRecordRepository (the ATS-side write) with IdentityIndexRepository
 // (the cluster read-only validation). 4e-rest retired the Core TalentModule
-// edge (the Core-Talent link was dropped once engagement #349 + consent #350
+// edge (the Core-Talent link was dropped once selection #349 + consent #350
 // released it).
 @Module({
   imports: [

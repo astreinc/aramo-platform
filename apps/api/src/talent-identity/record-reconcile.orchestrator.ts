@@ -90,7 +90,7 @@ export class RecordReconcileOrchestrator {
     private readonly pipeline: PipelineRepository,
     private readonly submittal: SubmittalRepository,
     private readonly evidence: EvidenceRepository,
-    private readonly engagement: SelectionRepository,
+    private readonly selection: SelectionRepository,
     private readonly examination: ExaminationRepository,
     private readonly talentEvidence: TalentEvidenceRepository,
     private readonly savedList: SavedListRepository,
@@ -106,7 +106,7 @@ export class RecordReconcileOrchestrator {
       { domain: 'pipeline', repo: this.pipeline as unknown as OperationalRepoint },
       { domain: 'submittal', repo: this.submittal as unknown as OperationalRepoint },
       { domain: 'evidence', repo: this.evidence as unknown as OperationalRepoint },
-      { domain: 'engagement', repo: this.engagement as unknown as OperationalRepoint },
+      { domain: 'selection', repo: this.selection as unknown as OperationalRepoint },
       { domain: 'examination', repo: this.examination as unknown as OperationalRepoint },
       { domain: 'talent-evidence', repo: this.talentEvidence as unknown as OperationalRepoint },
       { domain: 'saved-list', repo: this.savedList as unknown as OperationalRepoint },
@@ -425,18 +425,18 @@ export class RecordReconcileOrchestrator {
       const stepByDomain = new Map(op.sweep_steps.map((s) => [s.domain, s]));
 
       // Enumerate POST-MERGE ACCRETIONS on the survivor BEFORE moving rows back —
-      // ids currently on R_S that this operation did NOT move there (engagement is
+      // ids currently on R_S that this operation did NOT move there (selection is
       // the representative operational holder; the pattern extends per-domain). They
       // belong to an ambiguous human by definition of a false merge → listed for
       // human triage, NEVER auto-redistributed (DDR-3 §6).
-      const engStep = stepByDomain.get('engagement');
+      const engStep = stepByDomain.get('selection');
       const engMoved = new Set(engStep?.repointed_ids ?? []);
-      const engOnSurvivor = await this.engagement.listIdsByTalentRecord({
+      const engOnSurvivor = await this.selection.listIdsByTalentRecord({
         tenant_id: input.tenant_id,
         talent_record_id: recordS,
       });
       const engAccretions = engOnSurvivor.filter((id) => !engMoved.has(id));
-      if (engAccretions.length > 0) accretions.push({ domain: 'engagement', ids: engAccretions });
+      if (engAccretions.length > 0) accretions.push({ domain: 'selection', ids: engAccretions });
 
       if (stepByDomain.has('consent-ledger')) {
         await this.consent.deleteReconcileGrants({

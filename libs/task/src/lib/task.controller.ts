@@ -56,7 +56,7 @@ import {
 // Visibility (the load-bearing discipline): every read ANDs the linked-entity
 // visibility via the libs/visibility resolvers (resolved from the request,
 // attached by the global VisibilityInterceptor). Create asserts the owner is
-// visible (404 if not — the engagement precedent). The assignee is validated
+// visible (404 if not — the selection precedent). The assignee is validated
 // active-within-tenant via the port (cross-tenant/inactive → 422).
 @Controller('v1/tasks')
 @UseGuards(JwtAuthGuard, EntitlementGuard, RolesGuard)
@@ -191,7 +191,7 @@ export class TaskController {
     }
     this.assertTypePriority(body.type, body.priority, requestId);
 
-    // Create-time link-target assert (the engagement precedent) — 404 if the
+    // Create-time link-target assert (the selection precedent) — 404 if the
     // owner entity is not visible to the actor (non-leak; never confirms the
     // entity exists).
     const vis = await this.resolveVis(req);

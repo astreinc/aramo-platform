@@ -41,7 +41,7 @@ import { ReportingService } from './reporting.service.js';
 //     each role sees, NOT a separate `:all` scope here).
 //
 // A7's HARD EXCLUSIONS (every refused metric here):
-//   - submittal rollups (Core engagement schema; T5, M6).
+//   - submittal rollups (Core selection schema; T5, M6).
 //   - match / tier / judgment / examination metrics (Core; R10).
 //   - EEO reporting (A4-deferred fields; compliance-scoped).
 //   - PDF/FPDF rendering (presentation; defer).

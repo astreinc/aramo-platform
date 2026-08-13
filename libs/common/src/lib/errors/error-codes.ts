@@ -100,11 +100,11 @@
 // semantic-refusal posture; class-validator shape failures still surface
 // as VALIDATION_ERROR (400). Total: 19 codes.
 //
-// M5 PR-2 adds ENGAGEMENT_EVENT_REF_NOT_FOUND (HTTP 422) for the
+// M5 PR-2 adds SELECTION_EVENT_REF_NOT_FOUND (HTTP 422) for the
 // evidence-package builder's cross-schema validator (Aramo-M5-PR-2-
 // Directive-v1_0-LOCKED.md §4.8 + Ruling 7). When a BuildPackageInput
-// carries engagement_event_refs that include a UUID not present in the
-// engagement.TalentEngagementEvent table (or present but not visible
+// carries selection_event_refs that include a UUID not present in the
+// selection.TalentSelectionEvent table (or present but not visible
 // in the input tenant per findByTenantAndId tenant-scoped lookup),
 // buildPackage refuses with 422. The code is registered TS-first per
 // M4 PR-2/3/4/5/7 register-ahead convention; the matching
@@ -114,8 +114,8 @@
 //
 // M5 PR-3 adds two codes (parity-quad × 2 per Aramo-M5-PR-3-Directive-
 // v1_0-LOCKED.md §4.5 + Ruling 8):
-//   - SELECTION_REFERENCE_NOT_FOUND (HTTP 422) — EngagementRepository
-//     .createEngagement refuses when any of the 3 cross-schema validator
+//   - SELECTION_REFERENCE_NOT_FOUND (HTTP 422) — SelectionRepository
+//     .createSelection refuses when any of the 3 cross-schema validator
 //     patterns fails: Pattern C (TalentRepository.findOverlayByTenant
 //     returns null), Pattern A (JobDomainRepository.findRequisitionById
 //     returns null or row.tenant_id mismatch), Pattern B (Examination
@@ -125,7 +125,7 @@
 //     overlay-existence is the tenant-visibility proxy; the other two
 //     follow the M5 PR-2 evidence-builder app-layer tenant-check
 //     precedent).
-//   - SELECTION_STATE_INVALID (HTTP 422) — EngagementRepository
+//   - SELECTION_STATE_INVALID (HTTP 422) — SelectionRepository
 //     .transitionState refuses when canTransition(from, to) returns
 //     false. Application-layer guard atop the M5 PR-1 column-scoped DB
 //     trigger (defense-in-depth: the trigger would also reject, but the
@@ -135,14 +135,14 @@
 //
 // M5 PR-6 adds two codes (parity-quad × 2 per Aramo-M5-PR-6-Directive-
 // v1_0-LOCKED.md §4.8 + Rulings 1 + 6):
-//   - AI_PROVIDER_UNAVAILABLE (HTTP 502) — EngagementController
+//   - AI_PROVIDER_UNAVAILABLE (HTTP 502) — SelectionController
 //     .sendOutreach remaps AiDraftService INTERNAL_ERROR throws whose
 //     context.details.kind is 'provider_unavailable' or
 //     'provider_internal_error' (per the M5 PR-5 AnthropicProvider
 //     error-translation table) to a stable HTTP-bearing code so the
 //     recruiter ATS client can distinguish upstream LLM transport
 //     failures from generic 5xx INTERNAL_ERROR.
-//   - AI_RATE_LIMITED (HTTP 429) — EngagementController.sendOutreach
+//   - AI_RATE_LIMITED (HTTP 429) — SelectionController.sendOutreach
 //     remaps AiDraftService INTERNAL_ERROR throws whose
 //     context.details.kind is 'provider_rate_limited' (LLM rate-limit
 //     response from the Anthropic adapter). 429 lets the client back
@@ -160,7 +160,7 @@
 // submittal-side. Total: 25 codes.
 //
 // M5 PR-9b adds CONSENT_NOT_GRANTED_AT_SEND (HTTP 403) for
-// EngagementController.sendOutreach Step 5.5 runtime consent-at-send
+// SelectionController.sendOutreach Step 5.5 runtime consent-at-send
 // enforcement (closes Plan v1.5 §M5 Track B item 3 + satisfies M5
 // Exit Criteria "No outreach without runtime contacting consent").
 // First consent-denial HTTP error code in the registry — the existing
@@ -246,7 +246,7 @@
 //     revert refuses when the batch's created_at is older than the
 //     configured revert window (default 7 days). Reversion is bounded
 //     so a long-running import doesn't get yanked out from under
-//     downstream consumers (engagements, pipeline rows, talent links)
+//     downstream consumers (selections, pipeline rows, talent links)
 //     that may have accreted on the imported entities. The recruiter
 //     who needs a late revert escalates to a manual delete.
 // Total: 34 codes.
@@ -284,14 +284,12 @@ export const ERROR_CODES = [
   'SUBMITTAL_ALREADY_CONFIRMED',
   'OVERRIDE_INVALID',  // M4 PR-5 — invalid override payload or non-overridable field
   'REVOKE_NOT_ALLOWED',  // M4 PR-7 / M5 PR-8b2 — submittal in terminal state (confirmed | revoked) cannot be revoked
-  'ENGAGEMENT_EVENT_REF_NOT_FOUND',  // M5 PR-2 — engagement_event_refs entry not found in tenant
-  'ENGAGEMENT_REFERENCE_NOT_FOUND',  // M5 PR-3 — createEngagement cross-schema validator (Pattern A/B/C). T2-P3: RETAINED deprecated-compatible; superseded on the public surface by SELECTION_REFERENCE_NOT_FOUND.
-  'ENGAGEMENT_STATE_INVALID',  // M5 PR-3 — transitionState canTransition guard failed. T2-P3: RETAINED deprecated-compatible; superseded on the public surface by SELECTION_STATE_INVALID.
-  // T2-P3 — Selection public-contract error codes (additive). Emitted by the
-  // /v1/selections surface. ENGAGEMENT_* above are retained (deprecated, no
-  // longer emitted). ENGAGEMENT_EVENT_REF_NOT_FOUND stays Evidence-owned (NOT flipped).
-  'SELECTION_REFERENCE_NOT_FOUND',  // T2-P3 — createSelection cross-schema validator (Pattern A/B/C)
-  'SELECTION_STATE_INVALID',  // T2-P3 — transitionState canTransition guard failed
+  // T2-P3B — Selection workflow + Evidence error codes. The Selection-era
+  // codes are fully superseded pre-GA: the two dead compat codes are removed
+  // and the Evidence event-ref refusal is flipped to SELECTION_EVENT_REF_NOT_FOUND.
+  'SELECTION_EVENT_REF_NOT_FOUND',  // Evidence cross-schema validator — selection_event_refs entry not found in tenant
+  'SELECTION_REFERENCE_NOT_FOUND',  // createSelection cross-schema validator (Pattern A/B/C)
+  'SELECTION_STATE_INVALID',  // transitionState canTransition guard failed
   'AI_PROVIDER_UNAVAILABLE',  // M5 PR-6 — outreach sendOutreach LLM transport / vendor-internal failure
   'AI_RATE_LIMITED',  // M5 PR-6 — outreach sendOutreach LLM rate-limit response
   'SUBMITTAL_STATE_INVALID',  // M5 PR-8b2 — submittal canTransition guard failed (mainline + sibling-revoke)
@@ -311,7 +309,7 @@ export const ERROR_CODES = [
   'COGNITO_PROVISION_FAILED',  // AUTHZ-2 — Cognito AdminCreateUser upstream failure (Pattern A; the load-bearing external integration). HTTP 502. Distinct from INTERNAL_ERROR so the platform-admin UI can surface "Cognito unavailable, retry" vs. a generic 500. Mirrors OBJECT_STORAGE_UPLOAD_FAILED at the IdP boundary.
   'INVITATION_ALREADY_EXISTS',  // AUTHZ-2 — re-invite refusal for the (email, tenant_id) pair when the User already holds a membership in the tenant with the same role set. HTTP 409. AdminGetUser is the idempotency check; Cognito is NOT re-created. The two same-tenant-different-roles / new-tenant / drift cases (Ruling 8) do NOT raise this — they reconcile.
   'MANAGEMENT_CYCLE_REJECTED',  // AUTHZ-D4a — set-management-edge refusal: the proposed (manager_user_id, report_user_id) edge would create a cycle in the management graph (e.g. A manages B; attempting B manages A, or the transitive A→B→C; attempting C→A). The cycle check walks upward from report_user_id; if manager_user_id appears in the ancestor set, the edge is rejected. HTTP 409 (mirrors SUBMITTAL_ALREADY_CONFIRMED / IMPORT_ALREADY_REVERTED for state-conflict refusals).
-  'TALENT_RECORD_SUPERSEDED',  // TR-2a-B3a (DDR-3 §3) — outreach-send refusal: the engagement's TalentRecord was superseded by a late-merge reconcile (record_status='superseded'); the surviving record speaks for the human, so the husk is non-operational. HTTP 422 (a state-invalid refusal — mirrors SELECTION_STATE_INVALID). Writer-less in B3a; the B3b reconcile writer produces the state.
+  'TALENT_RECORD_SUPERSEDED',  // TR-2a-B3a (DDR-3 §3) — outreach-send refusal: the selection's TalentRecord was superseded by a late-merge reconcile (record_status='superseded'); the surviving record speaks for the human, so the husk is non-operational. HTTP 422 (a state-invalid refusal — mirrors SELECTION_STATE_INVALID). Writer-less in B3a; the B3b reconcile writer produces the state.
   // TR-6 B2 (DDR D5 + PC Exit Accounting §5.1) — advisory-resolution domain refusal codes.
   // These REPLACE the AramoExceptionFilter status-collapse (409→IDEMPOTENCY_KEY_CONFLICT,
   // 400→VALIDATION_ERROR) on the advisory surface ONLY: the semantically-false generic
@@ -326,7 +324,7 @@ export const ERROR_CODES = [
   'REVERSAL_JUSTIFICATION_REQUIRED',  // 400 — reverse without a justification (R4 — a merge reversal is high-consequence, never silent).
   // TR-3 B2 (DDR §2.1) — the email-verification REQUEST consent gate. Fires when the
   // contacting/email consent check returns denied OR error/empty-ledger (the ruled
-  // divergence from the engagement send-gate, which maps empty-ledger to 500): a
+  // divergence from the selection send-gate, which maps empty-ledger to 500): a
   // voluntary enhancement fails CLOSED on unknown consent state. HTTP 403. (The
   // CONFIRM path is oracle-resistant and reuses the generic NOT_FOUND 404 for every
   // invalid/expired/consumed/revoked/rate-limited case — no verification-revealing code.)

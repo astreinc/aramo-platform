@@ -21,8 +21,8 @@ import type { RequisitionStateReader } from '../lib/requisition-state-reader.por
 //   - Ruling 1 (pull-side): no entity / no BullMQ / no event; tests mock the
 //     RequisitionStateReader port and PrismaService surfaces only.
 //   - Ruling 3 (PR-6 projection reused): returned rows are Summary-shaped.
-//   - Ruling 4 (no engagement-state filter): filter carries lifecycle_state=
-//     'active' but NO engagement_state field.
+//   - Ruling 4 (no selection-state filter): filter carries lifecycle_state=
+//     'active' but NO selection_state field.
 //   - Ruling 6 (Summary-only): the projection produces Summary; no Full fields.
 //   - Ruling 7 (limit clamp): default 50; floor 1; hard cap 200.
 //
@@ -130,12 +130,12 @@ describe('findActiveReqLiveList — query shape (Ruling 3 + 4 + 6)', () => {
     ]);
   });
 
-  it('carries NO engagement_state filter (Ruling 4 — deferred to M5 / F20)', async () => {
+  it('carries NO selection_state filter (Ruling 4 — deferred to M5 / F20)', async () => {
     const { repo, call } = makeRepo({ isActive: true, rows: [] });
     await repo.findActiveReqLiveList({ tenant_id: TENANT_A, req_id: REQ_ID });
 
     const where = call.args.where as Record<string, unknown>;
-    expect(where).not.toHaveProperty('engagement_state');
+    expect(where).not.toHaveProperty('selection_state');
   });
 
   it('projects each row through PR-6 projectSummaryView — returned shape is Summary, not Full (Ruling 3 + 6)', async () => {

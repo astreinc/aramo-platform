@@ -1,7 +1,7 @@
 // M5 PR-7 §4.2 — typed event_payload shape for TalentSelectionEvent
 // rows of event_type='response_received' (Ruling 2 + 3).
 //
-// Name defensively prefixed `Engagement` per Ruling 2: avoids type-
+// Name defensively prefixed `Selection` per Ruling 2: avoids type-
 // name collision with libs/ai-draft's internal `ResponseReceivedPayload`
 // (the LLM-call output-side audit payload; not barrel-exported but
 // future-proofed against accidental cross-domain naming clash).
@@ -16,7 +16,7 @@
 //   - outreach_event_ref_id: UUID reference to the prior outreach_sent
 //     TalentSelectionEvent this response is responding to. Repository
 //     validates the reference at write time per Ruling 4 (must exist
-//     in same tenant + same engagement + event_type='outreach_sent').
+//     in same tenant + same selection + event_type='outreach_sent').
 //
 // Stored as Postgres jsonb in event_payload. TalentSelectionEventView
 // types event_payload as `unknown`; consumers narrow at the consumption

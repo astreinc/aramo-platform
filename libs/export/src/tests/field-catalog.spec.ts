@@ -12,7 +12,7 @@ import {
 //
 //   1. R10 — every column listed is an ATS-schema name. NO Core-
 //      judgment vocabulary (tier / score / rank / match / examination
-//      / engagement / submittal) appears anywhere in the catalog.
+//      / selection / submittal) appears anywhere in the catalog.
 //      This is the STRUCTURAL boundary at the smallest possible
 //      surface (the catalog list); the integration spec replays it
 //      against the wire-level CSV header rows.
@@ -43,7 +43,7 @@ const R10_FORBIDDEN_TOKENS: readonly string[] = [
   'rank',
   'match',
   'examination',
-  'engagement',
+  'selection',
   'submittal',
   'override',
   'reasoning',

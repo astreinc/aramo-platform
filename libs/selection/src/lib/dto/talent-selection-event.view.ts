@@ -18,7 +18,7 @@ import type { SelectionEventTypeValue } from '../selection-event.js';
 export interface TalentSelectionEventView {
   id: string;
   tenant_id: string;
-  engagement_id: string;
+  selection_id: string;
   event_type: SelectionEventTypeValue;
   event_payload: unknown;
   created_at: Date;

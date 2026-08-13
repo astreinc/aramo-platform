@@ -7,7 +7,7 @@ import { portalApi, type PortalNotice } from '../portal-api';
 // versioned notice (the plain-language disclosure of how Aramo, as a platform,
 // holds a cross-organization identity record and the rights a person may exercise
 // against it). The bytes come from the public GET /v1/portal/notice — the same
-// bytes the dormant-notice email delivers. Engagement-class: no trust fields.
+// bytes the dormant-notice email delivers. Selection-class: no trust fields.
 
 export function NoticeView() {
   const [notice, setNotice] = useState<PortalNotice | null>(null);

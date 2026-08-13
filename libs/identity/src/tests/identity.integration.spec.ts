@@ -174,7 +174,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // 17, AUTHZ-1) remain the HK-INTEGRATION-SPEC-COMP-STALE carry. The
       // real catalog now ALSO contains 'export:read' + 'import:read'
       // (and ~19 other scopes from Task/Commercial/Financials/Req-Gating/
-      // Engagement/Search). Full reconciliation of the ~13 stale arrays is
+      // Selection/Search). Full reconciliation of the ~13 stale arrays is
       // deferred to a dedicated HK-INTEGRATION-SPEC-COMP-STALE PR — folding
       // it into this focused authz scope-seed would balloon the manually-
       // reviewed authz surface.
@@ -314,7 +314,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       //   Sourcer / finance / auditor / auditor_with_financials NOT in this
       //   bundle — auditor-tier report:read + audit-log:read deferred to
       //   the Reporting/Audit DDR (Amendment v1.1 Ruling B-iii).
-      // ENGAGEMENT_SEED_BUNDLES rows (8 roles, 20 total) — R7 BE-prereq:
+      // SELECTION_SEED_BUNDLES rows (8 roles, 20 total) — R7 BE-prereq:
       //   write-tier 6 × 3 (read+write+outreach) = 18; read-only 2 × 1 = 2.
       //   TA 3 + TO 3 + AM 3 + RM 3 + recruiter 3 + LR 3 + DM 1 + BO 1 = 20.
       //   Sourcer / finance / auditor / auditor_with_financials / candidate
@@ -329,7 +329,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       //   - Reporting-Scope-Seed adds +16 reporting-scope assignments
       //     (the 8 operational roles × dashboard:read + report:read) —
       //     326 → 342.
-      //   - R7 BE-prereq adds +20 engagement-scope assignments (6 write-
+      //   - R7 BE-prereq adds +20 selection-scope assignments (6 write-
       //     tier × 3 + 2 read-only × 1; Amendment v1.1 §2 Ruling 2) —
       //     342 → 362.
       //   - Search PR-1 adds +28 search-scope assignments (per-entity
@@ -430,7 +430,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // testcontainer count = 82): the audit trail has emitted 82 events
       // since D-AUTHZ-COMP-WRITE-1. The prior "84" was incorrect — it
       // assumed Reporting-Scope-Seed emitted 2 scope.created events, but
-      // that seed (and EVERY scope-seed since — Engagement, Search, Task,
+      // that seed (and EVERY scope-seed since — Selection, Search, Task,
       // Commercial, Financials, Req-Gating, Settings-D1 import/export)
       // deliberately emits NO scope.created audit events. So the 18+ scopes
       // added after D-AUTHZ-COMP-WRITE-1 contribute zero audit rows; the
@@ -471,7 +471,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // 51 post-AUTHZ-D4a + 6 D5 view scopes + 2 D-AUTHZ-COMP-WRITE-1
       // edit scopes + 2 Reporting-Scope-Seed scopes (dashboard:read +
       // report:read; PR-A7 gap-and-note closure) + 3 R7 BE-prereq
-      // engagement scopes (selection:read / :write / :outreach;
+      // selection scopes (selection:read / :write / :outreach;
       // Amendment v1.1 §1 Ruling 1 — outreach SoD) = 64. The previous
       // "51" was stale (D5 view scopes were not added when D5 landed);
       // D-AUTHZ corrected to 59; Reporting-Scope-Seed advances to 61;

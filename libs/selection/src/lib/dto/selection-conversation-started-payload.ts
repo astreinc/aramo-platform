@@ -1,7 +1,7 @@
 // M5 PR-8a §4.2 — typed event_payload shape for TalentSelectionEvent
 // rows of event_type='conversation_started' (Ruling 2 + 3).
 //
-// Name defensively prefixed `Engagement` per Ruling 2 + Process Lesson
+// Name defensively prefixed `Selection` per Ruling 2 + Process Lesson
 // 53: avoids type-name collision with any future cross-domain
 // `ConversationStartedPayload` (e.g. a hypothetical libs/conversation
 // or libs/messaging consumer). Mirrors the PR-7

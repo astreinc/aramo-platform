@@ -87,12 +87,12 @@ const SUBMITTAL_RENAME_MIGRATION_PATH = resolve(
 // now emit an in-tx outbox row inside the same $transaction array as
 // the state transition. Applied LAST in the submittal sequence because
 // it CREATEs the new `submittal` PG namespace alongside its OutboxEvent
-// table (additive — no existing engagement-schema table altered).
+// table (additive — no existing selection-schema table altered).
 const SUBMITTAL_OUTBOX_MIGRATION_PATH = resolve(
   __dirname,
   '../../prisma/migrations/20260531000000_add_outbox_event/migration.sql',
 );
-// T2-P1 — relocate Submittal persistence engagement -> submittal schema.
+// T2-P1 — relocate Submittal persistence selection -> submittal schema.
 const SUBMITTAL_T2P1_MIGRATION_PATH = resolve(
   __dirname,
   '../../prisma/migrations/20260812120000_t2p1_relocate_submittal_to_submittal_schema/migration.sql',
@@ -208,7 +208,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         readFileSync(SUBMITTAL_RENAME_MIGRATION_PATH, 'utf8'),
         // M6 PR-2 §3 — submittal OutboxEvent (new `submittal` PG schema).
         readFileSync(SUBMITTAL_OUTBOX_MIGRATION_PATH, 'utf8'),
-        // T2-P1 — relocate Submittal persistence engagement -> submittal schema.
+        // T2-P1 — relocate Submittal persistence selection -> submittal schema.
         readFileSync(SUBMITTAL_T2P1_MIGRATION_PATH, 'utf8'),
         // PR-A1c §4 — metering schema (in-tx UsageEvent INSERT).
         readFileSync(METERING_INIT_MIGRATION_PATH, 'utf8'),
@@ -237,18 +237,18 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const talentEvidenceRepo = new TalentEvidenceRepository(talentEvidencePrisma);
       // M5 PR-2 — SelectionEventRepository required by EvidenceRepository
       // constructor. Existing submittal tests do not exercise the
-      // engagement_event_refs validator path (all buildPackage inputs
+      // selection_event_refs validator path (all buildPackage inputs
       // here either omit the field or pass [] — validator short-circuits).
-      // A stub satisfies the constructor without requiring the engagement
+      // A stub satisfies the constructor without requiring the selection
       // migration to be applied in this spec.
-      const engagementEventRepoStub = {
+      const selectionEventRepoStub = {
         findByTenantAndId: async () => null,
       } as unknown as SelectionEventRepository;
       const evidenceRepo = new EvidenceRepository(
         evidencePrisma,
         examRepo,
         talentEvidenceRepo,
-        engagementEventRepoStub,
+        selectionEventRepoStub,
         makeMockLogger(),
       );
       // M5 PR-8b2 §4.16 + Ruling 17 — 5th DI dep TalentSubmittalEventRepository.
@@ -294,7 +294,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Cross-schema check: TalentJobEvidencePackage row exists with all
       // six JSONB columns populated.
       const pkgRows = (await submittalPrisma.$queryRawUnsafe(
-        `SELECT id, talent_identity, contact_summary, capability_summary, match_justification, recruiter_contribution, engagement_event_refs FROM evidence."TalentJobEvidencePackage" WHERE id = '${view.evidence_package_id}'::uuid`,
+        `SELECT id, talent_identity, contact_summary, capability_summary, match_justification, recruiter_contribution, selection_event_refs FROM evidence."TalentJobEvidencePackage" WHERE id = '${view.evidence_package_id}'::uuid`,
       )) as Array<Record<string, unknown>>;
       expect(pkgRows).toHaveLength(1);
       const pkg = pkgRows[0]!;
@@ -303,7 +303,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(pkg['capability_summary']).toBeDefined();
       expect(pkg['match_justification']).toBeDefined();
       expect(pkg['recruiter_contribution']).toBeDefined();
-      expect(pkg['engagement_event_refs']).toBeDefined();
+      expect(pkg['selection_event_refs']).toBeDefined();
     });
 
     it('Stretch refusal: throws SUBMITTAL_STRETCH_BLOCKED; no rows on either table', async () => {
@@ -645,7 +645,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         `INSERT INTO evidence."TalentJobEvidencePackage"
            (id, tenant_id, talent_id, job_id, examination_id,
             talent_identity, contact_summary, capability_summary,
-            match_justification, recruiter_contribution, engagement_event_refs)
+            match_justification, recruiter_contribution, selection_event_refs)
          VALUES ('${stretchPkgId}'::uuid, '${TENANT_A}'::uuid,
                  '${TALENT_A}'::uuid, '${JOB_ID}'::uuid,
                  '${STRETCH_EXAM_ID}'::uuid,
@@ -1597,15 +1597,15 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // evidence_package_id and the same tenant_id.
       // M5 PR-2 — SelectionEventRepository stub (same rationale as the
       // beforeAll instantiation above: this test does not exercise the
-      // engagement_event_refs validator path).
-      const engagementEventRepoStub = {
+      // selection_event_refs validator path).
+      const selectionEventRepoStub = {
         findByTenantAndId: async () => null,
       } as unknown as SelectionEventRepository;
       const evidenceRepo = new EvidenceRepository(
         evidencePrisma,
         new ExaminationRepository(examPrisma, undefined as never),
         new TalentEvidenceRepository(talentEvidencePrisma),
-        engagementEventRepoStub,
+        selectionEventRepoStub,
         makeMockLogger(),
       );
       const evidencePackage = await evidenceRepo.findById({
@@ -1632,14 +1632,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     // last submittal migration applied in beforeAll. This test asserts the
     // catalog TRUTH the migration establishes: every relocated object — the 2
     // tables, 2 enums, and 2 immutability trigger functions — now resolves to
-    // the `submittal` namespace, and ZERO remnants remain in `engagement`.
+    // the `submittal` namespace, and ZERO remnants remain in `selection`.
     //
     // D-1 chronology: this assertion is RED when the T2-P1 migration is absent
-    // from the beforeAll apply-list (objects resolve to `engagement`,
+    // from the beforeAll apply-list (objects resolve to `selection`,
     // remnant-count = 6) and GREEN once it is present. That RED is reproducible
     // in THIS harness by removing SUBMITTAL_T2P1_MIGRATION_PATH from
     // migrationSqls — it is not a claim about a disposable manual proof.
-    it('T2-P1: relocated objects are owned by the submittal schema; zero engagement remnants', async () => {
+    it('T2-P1: relocated objects are owned by the submittal schema; zero selection remnants', async () => {
       // Tables — expect exactly submittal.
       const tableNs = (await setupClient.$queryRawUnsafe(
         `SELECT c.relname AS name, n.nspname AS schema
@@ -1681,19 +1681,19 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         { name: 'reject_submittal_record_update', schema: 'submittal' },
       ]);
 
-      // Zero remnants in engagement across all three catalogs.
+      // Zero remnants in selection across all three catalogs.
       const remnants = (await setupClient.$queryRawUnsafe(
         `SELECT COUNT(*)::int AS n FROM (
            SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
-             WHERE n.nspname = 'engagement'
+             WHERE n.nspname = 'selection'
                AND c.relname IN ('TalentSubmittalRecord', 'TalentSubmittalEvent')
            UNION ALL
            SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace
-             WHERE n.nspname = 'engagement'
+             WHERE n.nspname = 'selection'
                AND t.typname IN ('SubmittalState', 'SubmittalEventType')
            UNION ALL
            SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
-             WHERE n.nspname = 'engagement'
+             WHERE n.nspname = 'selection'
                AND p.proname IN ('reject_submittal_record_update', 'reject_submittal_event_update')
          ) remnant`,
       )) as Array<{ n: number }>;

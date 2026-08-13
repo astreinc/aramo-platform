@@ -11,7 +11,7 @@ import type { Queue } from 'bullmq';
 import { v7 as uuidv7 } from 'uuid';
 import { PrismaService as CanonicalizationPrismaService } from '@aramo/canonicalization';
 import { PrismaService as ConsentPrismaService, OutboxPublisherRepository } from '@aramo/consent';
-import { PrismaService as EngagementPrismaService } from '@aramo/selection';
+import { PrismaService as SelectionPrismaService } from '@aramo/selection';
 import { PrismaService as PlacementPrismaService } from '@aramo/placement';
 import { PrismaService as SubmittalPrismaService } from '@aramo/submittal';
 
@@ -28,7 +28,7 @@ import { OUTBOX_PUBLISHER_QUEUE_NAME } from '../lib/outbox-publisher.queue.const
 //   (i)   domain mutation writes an outbox row in the SAME tx (atomic
 //         3-/4-write $transaction array form);
 //   (ii)  tx rollback leaves NO orphan outbox row;
-//   (iii) the relocated publisher drains consent + engagement +
+//   (iii) the relocated publisher drains consent + selection +
 //         submittal + canonicalization OutboxEvent tables in a single
 //         tick (the T2-2b 4th-schema drain — talent.canonicalized
 //         events are consumed; payload is R10-clean: talent_id +
@@ -37,9 +37,7 @@ import { OUTBOX_PUBLISHER_QUEUE_NAME } from '../lib/outbox-publisher.queue.const
 //
 // MIGRATIONS apply-list (12 files, dependency-ordered):
 //   1. libs/consent/prisma/migrations/20260429164414_initial_consent_schema/migration.sql
-//   2. libs/selection/prisma/migrations/20260525120000_init_engagement_model/migration.sql
-//   3. libs/selection/prisma/migrations/20260525150000_add_engagement_event_log/migration.sql
-//   4. libs/selection/prisma/migrations/20260531000000_add_outbox_event/migration.sql
+//   2. libs/selection/prisma/migrations/20260525120000_init_selection_model/migration.sql
 //   5. libs/submittal/prisma/migrations/20260523120000_init_submittal_model/migration.sql
 //   6. libs/submittal/prisma/migrations/20260523200000_add_submittal_revoke/migration.sql
 //   7. libs/submittal/prisma/migrations/20260526140602_add_submittal_event_log/migration.sql
@@ -56,11 +54,8 @@ import { OUTBOX_PUBLISHER_QUEUE_NAME } from '../lib/outbox-publisher.queue.const
 
 const MIGRATION_FILES: ReadonlyArray<readonly [string, string]> = [
   ['consent', '../../../consent/prisma/migrations/20260429164414_initial_consent_schema/migration.sql'],
-  ['engagement-init', '../../../selection/prisma/migrations/20260525120000_init_engagement_model/migration.sql'],
-  ['engagement-event-log', '../../../selection/prisma/migrations/20260525150000_add_engagement_event_log/migration.sql'],
-  ['engagement-outbox', '../../../selection/prisma/migrations/20260531000000_add_outbox_event/migration.sql'],
-  // T2-P2 — relocate + rename the engagement objects into the selection schema.
-  ['selection-t2p2', '../../../selection/prisma/migrations/20260813120000_t2p2_relocate_engagement_to_selection/migration.sql'],
+  ['selection-init', '../../../selection/prisma/migrations/20260525120000_init_selection_model/migration.sql'],
+  // T2-P2 — relocate + rename the selection objects into the selection schema.
   ['submittal-init', '../../../submittal/prisma/migrations/20260523120000_init_submittal_model/migration.sql'],
   ['submittal-revoke', '../../../submittal/prisma/migrations/20260523200000_add_submittal_revoke/migration.sql'],
   ['submittal-event-log', '../../../submittal/prisma/migrations/20260526140602_add_submittal_event_log/migration.sql'],
@@ -100,7 +95,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     let redisContainer: StartedRedisContainer;
     let pgContainer: StartedPostgreSqlContainer;
     let consentPrisma: ConsentPrismaService;
-    let engagementPrisma: EngagementPrismaService;
+    let selectionPrisma: SelectionPrismaService;
     let submittalPrisma: SubmittalPrismaService;
     let canonicalizationPrisma: CanonicalizationPrismaService;
     let placementPrisma: PlacementPrismaService;
@@ -140,13 +135,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await setupClient.$disconnect();
 
       consentPrisma = new ConsentPrismaService(pgUrl);
-      engagementPrisma = new EngagementPrismaService(pgUrl);
+      selectionPrisma = new SelectionPrismaService(pgUrl);
       submittalPrisma = new SubmittalPrismaService(pgUrl);
       canonicalizationPrisma = new CanonicalizationPrismaService(pgUrl);
       placementPrisma = new PlacementPrismaService(pgUrl);
       await Promise.all([
         consentPrisma.$connect(),
-        engagementPrisma.$connect(),
+        selectionPrisma.$connect(),
         submittalPrisma.$connect(),
         canonicalizationPrisma.$connect(),
         placementPrisma.$connect(),
@@ -162,8 +157,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       })
         .overrideProvider(ConsentPrismaService)
         .useValue(consentPrisma)
-        .overrideProvider(EngagementPrismaService)
-        .useValue(engagementPrisma)
+        .overrideProvider(SelectionPrismaService)
+        .useValue(selectionPrisma)
         .overrideProvider(SubmittalPrismaService)
         .useValue(submittalPrisma)
         .overrideProvider(CanonicalizationPrismaService)
@@ -198,7 +193,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await (moduleRef as unknown as { close?: () => Promise<void> }).close?.();
       await Promise.all([
         consentPrisma?.$disconnect(),
-        engagementPrisma?.$disconnect(),
+        selectionPrisma?.$disconnect(),
         submittalPrisma?.$disconnect(),
         canonicalizationPrisma?.$disconnect(),
         placementPrisma?.$disconnect(),
@@ -211,7 +206,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     // R10-clean payload assertion on the talent.canonicalized event
     // (no tier / score / rank / match — only talent_id + tenant_id +
     // resolution_method + payload_id, per T2-2a's emission shape).
-    it('drains consent + engagement + submittal + canonicalization OutboxEvent rows; preserves pre-published rows', async () => {
+    it('drains consent + selection + submittal + canonicalization OutboxEvent rows; preserves pre-published rows', async () => {
       const preExistingPublishedAt = new Date('2025-01-01T00:00:00Z');
 
       // Seed 2 unpublished rows per schema (8 total).
@@ -224,11 +219,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
             event_payload: { idx: i } as never,
           },
         });
-        await engagementPrisma.outboxEvent.create({
+        await selectionPrisma.outboxEvent.create({
           data: {
             id: uuidv7(),
             tenant_id: TENANT_A,
-            event_type: 'engagement.state_transition',
+            event_type: 'selection.state_transition',
             event_payload: { idx: i } as never,
           },
         });
@@ -270,11 +265,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Seed 1 already-published row per schema (4 total) to prove the
       // publisher does NOT re-stamp them.
       const prePublished: Record<
-        'consent' | 'engagement' | 'submittal' | 'canonicalization' | 'placement',
+        'consent' | 'selection' | 'submittal' | 'canonicalization' | 'placement',
         string
       > = {
         consent: uuidv7(),
-        engagement: uuidv7(),
+        selection: uuidv7(),
         submittal: uuidv7(),
         canonicalization: uuidv7(),
         placement: uuidv7(),
@@ -288,11 +283,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           published_at: preExistingPublishedAt,
         },
       });
-      await engagementPrisma.outboxEvent.create({
+      await selectionPrisma.outboxEvent.create({
         data: {
-          id: prePublished.engagement,
+          id: prePublished.selection,
           tenant_id: TENANT_A,
-          event_type: 'engagement.state_transition',
+          event_type: 'selection.state_transition',
           event_payload: { idx: 'pre' } as never,
           published_at: preExistingPublishedAt,
         },
@@ -349,7 +344,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // + 1 pre-published).
       const [
         consentPublished,
-        engagementPublished,
+        selectionPublished,
         submittalPublished,
         canonicalizationPublished,
         placementPublished,
@@ -357,7 +352,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         consentPrisma.outboxEvent.findMany({
           where: { tenant_id: TENANT_A, published_at: { not: null } },
         }),
-        engagementPrisma.outboxEvent.findMany({
+        selectionPrisma.outboxEvent.findMany({
           where: { tenant_id: TENANT_A, published_at: { not: null } },
         }),
         submittalPrisma.outboxEvent.findMany({
@@ -371,7 +366,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         }),
       ]);
       expect(consentPublished).toHaveLength(3);
-      expect(engagementPublished).toHaveLength(3);
+      expect(selectionPublished).toHaveLength(3);
       expect(submittalPublished).toHaveLength(3);
       expect(canonicalizationPublished).toHaveLength(3);
       // E1-c — the placement drain published its 2 unpublished rows (+1 pre).
@@ -407,13 +402,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Assert: pre-existing published_at values are preserved on all 4
       // pre-published rows.
       for (const [schema, id] of Object.entries(prePublished) as ReadonlyArray<
-        ['consent' | 'engagement' | 'submittal' | 'canonicalization' | 'placement', string]
+        ['consent' | 'selection' | 'submittal' | 'canonicalization' | 'placement', string]
       >) {
         const client =
           schema === 'consent'
             ? consentPrisma
-            : schema === 'engagement'
-              ? engagementPrisma
+            : schema === 'selection'
+              ? selectionPrisma
               : schema === 'submittal'
                 ? submittalPrisma
                 : schema === 'canonicalization'
@@ -429,7 +424,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     // (i) + (ii) Atomicity: a $transaction that fails partway leaves NO
     // orphan outbox row. Proves the in-tx emission is bound to the
     // domain-mutation success/failure.
-    it('tx rollback leaves NO orphan engagement outbox row', async () => {
+    it('tx rollback leaves NO orphan selection outbox row', async () => {
       const outboxIdAttempted = uuidv7();
       const duplicateId = uuidv7();
 
@@ -438,28 +433,28 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // FIRST op proves that even when the outbox write succeeds in
       // isolation, the failing peer rolls it back.
       await expect(
-        engagementPrisma.$transaction([
-          engagementPrisma.outboxEvent.create({
+        selectionPrisma.$transaction([
+          selectionPrisma.outboxEvent.create({
             data: {
               id: outboxIdAttempted,
               tenant_id: TENANT_A,
-              event_type: 'engagement.state_transition',
+              event_type: 'selection.state_transition',
               event_payload: { atomicity_probe: true } as never,
             },
           }),
-          engagementPrisma.outboxEvent.create({
+          selectionPrisma.outboxEvent.create({
             data: {
               id: duplicateId,
               tenant_id: TENANT_A,
-              event_type: 'engagement.state_transition',
+              event_type: 'selection.state_transition',
               event_payload: { atomicity_probe: 'a' } as never,
             },
           }),
-          engagementPrisma.outboxEvent.create({
+          selectionPrisma.outboxEvent.create({
             data: {
               id: duplicateId,
               tenant_id: TENANT_A,
-              event_type: 'engagement.state_transition',
+              event_type: 'selection.state_transition',
               event_payload: { atomicity_probe: 'b' } as never,
             },
           }),
@@ -467,10 +462,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       ).rejects.toBeDefined();
 
       // Neither row should exist post-rollback.
-      const orphan = await engagementPrisma.outboxEvent.findUnique({
+      const orphan = await selectionPrisma.outboxEvent.findUnique({
         where: { id: outboxIdAttempted },
       });
-      const duplicateLeftover = await engagementPrisma.outboxEvent.findUnique({
+      const duplicateLeftover = await selectionPrisma.outboxEvent.findUnique({
         where: { id: duplicateId },
       });
       expect(orphan).toBeNull();

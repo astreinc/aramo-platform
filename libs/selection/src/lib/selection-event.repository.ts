@@ -12,8 +12,8 @@ import { PrismaService } from './prisma/prisma.service.js';
 // Surface scope (closed):
 //   - appendEvent (WRITE; create-only — never update/upsert/delete)
 //   - findById (READ)
-//   - findByEngagementId (READ)
-//   - findByTenantAndEngagementId (READ; tenant-scoped)
+//   - findBySelectionId (READ)
+//   - findByTenantAndSelectionId (READ; tenant-scoped)
 //   - findByTenantAndId (READ; tenant-scoped — consumed by
 //     EvidenceRepository.buildPackage cross-schema validator at
 //     M5 PR-2 §4.8)
@@ -26,7 +26,7 @@ import { PrismaService } from './prisma/prisma.service.js';
 // suspenders alongside the trigger.
 //
 // Tenant isolation (Architecture §7.2): tenant-scoped methods filter
-// by tenant_id in the WHERE clause. findById and findByEngagementId
+// by tenant_id in the WHERE clause. findById and findBySelectionId
 // are unscoped lookups (PK / FK respectively) — caller is responsible
 // for tenant assertion at consumer sites. The cross-schema validator
 // at M5 PR-2 §4.8 uses findByTenantAndId, which enforces tenant
@@ -34,14 +34,14 @@ import { PrismaService } from './prisma/prisma.service.js';
 //
 // Observability (Plan v1.5 §M4 "observability per-PR standard from M4
 // onward"; HK-PR-4 adoption): Style A constructor-DI AramoLogger via
-// the 'EngagementEventRepositoryLogger' token wired in
-// engagement.module.ts. Structured INFO-level logging at entry +
+// the 'SelectionEventRepositoryLogger' token wired in
+// selection.module.ts. Structured INFO-level logging at entry +
 // success/refusal/hit/miss paths.
 
 export interface AppendEventInput {
   id: string;
   tenant_id: string;
-  engagement_id: string;
+  selection_id: string;
   event_type: SelectionEventTypeValue;
   event_payload: unknown;
 }
@@ -49,7 +49,7 @@ export interface AppendEventInput {
 interface TalentSelectionEventRow {
   id: string;
   tenant_id: string;
-  engagement_id: string;
+  selection_id: string;
   event_type: SelectionEventTypeValue;
   event_payload: unknown;
   created_at: Date;
@@ -59,7 +59,7 @@ function projectView(row: TalentSelectionEventRow): TalentSelectionEventView {
   return {
     id: row.id,
     tenant_id: row.tenant_id,
-    engagement_id: row.engagement_id,
+    selection_id: row.selection_id,
     event_type: row.event_type,
     event_payload: row.event_payload,
     created_at: row.created_at,
@@ -70,33 +70,33 @@ function projectView(row: TalentSelectionEventRow): TalentSelectionEventView {
 export class SelectionEventRepository {
   constructor(
     private readonly prisma: PrismaService,
-    @Inject('EngagementEventRepositoryLogger')
+    @Inject('SelectionEventRepositoryLogger')
     private readonly logger: AramoLogger,
   ) {}
 
   async appendEvent(input: AppendEventInput): Promise<TalentSelectionEventView> {
     const startedAt = Date.now();
     this.logger.log({
-      event: 'engagement_event.append_started',
+      event: 'selection_event.append_started',
       tenant_id: input.tenant_id,
-      engagement_id: input.engagement_id,
+      selection_id: input.selection_id,
       event_type: input.event_type,
     });
     const created = await this.prisma.talentSelectionEvent.create({
       data: {
         id: input.id,
         tenant_id: input.tenant_id,
-        engagement_id: input.engagement_id,
+        selection_id: input.selection_id,
         event_type: input.event_type,
         event_payload: input.event_payload as never,
       },
     });
     const view = projectView(created as TalentSelectionEventRow);
     this.logger.log({
-      event: 'engagement_event.appended',
+      event: 'selection_event.appended',
       tenant_id: view.tenant_id,
-      engagement_id: view.engagement_id,
-      engagement_event_id: view.id,
+      selection_id: view.selection_id,
+      selection_event_id: view.id,
       event_type: view.event_type,
       latency_ms: Date.now() - startedAt,
     });
@@ -110,49 +110,49 @@ export class SelectionEventRepository {
     });
     const view = row === null ? null : projectView(row as TalentSelectionEventRow);
     this.logger.log({
-      event: 'engagement_event.findById',
-      engagement_event_id: id,
+      event: 'selection_event.findById',
+      selection_event_id: id,
       hit: view !== null,
       latency_ms: Date.now() - startedAt,
     });
     return view;
   }
 
-  async findByEngagementId(
-    engagement_id: string,
+  async findBySelectionId(
+    selection_id: string,
   ): Promise<TalentSelectionEventView[]> {
     const startedAt = Date.now();
     const rows = await this.prisma.talentSelectionEvent.findMany({
-      where: { engagement_id },
+      where: { selection_id },
       orderBy: [{ created_at: 'asc' }, { id: 'asc' }],
     });
     const views = (rows as TalentSelectionEventRow[]).map((r) => projectView(r));
     this.logger.log({
-      event: 'engagement_event.findByEngagementId',
-      engagement_id,
+      event: 'selection_event.findBySelectionId',
+      selection_id,
       result_count: views.length,
       latency_ms: Date.now() - startedAt,
     });
     return views;
   }
 
-  async findByTenantAndEngagementId(input: {
+  async findByTenantAndSelectionId(input: {
     tenant_id: string;
-    engagement_id: string;
+    selection_id: string;
   }): Promise<TalentSelectionEventView[]> {
     const startedAt = Date.now();
     const rows = await this.prisma.talentSelectionEvent.findMany({
       where: {
         tenant_id: input.tenant_id,
-        engagement_id: input.engagement_id,
+        selection_id: input.selection_id,
       },
       orderBy: [{ created_at: 'asc' }, { id: 'asc' }],
     });
     const views = (rows as TalentSelectionEventRow[]).map((r) => projectView(r));
     this.logger.log({
-      event: 'engagement_event.findByTenantAndEngagementId',
+      event: 'selection_event.findByTenantAndSelectionId',
       tenant_id: input.tenant_id,
-      engagement_id: input.engagement_id,
+      selection_id: input.selection_id,
       result_count: views.length,
       latency_ms: Date.now() - startedAt,
     });
@@ -169,9 +169,9 @@ export class SelectionEventRepository {
     });
     const view = row === null ? null : projectView(row as TalentSelectionEventRow);
     this.logger.log({
-      event: 'engagement_event.findByTenantAndId',
+      event: 'selection_event.findByTenantAndId',
       tenant_id: input.tenant_id,
-      engagement_event_id: input.id,
+      selection_event_id: input.id,
       hit: view !== null,
       latency_ms: Date.now() - startedAt,
     });

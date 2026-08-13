@@ -12,7 +12,7 @@
 //                  tier, rank, rank_ordinal, score, examination_id,
 //                  why_matched_sentence, strengths, gaps, risk_flags,
 //                  recruiter_notes, override_id, action_queue_item_id,
-//                  internal_engagement_state
+//                  internal_selection_state
 //                  (Charter R10 — no internal-reasoning/eval-output/ranking
 //                   exposure on talent-facing surfaces)
 //        - prefix: override_*  (Charter R8 — no recruiter-judgment overrides
@@ -31,7 +31,7 @@
 //      impossible because trust shapes carry no tenant field.
 //
 //      Scope is by SCHEMA NAME, deliberately: tenant_id is base-LEGAL on an
-//      ENGAGEMENT surface (P-R5 — a candidate MAY see the counterparty they
+//      SELECTION surface (P-R5 — a candidate MAY see the counterparty they
 //      knowingly engaged; PortalProfile.tenant_id is such a field) but FORBIDDEN
 //      on a trust surface. The two regimes coexist; membership is the switch.
 //
@@ -76,7 +76,7 @@ export const FORBIDDEN_EXACT: ReadonlyArray<string> = [
   'recruiter_notes',
   'override_id',
   'action_queue_item_id',
-  'internal_engagement_state',
+  'internal_selection_state',
 ];
 
 export const FORBIDDEN_PREFIXES: ReadonlyArray<string> = [
@@ -105,7 +105,7 @@ export const TRUST_CLASS_SCHEMAS: ReadonlySet<string> = new Set<string>([
 ]);
 
 // The tenant-/verifier-identifying fields forbidden ONLY within a trust-class
-// schema (they are base-legal on engagement surfaces per P-R5).
+// schema (they are base-legal on selection surfaces per P-R5).
 export const TRUST_CLASS_FORBIDDEN_EXACT: ReadonlyArray<string> = [
   'tenant_name',
   'tenant_id',
@@ -373,9 +373,9 @@ function runSelfTest(): void {
     }
   }
 
-  // 8. D3 SCOPING — the SAME tenant_id on a NON-trust-class (engagement) schema
+  // 8. D3 SCOPING — the SAME tenant_id on a NON-trust-class (selection) schema
   //    is NOT flagged. This pins P-R5: PortalProfile.tenant_id stays legal.
-  const engagementOk = {
+  const selectionOk = {
     components: {
       schemas: {
         PortalProfile: {
@@ -386,10 +386,10 @@ function runSelfTest(): void {
       },
     },
   };
-  const engagementIssues: Issue[] = [];
-  walkComponents(engagementOk, engagementIssues, trustSet); // 'PortalProfile' ∉ trustSet
-  if (engagementIssues.length !== 0) {
-    throw new Error(`self-test: engagement tenant_id wrongly flagged: ${JSON.stringify(engagementIssues)}`);
+  const selectionIssues: Issue[] = [];
+  walkComponents(selectionOk, selectionIssues, trustSet); // 'PortalProfile' ∉ trustSet
+  if (selectionIssues.length !== 0) {
+    throw new Error(`self-test: selection tenant_id wrongly flagged: ${JSON.stringify(selectionIssues)}`);
   }
 
   console.log(

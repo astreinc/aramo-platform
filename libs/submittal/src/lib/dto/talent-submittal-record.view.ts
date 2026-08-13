@@ -17,8 +17,8 @@ import type { SubmittalStateValue } from '../submittal-state.js';
 //
 // M5 PR-8b1 §4.6 — type definition lives in '../submittal-state.js'
 // alongside SUBMITTAL_STATE_VALUES const tuple + canTransition guard
-// (single-source-of-truth; mirrors engagement-side
-// libs/engagement/src/lib/engagement-state.ts pattern). Re-exported
+// (single-source-of-truth; mirrors selection-side
+// libs/selection/src/lib/selection-state.ts pattern). Re-exported
 // here to preserve backward-compat for existing consumers importing
 // SubmittalStateValue from this view file.
 export type { SubmittalStateValue } from '../submittal-state.js';
@@ -84,7 +84,7 @@ export interface CreateSubmittalInput {
   match_justification_overrides?: MatchJustificationOverrides;
   recruiter_contribution: RecruiterContributionInput;
   rate_expectation_id?: string | null;
-  engagement_event_refs?: readonly string[];
+  selection_event_refs?: readonly string[];
 
   // Worth Considering optional fields — accepted at PR-3, persisted
   // verbatim, NOT enforced. F34 enforces.

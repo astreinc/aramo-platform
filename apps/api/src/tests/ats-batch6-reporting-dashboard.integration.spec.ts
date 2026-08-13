@@ -38,7 +38,7 @@ import { placementCapacityMigrations } from './support/placement-capacity-migrat
 //      - The test container is set up with ONLY the 8 ATS-side
 //        schemas applied (company / contact / requisition / pipeline /
 //        activity / calendar / saved_list / talent_record /
-//        entitlement). NO engagement / submittal / examination /
+//        entitlement). NO selection / submittal / examination /
 //        matching / talent / job_domain migration is applied. If the
 //        reporting service touched ANY Core schema, every call would
 //        500 with "relation does not exist". All metric calls return
@@ -243,14 +243,14 @@ const TALENT_RECORD_SUPERSESSION = resolve(
   'libs/talent-record/prisma/migrations/20260706210000_tr2a_b3a_talent_record_supersession/migration.sql',
 );
 
-// === CORE / ENGAGEMENT / SUBMITTAL MIGRATIONS — DELIBERATELY OMITTED ===
+// === CORE / SELECTION / SUBMITTAL MIGRATIONS — DELIBERATELY OMITTED ===
 //
 // This spec applies ONLY the 8 ATS-side schemas + entitlement +
-// metering. The engagement / submittal / examination / matching /
+// metering. The selection / submittal / examination / matching /
 // talent / job_domain schemas are NOT created in the test container.
 // If ReportingService or any controller it depends on were to issue a
 // query against any of those schemas, the route would 500 with
-// `relation "engagement.Engagement" does not exist` (or similar). The
+// `relation "selection.Selection" does not exist` (or similar). The
 // fact that every metric route returns 200 is the seam-exclusion
 // proof: A7 reads no Core schema.
 
@@ -336,7 +336,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await setupClient.connect();
 
       // Apply ONLY ATS-side migrations + entitlement + metering. See the
-      // header note: the absence of engagement/submittal/examination/etc.
+      // header note: the absence of selection/submittal/examination/etc.
       // is the seam-exclusion structural proof.
       for (const p of [
         ENTITLEMENT_INIT,
@@ -767,7 +767,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     // D) THE SEAM-EXCLUSION — structural proof.
     // -------------------------------------------------------------------------
 
-    it('Seam-exclusion: GET /v1/dashboard returns 200 even though engagement/submittal/examination/talent/job_domain schemas are NOT applied to the container', async () => {
+    it('Seam-exclusion: GET /v1/dashboard returns 200 even though selection/submittal/examination/talent/job_domain schemas are NOT applied to the container', async () => {
       const res = await fetch(
         `http://127.0.0.1:${port}/v1/dashboard?site_id=${SITE_A}`,
         {
@@ -776,7 +776,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         },
       );
       // If the reporting service touched any Core schema, this would
-      // 500 with `relation "engagement.X" does not exist`.
+      // 500 with `relation "selection.X" does not exist`.
       expect(res.status).toBe(200);
       const body = (await res.json()) as {
         tenant_counts: { companies: number };

@@ -6,7 +6,7 @@ import { PrismaClient } from '../../../prisma/generated/client/client.js';
 // Per-module PrismaService for the client-talent-restriction module
 // (Track 3 / E7). Owns the client_talent_restriction-schema connection.
 //
-// Uniform lazy pattern (submittal/engagement precedent): inert
+// Uniform lazy pattern (submittal/selection precedent): inert
 // constructor (no env read, no throw), no OnModuleInit eager $connect,
 // lazy first-use DATABASE_URL validation memoized behind `validated`,
 // OnModuleDestroy $disconnect. @Optional() databaseUrl so Nest DI does

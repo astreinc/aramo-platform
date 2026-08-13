@@ -40,7 +40,7 @@ export type {
 // M5 PR-8b1 — SubmittalState closed-list substrate. `canTransition`
 // re-exported as `canTransitionSubmittal` at the workspace barrel per
 // Lead-Q-PR-8b1-A7 + Process Lesson 53 (defensive disambiguation —
-// engagement-side also exports `canTransition`; the unqualified name
+// selection-side also exports `canTransition`; the unqualified name
 // surfaces in two libs and the rename guards consumers that import
 // from `@aramo/submittal` against shadowing).
 export { SUBMITTAL_STATE_VALUES, canTransition as canTransitionSubmittal } from './lib/submittal-state.js';

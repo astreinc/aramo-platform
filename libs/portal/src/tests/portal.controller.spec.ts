@@ -176,10 +176,10 @@ const FORBIDDEN = [
 ];
 
 // PR-2b §PR-2.4 / P2b — grep-assert the surface against the D3 trust vocab: NO
-// trust/verification/attestation ORIGIN data on this ENGAGEMENT surface (Portal
+// trust/verification/attestation ORIGIN data on this SELECTION surface (Portal
 // DDR P-R4/P-R5). verifier/verified_by/verifying_*/origin_* are the origin-
 // secrecy fields. Both tenant_id AND tenant_name are P-R5-legal here (a portal
-// user's own engagements, named — ruling 2), so they are deliberately NOT in
+// user's own selections, named — ruling 2), so they are deliberately NOT in
 // this list; they remain forbidden ONLY inside trust-class schemas (empty),
 // which verify-portal-refusal.ts enforces.
 const TRUST_VOCAB_FORBIDDEN = [
@@ -272,7 +272,7 @@ describe('PortalController — GET /v1/portal/records', () => {
     expect(result.records[0]).toEqual({
       talent_id: RECORD_A,
       tenant_id: TENANT_A,
-      // Portal P2 P2b — the engagement counterparty is now NAMED (ruling 2).
+      // Portal P2 P2b — the selection counterparty is now NAMED (ruling 2).
       tenant_name: 'Acme Corp',
       tenant_status: 'active',
       source_channel: 'self_signup',
@@ -280,7 +280,7 @@ describe('PortalController — GET /v1/portal/records', () => {
     });
     for (const f of FORBIDDEN) expect(result.records[0]).not.toHaveProperty(f);
     // §PR-2.4 — no trust/verification/attestation ORIGIN data on the surface.
-    // (tenant_name is NOT here — P2b makes it a MUST on this engagement surface.)
+    // (tenant_name is NOT here — P2b makes it a MUST on this selection surface.)
     for (const f of TRUST_VOCAB_FORBIDDEN) expect(result.records[0]).not.toHaveProperty(f);
   });
 });

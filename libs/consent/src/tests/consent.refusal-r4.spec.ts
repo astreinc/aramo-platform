@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 // Charter Refusal R4: no consent inference from behavior. The consent
 // repository must read/write only the consent-ledger tables. Any code
-// path that reads engagement, response, talent_event, or any
+// path that reads selection, response, talent_event, or any
 // behavioral table from the consent repo would be a refusal violation.
 //
 // PR-3 refined the rule (ADR-0005 Decision E):
@@ -48,12 +48,12 @@ const RESOLVER_HELPERS_MARKER =
 // PR-3 list with no removals; adding more pre-emptive entries as the
 // program adds tables in future PRs.
 const FORBIDDEN_NON_LEDGER_REFS = [
-  'tx.engagement',
+  'tx.selection',
   'tx.talentResponse',
   'tx.talentEvent',
   'tx.matchScore',
   'tx.entrustability',
-  'prisma.engagement',
+  'prisma.selection',
   'prisma.talentResponse',
   'prisma.talentEvent',
 ];
@@ -209,7 +209,7 @@ describe('Refusal R4 — two-category enforcement (PR-4: write path + resolver p
 
   describe('Synthetic violation tests (verify the guardrail catches injected violations)', () => {
     it('would catch a non-ledger table read injected anywhere', () => {
-      const synthetic = `${REPO_SOURCE}\n// poisoned: tx.engagement.findMany({})\n`;
+      const synthetic = `${REPO_SOURCE}\n// poisoned: tx.selection.findMany({})\n`;
       const matched = FORBIDDEN_NON_LEDGER_REFS.some((ref) => synthetic.includes(ref));
       expect(matched).toBe(true);
     });

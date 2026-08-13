@@ -138,7 +138,7 @@ const DELETE_INVENTORY: readonly DeleteStep[] = [
 // The freeze (§3.3): the requisition-domain workflow tables, locked ACCESS
 // EXCLUSIVE for the reset transaction. Activity is deliberately NOT locked
 // — talent/company/contact activity must stay writable; workflow activity
-// writes ride the (locked) pipeline/engagement transactions and so cannot
+// writes ride the (locked) pipeline/selection transactions and so cannot
 // commit mid-reset anyway. The lock releases automatically at COMMIT /
 // ROLLBACK — touching no preserved entity, unlike a tenant-status toggle.
 const LOCK_TABLES: readonly string[] = [

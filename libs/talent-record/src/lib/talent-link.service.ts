@@ -29,7 +29,7 @@ import { TalentRecordRepository } from './talent-record.repository.js';
 //
 // Failing (2) → 422 TALENT_LINK_INVALID reason='cluster_not_found'.
 //
-// 4e-rest: the Core-Talent link (core_talent_id) was dropped once engagement
+// 4e-rest: the Core-Talent link (core_talent_id) was dropped once selection
 // (#349) and consent (#350) released their Core reads. The link is now
 // CLUSTER-ONLY (the PERSON_CLUSTER pointer in identity_index). The former Core
 // guard (Talent.findTalentById → core_talent_not_found) is gone; guard-4 is now

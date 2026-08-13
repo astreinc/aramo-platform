@@ -1,15 +1,15 @@
 // M5 PR-8b1 §4.5 — AppendSubmittalEventInput.
 //
 // Repository input shape for TalentSubmittalEventRepository.appendEvent.
-// Mirrors libs/engagement/src/lib/engagement-event.repository.ts
-// AppendEventInput with engagement_id -> submittal_id substitution.
+// Mirrors libs/selection/src/lib/selection-event.repository.ts
+// AppendEventInput with selection_id -> submittal_id substitution.
 //
 // Defensive `Submittal` prefix per Lead-Q-PR-8b1-A7 (parity with
 // `TalentSubmittal*` naming) and Process Lesson 53 (workspace-unique
-// type-name discipline; engagement-side `AppendEventInput` is
+// type-name discipline; selection-side `AppendEventInput` is
 // unqualified, but submittal-side adopts the qualified prefix at
 // PR-8b1 introduction to avoid a future collision risk if the
-// engagement-side type is ever surfaced cross-lib).
+// selection-side type is ever surfaced cross-lib).
 
 import type { SubmittalEventTypeValue } from './talent-submittal-event.view.js';
 

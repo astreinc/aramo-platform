@@ -10,7 +10,7 @@ import { PrismaService } from './prisma/prisma.service.js';
 
 // Repository for the TalentSubmittalEvent model (M5 PR-8b1 §4.3).
 //
-// Surface scope (closed; mirrors M5 PR-2 EngagementEventRepository
+// Surface scope (closed; mirrors M5 PR-2 SelectionEventRepository
 // 5-method shape per Lead-Q-PR-8b1-A5 full PR-2 mirror):
 //   - appendEvent (WRITE; create-only — never update/upsert/delete)
 //   - findById (READ)
@@ -21,7 +21,7 @@ import { PrismaService } from './prisma/prisma.service.js';
 //
 // Append-only architecture: appendEvent is the sole write path. The
 // table's BEFORE UPDATE trigger
-// (engagement.reject_submittal_event_update) enforces absolute
+// (selection.reject_submittal_event_update) enforces absolute
 // immutability at the DB layer — even a deliberate prisma.update from
 // outside this repository would be rejected by Postgres. Belt-and-
 // suspenders alongside the trigger.
@@ -40,8 +40,8 @@ import { PrismaService } from './prisma/prisma.service.js';
 // success/hit/miss paths.
 //
 // DI pattern per Lead-Q-PR-8b1-A2: direct PrismaService injection (no
-// token-based injection); matches libs/engagement/src/lib/
-// engagement-event.repository.ts:71-75 precedent.
+// token-based injection); matches libs/selection/src/lib/
+// selection-event.repository.ts:71-75 precedent.
 
 interface TalentSubmittalEventRow {
   id: string;

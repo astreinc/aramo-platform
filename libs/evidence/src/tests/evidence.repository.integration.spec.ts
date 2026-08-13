@@ -244,21 +244,21 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const talentEvidenceRepo = new TalentEvidenceRepository(talentEvidencePrisma);
       // M5 PR-2 — SelectionEventRepository required by EvidenceRepository
       // constructor. Existing tests in this spec do not exercise the
-      // cross-schema engagement_event_refs validator (all test seeds use
-      // `[]::jsonb`; all BuildPackageInput shapes omit engagement_event_refs
+      // cross-schema selection_event_refs validator (all test seeds use
+      // `[]::jsonb`; all BuildPackageInput shapes omit selection_event_refs
       // → validator short-circuits before the findByTenantAndId call).
       // Validator-path coverage lives in
       // evidence.repository.cross-schema-validator.integration.spec.ts.
       // A stub satisfies the constructor signature without requiring the
-      // engagement migration to be applied here.
-      const engagementEventRepoStub = {
+      // selection migration to be applied here.
+      const selectionEventRepoStub = {
         findByTenantAndId: async () => null,
       } as unknown as SelectionEventRepository;
       repo = new EvidenceRepository(
         prisma,
         examRepo,
         talentEvidenceRepo,
-        engagementEventRepoStub,
+        selectionEventRepoStub,
         makeMockLogger(),
       );
 
@@ -379,7 +379,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(view?.capability_summary).toEqual(CAPABILITY_SUMMARY);
       expect(view?.match_justification).toEqual(MATCH_JUSTIFICATION);
       expect(view?.recruiter_contribution).toEqual(RECRUITER_CONTRIBUTION);
-      expect(view?.engagement_event_refs).toEqual([]);
+      expect(view?.selection_event_refs).toEqual([]);
     });
 
     it('findById returns null for an unknown id', async () => {
@@ -517,8 +517,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(view.capability_summary).toBeDefined();
       expect(view.match_justification).toBeDefined();
       expect(view.recruiter_contribution).toBeDefined();
-      expect(Array.isArray(view.engagement_event_refs)).toBe(true);
-      expect(view.engagement_event_refs).toEqual([]);
+      expect(Array.isArray(view.selection_event_refs)).toBe(true);
+      expect(view.selection_event_refs).toEqual([]);
 
       // Capability summary is derived from the seeded examination's
       // skill_match + experience_match; recruiter overrides supply
@@ -720,7 +720,7 @@ async function seedPackage(
        id, tenant_id, talent_id, job_id, examination_id,
        submittal_record_id, parent_package_id,
        talent_identity, contact_summary, capability_summary,
-       match_justification, recruiter_contribution, engagement_event_refs,
+       match_justification, recruiter_contribution, selection_event_refs,
        created_at
      ) VALUES (
        '${opts.id}'::uuid,

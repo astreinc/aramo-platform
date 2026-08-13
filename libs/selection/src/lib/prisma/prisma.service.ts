@@ -4,7 +4,7 @@ import { createAramoLogger, type AramoLogger } from '@aramo/common';
 
 import { PrismaClient } from '../../../prisma/generated/client/client.js';
 
-// Per-module PrismaService for the engagement module (M5 PR-1). Eleventh
+// Per-module PrismaService for the selection module (M5 PR-1). Eleventh
 // model-bearing PrismaService in the workspace, joining the ten from
 // post-PR-17 closure + M4 PR-1 (libs/auth-storage, libs/consent,
 // libs/evidence, libs/examination, libs/identity, libs/ingestion,
@@ -40,7 +40,7 @@ import { PrismaClient } from '../../../prisma/generated/client/client.js';
 // Lifecycle hooks (onModuleDestroy) unaffected.
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleDestroy {
-  private readonly logger: AramoLogger = createAramoLogger('PrismaService (engagement)');
+  private readonly logger: AramoLogger = createAramoLogger('PrismaService (selection)');
   private readonly explicitUrl?: string;
   private validated = false;
 
@@ -62,7 +62,7 @@ export class PrismaService extends PrismaClient implements OnModuleDestroy {
       this.validated = true;
     }
     await super.$connect();
-    this.logger.log({ event: 'prisma_service_connected', surface: 'engagement' });
+    this.logger.log({ event: 'prisma_service_connected', surface: 'selection' });
   }
 
   async onModuleDestroy(): Promise<void> {

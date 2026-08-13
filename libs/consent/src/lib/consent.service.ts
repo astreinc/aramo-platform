@@ -330,7 +330,7 @@ export class ConsentService {
   /**
    * Portal P2 P2b (§PR-2) — the append-only consent history for the portal
    * management UI. Delegates to getHistory (PR-6) whose ConsentHistoryEvent is
-   * already closed at 5 ENGAGEMENT-class fields (event_id, scope, action,
+   * already closed at 5 SELECTION-class fields (event_id, scope, action,
    * created_at, expires_at — NO actor/recruiter/trust field), so it is safe for
    * the talent-facing surface as-is. This method owns the raw query-param
    * parsing (limit/scope/cursor) so cursor internals stay inside @aramo/consent

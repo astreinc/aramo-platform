@@ -8,7 +8,7 @@ import type { RecruitingStatus } from '@aramo/requisition';
 // Vocabulary discipline (R12): every metric here is an aggregation over
 // the ATS-side schemas (company / contact / requisition / pipeline /
 // activity / calendar / saved_list / talent_record). NO Core /
-// engagement / submittal / examination read is involved — the
+// selection / submittal / examination read is involved — the
 // seam-exclusion is structural. Submittal-derived metrics (e.g. "recent
 // hires from confirmed submittals") are NOT computed here; the
 // ATS-internal placed-pipeline count is the substitute.
@@ -49,7 +49,7 @@ export interface PipelineStageRollupView {
 // of pipelines in `placed` status within the caller's visible set.
 // This is the A5b-1-derived view (placement is the pipeline terminal
 // state with the openings_available decrement). NOT the Core
-// submittal-placement count (that lives behind the engagement schema
+// submittal-placement count (that lives behind the selection schema
 // seam, no ATS read path; see T5 / M6).
 export interface PlacementCountReportView {
   placed_pipelines: number;

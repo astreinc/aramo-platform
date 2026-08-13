@@ -23,7 +23,7 @@ import { Client } from 'pg';
 // we provide a thin adapter that runs the same SQL the helper builds.
 // The point is that the SQL is correct AND that the INSERT joins the
 // caller's PG transaction (the integration substrate of the production
-// path, which uses the engagement / submittal PrismaService's
+// path, which uses the selection / submittal PrismaService's
 // $executeRaw inside its $transaction array).
 
 const METERING_INIT_MIGRATION_PATH = resolve(
@@ -56,7 +56,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     it('Ruling 6 (a): committed transaction records the UsageEvent', async () => {
       // Build the same SQL that recordUsage(prisma, ...) would emit, but
       // run it inside a node-pg transaction. The shape is identical to
-      // what the engagement / submittal $transaction array produces in
+      // what the selection / submittal $transaction array produces in
       // production — same INSERT into metering."UsageEvent".
       const tx = new Client({ connectionString: container.getConnectionUri() });
       await tx.connect();
@@ -65,7 +65,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         await tx.query(
           `INSERT INTO metering."UsageEvent" (id, tenant_id, event_type, quantity, occurred_at)
            VALUES (gen_random_uuid(), $1::uuid, $2, $3, NOW())`,
-          [TENANT_A, 'engagement.state_transition.test_commit', 1],
+          [TENANT_A, 'selection.state_transition.test_commit', 1],
         );
         await tx.query('COMMIT');
       } finally {
@@ -75,11 +75,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const rows = await client.query(
         `SELECT tenant_id, event_type, quantity FROM metering."UsageEvent"
          WHERE tenant_id = $1::uuid AND event_type = $2`,
-        [TENANT_A, 'engagement.state_transition.test_commit'],
+        [TENANT_A, 'selection.state_transition.test_commit'],
       );
       expect(rows.rowCount).toBe(1);
       expect(rows.rows[0]?.tenant_id).toBe(TENANT_A);
-      expect(rows.rows[0]?.event_type).toBe('engagement.state_transition.test_commit');
+      expect(rows.rows[0]?.event_type).toBe('selection.state_transition.test_commit');
       expect(rows.rows[0]?.quantity).toBe(1);
     });
 

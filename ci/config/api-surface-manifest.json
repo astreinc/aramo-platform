@@ -38,7 +38,7 @@
     "libs/company/src/lib/d4a.controller.ts": "AP",
     "libs/consent/src/lib/consent.controller.ts": "AP",
     "libs/contact/src/lib/contact.controller.ts": "AP",
-    "libs/engagement/src/lib/engagement.controller.ts": "AP",
+    "libs/selection/src/lib/selection.controller.ts": "AP",
     "libs/examination/src/lib/match-list.controller.ts": "AP",
     "libs/examination/src/lib/override.controller.ts": "AP",
     "libs/export/src/lib/export.controller.ts": "AP",

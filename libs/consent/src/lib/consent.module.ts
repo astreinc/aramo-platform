@@ -36,8 +36,8 @@ import { STALE_CONSENT_QUEUE_NAME } from './stale-consent.queue.constants.js';
 // M6 PR-2 §4: the outbox-publisher queue + processor + logger factory
 // have been RELOCATED to libs/outbox-publisher (the new leaf lib) per
 // Amendment §2.4 — moving the publisher out of consent avoids the
-// consent → engagement|submittal cycle that would result from injecting
-// the engagement + submittal outbox repositories into a publisher living
+// consent → selection|submittal cycle that would result from injecting
+// the selection + submittal outbox repositories into a publisher living
 // here. Consent emission/behavior is UNCHANGED (Ruling 3); only the
 // drain-side wiring relocates. The OutboxPublisherRepository (consent-
 // side reader/writer) stays in libs/consent and is consumed by the new

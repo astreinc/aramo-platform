@@ -36,7 +36,7 @@ import { PrismaService } from './prisma/prisma.service.js';
 //     selects ranked TalentJobExamination rows for the req's job_id with
 //     lifecycle_state='active', and projects each through PR-6's
 //     projectSummaryView. PULL-SIDE (Ruling 1), PROJECT-VIA-PR-6
-//     (Ruling 3), READ-ONLY, NO ENGAGEMENT-STATE FILTER (Ruling 4 — that
+//     (Ruling 3), READ-ONLY, NO SELECTION-STATE FILTER (Ruling 4 — that
 //     filter is M5 territory).
 //   - findByTenantAndTalent: read all snapshots for a (tenant, talent) pair,
 //     newest first via the (tenant_id, talent_id, computed_at DESC, id DESC)
@@ -312,7 +312,7 @@ export class ExaminationRepository {
   //      query's ordering.
   //   4. Project each row through projectSummaryView (PR-6) and return.
   //
-  // NO engagement-state filter (Ruling 4 — M5 territory, F20). NO
+  // NO selection-state filter (Ruling 4 — M5 territory, F20). NO
   // §14.4 sensitive-field mechanics (Ruling 6 — Summary-only output, no new
   // sensitive surfacing). NO HTTP endpoint (directive §5 — PR-8).
   async findActiveReqLiveList(

@@ -7,7 +7,7 @@ import type { ConsentScopeValue } from './consent-grant-request.dto.js';
 // verbatim. Rendering + hashing share renderPortalConsentText, so the displayed
 // text is definitionally the D7 hash preimage (no frontend divergence possible).
 //
-// ENGAGEMENT-class: `text` names the recipient by tenant_id (the canonical legal
+// SELECTION-class: `text` names the recipient by tenant_id (the canonical legal
 // clause); it carries no R10/trust field. One entry per ConsentScope (all 5,
 // deterministic — matches the always-5-scopes state precedent).
 export interface PortalConsentTextEntryDto {

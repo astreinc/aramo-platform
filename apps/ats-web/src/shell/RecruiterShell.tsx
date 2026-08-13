@@ -127,7 +127,7 @@ const SECTION_LABEL: Record<string, string> = {
   sourcing: 'Sourcing',
   companies: 'Companies',
   contacts: 'Contacts',
-  engagements: 'Engagement',
+  selections: 'Selection',
   identity: 'Identity Advisories',
   search: 'Search',
   tasks: 'Tasks',
