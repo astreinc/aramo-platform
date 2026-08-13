@@ -9712,12 +9712,17 @@
     {
       "from": "doc/governance/current/Aramo-Repository-Baseline.md",
       "status": "unscoped",
-      "to": "doc/01-locked-baselines.md"
+      "to": "doc/go-live-known-limitations.md"
     },
     {
       "from": "doc/governance/current/Aramo-Repository-Baseline.md",
       "status": "unscoped",
-      "to": "doc/go-live-known-limitations.md"
+      "to": "doc/runbooks/t2p3b-selection-rebaseline-prod-reconciliation.md"
+    },
+    {
+      "from": "doc/governance/current/Aramo-Repository-Baseline.md",
+      "status": "unscoped",
+      "to": "doc/t2-closure-record-draft.md"
     },
     {
       "from": "doc/governance/current/Aramo-Repository-Baseline.md",
@@ -9727,12 +9732,12 @@
     {
       "from": "doc/governance/current/Aramo-Repository-Baseline.md",
       "status": "unscoped",
-      "to": "libs/submittal/prisma/schema.prisma"
+      "to": "scripts/verify-vocabulary.sh"
     },
     {
       "from": "doc/governance/current/Aramo-Repository-Baseline.md",
       "status": "unscoped",
-      "to": "scripts/verify-vocabulary.sh"
+      "to": "tools/db-sync-local.sh"
     },
     {
       "from": "doc/governance/recon/2026-08-09/SEG-01-governance.md",
@@ -10993,6 +10998,28 @@
       "from": "doc/step4-singlebox-runnable-prod-stack.md",
       "status": "unscoped",
       "to": "libs/fe-foundation/src/api/client.ts"
+    },
+    {
+      "from": "doc/t2-closure-record-draft.md",
+      "status": "unscoped",
+      "to": "doc/m0-closure-record-draft.md"
+    },
+    {
+      "from": "doc/t2-closure-record-draft.md",
+      "status": "unscoped",
+      "to": "doc/m1-closure-record-draft.md"
+    },
+    {
+      "from": "doc/t2-closure-record-draft.md",
+      "status": "unscoped",
+      "to": "doc/runbooks/t2p3b-selection-rebaseline-prod-reconciliation.md"
+    },
+    { "from": "doc/t2-closure-record-draft.md", "status": "unscoped", "to": "openapi/ats.yaml" },
+    { "from": "doc/t2-closure-record-draft.md", "status": "unscoped", "to": "openapi/common.yaml" },
+    {
+      "from": "doc/t2-closure-record-draft.md",
+      "status": "unscoped",
+      "to": "tools/db-sync-local.sh"
     },
     { "from": "docker-compose.images.yml", "status": "unscoped", "to": "tools/local-stack.sh" },
     { "from": "docker-compose.yml", "status": "unscoped", "to": "doc/runbooks/local-run.md" },
