@@ -8016,12 +8016,27 @@
     {
       "from": "apps/ats-web/src/placement/types.ts",
       "status": "production",
+      "to": "apps/api/src/interceptors/compensation-field-mask.interceptor.ts"
+    },
+    {
+      "from": "apps/ats-web/src/placement/types.ts",
+      "status": "production",
+      "to": "libs/field-masking/src/lib/compensation-field-map.ts"
+    },
+    {
+      "from": "apps/ats-web/src/placement/types.ts",
+      "status": "production",
       "to": "libs/placement/src/lib/lifecycle/placement-lifecycle.ts"
     },
     {
       "from": "apps/ats-web/src/placement/types.ts",
       "status": "production",
       "to": "libs/placement/src/lib/placement-process.types.ts"
+    },
+    {
+      "from": "apps/ats-web/src/placement/types.ts",
+      "status": "production",
+      "to": "libs/placement/src/lib/reasons/commercial-cancellation-reasons.ts"
     },
     {
       "from": "apps/ats-web/src/requisitions/compensation-visibility.ts",
