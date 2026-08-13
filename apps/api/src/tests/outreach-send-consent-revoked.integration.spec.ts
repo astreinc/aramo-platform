@@ -30,17 +30,17 @@ import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
 
 // M5 PR-9b §4.6 / Ruling 10 — POST /v1/selections/{id}/outreach
 // consent-at-send refusal integration spec. Plan v1.5 §M5 Track B item 3
-// closure: "Consent enforcement at message send time (not just engagement
+// closure: "Consent enforcement at message send time (not just selection
 // creation)."
 //
-// Tests Step 5.5 (added at PR-9b) of EngagementController.sendOutreach:
-// the controller pre-reads the engagement, calls ConsentService.check
-// with operation='engagement' + channel='email', and refuses 403
+// Tests Step 5.5 (added at PR-9b) of SelectionController.sendOutreach:
+// the controller pre-reads the selection, calls ConsentService.check
+// with operation='selection' + channel='email', and refuses 403
 // CONSENT_NOT_GRANTED_AT_SEND when the resolver returns 'denied'.
 //
 // Coverage (5 tests per directive §4.6 deliverable enumeration):
 //   1. revoked-at-send refusal — grant then revoke; outreach-send → 403.
-//   2. never-granted refusal — engagement created without prior grant.
+//   2. never-granted refusal — selection created without prior grant.
 //   3. tenant isolation — revoke in tenant A doesn't affect tenant B's
 //      separately-granted outreach.
 //   4. idempotency replay stability — repeat refusal with same key + body.
@@ -74,14 +74,10 @@ const MIGRATIONS = [
   M('libs/evidence/prisma/migrations/20260522090000_init_evidence_model/migration.sql'),
   M('libs/submittal/prisma/migrations/20260523120000_init_submittal_model/migration.sql'),
   M('libs/submittal/prisma/migrations/20260523200000_add_submittal_revoke/migration.sql'),
-  M('libs/selection/prisma/migrations/20260525120000_init_engagement_model/migration.sql'),
-  M('libs/selection/prisma/migrations/20260525150000_add_engagement_event_log/migration.sql'),
-  // M6 PR-2 §3 — engagement + submittal OutboxEvent migrations required
+  M('libs/selection/prisma/migrations/20260525120000_init_selection_model/migration.sql'),
+  // M6 PR-2 §3 — selection + submittal OutboxEvent migrations required
   // because state-transition write methods now emit an in-tx outbox row.
-  M('libs/selection/prisma/migrations/20260531000000_add_outbox_event/migration.sql'),
   // Outreach Draft/Preview Amendment v1.1 §3 — the outreach_drafted enum value.
-  M('libs/selection/prisma/migrations/20260609000000_add_outreach_drafted_event_type/migration.sql'),
-  M('libs/selection/prisma/migrations/20260813120000_t2p2_relocate_engagement_to_selection/migration.sql'),
   M('libs/submittal/prisma/migrations/20260531000000_add_outbox_event/migration.sql'),
   M('libs/submittal/prisma/migrations/20260812120000_t2p1_relocate_submittal_to_submittal_schema/migration.sql'),
   M('libs/ai-draft/prisma/migrations/20260525170000_init/migration.sql'),
@@ -174,7 +170,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // status on every mutation; seed an ACTIVE tenant for each forged tenant_id.
       await ensureWriteFreezeTenant((s) => setup.query(s), TENANT_A);
       await ensureWriteFreezeTenant((s) => setup.query(s), TENANT_B);
-      // 4e-engagement-key — TalentRecord substrate (engagement.talent_id).
+      // 4e-selection-key — TalentRecord substrate (selection.talent_id).
       await applyTalentRecordMigrations(setup);
       await seedTalentRecord(setup, { id: TALENT_A, tenant_id: TENANT_A });
       await seedTalentRecord(setup, { id: TALENT_B, tenant_id: TENANT_B });
@@ -228,7 +224,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         consumer_type: 'recruiter',
         actor_kind: 'user',
         tenant_id: TENANT_A,
-        // R7 BE-prereq: engagement endpoints now scope-gated +
+        // R7 BE-prereq: selection endpoints now scope-gated +
         // D4b-composed. requisition:read:all bypasses the D4b
         // visibility check so the happy-path tests proceed.
         scopes: ['selection:read', 'selection:write', 'selection:outreach', 'requisition:read:all'],
@@ -245,7 +241,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         consumer_type: 'recruiter',
         actor_kind: 'user',
         tenant_id: TENANT_B,
-        // R7 BE-prereq: engagement endpoints now scope-gated +
+        // R7 BE-prereq: selection endpoints now scope-gated +
         // D4b-composed. requisition:read:all bypasses the D4b
         // visibility check so the happy-path tests proceed.
         scopes: ['selection:read', 'selection:write', 'selection:outreach', 'requisition:read:all'],
@@ -299,7 +295,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
     beforeEach(async () => {
       draftProviderCalls.count = 0;
-      // Each test arranges its own consent state; clear engagement +
+      // Each test arranges its own consent state; clear selection +
       // event + idempotency + consent tables between tests so prior
       // state doesn't leak.
       await setup.query('TRUNCATE TABLE selection."TalentSelectionEvent" CASCADE');
@@ -369,7 +365,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       );
     }
 
-    async function createEngagementAdvanceToEngaged(
+    async function createSelectionAdvanceToEngaged(
       jwt: string,
       talentId: string,
       reqId: string,
@@ -384,8 +380,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         body: JSON.stringify({ talent_id: talentId, requisition_id: reqId }),
       });
       expect(createRes.status).toBe(201);
-      const createBody = (await createRes.json()) as { engagement: { id: string } };
-      const id = createBody.engagement.id;
+      const createBody = (await createRes.json()) as { selection: { id: string } };
+      const id = createBody.selection.id;
       const transition = async (to: string): Promise<void> => {
         const r = await fetch(`http://127.0.0.1:${port}/v1/selections/${id}/transitions`, {
           method: 'POST',
@@ -403,11 +399,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       return id;
     }
 
-    async function countEvents(engagementId: string): Promise<number> {
+    async function countEvents(selectionId: string): Promise<number> {
       const r = await setup.query<{ count: string }>(
         `SELECT COUNT(*)::text AS count FROM selection."TalentSelectionEvent"
-         WHERE engagement_id = $1::uuid`,
-        [engagementId],
+         WHERE selection_id = $1::uuid`,
+        [selectionId],
       );
       return Number(r.rows[0]?.count ?? 0);
     }
@@ -452,9 +448,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     }
 
     it('revoked-at-send: DRAFT succeeds (consent does NOT block at draft) but SEND → 403 + no new events', { timeout: 60_000 }, async () => {
-      // Grant first so the engagement can be created.
+      // Grant first so the selection can be created.
       await seedContactingGrant(TALENT_A, TENANT_A, RECRUITER_A, new Date('2026-01-01T00:00:00.000Z'));
-      const id = await createEngagementAdvanceToEngaged(recruiterAJwt, TALENT_A, REQ_A);
+      const id = await createSelectionAdvanceToEngaged(recruiterAJwt, TALENT_A, REQ_A);
       // Now revoke — BEFORE the outreach attempt.
       await seedContactingRevoke(TALENT_A, TENANT_A, RECRUITER_A, new Date('2026-04-01T00:00:00.000Z'));
 
@@ -471,10 +467,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // The BINDING gate fires at SEND.
       const res = await sendOutreach(recruiterAJwt, id, draft.body.draft_event_id as string);
       expect(res.status).toBe(403);
-      const body = (await res.json()) as { error: { code: string; details: { consent_decision: { result: string }; engagement_id: string } } };
+      const body = (await res.json()) as { error: { code: string; details: { consent_decision: { result: string }; selection_id: string } } };
       expect(body.error.code).toBe('CONSENT_NOT_GRANTED_AT_SEND');
       expect(body.error.details.consent_decision.result).toBe('denied');
-      expect(body.error.details.engagement_id).toBe(id);
+      expect(body.error.details.selection_id).toBe(id);
 
       // No new outreach_sent / state_transition events written; the
       // refusal short-circuits BEFORE delivery + the atomic write.
@@ -498,9 +494,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         [supersededTalent, TENANT_A],
       );
       await seedContactingGrant(supersededTalent, TENANT_A, RECRUITER_A, new Date('2026-01-01T00:00:00.000Z'));
-      const id = await createEngagementAdvanceToEngaged(recruiterAJwt, supersededTalent, REQ_A);
+      const id = await createSelectionAdvanceToEngaged(recruiterAJwt, supersededTalent, REQ_A);
 
-      // Supersede the record AFTER the engagement exists (a late merge retired it).
+      // Supersede the record AFTER the selection exists (a late merge retired it).
       await setup.query(
         `UPDATE talent_record."TalentRecord"
            SET record_status = 'superseded', superseded_by_record_id = $2::uuid, superseded_at = NOW()
@@ -518,11 +514,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const res = await sendOutreach(recruiterAJwt, id, draft.body.draft_event_id as string);
       expect(res.status).toBe(422);
       const body = (await res.json()) as {
-        error: { code: string; details: { superseded_by_record_id: string; engagement_id: string } };
+        error: { code: string; details: { superseded_by_record_id: string; selection_id: string } };
       };
       expect(body.error.code).toBe('TALENT_RECORD_SUPERSEDED');
       expect(body.error.details.superseded_by_record_id).toBe(survivorTalent);
-      expect(body.error.details.engagement_id).toBe(id);
+      expect(body.error.details.selection_id).toBe(id);
 
       // No delivery, no new events — the refusal short-circuits before the write.
       const eventsAfter = await countEvents(id);
@@ -540,7 +536,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // result='denied' → the binding consent-at-send check converts to
       // 403 CONSENT_NOT_GRANTED_AT_SEND.
       await seedPrerequisiteChainOnly(TALENT_A, TENANT_A, RECRUITER_A, new Date('2026-01-01T00:00:00.000Z'));
-      const id = await createEngagementAdvanceToEngaged(recruiterAJwt, TALENT_A, REQ_A);
+      const id = await createSelectionAdvanceToEngaged(recruiterAJwt, TALENT_A, REQ_A);
 
       const draft = await draftOutreach(recruiterAJwt, id);
       expect(draft.status).toBe(200);
@@ -553,21 +549,21 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
     // ───────────────────────────────────────────────────────────────────
     // STEP-4 (consent re-key) MANDATORY ACCEPTANCE GATE — the distinct-id
-    // grant→send round-trip. 4e could NOT prove this (there, the engagement's
+    // grant→send round-trip. 4e could NOT prove this (there, the selection's
     // TalentRecord.id and the Core id were one shared UUID). The consent re-key
     // is what makes the ledger TalentRecord-keyed, so this is the test that
     // proves the axis keys on TalentRecord.id — NOT the Core id.
-    // CORE_DISTINCT is a Core-style id deliberately ≠ the engagement's
+    // CORE_DISTINCT is a Core-style id deliberately ≠ the selection's
     // TalentRecord.id (TALENT_A).
     // ───────────────────────────────────────────────────────────────────
     const CORE_DISTINCT = '9c9c9c9c-9c9c-7c9c-8c9c-9c9c9c9c9c9c';
 
-    it('STEP-4(a): consent granted under the engagement TalentRecord.id IS found by the send-gate → 200', { timeout: 60_000 }, async () => {
+    it('STEP-4(a): consent granted under the selection TalentRecord.id IS found by the send-gate → 200', { timeout: 60_000 }, async () => {
       expect(CORE_DISTINCT).not.toBe(TALENT_A);
-      // Full chain keyed to TALENT_A — the engagement's talent_id IS a
+      // Full chain keyed to TALENT_A — the selection's talent_id IS a
       // TalentRecord.id (post-#349) and consent is now TalentRecord-keyed.
       await seedContactingGrant(TALENT_A, TENANT_A, RECRUITER_A, new Date('2026-01-01T00:00:00.000Z'));
-      const id = await createEngagementAdvanceToEngaged(recruiterAJwt, TALENT_A, REQ_A);
+      const id = await createSelectionAdvanceToEngaged(recruiterAJwt, TALENT_A, REQ_A);
       const draft = await draftOutreach(recruiterAJwt, id);
       expect(draft.status).toBe(200);
       const res = await sendOutreach(recruiterAJwt, id, draft.body.draft_event_id as string);
@@ -575,13 +571,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     });
 
     it('STEP-4(b): consent granted under a Core id DISTINCT from the TalentRecord.id is NOT found → 403', { timeout: 60_000 }, async () => {
-      // Full contacting chain granted under CORE_DISTINCT (≠ the engagement's
+      // Full contacting chain granted under CORE_DISTINCT (≠ the selection's
       // TalentRecord.id); prerequisites granted under TALENT_A so the resolver
       // reaches the contacting decision for TALENT_A rather than 422-ing on a
       // missing dependency.
       await seedContactingGrant(CORE_DISTINCT, TENANT_A, RECRUITER_A, new Date('2026-01-01T00:00:00.000Z'));
       await seedPrerequisiteChainOnly(TALENT_A, TENANT_A, RECRUITER_A, new Date('2026-01-01T00:00:00.000Z'));
-      const id = await createEngagementAdvanceToEngaged(recruiterAJwt, TALENT_A, REQ_A);
+      const id = await createSelectionAdvanceToEngaged(recruiterAJwt, TALENT_A, REQ_A);
       const draft = await draftOutreach(recruiterAJwt, id);
       expect(draft.status).toBe(200);
       // The gate queries consent by TALENT_A (the TalentRecord.id); the
@@ -595,11 +591,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     it('tenant isolation: revoke in tenant A does not affect tenant B', { timeout: 60_000 }, async () => {
       // Tenant A — revoked.
       await seedContactingGrant(TALENT_A, TENANT_A, RECRUITER_A, new Date('2026-01-01T00:00:00.000Z'));
-      const idA = await createEngagementAdvanceToEngaged(recruiterAJwt, TALENT_A, REQ_A);
+      const idA = await createSelectionAdvanceToEngaged(recruiterAJwt, TALENT_A, REQ_A);
       await seedContactingRevoke(TALENT_A, TENANT_A, RECRUITER_A, new Date('2026-04-01T00:00:00.000Z'));
       // Tenant B — independently granted.
       await seedContactingGrant(TALENT_B, TENANT_B, RECRUITER_B, new Date('2026-01-01T00:00:00.000Z'));
-      const idB = await createEngagementAdvanceToEngaged(recruiterBJwt, TALENT_B, REQ_B);
+      const idB = await createSelectionAdvanceToEngaged(recruiterBJwt, TALENT_B, REQ_B);
 
       const draftA = await draftOutreach(recruiterAJwt, idA);
       expect(draftA.status).toBe(200);
@@ -614,7 +610,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
     it('idempotency replay stability: same SEND key + same body returns 403 again (stable refusal)', { timeout: 60_000 }, async () => {
       await seedContactingGrant(TALENT_A, TENANT_A, RECRUITER_A, new Date('2026-01-01T00:00:00.000Z'));
-      const id = await createEngagementAdvanceToEngaged(recruiterAJwt, TALENT_A, REQ_A);
+      const id = await createSelectionAdvanceToEngaged(recruiterAJwt, TALENT_A, REQ_A);
       await seedContactingRevoke(TALENT_A, TENANT_A, RECRUITER_A, new Date('2026-04-01T00:00:00.000Z'));
 
       const draft = await draftOutreach(recruiterAJwt, id);
@@ -637,7 +633,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
     it('SEND consumes NO AI draft (generation is at DRAFT; consent-denied send delivers nothing)', { timeout: 60_000 }, async () => {
       await seedContactingGrant(TALENT_A, TENANT_A, RECRUITER_A, new Date('2026-01-01T00:00:00.000Z'));
-      const id = await createEngagementAdvanceToEngaged(recruiterAJwt, TALENT_A, REQ_A);
+      const id = await createSelectionAdvanceToEngaged(recruiterAJwt, TALENT_A, REQ_A);
       await seedContactingRevoke(TALENT_A, TENANT_A, RECRUITER_A, new Date('2026-04-01T00:00:00.000Z'));
 
       // Draft first (this DOES consume one AI call — consent is a warning

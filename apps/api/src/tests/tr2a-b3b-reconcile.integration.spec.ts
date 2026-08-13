@@ -61,7 +61,7 @@ const MIGRATIONS = [
   'libs/pipeline/prisma/migrations/20260602150000_init_pipeline_model/migration.sql',
   // Track 3 E6 — total unique -> live-scoped partial unique (preserve-all reconcile).
   'libs/pipeline/prisma/migrations/20260807100000_e6_pipeline_live_episode_unique/migration.sql',
-  'libs/selection/prisma/migrations/20260525120000_init_engagement_model/migration.sql',
+  'libs/selection/prisma/migrations/20260525120000_init_selection_model/migration.sql',
   'libs/submittal/prisma/migrations/20260523120000_init_submittal_model/migration.sql',
   // + revoke columns + canonical 5-state rename (the current submittal trigger fn
   // the B3b amendment sits on references both).
@@ -78,8 +78,6 @@ const MIGRATIONS = [
   // TR-2a-B3b — the four Group-2 immutability reconcile-re-key trigger amendments
   // (GUC-gated exemption of the talent_id re-point). Applied AFTER each schema's
   // init so the CREATE OR REPLACE FUNCTION redefines the existing trigger fn.
-  'libs/selection/prisma/migrations/20260706240000_tr2a_b3b_reconcile_rekey_exemption/migration.sql',
-  'libs/selection/prisma/migrations/20260813120000_t2p2_relocate_engagement_to_selection/migration.sql',
   'libs/examination/prisma/migrations/20260706240000_tr2a_b3b_reconcile_rekey_exemption/migration.sql',
   'libs/submittal/prisma/migrations/20260706240000_tr2a_b3b_reconcile_rekey_exemption/migration.sql',
   'libs/submittal/prisma/migrations/20260812120000_t2p1_relocate_submittal_to_submittal_schema/migration.sql',
@@ -179,7 +177,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       return r.rows[0]?.cluster_id ?? null;
     }
 
-    async function mkEngagement(recordId: string, reqId: string): Promise<string> {
+    async function mkSelection(recordId: string, reqId: string): Promise<string> {
       const id = uuidv7();
       await db.query(
         `INSERT INTO selection."TalentSelection" (id, tenant_id, talent_id, requisition_id, state, created_at)
@@ -189,7 +187,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       return id;
     }
 
-    async function engagementRecordOf(engId: string): Promise<string> {
+    async function selectionRecordOf(engId: string): Promise<string> {
       const r = await db.query(
         `SELECT talent_id FROM selection."TalentSelection" WHERE id = $1::uuid`,
         [engId],
@@ -349,7 +347,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const reqId = uuidv7();
       const recordS = await promote(survivor);
       const recordL = await promote(merged);
-      const eng = await mkEngagement(recordL, reqId);
+      const eng = await mkSelection(recordL, reqId);
       const task = await mkTask(recordL);
       // The three DB-immutable holders — re-pointed only via the GUC exemption.
       const exam = await mkExamination(recordL);
@@ -376,7 +374,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(await recordStatus(recordS)).toBe('live');
       // Operational holders re-pointed to R_S — incl. the four DB-immutable ones,
       // which only the reconcile GUC exemption (Group-2 amendment) permits.
-      expect(await engagementRecordOf(eng)).toBe(recordS);
+      expect(await selectionRecordOf(eng)).toBe(recordS);
       expect(await taskOwnerOf(task)).toBe(recordS);
       expect(await talentIdOf('examination."TalentJobExamination"', exam)).toBe(recordS);
       expect(await talentIdOf('submittal."TalentSubmittalRecord"', sub)).toBe(recordS);
@@ -507,7 +505,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const pS = await mkPipeline(recordS, reqId, 'submitted'); // live
       const pL = await mkPipeline(recordL, reqId, 'qualifying'); // live → conflict
       // A non-pipeline holder to prove NO OTHER DOMAIN mutates on refusal.
-      const eng = await mkEngagement(recordL, reqId);
+      const eng = await mkSelection(recordL, reqId);
       await mergePointer(survivor, merged);
 
       await expect(
@@ -517,12 +515,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         }),
       ).rejects.toMatchObject({ code: 'PIPELINE_RECONCILE_LIVE_CONFLICT' });
 
-      // NOTHING mutated: R_L still live, both pipeline rows unchanged, engagement
+      // NOTHING mutated: R_L still live, both pipeline rows unchanged, selection
       // still on R_L, and NO operation record was created.
       expect(await recordStatus(recordL)).toBe('live');
       expect(await pipelineTalentOf(pS)).toBe(recordS);
       expect(await pipelineTalentOf(pL)).toBe(recordL);
-      expect(await engagementRecordOf(eng)).toBe(recordL);
+      expect(await selectionRecordOf(eng)).toBe(recordL);
       const ops = await db.query(
         `SELECT count(*)::int n FROM talent_trust."SubjectMergeOperation"
            WHERE surviving_subject_id=$1::uuid AND merged_subject_id=$2::uuid`,
@@ -585,7 +583,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const reqId = uuidv7();
       const recordS = await promote(survivor);
       const recordL = await promote(merged);
-      const eng = await mkEngagement(recordL, reqId);
+      const eng = await mkSelection(recordL, reqId);
       await mergePointer(survivor, merged);
 
       const first = await orchestrator.reconcile({
@@ -599,8 +597,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       });
       expect(second.id).toBe(first.id);
       expect(second.status).toBe('COMPLETED');
-      expect(await engagementRecordOf(eng)).toBe(recordS);
-      // Exactly one engagement on R_S (not duplicated).
+      expect(await selectionRecordOf(eng)).toBe(recordS);
+      // Exactly one selection on R_S (not duplicated).
       const cnt = await db.query(
         `SELECT COUNT(*)::int AS n FROM selection."TalentSelection" WHERE talent_id = $1::uuid`,
         [recordS],
@@ -616,7 +614,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const reqId = uuidv7();
       const recordS = await promote(survivor);
       const recordL = await promote(merged);
-      const eng = await mkEngagement(recordL, reqId);
+      const eng = await mkSelection(recordL, reqId);
       // E6 preserve-all: TERMINAL episodes coexist and repoint (no live/live). The
       // loser row is PRESERVED on the forward sweep (never deleted) and repointed.
       await mkPipeline(recordS, reqId, 'placed');
@@ -634,8 +632,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       });
       // After the merge they moved to R_S (proven in (a)); here we drive the reverse.
       expect(await talentIdOf('talent_evidence."TalentEducationEntry"', edu)).toBe(recordS);
-      // A post-merge accretion: a NEW engagement created against R_S after reconcile.
-      const accretionEng = await mkEngagement(recordS, uuidv7());
+      // A post-merge accretion: a NEW selection created against R_S after reconcile.
+      const accretionEng = await mkSelection(recordS, uuidv7());
       // Un-merge phase 1 (mirror reverseMerge) then reverse phase 2.
       await db.query(
         `UPDATE talent_trust."ResolutionSubject" SET status = 'ACTIVE', merged_into_subject_id = NULL WHERE id = $1::uuid`,
@@ -646,9 +644,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       });
 
       expect(result.operation.status).toBe('REVERSED');
-      // R_L back to live; the recorded engagement re-pointed back to R_L.
+      // R_L back to live; the recorded selection re-pointed back to R_L.
       expect(await recordStatus(recordL)).toBe('live');
-      expect(await engagementRecordOf(eng)).toBe(recordL);
+      expect(await selectionRecordOf(eng)).toBe(recordL);
       // TR-15 B2R — the credential holders re-point BACK to R_L on reversal.
       expect(await talentIdOf('talent_evidence."TalentEducationEntry"', edu)).toBe(recordL);
       expect(await talentIdOf('talent_evidence."TalentCertificationEntry"', cert)).toBe(recordL);
@@ -667,7 +665,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Consent reconcile grant removed from R_S.
       expect(await effectiveGrantExists(recordS, 'contacting')).toBe(false);
       // The post-merge accretion is LISTED (not moved) for human triage.
-      const engAccretions = result.post_merge_accretions.find((x) => x.domain === 'engagement');
+      const engAccretions = result.post_merge_accretions.find((x) => x.domain === 'selection');
       expect(engAccretions?.ids).toContain(accretionEng);
     });
 
@@ -697,7 +695,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     it('§3(i) — WITHOUT the reconcile GUC, a direct talent_id UPDATE on each of the four immutable ref columns still raises 23514', async () => {
       const rec = await mkRecord();
       const other = await mkRecord();
-      const eng = await mkEngagement(rec, uuidv7());
+      const eng = await mkSelection(rec, uuidv7());
       const exam = await mkExamination(rec);
       const sub = await mkSubmittal(rec);
       const ev = await mkEvidence(rec);
@@ -709,7 +707,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       ];
       for (const [tbl, id] of cases) {
         // No GUC set → user-edit immutability intact → the trigger raises.
-        // Each of the four rejects a bare talent_id change (engagement/examination/
+        // Each of the four rejects a bare talent_id change (selection/examination/
         // evidence: "immutable"; submittal: the state-machine fallthrough — a
         // no-state-change talent_id UPDATE matches no permitted transition). All
         // raise ERRCODE 23514 (check_violation). User-edit immutability intact.
@@ -739,7 +737,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
     // §3(iii) — reversal's re-point-back runs under the SAME GUC (the repoint
     // method is the only place it is set) and the same controls: test (e) drives
-    // the engagement re-point-back through repointTalentRecordRefs, proving the
+    // the selection re-point-back through repointTalentRecordRefs, proving the
     // reverse path is equally gated + equally exempt.
   },
 );

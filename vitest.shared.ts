@@ -72,12 +72,9 @@ export default defineConfig({
       // for service-layer owner validation on the `talent` owner path.
       '@aramo/attachment': resolve(root, 'libs/attachment/src/index.ts'),
       '@aramo/audit': resolve(root, 'libs/audit/src/index.ts'),
-      '@aramo/engagement': resolve(root, 'libs/engagement/src/index.ts'),
-      // T2-P2 — canonical Selection domain (@aramo/selection). The
-      // libs/engagement facade + relocated consumers (evidence,
-      // outbox-publisher, record-reconcile, seed-e2e) resolve the domain
-      // here; the engagement alias above stays for the frozen controller
-      // facade + wire DTOs.
+      // T2-P3B — canonical Selection domain (@aramo/selection). The folded
+      // /v1/selections controller + relocated consumers (evidence,
+      // outbox-publisher, record-reconcile, seed-e2e) resolve the domain here.
       '@aramo/selection': resolve(root, 'libs/selection/src/index.ts'),
       // PR-A1b §2 — new leaf lib hosting EntitlementGuard + @RequireCapability
       // decorator. Mirrors tsconfig.base.json @aramo/entitlement alias so
@@ -125,7 +122,7 @@ export default defineConfig({
       '@aramo/policy-store': resolve(root, 'libs/policy-store/src/index.ts'),
       // PR-A1c §2 — new leaf lib hosting the recordUsage helper. Mirrors
       // tsconfig.base.json @aramo/metering alias so vitest runtime
-      // resolves the helper from engagement + submittal repos (the two
+      // resolves the helper from selection + submittal repos (the two
       // domains that emit metered events inside their existing
       // $transaction arrays). Leaf: deps = @aramo/common + 'uuid'; no
       // back-edge into any domain.
@@ -160,7 +157,7 @@ export default defineConfig({
       // resolves the apps/api AppModule import + the integration specs.
       '@aramo/pre-start-requirement': resolve(root, 'libs/pre-start-requirement/src/index.ts'),
       // PR-A7 Gate 5 — reporting + dashboard leaf (ATS-internal read
-      // aggregator over the 8 ATS-side schemas; NO Core/engagement/
+      // aggregator over the 8 ATS-side schemas; NO Core/selection/
       // submittal read, the seam-exclusion is structural). Mirrors
       // tsconfig.base.json alias so vitest runtime resolves the
       // apps/api AppModule import + the A7 integration spec.

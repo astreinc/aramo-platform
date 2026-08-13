@@ -21,14 +21,14 @@ import type { PrismaService } from '../lib/prisma/prisma.service.js';
 
 const TENANT_A = '11111111-1111-7111-8111-111111111111';
 const TENANT_B = '22222222-2222-7222-8222-222222222222';
-const ENGAGEMENT_A = '33333333-3333-7333-8333-333333333333';
+const SELECTION_A = '33333333-3333-7333-8333-333333333333';
 const EVENT_1 = '00000000-0000-7000-8000-000000000001';
 
 function makeRow(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     id: EVENT_1,
     tenant_id: TENANT_A,
-    engagement_id: ENGAGEMENT_A,
+    selection_id: SELECTION_A,
     event_type: 'state_transition',
     event_payload: { from: 'surfaced', to: 'evaluated' },
     created_at: new Date('2026-05-25T15:00:00Z'),
@@ -94,8 +94,8 @@ describe('SelectionEventRepository (M5 PR-2 unit)', () => {
   it('exposes exactly the 5 enumerated methods', () => {
     expect(typeof repo.appendEvent).toBe('function');
     expect(typeof repo.findById).toBe('function');
-    expect(typeof repo.findByEngagementId).toBe('function');
-    expect(typeof repo.findByTenantAndEngagementId).toBe('function');
+    expect(typeof repo.findBySelectionId).toBe('function');
+    expect(typeof repo.findByTenantAndSelectionId).toBe('function');
     expect(typeof repo.findByTenantAndId).toBe('function');
   });
 
@@ -103,7 +103,7 @@ describe('SelectionEventRepository (M5 PR-2 unit)', () => {
     const input: AppendEventInput = {
       id: EVENT_1,
       tenant_id: TENANT_A,
-      engagement_id: ENGAGEMENT_A,
+      selection_id: SELECTION_A,
       event_type: 'state_transition',
       event_payload: { from: 'surfaced', to: 'evaluated' },
     };
@@ -116,7 +116,7 @@ describe('SelectionEventRepository (M5 PR-2 unit)', () => {
         data: {
           id: input.id,
           tenant_id: input.tenant_id,
-          engagement_id: input.engagement_id,
+          selection_id: input.selection_id,
           event_type: input.event_type,
           event_payload: input.event_payload,
         },
@@ -128,7 +128,7 @@ describe('SelectionEventRepository (M5 PR-2 unit)', () => {
       const view = await repo.appendEvent(input);
       expect(view.id).toBe(EVENT_1);
       expect(view.tenant_id).toBe(TENANT_A);
-      expect(view.engagement_id).toBe(ENGAGEMENT_A);
+      expect(view.selection_id).toBe(SELECTION_A);
       expect(view.event_type).toBe('state_transition');
       expect(view.event_payload).toEqual({ from: 'surfaced', to: 'evaluated' });
       expect(view.created_at).toBeInstanceOf(Date);
@@ -138,8 +138,8 @@ describe('SelectionEventRepository (M5 PR-2 unit)', () => {
       prisma.talentSelectionEvent.create.mockResolvedValue(makeRow());
       await repo.appendEvent(input);
       const events = logger.log.mock.calls.map((c) => (c[0] as { event: string }).event);
-      expect(events).toContain('engagement_event.append_started');
-      expect(events).toContain('engagement_event.appended');
+      expect(events).toContain('selection_event.append_started');
+      expect(events).toContain('selection_event.appended');
     });
 
     it('never invokes update/upsert/delete primitives', async () => {
@@ -160,7 +160,7 @@ describe('SelectionEventRepository (M5 PR-2 unit)', () => {
       expect(view).not.toBeNull();
       expect(view?.id).toBe(EVENT_1);
       const last = logger.log.mock.calls[0]?.[0] as { event: string; hit: boolean };
-      expect(last.event).toBe('engagement_event.findById');
+      expect(last.event).toBe('selection_event.findById');
       expect(last.hit).toBe(true);
     });
 
@@ -182,14 +182,14 @@ describe('SelectionEventRepository (M5 PR-2 unit)', () => {
     });
   });
 
-  describe('findByEngagementId', () => {
+  describe('findBySelectionId', () => {
     it('returns rows ordered ASC by created_at; emits result_count', async () => {
       const rows = [makeRow({ id: 'a' }), makeRow({ id: 'b' })];
       prisma.talentSelectionEvent.findMany.mockResolvedValue(rows);
-      const views = await repo.findByEngagementId(ENGAGEMENT_A);
+      const views = await repo.findBySelectionId(SELECTION_A);
       expect(views).toHaveLength(2);
       expect(prisma.talentSelectionEvent.findMany).toHaveBeenCalledWith({
-        where: { engagement_id: ENGAGEMENT_A },
+        where: { selection_id: SELECTION_A },
         orderBy: [{ created_at: 'asc' }, { id: 'asc' }],
       });
       const last = logger.log.mock.calls[0]?.[0] as { result_count: number };
@@ -198,21 +198,21 @@ describe('SelectionEventRepository (M5 PR-2 unit)', () => {
 
     it('does not invoke any write primitive', async () => {
       prisma.talentSelectionEvent.findMany.mockResolvedValue([]);
-      await repo.findByEngagementId(ENGAGEMENT_A);
+      await repo.findBySelectionId(SELECTION_A);
       expect(prisma.talentSelectionEvent.create).not.toHaveBeenCalled();
     });
   });
 
-  describe('findByTenantAndEngagementId', () => {
-    it('scopes by tenant + engagement; emits result_count', async () => {
+  describe('findByTenantAndSelectionId', () => {
+    it('scopes by tenant + selection; emits result_count', async () => {
       prisma.talentSelectionEvent.findMany.mockResolvedValue([makeRow()]);
-      const views = await repo.findByTenantAndEngagementId({
+      const views = await repo.findByTenantAndSelectionId({
         tenant_id: TENANT_A,
-        engagement_id: ENGAGEMENT_A,
+        selection_id: SELECTION_A,
       });
       expect(views).toHaveLength(1);
       expect(prisma.talentSelectionEvent.findMany).toHaveBeenCalledWith({
-        where: { tenant_id: TENANT_A, engagement_id: ENGAGEMENT_A },
+        where: { tenant_id: TENANT_A, selection_id: SELECTION_A },
         orderBy: [{ created_at: 'asc' }, { id: 'asc' }],
       });
     });

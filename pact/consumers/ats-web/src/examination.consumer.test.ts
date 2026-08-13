@@ -12,7 +12,7 @@ import {
 // PC-3 — Pact consumer for ats-web, examination domain.
 //
 // Consumer: ats-web · Provider: aramo-core (apps/api). Merges into the same
-// ats-web-aramo-core.json as engagement + submittal (portal-thin precedent;
+// ats-web-aramo-core.json as selection + submittal (portal-thin precedent;
 // fileParallelism:false + singleFork:true in vitest.config).
 //
 // Scope (PC-3 Directive §2 + Gate-5 ruling): the ONLY examination endpoint

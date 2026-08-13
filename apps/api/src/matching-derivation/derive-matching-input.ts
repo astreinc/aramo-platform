@@ -180,7 +180,7 @@ export function buildMatchingInput(
     // examine-time blocking gate. The send-gate enforces consent downstream.
     consent_state_sufficient: true,
     // No conflict-detection in G1-B — honest default (no known conflict).
-    has_conflicting_active_engagement: false,
+    has_conflicting_active_selection: false,
   };
 
   // --- honest presentation Json (pass-through; persisted opaquely) ---

@@ -38,7 +38,7 @@ function fakeRepo() {
     return {
       items,
       next_cursor: null,
-      facets: { availability: [], engagement: [], source: [], hot: 0 },
+      facets: { availability: [], selection: [], source: [], hot: 0 },
     };
   });
   return { searchPaged };
@@ -95,7 +95,7 @@ async function listPaged(
     undefined, // cursor
     undefined, // page_size
     undefined, // availability
-    undefined, // engagement
+    undefined, // selection
     undefined, // source
     undefined, // hot
     undefined, // owner

@@ -99,7 +99,7 @@ async function main(): Promise<void> {
     const pipeline = app.get(PipelineRepository);
     const activity = app.get(ActivityRepository);
     const task = app.get(TaskRepository);
-    const engagement = app.get(SelectionRepository);
+    const selection = app.get(SelectionRepository);
 
     const ports: SeedPorts = {
       // Idempotency: a READ-ONLY probe for a tagged requisition (a read, not a
@@ -167,7 +167,7 @@ async function main(): Promise<void> {
             key_skills: spec.key_skills,
             current_pay: spec.current_pay,
             availability_status: spec.availability_status ?? undefined,
-            engagement_type: spec.engagement_type ?? undefined,
+            selection_type: spec.selection_type ?? undefined,
             owner_id: ownerId,
           },
         })),
@@ -188,11 +188,11 @@ async function main(): Promise<void> {
         requireId(await task.create({ tenant_id: tenantId, created_by_user_id: createdByUserId, input: { title, owner_type: ownerType, owner_id: ownerId, assignee_id: assigneeId } })),
       createActivity: async ({ tenantId, createdById, subjectType, subjectId, notes }) =>
         requireId(await activity.create({ tenant_id: tenantId, created_by_id: createdById, input: { type: 'note', subject_type: subjectType, subject_id: subjectId, notes } })),
-      // Bound to the live CreateEngagementInput: caller supplies id + event_id
+      // Bound to the live CreateSelectionInput: caller supplies id + event_id
       // (UUIDs); examination_id null (no Core dependency). Returns
-      // CreateEngagementResult { engagement, event }.
-      createEngagement: async ({ tenantId, talentId, requisitionId }) => {
-        const res = await engagement.createEngagement({
+      // CreateSelectionResult { selection, event }.
+      createSelection: async ({ tenantId, talentId, requisitionId }) => {
+        const res = await selection.createSelection({
           id: randomUUID(),
           event_id: randomUUID(),
           tenant_id: tenantId,
@@ -200,7 +200,7 @@ async function main(): Promise<void> {
           requisition_id: requisitionId,
           examination_id: null,
         });
-        return requireId(res.engagement);
+        return requireId(res.selection);
       },
     };
 
@@ -218,10 +218,10 @@ async function main(): Promise<void> {
     console.log(`        talent       = ${report.talent_ids.join(', ')}`);
     console.log(`        pipelines    = ${report.pipeline_ids.join(', ')}`);
     console.log(`        tasks        = ${report.task_ids.join(', ')}`);
-    if (report.engagement_skipped !== undefined) {
-      console.log(`        engagements  = (skipped: ${report.engagement_skipped})`);
+    if (report.selection_skipped !== undefined) {
+      console.log(`        selections  = (skipped: ${report.selection_skipped})`);
     } else {
-      console.log(`        engagements  = ${report.engagement_ids.join(', ')}`);
+      console.log(`        selections  = ${report.selection_ids.join(', ')}`);
     }
   } finally {
     await app.close();

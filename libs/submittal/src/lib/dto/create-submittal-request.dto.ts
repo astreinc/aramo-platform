@@ -31,7 +31,7 @@ export interface CreateSubmittalRequestDto {
   match_justification_overrides?: MatchJustificationOverrides;
   recruiter_contribution: RecruiterContributionInput;
   rate_expectation_id?: string | null;
-  engagement_event_refs?: readonly string[];
+  selection_event_refs?: readonly string[];
   // Worth Considering optional fields — accepted at PR-3, NOT enforced
   // (F34 enforces against the examination's tier).
   justification?: string;

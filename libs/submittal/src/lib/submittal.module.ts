@@ -16,7 +16,7 @@ import { TalentSubmittalEventRepository } from './talent-submittal-event.reposit
 // Wires:
 //   - PrismaService (tenth lazy PrismaService in the workspace) — owns
 //     the submittal-schema connection for TalentSubmittalRecord I/O
-//     (relocated engagement -> submittal per T2-P1).
+//     (relocated selection -> submittal per T2-P1).
 //   - SubmittalRepository — write path that orchestrates evidence-package
 //     build (via EvidenceRepository.buildPackage) + submittal record write,
 //     and the M4 PR-4 confirm path that re-validates the pinned
@@ -42,7 +42,7 @@ import { TalentSubmittalEventRepository } from './talent-submittal-event.reposit
 //
 // M5 PR-8b1 §4.7 — TalentSubmittalEventRepository provider + Style A
 // 'TalentSubmittalEventRepositoryLogger' factory token (mirror PR-2
-// engagement-event substrate). Exported so PR-8b2+ wire-in consumers
+// selection-event substrate). Exported so PR-8b2+ wire-in consumers
 // can inject it into the existing SubmittalRepository write methods.
 @Module({
   imports: [AuthModule, EvidenceModule, ConsentModule, ExaminationModule],

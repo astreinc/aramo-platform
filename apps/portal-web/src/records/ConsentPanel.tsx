@@ -20,9 +20,9 @@ import {
 //   preimage. The recipient tenant is named in chrome (tenantName); a per-submit
 //   Idempotency-Key (UUID) rides the contract.
 // - Revoke flow confirms, then reflects the new state immediately (refetch).
-// - Append-only history list (engagement-class event fields only).
+// - Append-only history list (selection-class event fields only).
 //
-// No trust UI, no origin fields — this is an engagement surface (P-R5).
+// No trust UI, no origin fields — this is an selection surface (P-R5).
 
 const SCOPE_LABELS: Record<ConsentScope, string> = {
   profile_storage: 'Store my profile',
@@ -63,7 +63,7 @@ export function ConsentPanel({
   const [pending, setPending] = useState<Pending>(null);
   const [busy, setBusy] = useState(false);
 
-  // The engagement counterparty, named for chrome; falls back to a neutral
+  // The selection counterparty, named for chrome; falls back to a neutral
   // phrase (never a raw id) if the name is missing.
   const recipient = tenantName ?? 'this organization';
 
@@ -186,7 +186,7 @@ export function ConsentPanel({
         <p className="po-page__lede">No consent scopes to manage.</p>
       )}
 
-      {/* History — append-only, engagement-class fields only. */}
+      {/* History — append-only, selection-class fields only. */}
       <h2 className="po-consent-history__title">History</h2>
       {history !== null && history.length === 0 ? (
         <p className="po-page__lede">No consent changes yet.</p>

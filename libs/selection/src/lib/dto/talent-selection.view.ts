@@ -6,7 +6,7 @@ import type { SelectionStateValue } from '../selection-state.js';
 // fields visible here.
 //
 // `examination_id` is nullable per Directive Ruling 5 + Amendment v1.1
-// (engagement may exist before examination is computed; pin-verify
+// (selection may exist before examination is computed; pin-verify
 // lands at M5 PR-8). `created_at` carries through as Date — the
 // repository surfaces persisted Postgres timestamps unmodified.
 export interface TalentSelectionView {

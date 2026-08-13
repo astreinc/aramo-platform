@@ -6,7 +6,7 @@ import { PrismaClient } from '../../../prisma/generated/client/client.js';
 // Per-module PrismaService for the placement module (Track 3 / E1-a). Owns the
 // placement-schema connection.
 //
-// Uniform lazy pattern (submittal/engagement/CTR precedent): inert constructor
+// Uniform lazy pattern (submittal/selection/CTR precedent): inert constructor
 // (no env read, no throw), no OnModuleInit eager $connect, lazy first-use
 // DATABASE_URL validation memoized behind `validated`, OnModuleDestroy
 // $disconnect. @Optional() databaseUrl so Nest DI does not try to resolve a

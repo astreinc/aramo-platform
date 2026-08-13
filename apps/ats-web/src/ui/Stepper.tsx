@@ -1,14 +1,14 @@
 import { IconCheck } from '@aramo/fe-foundation';
 
 interface StepperProps {
-  /** Ordered step labels (e.g. the engagement-state progression). */
+  /** Ordered step labels (e.g. the selection-state progression). */
   readonly steps: readonly string[];
   /** Index of the current step; earlier steps render as done. */
   readonly currentIndex: number;
 }
 
 // Vertical progress stepper — done / current / upcoming. Used for the
-// engagement-state ladder. Pure projection of (steps, currentIndex); no
+// selection-state ladder. Pure projection of (steps, currentIndex); no
 // domain coupling so it can render any ordered state machine.
 export function Stepper({ steps, currentIndex }: StepperProps) {
   return (

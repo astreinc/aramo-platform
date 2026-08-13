@@ -3,7 +3,7 @@ import type { GoldenProfileContent } from '@aramo/job-domain';
 import type { RequisitionView } from './requisition.view.js';
 
 // Job-Module LB-3 — JD + GoldenProfile generation DTOs (draft → confirm,
-// mirroring the engagement draft → send two-endpoint pattern; ADR-0015 v1.2
+// mirroring the selection draft → send two-endpoint pattern; ADR-0015 v1.2
 // G1). The draft is non-committal (no mutation of the canonical
 // Requisition / GoldenProfile); the confirm persists the recruiter-
 // reviewed final.
@@ -28,7 +28,7 @@ export interface DraftProfileResponseDto {
 export interface ConfirmProfileRequestDto {
   // The draft this confirm derives from. REQUIRED when the profile was
   // AI-generated (generated_by === 'ai_draft') — the cross-event-ref
-  // (mirrors the engagement send referencing its draft event). OPTIONAL for the
+  // (mirrors the selection send referencing its draft event). OPTIONAL for the
   // manual-entry path (generated_by === 'manual') — AI is assistive, never
   // required (G1).
   draft_event_id?: string;

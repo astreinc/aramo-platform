@@ -193,7 +193,7 @@ export const SEED_IDS = {
     // Reporting/Audit DDR (Ruling B-iii).
     'dashboard:read': '01900000-0000-7000-8000-000000000098',
     'report:read': '01900000-0000-7000-8000-000000000099',
-    // R7 BE-prereq — 3 engagement-domain scopes (Amendment v1.1 §1
+    // R7 BE-prereq — 3 selection-domain scopes (Amendment v1.1 §1
     // Ruling B: outreach SoD). Continues the 0x90 reporting range:
     // 0x9a / 0x9b / 0x9c. Closes the documented A1a-2 deferral
     // (scope.dto.ts:23-25 prior to this PR).
@@ -1220,12 +1220,12 @@ const REPORTING_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
   return map;
 })();
 
-// R7 BE-prereq — engagement-domain role-scope bundle (Amendment v1.1 §2
+// R7 BE-prereq — selection-domain role-scope bundle (Amendment v1.1 §2
 // Ruling 2: 8-role grant set, 20 RoleScope rows). Write-tier 6 roles get
 // :read + :write + :outreach; read-only 2 roles (delivery_manager / back_office)
 // get :read only. The 6 excluded roles (sourcer / finance / auditor /
-// auditor_with_financials / candidate / super_admin) hold zero engagement
-// scopes — they 403 on every engagement route.
+// auditor_with_financials / candidate / super_admin) hold zero selection
+// scopes — they 403 on every selection route.
 //
 // Bundle composition rationale:
 //   - tenant_owner / tenant_admin: full operational tier; write-tier baseline.
@@ -1238,9 +1238,9 @@ const REPORTING_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
 //   - recruiter (the FLOOR): the workflow's primary actor.
 //   - delivery_manager / back_office (read-only): fulfillment-quality + ops
 //     read; mirror their existing broad-read bundles (talent:read + pipeline:read
-//     + activity:read etc.) — they SEE engagement workflow state but neither
+//     + activity:read etc.) — they SEE selection workflow state but neither
 //     drive it nor send outreach.
-const ENGAGEMENT_SEED_BUNDLES: ReadonlyArray<readonly [string, readonly string[]]> = [
+const SELECTION_SEED_BUNDLES: ReadonlyArray<readonly [string, readonly string[]]> = [
   ['tenant_owner', ['selection:read', 'selection:write', 'selection:outreach']],
   ['tenant_admin', ['selection:read', 'selection:write', 'selection:outreach']],
   ['account_manager', ['selection:read', 'selection:write', 'selection:outreach']],
@@ -1251,17 +1251,17 @@ const ENGAGEMENT_SEED_BUNDLES: ReadonlyArray<readonly [string, readonly string[]
   ['back_office', ['selection:read']],
 ];
 
-// R7 BE-prereq — deterministic RoleScope row IDs for the 20 engagement-
+// R7 BE-prereq — deterministic RoleScope row IDs for the 20 selection-
 // bundle grants above. Disjoint range starting at 0x700 (AUTHZ-1's 0x400+,
 // AUTHZ-D5's 0x500+, Reporting's 0x600+ all stay untouched — append-don't-
 // renumber per Amendment v1.1 §2). The (role, scope) iteration order in
-// ENGAGEMENT_SEED_BUNDLES pins the assignment, so a given pair always
+// SELECTION_SEED_BUNDLES pins the assignment, so a given pair always
 // produces the same UUID on every seed run. DO NOT REORDER without
 // bumping the offset to a fresh range.
-const ENGAGEMENT_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
+const SELECTION_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
   const map: Record<string, string> = {};
   let i = 0x700;
-  for (const [role, scopes] of ENGAGEMENT_SEED_BUNDLES) {
+  for (const [role, scopes] of SELECTION_SEED_BUNDLES) {
     for (const scope of scopes) {
       map[`${role}:${scope}`] =
         `01900000-0000-7000-8000-${i.toString(16).padStart(12, '0')}`;
@@ -1313,7 +1313,7 @@ const SEARCH_SEED_BUNDLES: ReadonlyArray<readonly [string, readonly string[]]> =
 
 // Search PR-1 — deterministic RoleScope row ids for the 28 search-bundle
 // grants (9 roles × 3 + finance × 1). Disjoint range starting at 0x800
-// (AUTHZ-1 0x400+, D5 0x500+, Reporting 0x600+, Engagement 0x700+ all stay
+// (AUTHZ-1 0x400+, D5 0x500+, Reporting 0x600+, Selection 0x700+ all stay
 // untouched — append-don't-renumber). The (role, scope) iteration order in
 // SEARCH_SEED_BUNDLES pins the assignment, so a given pair always produces
 // the same UUID on every seed run.
@@ -1349,7 +1349,7 @@ const TASK_SEED_BUNDLES: ReadonlyArray<readonly [string, readonly string[]]> = [
 
 // Deterministic RoleScope row ids for the 18 task-bundle grants. Disjoint
 // range starting at 0x81c (the next free after Search PR-1's 0x800..0x81b;
-// AUTHZ-1 0x400+, D5 0x500+, Reporting 0x600+, Engagement 0x700+, Search
+// AUTHZ-1 0x400+, D5 0x500+, Reporting 0x600+, Selection 0x700+, Search
 // 0x800+ all stay untouched — append-don't-renumber). The (role, scope)
 // iteration order pins the assignment.
 const TASK_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
@@ -2125,21 +2125,21 @@ export async function runIdentitySeed(
   // in the dashboard:read description).
   await upsertScope(prisma, SEED_IDS.scopes['dashboard:read'], 'dashboard:read', 'Read the ATS-internal dashboard composition (tenant counts, requisition/pipeline rollups, ATS-internal placement count, upcoming events, recent activity). ATS-domain only; no Core/examination read.');
   await upsertScope(prisma, SEED_IDS.scopes['report:read'], 'report:read', 'Read per-metric ATS-internal reports (tenant-counts, requisition-rollup, pipeline-rollup, placement-count).');
-  // R7 BE-prereq — 3 engagement-domain scopes (closes the A1a-2 deferral).
-  // 3-scope split (Amendment v1.1 §1 Ruling B; outreach SoD). The 8 engagement
+  // R7 BE-prereq — 3 selection-domain scopes (closes the A1a-2 deferral).
+  // 3-scope split (Amendment v1.1 §1 Ruling B; outreach SoD). The 8 selection
   // routes gate via @RequireScopes(...) — read on the 3 GETs (incl. the new
   // LIST), write on create/transitions/response/conversation, outreach on the
   // outreach route. NO scope.created audit events (mirrors the Reporting-Scope-
   // Seed precedent).
-  await upsertScope(prisma, SEED_IDS.scopes['selection:read'], 'selection:read', 'Read engagements (GET /v1/selections LIST, GET /v1/selections/:id, GET /v1/selections/:id/events). 8 roles: write-tier 6 + read-only 2 (delivery_manager / back_office). D4b-composed at read time (engagement visible iff its requisition_id is in the actor visible-requisition set).');
-  await upsertScope(prisma, SEED_IDS.scopes['selection:write'], 'selection:write', 'Mutate engagements (POST create / transitions / response / conversation). 6 roles: TA / TO / AM / RM / LR / recruiter[floor]. Write-path visibility: the controller (create) + the repo findByTenantAndId (the 4 mutate-existing) compose D4b — invisible-requisition engagements return 404.');
-  await upsertScope(prisma, SEED_IDS.scopes['selection:outreach'], 'selection:outreach', 'Send outbound engagement outreach (POST /v1/selections/:id/outreach). Separate from :write per outreach SoD — the only engagement write with external side-effects (AI draft + consent-at-send + outbound delivery + LLM cost). Same 6 roles as :write.');
+  await upsertScope(prisma, SEED_IDS.scopes['selection:read'], 'selection:read', 'Read selections (GET /v1/selections LIST, GET /v1/selections/:id, GET /v1/selections/:id/events). 8 roles: write-tier 6 + read-only 2 (delivery_manager / back_office). D4b-composed at read time (selection visible iff its requisition_id is in the actor visible-requisition set).');
+  await upsertScope(prisma, SEED_IDS.scopes['selection:write'], 'selection:write', 'Mutate selections (POST create / transitions / response / conversation). 6 roles: TA / TO / AM / RM / LR / recruiter[floor]. Write-path visibility: the controller (create) + the repo findByTenantAndId (the 4 mutate-existing) compose D4b — invisible-requisition selections return 404.');
+  await upsertScope(prisma, SEED_IDS.scopes['selection:outreach'], 'selection:outreach', 'Send outbound selection outreach (POST /v1/selections/:id/outreach). Separate from :write per outreach SoD — the only selection write with external side-effects (AI draft + consent-at-send + outbound delivery + LLM cost). Same 6 roles as :write.');
   // Search PR-1 — 3 per-entity quick-search scopes (Lead rulings R1/R2).
   // Gate the ?q= trigram filter on the per-entity LIST endpoints WHEN q is
   // present (the no-q LIST keeps its :read gate). talent:search is REUSED
   // (seeded above) for /v1/talent-records?q=. Granted via SEARCH_SEED_BUNDLES
   // (per-entity :read-holder parity). NO scope.created audit events (mirrors
-  // the Reporting / Engagement-Scope-Seed precedent).
+  // the Reporting / Selection-Scope-Seed precedent).
   await upsertScope(prisma, SEED_IDS.scopes['company:search'], 'company:search', 'Quick-search companies by name (GET /v1/companies?q=). Trigram (ILIKE-contains) match ANDed with the D4b company visibility predicate — narrows within the visible set. Granted to the 9 company:read holders.');
   await upsertScope(prisma, SEED_IDS.scopes['requisition:search'], 'requisition:search', 'Quick-search requisitions by title (GET /v1/requisitions?q=). Trigram (ILIKE-contains) match ANDed with the A3-OR-D4b requisition visibility predicate. Granted to the 10 requisition:read holders (the 9 + finance).');
   await upsertScope(prisma, SEED_IDS.scopes['contact:search'], 'contact:search', 'Quick-search contacts by name (GET /v1/contacts?q=). Trigram (ILIKE-contains) match over first_name/last_name ANDed with the D4b contact visibility predicate. Granted to the 9 contact:read holders.');
@@ -2165,10 +2165,10 @@ export async function runIdentitySeed(
 
   // Settings Rebuild D1 — the 2 read scopes behind the settings Import +
   // Export LIVE sections. NO scope.created audit events (mirrors the
-  // Reporting / Engagement / Search / Task scope-seed precedent).
+  // Reporting / Selection / Search / Task scope-seed precedent).
   await upsertScope(prisma, SEED_IDS.scopes['import:read'], 'import:read', 'Read the CSV bulk-import history + per-batch failures (GET /v1/imports, GET /v1/imports/:id, GET /v1/imports/:id/failures). Read-only audit of imports; the write/revert surface gates on import:create / import:delete (unseeded — a later increment). Granted to the operational tier (recruiter+: tenant_admin + tenant_owner + account_manager + recruiting_manager + recruiter + lead_recruiter + back_office + delivery_manager). RequireSiteMatch + the actor visibility still govern WHAT each row shows.');
   await upsertScope(prisma, SEED_IDS.scopes['export:read'], 'export:read', 'Export the 5 R10-bounded ATS entities as CSV (GET /v1/exports/:entity_type). The A3/D4b visibility predicate at the service layer governs WHAT each role exports; R10 keeps the column set ATS-only (no Core-judgment field). Granted to tenant_admin + tenant_owner (the settings Export surface is admin-gated).');
-  await upsertScope(prisma, SEED_IDS.scopes['audit:read'], 'audit:read', 'Read the tenant audit log (GET /v1/tenant/audit-events) — the keyset-paginated, filterable read over the IdentityAuditEvent trail (who did what, when). Tenant-scoped (never cross-tenant); detail is redacted of values the viewer\'s scopes don\'t permit. Granted to tenant_admin + tenant_owner (the admin/compliance tier; NOT recruiters). NO scope.created audit event (mirrors the Reporting/Engagement/Search/Task/Settings-D1 scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['audit:read'], 'audit:read', 'Read the tenant audit log (GET /v1/tenant/audit-events) — the keyset-paginated, filterable read over the IdentityAuditEvent trail (who did what, when). Tenant-scoped (never cross-tenant); detail is redacted of values the viewer\'s scopes don\'t permit. Granted to tenant_admin + tenant_owner (the admin/compliance tier; NOT recruiters). NO scope.created audit event (mirrors the Reporting/Selection/Search/Task/Settings-D1 scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['tenant:admin:profile'], 'tenant:admin:profile', 'Read + edit the tenant profile (GET/PATCH /v1/tenant/profile) — the org legal identity (legal/display name, address, tax/registration IDs, primary contact, logo). DEDICATED scope (Lead ruling): kept distinct from tenant:admin:settings so org-legal-identity and app-config stay separable, and the audit trail (identity.tenant_profile.updated) carries a clean per-scope authorization story. Granted to tenant_admin + tenant_owner ONLY (NOT recruiters). NO scope.created audit event (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['tenant:admin:sites'], 'tenant:admin:sites', 'Manage sites/branches (CRUD /v1/tenant/sites) — the org STRUCTURE: sub-tenant branch partitions + the parent/child branch hierarchy. DEDICATED scope (Lead ruling): kept distinct from tenant:admin:settings (config) and tenant:admin:profile (legal identity) so the admin taxonomy stays coherent and sites stay separable later. Emits identity.site.created/updated/deactivated (field names only). Granted to tenant_admin + tenant_owner ONLY (NOT recruiters). NO scope.created audit event (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['tenant:admin:domain'], 'tenant:admin:domain', 'Prove DNS-TXT ownership of the tenant\'s locked domain (GET/POST /v1/tenant/domain-verification + /check) — request a verification token, publish it in a DNS TXT record, and have Aramo resolve+match it to mark the domain VERIFIED. INFORMATIONAL in P2b (gates nothing — P1\'s invite domain-lock works regardless of verification status). DEDICATED scope: kept distinct from settings/profile/sites so the admin taxonomy stays coherent. Emits identity.domain.verification.requested/verified. Granted to tenant_admin + tenant_owner ONLY (NOT recruiters). NO scope.created audit event (scope-seed precedent).');
@@ -2293,16 +2293,16 @@ export async function runIdentitySeed(
   }
 
   // 7e. R7 BE-prereq RoleScope assignments — 20 rows (6 write-tier × 3 +
-  // 2 read-only × 1) per ENGAGEMENT_SEED_BUNDLES. UUID range 0x700+
+  // 2 read-only × 1) per SELECTION_SEED_BUNDLES. UUID range 0x700+
   // (append-don't-renumber per Amendment v1.1 §2 — AUTHZ-1's 0x400+,
   // AUTHZ-D5's 0x500+, Reporting's 0x600+ all stay untouched). Closes
-  // the documented A1a-2 engagement-scope deferral and enables the R7 FE.
-  for (const [roleKey, scopeKeys] of ENGAGEMENT_SEED_BUNDLES) {
+  // the documented A1a-2 selection-scope deferral and enables the R7 FE.
+  for (const [roleKey, scopeKeys] of SELECTION_SEED_BUNDLES) {
     const role_id = roleIdForKey(roleKey);
     for (const scopeKey of scopeKeys) {
-      const rsId = ENGAGEMENT_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
+      const rsId = SELECTION_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
       if (rsId === undefined) {
-        throw new Error(`R7 Engagement-Scope-Seed: Missing generated RoleScope id for ${roleKey}:${scopeKey}`);
+        throw new Error(`R7 Selection-Scope-Seed: Missing generated RoleScope id for ${roleKey}:${scopeKey}`);
       }
       const scope_id = scopeIdForKey(scopeKey);
       await prisma.roleScope.upsert({
@@ -2316,7 +2316,7 @@ export async function runIdentitySeed(
   // 7f. Search PR-1 RoleScope assignments — 28 rows (9 roles × 3 search
   // scopes + finance × 1) per SEARCH_SEED_BUNDLES. UUID range 0x800+
   // (append-don't-renumber — AUTHZ-1's 0x400+, AUTHZ-D5's 0x500+,
-  // Reporting's 0x600+, Engagement's 0x700+ all stay untouched). Grants the
+  // Reporting's 0x600+, Selection's 0x700+ all stay untouched). Grants the
   // 3 NEW company/requisition/contact :search scopes by per-entity
   // :read-holder parity; talent:search is REUSED (granted in 7/7b above).
   for (const [roleKey, scopeKeys] of SEARCH_SEED_BUNDLES) {

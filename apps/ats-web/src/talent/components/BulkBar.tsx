@@ -65,10 +65,10 @@ export function BulkBar({
       <button
         type="button"
         disabled
-        title="Engagement needs a Core talent overlay; blocked for ATS-only talent (carry)."
+        title="Selection needs a Core talent overlay; blocked for ATS-only talent (carry)."
       >
         <Icons.IconMessage />
-        Start engagement
+        Start selection
       </button>
 
       <span className="rc-bulkbar__sep" />

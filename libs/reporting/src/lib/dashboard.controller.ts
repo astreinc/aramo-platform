@@ -30,7 +30,7 @@ import { ReportingService } from './reporting.service.js';
 // LR / BO / DM. Auditor-tier deferred to the Reporting/Audit DDR).
 //
 // The composition reuses ReportingService — every byte returned is
-// from an ATS-side schema. NO Core / submittal / engagement /
+// from an ATS-side schema. NO Core / submittal / selection /
 // examination row is read.
 @Controller('v1/dashboard')
 @UseGuards(JwtAuthGuard, EntitlementGuard, RolesGuard)

@@ -67,7 +67,7 @@ const EVIDENCE_ENTITY_TYPES = new Set([
   'TalentContactMethod',
   'TalentRateExpectation',
   'TalentWorkAuthorization',
-  'TalentEngagementEvent',
+  'TalentSelectionEvent',
   'TalentDocument',
   'TalentDerivedSnapshot',
 ]);

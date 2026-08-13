@@ -9,7 +9,7 @@ import {
 import { AramoError, makeMockLogger } from '@aramo/common';
 import {
   SelectionEventRepository,
-  PrismaService as EngagementPrismaService,
+  PrismaService as SelectionPrismaService,
 } from '@aramo/selection';
 import {
   ExaminationRepository,
@@ -24,32 +24,32 @@ import type { BuildPackageInput } from '../lib/dto/talent-job-evidence-package.v
 import { EvidenceRepository } from '../lib/evidence.repository.js';
 import { PrismaService } from '../lib/prisma/prisma.service.js';
 
-// M5 PR-2 §4.11 — cross-schema engagement_event_refs validator integration.
+// M5 PR-2 §4.11 — cross-schema selection_event_refs validator integration.
 //
 // Brings up a Postgres 17 testcontainer, applies the 5 migrations needed
 // for the full buildPackage flow under the validator scope:
 //   - evidence/init (TalentJobEvidencePackage + immutability trigger)
 //   - examination/init + add_live_list_index (TalentJobExamination)
-//   - engagement/init (TalentJobEngagement)
-//   - engagement/add_engagement_event_log (TalentEngagementEvent + FK + trigger)
+//   - selection/init (TalentSelection)
+//   - selection/add_selection_event_log (TalentSelectionEvent + FK + trigger)
 //
 // Seeds:
 //   - 1 Entrustable TalentJobExamination in TENANT_A (so buildPackage Step
 //     2 finds it and Step 3 doesn't refuse with SUBMITTAL_STRETCH_BLOCKED).
-//   - 1 TalentJobEngagement in TENANT_A + 1 in TENANT_B (FK parents).
-//   - 2 TalentEngagementEvents in TENANT_A (the valid refs).
-//   - 1 TalentEngagementEvent in TENANT_B (the cross-tenant ref for the
-//     ENGAGEMENT_EVENT_REF_NOT_FOUND assertion).
+//   - 1 TalentSelection in TENANT_A + 1 in TENANT_B (FK parents).
+//   - 2 TalentSelectionEvents in TENANT_A (the valid refs).
+//   - 1 TalentSelectionEvent in TENANT_B (the cross-tenant ref for the
+//     SELECTION_EVENT_REF_NOT_FOUND assertion).
 //
 // 5 scenarios per directive §4.8 / Ruling 7:
-//   1. engagement_event_refs: [] -> passes.
-//   2. engagement_event_refs: null (input shape) -> passes.
-//   3. engagement_event_refs: [validUuidA, validUuidB] same-tenant -> passes;
+//   1. selection_event_refs: [] -> passes.
+//   2. selection_event_refs: null (input shape) -> passes.
+//   3. selection_event_refs: [validUuidA, validUuidB] same-tenant -> passes;
 //      row persists with both UUIDs in the JSONB column.
-//   4. engagement_event_refs: [validUuid, invalidUuid] -> throws
-//      ENGAGEMENT_EVENT_REF_NOT_FOUND with invalidUuid detail.
-//   5. engagement_event_refs: [otherTenantUuid] -> throws
-//      ENGAGEMENT_EVENT_REF_NOT_FOUND (findByTenantAndId is tenant-scoped
+//   4. selection_event_refs: [validUuid, invalidUuid] -> throws
+//      SELECTION_EVENT_REF_NOT_FOUND with invalidUuid detail.
+//   5. selection_event_refs: [otherTenantUuid] -> throws
+//      SELECTION_EVENT_REF_NOT_FOUND (findByTenantAndId is tenant-scoped
 //      per Architecture §7.2; cross-tenant rows surface as null).
 
 const EVIDENCE_MIGRATION_PATH = resolve(
@@ -64,17 +64,9 @@ const EXAMINATION_LIVE_LIST_MIGRATION_PATH = resolve(
   __dirname,
   '../../../examination/prisma/migrations/20260521120000_add_live_list_index/migration.sql',
 );
-const ENGAGEMENT_INIT_MIGRATION_PATH = resolve(
+const SELECTION_INIT_MIGRATION_PATH = resolve(
   __dirname,
-  '../../../selection/prisma/migrations/20260525120000_init_engagement_model/migration.sql',
-);
-const ENGAGEMENT_EVENT_LOG_MIGRATION_PATH = resolve(
-  __dirname,
-  '../../../selection/prisma/migrations/20260525150000_add_engagement_event_log/migration.sql',
-);
-const ENGAGEMENT_T2P2_MIGRATION_PATH = resolve(
-  __dirname,
-  '../../../selection/prisma/migrations/20260813120000_t2p2_relocate_engagement_to_selection/migration.sql',
+  '../../../selection/prisma/migrations/20260525120000_init_selection_model/migration.sql',
 );
 
 const TENANT_A = '11111111-1111-7111-8111-111111111111';
@@ -84,8 +76,8 @@ const JOB_ID = 'cccccccc-cccc-7ccc-8ccc-cccccccccccc';
 const GOLDEN_PROFILE_ID = 'bbbbbbbb-bbbb-7bbb-8bbb-bbbbbbbbbbbb';
 const EXAMINATION_ID = 'dddddddd-dddd-7ddd-8ddd-dddddddddddd';
 
-const ENGAGEMENT_TENANT_A = '33333333-3333-7333-8333-333333333333';
-const ENGAGEMENT_TENANT_B = '44444444-4444-7444-8444-444444444444';
+const SELECTION_TENANT_A = '33333333-3333-7333-8333-333333333333';
+const SELECTION_TENANT_B = '44444444-4444-7444-8444-444444444444';
 
 const VALID_EVENT_A = '55555555-5555-7555-8555-000000000001';
 const VALID_EVENT_B = '55555555-5555-7555-8555-000000000002';
@@ -145,13 +137,13 @@ function makeBuildInput(
 }
 
 describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
-  'EvidenceRepository.buildPackage — cross-schema engagement_event_refs validator (real Postgres 17)',
+  'EvidenceRepository.buildPackage — cross-schema selection_event_refs validator (real Postgres 17)',
   () => {
     let container: StartedPostgreSqlContainer;
     let evidencePrisma: PrismaService;
     let examPrisma: ExaminationPrismaService;
     let talentEvidencePrisma: TalentEvidencePrismaService;
-    let engagementPrisma: EngagementPrismaService;
+    let selectionPrisma: SelectionPrismaService;
     let repo: EvidenceRepository;
     let setupClient: PrismaService;
 
@@ -163,9 +155,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         readFileSync(EVIDENCE_MIGRATION_PATH, 'utf8'),
         readFileSync(EXAMINATION_INIT_MIGRATION_PATH, 'utf8'),
         readFileSync(EXAMINATION_LIVE_LIST_MIGRATION_PATH, 'utf8'),
-        readFileSync(ENGAGEMENT_INIT_MIGRATION_PATH, 'utf8'),
-        readFileSync(ENGAGEMENT_EVENT_LOG_MIGRATION_PATH, 'utf8'),
-        readFileSync(ENGAGEMENT_T2P2_MIGRATION_PATH, 'utf8'),
+        readFileSync(SELECTION_INIT_MIGRATION_PATH, 'utf8'),
       ];
 
       setupClient = new PrismaService(url);
@@ -187,20 +177,20 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await examPrisma.$connect();
       talentEvidencePrisma = new TalentEvidencePrismaService(url);
       await talentEvidencePrisma.$connect();
-      engagementPrisma = new EngagementPrismaService(url);
-      await engagementPrisma.$connect();
+      selectionPrisma = new SelectionPrismaService(url);
+      await selectionPrisma.$connect();
 
       const examRepo = new ExaminationRepository(examPrisma, undefined as never);
       const talentEvidenceRepo = new TalentEvidenceRepository(talentEvidencePrisma);
-      const engagementEventRepo = new SelectionEventRepository(
-        engagementPrisma,
+      const selectionEventRepo = new SelectionEventRepository(
+        selectionPrisma,
         makeMockLogger(),
       );
       repo = new EvidenceRepository(
         evidencePrisma,
         examRepo,
         talentEvidenceRepo,
-        engagementEventRepo,
+        selectionEventRepo,
         makeMockLogger(),
       );
 
@@ -212,35 +202,35 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         job_id: JOB_ID,
       });
 
-      // Seed: parent engagements (TENANT_A + TENANT_B).
-      await seedEngagement(setupClient, {
-        id: ENGAGEMENT_TENANT_A,
+      // Seed: parent selections (TENANT_A + TENANT_B).
+      await seedSelection(setupClient, {
+        id: SELECTION_TENANT_A,
         tenant_id: TENANT_A,
       });
-      await seedEngagement(setupClient, {
-        id: ENGAGEMENT_TENANT_B,
+      await seedSelection(setupClient, {
+        id: SELECTION_TENANT_B,
         tenant_id: TENANT_B,
       });
 
-      // Seed: engagement events. 2 valid TENANT_A events, 1 TENANT_B event.
-      await seedEngagementEvent(setupClient, {
+      // Seed: selection events. 2 valid TENANT_A events, 1 TENANT_B event.
+      await seedSelectionEvent(setupClient, {
         id: VALID_EVENT_A,
         tenant_id: TENANT_A,
-        engagement_id: ENGAGEMENT_TENANT_A,
+        selection_id: SELECTION_TENANT_A,
         event_type: 'state_transition',
         event_payload: { from: 'surfaced', to: 'evaluated' },
       });
-      await seedEngagementEvent(setupClient, {
+      await seedSelectionEvent(setupClient, {
         id: VALID_EVENT_B,
         tenant_id: TENANT_A,
-        engagement_id: ENGAGEMENT_TENANT_A,
+        selection_id: SELECTION_TENANT_A,
         event_type: 'outreach_sent',
         event_payload: { channel: 'email' },
       });
-      await seedEngagementEvent(setupClient, {
+      await seedSelectionEvent(setupClient, {
         id: TENANT_B_EVENT,
         tenant_id: TENANT_B,
-        engagement_id: ENGAGEMENT_TENANT_B,
+        selection_id: SELECTION_TENANT_B,
         event_type: 'state_transition',
         event_payload: {},
       });
@@ -251,47 +241,47 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await evidencePrisma?.$disconnect();
       await examPrisma?.$disconnect();
       await talentEvidencePrisma?.$disconnect();
-      await engagementPrisma?.$disconnect();
+      await selectionPrisma?.$disconnect();
       await container?.stop();
     });
 
-    it('scenario 1: engagement_event_refs: [] passes (empty array)', async () => {
+    it('scenario 1: selection_event_refs: [] passes (empty array)', async () => {
       const view = await repo.buildPackage(
-        makeBuildInput('001', { engagement_event_refs: [] }),
+        makeBuildInput('001', { selection_event_refs: [] }),
       );
       expect(view.id).toBe(PACKAGE_IDS['001'] as string);
-      expect(view.engagement_event_refs).toEqual([]);
+      expect(view.selection_event_refs).toEqual([]);
     });
 
-    it('scenario 2: engagement_event_refs: null (omitted from input) passes', async () => {
+    it('scenario 2: selection_event_refs: null (omitted from input) passes', async () => {
       // Omit the field entirely from the input shape; the validator
       // short-circuits and Step 7 coerces to [].
       const view = await repo.buildPackage(makeBuildInput('002'));
       expect(view.id).toBe(PACKAGE_IDS['002'] as string);
-      expect(view.engagement_event_refs).toEqual([]);
+      expect(view.selection_event_refs).toEqual([]);
     });
 
-    it('scenario 3: engagement_event_refs: [validUuidA, validUuidB] same-tenant passes', async () => {
+    it('scenario 3: selection_event_refs: [validUuidA, validUuidB] same-tenant passes', async () => {
       const view = await repo.buildPackage(
         makeBuildInput('003', {
-          engagement_event_refs: [VALID_EVENT_A, VALID_EVENT_B],
+          selection_event_refs: [VALID_EVENT_A, VALID_EVENT_B],
         }),
       );
       expect(view.id).toBe(PACKAGE_IDS['003'] as string);
-      expect(view.engagement_event_refs).toEqual([VALID_EVENT_A, VALID_EVENT_B]);
+      expect(view.selection_event_refs).toEqual([VALID_EVENT_A, VALID_EVENT_B]);
 
       // Confirm row persisted via direct read.
       const reread = await repo.findById({
         tenant_id: TENANT_A,
         id: PACKAGE_IDS['003'] as string,
       });
-      expect(reread?.engagement_event_refs).toEqual([VALID_EVENT_A, VALID_EVENT_B]);
+      expect(reread?.selection_event_refs).toEqual([VALID_EVENT_A, VALID_EVENT_B]);
     });
 
-    it('scenario 4: engagement_event_refs: [valid, invalid] throws ENGAGEMENT_EVENT_REF_NOT_FOUND', async () => {
+    it('scenario 4: selection_event_refs: [valid, invalid] throws SELECTION_EVENT_REF_NOT_FOUND', async () => {
       const promise = repo.buildPackage(
         makeBuildInput('004', {
-          engagement_event_refs: [VALID_EVENT_A, NONEXISTENT_EVENT],
+          selection_event_refs: [VALID_EVENT_A, NONEXISTENT_EVENT],
         }),
       );
       await expect(promise).rejects.toBeInstanceOf(AramoError);
@@ -300,16 +290,16 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       } catch (err) {
         expect(err).toBeInstanceOf(AramoError);
         const e = err as AramoError;
-        expect(e.code).toBe('ENGAGEMENT_EVENT_REF_NOT_FOUND');
+        expect(e.code).toBe('SELECTION_EVENT_REF_NOT_FOUND');
         expect(e.statusCode).toBe(422);
-        expect(e.context.details?.['engagement_event_ref']).toBe(NONEXISTENT_EVENT);
+        expect(e.context.details?.['selection_event_ref']).toBe(NONEXISTENT_EVENT);
       }
     });
 
-    it('scenario 5: engagement_event_refs: [otherTenantUuid] throws ENGAGEMENT_EVENT_REF_NOT_FOUND', async () => {
+    it('scenario 5: selection_event_refs: [otherTenantUuid] throws SELECTION_EVENT_REF_NOT_FOUND', async () => {
       const promise = repo.buildPackage(
         makeBuildInput('005', {
-          engagement_event_refs: [TENANT_B_EVENT],
+          selection_event_refs: [TENANT_B_EVENT],
         }),
       );
       await expect(promise).rejects.toBeInstanceOf(AramoError);
@@ -317,12 +307,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         await promise;
       } catch (err) {
         const e = err as AramoError;
-        expect(e.code).toBe('ENGAGEMENT_EVENT_REF_NOT_FOUND');
+        expect(e.code).toBe('SELECTION_EVENT_REF_NOT_FOUND');
         expect(e.statusCode).toBe(422);
         // Cross-tenant: findByTenantAndId returns null because the
         // tenant_id WHERE clause filters out the TENANT_B row even
         // though the UUID itself exists.
-        expect(e.context.details?.['engagement_event_ref']).toBe(TENANT_B_EVENT);
+        expect(e.context.details?.['selection_event_ref']).toBe(TENANT_B_EVENT);
         expect(e.context.details?.['input_tenant_id']).toBe(TENANT_A);
       }
     });
@@ -395,7 +385,7 @@ async function seedExamination(
   );
 }
 
-async function seedEngagement(
+async function seedSelection(
   client: PrismaService,
   opts: { id: string; tenant_id: string },
 ): Promise<void> {
@@ -412,23 +402,23 @@ async function seedEngagement(
   );
 }
 
-async function seedEngagementEvent(
+async function seedSelectionEvent(
   client: PrismaService,
   opts: {
     id: string;
     tenant_id: string;
-    engagement_id: string;
+    selection_id: string;
     event_type: string;
     event_payload: unknown;
   },
 ): Promise<void> {
   await client.$executeRawUnsafe(
     `INSERT INTO selection."TalentSelectionEvent" (
-       id, tenant_id, engagement_id, event_type, event_payload
+       id, tenant_id, selection_id, event_type, event_payload
      ) VALUES (
        '${opts.id}'::uuid,
        '${opts.tenant_id}'::uuid,
-       '${opts.engagement_id}'::uuid,
+       '${opts.selection_id}'::uuid,
        '${opts.event_type}'::selection."SelectionEventType",
        '${JSON.stringify(opts.event_payload)}'::jsonb
      )`,

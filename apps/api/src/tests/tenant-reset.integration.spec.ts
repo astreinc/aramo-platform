@@ -218,13 +218,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         [uuidv7(), T, PIPE],
       );
 
-      // Engagement + event (T).
+      // Selection + event (T).
       await db.query(
         `INSERT INTO selection."TalentSelection" (id, tenant_id, talent_id, requisition_id) VALUES ($1::uuid,$2::uuid,$3::uuid,$4::uuid)`,
         [ENG, T, TALENT, REQ1],
       );
       await db.query(
-        `INSERT INTO selection."TalentSelectionEvent" (id, tenant_id, engagement_id, event_type, event_payload) VALUES ($1::uuid,$2::uuid,$3::uuid,'state_transition','{}'::jsonb)`,
+        `INSERT INTO selection."TalentSelectionEvent" (id, tenant_id, selection_id, event_type, event_payload) VALUES ($1::uuid,$2::uuid,$3::uuid,'state_transition','{}'::jsonb)`,
         [uuidv7(), T, ENG],
       );
       // Submittal + event (T).
@@ -256,7 +256,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Metering (financial evidence — never deleted) + consent (preserved).
       for (const tenant of [T, T, T2]) {
         await db.query(
-          `INSERT INTO metering."UsageEvent" (id, tenant_id, event_type) VALUES ($1::uuid,$2::uuid,'engagement.state_transition')`,
+          `INSERT INTO metering."UsageEvent" (id, tenant_id, event_type) VALUES ($1::uuid,$2::uuid,'selection.state_transition')`,
           [uuidv7(), tenant],
         );
       }

@@ -136,7 +136,7 @@ model TalentRecord {
   // identity_index.PersonCluster this record belongs to (UUID-only cross-
   // schema ref, no FK per §7.3). The post-realignment identity pointer.
   // 4e-rest retired the Core husk (the `core_talent_id` column + the Core
-  // Talent link were dropped once engagement (#349) + consent (#350) released
+  // Talent link were dropped once selection (#349) + consent (#350) released
   // them). cluster_id is a write-less forward column until TR-2 re-establishes
   // cluster linking with its own semantics.
   cluster_id String? @db.Uuid

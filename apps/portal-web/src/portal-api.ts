@@ -8,7 +8,7 @@ import { apiClient } from '@aramo/fe-foundation';
 //
 // The record shape is the closed PortalProfile envelope from openapi/portal.yaml
 // (additionalProperties:false, R10-filtered). Portal P2 P2b lands tenant_name
-// (the P1-deferred MAY → MUST): the engagement counterparty is named.
+// (the P1-deferred MAY → MUST): the selection counterparty is named.
 
 // Closed vocab mirrors (source of truth: openapi/common.yaml).
 export type ConsentScope =
@@ -148,7 +148,7 @@ export const portalApi = {
     await apiClient.post('/auth/portal/request-link', { email });
   },
 
-  // The talent's records across tenants (engagement surface, P-R5). Empty is a
+  // The talent's records across tenants (selection surface, P-R5). Empty is a
   // valid state (a portal user with no live records), not an error.
   listRecords(): Promise<PortalRecordsResponse> {
     return apiClient.get('/v1/portal/records');
@@ -172,7 +172,7 @@ export const portalApi = {
     return apiClient.get(`/v1/portal/records/${id}/consent/text`);
   },
 
-  // Portal P2 P2b — the append-only consent history (engagement-class events).
+  // Portal P2 P2b — the append-only consent history (selection-class events).
   getConsentHistory(id: string): Promise<ConsentHistoryResponse> {
     return apiClient.get(`/v1/portal/records/${id}/consent/history`);
   },

@@ -226,10 +226,10 @@ export function evaluateEntrustability(
       expected_threshold: 'true',
     });
   }
-  if (input.blocking_conditions.has_conflicting_active_engagement) {
+  if (input.blocking_conditions.has_conflicting_active_selection) {
     hard.push({
-      criterion: 'conflicting_active_engagement',
-      field_path: 'blocking_conditions.has_conflicting_active_engagement',
+      criterion: 'conflicting_active_selection',
+      field_path: 'blocking_conditions.has_conflicting_active_selection',
       observed_value: 'true',
       expected_threshold: 'false',
     });

@@ -13,22 +13,22 @@ import {
   type SelectionStateValue,
 } from '../lib/selection-state.js';
 
-// M5 PR-1 §4.9 — schema-invariant integration spec for libs/engagement.
+// M5 PR-1 §4.9 — schema-invariant integration spec for libs/selection.
 //
-// Brings up a Postgres 17 testcontainer, applies the engagement init
+// Brings up a Postgres 17 testcontainer, applies the selection init
 // migration, and asserts the column-scoped immutability trigger and
 // enum closed-list invariants against real Postgres:
 //
 //   1. Insert: all 11 state values insertable as starting state
 //      (despite default `surfaced`) via raw SQL.
 //   2. Column-scoped trigger: UPDATE on any non-state column raises
-//      check_violation with the 'TalentJobEngagement is immutable
+//      check_violation with the 'TalentSelection is immutable
 //      except for the state column per Group 2 §2.3b Loops 1-5'
 //      message.
 //   3. Column-scoped trigger: each of the 10 legal state transitions
 //      from Amendment v1.1 §3 succeeds (parameterized).
 //   4. Column-scoped trigger: representative illegal state transitions
-//      raise check_violation with the 'Illegal engagement state
+//      raise check_violation with the 'Illegal selection state
 //      transition' message.
 //   5. Enum closed-list: raw SQL insert with invalid state value is
 //      rejected by Postgres at the enum-type layer.
@@ -42,15 +42,10 @@ import {
 //   in_conversation     -> {not_interested, ready_for_submittal}
 //   ready_for_submittal -> submitted
 
-const ENGAGEMENT_MIGRATION_PATH = resolve(
+const SELECTION_MIGRATION_PATH = resolve(
   __dirname,
-  '../../prisma/migrations/20260525120000_init_engagement_model/migration.sql',
+  '../../prisma/migrations/20260525120000_init_selection_model/migration.sql',
 );
-const ENGAGEMENT_T2P2_MIGRATION_PATH = resolve(
-  __dirname,
-  '../../prisma/migrations/20260813120000_t2p2_relocate_engagement_to_selection/migration.sql',
-);
-
 const TENANT = '11111111-1111-7111-8111-111111111111';
 const TALENT = 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa';
 const REQUISITION = 'cccccccc-cccc-7ccc-8ccc-cccccccccccc';
@@ -118,10 +113,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       container = await new PostgreSqlContainer('postgres:17').start();
       const url = container.getConnectionUri();
 
-      const migrations = [
-        readFileSync(ENGAGEMENT_MIGRATION_PATH, 'utf8'),
-        readFileSync(ENGAGEMENT_T2P2_MIGRATION_PATH, 'utf8'),
-      ];
+      const migrations = [readFileSync(SELECTION_MIGRATION_PATH, 'utf8')];
 
       client = new PrismaService(url);
       await client.$connect();
@@ -157,7 +149,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
              WHERE id = '${id}'::uuid`,
         ),
       ).rejects.toThrow(
-        /TalentJobEngagement is immutable except for the state column per Group 2 §2\.3b Loops 1-5/,
+        /TalentSelection is immutable except for the state column per Group 2 §2\.3b Loops 1-5/,
       );
     });
 
@@ -211,7 +203,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
                SET state = '${to}'::selection."SelectionState"
                WHERE id = '${id}'::uuid`,
           ),
-        ).rejects.toThrow(/Illegal engagement state transition/);
+        ).rejects.toThrow(/Illegal selection state transition/);
       },
     );
 

@@ -6,7 +6,7 @@ import { portalApi, type PortalRecordProfile } from '../portal-api';
 
 import { RecordsListView } from './RecordsListView';
 
-// Portal P1 PR-3 — the records list (engagement surface). portalApi.listRecords
+// Portal P1 PR-3 — the records list (selection surface). portalApi.listRecords
 // rides apiClient → fetch; we stub it directly. Covers: populated rows + detail
 // links, the honest empty state, and the error path.
 

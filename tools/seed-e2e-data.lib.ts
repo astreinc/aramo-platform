@@ -79,7 +79,7 @@ export interface TalentSpec {
     | 'not_looking'
     | 'unknown'
     | null;
-  readonly engagement_type:
+  readonly selection_type:
     | 'contract_to_hire'
     | 'contract'
     | 'direct_hire'
@@ -103,9 +103,9 @@ export interface SeedPlan {
   readonly talent: readonly TalentSpec[];
   readonly pipelines: readonly PipelineSpec[];
   readonly tasks: readonly TaskSpec[];
-  /** talentKey to surface an engagement for (examination_id stays null). */
-  readonly engagementTalentKey: string;
-  readonly engagementRequisitionKey: string;
+  /** talentKey to surface an selection for (examination_id stays null). */
+  readonly selectionTalentKey: string;
+  readonly selectionRequisitionKey: string;
 }
 
 // Generic staffing data — deliberately NOT the mockup's "Senior Rust Engineer /
@@ -134,12 +134,12 @@ export function buildSeedPlan(tag: string): SeedPlan {
   ];
   // Cycle the stated-field vocabularies (incl. the null "not stated" path) so
   // every Availability bucket — Available now / Open to offers / Not looking /
-  // Unknown(null+unknown) — and every Engagement type populates for the walk.
+  // Unknown(null+unknown) — and every Selection type populates for the walk.
   const AVAIL: TalentSpec['availability_status'][] = [
     'available_now', 'open_to_offers', 'not_looking', 'unknown',
     'available_now', 'open_to_offers', null, 'not_looking',
   ];
-  const ENGAGE: TalentSpec['engagement_type'][] = [
+  const ENGAGE: TalentSpec['selection_type'][] = [
     'contract_to_hire', 'contract', 'direct_hire', 'contract_to_hire',
     'contract', null, 'direct_hire', 'contract',
   ];
@@ -152,7 +152,7 @@ export function buildSeedPlan(tag: string): SeedPlan {
     key_skills: SKILLS[i] ?? 'Go, Postgres',
     current_pay: `$${70 + i * 2}/hr`,
     availability_status: AVAIL[i] ?? null,
-    engagement_type: ENGAGE[i] ?? null,
+    selection_type: ENGAGE[i] ?? null,
   }));
   // Pipeline on rq-1 spanning every funnel bucket (Sourced→…→Placed + a
   // terminal) so the ribbon counts and the stage column populate.
@@ -175,8 +175,8 @@ export function buildSeedPlan(tag: string): SeedPlan {
     talent,
     pipelines,
     tasks,
-    engagementTalentKey: 'tl-4',
-    engagementRequisitionKey: 'rq-1',
+    selectionTalentKey: 'tl-4',
+    selectionRequisitionKey: 'rq-1',
   };
 }
 
@@ -196,7 +196,7 @@ export interface SeedPorts {
   transitionPipeline(args: { tenantId: string; pipelineId: string; toStatus: string; changedById: string }): Promise<void>;
   createTask(args: { tenantId: string; createdByUserId: string; assigneeId: string; title: string; ownerType: 'requisition' | 'talent_record'; ownerId: string }): Promise<{ id: string }>;
   createActivity(args: { tenantId: string; createdById: string; subjectType: 'requisition' | 'talent_record'; subjectId: string; notes: string }): Promise<{ id: string }>;
-  createEngagement(args: { tenantId: string; talentId: string; requisitionId: string }): Promise<{ id: string }>;
+  createSelection(args: { tenantId: string; talentId: string; requisitionId: string }): Promise<{ id: string }>;
 }
 
 export interface SeedReport {
@@ -208,9 +208,9 @@ export interface SeedReport {
   readonly talent_ids: readonly string[];
   readonly pipeline_ids: readonly string[];
   readonly task_ids: readonly string[];
-  readonly engagement_ids: readonly string[];
-  /** Set when the engagement step was skipped (its precondition wasn't met). */
-  readonly engagement_skipped?: string;
+  readonly selection_ids: readonly string[];
+  /** Set when the selection step was skipped (its precondition wasn't met). */
+  readonly selection_skipped?: string;
 }
 
 // Orchestrate the plan in dependency order. Idempotent: if a tagged requisition
@@ -312,20 +312,20 @@ export async function seed(
     await ports.createActivity({ tenantId: ctx.tenantId, createdById: ctx.recruiterUserId, subjectType: 'talent_record', subjectId: required(talentId, key), notes: `${ctx.tag} Logged a screening note` });
   }
 
-  // Engagement is BEST-EFFORT: it requires a Core Talent OVERLAY
+  // Selection is BEST-EFFORT: it requires a Core Talent OVERLAY
   // (findOverlayByTenant), which the ATS TalentRecord seed does not create.
   // A missing overlay must NOT fail the whole (core-complete) seed — skip + report.
-  let engagementIds: string[] = [];
-  let engagementSkipped: string | undefined;
+  let selectionIds: string[] = [];
+  let selectionSkipped: string | undefined;
   try {
-    const engagement = await ports.createEngagement({
+    const selection = await ports.createSelection({
       tenantId: ctx.tenantId,
-      talentId: required(talentId, plan.engagementTalentKey),
-      requisitionId: required(reqId, plan.engagementRequisitionKey),
+      talentId: required(talentId, plan.selectionTalentKey),
+      requisitionId: required(reqId, plan.selectionRequisitionKey),
     });
-    engagementIds = [engagement.id];
+    selectionIds = [selection.id];
   } catch (err) {
-    engagementSkipped = err instanceof Error ? err.message : String(err);
+    selectionSkipped = err instanceof Error ? err.message : String(err);
   }
 
   return {
@@ -337,8 +337,8 @@ export async function seed(
     talent_ids: [...talentId.values()],
     pipeline_ids: pipelineIds,
     task_ids: taskIds,
-    engagement_ids: engagementIds,
-    ...(engagementSkipped !== undefined ? { engagement_skipped: engagementSkipped } : {}),
+    selection_ids: selectionIds,
+    ...(selectionSkipped !== undefined ? { selection_skipped: selectionSkipped } : {}),
   };
 }
 
@@ -380,6 +380,6 @@ function emptyReport(status: SeedReport['status'], tenantId: string): SeedReport
     talent_ids: [],
     pipeline_ids: [],
     task_ids: [],
-    engagement_ids: [],
+    selection_ids: [],
   };
 }

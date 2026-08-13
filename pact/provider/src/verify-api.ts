@@ -46,7 +46,7 @@ import { hashCanonicalizedBody } from '@aramo/common';
 // M5 PR-6 §4.14 — string-DI-token literals overridden so the verify
 // harness doesn't need real Anthropic API + AWS Secrets Manager +
 // SES/SendGrid wiring. The strings here match the const values in
-// libs/ai-draft/src/lib/providers/tokens.ts and libs/engagement/src/lib/
+// libs/ai-draft/src/lib/providers/tokens.ts and libs/selection/src/lib/
 // delivery/tokens.ts respectively. Per Ruling 13: provider verification
 // with mocked adapters is the supported test posture for substrate
 // that crosses external-service boundaries.
@@ -65,10 +65,10 @@ const PACT_DELIVERY_PROVIDER_TOKEN = 'DELIVERY_PROVIDER_TOKEN';
 //     given-states survive below, driven by the ats-web consent reads
 //     (PC-7a).
 //   - (retired) the thin recruiter consumer formerly contributed 23
-//     consent + 4 match-list interactions plus the engagement / submittal
+//     consent + 4 match-list interactions plus the selection / submittal
 //     / examination / outreach surface. Its pact was removed in the
 //     Architecture-Realignment thin-consumer retirement; the dead consent,
-//     engagement, match-list and submittal state handlers + fixtures it
+//     selection, match-list and submittal state handlers + fixtures it
 //     drove were deleted in the backlog-item-2 prune (directive + v1.1
 //     amendment). 'a recruiter token' / 'no valid token' are retained
 //     (still exercised by live examination / portal-thin pacts).
@@ -213,9 +213,9 @@ const JOB_DOMAIN_DROP_REQUISITION_MIGRATION = resolve(
 );
 // Fix-Slice-Final-Drop — the talent (Core husk) schema is retired; no provider
 // state seeds or reads talent.Talent, so its init migration is no longer applied.
-// 4e-engagement-key — engagement.talent_id now references
-// talent_record.TalentRecord.id, so the engagement-create provider state
-// (seedEngagementBasics) seeds a TalentRecord. The column-mutating
+// 4e-selection-key — selection.talent_id now references
+// talent_record.TalentRecord.id, so the selection-create provider state
+// (seedSelectionBasics) seeds a TalentRecord. The column-mutating
 // talent-record migrations (whole files; pg parses them natively).
 const TALENT_RECORD_MIGRATIONS = [
   'libs/talent-record/prisma/migrations/20260602120000_init_talent_record_model/migration.sql',
@@ -243,7 +243,7 @@ const ENTITLEMENT_INIT_MIGRATION = resolve(
   ROOT,
   'libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql',
 );
-// PR-A1c §4 sweep — metering schema applied because every engagement +
+// PR-A1c §4 sweep — metering schema applied because every selection +
 // submittal state-transition write method (the methods the pact provider
 // formerly exercised through the retired thin-consumer pacts) now emits
 // an in-tx UsageEvent INSERT in the same $transaction array.
@@ -255,7 +255,7 @@ const METERING_INIT_MIGRATION = resolve(
 // submittal-create pact verification can seed an examination (via
 // seedSubmittalFixture below), trigger the SubmittalController which
 // calls buildPackage (writes evidence schema) and then writes the
-// submittal record (engagement schema).
+// submittal record (selection schema).
 const EVIDENCE_INIT_MIGRATION = resolve(
   ROOT,
   'libs/evidence/prisma/migrations/20260522090000_init_evidence_model/migration.sql',
@@ -313,33 +313,21 @@ const TALENT_EVIDENCE_TR7_MIGRATION = resolve(
   ROOT,
   'libs/talent-evidence/prisma/migrations/20260714120000_tr7_b1_education_certification/migration.sql',
 );
-// M5 PR-1 + PR-2 — engagement schema migrations: TalentJobEngagement
-// init + TalentEngagementEvent event-log + absolute-immutability trigger.
-// Required for M5 PR-4 engagement-* pact interactions.
-const ENGAGEMENT_INIT_MIGRATION = resolve(
+// M5 PR-1 + PR-2 — selection schema migrations: TalentSelection
+// init + TalentSelectionEvent event-log + absolute-immutability trigger.
+// Required for M5 PR-4 selection-* pact interactions.
+const SELECTION_INIT_MIGRATION = resolve(
   ROOT,
-  'libs/selection/prisma/migrations/20260525120000_init_engagement_model/migration.sql',
+  'libs/selection/prisma/migrations/20260525120000_init_selection_model/migration.sql',
 );
-const ENGAGEMENT_EVENT_LOG_MIGRATION = resolve(
-  ROOT,
-  'libs/selection/prisma/migrations/20260525150000_add_engagement_event_log/migration.sql',
-);
-// M6 PR-2 §3 — engagement schema OutboxEvent. Applied AFTER the event-log
-// substrate (same schema namespace). Required by the engagement-* pact
+// M6 PR-2 §3 — selection schema OutboxEvent. Applied AFTER the event-log
+// substrate (same schema namespace). Required by the selection-* pact
 // interactions because the M6 emit points now write an outbox row inside
-// the same $transaction as the engagement state transition; without this
+// the same $transaction as the selection state transition; without this
 // migration, prisma.outboxEvent.create raises "relation does not exist".
-const ENGAGEMENT_OUTBOX_MIGRATION = resolve(
-  ROOT,
-  'libs/selection/prisma/migrations/20260531000000_add_outbox_event/migration.sql',
-);
 // Outreach Draft/Preview Amendment v1.1 §3 — the outreach_drafted enum value.
 // Required by the outreach draft + send pact interactions (the send path
 // reads a seeded outreach_drafted event for the cross-event-ref check).
-const ENGAGEMENT_OUTREACH_DRAFTED_MIGRATION = resolve(
-  ROOT,
-  'libs/selection/prisma/migrations/20260609000000_add_outreach_drafted_event_type/migration.sql',
-);
 // M6 PR-2 §3 — submittal schema OutboxEvent (in its own `submittal` PG
 // namespace; the migration includes CREATE SCHEMA IF NOT EXISTS). Applied
 // after the submittal canonical-rename so the schema-creation step runs
@@ -356,18 +344,10 @@ const SUBMITTAL_OUTBOX_MIGRATION = resolve(
 // repoint methods), but registered so the provider carries the amended trigger
 // fns. COUPLING FLAG: verify-api.ts is the TR-2a↔Pact coupling point — the second
 // of {this track, a concurrent pact track} to land rebases (--force-with-lease).
-const ENGAGEMENT_RECONCILE_REKEY_MIGRATION = resolve(
-  ROOT,
-  'libs/selection/prisma/migrations/20260706240000_tr2a_b3b_reconcile_rekey_exemption/migration.sql',
-);
-// T2-P2 — relocate + rename the engagement objects into the selection schema
-// (existence-guarded; moves whatever objects the prior engagement migrations
-// created). The engagement-* pact interactions now seed + run against
+// T2-P2 — relocate + rename the selection objects into the selection schema
+// (existence-guarded; moves whatever objects the prior selection migrations
+// created). The selection-* pact interactions now seed + run against
 // selection."TalentSelection" / selection."TalentSelectionEvent".
-const ENGAGEMENT_T2P2_MIGRATION = resolve(
-  ROOT,
-  'libs/selection/prisma/migrations/20260813120000_t2p2_relocate_engagement_to_selection/migration.sql',
-);
 const EXAMINATION_RECONCILE_REKEY_MIGRATION = resolve(
   ROOT,
   'libs/examination/prisma/migrations/20260706240000_tr2a_b3b_reconcile_rekey_exemption/migration.sql',
@@ -376,7 +356,7 @@ const SUBMITTAL_RECONCILE_REKEY_MIGRATION = resolve(
   ROOT,
   'libs/submittal/prisma/migrations/20260706240000_tr2a_b3b_reconcile_rekey_exemption/migration.sql',
 );
-// T2-P1 — relocate Submittal persistence engagement -> submittal schema.
+// T2-P1 — relocate Submittal persistence selection -> submittal schema.
 const SUBMITTAL_T2P1_MIGRATION = resolve(
   ROOT,
   'libs/submittal/prisma/migrations/20260812120000_t2p1_relocate_submittal_to_submittal_schema/migration.sql',
@@ -762,7 +742,7 @@ const PROHIBITED_PACT = resolve(
   'pact/pacts/prohibited-source-type-aramo-core.json',
 );
 const PORTAL_THIN_PACT = resolve(ROOT, 'pact/pacts/portal-thin-aramo-core.json');
-// PC-1 — ats-web consumer, engagement domain (the only live FE, Lead R1).
+// PC-1 — ats-web consumer, selection domain (the only live FE, Lead R1).
 const ATS_WEB_PACT = resolve(ROOT, 'pact/pacts/ats-web-aramo-core.json');
 // T8-P2 — requisition-import consumer (the future T8-CONNECTOR ingestion side).
 const REQUISITION_IMPORT_PACT = resolve(
@@ -971,14 +951,14 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // with the rest of the requisition schema elsewhere in this reset.
       // Fix-Slice-Final-Drop: the Core husk (talent.Talent + overlay) is
       // dropped; no provider state seeds it (nothing reads it post-fix-sequence).
-      // 4e-engagement-key — engagement.talent_id references TalentRecord.
+      // 4e-selection-key — selection.talent_id references TalentRecord.
       await c.query('TRUNCATE TABLE talent_record."TalentRecord" CASCADE');
       // M4 PR-3 — submittal-create state handlers seed an examination
       // and trigger buildPackage which writes the evidence package +
       // submittal record. Truncate both tables so prior runs don't leak.
       // M5 PR-8b1 §4.9 — TalentSubmittalEvent has FK to TalentSubmittalRecord;
       // CASCADE on the parent truncates child rows, but explicit child
-      // TRUNCATE here mirrors the engagement-side pattern (line ~308)
+      // TRUNCATE here mirrors the selection-side pattern (line ~308)
       // for clarity. No PR-8b1 state handlers append rows to this table
       // yet (substrate-only PR).
       await c.query('TRUNCATE TABLE submittal."TalentSubmittalEvent" CASCADE');
@@ -988,12 +968,12 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // the controller persists override rows at request time. Truncate
       // ExaminationOverride so prior runs don't leak.
       await c.query('TRUNCATE TABLE examination."ExaminationOverride" CASCADE');
-      // M5 PR-4 — engagement-* state handlers seed TalentJobEngagement +
-      // TalentEngagementEvent rows + the controller persists more on
+      // M5 PR-4 — selection-* state handlers seed TalentSelection +
+      // TalentSelectionEvent rows + the controller persists more on
       // create/transition. Truncate so prior runs don't leak.
       await c.query('TRUNCATE TABLE selection."TalentSelectionEvent" CASCADE');
       await c.query('TRUNCATE TABLE selection."TalentSelection" CASCADE');
-      // M6 PR-2 §3 — engagement + submittal OutboxEvent. Each state-
+      // M6 PR-2 §3 — selection + submittal OutboxEvent. Each state-
       // transition emit point now writes an outbox row inside the same
       // $transaction; truncate per interaction so prior runs don't leak.
       await c.query('TRUNCATE TABLE selection."OutboxEvent" CASCADE');
@@ -1118,7 +1098,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     // proven by the apps/api chain integration spec; the pact pins the shape.
     async function seedPortalUserWithOneRecord(c: Client): Promise<void> {
       // Portal P2 P2b — the records read enriches tenant_name via
-      // TenantService.getTenantById, so the engagement tenant must exist with a
+      // TenantService.getTenantById, so the selection tenant must exist with a
       // name (the contract's tenant_name matcher expects a string, not null).
       await c.query(
         `INSERT INTO identity."Tenant" (id, name, updated_at)
@@ -1220,20 +1200,20 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     }
 
     // ===================================================================
-    // PC-1 — ats-web engagement domain live fixtures.
+    // PC-1 — ats-web selection domain live fixtures.
     //
     // NEW live seed helpers — deliberately NOT reusing the ats-thin-era
-    // seedEngagementBasics / seedEngagementRow / seedIdempotencyKey (dead
+    // seedSelectionBasics / seedSelectionRow / seedIdempotencyKey (dead
     // code). Keeping these separate keeps the eventual dead-handler prune
     // (backlog item 2) clean and satisfies "derive from live DTOs, not the
     // retired ats-thin files". resetAllRows already truncates every table
     // these touch (job_domain.Requisition, talent_record.TalentRecord,
-    // engagement.TalentJobEngagement / TalentEngagementEvent,
+    // selection.TalentSelection / TalentSelectionEvent,
     // consent.IdempotencyKey), so NO new TRUNCATE lines are required.
     // ===================================================================
     const ATSW_JOB_ID = 'eeeeeeee-eeee-7eee-8eee-eeeeeeeeeeee';
     const ATSW_REQUISITION_ID = 'cccccccc-cccc-7ccc-8ccc-cccccccccccc';
-    // Engagement fixtures — one id per seeded state (mirror the consumer).
+    // Selection fixtures — one id per seeded state (mirror the consumer).
     const ATSW_SURFACED_ID = '00000000-0000-7000-8000-a00000000001';
     const ATSW_AWAITING_ID = '00000000-0000-7000-8000-a00000000002';
     const ATSW_RESPONDED_ID = '00000000-0000-7000-8000-a00000000003';
@@ -1298,7 +1278,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     };
     // Cached response bodies for the idempotency-replay fixtures (returned
     // verbatim by the controller's idempotency.lookup replay branch).
-    function atswEngagementBody(id: string, state: string): unknown {
+    function atswSelectionBody(id: string, state: string): unknown {
       return {
         id,
         tenant_id: TENANT_ID,
@@ -1309,18 +1289,18 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         created_at: '2026-05-25T00:00:00.000Z',
       };
     }
-    function atswEventBody(id: string, engagementId: string, eventType: string): unknown {
+    function atswEventBody(id: string, selectionId: string, eventType: string): unknown {
       return {
         id,
         tenant_id: TENANT_ID,
-        engagement_id: engagementId,
+        selection_id: selectionId,
         event_type: eventType,
         event_payload: {},
         created_at: '2026-05-25T00:00:00.000Z',
       };
     }
 
-    async function seedAtsWebEngagementBasics(c: Client): Promise<void> {
+    async function seedAtsWebSelectionBasics(c: Client): Promise<void> {
       await c.query(
         `INSERT INTO talent_record."TalentRecord"
            (id, tenant_id, first_name, last_name, created_at, updated_at)
@@ -1334,7 +1314,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
          ON CONFLICT (id) DO NOTHING`,
         [ATSW_JOB_ID, TENANT_ID],
       );
-      // T1-a — the ATS requisition the engagement-create contract validates
+      // T1-a — the ATS requisition the selection-create contract validates
       // (requisition_id = ATSW_REQUISITION_ID). $3::text/$4 are inert fixture
       // fillers (title/company_id); only id + tenant + active status matter.
       await c.query(
@@ -1346,7 +1326,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       );
     }
 
-    async function seedAtsWebEngagement(
+    async function seedAtsWebSelection(
       c: Client,
       params: { id: string; state: string },
     ): Promise<void> {
@@ -1358,23 +1338,23 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       );
     }
 
-    async function seedAtsWebEngagementEvent(
+    async function seedAtsWebSelectionEvent(
       c: Client,
       params: {
         id: string;
-        engagementId: string;
+        selectionId: string;
         eventType: string;
         payload: Record<string, unknown>;
       },
     ): Promise<void> {
       await c.query(
         `INSERT INTO selection."TalentSelectionEvent"
-           (id, tenant_id, engagement_id, event_type, event_payload, created_at)
+           (id, tenant_id, selection_id, event_type, event_payload, created_at)
          VALUES ($1, $2, $3, $4::selection."SelectionEventType", $5::jsonb, NOW())`,
         [
           params.id,
           TENANT_ID,
-          params.engagementId,
+          params.selectionId,
           params.eventType,
           JSON.stringify(params.payload),
         ],
@@ -1405,7 +1385,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         ],
       );
     }
-    // Grants the 'contacting' scope (consent operation 'engagement' maps to
+    // Grants the 'contacting' scope (consent operation 'selection' maps to
     // 'contacting') so the draft soft-check + the send binding gate pass.
     async function seedAtsWebContactingConsent(c: Client): Promise<void> {
       await seedConsentEvent(c, {
@@ -2401,7 +2381,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         `INSERT INTO evidence."TalentJobEvidencePackage"
            (id, tenant_id, talent_id, job_id, examination_id, submittal_record_id,
             talent_identity, contact_summary, capability_summary,
-            match_justification, recruiter_contribution, engagement_event_refs)
+            match_justification, recruiter_contribution, selection_event_refs)
          VALUES ($1,$2,$3,$4,$5,$6,
                  $7::jsonb,$8::jsonb,$9::jsonb,$10::jsonb,$11::jsonb,$12::jsonb)`,
         [
@@ -2721,7 +2701,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     // handoff_draft -> ready_for_review -> submitted_to_ats ->
     // confirmed) in order via raw SQL UPDATEs, each going through
     // the M5 PR-8b2-rewritten column-scoped trigger
-    // (engagement.reject_submittal_record_update). For
+    // (selection.reject_submittal_record_update). For
     // submittalState='revoked', sibling-revoke fires directly from
     // 'created' (legal Q3 transition) with all three revoke columns
     // populated atomically.
@@ -2884,7 +2864,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         // T1-a — applied right after the job-domain init so the retired
         // Requisition table + enum are gone before any provider state runs.
         JOB_DOMAIN_DROP_REQUISITION_MIGRATION,
-        // 4e-engagement-key — talent_record schema (engagement.talent_id).
+        // 4e-selection-key — talent_record schema (selection.talent_id).
         ...TALENT_RECORD_MIGRATIONS,
         // M4 PR-3 §4.8 — evidence + talent-evidence + submittal
         // migrations applied so the submittal-create pact verification
@@ -2914,24 +2894,19 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         // the submittal sequence because it CREATEs the new `submittal`
         // PG namespace alongside its OutboxEvent table.
         SUBMITTAL_OUTBOX_MIGRATION,
-        // M5 PR-4 — engagement schema + event log for engagement-*
+        // M5 PR-4 — selection schema + event log for selection-*
         // pact verification.
-        ENGAGEMENT_INIT_MIGRATION,
-        ENGAGEMENT_EVENT_LOG_MIGRATION,
-        // M6 PR-2 §3 — engagement schema OutboxEvent. Applied after
+        SELECTION_INIT_MIGRATION,
+        // M6 PR-2 §3 — selection schema OutboxEvent. Applied after
         // the event-log substrate so the OutboxEvent table is in the
-        // same `engagement` namespace as the prior tables.
-        ENGAGEMENT_OUTBOX_MIGRATION,
+        // same `selection` namespace as the prior tables.
         // Outreach Draft/Preview Amendment v1.1 §3 — the outreach_drafted
         // enum value (the draft + send pact split).
-        ENGAGEMENT_OUTREACH_DRAFTED_MIGRATION,
         // TR-2a-B3b — the four immutability reconcile-re-key amendments (applied
         // AFTER each schema's trigger-defining migrations; CREATE OR REPLACE FUNCTION
         // redefines the final trigger fn — GUC-off behaviour is unchanged).
-        ENGAGEMENT_RECONCILE_REKEY_MIGRATION,
-        // T2-P2 — after all engagement-schema migrations; relocates + renames
+        // T2-P2 — after all selection-schema migrations; relocates + renames
         // the objects into the selection schema (existence-guarded).
-        ENGAGEMENT_T2P2_MIGRATION,
         EXAMINATION_RECONCILE_REKEY_MIGRATION,
         SUBMITTAL_RECONCILE_REKEY_MIGRATION,
         SUBMITTAL_T2P1_MIGRATION,
@@ -2945,7 +2920,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         // requires the tenant to be entitled before RolesGuard runs.
         ENTITLEMENT_INIT_MIGRATION,
         // PR-A1c §4 — metering schema (in-tx UsageEvent INSERT in every
-        // engagement + submittal state-transition write method).
+        // selection + submittal state-transition write method).
         METERING_INIT_MIGRATION,
         // Settings S1 — additive substrate for the GET /v1/tenant/settings
         // endpoint AppModule wires post-S1. No current consumer pact targets
@@ -3093,7 +3068,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       );
       // PC-4 — the 'ats' capability so TENANT_ID traverses EntitlementGuard
       // on the talent-record controller's @RequireCapability('ats'). Additive
-      // (mirrors the 'portal' seed above); the engagement/submittal/examination
+      // (mirrors the 'portal' seed above); the selection/submittal/examination
       // interactions don't use EntitlementGuard, so this is inert for them.
       await setup.query(
         `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability)
@@ -3188,9 +3163,9 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           'submittal:create',
           'submittal:approve',
           'requisition:read:all',
-          // R7 BE-prereq: engagement endpoints now scope-gated.
+          // R7 BE-prereq: selection endpoints now scope-gated.
           // requisition:read:all is already present above and bypasses
-          // the D4b visibility check on engagement endpoints (provider
+          // the D4b visibility check on selection endpoints (provider
           // tests verify the API contract, not visibility scoping).
           'selection:read',
           'selection:write',
@@ -3408,7 +3383,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // JSON-tolerant, so ONE merged JSON satisfies parseIntakeCompletion
       // (fields/jd_text/required_skills/nice_to_have_skills) AND
       // parseProfileCompletion (jd_text/golden_profile). Anything else (the
-      // engagement outreach draft) falls through to the original prose.
+      // selection outreach draft) falls through to the original prose.
       const PACT_DRAFT_JSON = JSON.stringify({
         fields: {},
         jd_text: 'Senior Engineer — pact draft.',
@@ -3854,7 +3829,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // body without touching the repository. Each conflict handler seeds
       // a known-different hash so the lookup throws IDEMPOTENCY_KEY_CONFLICT
       // 409 before touching the repository. Resource seeds (submittal,
-      // engagement, examination rows) are NOT required because the
+      // selection, examination rows) are NOT required because the
       // controller short-circuits on idempotency hit/conflict before any
       // findById call.
       //
@@ -4056,7 +4031,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         },
 
       // --- POST /v1/selections (create) ---
-      'an idempotency key has been recorded with a prior engagement-create response':
+      'an idempotency key has been recorded with a prior selection-create response':
         async () => {
           await withClient(async (c) => {
             await resetAllRows(c);
@@ -4068,24 +4043,24 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
                 requisition_id: 'cccccccc-cccc-7ccc-8ccc-cccccccccccc',
               }),
               responseStatus: 201,
-              responseBody: { engagement: { id: '00000000-0000-7000-8000-cccc00000c01', state: 'surfaced' } },
+              responseBody: { selection: { id: '00000000-0000-7000-8000-cccc00000c01', state: 'surfaced' } },
             });
           });
         },
-      'an idempotency key has been recorded with a different engagement-create body (PR-9)':
+      'an idempotency key has been recorded with a different selection-create body (PR-9)':
         async () => {
           await withClient(async (c) => {
             await resetAllRows(c);
             await seedIdempotencyKey(c, {
               id: '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b1f8d',
               key: '0190d5a4-7e01-7e2a-a4d3-cccc00000c21',
-              requestHash: 'pact-pr9-conflict-hash-engagement-create',
+              requestHash: 'pact-pr9-conflict-hash-selection-create',
             });
           });
         },
 
       // --- POST /v1/selections/:id/transitions ---
-      'an idempotency key has been recorded with a prior engagement-transition response':
+      'an idempotency key has been recorded with a prior selection-transition response':
         async () => {
           await withClient(async (c) => {
             await resetAllRows(c);
@@ -4097,18 +4072,18 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
                 event_id: '00000000-0000-7000-8000-dddd0e0000e1',
               }),
               responseStatus: 200,
-              responseBody: { engagement: { id: '00000000-0000-7000-8000-dddd00000d01', state: 'evaluated' } },
+              responseBody: { selection: { id: '00000000-0000-7000-8000-dddd00000d01', state: 'evaluated' } },
             });
           });
         },
-      'an idempotency key has been recorded with a different engagement-transition body':
+      'an idempotency key has been recorded with a different selection-transition body':
         async () => {
           await withClient(async (c) => {
             await resetAllRows(c);
             await seedIdempotencyKey(c, {
               id: '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b1f8f',
               key: '0190d5a4-7e01-7e2a-a4d3-dddd00000d21',
-              requestHash: 'pact-pr9-conflict-hash-engagement-transition',
+              requestHash: 'pact-pr9-conflict-hash-selection-transition',
             });
           });
         },
@@ -4123,7 +4098,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
               key: '0190d5a4-7e01-7e2a-a4d3-ffff00000f20',
               requestHash: hashCanonicalizedBody({ prompt: 'Reach out to talent about the role.' }),
               responseStatus: 200,
-              responseBody: { engagement: { id: '00000000-0000-7000-8000-ffff00000f01', state: 'awaiting_response' } },
+              responseBody: { selection: { id: '00000000-0000-7000-8000-ffff00000f01', state: 'awaiting_response' } },
             });
           });
         },
@@ -4153,7 +4128,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
                 outreach_event_ref_id: '00000000-0000-7000-8000-eeee0e000001',
               }),
               responseStatus: 200,
-              responseBody: { engagement: { id: '00000000-0000-7000-8000-eeee00000e01', state: 'responded' } },
+              responseBody: { selection: { id: '00000000-0000-7000-8000-eeee00000e01', state: 'responded' } },
             });
           });
         },
@@ -4182,7 +4157,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
                 conversation_started_at: '2026-05-25T12:00:00.000Z',
               }),
               responseStatus: 200,
-              responseBody: { engagement: { id: '00000000-0000-7000-8000-eeee00000e02', state: 'in_conversation' } },
+              responseBody: { selection: { id: '00000000-0000-7000-8000-eeee00000e02', state: 'in_conversation' } },
             });
           });
         },
@@ -4516,112 +4491,112 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       },
 
       // ===============================================================
-      // PC-1 — ats-web engagement domain state handlers (17). NEW live
-      // handlers; the dead ats-thin engagement handlers above are left
+      // PC-1 — ats-web selection domain state handlers (17). NEW live
+      // handlers; the dead ats-thin selection handlers above are left
       // untouched (distinct given strings → they stay unexercised).
       // ===============================================================
 
-      // -- shared read/mutate fixture: engagement in surfaced state.
+      // -- shared read/mutate fixture: selection in surfaced state.
       // Serves: list-happy, get-happy, transitions-happy (surfaced ->
       // evaluated), transitions-illegal (surfaced -> engaged), draft-
       // illegal + send-illegal (surfaced cannot reach awaiting_response).
-      'an ats-web recruiter and an engagement in surfaced state exist for the talent':
+      'an ats-web recruiter and an selection in surfaced state exist for the talent':
         async () => {
           await withClient(async (c) => {
             await resetAllRows(c);
-            await seedAtsWebEngagementBasics(c);
-            await seedAtsWebEngagement(c, { id: ATSW_SURFACED_ID, state: 'surfaced' });
+            await seedAtsWebSelectionBasics(c);
+            await seedAtsWebSelection(c, { id: ATSW_SURFACED_ID, state: 'surfaced' });
           });
         },
 
-      // -- engagement in responded state + prior outreach_sent event.
+      // -- selection in responded state + prior outreach_sent event.
       // Serves: conversation-happy (responded -> in_conversation) and
       // response-illegal (ref resolves, then state guard 422s because
       // responded cannot -> responded).
-      'an ats-web recruiter and an engagement in responded state with a prior outreach_sent event exist':
+      'an ats-web recruiter and an selection in responded state with a prior outreach_sent event exist':
         async () => {
           await withClient(async (c) => {
             await resetAllRows(c);
-            await seedAtsWebEngagementBasics(c);
-            await seedAtsWebEngagement(c, { id: ATSW_RESPONDED_ID, state: 'responded' });
-            await seedAtsWebEngagementEvent(c, {
+            await seedAtsWebSelectionBasics(c);
+            await seedAtsWebSelection(c, { id: ATSW_RESPONDED_ID, state: 'responded' });
+            await seedAtsWebSelectionEvent(c, {
               id: ATSW_OUTREACH_SENT_EVENT_ID,
-              engagementId: ATSW_RESPONDED_ID,
+              selectionId: ATSW_RESPONDED_ID,
               eventType: 'outreach_sent',
               payload: ATSW_SENT_PAYLOAD,
             });
           });
         },
 
-      // -- engagement in engaged state (conversation-illegal: engaged is
+      // -- selection in engaged state (conversation-illegal: engaged is
       // not responded → 422).
-      'an ats-web recruiter and an engagement in engaged state exist':
+      'an ats-web recruiter and an selection in engaged state exist':
         async () => {
           await withClient(async (c) => {
             await resetAllRows(c);
-            await seedAtsWebEngagementBasics(c);
-            await seedAtsWebEngagement(c, { id: ATSW_ENGAGED_ID, state: 'engaged' });
+            await seedAtsWebSelectionBasics(c);
+            await seedAtsWebSelection(c, { id: ATSW_ENGAGED_ID, state: 'engaged' });
           });
         },
 
-      // -- engagement in awaiting_response + prior outreach_sent event
+      // -- selection in awaiting_response + prior outreach_sent event
       // (response-happy: awaiting_response -> responded, ref resolves).
-      'an ats-web recruiter and an engagement in awaiting_response state with a prior outreach_sent event exist':
+      'an ats-web recruiter and an selection in awaiting_response state with a prior outreach_sent event exist':
         async () => {
           await withClient(async (c) => {
             await resetAllRows(c);
-            await seedAtsWebEngagementBasics(c);
-            await seedAtsWebEngagement(c, { id: ATSW_AWAITING_ID, state: 'awaiting_response' });
-            await seedAtsWebEngagementEvent(c, {
+            await seedAtsWebSelectionBasics(c);
+            await seedAtsWebSelection(c, { id: ATSW_AWAITING_ID, state: 'awaiting_response' });
+            await seedAtsWebSelectionEvent(c, {
               id: ATSW_OUTREACH_SENT_EVENT_ID,
-              engagementId: ATSW_AWAITING_ID,
+              selectionId: ATSW_AWAITING_ID,
               eventType: 'outreach_sent',
               payload: ATSW_SENT_PAYLOAD,
             });
           });
         },
 
-      // -- engagement with a recorded event (events-happy).
-      'an ats-web recruiter and an engagement with a recorded event exist':
+      // -- selection with a recorded event (events-happy).
+      'an ats-web recruiter and an selection with a recorded event exist':
         async () => {
           await withClient(async (c) => {
             await resetAllRows(c);
-            await seedAtsWebEngagementBasics(c);
-            await seedAtsWebEngagement(c, { id: ATSW_EVENTS_ID, state: 'awaiting_response' });
-            await seedAtsWebEngagementEvent(c, {
+            await seedAtsWebSelectionBasics(c);
+            await seedAtsWebSelection(c, { id: ATSW_EVENTS_ID, state: 'awaiting_response' });
+            await seedAtsWebSelectionEvent(c, {
               id: '00000000-0000-7000-8000-b00000000004',
-              engagementId: ATSW_EVENTS_ID,
+              selectionId: ATSW_EVENTS_ID,
               eventType: 'outreach_sent',
               payload: ATSW_SENT_PAYLOAD,
             });
           });
         },
 
-      // -- engagement in engaged state + contacting consent (draft-happy:
+      // -- selection in engaged state + contacting consent (draft-happy:
       // soft consent check passes, no consent_warning).
-      'an ats-web recruiter and an engagement in engaged state with contacting consent granted exist':
+      'an ats-web recruiter and an selection in engaged state with contacting consent granted exist':
         async () => {
           await withClient(async (c) => {
             await resetAllRows(c);
-            await seedAtsWebEngagementBasics(c);
-            await seedAtsWebEngagement(c, { id: ATSW_ENGAGED_DRAFT_ID, state: 'engaged' });
+            await seedAtsWebSelectionBasics(c);
+            await seedAtsWebSelection(c, { id: ATSW_ENGAGED_DRAFT_ID, state: 'engaged' });
             await seedAtsWebContactingConsent(c);
           });
         },
 
-      // -- engagement in engaged state + prior outreach_drafted event +
+      // -- selection in engaged state + prior outreach_drafted event +
       // contacting consent (send-happy: state gate + ref resolve +
       // binding consent gate all pass).
-      'an ats-web recruiter and an engagement in engaged state with a prior outreach_drafted event and contacting consent granted exist':
+      'an ats-web recruiter and an selection in engaged state with a prior outreach_drafted event and contacting consent granted exist':
         async () => {
           await withClient(async (c) => {
             await resetAllRows(c);
-            await seedAtsWebEngagementBasics(c);
-            await seedAtsWebEngagement(c, { id: ATSW_ENGAGED_SEND_ID, state: 'engaged' });
+            await seedAtsWebSelectionBasics(c);
+            await seedAtsWebSelection(c, { id: ATSW_ENGAGED_SEND_ID, state: 'engaged' });
             await seedAtsWebContactingConsent(c);
-            await seedAtsWebEngagementEvent(c, {
+            await seedAtsWebSelectionEvent(c, {
               id: ATSW_OUTREACH_DRAFTED_EVENT_ID,
-              engagementId: ATSW_ENGAGED_SEND_ID,
+              selectionId: ATSW_ENGAGED_SEND_ID,
               eventType: 'outreach_drafted',
               payload: ATSW_DRAFTED_PAYLOAD,
             });
@@ -4633,19 +4608,19 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // consent gate denies → 403 CONSENT_NOT_GRANTED_AT_SEND). Note the
       // ledger is non-empty (profile_storage + matching granted) so the
       // check returns 'denied', not the empty-ledger Decision K 'error'.
-      'an ats-web recruiter and an engagement in engaged state with a prior outreach_drafted event but contacting consent not granted exist':
+      'an ats-web recruiter and an selection in engaged state with a prior outreach_drafted event but contacting consent not granted exist':
         async () => {
           await withClient(async (c) => {
             await resetAllRows(c);
-            await seedAtsWebEngagementBasics(c);
-            await seedAtsWebEngagement(c, {
+            await seedAtsWebSelectionBasics(c);
+            await seedAtsWebSelection(c, {
               id: ATSW_ENGAGED_SEND_NO_CONSENT_ID,
               state: 'engaged',
             });
             await seedAtsWebNoContactingConsent(c);
-            await seedAtsWebEngagementEvent(c, {
+            await seedAtsWebSelectionEvent(c, {
               id: ATSW_OUTREACH_DRAFTED_EVENT_ID,
-              engagementId: ATSW_ENGAGED_SEND_NO_CONSENT_ID,
+              selectionId: ATSW_ENGAGED_SEND_NO_CONSENT_ID,
               eventType: 'outreach_drafted',
               payload: ATSW_DRAFTED_PAYLOAD,
             });
@@ -4656,7 +4631,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // seeds a request_hash matching the consumer body + a cached body
       // the controller returns verbatim; conflict seeds a non-matching
       // request_hash so idempotency.lookup throws 409.
-      'a prior engagement-transition response is cached under an Idempotency-Key':
+      'a prior selection-transition response is cached under an Idempotency-Key':
         async () => {
           await withClient(async (c) => {
             await resetAllRows(c);
@@ -4665,11 +4640,11 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
               key: ATSW_K_TRANSITION_REPLAY,
               requestHash: hashCanonicalizedBody(ATSW_TRANSITION_BODY),
               responseStatus: 200,
-              responseBody: { engagement: atswEngagementBody(ATSW_SURFACED_ID, 'evaluated') },
+              responseBody: { selection: atswSelectionBody(ATSW_SURFACED_ID, 'evaluated') },
             });
           });
         },
-      'an Idempotency-Key was used with a different engagement-transition body':
+      'an Idempotency-Key was used with a different selection-transition body':
         async () => {
           await withClient(async (c) => {
             await resetAllRows(c);
@@ -4691,7 +4666,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
               requestHash: hashCanonicalizedBody(ATSW_RESPONSE_BODY),
               responseStatus: 200,
               responseBody: {
-                engagement: atswEngagementBody(ATSW_AWAITING_ID, 'responded'),
+                selection: atswSelectionBody(ATSW_AWAITING_ID, 'responded'),
                 response_event: atswEventBody(
                   '00000000-0000-7000-8000-b00000000021',
                   ATSW_AWAITING_ID,
@@ -4723,7 +4698,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
               requestHash: hashCanonicalizedBody(ATSW_CONVERSATION_BODY),
               responseStatus: 200,
               responseBody: {
-                engagement: atswEngagementBody(ATSW_RESPONDED_ID, 'in_conversation'),
+                selection: atswSelectionBody(ATSW_RESPONDED_ID, 'in_conversation'),
                 conversation_event: atswEventBody(
                   '00000000-0000-7000-8000-b00000000031',
                   ATSW_RESPONDED_ID,
@@ -4784,7 +4759,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
               requestHash: hashCanonicalizedBody(ATSW_SEND_BODY),
               responseStatus: 200,
               responseBody: {
-                engagement: atswEngagementBody(ATSW_ENGAGED_SEND_ID, 'awaiting_response'),
+                selection: atswSelectionBody(ATSW_ENGAGED_SEND_ID, 'awaiting_response'),
                 outreach_event: atswEventBody(
                   '00000000-0000-7000-8000-b00000000051',
                   ATSW_ENGAGED_SEND_ID,

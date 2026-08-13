@@ -25,7 +25,7 @@ import {
 //     the Gate-5 §1 check confirmed the ATS schemas carry none of it).
 //     Therefore an export CAN'T leak any of those (there is nothing
 //     in the read surface to leak). The lint:nx-boundaries graph for
-//     libs/export contains ZERO Core / engagement / submittal /
+//     libs/export contains ZERO Core / selection / submittal /
 //     examination / talent / job_domain edges — the structural proof;
 //     the
 //     integration spec replays the A7 reporting-service pattern by

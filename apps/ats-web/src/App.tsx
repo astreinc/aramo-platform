@@ -15,7 +15,7 @@ import { ContactCreateView } from './contacts/ContactCreateView';
 import { ContactDetailView } from './contacts/ContactDetailView';
 import { ContactEditView } from './contacts/ContactEditView';
 import { ContactsListView } from './contacts/ContactsListView';
-import { EngagementDetailView } from './engagement/EngagementDetailView';
+import { SelectionDetailView } from './selection/SelectionDetailView';
 import { IdentityAdvisoriesView } from './identity-advisories/IdentityAdvisoriesView';
 import { PortalDisputesView } from './portal-disputes/PortalDisputesView';
 import { TrustProposalsView } from './trust-proposals/TrustProposalsView';
@@ -288,13 +288,13 @@ export function App() {
                       }
                     />
                     <Route
-                      path="engagements/:engagementId"
+                      path="selections/:selectionId"
                       element={
                         <RouteGuard
                           requireScope="selection:read"
                           sessionStateOverride={state}
                         >
-                          <EngagementDetailView />
+                          <SelectionDetailView />
                         </RouteGuard>
                       }
                     />

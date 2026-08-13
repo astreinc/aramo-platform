@@ -58,7 +58,7 @@ const IMMUTABLE_COLUMNS = [
 // ---------------------------------------------------------------------------
 // Tables (§3). PlacementProcess has NO updated_at (§2); UUID v7 app-side, so
 // the id carries NO database default (§2 — a DEFAULT gen_random_uuid() would
-// emit v4). PlacementProcessEvent mirrors TalentEngagementEvent.
+// emit v4). PlacementProcessEvent mirrors TalentSelectionEvent.
 // ---------------------------------------------------------------------------
 
 const PROCESS_TABLE_MODEL: SqlTable = {
@@ -145,7 +145,7 @@ const INDEXES: readonly SqlIndex[] = [
     name: `${PROCESS_TABLE}_tenant_id_talent_record_id_idx`,
     columns: ['tenant_id', 'talent_record_id'],
   },
-  // event-log reads mirror TalentEngagementEvent.
+  // event-log reads mirror TalentSelectionEvent.
   {
     schema: SCHEMA,
     table: EVENT_TABLE,

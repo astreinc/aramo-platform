@@ -9,7 +9,7 @@ import { PrismaClient } from '../../../node_modules/.prisma/ai-draft-client/clie
 // post-PR-17 closure + M4 PR-1 + M5 PR-1 (libs/auth-storage, libs/consent,
 // libs/evidence, libs/examination, libs/identity, libs/ingestion,
 // libs/job-domain, libs/submittal, libs/talent, libs/talent-evidence,
-// libs/engagement).
+// libs/selection).
 //
 // Post-PR-17 uniform lazy pattern per M5 PR-5 Directive v1.0 §4.3
 // (mirrors the eleven existing lazy services). Same four-step pattern:

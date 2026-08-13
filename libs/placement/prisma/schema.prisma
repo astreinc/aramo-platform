@@ -14,7 +14,7 @@
 //   unique (a re-offer after fallthrough is a real workflow).
 //
 //   It does NOT represent: an application · a pipeline card · a matching
-//   outcome · a general engagement · an assignment. Lineage is submittal_id,
+//   outcome · a general selection · an assignment. Lineage is submittal_id,
 //   never pipeline_id; naming is requisition_id, never job_id.
 //
 // PG schema: `placement` per Architecture §7.1 schema-per-module. Cross-schema
@@ -61,7 +61,7 @@ enum PlacementState {
 }
 
 // PlacementEventType — closed-list event-log type. Mirrors the submittal /
-// engagement event-log substrate (one type at spine; richer types land with
+// selection event-log substrate (one type at spine; richer types land with
 // consumers).
 enum PlacementEventType {
   state_transition
@@ -124,7 +124,7 @@ model PlacementProcess {
 
 // PlacementProcessEvent — append-only, absolutely immutable audit log. No
 // update surface, no delete surface; both enforced by database triggers in the
-// init migration (§3). Mirrors TalentEngagementEvent.
+// init migration (§3). Mirrors TalentSelectionEvent.
 model PlacementProcessEvent {
   // Identity. UUID v7 generated app-side — NO @default (§2).
   id        String @id @db.Uuid
@@ -159,7 +159,7 @@ model PlacementProcessEvent {
 }
 
 // OutboxEvent — the placement schema's own transactional-outbox namespace (E1-c,
-// Approval Record 9-c-2). Mirrors the six-column house shape (consent/engagement/
+// Approval Record 9-c-2). Mirrors the six-column house shape (consent/selection/
 // submittal): aggregate identity lives inside event_payload, NOT in columns.
 // Drained by libs/outbox-publisher (published_at stamped on drain). Append-only:
 // a column-scoped immutability trigger (the E1-c migration) rejects DELETE and any

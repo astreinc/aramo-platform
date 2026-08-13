@@ -14,11 +14,11 @@
 // tenant_status remains the profile's status field.
 //
 // Portal P2 P2b (§PR-2 ruling 2) — tenant_name: the P1-deferred MAY is now a
-// MUST. The engagement counterparty is NAMED (P-R5) so the portal user (and the
+// MUST. The selection counterparty is NAMED (P-R5) so the portal user (and the
 // consent grant flow's chrome) sees a human label, not a UUID. It is the
 // always-present workspace name from @aramo/identity (Tenant.name), resolved by
 // the controller via TenantService; null only if the tenant row vanished
-// (defensive). ENGAGEMENT-class — a portal user's own engagements, never a
+// (defensive). SELECTION-class — a portal user's own selections, never a
 // verification origin — so naming carries no origin-secrecy concern and this
 // stays clear of TRUST_CLASS_SCHEMAS.
 //

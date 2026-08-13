@@ -6,7 +6,7 @@ import {
 } from '../lib/consent.repository.js';
 import type { PrismaService } from '../lib/prisma/prisma.service.js';
 
-// Charter Refusal R13: consent integrity over engagement velocity.
+// Charter Refusal R13: consent integrity over selection velocity.
 // If any write in the consent-event transaction fails (audit, outbox,
 // idempotency row), the entire request fails with a structured error.
 // PR-3 extends the rollback surface to the revoke lookup
@@ -70,7 +70,7 @@ function makeRevokeInput(): RecordConsentEventInput {
   return { ...makeGrantInput(), action: 'revoked' };
 }
 
-describe('Refusal R13 — consent integrity over engagement velocity', () => {
+describe('Refusal R13 — consent integrity over selection velocity', () => {
   it('grant: propagates audit-write failure (no partial-success swallow)', async () => {
     const tx = makeTx();
     tx.consentAuditEvent.create.mockRejectedValue(new Error('audit DB down'));

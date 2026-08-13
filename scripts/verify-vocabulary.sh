@@ -216,9 +216,9 @@ TIER2_EXCLUDES=(
   "apps/api/src/tests/submittal-mark-ready.negative-shape.spec.ts"
   "apps/api/src/tests/submittal-submit-to-ats.negative-shape.spec.ts"
   "apps/api/src/tests/submittal-confirm-ats.negative-shape.spec.ts"
-  # M5 PR-2: engagement event-log substrate carries the canonical product
-  # vocabulary `outreach_sent` (an EngagementEventType enum value per
-  # Group 2 §3 "engagement outreach" — distinct from the forbidden
+  # M5 PR-2: selection event-log substrate carries the canonical product
+  # vocabulary `outreach_sent` (an SelectionEventType enum value per
+  # Group 2 §3 "selection outreach" — distinct from the forbidden
   # Match-Class refusal vocabulary; the substring overlap is incidental).
   # Per M5 PR-2 directive Ruling 4 / §4.12. Same structural pattern as
   # the M3 PR-9 / M4 PR-3-7 negative-shape entries above (legitimate
@@ -227,35 +227,35 @@ TIER2_EXCLUDES=(
   "libs/selection/src/lib/selection-event.ts"
   # T2-P2 — Selection domain barrel (@aramo/selection). Re-exports
   # OutreachSentPayload / OutreachDraftedPayload and carries the canonical
-  # engagement-outreach event vocabulary in export names + comments — the
-  # same rationale as the libs/engagement/src/index.ts facade-barrel entry
+  # selection-outreach event vocabulary in export names + comments — the
+  # same rationale as the libs/selection/src/index.ts facade-barrel entry
   # below; relocated here per the controller-only-facade ruling.
   "libs/selection/src/index.ts"
   "libs/selection/prisma/migrations/**/migration.sql"
-  # Test data for the engagement-event log + cross-schema validator
+  # Test data for the selection-event log + cross-schema validator
   # exercises the canonical `outreach_sent` enum value as input fixture.
   # Same rationale as the source-file entries above.
   "libs/selection/src/tests/selection-event.repository.integration.spec.ts"
   "libs/evidence/src/tests/evidence.repository.cross-schema-validator.integration.spec.ts"
   # M5 PR-4: HTTP-surface specs and Pact consumer/provider tests for the
-  # engagement endpoints exercise the canonical `outreach_sent` enum
-  # value in state-transition fixture data + the engagement-controller
+  # selection endpoints exercise the canonical `outreach_sent` enum
+  # value in state-transition fixture data + the selection-controller
   # unit + integration specs reference the same. Same canonical-vocab
   # rationale as the M5 PR-2 entries above.
-  # engagement-create.negative-shape.spec.ts enumerates the F23
+  # selection-create.negative-shape.spec.ts enumerates the F23
   # FORBIDDEN_MATCH_CLASS_KEYS array (rank/score/etc.) for recursive-
   # descent leak detection — same structural pattern as the M3 PR-9
   # / M4 PR-3-7 negative-shape entries above.
-  "apps/api/src/tests/engagement-create.negative-shape.spec.ts"
-  "apps/api/src/tests/engagement-transition.negative-shape.spec.ts"
+  "apps/api/src/tests/selection-create.negative-shape.spec.ts"
+  "apps/api/src/tests/selection-transition.negative-shape.spec.ts"
   # T2-2a — canonicalization R10/R12 structural tripwire spec enumerates
   # the forbidden match-class output vocabulary (tier/score/rank/...)
   # for a recursive-descent leak detection scan against the canonicalize
-  # source. Same pattern as the engagement-create.negative-shape.spec.ts
+  # source. Same pattern as the selection-create.negative-shape.spec.ts
   # entry above. The companion canonicalization.repository.ts entry below
   # covers the R-boundary docstring's "no tier / score / rank / match"
   # disclaimer comment (the same comment-mention precedent as
-  # libs/engagement/src/lib/engagement.repository.ts above).
+  # libs/selection/src/lib/selection.repository.ts above).
   "libs/canonicalization/src/tests/canonicalization.tripwires.spec.ts"
   "libs/canonicalization/src/lib/canonicalization.repository.ts"
   # T2-3 — canonicalization integration spec proof 8 asserts the
@@ -273,43 +273,41 @@ TIER2_EXCLUDES=(
   # anti-token list. Same structural pattern + same Charter-Level
   # rationale as the canonicalization.tripwires.spec.ts entry above.
   "libs/outbox-publisher/src/tests/outbox-publisher.integration.spec.ts"
-  "libs/engagement/src/tests/engagement.controller.spec.ts"
-  "apps/api/src/tests/engagement.controller.integration.spec.ts"
-  # M5 PR-4: OpenAPI common.yaml carries the canonical EngagementEventTypeValue
+  "libs/selection/src/tests/selection.controller.spec.ts"
+  "apps/api/src/tests/selection.controller.integration.spec.ts"
+  # M5 PR-4: OpenAPI common.yaml carries the canonical SelectionEventTypeValue
   # enum with `outreach_sent` per Group 2 §2.3b Loops 3-5 event-emission
-  # semantics — the same rationale as libs/engagement/src/lib/engagement-event.ts.
+  # semantics — the same rationale as libs/selection/src/lib/selection-event.ts.
   # Same structural pattern as openapi/ingestion.yaml's R7 enum-value exemption.
   "openapi/common.yaml"
   # M5 PR-6: outreach-send HTTP surface — the new DTOs, delivery-port
   # adapter, F23 negative-shape spec, Pact consumer test, and ats.yaml
   # path documentation carry the canonical `outreach`/`outreach_sent`
-  # vocabulary by design (the new POST /v1/engagements/{id}/outreach
+  # vocabulary by design (the new POST /v1/selections/{id}/outreach
   # endpoint + OutreachSentPayload event payload). Same canonical-vocab
   # rationale as the M5 PR-2 / PR-4 entries above.
   "libs/common/src/lib/errors/error-codes.ts"
-  "libs/engagement/src/lib/engagement.module.ts"
-  # R7 BE-prereq — the engagement scope catalog (`engagement:outreach`
+  # R7 BE-prereq — the selection scope catalog (`selection:outreach`
   # as the canonical scope-action vocabulary; same domain-scope-action
   # pattern as `compensation:edit:pay` / `submittal:create`). Mirrored
   # in eslint.config.mjs.
   "libs/identity/src/lib/dto/scope.dto.ts"
   "libs/identity/prisma/seed.ts"
   # §5 Auth-Hardening D1 — recruiter-context integration spec asserts the
-  # recruiter scope BUNDLE, which carries the canonical `engagement:outreach`
+  # recruiter scope BUNDLE, which carries the canonical `selection:outreach`
   # scope key (same canonical scope-naming rationale as the scope-catalog
   # entries above). Mirrored in eslint.config.mjs.
   "apps/api/src/tests/auth-hardening-d1-recruiter-context.integration.spec.ts"
-  "libs/engagement/src/index.ts"
-  "libs/engagement/src/lib/dto/outreach-send-request.dto.ts"
-  "libs/engagement/src/lib/dto/outreach-send-response.dto.ts"
+  "libs/selection/src/lib/dto/outreach-send-request.dto.ts"
+  "libs/selection/src/lib/dto/outreach-send-response.dto.ts"
   "libs/selection/src/lib/dto/outreach-sent-payload.ts"
   # Outreach Draft/Preview Directive v1.0 / Amendment v1.1 — the draft half.
-  "libs/engagement/src/lib/dto/outreach-draft-request.dto.ts"
-  "libs/engagement/src/lib/dto/outreach-draft-response.dto.ts"
+  "libs/selection/src/lib/dto/outreach-draft-request.dto.ts"
+  "libs/selection/src/lib/dto/outreach-draft-response.dto.ts"
   "libs/selection/src/lib/dto/outreach-drafted-payload.ts"
   "libs/selection/src/lib/delivery/delivery-provider.interface.ts"
   "libs/selection/src/lib/delivery/send-stub.provider.ts"
-  "libs/engagement/src/lib/engagement.controller.ts"
+  "libs/selection/src/lib/selection.controller.ts"
   "libs/selection/src/lib/selection.repository.ts"
   "apps/api/src/tests/outreach-send.negative-shape.spec.ts"
   "apps/api/src/tests/outreach-send.integration.spec.ts"
@@ -325,23 +323,23 @@ TIER2_EXCLUDES=(
   "libs/selection/src/tests/selection.repository.spec.ts"
   "libs/selection/src/tests/selection.repository.integration.spec.ts"
   "pact/provider/src/verify-api.ts"
-  # PC-1: ats-web engagement consumer pact. Carries the canonical
-  # `outreach` engagement vocabulary in the outreach-draft / outreach-send
+  # PC-1: ats-web selection consumer pact. Carries the canonical
+  # `outreach` selection vocabulary in the outreach-draft / outreach-send
   # endpoint paths + event-type discriminants (`outreach_sent`,
   # `outreach_drafted`) + given/uponReceiving names — NOT a misuse of
   # `outreach` as a standalone entity name. Same rationale as the M5 PR-6/
-  # PR-7 engagement source + spec entries above and pact/provider/src/
+  # PR-7 selection source + spec entries above and pact/provider/src/
   # verify-api.ts. (ESLint no-restricted-syntax is scoped to apps/**+libs/**,
   # so pact/consumers/** needs no matching eslint.config.mjs entry.)
-  "pact/consumers/ats-web/src/engagement.consumer.test.ts"
+  "pact/consumers/ats-web/src/selection.consumer.test.ts"
   # M5 PR-7: response-received HTTP surface — new DTOs + Pact consumer +
   # negative-shape spec + integration spec carry the canonical `outreach`
   # vocabulary via the cross-event reference field `outreach_event_ref_id`
   # (Ruling 4) and references to the prior `outreach_sent` event. Same
   # canonical-vocab rationale as the M5 PR-6 entries above (substring
   # overlap with legacy entity-name anti-pattern is incidental).
-  "libs/engagement/src/lib/dto/record-response-request.dto.ts"
-  "libs/engagement/src/lib/dto/record-response-response.dto.ts"
+  "libs/selection/src/lib/dto/record-response-request.dto.ts"
+  "libs/selection/src/lib/dto/record-response-response.dto.ts"
   "libs/selection/src/lib/dto/selection-response-received-payload.ts"
   "apps/api/src/tests/response-received.negative-shape.spec.ts"
   "apps/api/src/tests/response-received.integration.spec.ts"
@@ -349,7 +347,7 @@ TIER2_EXCLUDES=(
   # responded precondition; same canonical-vocab rationale as M5 PR-6 + PR-7 entries above
   "apps/api/src/tests/conversation-started.negative-shape.spec.ts"
   "apps/api/src/tests/conversation-started.integration.spec.ts"
-  "libs/engagement/src/lib/dto/record-conversation-started-response.dto.ts"
+  "libs/selection/src/lib/dto/record-conversation-started-response.dto.ts"
   "libs/selection/src/lib/dto/selection-conversation-started-payload.ts"
   # M5 PR-11 Ruling 7: 4 BullMQ background job integration specs
   # (stale-consent + outbox-publisher + cross-schema-consistency +
@@ -361,7 +359,7 @@ TIER2_EXCLUDES=(
   "libs/common/src/tests/cross-schema-consistency.integration.spec.ts"
   "libs/skills-taxonomy/src/tests/skill-canonicalization.integration.spec.ts"
   # M5 PR-12 (M5-close handoff): the handoff doc quotes Charter v1.2
-  # Exit Criteria verbatim (incl. "outreach" — canonical engagement
+  # Exit Criteria verbatim (incl. "outreach" — canonical selection
   # vocabulary in the Charter), the Plan v1.5 §M5 Track A item 2
   # deliverable name (M5 outreach flow with AI-assisted draft generation),
   # prior PR titles (PR-6 outreach surface), and Architecture §9.2
@@ -421,28 +419,28 @@ TIER2_EXCLUDES=(
   # (locked artifact filenames preserved for fidelity).
   "apps/ats-web/src/submittals/submittals-api.ts"
   "apps/ats-web/src/submittals/SubmittalWizard.tsx"
-  # Recruiter R7 — the engagement FE surface (the ats-web consumer
-  # of the engagement backend). `outreach` appears here as the canonical
-  # engagement event-type discriminant (`outreach_drafted` / `outreach_sent`),
+  # Recruiter R7 — the selection FE surface (the ats-web consumer
+  # of the selection backend). `outreach` appears here as the canonical
+  # selection event-type discriminant (`outreach_drafted` / `outreach_sent`),
   # the response-picker source (a response answers a prior `outreach_sent`
   # event — `outreach_event_ref_id`), and the recruiter-facing product
   # vocabulary in copy ("Outreach sent" / "the selected outreach") — NOT a
   # misuse of `outreach` as a standalone entity name competing with
-  # `engagement`. Same canonical-vocabulary rationale as the libs/engagement
+  # `selection`. Same canonical-vocabulary rationale as the libs/selection
   # M5 PR-2/PR-6/PR-7 entries above. Lockstep with the matching
   # eslint.config.mjs TIER2_EXCLUDES entries.
-  "apps/ats-web/src/engagement/types.ts"
-  "apps/ats-web/src/engagement/engagement-api.ts"
-  "apps/ats-web/src/engagement/EventLog.tsx"
-  "apps/ats-web/src/engagement/ResponseLogger.tsx"
-  "apps/ats-web/src/engagement/EngagementDetailView.tsx"
-  "apps/ats-web/src/engagement/error-messages.ts"
-  "apps/ats-web/src/engagement/EngagementDetailView.spec.tsx"
+  "apps/ats-web/src/selection/types.ts"
+  "apps/ats-web/src/selection/selection-api.ts"
+  "apps/ats-web/src/selection/EventLog.tsx"
+  "apps/ats-web/src/selection/ResponseLogger.tsx"
+  "apps/ats-web/src/selection/SelectionDetailView.tsx"
+  "apps/ats-web/src/selection/error-messages.ts"
+  "apps/ats-web/src/selection/SelectionDetailView.spec.tsx"
   # Recruiter R7 PR-2 — the draft→preview→send outreach composer. Same
   # canonical-vocabulary rationale as the PR-1 entries above; lockstep with
   # the matching eslint.config.mjs TIER2_EXCLUDES entries.
-  "apps/ats-web/src/engagement/OutreachComposer.tsx"
-  "apps/ats-web/src/engagement/OutreachComposer.spec.tsx"
+  "apps/ats-web/src/selection/OutreachComposer.tsx"
+  "apps/ats-web/src/selection/OutreachComposer.spec.tsx"
   # TR-6 B2 — the Identity Advisories reviewer worklist R10-enforcement spec.
   # It legitimately enumerates the forbidden Match-Class vocabulary
   # (score/rank/tier/rating) as a negative-shape anti-token list, asserting the
@@ -458,7 +456,7 @@ TIER2_EXCLUDES=(
   "apps/ats-web/src/trust-proposals/TrustProposalsView.spec.tsx"
   # R-REPOMAP-3 (Lead ruling, D-REPOMAP-2 build): the three generated repo-map
   # artifacts. They carry Tier-2 tokens because their job is to ENUMERATE tracked
-  # file paths — the canonical `outreach-*` engagement files (each already
+  # file paths — the canonical `outreach-*` selection files (each already
   # individually excluded above) appear in files.json as path strings. A path
   # inventory, never entity vocabulary; Rule 5 forbids `outreach` as an ENTITY
   # NAME, which a filename listing does not do.
@@ -601,7 +599,7 @@ for entry in "${TIER2_TERMS_REGEX[@]}"; do
     printf '%s\n' "$matches" >&2
     echo "" >&2
     echo "Use locked Aramo vocabulary per doc/02-claude-code-discipline.md Rule 5:" >&2
-    echo "  candidate -> talent ; customer -> tenant ; outreach -> engagement" >&2
+    echo "  candidate -> talent ; customer -> tenant ; outreach -> selection" >&2
     echo "  evaluation -> examination ; submission -> submittal" >&2
     echo "  score / rank -> forbidden as Portal fields (R10)" >&2
     echo "  (If a path legitimately requires forbidden vocabulary, edit TIER2_EXCLUDES in scripts/verify-vocabulary.sh.)" >&2

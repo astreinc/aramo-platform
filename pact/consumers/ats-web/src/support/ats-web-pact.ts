@@ -4,7 +4,7 @@ import { PactV4, MatchersV3 } from '@pact-foundation/pact';
 
 // PC-2 — shared support module for the ats-web consumer suite (extracted at
 // the N=2 trigger, per the charter §5.3 shared-fixture rule). Every ats-web
-// domain file (engagement, submittal, …) imports the ctor factory + shared
+// domain file (selection, submittal, …) imports the ctor factory + shared
 // constants + the generic error-envelope builder from here; domain-specific
 // view/shape builders and constants stay in their own domain file.
 

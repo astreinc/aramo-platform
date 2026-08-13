@@ -21,7 +21,6 @@
       "@aramo/company": ["../../dist/libs/company/src/index.d.ts"],
       "@aramo/consent": ["../../dist/libs/consent/src/index.d.ts"],
       "@aramo/contact": ["../../dist/libs/contact/src/index.d.ts"],
-      "@aramo/engagement": ["../../dist/libs/engagement/src/index.d.ts"],
       "@aramo/selection": ["../../dist/libs/selection/src/index.d.ts"],
       "@aramo/entitlement": ["../../dist/libs/entitlement/src/index.d.ts"],
       "@aramo/export": ["../../dist/libs/export/src/index.d.ts"],

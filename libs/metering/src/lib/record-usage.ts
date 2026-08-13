@@ -12,7 +12,7 @@ import { v7 as uuidv7 } from 'uuid';
 // Design notes:
 //   * Ruling 1: general stream. event_type is a free string; vocab
 //     aligns with M6 PR-2 outbox event_type values for correlation
-//     (e.g. 'engagement.state_transition'). NO enum constraint here.
+//     (e.g. 'selection.state_transition'). NO enum constraint here.
 //   * Ruling 2: no new transaction boundaries. The function is composed
 //     into an EXISTING $transaction by the caller.
 //   * Ruling 4: write path only. NO aggregation / read API / billing.
@@ -23,7 +23,7 @@ import { v7 as uuidv7 } from 'uuid';
 // `$executeRaw`). Each domain repository injects its own per-module
 // PrismaService; passing it here keeps metering a true leaf (no
 // back-edge to any domain lib — metering does not import @aramo/
-// engagement or @aramo/submittal).
+// selection or @aramo/submittal).
 //
 // Return is the result of the caller's $executeRaw call (a
 // PrismaPromise<number>); pass it through to $transaction([...])
