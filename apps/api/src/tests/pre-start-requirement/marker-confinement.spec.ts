@@ -49,6 +49,14 @@ const EXACT_ALLOWLIST = new Set<string>([
   // legacy-overlap fixture via the tenant-reset escape inside a self-restoring DDL
   // window (§10 defensive proof).
   'apps/api/src/tests/placement-http.integration.spec.ts',
+  // Track 6 / T6-B3 — the commercial-cancellation migration CREATE OR REPLACEs the
+  // same ARV mutation trigger AGAIN, preserving the tenant_reset DELETE escape
+  // byte-for-byte while adding the cancellation + future-only re-open branches.
+  'libs/placement/prisma/migrations/20260813130000_t6_b3_commercial_cancellation/migration.sql',
+  // Track 6 / T6-B3 — the cancellation integration proof exercises the tenant-reset
+  // DELETE escape (proving it stays independent of the cancellation capability, §29)
+  // via raw SET LOCAL.
+  'libs/placement/src/tests/t6-b3-commercial-cancellation.integration.spec.ts',
 ]);
 
 describe('reset-marker confinement — exact-path default-deny (§2.4)', () => {
