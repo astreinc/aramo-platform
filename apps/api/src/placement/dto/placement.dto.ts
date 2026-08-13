@@ -9,7 +9,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { PLACEMENT_STATES } from '@aramo/placement';
+import { PLACEMENT_STATES, USER_CANCELLATION_REASON_CODES } from '@aramo/placement';
 import { RATE_PERIOD_VALUES } from '@aramo/common';
 
 // Track 5 / T5-P1 — a decimal money string (never a float): up to 10 integer
@@ -139,6 +139,18 @@ export class CommercialRevisionDto {
   @IsString()
   @MaxLength(2000)
   change_reason!: string;
+}
+
+// Track 6 / T6-B3 — explicit cancellation of a FUTURE open-tail commercial
+// revision. The ONLY wire field is the cancellation reason, constrained to the
+// closed USER-selectable vocabulary (directive §10). The reserved internal
+// ASSIGNMENT_ENDED is deliberately NOT in this set, so a request carrying it is a
+// wire validation failure (400) — the explicit API can never mint the END-only
+// reason. Everything else (tenant, assignment, revision id, cancelled_at,
+// cancelled_by = JWT sub) is server-derived and FORBIDDEN on the wire.
+export class CancelCommercialRevisionDto {
+  @IsIn(USER_CANCELLATION_REASON_CODES as readonly string[])
+  cancellation_reason_code!: string;
 }
 
 // One generic transition route (E1-b §1): the target state is in the body and the

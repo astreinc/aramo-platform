@@ -268,6 +268,12 @@ model ContractAssignment {
   // normal completion / worker-ended / client-ended structurally.
   end_reason ContractAssignmentEndReason?
 
+  // Track 6 / T6-B3 — the durable assignment-end instant (migration
+  // 20260813130000). Nullable: ACTIVE assignments have none. Set once, at END,
+  // to the single server T_end also used for commercial-window reconciliation
+  // and the assignment.ended event — one clock, no independent timestamps.
+  ended_at DateTime? @db.Timestamptz(6)
+
   created_at DateTime @default(now()) @db.Timestamptz(6)
 
   // Idempotency: at most one assignment per originating start fact.

@@ -2037,6 +2037,79 @@ paths:
       security:
         - BearerAuth: []
 
+  # Track 6 / T6-B3 — governed cancellation of a FUTURE open-tail commercial revision.
+  /v1/placements/{id}/assignment/commercials/revisions/{revisionId}/cancel:
+    post:
+      operationId: cancelAssignmentCommercialRevision
+      summary: Cancel a future open-tail commercial revision (Track 6 / T6-B3).
+      description: |
+        Withdraws a NOT-YET-EFFECTIVE commercial revision: the target version (the
+        future open tail) is cancelled and its predecessor re-opened to `[start, ∞)`,
+        atomically, restoring schedule continuity with no gap and no historical rewrite.
+
+        Eligible ONLY when the target is simultaneously on an ACTIVE assignment, not
+        already cancelled, starts strictly in the future, and is the open tail
+        (`effective_to` is null). Historical, current, bounded/interior future, and
+        already-cancelled versions — and any version on an ENDED assignment — are refused.
+
+        Guarded by the DEDICATED write scope `assignment:commercials:write` (§13):
+        `assignment:commercials:read`, `placement:*`, and `assignment:update` do NOT
+        satisfy it. `cancelled_by` is the authenticated subject — never the request body.
+        The placement is loaded under the actor-visibility predicate; a not-found /
+        not-visible / cross-tenant placement or an unknown revision returns 404 (never
+        403). An ineligible target is refused 409 `ASSIGNMENT_COMMERCIAL_REVISION_CONFLICT`
+        (`details.reason`: `already_cancelled` | `revision_not_future` |
+        `cancellation_would_create_gap`). The response is the refreshed non-cancelled
+        commercial series — cancellation metadata is never returned in the normal series.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: revisionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommercialRevisionCancelRequest'
+      responses:
+        '200':
+          description: OK — the refreshed non-cancelled commercial series.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssignmentCommercialSeriesResponse'
+        '400':
+          description: Validation error (missing or non-user-selectable cancellation_reason_code).
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '403':
+          description: Insufficient permissions or tenant not entitled.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '409':
+          description: The target is not an eligible future open tail (details.reason = already_cancelled | revision_not_future | cancellation_would_create_gap).
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+      security:
+        - BearerAuth: []
+
   # Track 8 / T8-P2 — provider-neutral canonical requisition ingestion.
   /v1/requisition-imports:
     get:
@@ -2652,6 +2725,20 @@ components:
           type: string
           maxLength: 2000
           description: Required free-text note recorded on the successor version.
+    # Track 6 / T6-B3 — the explicit cancellation request. The ONLY wire field is the
+    # cancellation reason, constrained to the closed USER-selectable vocabulary. The
+    # reserved internal ASSIGNMENT_ENDED is deliberately absent (END-reconciliation only,
+    # never user-mintable). tenant / assignment / revision id, cancelled_at, cancelled_by
+    # are server-derived / forbidden on the wire.
+    CommercialRevisionCancelRequest:
+      type: object
+      additionalProperties: false
+      required: [cancellation_reason_code]
+      properties:
+        cancellation_reason_code:
+          type: string
+          enum: [SCHEDULE_WITHDRAWN, CLIENT_REQUEST, WORKER_REQUEST, DATA_CORRECTION]
+          description: The user-selectable reason for withdrawing the future revision.
     # The revision create response — the new CURRENT version (never null on success).
     AssignmentCommercialCreatedResponse:
       type: object

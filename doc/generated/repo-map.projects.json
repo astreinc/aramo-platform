@@ -569,6 +569,7 @@
       "toEnforcementDisposition"
     ],
     "@aramo/placement": [
+      "ASSIGNMENT_ENDED_CANCELLATION_REASON",
       "CAPACITY_STATUSES",
       "CapacityProjectionRepository",
       "DUPLICATE_GUARD_INACTIVE",
@@ -592,6 +593,7 @@
       "STATE_POSITION",
       "TRANSITIONS",
       "TRANSITION_TERMINAL",
+      "USER_CANCELLATION_REASON_CODES",
       "activeReasonsForTarget",
       "buildPlacementMigrationModel",
       "canTransition",
@@ -603,6 +605,7 @@
       "generatePlacementMigrationSql",
       "getReason",
       "isGovernedTerminalTarget",
+      "isUserCancellationReasonCode",
       "lifecyclePositionOf",
       "normalizeReasonDetail"
     ],

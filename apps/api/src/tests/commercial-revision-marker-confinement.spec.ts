@@ -30,7 +30,14 @@ const EXACT_ALLOWLIST = new Set<string>([
   'apps/api/src/tests/placement-http.integration.spec.ts',
   // T6-B2 — the FIRST production setter: the commercial-revision transaction in the
   // placement repository SET LOCALs the marker to perform the governed first-close.
+  // (T6-B3 END reconciliation also SET LOCALs it here for the final first-close.)
   'libs/placement/src/lib/placement.repository.ts',
+  // T6-B3 trigger migration — CREATE OR REPLACEs the function, PRESERVING the B1
+  // first-close branch (which names this marker) beside the new cancellation branches.
+  'libs/placement/prisma/migrations/20260813130000_t6_b3_commercial_cancellation/migration.sql',
+  // T6-B3 integration proof — the trigger truth table raw-SET-LOCALs BOTH markers
+  // (e.g. proving the revision marker cannot cancel/reopen, and END first-close).
+  'libs/placement/src/tests/t6-b3-commercial-cancellation.integration.spec.ts',
 ]);
 
 describe('commercial-revision-marker confinement — exact-path default-deny (T6-B1 §5.2)', () => {

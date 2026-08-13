@@ -16,7 +16,13 @@ import {
   type AssignmentCommercialView,
 } from '@aramo/placement';
 
-import { CommercialRevisionDto, CreatePlacementDto, EndAssignmentDto, TransitionPlacementDto } from './dto/placement.dto.js';
+import {
+  CancelCommercialRevisionDto,
+  CommercialRevisionDto,
+  CreatePlacementDto,
+  EndAssignmentDto,
+  TransitionPlacementDto,
+} from './dto/placement.dto.js';
 
 // Track 3 / E1-b + E1-d — the guarded PlacementProcess HTTP surface. ONE generic
 // transition route (§1): the target is in the body and the canonical 14-edge
@@ -208,7 +214,15 @@ export class PlacementController {
     @Body() body: EndAssignmentDto,
   ): Promise<{ ok: true }> {
     await this.placements.endAssignment(
-      { tenant_id: auth.tenant_id, placement_process_id: id, end_reason: body.end_reason as ContractAssignmentEndReason },
+      {
+        tenant_id: auth.tenant_id,
+        placement_process_id: id,
+        end_reason: body.end_reason as ContractAssignmentEndReason,
+        // T6-B3 §16 — the acting principal (JWT sub) is recorded as cancelled_by on
+        // every future commercial version END reconciliation withdraws. END authority
+        // (assignment:end) alone drives this internal effect — NOT a second scope (§14).
+        ended_by: auth.sub,
+      },
       requestId,
     );
     return { ok: true };
@@ -380,6 +394,53 @@ export class PlacementController {
       requestId,
     );
     return { commercials };
+  }
+
+  // Track 6 / T6-B3 — explicit cancellation of a FUTURE open-tail commercial
+  // revision. Gated by the SAME write scope as a revision (assignment:commercials:write,
+  // §13) — assignment:commercials:read / assignment:update / placement:* NEVER
+  // substitute. Least-visibility like the reads: the placement is loaded through
+  // findByIdForActor FIRST (404 — never 403 — when absent, cross-tenant, or not
+  // visible), so the write scope cannot probe a hidden assignment. The repository
+  // then enforces eligibility (future open tail on an ACTIVE assignment) atomically:
+  // an unknown revision, an already-cancelled/non-future/interior target, or an ended
+  // assignment resolve to 404 / 409 (ASSIGNMENT_COMMERCIAL_REVISION_CONFLICT). The
+  // acting principal (cancelled_by) is the JWT subject, never the wire. Returns the
+  // refreshed non-cancelled series (§12), never cancellation metadata.
+  @Post(':id/assignment/commercials/revisions/:revisionId/cancel')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('assignment:commercials:write')
+  async cancelAssignmentCommercialRevision(
+    @AuthContext() auth: AuthContextType,
+    @RequestId() requestId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('revisionId', ParseUUIDPipe) revisionId: string,
+    @Body() body: CancelCommercialRevisionDto,
+    @Req() req: Request,
+  ): Promise<{ items: AssignmentCommercialView[] }> {
+    const visibleReqIds = await req.resolveVisibleRequisitionIds!();
+    const placement = await this.placements.findByIdForActor({
+      tenant_id: auth.tenant_id,
+      id,
+      visible_requisition_ids: visibleReqIds,
+    });
+    if (placement === null) {
+      throw new AramoError('NOT_FOUND', 'PlacementProcess not found in tenant (or not visible to actor)', 404, {
+        requestId,
+        details: { placement_process_id: id, reason: 'placement_process_not_found' },
+      });
+    }
+    const items = await this.placements.cancelCommercialRevision(
+      {
+        tenant_id: auth.tenant_id,
+        placement_process_id: id,
+        revision_id: revisionId,
+        cancellation_reason_code: body.cancellation_reason_code,
+        cancelled_by: auth.sub,
+      },
+      requestId,
+    );
+    return { items };
   }
 
   // Track 6 / T6-B2 — the commercial version-SERIES read (B4 substrate): non-cancelled

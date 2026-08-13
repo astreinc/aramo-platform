@@ -59,6 +59,11 @@ const ASSIGNMENT_RATE_VERSION_MIGRATION = resolve(__dirname, '../../../../libs/p
 // EXCLUDE, and the governed effective_to first-close trigger. This HTTP spec drives
 // STARTED (which INSERTs an AssignmentRateVersion) so it must apply this migration.
 const EFFECTIVE_WINDOW_MIGRATION = resolve(__dirname, '../../../../libs/placement/prisma/migrations/20260812140000_t6_b1_effective_window_substrate/migration.sql');
+// Track 6 / T6-B3 — the commercial-cancellation substrate: adds ContractAssignment.
+// ended_at (the regenerated client selects it) and the cancellation + future-only
+// re-open trigger branches. This HTTP spec drives END + cancellation, so it must apply
+// this migration (SEPARATE const — never a 2nd resolve() arg, the ENOTDIR trap).
+const COMMERCIAL_CANCELLATION_MIGRATION = resolve(__dirname, '../../../../libs/placement/prisma/migrations/20260813130000_t6_b3_commercial_cancellation/migration.sql');
 // T6-B1 overlap exclusion constraint — dropped+restored around the legacy-corruption
 // defensive proof (the only way to seed a state the constraint now forbids).
 const OVERLAP_CONSTRAINT = 'AssignmentRateVersion_no_window_overlap_excl';
@@ -97,7 +102,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('E1-b PlacementCon
     const url = container.getConnectionUri();
     setup = new PrismaService(url);
     await setup.$connect();
-    for (const migration of [INIT_MIGRATION, OFFER_OUTBOX_MIGRATION, REASON_MIGRATION, REPLACEMENT_MIGRATION, CONTRACT_ASSIGNMENT_MIGRATION, ASSIGNMENT_ENDED_MIGRATION, ASSIGNMENT_GUARD_MIGRATION, ASSIGNMENT_END_REASON_MIGRATION, ASSIGNMENT_RATE_VERSION_MIGRATION, EFFECTIVE_WINDOW_MIGRATION]) {
+    for (const migration of [INIT_MIGRATION, OFFER_OUTBOX_MIGRATION, REASON_MIGRATION, REPLACEMENT_MIGRATION, CONTRACT_ASSIGNMENT_MIGRATION, ASSIGNMENT_ENDED_MIGRATION, ASSIGNMENT_GUARD_MIGRATION, ASSIGNMENT_END_REASON_MIGRATION, ASSIGNMENT_RATE_VERSION_MIGRATION, EFFECTIVE_WINDOW_MIGRATION, COMMERCIAL_CANCELLATION_MIGRATION]) {
       for (const s of splitDdl(readFileSync(migration, 'utf8'))) {
         if (s.trim()) await setup.$executeRawUnsafe(s.trim());
       }
@@ -554,6 +559,73 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('E1-b PlacementCon
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const reqSeeNone: any = { resolveVisibleRequisitionIds: async () => new Set<string>() };
     await expect(ctrl.listAssignmentCommercialRevisions(commAuth(t), 'r', id, reqSeeNone)).rejects.toMatchObject({ code: 'NOT_FOUND', statusCode: 404 });
+  });
+
+  // ===== Track 6 / T6-B3 — cancellation + END reconciliation (functional HTTP) =====
+  // Schedule a future revision, then cancel it; the predecessor re-opens, so the
+  // refreshed series is a single open current version (back to the initial actuals).
+  async function scheduleFutureRevision(t: string, id: string): Promise<string> {
+    const created = await ctrl.createAssignmentCommercialRevision(revisionAuth(t), 'r', id, {
+      pay_rate_amount: '90.00', bill_rate_amount: '150.00', currency: 'USD', rate_period: 'HOURLY', effective_from: '2030-01-01T00:00:00Z', change_reason: 'scheduled bump',
+    });
+    return created.commercials.assignment_rate_version_id;
+  }
+
+  it('T6-B3 — cancelling a future revision re-opens the predecessor and returns the single open series', async () => {
+    const t = randomUUID();
+    const id = await driveToStarted(t);
+    const futureId = await scheduleFutureRevision(t, id);
+    const res = await ctrl.cancelAssignmentCommercialRevision(revisionAuth(t), 'r', id, futureId, { cancellation_reason_code: 'SCHEDULE_WITHDRAWN' }, reqSeeAll);
+    expect(res.items).toHaveLength(1);
+    expect(res.items[0].effective_to).toBeNull(); // predecessor re-opened
+    expect(res.items[0].pay_rate_amount).toBe('80.00'); // back to the initial actuals
+  });
+
+  it('T6-B3 — the reserved ASSIGNMENT_ENDED reason is refused on an explicit cancellation (400)', async () => {
+    const t = randomUUID();
+    const id = await driveToStarted(t);
+    const futureId = await scheduleFutureRevision(t, id);
+    await expect(
+      ctrl.cancelAssignmentCommercialRevision(revisionAuth(t), 'r', id, futureId, { cancellation_reason_code: 'ASSIGNMENT_ENDED' }, reqSeeAll),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR', statusCode: 400 });
+  });
+
+  it('T6-B3 — cancelling an unknown revision is 404', async () => {
+    const t = randomUUID();
+    const id = await driveToStarted(t);
+    await expect(
+      ctrl.cancelAssignmentCommercialRevision(revisionAuth(t), 'r', id, randomUUID(), { cancellation_reason_code: 'CLIENT_REQUEST' }, reqSeeAll),
+    ).rejects.toMatchObject({ code: 'NOT_FOUND', statusCode: 404 });
+  });
+
+  it('T6-B3 — cancellation on a not-visible placement is 404 (visibility-first)', async () => {
+    const t = randomUUID();
+    const id = await driveToStarted(t);
+    const futureId = await scheduleFutureRevision(t, id);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const reqSeeNone: any = { resolveVisibleRequisitionIds: async () => new Set<string>() };
+    await expect(
+      ctrl.cancelAssignmentCommercialRevision(revisionAuth(t), 'r', id, futureId, { cancellation_reason_code: 'CLIENT_REQUEST' }, reqSeeNone),
+    ).rejects.toMatchObject({ code: 'NOT_FOUND', statusCode: 404 });
+  });
+
+  it('T6-B3 — ending an assignment reconciles the scheduled future window (assignment:end only, no commercials:write)', async () => {
+    const t = randomUUID();
+    const id = await driveToStarted(t);
+    await scheduleFutureRevision(t, id); // predecessor [start,2030) + successor [2030, ∞)
+    await ctrl.endAssignment(auth(['assignment:end'], t), 'r', id, { end_reason: 'COMPLETED' });
+    const ca = await prisma.contractAssignment.findFirstOrThrow({ where: { tenant_id: t, placement_process_id: id } });
+    expect(ca.lifecycle_state).toBe('ENDED');
+    expect(ca.ended_at).not.toBeNull();
+    const rows = await prisma.assignmentRateVersion.findMany({ where: { tenant_id: t, contract_assignment_id: ca.id } });
+    const future = rows.find((r) => r.effective_from.toISOString() === new Date('2030-01-01T00:00:00Z').toISOString())!;
+    expect(future.cancellation_reason_code).toBe('ASSIGNMENT_ENDED'); // reserved reason, END-set
+    // No non-cancelled version is effective at/after ended_at.
+    for (const r of rows) {
+      if (r.cancelled_at !== null) continue;
+      expect(r.effective_to).not.toBeNull();
+      expect(r.effective_to!.getTime()).toBeLessThanOrEqual((ca.ended_at as Date).getTime());
+    }
   });
 
   it('matrix: MANAGER set (account_manager/tenant_admin/tenant_owner) CAN terminate with a valid reason (a terminal edge)', async () => {

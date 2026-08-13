@@ -375,3 +375,142 @@ describe('ats-web → GET /v1/placements/:id/assignment/commercials/revisions', 
       });
   });
 });
+
+// ===== Track 6 / T6-B3 — governed cancellation of a FUTURE open-tail revision =====
+// POST /v1/placements/:id/assignment/commercials/revisions/:revisionId/cancel → 200
+// with the refreshed non-cancelled series. Per §24, four interactions are contracted:
+// success, not-future/interior refusal, already-cancelled conflict, not-visible/unknown
+// revision. The standard 403 is OMITTED (ats-web consumer convention). The 409s pin the
+// ErrorCode only (details.reason is the machine discriminator; message is type-matched).
+const CANCEL_FUTURE_REVISION_ID = '00000000-0000-7000-8000-a1e0000000c1';
+const CANCEL_CURRENT_REVISION_ID = '00000000-0000-7000-8000-a1e0000000c2';
+const CANCEL_UNKNOWN_REVISION_ID = '00000000-0000-7000-8000-a1e0000000cf';
+const CANCEL_REQUEST = { cancellation_reason_code: 'SCHEDULE_WITHDRAWN' };
+
+describe('ats-web → POST /v1/placements/:id/assignment/commercials/revisions/:revisionId/cancel', () => {
+  it('returns 200 with the refreshed non-cancelled series after cancelling the future open tail', async () => {
+    await provider
+      .addInteraction()
+      .given('an ats-web writer and an active assignment with a future open-tail commercial revision exist')
+      .uponReceiving('a governed cancellation of a future open-tail commercial revision')
+      .withRequest(
+        'POST',
+        `/v1/placements/${PLACEMENT_ID}/assignment/commercials/revisions/${CANCEL_FUTURE_REVISION_ID}/cancel`,
+        (b) => {
+          b.headers({ Cookie: like(ACCESS_COOKIE) });
+          b.jsonBody(CANCEL_REQUEST);
+        },
+      )
+      .willRespondWith(200, (b) => {
+        // After cancellation the predecessor is re-opened, so the refreshed series is a
+        // single open current version (effective_to null) and the cancelled tail is gone.
+        b.jsonBody({ items: [commercialView()] });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(
+          `${mock.url}/v1/placements/${PLACEMENT_ID}/assignment/commercials/revisions/${CANCEL_FUTURE_REVISION_ID}/cancel`,
+          {
+            method: 'POST',
+            headers: { Cookie: ACCESS_COOKIE, 'Content-Type': 'application/json' },
+            body: JSON.stringify(CANCEL_REQUEST),
+          },
+        );
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as { items: Array<{ effective_to: string | null }> };
+        expect(body.items[0].effective_to).toBeNull();
+      });
+  });
+
+  it('returns 409 when the target revision is not a future open tail (current version)', async () => {
+    await provider
+      .addInteraction()
+      .given('an ats-web writer and an active assignment whose current commercial version is not a future tail')
+      .uponReceiving('a cancellation of a non-future (current) commercial version')
+      .withRequest(
+        'POST',
+        `/v1/placements/${PLACEMENT_ID}/assignment/commercials/revisions/${CANCEL_CURRENT_REVISION_ID}/cancel`,
+        (b) => {
+          b.headers({ Cookie: like(ACCESS_COOKIE) });
+          b.jsonBody(CANCEL_REQUEST);
+        },
+      )
+      .willRespondWith(409, (b) => {
+        b.jsonBody(errorBody('ASSIGNMENT_COMMERCIAL_REVISION_CONFLICT', 'commercial revision conflict: revision_not_future'));
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(
+          `${mock.url}/v1/placements/${PLACEMENT_ID}/assignment/commercials/revisions/${CANCEL_CURRENT_REVISION_ID}/cancel`,
+          {
+            method: 'POST',
+            headers: { Cookie: ACCESS_COOKIE, 'Content-Type': 'application/json' },
+            body: JSON.stringify(CANCEL_REQUEST),
+          },
+        );
+        expect(res.status).toBe(409);
+        const body = (await res.json()) as { error: { code: string } };
+        expect(body.error.code).toBe('ASSIGNMENT_COMMERCIAL_REVISION_CONFLICT');
+      });
+  });
+
+  it('returns 409 when the target revision is already cancelled', async () => {
+    await provider
+      .addInteraction()
+      .given('an ats-web writer and an active assignment with an already-cancelled future commercial revision')
+      .uponReceiving('a cancellation of an already-cancelled commercial revision')
+      .withRequest(
+        'POST',
+        `/v1/placements/${PLACEMENT_ID}/assignment/commercials/revisions/${CANCEL_FUTURE_REVISION_ID}/cancel`,
+        (b) => {
+          b.headers({ Cookie: like(ACCESS_COOKIE) });
+          b.jsonBody(CANCEL_REQUEST);
+        },
+      )
+      .willRespondWith(409, (b) => {
+        b.jsonBody(errorBody('ASSIGNMENT_COMMERCIAL_REVISION_CONFLICT', 'commercial revision conflict: already_cancelled'));
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(
+          `${mock.url}/v1/placements/${PLACEMENT_ID}/assignment/commercials/revisions/${CANCEL_FUTURE_REVISION_ID}/cancel`,
+          {
+            method: 'POST',
+            headers: { Cookie: ACCESS_COOKIE, 'Content-Type': 'application/json' },
+            body: JSON.stringify(CANCEL_REQUEST),
+          },
+        );
+        expect(res.status).toBe(409);
+        const body = (await res.json()) as { error: { code: string } };
+        expect(body.error.code).toBe('ASSIGNMENT_COMMERCIAL_REVISION_CONFLICT');
+      });
+  });
+
+  it('returns 404 for an unknown / not-visible revision', async () => {
+    await provider
+      .addInteraction()
+      .given('an ats-web writer and an active assignment exist but the requested revision id is unknown')
+      .uponReceiving('a cancellation of an unknown commercial revision')
+      .withRequest(
+        'POST',
+        `/v1/placements/${PLACEMENT_ID}/assignment/commercials/revisions/${CANCEL_UNKNOWN_REVISION_ID}/cancel`,
+        (b) => {
+          b.headers({ Cookie: like(ACCESS_COOKIE) });
+          b.jsonBody(CANCEL_REQUEST);
+        },
+      )
+      .willRespondWith(404, (b) => {
+        b.jsonBody(errorBody('NOT_FOUND', 'AssignmentRateVersion not found'));
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(
+          `${mock.url}/v1/placements/${PLACEMENT_ID}/assignment/commercials/revisions/${CANCEL_UNKNOWN_REVISION_ID}/cancel`,
+          {
+            method: 'POST',
+            headers: { Cookie: ACCESS_COOKIE, 'Content-Type': 'application/json' },
+            body: JSON.stringify(CANCEL_REQUEST),
+          },
+        );
+        expect(res.status).toBe(404);
+        const body = (await res.json()) as { error: { code: string } };
+        expect(body.error.code).toBe('NOT_FOUND');
+      });
+  });
+});

@@ -853,6 +853,14 @@ const PLACEMENT_EFFECTIVE_WINDOW_MIGRATION = resolve(
   ROOT,
   'libs/placement/prisma/migrations/20260812140000_t6_b1_effective_window_substrate/migration.sql',
 );
+// Track 6 / T6-B3 — the commercial-cancellation substrate. Applied so the provider
+// schema carries ContractAssignment.ended_at (the regenerated client selects it) and
+// the extended ARV trigger (cancellation + future-only re-open branches), preserving
+// the B1 first-close and tenant-reset DELETE behaviour.
+const PLACEMENT_COMMERCIAL_CANCELLATION_MIGRATION = resolve(
+  ROOT,
+  'libs/placement/prisma/migrations/20260813130000_t6_b3_commercial_cancellation/migration.sql',
+);
 // Track 4 / T4-B2 §6 — the dedicated stored openings_available DROP. Applied here so
 // the provider schema matches the retired-column reality; the requisition read is
 // derived and does not depend on the physical column.
@@ -3062,6 +3070,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         PLACEMENT_ASSIGNMENT_RATE_VERSION_MIGRATION,
         // Track 6 / T6-B1 — effective-window substrate (after the ARV table exists).
         PLACEMENT_EFFECTIVE_WINDOW_MIGRATION,
+        // Track 6 / T6-B3 — ended_at + cancellation/re-open trigger branches.
+        PLACEMENT_COMMERCIAL_CANCELLATION_MIGRATION,
         // T4-B2 §6 — retire the stored openings_available column (derived-only).
         REQUISITION_DROP_OPENINGS_AVAILABLE_MIGRATION,
         // T8-P1 — the external-identity partial-unique index (applied last;
@@ -3698,6 +3708,47 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           seedActiveCommercialAssignment(c, [
             { id: '00000000-0000-7000-8000-a1e000000002', effective_from: '2026-01-01T00:00:00Z', effective_to: '2026-06-01T00:00:00Z' },
             { id: '00000000-0000-7000-8000-a1e000000001', effective_from: '2026-06-01T00:00:00Z', effective_to: null },
+          ]),
+        );
+      },
+
+      // ===== Track 6 / T6-B3 cancellation pacts (ats-web placement.consumer) =====
+      // A future open tail c1 [2030-01-01, ∞) preceded by [2026-01-01, 2030-01-01):
+      // cancelling c1 re-opens the predecessor to [2026-01-01, ∞), so the refreshed
+      // series is a single open current version (effective_to null).
+      'an ats-web writer and an active assignment with a future open-tail commercial revision exist': async () => {
+        await withClient((c) =>
+          seedActiveCommercialAssignment(c, [
+            { id: '00000000-0000-7000-8000-a1e000000001', effective_from: '2026-01-01T00:00:00Z', effective_to: '2030-01-01T00:00:00Z' },
+            { id: '00000000-0000-7000-8000-a1e0000000c1', effective_from: '2030-01-01T00:00:00Z', effective_to: null },
+          ]),
+        );
+      },
+      // The current open version c2 [2026-01-01, ∞) starts in the past → not a future
+      // tail → cancellation refused 409 revision_not_future.
+      'an ats-web writer and an active assignment whose current commercial version is not a future tail': async () => {
+        await withClient((c) =>
+          seedActiveCommercialAssignment(c, [
+            { id: '00000000-0000-7000-8000-a1e0000000c2', effective_from: '2026-01-01T00:00:00Z', effective_to: null },
+          ]),
+        );
+      },
+      // The future tail c1 is ALREADY cancelled; the predecessor is the open current
+      // version. Re-cancelling c1 is refused 409 already_cancelled.
+      'an ats-web writer and an active assignment with an already-cancelled future commercial revision': async () => {
+        await withClient((c) =>
+          seedActiveCommercialAssignment(c, [
+            { id: '00000000-0000-7000-8000-a1e000000001', effective_from: '2026-01-01T00:00:00Z', effective_to: null },
+            { id: '00000000-0000-7000-8000-a1e0000000c1', effective_from: '2030-01-01T00:00:00Z', effective_to: null, cancelled_at: '2026-06-01T00:00:00Z' },
+          ]),
+        );
+      },
+      // The assignment exists with an open current version, but the requested revision
+      // id (…0000cf) is not present → 404 revision_not_found.
+      'an ats-web writer and an active assignment exist but the requested revision id is unknown': async () => {
+        await withClient((c) =>
+          seedActiveCommercialAssignment(c, [
+            { id: '00000000-0000-7000-8000-a1e000000001', effective_from: '2026-01-01T00:00:00Z', effective_to: null },
           ]),
         );
       },
