@@ -2302,6 +2302,12 @@
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/commercial-revision-marker-confinement.spec.ts",
       "status": "excluded",
+      "to": "libs/placement/src/lib/placement.repository.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/commercial-revision-marker-confinement.spec.ts",
+      "status": "excluded",
       "to": "libs/placement/src/tests/t6-b1-effective-window.integration.spec.ts"
     },
     {

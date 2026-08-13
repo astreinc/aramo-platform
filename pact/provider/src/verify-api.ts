@@ -1018,6 +1018,10 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // (FK placement_process_id). Cleared per interaction so a prior placement
       // state does not shadow the empty-collection / not-found interactions.
       await c.query('TRUNCATE TABLE placement."PlacementProcess" CASCADE');
+      // Track 6 / T6-B2 — the assignment + rate-version tables are UUID-linked (no FK),
+      // so the PlacementProcess CASCADE does not clear them. TRUNCATE bypasses the
+      // AssignmentRateVersion append-only DELETE-reject trigger (a table-level op).
+      await c.query('TRUNCATE TABLE placement."AssignmentRateVersion", placement."ContractAssignment" CASCADE');
       // PC-5d — task + attachment (no FK; standalone truncates). The
       // attachment 'talent' owner lives in talent_record."TalentRecord",
       // already truncated above.
@@ -3281,6 +3285,25 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           // read:all (above) short-circuits the visibility resolver to see-all.
           // Additive; inert for prior interactions.
           'placement:read',
+          // Track 6 / T6-B2 — the DEDICATED financial scopes for the commercial
+          // version-series read and the governed post-start revision write, so the
+          // ats-web commercial-revision interactions pass RolesGuard. Additive; inert
+          // for prior interactions (they hit neither commercials route).
+          'assignment:commercials:read',
+          'assignment:commercials:write',
+          // AUTHZ-D5 field-mask — the AssignmentCommercialView carries the SAME field
+          // names (pay_rate_amount / bill_rate_amount / margin_percent / markup_percent)
+          // the global CompensationFieldMaskInterceptor masks. A commercials actor that
+          // sees ALL figures is the see-all tier (tenant_admin / tenant_owner), which
+          // holds the full compensation:view:* set — so the pact fixture carries it to
+          // model that full-visibility commercials actor. (An account_manager sees pay
+          // masked by design; the HTTP integration spec covers that dimension.)
+          'compensation:view:pay',
+          'compensation:view:bill',
+          'compensation:view:revenue',
+          'compensation:view:spread:amount',
+          'compensation:view:spread:percent',
+          'compensation:view:margin:percent',
         ],
       })
         .setProtectedHeader({ alg: ALG })
@@ -3531,6 +3554,43 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     // of these strings are introduced by this harness — they ship with the
     // consumer pacts (no token-free re-authoring needed beyond what the
     // consumer tests already produced).
+    // Track 6 / T6-B2 — seed a STARTED placement + its FORWARD/ACTIVE
+    // ContractAssignment + the given non-/cancelled commercial versions. Fixture
+    // UUIDs mirror pact/consumers/ats-web/src/placement.consumer.test.ts.
+    const B2_PID = '00000000-0000-7000-8000-9ace00000001';
+    const B2_AID = '00000000-0000-7000-8000-ca0000000001';
+    const B2_REQ = '00000000-0000-7000-8000-4e9000000001';
+    const B2_SUB = '00000000-0000-7000-8000-50b000000001';
+    const B2_TAL = '00000000-0000-7000-8000-7a1e00000001';
+    const B2_REC = '00000000-0000-7000-8000-4ec000000001';
+    const B2_COMPANY = '00000000-0000-7000-8000-c0a000000001';
+    async function seedActiveCommercialAssignment(
+      c: Client,
+      versions: Array<{ id: string; effective_from: string; effective_to: string | null; cancelled_at?: string | null }>,
+    ): Promise<void> {
+      await resetAllRows(c);
+      await c.query(
+        `INSERT INTO placement."PlacementProcess"
+           (id, tenant_id, submittal_id, requisition_id, talent_record_id, state, offered_at, created_at)
+         VALUES ($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,'STARTED','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z')`,
+        [B2_PID, TENANT_ID, B2_SUB, B2_REQ, B2_TAL],
+      );
+      await c.query(
+        `INSERT INTO placement."ContractAssignment"
+           (id, tenant_id, placement_process_id, submittal_id, requisition_id, talent_record_id, started_at, provenance, lifecycle_state, company_id)
+         VALUES ($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,$6::uuid,'2026-01-01T00:00:00Z','FORWARD','ACTIVE',$7::uuid)`,
+        [B2_AID, TENANT_ID, B2_PID, B2_SUB, B2_REQ, B2_TAL, B2_COMPANY],
+      );
+      for (const v of versions) {
+        await c.query(
+          `INSERT INTO placement."AssignmentRateVersion"
+             (id, tenant_id, contract_assignment_id, requisition_id, talent_record_id, pay_rate_amount, bill_rate_amount, currency, rate_period, effective_from, effective_to, recorded_by, cancelled_at, change_reason)
+           VALUES ($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,80.00,120.00,'USD','HOURLY',$6::timestamptz,$7::timestamptz,$8::uuid,$9::timestamptz,'seed')`,
+          [v.id, TENANT_ID, B2_AID, B2_REQ, B2_TAL, v.effective_from, v.effective_to, B2_REC, v.cancelled_at ?? null],
+        );
+      }
+    }
+
     const stateHandlers: Record<string, () => Promise<void>> = {
       // ===== E1-d placement read pacts (ats-web placement.consumer) =====
       // Fixture UUIDs mirror pact/consumers/ats-web/src/placement.consumer.test.ts.
@@ -3603,6 +3663,44 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
             );
           });
         },
+
+      // ===== Track 6 / T6-B2 commercial-revision pacts (ats-web placement.consumer) =====
+      'an ats-web writer and an active assignment with an open commercial version exist': async () => {
+        await withClient((c) =>
+          seedActiveCommercialAssignment(c, [
+            { id: '00000000-0000-7000-8000-a1e000000001', effective_from: '2026-01-01T00:00:00Z', effective_to: null },
+          ]),
+        );
+      },
+      'an ats-web reader and an active assignment with an open commercial version exist': async () => {
+        await withClient((c) =>
+          seedActiveCommercialAssignment(c, [
+            { id: '00000000-0000-7000-8000-a1e000000001', effective_from: '2026-01-01T00:00:00Z', effective_to: null },
+          ]),
+        );
+      },
+      // A CANCELLED version already reserves the requested instant (2030-01-01) under
+      // the NON-partial unique key, so the revision insert collides → 409
+      // duplicate_effective_from. The cancelled row is excluded from the overlap
+      // EXCLUDE, so it does not conflict with the open predecessor at seed time.
+      'an ats-web writer and an active assignment whose requested revision instant is already reserved': async () => {
+        await withClient((c) =>
+          seedActiveCommercialAssignment(c, [
+            { id: '00000000-0000-7000-8000-a1e000000001', effective_from: '2026-01-01T00:00:00Z', effective_to: null },
+            { id: '00000000-0000-7000-8000-a1e000000003', effective_from: '2030-01-01T00:00:00Z', effective_to: null, cancelled_at: '2026-06-01T00:00:00Z' },
+          ]),
+        );
+      },
+      // A closed historical window [2026-01, 2026-06) + the open current [2026-06, ∞):
+      // adjacent, non-cancelled → the series read returns both, effective_from DESC.
+      'an ats-web reader and an active assignment with a closed historical and an open current commercial version exist': async () => {
+        await withClient((c) =>
+          seedActiveCommercialAssignment(c, [
+            { id: '00000000-0000-7000-8000-a1e000000002', effective_from: '2026-01-01T00:00:00Z', effective_to: '2026-06-01T00:00:00Z' },
+            { id: '00000000-0000-7000-8000-a1e000000001', effective_from: '2026-06-01T00:00:00Z', effective_to: null },
+          ]),
+        );
+      },
 
       // ===== PR-14 ingestion pacts =====
       'a recruiter session and a prohibited source value at the wire':

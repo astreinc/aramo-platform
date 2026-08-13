@@ -1936,6 +1936,107 @@ paths:
       security:
         - BearerAuth: []
 
+  # Track 6 / T6-B2 — the governed post-start commercial-revision surface.
+  /v1/placements/{id}/assignment/commercials/revisions:
+    post:
+      operationId: createAssignmentCommercialRevision
+      summary: Create a governed post-start commercial revision (Track 6 / T6-B2).
+      description: |
+        Appends a new commercial version to the OPEN tail of the assignment's
+        commercial sequence: the current open window is first-closed at the resolved
+        effective instant and the successor opened at that same instant, atomically.
+        Open-tail ONLY — inserting between, or re-closing, an already-bounded version is
+        refused (deferred to a later slice). Permitted only while the ContractAssignment
+        is ACTIVE.
+
+        Guarded by the DEDICATED write scope `assignment:commercials:write` (a post-start
+        enforcement site): `assignment:commercials:read`, `placement:*`, and
+        `assignment:update` do NOT satisfy it. `recorded_by` is the authenticated
+        subject — never the request body. `effective_from` is optional; omitted means the
+        server "now" instant (used for BOTH the close and the open). A supplied instant
+        in the past is refused (400). A requested instant that overlaps or duplicates an
+        existing effective window is refused 409 `ASSIGNMENT_COMMERCIAL_REVISION_CONFLICT`
+        (`details.reason`: `window_overlap` | `duplicate_effective_from`). An absent /
+        not-ACTIVE / no-open-version assignment is 404 (never 403).
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommercialRevisionRequest'
+      responses:
+        '201':
+          description: Created — the new current commercial version.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssignmentCommercialCreatedResponse'
+        '400':
+          description: Validation error (malformed money / currency / rate_period, effective_from in the past or not after the current version start).
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '403':
+          description: Insufficient permissions or tenant not entitled.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '409':
+          description: The revision conflicts with an existing effective commercial window (details.reason = window_overlap | duplicate_effective_from).
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+      security:
+        - BearerAuth: []
+    get:
+      operationId: listAssignmentCommercialRevisions
+      summary: List the commercial version series of a placement's assignment (Track 6 / T6-B2).
+      description: |
+        Returns the non-cancelled commercial version series (historical + current +
+        future) for the placement's assignment, ordered by `effective_from` DESC. Each
+        item carries the stored actuals + DEC-5 derived views (computed on read). A
+        visible placement with no assignment / no versions returns `{ "items": [] }`.
+
+        Guarded by `assignment:commercials:read` (the DEDICATED financial scope — least
+        visibility). The placement is first loaded under the actor-visibility predicate;
+        a not-found / not-visible / cross-tenant placement returns 404 (never 403).
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssignmentCommercialSeriesResponse'
+        '403':
+          description: Insufficient permissions or tenant not entitled.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+
   # Track 8 / T8-P2 — provider-neutral canonical requisition ingestion.
   /v1/requisition-imports:
     get:
@@ -2522,6 +2623,53 @@ components:
           oneOf:
             - $ref: '#/components/schemas/AssignmentCommercialView'
             - type: 'null'
+    # Track 6 / T6-B2 — the post-start commercial-revision request. The four commercial
+    # fields (as at initial START) + optional effective_from (omitted = server now) +
+    # required change_reason. tenant / assignment / version ids, lineage, recorded_by,
+    # and effective_to are server-derived / forbidden on the wire.
+    CommercialRevisionRequest:
+      type: object
+      additionalProperties: false
+      required: [pay_rate_amount, bill_rate_amount, currency, rate_period, change_reason]
+      properties:
+        pay_rate_amount:
+          type: string
+          description: Decimal(12,2) money string (never a float).
+        bill_rate_amount:
+          type: string
+          description: Decimal(12,2) money string (never a float).
+        currency:
+          type: string
+          description: An active ISO-4217 currency code (uppercase).
+        rate_period:
+          type: string
+          enum: [HOURLY, DAILY, WEEKLY, MONTHLY, ANNUAL]
+        effective_from:
+          type: string
+          format: date-time
+          description: Optional ISO-8601 instant; omitted = the server 'now'. Must not be in the past and must be after the current version start.
+        change_reason:
+          type: string
+          maxLength: 2000
+          description: Required free-text note recorded on the successor version.
+    # The revision create response — the new CURRENT version (never null on success).
+    AssignmentCommercialCreatedResponse:
+      type: object
+      additionalProperties: false
+      required: [commercials]
+      properties:
+        commercials:
+          $ref: '#/components/schemas/AssignmentCommercialView'
+    # The commercial version series (current + historical + future, effective_from DESC).
+    AssignmentCommercialSeriesResponse:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AssignmentCommercialView'
     # M3 PR-8 §4.4 — match-list response envelope. The endpoint emits
     # TalentJobExaminationSummary items only (Full is NOT referenced from
     # this endpoint — see directive §4.4). additionalProperties: false plus

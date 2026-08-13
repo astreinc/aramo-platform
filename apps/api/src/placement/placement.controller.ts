@@ -16,7 +16,7 @@ import {
   type AssignmentCommercialView,
 } from '@aramo/placement';
 
-import { CreatePlacementDto, EndAssignmentDto, TransitionPlacementDto } from './dto/placement.dto.js';
+import { CommercialRevisionDto, CreatePlacementDto, EndAssignmentDto, TransitionPlacementDto } from './dto/placement.dto.js';
 
 // Track 3 / E1-b + E1-d — the guarded PlacementProcess HTTP surface. ONE generic
 // transition route (§1): the target is in the body and the canonical 14-edge
@@ -344,5 +344,74 @@ export class PlacementController {
     }
     const commercials = await this.placements.findAssignmentCommercialProjection(auth.tenant_id, id, requestId);
     return { commercials };
+  }
+
+  // Track 6 / T6-B2 — the first governed POST-START commercial revision. Open-tail
+  // only: the repository closes the current open window at the resolved effective
+  // instant and appends the successor, atomically and serialized against
+  // endAssignment. Guarded by the DEDICATED write scope assignment:commercials:write
+  // — now a post-start enforcement site (§9): assignment:commercials:read NEVER
+  // satisfies it, and placement:* / assignment:update do NOT substitute. Tenant-scoped
+  // like endAssignment (the mutation precedent); NO @RequireSiteMatch (§10). The
+  // recording principal (recorded_by) is the JWT subject, never the wire. Absent /
+  // not-ACTIVE / no-open-version resolve to 404 (never 403); a window conflict is a
+  // governed 409 (ASSIGNMENT_COMMERCIAL_REVISION_CONFLICT).
+  @Post(':id/assignment/commercials/revisions')
+  @HttpCode(HttpStatus.CREATED)
+  @RequireScopes('assignment:commercials:write')
+  async createAssignmentCommercialRevision(
+    @AuthContext() auth: AuthContextType,
+    @RequestId() requestId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: CommercialRevisionDto,
+  ): Promise<{ commercials: AssignmentCommercialView }> {
+    const commercials = await this.placements.createCommercialRevision(
+      {
+        tenant_id: auth.tenant_id,
+        placement_process_id: id,
+        pay_rate_amount: body.pay_rate_amount,
+        bill_rate_amount: body.bill_rate_amount,
+        currency: body.currency,
+        rate_period: body.rate_period,
+        effective_from: body.effective_from ?? null,
+        change_reason: body.change_reason,
+        recorded_by: auth.sub,
+      },
+      requestId,
+    );
+    return { commercials };
+  }
+
+  // Track 6 / T6-B2 — the commercial version-SERIES read (B4 substrate): non-cancelled
+  // rate versions (historical + current + future) for the assignment, effective_from
+  // DESC. Same DEDICATED financial scope + least-visibility as the point-in-time read:
+  // the placement is loaded through findByIdForActor FIRST (404 — never 403 — when
+  // absent, cross-tenant, or not visible). A visible placement with no assignment /
+  // no versions returns { items: [] } (coherent absence, not an error). This is the
+  // uncapped series read — NEVER the fail-closed single-current resolver.
+  @Get(':id/assignment/commercials/revisions')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('assignment:commercials:read')
+  @RequireSiteMatch()
+  async listAssignmentCommercialRevisions(
+    @AuthContext() auth: AuthContextType,
+    @RequestId() requestId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: Request,
+  ): Promise<{ items: AssignmentCommercialView[] }> {
+    const visibleReqIds = await req.resolveVisibleRequisitionIds!();
+    const placement = await this.placements.findByIdForActor({
+      tenant_id: auth.tenant_id,
+      id,
+      visible_requisition_ids: visibleReqIds,
+    });
+    if (placement === null) {
+      throw new AramoError('NOT_FOUND', 'PlacementProcess not found in tenant (or not visible to actor)', 404, {
+        requestId,
+        details: { placement_process_id: id, reason: 'placement_process_not_found' },
+      });
+    }
+    const items = await this.placements.listAssignmentCommercialRevisions(auth.tenant_id, id);
+    return { items };
   }
 }

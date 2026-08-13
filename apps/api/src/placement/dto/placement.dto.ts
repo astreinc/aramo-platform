@@ -101,6 +101,46 @@ export class CommercialTermsDto {
   rate_period!: string;
 }
 
+// Track 6 / T6-B2 — a post-start commercial revision request. The same four
+// commercial fields as the initial terms (money strings + closed currency/rate
+// period sets, re-validated at the repository write boundary), PLUS:
+//   effective_from — OPTIONAL ISO-8601 instant; omitted => the server generates ONE
+//     "now" instant used for BOTH the predecessor close and the successor open (the
+//     clock is never called twice). A supplied instant materially in the past is
+//     refused at the repository (VALIDATION_ERROR); current/future is permitted iff
+//     all interval/overlap invariants hold.
+//   change_reason — REQUIRED (directive §6.2); trimmed non-empty, max 2000 chars,
+//     stored on the successor version. No reason-code enum in B2 (free text).
+// Server-derived / FORBIDDEN on the wire: tenant, assignment/version ids,
+// requisition/talent lineage, recorded_by (JWT sub), cancellation fields,
+// effective_to (the governed close is a server act).
+export class CommercialRevisionDto {
+  @IsString()
+  @Matches(MONEY_12_2)
+  pay_rate_amount!: string;
+
+  @IsString()
+  @Matches(MONEY_12_2)
+  bill_rate_amount!: string;
+
+  @IsString()
+  @MaxLength(3)
+  currency!: string;
+
+  @IsIn(RATE_PERIOD_VALUES as readonly string[])
+  rate_period!: string;
+
+  @IsOptional()
+  @IsDateString()
+  effective_from?: string;
+
+  // Required (no @IsOptional). Trimmed-non-empty is enforced at the repository
+  // write boundary (VALIDATION_ERROR) — the cap here is a cheap wire guard.
+  @IsString()
+  @MaxLength(2000)
+  change_reason!: string;
+}
+
 // One generic transition route (E1-b §1): the target state is in the body and the
 // canonical 14-edge matrix enforces legality. `to` must be a known placement
 // state; an illegal EDGE is a domain refusal (PLACEMENT_STATE_INVALID, 422).
