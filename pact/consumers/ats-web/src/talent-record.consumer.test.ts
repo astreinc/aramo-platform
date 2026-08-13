@@ -104,7 +104,7 @@ describe('ats-web → GET /v1/talent-records', () => {
           next_cursor: null,
           facets: {
             availability: like([]),
-            selection: like([]),
+            engagement: like([]),
             source: like([]),
             hot: like(0),
           },
