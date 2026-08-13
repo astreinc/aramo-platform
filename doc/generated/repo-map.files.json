@@ -927,6 +927,7 @@
     "doc/step4-singlebox-astre-seed-recon.md",
     "doc/step4-singlebox-lightsail-tf.md",
     "doc/step4-singlebox-runnable-prod-stack.md",
+    "doc/t2-closure-record-draft.md",
     "docker-compose.images.yml",
     "docker-compose.prod.yml",
     "docker-compose.yml",

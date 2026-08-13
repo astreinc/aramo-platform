@@ -9722,6 +9722,11 @@
     {
       "from": "doc/governance/current/Aramo-Repository-Baseline.md",
       "status": "unscoped",
+      "to": "doc/t2-closure-record-draft.md"
+    },
+    {
+      "from": "doc/governance/current/Aramo-Repository-Baseline.md",
+      "status": "unscoped",
       "to": "libs/requisition/prisma/schema.prisma"
     },
     {
@@ -10993,6 +10998,28 @@
       "from": "doc/step4-singlebox-runnable-prod-stack.md",
       "status": "unscoped",
       "to": "libs/fe-foundation/src/api/client.ts"
+    },
+    {
+      "from": "doc/t2-closure-record-draft.md",
+      "status": "unscoped",
+      "to": "doc/m0-closure-record-draft.md"
+    },
+    {
+      "from": "doc/t2-closure-record-draft.md",
+      "status": "unscoped",
+      "to": "doc/m1-closure-record-draft.md"
+    },
+    {
+      "from": "doc/t2-closure-record-draft.md",
+      "status": "unscoped",
+      "to": "doc/runbooks/t2p3b-selection-rebaseline-prod-reconciliation.md"
+    },
+    { "from": "doc/t2-closure-record-draft.md", "status": "unscoped", "to": "openapi/ats.yaml" },
+    { "from": "doc/t2-closure-record-draft.md", "status": "unscoped", "to": "openapi/common.yaml" },
+    {
+      "from": "doc/t2-closure-record-draft.md",
+      "status": "unscoped",
+      "to": "tools/db-sync-local.sh"
     },
     { "from": "docker-compose.images.yml", "status": "unscoped", "to": "tools/local-stack.sh" },
     { "from": "docker-compose.yml", "status": "unscoped", "to": "doc/runbooks/local-run.md" },
