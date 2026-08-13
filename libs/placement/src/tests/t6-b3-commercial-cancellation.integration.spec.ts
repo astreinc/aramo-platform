@@ -165,13 +165,19 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     });
 
     it('the revision marker CANNOT cancel, and CANNOT re-open a future boundary', async () => {
-      const tenant = randomUUID(); const aid = randomUUID();
-      await insertAssignment({ tenant_id: tenant, placement_process_id: randomUUID(), id: aid });
-      const openId = await insertVersion({ tenant_id: tenant, contract_assignment_id: aid, effective_from: T_2024, effective_to: null });
-      const boundedId = await insertVersion({ tenant_id: tenant, contract_assignment_id: aid, effective_from: T_2030, effective_to: T_2031 });
+      // Two SEPARATE assignments so the fixtures never overlap under the B1 EXCLUDE:
+      // aidA carries a single open version (cancellation target); aidB carries a lone
+      // bounded FUTURE window (re-open target). An open [.,∞) beside a bounded future
+      // window on the SAME assignment would overlap and be rejected at seed time.
+      const tenant = randomUUID();
+      const aidA = randomUUID(); const aidB = randomUUID();
+      await insertAssignment({ tenant_id: tenant, placement_process_id: randomUUID(), id: aidA });
+      await insertAssignment({ tenant_id: tenant, placement_process_id: randomUUID(), id: aidB });
+      const openId = await insertVersion({ tenant_id: tenant, contract_assignment_id: aidA, effective_from: T_2024, effective_to: null });
+      const boundedId = await insertVersion({ tenant_id: tenant, contract_assignment_id: aidB, effective_from: T_2030, effective_to: T_2031 });
       // revision marker cannot write cancellation metadata
       await expect(inTx(setRevision, `UPDATE placement."AssignmentRateVersion" SET cancelled_at = now(), cancelled_by = '${randomUUID()}', cancellation_reason_code = 'CLIENT_REQUEST' WHERE id = '${openId}'`)).rejects.toThrow();
-      // revision marker cannot re-open a bounded window
+      // revision marker cannot re-open a bounded (future) window
       await expect(inTx(setRevision, `UPDATE placement."AssignmentRateVersion" SET effective_to = NULL WHERE id = '${boundedId}'`)).rejects.toThrow();
     });
 
