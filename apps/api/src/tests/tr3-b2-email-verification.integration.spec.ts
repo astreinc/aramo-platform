@@ -314,7 +314,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(mailerSpy.send).not.toHaveBeenCalled();
     });
 
-    it('(a) consent EMPTY-LEDGER (unknown) → 403 — the ruled divergence from the engagement 500', async () => {
+    it('(a) consent EMPTY-LEDGER (unknown) → 403 — the ruled divergence from the selection 500', async () => {
       const rec = uuidv7();
       await seedRecord({ id: rec, tenant_id: TENANT_A, email1: 'b@example.com' });
       // No consent events at all → resolver result:'error' (consent_state_unknown).

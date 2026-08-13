@@ -39,7 +39,7 @@ export type ExaminationReasoningCategory =
 
 // §2.4 EvidenceReference.entity_type — 8-value closed list (Group 2 L1622-1628
 // / API Contracts EvidenceEntityType, byte-identical). The 8th value
-// `TalentEngagementEvent` is deferred to M5 (PR-5 Ruling 1); references of
+// `TalentSelectionEvent` is deferred to M5 (PR-5 Ruling 1); references of
 // that type are structurally valid but unresolvable until M5.
 export type EvidenceEntityTypeValue =
   | 'TalentSkillEvidence'
@@ -47,7 +47,7 @@ export type EvidenceEntityTypeValue =
   | 'TalentContactMethod'
   | 'TalentRateExpectation'
   | 'TalentWorkAuthorization'
-  | 'TalentEngagementEvent'
+  | 'TalentSelectionEvent'
   | 'TalentDocument'
   | 'TalentDerivedSnapshot';
 

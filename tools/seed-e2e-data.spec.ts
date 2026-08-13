@@ -23,7 +23,7 @@ function fakePorts(overrides: Partial<SeedPorts> = {}): SeedPorts {
     transitionPipeline: vi.fn().mockResolvedValue(undefined),
     createTask: vi.fn().mockResolvedValue(id()),
     createActivity: vi.fn().mockResolvedValue(id()),
-    createEngagement: vi.fn().mockResolvedValue(id()),
+    createSelection: vi.fn().mockResolvedValue(id()),
     ...overrides,
   };
 }
@@ -86,19 +86,19 @@ describe('seed orchestration', () => {
     // Stages are reached by walking the legal state machine (real transitions),
     // not set at create — so non-no_contact pipelines drive transitions.
     expect(ports.transitionPipeline).toHaveBeenCalled();
-    expect(ports.createEngagement).toHaveBeenCalledOnce();
+    expect(ports.createSelection).toHaveBeenCalledOnce();
     expect(report.requisition_ids).toHaveLength(plan.requisitions.length);
     expect(report.talent_ids.length).toBeGreaterThanOrEqual(8);
   });
 
-  it('engagement is best-effort — a missing Core overlay skips it, not fails the seed', async () => {
+  it('selection is best-effort — a missing Core overlay skips it, not fails the seed', async () => {
     const ports = fakePorts({
-      createEngagement: vi.fn().mockRejectedValue(new Error('Talent not visible in tenant')),
+      createSelection: vi.fn().mockRejectedValue(new Error('Talent not visible in tenant')),
     });
     const report = await seed(ports, CTX, buildSeedPlan('E2E '));
     expect(report.status).toBe('seeded');
-    expect(report.engagement_ids).toEqual([]);
-    expect(report.engagement_skipped).toMatch(/not visible/);
+    expect(report.selection_ids).toEqual([]);
+    expect(report.selection_skipped).toMatch(/not visible/);
     // The core entities still seeded.
     expect(report.requisition_ids.length).toBeGreaterThanOrEqual(3);
   });

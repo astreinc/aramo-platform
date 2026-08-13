@@ -337,7 +337,7 @@ export class RequisitionController {
   // AI JD + GoldenProfile generation (Job-Module LB-3 / ADR-0015 v1.2)
   // -------------------------------------------------------------------------
   //
-  // The draft → confirm human-in-the-loop split (mirrors the engagement
+  // The draft → confirm human-in-the-loop split (mirrors the selection
   // draft/send pattern). DRAFT runs the LLM (G4 allowlisted prompt) + returns the
   // generated JD + structured GoldenProfile WITHOUT committing anything.
   // CONFIRM persists the recruiter-reviewed final via the seam mint

@@ -17,10 +17,10 @@
 // sub-entities required by EvidenceReference (Group 2 §2.4) are built here,
 // each to its Group 2 §2.2 Talent Record Spec field-level type literal
 // EXACTLY (names, types, enums, optionality). The 8th entity in the
-// EvidenceReference closed list — TalentEngagementEvent — is NAMED ONLY in
+// EvidenceReference closed list — TalentSelectionEvent — is NAMED ONLY in
 // §2.2 (no inline shape; absent from the 24-entity Talent Record Spec table)
-// and lives in the engagement domain (§2.3b, Plan v1.5 §M5). Per directive
-// §2 Ruling 1, TalentEngagementEvent is deferred to M5.
+// and lives in the selection domain (§2.3b, Plan v1.5 §M5). Per directive
+// §2 Ruling 1, TalentSelectionEvent is deferred to M5.
 //
 // Per directive §2 Ruling 4, TalentWorkAuthorization (Group 2 #6 — Declared
 // (Sensitive)) ships with its full §2.2 column shape; the Architecture §14.4

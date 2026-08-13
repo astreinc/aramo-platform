@@ -26,7 +26,7 @@ import {
 // be resolved (the key lives out-of-band in AWS Secrets Manager, like the
 // Cognito/S3 creds) — this service REMAPS the raw INTERNAL_ERROR to the
 // honest AI_PROVIDER_UNAVAILABLE (502) / AI_RATE_LIMITED (429) codes (the
-// inline remap the engagement draft endpoint established — there is no global
+// inline remap the selection draft endpoint established — there is no global
 // filter that does it). The FE then renders an honest "AI drafting
 // unavailable — enter it manually" state; we never fabricate a draft.
 
@@ -68,7 +68,7 @@ export class RequisitionIntakeService {
     const { prompt, system_message } = buildIntakePrompt(text);
 
     // No fake fallback — a provider/key failure is remapped to an honest
-    // AI_* code (mirrors the engagement draft endpoint's remap). Anything the
+    // AI_* code (mirrors the selection draft endpoint's remap). Anything the
     // ai-draft substrate raises on the failure path is an INTERNAL_ERROR
     // (provider transport / auth / vendor-internal, OR the secret-cache's
     // key-resolution failure: env_missing / secret_not_found / aws_*) — all
@@ -99,7 +99,7 @@ export class RequisitionIntakeService {
   }
 
   // Remap the ai-draft substrate's raw error to an honest, FE-facing AI_*
-  // code (the engagement draft endpoint's inline-remap precedent — there is
+  // code (the selection draft endpoint's inline-remap precedent — there is
   // no global filter). This method only ever sees a generateDraft() failure
   // (the recruiter-input validation — empty / over-length — throws BEFORE the
   // try-block), so EVERY error here is provider-side:

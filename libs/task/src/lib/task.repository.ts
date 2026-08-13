@@ -344,7 +344,7 @@ export function buildTaskVisibilityWhere(
   return { OR: branches };
 }
 
-// Create-time assert helper (the engagement assertRequisitionVisible
+// Create-time assert helper (the selection assertRequisitionVisible
 // precedent). True iff the owner entity is visible to the actor — the
 // controller throws 404 when false.
 export function isOwnerVisible(

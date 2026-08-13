@@ -54,7 +54,7 @@ import { PortalTalentResolverService } from './portal-talent-resolver.service.js
 // aliased — nothing runtime consumed them; the portal-thin pact is repointed
 // in-slice):
 //   GET /v1/portal/records                 — the portal user's records across
-//                                            tenants (engagement surface, P-R5)
+//                                            tenants (selection surface, P-R5)
 //   GET /v1/portal/records/:id/profile     — one record's R10-filtered profile
 //   GET /v1/portal/records/:id/consent     — one record's consent state
 //
@@ -94,7 +94,7 @@ export class PortalController {
     };
   }
 
-  // Portal P2 P2b — resolve the engagement counterparty's human name. The
+  // Portal P2 P2b — resolve the selection counterparty's human name. The
   // always-present workspace name (Tenant.name); null (defensive) only if the
   // tenant row vanished. One indexed read; the callers already loop/await
   // per-record service calls, so this adds no new N+1 shape.
@@ -205,7 +205,7 @@ export class PortalController {
   }
 
   // GET /v1/portal/records/:id/consent/history — the append-only consent history
-  // (Portal P2 P2b §PR-2). Delegates to the consent lib's engagement-class
+  // (Portal P2 P2b §PR-2). Delegates to the consent lib's selection-class
   // ConsentHistoryEvent projection (5 closed fields, no actor/trust leak).
   // Query params (scope, limit, cursor) optional; the service parses + clamps
   // them (decode errors → 400). A read; membership through the chain (uniform

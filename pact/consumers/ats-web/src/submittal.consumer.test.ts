@@ -16,14 +16,14 @@ import {
 //
 // Consumer: ats-web · Provider: aramo-core (apps/api). Retrofitted onto the
 // shared support module (PC-2 §2.1); this instance merges into the same
-// ats-web-aramo-core.json as engagement (portal-thin precedent).
+// ats-web-aramo-core.json as selection (portal-thin precedent).
 //
 // Scope (PC-2 Directive §2.2 + Gate-5 ruling): all 9 submittal endpoints
 // ats-web's apiClient wrapper (apps/ats-web/src/submittals/submittals-api.ts)
 // calls — 9/9 contracted, 0 excluded. Four interaction classes:
 //   - happy — request/response from the FE call sites + live controller DTOs;
 //   - illegal-state — SUBMITTAL_STATE_INVALID 422 (fresh-read literal from
-//     libs/submittal/src/lib/submittal.repository.ts; NOT the engagement
+//     libs/submittal/src/lib/submittal.repository.ts; NOT the selection
 //     literal) on the 4 transitioning POSTs (confirm, mark-ready,
 //     submit-to-ats, confirm-ats);
 //   - idempotency — replay + conflict for every POST requiring an

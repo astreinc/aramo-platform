@@ -12,7 +12,7 @@ import { Pool, type PoolClient } from 'pg';
 //   1. consent."TalentConsentEvent".talent_record_id ↔ talent_record."TalentRecord".id
 //      (Step-5 consent re-key — was talent."Talent".id before the re-key)
 //   2. selection."TalentSelection".talent_id ↔ talent_record."TalentRecord".id
-//      (4e-engagement-key — was talent."Talent".id before the re-point)
+//      (4e-selection-key — was talent."Talent".id before the re-point)
 //   3. examination."TalentJobExamination".talent_id ↔ talent."Talent".id
 //   4. examination."TalentJobExamination".job_id ↔ job_domain."Job".id
 //   5. examination."TalentJobExamination".golden_profile_id
@@ -63,8 +63,8 @@ const PAIRS = [
       'WHERE tr."id" IS NULL',
   },
   {
-    // 4e-engagement-key + T2-P2: the Selection workflow's talent_id (was
-    // engagement.TalentJobEngagement, now selection.TalentSelection after the
+    // 4e-selection-key + T2-P2: the Selection workflow's talent_id (was
+    // selection.TalentSelection, now selection.TalentSelection after the
     // T2-P2 relocation) references talent_record.TalentRecord.id (the ATS
     // heart), not Core talent.Talent. Without this the scanner would LEFT JOIN
     // every selection row to a NULL Core row and report 100% orphaned.

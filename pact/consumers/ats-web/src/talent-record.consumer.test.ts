@@ -11,7 +11,7 @@ import {
 } from './support/ats-web-pact.js';
 
 // PC-4 — Pact consumer for ats-web, talent-record domain (Gate-1 remainder,
-// stable subset). Merges into ats-web-aramo-core.json with engagement +
+// stable subset). Merges into ats-web-aramo-core.json with selection +
 // submittal + examination.
 //
 // Scope (PC-4 Directive §3 + Gate-5 ruling): the STABLE talent-record CRUD
@@ -30,7 +30,7 @@ import {
 //   - refusal: 0-by-ruling (all framework scope/validation refusals →
 //     suite-wide hardening park).
 //
-// Provider guard chain (talent-record is heavier than engagement/submittal):
+// Provider guard chain (talent-record is heavier than selection/submittal):
 //   @RequireCapability('ats') — TENANT_ID seeded with the 'ats' entitlement;
 //   @RequireScopes('talent:read'/'create'/'edit') — added to the recruiter JWT;
 //   @RequireSiteMatch() — passes unconstrained (tenant-wide principal, no

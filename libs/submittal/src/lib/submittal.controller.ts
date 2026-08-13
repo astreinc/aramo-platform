@@ -159,8 +159,8 @@ export class SubmittalController {
         ...(body.rate_expectation_id !== undefined
           ? { rate_expectation_id: body.rate_expectation_id }
           : {}),
-        ...(body.engagement_event_refs !== undefined
-          ? { engagement_event_refs: body.engagement_event_refs }
+        ...(body.selection_event_refs !== undefined
+          ? { selection_event_refs: body.selection_event_refs }
           : {}),
         ...(body.justification !== undefined
           ? { justification: body.justification }
@@ -346,7 +346,7 @@ export class SubmittalController {
     //
     // M5 PR-8b2 §4.5 + Ruling 18: event_id minted controller-side via
     // crypto.randomUUID() and threaded through to the repository's
-    // $transaction (mirrors engagement-side transitionState
+    // $transaction (mirrors selection-side transitionState
     // event-id-minting pattern). The repository returns
     // { submittal, event }; the M4 client contract preserves the
     // { submittal } response shape so the `event` field is dropped at

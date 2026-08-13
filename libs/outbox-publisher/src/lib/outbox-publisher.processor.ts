@@ -15,18 +15,18 @@ import {
 
 // M6 PR-2 §4 — multi-schema outbox publisher (relocated + extended).
 // T2-2b — extended to drain the canonicalization schema as its 4th
-// (was consent + engagement + submittal; the T2-2a-written
+// (was consent + selection + submittal; the T2-2a-written
 // talent.canonicalized events are now consumed + published).
 //
 // Relocated from libs/consent (M5 PR-11 placement) to the new leaf lib
 // libs/outbox-publisher per M6 PR-2 §4 / Amendment §2.4. The relocation
-// avoids the consent → engagement|submittal cycle that would have
-// resulted from injecting engagement + submittal repositories into a
+// avoids the consent → selection|submittal cycle that would have
+// resulted from injecting selection + submittal repositories into a
 // processor living in libs/consent (lint-nx-boundaries / import-x/
 // no-cycle enforcement).
 //
 // Architecture v2.1 §9.2 / Plan v1.5 §M5 Track A item 6 binding (extended
-// to the M6 PR-2 multi-schema scope: consent + engagement + submittal),
+// to the M6 PR-2 multi-schema scope: consent + selection + submittal),
 // further extended at T2-2b to add canonicalization as the 4th schema —
 // settled-pattern reuse, no new design surface (the drainSchema helper
 // loop accepts any OutboxRepositoryShape participant). Polls each
@@ -80,7 +80,7 @@ export class OutboxPublisherProcessor
 {
   constructor(
     private readonly consentOutbox: OutboxPublisherRepository,
-    private readonly engagementOutbox: SelectionOutboxRepository,
+    private readonly selectionOutbox: SelectionOutboxRepository,
     private readonly submittalOutbox: SubmittalOutboxRepository,
     private readonly canonicalizationOutbox: CanonicalizationOutboxRepository,
     private readonly placementOutbox: PlacementOutboxRepository,
@@ -102,9 +102,9 @@ export class OutboxPublisherProcessor
       batchSize,
       job,
     );
-    const engagementCount = await this.drainSchema(
-      'engagement',
-      this.engagementOutbox,
+    const selectionCount = await this.drainSchema(
+      'selection',
+      this.selectionOutbox,
       batchSize,
       job,
     );
@@ -133,17 +133,17 @@ export class OutboxPublisherProcessor
       job_id: job.id ?? null,
       batch_size: batchSize,
       consent_published_count: consentCount,
-      engagement_published_count: engagementCount,
+      selection_published_count: selectionCount,
       submittal_published_count: submittalCount,
       canonicalization_published_count: canonicalizationCount,
       placement_published_count: placementCount,
       total_published_count:
-        consentCount + engagementCount + submittalCount + canonicalizationCount + placementCount,
+        consentCount + selectionCount + submittalCount + canonicalizationCount + placementCount,
     });
   }
 
   private async drainSchema(
-    schemaName: 'consent' | 'engagement' | 'submittal' | 'canonicalization' | 'placement',
+    schemaName: 'consent' | 'selection' | 'submittal' | 'canonicalization' | 'placement',
     repo: OutboxRepositoryShape,
     batchSize: number,
     job: Job<OutboxPublisherTickInput>,

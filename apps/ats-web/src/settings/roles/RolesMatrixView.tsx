@@ -22,7 +22,7 @@ const CATEGORY_LABEL: Record<string, string> = {
   contact: 'Contacts',
   requisition: 'Requisitions',
   submittal: 'Submittals',
-  engagement: 'Engagement',
+  selection: 'Selection',
   pipeline: 'Pipeline',
   compensation: 'Compensation',
   calendar: 'Calendar',

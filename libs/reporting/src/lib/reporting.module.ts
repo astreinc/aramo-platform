@@ -36,16 +36,16 @@ import { ReportingService } from './reporting.service.js';
 //
 // === Seam-exclusion (structural) ===
 //
-// This module imports ZERO Core / engagement / submittal / examination
+// This module imports ZERO Core / selection / submittal / examination
 // / matching / talent / job_domain modules. The dependency closure
 // here is the proof: A7 reads no Core schema. The integration spec
-// asserts this structurally (by NOT applying any Core/engagement/
+// asserts this structurally (by NOT applying any Core/selection/
 // submittal migration to the test container — the routes still serve
 // every metric, because none touches a Core table).
 //
 // SettingsModule is tenant-CONFIG (the settings schema), NOT Core — the
 // recruiter-metrics route reads the tenant-default KPI goals from it. The
-// Core seam-exclusion is unchanged (no engagement/submittal/examination).
+// Core seam-exclusion is unchanged (no selection/submittal/examination).
 //
 // All 8 entity-module edges are FORWARD (reporting → entity); no
 // entity module imports @aramo/reporting → no cycle.

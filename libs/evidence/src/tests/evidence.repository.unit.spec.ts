@@ -171,19 +171,19 @@ function buildRepo(
     findTalentRateExpectationById: rateFind,
   } as unknown as TalentEvidenceRepository;
   // M5 PR-2 — SelectionEventRepository for the cross-schema validator.
-  // Unit tests do not exercise engagement_event_refs (BuildPackageInput
+  // Unit tests do not exercise selection_event_refs (BuildPackageInput
   // shape in this spec omits the field, which the validator treats as
   // pass-through). A minimal mock satisfies the constructor; tests for
   // the validator's resolve/reject paths live in
   // libs/evidence/src/tests/evidence.repository.cross-schema-validator.integration.spec.ts.
-  const engagementEventMock = {
+  const selectionEventMock = {
     findByTenantAndId: vi.fn().mockResolvedValue(null),
   } as unknown as SelectionEventRepository;
   return new EvidenceRepository(
     prismaCreate as unknown as PrismaService,
     examRepoMock,
     talentEvidenceMock,
-    engagementEventMock,
+    selectionEventMock,
     makeMockLogger(),
   );
 }
@@ -200,7 +200,7 @@ describe('EvidenceRepository.buildPackage (unit)', () => {
       ...data,
       submittal_record_id: data['submittal_record_id'] ?? null,
       parent_package_id: data['parent_package_id'] ?? null,
-      engagement_event_refs: data['engagement_event_refs'] ?? [],
+      selection_event_refs: data['selection_event_refs'] ?? [],
       created_at: new Date('2026-05-22T10:00:00Z'),
     }));
     examFindById = vi.fn().mockResolvedValue(makeRow());
@@ -221,7 +221,7 @@ describe('EvidenceRepository.buildPackage (unit)', () => {
     expect(view.talent_id).toBe(TALENT_A);
     expect(view.job_id).toBe(JOB_ID);
     expect(view.examination_id).toBe(EXAM_ID);
-    expect(view.engagement_event_refs).toEqual([]);
+    expect(view.selection_event_refs).toEqual([]);
     expect(create).toHaveBeenCalledTimes(1);
   });
 

@@ -583,7 +583,7 @@ describe('ConsentRepository.resolveConsentState — Decision D (source-aware mos
     ]);
     const repo = new ConsentRepository(makePrisma(tx));
     const decision = await repo.resolveConsentState(
-      makeResolveInput({ operation: 'engagement', channel: 'email' }),
+      makeResolveInput({ operation: 'selection', channel: 'email' }),
     );
     expect(decision.result).toBe('denied');
     expect(decision.denied_scopes).toContain('contacting');
@@ -609,7 +609,7 @@ describe('ConsentRepository.resolveConsentState — Decision E (scope dependency
     const repo = new ConsentRepository(makePrisma(tx));
     await expect(
       repo.resolveConsentState(
-        makeResolveInput({ operation: 'engagement', channel: 'email' }),
+        makeResolveInput({ operation: 'selection', channel: 'email' }),
       ),
     ).rejects.toMatchObject({
       code: 'INVALID_SCOPE_COMBINATION',
@@ -629,7 +629,7 @@ describe('ConsentRepository.resolveConsentState — Decision E (scope dependency
     const repo = new ConsentRepository(makePrisma(tx));
     await expect(
       repo.resolveConsentState(
-        makeResolveInput({ operation: 'engagement', channel: 'email' }),
+        makeResolveInput({ operation: 'selection', channel: 'email' }),
       ),
     ).rejects.toThrow();
     expect(tx.consentAuditEvent.create).toHaveBeenCalledOnce();
@@ -652,7 +652,7 @@ describe('ConsentRepository.resolveConsentState — Decision E (scope dependency
     const repo = new ConsentRepository(makePrisma(tx));
     try {
       await repo.resolveConsentState(
-        makeResolveInput({ operation: 'engagement', channel: 'email' }),
+        makeResolveInput({ operation: 'selection', channel: 'email' }),
       );
       throw new Error('expected 422 to be thrown');
     } catch (err) {
@@ -713,7 +713,7 @@ describe('ConsentRepository.resolveConsentState — Decision F (12-month stalene
     ]);
     const repo = new ConsentRepository(makePrisma(tx));
     const decision = await repo.resolveConsentState(
-      makeResolveInput({ operation: 'engagement', channel: 'email' }),
+      makeResolveInput({ operation: 'selection', channel: 'email' }),
     );
     expect(decision.result).toBe('allowed');
   });
@@ -742,7 +742,7 @@ describe('ConsentRepository.resolveConsentState — Decision F (12-month stalene
     ]);
     const repo = new ConsentRepository(makePrisma(tx));
     const decision = await repo.resolveConsentState(
-      makeResolveInput({ operation: 'engagement', channel: 'email' }),
+      makeResolveInput({ operation: 'selection', channel: 'email' }),
     );
     expect(decision.result).toBe('denied');
     expect(decision.reason_code).toBe('stale_consent');
@@ -781,7 +781,7 @@ describe('ConsentRepository.resolveConsentState — Decision G (channel constrai
     const tx = makeTx();
     const repo = new ConsentRepository(makePrisma(tx));
     await expect(
-      repo.resolveConsentState(makeResolveInput({ operation: 'engagement' })),
+      repo.resolveConsentState(makeResolveInput({ operation: 'selection' })),
     ).rejects.toMatchObject({
       code: 'VALIDATION_ERROR',
       statusCode: 400,
@@ -813,7 +813,7 @@ describe('ConsentRepository.resolveConsentState — Decision G (channel constrai
     ]);
     const repo = new ConsentRepository(makePrisma(tx));
     const decision = await repo.resolveConsentState(
-      makeResolveInput({ operation: 'engagement', channel: 'email' }),
+      makeResolveInput({ operation: 'selection', channel: 'email' }),
     );
     expect(decision.result).toBe('allowed');
   });
@@ -840,7 +840,7 @@ describe('ConsentRepository.resolveConsentState — Decision G (channel constrai
     ]);
     const repo = new ConsentRepository(makePrisma(tx));
     const decision = await repo.resolveConsentState(
-      makeResolveInput({ operation: 'engagement', channel: 'sms' }),
+      makeResolveInput({ operation: 'selection', channel: 'sms' }),
     );
     expect(decision.result).toBe('denied');
     expect(decision.reason_code).toBe('channel_not_consented');
@@ -869,7 +869,7 @@ describe('ConsentRepository.resolveConsentState — Decision G (channel constrai
     ]);
     const repo = new ConsentRepository(makePrisma(tx));
     const decision = await repo.resolveConsentState(
-      makeResolveInput({ operation: 'engagement', channel: 'sms' }),
+      makeResolveInput({ operation: 'selection', channel: 'sms' }),
     );
     expect(decision.result).toBe('allowed');
   });
@@ -996,7 +996,7 @@ describe('ConsentRepository.resolveConsentState — Decision L (R4: ledger-only 
     const repo = new ConsentRepository(makePrisma(tx));
     await repo.resolveConsentState(makeResolveInput());
     // Verify no non-ledger table on tx was accessed (the mock doesn't have
-    // engagement, talentResponse, etc., so any access would throw — but
+    // selection, talentResponse, etc., so any access would throw — but
     // also the static R4 guardrail enforces source-level absence).
     expect(tx.talentConsentEvent.findMany).toHaveBeenCalledTimes(1);
   });

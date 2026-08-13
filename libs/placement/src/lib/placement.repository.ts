@@ -138,7 +138,7 @@ function isDuplicateEffectiveFromViolation(err: unknown): boolean {
 //
 // The DB trigger is the authority (the one-live-attempt guard and the 14-edge
 // matrix are enforced there, generated from the registry). The repository adds
-// the dominant submittal/engagement pattern: a pre-emptive application-layer
+// the dominant submittal/selection pattern: a pre-emptive application-layer
 // guard that returns a structured domain error BEFORE the SQL, with the trigger
 // as the race-safe floor caught by message substring. Raw Postgres exceptions
 // are never surfaced to the caller (§ error handling).

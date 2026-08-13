@@ -27,7 +27,7 @@ import {
 import { RequisitionRepository } from './requisition.repository.js';
 
 // Job-Module LB-3 — JD + GoldenProfile generation service. The 2nd
-// declared libs/ai-draft consumer (ADR-0015 v1.2). Mirrors the engagement
+// declared libs/ai-draft consumer (ADR-0015 v1.2). Mirrors the selection
 // draft → send governance: draft is non-committal; confirm persists the
 // recruiter-reviewed final via the seam mint (LB-2).
 //
@@ -195,7 +195,7 @@ export class RequisitionProfileService {
       jd_text: args.jd_text,
     };
 
-    // Cross-event-ref (G1, mirrors the engagement send → draft-event
+    // Cross-event-ref (G1, mirrors the selection send → draft-event
     // reference): an AI-generated profile MUST reference its draft event.
     // The manual-entry
     // path (generated_by === 'manual') is exempt — AI is never required.

@@ -198,11 +198,11 @@ export default [
         },
         {
           selector: "Identifier[name=/outreach/i]",
-          message: "Use 'engagement' (not 'outreach' as entity name) — see doc/02-claude-code-discipline.md Rule 5.",
+          message: "Use 'selection' (not 'outreach' as entity name) — see doc/02-claude-code-discipline.md Rule 5.",
         },
         {
           selector: "Literal[value=/outreach/i]",
-          message: "Use 'engagement' (not 'outreach' as entity name) in string literals — see doc/02-claude-code-discipline.md Rule 5.",
+          message: "Use 'selection' (not 'outreach' as entity name) in string literals — see doc/02-claude-code-discipline.md Rule 5.",
         },
         {
           selector: "Identifier[name=/evaluation/i]",
@@ -223,68 +223,68 @@ export default [
       ],
     },
   },
-  // M5 PR-2 — engagement event-log substrate exemption.
-  // The EngagementEventType enum carries `outreach_sent` per Group 2 §3
-  // canonical "engagement outreach" product vocabulary. The substring
+  // M5 PR-2 — selection event-log substrate exemption.
+  // The SelectionEventType enum carries `outreach_sent` per Group 2 §3
+  // canonical "selection outreach" product vocabulary. The substring
   // overlap with the Tier-2 forbidden `outreach` entity-name anti-term
   // is incidental — the canonical enum value names a specific event
-  // type within the engagement domain, not a misuse of `outreach` as a
+  // type within the selection domain, not a misuse of `outreach` as a
   // standalone entity name. Same rationale as the corresponding
   // scripts/verify-vocabulary.sh TIER2_EXCLUDES entries. Per M5 PR-2
   // directive Ruling 4 + §4.12.
   {
     files: [
       // T2-P2 — Selection domain barrel (@aramo/selection). Carries the
-      // canonical engagement-outreach vocabulary in OutreachSentPayload /
+      // canonical selection-outreach vocabulary in OutreachSentPayload /
       // OutreachDraftedPayload re-exports; same rationale as the
-      // libs/engagement/src/index.ts facade-barrel entry below. Mirrored in
+      // libs/selection/src/index.ts facade-barrel entry below. Mirrored in
       // scripts/verify-vocabulary.sh.
       'libs/selection/src/index.ts',
       'libs/selection/src/lib/selection-event.ts',
       'libs/selection/src/tests/selection-event.repository.integration.spec.ts',
       'libs/evidence/src/tests/evidence.repository.cross-schema-validator.integration.spec.ts',
       // M5 PR-4 — HTTP surface specs + Pact consumer/provider tests for the
-      // engagement endpoints. Same canonical-vocabulary rationale as the
+      // selection endpoints. Same canonical-vocabulary rationale as the
       // M5 PR-2 entries above: `outreach_sent` appears in state-transition
       // fixture data, not as misuse of `outreach` as a standalone entity name.
-      'apps/api/src/tests/engagement-create.negative-shape.spec.ts',
-      'apps/api/src/tests/engagement-transition.negative-shape.spec.ts',
-      'libs/engagement/src/tests/engagement.controller.spec.ts',
-      'apps/api/src/tests/engagement.controller.integration.spec.ts',
+      'apps/api/src/tests/selection-create.negative-shape.spec.ts',
+      'apps/api/src/tests/selection-transition.negative-shape.spec.ts',
+      'libs/selection/src/tests/selection.controller.spec.ts',
+      'apps/api/src/tests/selection.controller.integration.spec.ts',
       // M5 PR-6 — outreach-send HTTP surface + delivery port. Same
       // canonical-vocabulary rationale as the M5 PR-2 / PR-4 entries
-      // above: `outreach` appears as the canonical engagement event-type
+      // above: `outreach` appears as the canonical selection event-type
       // discriminant + new endpoint name, not as misuse of `outreach`
       // as a standalone entity name.
-      // R7 BE-prereq — the engagement scope catalog (`engagement:outreach`
+      // R7 BE-prereq — the selection scope catalog (`selection:outreach`
       // as the canonical scope-action vocabulary; same domain-scope-action
       // pattern as `compensation:edit:pay` / `submittal:create`). The
-      // identity files carry the engagement scope key + grant bundle —
+      // identity files carry the selection scope key + grant bundle —
       // canonical scope naming, not misuse of `outreach` as a standalone
       // entity name. Mirrored in scripts/verify-vocabulary.sh.
       'libs/identity/src/lib/dto/scope.dto.ts',
       'libs/identity/prisma/seed.ts',
       // §5 Auth-Hardening D1 — recruiter-context integration spec asserts the
-      // recruiter scope BUNDLE, which carries the canonical `engagement:outreach`
+      // recruiter scope BUNDLE, which carries the canonical `selection:outreach`
       // scope key (same canonical scope-naming rationale as the identity
       // scope-catalog entries above; not misuse of `outreach` as an entity
       // name). Mirrored in scripts/verify-vocabulary.sh.
       'apps/api/src/tests/auth-hardening-d1-recruiter-context.integration.spec.ts',
-      'libs/engagement/src/index.ts',
-      'libs/engagement/src/lib/dto/outreach-send-request.dto.ts',
-      'libs/engagement/src/lib/dto/outreach-send-response.dto.ts',
+      'libs/selection/src/index.ts',
+      'libs/selection/src/lib/dto/outreach-send-request.dto.ts',
+      'libs/selection/src/lib/dto/outreach-send-response.dto.ts',
       'libs/selection/src/lib/dto/outreach-sent-payload.ts',
       // Outreach Draft/Preview Directive v1.0 / Amendment v1.1 — the draft
-      // half of the split. Same canonical engagement-outreach vocabulary
+      // half of the split. Same canonical selection-outreach vocabulary
       // rationale as the outreach-send DTOs above (`outreach_drafted` event
       // type + the draft endpoint name, not misuse of `outreach` as a
       // standalone entity name).
-      'libs/engagement/src/lib/dto/outreach-draft-request.dto.ts',
-      'libs/engagement/src/lib/dto/outreach-draft-response.dto.ts',
+      'libs/selection/src/lib/dto/outreach-draft-request.dto.ts',
+      'libs/selection/src/lib/dto/outreach-draft-response.dto.ts',
       'libs/selection/src/lib/dto/outreach-drafted-payload.ts',
       'libs/selection/src/lib/delivery/delivery-provider.interface.ts',
       'libs/selection/src/lib/delivery/send-stub.provider.ts',
-      'libs/engagement/src/lib/engagement.controller.ts',
+      'libs/selection/src/lib/selection.controller.ts',
       'libs/selection/src/lib/selection.repository.ts',
       'libs/selection/src/tests/selection.repository.spec.ts',
       'libs/selection/src/tests/selection.repository.integration.spec.ts',
@@ -297,8 +297,8 @@ export default [
       // `outreach_event_ref_id` (Ruling 4) and references to the prior
       // `outreach_sent` event. Same canonical-vocab rationale as the
       // M5 PR-6 entries above.
-      'libs/engagement/src/lib/dto/record-response-request.dto.ts',
-      'libs/engagement/src/lib/dto/record-response-response.dto.ts',
+      'libs/selection/src/lib/dto/record-response-request.dto.ts',
+      'libs/selection/src/lib/dto/record-response-response.dto.ts',
       'libs/selection/src/lib/dto/selection-response-received-payload.ts',
       'apps/api/src/tests/response-received.negative-shape.spec.ts',
       'apps/api/src/tests/response-received.integration.spec.ts',
@@ -306,11 +306,11 @@ export default [
       // responded precondition; same canonical-vocab rationale as M5 PR-6 + PR-7 entries above
       'apps/api/src/tests/conversation-started.negative-shape.spec.ts',
       'apps/api/src/tests/conversation-started.integration.spec.ts',
-      'libs/engagement/src/lib/dto/record-conversation-started-response.dto.ts',
+      'libs/selection/src/lib/dto/record-conversation-started-response.dto.ts',
       'libs/selection/src/lib/dto/selection-conversation-started-payload.ts',
       // M5 PR-9b — consent-at-send refusal integration spec carries the
-      // canonical `outreach` engagement-endpoint vocabulary by design
-      // (the spec exercises POST /v1/engagements/{id}/outreach as the
+      // canonical `outreach` selection-endpoint vocabulary by design
+      // (the spec exercises POST /v1/selections/{id}/outreach as the
       // gated send code path per Plan v1.5 §M5 Track B item 3 closure).
       'apps/api/src/tests/outreach-send-consent-revoked.integration.spec.ts',
       // M5 PR-11 Ruling 7: 4 BullMQ background job integration specs
@@ -387,38 +387,38 @@ export default [
       // surfaces; exclusions applied to both per the PR-A1a precedent).
       'libs/export/src/tests/field-catalog.spec.ts',
       'apps/api/src/tests/ats-batch8-pr-a8-4-export.integration.spec.ts',
-      // Recruiter R7 — the engagement FE surface (the ats-web
-      // consumer of the engagement backend). `outreach` appears here as the
-      // canonical engagement event-type discriminant (`outreach_drafted` /
+      // Recruiter R7 — the selection FE surface (the ats-web
+      // consumer of the selection backend). `outreach` appears here as the
+      // canonical selection event-type discriminant (`outreach_drafted` /
       // `outreach_sent`), the response-picker source (a response answers a
       // prior `outreach_sent` event — `outreach_event_ref_id`), and the
       // recruiter-facing product vocabulary in copy ("Outreach sent" / "the
       // selected outreach") — NOT a misuse of `outreach` as a standalone
-      // entity name competing with `engagement`. Same canonical-vocabulary
-      // rationale as the libs/engagement M5 PR-2/PR-6/PR-7 entries above;
+      // entity name competing with `selection`. Same canonical-vocabulary
+      // rationale as the libs/selection M5 PR-2/PR-6/PR-7 entries above;
       // file-scoped (the rule still applies to every other ats-web
       // file). Paired in lockstep with the scripts/verify-vocabulary.sh
       // TIER2_EXCLUDES entries.
-      'apps/ats-web/src/engagement/types.ts',
-      // engagement-api.ts carries `outreach` in comments only (the script
+      'apps/ats-web/src/selection/types.ts',
+      // selection-api.ts carries `outreach` in comments only (the script
       // surface scripts/verify-vocabulary.sh is grep-based and catches
       // comments; ESLint is AST-based and would not flag it) — listed here
       // for lockstep symmetry with the verify-vocabulary.sh exclusion.
-      'apps/ats-web/src/engagement/engagement-api.ts',
-      'apps/ats-web/src/engagement/EventLog.tsx',
-      'apps/ats-web/src/engagement/ResponseLogger.tsx',
-      'apps/ats-web/src/engagement/EngagementDetailView.tsx',
-      'apps/ats-web/src/engagement/error-messages.ts',
-      'apps/ats-web/src/engagement/EngagementDetailView.spec.tsx',
+      'apps/ats-web/src/selection/selection-api.ts',
+      'apps/ats-web/src/selection/EventLog.tsx',
+      'apps/ats-web/src/selection/ResponseLogger.tsx',
+      'apps/ats-web/src/selection/SelectionDetailView.tsx',
+      'apps/ats-web/src/selection/error-messages.ts',
+      'apps/ats-web/src/selection/SelectionDetailView.spec.tsx',
       // Recruiter R7 PR-2 — the draft→preview→send outreach composer. Same
       // canonical-vocabulary rationale as the PR-1 entries above: `outreach`
-      // names the engagement event-type discriminant + the draft/send
+      // names the selection event-type discriminant + the draft/send
       // endpoints + the recruiter-facing product copy ("Send outreach" /
       // "Outreach prompt"), NOT a misuse of `outreach` as a standalone entity
       // name. Paired in lockstep with the scripts/verify-vocabulary.sh
       // TIER2_EXCLUDES entries.
-      'apps/ats-web/src/engagement/OutreachComposer.tsx',
-      'apps/ats-web/src/engagement/OutreachComposer.spec.tsx',
+      'apps/ats-web/src/selection/OutreachComposer.tsx',
+      'apps/ats-web/src/selection/OutreachComposer.spec.tsx',
       // Portal P1 PR-3 §PR-3.3 — the reserved-slug gate lists 'candidate' as a
       // reserved subdomain LABEL precisely because candidate.aramo.ai is the
       // portal host that a tenant must never claim. The bare 'candidate' literal

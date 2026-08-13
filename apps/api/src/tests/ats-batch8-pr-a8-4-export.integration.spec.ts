@@ -35,13 +35,13 @@ import { placementCapacityMigrations } from './support/placement-capacity-migrat
 //   B) R10 STRUCTURAL seam-exclusion (the load-bearing R10 proof).
 //      Mirrors the A7 reporting-spec pattern verbatim: the test
 //      container is set up with ONLY the 5 ATS-schema migrations +
-//      entitlement (NO engagement / submittal / examination /
+//      entitlement (NO selection / submittal / examination /
 //      matching / talent / job_domain). If ExportService touched
 //      ANY Core schema, every export call would 500 with
 //      `relation does not exist`. Every export returns 200 → the
 //      service truly reads no Core schema. Additionally, every
 //      CSV header row is inspected for R10-forbidden vocabulary
-//      (tier / score / rank / match / examination / engagement /
+//      (tier / score / rank / match / examination / selection /
 //      submittal / override / reasoning) — zero matches across
 //      the 5 entities.
 //
@@ -238,14 +238,14 @@ const TALENT_RECORD_SUPERSESSION = resolve(
   'libs/talent-record/prisma/migrations/20260706210000_tr2a_b3a_talent_record_supersession/migration.sql',
 );
 
-// === CORE / ENGAGEMENT / SUBMITTAL MIGRATIONS — DELIBERATELY OMITTED ===
+// === CORE / SELECTION / SUBMITTAL MIGRATIONS — DELIBERATELY OMITTED ===
 //
 // This spec applies ONLY the 5 ATS-schema migrations + entitlement +
-// metering. The engagement / submittal / examination / matching /
+// metering. The selection / submittal / examination / matching /
 // talent / job_domain schemas are NOT created in the test container.
 // If ExportService or any controller it depends on issued a query
 // against any of those schemas, the export route would 500 with
-// `relation "engagement.Engagement" does not exist` (or similar). The
+// `relation "selection.Selection" does not exist` (or similar). The
 // fact that every export route returns 200 is the R10 seam-exclusion
 // structural proof: A8-4 reads no Core schema.
 
@@ -290,7 +290,7 @@ const R10_FORBIDDEN_HEADER_TOKENS: readonly string[] = [
   'rank',
   'match',
   'examination',
-  'engagement',
+  'selection',
   'submittal',
   'override',
   'reasoning',
@@ -359,7 +359,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await setupClient.connect();
 
       // Apply ONLY the 5 ATS-schema migrations + entitlement +
-      // metering. The OMISSION of engagement/submittal/examination/
+      // metering. The OMISSION of selection/submittal/examination/
       // matching/talent/job_domain is the load-bearing R10 structural
       // proof: if any Core read happened, the call would 500.
       for (const p of [

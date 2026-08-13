@@ -111,7 +111,7 @@ export interface RiskFlagEvaluated {
 export interface BlockingConditions {
   has_verified_contact_channel: boolean;
   consent_state_sufficient: boolean;
-  has_conflicting_active_engagement: boolean;
+  has_conflicting_active_selection: boolean;
 }
 
 // ----------------- The contract -----------------

@@ -42,7 +42,6 @@
       "@aramo/company": ["libs/company/src/index.ts"],
       "@aramo/consent": ["libs/consent/src/index.ts"],
       "@aramo/contact": ["libs/contact/src/index.ts"],
-      "@aramo/engagement": ["libs/engagement/src/index.ts"],
       "@aramo/entitlement": ["libs/entitlement/src/index.ts"],
       "@aramo/events": ["libs/events/src/index.ts"],
       "@aramo/export": ["libs/export/src/index.ts"],

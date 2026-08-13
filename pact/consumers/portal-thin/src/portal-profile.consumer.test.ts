@@ -59,7 +59,7 @@ describe('portal-thin consumer → GET /v1/portal/records', () => {
       })
       .willRespondWith(200, (b) => {
         // The closed PortalProfile envelope. Portal P2 P2b — tenant_name is now
-        // a MUST (the engagement counterparty is NAMED, ruling 2); still R10-safe.
+        // a MUST (the selection counterparty is NAMED, ruling 2); still R10-safe.
         b.jsonBody({
           records: eachLike({
             talent_id: uuid(),
@@ -83,13 +83,13 @@ describe('portal-thin consumer → GET /v1/portal/records', () => {
         expect(Array.isArray(body.records)).toBe(true);
         expect(body.records.length).toBeGreaterThanOrEqual(1);
         const rec = body.records[0]!;
-        // Positive shape: the 6 engagement-class fields present (P2b adds the
+        // Positive shape: the 6 selection-class fields present (P2b adds the
         // NAMED counterparty tenant_name) …
         for (const f of ['talent_id', 'tenant_id', 'tenant_name', 'tenant_status', 'source_channel', 'created_at']) {
           expect(rec).toHaveProperty(f);
         }
         // … and NO trust/verification ORIGIN data (D3 / P-R4). tenant_name is an
-        // engagement counterparty label, NOT an origin field, so it is legit here.
+        // selection counterparty label, NOT an origin field, so it is legit here.
         for (const f of ['verifier', 'verified_by', 'attestation']) {
           expect(rec).not.toHaveProperty(f);
         }

@@ -6,7 +6,7 @@ import { PrismaClient } from '../../../prisma/generated/client/client.js';
 
 // Per-module PrismaService for the entitlement module (PR-A1b).
 //
-// Post-PR-17 uniform lazy pattern (same as engagement/consent/identity
+// Post-PR-17 uniform lazy pattern (same as selection/consent/identity
 // PrismaServices):
 //   1. Inert constructor — no env read, no throw. Only stores the
 //      @Optional() databaseUrl argument and constructs the PrismaPg

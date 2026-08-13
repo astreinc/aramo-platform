@@ -37,7 +37,7 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
     expect(yamlValues).toEqual([...ERROR_CODES]);
   });
 
-  it('ERROR_CODES contains the closed code set (… + 1 Track8-T8P1-vms-external-identity + 2 T2-P3-selection + 1 Track6-T6B2-commercial-revision-conflict); the toEqual array below is the authoritative membership+order assertion', () => {
+  it('ERROR_CODES contains the closed code set (Track8-T8P1-vms-external-identity + 3 T2-P3B-selection-evidence normalization + 1 Track6-T6B2-commercial-revision-conflict); the toEqual array below is the authoritative membership+order assertion', () => {
     expect(ERROR_CODES).toEqual([
       'AUTH_REQUIRED',
       'INVALID_TOKEN',
@@ -58,9 +58,7 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       'SUBMITTAL_ALREADY_CONFIRMED',
       'OVERRIDE_INVALID',
       'REVOKE_NOT_ALLOWED',
-      'ENGAGEMENT_EVENT_REF_NOT_FOUND',
-      'ENGAGEMENT_REFERENCE_NOT_FOUND',
-      'ENGAGEMENT_STATE_INVALID',
+      'SELECTION_EVENT_REF_NOT_FOUND',
       'SELECTION_REFERENCE_NOT_FOUND',
       'SELECTION_STATE_INVALID',
       'AI_PROVIDER_UNAVAILABLE',

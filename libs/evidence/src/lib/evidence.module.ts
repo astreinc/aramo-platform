@@ -8,7 +8,7 @@ import { EvidenceRepository } from './evidence.repository.js';
 import { PrismaService } from './prisma/prisma.service.js';
 
 // libs/evidence module — M4 PR-1 entity foundation + M4 PR-2 builder
-// + M5 PR-2 cross-schema engagement_event_refs validator.
+// + M5 PR-2 cross-schema selection_event_refs validator.
 //
 // PR-1 (substrate-only) registered PrismaService + the read-only
 // EvidenceRepository. PR-2 extended with the buildPackage write path
@@ -16,9 +16,9 @@ import { PrismaService } from './prisma/prisma.service.js';
 //
 // M5 PR-2 adds SelectionModule (directive §4.9) so the buildPackage
 // cross-schema validator can call SelectionEventRepository
-// .findByTenantAndId for each engagement_event_refs entry. The
+// .findByTenantAndId for each selection_event_refs entry. The
 // validator (directive §4.8 / Ruling 7) refuses with
-// ENGAGEMENT_EVENT_REF_NOT_FOUND when an entry is not found or is
+// SELECTION_EVENT_REF_NOT_FOUND when an entry is not found or is
 // found in another tenant.
 //
 // EvidenceModule is still NOT imported by apps/api at M5 PR-2

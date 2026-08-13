@@ -10,7 +10,7 @@
 // outreach_drafted.draft_text this makes the drafted≠sent trail provable.
 //
 // Fields:
-//   - ai_draft_audit_record_id: links the engagement-event row to its
+//   - ai_draft_audit_record_id: links the selection-event row to its
 //     ai_draft.AiDraftEvent audit trail (M5 PR-5 substrate). Lets
 //     auditors trace from outreach → LLM call.
 //   - model_used: the concrete model id returned by the provider.

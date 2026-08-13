@@ -7,7 +7,7 @@ import type { PrismaService } from '../lib/prisma/prisma.service.js';
 
 // M5 PR-8b1 §4.14 — unit spec for TalentSubmittalEventRepository.
 //
-// Mirrors M5 PR-2 engagement-event.repository.spec.ts shape:
+// Mirrors M5 PR-2 selection-event.repository.spec.ts shape:
 // 5 methods exercised, append-only invariants asserted via spy
 // confirmation that no write primitive other than `create` is invoked.
 

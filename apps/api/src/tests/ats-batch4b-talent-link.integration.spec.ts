@@ -27,7 +27,7 @@ import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
 // ATS Batch 4b (TalentRecord ↔ PERSON_CLUSTER link) integration spec.
 // THE keystone of the ATS↔identity seam.
 //
-// 4e-rest: the Core-Talent link (core_talent_id) was dropped once engagement
+// 4e-rest: the Core-Talent link (core_talent_id) was dropped once selection
 // (#349) + consent (#350) released their Core reads. The link is now
 // CLUSTER-ONLY — the TalentRecord.cluster_id pointer into the PII-free
 // identity_index (PersonCluster). The proofs below are the cluster-axis

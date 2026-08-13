@@ -121,7 +121,7 @@ export interface RecruiterContribution {
 }
 
 // §2.6 — top-level view projection. Mirrors the Prisma row shape with
-// the five JSONB columns typed and engagement_event_refs typed as
+// the five JSONB columns typed and selection_event_refs typed as
 // string[] (the underlying JSONB array of UUIDs).
 export interface TalentJobEvidencePackageView {
   id: string;
@@ -136,7 +136,7 @@ export interface TalentJobEvidencePackageView {
   capability_summary: CapabilitySummary;
   match_justification: MatchJustification;
   recruiter_contribution: RecruiterContribution;
-  engagement_event_refs: string[];
+  selection_event_refs: string[];
   created_at: Date;
 }
 
@@ -223,5 +223,5 @@ export interface BuildPackageInput {
   match_justification_overrides?: MatchJustificationOverrides;
   recruiter_contribution: RecruiterContributionInput;
   rate_expectation_id?: string | null;
-  engagement_event_refs?: readonly string[];
+  selection_event_refs?: readonly string[];
 }

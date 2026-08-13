@@ -10,7 +10,7 @@
 // Fields:
 //   - draft_text: the AI-generated completion (generateDraft().completion).
 //     This is the FIRST place outreach text is persisted (per the
-//     ADR-0015 addendum — the engagement event log persists outreach
+//     ADR-0015 addendum — the selection event log persists outreach
 //     text; libs/ai-draft stays hash-only per ADR-0015 Decision 5).
 //   - ai_draft_audit_record_id: links this draft to its
 //     ai_draft.AiDraftEvent audit trail (forensic traceability draft →

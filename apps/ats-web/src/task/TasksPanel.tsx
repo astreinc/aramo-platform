@@ -16,7 +16,7 @@ import type { TaskOwnerType, TaskView } from './types';
 // Tasks FE — the per-entity Tasks tab panel (Ruling 2). Lists the in-context
 // entity's tasks (GET /v1/tasks?owner_type&owner_id) and hosts create/edit/
 // status-toggle/delete (gated task:write via canWrite). Cloned from the R7
-// EngagementsPanel shape (a self-fetching tab panel keyed to an entity id).
+// SelectionsPanel shape (a self-fetching tab panel keyed to an entity id).
 
 interface TasksPanelProps {
   readonly ownerType: TaskOwnerType;

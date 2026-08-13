@@ -40,7 +40,7 @@ import type {
 // engagement / submittal / examination / matching / talent / job_domain
 // schema:
 //   - The DI inputs are exactly the 8 ATS-domain repositories. There is
-//     no @aramo/engagement / @aramo/submittal / @aramo/examination /
+//     no @aramo/selection / @aramo/submittal / @aramo/examination /
 //     @aramo/talent / @aramo/job-domain import in this lib (enforced
 //     by tsconfig.lib.json paths + lint:nx-boundaries + the A7
 //     integration spec's seam-exclusion structural assertion).

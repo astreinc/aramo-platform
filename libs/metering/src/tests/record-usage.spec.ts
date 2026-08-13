@@ -35,7 +35,7 @@ describe('recordUsage — shape', () => {
     const { stub, captured } = makeStub();
     recordUsage(stub, {
       tenant_id: '11111111-1111-7111-8111-111111111111',
-      event_type: 'engagement.state_transition',
+      event_type: 'selection.state_transition',
     });
     const sql = captured.strings.join('?');
     expect(sql).toContain('INSERT INTO metering."UsageEvent"');
@@ -64,7 +64,7 @@ describe('recordUsage — shape', () => {
     const { stub, captured } = makeStub();
     recordUsage(stub, {
       tenant_id: '11111111-1111-7111-8111-111111111111',
-      event_type: 'engagement.state_transition',
+      event_type: 'selection.state_transition',
     });
     expect(captured.values[3]).toBe(1);
   });
@@ -75,7 +75,7 @@ describe('recordUsage — shape', () => {
     };
     const result = recordUsage(stub, {
       tenant_id: '11111111-1111-7111-8111-111111111111',
-      event_type: 'engagement.state_transition',
+      event_type: 'selection.state_transition',
     });
     await expect(result as unknown as Promise<number>).resolves.toBe(42);
   });

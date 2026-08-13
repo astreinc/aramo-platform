@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 
 import { PrismaService } from './prisma/prisma.service.js';
 
-// M6 PR-2 — engagement-schema outbox repository.
+// M6 PR-2 — selection-schema outbox repository.
 //
 // Mirrors libs/consent OutboxPublisherRepository verbatim (read + bulk-
 // mark-published; no insertInTx — emission is inline tx.outboxEvent.create
@@ -13,7 +13,7 @@ import { PrismaService } from './prisma/prisma.service.js';
 // markPublished bulk-updates published_at = now() for the supplied ids.
 //
 // Consumed by libs/outbox-publisher (M6 PR-2 §4 — the publisher relocates
-// to its own leaf lib to break the would-be consent → engagement cycle).
+// to its own leaf lib to break the would-be consent → selection cycle).
 
 export interface UnpublishedOutboxEvent {
   id: string;

@@ -1,16 +1,16 @@
-// Per-module Prisma schema for the `engagement` module.
+// Per-module Prisma schema for the `selection` module.
 //
 // Per Architecture v2.0/v2.1 §7.1 (Schema-per-Module data architecture)
 // and doc/05-conventions.md "Database Conventions". Cross-schema
 // references elsewhere in the program are UUID-only without FK
 // constraints (§7.3).
 //
-// M5 PR-1 — TalentJobEngagement entity foundation. Per Group 2
+// M5 PR-1 — TalentSelection entity foundation. Per Group 2
 // Consolidated Baseline v2.0 §2.3b Part 2 Loops 1-5 (binding canonical
 // state-machine narrative): the workflow-state entity carrying the
-// engagement state machine for the talent+requisition pairing through
+// selection state machine for the talent+requisition pairing through
 // Group 2 §2.3b Part 2 Loops 1-5 (matching, recruiter triage,
-// engagement, response, and submittal-handoff).
+// selection, response, and submittal-handoff).
 //
 // Eleven-state enumeration per Group 2 §2.3b Part 2 Loops 1-5 verbatim
 // (per M5 PR-1 Directive Amendment v1.1 §2; supersedes the audit /
@@ -21,7 +21,7 @@
 //   submitted.
 //
 // Default state `surfaced` per Loop 1 (`null -> surfaced -> evaluated` —
-// matching engine creating an engagement row writes `surfaced`).
+// matching engine creating an selection row writes `surfaced`).
 //
 // Column-scoped immutability per Group 2 §2.3b Loops 1-5 + M5 PR-1
 // Directive Amendment v1.1 §3 is enforced at the database layer by a
@@ -30,26 +30,26 @@
 //   2) rejects any state transition not in the ten-entry legal matrix.
 // Mechanism precedent: examination TalentJobExamination column-scoped
 // trigger (M3 PR-1, lifecycle_state). Evidence whole-row precedent does
-// not apply because the engagement entity has a mutable `state` column.
+// not apply because the selection entity has a mutable `state` column.
 //
 // Cross-schema UUID references (Architecture §7.3 — UUID-only, no FK):
 //   - tenant_id: tenant replication per §7.2.
 //   - talent_id: references talent_record.TalentRecord.id (the tenant-scoped
 //     ATS heart, post-ADR-0016; was Core talent.Talent before the Core-as-
-//     index realignment). 4e-engagement-key made this BEHAVIOURALLY true:
-//     createEngagement now validates talent_id against TalentRecord (not the
+//     index realignment). 4e-selection-key made this BEHAVIOURALLY true:
+//     createSelection now validates talent_id against TalentRecord (not the
 //     Core overlay), so the column holds a TalentRecord.id — the comment is
 //     no longer aspirational (4c re-pointed the comment; 4e the behaviour).
 //   - requisition_id: references job-domain.Requisition (M3 PR-4).
 //   - examination_id: nullable references
-//     examination.TalentJobExamination (M3 PR-1; engagement may exist
+//     examination.TalentJobExamination (M3 PR-1; selection may exist
 //     before examination is computed; pin-verify lands at M5 PR-8).
-// Write-path application-layer validators land at M5 PR-3 (engagement-
+// Write-path application-layer validators land at M5 PR-3 (selection-
 // creation write path); PR-1 ships read-only.
 //
-// No write methods are exposed on the EngagementRepository at PR-1 —
+// No write methods are exposed on the SelectionRepository at PR-1 —
 // belt-and-suspenders alongside the column-scoped database trigger
-// (per Directive v1.0 Ruling 3). Write methods (createEngagement,
+// (per Directive v1.0 Ruling 3). Write methods (createSelection,
 // transitionState) land with M5 PR-3.
 //
 // No `updated_at` column — only the `state` column is mutable per the
@@ -81,7 +81,7 @@ enum SelectionState {
   @@schema("selection")
 }
 
-// M5 PR-2 — TalentEngagementEvent event-log enum. Four event-type values
+// M5 PR-2 — TalentSelectionEvent event-log enum. Four event-type values
 // per the M5 PR-2 directive §4.1 + Charter v1.2 §4.4 Ruling D event-log
 // scope. Closed-list; future event types added via explicit directive
 // amendments.
@@ -95,7 +95,7 @@ enum SelectionEventType {
   @@schema("selection")
 }
 
-// §2.3b Part 2 Loops 1-5 — TalentJobEngagement (workflow-state entity).
+// §2.3b Part 2 Loops 1-5 — TalentSelection (workflow-state entity).
 // Cross-schema references (`talent_id`, `requisition_id`,
 // `examination_id`) are UUID-only per Architecture §7.3.
 model TalentSelection {
@@ -107,7 +107,7 @@ model TalentSelection {
   // Cross-schema references (§7.3 — UUID-only, no FK).
   talent_id       String  @db.Uuid
   requisition_id  String  @db.Uuid
-  // examination_id: nullable — engagement may exist before examination
+  // examination_id: nullable — selection may exist before examination
   // is computed. Pin-verify logic lands at M5 PR-8.
   examination_id  String? @db.Uuid
 
@@ -120,21 +120,21 @@ model TalentSelection {
   created_at      DateTime @default(now()) @db.Timestamptz(6)
 
   // Lookups: (tenant, talent, requisition) primary lookup (find
-  // engagement for given talent+requisition); (tenant, state) state-
+  // selection for given talent+requisition); (tenant, state) state-
   // based filtering; (tenant, examination_id) examination cross-
   // reference filtering.
   @@index([tenant_id, talent_id, requisition_id])
   @@index([tenant_id, state])
   @@index([tenant_id, examination_id])
 
-  // M5 PR-2 — back-reference for the TalentEngagementEvent intra-schema
+  // M5 PR-2 — back-reference for the TalentSelectionEvent intra-schema
   // FK. Relation-only field; no column added at the DB layer.
   events          TalentSelectionEvent[]
 
   @@schema("selection")
 }
 
-// M6 PR-2 — OutboxEvent (engagement schema). Per Architecture v2.0 §7.6,
+// M6 PR-2 — OutboxEvent (selection schema). Per Architecture v2.0 §7.6,
 // the per-module outbox precedent established by consent (M5 PR-11). Shape
 // mirrors libs/consent.OutboxEvent verbatim — six columns, no
 // aggregate_type/aggregate_id (aggregate identity lives inside
@@ -154,13 +154,13 @@ model OutboxEvent {
   @@schema("selection")
 }
 
-// M5 PR-2 — TalentEngagementEvent event-log entity. Per Charter v1.2 §4.4
-// Ruling D (engagement event-log scope) + M5 PR-2 directive §4.1: an
-// append-only audit log of engagement-side workflow events (state
+// M5 PR-2 — TalentSelectionEvent event-log entity. Per Charter v1.2 §4.4
+// Ruling D (selection event-log scope) + M5 PR-2 directive §4.1: an
+// append-only audit log of selection-side workflow events (state
 // transitions, outreach sends, responses, conversation starts).
 //
-// Cardinality: many events per TalentJobEngagement. Intra-schema FK on
-// engagement_id (both entities live in the `engagement` schema, so
+// Cardinality: many events per TalentSelection. Intra-schema FK on
+// selection_id (both entities live in the `selection` schema, so
 // constraint enforcement is permitted per Architecture §7.3 — UUID-only
 // applies to cross-schema refs).
 //
@@ -174,7 +174,7 @@ model OutboxEvent {
 // Cross-schema references (Architecture §7.3 — UUID-only, no FK):
 //   - tenant_id: tenant replication per §7.2.
 // Intra-schema references (FK permitted per §7.3):
-//   - engagement_id → TalentJobEngagement.id (this schema).
+//   - selection_id → TalentSelection.id (this schema).
 //
 // event_payload is JSONB per §7.4 ("derived snapshots, metadata,
 // evidence summaries" — event-log payloads fall under this scope; the
@@ -185,11 +185,11 @@ model TalentSelectionEvent {
   id              String              @id @db.Uuid
   tenant_id       String              @db.Uuid
 
-  // Intra-schema FK to TalentJobEngagement.
-  engagement_id   String              @db.Uuid
-  engagement TalentSelection @relation(fields: [engagement_id], references: [id])
+  // Intra-schema FK to TalentSelection.
+  selection_id    String              @db.Uuid
+  selection TalentSelection @relation(fields: [selection_id], references: [id])
 
-  // Closed-list event type per the EngagementEventType enum.
+  // Closed-list event type per the SelectionEventType enum.
   event_type      SelectionEventType
 
   // Per-event-type JSONB payload. Shape varies; typed at consumption
@@ -200,10 +200,10 @@ model TalentSelectionEvent {
   // immutable per the absolute-immutability trigger.
   created_at      DateTime            @default(now()) @db.Timestamptz(6)
 
-  // Lookups: (tenant, engagement) primary lookup (events for a given
-  // engagement, tenant-scoped); (engagement, created_at) chronological
-  // event-log read for a given engagement.
-  @@index([tenant_id, engagement_id])
-  @@index([engagement_id, created_at])
+  // Lookups: (tenant, selection) primary lookup (events for a given
+  // selection, tenant-scoped); (selection, created_at) chronological
+  // event-log read for a given selection.
+  @@index([tenant_id, selection_id])
+  @@index([selection_id, created_at])
   @@schema("selection")
 }

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { PrismaService } from '../lib/prisma/prisma.service.js';
 
-// M5 PR-1 §4.6 — F21 verification surface for libs/engagement (the
+// M5 PR-1 §4.6 — F21 verification surface for libs/selection (the
 // eleventh model-bearing PrismaService in the workspace). Confirms the
 // post-PR-17 uniform lazy-validation contract:
 //   (a) construction succeeds when DATABASE_URL is absent (no constructor
@@ -14,7 +14,7 @@ import { PrismaService } from '../lib/prisma/prisma.service.js';
 //
 // Hermetic env save/restore in beforeEach/afterEach so this spec does
 // not leak DATABASE_URL state to sibling tests.
-describe('PrismaService (engagement) — lazy DATABASE_URL validation', () => {
+describe('PrismaService (selection) — lazy DATABASE_URL validation', () => {
   let savedDatabaseUrl: string | undefined;
 
   beforeEach(() => {

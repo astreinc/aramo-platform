@@ -98,7 +98,7 @@ function renderRoleContent(role: RoleContentForPrompt): string {
   const lines: string[] = [`Title: ${role.title}`];
   if (role.role_family) lines.push(`Role family: ${role.role_family}`);
   if (role.seniority_level) lines.push(`Seniority: ${role.seniority_level}`);
-  if (role.job_type) lines.push(`Engagement type: ${role.job_type}`);
+  if (role.job_type) lines.push(`Selection type: ${role.job_type}`);
   if (role.labor_category) lines.push(`Labor category: ${role.labor_category}`);
   if (role.work_arrangement) lines.push(`Work arrangement: ${role.work_arrangement}`);
   if (role.work_authorization) lines.push(`Work authorization: ${role.work_authorization}`);

@@ -69,14 +69,10 @@ const MIGRATIONS = [
   M('libs/evidence/prisma/migrations/20260522090000_init_evidence_model/migration.sql'),
   M('libs/submittal/prisma/migrations/20260523120000_init_submittal_model/migration.sql'),
   M('libs/submittal/prisma/migrations/20260523200000_add_submittal_revoke/migration.sql'),
-  M('libs/selection/prisma/migrations/20260525120000_init_engagement_model/migration.sql'),
-  M('libs/selection/prisma/migrations/20260525150000_add_engagement_event_log/migration.sql'),
-  // M6 PR-2 §3 — engagement + submittal OutboxEvent migrations required
+  M('libs/selection/prisma/migrations/20260525120000_init_selection_model/migration.sql'),
+  // M6 PR-2 §3 — selection + submittal OutboxEvent migrations required
   // because state-transition write methods now emit an in-tx outbox row.
-  M('libs/selection/prisma/migrations/20260531000000_add_outbox_event/migration.sql'),
   // Outreach Draft/Preview Amendment v1.1 §3 — the outreach_drafted enum value.
-  M('libs/selection/prisma/migrations/20260609000000_add_outreach_drafted_event_type/migration.sql'),
-  M('libs/selection/prisma/migrations/20260813120000_t2p2_relocate_engagement_to_selection/migration.sql'),
   M('libs/submittal/prisma/migrations/20260531000000_add_outbox_event/migration.sql'),
   M('libs/submittal/prisma/migrations/20260812120000_t2p1_relocate_submittal_to_submittal_schema/migration.sql'),
   M('libs/ai-draft/prisma/migrations/20260525170000_init/migration.sql'),
@@ -167,7 +163,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Inc-3 PR-3.7 — the global write-freeze interceptor reads identity.Tenant
       // status on every mutation; seed an ACTIVE tenant for each forged tenant_id.
       await ensureWriteFreezeTenant((s) => setup.query(s), TENANT_A);
-      // 4e-engagement-key — engagement.talent_id now references TalentRecord.
+      // 4e-selection-key — selection.talent_id now references TalentRecord.
       await applyTalentRecordMigrations(setup);
 
       // Seed Talent + overlay (TENANT_A only).
@@ -181,8 +177,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
          VALUES ($1, $2, $3, 'self_signup', 'active', NOW())`,
         ['00000000-0000-7fff-8fff-000000000080', TALENT_A, TENANT_A],
       );
-      // 4e-engagement-key — the TalentRecord the create validator resolves
-      // (id == engagement.talent_id, tenant-scoped).
+      // 4e-selection-key — the TalentRecord the create validator resolves
+      // (id == selection.talent_id, tenant-scoped).
       await seedTalentRecord(setup, { id: TALENT_A, tenant_id: TENANT_A });
       // Seed Job + Requisition (TENANT_A).
       await setup.query(
@@ -239,7 +235,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         consumer_type: 'recruiter',
         actor_kind: 'user',
         tenant_id: TENANT_A,
-        // R7 BE-prereq: engagement endpoints now scope-gated +
+        // R7 BE-prereq: selection endpoints now scope-gated +
         // D4b-composed. requisition:read:all bypasses the D4b
         // visibility check so the happy-path tests proceed.
         scopes: ['selection:read', 'selection:write', 'selection:outreach', 'requisition:read:all'],
@@ -315,7 +311,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Reset draft provider behavior so prior test's failure-arrangement
       // doesn't leak forward.
       mutableDraftProvider.next = { kind: 'value' };
-      // Reset engagement + event tables between tests; AI-draft event
+      // Reset selection + event tables between tests; AI-draft event
       // rows accumulate harmlessly across tests.
       await setup.query('TRUNCATE TABLE selection."TalentSelectionEvent" CASCADE');
       await setup.query('TRUNCATE TABLE selection."TalentSelection" CASCADE');
@@ -333,8 +329,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         body: JSON.stringify({ talent_id: TALENT_A, requisition_id: REQ_A }),
       });
       expect(createRes.status).toBe(201);
-      const createBody = (await createRes.json()) as { engagement: { id: string } };
-      const id = createBody.engagement.id;
+      const createBody = (await createRes.json()) as { selection: { id: string } };
+      const id = createBody.selection.id;
       const transition = async (to_state: string): Promise<void> => {
         const r = await fetch(`http://127.0.0.1:${port}/v1/selections/${id}/transitions`, {
           method: 'POST',
@@ -352,19 +348,19 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       return id;
     }
 
-    async function countEvents(engagementId: string): Promise<number> {
+    async function countEvents(selectionId: string): Promise<number> {
       const r = await setup.query<{ count: string }>(
         `SELECT COUNT(*)::text AS count FROM selection."TalentSelectionEvent"
-         WHERE engagement_id = $1::uuid`,
-        [engagementId],
+         WHERE selection_id = $1::uuid`,
+        [selectionId],
       );
       return Number(r.rows[0]?.count ?? 0);
     }
 
-    async function readEngagementState(engagementId: string): Promise<string> {
+    async function readSelectionState(selectionId: string): Promise<string> {
       const r = await setup.query<{ state: string }>(
         `SELECT state::text AS state FROM selection."TalentSelection" WHERE id = $1::uuid`,
-        [engagementId],
+        [selectionId],
       );
       return r.rows[0]?.state ?? '';
     }
@@ -428,18 +424,18 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       };
       expect(draft.draft_event_id).toBeTruthy();
       expect(draft.draft_text).toBeTruthy();
-      expect(await readEngagementState(id)).toBe('engaged');
+      expect(await readSelectionState(id)).toBe('engaged');
       expect((await countEvents(id)) - eventsBefore).toBe(1); // outreach_drafted only
 
       // SEND — delivers, transitions to awaiting_response, +2 events.
       const sendRes = await sendOutreach(id, draft.draft_event_id, { final_text: 'Edited final.' });
       expect(sendRes.status).toBe(200);
       const body = (await sendRes.json()) as {
-        engagement: { state: string };
+        selection: { state: string };
         outreach_event: { event_type: string };
         delivery_id: string;
       };
-      expect(body.engagement.state).toBe('awaiting_response');
+      expect(body.selection.state).toBe('awaiting_response');
       expect(body.outreach_event.event_type).toBe('outreach_sent');
       expect(body.delivery_id).toBeTruthy();
       // Total events: 1 (drafted) + 2 (sent + transition) = 3.
@@ -455,34 +451,34 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     it('DRAFT no-delivery / no-transition proof: drafting leaves state engaged + appends only outreach_drafted + emits no outbox', { timeout: 60_000 }, async () => {
       const id = await createAndAdvanceToEngaged();
       const eventsBefore = await countEvents(id);
-      // Outbox rows for this engagement already exist from the setup
+      // Outbox rows for this selection already exist from the setup
       // transitions (create→evaluated→engaged each emit a state_transition
       // outbox row). DRAFT must add NONE.
-      const outboxForEngagement = async (): Promise<number> => {
+      const outboxForSelection = async (): Promise<number> => {
         const r = await setup.query<{ count: string }>(
           `SELECT COUNT(*)::text AS count FROM selection."OutboxEvent"
-           WHERE event_payload->>'engagement_id' = $1`,
+           WHERE event_payload->>'selection_id' = $1`,
           [id],
         );
         return Number(r.rows[0]?.count ?? 0);
       };
-      const outboxBefore = await outboxForEngagement();
+      const outboxBefore = await outboxForSelection();
 
       const draftRes = await draftOutreach(id);
       expect(draftRes.status).toBe(200);
       // No delivery, no state transition — generation only.
-      expect(await readEngagementState(id)).toBe('engaged');
+      expect(await readSelectionState(id)).toBe('engaged');
       // Exactly one new event, and it is an outreach_drafted (no
       // outreach_sent, no state_transition).
       expect((await countEvents(id)) - eventsBefore).toBe(1);
       const evt = await setup.query<{ event_type: string }>(
         `SELECT event_type::text AS event_type FROM selection."TalentSelectionEvent"
-         WHERE engagement_id = $1::uuid ORDER BY created_at DESC LIMIT 1`,
+         WHERE selection_id = $1::uuid ORDER BY created_at DESC LIMIT 1`,
         [id],
       );
       expect(evt.rows[0]?.event_type).toBe('outreach_drafted');
       // Drafting emitted NO new outbox row.
-      expect(await outboxForEngagement()).toBe(outboxBefore);
+      expect(await outboxForSelection()).toBe(outboxBefore);
     });
 
     it('multi-draft: two DRAFT calls append two outreach_drafted rows; SEND from either succeeds', { timeout: 60_000 }, async () => {
@@ -492,7 +488,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(draft1).not.toBe(draft2);
       const drafted = await setup.query<{ count: string }>(
         `SELECT COUNT(*)::text AS count FROM selection."TalentSelectionEvent"
-         WHERE engagement_id = $1::uuid AND event_type = 'outreach_drafted'`,
+         WHERE selection_id = $1::uuid AND event_type = 'outreach_drafted'`,
         [id],
       );
       expect(Number(drafted.rows[0]?.count ?? 0)).toBe(2);
@@ -534,7 +530,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(body.error?.code).toBe('AI_RATE_LIMITED');
     });
 
-    it('DRAFT illegal state: 422 SELECTION_STATE_INVALID when engagement in surfaced state (gated to engaged)', { timeout: 60_000 }, async () => {
+    it('DRAFT illegal state: 422 SELECTION_STATE_INVALID when selection in surfaced state (gated to engaged)', { timeout: 60_000 }, async () => {
       const createRes = await fetch(`http://127.0.0.1:${port}/v1/selections`, {
         method: 'POST',
         headers: {
@@ -544,8 +540,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         },
         body: JSON.stringify({ talent_id: TALENT_A, requisition_id: REQ_A }),
       });
-      const createBody = (await createRes.json()) as { engagement: { id: string } };
-      const id = createBody.engagement.id;
+      const createBody = (await createRes.json()) as { selection: { id: string } };
+      const id = createBody.selection.id;
 
       const res = await draftOutreach(id);
       expect(res.status).toBe(422);
@@ -561,7 +557,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(body.error?.code).toBe('SELECTION_REFERENCE_NOT_FOUND');
     });
 
-    it('DRAFT NOT_FOUND 404 when engagement does not exist', { timeout: 30_000 }, async () => {
+    it('DRAFT NOT_FOUND 404 when selection does not exist', { timeout: 30_000 }, async () => {
       const res = await draftOutreach('99999999-9999-7999-8999-999999999999');
       expect(res.status).toBe(404);
       const body = (await res.json()) as { error: { code: string } };
@@ -687,7 +683,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // linked back to the draft. drafted_text !== final_text is provable.
       const sentRow = await setup.query<{ event_payload: Record<string, unknown> }>(
         `SELECT event_payload FROM selection."TalentSelectionEvent"
-         WHERE engagement_id = $1::uuid AND event_type = 'outreach_sent' LIMIT 1`,
+         WHERE selection_id = $1::uuid AND event_type = 'outreach_sent' LIMIT 1`,
         [id],
       );
       const sentPayload = sentRow.rows[0]?.event_payload as Record<string, unknown>;

@@ -8,13 +8,13 @@
 // concrete emit-paths land. Casting at the boundary preserves the
 // type-system discipline established for evidence's JSONB columns
 // (libs/evidence/src/lib/dto/talent-job-evidence-package.view.ts) and
-// engagement-event-side (libs/engagement/src/lib/dto/
-// talent-engagement-event.view.ts).
+// selection-event-side (libs/selection/src/lib/dto/
+// talent-selection-event.view.ts).
 //
 // `created_at` is surfaced as a Date — Postgres timestamptz values
 // flow through Prisma as Date instances and the application layer
 // formats to ISO-8601 strings at HTTP-response boundaries (PR-8b2+
-// consumer). Mirrors TalentEngagementEventView.created_at shape.
+// consumer). Mirrors TalentSelectionEventView.created_at shape.
 
 // SubmittalEventTypeValue — closed-list value type mirroring the
 // Prisma SubmittalEventType enum. PR-8b1 ships one value

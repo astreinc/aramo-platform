@@ -1,9 +1,9 @@
 // Per-module Prisma schema for the `submittal` module — M4 PR-3
 // (TalentSubmittalRecord entity foundation + submittal-create endpoint).
 //
-// Schema: `engagement` per Architecture v2.0/v2.1 §7.1 ten-schema list.
-// First model in the engagement schema; subsequent M5 work (engagement
-// state machine, TalentEngagementEvent) lands additional models here.
+// Schema: `selection` per Architecture v2.0/v2.1 §7.1 ten-schema list.
+// First model in the selection schema; subsequent M5 work (selection
+// state machine, TalentSelectionEvent) lands additional models here.
 //
 // Cross-schema references (Architecture §7.3 — UUID-only, no FK):
 //   - evidence_package_id → evidence schema (PR-1's TalentJobEvidencePackage)
@@ -38,12 +38,12 @@ datasource db {
   // `submittal` PG schema exclusively. All Submittal workflow objects
   // (TalentSubmittalRecord, TalentSubmittalEvent, SubmittalState,
   // SubmittalEventType, their immutability trigger functions) were relocated
-  // from the `engagement` schema to `submittal` by the forward migration
+  // from the `selection` schema to `submittal` by the forward migration
   // 20260812120000_t2p1_relocate_submittal_to_submittal_schema. The OutboxEvent
-  // already lived in `submittal`. Lead-Q-PR-8b1-A1's engagement-schema
+  // already lived in `submittal`. Lead-Q-PR-8b1-A1's selection-schema
   // co-location exception is SUPERSEDED for these objects (see
   // Aramo-Supersession-Stamp-PR-8b1-A1-Submittal-Schema-v1_0-LOCKED). Historical
-  // migrations that created the objects in `engagement` are preserved unchanged.
+  // migrations that created the objects in `selection` are preserved unchanged.
   schemas  = ["submittal"]
 }
 
@@ -89,7 +89,7 @@ enum SubmittalState {
 // richer event types (handoff_drafted, ready_for_review_marked,
 // submitted_to_ats_confirmed, confirmed_by_ats) deferred to future
 // consumer PRs. Closed-list; future event types added via explicit
-// directive amendment. Originally created in the engagement PG schema per
+// directive amendment. Originally created in the selection PG schema per
 // Lead-Q-PR-8b1-A1; relocated to the submittal PG schema per T2-P1
 // (alongside TalentSubmittalRecord + SubmittalState).
 enum SubmittalEventType {
@@ -178,8 +178,8 @@ model TalentSubmittalRecord {
 // aggregate_type/aggregate_id (aggregate identity lives inside
 // event_payload). Lives in its own `submittal` PG schema (see datasource
 // comment) — the submittal-prisma module is the only Prisma module that
-// owns that namespace, avoiding the engagement.OutboxEvent collision the
-// engagement-prisma module would otherwise create.
+// owns that namespace, avoiding the selection.OutboxEvent collision the
+// selection-prisma module would otherwise create.
 //
 // Repository surface mirrors the consent precedent: findUnpublishedEvents
 // + markPublished (no insertInTx — emission is inline tx.outboxEvent.create
@@ -199,20 +199,20 @@ model OutboxEvent {
 
 // M5 PR-8b1 — TalentSubmittalEvent event-log entity. Per Q6 HYBRID
 // Lead-ruling: append-only audit log of submittal workflow events.
-// Mirrors libs/engagement TalentEngagementEvent (M5 PR-2) substrate
+// Mirrors libs/selection TalentSelectionEvent (M5 PR-2) substrate
 // shape verbatim — intra-schema FK to TalentSubmittalRecord, JSONB
 // payload, absolute-immutability trigger, append-only repository
 // surface.
 //
 // Cardinality: many events per TalentSubmittalRecord. Intra-schema FK
-// on submittal_id (both entities live in the `engagement` schema, so
+// on submittal_id (both entities live in the `selection` schema, so
 // constraint enforcement is permitted per Architecture §7.3 — UUID-only
 // applies to cross-schema refs).
 //
 // Append-only / absolute-immutability: enforced at the DB layer by a
 // BEFORE UPDATE trigger added in the same migration. Precedent: M3 PR-2
 // TalentConsentEvent + M4 PR-1 TalentJobEvidencePackage + M5 PR-2
-// TalentEngagementEvent absolute-immutability triggers. The repository
+// TalentSelectionEvent absolute-immutability triggers. The repository
 // surface exposes appendEvent (create-only) and 4 read methods; no
 // update/upsert/delete paths.
 //
@@ -226,7 +226,7 @@ model OutboxEvent {
 // <SubmittalStateValue>, ... }` shape (consumer-side typed at PR-8b2+
 // wire-in time per Lead-Q-PR-8b1-B1 deferral).
 model TalentSubmittalEvent {
-  // Identity. UUID v7 generated app-side (PR-2 engagement-event
+  // Identity. UUID v7 generated app-side (PR-2 selection-event
   // precedent — Postgres 17 has no native uuidv7() function).
   id            String                @id @db.Uuid
   tenant_id     String                @db.Uuid
@@ -248,7 +248,7 @@ model TalentSubmittalEvent {
 
   // Lookups: (tenant, submittal) primary lookup (events for a given
   // submittal, tenant-scoped); (submittal, created_at) chronological
-  // event-log read for a given submittal. Mirrors engagement-event
+  // event-log read for a given submittal. Mirrors selection-event
   // index shape per Lead-Q-PR-8b1-A4.
   @@index([tenant_id, submittal_id])
   @@index([submittal_id, created_at])

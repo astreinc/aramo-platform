@@ -6,7 +6,7 @@ import type { TalentRecordRepository } from '@aramo/talent-record';
 
 import {
   SelectionRepository,
-  type CreateEngagementInput,
+  type CreateSelectionInput,
   type DraftOutreachInput,
   type RecordConversationStartedInput,
   type RecordResponseInput,
@@ -33,18 +33,18 @@ function makeSpyLogger(): AramoLogger & { log: ReturnType<typeof vi.fn> } {
 //
 // PR-1 surface: 4 read methods (findById, findByTenantAndId,
 //   findByTenantAndTalent, findByTenantAndRequisition).
-// PR-3 surface: 2 write methods (createEngagement, transitionState).
+// PR-3 surface: 2 write methods (createSelection, transitionState).
 //
 // Vitest mocks PrismaService.talentSelection +
 // .talentSelectionEvent + .$transaction. Cross-schema validator deps
 // (talentRecordRepository, requisitionRepository, examinationRepository) are
 // mocked per-test for the three-pattern validator design (Amendment
 // v1.1 §2). Integration tests against real Postgres + real repositories
-// live in engagement.repository.integration.spec.ts.
+// live in selection.repository.integration.spec.ts.
 //
 // Read-only invariant for read methods (Directive Ruling 3) is still
 // asserted in this spec via the "no write method invoked across any
-// read path" test — even with PR-3's createEngagement / transitionState
+// read path" test — even with PR-3's createSelection / transitionState
 // added to the repository's overall surface, read methods themselves
 // must remain write-free.
 
@@ -53,13 +53,13 @@ const TENANT_B = '22222222-2222-7222-8222-222222222222';
 const TALENT_A = 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa';
 const REQUISITION_A = 'cccccccc-cccc-7ccc-8ccc-cccccccccccc';
 const EXAM_A = 'dddddddd-dddd-7ddd-8ddd-dddddddddddd';
-const ENGAGEMENT_1 = '00000000-0000-7000-8000-000000000001';
-const ENGAGEMENT_2 = '00000000-0000-7000-8000-000000000002';
+const SELECTION_1 = '00000000-0000-7000-8000-000000000001';
+const SELECTION_2 = '00000000-0000-7000-8000-000000000002';
 const EVENT_1 = '00000000-0000-7000-8000-0000eeee0001';
 
 function makeRow(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
-    id: ENGAGEMENT_1,
+    id: SELECTION_1,
     tenant_id: TENANT_A,
     talent_id: TALENT_A,
     requisition_id: REQUISITION_A,
@@ -74,7 +74,7 @@ function makeEventRow(overrides: Record<string, unknown> = {}): Record<string, u
   return {
     id: EVENT_1,
     tenant_id: TENANT_A,
-    engagement_id: ENGAGEMENT_1,
+    selection_id: SELECTION_1,
     event_type: 'state_transition',
     event_payload: { from_state: null, to_state: 'surfaced' },
     created_at: new Date('2026-05-25T10:00:00Z'),
@@ -151,9 +151,9 @@ function makeMockPrisma(): MockPrismaService {
   return prisma;
 }
 
-// 4e-engagement-key — the Pattern-C validator now resolves against
+// 4e-selection-key — the Pattern-C validator now resolves against
 // TalentRecord (talent_id is a TalentRecord.id). findById is the only
-// surface createEngagement touches.
+// surface createSelection touches.
 function makeMockTalentRecordRepo(): TalentRecordRepository & {
   findById: ReturnType<typeof vi.fn>;
 } {
@@ -178,7 +178,7 @@ function makeMockExaminationRepo(): ExaminationRepository & {
   } as unknown as ExaminationRepository & { findById: ReturnType<typeof vi.fn> };
 }
 
-function makeMockEngagementEventRepo(): SelectionEventRepository {
+function makeMockSelectionEventRepo(): SelectionEventRepository {
   return {} as unknown as SelectionEventRepository;
 }
 
@@ -192,7 +192,7 @@ describe('SelectionRepository — read surface (M5 PR-1)', () => {
     logger = makeSpyLogger();
     repo = new SelectionRepository(
       prisma as unknown as PrismaService,
-      makeMockEngagementEventRepo(),
+      makeMockSelectionEventRepo(),
       makeMockTalentRecordRepo(),
       makeMockRequisitionRepo(),
       makeMockExaminationRepo(),
@@ -205,33 +205,33 @@ describe('SelectionRepository — read surface (M5 PR-1)', () => {
     expect(typeof repo.findByTenantAndId).toBe('function');
     expect(typeof repo.findByTenantAndTalent).toBe('function');
     expect(typeof repo.findByTenantAndRequisition).toBe('function');
-    expect(typeof repo.createEngagement).toBe('function');
+    expect(typeof repo.createSelection).toBe('function');
     expect(typeof repo.transitionState).toBe('function');
   });
 
   it('findById hits findUnique and emits hit-event when row exists', async () => {
     prisma.talentSelection.findUnique.mockResolvedValue(makeRow());
-    const view = await repo.findById(ENGAGEMENT_1);
+    const view = await repo.findById(SELECTION_1);
     expect(view).not.toBeNull();
-    expect(view?.id).toBe(ENGAGEMENT_1);
+    expect(view?.id).toBe(SELECTION_1);
     expect(view?.state).toBe('surfaced');
     expect(prisma.talentSelection.findUnique).toHaveBeenCalledTimes(1);
     expect(prisma.talentSelection.findUnique).toHaveBeenCalledWith({
-      where: { id: ENGAGEMENT_1 },
+      where: { id: SELECTION_1 },
     });
     const events = logger.log.mock.calls.map((c) => (c[0] as { event?: string }).event);
-    expect(events).toContain('engagement.findById');
+    expect(events).toContain('selection.findById');
     const logEntry = logger.log.mock.calls[0]?.[0] as {
       event: string;
       hit: boolean;
     };
-    expect(logEntry.event).toBe('engagement.findById');
+    expect(logEntry.event).toBe('selection.findById');
     expect(logEntry.hit).toBe(true);
   });
 
   it('findById returns null and emits miss-event when row absent', async () => {
     prisma.talentSelection.findUnique.mockResolvedValue(null);
-    const view = await repo.findById(ENGAGEMENT_1);
+    const view = await repo.findById(SELECTION_1);
     expect(view).toBeNull();
     const logEntry = logger.log.mock.calls[0]?.[0] as { hit: boolean };
     expect(logEntry.hit).toBe(false);
@@ -241,18 +241,18 @@ describe('SelectionRepository — read surface (M5 PR-1)', () => {
     prisma.talentSelection.findFirst.mockResolvedValue(makeRow());
     const view = await repo.findByTenantAndId({
       tenant_id: TENANT_A,
-      id: ENGAGEMENT_1,
+      id: SELECTION_1,
     });
     expect(view).not.toBeNull();
     expect(prisma.talentSelection.findFirst).toHaveBeenCalledWith({
-      where: { tenant_id: TENANT_A, id: ENGAGEMENT_1 },
+      where: { tenant_id: TENANT_A, id: SELECTION_1 },
     });
   });
 
   it('findByTenantAndTalent returns rows sorted DESC and emits result_count', async () => {
     const rows = [
-      makeRow({ id: ENGAGEMENT_2, created_at: new Date('2026-05-25T11:00:00Z') }),
-      makeRow({ id: ENGAGEMENT_1, created_at: new Date('2026-05-25T10:00:00Z') }),
+      makeRow({ id: SELECTION_2, created_at: new Date('2026-05-25T11:00:00Z') }),
+      makeRow({ id: SELECTION_1, created_at: new Date('2026-05-25T10:00:00Z') }),
     ];
     prisma.talentSelection.findMany.mockResolvedValue(rows);
     const views = await repo.findByTenantAndTalent({
@@ -286,8 +286,8 @@ describe('SelectionRepository — read surface (M5 PR-1)', () => {
     prisma.talentSelection.findFirst.mockResolvedValue(makeRow());
     prisma.talentSelection.findMany.mockResolvedValue([makeRow()]);
 
-    await repo.findById(ENGAGEMENT_1);
-    await repo.findByTenantAndId({ tenant_id: TENANT_A, id: ENGAGEMENT_1 });
+    await repo.findById(SELECTION_1);
+    await repo.findByTenantAndId({ tenant_id: TENANT_A, id: SELECTION_1 });
     await repo.findByTenantAndTalent({ tenant_id: TENANT_A, talent_id: TALENT_A });
     await repo.findByTenantAndRequisition({
       tenant_id: TENANT_A,
@@ -321,7 +321,7 @@ describe('SelectionRepository — read surface (M5 PR-1)', () => {
   });
 });
 
-describe('SelectionRepository.createEngagement (M5 PR-3 unit)', () => {
+describe('SelectionRepository.createSelection (M5 PR-3 unit)', () => {
   let prisma: MockPrismaService;
   let talentRecordRepo: ReturnType<typeof makeMockTalentRecordRepo>;
   let requisitionRepo: ReturnType<typeof makeMockRequisitionRepo>;
@@ -329,8 +329,8 @@ describe('SelectionRepository.createEngagement (M5 PR-3 unit)', () => {
   let logger: ReturnType<typeof makeSpyLogger>;
   let repo: SelectionRepository;
 
-  const validInput: CreateEngagementInput = {
-    id: ENGAGEMENT_1,
+  const validInput: CreateSelectionInput = {
+    id: SELECTION_1,
     event_id: EVENT_1,
     tenant_id: TENANT_A,
     talent_id: TALENT_A,
@@ -346,7 +346,7 @@ describe('SelectionRepository.createEngagement (M5 PR-3 unit)', () => {
     logger = makeSpyLogger();
     repo = new SelectionRepository(
       prisma as unknown as PrismaService,
-      makeMockEngagementEventRepo(),
+      makeMockSelectionEventRepo(),
       talentRecordRepo,
       requisitionRepo,
       examRepo,
@@ -372,9 +372,9 @@ describe('SelectionRepository.createEngagement (M5 PR-3 unit)', () => {
 
   it('happy path — all 3 validators pass + atomic transaction succeeds', async () => {
     arrangeAllValid();
-    const result = await repo.createEngagement(validInput);
-    expect(result.engagement.id).toBe(ENGAGEMENT_1);
-    expect(result.engagement.state).toBe('surfaced');
+    const result = await repo.createSelection(validInput);
+    expect(result.selection.id).toBe(SELECTION_1);
+    expect(result.selection.state).toBe('surfaced');
     expect(result.event.id).toBe(EVENT_1);
     expect(result.event.event_type).toBe('state_transition');
     expect(result.event.event_payload).toEqual({ from_state: null, to_state: 'surfaced' });
@@ -391,19 +391,19 @@ describe('SelectionRepository.createEngagement (M5 PR-3 unit)', () => {
     expect(prisma.$transaction).toHaveBeenCalledTimes(1);
 
     const events = logger.log.mock.calls.map((c) => (c[0] as { event: string }).event);
-    expect(events).toContain('engagement.create_started');
-    expect(events).toContain('engagement.created');
+    expect(events).toContain('selection.create_started');
+    expect(events).toContain('selection.created');
   });
 
   it('Pattern C refusal — TalentRecord not in tenant (null) → SELECTION_REFERENCE_NOT_FOUND 422 with field=talent_id', async () => {
     arrangeAllValid();
     talentRecordRepo.findById.mockResolvedValue(null);
-    await expect(repo.createEngagement(validInput)).rejects.toMatchObject({
+    await expect(repo.createSelection(validInput)).rejects.toMatchObject({
       code: 'SELECTION_REFERENCE_NOT_FOUND',
       statusCode: 422,
     });
     try {
-      await repo.createEngagement(validInput);
+      await repo.createSelection(validInput);
     } catch (err) {
       expect(err).toBeInstanceOf(AramoError);
       const e = err as AramoError;
@@ -417,12 +417,12 @@ describe('SelectionRepository.createEngagement (M5 PR-3 unit)', () => {
   it('Pattern A refusal — requisition null → SELECTION_REFERENCE_NOT_FOUND 422 with field=requisition_id', async () => {
     arrangeAllValid();
     requisitionRepo.findStatusById.mockResolvedValue(null);
-    await expect(repo.createEngagement(validInput)).rejects.toMatchObject({
+    await expect(repo.createSelection(validInput)).rejects.toMatchObject({
       code: 'SELECTION_REFERENCE_NOT_FOUND',
       statusCode: 422,
     });
     try {
-      await repo.createEngagement(validInput);
+      await repo.createSelection(validInput);
     } catch (err) {
       const e = err as AramoError;
       expect(e.context.details?.['field']).toBe('requisition_id');
@@ -435,12 +435,12 @@ describe('SelectionRepository.createEngagement (M5 PR-3 unit)', () => {
     // T1-a — findStatusById is tenant-scoped, so a requisition that exists only
     // in another tenant returns null for this tenant (the cross-tenant refusal).
     requisitionRepo.findStatusById.mockResolvedValue(null);
-    await expect(repo.createEngagement(validInput)).rejects.toMatchObject({
+    await expect(repo.createSelection(validInput)).rejects.toMatchObject({
       code: 'SELECTION_REFERENCE_NOT_FOUND',
       statusCode: 422,
     });
     try {
-      await repo.createEngagement(validInput);
+      await repo.createSelection(validInput);
     } catch (err) {
       const e = err as AramoError;
       expect(e.context.details?.['field']).toBe('requisition_id');
@@ -451,12 +451,12 @@ describe('SelectionRepository.createEngagement (M5 PR-3 unit)', () => {
   it('Pattern B refusal — examination null → SELECTION_REFERENCE_NOT_FOUND 422 with field=examination_id', async () => {
     arrangeAllValid();
     examRepo.findById.mockResolvedValue(null);
-    await expect(repo.createEngagement(validInput)).rejects.toMatchObject({
+    await expect(repo.createSelection(validInput)).rejects.toMatchObject({
       code: 'SELECTION_REFERENCE_NOT_FOUND',
       statusCode: 422,
     });
     try {
-      await repo.createEngagement(validInput);
+      await repo.createSelection(validInput);
     } catch (err) {
       const e = err as AramoError;
       expect(e.context.details?.['field']).toBe('examination_id');
@@ -467,7 +467,7 @@ describe('SelectionRepository.createEngagement (M5 PR-3 unit)', () => {
   it('Pattern B refusal — examination cross-tenant → SELECTION_REFERENCE_NOT_FOUND 422', async () => {
     arrangeAllValid();
     examRepo.findById.mockResolvedValue({ id: EXAM_A, tenant_id: TENANT_B });
-    await expect(repo.createEngagement(validInput)).rejects.toMatchObject({
+    await expect(repo.createSelection(validInput)).rejects.toMatchObject({
       code: 'SELECTION_REFERENCE_NOT_FOUND',
       statusCode: 422,
     });
@@ -476,23 +476,23 @@ describe('SelectionRepository.createEngagement (M5 PR-3 unit)', () => {
 
   it('Pattern B skipped — examination_id omitted → no examinationRepository.findById call', async () => {
     arrangeAllValid();
-    const inputWithoutExam: CreateEngagementInput = { ...validInput, examination_id: null };
+    const inputWithoutExam: CreateSelectionInput = { ...validInput, examination_id: null };
     prisma.$transaction.mockResolvedValue([
       makeRow({ examination_id: null }),
       makeEventRow(),
     ]);
-    const result = await repo.createEngagement(inputWithoutExam);
-    expect(result.engagement.examination_id).toBeNull();
+    const result = await repo.createSelection(inputWithoutExam);
+    expect(result.selection.examination_id).toBeNull();
     expect(examRepo.findById).not.toHaveBeenCalled();
     expect(prisma.$transaction).toHaveBeenCalledTimes(1);
   });
 
-  it('atomic transaction — $transaction called with engagement.create + event.create operations', async () => {
+  it('atomic transaction — $transaction called with selection.create + event.create operations', async () => {
     arrangeAllValid();
-    await repo.createEngagement(validInput);
+    await repo.createSelection(validInput);
     expect(prisma.$transaction).toHaveBeenCalledTimes(1);
     // The first argument is an array of two prisma operations
-    // (engagement.create + event.create). Mocks return the operation
+    // (selection.create + event.create). Mocks return the operation
     // objects themselves; we assert that both create methods were
     // called to produce those operation arguments.
     expect(prisma.talentSelection.create).toHaveBeenCalledTimes(1);
@@ -501,8 +501,8 @@ describe('SelectionRepository.createEngagement (M5 PR-3 unit)', () => {
 
   it('VALIDATION_ERROR on malformed UUID input', async () => {
     arrangeAllValid();
-    const badInput: CreateEngagementInput = { ...validInput, id: 'not-a-uuid' };
-    await expect(repo.createEngagement(badInput)).rejects.toMatchObject({
+    const badInput: CreateSelectionInput = { ...validInput, id: 'not-a-uuid' };
+    await expect(repo.createSelection(badInput)).rejects.toMatchObject({
       code: 'VALIDATION_ERROR',
       statusCode: 400,
     });
@@ -516,7 +516,7 @@ describe('SelectionRepository.transitionState (M5 PR-3 unit)', () => {
   let repo: SelectionRepository;
 
   const validInput: TransitionStateInput = {
-    engagement_id: ENGAGEMENT_1,
+    selection_id: SELECTION_1,
     event_id: EVENT_1,
     tenant_id: TENANT_A,
     to_state: 'evaluated',
@@ -527,7 +527,7 @@ describe('SelectionRepository.transitionState (M5 PR-3 unit)', () => {
     logger = makeSpyLogger();
     repo = new SelectionRepository(
       prisma as unknown as PrismaService,
-      makeMockEngagementEventRepo(),
+      makeMockSelectionEventRepo(),
       makeMockTalentRecordRepo(),
       makeMockRequisitionRepo(),
       makeMockExaminationRepo(),
@@ -542,20 +542,20 @@ describe('SelectionRepository.transitionState (M5 PR-3 unit)', () => {
       makeEventRow({ event_payload: { from_state: 'surfaced', to_state: 'evaluated' } }),
     ]);
     const result = await repo.transitionState(validInput);
-    expect(result.engagement.state).toBe('evaluated');
+    expect(result.selection.state).toBe('evaluated');
     expect(result.event.event_payload).toEqual({
       from_state: 'surfaced',
       to_state: 'evaluated',
     });
     expect(prisma.talentSelection.update).toHaveBeenCalledWith({
-      where: { id: ENGAGEMENT_1 },
+      where: { id: SELECTION_1 },
       data: { state: 'evaluated' },
     });
     expect(prisma.talentSelectionEvent.create).toHaveBeenCalledTimes(1);
     expect(prisma.$transaction).toHaveBeenCalledTimes(1);
   });
 
-  it('engagement-not-found → NOT_FOUND 404; no $transaction', async () => {
+  it('selection-not-found → NOT_FOUND 404; no $transaction', async () => {
     prisma.talentSelection.findFirst.mockResolvedValue(null);
     await expect(repo.transitionState(validInput)).rejects.toMatchObject({
       code: 'NOT_FOUND',
@@ -589,8 +589,8 @@ describe('SelectionRepository.transitionState (M5 PR-3 unit)', () => {
     ]);
     await repo.transitionState(validInput);
     const events = logger.log.mock.calls.map((c) => (c[0] as { event: string }).event);
-    expect(events).toContain('engagement.transition_started');
-    expect(events).toContain('engagement.transitioned');
+    expect(events).toContain('selection.transition_started');
+    expect(events).toContain('selection.transitioned');
   });
 
   it('emits transition_refused on illegal transition', async () => {
@@ -598,7 +598,7 @@ describe('SelectionRepository.transitionState (M5 PR-3 unit)', () => {
     const badInput: TransitionStateInput = { ...validInput, to_state: 'submitted' };
     await expect(repo.transitionState(badInput)).rejects.toBeInstanceOf(AramoError);
     const events = logger.log.mock.calls.map((c) => (c[0] as { event: string }).event);
-    expect(events).toContain('engagement.transition_refused');
+    expect(events).toContain('selection.transition_refused');
   });
 });
 
@@ -611,7 +611,7 @@ describe('SelectionRepository.draftOutreach (Outreach Draft/Preview unit)', () =
   const DRAFT_EVENT_ID = '00000000-0000-7000-8000-0000dddd0001';
 
   const validInput: DraftOutreachInput = {
-    engagement_id: ENGAGEMENT_1,
+    selection_id: SELECTION_1,
     tenant_id: TENANT_A,
     draft_event_id: DRAFT_EVENT_ID,
     drafted_payload: {
@@ -631,7 +631,7 @@ describe('SelectionRepository.draftOutreach (Outreach Draft/Preview unit)', () =
     logger = makeSpyLogger();
     repo = new SelectionRepository(
       prisma as unknown as PrismaService,
-      makeMockEngagementEventRepo(),
+      makeMockSelectionEventRepo(),
       makeMockTalentRecordRepo(),
       makeMockRequisitionRepo(),
       makeMockExaminationRepo(),
@@ -639,7 +639,7 @@ describe('SelectionRepository.draftOutreach (Outreach Draft/Preview unit)', () =
     );
   });
 
-  it('happy path — engaged engagement; appends ONE outreach_drafted event; NO $transaction, NO state update, NO outbox', async () => {
+  it('happy path — engaged selection; appends ONE outreach_drafted event; NO $transaction, NO state update, NO outbox', async () => {
     prisma.talentSelection.findFirst.mockResolvedValue(makeRow({ state: 'engaged' }));
     prisma.talentSelectionEvent.create.mockResolvedValue(
       makeEventRow({
@@ -658,7 +658,7 @@ describe('SelectionRepository.draftOutreach (Outreach Draft/Preview unit)', () =
     expect(prisma.outboxEvent.create).not.toHaveBeenCalled();
   });
 
-  it('NOT_FOUND 404 if engagement absent; no event append', async () => {
+  it('NOT_FOUND 404 if selection absent; no event append', async () => {
     prisma.talentSelection.findFirst.mockResolvedValue(null);
     await expect(repo.draftOutreach(validInput)).rejects.toMatchObject({
       code: 'NOT_FOUND',
@@ -706,7 +706,7 @@ describe('SelectionRepository.sendOutreach (Outreach Draft/Preview unit)', () =>
   const DRAFT_EVENT_ID = '00000000-0000-7000-8000-0000dddd0001';
 
   const validInput: SendOutreachInput = {
-    engagement_id: ENGAGEMENT_1,
+    selection_id: SELECTION_1,
     tenant_id: TENANT_A,
     source_draft_event_id: DRAFT_EVENT_ID,
     outreach_event_id: OUTREACH_EVENT_ID,
@@ -729,7 +729,7 @@ describe('SelectionRepository.sendOutreach (Outreach Draft/Preview unit)', () =>
     return {
       id: DRAFT_EVENT_ID,
       tenant_id: TENANT_A,
-      engagement_id: ENGAGEMENT_1,
+      selection_id: SELECTION_1,
       event_type: 'outreach_drafted',
       event_payload: { draft_text: 'mocked draft body' },
       created_at: new Date('2026-05-25T10:00:30.000Z'),
@@ -769,13 +769,13 @@ describe('SelectionRepository.sendOutreach (Outreach Draft/Preview unit)', () =>
       }),
     ]);
     const result = await repo.sendOutreach(validInput);
-    expect(result.engagement.state).toBe('awaiting_response');
+    expect(result.selection.state).toBe('awaiting_response');
     expect(result.outreach_event.event_type).toBe('outreach_sent');
     expect(result.outreach_event.event_payload).toEqual(validInput.outreach_payload);
     expect(prisma.$transaction).toHaveBeenCalledTimes(1);
   });
 
-  it('NOT_FOUND 404 if engagement absent; no draft-ref lookup; no $transaction', async () => {
+  it('NOT_FOUND 404 if selection absent; no draft-ref lookup; no $transaction', async () => {
     prisma.talentSelection.findFirst.mockResolvedValue(null);
     await expect(repo.sendOutreach(validInput)).rejects.toMatchObject({
       code: 'NOT_FOUND',
@@ -818,7 +818,7 @@ describe('SelectionRepository.sendOutreach (Outreach Draft/Preview unit)', () =>
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
-  it('atomic transaction shape — engagement.update + outreach_sent + state_transition creates', async () => {
+  it('atomic transaction shape — selection.update + outreach_sent + state_transition creates', async () => {
     prisma.talentSelection.findFirst.mockResolvedValue(makeRow({ state: 'engaged' }));
     prisma.$transaction.mockResolvedValue([
       makeRow({ state: 'awaiting_response' }),
@@ -827,7 +827,7 @@ describe('SelectionRepository.sendOutreach (Outreach Draft/Preview unit)', () =>
     ]);
     await repo.sendOutreach(validInput);
     expect(prisma.talentSelection.update).toHaveBeenCalledWith({
-      where: { id: ENGAGEMENT_1 },
+      where: { id: SELECTION_1 },
       data: { state: 'awaiting_response' },
     });
     expect(prisma.talentSelectionEvent.create).toHaveBeenCalledTimes(2);
@@ -842,8 +842,8 @@ describe('SelectionRepository.sendOutreach (Outreach Draft/Preview unit)', () =>
     ]);
     await repo.sendOutreach(validInput);
     const events = logger.log.mock.calls.map((c) => (c[0] as { event: string }).event);
-    expect(events).toContain('engagement.outreach_started');
-    expect(events).toContain('engagement.outreach_sent');
+    expect(events).toContain('selection.outreach_started');
+    expect(events).toContain('selection.outreach_sent');
   });
 });
 
@@ -860,7 +860,7 @@ describe('SelectionRepository.recordResponse (M5 PR-7 unit)', () => {
   const RECRUITER_SUB = '00000000-0000-7000-8000-0000aabbccdd';
 
   const validInput: RecordResponseInput = {
-    engagement_id: ENGAGEMENT_1,
+    selection_id: SELECTION_1,
     tenant_id: TENANT_A,
     response_event_id: RESPONSE_EVENT_ID,
     transition_event_id: TRANSITION_EVENT_ID,
@@ -875,7 +875,7 @@ describe('SelectionRepository.recordResponse (M5 PR-7 unit)', () => {
     return {
       id: OUTREACH_REF_ID,
       tenant_id: TENANT_A,
-      engagement_id: ENGAGEMENT_1,
+      selection_id: SELECTION_1,
       event_type: 'outreach_sent',
       event_payload: { delivery_channel: 'email' },
       created_at: new Date('2026-05-25T10:01:00.000Z'),
@@ -916,7 +916,7 @@ describe('SelectionRepository.recordResponse (M5 PR-7 unit)', () => {
       }),
     ]);
     const result = await repo.recordResponse(validInput);
-    expect(result.engagement.state).toBe('responded');
+    expect(result.selection.state).toBe('responded');
     expect(result.response_event.event_type).toBe('response_received');
     expect(result.response_event.event_payload).toEqual(validInput.response_payload);
     expect(result.transition_event.event_payload).toEqual({
@@ -925,13 +925,13 @@ describe('SelectionRepository.recordResponse (M5 PR-7 unit)', () => {
     });
     expect(prisma.$transaction).toHaveBeenCalledTimes(1);
     expect(prisma.talentSelection.update).toHaveBeenCalledWith({
-      where: { id: ENGAGEMENT_1 },
+      where: { id: SELECTION_1 },
       data: { state: 'responded' },
     });
     expect(prisma.talentSelectionEvent.create).toHaveBeenCalledTimes(2);
   });
 
-  it('NOT_FOUND 404 if engagement absent; no cross-event lookup; no $transaction', async () => {
+  it('NOT_FOUND 404 if selection absent; no cross-event lookup; no $transaction', async () => {
     prisma.talentSelection.findFirst.mockResolvedValue(null);
     await expect(repo.recordResponse(validInput)).rejects.toMatchObject({
       code: 'NOT_FOUND',
@@ -957,11 +957,11 @@ describe('SelectionRepository.recordResponse (M5 PR-7 unit)', () => {
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
-  it('SELECTION_REFERENCE_NOT_FOUND 422 if cross-event ref has wrong engagement_id', async () => {
+  it('SELECTION_REFERENCE_NOT_FOUND 422 if cross-event ref has wrong selection_id', async () => {
     prisma.talentSelection.findFirst.mockResolvedValue(makeRow({ state: 'awaiting_response' }));
     eventRepoFindByTenantAndId.mockResolvedValue({
       ...validOutreachRefRow(),
-      engagement_id: '00000000-0000-7000-8000-0000eeee9999', // different engagement
+      selection_id: '00000000-0000-7000-8000-0000eeee9999', // different selection
     });
     await expect(repo.recordResponse(validInput)).rejects.toMatchObject({
       code: 'SELECTION_REFERENCE_NOT_FOUND',
@@ -1000,7 +1000,7 @@ describe('SelectionRepository.recordResponse (M5 PR-7 unit)', () => {
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
-  it('atomic transaction shape — $transaction called with engagement.update + response_received event.create + state_transition event.create', async () => {
+  it('atomic transaction shape — $transaction called with selection.update + response_received event.create + state_transition event.create', async () => {
     prisma.talentSelection.findFirst.mockResolvedValue(makeRow({ state: 'awaiting_response' }));
     eventRepoFindByTenantAndId.mockResolvedValue(validOutreachRefRow());
     prisma.$transaction.mockResolvedValue([
@@ -1022,7 +1022,7 @@ describe('SelectionRepository.recordResponse (M5 PR-7 unit)', () => {
 // SELECTION_REFERENCE_NOT_FOUND refusal path doesn't exist on this
 // surface. Tests cover the 4 internal repository outcomes:
 //   1. happy: responded → in_conversation, 3-write transaction succeeds.
-//   2. NOT_FOUND: engagement absent.
+//   2. NOT_FOUND: selection absent.
 //   3. SELECTION_STATE_INVALID: includes natural-key dedup
 //      (in_conversation → in_conversation refused by canTransition).
 //   4. atomic transaction shape.
@@ -1037,7 +1037,7 @@ describe('SelectionRepository.recordConversationStarted (M5 PR-8a unit)', () => 
   const CONVERSATION_STARTED_AT = '2026-05-25T12:00:00.000Z';
 
   const validInput: RecordConversationStartedInput = {
-    engagement_id: ENGAGEMENT_1,
+    selection_id: SELECTION_1,
     tenant_id: TENANT_A,
     conversation_event_id: CONVERSATION_EVENT_ID,
     transition_event_id: TRANSITION_EVENT_ID,
@@ -1052,7 +1052,7 @@ describe('SelectionRepository.recordConversationStarted (M5 PR-8a unit)', () => 
     logger = makeSpyLogger();
     repo = new SelectionRepository(
       prisma as unknown as PrismaService,
-      makeMockEngagementEventRepo(),
+      makeMockSelectionEventRepo(),
       makeMockTalentRecordRepo(),
       makeMockRequisitionRepo(),
       makeMockExaminationRepo(),
@@ -1076,7 +1076,7 @@ describe('SelectionRepository.recordConversationStarted (M5 PR-8a unit)', () => 
       }),
     ]);
     const result = await repo.recordConversationStarted(validInput);
-    expect(result.engagement.state).toBe('in_conversation');
+    expect(result.selection.state).toBe('in_conversation');
     expect(result.conversation_event.event_type).toBe('conversation_started');
     expect(result.conversation_event.event_payload).toEqual(validInput.conversation_payload);
     expect(result.transition_event.event_payload).toEqual({
@@ -1085,13 +1085,13 @@ describe('SelectionRepository.recordConversationStarted (M5 PR-8a unit)', () => 
     });
     expect(prisma.$transaction).toHaveBeenCalledTimes(1);
     expect(prisma.talentSelection.update).toHaveBeenCalledWith({
-      where: { id: ENGAGEMENT_1 },
+      where: { id: SELECTION_1 },
       data: { state: 'in_conversation' },
     });
     expect(prisma.talentSelectionEvent.create).toHaveBeenCalledTimes(2);
   });
 
-  it('NOT_FOUND 404 if engagement absent; no $transaction', async () => {
+  it('NOT_FOUND 404 if selection absent; no $transaction', async () => {
     prisma.talentSelection.findFirst.mockResolvedValue(null);
     await expect(repo.recordConversationStarted(validInput)).rejects.toMatchObject({
       code: 'NOT_FOUND',
@@ -1131,7 +1131,7 @@ describe('SelectionRepository.recordConversationStarted (M5 PR-8a unit)', () => 
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
-  it('atomic transaction shape — $transaction called with engagement.update + conversation_started event.create + state_transition event.create (3 ops, correct order)', async () => {
+  it('atomic transaction shape — $transaction called with selection.update + conversation_started event.create + state_transition event.create (3 ops, correct order)', async () => {
     prisma.talentSelection.findFirst.mockResolvedValue(makeRow({ state: 'responded' }));
     prisma.$transaction.mockResolvedValue([
       makeRow({ state: 'in_conversation' }),

@@ -15,7 +15,7 @@ CREATE TABLE "evidence"."TalentJobEvidencePackage" (
     "capability_summary" JSONB NOT NULL,
     "match_justification" JSONB NOT NULL,
     "recruiter_contribution" JSONB NOT NULL,
-    "engagement_event_refs" JSONB NOT NULL DEFAULT '[]'::jsonb,
+    "selection_event_refs" JSONB NOT NULL DEFAULT '[]'::jsonb,
     "created_at" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "TalentJobEvidencePackage_pkey" PRIMARY KEY ("id")

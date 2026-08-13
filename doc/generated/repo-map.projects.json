@@ -1,5 +1,5 @@
 {
-  "aliasTotals": { "apps": 2, "libs": 61, "total": 63 },
+  "aliasTotals": { "apps": 2, "libs": 60, "total": 62 },
   "aliases": {
     "@aramo/activity": "libs/activity/src/index.ts",
     "@aramo/ai-draft": "libs/ai-draft/src/index.ts",
@@ -19,7 +19,6 @@
     "@aramo/company": "libs/company/src/index.ts",
     "@aramo/consent": "libs/consent/src/index.ts",
     "@aramo/contact": "libs/contact/src/index.ts",
-    "@aramo/engagement": "libs/engagement/src/index.ts",
     "@aramo/entitlement": "libs/entitlement/src/index.ts",
     "@aramo/events": "libs/events/src/index.ts",
     "@aramo/evidence": "libs/evidence/src/index.ts",
@@ -290,16 +289,6 @@
       "QUIET_DAYS",
       "RELATIONSHIP_ROLE_VALUES",
       "assertContactVocab"
-    ],
-    "@aramo/engagement": [
-      "CreateEngagementRequestDto",
-      "EngagementController",
-      "EngagementModule",
-      "OutreachDraftRequestDto",
-      "OutreachSendRequestDto",
-      "RecordConversationStartedRequestDto",
-      "RecordResponseRequestDto",
-      "TransitionEngagementRequestDto"
     ],
     "@aramo/entitlement": [
       "CAPABILITY_VALUES",
@@ -719,15 +708,22 @@
       "isSavedListItemType"
     ],
     "@aramo/selection": [
+      "CreateSelectionRequestDto",
       "DELIVERY_PROVIDER_TOKEN",
+      "OutreachDraftRequestDto",
+      "OutreachSendRequestDto",
       "PrismaService",
+      "RecordConversationStartedRequestDto",
+      "RecordResponseRequestDto",
       "SELECTION_EVENT_TYPE_VALUES",
       "SELECTION_STATE_VALUES",
+      "SelectionController",
       "SelectionEventRepository",
       "SelectionModule",
       "SelectionOutboxRepository",
       "SelectionRepository",
       "SendStubDeliveryProvider",
+      "TransitionSelectionRequestDto",
       "canTransition"
     ],
     "@aramo/settings": [
@@ -911,18 +907,18 @@
     "@aramo/ai-draft": [
       {
         "excludedBy": "src/tests/**/*",
-        "from": "libs/engagement/src/tests/engagement.controller.spec.ts",
-        "project": "engagement",
-        "status": "excluded"
-      },
-      { "project": "engagement", "status": "production" },
-      {
-        "excludedBy": "src/tests/**/*",
         "from": "libs/requisition/src/tests/requisition-intake.service.spec.ts",
         "project": "requisition",
         "status": "excluded"
       },
       { "project": "requisition", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/selection/src/tests/selection.controller.spec.ts",
+        "project": "selection",
+        "status": "excluded"
+      },
+      { "project": "selection", "status": "production" },
       { "project": "talent-extraction", "status": "production" }
     ],
     "@aramo/api": [
@@ -1031,13 +1027,6 @@
       { "project": "contact", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
-        "from": "libs/engagement/src/tests/engagement.controller.spec.ts",
-        "project": "engagement",
-        "status": "excluded"
-      },
-      { "project": "engagement", "status": "production" },
-      {
-        "excludedBy": "src/tests/**/*",
         "from": "libs/entitlement/src/tests/entitlement.guard.spec.ts",
         "project": "entitlement",
         "status": "excluded"
@@ -1102,6 +1091,13 @@
       },
       { "project": "requisition", "status": "production" },
       { "project": "saved-list", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/selection/src/tests/selection.controller.spec.ts",
+        "project": "selection",
+        "status": "excluded"
+      },
+      { "project": "selection", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/submittal/src/tests/submittal.controller.unit.spec.ts",
@@ -1364,7 +1360,6 @@
       { "project": "company", "status": "production" },
       { "project": "consent", "status": "production" },
       { "project": "contact", "status": "production" },
-      { "project": "engagement", "status": "production" },
       { "project": "export", "status": "production" },
       { "project": "identity", "status": "production" },
       { "project": "import", "status": "production" },
@@ -1392,6 +1387,7 @@
       { "project": "reporting", "status": "production" },
       { "project": "requisition", "status": "production" },
       { "project": "saved-list", "status": "production" },
+      { "project": "selection", "status": "production" },
       { "project": "submittal", "status": "production" },
       { "project": "talent-record", "status": "production" },
       { "project": "task", "status": "production" }
@@ -1682,13 +1678,6 @@
         "status": "excluded"
       },
       { "project": "contact", "status": "production" },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "libs/engagement/src/tests/engagement.controller.spec.ts",
-        "project": "engagement",
-        "status": "excluded"
-      },
-      { "project": "engagement", "status": "production" },
       { "project": "entitlement", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
@@ -1932,6 +1921,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/selection/src/tests/selection.controller.spec.ts",
+        "project": "selection",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/selection/src/tests/selection.repository.integration.spec.ts",
         "project": "selection",
         "status": "excluded"
@@ -2049,13 +2044,6 @@
       { "project": "api", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
-        "from": "libs/engagement/src/tests/engagement.controller.spec.ts",
-        "project": "engagement",
-        "status": "excluded"
-      },
-      { "project": "engagement", "status": "production" },
-      {
-        "excludedBy": "src/tests/**/*",
         "from": "libs/examination/src/tests/override.controller.unit.spec.ts",
         "project": "examination",
         "status": "excluded"
@@ -2070,6 +2058,13 @@
       },
       { "project": "outbox-publisher", "status": "production" },
       { "project": "portal", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/selection/src/tests/selection.controller.spec.ts",
+        "project": "selection",
+        "status": "excluded"
+      },
+      { "project": "selection", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/submittal/src/tests/submittal.controller.unit.spec.ts",
@@ -2093,7 +2088,6 @@
       { "project": "saved-list", "status": "production" },
       { "project": "visibility", "status": "production" }
     ],
-    "@aramo/engagement": [{ "project": "api", "status": "production" }],
     "@aramo/entitlement": [
       { "project": "activity", "status": "production" },
       { "project": "api", "status": "production" },
@@ -2339,12 +2333,6 @@
       },
       {
         "excludedBy": "src/**/*.spec.tsx",
-        "from": "apps/ats-web/src/engagement/EngagementDetailView.spec.tsx",
-        "project": "aramo-ats-web",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/ats-web/src/identity-advisories/IdentityAdvisoriesView.spec.tsx",
         "project": "aramo-ats-web",
         "status": "excluded"
@@ -2448,6 +2436,12 @@
       {
         "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/ats-web/src/search/SearchView.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/selection/SelectionDetailView.spec.tsx",
         "project": "aramo-ats-web",
         "status": "excluded"
       },
@@ -3372,13 +3366,6 @@
       },
       {
         "excludedBy": "src/tests/**/*",
-        "from": "libs/engagement/src/tests/engagement.controller.spec.ts",
-        "project": "engagement",
-        "status": "excluded"
-      },
-      { "project": "engagement", "status": "production" },
-      {
-        "excludedBy": "src/tests/**/*",
         "from": "libs/evidence/src/tests/evidence.repository.cross-schema-validator.integration.spec.ts",
         "project": "evidence",
         "status": "excluded"
@@ -3556,18 +3543,17 @@
       },
       { "project": "api", "status": "production" },
       { "project": "attachment", "status": "production" },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "libs/engagement/src/tests/engagement.controller.spec.ts",
-        "project": "engagement",
-        "status": "excluded"
-      },
-      { "project": "engagement", "status": "production" },
       { "project": "export", "status": "production" },
       { "project": "import", "status": "production" },
       { "project": "portal", "status": "production" },
       { "project": "reporting", "status": "production" },
       { "project": "saved-list", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/selection/src/tests/selection.controller.spec.ts",
+        "project": "selection",
+        "status": "excluded"
+      },
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/selection/src/tests/selection.repository.integration.spec.ts",
@@ -3893,13 +3879,6 @@
       "name": "contact",
       "root": "libs/contact",
       "sourceRoot": "libs/contact/src",
-      "tags": ["scope:ats"],
-      "targets": ["build", "lint", "test"]
-    },
-    {
-      "name": "engagement",
-      "root": "libs/engagement",
-      "sourceRoot": "libs/engagement/src",
       "tags": ["scope:ats"],
       "targets": ["build", "lint", "test"]
     },

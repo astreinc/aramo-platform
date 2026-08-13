@@ -187,7 +187,7 @@ describe('ConsentService.check', () => {
     const repo = { resolveConsentState: vi.fn().mockResolvedValue(makeDecision()) };
     const service = new ConsentService(repo as unknown as ConsentRepository);
     await service.check(
-      makeCheckRequest({ operation: 'engagement', channel: 'email' }),
+      makeCheckRequest({ operation: 'selection', channel: 'email' }),
       'aabbccdd-0000-7000-8000-000000000001',
       recruiterContext(),
       'req-c1',
@@ -203,7 +203,7 @@ describe('ConsentService.check', () => {
     };
     expect(args.tenant_id).toBe(TENANT_ID);
     expect(args.talent_record_id).toBe(TALENT_ID);
-    expect(args.operation).toBe('engagement');
+    expect(args.operation).toBe('selection');
     expect(args.channel).toBe('email');
     expect(args.idempotencyKey).toBe('aabbccdd-0000-7000-8000-000000000001');
     expect(args.requestId).toBe('req-c1');

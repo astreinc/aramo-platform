@@ -17,7 +17,7 @@ import { TalentEvidenceRepository } from '../lib/talent-evidence.repository.js';
 //   - TalentRateExpectation.employment_type "1099" — the §2.2 literal that
 //     the schema's @map renames at the Prisma identifier layer — round-trips
 //     as the spec literal "1099" through the repository's translation;
-//   - TalentEngagementEvent is NOT present on the Prisma client (the 8th
+//   - TalentSelectionEvent is NOT present on the Prisma client (the 8th
 //     EvidenceReference target is deferred to M5 per directive §2 Ruling 1);
 //   - The migration emits zero FOREIGN KEY / REFERENCES — verified by
 //     inserting an entity whose UUID references point at non-existent rows
@@ -355,14 +355,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(created.uploaded_by_actor_id).toBe('00000000-0000-7000-8000-deadbeef0000');
     });
 
-    it('TalentEngagementEvent is NOT present on the Prisma client (deferred to M5 per directive §2 Ruling 1)', () => {
+    it('TalentSelectionEvent is NOT present on the Prisma client (deferred to M5 per directive §2 Ruling 1)', () => {
       // The 8th EvidenceReference target entity is named only in Group 2
-      // (no inline shape in §2.2); its full shape lives in the engagement
+      // (no inline shape in §2.2); its full shape lives in the selection
       // domain (Plan v1.5 §M5). PR-5 builds the 7 fully-specified entities.
-      // EvidenceReference with entity_type: "TalentEngagementEvent" remains
+      // EvidenceReference with entity_type: "TalentSelectionEvent" remains
       // a structurally-valid closed-list value but is unresolvable until M5.
       const client = prisma as unknown as Record<string, unknown>;
-      expect(client['talentEngagementEvent']).toBeUndefined();
+      expect(client['talentSelectionEvent']).toBeUndefined();
     });
   },
 );
