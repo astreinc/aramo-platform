@@ -1971,6 +1971,7 @@
     "libs/placement/src/tests/placement.repository.integration.spec.ts",
     "libs/placement/src/tests/t5-assignment-rate-version.integration.spec.ts",
     "libs/placement/src/tests/t6-b1-effective-window.integration.spec.ts",
+    "libs/placement/src/tests/t6-b2-commercial-revision.integration.spec.ts",
     "libs/placement/tsconfig.json",
     "libs/placement/tsconfig.lib.json",
     "libs/placement/vitest.config.ts",

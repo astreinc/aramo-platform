@@ -196,3 +196,182 @@ describe('ats-web → GET /v1/placements/:id/events', () => {
       });
   });
 });
+
+// ===== Track 6 / T6-B2 — the governed commercial-revision surface =====
+// Interaction shapes for the surface ats-web will consume (B4). Following the
+// placement-read convention above, AUTHORIZATION refusals (403) are OMITTED here
+// (the client always sends its authorized cookie; scope refusals are covered by the
+// apps/api HTTP integration spec). The 409 window-conflict IS contracted (the client
+// renders it). Response fields use TYPE matchers — the successor id + effective
+// instant are server-generated, so exact values are never pinned.
+const ASSIGNMENT_ID_B2 = '00000000-0000-7000-8000-ca0000000001';
+const RATE_VERSION_ID_B2 = '00000000-0000-7000-8000-a1e000000001';
+const RECORDED_BY_B2 = '00000000-0000-7000-8000-4ec000000001';
+
+function commercialView(overrides: Record<string, unknown> = {}) {
+  return {
+    contract_assignment_id: uuid(ASSIGNMENT_ID_B2),
+    assignment_rate_version_id: uuid(RATE_VERSION_ID_B2),
+    requisition_id: uuid(REQ_ID),
+    talent_record_id: uuid(TALENT_ID_P),
+    pay_rate_amount: like('80.00'),
+    bill_rate_amount: like('120.00'),
+    currency: like('USD'),
+    rate_period: like('HOURLY'),
+    spread_amount: like('40.00'),
+    margin_percent: like('33.33'),
+    markup_percent: like('50.00'),
+    effective_from: regex(ISO_TIMESTAMP, '2026-08-01T00:00:00Z'),
+    effective_to: null,
+    change_reason: like('rate correction'),
+    recorded_by: uuid(RECORDED_BY_B2),
+    created_at: regex(ISO_TIMESTAMP, '2026-08-01T00:00:00Z'),
+    ...overrides,
+  };
+}
+
+const REVISION_REQUEST = {
+  pay_rate_amount: '80.00',
+  bill_rate_amount: '120.00',
+  currency: 'USD',
+  rate_period: 'HOURLY',
+  change_reason: 'rate correction',
+};
+
+describe('ats-web → POST /v1/placements/:id/assignment/commercials/revisions', () => {
+  it('returns 201 with the new current commercial version', async () => {
+    await provider
+      .addInteraction()
+      .given('an ats-web writer and an active assignment with an open commercial version exist')
+      .uponReceiving('a governed commercial revision')
+      .withRequest('POST', `/v1/placements/${PLACEMENT_ID}/assignment/commercials/revisions`, (b) => {
+        b.headers({ Cookie: like(ACCESS_COOKIE) });
+        b.jsonBody(REVISION_REQUEST);
+      })
+      .willRespondWith(201, (b) => {
+        b.jsonBody({ commercials: commercialView() });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/placements/${PLACEMENT_ID}/assignment/commercials/revisions`, {
+          method: 'POST',
+          headers: { Cookie: ACCESS_COOKIE, 'Content-Type': 'application/json' },
+          body: JSON.stringify(REVISION_REQUEST),
+        });
+        expect(res.status).toBe(201);
+        const body = (await res.json()) as { commercials: { effective_to: string | null } };
+        expect(body.commercials.effective_to).toBeNull();
+      });
+  });
+
+  it('returns 409 when the requested effective instant conflicts with an existing window', async () => {
+    await provider
+      .addInteraction()
+      .given('an ats-web writer and an active assignment whose requested revision instant is already reserved')
+      .uponReceiving('a commercial revision that conflicts with an existing effective window')
+      .withRequest('POST', `/v1/placements/${PLACEMENT_ID}/assignment/commercials/revisions`, (b) => {
+        b.headers({ Cookie: like(ACCESS_COOKIE) });
+        b.jsonBody({ ...REVISION_REQUEST, effective_from: '2030-01-01T00:00:00Z' });
+      })
+      .willRespondWith(409, (b) => {
+        b.jsonBody(errorBody('ASSIGNMENT_COMMERCIAL_REVISION_CONFLICT', 'a commercial version already exists at this effective instant'));
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/placements/${PLACEMENT_ID}/assignment/commercials/revisions`, {
+          method: 'POST',
+          headers: { Cookie: ACCESS_COOKIE, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...REVISION_REQUEST, effective_from: '2030-01-01T00:00:00Z' }),
+        });
+        expect(res.status).toBe(409);
+        const body = (await res.json()) as { error: { code: string } };
+        expect(body.error.code).toBe('ASSIGNMENT_COMMERCIAL_REVISION_CONFLICT');
+      });
+  });
+});
+
+describe('ats-web → GET /v1/placements/:id/assignment/commercials/revisions', () => {
+  it('returns 200 with a single current version', async () => {
+    await provider
+      .addInteraction()
+      .given('an ats-web reader and an active assignment with an open commercial version exist')
+      .uponReceiving('a commercial version-series read (current only)')
+      .withRequest('GET', `/v1/placements/${PLACEMENT_ID}/assignment/commercials/revisions`, (b) => {
+        b.headers({ Cookie: like(ACCESS_COOKIE) });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({ items: [commercialView()] });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/placements/${PLACEMENT_ID}/assignment/commercials/revisions`, { headers: { Cookie: ACCESS_COOKIE } });
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as { items: unknown[] };
+        expect(body.items).toHaveLength(1);
+      });
+  });
+
+  it('returns 200 with the current + historical series (effective_from DESC)', async () => {
+    await provider
+      .addInteraction()
+      .given('an ats-web reader and an active assignment with a closed historical and an open current commercial version exist')
+      .uponReceiving('a commercial version-series read (current + historical)')
+      .withRequest('GET', `/v1/placements/${PLACEMENT_ID}/assignment/commercials/revisions`, (b) => {
+        b.headers({ Cookie: like(ACCESS_COOKIE) });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          items: [
+            commercialView(),
+            commercialView({
+              assignment_rate_version_id: uuid('00000000-0000-7000-8000-a1e000000002'),
+              effective_to: regex(ISO_TIMESTAMP, '2026-08-01T00:00:00Z'),
+            }),
+          ],
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/placements/${PLACEMENT_ID}/assignment/commercials/revisions`, { headers: { Cookie: ACCESS_COOKIE } });
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as { items: Array<{ effective_to: string | null }> };
+        expect(body.items).toHaveLength(2);
+        expect(body.items[0].effective_to).toBeNull(); // current first (DESC)
+      });
+  });
+
+  it('returns 200 with an empty series when the placement has no assignment', async () => {
+    await provider
+      .addInteraction()
+      .given('an ats-web reader and a placement exist')
+      .uponReceiving('a commercial version-series read for a placement with no assignment')
+      .withRequest('GET', `/v1/placements/${PLACEMENT_ID}/assignment/commercials/revisions`, (b) => {
+        b.headers({ Cookie: like(ACCESS_COOKIE) });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({ items: [] });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/placements/${PLACEMENT_ID}/assignment/commercials/revisions`, { headers: { Cookie: ACCESS_COOKIE } });
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as { items: unknown[] };
+        expect(body.items).toHaveLength(0);
+      });
+  });
+
+  it('returns 404 for a not-visible / unknown placement', async () => {
+    const missing = '00000000-0000-7000-8000-000000000404';
+    await provider
+      .addInteraction()
+      .given('an ats-web reader and no placement exists for the requested id')
+      .uponReceiving('a commercial version-series read for an unknown placement')
+      .withRequest('GET', `/v1/placements/${missing}/assignment/commercials/revisions`, (b) => {
+        b.headers({ Cookie: like(ACCESS_COOKIE) });
+      })
+      .willRespondWith(404, (b) => {
+        b.jsonBody(errorBody('NOT_FOUND', 'PlacementProcess not found in tenant (or not visible to actor)'));
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/placements/${missing}/assignment/commercials/revisions`, { headers: { Cookie: ACCESS_COOKIE } });
+        expect(res.status).toBe(404);
+        const body = (await res.json()) as { error: { code: string } };
+        expect(body.error.code).toBe('NOT_FOUND');
+      });
+  });
+});
