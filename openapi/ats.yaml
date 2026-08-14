@@ -1892,6 +1892,101 @@ paths:
       security:
         - BearerAuth: []
 
+  /v1/placements/{id}/permanent:
+    get:
+      operationId: getPlacementPermanent
+      summary: Read the PermanentPlacement guarantee state for a placement (Track 7 / T7-P1).
+      description: |
+        Returns the first-class PermanentPlacement aggregate for the placement:
+        `lifecycle_state` (GUARANTEE_ACTIVE | GUARANTEE_SATISFIED) and the immutable
+        guarantee snapshot (window dates, duration, remedy policy, exposure amount +
+        currency, provenance). A placement with no PermanentPlacement (e.g. a CONTRACT
+        placement) returns `{ "permanent": null }` — a coherent absence, never a
+        fabricated row.
+
+        Guarded by capability `ats` and scope `placement:permanent:read` — a DEDICATED
+        guarantee authority that `placement:*` / `assignment:*` do NOT satisfy
+        (least-visibility). The placement is first loaded under the actor-visibility
+        predicate — a not-found / not-visible / cross-tenant placement returns 404
+        (never 403) before any guarantee figure is read.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlacementPermanentResponse'
+        '403':
+          description: Insufficient permissions or tenant not entitled.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+
+  /v1/placements/{id}/permanent/transition:
+    post:
+      operationId: transitionPlacementPermanent
+      summary: Transition the PermanentPlacement guarantee lifecycle (Track 7 / T7-P1).
+      description: |
+        The ONE generic governed guarantee-lifecycle transition: the target state is in
+        the body and the typed transition registry owns legality. P1 ships the single
+        legal edge `GUARANTEE_ACTIVE -> GUARANTEE_SATISFIED`, allowed only on/after the
+        guarantee end date (calendar). No falloff/remedy path in P1.
+
+        Guarded by capability `ats` and scope `placement:permanent:transition` — a
+        DEDICATED authority that `placement:transition` / `placement:activate` /
+        `assignment:commercials:write` do NOT satisfy. Tenant-scoped. An absent
+        aggregate is `PERMANENT_PLACEMENT_NOT_FOUND` (404); an illegal edge is
+        `PERMANENT_PLACEMENT_STATE_INVALID` (422); a premature satisfy is
+        `PERMANENT_PLACEMENT_GUARANTEE_WINDOW_INVALID` (422).
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PermanentPlacementTransitionRequest'
+      responses:
+        '200':
+          description: OK — the updated PermanentPlacement.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PermanentPlacement'
+        '403':
+          description: Insufficient permissions or tenant not entitled.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '422':
+          description: Illegal guarantee transition or invalid/unelapsed guarantee window.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+      security:
+        - BearerAuth: []
+
   /v1/placements/{id}/assignment/commercials:
     get:
       operationId: getPlacementAssignmentCommercials
@@ -2391,6 +2486,14 @@ components:
             NO_SHOW, FELL_THROUGH); otherwise PLACEMENT_REPLACEMENT_INVALID (422).
             Absent → an ordinary first creation. No predecessor reason is copied
             onto the successor.
+        placement_kind:
+          type: [string, 'null']
+          enum: [CONTRACT, PERMANENT, null]
+          description: >
+            Track 7 / T7-P1 — the permanent-vs-contract branch fact, persisted once
+            at create. Omitted → null (legacy/CONTRACT-compatible at STARTED). An
+            explicit PERMANENT is required to later start a permanent placement (the
+            guarantee path); a CONTRACT/null start materialises a ContractAssignment.
     TransitionPlacementRequest:
       type: object
       additionalProperties: false
@@ -2471,10 +2574,48 @@ components:
                 - WEEKLY
                 - MONTHLY
                 - ANNUAL
+        guarantee_terms:
+          type: object
+          additionalProperties: false
+          required: [guarantee_start_date, guarantee_duration_days, remedy_policy, exposure_amount, exposure_currency, terms_source]
+          description: >
+            Track 7 / T7-P1 — the governed guarantee terms of the immutable
+            activation snapshot, materialised with the PermanentPlacement in the same
+            transaction as the PERMANENT STARTED handoff. REQUIRED for a PERMANENT
+            start (else PERMANENT_PLACEMENT_TERMS_REQUIRED, 422); supplying it for a
+            CONTRACT/null start or any non-STARTED target is rejected
+            (VALIDATION_ERROR). Exposure is a governed input (no rate version is
+            minted on this branch); no cross-schema requisition read.
+          properties:
+            guarantee_start_date:
+              type: string
+              format: date
+              description: The actual permanent employment start (calendar date). Window is half-open [start, start + duration_days).
+            guarantee_duration_days:
+              type: integer
+              minimum: 1
+              description: A positive integer; zero/negative fails closed (PERMANENT_PLACEMENT_GUARANTEE_WINDOW_INVALID).
+            remedy_policy:
+              type: string
+              description: The single terms-driven remedy a qualifying falloff will require (snapshotted in P1, executed in P2).
+              enum:
+                - REPLACEMENT
+                - REFUND
+                - PRORATED_CREDIT
+            exposure_amount:
+              type: string
+              description: Decimal(12,2) money string (never a float); the maximum amount subject to refund/credit under the guarantee.
+            exposure_currency:
+              type: string
+              description: An active ISO-4217 currency code.
+            terms_source:
+              type: string
+              maxLength: 255
+              description: Governed provenance label for the guarantee terms (no hidden default).
     PlacementProcess:
       type: object
       additionalProperties: false
-      required: [id, tenant_id, submittal_id, requisition_id, talent_record_id, state, offered_at, proposed_start_date, offer_expires_at, client_offer_reference, offer_terms_summary, created_at]
+      required: [id, tenant_id, submittal_id, requisition_id, talent_record_id, state, offered_at, proposed_start_date, offer_expires_at, client_offer_reference, offer_terms_summary, placement_kind, created_at]
       properties:
         id:
           type: string
@@ -2491,6 +2632,10 @@ components:
         talent_record_id:
           type: string
           format: uuid
+        placement_kind:
+          type: [string, 'null']
+          enum: [CONTRACT, PERMANENT, null]
+          description: Track 7 / T7-P1 — the persisted permanent-vs-contract branch fact; null for legacy/kind-agnostic placements.
         state:
           type: string
           enum:
@@ -2630,6 +2775,84 @@ components:
           oneOf:
             - $ref: '#/components/schemas/ContractAssignmentView'
             - type: 'null'
+    # Track 7 / T7-P1 — the PermanentPlacement aggregate + its immutable guarantee
+    # snapshot. guarantee_exposure_amount is a scale-2 decimal string (never float).
+    PermanentPlacement:
+      type: object
+      additionalProperties: false
+      required: [id, tenant_id, placement_process_id, submittal_id, requisition_id, talent_record_id, lifecycle_state, guarantee_start_date, guarantee_duration_days, guarantee_end_date, remedy_policy, guarantee_exposure_amount, guarantee_exposure_currency, terms_source, recorded_by, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        placement_process_id:
+          type: string
+          format: uuid
+        submittal_id:
+          type: string
+          format: uuid
+        requisition_id:
+          type: string
+          format: uuid
+        talent_record_id:
+          type: string
+          format: uuid
+        lifecycle_state:
+          type: string
+          enum:
+            - GUARANTEE_ACTIVE
+            - GUARANTEE_SATISFIED
+        guarantee_start_date:
+          type: string
+          format: date
+        guarantee_duration_days:
+          type: integer
+        guarantee_end_date:
+          type: string
+          format: date
+        remedy_policy:
+          type: string
+          enum:
+            - REPLACEMENT
+            - REFUND
+            - PRORATED_CREDIT
+        guarantee_exposure_amount:
+          type: string
+          description: Decimal(12,2) money string (never a float).
+        guarantee_exposure_currency:
+          type: string
+        terms_source:
+          type: string
+        recorded_by:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+    PlacementPermanentResponse:
+      type: object
+      additionalProperties: false
+      required: [permanent]
+      properties:
+        permanent:
+          # A coherent absence when the placement has no PermanentPlacement.
+          oneOf:
+            - $ref: '#/components/schemas/PermanentPlacement'
+            - type: 'null'
+    PermanentPlacementTransitionRequest:
+      type: object
+      additionalProperties: false
+      required: [to]
+      properties:
+        to:
+          type: string
+          description: The target guarantee state; the typed registry enforces legality (P1 edge GUARANTEE_ACTIVE -> GUARANTEE_SATISFIED).
+          enum:
+            - GUARANTEE_ACTIVE
+            - GUARANTEE_SATISFIED
     # Track 5 / T5-P2 — the commercial projection of the CURRENT effective
     # AssignmentRateVersion. Stored actuals + DEC-5 derived views (computed on read,
     # never stored). Money + percentages are scale-2 decimal strings (never float);

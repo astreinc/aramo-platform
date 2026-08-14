@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 import { AuthModule } from '@aramo/auth';
 import { AuthorizationModule } from '@aramo/authorization';
 import { EntitlementModule } from '@aramo/entitlement';
-import { PlacementProcessEventRepository, PlacementRepository, PrismaService } from '@aramo/placement';
+import { PermanentPlacementRepository, PlacementProcessEventRepository, PlacementRepository, PrismaService } from '@aramo/placement';
 
 import { PlacementController } from './placement.controller.js';
 
@@ -13,7 +13,7 @@ import { PlacementController } from './placement.controller.js';
 @Module({
   imports: [AuthModule, AuthorizationModule, EntitlementModule],
   controllers: [PlacementController],
-  providers: [PrismaService, PlacementRepository, PlacementProcessEventRepository],
+  providers: [PrismaService, PlacementRepository, PlacementProcessEventRepository, PermanentPlacementRepository],
   exports: [PlacementRepository],
 })
 export class PlacementModule {}

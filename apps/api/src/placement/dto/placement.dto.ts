@@ -1,6 +1,7 @@
 import {
   IsDateString,
   IsIn,
+  IsInt,
   IsOptional,
   IsString,
   IsUUID,
@@ -9,7 +10,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { PLACEMENT_STATES, USER_CANCELLATION_REASON_CODES } from '@aramo/placement';
+import { PLACEMENT_STATES, PLACEMENT_KINDS, PERMANENT_PLACEMENT_STATES, REMEDY_POLICIES, USER_CANCELLATION_REASON_CODES } from '@aramo/placement';
 import { RATE_PERIOD_VALUES } from '@aramo/common';
 
 // Track 5 / T5-P1 — a decimal money string (never a float): up to 10 integer
@@ -74,6 +75,49 @@ export class CreatePlacementDto {
   @IsOptional()
   @IsUUID()
   replaces_placement_process_id?: string;
+
+  // Track 7 / T7-P1 — the permanent-vs-contract branch fact, persisted once at
+  // create (§3.1). Optional at the wire: omitted => NULL (legacy/CONTRACT-
+  // compatible at STARTED). An explicit PERMANENT is required to later start a
+  // permanent placement (the guarantee path). Closed set — an unknown value is a
+  // 400 wire failure.
+  @IsOptional()
+  @IsIn(PLACEMENT_KINDS as readonly string[])
+  placement_kind?: string;
+}
+
+// Track 7 / T7-P1 — the governed guarantee terms supplied at the PERMANENT
+// STARTED handoff, a cohesive nested value object (mirroring CommercialTermsDto,
+// NOT loose top-level fields). REQUIRED by the repository for a PERMANENT start,
+// REJECTED for a CONTRACT/NULL start or a non-STARTED target (VALIDATION_ERROR).
+// guarantee_start_date is a calendar date; guarantee_duration_days a positive
+// integer; remedy_policy exactly one closed policy; exposure a decimal money
+// string + ISO-4217 currency; terms_source a governed provenance label. The
+// repository re-validates every rule at the write boundary (fail-closed).
+export class GuaranteeTermsDto {
+  @IsDateString()
+  guarantee_start_date!: string;
+
+  // Positive integer enforced at the repository write boundary
+  // (PERMANENT_PLACEMENT_GUARANTEE_WINDOW_INVALID); the DTO guarantees it is a number.
+  @Type(() => Number)
+  @IsInt()
+  guarantee_duration_days!: number;
+
+  @IsIn(REMEDY_POLICIES as readonly string[])
+  remedy_policy!: string;
+
+  @IsString()
+  @Matches(MONEY_12_2)
+  exposure_amount!: string;
+
+  @IsString()
+  @MaxLength(3)
+  exposure_currency!: string;
+
+  @IsString()
+  @MaxLength(255)
+  terms_source!: string;
 }
 
 // Track 5 / T5-P1 — the actual person-specific commercial terms of the initial
@@ -202,6 +246,16 @@ export class TransitionPlacementDto {
   @ValidateNested()
   @Type(() => CommercialTermsDto)
   commercial_terms?: CommercialTermsDto;
+
+  // Track 7 / T7-P1 — governed guarantee terms for the PERMANENT STARTED path.
+  // Optional at the wire; the repository REQUIRES it for a PERMANENT start
+  // (PERMANENT_PLACEMENT_TERMS_REQUIRED, 422) and REJECTS it for a CONTRACT/NULL
+  // start or a non-STARTED target (VALIDATION_ERROR) — a kind-and-target-dependent
+  // policy, so not expressible by class-validator alone.
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => GuaranteeTermsDto)
+  guarantee_terms?: GuaranteeTermsDto;
 }
 
 // Track 4 / T4-D — ending a ContractAssignment. The ratified end-reason taxonomy
@@ -209,4 +263,14 @@ export class TransitionPlacementDto {
 export class EndAssignmentDto {
   @IsIn(['COMPLETED', 'WORKER_ENDED', 'CLIENT_ENDED'])
   end_reason!: string;
+}
+
+// Track 7 / T7-P1 — one generic governed guarantee-lifecycle transition (directive
+// §14): the target state is in the body and the typed transition registry enforces
+// legality (PERMANENT_PLACEMENT_STATE_INVALID, 422). P1 ships the single legal edge
+// GUARANTEE_ACTIVE -> GUARANTEE_SATISFIED; `to` must be a known permanent-placement
+// state. No named outcome routes.
+export class PermanentPlacementTransitionDto {
+  @IsIn(PERMANENT_PLACEMENT_STATES as readonly string[])
+  to!: string;
 }

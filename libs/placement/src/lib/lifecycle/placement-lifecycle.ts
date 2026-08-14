@@ -152,6 +152,54 @@ export const CONTRACT_ASSIGNMENT_TRANSITIONS: Record<'ACTIVE' | 'ENDED', readonl
 };
 
 // ---------------------------------------------------------------------------
+// Track 7 / T7-P1 — the PermanentPlacement guarantee lifecycle registry.
+// TYPED-MAP enforcement (T7-P1 directive §3.3), analogous to
+// CONTRACT_ASSIGNMENT_TRANSITIONS — NOT a generated DB lifecycle trigger. P2 may
+// revisit DB-generated enforcement if the expanded lifecycle warrants it.
+//
+// P1 ships EXACTLY the happy path: GUARANTEE_ACTIVE -> GUARANTEE_SATISFIED.
+// GUARANTEE_SATISFIED is terminal. FELL_OFF and the remedy states are T7-P2 and
+// land here as additive members with their ratified edges — mirroring the
+// ContractAssignment "ships ACTIVE only" precedent. `satisfies Record<…>` forces
+// every P1 state to declare a treatment, so adding a state without an edge list
+// is a compile-time error.
+// ---------------------------------------------------------------------------
+
+// Track 7 / T7-P1 — the closed permanent-vs-contract branch vocabulary (the
+// runtime companion of the PlacementKind type / Postgres enum), for wire
+// validation (@IsIn) and seed/parity surfaces.
+export const PLACEMENT_KINDS = ['CONTRACT', 'PERMANENT'] as const;
+
+export const PERMANENT_PLACEMENT_STATES = ['GUARANTEE_ACTIVE', 'GUARANTEE_SATISFIED'] as const;
+
+export type PermanentPlacementState = (typeof PERMANENT_PLACEMENT_STATES)[number];
+
+// A PermanentPlacement is materialised (at the permanent STARTED handoff) already
+// inside its guarantee window — GUARANTEE_ACTIVE is the birth state.
+export const PERMANENT_PLACEMENT_INITIAL_STATE: PermanentPlacementState = 'GUARANTEE_ACTIVE';
+
+export const PERMANENT_PLACEMENT_TRANSITIONS = {
+  GUARANTEE_ACTIVE: ['GUARANTEE_SATISFIED'],
+  GUARANTEE_SATISFIED: [],
+} as const satisfies Record<PermanentPlacementState, readonly PermanentPlacementState[]>;
+
+// Runtime guard (defense-in-depth in application code; the typed map is authority
+// in P1). Returns the structured answer before the UPDATE.
+export function canTransitionPermanentPlacement(
+  from: PermanentPlacementState,
+  to: PermanentPlacementState,
+): boolean {
+  return (PERMANENT_PLACEMENT_TRANSITIONS[from] as readonly PermanentPlacementState[]).includes(to);
+}
+
+// Track 7 — the closed, terms-driven remedy policy the guarantee snapshot commits
+// to at activation (snapshotted in P1, executed in P2). Exactly one is chosen
+// from governed terms — never heuristically among several (T7-PRE §8).
+export const REMEDY_POLICIES = ['REPLACEMENT', 'REFUND', 'PRORATED_CREDIT'] as const;
+
+export type RemedyPolicy = (typeof REMEDY_POLICIES)[number];
+
+// ---------------------------------------------------------------------------
 // Runtime guard (defense-in-depth atop the DB trigger; §6). The DB trigger is
 // the authority — this returns a structured answer before the SQL UPDATE.
 // ---------------------------------------------------------------------------
