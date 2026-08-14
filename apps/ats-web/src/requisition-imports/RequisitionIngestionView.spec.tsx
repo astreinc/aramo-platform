@@ -91,7 +91,7 @@ describe('RequisitionIngestionView — RBAC (§24.1-3)', () => {
 
 describe('RequisitionIngestionView — list states (§24.4-7)', () => {
   it('4. loading state', () => {
-    renderView({ session: READ, listFn: () => new Promise(() => {}) });
+    renderView({ session: READ, listFn: () => new Promise(() => undefined) });
     expect(screen.getByTestId('ingestion-loading')).toBeTruthy();
   });
   it('5. empty list state', async () => {

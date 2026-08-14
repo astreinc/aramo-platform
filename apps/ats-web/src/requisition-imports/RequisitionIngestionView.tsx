@@ -3,6 +3,7 @@ import { hasScope, useSession, type Session } from '@aramo/fe-foundation';
 
 import { Button, Card } from '../ui';
 import { SettingCardHead } from '../settings/components';
+
 import { IngestionBatchDetail, type DetailState } from './IngestionBatchDetail';
 import { IngestionBatchRow } from './IngestionBatchRow';
 import { detailErrorMessage, listErrorMessage } from './error-messages';
