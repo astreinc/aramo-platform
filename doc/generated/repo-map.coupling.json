@@ -3778,6 +3778,12 @@
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/pre-start-requirement/marker-confinement.spec.ts",
       "status": "excluded",
+      "to": "libs/placement/prisma/migrations/20260815120000_t7_p2_falloff_remedy/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/pre-start-requirement/marker-confinement.spec.ts",
+      "status": "excluded",
       "to": "libs/placement/src/tests/t6-b1-effective-window.integration.spec.ts"
     },
     {
@@ -3785,6 +3791,12 @@
       "from": "apps/api/src/tests/pre-start-requirement/marker-confinement.spec.ts",
       "status": "excluded",
       "to": "libs/placement/src/tests/t6-b3-commercial-cancellation.integration.spec.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/pre-start-requirement/marker-confinement.spec.ts",
+      "status": "excluded",
+      "to": "libs/placement/src/tests/t7-p2-falloff-remedy.integration.spec.ts"
     },
     {
       "excludedBy": "src/tests/**/*",
