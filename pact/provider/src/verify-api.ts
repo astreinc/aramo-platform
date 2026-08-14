@@ -6056,6 +6056,47 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         });
       },
 
+      // T9-B1 — a DEDICATED state for the fill-performance interaction. Kept
+      // separate from the shared reporting state above because seeding a
+      // requisition + placed pipeline would give the company openings (breaking
+      // the company-metrics `fill_rate: null` / company-placements `[]` /
+      // dashboard empty-`by_status` expectations). A single-opening requisition
+      // (default openings = 1) with one `placed` pipeline + a placed history row
+      // → GET /v1/reports/fill-performance over a wide window returns a
+      // deterministic 100% fill rate and one fully-filled requisition with a
+      // time-to-fill value (§14). Visible tenant-wide via requisition:read:all.
+      'an ats-web recruiter and a fully-filled requisition exist': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedAtsWebTenant(c);
+          await seedAtsWebCompany(c, { id: ATSW_COMPANY_ID, name: 'Acme Corp' });
+          await seedAtsWebTalentRecord(c, {
+            id: ATSW_TALENT_ID,
+            firstName: 'Ada',
+            lastName: 'Lovelace',
+            tenantStatus: 'active',
+            sourceChannel: 'recruiter_added',
+          });
+          await seedAtsWebRequisition(c, {
+            id: ATSW_PIPE_FULL_REQ_ID,
+            title: 'Filled Req',
+            companyId: ATSW_COMPANY_ID,
+          });
+          await seedAtsWebPipeline(c, {
+            id: ATSW_PIPE_ID,
+            talentRecordId: ATSW_PIPE_TALENT_ID,
+            requisitionId: ATSW_PIPE_FULL_REQ_ID,
+            status: 'placed',
+          });
+          await seedAtsWebPipelineHistory(c, {
+            id: ATSW_PIPE_HISTORY_ID,
+            pipelineId: ATSW_PIPE_ID,
+            statusFrom: 'offered',
+            statusTo: 'placed',
+          });
+        });
+      },
+
       // /me — the authenticated recruiter (sub = RECRUITER_ID) resolves via
       // UserTenantMembership(user_id, tenant_id) → user + active roles + tenant.
       'an ats-web user with a membership and a role exist': async () => {

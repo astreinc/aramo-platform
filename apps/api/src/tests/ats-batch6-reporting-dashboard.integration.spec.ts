@@ -619,6 +619,86 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     });
 
     // -------------------------------------------------------------------------
+    // T9-B1 — fill-performance: guard axes reuse, from/to validation (§8/D-5),
+    // and the A3 shape. Metric math + tenant isolation are proven in the
+    // libs/reporting bearing integration spec; here we prove the HTTP boundary.
+    // -------------------------------------------------------------------------
+
+    const FP_FROM = '2020-01-01T00:00:00.000Z';
+    const FP_TO = '2100-01-01T00:00:00.000Z';
+    const fpUrl = (from: string, to: string): string =>
+      `http://127.0.0.1:${port}/v1/reports/fill-performance` +
+      `?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&site_id=${SITE_A}`;
+
+    it('fill-performance entitlement axis: tenant lacking ats → 403 TENANT_CAPABILITY_NOT_ENTITLED', async () => {
+      const res = await fetch(fpUrl(FP_FROM, FP_TO), {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${recruiterJwt_NotAts}` },
+      });
+      expect(res.status).toBe(403);
+      const body = (await res.json()) as { error: { code: string } };
+      expect(body.error?.code).toBe('TENANT_CAPABILITY_NOT_ENTITLED');
+    });
+
+    it('fill-performance authorization axis: unscoped → 403', async () => {
+      const res = await fetch(fpUrl(FP_FROM, FP_TO), {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${unscopedJwt}` },
+      });
+      expect(res.status).toBe(403);
+    });
+
+    it('fill-performance site axis: token site != requested site → 403', async () => {
+      const res = await fetch(fpUrl(FP_FROM, FP_TO), {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${recruiterJwt_WrongSite}` },
+      });
+      expect(res.status).toBe(403);
+    });
+
+    it('fill-performance rejects a date-only `from` → 400 VALIDATION_ERROR', async () => {
+      const res = await fetch(fpUrl('2026-03-01', FP_TO), {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${tenantAdminJwt}` },
+      });
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error: { code: string } };
+      expect(body.error?.code).toBe('VALIDATION_ERROR');
+    });
+
+    it('fill-performance requires from and to → 400 when missing', async () => {
+      const res = await fetch(
+        `http://127.0.0.1:${port}/v1/reports/fill-performance?site_id=${SITE_A}`,
+        { method: 'GET', headers: { Authorization: `Bearer ${tenantAdminJwt}` } },
+      );
+      expect(res.status).toBe(400);
+    });
+
+    it('fill-performance A3: tenant_admin sees both reqs (openings 2); recruiter sees only the assigned req (openings 1)', async () => {
+      const adminRes = await fetch(fpUrl(FP_FROM, FP_TO), {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${tenantAdminJwt}` },
+      });
+      expect(adminRes.status).toBe(200);
+      const admin = (await adminRes.json()) as {
+        openings: number;
+        filled_openings: number;
+        fill_rate: number | null;
+      };
+      expect(admin.openings).toBe(2); // both seeded requisitions, tenant-wide
+      expect(admin.filled_openings).toBe(0); // nothing placed
+      expect(admin.fill_rate).toBe(0);
+
+      const recRes = await fetch(fpUrl(FP_FROM, FP_TO), {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${recruiterJwt}` },
+      });
+      expect(recRes.status).toBe(200);
+      const rec = (await recRes.json()) as { openings: number };
+      expect(rec.openings).toBe(1); // A3 narrows to the recruiter's assigned req
+    });
+
+    // -------------------------------------------------------------------------
     // B) Metric correctness — tenant_admin sees tenant-wide truth.
     // -------------------------------------------------------------------------
 

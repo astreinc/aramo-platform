@@ -1733,6 +1733,48 @@ export class RequisitionRepository {
     }));
   }
 
+  // T9-B1 — fill-performance cohort read. Returns the requisitions whose
+  // `created_at ∈ [from, to)` (amendment D-3) within the actor's A3-visible
+  // set (buildVisibilityWhere) + tenant + optional site. Period-bounded by
+  // the [from,to) predicate — deliberately NOT the 200/1000-capped
+  // listForActor fold (directive §6 / amendment D-6), and no per-row capacity
+  // read: openings_available is irrelevant to the pipeline-`placed` fill
+  // authority (D-1). Minimal projection — the fill/TTF math needs only
+  // id + openings + status + created_at.
+  async listCohortForActor(args: {
+    tenant_id: string;
+    visibility: VisibilityContextShape;
+    from: Date;
+    to: Date;
+    site_id?: string;
+  }): Promise<
+    Array<{
+      id: string;
+      openings: number;
+      status: RecruitingStatus;
+      created_at: Date;
+    }>
+  > {
+    const rows = await this.prisma.requisition.findMany({
+      where: {
+        tenant_id: args.tenant_id,
+        ...(args.site_id === undefined ? {} : { site_id: args.site_id }),
+        // Cohort by original creation instant; REOPEN never rewrites
+        // created_at so the clock is not restarted (directive §7).
+        created_at: { gte: args.from, lt: args.to },
+        ...buildVisibilityWhere(args.visibility),
+      },
+      select: { id: true, openings: true, status: true, created_at: true },
+      orderBy: { created_at: 'asc' },
+    });
+    return rows.map((r) => ({
+      id: r.id as string,
+      openings: r.openings as number,
+      status: r.status as RecruitingStatus,
+      created_at: r.created_at as Date,
+    }));
+  }
+
   // AUTHZ-D4b — return the SET of requisition IDs visible to the actor
   // under the composed A3 + D4b OR-union. Consumed by
   // VisibilityResolverService to memoize `visible_requisition_ids` for the

@@ -14,11 +14,13 @@ import {
   RequireSiteMatch,
   RolesGuard,
 } from '@aramo/authorization';
+import { AramoError, RequestId } from '@aramo/common';
 import { EntitlementGuard, RequireCapability } from '@aramo/entitlement';
 
 import type {
   CompanyMetricsReportView,
   CompanyPlacementsReportView,
+  FillPerformanceReportView,
   PipelineStageRollupView,
   PlacementCountReportView,
   RecruiterMetricsReportView,
@@ -220,5 +222,78 @@ export class ReportingController {
       visibility,
       ...(siteIdFromQuery === undefined ? {} : { site_id: siteIdFromQuery }),
     });
+  }
+
+  // T9-B1 — authoritative fill-rate + time-to-fill operational report.
+  // Governed by Aramo-T9-B1-Directive-v1_0-LOCKED + the Gate-5 Finalization
+  // Amendment. ONE combined route (D-7) returning both metrics for the cohort
+  // of requisitions whose created_at ∈ [from, to). `from`/`to` are REQUIRED
+  // absolute ISO instants carrying `Z` or an explicit offset (§8 / D-5);
+  // date-only and zone-less values are rejected 400 (VALIDATION_ERROR — an
+  // existing code; no new ErrorCode per §8). report:read + tenant/site/A3
+  // (D-4) — the same guard chain as every other reporting route.
+  @Get('fill-performance')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('report:read')
+  @RequireSiteMatch()
+  async fillPerformance(
+    @AuthContext() authContext: AuthContextType,
+    @RequestId() requestId: string,
+    @Query('from') fromRaw: string | undefined,
+    @Query('to') toRaw: string | undefined,
+    @Query('site_id') siteIdFromQuery: string | undefined,
+    @Req() req: Request,
+  ): Promise<FillPerformanceReportView> {
+    const from = this.parseAbsoluteInstant('from', fromRaw, requestId);
+    const to = this.parseAbsoluteInstant('to', toRaw, requestId);
+    if (from.getTime() >= to.getTime()) {
+      throw new AramoError(
+        'VALIDATION_ERROR',
+        'from must be strictly before to',
+        400,
+        { requestId, details: { from: fromRaw, to: toRaw } },
+      );
+    }
+    const visibility = await req.resolveVisibility!();
+    return this.reportingService.getFillPerformance(
+      {
+        tenant_id: authContext.tenant_id,
+        user_id: authContext.sub,
+        scopes: authContext.scopes,
+        visibility,
+        ...(siteIdFromQuery === undefined ? {} : { site_id: siteIdFromQuery }),
+      },
+      { from, to },
+    );
+  }
+
+  // T9-B1 (§8 / D-5) — parse a REQUIRED reporting-period boundary. The value
+  // must be an ISO 8601 date-TIME carrying an explicit zone (`Z` or ±hh:mm);
+  // date-only ("2026-01-01") and zone-less ("2026-01-01T00:00:00") values are
+  // rejected. Absolute instants ONLY — no date-only business-day semantics and
+  // no tenant/user timezone inference. Returns the UTC-absolute Date.
+  private parseAbsoluteInstant(
+    field: 'from' | 'to',
+    raw: string | undefined,
+    requestId: string,
+  ): Date {
+    if (raw === undefined || raw.trim() === '') {
+      throw new AramoError('VALIDATION_ERROR', `${field} is required`, 400, {
+        requestId,
+        details: { [field]: raw ?? null },
+      });
+    }
+    const ISO_INSTANT =
+      /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$/;
+    const d = new Date(raw);
+    if (!ISO_INSTANT.test(raw) || Number.isNaN(d.getTime())) {
+      throw new AramoError(
+        'VALIDATION_ERROR',
+        `invalid ${field}: expected an absolute ISO date-time with Z or explicit offset`,
+        400,
+        { requestId, details: { [field]: raw } },
+      );
+    }
+    return d;
   }
 }

@@ -3,5 +3,6 @@ export type {
   RequisitionStatusRollupView,
   PipelineStageRollupView,
   PlacementCountReportView,
+  FillPerformanceReportView,
   DashboardView,
 } from './report.view.js';
