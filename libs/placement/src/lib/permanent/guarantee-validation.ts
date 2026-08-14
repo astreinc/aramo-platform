@@ -36,7 +36,7 @@ export type ValidatedGuaranteeSnapshot = {
 // Parse a strict yyyy-mm-dd into a UTC-midnight Date, or null if malformed /
 // non-round-tripping (e.g. 2026-02-30). Timezone-stable: the guarantee is a
 // calendar fact, so all arithmetic is in UTC.
-function parseCalendarDate(value: string): Date | null {
+export function parseCalendarDate(value: string): Date | null {
   if (!ISO_DATE.test(value)) return null;
   const d = new Date(`${value}T00:00:00.000Z`);
   if (Number.isNaN(d.getTime())) return null;

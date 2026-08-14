@@ -10,7 +10,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { PLACEMENT_STATES, PLACEMENT_KINDS, PERMANENT_PLACEMENT_STATES, REMEDY_POLICIES, USER_CANCELLATION_REASON_CODES } from '@aramo/placement';
+import { PLACEMENT_STATES, PLACEMENT_KINDS, PERMANENT_PLACEMENT_STATES, PERMANENT_FALLOFF_REASON_CODES, REMEDY_POLICIES, USER_CANCELLATION_REASON_CODES } from '@aramo/placement';
 import { RATE_PERIOD_VALUES } from '@aramo/common';
 
 // Track 5 / T5-P1 — a decimal money string (never a float): up to 10 integer
@@ -273,4 +273,32 @@ export class EndAssignmentDto {
 export class PermanentPlacementTransitionDto {
   @IsIn(PERMANENT_PLACEMENT_STATES as readonly string[])
   to!: string;
+}
+
+// Track 7 / T7-P2 — the governed guarantee-falloff command body (§11). effective_date is
+// an ISO calendar date (the repository validates the half-open window); reason is a code
+// from the closed T7 permanent-falloff registry (exact-match, no OTHER — §3.1). The actor
+// (recorded_by) is the JWT subject, server-derived and FORBIDDEN on the wire.
+export class FalloffDto {
+  @IsDateString()
+  effective_date!: string;
+
+  @IsIn(PERMANENT_FALLOFF_REASON_CODES as readonly string[])
+  reason!: string;
+}
+
+// Track 7 / T7-P2 — the evidence-gated remedy-completion command body (§9 / §11). Exactly
+// one field is supplied depending on the immutable remedy type — REPLACEMENT carries
+// replacement_placement_process_id, REFUND/PRORATED_CREDIT carry external_reference — and
+// the repository enforces the coherence + the governed replacement checks. The caller
+// NEVER supplies the amount; completed_by is the JWT subject, FORBIDDEN on the wire.
+export class RemedyCompletionDto {
+  @IsOptional()
+  @IsUUID()
+  replacement_placement_process_id?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  external_reference?: string;
 }

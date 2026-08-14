@@ -26,7 +26,9 @@ import {
   CommercialRevisionDto,
   CreatePlacementDto,
   EndAssignmentDto,
+  FalloffDto,
   PermanentPlacementTransitionDto,
+  RemedyCompletionDto,
   TransitionPlacementDto,
 } from './dto/placement.dto.js';
 
@@ -408,6 +410,63 @@ export class PlacementController {
         tenant_id: auth.tenant_id,
         placement_process_id: id,
         to: body.to as PermanentPlacementState,
+      },
+      requestId,
+    );
+  }
+
+  // Track 7 / T7-P2 — the governed guarantee-falloff command (§3.2 / §11). Records a
+  // qualifying post-start falloff (effective date + governed closed-registry reason) and
+  // atomically transitions GUARANTEE_ACTIVE -> FELL_OFF -> the deterministic remedy-due
+  // state (from the immutable snapshot remedy policy). Gated on placement:permanent:
+  // transition (falloff is a lifecycle transition). Tenant-scoped like the other permanent
+  // mutations (NO @RequireSiteMatch); actor (recorded_by) = JWT sub, never the body. An
+  // absent aggregate is 404; a non-active state 422; an out-of-window/invalid-reason 422.
+  @Post(':id/permanent/falloff')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('placement:permanent:transition')
+  async recordPermanentFalloff(
+    @AuthContext() auth: AuthContextType,
+    @RequestId() requestId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: FalloffDto,
+  ): Promise<PermanentPlacementView> {
+    return this.permanent.recordFalloff(
+      {
+        tenant_id: auth.tenant_id,
+        placement_process_id: id,
+        effective_date: body.effective_date,
+        reason: body.reason,
+        recorded_by: auth.sub,
+      },
+      requestId,
+    );
+  }
+
+  // Track 7 / T7-P2 — evidence-gated remedy completion (§9 / §11). Requires the aggregate
+  // in a remedy-due state and DISTINCT authority: gated on the DEDICATED
+  // placement:remedy:resolve scope (placement:permanent:transition does NOT satisfy it —
+  // remedy resolution is high-consequence). Evidence: replacement_placement_process_id
+  // (REPLACEMENT — a governed same-tenant/same-requisition permanent placement that reached
+  // STARTED, evidence-linkage only, NOT an E4 predecessor) OR external_reference
+  // (REFUND/PRORATED_CREDIT — a bounded governed settlement/credit reference). The caller
+  // NEVER supplies the amount. completed_by = JWT sub. Double completion is a 409.
+  @Post(':id/permanent/remedy/complete')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('placement:remedy:resolve')
+  async completePermanentRemedy(
+    @AuthContext() auth: AuthContextType,
+    @RequestId() requestId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: RemedyCompletionDto,
+  ): Promise<PermanentPlacementView> {
+    return this.permanent.completeRemedy(
+      {
+        tenant_id: auth.tenant_id,
+        placement_process_id: id,
+        replacement_placement_process_id: body.replacement_placement_process_id ?? null,
+        external_reference: body.external_reference ?? null,
+        completed_by: auth.sub,
       },
       requestId,
     );

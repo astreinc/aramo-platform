@@ -544,6 +544,24 @@ export const ERROR_CODES = [
   // catch. The normal replay of a start is already refused earlier as an illegal
   // PlacementProcess edge; this is the race-floor conflict. Mirrors PLACEMENT_ALREADY_LIVE.
   'PERMANENT_PLACEMENT_ALREADY_EXISTS',
+  // Track 7 / T7-P2 — the falloff + remedy family (appended in order — the ordered-parity
+  // surfaces read positionally). Reuses P1 NOT_FOUND (404) + STATE_INVALID (422).
+  // PERMANENT_PLACEMENT_FALLOFF_WINDOW_INVALID (422): the falloff effective date is not a
+  // valid calendar date in the half-open guarantee window [start, end). details.reason ∈
+  // { effective_date_invalid | effective_date_before_start | effective_date_on_or_after_end }.
+  'PERMANENT_PLACEMENT_FALLOFF_WINDOW_INVALID',
+  // PERMANENT_PLACEMENT_FALLOFF_REASON_INVALID (422): the falloff reason is not one of the
+  // seven governed permanent-falloff codes (closed T7 registry, exact-match, no OTHER).
+  'PERMANENT_PLACEMENT_FALLOFF_REASON_INVALID',
+  // PERMANENT_PLACEMENT_REMEDY_INVALID (422): the remedy policy is unprovable from the
+  // snapshot OR the remedy completion evidence is invalid. details.reason discriminates
+  // (remedy_policy_invalid | replacement_placement_process_id_required | replacement_not_found
+  // | replacement_wrong_requisition | replacement_not_permanent | replacement_not_started
+  // | external_reference_required | ...). The E7/E3 one-code + details.reason precedent.
+  'PERMANENT_PLACEMENT_REMEDY_INVALID',
+  // PERMANENT_PLACEMENT_REMEDY_ALREADY_COMPLETED (409): a completion was attempted on a
+  // remedy already resolved (completion facts are write-once). Mirrors PERMANENT_PLACEMENT_ALREADY_EXISTS.
+  'PERMANENT_PLACEMENT_REMEDY_ALREADY_COMPLETED',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];
