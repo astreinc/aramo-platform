@@ -69,6 +69,24 @@ enum PlacementEventType {
   @@schema("placement")
 }
 
+// PlacementKind — Track 7 / T7-P1. The persisted branch-selection fact that
+// governs which post-start aggregate the STARTED handoff materialises: CONTRACT
+// -> ContractAssignment (Track 4, the existing path), PERMANENT ->
+// PermanentPlacement (Track 7). NULLABLE and additive: existing/legacy rows
+// remain NULL and preserve historical CONTRACT behaviour at STARTED
+// (backward-compatibility). A new flow that knows the type persists it
+// explicitly at create; the PERMANENT branch requires an explicit persisted
+// PERMANENT (a NULL cannot be started permanent — fail closed). This is an
+// AGGREGATE birth fact, read at STARTED — never a transient-only transition flag
+// (T7-P1 directive §3.1). It is NOT added to ContractAssignment (§3.1: no
+// permanent discriminator on the contract aggregate).
+enum PlacementKind {
+  CONTRACT
+  PERMANENT
+
+  @@schema("placement")
+}
+
 // PlacementProcess — the spine aggregate. See the identity contract above.
 model PlacementProcess {
   // Identity. UUID v7 generated app-side — NO @default (§2).
@@ -107,6 +125,15 @@ model PlacementProcess {
   // column pinned via OLD = NEW is NULL not TRUE and would reject every
   // first-placement transition). Additive migration 20260808120000.
   replaces_placement_process_id String? @db.Uuid
+
+  // Track 7 / T7-P1 — the persisted permanent-vs-contract branch fact (§3.1).
+  // NULLABLE, written once at INSERT; NOT pinned in any immutability trigger (a
+  // nullable column pinned via OLD = NEW is NULL not TRUE and would reject every
+  // first transition — the §4.3 NULL=NULL trap). Read at STARTED to select the
+  // post-start aggregate: PERMANENT -> PermanentPlacement; CONTRACT/NULL ->
+  // ContractAssignment (legacy NULL preserves historical behaviour). Additive
+  // migration 20260814120000.
+  placement_kind PlacementKind?
 
   // Snapshot creation timestamp. NO updated_at (§2).
   created_at DateTime @default(now()) @db.Timestamptz(6)
@@ -354,5 +381,143 @@ model AssignmentRateVersion {
   @@unique([tenant_id, contract_assignment_id, effective_from])
   @@index([tenant_id, contract_assignment_id])
   @@index([tenant_id, requisition_id])
+  @@schema("placement")
+}
+
+// PermanentPlacementState — Track 7 / T7-P1. The P1 happy-path guarantee
+// lifecycle. Ships EXACTLY the two states the direct-permanent slice reaches:
+// GUARANTEE_ACTIVE (created at the permanent STARTED handoff, inside the
+// contractual guarantee window) and GUARANTEE_SATISFIED (the window completed
+// with no qualifying falloff — terminal). FELL_OFF and the remedy states
+// (REPLACEMENT_DUE / REFUND_DUE / PRORATED_CREDIT_DUE / REMEDY_COMPLETED) are
+// DELIBERATELY ABSENT — they are the T7-P2 slice and land as additive members
+// with their ratified edges (the ContractAssignmentState "ships ACTIVE only"
+// precedent). Enforcement is a typed transition registry (src/lib/lifecycle),
+// NOT a generated DB trigger (T7-P1 directive §3.3); P2 may revisit a DB trigger
+// if the expanded lifecycle warrants it.
+enum PermanentPlacementState {
+  GUARANTEE_ACTIVE
+  GUARANTEE_SATISFIED
+
+  @@schema("placement")
+}
+
+// RemedyPolicy — Track 7. The closed, terms-driven remedy the guarantee snapshot
+// commits to at activation (T7-PRE §8): the single canonical remedy that a
+// qualifying falloff will require. SNAPSHOTTED in P1 (an immutable activation
+// fact) but only EXECUTED in P2 — P1 implements no falloff/remedy transition.
+// Never a Postgres enum guess about priority: exactly one policy is chosen from
+// governed terms, never heuristically among several.
+enum RemedyPolicy {
+  REPLACEMENT
+  REFUND
+  PRORATED_CREDIT
+
+  @@schema("placement")
+}
+
+// PermanentPlacementEventType — closed-list event-log type. Mirrors the
+// PlacementProcessEvent substrate (one type at the spine; richer types land with
+// P2 falloff/remedy consumers).
+enum PermanentPlacementEventType {
+  state_transition
+
+  @@schema("placement")
+}
+
+// PermanentPlacement — Track 7 / T7-P1. The first-class post-start PERMANENT
+// aggregate, parallel to ContractAssignment (T7-PRE §3.1 — NOT a ContractAssignment
+// subtype, PlacementProcess subtype, pipeline row, or reporting projection).
+// Materialised transactionally at the Placement STARTED handoff for a PERMANENT
+// placement_kind, and NOT for CONTRACT/NULL. Carries an IMMUTABLE guarantee
+// snapshot sufficient to determine the guarantee outcome without consulting
+// mutable client defaults (T7-PRE §7). Cross-schema refs are UUID-only, no FK
+// (§7.3), symmetric with ContractAssignment. Additive migration 20260814120000.
+//
+// COMMERCIAL PROVENANCE (§3.2): the direct-permanent path mints NO
+// ContractAssignment and NO AssignmentRateVersion, so guarantee_exposure_amount
+// is a GOVERNED INPUT snapshot fact (explicit amount + currency + provenance),
+// NEVER derived from a rate version and NEVER read cross-schema from the
+// requisition/client-contract. The guarantee-specific proration formula is
+// Track-7-owned (T7-P2); underlying pay/bill/markup/margin remain T5-owned.
+model PermanentPlacement {
+  id String @id @db.Uuid
+
+  tenant_id String @db.Uuid
+
+  // Originating placement. Intra-schema plain scalar (no FK), symmetric with
+  // ContractAssignment.placement_process_id (§7.3 / single-pass tenant-reset).
+  placement_process_id String @db.Uuid
+
+  // Lineage + denormalised read axes, mirroring ContractAssignment (§3b) — the
+  // (tenant, requisition) capacity read needs no cross-row join.
+  submittal_id     String @db.Uuid
+  requisition_id   String @db.Uuid
+  talent_record_id String @db.Uuid
+
+  lifecycle_state PermanentPlacementState
+
+  // Guarantee window (T7-PRE §5). Calendar DATES, not wall-clock instants — the
+  // guarantee is a calendar concept, stable across time zones and DST. Half-open
+  // interval [guarantee_start_date, guarantee_end_date). guarantee_start_date is
+  // the actual permanent employment start represented by the STARTED handoff;
+  // guarantee_end_date = start + guarantee_duration_days (a positive integer,
+  // else the placement fails closed before activation).
+  guarantee_start_date    DateTime @db.Date
+  guarantee_duration_days Int
+  guarantee_end_date      DateTime @db.Date
+
+  // Immutable remedy + commercial-exposure snapshot (§7/§8/§9). remedy_policy is
+  // the single terms-driven remedy a qualifying falloff will require (executed in
+  // P2). guarantee_exposure_amount is the maximum amount subject to refund/credit,
+  // a GOVERNED INPUT (decimal money, never float; scale-2, matching the T5 money
+  // column convention). currency is stored as TEXT (ISO-4217, validated at the
+  // write boundary — the AssignmentRateVersion.currency precedent).
+  remedy_policy               RemedyPolicy
+  guarantee_exposure_amount   Decimal @db.Decimal(12, 2)
+  guarantee_exposure_currency String
+
+  // Terms provenance (§7 "provenance/source of terms"). terms_source is a
+  // governed free-form provenance label (e.g. the origin of the guarantee terms);
+  // recorded_by is the Aramo user (JWT sub) who supplied them — the
+  // AssignmentRateVersion.recorded_by / client-talent-restriction convention.
+  terms_source String
+  recorded_by  String @db.Uuid
+
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+
+  // Intra-schema back-reference for the event-log FK (relation-only field).
+  events PermanentPlacementEvent[]
+
+  // Idempotency: at most one PermanentPlacement per originating start fact
+  // (§3.2) — the branch-exclusivity + replay floor, mirroring ContractAssignment.
+  @@unique([tenant_id, placement_process_id])
+  // (tenant, requisition): the derived-capacity consuming-count read (§7/§10).
+  @@index([tenant_id, requisition_id])
+  @@index([tenant_id, talent_record_id])
+  @@schema("placement")
+}
+
+// PermanentPlacementEvent — Track 7 / T7-P1. Append-only, immutable audit log of
+// the guarantee lifecycle, mirroring PlacementProcessEvent (§3). No update/delete
+// surface; both enforced by DB triggers in the additive migration. The
+// state_transition payload is { from, to } (from is null for the creation/
+// activation event). NO PII: the payload carries IDs, state, and governed
+// snapshot facts only.
+model PermanentPlacementEvent {
+  id        String @id @db.Uuid
+  tenant_id String @db.Uuid
+
+  // Intra-schema FK to PermanentPlacement (permitted — §3, §7.3).
+  permanent_placement_id String             @db.Uuid
+  permanent_placement    PermanentPlacement @relation(fields: [permanent_placement_id], references: [id])
+
+  event_type    PermanentPlacementEventType
+  event_payload Json
+
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([tenant_id, permanent_placement_id])
+  @@index([permanent_placement_id, created_at])
   @@schema("placement")
 }

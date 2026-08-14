@@ -508,6 +508,42 @@ export const ERROR_CODES = [
   'PIPELINE_RECONCILE_LIVE_CONFLICT',  // Track 3 E6 (A4, §5.2) — record reconciliation refused PRE-FLIGHT: the surviving and merged talent records BOTH hold a LIVE pipeline episode for the same requisition, so repointing would put two live episodes on one triple (Q-2 violation). HTTP 409. The refusal is ATOMIC — it runs before any sweep step, so NO domain and NO record is mutated; details.requisition_ids enumerates the conflicting requisitions for explicit human resolution. Distinct from PIPELINE_EPISODE_ALREADY_LIVE (a single-write refusal) — this is a merge-time refusal.
   'REQUISITION_EXTERNAL_IDENTITY_CONFLICT',  // Track 8 T8-P1 — a requisition write refused: another requisition already holds this external identity (tenant_id, source_system, external_req_id). HTTP 409. The canonical external identity is unique per tenant when BOTH provenance fields are present. This is the exact-name translation of a `Requisition_external_identity_key` partial-unique-index violation (T8-P1 migration) — NEVER a generic P2002/23505 catch. It is the T8-P1 REJECT contract; idempotent re-import resolution is a T8-P2 ingestion-engine concern, not this code. Mirrors PIPELINE_EPISODE_ALREADY_LIVE at the requisition-identity layer.
   'ASSIGNMENT_COMMERCIAL_REVISION_CONFLICT',  // Track 6 T6-B2 — a post-start commercial revision refused: the requested effective instant collides with an existing AssignmentRateVersion window for (tenant_id, contract_assignment_id). HTTP 409. ONE code for both DB arbitrations, distinguished by details.reason: `window_overlap` (btree_gist `AssignmentRateVersion_no_window_overlap_excl` 23P01) or `duplicate_effective_from` (`AssignmentRateVersion_tenant_assignment_effective_key` 23505 — fires even against a CANCELLED row, since the unique key is non-partial). Exact-name translation of the constraint violation — NEVER a generic P2002/23505/23P01 catch. Mirrors PIPELINE_EPISODE_ALREADY_LIVE / REQUISITION_EXTERNAL_IDENTITY_CONFLICT at the commercial-window layer.
+  // Track 7 / T7-P1 — the PermanentPlacement guarantee family. Six P1 codes,
+  // appended (order preserved — the ordered-parity surfaces read positionally).
+  // Falloff/remedy errors are T7-P2 and are deliberately NOT added here.
+  // PERMANENT_PLACEMENT_NOT_FOUND (404): a guarantee read/transition addressed a
+  // placement with no PermanentPlacement in this tenant. Mirrors NOT_FOUND at the
+  // permanent-aggregate layer (a coherent absence on a read returns { permanent: null }
+  // instead; this is the mutation-path not-found).
+  'PERMANENT_PLACEMENT_NOT_FOUND',
+  // PERMANENT_PLACEMENT_STATE_INVALID (422): an illegal guarantee-lifecycle
+  // transition — the from-state has no such outgoing edge in the typed registry
+  // (P1: only GUARANTEE_ACTIVE -> GUARANTEE_SATISFIED). Mirrors PLACEMENT_STATE_INVALID.
+  'PERMANENT_PLACEMENT_STATE_INVALID',
+  // PERMANENT_PLACEMENT_GUARANTEE_WINDOW_INVALID (422): the guarantee window is
+  // invalid or its precondition is unmet. details.reason ∈ { start_date_invalid |
+  // duration_not_positive_integer | end_not_after_start | guarantee_window_not_elapsed }.
+  // The first three are activation-time (STARTED); the last is a premature satisfy
+  // (satisfaction is allowed only on/after the guarantee end date, §5/§127).
+  'PERMANENT_PLACEMENT_GUARANTEE_WINDOW_INVALID',
+  // PERMANENT_PLACEMENT_TERMS_REQUIRED (422): a PERMANENT start with absent or
+  // ambiguous governed guarantee terms. details.reason ∈ { guarantee_terms_required |
+  // terms_source_required | remedy_policy_invalid }. Mirrors
+  // PLACEMENT_START_COMMERCIAL_TERMS_REQUIRED at the guarantee layer (a permanent
+  // placement must never activate without a determinate guarantee snapshot).
+  'PERMANENT_PLACEMENT_TERMS_REQUIRED',
+  // PERMANENT_PLACEMENT_EXPOSURE_INVALID (422): the governed guarantee exposure is
+  // invalid. details.reason ∈ { exposure_amount_invalid | exposure_currency_invalid }.
+  // Exposure is a governed INPUT on the direct-permanent path (no rate version is
+  // minted — §3.2), so it is validated at the guarantee write boundary, not derived.
+  'PERMANENT_PLACEMENT_EXPOSURE_INVALID',
+  // PERMANENT_PLACEMENT_ALREADY_EXISTS (409): a PermanentPlacement already exists
+  // for this originating PlacementProcess (the (tenant_id, placement_process_id)
+  // unique key — the idempotency + branch-exclusivity floor). Exact-name translation
+  // of a `PermanentPlacement_tenant_process_key` violation — NEVER a generic P2002
+  // catch. The normal replay of a start is already refused earlier as an illegal
+  // PlacementProcess edge; this is the race-floor conflict. Mirrors PLACEMENT_ALREADY_LIVE.
+  'PERMANENT_PLACEMENT_ALREADY_EXISTS',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

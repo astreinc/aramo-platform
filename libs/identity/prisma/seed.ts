@@ -307,6 +307,10 @@ export const SEED_IDS = {
     'placement:activate': '01900000-0000-7000-8000-0000000000cc',
     'placement:terminate': '01900000-0000-7000-8000-0000000000cd',
     'placement:replace': '01900000-0000-7000-8000-0000000000ce',
+    // Track 7 / T7-P1 — PermanentPlacement guarantee authority family (next free
+    // ids d7/d8; ce consumed by placement:replace, cf-d6 by T4/T5/T8 families).
+    'placement:permanent:read': '01900000-0000-7000-8000-0000000000d7',
+    'placement:permanent:transition': '01900000-0000-7000-8000-0000000000d8',
     // Track 4 / T4-D — ContractAssignment authority family.
     'assignment:read': '01900000-0000-7000-8000-0000000000cf',
     'assignment:create': '01900000-0000-7000-8000-0000000000d0',
@@ -1830,6 +1834,40 @@ const PLACEMENT_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
   return map;
 })();
 
+// Track 7 / T7-P1 — the PermanentPlacement guarantee role matrix (§8). Role posture
+// MIRRORS the ratified placement AUTHORITATIVE tier (grounded from
+// PLACEMENT_SEED_BUNDLES, not invented): placement:permanent:read -> all four
+// grant-receiving roles (as placement:read); placement:permanent:transition ->
+// account_manager/tenant_admin/tenant_owner only (the tier holding
+// placement:activate — authoritative post-start guarantee mutation, and the second
+// leg of the PERMANENT STARTED conjunction). recruiter does operational placement
+// work but NOT authoritative guarantee mutation. super_admin/recruiting_manager/all
+// others: ZERO. Separate bundle + row-id range so PLACEMENT's 0xa00 grants are NOT
+// renumbered (append-don't-renumber).
+export const PERMANENT_PLACEMENT_SEED_BUNDLES: ReadonlyArray<
+  readonly [string, readonly string[]]
+> = [
+  ['recruiter', ['placement:permanent:read']],
+  ['account_manager', ['placement:permanent:read', 'placement:permanent:transition']],
+  ['tenant_admin', ['placement:permanent:read', 'placement:permanent:transition']],
+  ['tenant_owner', ['placement:permanent:read', 'placement:permanent:transition']],
+];
+
+// Deterministic RoleScope row ids for the 7 permanent-placement grants. Fresh
+// disjoint range after REQUISITION_IMPORT's 0xc00 (append-don't-renumber): 0xd00+.
+const PERMANENT_PLACEMENT_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
+  const map: Record<string, string> = {};
+  let i = 0xd00;
+  for (const [role, scopes] of PERMANENT_PLACEMENT_SEED_BUNDLES) {
+    for (const scope of scopes) {
+      map[`${role}:${scope}`] =
+        `01900000-0000-7000-8000-${i.toString(16).padStart(12, '0')}`;
+      i++;
+    }
+  }
+  return map;
+})();
+
 // Track 4 / T4-D — the ContractAssignment role matrix. Role posture MIRRORS the
 // ratified placement AUTHORITATIVE tier (grounded from PLACEMENT_SEED_BUNDLES,
 // not invented): assignment:read -> all four grant-receiving roles (as placement:
@@ -2200,6 +2238,8 @@ export async function runIdentitySeed(
   await upsertScope(prisma, SEED_IDS.scopes['placement:activate'], 'placement:activate', 'Track 3 / E1-b — the edge that establishes the authoritative live/committed placement (ready_to_start->started). Distinct authority from ordinary progression (§2). GRANTED (#577 matrix) to account_manager, tenant_admin, tenant_owner only; recruiter excluded. NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['placement:terminate'], 'placement:terminate', 'Track 3 / E1-b — terminal/irreversible PlacementProcess termination (the 8 edges into OFFER_DECLINED/OFFER_RESCINDED/NO_SHOW/FELL_THROUGH). GRANTED (#577 matrix) to account_manager, tenant_admin, tenant_owner only; recruiter excluded. NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['placement:replace'], 'placement:replace', 'Track 3 / E4 — authorize CREATING a replacement PlacementProcess against a terminal predecessor (POST /v1/placements with replaces_placement_process_id). Required IN CONJUNCTION with placement:create, never as an alternative creation path (§3). GRANTED (E4 ratified matrix) to account_manager, tenant_admin and tenant_owner only; recruiter, super_admin, recruiting_manager and all others ZERO (Owner=Admin mirror). NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['placement:permanent:read'], 'placement:permanent:read', 'Track 7 / T7-P1 — read a PermanentPlacement and its immutable guarantee snapshot (GET /v1/placements/:id/permanent). Dedicated least-privilege authority; placement:* / assignment:* NEVER satisfy it. GRANTED (PERMANENT_PLACEMENT_SEED_BUNDLES) to recruiter, account_manager, tenant_admin, tenant_owner (mirrors placement:read). NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['placement:permanent:transition'], 'placement:permanent:transition', 'Track 7 / T7-P1 — transition the PermanentPlacement guarantee lifecycle (POST /v1/placements/:id/permanent/transition; P1 edge GUARANTEE_ACTIVE->GUARANTEE_SATISFIED) AND the second leg of the PERMANENT STARTED conjunction (with placement:activate). Dedicated authority; assignment:commercials:write / placement:* NEVER substitute. GRANTED (PERMANENT_PLACEMENT_SEED_BUNDLES) to account_manager, tenant_admin, tenant_owner only; recruiter excluded (mirrors placement:activate). NO scope.created (scope-seed precedent).');
   // Track 4 / T4-D — ContractAssignment authority family. Role posture mirrors the
   // placement authoritative tier (ASSIGNMENT_SEED_BUNDLES). NO scope.created (scope-seed precedent).
   await upsertScope(prisma, SEED_IDS.scopes['assignment:read'], 'assignment:read', 'Track 4 / T4-D — read a ContractAssignment (the authoritative post-start commitment) and its derived capacity. GRANTED to recruiter, account_manager, tenant_admin, tenant_owner (mirrors placement:read). NO scope.created (scope-seed precedent).');
@@ -2613,6 +2653,26 @@ export async function runIdentitySeed(
       const rsId = PLACEMENT_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
       if (rsId === undefined) {
         throw new Error(`E1-b Placement-Role-Matrix: Missing generated RoleScope id for ${roleKey}:${scopeKey}`);
+      }
+      const scope_id = scopeIdForKey(scopeKey);
+      await prisma.roleScope.upsert({
+        where: { role_id_scope_id: { role_id, scope_id } },
+        update: {},
+        create: { id: rsId, role_id, scope_id },
+      });
+    }
+  }
+
+  // Track 7 / T7-P1 — PermanentPlacement guarantee role-matrix grants (7 rows;
+  // range 0xd00+). read -> all four grant-receiving roles; transition -> the
+  // authoritative tier only (recruiter excluded). Separate range so PLACEMENT's
+  // 0xa00 grants are not renumbered.
+  for (const [roleKey, scopeKeys] of PERMANENT_PLACEMENT_SEED_BUNDLES) {
+    const role_id = roleIdForKey(roleKey);
+    for (const scopeKey of scopeKeys) {
+      const rsId = PERMANENT_PLACEMENT_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
+      if (rsId === undefined) {
+        throw new Error(`T7-P1 Permanent-Placement-Role-Matrix: Missing generated RoleScope id for ${roleKey}:${scopeKey}`);
       }
       const scope_id = scopeIdForKey(scopeKey);
       await prisma.roleScope.upsert({

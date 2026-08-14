@@ -20,12 +20,18 @@ import {
   ASSIGNMENT_ENDED_CANCELLATION_REASON,
   isUserCancellationReasonCode,
 } from './reasons/commercial-cancellation-reasons.js';
+import { validateGuaranteeTerms } from './permanent/guarantee-validation.js';
+import {
+  OUTBOX_PERMANENT_PLACEMENT_CREATED,
+  OUTBOX_PERMANENT_PLACEMENT_GUARANTEE_ACTIVE,
+} from './permanent/permanent-placement.repository.js';
 import type {
   AssignmentCommercialView,
   CommercialTermsInput,
   ContractAssignmentEndReason,
   ContractAssignmentView,
   CreatePlacementInput,
+  PlacementKind,
   PlacementProcessView,
   TransitionPlacementInput,
 } from './placement-process.types.js';
@@ -44,6 +50,8 @@ interface PlacementProcessRow {
   offer_expires_at: Date | null;
   client_offer_reference: string | null;
   offer_terms_summary: string | null;
+  // Track 7 / T7-P1 — the persisted branch fact, read at the STARTED handoff.
+  placement_kind: PlacementKind | null;
   created_at: Date;
 }
 
@@ -60,6 +68,7 @@ function projectView(row: PlacementProcessRow): PlacementProcessView {
     offer_expires_at: row.offer_expires_at,
     client_offer_reference: row.client_offer_reference,
     offer_terms_summary: row.offer_terms_summary,
+    placement_kind: row.placement_kind,
     created_at: row.created_at,
   };
 }
@@ -106,6 +115,24 @@ function isDuplicateLiveViolation(err: unknown): boolean {
 
 function isTransitionViolation(err: unknown): boolean {
   return errMessage(err).includes('only the 14 legal state transitions');
+}
+
+// Track 7 / T7-P1 — a PermanentPlacement (tenant_id, placement_process_id) unique
+// violation, translated to the exact-name PERMANENT_PLACEMENT_ALREADY_EXISTS
+// (never a generic P2002 catch). Prisma 7 + PrismaPg surfaces the raw constraint at
+// meta.driverAdapterError.cause.originalMessage / .constraint.index, NOT meta.target
+// — match on the index NAME across both the top-level message and the driver cause.
+function isPermanentPlacementDuplicate(err: unknown): boolean {
+  const NAME = 'PermanentPlacement_tenant_process_key';
+  if (errMessage(err).includes(NAME)) return true;
+  if (typeof err !== 'object' || err === null) return false;
+  const cause = (
+    err as { meta?: { driverAdapterError?: { cause?: { originalMessage?: unknown; constraint?: { index?: unknown } } } } }
+  ).meta?.driverAdapterError?.cause;
+  const orig = typeof cause?.originalMessage === 'string' ? cause.originalMessage : '';
+  if (orig.includes(NAME)) return true;
+  const idx = cause?.constraint?.index;
+  return typeof idx === 'string' && idx.includes(NAME);
 }
 
 // Track 6 / T6-B2 — the AssignmentRateVersion DB constraints raise by CONSTRAINT
@@ -239,6 +266,11 @@ export class PlacementRepository {
             offer_terms_summary: input.offer_terms_summary ?? null,
             // E4 — replacement lineage, written once at INSERT (§4/§5).
             replaces_placement_process_id: replacesId,
+            // Track 7 / T7-P1 — the permanent-vs-contract branch fact, written
+            // once at INSERT (§3.1). NULL when the caller is kind-agnostic
+            // (legacy/CONTRACT-compatible at STARTED); an explicit PERMANENT is
+            // required to later start a permanent placement.
+            placement_kind: input.placement_kind ?? null,
           },
         })) as PlacementProcessRow;
         await tx.outboxEvent.create({
@@ -314,12 +346,39 @@ export class PlacementRepository {
     }
     const evidence: ReasonEvidence | null = classification.evidence;
 
-    // Track 4 / T4-A1 — a transition to STARTED materialises the authoritative
-    // ContractAssignment, whose FORWARD provenance requires a company snapshot
-    // (the DB CHECK). Validate the caller supplied it BEFORE the tx, so a missing
-    // context is a clean 422, never a raw check_violation rollback (§4: the org
-    // snapshot is caller-supplied — placement performs no cross-schema read).
-    if (input.to === 'STARTED' && !input.assignment_context?.company_id) {
+    // Track 7 / T7-P1 — the persisted branch fact decides which post-start
+    // aggregate STARTED materialises (§3.1). PERMANENT -> PermanentPlacement (the
+    // guarantee path); CONTRACT or legacy NULL -> ContractAssignment (the existing
+    // path, backward-compatible). Read from the AGGREGATE, never a transient flag.
+    const isStart = input.to === 'STARTED';
+    const isPermanentStart = isStart && current.placement_kind === 'PERMANENT';
+
+    // guarantee_terms belong ONLY to the PERMANENT start seam — the symmetric
+    // mirror of commercial_terms. Supplying them on a CONTRACT/NULL start or a
+    // non-STARTED target is a fail-closed misuse: a placement whose kind is not an
+    // explicit PERMANENT cannot be started permanent (§3.1 — the branch is proven
+    // from the persisted fact, never inferred from the presence of terms).
+    if (input.guarantee_terms != null && !isPermanentStart) {
+      throw new AramoError('VALIDATION_ERROR', 'guarantee_terms may only be supplied on a transition to STARTED of a PERMANENT placement', 400, {
+        requestId,
+        details: { field: 'guarantee_terms', to_state: input.to, placement_kind: current.placement_kind },
+      });
+    }
+
+    // Validate the governed guarantee snapshot BEFORE the transaction (fail-closed,
+    // ZERO mutation) for a PERMANENT start — window, remedy policy, exposure, and
+    // provenance (§5/§9). Null for every non-permanent path.
+    const guaranteeSnapshot = isPermanentStart
+      ? validateGuaranteeTerms(input.guarantee_terms, input.recorded_by, requestId)
+      : null;
+
+    // Track 4 / T4-A1 — a CONTRACT transition to STARTED materialises the
+    // authoritative ContractAssignment, whose FORWARD provenance requires a company
+    // snapshot (the DB CHECK). Validate the caller supplied it BEFORE the tx, so a
+    // missing context is a clean 422, never a raw check_violation rollback (§4: the
+    // org snapshot is caller-supplied — placement performs no cross-schema read).
+    // NOT required for a PERMANENT start (no ContractAssignment is minted — §6).
+    if (isStart && !isPermanentStart && !input.assignment_context?.company_id) {
       throw new AramoError(
         'PLACEMENT_START_CONTEXT_REQUIRED',
         'Starting a placement requires assignment org context (company_id)',
@@ -333,12 +392,13 @@ export class PlacementRepository {
 
     // Track 5 / T5-P1 — commercial-terms policy, validated BEFORE the transaction
     // so a missing/invalid payload is a clean 422/400 with ZERO mutation
-    // (Amendment A1-3). Commercial terms belong ONLY to the FORWARD assignment-start
-    // seam: REQUIRED for STARTED, REJECTED for every other target (never silently
-    // discarded). currency/rate_period are checked against the libs/common shared
-    // closed sets; amounts against the Decimal(12,2) money shape. Company defaults
-    // and requisition targets are NEVER promoted here — only the explicit payload.
-    if (input.to === 'STARTED') {
+    // (Amendment A1-3). Commercial terms belong ONLY to the FORWARD CONTRACT
+    // assignment-start seam: REQUIRED for a CONTRACT STARTED, REJECTED for a
+    // PERMANENT start (which mints no AssignmentRateVersion — §6) and for every
+    // other target (never silently discarded). currency/rate_period are checked
+    // against the libs/common shared closed sets; amounts against the Decimal(12,2)
+    // money shape. Company defaults and requisition targets are NEVER promoted here.
+    if (isStart && !isPermanentStart) {
       const terms = input.commercial_terms;
       if (!terms) {
         throw new AramoError(
@@ -361,7 +421,7 @@ export class PlacementRepository {
         throw new AramoError('VALIDATION_ERROR', 'a recording principal (recorded_by) is required for commercial terms', 400, { requestId, details: { field: 'recorded_by' } });
       }
     } else if (input.commercial_terms != null) {
-      throw new AramoError('VALIDATION_ERROR', 'commercial_terms may only be supplied on a transition to STARTED', 400, { requestId, details: { field: 'commercial_terms', to_state: input.to } });
+      throw new AramoError('VALIDATION_ERROR', 'commercial_terms may only be supplied on a transition to STARTED of a CONTRACT placement', 400, { requestId, details: { field: 'commercial_terms', to_state: input.to, placement_kind: current.placement_kind } });
     }
 
     // ONE transaction-level effective instant (Amendment A1-8): the ContractAssignment
@@ -425,13 +485,72 @@ export class PlacementRepository {
             },
           },
         });
-        // Track 4 / T4-A1 — the forward STARTED -> ContractAssignment path. When a
-        // placement starts, its authoritative post-start assignment is created in
-        // the SAME transaction (the §10 assignment/capacity atomicity foundation).
-        // start fact = now; provenance FORWARD; lifecycle ACTIVE; org snapshot is
-        // caller-supplied (no cross-schema read, §4). The unique
-        // (tenant_id, placement_process_id) index is the idempotency floor.
-        if (input.to === 'STARTED') {
+        // Track 7 / T7-P1 — the PERMANENT STARTED -> PermanentPlacement path. When
+        // a PERMANENT placement starts, its first-class post-start PermanentPlacement
+        // is created in the SAME transaction (§6), in GUARANTEE_ACTIVE, carrying the
+        // immutable guarantee snapshot validated above. NO ContractAssignment and NO
+        // AssignmentRateVersion are minted on this branch (§6 / §3.2 — branch
+        // exclusivity). The unique (tenant_id, placement_process_id) index is the
+        // idempotency + exclusivity floor (a replay cannot double-insert, and a
+        // placement never materialises both a ContractAssignment and a
+        // PermanentPlacement). Append-only event + transactional outbox, PII-free.
+        if (isPermanentStart) {
+          const snap = guaranteeSnapshot as NonNullable<typeof guaranteeSnapshot>;
+          const permanentId = uuidv7();
+          await tx.permanentPlacement.create({
+            data: {
+              id: permanentId,
+              tenant_id: input.tenant_id,
+              placement_process_id: input.placement_process_id,
+              submittal_id: current.submittal_id,
+              requisition_id: current.requisition_id,
+              talent_record_id: current.talent_record_id,
+              lifecycle_state: 'GUARANTEE_ACTIVE',
+              guarantee_start_date: snap.guarantee_start_date,
+              guarantee_duration_days: snap.guarantee_duration_days,
+              guarantee_end_date: snap.guarantee_end_date,
+              remedy_policy: snap.remedy_policy,
+              guarantee_exposure_amount: snap.guarantee_exposure_amount,
+              guarantee_exposure_currency: snap.guarantee_exposure_currency,
+              terms_source: snap.terms_source,
+              recorded_by: snap.recorded_by,
+            },
+          });
+          // Append-only activation event (from null -> GUARANTEE_ACTIVE).
+          await tx.permanentPlacementEvent.create({
+            data: {
+              id: uuidv7(),
+              tenant_id: input.tenant_id,
+              permanent_placement_id: permanentId,
+              event_type: 'state_transition',
+              event_payload: { from: null, to: 'GUARANTEE_ACTIVE' },
+            },
+          });
+          // Two governed outbox events (§12): the aggregate creation and its
+          // guarantee activation. Identity + governed window facts ONLY — NO PII,
+          // NO pay/bill/margin/markup, no free-text notes. (The exposure amount is
+          // deliberately withheld from the append-only, non-reset-covered outbox,
+          // mirroring the rate_version.created identity-only convention.)
+          const permanentOutboxPayload = {
+            tenant_id: input.tenant_id,
+            permanent_placement_id: permanentId,
+            placement_process_id: input.placement_process_id,
+            submittal_id: current.submittal_id,
+            requisition_id: current.requisition_id,
+            talent_record_id: current.talent_record_id,
+            lifecycle_state: 'GUARANTEE_ACTIVE',
+            guarantee_start_date: snap.guarantee_start_date.toISOString().slice(0, 10),
+            guarantee_end_date: snap.guarantee_end_date.toISOString().slice(0, 10),
+            remedy_policy: snap.remedy_policy,
+            occurred_at: startedAt.toISOString(),
+          };
+          await tx.outboxEvent.create({
+            data: { id: uuidv7(), tenant_id: input.tenant_id, event_type: OUTBOX_PERMANENT_PLACEMENT_CREATED, event_payload: permanentOutboxPayload },
+          });
+          await tx.outboxEvent.create({
+            data: { id: uuidv7(), tenant_id: input.tenant_id, event_type: OUTBOX_PERMANENT_PLACEMENT_GUARANTEE_ACTIVE, event_payload: permanentOutboxPayload },
+          });
+        } else if (input.to === 'STARTED') {
           const ctx = input.assignment_context;
           const terms = input.commercial_terms as CommercialTermsInput;
           const assignmentId = uuidv7();
@@ -502,6 +621,15 @@ export class PlacementRepository {
       // (e.g. a concurrent move changed the from-state under us).
       if (isTransitionViolation(err)) {
         throw this.stateInvalid(current.state, input.to, requestId, input.placement_process_id);
+      }
+      // Track 7 / T7-P1 — race-safe branch-exclusivity/idempotency floor: two
+      // concurrent PERMANENT starts that both pass the pre-check collide on the
+      // (tenant, placement_process_id) unique key. Translate to the exact-name 409.
+      if (isPermanentStart && isPermanentPlacementDuplicate(err)) {
+        throw new AramoError('PERMANENT_PLACEMENT_ALREADY_EXISTS', 'a PermanentPlacement already exists for this placement', 409, {
+          requestId,
+          details: { placement_process_id: input.placement_process_id, reason: 'permanent_placement_already_exists' },
+        });
       }
       throw err;
     }
