@@ -10,6 +10,7 @@ import {
 } from '@aramo/fe-foundation';
 
 import { SettingsSeam, SettingsSection } from '../components';
+import { RequisitionIngestionView } from '../../requisition-imports/RequisitionIngestionView';
 
 // Settings Rebuild Directive 1 — the honest seams.
 //
@@ -147,21 +148,25 @@ export function IntegrationsSection() {
   return (
     <SettingsSection
       title="Integrations"
-      description="Connect Aramo to job boards, the VMS platforms that feed requisitions, and the tools your team already uses."
+      description="Monitor the requisitions ingested from external systems, and connect Aramo to the job boards and tools your team uses."
     >
+      {/* T8-P3 — LIVE, read-only monitoring of provider-neutral requisition
+          ingestion. Gated on requisition:import:read (absent scope => absent +
+          no fetch). Only this requisition-ingestion portion of the Integrations
+          seam is wired; everything below remains an honest seam. */}
+      <RequisitionIngestionView />
+
       <SettingsSeam
         icon={<IconPlug />}
         title="Connected apps & API"
         vision={[
           'Job boards — post and sync applicants.',
-          'VMS & intake — receive requisitions and submit talent (SAP Fieldglass, Beeline, VNDLY).',
           'Calendar & comms — Google Workspace, Microsoft 365, Slack.',
           'Developer — API keys and webhooks on the Aramo API.',
         ]}
       >
-        There is no integrations/connector substrate yet — no job-board sync, VMS intake, or
-        API-key / webhook surface. This is a future-milestone subsystem, surfaced here so the
-        Connect area is complete; nothing is wired.
+        Job-board sync, calendar/comms, and the API-key / webhook surface are a future-milestone
+        subsystem, surfaced here so the Connect area is complete; nothing here is wired.
       </SettingsSeam>
     </SettingsSection>
   );
