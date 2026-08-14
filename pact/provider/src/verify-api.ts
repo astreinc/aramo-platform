@@ -6141,6 +6141,51 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         });
       },
 
+      // T9-B3 — a DEDICATED assignment-pipeline state (kept separate from the
+      // fill-performance/fallthrough/shared states). Seeds placements across all
+      // five live states with STARTED×3 (none / ACTIVE / ENDED — proving
+      // STARTED != active + ended) plus start-date examples incl. a null
+      // proposed_start_date. Visible tenant-wide via requisition:read:all.
+      'an ats-web recruiter and assignment-pipeline placements exist': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedAtsWebTenant(c);
+          const AP_REQ = '00000000-0000-7000-8000-a91100000001';
+          const FILL = '00000000-0000-7000-8000-a9110000ffff';
+          const rows: Array<[string, string, string | null]> = [
+            ['00000000-0000-7000-8000-a91100000011', 'OFFER_ACCEPTED', '2026-06-18'],
+            ['00000000-0000-7000-8000-a91100000012', 'PRE_START', '2026-07-30'],
+            ['00000000-0000-7000-8000-a91100000013', 'BLOCKED', null],
+            ['00000000-0000-7000-8000-a91100000014', 'READY_TO_START', '2026-06-18'],
+            ['00000000-0000-7000-8000-a91100000015', 'STARTED', null],
+            ['00000000-0000-7000-8000-a91100000016', 'STARTED', null],
+            ['00000000-0000-7000-8000-a91100000017', 'STARTED', null],
+          ];
+          for (const [id, state, psd] of rows) {
+            await c.query(
+              `INSERT INTO placement."PlacementProcess"
+                 (id, tenant_id, submittal_id, requisition_id, talent_record_id, state, offered_at, proposed_start_date)
+               VALUES ($1,$2,$3,$4,$5,$6::placement."PlacementState", now(), $7::date)
+               ON CONFLICT (id) DO NOTHING`,
+              [id, TENANT_ID, FILL, AP_REQ, FILL, state, psd],
+            );
+          }
+          // Bounded enrichment: one ACTIVE, one ENDED; the third STARTED has none.
+          await c.query(
+            `INSERT INTO placement."ContractAssignment"
+               (id, tenant_id, placement_process_id, submittal_id, requisition_id, talent_record_id, started_at, provenance, lifecycle_state, company_id)
+             VALUES ($1,$2,$3,$4,$5,$6, now(),'FORWARD','ACTIVE',$7) ON CONFLICT (id) DO NOTHING`,
+            ['00000000-0000-7000-8000-a91100000021', TENANT_ID, '00000000-0000-7000-8000-a91100000016', FILL, AP_REQ, FILL, FILL],
+          );
+          await c.query(
+            `INSERT INTO placement."ContractAssignment"
+               (id, tenant_id, placement_process_id, submittal_id, requisition_id, talent_record_id, started_at, provenance, lifecycle_state, end_reason, ended_at, company_id)
+             VALUES ($1,$2,$3,$4,$5,$6, now(),'FORWARD','ENDED','COMPLETED', now(), $7) ON CONFLICT (id) DO NOTHING`,
+            ['00000000-0000-7000-8000-a91100000022', TENANT_ID, '00000000-0000-7000-8000-a91100000017', FILL, AP_REQ, FILL, FILL],
+          );
+        });
+      },
+
       // /me — the authenticated recruiter (sub = RECRUITER_ID) resolves via
       // UserTenantMembership(user_id, tenant_id) → user + active roles + tenant.
       'an ats-web user with a membership and a role exist': async () => {

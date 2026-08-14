@@ -21,6 +21,14 @@ export function ReportingLanding(): JSX.Element {
             Fallthrough
           </Link>
         </li>
+        <li>
+          <Link
+            to="/reports/assignment-pipeline"
+            data-testid="reports-link-assignment-pipeline"
+          >
+            Assignment Pipeline
+          </Link>
+        </li>
       </ul>
     </section>
   );

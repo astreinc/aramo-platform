@@ -42,6 +42,7 @@ function makeService(opts: {
     stub, // tenantSettingRepository (unused by company-metrics)
     stub, // capacity (T4-B1 access; company-metrics still uses the stored column)
     stub, // placementEventRepository (T9-B2; unused here)
+    stub, // placementPipelineRepository (T9-B3; unused here)
   );
   return { svc, requisitionRepository, pipelineRepository };
 }

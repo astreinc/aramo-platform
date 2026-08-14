@@ -129,6 +129,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         {} as never, // tenantSetting
         {} as never, // capacity
         {} as never, // placementEventRepository (T9-B2; unused by fill-performance)
+        {} as never, // placementPipelineRepository (T9-B3; unused here)
       );
     }, 180_000);
 
