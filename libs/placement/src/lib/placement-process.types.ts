@@ -217,6 +217,52 @@ export type PermanentPlacementView = {
   readonly terms_source: string;
   readonly recorded_by: string;
   readonly created_at: Date;
+  // Track 7 / T7-P2 — write-once qualifying-falloff facts (null until falloff).
+  readonly falloff_effective_date: Date | null;
+  readonly falloff_reason: string | null;
+  readonly falloff_recorded_by: string | null;
+  readonly falloff_recorded_at: Date | null;
+  // Track 7 / T7-P2 — the remedy obligation (null until a falloff creates it). The
+  // protected read surface (placement:permanent:read) exposes the obligation amount +
+  // completion state; the outbox does NOT (§3.9).
+  readonly remedy: PermanentPlacementRemedyView | null;
+};
+
+// Track 7 / T7-P2 — the remedy obligation + completion state. calculated_amount is a
+// scale-2 decimal string for REFUND/PRORATED_CREDIT; null for REPLACEMENT.
+export type PermanentPlacementRemedyView = {
+  readonly remedy_type: RemedyPolicy;
+  readonly calculated_amount: string | null;
+  readonly currency: string | null;
+  readonly remaining_days: number | null;
+  readonly falloff_effective_date: Date;
+  readonly due_at: Date;
+  readonly completed_at: Date | null;
+  readonly completed_by: string | null;
+  readonly completion_reference: string | null;
+  readonly replacement_placement_process_id: string | null;
+};
+
+// Track 7 / T7-P2 — the governed guarantee-falloff command input (§5). effective_date is
+// an ISO calendar date; reason is a governed code from the closed T7 falloff registry.
+// recorded_by is the acting principal (JWT sub), never the request body.
+export type FalloffInput = {
+  readonly tenant_id: string;
+  readonly placement_process_id: string;
+  readonly effective_date: string;
+  readonly reason: string;
+  readonly recorded_by: string;
+};
+
+// Track 7 / T7-P2 — the evidence-gated remedy-completion input (§9). Exactly one of
+// replacement_placement_process_id (REPLACEMENT) or external_reference (REFUND/CREDIT);
+// the repository validates coherence against the remedy type. completed_by = JWT sub.
+export type RemedyCompletionInput = {
+  readonly tenant_id: string;
+  readonly placement_process_id: string;
+  readonly replacement_placement_process_id?: string | null;
+  readonly external_reference?: string | null;
+  readonly completed_by: string;
 };
 
 // The permanent-placement guarantee-lifecycle transition event payload: { from, to }.

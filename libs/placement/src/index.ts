@@ -39,6 +39,10 @@ export {
   PERMANENT_PLACEMENT_TRANSITIONS,
   canTransitionPermanentPlacement,
   REMEDY_POLICIES,
+  // Track 7 / T7-P2 — remedy-due states + the deterministic policy->due-state map.
+  REMEDY_DUE_STATES,
+  REMEDY_POLICY_TO_DUE_STATE,
+  dueStateForRemedyPolicy,
 } from './lib/lifecycle/placement-lifecycle.js';
 export type {
   PlacementState,
@@ -48,7 +52,16 @@ export type {
   PlacementAuthorityClass,
   PermanentPlacementState,
   RemedyPolicy,
+  RemedyDueState,
 } from './lib/lifecycle/placement-lifecycle.js';
+// Track 7 / T7-P2 — the closed permanent-falloff reason registry + remedy computation.
+export {
+  PERMANENT_FALLOFF_REASON_CODES,
+  isPermanentFalloffReasonCode,
+} from './lib/reasons/permanent-falloff-reasons.js';
+export type { PermanentFalloffReasonCode } from './lib/reasons/permanent-falloff-reasons.js';
+export { computeRemedyObligation, calendarDaysBetween } from './lib/permanent/remedy-computation.js';
+export type { RemedyObligation } from './lib/permanent/remedy-computation.js';
 
 // SQL generator (§5c/§5d) — registry → typed AST → migration SQL.
 export {
@@ -109,6 +122,9 @@ export type {
   AssignmentCommercialView,
   PermanentPlacementView,
   PermanentPlacementTransitionPayload,
+  PermanentPlacementRemedyView,
+  FalloffInput,
+  RemedyCompletionInput,
 } from './lib/placement-process.types.js';
 
 // Track 4 / T4-B — the placement-owned capacity projection (§4: consumers pull).

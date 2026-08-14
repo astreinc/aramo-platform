@@ -156,6 +156,11 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       'PERMANENT_PLACEMENT_TERMS_REQUIRED',
       'PERMANENT_PLACEMENT_EXPOSURE_INVALID',
       'PERMANENT_PLACEMENT_ALREADY_EXISTS',
+      // Track 7 / T7-P2 — falloff + remedy family (appended in order).
+      'PERMANENT_PLACEMENT_FALLOFF_WINDOW_INVALID',
+      'PERMANENT_PLACEMENT_FALLOFF_REASON_INVALID',
+      'PERMANENT_PLACEMENT_REMEDY_INVALID',
+      'PERMANENT_PLACEMENT_REMEDY_ALREADY_COMPLETED',
     ]);
   });
 });

@@ -1987,6 +1987,124 @@ paths:
       security:
         - BearerAuth: []
 
+  /v1/placements/{id}/permanent/falloff:
+    post:
+      operationId: recordPermanentFalloff
+      summary: Record a qualifying permanent-placement falloff (Track 7 / T7-P2).
+      description: |
+        Records a governed post-start falloff on a `GUARANTEE_ACTIVE` PermanentPlacement:
+        an effective calendar date in the half-open guarantee window `[start, end)` and a
+        governed `reason` from the closed T7 permanent-falloff registry (exact-match, no
+        OTHER). The command atomically transitions `GUARANTEE_ACTIVE -> FELL_OFF` and lands
+        directly in the deterministic remedy-due state (`REPLACEMENT_DUE` / `REFUND_DUE` /
+        `PRORATED_CREDIT_DUE`) derived from the immutable snapshot remedy policy, creating
+        exactly one remedy obligation. FELL_OFF is not a stable externally-observable state.
+
+        Guarded by capability `ats` and scope `placement:permanent:transition`. Tenant-scoped;
+        the acting principal is the JWT subject (never the body). Absent aggregate → 404;
+        non-active state → `PERMANENT_PLACEMENT_STATE_INVALID` (422); out-of-window →
+        `PERMANENT_PLACEMENT_FALLOFF_WINDOW_INVALID` (422); ungoverned reason →
+        `PERMANENT_PLACEMENT_FALLOFF_REASON_INVALID` (422).
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PermanentFalloffRequest'
+      responses:
+        '200':
+          description: OK — the PermanentPlacement now in its deterministic remedy-due state.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PermanentPlacement'
+        '403':
+          description: Insufficient permissions or tenant not entitled.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '422':
+          description: Non-active state, out-of-window effective date, or ungoverned falloff reason.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+      security:
+        - BearerAuth: []
+
+  /v1/placements/{id}/permanent/remedy/complete:
+    post:
+      operationId: completePermanentRemedy
+      summary: Complete a permanent-placement remedy obligation with governed evidence (Track 7 / T7-P2).
+      description: |
+        Resolves the remedy obligation of a PermanentPlacement in a remedy-due state,
+        transitioning to `REMEDY_COMPLETED`. Evidence is required and depends on the
+        immutable remedy type: `REPLACEMENT` requires `replacement_placement_process_id`
+        (a same-tenant, same-requisition, PERMANENT placement that reached `STARTED` —
+        evidence linkage only, NOT an E4 predecessor relation, and no replacement is
+        auto-created); `REFUND` / `PRORATED_CREDIT` require a bounded `external_reference`
+        (a governed settlement/credit reference). Aramo executes NO money movement — it
+        records the obligation and a governed completion reference only. The caller never
+        supplies the amount; the acting principal is the JWT subject.
+
+        Guarded by capability `ats` and the DEDICATED scope `placement:remedy:resolve`
+        (`placement:permanent:transition` does NOT satisfy it). Absent aggregate/remedy →
+        404; invalid evidence → `PERMANENT_PLACEMENT_REMEDY_INVALID` (422); already resolved →
+        `PERMANENT_PLACEMENT_REMEDY_ALREADY_COMPLETED` (409); not in a due state →
+        `PERMANENT_PLACEMENT_STATE_INVALID` (422).
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PermanentRemedyCompletionRequest'
+      responses:
+        '200':
+          description: OK — the PermanentPlacement now REMEDY_COMPLETED.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PermanentPlacement'
+        '403':
+          description: Insufficient permissions or tenant not entitled.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '409':
+          description: The remedy obligation is already completed.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '422':
+          description: Not in a remedy-due state, or invalid completion evidence.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+      security:
+        - BearerAuth: []
+
   /v1/placements/{id}/assignment/commercials:
     get:
       operationId: getPlacementAssignmentCommercials
@@ -3010,7 +3128,7 @@ components:
     PermanentPlacement:
       type: object
       additionalProperties: false
-      required: [id, tenant_id, placement_process_id, submittal_id, requisition_id, talent_record_id, lifecycle_state, guarantee_start_date, guarantee_duration_days, guarantee_end_date, remedy_policy, guarantee_exposure_amount, guarantee_exposure_currency, terms_source, recorded_by, created_at]
+      required: [id, tenant_id, placement_process_id, submittal_id, requisition_id, talent_record_id, lifecycle_state, guarantee_start_date, guarantee_duration_days, guarantee_end_date, remedy_policy, guarantee_exposure_amount, guarantee_exposure_currency, terms_source, recorded_by, created_at, falloff_effective_date, falloff_reason, falloff_recorded_by, falloff_recorded_at, remedy]
       properties:
         id:
           type: string
@@ -3035,6 +3153,11 @@ components:
           enum:
             - GUARANTEE_ACTIVE
             - GUARANTEE_SATISFIED
+            - FELL_OFF
+            - REPLACEMENT_DUE
+            - REFUND_DUE
+            - PRORATED_CREDIT_DUE
+            - REMEDY_COMPLETED
         guarantee_start_date:
           type: string
           format: date
@@ -3062,6 +3185,62 @@ components:
         created_at:
           type: string
           format: date-time
+        falloff_effective_date:
+          type: [string, 'null']
+          format: date
+          description: Track 7 / T7-P2 — the qualifying falloff effective date; null until a falloff.
+        falloff_reason:
+          type: [string, 'null']
+          description: Track 7 / T7-P2 — the governed falloff reason code; null until a falloff.
+        falloff_recorded_by:
+          type: [string, 'null']
+          format: uuid
+        falloff_recorded_at:
+          type: [string, 'null']
+          format: date-time
+        remedy:
+          # Track 7 / T7-P2 — the remedy obligation; null until a falloff creates it.
+          oneOf:
+            - $ref: '#/components/schemas/PermanentPlacementRemedy'
+            - type: 'null'
+    # Track 7 / T7-P2 — the remedy obligation + completion state. calculated_amount is a
+    # scale-2 decimal string for REFUND/PRORATED_CREDIT; null for REPLACEMENT. The
+    # protected read exposes the amount; the outbox does not.
+    PermanentPlacementRemedy:
+      type: object
+      additionalProperties: false
+      required: [remedy_type, calculated_amount, currency, remaining_days, falloff_effective_date, due_at, completed_at, completed_by, completion_reference, replacement_placement_process_id]
+      properties:
+        remedy_type:
+          type: string
+          enum:
+            - REPLACEMENT
+            - REFUND
+            - PRORATED_CREDIT
+        calculated_amount:
+          type: [string, 'null']
+          description: Decimal(12,2) money string; null for REPLACEMENT.
+        currency:
+          type: [string, 'null']
+        remaining_days:
+          type: [integer, 'null']
+        falloff_effective_date:
+          type: string
+          format: date
+        due_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: [string, 'null']
+          format: date-time
+        completed_by:
+          type: [string, 'null']
+          format: uuid
+        completion_reference:
+          type: [string, 'null']
+        replacement_placement_process_id:
+          type: [string, 'null']
+          format: uuid
     PlacementPermanentResponse:
       type: object
       additionalProperties: false
@@ -3083,6 +3262,42 @@ components:
           enum:
             - GUARANTEE_ACTIVE
             - GUARANTEE_SATISFIED
+    # Track 7 / T7-P2 — the governed falloff command body.
+    PermanentFalloffRequest:
+      type: object
+      additionalProperties: false
+      required: [effective_date, reason]
+      properties:
+        effective_date:
+          type: string
+          format: date
+          description: The falloff effective calendar date; must fall in the half-open guarantee window [start, end).
+        reason:
+          type: string
+          description: A governed permanent-falloff reason code (closed T7 registry, exact-match, no OTHER).
+          enum:
+            - TALENT_RESIGNED
+            - CLIENT_TERMINATED_PERFORMANCE
+            - CLIENT_TERMINATED_CONDUCT
+            - CLIENT_TERMINATED_BUSINESS_NEED
+            - MUTUAL_SEPARATION
+            - JOB_ABANDONMENT
+            - EMPLOYMENT_INELIGIBILITY
+    # Track 7 / T7-P2 — the evidence-gated remedy-completion command body. Supply
+    # replacement_placement_process_id for a REPLACEMENT remedy, or external_reference for a
+    # REFUND/PRORATED_CREDIT remedy; the server validates coherence against the remedy type.
+    PermanentRemedyCompletionRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        replacement_placement_process_id:
+          type: string
+          format: uuid
+          description: REPLACEMENT evidence — a same-tenant, same-requisition, PERMANENT placement that reached STARTED (evidence linkage only, not an E4 predecessor).
+        external_reference:
+          type: string
+          maxLength: 255
+          description: REFUND/PRORATED_CREDIT evidence — a bounded governed settlement/credit reference.
     # Track 5 / T5-P2 — the commercial projection of the CURRENT effective
     # AssignmentRateVersion. Stored actuals + DEC-5 derived views (computed on read,
     # never stored). Money + percentages are scale-2 decimal strings (never float);

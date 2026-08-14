@@ -32,6 +32,8 @@ const PLACEMENT_REPLACEMENT = resolve(ROOT, 'libs/placement/prisma/migrations/20
 // every PlacementProcess read, so this read-path spec must apply it or CI 500s
 // (SEPARATE const — never a 2nd resolve() arg on the single-path ROOT const, ENOTDIR).
 const PLACEMENT_PERMANENT = resolve(ROOT, 'libs/placement/prisma/migrations/20260814120000_t7_permanent_placement/migration.sql');
+// T7-P2: PermanentPlacement.falloff_* columns (regenerated client SELECTs them on reads).
+const PLACEMENT_FALLOFF_REMEDY = resolve(ROOT, 'libs/placement/prisma/migrations/20260815120000_t7_p2_falloff_remedy/migration.sql');
 
 const ISSUER = 'Aramo Core Auth';
 const AUDIENCE = 'aramo-placement-read-http-spec';
@@ -72,7 +74,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('E1-d Placement RE
     setupClient = new Client({ connectionString: url });
     await setupClient.connect();
 
-    for (const p of [ENTITLEMENT_INIT, PLACEMENT_INIT, PLACEMENT_OFFER, PLACEMENT_REASON, PLACEMENT_REPLACEMENT, PLACEMENT_PERMANENT]) {
+    for (const p of [ENTITLEMENT_INIT, PLACEMENT_INIT, PLACEMENT_OFFER, PLACEMENT_REASON, PLACEMENT_REPLACEMENT, PLACEMENT_PERMANENT, PLACEMENT_FALLOFF_REMEDY]) {
       await setupClient.query(readFileSync(p, 'utf8'));
     }
     // TENANT_ATS is entitled to 'ats' (the intended placement boundary).

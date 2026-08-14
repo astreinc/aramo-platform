@@ -238,6 +238,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'placement:permanent:read',
         'placement:permanent:transition',
         'placement:read',
+        'placement:remedy:resolve',
         'placement:replace',
         'placement:terminate',
         'placement:transition',
@@ -393,7 +394,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Track5/T5-P1: +6 assignment:commercials grants -> 545. Track8/T8-P2: +7
       // requisition:import grants (read x4 + write x3) -> 552.
       // Track7/T7-P1: +7 placement:permanent grants (read×4 + transition×3) -> 559.
-      expect(roleScopes).toBe(559);
+      expect(roleScopes).toBe(562);
 
       const utmRole = await prisma.userTenantMembershipRole.findUnique({
         where: { id: SEED_IDS.membership_role_admin },
@@ -494,7 +495,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Track 3 / E2: +7 pre_start_requirement (all non-platform). Re-derived
       // actual 96 (prior literal 85 was pre-existingly understated by 4 — F-2).
       // Track 3 / E2 v1.2.2: +1 pre_start_requirement:reopen (non-platform) → 97.
-      expect(tenantScopes.length).toBe(113); // +5 placement + 1 placement:replace + 2 T7-P1 placement:permanent + 4 T4-D assignment + 2 T5-P1 assignment:commercials + 2 T8-P2 requisition:import (all non-platform)
+      expect(tenantScopes.length).toBe(114); // +5 placement + 1 placement:replace + 2 T7-P1 placement:permanent + 1 T7-P2 placement:remedy:resolve + 4 T4-D assignment + 2 T5-P1 assignment:commercials + 2 T8-P2 requisition:import (all non-platform)
       for (const s of tenantScopes) {
         expect(s.key.startsWith('platform:')).toBe(false);
       }
@@ -688,7 +689,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     // no-change PATCH). The company table is not in this identity-only
     // testcontainer, so no Company-row assertion is made here.
 
-    it('test 14 — getScopesByUserAndTenant returns tenant_admin scope set (99 scopes; Track4/T4-D assignment + Track5/T5-P1 assignment:commercials + Track7/T7-P1 placement:permanent + Track8/T8-P2 requisition:import)', async () => {
+    it('test 14 — getScopesByUserAndTenant returns tenant_admin scope set (100 scopes; Track4/T4-D assignment + Track5/T5-P1 assignment:commercials + Track7/T7-P1 placement:permanent + Track7/T7-P2 placement:remedy:resolve + Track8/T8-P2 requisition:import)', async () => {
       const scopes = await roleSvc.getScopesByUserAndTenant({
         user_id: SEED_IDS.user_admin,
         tenant_id: SEED_IDS.tenant,
@@ -759,6 +760,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'placement:permanent:read',
         'placement:permanent:transition',
         'placement:read',
+        'placement:remedy:resolve',
         'placement:replace',
         'placement:terminate',
         'placement:transition',
@@ -943,7 +945,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     // Test 17 — scope catalog correctness
     // -----------------------------------------------------------------
 
-    it('test 17 — scope catalog correctness: 12-role staffing catalog + T5-P1 assignment:commercials + T7-P1 placement:permanent + T8-P2 requisition:import (tenant_admin 99, recruiter 52, candidate 7, tenant_owner 99, account_manager 77, sourcer 25, finance 10, auditor 5, recruiting_manager 56, delivery_manager 33, lead_recruiter 53, back_office 25)', async () => {
+    it('test 17 — scope catalog correctness: 12-role staffing catalog + T5-P1 assignment:commercials + T7-P1 placement:permanent + T7-P2 placement:remedy:resolve + T8-P2 requisition:import (tenant_admin 100, recruiter 52, candidate 7, tenant_owner 100, account_manager 78, sourcer 25, finance 10, auditor 5, recruiting_manager 56, delivery_manager 33, lead_recruiter 53, back_office 25)', async () => {
       // tenant_admin scope set (47 post AUTHZ-D4a; 43 + 4 team-model scopes)
       const adminScopes = await roleSvc.getScopesByUserAndTenant({
         user_id: SEED_IDS.user_admin,
@@ -1009,6 +1011,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'placement:permanent:read',
         'placement:permanent:transition',
         'placement:read',
+        'placement:remedy:resolve',
         'placement:replace',
         'placement:terminate',
         'placement:transition',
@@ -1279,6 +1282,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'placement:permanent:read',
         'placement:permanent:transition',
         'placement:read',
+        'placement:remedy:resolve',
         'placement:replace',
         'placement:terminate',
         'placement:transition',
@@ -1373,6 +1377,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'placement:permanent:read',
         'placement:permanent:transition',
         'placement:read',
+        'placement:remedy:resolve',
         'placement:replace',
         'placement:terminate',
         'placement:transition',

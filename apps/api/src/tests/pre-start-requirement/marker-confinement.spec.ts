@@ -57,6 +57,13 @@ const EXACT_ALLOWLIST = new Set<string>([
   // DELETE escape (proving it stays independent of the cancellation capability, §29)
   // via raw SET LOCAL.
   'libs/placement/src/tests/t6-b3-commercial-cancellation.integration.spec.ts',
+  // Track 7 / T7-P2 — the falloff+remedy migration CREATE OR REPLACEs the placement
+  // event DELETE-reject trigger and adds the PermanentPlacementRemedy immutability
+  // trigger, both carrying the same exact-value tenant_reset DELETE escape.
+  'libs/placement/prisma/migrations/20260815120000_t7_p2_falloff_remedy/migration.sql',
+  // Track 7 / T7-P2 — the falloff+remedy integration proof exercises the tenant-reset
+  // DELETE escape (remedy-row cleanup) via raw SET LOCAL.
+  'libs/placement/src/tests/t7-p2-falloff-remedy.integration.spec.ts',
 ]);
 
 describe('reset-marker confinement — exact-path default-deny (§2.4)', () => {

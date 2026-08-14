@@ -36,6 +36,7 @@ const MIGRATIONS = [
   '20260812140000_t6_b1_effective_window_substrate',
   '20260813130000_t6_b3_commercial_cancellation',
   '20260814120000_t7_permanent_placement',
+  '20260815120000_t7_p2_falloff_remedy',
 ].map((d) => resolve(__dirname, `../../prisma/migrations/${d}/migration.sql`));
 
 function splitDdl(sql: string): string[] {

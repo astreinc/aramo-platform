@@ -286,6 +286,12 @@ export const SEED_SCOPE_KEYS = [
   // Falloff/remedy/terms-management scopes are T7-P2/P3 — NOT added here.
   'placement:permanent:read',
   'placement:permanent:transition',
+  // Track 7 / T7-P2 — the DEDICATED remedy-resolution authority (§3.6). Governs the
+  // evidence-gated remedy completion (POST /v1/placements/:id/permanent/remedy/complete)
+  // — a high-consequence act authority-separated from the guarantee lifecycle:
+  // placement:permanent:transition does NOT satisfy it. GRANTED to account_manager,
+  // tenant_admin, tenant_owner; recruiter excluded. Falloff itself uses permanent:transition.
+  'placement:remedy:resolve',
   // Track 4 / T4-D — ContractAssignment authority (the authoritative post-start
   // commitment). Dedicated family: reuse of requisition:assign / company:assign
   // (user<->entity assignment) and generic placement:* is rejected as semantically
