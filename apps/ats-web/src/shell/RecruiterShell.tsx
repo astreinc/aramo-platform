@@ -100,6 +100,15 @@ const WORK_NAV: readonly NavItem[] = [
     icon: <IconTasks />,
     scope: 'talent:read',
   },
+  // T9-B1 — the operational Reports surface (fill rate + time-to-fill). Gated
+  // on report:read (the same scope as the route); a dedicated entry, NOT folded
+  // into My Desk (D-7).
+  {
+    to: '/reports/fill-performance',
+    label: 'Reports',
+    icon: <IconDesk />,
+    scope: 'report:read',
+  },
 ];
 
 // Admin-gated nav (FE Consolidation Phase 1). The section is shown only to a
@@ -131,6 +140,7 @@ const SECTION_LABEL: Record<string, string> = {
   identity: 'Identity Advisories',
   search: 'Search',
   tasks: 'Tasks',
+  reports: 'Reports',
   admin: 'Settings',
 };
 

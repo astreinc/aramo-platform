@@ -100,6 +100,37 @@ describe('ats-web → reporting', () => {
       });
   });
 
+  it('GET /v1/reports/fill-performance returns fill-rate + time-to-fill metrics', async () => {
+    const FROM = '2020-01-01T00:00:00.000Z';
+    const TO = '2030-01-01T00:00:00.000Z';
+    await provider
+      .addInteraction()
+      .given('an ats-web recruiter and a fully-filled requisition exist')
+      .uponReceiving('a fill-performance read')
+      .withRequest('GET', '/v1/reports/fill-performance', (b) => {
+        b.headers({ Cookie: like(ACCESS_COOKIE) }).query({ from: FROM, to: TO });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          period: { from: like(FROM), to: like(TO) },
+          openings: like(1),
+          filled_openings: like(1),
+          fill_rate: like(100),
+          fully_filled_requisitions: like(1),
+          time_to_fill: { count: like(1), average_days: like(0) },
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(
+          `${mock.url}/v1/reports/fill-performance?from=${encodeURIComponent(FROM)}&to=${encodeURIComponent(TO)}`,
+          { headers: { Cookie: ACCESS_COOKIE } },
+        );
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as { fill_rate: number | null };
+        expect(body.fill_rate).toBe(100);
+      });
+  });
+
   it('GET /v1/reports/company-placements returns the placements list', async () => {
     await provider
       .addInteraction()

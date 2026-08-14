@@ -30,6 +30,7 @@ import { PlacementDetailView } from './placement/PlacementDetailView';
 import { RequisitionCreateView } from './requisitions/RequisitionCreateView';
 import { RequisitionDetailView } from './requisitions/RequisitionDetailView';
 import { RequisitionsListView } from './requisitions/RequisitionsListView';
+import { FillPerformanceView } from './reporting/FillPerformanceView';
 import { SearchView } from './search/SearchView';
 import { SourcingPoolView } from './sourcing/SourcingPoolView';
 import { SettingsView } from './settings/SettingsView';
@@ -115,6 +116,19 @@ export function App() {
                           sessionStateOverride={state}
                         >
                           <MyTasksView />
+                        </RouteGuard>
+                      }
+                    />
+                    {/* T9-B1 — dedicated operational reporting surface
+                        (report:read), a distinct route from My Desk (D-7). */}
+                    <Route
+                      path="reports/fill-performance"
+                      element={
+                        <RouteGuard
+                          requireScope="report:read"
+                          sessionStateOverride={state}
+                        >
+                          <FillPerformanceView />
                         </RouteGuard>
                       }
                     />

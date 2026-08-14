@@ -1868,10 +1868,23 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/reporting/src/tests/fill-performance.integration.spec.ts",
+        "project": "reporting",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/reporting/src/tests/fill-performance.spec.ts",
+        "project": "reporting",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/reporting/src/tests/recruiter-metrics.spec.ts",
         "project": "reporting",
         "status": "excluded"
       },
+      { "project": "reporting", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/requisition/src/tests/compensation-edit-gate.spec.ts",
@@ -3033,6 +3046,12 @@
       },
       { "project": "api", "status": "production" },
       { "project": "export", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/reporting/src/tests/fill-performance.integration.spec.ts",
+        "project": "reporting",
+        "status": "excluded"
+      },
       { "project": "reporting", "status": "production" },
       { "project": "visibility", "status": "production" }
     ],
@@ -3329,6 +3348,12 @@
       { "project": "export", "status": "production" },
       { "project": "import", "status": "production" },
       { "project": "pipeline", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/reporting/src/tests/fill-performance.integration.spec.ts",
+        "project": "reporting",
+        "status": "excluded"
+      },
       { "project": "reporting", "status": "production" },
       { "project": "saved-list", "status": "production" },
       {
