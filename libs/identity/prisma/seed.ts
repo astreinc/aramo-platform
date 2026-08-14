@@ -313,6 +313,8 @@ export const SEED_IDS = {
     'placement:permanent:transition': '01900000-0000-7000-8000-0000000000d8',
     // Track 7 / T7-P2 — the remedy-resolution scope (next free id d9).
     'placement:remedy:resolve': '01900000-0000-7000-8000-0000000000d9',
+    // Track 7 / T7-P3 — the guarantee-terms management scope (next free id da).
+    'placement:permanent:terms:write': '01900000-0000-7000-8000-0000000000da',
     // Track 4 / T4-D — ContractAssignment authority family.
     'assignment:read': '01900000-0000-7000-8000-0000000000cf',
     'assignment:create': '01900000-0000-7000-8000-0000000000d0',
@@ -1896,6 +1898,33 @@ const PERMANENT_REMEDY_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => 
   return map;
 })();
 
+// Track 7 / T7-P3 — the guarantee-terms management role matrix (§3.7). GRANTED to
+// account_manager, tenant_admin, tenant_owner only (recruiter excluded — terms authorship is
+// authority-separated; reads use placement:permanent:read). Separate bundle + row-id range
+// (0xf00+) so PERMANENT's 0xd00 and REMEDY's 0xe00 grants are NOT renumbered
+// (append-don't-renumber).
+export const PERMANENT_TERMS_SEED_BUNDLES: ReadonlyArray<
+  readonly [string, readonly string[]]
+> = [
+  ['account_manager', ['placement:permanent:terms:write']],
+  ['tenant_admin', ['placement:permanent:terms:write']],
+  ['tenant_owner', ['placement:permanent:terms:write']],
+];
+
+// Deterministic RoleScope row ids for the 3 guarantee-terms grants. Range 0xf00+.
+const PERMANENT_TERMS_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
+  const map: Record<string, string> = {};
+  let i = 0xf00;
+  for (const [role, scopes] of PERMANENT_TERMS_SEED_BUNDLES) {
+    for (const scope of scopes) {
+      map[`${role}:${scope}`] =
+        `01900000-0000-7000-8000-${i.toString(16).padStart(12, '0')}`;
+      i++;
+    }
+  }
+  return map;
+})();
+
 // Track 4 / T4-D — the ContractAssignment role matrix. Role posture MIRRORS the
 // ratified placement AUTHORITATIVE tier (grounded from PLACEMENT_SEED_BUNDLES,
 // not invented): assignment:read -> all four grant-receiving roles (as placement:
@@ -2269,6 +2298,7 @@ export async function runIdentitySeed(
   await upsertScope(prisma, SEED_IDS.scopes['placement:permanent:read'], 'placement:permanent:read', 'Track 7 / T7-P1 — read a PermanentPlacement and its immutable guarantee snapshot (GET /v1/placements/:id/permanent). Dedicated least-privilege authority; placement:* / assignment:* NEVER satisfy it. GRANTED (PERMANENT_PLACEMENT_SEED_BUNDLES) to recruiter, account_manager, tenant_admin, tenant_owner (mirrors placement:read). NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['placement:permanent:transition'], 'placement:permanent:transition', 'Track 7 / T7-P1 — transition the PermanentPlacement guarantee lifecycle (POST /v1/placements/:id/permanent/transition; P1 edge GUARANTEE_ACTIVE->GUARANTEE_SATISFIED) AND the second leg of the PERMANENT STARTED conjunction (with placement:activate). Dedicated authority; assignment:commercials:write / placement:* NEVER substitute. GRANTED (PERMANENT_PLACEMENT_SEED_BUNDLES) to account_manager, tenant_admin, tenant_owner only; recruiter excluded (mirrors placement:activate). NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['placement:remedy:resolve'], 'placement:remedy:resolve', 'Track 7 / T7-P2 — resolve a permanent-placement remedy obligation with governed evidence (POST /v1/placements/:id/permanent/remedy/complete). DEDICATED high-consequence authority, authority-separated from the guarantee lifecycle; placement:permanent:transition / placement:* NEVER satisfy it. GRANTED (PERMANENT_REMEDY_SEED_BUNDLES) to account_manager, tenant_admin, tenant_owner only; recruiter excluded. NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['placement:permanent:terms:write'], 'placement:permanent:terms:write', 'Track 7 / T7-P3 — create/revise the reusable requisition-keyed guarantee-term versions (POST /v1/permanent-placement-guarantee-terms/requisitions/:requisitionId[/revise]). DEDICATED terms-authorship authority, authority-separated from operational work; reads use placement:permanent:read and placement:* NEVER satisfy it. GRANTED (PERMANENT_TERMS_SEED_BUNDLES) to account_manager, tenant_admin, tenant_owner only; recruiter excluded. NO scope.created (scope-seed precedent).');
   // Track 4 / T4-D — ContractAssignment authority family. Role posture mirrors the
   // placement authoritative tier (ASSIGNMENT_SEED_BUNDLES). NO scope.created (scope-seed precedent).
   await upsertScope(prisma, SEED_IDS.scopes['assignment:read'], 'assignment:read', 'Track 4 / T4-D — read a ContractAssignment (the authoritative post-start commitment) and its derived capacity. GRANTED to recruiter, account_manager, tenant_admin, tenant_owner (mirrors placement:read). NO scope.created (scope-seed precedent).');
@@ -2720,6 +2750,24 @@ export async function runIdentitySeed(
       const rsId = PERMANENT_REMEDY_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
       if (rsId === undefined) {
         throw new Error(`T7-P2 Permanent-Remedy-Role-Matrix: Missing generated RoleScope id for ${roleKey}:${scopeKey}`);
+      }
+      const scope_id = scopeIdForKey(scopeKey);
+      await prisma.roleScope.upsert({
+        where: { role_id_scope_id: { role_id, scope_id } },
+        update: {},
+        create: { id: rsId, role_id, scope_id },
+      });
+    }
+  }
+
+  // Track 7 / T7-P3 — guarantee-terms management role-matrix grants (3 rows; range 0xf00+).
+  // account_manager/tenant_admin/tenant_owner only (recruiter excluded).
+  for (const [roleKey, scopeKeys] of PERMANENT_TERMS_SEED_BUNDLES) {
+    const role_id = roleIdForKey(roleKey);
+    for (const scopeKey of scopeKeys) {
+      const rsId = PERMANENT_TERMS_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
+      if (rsId === undefined) {
+        throw new Error(`T7-P3 Permanent-Terms-Role-Matrix: Missing generated RoleScope id for ${roleKey}:${scopeKey}`);
       }
       const scope_id = scopeIdForKey(scopeKey);
       await prisma.roleScope.upsert({

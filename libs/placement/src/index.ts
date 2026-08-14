@@ -63,6 +63,30 @@ export type { PermanentFalloffReasonCode } from './lib/reasons/permanent-falloff
 export { computeRemedyObligation, calendarDaysBetween } from './lib/permanent/remedy-computation.js';
 export type { RemedyObligation } from './lib/permanent/remedy-computation.js';
 
+// Track 7 / T7-P3 — the reusable guarantee-term-versioning source (create/revise/resolve),
+// its closed provenance registry, and the version types.
+export {
+  GuaranteeTermRepository,
+  resolveEffectiveTermRow,
+  resolvedTermsFromRow,
+  OUTBOX_GUARANTEE_TERMS_CREATED,
+  OUTBOX_GUARANTEE_TERMS_REVISED,
+  OUTBOX_GUARANTEE_TERMS_APPLIED,
+} from './lib/permanent/guarantee-term.repository.js';
+export type { GuaranteeTermVersionRow } from './lib/permanent/guarantee-term.repository.js';
+export {
+  GUARANTEE_TERMS_SOURCE_TYPES,
+  isGuaranteeTermsSourceType,
+} from './lib/permanent/guarantee-terms-source.js';
+export type { GuaranteeTermsSourceType } from './lib/permanent/guarantee-terms-source.js';
+export { parseTermCalendarDate } from './lib/permanent/guarantee-term-version.js';
+export type {
+  GuaranteeTermVersionView,
+  CreateGuaranteeTermVersionInput,
+  ReviseGuaranteeTermVersionInput,
+  ResolvedGuaranteeTerms,
+} from './lib/permanent/guarantee-term-version.js';
+
 // SQL generator (§5c/§5d) — registry → typed AST → migration SQL.
 export {
   generatePlacementMigrationSql,

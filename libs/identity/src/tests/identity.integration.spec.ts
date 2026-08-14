@@ -236,6 +236,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'placement:activate',
         'placement:create',
         'placement:permanent:read',
+        'placement:permanent:terms:write',
         'placement:permanent:transition',
         'placement:read',
         'placement:remedy:resolve',
@@ -394,7 +395,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Track5/T5-P1: +6 assignment:commercials grants -> 545. Track8/T8-P2: +7
       // requisition:import grants (read x4 + write x3) -> 552.
       // Track7/T7-P1: +7 placement:permanent grants (read×4 + transition×3) -> 559.
-      expect(roleScopes).toBe(562);
+      // Track7/T7-P2: +3 placement:remedy:resolve grants (account_manager/tenant_admin/tenant_owner) -> 562.
+      // Track7/T7-P3: +3 placement:permanent:terms:write grants (account_manager/tenant_admin/tenant_owner) -> 565.
+      expect(roleScopes).toBe(565);
 
       const utmRole = await prisma.userTenantMembershipRole.findUnique({
         where: { id: SEED_IDS.membership_role_admin },
@@ -490,12 +493,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // D4 +1 (tenant:user:read:assignable) = 81, then D4b +1
       // (tenant:user:read:directory) = 82, then Domain-Enforcement P2b +1
       // (tenant:admin:domain) = 83, then TR-2a-3 +1 (identity:resolve) = 84.
-      // (Distinct from SEED_SCOPE_KEYS=87, which counts the 3 platform:* scopes
-      // this query excludes.)
+      // (Distinct from SEED_SCOPE_KEYS, the full seeded catalog, which additionally
+      // counts the platform:* scopes this tenant-scope query excludes — T7-P3 hygiene:
+      // the earlier "=87 / 3 platform:*" literals were stale.)
       // Track 3 / E2: +7 pre_start_requirement (all non-platform). Re-derived
       // actual 96 (prior literal 85 was pre-existingly understated by 4 — F-2).
       // Track 3 / E2 v1.2.2: +1 pre_start_requirement:reopen (non-platform) → 97.
-      expect(tenantScopes.length).toBe(114); // +5 placement + 1 placement:replace + 2 T7-P1 placement:permanent + 1 T7-P2 placement:remedy:resolve + 4 T4-D assignment + 2 T5-P1 assignment:commercials + 2 T8-P2 requisition:import (all non-platform)
+      expect(tenantScopes.length).toBe(115); // +5 placement + 1 placement:replace + 2 T7-P1 placement:permanent + 1 T7-P2 placement:remedy:resolve + 1 T7-P3 placement:permanent:terms:write + 4 T4-D assignment + 2 T5-P1 assignment:commercials + 2 T8-P2 requisition:import (all non-platform)
       for (const s of tenantScopes) {
         expect(s.key.startsWith('platform:')).toBe(false);
       }
@@ -758,6 +762,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'placement:activate',
         'placement:create',
         'placement:permanent:read',
+        'placement:permanent:terms:write',
         'placement:permanent:transition',
         'placement:read',
         'placement:remedy:resolve',
@@ -1009,6 +1014,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'placement:activate',
         'placement:create',
         'placement:permanent:read',
+        'placement:permanent:terms:write',
         'placement:permanent:transition',
         'placement:read',
         'placement:remedy:resolve',
@@ -1280,6 +1286,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'placement:activate',
         'placement:create',
         'placement:permanent:read',
+        'placement:permanent:terms:write',
         'placement:permanent:transition',
         'placement:read',
         'placement:remedy:resolve',
@@ -1375,6 +1382,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'placement:activate',
         'placement:create',
         'placement:permanent:read',
+        'placement:permanent:terms:write',
         'placement:permanent:transition',
         'placement:read',
         'placement:remedy:resolve',

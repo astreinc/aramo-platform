@@ -10,6 +10,7 @@ import {
   INITIAL_STATE,
   isPlacementGuardReleased,
   type PlacementState,
+  type RemedyPolicy,
 } from './lifecycle/placement-lifecycle.js';
 import {
   classifyTransitionReason,
@@ -20,11 +21,16 @@ import {
   ASSIGNMENT_ENDED_CANCELLATION_REASON,
   isUserCancellationReasonCode,
 } from './reasons/commercial-cancellation-reasons.js';
-import { validateGuaranteeTerms } from './permanent/guarantee-validation.js';
+import { validateGuaranteeTerms, parseCalendarDate } from './permanent/guarantee-validation.js';
 import {
   OUTBOX_PERMANENT_PLACEMENT_CREATED,
   OUTBOX_PERMANENT_PLACEMENT_GUARANTEE_ACTIVE,
 } from './permanent/permanent-placement.repository.js';
+import {
+  resolveEffectiveTermRow,
+  resolvedTermsFromRow,
+  OUTBOX_GUARANTEE_TERMS_APPLIED,
+} from './permanent/guarantee-term.repository.js';
 import type {
   AssignmentCommercialView,
   CommercialTermsInput,
@@ -180,6 +186,126 @@ function isDuplicateEffectiveFromViolation(err: unknown): boolean {
 // guard that returns a structured domain error BEFORE the SQL, with the trigger
 // as the race-safe floor caught by message substring. Raw Postgres exceptions
 // are never surfaced to the caller (§ error handling).
+// Track 7 / T7-P3 — the resolved permanent-activation snapshot (directive §3.4 / §7). The
+// employment start is always a per-placement fact; duration/remedy/exposure/currency come
+// from the canonical stored guarantee-term version when one is effective, else from the
+// legacy explicit guarantee_terms. The four *_source*/version fields are the copied
+// provenance (NULL for the legacy path).
+interface PermanentActivation {
+  readonly guarantee_start_date: Date;
+  readonly guarantee_duration_days: number;
+  readonly guarantee_end_date: Date;
+  readonly remedy_policy: RemedyPolicy;
+  readonly guarantee_exposure_amount: string;
+  readonly guarantee_exposure_currency: string;
+  readonly terms_source: string;
+  readonly recorded_by: string;
+  readonly guarantee_term_version_id: string | null;
+  readonly guarantee_terms_source_type: string | null;
+  readonly guarantee_terms_source_reference: string | null;
+  readonly guarantee_terms_source_version: string | null;
+}
+
+function addUtcDaysLocal(start: Date, days: number): Date {
+  const end = new Date(start.getTime());
+  end.setUTCDate(end.getUTCDate() + days);
+  return end;
+}
+
+// Resolve the PERMANENT activation snapshot BEFORE any mutation (directive §3.4). Precedence:
+// exactly one effective stored version => copy it (canonical); a conflicting explicit input =>
+// reject; 0 stored + legacy explicit terms => legacy path; 0 stored + no explicit terms => fail
+// closed; >1 effective => fail closed ambiguous (in resolveEffectiveTermRow). No live-read after.
+async function resolvePermanentActivation(
+  prisma: PrismaService,
+  requisition_id: string,
+  input: TransitionPlacementInput,
+  requestId: string,
+): Promise<PermanentActivation> {
+  const recorded_by = input.recorded_by;
+  if (!recorded_by) {
+    throw new AramoError('VALIDATION_ERROR', 'a recording principal (recorded_by) is required to start a permanent placement', 400, {
+      requestId,
+      details: { field: 'recorded_by' },
+    });
+  }
+
+  // Employment start (per-placement fact): the legacy bundle's start when present, else the
+  // standalone guarantee_start_date. Required either way.
+  const startStr = input.guarantee_terms?.guarantee_start_date ?? input.guarantee_start_date ?? null;
+  if (startStr == null) {
+    throw new AramoError('PERMANENT_PLACEMENT_TERMS_REQUIRED', 'a permanent start requires guarantee_start_date (or the legacy guarantee_terms)', 422, {
+      requestId,
+      details: { reason: 'guarantee_start_date_required' },
+    });
+  }
+  const start = parseCalendarDate(startStr);
+  if (start === null) {
+    throw new AramoError('PERMANENT_PLACEMENT_GUARANTEE_WINDOW_INVALID', 'guarantee_start_date is not a valid calendar date', 422, {
+      requestId,
+      details: { reason: 'start_date_invalid', guarantee_start_date: startStr },
+    });
+  }
+
+  // Stored terms are canonical when an effective version exists (§3.4).
+  const storedRow = await resolveEffectiveTermRow(prisma, input.tenant_id, requisition_id, start, requestId);
+  if (storedRow !== null) {
+    const resolved = resolvedTermsFromRow(storedRow);
+    // A conflicting explicit input, if ALSO supplied, is rejected (never silently ignored).
+    if (input.guarantee_terms != null) {
+      const explicit = validateGuaranteeTerms(input.guarantee_terms, recorded_by, requestId);
+      const conflict =
+        explicit.guarantee_duration_days !== resolved.guarantee_duration_days ||
+        explicit.remedy_policy !== resolved.remedy_policy ||
+        Number(explicit.guarantee_exposure_amount).toFixed(2) !== resolved.guarantee_exposure_amount ||
+        explicit.guarantee_exposure_currency !== resolved.currency;
+      if (conflict) {
+        throw new AramoError('VALIDATION_ERROR', 'the supplied guarantee_terms conflict with the canonical stored guarantee-term version', 400, {
+          requestId,
+          details: { reason: 'explicit_terms_conflict_with_stored', requisition_id, guarantee_term_version_id: resolved.guarantee_term_version_id },
+        });
+      }
+    }
+    return {
+      guarantee_start_date: start,
+      guarantee_duration_days: resolved.guarantee_duration_days,
+      guarantee_end_date: addUtcDaysLocal(start, resolved.guarantee_duration_days),
+      remedy_policy: resolved.remedy_policy,
+      guarantee_exposure_amount: resolved.guarantee_exposure_amount,
+      guarantee_exposure_currency: resolved.currency,
+      terms_source: resolved.source_type,
+      recorded_by,
+      guarantee_term_version_id: resolved.guarantee_term_version_id,
+      guarantee_terms_source_type: resolved.source_type,
+      guarantee_terms_source_reference: resolved.source_reference,
+      guarantee_terms_source_version: resolved.source_version,
+    };
+  }
+
+  // No stored version: legacy explicit P1 path when full terms are present, else fail closed.
+  if (input.guarantee_terms == null) {
+    throw new AramoError('PERMANENT_PLACEMENT_TERMS_NOT_FOUND', 'no guarantee-term version is effective for the requisition and no explicit guarantee_terms were supplied', 404, {
+      requestId,
+      details: { requisition_id, reason: 'no_stored_terms_no_explicit_input' },
+    });
+  }
+  const legacy = validateGuaranteeTerms(input.guarantee_terms, recorded_by, requestId);
+  return {
+    guarantee_start_date: legacy.guarantee_start_date,
+    guarantee_duration_days: legacy.guarantee_duration_days,
+    guarantee_end_date: legacy.guarantee_end_date,
+    remedy_policy: legacy.remedy_policy,
+    guarantee_exposure_amount: legacy.guarantee_exposure_amount,
+    guarantee_exposure_currency: legacy.guarantee_exposure_currency,
+    terms_source: legacy.terms_source,
+    recorded_by: legacy.recorded_by,
+    guarantee_term_version_id: null,
+    guarantee_terms_source_type: null,
+    guarantee_terms_source_reference: null,
+    guarantee_terms_source_version: null,
+  };
+}
+
 @Injectable()
 export class PlacementRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -364,12 +490,19 @@ export class PlacementRepository {
         details: { field: 'guarantee_terms', to_state: input.to, placement_kind: current.placement_kind },
       });
     }
+    if (input.guarantee_start_date != null && !isPermanentStart) {
+      throw new AramoError('VALIDATION_ERROR', 'guarantee_start_date may only be supplied on a transition to STARTED of a PERMANENT placement', 400, {
+        requestId,
+        details: { field: 'guarantee_start_date', to_state: input.to, placement_kind: current.placement_kind },
+      });
+    }
 
-    // Validate the governed guarantee snapshot BEFORE the transaction (fail-closed,
-    // ZERO mutation) for a PERMANENT start — window, remedy policy, exposure, and
-    // provenance (§5/§9). Null for every non-permanent path.
-    const guaranteeSnapshot = isPermanentStart
-      ? validateGuaranteeTerms(input.guarantee_terms, input.recorded_by, requestId)
+    // Track 7 / T7-P3 — resolve the governed activation snapshot BEFORE the transaction
+    // (fail-closed, ZERO mutation). Stored guarantee-term versions are canonical when one is
+    // effective as-of the employment start; else the legacy explicit guarantee_terms; else
+    // fail closed (§3.4). Copy-at-activation — the snapshot is frozen, no live-read afterward.
+    const permanentActivation = isPermanentStart
+      ? await resolvePermanentActivation(this.prisma, current.requisition_id, input, requestId)
       : null;
 
     // Track 4 / T4-A1 — a CONTRACT transition to STARTED materialises the
@@ -495,7 +628,7 @@ export class PlacementRepository {
         // placement never materialises both a ContractAssignment and a
         // PermanentPlacement). Append-only event + transactional outbox, PII-free.
         if (isPermanentStart) {
-          const snap = guaranteeSnapshot as NonNullable<typeof guaranteeSnapshot>;
+          const act = permanentActivation as NonNullable<typeof permanentActivation>;
           const permanentId = uuidv7();
           await tx.permanentPlacement.create({
             data: {
@@ -506,14 +639,20 @@ export class PlacementRepository {
               requisition_id: current.requisition_id,
               talent_record_id: current.talent_record_id,
               lifecycle_state: 'GUARANTEE_ACTIVE',
-              guarantee_start_date: snap.guarantee_start_date,
-              guarantee_duration_days: snap.guarantee_duration_days,
-              guarantee_end_date: snap.guarantee_end_date,
-              remedy_policy: snap.remedy_policy,
-              guarantee_exposure_amount: snap.guarantee_exposure_amount,
-              guarantee_exposure_currency: snap.guarantee_exposure_currency,
-              terms_source: snap.terms_source,
-              recorded_by: snap.recorded_by,
+              guarantee_start_date: act.guarantee_start_date,
+              guarantee_duration_days: act.guarantee_duration_days,
+              guarantee_end_date: act.guarantee_end_date,
+              remedy_policy: act.remedy_policy,
+              guarantee_exposure_amount: act.guarantee_exposure_amount,
+              guarantee_exposure_currency: act.guarantee_exposure_currency,
+              terms_source: act.terms_source,
+              recorded_by: act.recorded_by,
+              // T7-P3 — copy-at-activation provenance (NULL for the legacy path); frozen by
+              // the snapshot-immutability trigger.
+              guarantee_term_version_id: act.guarantee_term_version_id,
+              guarantee_terms_source_type: act.guarantee_terms_source_type,
+              guarantee_terms_source_reference: act.guarantee_terms_source_reference,
+              guarantee_terms_source_version: act.guarantee_terms_source_version,
             },
           });
           // Append-only activation event (from null -> GUARANTEE_ACTIVE).
@@ -539,9 +678,9 @@ export class PlacementRepository {
             requisition_id: current.requisition_id,
             talent_record_id: current.talent_record_id,
             lifecycle_state: 'GUARANTEE_ACTIVE',
-            guarantee_start_date: snap.guarantee_start_date.toISOString().slice(0, 10),
-            guarantee_end_date: snap.guarantee_end_date.toISOString().slice(0, 10),
-            remedy_policy: snap.remedy_policy,
+            guarantee_start_date: act.guarantee_start_date.toISOString().slice(0, 10),
+            guarantee_end_date: act.guarantee_end_date.toISOString().slice(0, 10),
+            remedy_policy: act.remedy_policy,
             occurred_at: startedAt.toISOString(),
           };
           await tx.outboxEvent.create({
@@ -550,6 +689,26 @@ export class PlacementRepository {
           await tx.outboxEvent.create({
             data: { id: uuidv7(), tenant_id: input.tenant_id, event_type: OUTBOX_PERMANENT_PLACEMENT_GUARANTEE_ACTIVE, event_payload: permanentOutboxPayload },
           });
+          // T7-P3 — when a stored guarantee-term version was applied, emit the governed
+          // "applied" event (§9). Safe payload only: identity + version id + source_type; NO
+          // exposure amount, source_reference, source_version, free text, or PII.
+          if (act.guarantee_term_version_id !== null) {
+            await tx.outboxEvent.create({
+              data: {
+                id: uuidv7(),
+                tenant_id: input.tenant_id,
+                event_type: OUTBOX_GUARANTEE_TERMS_APPLIED,
+                event_payload: {
+                  tenant_id: input.tenant_id,
+                  requisition_id: current.requisition_id,
+                  permanent_placement_id: permanentId,
+                  guarantee_term_version_id: act.guarantee_term_version_id,
+                  source_type: act.guarantee_terms_source_type,
+                  occurred_at: startedAt.toISOString(),
+                },
+              },
+            });
+          }
         } else if (input.to === 'STARTED') {
           const ctx = input.assignment_context;
           const terms = input.commercial_terms as CommercialTermsInput;

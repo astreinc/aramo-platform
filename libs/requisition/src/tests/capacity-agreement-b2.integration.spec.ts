@@ -43,6 +43,7 @@ const PLACEMENT_MIGRATIONS = [
   '20260813130000_t6_b3_commercial_cancellation',
   '20260814120000_t7_permanent_placement',
   '20260815120000_t7_p2_falloff_remedy',
+  '20260816120000_t7_p3_guarantee_term_versioning',
 ].map((d) => resolve(__dirname, `../../../placement/prisma/migrations/${d}/migration.sql`));
 
 const ALL_MIGRATIONS = [REQUISITION_INIT, ...PLACEMENT_MIGRATIONS];

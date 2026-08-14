@@ -505,6 +505,20 @@ model PermanentPlacement {
   falloff_recorded_by    String?   @db.Uuid
   falloff_recorded_at    DateTime? @db.Timestamptz(6)
 
+  // Track 7 / T7-P3 — guarantee-terms provenance snapshot (§7). NULL for every
+  // P1/P2 row (no stored term version applied — legacy explicit path) and never
+  // backfilled. When a resolved PermanentPlacementGuaranteeTermVersion is applied at
+  // activation, these are COPIED once (with the existing guarantee_* payload columns)
+  // and then frozen: NULL-safe write-once immutability in the snapshot trigger (the
+  // falloff-field idiom — never a bare OLD=NEW). guarantee_term_version_id is a plain
+  // intra-schema UUID pointer (no FK — a lineage ref, symmetric with the plain-scalar
+  // convention); source_type is the closed code-owned registry value (MANUAL|IMPORTED).
+  // Additive migration 20260816120000.
+  guarantee_term_version_id        String? @db.Uuid
+  guarantee_terms_source_type      String?
+  guarantee_terms_source_reference String?
+  guarantee_terms_source_version   String?
+
   created_at DateTime @default(now()) @db.Timestamptz(6)
 
   // Intra-schema back-reference for the event-log FK (relation-only field).
@@ -609,6 +623,83 @@ model PermanentPlacementRemedy {
   replacement_placement_process_id String?  @db.Uuid
 
   @@unique([tenant_id, permanent_placement_id])
+  @@index([tenant_id, requisition_id])
+  @@schema("placement")
+}
+
+// PermanentPlacementGuaranteeTermVersion — Track 7 / T7-P3. The reusable,
+// placement-owned, effective-dated SOURCE of permanent-placement guarantee terms,
+// keyed by (tenant_id, requisition_id) — reusable across the requisition's permanent
+// placements (directive §3.1). NOT keyed by talent or PlacementProcess, and requires
+// NO placement->requisition library dependency (requisition_id is a plain cross-schema
+// UUID axis, never a join). APPEND-ONLY versioned business history (§3.8 — no separate
+// history table): each governed revision inserts a successor and first-closes the
+// predecessor's open window. The IMMUTABLE PermanentPlacement snapshot COPIES the
+// resolved values at activation (§7); there is NO live-read after activation.
+//
+// Effective-dating is CALENDAR DATE, half-open [effective_from, effective_to) (§3.2) —
+// the guarantee-window convention, NOT the AssignmentRateVersion TIMESTAMPTZ instant
+// convention. Overlap for a (tenant, requisition) is forbidden by a btree_gist
+// daterange EXCLUDE (§5); unique(tenant, requisition, effective_from) is the
+// idempotency/replay floor. All payload + provenance fields are immutable after
+// insert; the ONLY governed mutation is effective_to NULL->date once (revision
+// first-close). DELETE forbidden except the exact-value governed tenant-reset GUC
+// escape. The interval CHECK, btree_gist EXCLUDE, append-only + first-close trigger,
+// and reset escape are migration-only (20260816120000), invisible to prisma:validate,
+// mirroring the AssignmentRateVersion precedent. No cancellation columns (P3 defers
+// future-version cancellation, §3.5).
+//
+// COMMERCIAL PROVENANCE (§3.3): guarantee_exposure_amount + currency are GOVERNED T7
+// term data (explicit input), NEVER derived from AssignmentRateVersion and NEVER
+// duplicating deriveCommercialMetrics. source_type is the closed code-owned registry
+// (guarantee-terms-source.ts: MANUAL | IMPORTED; TEXT + DB CHECK — no premature
+// CLIENT_CONTRACT / RATE_CARD, §3.6).
+model PermanentPlacementGuaranteeTermVersion {
+  id String @id @db.Uuid
+
+  tenant_id String @db.Uuid
+
+  // Reusable ownership axis (§3.1). Plain cross-schema UUID scalar (no FK, no join,
+  // no placement->requisition edge). Available BEFORE any PlacementProcess exists, so
+  // terms can be prepared pre-start and resolved deterministically at activation.
+  requisition_id String @db.Uuid
+
+  // Effective-dating (§3.2). CALENDAR DATES, half-open [effective_from, effective_to).
+  // effective_to NULL = the open current tail; first-close (NULL->date, once) is the
+  // sole governed mutation. Resolution compares an as_of calendar date against the
+  // half-open window using the existing T7 UTC calendar-date semantics.
+  effective_from DateTime  @db.Date
+  effective_to   DateTime? @db.Date
+
+  // Reusable guarantee-term payload (§3.3). guarantee_duration_days > 0 (DB CHECK);
+  // guarantee_exposure_amount >= 0 (DB CHECK; Decimal money, never float, scale-2 —
+  // the exposure column convention). currency TEXT (ISO-4217, validated at the write
+  // boundary). remedy_policy is the closed terms-driven RemedyPolicy.
+  guarantee_duration_days   Int
+  remedy_policy             RemedyPolicy
+  guarantee_exposure_amount Decimal @db.Decimal(12, 2)
+  currency                  String
+
+  // Structured provenance (§3.6). source_type is the closed code-owned registry value
+  // (MANUAL | IMPORTED; TEXT + DB CHECK). source_reference / source_version are optional
+  // governed references (e.g. an import batch id + version). recorded_by = the Aramo
+  // user (JWT sub). recorded_at = the governed recording instant (may predate created_at
+  // for an IMPORTED source). supersedes_version_id points at the predecessor this version
+  // first-closed (NULL for an initial version). correlation_id is an optional governed
+  // trace id. NO free-form change note in P3.
+  source_type           String
+  source_reference      String?
+  source_version        String?
+  recorded_by           String   @db.Uuid
+  recorded_at           DateTime @db.Timestamptz(6)
+  supersedes_version_id String?  @db.Uuid
+  correlation_id        String?
+
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+
+  // Idempotency/replay floor keyed on the effective date (§4). The btree_gist daterange
+  // EXCLUDE (migration-only) enforces no-overlap for (tenant, requisition).
+  @@unique([tenant_id, requisition_id, effective_from])
   @@index([tenant_id, requisition_id])
   @@schema("placement")
 }
