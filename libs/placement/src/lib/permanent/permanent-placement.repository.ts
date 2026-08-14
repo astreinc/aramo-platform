@@ -12,14 +12,15 @@ import {
   type RemedyPolicy,
 } from '../lifecycle/placement-lifecycle.js';
 import { isPermanentFalloffReasonCode } from '../reasons/permanent-falloff-reasons.js';
-import { parseCalendarDate } from './guarantee-validation.js';
-import { computeRemedyObligation } from './remedy-computation.js';
 import type {
   FalloffInput,
   PermanentPlacementRemedyView,
   PermanentPlacementView,
   RemedyCompletionInput,
 } from '../placement-process.types.js';
+
+import { parseCalendarDate } from './guarantee-validation.js';
+import { computeRemedyObligation } from './remedy-computation.js';
 
 // Track 7 — PermanentPlacement aggregate repository. P1: guarantee read + happy-path
 // GUARANTEE_ACTIVE -> GUARANTEE_SATISFIED. T7-P2: the atomic governed falloff command
