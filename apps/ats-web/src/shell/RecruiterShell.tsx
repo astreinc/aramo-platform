@@ -104,7 +104,7 @@ const WORK_NAV: readonly NavItem[] = [
   // on report:read (the same scope as the route); a dedicated entry, NOT folded
   // into My Desk (D-7).
   {
-    to: '/reports/fill-performance',
+    to: '/reports',
     label: 'Reports',
     icon: <IconDesk />,
     scope: 'report:read',

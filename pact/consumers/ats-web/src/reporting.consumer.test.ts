@@ -131,6 +131,43 @@ describe('ats-web → reporting', () => {
       });
   });
 
+  it('GET /v1/reports/fallthrough returns fallthrough rate + reasons', async () => {
+    const FROM = '2020-01-01T00:00:00.000Z';
+    const TO = '2100-01-01T00:00:00.000Z';
+    await provider
+      .addInteraction()
+      .given('an ats-web recruiter and a fallen-through placement exist')
+      .uponReceiving('a fallthrough read')
+      .withRequest('GET', '/v1/reports/fallthrough', (b) => {
+        b.headers({ Cookie: like(ACCESS_COOKIE) }).query({ from: FROM, to: TO });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          period: { from: like(FROM), to: like(TO) },
+          accepted_attempts: like(1),
+          fallthrough_attempts: like(1),
+          fallthrough_rate: like(100),
+          reasons: like([
+            {
+              reason_code: like('start_date_failed'),
+              reason_label: like('Start date failed'),
+              count: like(1),
+              rate: like(100),
+            },
+          ]),
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(
+          `${mock.url}/v1/reports/fallthrough?from=${encodeURIComponent(FROM)}&to=${encodeURIComponent(TO)}`,
+          { headers: { Cookie: ACCESS_COOKIE } },
+        );
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as { fallthrough_rate: number | null };
+        expect(body.fallthrough_rate).toBe(100);
+      });
+  });
+
   it('GET /v1/reports/company-placements returns the placements list', async () => {
     await provider
       .addInteraction()

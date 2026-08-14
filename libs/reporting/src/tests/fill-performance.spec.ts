@@ -57,6 +57,7 @@ function makeService(cohort: Cohort, placed: Placed) {
     pipelineRepository as never,
     stub, // tenantSettingRepository
     stub, // capacity — the REJECTED path; must never be touched
+    stub, // placementEventRepository (T9-B2; unused by fill-performance)
   );
   return { svc, requisitionRepository, pipelineRepository };
 }

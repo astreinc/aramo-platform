@@ -172,6 +172,37 @@ export interface FillPerformanceReportView {
   };
 }
 
+// FallthroughReportView — T9-B2 authoritative fallthrough-rate + reasons report
+// (GET /v1/reports/fallthrough). Governed by Aramo-T9-B2-Directive-v1_0-LOCKED.
+//
+// Placement-attempt level, post-acceptance/pre-start ONLY. Cohort =
+// PlacementProcess attempts whose FIRST OFFER_ACCEPTED transition ∈
+// [period.from, period.to) (D-2/D-4), scoped to the actor's A3-visible
+// requisitions. `fallthrough_attempts` = those that later terminate in
+// FELL_THROUGH or NO_SHOW ONLY (D-1); OFFER_DECLINED/OFFER_RESCINDED/STARTED and
+// still-live are excluded. `fallthrough_rate` = round(fallthrough / accepted *
+// 100) integer percent (B1 convention), null when accepted_attempts === 0.
+//
+// `reasons` groups the fallthrough terminals by the canonical placement reason
+// (`reason_code` + `reason_label_snapshot` → `reason_label`); a terminal with no
+// persisted reason is grouped into a REPORT-ONLY `{ reason_code: null,
+// reason_label: "Unspecified" }` bucket (D-8) — never written back. `reason_detail`
+// (PII) is NEVER read, aggregated, or exposed (§16).
+export interface FallthroughReasonView {
+  reason_code: string | null;
+  reason_label: string; // reason_label_snapshot, or "Unspecified" for the null bucket
+  count: number;
+  rate: number; // percent 0-100 of fallthrough_attempts represented by this bucket
+}
+
+export interface FallthroughReportView {
+  period: { from: string; to: string };
+  accepted_attempts: number; // denominator
+  fallthrough_attempts: number; // numerator
+  fallthrough_rate: number | null; // percent 0-100, null when accepted_attempts === 0
+  reasons: FallthroughReasonView[];
+}
+
 // DashboardView — the composition payload for GET /v1/dashboard.
 // Bundles the ATS-internal metrics into a single response so a
 // recruiter UI doesn't have to N-round-trip on load.

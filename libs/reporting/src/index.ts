@@ -9,5 +9,7 @@ export type {
   PipelineStageRollupView,
   PlacementCountReportView,
   FillPerformanceReportView,
+  FallthroughReportView,
+  FallthroughReasonView,
   DashboardView,
 } from './lib/dto/index.js';

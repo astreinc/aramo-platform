@@ -2477,6 +2477,65 @@ paths:
       security:
         - BearerAuth: []
 
+  /v1/reports/fallthrough:
+    get:
+      operationId: getFallthroughReport
+      summary: Fallthrough rate + reasons operational report (T9-B2).
+      description: |
+        Authoritative T9 fallthrough rate + reasons, placement-attempt level and
+        post-acceptance/pre-start ONLY. Cohort = PlacementProcess attempts whose
+        FIRST OFFER_ACCEPTED transition ∈ [from, to). `accepted_attempts` is the
+        denominator; `fallthrough_attempts` counts those that later terminate in
+        FELL_THROUGH or NO_SHOW only (offer-decline/rescind, submittal, pipeline,
+        requisition closure and post-start assignment ending are excluded).
+        `fallthrough_rate` = round(fallthrough / accepted * 100), null when
+        accepted_attempts == 0. `reasons` groups by the canonical placement reason
+        (reason_code + reason_label); terminals with no persisted reason group into
+        a report-only null / "Unspecified" bucket. reason_detail (PII) is never
+        exposed. Tenant / site / A3 visibility scoped; report:read.
+      parameters:
+        - name: from
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+          description: |
+            Inclusive period start. Absolute ISO 8601 date-time carrying `Z` or an
+            explicit offset; date-only / zone-less values are rejected 400. Cohort
+            predicate: first OFFER_ACCEPTED transition >= from.
+        - name: to
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+          description: |
+            Exclusive period end (half-open [from, to)); same absolute date-time
+            rules as `from`; must be strictly after `from`.
+        - name: site_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+          description: Optional site narrowing (must match the actor's site claim).
+      responses:
+        '200':
+          description: Fallthrough rate + reason breakdown for the period cohort.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FallthroughReport'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+      security:
+        - BearerAuth: []
+
 components:
   securitySchemes:
     # Duplicated byte-for-byte from openapi/common.yaml per locked invariant
@@ -2498,6 +2557,66 @@ components:
         secret — the shared signing secret is provisioned out-of-band and never documented.
 
   schemas:
+    # T9-B2 — fallthrough rate + reasons operational report
+    # (GET /v1/reports/fallthrough). Computed-on-read; no persistence. Note:
+    # reason_detail (PII) is deliberately absent; additionalProperties:false
+    # keeps it out of the contract (§16 data-safety).
+    FallthroughReport:
+      type: object
+      additionalProperties: false
+      required:
+        - period
+        - accepted_attempts
+        - fallthrough_attempts
+        - fallthrough_rate
+        - reasons
+      properties:
+        period:
+          type: object
+          additionalProperties: false
+          required: [from, to]
+          properties:
+            from:
+              type: string
+              format: date-time
+            to:
+              type: string
+              format: date-time
+        accepted_attempts:
+          type: integer
+          minimum: 0
+          description: Denominator — distinct placement attempts first accepted in the period.
+        fallthrough_attempts:
+          type: integer
+          minimum: 0
+          description: Numerator — cohort attempts terminating in FELL_THROUGH or NO_SHOW.
+        fallthrough_rate:
+          type: [integer, 'null']
+          minimum: 0
+          maximum: 100
+          description: Percent 0-100; null when accepted_attempts == 0.
+        reasons:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [reason_code, reason_label, count, rate]
+            properties:
+              reason_code:
+                type: [string, 'null']
+                description: Canonical placement reason code, or null for the "Unspecified" bucket.
+              reason_label:
+                type: string
+                description: Snapshotted reason label, or "Unspecified" for the null bucket.
+              count:
+                type: integer
+                minimum: 0
+              rate:
+                type: integer
+                minimum: 0
+                maximum: 100
+                description: Percent of fallthrough_attempts represented by this bucket.
+
     # T9-B1 — fill rate + time-to-fill operational report
     # (GET /v1/reports/fill-performance). Computed-on-read; no persistence.
     FillPerformanceReport:
