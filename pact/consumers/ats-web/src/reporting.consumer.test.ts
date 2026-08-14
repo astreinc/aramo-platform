@@ -105,7 +105,7 @@ describe('ats-web → reporting', () => {
     const TO = '2030-01-01T00:00:00.000Z';
     await provider
       .addInteraction()
-      .given('an ats-web recruiter and tenant reporting data exist')
+      .given('an ats-web recruiter and a fully-filled requisition exist')
       .uponReceiving('a fill-performance read')
       .withRequest('GET', '/v1/reports/fill-performance', (b) => {
         b.headers({ Cookie: like(ACCESS_COOKIE) }).query({ from: FROM, to: TO });

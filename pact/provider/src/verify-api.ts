@@ -6045,12 +6045,30 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
             tenantStatus: 'active',
             sourceChannel: 'recruiter_added',
           });
-          // T9-B1 — a single-opening requisition (default openings = 1) with one
-          // `placed` pipeline + a placed history row, so GET
-          // /v1/reports/fill-performance over a wide window returns a
-          // deterministic non-zero fill rate (100%) and one fully-filled
-          // requisition with a time-to-fill value (§14). Visible tenant-wide via
-          // the recruiter's requisition:read:all.
+        });
+      },
+
+      // T9-B1 — a DEDICATED state for the fill-performance interaction. Kept
+      // separate from the shared reporting state above because seeding a
+      // requisition + placed pipeline would give the company openings (breaking
+      // the company-metrics `fill_rate: null` / company-placements `[]` /
+      // dashboard empty-`by_status` expectations). A single-opening requisition
+      // (default openings = 1) with one `placed` pipeline + a placed history row
+      // → GET /v1/reports/fill-performance over a wide window returns a
+      // deterministic 100% fill rate and one fully-filled requisition with a
+      // time-to-fill value (§14). Visible tenant-wide via requisition:read:all.
+      'an ats-web recruiter and a fully-filled requisition exist': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedAtsWebTenant(c);
+          await seedAtsWebCompany(c, { id: ATSW_COMPANY_ID, name: 'Acme Corp' });
+          await seedAtsWebTalentRecord(c, {
+            id: ATSW_TALENT_ID,
+            firstName: 'Ada',
+            lastName: 'Lovelace',
+            tenantStatus: 'active',
+            sourceChannel: 'recruiter_added',
+          });
           await seedAtsWebRequisition(c, {
             id: ATSW_PIPE_FULL_REQ_ID,
             title: 'Filled Req',
