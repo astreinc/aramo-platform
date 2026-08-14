@@ -6097,6 +6097,50 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         });
       },
 
+      // T9-B2 — a DEDICATED state for the fallthrough interaction, kept separate
+      // from the shared reporting state so seeding a placement attempt cannot
+      // perturb the fill_rate:null / empty-rollup sibling interactions. One
+      // placement attempt that first-accepts in-window then FELL_THROUGH with a
+      // canonical reason → GET /v1/reports/fallthrough over a wide window returns
+      // a deterministic 100% fallthrough rate + one reason bucket (§15). Visible
+      // tenant-wide via requisition:read:all; reason_detail is never exposed.
+      'an ats-web recruiter and a fallen-through placement exist': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedAtsWebTenant(c);
+          const pp = '00000000-0000-7000-8000-fa1100000001';
+          await c.query(
+            `INSERT INTO placement."PlacementProcess"
+               (id, tenant_id, submittal_id, requisition_id, talent_record_id, state, offered_at)
+             VALUES ($1,$2,$3,$4,$5,'FELL_THROUGH'::placement."PlacementState", now())
+             ON CONFLICT (id) DO NOTHING`,
+            [
+              pp,
+              TENANT_ID,
+              '00000000-0000-7000-8000-fa1100000002',
+              '00000000-0000-7000-8000-fa1100000003',
+              '00000000-0000-7000-8000-fa1100000004',
+            ],
+          );
+          await c.query(
+            `INSERT INTO placement."PlacementProcessEvent"
+               (id, tenant_id, placement_process_id, event_type, event_payload, created_at)
+             VALUES ($1,$2,$3,'state_transition'::placement."PlacementEventType",
+                     '{"from":"OFFER_EXTENDED","to":"OFFER_ACCEPTED"}'::jsonb, '2026-05-15T00:00:00Z')
+             ON CONFLICT (id) DO NOTHING`,
+            ['00000000-0000-7000-8000-fa1100000010', TENANT_ID, pp],
+          );
+          await c.query(
+            `INSERT INTO placement."PlacementProcessEvent"
+               (id, tenant_id, placement_process_id, event_type, event_payload, reason_code, reason_label_snapshot, created_at)
+             VALUES ($1,$2,$3,'state_transition'::placement."PlacementEventType",
+                     '{"from":"OFFER_ACCEPTED","to":"FELL_THROUGH"}'::jsonb, 'start_date_failed', 'Start date failed', '2026-05-20T00:00:00Z')
+             ON CONFLICT (id) DO NOTHING`,
+            ['00000000-0000-7000-8000-fa1100000011', TENANT_ID, pp],
+          );
+        });
+      },
+
       // /me — the authenticated recruiter (sub = RECRUITER_ID) resolves via
       // UserTenantMembership(user_id, tenant_id) → user + active roles + tenant.
       'an ats-web user with a membership and a role exist': async () => {

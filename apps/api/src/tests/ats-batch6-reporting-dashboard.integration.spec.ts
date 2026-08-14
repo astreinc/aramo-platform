@@ -300,6 +300,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     let port = 0;
     let savedEnv: Partial<Record<string, string | undefined>> = {};
     let setupClient: Client;
+    // T9-B2 — the two seeded requisitions hoisted for the fallthrough A3 test
+    // (reqAssigned is visible to RECRUITER; reqUnassigned is tenant-admin-only).
+    let ftReqAssigned = '';
+    let ftReqUnassigned = '';
 
     let recruiterJwt: string;
     let recruiterOtherJwt: string;
@@ -489,7 +493,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         company_id: companyA.id,
         site_id: SITE_A,
       });
-      void reqUnassigned;
+      ftReqAssigned = reqAssigned.id;
+      ftReqUnassigned = reqUnassigned.id;
       // Assign reqAssigned to RECRUITER via the tenant_admin assign route.
       await postJson(
         `/v1/requisitions/${reqAssigned.id}/assignments`,
@@ -696,6 +701,100 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(recRes.status).toBe(200);
       const rec = (await recRes.json()) as { openings: number };
       expect(rec.openings).toBe(1); // A3 narrows to the recruiter's assigned req
+    });
+
+    // -------------------------------------------------------------------------
+    // T9-B2 — fallthrough: guard axes, from/to validation, and end-to-end A3
+    // through the real reporting→placement read. Directive §19.
+    // -------------------------------------------------------------------------
+
+    const FT_FROM = '2020-01-01T00:00:00.000Z';
+    const FT_TO = '2100-01-01T00:00:00.000Z';
+    const ftUrl = (from: string, to: string): string =>
+      `http://127.0.0.1:${port}/v1/reports/fallthrough` +
+      `?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&site_id=${SITE_A}`;
+
+    // Seed a placement attempt that first-accepts in-window then FELL_THROUGH.
+    // Raw insert (no HTTP path creates OFFER_ACCEPTED transitions in this spec);
+    // the PlacementProcess event log carries {from,to} + reason on the terminal.
+    async function seedFallthrough(requisition_id: string): Promise<void> {
+      const pp = globalThis.crypto.randomUUID();
+      await setupClient.query(
+        `INSERT INTO placement."PlacementProcess"
+           (id, tenant_id, submittal_id, requisition_id, talent_record_id, state, offered_at)
+         VALUES ($1,$2,$3,$4,$5,'FELL_THROUGH'::placement."PlacementState", now())`,
+        [pp, TENANT_ATS, globalThis.crypto.randomUUID(), requisition_id, globalThis.crypto.randomUUID()],
+      );
+      await setupClient.query(
+        `INSERT INTO placement."PlacementProcessEvent"
+           (id, tenant_id, placement_process_id, event_type, event_payload, created_at)
+         VALUES ($1,$2,$3,'state_transition'::placement."PlacementEventType",
+                 '{"from":"OFFER_EXTENDED","to":"OFFER_ACCEPTED"}'::jsonb, '2026-05-15T00:00:00Z')`,
+        [globalThis.crypto.randomUUID(), TENANT_ATS, pp],
+      );
+      await setupClient.query(
+        `INSERT INTO placement."PlacementProcessEvent"
+           (id, tenant_id, placement_process_id, event_type, event_payload, reason_code, reason_label_snapshot, created_at)
+         VALUES ($1,$2,$3,'state_transition'::placement."PlacementEventType",
+                 '{"from":"OFFER_ACCEPTED","to":"FELL_THROUGH"}'::jsonb, 'start_date_failed', 'Start date failed', '2026-05-20T00:00:00Z')`,
+        [globalThis.crypto.randomUUID(), TENANT_ATS, pp],
+      );
+    }
+
+    it('fallthrough entitlement axis: tenant lacking ats → 403', async () => {
+      const res = await fetch(ftUrl(FT_FROM, FT_TO), { method: 'GET', headers: { Authorization: `Bearer ${recruiterJwt_NotAts}` } });
+      expect(res.status).toBe(403);
+      const body = (await res.json()) as { error: { code: string } };
+      expect(body.error?.code).toBe('TENANT_CAPABILITY_NOT_ENTITLED');
+    });
+
+    it('fallthrough authorization axis: unscoped → 403', async () => {
+      const res = await fetch(ftUrl(FT_FROM, FT_TO), { method: 'GET', headers: { Authorization: `Bearer ${unscopedJwt}` } });
+      expect(res.status).toBe(403);
+    });
+
+    it('fallthrough site axis: token site != requested site → 403', async () => {
+      const res = await fetch(ftUrl(FT_FROM, FT_TO), { method: 'GET', headers: { Authorization: `Bearer ${recruiterJwt_WrongSite}` } });
+      expect(res.status).toBe(403);
+    });
+
+    it('fallthrough rejects a date-only `from` → 400 VALIDATION_ERROR', async () => {
+      const res = await fetch(ftUrl('2026-05-01', FT_TO), { method: 'GET', headers: { Authorization: `Bearer ${tenantAdminJwt}` } });
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error: { code: string } };
+      expect(body.error?.code).toBe('VALIDATION_ERROR');
+    });
+
+    it('fallthrough requires from and to → 400 when missing', async () => {
+      const res = await fetch(`http://127.0.0.1:${port}/v1/reports/fallthrough?site_id=${SITE_A}`, { method: 'GET', headers: { Authorization: `Bearer ${tenantAdminJwt}` } });
+      expect(res.status).toBe(400);
+    });
+
+    it('fallthrough end-to-end + A3: admin sees both attempts (rate 100); recruiter sees only the assigned req; no reason_detail leaks', async () => {
+      await seedFallthrough(ftReqAssigned); // recruiter-visible
+      await seedFallthrough(ftReqUnassigned); // tenant-admin-only
+
+      const adminRes = await fetch(ftUrl(FT_FROM, FT_TO), { method: 'GET', headers: { Authorization: `Bearer ${tenantAdminJwt}` } });
+      expect(adminRes.status).toBe(200);
+      const adminText = await adminRes.text();
+      expect(adminText).not.toContain('reason_detail'); // §16 PII wall
+      const admin = JSON.parse(adminText) as {
+        accepted_attempts: number;
+        fallthrough_attempts: number;
+        fallthrough_rate: number | null;
+        reasons: Array<{ reason_code: string | null; reason_label: string; count: number }>;
+      };
+      expect(admin.accepted_attempts).toBe(2);
+      expect(admin.fallthrough_attempts).toBe(2);
+      expect(admin.fallthrough_rate).toBe(100);
+      expect(admin.reasons).toEqual([
+        { reason_code: 'start_date_failed', reason_label: 'Start date failed', count: 2, rate: 100 },
+      ]);
+
+      const recRes = await fetch(ftUrl(FT_FROM, FT_TO), { method: 'GET', headers: { Authorization: `Bearer ${recruiterJwt}` } });
+      expect(recRes.status).toBe(200);
+      const rec = (await recRes.json()) as { accepted_attempts: number };
+      expect(rec.accepted_attempts).toBe(1); // A3 narrows to the assigned req
     });
 
     // -------------------------------------------------------------------------
