@@ -2,6 +2,7 @@ import { RouteGuard, ToastProvider, useSession } from '@aramo/fe-foundation';
 import { Navigate, Route, Routes } from 'react-router-dom';
 
 import { AdminGate } from './admin/AdminGate';
+import { hasAdminScope } from './admin/admin-access';
 import { AdminSection } from './admin/AdminSection';
 import { CompanyAssignmentsView } from './assignments/CompanyAssignmentsView';
 import { RequisitionAssignmentsView } from './assignments/RequisitionAssignmentsView';
@@ -386,6 +387,47 @@ export function App() {
                         </RouteGuard>
                       }
                     />
+                    {/* T8-P3 reachability (Gate-5 FIX_NOW): the requisition-
+                        ingestion MONITORING surface lives under Settings →
+                        Integrations, but its frontend authority is the LOCKED
+                        P3 scope `requisition:import:read` — NOT the
+                        `tenant:admin:*` family. This isolated route is more
+                        specific than the `admin/*` splat below, so it out-ranks
+                        it for `/admin/settings/integrations`: a recruiter
+                        holding the read scope reaches it WITHOUT any admin
+                        scope, while every OTHER settings section stays inside
+                        the AdminGate subtree (admin-only preserved — no
+                        broadening). RouteGuard renders <ForbiddenState> (never a
+                        login redirect) when the read scope is absent — an admin
+                        WITHOUT the read scope included. The component
+                        (RequisitionIngestionView) self-gates on the SAME scope
+                        (no surface, no fetch), so the route and the panel agree.
+                        Chrome by reachable-IA: an admin keeps the full settings
+                        rail (SettingsShell); a non-admin read-holder gets the
+                        focused section alone, so no admin IA is exposed to a
+                        non-admin. */}
+                    <Route
+                      path="admin/settings/integrations/*"
+                      element={
+                        <RouteGuard
+                          requireScope="requisition:import:read"
+                          sessionStateOverride={state}
+                        >
+                          {hasAdminScope(state.session) ? (
+                            <Routes>
+                              <Route element={<SettingsShell />}>
+                                <Route
+                                  index
+                                  element={<IntegrationsSection />}
+                                />
+                              </Route>
+                            </Routes>
+                          ) : (
+                            <IntegrationsSection />
+                          )}
+                        </RouteGuard>
+                      }
+                    />
                     {/* Admin-gated section. AdminGate is the single
                         `tenant:admin:*` family guard for the whole subtree (a
                         non-admin reaching any /admin route in-UI gets
@@ -476,10 +518,11 @@ export function App() {
                                 path="settings/fields"
                                 element={<FieldsSection />}
                               />
-                              <Route
-                                path="settings/integrations"
-                                element={<IntegrationsSection />}
-                              />
+                              {/* settings/integrations is NOT hosted here: it is
+                                  the one section governed by
+                                  `requisition:import:read` (P3), served by the
+                                  isolated route above — OUTSIDE this
+                                  `tenant:admin:*` AdminGate subtree. */}
                               <Route
                                 path="settings/billing"
                                 element={<BillingSection />}

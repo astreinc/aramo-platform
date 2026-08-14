@@ -2409,6 +2409,18 @@
       },
       {
         "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/requisition-imports/RequisitionIngestionRoute.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/requisition-imports/RequisitionIngestionView.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/ats-web/src/requisitions/NewRequisitionView.spec.tsx",
         "project": "aramo-ats-web",
         "status": "excluded"
