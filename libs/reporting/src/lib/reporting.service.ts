@@ -19,6 +19,7 @@ import type {
   CompanyMetricsView,
   CompanyPlacementView,
   DashboardView,
+  FillPerformanceReportView,
   PipelineStageRollupView,
   PlacementCountReportView,
   RecruiterMetricKey,
@@ -323,6 +324,111 @@ export class ReportingService {
     return {
       placed_pipelines,
       includes_core_submittal_placements: false,
+    };
+  }
+
+  // -------------------------------------------------------------------------
+  // T9-B1 — authoritative fill-rate + time-to-fill operational report.
+  // Governed by Aramo-T9-B1-Directive-v1_0-LOCKED + the Gate-5 Finalization
+  // Amendment. Fill authority = ATS pipeline terminal `placed` (D-1), NOT the
+  // rejected capacity-derived `openings - openings_available` and NOT ACTIVE
+  // ContractAssignment. Cohort = requisitions with created_at ∈ [from,to)
+  // (D-3); `canceled` reqs are excluded from BOTH numerator and denominator
+  // (§4). Time-to-fill = the Nth-distinct first-`placed` completion, N =
+  // openings (D-2/§5) — only fully-filled reqs contribute (§6). Computed on
+  // read over TWO date/cohort-bounded repository reads (D-6); no
+  // materialization, no migration, no proxy.
+  // -------------------------------------------------------------------------
+  async getFillPerformance(
+    actor: ActorContext,
+    period: { from: Date; to: Date },
+  ): Promise<FillPerformanceReportView> {
+    const cohortAll = await this.requisitionRepository.listCohortForActor({
+      tenant_id: actor.tenant_id,
+      visibility: actor.visibility,
+      from: period.from,
+      to: period.to,
+      ...(actor.site_id === undefined ? {} : { site_id: actor.site_id }),
+    });
+    // §4 — canceled requisitions are excluded from numerator AND denominator.
+    // Every other status (open / on_hold / submittals_closed / closed / …)
+    // stays in the denominator; `closed` is NOT synonymous with filled.
+    const cohort = cohortAll.filter((r) => r.status !== 'canceled');
+
+    const placedRows =
+      cohort.length === 0
+        ? []
+        : await this.pipelineRepository.listFirstPlacedByRequisitions({
+            tenant_id: actor.tenant_id,
+            requisition_ids: cohort.map((r) => r.id),
+          });
+
+    // Group first-placed instants by requisition. Each row is already ONE
+    // distinct talent (MIN(changed_at) per (talent, req) applied upstream),
+    // so per-req array length == distinct placed talents.
+    const placedByReq = new Map<string, Date[]>();
+    for (const row of placedRows) {
+      const arr = placedByReq.get(row.requisition_id);
+      if (arr === undefined) {
+        placedByReq.set(row.requisition_id, [row.first_placed_at]);
+      } else {
+        arr.push(row.first_placed_at);
+      }
+    }
+
+    let openingsTotal = 0;
+    let filledTotal = 0;
+    let fullyFilled = 0;
+    const ttfDays: number[] = [];
+
+    for (const req of cohort) {
+      const openings = req.openings;
+      openingsTotal += openings;
+      const firstPlaced = placedByReq.get(req.id) ?? [];
+      const distinctPlaced = firstPlaced.length;
+      // §3 — clamp: never count filled openings above declared openings.
+      filledTotal += Math.min(distinctPlaced, openings);
+      // §5/§6 — ONLY a fully filled requisition has a time-to-fill.
+      if (openings > 0 && distinctPlaced >= openings) {
+        fullyFilled += 1;
+        // Completion = the Nth distinct talent's FIRST placed instant
+        // (N = openings) — the moment the last required opening filled.
+        const ordered = [...firstPlaced].sort(
+          (a, b) => a.getTime() - b.getTime(),
+        );
+        // distinctPlaced ≥ openings ≥ 1 guarantees this index exists; the
+        // explicit guard satisfies noUncheckedIndexedAccess.
+        const completion = ordered[openings - 1];
+        if (completion !== undefined) {
+          const days =
+            (completion.getTime() - req.created_at.getTime()) / DAY_MS;
+          // A fully-filled req cannot complete before it was created; guard
+          // clock skew rather than emit a negative duration.
+          if (days >= 0) ttfDays.push(days);
+        }
+      }
+    }
+
+    const fill_rate =
+      openingsTotal > 0
+        ? Math.round((filledTotal / openingsTotal) * 100)
+        : null;
+    const ttfCount = ttfDays.length;
+    const average_days =
+      ttfCount > 0
+        ? round1(ttfDays.reduce((a, b) => a + b, 0) / ttfCount)
+        : null;
+
+    return {
+      period: {
+        from: period.from.toISOString(),
+        to: period.to.toISOString(),
+      },
+      openings: openingsTotal,
+      filled_openings: filledTotal,
+      fill_rate,
+      fully_filled_requisitions: fullyFilled,
+      time_to_fill: { count: ttfCount, average_days },
     };
   }
 

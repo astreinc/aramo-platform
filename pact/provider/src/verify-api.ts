@@ -6035,6 +6035,29 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
             tenantStatus: 'active',
             sourceChannel: 'recruiter_added',
           });
+          // T9-B1 — a single-opening requisition (default openings = 1) with one
+          // `placed` pipeline + a placed history row, so GET
+          // /v1/reports/fill-performance over a wide window returns a
+          // deterministic non-zero fill rate (100%) and one fully-filled
+          // requisition with a time-to-fill value (§14). Visible tenant-wide via
+          // the recruiter's requisition:read:all.
+          await seedAtsWebRequisition(c, {
+            id: ATSW_PIPE_FULL_REQ_ID,
+            title: 'Filled Req',
+            companyId: ATSW_COMPANY_ID,
+          });
+          await seedAtsWebPipeline(c, {
+            id: ATSW_PIPE_ID,
+            talentRecordId: ATSW_PIPE_TALENT_ID,
+            requisitionId: ATSW_PIPE_FULL_REQ_ID,
+            status: 'placed',
+          });
+          await seedAtsWebPipelineHistory(c, {
+            id: ATSW_PIPE_HISTORY_ID,
+            pipelineId: ATSW_PIPE_ID,
+            statusFrom: 'offered',
+            statusTo: 'placed',
+          });
         });
       },
 

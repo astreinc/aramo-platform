@@ -2325,6 +2325,63 @@ paths:
         '503':
           description: Webhook dark — signing secret not provisioned.
 
+  /v1/reports/fill-performance:
+    get:
+      operationId: getFillPerformanceReport
+      summary: Fill rate + time-to-fill operational report (T9-B1).
+      description: |
+        Authoritative T9 fill-rate and time-to-fill for the cohort of
+        requisitions created within [from, to). Fill authority is ATS
+        pipeline terminal `placed` (distinct talents per requisition, clamped
+        to declared openings); fill_rate = round(Σ filled_openings / Σ
+        openings * 100), null when the cohort has no openings. Time-to-fill is
+        measured ONLY for fully-filled requisitions: created_at → the Nth
+        distinct talent's first `placed` transition (N = openings). `canceled`
+        requisitions are excluded from numerator and denominator. Tenant /
+        site / A3 visibility scoped; report:read.
+      parameters:
+        - name: from
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+          description: |
+            Inclusive period start. An absolute ISO 8601 date-time carrying
+            `Z` or an explicit numeric offset; date-only and zone-less values
+            are rejected 400. Cohort predicate: Requisition.created_at >= from.
+        - name: to
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+          description: |
+            Exclusive period end (half-open [from, to)). Same absolute
+            date-time rules as `from`; must be strictly after `from`.
+        - name: site_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+          description: Optional site narrowing (must match the actor's site claim).
+      responses:
+        '200':
+          description: Fill-rate + time-to-fill metrics for the period cohort.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FillPerformanceReport'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+      security:
+        - BearerAuth: []
+
 components:
   securitySchemes:
     # Duplicated byte-for-byte from openapi/common.yaml per locked invariant
@@ -2346,6 +2403,60 @@ components:
         secret — the shared signing secret is provisioned out-of-band and never documented.
 
   schemas:
+    # T9-B1 — fill rate + time-to-fill operational report
+    # (GET /v1/reports/fill-performance). Computed-on-read; no persistence.
+    FillPerformanceReport:
+      type: object
+      additionalProperties: false
+      required:
+        - period
+        - openings
+        - filled_openings
+        - fill_rate
+        - fully_filled_requisitions
+        - time_to_fill
+      properties:
+        period:
+          type: object
+          additionalProperties: false
+          required: [from, to]
+          properties:
+            from:
+              type: string
+              format: date-time
+            to:
+              type: string
+              format: date-time
+        openings:
+          type: integer
+          minimum: 0
+          description: Σ requisition openings over the non-canceled cohort (denominator).
+        filled_openings:
+          type: integer
+          minimum: 0
+          description: Σ min(distinct placed talents, openings) (numerator).
+        fill_rate:
+          type: [integer, 'null']
+          minimum: 0
+          maximum: 100
+          description: Percent 0-100; null when openings == 0.
+        fully_filled_requisitions:
+          type: integer
+          minimum: 0
+        time_to_fill:
+          type: object
+          additionalProperties: false
+          required: [count, average_days]
+          properties:
+            count:
+              type: integer
+              minimum: 0
+              description: Number of fully-filled requisitions contributing a value.
+            average_days:
+              type: [number, 'null']
+              minimum: 0
+              description: Mean days created_at→Nth-placed; null when count == 0.
+
     # Track 3 / E1-b — PlacementProcess HTTP surface.
     CreatePlacementRequest:
       type: object

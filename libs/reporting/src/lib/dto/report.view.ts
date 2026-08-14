@@ -133,6 +133,45 @@ export interface RecruiterMetricsReportView {
   items: RecruiterMetricView[];
 }
 
+// FillPerformanceReportView — T9-B1 authoritative fill-rate + time-to-fill
+// operational report (GET /v1/reports/fill-performance). Governed by
+// Aramo-T9-B1-Directive-v1_0-LOCKED + Gate5-Finalization-Amendment.
+//
+// Cohort: requisitions whose `created_at ∈ [period.from, period.to)`
+// (amendment D-3), visibility/tenant/site/A3-scoped. `canceled`
+// requisitions are excluded from BOTH numerator and denominator (§4).
+//
+// Fill authority is ATS pipeline terminal `placed` (D-1) — NOT the
+// rejected capacity-derived `openings - openings_available` and NOT
+// ACTIVE ContractAssignment. Per requisition:
+//   filled_openings(req) = min(distinct placed talents, openings)
+// Aggregate:
+//   fill_rate = round( Σ filled_openings / Σ openings * 100 )  (percent
+//   0-100, integer — mirrors CompanyMetricsView.fill_rate convention),
+//   null when Σ openings === 0.
+//
+// Time-to-fill (D-2 / §5): start = Requisition.created_at (REOPEN never
+// restarts, §7); end = the Nth distinct talent's FIRST `placed`
+// transition (PipelineStatusHistory.changed_at), N = openings — i.e.
+// the "last required opening filled" instant. ONLY fully-filled
+// requisitions contribute; partial/open/closed-unfilled have no TTF
+// (§6). No survival/censor statistic. `average_days` is the mean over
+// the contributing requisitions (1 decimal), null when count === 0.
+export interface FillPerformanceReportView {
+  period: {
+    from: string; // ISO absolute instant (UTC-normalized), inclusive
+    to: string; // ISO absolute instant (UTC-normalized), exclusive
+  };
+  openings: number; // Σ requisition.openings over the (non-canceled) cohort
+  filled_openings: number; // Σ min(distinct placed talents, openings)
+  fill_rate: number | null; // percent 0-100, null when openings === 0
+  fully_filled_requisitions: number; // cohort reqs with distinct placed ≥ openings
+  time_to_fill: {
+    count: number; // # fully-filled reqs contributing a TTF value
+    average_days: number | null; // mean days created_at→Nth-placed, null when count === 0
+  };
+}
+
 // DashboardView — the composition payload for GET /v1/dashboard.
 // Bundles the ATS-internal metrics into a single response so a
 // recruiter UI doesn't have to N-round-trip on load.
