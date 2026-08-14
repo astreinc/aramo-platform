@@ -2396,6 +2396,12 @@
         "status": "excluded"
       },
       {
+        "excludedBy": "src/**/*.spec.ts",
+        "from": "apps/ats-web/src/placement/placement-commercial-api.spec.ts",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
         "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/ats-web/src/portal-disputes/PortalDisputesView.spec.tsx",
         "project": "aramo-ats-web",

@@ -171,21 +171,30 @@ export interface PlacementAssignmentResponse {
 // domain import). Money + percentages are decimal STRINGS returned by the T5-P2
 // projection (rendered verbatim — never recomputed client-side). effective_from /
 // effective_to / created_at are Dates on the BE; over JSON they arrive as ISO strings.
-// margin_percent / markup_percent are null on a zero denominator; effective_to is null
-// for the current (open) version. Internal identifiers are present in the contract but
-// are NOT rendered by the UI (T5-P3 R9).
+// effective_to is null for the current (open) version. Internal identifiers are present
+// in the contract but are NOT rendered by the UI (T5-P3 R9).
+//
+// Track 6 / T6-B4 §7/§15 — the global CompensationFieldMaskInterceptor OMITS (deletes)
+// the maskable compensation fields the actor's compensation:view:* scopes do not grant
+// (apps/api/src/interceptors/compensation-field-mask.interceptor.ts; scope→field map
+// libs/field-masking/src/lib/compensation-field-map.ts). Omission = the KEY IS ABSENT
+// from the JSON, not key-present-with-null. So pay_rate_amount / bill_rate_amount /
+// margin_percent / markup_percent are OPTIONAL here: `undefined` = masked (not visible
+// to this actor), distinct from `null` on a percentage (zero denominator). The UI MUST
+// render an omitted value with a non-leaking indicator and never as `undefined`. currency,
+// rate_period and spread_amount are not in the mask map, so they are never omitted.
 export interface AssignmentCommercialView {
   readonly contract_assignment_id: string;
   readonly assignment_rate_version_id: string;
   readonly requisition_id: string;
   readonly talent_record_id: string;
-  readonly pay_rate_amount: string;
-  readonly bill_rate_amount: string;
+  readonly pay_rate_amount?: string;
+  readonly bill_rate_amount?: string;
   readonly currency: string;
   readonly rate_period: string;
   readonly spread_amount: string;
-  readonly margin_percent: string | null;
-  readonly markup_percent: string | null;
+  readonly margin_percent?: string | null;
+  readonly markup_percent?: string | null;
   readonly effective_from: string;
   readonly effective_to: string | null;
   readonly change_reason: string | null;
@@ -195,4 +204,61 @@ export interface AssignmentCommercialView {
 
 export interface AssignmentCommercialResponse {
   readonly commercials: AssignmentCommercialView | null;
+}
+
+// Track 6 / T6-B4 §15 — the commercial revision SERIES (GET .../revisions): non-cancelled
+// versions (historical + current + future) effective_from DESC. The B2 envelope is
+// { items }. Each item rides the same compensation mask as the singular view above.
+export interface AssignmentCommercialSeriesResponse {
+  readonly items: readonly AssignmentCommercialView[];
+}
+
+// Track 6 / T6-B4 §7 amendment — the create-revision request for B4 v1. Effective-now
+// ONLY: effective_from is DELIBERATELY ABSENT from this type so the client can never
+// send it and the server supplies the authoritative instant (Amendment §4/§7). pay/bill
+// are decimal money strings; currency/rate_period are the closed sets re-validated at
+// the BE write boundary; change_reason is required. tenant / assignment / version ids,
+// lineage, recorded_by and effective_to are server-derived / forbidden on the wire.
+export interface CommercialRevisionCreateRequest {
+  readonly pay_rate_amount: string;
+  readonly bill_rate_amount: string;
+  readonly currency: string;
+  readonly rate_period: string;
+  readonly change_reason: string;
+}
+
+// The create response — the new CURRENT version (never null on success), B2 shape
+// { commercials }. Rides the compensation mask like every commercial view.
+export interface AssignmentCommercialCreatedResponse {
+  readonly commercials: AssignmentCommercialView;
+}
+
+// Track 6 / T6-B4 §12 — the CLOSED user-selectable cancellation-reason vocabulary.
+// Hand-mirrored (ADR-0029: no @aramo/placement import) from
+// libs/placement/src/lib/reasons/commercial-cancellation-reasons.ts (USER_CANCELLATION_
+// REASON_CODES). The reserved internal ASSIGNMENT_ENDED is DELIBERATELY EXCLUDED — the
+// explicit cancellation UI must never offer or send it (directive §12; BE rejects it).
+export const COMMERCIAL_CANCELLATION_REASON_VALUES = [
+  'SCHEDULE_WITHDRAWN',
+  'CLIENT_REQUEST',
+  'WORKER_REQUEST',
+  'DATA_CORRECTION',
+] as const;
+export type CommercialCancellationReasonCode =
+  (typeof COMMERCIAL_CANCELLATION_REASON_VALUES)[number];
+
+// Recruiter-facing labels for the cancellation reasons.
+export const COMMERCIAL_CANCELLATION_REASON_LABELS: Record<
+  CommercialCancellationReasonCode,
+  string
+> = {
+  SCHEDULE_WITHDRAWN: 'Schedule withdrawn',
+  CLIENT_REQUEST: 'Client request',
+  WORKER_REQUEST: 'Worker request',
+  DATA_CORRECTION: 'Data correction',
+};
+
+// The cancellation request body — the only wire field is the user-selectable reason.
+export interface CommercialRevisionCancelRequest {
+  readonly cancellation_reason_code: CommercialCancellationReasonCode;
 }

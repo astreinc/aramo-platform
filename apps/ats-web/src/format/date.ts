@@ -18,3 +18,19 @@ export function formatDate(value: string | null | undefined): string {
   const day = String(d.getUTCDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
 }
+
+// Track 6 / T6-B4 §6 (Date/Time Amendment) — the instant-safe formatter for commercial
+// lifecycle TIMESTAMPTZ values (effective_from / effective_to / ended_at). These are
+// INSTANTS, not TZ-agnostic calendar days, so `formatDate` above (UTC calendar date, for
+// `@db.Date` semantics) is NOT authority for them — using a UTC or local date-only render
+// for an instant creates the pick-Aug-20-see-Aug-19 round-trip hazard the amendment
+// removes. This renders the instant in the BROWSER'S LOCAL timezone WITH the time
+// component visible (`toLocaleString`), so the display never claims a local calendar date
+// is the canonical business-effective date. Empty in → empty out; unparseable → returned
+// unchanged. Pair with `<time dateTime={rawIso}>` so the exact instant stays machine-readable.
+export function formatInstant(value: string | null | undefined): string {
+  if (value === null || value === undefined || value === '') return '';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value;
+  return d.toLocaleString();
+}

@@ -1,88 +1,119 @@
 import { hasScope, type Session, useSession } from '@aramo/fe-foundation';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
-import { Card, CardHead, InlineAlert } from '../ui';
+import { Button, Card, CardHead, InlineAlert } from '../ui';
 
-import { getPlacementAssignmentCommercials } from './placement-api';
-import type { AssignmentCommercialResponse, AssignmentCommercialView } from './types';
+import { CommercialCancelRevisionDialog } from './CommercialCancelRevisionDialog';
+import { CommercialCurrentTermsCard } from './CommercialCurrentTermsCard';
+import { CommercialEndedState } from './CommercialEndedState';
+import { CommercialRevisionFormDialog } from './CommercialRevisionFormDialog';
+import { CommercialRevisionTimeline } from './CommercialRevisionTimeline';
+import {
+  getPlacementAssignment,
+  getPlacementAssignmentCommercials,
+  listAssignmentCommercialRevisions,
+} from './placement-api';
+import type {
+  AssignmentCommercialResponse,
+  AssignmentCommercialSeriesResponse,
+  AssignmentCommercialView,
+  ContractAssignmentLifecycleState,
+  PlacementAssignmentResponse,
+} from './types';
 
-// Track 5 (T5-P3) — the placement-detail commercial UI for commercial-authorized
-// tenant roles (account_manager / tenant_admin / tenant_owner). It reads the CURRENT
-// effective commercial projection for a placement's assignment
-// (GET /v1/placements/{id}/assignment/commercials, assignment:commercials:read) and
-// renders the stored actuals (pay / bill / currency / period) plus the DEC-5 derived
-// views (spread / margin / markup). A coherent empty state renders when there is no
-// assignment or no active commercial version (commercials === null); absence is NEVER
-// an error.
+// Track 6 / T6-B4 — the commercial LIFECYCLE panel (expands the T5-P3 read-only panel).
+// It orchestrates the placement-detail commercial surface: current terms, the revision
+// timeline, governed create (Effective-now only), and governed cancellation of a future
+// open-tail revision. Decomposition per directive §4; each concern is a dedicated child.
 //
-// Authority (house least-visibility convention — hide, don't disable):
-//   • the whole panel follows assignment:commercials:read — a DEDICATED financial
-//     scope. Without it the panel renders NOTHING and issues NO request (an actor who
-//     cannot see commercial figures never learns the surface exists). assignment:read,
-//     placement:read, requisition:read and commercials-write-only do NOT satisfy it.
+// Authority (house least-visibility — hide, don't disable):
+//   • the whole panel follows assignment:commercials:read (§5): no read scope → render
+//     nothing and issue no commercial read;
+//   • create/cancel controls follow the §6 / DateTime-amendment §2 predicate: read AND
+//     write AND compensation:view:pay AND (compensation:view:bill OR :revenue) AND the
+//     assignment lifecycle ACTIVE — exact hasScope, no wildcard, no compensation:edit:*.
 //
-// This surface is READ-ONLY (T5-P3): no edit / revise / supersede / extend / effective_to
-// mutation / overlap repair (those are T6), and no analytics (T9). Money and percentages
-// are rendered VERBATIM as the server returns them — the client never recomputes
-// spread / margin / markup and never picks an effective version.
+// Lifecycle comes from GET /assignment (assignment:read). When that read is unavailable
+// (no assignment:read, or no assignment), lifecycle is unknown → the predicate is false →
+// no mutation controls (fail-closed), consistent with the amendment's `assignment?.` form.
+// ended_at is NOT fetched (not on any read surface); the ENDED end instant is derived from
+// the surviving series (ENDED-State amendment §3). All money/percent are rendered verbatim
+// and mask-aware; refresh is server re-read (§17), never optimistic.
 export interface AssignmentCommercialPanelProps {
   readonly placementId: string;
   /** Test seam mirroring the house useSession + sessionOverride pattern. */
   readonly sessionOverride?: Session;
   readonly getCommercialsFn?: (id: string) => Promise<AssignmentCommercialResponse>;
+  readonly getAssignmentFn?: (id: string) => Promise<PlacementAssignmentResponse>;
+  readonly listRevisionsFn?: (id: string) => Promise<AssignmentCommercialSeriesResponse>;
+  /** Injectable clock for deterministic timeline classification in tests. */
+  readonly nowMs?: number;
 }
 
 type LoadState =
   | { status: 'loading' }
-  | { status: 'ready'; commercials: AssignmentCommercialView | null }
+  | {
+      status: 'ready';
+      lifecycle: ContractAssignmentLifecycleState | null;
+      commercials: AssignmentCommercialView | null;
+      series: readonly AssignmentCommercialView[];
+    }
   | { status: 'error' };
-
-// T5-P3 R6 — a LOCAL closed rate-period suffix map for this feature (deliberate,
-// bounded duplication of the requisitions-local map; NOT extracted cross-feature).
-const RATE_PERIOD_SUFFIX: Record<string, string> = {
-  HOURLY: '/hr',
-  DAILY: '/day',
-  WEEKLY: '/wk',
-  MONTHLY: '/mo',
-  ANNUAL: '/yr',
-};
-
-function periodSuffix(ratePeriod: string): string {
-  return RATE_PERIOD_SUFFIX[ratePeriod] ?? '';
-}
-
-// Presentation only (T5-P3 R7/R8): render the server's decimal percentage string
-// verbatim with a % suffix; a null derived metric (zero denominator) shows an em-dash.
-function pct(value: string | null): string {
-  return value === null ? '—' : `${value}%`;
-}
 
 export function AssignmentCommercialPanel({
   placementId,
   sessionOverride,
   getCommercialsFn,
+  getAssignmentFn,
+  listRevisionsFn,
+  nowMs,
 }: AssignmentCommercialPanelProps) {
   const sessionState = useSession();
   const session: Session | null =
-    sessionOverride ??
-    (sessionState.status === 'authenticated' ? sessionState.session : null);
-  const canRead =
-    session !== null &&
-    Array.isArray(session.scopes) &&
-    hasScope(session, 'assignment:commercials:read');
+    sessionOverride ?? (sessionState.status === 'authenticated' ? sessionState.session : null);
+  const scoped = session !== null && Array.isArray(session.scopes);
+
+  // §5 — panel visibility.
+  const canRead = scoped && hasScope(session, 'assignment:commercials:read');
+  // §6 / DateTime-amendment §2 — the compensation-view half of the mutation predicate.
+  const canWrite = scoped && hasScope(session, 'assignment:commercials:write');
+  const canSeePay = scoped && hasScope(session, 'compensation:view:pay');
+  const canSeeBill =
+    scoped &&
+    (hasScope(session, 'compensation:view:bill') || hasScope(session, 'compensation:view:revenue'));
 
   const getCommercialsFun = getCommercialsFn ?? getPlacementAssignmentCommercials;
+  const getAssignmentFun = getAssignmentFn ?? getPlacementAssignment;
+  const listRevisionsFun = listRevisionsFn ?? listAssignmentCommercialRevisions;
 
   const [state, setState] = useState<LoadState>({ status: 'loading' });
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [cancelTarget, setCancelTarget] = useState<AssignmentCommercialView | null>(null);
+  const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
 
   useEffect(() => {
-    // Least-visibility: an actor without assignment:commercials:read never issues the read.
+    // Least-visibility: an actor without assignment:commercials:read never issues a read.
     if (!canRead) return undefined;
     let cancelled = false;
     setState({ status: 'loading' });
-    getCommercialsFun(placementId)
-      .then((res) => {
-        if (!cancelled) setState({ status: 'ready', commercials: res.commercials });
+    Promise.all([
+      // Lifecycle is auxiliary (assignment:read) — degrade to null if unavailable.
+      getAssignmentFun(placementId)
+        .then((r) => r.assignment)
+        .catch(() => null),
+      getCommercialsFun(placementId).then((r) => r.commercials),
+      listRevisionsFun(placementId).then((r) => r.items),
+    ])
+      .then(([assignment, commercials, series]) => {
+        if (!cancelled) {
+          setState({
+            status: 'ready',
+            lifecycle: assignment?.lifecycle_state ?? null,
+            commercials,
+            series,
+          });
+        }
       })
       .catch(() => {
         if (!cancelled) setState({ status: 'error' });
@@ -90,98 +121,86 @@ export function AssignmentCommercialPanel({
     return () => {
       cancelled = true;
     };
-  }, [getCommercialsFun, placementId, canRead]);
+  }, [canRead, getAssignmentFun, getCommercialsFun, listRevisionsFun, placementId, refreshKey]);
 
-  // Panel visibility follows assignment:commercials:read (hide, don't disable).
+  // §5 — panel visibility follows assignment:commercials:read (hide, don't disable).
   if (!canRead) return null;
 
+  const lifecycle = state.status === 'ready' ? state.lifecycle : null;
   const commercials = state.status === 'ready' ? state.commercials : null;
+  const series = state.status === 'ready' ? state.series : [];
+  // §6 / amendment §2 — mutation predicate (assignment must be ACTIVE).
+  const canMutate = canRead && canWrite && canSeePay && canSeeBill && lifecycle === 'ACTIVE';
+
+  // The predecessor window that resumes if the cancel target is withdrawn: the non-cancelled
+  // version whose effective_to equals the target's effective_from (readable → shown, §13).
+  const predecessor =
+    cancelTarget === null
+      ? undefined
+      : series.find((v) => v.effective_to === cancelTarget.effective_from);
 
   return (
     <section className="rc-stack" data-testid="assignment-commercial-panel">
-      <Card>
-        <CardHead title="Commercials" />
-        {state.status === 'loading' && (
+      {state.status === 'loading' && (
+        <Card>
+          <CardHead title="Commercials" />
           <p className="rc-muted-line" data-testid="commercials-loading">
             Loading commercial terms…
           </p>
-        )}
-        {state.status === 'error' && (
-          // Fail-closed (T5-P3 R10): generic copy, no status-code branching, no values
-          // shown. A server overlap (INTERNAL_ERROR) never leaks competing figures here.
-          <InlineAlert variant="error">
-            Could not load commercial terms. Please try again.
-          </InlineAlert>
-        )}
-        {state.status === 'ready' && commercials === null && (
-          <p className="rc-muted-line" data-testid="commercials-empty">
-            No commercial terms recorded for this assignment yet.
-          </p>
-        )}
-        {state.status === 'ready' && commercials !== null && (
-          <dl className="rc-deflist" data-testid="commercials-detail">
-            <div className="rc-defrow">
-              <dt>Pay rate</dt>
-              <dd className="num" data-testid="commercials-pay-rate" data-rate-period={commercials.rate_period}>
-                {commercials.pay_rate_amount} {commercials.currency}
-                {periodSuffix(commercials.rate_period)}
-              </dd>
+        </Card>
+      )}
+      {state.status === 'error' && (
+        <Card>
+          <CardHead title="Commercials" />
+          <InlineAlert variant="error">Could not load commercial terms. Please try again.</InlineAlert>
+        </Card>
+      )}
+      {state.status === 'ready' && lifecycle === 'ENDED' && (
+        <CommercialEndedState series={series} nowMs={nowMs} />
+      )}
+      {state.status === 'ready' && lifecycle !== 'ENDED' && (
+        <>
+          <CommercialCurrentTermsCard commercials={commercials} />
+          <CommercialRevisionTimeline
+            series={series}
+            canMutate={canMutate}
+            onCancel={(version) => setCancelTarget(version)}
+            nowMs={nowMs}
+          />
+          {canMutate && (
+            <div className="rc-formfoot">
+              <Button
+                variant="secondary"
+                onClick={() => setCreateOpen(true)}
+                data-testid="commercial-revision-create-action"
+              >
+                New commercial revision
+              </Button>
             </div>
-            <div className="rc-defrow">
-              <dt>Bill rate</dt>
-              <dd className="num" data-testid="commercials-bill-rate" data-rate-period={commercials.rate_period}>
-                {commercials.bill_rate_amount} {commercials.currency}
-                {periodSuffix(commercials.rate_period)}
-              </dd>
-            </div>
-            <div className="rc-defrow">
-              <dt>Spread</dt>
-              <dd className="num" data-testid="commercials-spread">
-                {commercials.spread_amount} {commercials.currency}
-                {periodSuffix(commercials.rate_period)}
-              </dd>
-            </div>
-            <div className="rc-defrow">
-              <dt>Margin</dt>
-              <dd className="num" data-testid="commercials-margin">
-                {pct(commercials.margin_percent)}
-              </dd>
-            </div>
-            <div className="rc-defrow">
-              <dt>Markup</dt>
-              <dd className="num" data-testid="commercials-markup">
-                {pct(commercials.markup_percent)}
-              </dd>
-            </div>
-            <div className="rc-defrow">
-              <dt>Effective from</dt>
-              <dd>
-                <time dateTime={commercials.effective_from} data-testid="commercials-effective-from">
-                  {new Date(commercials.effective_from).toLocaleDateString()}
-                </time>
-              </dd>
-            </div>
-            <div className="rc-defrow">
-              <dt>Effective to</dt>
-              <dd data-testid="commercials-effective-to">
-                {commercials.effective_to === null ? (
-                  'Current'
-                ) : (
-                  <time dateTime={commercials.effective_to}>
-                    {new Date(commercials.effective_to).toLocaleDateString()}
-                  </time>
-                )}
-              </dd>
-            </div>
-            {commercials.change_reason !== null && (
-              <div className="rc-defrow">
-                <dt>Change reason</dt>
-                <dd data-testid="commercials-change-reason">{commercials.change_reason}</dd>
-              </div>
-            )}
-          </dl>
-        )}
-      </Card>
+          )}
+        </>
+      )}
+
+      {canMutate && (
+        <CommercialRevisionFormDialog
+          open={createOpen}
+          placementId={placementId}
+          defaultCurrency={commercials?.currency}
+          defaultRatePeriod={commercials?.rate_period}
+          onClose={() => setCreateOpen(false)}
+          onRefresh={refresh}
+        />
+      )}
+      {canMutate && cancelTarget !== null && (
+        <CommercialCancelRevisionDialog
+          open={cancelTarget !== null}
+          placementId={placementId}
+          revision={cancelTarget}
+          predecessor={predecessor}
+          onClose={() => setCancelTarget(null)}
+          onRefresh={refresh}
+        />
+      )}
     </section>
   );
 }
