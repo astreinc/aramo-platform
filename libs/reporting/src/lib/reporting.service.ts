@@ -5,7 +5,11 @@ import type { VisibilityContextShape } from '@aramo/common';
 import { CompanyRepository } from '@aramo/company';
 import { ContactRepository } from '@aramo/contact';
 import { PipelineRepository } from '@aramo/pipeline';
-import { CapacityProjectionRepository, type CapacityProjection } from '@aramo/placement';
+import {
+  CapacityProjectionRepository,
+  type CapacityProjection,
+  PlacementProcessEventRepository,
+} from '@aramo/placement';
 import { RequisitionRepository } from '@aramo/requisition';
 import { SavedListRepository } from '@aramo/saved-list';
 import {
@@ -19,6 +23,8 @@ import type {
   CompanyMetricsView,
   CompanyPlacementView,
   DashboardView,
+  FallthroughReasonView,
+  FallthroughReportView,
   FillPerformanceReportView,
   PipelineStageRollupView,
   PlacementCountReportView,
@@ -219,6 +225,10 @@ export class ReportingService {
     // openings_available; this only makes the derived value ACCESSIBLE. The batch
     // migration (countActiveByRequisitionIds, one query) is T4-B2. Trailing param.
     private readonly capacity: CapacityProjectionRepository,
+    // T9-B2 — the placement-owned fallthrough cohort read, PULLED via the
+    // existing reporting→placement edge (§11). Trailing param (ctor-ripple
+    // contained). Provided by PlacementEventReadModule.
+    private readonly placementEventRepository: PlacementProcessEventRepository,
   ) {}
 
   // Track 4 / T4-B1 (CASE A access) — single-requisition derived capacity, PULLED
@@ -429,6 +439,90 @@ export class ReportingService {
       fill_rate,
       fully_filled_requisitions: fullyFilled,
       time_to_fill: { count: ttfCount, average_days },
+    };
+  }
+
+  // -------------------------------------------------------------------------
+  // T9-B2 — authoritative fallthrough-rate + reasons operational report.
+  // Governed by Aramo-T9-B2-Directive-v1_0-LOCKED. Placement-attempt level,
+  // post-acceptance/pre-start only. The placement lib owns the date-bounded
+  // cohort read (first OFFER_ACCEPTED ∈ [from,to); terminal FELL_THROUGH/NO_SHOW
+  // with reason_code/reason_label_snapshot — NEVER reason_detail); this service
+  // folds the rate + the reason group-by. A3 visibility is resolved here and
+  // passed as the requisition-id constraint (undefined = tenant-wide see-all).
+  // No materialization, no migration, no proxy.
+  // -------------------------------------------------------------------------
+  async getFallthrough(
+    actor: ActorContext,
+    period: { from: Date; to: Date },
+  ): Promise<FallthroughReportView> {
+    const visibleReqIds = await this.resolveVisibleRequisitionIds(actor);
+    const cohort = await this.placementEventRepository.readFallthroughCohort({
+      tenant_id: actor.tenant_id,
+      from: period.from,
+      to: period.to,
+      ...(visibleReqIds === undefined ? {} : { requisition_ids: visibleReqIds }),
+    });
+
+    const accepted_attempts = cohort.accepted_attempts;
+    const fallthrough_attempts = cohort.fallthrough.length;
+    const fallthrough_rate =
+      accepted_attempts > 0
+        ? Math.round((fallthrough_attempts / accepted_attempts) * 100)
+        : null;
+
+    // Group the fallthrough terminals by canonical reason_code. A null
+    // reason_code (legacy/unrecorded — the migration CHECK pairs code↔label, so
+    // a null code implies a null label) folds into the report-only "Unspecified"
+    // bucket (D-8); it is never written back to placement or the registry.
+    const buckets = new Map<
+      string | null,
+      { reason_label: string; count: number }
+    >();
+    for (const f of cohort.fallthrough) {
+      const existing = buckets.get(f.reason_code);
+      if (existing !== undefined) {
+        existing.count += 1;
+      } else {
+        buckets.set(f.reason_code, {
+          reason_label:
+            f.reason_code === null
+              ? 'Unspecified'
+              : (f.reason_label_snapshot ?? 'Unspecified'),
+          count: 1,
+        });
+      }
+    }
+
+    const reasons: FallthroughReasonView[] =
+      fallthrough_attempts === 0
+        ? []
+        : [...buckets.entries()]
+            .map(([reason_code, b]) => ({
+              reason_code,
+              reason_label: b.reason_label,
+              count: b.count,
+              rate: Math.round((b.count / fallthrough_attempts) * 100),
+            }))
+            // Deterministic contract order: most frequent first, then reason_code
+            // ascending (the null "Unspecified" bucket sorts last).
+            .sort(
+              (a, b) =>
+                b.count - a.count ||
+                (a.reason_code ?? '￿').localeCompare(
+                  b.reason_code ?? '￿',
+                ),
+            );
+
+    return {
+      period: {
+        from: period.from.toISOString(),
+        to: period.to.toISOString(),
+      },
+      accepted_attempts,
+      fallthrough_attempts,
+      fallthrough_rate,
+      reasons,
     };
   }
 

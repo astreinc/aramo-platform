@@ -574,6 +574,7 @@
       "PLACEMENT_STATES",
       "PermanentPlacementRepository",
       "PlacementCapacityModule",
+      "PlacementEventReadModule",
       "PlacementOutboxModule",
       "PlacementOutboxRepository",
       "PlacementProcessEventRepository",
@@ -1868,6 +1869,18 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/reporting/src/tests/fallthrough.integration.spec.ts",
+        "project": "reporting",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/reporting/src/tests/fallthrough.spec.ts",
+        "project": "reporting",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/reporting/src/tests/fill-performance.integration.spec.ts",
         "project": "reporting",
         "status": "excluded"
@@ -3103,6 +3116,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/reporting/src/tests/capacity-projection-edge.integration.spec.ts",
+        "project": "reporting",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/reporting/src/tests/fallthrough.integration.spec.ts",
         "project": "reporting",
         "status": "excluded"
       },

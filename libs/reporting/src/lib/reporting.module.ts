@@ -7,7 +7,7 @@ import { CompanyModule } from '@aramo/company';
 import { ContactModule } from '@aramo/contact';
 import { EntitlementModule } from '@aramo/entitlement';
 import { PipelineModule } from '@aramo/pipeline';
-import { PlacementCapacityModule } from '@aramo/placement';
+import { PlacementCapacityModule, PlacementEventReadModule } from '@aramo/placement';
 import { RequisitionModule } from '@aramo/requisition';
 import { SavedListModule } from '@aramo/saved-list';
 import { SettingsModule } from '@aramo/settings';
@@ -62,6 +62,7 @@ import { ReportingService } from './reporting.service.js';
     // Track 4 / T4-B1 — PULL the placement capacity projection (§4). Leaf w.r.t.
     // reporting: placement has NO back-edge (verified zero-outgoing), acyclic.
     PlacementCapacityModule,
+    PlacementEventReadModule,
     RequisitionModule,
     SavedListModule,
     SettingsModule,

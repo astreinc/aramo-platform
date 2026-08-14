@@ -30,7 +30,9 @@ import { PlacementDetailView } from './placement/PlacementDetailView';
 import { RequisitionCreateView } from './requisitions/RequisitionCreateView';
 import { RequisitionDetailView } from './requisitions/RequisitionDetailView';
 import { RequisitionsListView } from './requisitions/RequisitionsListView';
+import { FallthroughView } from './reporting/FallthroughView';
 import { FillPerformanceView } from './reporting/FillPerformanceView';
+import { ReportingLanding } from './reporting/ReportingLanding';
 import { SearchView } from './search/SearchView';
 import { SourcingPoolView } from './sourcing/SourcingPoolView';
 import { SettingsView } from './settings/SettingsView';
@@ -119,8 +121,20 @@ export function App() {
                         </RouteGuard>
                       }
                     />
-                    {/* T9-B1 — dedicated operational reporting surface
-                        (report:read), a distinct route from My Desk (D-7). */}
+                    {/* T9-B1/B2 — the Reporting area (report:read). The rail
+                        "Reports" entry lands on /reports (index), which links to
+                        each dedicated report page (§13 Reports IA). */}
+                    <Route
+                      path="reports"
+                      element={
+                        <RouteGuard
+                          requireScope="report:read"
+                          sessionStateOverride={state}
+                        >
+                          <ReportingLanding />
+                        </RouteGuard>
+                      }
+                    />
                     <Route
                       path="reports/fill-performance"
                       element={
@@ -129,6 +143,17 @@ export function App() {
                           sessionStateOverride={state}
                         >
                           <FillPerformanceView />
+                        </RouteGuard>
+                      }
+                    />
+                    <Route
+                      path="reports/fallthrough"
+                      element={
+                        <RouteGuard
+                          requireScope="report:read"
+                          sessionStateOverride={state}
+                        >
+                          <FallthroughView />
                         </RouteGuard>
                       }
                     />
