@@ -121,6 +121,14 @@ const COMMERCIAL_CANCELLATION_MIGRATION_PATH = resolve(
   __dirname,
   '../../prisma/migrations/20260813130000_t6_b3_commercial_cancellation/migration.sql',
 );
+// T7-P1: SEPARATE const (never a 2nd resolve() arg — that path-joins to ENOTDIR).
+// Adds PlacementProcess.placement_kind — which the regenerated client SELECTs — plus
+// the PermanentPlacement table, so every placement-DB spec reading PlacementProcess
+// must apply this or CI 500s.
+const PERMANENT_PLACEMENT_MIGRATION_PATH = resolve(
+  __dirname,
+  '../../prisma/migrations/20260814120000_t7_permanent_placement/migration.sql',
+);
 
 // Known transition path to reach each from-state from the initial
 // OFFER_EXTENDED (the transitions to apply, in order).
@@ -165,7 +173,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       setupClient = new PrismaService(url);
       await setupClient.$connect();
       // Apply the init migration then the additive E1-c and E3 migrations, in order.
-      for (const path of [INIT_MIGRATION_PATH, OFFER_OUTBOX_MIGRATION_PATH, REASON_MIGRATION_PATH, REPLACEMENT_MIGRATION_PATH, CONTRACT_ASSIGNMENT_MIGRATION_PATH, ASSIGNMENT_ENDED_MIGRATION_PATH, ASSIGNMENT_GUARD_MIGRATION_PATH, ASSIGNMENT_END_REASON_MIGRATION_PATH, ASSIGNMENT_RATE_VERSION_MIGRATION_PATH, EFFECTIVE_WINDOW_MIGRATION_PATH, COMMERCIAL_CANCELLATION_MIGRATION_PATH]) {
+      for (const path of [INIT_MIGRATION_PATH, OFFER_OUTBOX_MIGRATION_PATH, REASON_MIGRATION_PATH, REPLACEMENT_MIGRATION_PATH, CONTRACT_ASSIGNMENT_MIGRATION_PATH, ASSIGNMENT_ENDED_MIGRATION_PATH, ASSIGNMENT_GUARD_MIGRATION_PATH, ASSIGNMENT_END_REASON_MIGRATION_PATH, ASSIGNMENT_RATE_VERSION_MIGRATION_PATH, EFFECTIVE_WINDOW_MIGRATION_PATH, COMMERCIAL_CANCELLATION_MIGRATION_PATH, PERMANENT_PLACEMENT_MIGRATION_PATH]) {
         const sql = readFileSync(path, 'utf8');
         for (const stmt of splitDdl(sql)) {
           const trimmed = stmt.trim();

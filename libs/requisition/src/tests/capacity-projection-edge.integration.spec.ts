@@ -26,6 +26,7 @@ const MIGRATIONS = [
   '20260810110000_placement_assignment_aware_guard',
   '20260810120000_placement_assignment_end_reason',
   '20260813130000_t6_b3_commercial_cancellation',
+  '20260814120000_t7_permanent_placement',
 ].map((d) => resolve(__dirname, `../../../placement/prisma/migrations/${d}/migration.sql`));
 
 describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(

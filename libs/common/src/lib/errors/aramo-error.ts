@@ -130,6 +130,15 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   // (tenant, contract_assignment). HTTP 409 (details.reason: window_overlap |
   // duplicate_effective_from).
   ASSIGNMENT_COMMERCIAL_REVISION_CONFLICT: 409,
+  // Track 7 / T7-P1 — the PermanentPlacement guarantee family (same order as
+  // ERROR_CODES). not-found (404) / illegal transition (422) / invalid window (422)
+  // / terms required (422) / exposure invalid (422) / already-exists conflict (409).
+  PERMANENT_PLACEMENT_NOT_FOUND: 404,
+  PERMANENT_PLACEMENT_STATE_INVALID: 422,
+  PERMANENT_PLACEMENT_GUARANTEE_WINDOW_INVALID: 422,
+  PERMANENT_PLACEMENT_TERMS_REQUIRED: 422,
+  PERMANENT_PLACEMENT_EXPOSURE_INVALID: 422,
+  PERMANENT_PLACEMENT_ALREADY_EXISTS: 409,
 };
 
 // Base error class. Thrown anywhere in the app where a structured response

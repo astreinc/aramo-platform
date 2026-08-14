@@ -841,6 +841,14 @@ const PLACEMENT_COMMERCIAL_CANCELLATION_MIGRATION = resolve(
   ROOT,
   'libs/placement/prisma/migrations/20260813130000_t6_b3_commercial_cancellation/migration.sql',
 );
+// Track 7 / T7-P1 — the PermanentPlacement substrate. Applied so the provider schema
+// carries PlacementProcess.placement_kind (the regenerated client selects it on every
+// PlacementProcess read) plus the PermanentPlacement table/enums the capacity union
+// queries (SEPARATE const — never a 2nd resolve() arg, the ENOTDIR trap).
+const PLACEMENT_PERMANENT_PLACEMENT_MIGRATION = resolve(
+  ROOT,
+  'libs/placement/prisma/migrations/20260814120000_t7_permanent_placement/migration.sql',
+);
 // Track 4 / T4-B2 §6 — the dedicated stored openings_available DROP. Applied here so
 // the provider schema matches the retired-column reality; the requisition read is
 // derived and does not depend on the physical column.
@@ -3047,6 +3055,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         PLACEMENT_EFFECTIVE_WINDOW_MIGRATION,
         // Track 6 / T6-B3 — ended_at + cancellation/re-open trigger branches.
         PLACEMENT_COMMERCIAL_CANCELLATION_MIGRATION,
+        // Track 7 / T7-P1 — PlacementProcess.placement_kind + PermanentPlacement substrate.
+        PLACEMENT_PERMANENT_PLACEMENT_MIGRATION,
         // T4-B2 §6 — retire the stored openings_available column (derived-only).
         REQUISITION_DROP_OPENINGS_AVAILABLE_MIGRATION,
         // T8-P1 — the external-identity partial-unique index (applied last;

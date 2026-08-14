@@ -4,13 +4,21 @@
 // controller, route, or request/response DTO (that is E1-b, §7). They describe
 // what the repository consumes and returns.
 
-import type { PlacementState } from './lifecycle/placement-lifecycle.js';
+import type { PlacementState, PermanentPlacementState, RemedyPolicy } from './lifecycle/placement-lifecycle.js';
+
+// Track 7 / T7-P1 — the persisted permanent-vs-contract branch fact (§3.1).
+export type PlacementKind = 'CONTRACT' | 'PERMANENT';
 
 export type CreatePlacementInput = {
   readonly tenant_id: string;
   readonly submittal_id: string;
   readonly requisition_id: string;
   readonly talent_record_id: string;
+  // Track 7 / T7-P1 — the branch fact, persisted once at INSERT (§3.1). Optional
+  // and nullable: a legacy/kind-agnostic create omits it (NULL), preserving
+  // historical CONTRACT behaviour at STARTED. A flow that knows the type persists
+  // it explicitly; only an explicit PERMANENT can later be started permanent.
+  readonly placement_kind?: PlacementKind | null;
   // Initial offer snapshot (E1-c 9-c-1). offered_at defaults to the server time
   // of the offer fact when omitted; the rest are nullable operational fields.
   readonly offered_at?: Date;
@@ -51,6 +59,14 @@ export type TransitionPlacementInput = {
   // recording provenance. Both are ignored for non-STARTED targets.
   readonly commercial_terms?: CommercialTermsInput | null;
   readonly recorded_by?: string | null;
+  // Track 7 / T7-P1 — the governed guarantee snapshot for the PERMANENT STARTED
+  // path (§3.2 / §5). REQUIRED when the placement's persisted placement_kind is
+  // PERMANENT; REJECTED (VALIDATION_ERROR) on any other target or kind — the
+  // symmetric mirror of commercial_terms (which belongs to the CONTRACT path).
+  // Exposure is a governed input (no ContractAssignment / AssignmentRateVersion is
+  // minted on this branch, and there is NO cross-schema requisition read). The
+  // recording principal is TransitionPlacementInput.recorded_by (JWT sub).
+  readonly guarantee_terms?: GuaranteeTermsInput | null;
 };
 
 // Caller-supplied org snapshot for the forward STARTED -> ContractAssignment path.
@@ -58,6 +74,23 @@ export type AssignmentContext = {
   readonly company_id: string;
   readonly site_id?: string | null;
   readonly company_department_id?: string | null;
+};
+
+// Track 7 / T7-P1 — the governed guarantee terms snapshot supplied at the PERMANENT
+// STARTED handoff. guarantee_start_date is a calendar date (ISO yyyy-mm-dd) — the
+// actual permanent employment start; the repository derives guarantee_end_date =
+// start + duration_days (half-open window). duration_days must be a positive
+// integer (else fail closed). exactly one remedy_policy. exposure_amount is a
+// decimal money STRING (never float; scale-2), with its ISO-4217 currency.
+// terms_source is the governed provenance label. NO hidden default, NO cross-schema
+// read (§3.2 / §5).
+export type GuaranteeTermsInput = {
+  readonly guarantee_start_date: string;
+  readonly guarantee_duration_days: number;
+  readonly remedy_policy: RemedyPolicy;
+  readonly exposure_amount: string;
+  readonly exposure_currency: string;
+  readonly terms_source: string;
 };
 
 // Track 5 / T5-P1 — the actual commercial terms of the initial Assignment Rate
@@ -135,6 +168,9 @@ export type PlacementProcessView = {
   readonly offer_expires_at: Date | null;
   readonly client_offer_reference: string | null;
   readonly offer_terms_summary: string | null;
+  // Track 7 / T7-P1 — the persisted permanent-vs-contract branch fact (§3.1).
+  // NULL for legacy/kind-agnostic placements (CONTRACT-compatible at STARTED).
+  readonly placement_kind: PlacementKind | null;
   readonly created_at: Date;
 };
 
@@ -158,4 +194,34 @@ export type PlacementProcessEventView = {
 export type StateTransitionPayload = {
   readonly from: PlacementState;
   readonly to: PlacementState;
+};
+
+// Track 7 / T7-P1 — the read view of a PermanentPlacement aggregate + its immutable
+// guarantee snapshot. guarantee_exposure_amount is a scale-2 decimal string
+// (money-at-boundary convention, never float). This is the shape the
+// placement:permanent:read surface returns and the P1 lifecycle transition returns.
+export type PermanentPlacementView = {
+  readonly id: string;
+  readonly tenant_id: string;
+  readonly placement_process_id: string;
+  readonly submittal_id: string;
+  readonly requisition_id: string;
+  readonly talent_record_id: string;
+  readonly lifecycle_state: PermanentPlacementState;
+  readonly guarantee_start_date: Date;
+  readonly guarantee_duration_days: number;
+  readonly guarantee_end_date: Date;
+  readonly remedy_policy: RemedyPolicy;
+  readonly guarantee_exposure_amount: string;
+  readonly guarantee_exposure_currency: string;
+  readonly terms_source: string;
+  readonly recorded_by: string;
+  readonly created_at: Date;
+};
+
+// The permanent-placement guarantee-lifecycle transition event payload: { from, to }.
+// `from` is null for the creation/activation event.
+export type PermanentPlacementTransitionPayload = {
+  readonly from: PermanentPlacementState | null;
+  readonly to: PermanentPlacementState;
 };

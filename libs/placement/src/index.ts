@@ -4,6 +4,11 @@
 export { PrismaService } from './lib/prisma/prisma.service.js';
 export { PlacementRepository } from './lib/placement.repository.js';
 export { PlacementProcessEventRepository } from './lib/placement-process-event.repository.js';
+// Track 7 / T7-P1 — the PermanentPlacement aggregate repository (read + happy-path
+// guarantee lifecycle) and its governed guarantee-terms validation.
+export { PermanentPlacementRepository } from './lib/permanent/permanent-placement.repository.js';
+export { validateGuaranteeTerms } from './lib/permanent/guarantee-validation.js';
+export type { ValidatedGuaranteeSnapshot } from './lib/permanent/guarantee-validation.js';
 // E1-c — placement outbox drain surface + its module (consumed by outbox-publisher).
 export { PlacementOutboxRepository } from './lib/placement-outbox.repository.js';
 export type { UnpublishedOutboxEvent } from './lib/placement-outbox.repository.js';
@@ -25,6 +30,14 @@ export {
   lifecyclePositionOf,
   PLACEMENT_AUTHORITY_CLASSES,
   edgeAuthorityClass,
+  // Track 7 / T7-P1 — the permanent-placement guarantee lifecycle + branch/remedy
+  // vocabularies (the runtime companions of the Postgres enums; typed-map enforced).
+  PLACEMENT_KINDS,
+  PERMANENT_PLACEMENT_STATES,
+  PERMANENT_PLACEMENT_INITIAL_STATE,
+  PERMANENT_PLACEMENT_TRANSITIONS,
+  canTransitionPermanentPlacement,
+  REMEDY_POLICIES,
 } from './lib/lifecycle/placement-lifecycle.js';
 export type {
   PlacementState,
@@ -32,6 +45,8 @@ export type {
   LegalTarget,
   PlacementTransition,
   PlacementAuthorityClass,
+  PermanentPlacementState,
+  RemedyPolicy,
 } from './lib/lifecycle/placement-lifecycle.js';
 
 // SQL generator (§5c/§5d) — registry → typed AST → migration SQL.
@@ -83,12 +98,16 @@ export type {
   TransitionPlacementInput,
   AssignmentContext,
   CommercialTermsInput,
+  PlacementKind,
+  GuaranteeTermsInput,
   PlacementProcessView,
   PlacementProcessEventView,
   StateTransitionPayload,
   ContractAssignmentEndReason,
   ContractAssignmentView,
   AssignmentCommercialView,
+  PermanentPlacementView,
+  PermanentPlacementTransitionPayload,
 } from './lib/placement-process.types.js';
 
 // Track 4 / T4-B — the placement-owned capacity projection (§4: consumers pull).

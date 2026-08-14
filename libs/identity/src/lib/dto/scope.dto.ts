@@ -275,6 +275,17 @@ export const SEED_SCOPE_KEYS = [
   // account_manager/tenant_admin/tenant_owner, required in conjunction with
   // placement:create for a replacement create.
   'placement:replace',
+  // Track 7 / T7-P1 — PermanentPlacement guarantee authority. Dedicated least-
+  // privilege scopes (§8): read governs the guarantee read surface; transition
+  // governs the guarantee lifecycle (GUARANTEE_ACTIVE -> GUARANTEE_SATISFIED) AND
+  // is the second leg of the PERMANENT STARTED conjunction (mirroring
+  // assignment:commercials:write for CONTRACT). NEVER satisfied by generic
+  // placement:* / assignment:*. Role posture mirrors the placement authoritative
+  // tier: read -> all four grant-receiving roles; transition ->
+  // account_manager/tenant_admin/tenant_owner (the tier holding placement:activate).
+  // Falloff/remedy/terms-management scopes are T7-P2/P3 — NOT added here.
+  'placement:permanent:read',
+  'placement:permanent:transition',
   // Track 4 / T4-D — ContractAssignment authority (the authoritative post-start
   // commitment). Dedicated family: reuse of requisition:assign / company:assign
   // (user<->entity assignment) and generic placement:* is rejected as semantically
