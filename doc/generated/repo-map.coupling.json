@@ -2342,6 +2342,18 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/connector-integration-authz.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/connector-integration-authz.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/integration/prisma/migrations/20260814170000_init_integration_connection/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/conversation-started.integration.spec.ts",
       "status": "excluded",
       "to": "libs/ai-draft/prisma/migrations/20260525170000_init/migration.sql"
@@ -8635,6 +8647,11 @@
     {
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
+      "to": "libs/integration/src/lib/integration.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
       "to": "libs/pipeline/src/lib/pipeline.controller.ts"
     },
     {
@@ -12416,6 +12433,11 @@
       "to": "doc/step4-singlebox-astre-seed-recon.md"
     },
     {
+      "from": "libs/identity/prisma/seed.ts",
+      "status": "unscoped",
+      "to": "libs/integration/src/lib/domain/connector-actor.ts"
+    },
+    {
       "from": "libs/identity/project.json",
       "status": "unscoped",
       "to": "libs/identity/src/index.ts"
@@ -12668,6 +12690,26 @@
       "from": "libs/ingestion/src/tests/ingestion.schema.spec.ts",
       "status": "excluded",
       "to": "libs/ingestion/prisma/schema.prisma"
+    },
+    {
+      "from": "libs/integration/prisma/schema.prisma",
+      "status": "unscoped",
+      "to": "doc/05-conventions.md"
+    },
+    {
+      "from": "libs/integration/project.json",
+      "status": "unscoped",
+      "to": "libs/integration/src/index.ts"
+    },
+    {
+      "from": "libs/integration/project.json",
+      "status": "unscoped",
+      "to": "libs/integration/tsconfig.lib.json"
+    },
+    {
+      "from": "libs/integration/src/lib/domain/connector-actor.ts",
+      "status": "production",
+      "to": "libs/identity/prisma/seed.ts"
     },
     {
       "from": "libs/job-distribution/project.json",
@@ -13484,6 +13526,7 @@
     { "from": "package.json", "status": "unscoped", "to": "libs/identity/prisma/seed.ts" },
     { "from": "package.json", "status": "unscoped", "to": "libs/import/prisma/schema.prisma" },
     { "from": "package.json", "status": "unscoped", "to": "libs/ingestion/prisma/schema.prisma" },
+    { "from": "package.json", "status": "unscoped", "to": "libs/integration/prisma/schema.prisma" },
     {
       "from": "package.json",
       "status": "unscoped",
@@ -13858,6 +13901,11 @@
       "from": "pact/provider/src/verify-api.ts",
       "status": "unscoped",
       "to": "libs/ingestion/prisma/migrations/20260706210000_add_confirmed_anchor_match_to_resolution_method/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "libs/integration/prisma/migrations/20260814170000_init_integration_connection/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",
@@ -14268,6 +14316,11 @@
       "from": "pact/provider/src/verify-api.ts",
       "status": "unscoped",
       "to": "libs/task/prisma/migrations/20260617120000_task_workspace_fields/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "pact/consumers/ats-web/src/integration.consumer.test.ts"
     },
     {
       "from": "pact/provider/src/verify-api.ts",
@@ -14943,6 +14996,7 @@
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/identity/src/index.ts" },
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/import/src/index.ts" },
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/ingestion/src/index.ts" },
+    { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/integration/src/index.ts" },
     {
       "from": "tsconfig.base.json",
       "status": "unscoped",
@@ -15064,6 +15118,7 @@
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/identity/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/import/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/ingestion/src/index.ts" },
+    { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/integration/src/index.ts" },
     {
       "from": "vitest.shared.ts",
       "status": "unscoped",

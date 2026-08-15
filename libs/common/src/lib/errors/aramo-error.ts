@@ -16,6 +16,7 @@ export interface AramoErrorContext {
 // for backwards compatibility; this constant records the canonical pairing
 // each directive that introduced the code chose.
 export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
+  CONNECTOR_CONFIGURATION_INVALID: 409,
   AUTH_REQUIRED: 401,
   INVALID_TOKEN: 401,
   TENANT_ACCESS_DENIED: 403,

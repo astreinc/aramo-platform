@@ -562,6 +562,11 @@ export const ERROR_CODES = [
   // PERMANENT_PLACEMENT_REMEDY_ALREADY_COMPLETED (409): a completion was attempted on a
   // remedy already resolved (completion facts are write-once). Mirrors PERMANENT_PLACEMENT_ALREADY_EXISTS.
   'PERMANENT_PLACEMENT_REMEDY_ALREADY_COMPLETED',
+  // CONNECTOR_CONFIGURATION_INVALID (409): a connector connection management op
+  // conflicts with the connection's current state — e.g. enabling a connection
+  // with no configured credential, or an illegal lifecycle transition. T8-CONNECTOR-A;
+  // narrowly scoped, deterministic, non-secret (directive §18).
+  'CONNECTOR_CONFIGURATION_INVALID',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

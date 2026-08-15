@@ -495,7 +495,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Track 3 / E2: +7 pre_start_requirement (all non-platform). Re-derived
       // actual 96 (prior literal 85 was pre-existingly understated by 4 — F-2).
       // Track 3 / E2 v1.2.2: +1 pre_start_requirement:reopen (non-platform) → 97.
-      expect(tenantScopes.length).toBe(114); // +5 placement + 1 placement:replace + 2 T7-P1 placement:permanent + 1 T7-P2 placement:remedy:resolve + 4 T4-D assignment + 2 T5-P1 assignment:commercials + 2 T8-P2 requisition:import (all non-platform)
+      expect(tenantScopes.length).toBe(116); // +5 placement + 1 placement:replace + 2 T7-P1 placement:permanent + 1 T7-P2 placement:remedy:resolve + 4 T4-D assignment + 2 T5-P1 assignment:commercials + 2 T8-P2 requisition:import + 2 T8-CONNECTOR-A integration (all non-platform)
       for (const s of tenantScopes) {
         expect(s.key.startsWith('platform:')).toBe(false);
       }

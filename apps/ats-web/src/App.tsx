@@ -1,4 +1,4 @@
-import { RouteGuard, ToastProvider, useSession } from '@aramo/fe-foundation';
+import { ForbiddenState, RouteGuard, ToastProvider, hasScope, useSession } from '@aramo/fe-foundation';
 import { Navigate, Route, Routes } from 'react-router-dom';
 
 import { AdminGate } from './admin/AdminGate';
@@ -448,11 +448,16 @@ export function App() {
                     <Route
                       path="admin/settings/integrations/*"
                       element={
-                        <RouteGuard
-                          requireScope="requisition:import:read"
-                          sessionStateOverride={state}
-                        >
-                          {hasAdminScope(state.session) ? (
+                        // T8-CONNECTOR-A: the Integrations page now hosts TWO
+                        // independently-governed siblings — P3 ingestion
+                        // monitoring (`requisition:import:read`) and connector
+                        // connection management (`integration:read`). The route
+                        // is reachable by EITHER scope; each panel self-gates on
+                        // its OWN scope (§38 — a narrower permission must NOT
+                        // become dependent on an unrelated broader gate).
+                        hasScope(state.session, 'requisition:import:read') ||
+                        hasScope(state.session, 'integration:read') ? (
+                          hasAdminScope(state.session) ? (
                             <Routes>
                               <Route element={<SettingsShell />}>
                                 <Route
@@ -463,8 +468,10 @@ export function App() {
                             </Routes>
                           ) : (
                             <IntegrationsSection />
-                          )}
-                        </RouteGuard>
+                          )
+                        ) : (
+                          <ForbiddenState scope="integration:read" />
+                        )
                       }
                     />
                     {/* Admin-gated section. AdminGate is the single
