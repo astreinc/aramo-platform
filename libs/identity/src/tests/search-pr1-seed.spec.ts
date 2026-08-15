@@ -12,7 +12,7 @@ import { SCOPE_KEY_FORMAT, SEED_SCOPE_KEYS } from '../lib/dto/index.js';
 // ARAMO_RUN_INTEGRATION=1 gated): 362 → 390.
 
 describe('Search PR-1 — scope catalog parity', () => {
-  it('SEED_SCOPE_KEYS has 119 keys (the full seeded scope catalog)', () => {
+  it('SEED_SCOPE_KEYS has 121 keys (the full seeded scope catalog)', () => {
     // Search PR-1 took 67→70 (company/requisition/contact :search); the Tasks
     // backend appended task:read + task:write (70→72); Company-Fields v1.1
     // appended company:read_commercial (72→73); the Job-Module appended
@@ -36,7 +36,8 @@ describe('Search PR-1 — scope catalog parity', () => {
     // Track 7 / T7-P1 appended 2 placement:permanent:read/transition (115->117).
     // Track 7 / T7-P2 appended 1 placement:remedy:resolve (117->118).
     // Track 7 / T7-P3 appended 1 placement:permanent:terms:write (118->119).
-    expect(SEED_SCOPE_KEYS).toHaveLength(119);
+    // Track 8 / T8-CONNECTOR-A appended 2 integration:read/write (119->121).
+    expect(SEED_SCOPE_KEYS).toHaveLength(121);
   });
 
   it('D3b — activity:redact is in the catalog exactly once', () => {
