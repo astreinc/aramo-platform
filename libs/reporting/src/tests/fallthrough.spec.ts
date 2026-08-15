@@ -43,6 +43,7 @@ function makeService(cohort: Cohort, visibleReqs?: ReadonlyArray<{ id: string }>
     stub, // capacity
     placementEventRepository as never,
     stub, // placementPipelineRepository (T9-B3; unused here)
+    stub, // commercialMarginRepository (T9-B4; unused here)
   );
   return { svc, placementEventRepository, requisitionRepository };
 }

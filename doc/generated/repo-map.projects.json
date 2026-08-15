@@ -562,6 +562,8 @@
       "AssignmentPipelineReadRepository",
       "CAPACITY_STATUSES",
       "CapacityProjectionRepository",
+      "CommercialMarginReadModule",
+      "CommercialMarginReadRepository",
       "DUPLICATE_GUARD_INACTIVE",
       "GOVERNED_TERMINAL_TARGETS",
       "GUARANTEE_TERMS_SOURCE_TYPES",
@@ -1922,6 +1924,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/reporting/src/tests/margin.spec.ts",
+        "project": "reporting",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/reporting/src/tests/recruiter-metrics.spec.ts",
         "project": "reporting",
         "status": "excluded"
@@ -2459,6 +2467,18 @@
       {
         "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/ats-web/src/portal-disputes/PortalDisputesView.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/reporting/MarginView.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/reporting/ReportingLanding.spec.tsx",
         "project": "aramo-ats-web",
         "status": "excluded"
       },

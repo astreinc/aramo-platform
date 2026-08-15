@@ -1,0 +1,144 @@
+import { useEffect, useState } from 'react';
+import { hasScope, type Session, useSession } from '@aramo/fe-foundation';
+
+import { getMargin } from './margin-api';
+import type { MarginReport } from './margin-types';
+
+// T9-B4 — dedicated margin operational view, reached from the /reports landing.
+// Governed by Aramo-T9-B4-Directive-v1_0-LOCKED (+ the field-masking amendment).
+// CURRENT-SNAPSHOT, AGGREGATE-ONLY: one row per (currency, rate_period) group with
+// the governed group_margin_percent (bill-rate-weighted; null → "—"), plus the
+// forward-materialized coverage counts. Requires assignment:commercials:read — the
+// surface is gated away (no fetch) without it (§26); the backend independently 403s
+// on direct navigation (§14). No charting, no drilldown, NO pay/bill/spread/markup,
+// NO person/assignment rows. The result is "current assignment rate margin" — NEVER
+// booked / invoiced / realized / timesheet / revenue margin.
+
+const PERIOD_LABEL: Record<string, string> = {
+  HOURLY: 'Hourly',
+  DAILY: 'Daily',
+  WEEKLY: 'Weekly',
+  MONTHLY: 'Monthly',
+  ANNUAL: 'Annual',
+};
+
+type Status = 'idle' | 'loading' | 'ready' | 'error';
+
+export function MarginView({
+  sessionOverride,
+}: {
+  readonly sessionOverride?: Session;
+}): JSX.Element {
+  const sessionState = useSession();
+  const session: Session | null =
+    sessionOverride ??
+    (sessionState.status === 'authenticated' ? sessionState.session : null);
+  const canRead =
+    session !== null &&
+    Array.isArray(session.scopes) &&
+    hasScope(session, 'assignment:commercials:read');
+
+  const [status, setStatus] = useState<Status>('idle');
+  const [report, setReport] = useState<MarginReport | null>(null);
+
+  useEffect(() => {
+    // §26 — no fetch when the surface is gated away (missing the commercial scope).
+    if (!canRead) return;
+    let active = true;
+    setStatus('loading');
+    getMargin()
+      .then((r) => {
+        if (active) {
+          setReport(r);
+          setStatus('ready');
+        }
+      })
+      .catch(() => {
+        if (active) setStatus('error');
+      });
+    return () => {
+      active = false;
+    };
+  }, [canRead]);
+
+  if (!canRead) {
+    return (
+      <section aria-labelledby="margin-heading">
+        <h1 id="margin-heading">Margin</h1>
+        <p role="status" data-testid="margin-gated">
+          You do not have access to commercial margin.
+        </p>
+      </section>
+    );
+  }
+
+  return (
+    <section aria-labelledby="margin-heading">
+      <h1 id="margin-heading">Margin</h1>
+      <p>Current assignment rate margin. Coverage is forward-materialized.</p>
+
+      {status === 'loading' ? <p role="status">Loading…</p> : null}
+      {status === 'error' ? (
+        <p role="alert">Could not load the margin report.</p>
+      ) : null}
+
+      {status === 'ready' && report !== null ? (
+        <div data-testid="margin-content">
+          <dl data-testid="margin-coverage">
+            <div>
+              <dt>Eligible assignments</dt>
+              <dd data-testid="margin-eligible">{report.eligible_count}</dd>
+            </div>
+            <div>
+              <dt>Commercialized</dt>
+              <dd data-testid="margin-commercialized">
+                {report.commercialized_count}
+              </dd>
+            </div>
+            <div>
+              <dt>Missing commercial data</dt>
+              <dd data-testid="margin-missing">
+                {report.missing_commercial_count}
+              </dd>
+            </div>
+          </dl>
+          <p data-testid="margin-coverage-note">
+            Current assignment rate margin — forward-materialized coverage only.
+          </p>
+
+          {report.groups.length === 0 ? (
+            <p data-testid="margin-empty">No commercialized assignments.</p>
+          ) : (
+            <table data-testid="margin-groups">
+              <thead>
+                <tr>
+                  <th>Currency</th>
+                  <th>Rate Period</th>
+                  <th>Assignments</th>
+                  <th>Margin %</th>
+                </tr>
+              </thead>
+              <tbody>
+                {report.groups.map((g) => (
+                  <tr
+                    key={`${g.currency}-${g.rate_period}`}
+                    data-testid={`margin-group-${g.currency}-${g.rate_period}`}
+                  >
+                    <td>{g.currency}</td>
+                    <td>{PERIOD_LABEL[g.rate_period] ?? g.rate_period}</td>
+                    <td>{g.assignment_count}</td>
+                    <td
+                      data-testid={`margin-pct-${g.currency}-${g.rate_period}`}
+                    >
+                      {g.group_margin_percent ?? '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      ) : null}
+    </section>
+  );
+}

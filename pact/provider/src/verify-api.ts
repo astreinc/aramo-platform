@@ -909,6 +909,10 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     // TR-15 B1 — a recruiter-tenant session that LACKS consent:decision-log:read
     // (a general authenticated principal), for the decision-log 403 refusal pact.
     let insufficientJwt: string;
+    // T9-B4 — a recruiter session WITH report:read but WITHOUT
+    // assignment:commercials:read, for the margin compound-gate 403 refusal pact
+    // (§15: reporting access is not sufficient; the commercial scope is required).
+    let reportOnlyJwt: string;
     // Assigned in beforeAll before any state handler runs; initialized empty
     // for strict null-checks compliance.
     let dbUrl = '';
@@ -3392,6 +3396,24 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         actor_kind: 'user',
         tenant_id: TENANT_ID,
         scopes: ['talent:read'],
+      })
+        .setProtectedHeader({ alg: ALG })
+        .setIssuedAt()
+        .setIssuer(ISSUER)
+        .setAudience(AUDIENCE)
+        .setExpirationTime('1h')
+        .sign(privateKey);
+
+      // T9-B4 — a valid recruiter session holding report:read (+ requisition:read
+      // for visibility resolution) but NOT assignment:commercials:read. JwtAuthGuard
+      // accepts it; RolesGuard on GET /v1/reports/margin rejects 403 because the
+      // compound gate requires the commercial scope (§12/§15). ATS-entitled tenant.
+      reportOnlyJwt = await new SignJWT({
+        sub: RECRUITER_ID,
+        consumer_type: 'recruiter',
+        actor_kind: 'user',
+        tenant_id: TENANT_ID,
+        scopes: ['report:read', 'requisition:read'],
       })
         .setProtectedHeader({ alg: ALG })
         .setIssuedAt()
@@ -6195,6 +6217,42 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         });
       },
 
+      // T9-B4 — one commercialized ACTIVE CONTRACT assignment (STARTED placement →
+      // ACTIVE ContractAssignment → a current open USD/HOURLY 80/100 rate version) so
+      // the margin read returns a single USD/HOURLY group at group_margin_percent
+      // 20.00. accessJwt is see-all (requisition:read:all), so the assignment is visible.
+      'an ats-web recruiter and a commercialized contract assignment exist': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedAtsWebTenant(c);
+          const M_REQ = '00000000-0000-7000-8000-a91200000001';
+          const M_PP = '00000000-0000-7000-8000-a91200000002';
+          const M_CA = '00000000-0000-7000-8000-a91200000003';
+          const M_ARV = '00000000-0000-7000-8000-a91200000004';
+          const FILL = '00000000-0000-7000-8000-a9120000ffff';
+          await c.query(
+            `INSERT INTO placement."PlacementProcess"
+               (id, tenant_id, submittal_id, requisition_id, talent_record_id, state, offered_at)
+             VALUES ($1,$2,$3,$4,$5,'STARTED'::placement."PlacementState", now())
+             ON CONFLICT (id) DO NOTHING`,
+            [M_PP, TENANT_ID, FILL, M_REQ, FILL],
+          );
+          await c.query(
+            `INSERT INTO placement."ContractAssignment"
+               (id, tenant_id, placement_process_id, submittal_id, requisition_id, talent_record_id, started_at, provenance, lifecycle_state, company_id)
+             VALUES ($1,$2,$3,$4,$5,$6, now(),'FORWARD','ACTIVE',$7) ON CONFLICT (id) DO NOTHING`,
+            [M_CA, TENANT_ID, M_PP, FILL, M_REQ, FILL, FILL],
+          );
+          await c.query(
+            `INSERT INTO placement."AssignmentRateVersion"
+               (id, tenant_id, contract_assignment_id, requisition_id, talent_record_id, pay_rate_amount, bill_rate_amount, currency, rate_period, effective_from, effective_to, recorded_by, cancelled_at, change_reason)
+             VALUES ($1,$2,$3,$4,$5, 80.00, 100.00, 'USD','HOURLY','2026-01-01T00:00:00Z', NULL, $6, NULL,'seed')
+             ON CONFLICT (id) DO NOTHING`,
+            [M_ARV, TENANT_ID, M_CA, M_REQ, FILL, FILL],
+          );
+        });
+      },
+
       // /me — the authenticated recruiter (sub = RECRUITER_ID) resolves via
       // UserTenantMembership(user_id, tenant_id) → user + active roles + tenant.
       'an ats-web user with a membership and a role exist': async () => {
@@ -6433,6 +6491,14 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         // token → rewrite to insufficientJwt (a valid session WITHOUT
         // consent:decision-log:read). RolesGuard returns 403 INSUFFICIENT_PERMISSIONS.
         req.headers['authorization'] = `Bearer ${insufficientJwt}`;
+      } else if (
+        typeof authHeader === 'string' &&
+        authHeader === 'Bearer eyJfake.reportonly.token'
+      ) {
+        // T9-B4 — the margin compound-gate 403 interaction ships a fake token →
+        // rewrite to reportOnlyJwt (report:read but NOT assignment:commercials:read).
+        // RolesGuard on GET /v1/reports/margin returns 403 INSUFFICIENT_PERMISSIONS.
+        req.headers['authorization'] = `Bearer ${reportOnlyJwt}`;
       }
       next();
     }

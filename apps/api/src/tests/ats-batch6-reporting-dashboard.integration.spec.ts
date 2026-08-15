@@ -290,6 +290,18 @@ const REPORT_TENANT_ADMIN_SCOPES = [
   ...REPORT_RECRUITER_SCOPES,
   'requisition:read:all', // the A3 see-all proxy
 ];
+// T9-B4 — margin requires the COMPOUND gate report:read AND assignment:commercials:read
+// (§12 D-9). These add the commercial-disclosure scope on top of the report scopes.
+const MARGIN_TENANT_ADMIN_SCOPES = [
+  ...REPORT_TENANT_ADMIN_SCOPES,
+  'assignment:commercials:read',
+];
+const MARGIN_RECRUITER_SCOPES = [
+  ...REPORT_RECRUITER_SCOPES,
+  'assignment:commercials:read',
+];
+// commercial scope but NO report:read → the compound gate must still 403.
+const COMMERCIAL_ONLY_SCOPES = ['assignment:commercials:read', 'requisition:read'];
 
 describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
   'PR-A7 ATS finishers — reporting + dashboard proofs (real Postgres 17)',
@@ -311,6 +323,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     let recruiterJwt_WrongSite: string;
     let unscopedJwt: string;
     let tenantAdminJwt: string;
+    // T9-B4 — margin compound-authorization tokens.
+    let marginAdminJwt: string; // report:read + commercials, see-all
+    let marginRecruiterJwt: string; // report:read + commercials, A3-scoped
+    let marginWrongSiteJwt: string; // full margin scopes but token.site != requested
+    let commercialOnlyJwt: string; // commercials WITHOUT report:read → 403
 
     async function signJwt(
       privateKey: SignKey,
@@ -441,6 +458,30 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         tenant_id: TENANT_ATS,
         site_id: SITE_A,
         scopes: REPORT_TENANT_ADMIN_SCOPES,
+      });
+      marginAdminJwt = await signJwt(privateKey, {
+        sub: TENANT_ADMIN,
+        tenant_id: TENANT_ATS,
+        site_id: SITE_A,
+        scopes: MARGIN_TENANT_ADMIN_SCOPES,
+      });
+      marginRecruiterJwt = await signJwt(privateKey, {
+        sub: RECRUITER,
+        tenant_id: TENANT_ATS,
+        site_id: SITE_A,
+        scopes: MARGIN_RECRUITER_SCOPES,
+      });
+      marginWrongSiteJwt = await signJwt(privateKey, {
+        sub: RECRUITER,
+        tenant_id: TENANT_ATS,
+        site_id: SITE_B,
+        scopes: MARGIN_RECRUITER_SCOPES,
+      });
+      commercialOnlyJwt = await signJwt(privateKey, {
+        sub: RECRUITER,
+        tenant_id: TENANT_ATS,
+        site_id: SITE_A,
+        scopes: COMMERCIAL_ONLY_SCOPES,
       });
 
       module = await Test.createTestingModule({ imports: [AppModule] }).compile();
@@ -897,6 +938,132 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(recRes.status).toBe(200);
       const rec = (await recRes.json()) as { by_state: Array<{ state: string; count: number }> };
       expect(rec.by_state.find((r) => r.state === 'STARTED')?.count).toBe(1); // A3 narrows to the assigned req
+    });
+
+    // -------------------------------------------------------------------------
+    // T9-B4 — margin: COMPOUND authorization (report:read AND
+    // assignment:commercials:read), aggregate shape + governed weighted metric,
+    // data-safety (no per-row commercial fields), and A3 visibility at the HTTP
+    // boundary. The weighted arithmetic + ambiguity fail-closed are proven in the
+    // libs/placement + libs/reporting specs; here we prove the wired endpoint and
+    // the compound gate.
+    // -------------------------------------------------------------------------
+
+    const marginUrl = (): string =>
+      `http://127.0.0.1:${port}/v1/reports/margin?site_id=${SITE_A}`;
+
+    // Seed a commercialized ACTIVE CONTRACT assignment: PlacementProcess (STARTED)
+    // → ContractAssignment (ACTIVE/FORWARD) → a current open, non-cancelled
+    // AssignmentRateVersion carrying the given pay/bill/currency/rate_period.
+    async function seedCommercialized(
+      requisition_id: string,
+      pay: string,
+      bill: string,
+      currency: string,
+      rate_period: string,
+    ): Promise<void> {
+      const pp = globalThis.crypto.randomUUID();
+      const ca = globalThis.crypto.randomUUID();
+      await setupClient.query(
+        `INSERT INTO placement."PlacementProcess"
+           (id, tenant_id, submittal_id, requisition_id, talent_record_id, state, offered_at)
+         VALUES ($1,$2,$3,$4,$5,'STARTED'::placement."PlacementState", now())`,
+        [pp, TENANT_ATS, globalThis.crypto.randomUUID(), requisition_id, globalThis.crypto.randomUUID()],
+      );
+      await setupClient.query(
+        `INSERT INTO placement."ContractAssignment"
+           (id, tenant_id, placement_process_id, submittal_id, requisition_id, talent_record_id,
+            started_at, provenance, company_id, lifecycle_state, end_reason, ended_at)
+         VALUES ($1,$2,$3,$4,$5,$6, now(),
+                 'FORWARD'::placement."ContractAssignmentProvenance", $7,
+                 'ACTIVE'::placement."ContractAssignmentState", NULL, NULL)`,
+        [ca, TENANT_ATS, pp, globalThis.crypto.randomUUID(), requisition_id,
+         globalThis.crypto.randomUUID(), globalThis.crypto.randomUUID()],
+      );
+      await setupClient.query(
+        `INSERT INTO placement."AssignmentRateVersion"
+           (id, tenant_id, contract_assignment_id, requisition_id, talent_record_id,
+            pay_rate_amount, bill_rate_amount, currency, rate_period,
+            effective_from, effective_to, recorded_by, cancelled_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'2026-01-01T00:00:00.000Z', NULL, $10, NULL)`,
+        [globalThis.crypto.randomUUID(), TENANT_ATS, ca, requisition_id,
+         globalThis.crypto.randomUUID(), pay, bill, currency, rate_period,
+         globalThis.crypto.randomUUID()],
+      );
+    }
+
+    type MarginBody = {
+      eligible_count: number;
+      commercialized_count: number;
+      missing_commercial_count: number;
+      coverage: string;
+      groups: Array<{
+        currency: string;
+        rate_period: string;
+        assignment_count: number;
+        group_margin_percent: string | null;
+      }>;
+    };
+
+    it('margin entitlement axis: tenant lacking ats → 403', async () => {
+      const res = await fetch(marginUrl(), { method: 'GET', headers: { Authorization: `Bearer ${recruiterJwt_NotAts}` } });
+      expect(res.status).toBe(403);
+    });
+
+    it('margin authorization axis: report:read WITHOUT assignment:commercials:read → 403', async () => {
+      const res = await fetch(marginUrl(), { method: 'GET', headers: { Authorization: `Bearer ${recruiterJwt}` } });
+      expect(res.status).toBe(403);
+    });
+
+    it('margin authorization axis: assignment:commercials:read WITHOUT report:read → 403', async () => {
+      const res = await fetch(marginUrl(), { method: 'GET', headers: { Authorization: `Bearer ${commercialOnlyJwt}` } });
+      expect(res.status).toBe(403);
+    });
+
+    it('margin site axis: token site != requested site → 403', async () => {
+      const res = await fetch(marginUrl(), { method: 'GET', headers: { Authorization: `Bearer ${marginWrongSiteJwt}` } });
+      expect(res.status).toBe(403);
+    });
+
+    it('margin compound success: governed 25.00% USD·HOURLY group, coverage + invariant, no per-row commercial fields', async () => {
+      // Two commercialized ACTIVE assignments on the recruiter-visible req →
+      // ONE USD/HOURLY group weighting to 25.00% (not the 35% mean). A CAD group
+      // on the admin-only req proves A3 below.
+      await seedCommercialized(ftReqAssigned, '80.00', '100.00', 'USD', 'HOURLY');
+      await seedCommercialized(ftReqAssigned, '10.00', '20.00', 'USD', 'HOURLY');
+      await seedCommercialized(ftReqUnassigned, '50.00', '100.00', 'CAD', 'HOURLY');
+
+      const res = await fetch(marginUrl(), { method: 'GET', headers: { Authorization: `Bearer ${marginAdminJwt}` } });
+      expect(res.status).toBe(200);
+      const raw = await res.text();
+      // Data-safety (§13/§25): no per-row commercial or identity fields leak.
+      for (const banned of [
+        'pay_rate_amount', 'bill_rate_amount', 'spread_amount', 'total_spread_amount',
+        'markup_percent', 'talent_record_id', 'assignment_id', 'effective_from', 'ended_at',
+      ]) {
+        expect(raw).not.toContain(banned);
+      }
+      const body = JSON.parse(raw) as MarginBody;
+      expect(body.coverage).toBe('forward_materialized');
+      expect(body.eligible_count).toBe(
+        body.commercialized_count + body.missing_commercial_count,
+      );
+      const usdHourly = body.groups.find((g) => g.currency === 'USD' && g.rate_period === 'HOURLY');
+      expect(usdHourly?.assignment_count).toBe(2);
+      expect(usdHourly?.group_margin_percent).toBe('25.00'); // NOT the 35% simple mean
+      const cadHourly = body.groups.find((g) => g.currency === 'CAD');
+      expect(cadHourly?.group_margin_percent).toBe('50.00'); // admin sees the tenant-wide CAD group
+    });
+
+    it('margin A3: recruiter sees only visible-requisition groups (no admin-only CAD group)', async () => {
+      const res = await fetch(marginUrl(), { method: 'GET', headers: { Authorization: `Bearer ${marginRecruiterJwt}` } });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as MarginBody;
+      // The recruiter-visible USD/HOURLY group is present and correct...
+      const usdHourly = body.groups.find((g) => g.currency === 'USD' && g.rate_period === 'HOURLY');
+      expect(usdHourly?.group_margin_percent).toBe('25.00');
+      // ...but the admin-only CAD group (ftReqUnassigned) is invisible under A3.
+      expect(body.groups.some((g) => g.currency === 'CAD')).toBe(false);
     });
 
     // -------------------------------------------------------------------------

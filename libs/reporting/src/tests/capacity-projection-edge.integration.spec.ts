@@ -70,6 +70,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         capacity,
         {} as never, // placementEventRepository (T9-B2; unused by capacity edge)
         {} as never, // placementPipelineRepository (T9-B3; unused here)
+        {} as never, // commercialMarginRepository (T9-B4; unused here)
       );
     }, 120_000);
 

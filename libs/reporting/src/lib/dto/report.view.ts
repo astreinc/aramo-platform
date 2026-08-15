@@ -243,6 +243,39 @@ export interface AssignmentPipelineReportView {
   };
 }
 
+// MarginReportView — T9-B4 margin operational view (GET /v1/reports/margin).
+// Governed by Aramo-T9-B4-Directive-v1_0-LOCKED. CURRENT-SNAPSHOT, AGGREGATE-ONLY.
+//
+// One row per homogeneous (currency, rate_period) group; `group_margin_percent` is
+// the GOVERNED bill-rate-weighted aggregate SUM(bill-pay)/SUM(bill)*100 as a scale-2
+// decimal string, or null when the group's bill total is zero (§8 D-5). Group order
+// is deterministic — currency ASC, then canonical rate-period order (§13). Coverage
+// is FORWARD_MATERIALIZED: `eligible_count = commercialized_count +
+// missing_commercial_count` (§6 D-3). The report is aggregate-only: it carries NO
+// per-assignment row, NO talent/person id, NO pay/bill/spread/markup amount, NO
+// total_spread, NO effective dates, NO ended_at, NO version lineage (§13 D-10).
+//
+// The aggregate field is `group_margin_percent` (NOT `margin_percent`) per
+// Aramo-T9-B4-Margin-Field-Masking-Amendment-v1_0-LOCKED: `margin_percent` is in the
+// closed COMPENSATION_FIELD_KEYS catalog and would be deleted by the global D5
+// CompensationFieldMaskInterceptor for any actor lacking compensation:view:margin:percent
+// — a scope §12 forbids as a B4 gate. The distinct name avoids the collision and
+// marks this as a group aggregate, not a row-level compensation field.
+export interface MarginGroupView {
+  currency: string;
+  rate_period: string;
+  assignment_count: number;
+  group_margin_percent: string | null;
+}
+
+export interface MarginReportView {
+  eligible_count: number;
+  commercialized_count: number;
+  missing_commercial_count: number;
+  coverage: 'forward_materialized';
+  groups: MarginGroupView[];
+}
+
 // DashboardView — the composition payload for GET /v1/dashboard.
 // Bundles the ATS-internal metrics into a single response so a
 // recruiter UI doesn't have to N-round-trip on load.

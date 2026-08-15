@@ -23,6 +23,7 @@ import type {
   CompanyPlacementsReportView,
   FallthroughReportView,
   FillPerformanceReportView,
+  MarginReportView,
   PipelineStageRollupView,
   PlacementCountReportView,
   RecruiterMetricsReportView,
@@ -284,6 +285,30 @@ export class ReportingController {
   ): Promise<AssignmentPipelineReportView> {
     const visibility = await req.resolveVisibility!();
     return this.reportingService.getAssignmentPipeline({
+      tenant_id: authContext.tenant_id,
+      user_id: authContext.sub,
+      scopes: authContext.scopes,
+      visibility,
+      ...(siteIdFromQuery === undefined ? {} : { site_id: siteIdFromQuery }),
+    });
+  }
+
+  // T9-B4 — margin current-snapshot operational view. Governed by
+  // Aramo-T9-B4-Directive-v1_0-LOCKED. AGGREGATE-ONLY current snapshot — NO query
+  // parameters (§5/§22). COMPOUND authorization: report:read AND
+  // assignment:commercials:read (§12 D-9 — RolesGuard requires every listed scope,
+  // so either alone → 403), plus tenant/site/A3. No row-level commercial data.
+  @Get('margin')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('report:read', 'assignment:commercials:read')
+  @RequireSiteMatch()
+  async margin(
+    @AuthContext() authContext: AuthContextType,
+    @Query('site_id') siteIdFromQuery: string | undefined,
+    @Req() req: Request,
+  ): Promise<MarginReportView> {
+    const visibility = await req.resolveVisibility!();
+    return this.reportingService.getMargin({
       tenant_id: authContext.tenant_id,
       user_id: authContext.sub,
       scopes: authContext.scopes,

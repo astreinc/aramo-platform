@@ -8,6 +8,13 @@ export { PlacementEventReadModule } from './lib/placement-event-read.module.js';
 export { AssignmentPipelineReadRepository } from './lib/assignment-pipeline-read.repository.js';
 export type { AssignmentPipelineSnapshot } from './lib/assignment-pipeline-read.repository.js';
 export { PlacementPipelineReadModule } from './lib/placement-pipeline-read.module.js';
+// T9-B4 — placement-owned current-snapshot commercial margin read boundary.
+export { CommercialMarginReadRepository } from './lib/commercial-margin-read.repository.js';
+export type {
+  CommercialMarginGroup,
+  CommercialMarginSnapshot,
+} from './lib/commercial-margin-read.repository.js';
+export { CommercialMarginReadModule } from './lib/commercial-margin-read.module.js';
 // Track 7 / T7-P1 — the PermanentPlacement aggregate repository (read + happy-path
 // guarantee lifecycle) and its governed guarantee-terms validation.
 export { PermanentPlacementRepository } from './lib/permanent/permanent-placement.repository.js';

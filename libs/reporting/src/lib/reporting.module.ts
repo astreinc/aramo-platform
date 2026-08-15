@@ -11,6 +11,7 @@ import {
   PlacementCapacityModule,
   PlacementEventReadModule,
   PlacementPipelineReadModule,
+  CommercialMarginReadModule,
 } from '@aramo/placement';
 import { RequisitionModule } from '@aramo/requisition';
 import { SavedListModule } from '@aramo/saved-list';
@@ -68,6 +69,7 @@ import { ReportingService } from './reporting.service.js';
     PlacementCapacityModule,
     PlacementEventReadModule,
     PlacementPipelineReadModule,
+    CommercialMarginReadModule,
     RequisitionModule,
     SavedListModule,
     SettingsModule,
