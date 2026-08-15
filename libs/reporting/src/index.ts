@@ -11,5 +11,7 @@ export type {
   FillPerformanceReportView,
   FallthroughReportView,
   FallthroughReasonView,
+  AssignmentPipelineReportView,
+  AssignmentPipelineStateCount,
   DashboardView,
 } from './lib/dto/index.js';

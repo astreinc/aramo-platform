@@ -16,7 +16,12 @@ describe('ReportingLanding', () => {
     );
     const fill = screen.getByTestId('reports-link-fill-performance');
     const fallthrough = screen.getByTestId('reports-link-fallthrough');
+    const assignmentPipeline = screen.getByTestId('reports-link-assignment-pipeline');
     expect(fill).toHaveAttribute('href', '/reports/fill-performance');
     expect(fallthrough).toHaveAttribute('href', '/reports/fallthrough');
+    expect(assignmentPipeline).toHaveAttribute(
+      'href',
+      '/reports/assignment-pipeline',
+    );
   });
 });

@@ -182,6 +182,37 @@ describe('ats-web → reporting', () => {
         expect(res.status).toBe(200);
       });
   });
+
+  it('GET /v1/reports/assignment-pipeline returns the current-snapshot counts', async () => {
+    await provider
+      .addInteraction()
+      .given('an ats-web recruiter and assignment-pipeline placements exist')
+      .uponReceiving('an assignment-pipeline read')
+      .withRequest('GET', '/v1/reports/assignment-pipeline', (b) => {
+        b.headers({ Cookie: like(ACCESS_COOKIE) });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          total_live: like(7),
+          by_state: like([{ state: like('STARTED'), count: like(3) }]),
+          start_date: {
+            overdue: like(0),
+            today: like(0),
+            next_7_days: like(1),
+            later: like(1),
+            unspecified: like(1),
+            timezone_basis: 'UTC',
+          },
+          contract_assignments: { active: like(1), ended: like(1), coverage: 'forward_materialized' },
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/reports/assignment-pipeline`, { headers: { Cookie: ACCESS_COOKIE } });
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as { contract_assignments: { coverage: string } };
+        expect(body.contract_assignments.coverage).toBe('forward_materialized');
+      });
+  });
 });
 
 describe('ats-web → me', () => {
