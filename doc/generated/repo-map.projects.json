@@ -590,6 +590,8 @@
       "DUPLICATE_GUARD_INACTIVE",
       "GOVERNED_TERMINAL_TARGETS",
       "GUARANTEE_TERMS_SOURCE_TYPES",
+      "GuaranteeExposureReadModule",
+      "GuaranteeExposureReadRepository",
       "GuaranteeTermRepository",
       "INITIAL_STATE",
       "LEGAL_TRANSITIONS",
@@ -1439,6 +1441,12 @@
       },
       { "project": "platform-admin", "status": "production" },
       { "project": "portal", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/reporting/src/tests/guarantee-exposure.spec.ts",
+        "project": "reporting",
+        "status": "excluded"
+      },
       { "project": "reporting", "status": "production" },
       { "project": "requisition", "status": "production" },
       { "project": "saved-list", "status": "production" },
@@ -1945,6 +1953,18 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/reporting/src/tests/fill-performance.spec.ts",
+        "project": "reporting",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/reporting/src/tests/guarantee-exposure.integration.spec.ts",
+        "project": "reporting",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/reporting/src/tests/guarantee-exposure.spec.ts",
         "project": "reporting",
         "status": "excluded"
       },
@@ -3225,6 +3245,18 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/reporting/src/tests/fallthrough.integration.spec.ts",
+        "project": "reporting",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/reporting/src/tests/guarantee-exposure.integration.spec.ts",
+        "project": "reporting",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/reporting/src/tests/guarantee-exposure.spec.ts",
         "project": "reporting",
         "status": "excluded"
       },

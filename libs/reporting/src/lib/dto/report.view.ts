@@ -243,6 +243,48 @@ export interface AssignmentPipelineReportView {
   };
 }
 
+// GuaranteeExposureReportView — T7-P4 authoritative guarantee-exposure summary. Governed by
+// Aramo-T7-P4-Guarantee-Exposure-Reporting-Implementation-Directive-v1_0-LOCKED. Cohort =
+// PermanentPlacement.created_at (immutable activation instant) in [from, to). Historical
+// exposure is sourced ONLY from the immutable snapshot (guarantee_exposure_amount + currency);
+// remedy obligation totals from the immutable PermanentPlacementRemedy facts. Money never
+// crosses currencies — monetary values live only in per-currency buckets (scale-2 decimal
+// STRINGS, the placement money-at-boundary convention), with NO synthetic global total. All
+// counts may be cross-currency. `at_risk` == `active` in P4. remedy_obligation amounts are
+// OBLIGATIONS, not payments; REPLACEMENT is count-only. Summary-only: NO row-level ids/PII.
+export interface GuaranteeExposureReportView {
+  period: {
+    from: string; // ISO absolute instant (UTC-normalized), inclusive
+    to: string; // ISO absolute instant (UTC-normalized), exclusive
+  };
+  cohort_count: number; // all authorized PermanentPlacements in [from, to)
+  exposure_by_currency: Array<{
+    currency: string;
+    total: string; // Σ guarantee_exposure_amount over the currency's cohort
+    active: string; // Σ where lifecycle_state = GUARANTEE_ACTIVE
+    satisfied: string; // Σ where GUARANTEE_SATISFIED
+    fell_off: string; // Σ where state in fell-off family
+    at_risk: string; // == active in P4 (still within an active guarantee window)
+  }>;
+  states: {
+    active: number;
+    satisfied: number;
+    fell_off: number; // count of the fell-off family
+    remedy_due: {
+      replacement: number;
+      refund: number;
+      prorated_credit: number;
+    };
+    remedy_completed: number; // evidence completed — NOT payment
+  };
+  remedy_obligation_by_currency: Array<{
+    currency: string;
+    refund_total: string; // Σ REFUND obligation amounts (owed, not paid)
+    prorated_credit_total: string; // Σ PRORATED_CREDIT obligation amounts (owed, not paid)
+  }>;
+  falloff_rate: number; // states.fell_off / cohort_count; 0 when cohort_count === 0
+}
+
 // DashboardView — the composition payload for GET /v1/dashboard.
 // Bundles the ATS-internal metrics into a single response so a
 // recruiter UI doesn't have to N-round-trip on load.
