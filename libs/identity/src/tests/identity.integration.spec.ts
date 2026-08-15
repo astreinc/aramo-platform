@@ -227,6 +227,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'identity:tenant:read',
         'identity:user:read',
         'import:read',
+        'integration:read',
+        'integration:write',
         'org:manage',
         'pipeline:add',
         'pipeline:add-activity',
@@ -397,7 +399,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Track7/T7-P1: +7 placement:permanent grants (read×4 + transition×3) -> 559.
       // Track7/T7-P2: +3 placement:remedy:resolve grants (account_manager/tenant_admin/tenant_owner) -> 562.
       // Track7/T7-P3: +3 placement:permanent:terms:write grants (account_manager/tenant_admin/tenant_owner) -> 565.
-      expect(roleScopes).toBe(565);
+      // Track8/T8-CONNECTOR-A: +4 integration:read/write grants (tenant_admin/tenant_owner ×2) -> 569.
+      expect(roleScopes).toBe(569);
 
       const utmRole = await prisma.userTenantMembershipRole.findUnique({
         where: { id: SEED_IDS.membership_role_admin },
@@ -753,6 +756,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'identity:tenant:read',
         'identity:user:read',
         'import:read',
+        'integration:read',
+        'integration:write',
         'org:manage',
         'pipeline:add',
         'pipeline:add-activity',
@@ -1005,6 +1010,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'identity:tenant:read',
         'identity:user:read',
         'import:read',
+        'integration:read',
+        'integration:write',
         'org:manage',
         'pipeline:add',
         'pipeline:add-activity',
@@ -1277,6 +1284,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'identity:tenant:read',
         'identity:user:read',
         'import:read',
+        'integration:read',
+        'integration:write',
         'org:manage',
         'pipeline:add',
         'pipeline:add-activity',
