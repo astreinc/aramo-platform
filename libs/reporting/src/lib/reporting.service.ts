@@ -10,6 +10,7 @@ import {
   type CapacityProjection,
   PlacementProcessEventRepository,
   AssignmentPipelineReadRepository,
+  GuaranteeExposureReadRepository,
   CommercialMarginReadRepository,
 } from '@aramo/placement';
 import { RequisitionRepository } from '@aramo/requisition';
@@ -29,6 +30,7 @@ import type {
   FallthroughReasonView,
   FallthroughReportView,
   FillPerformanceReportView,
+  GuaranteeExposureReportView,
   MarginReportView,
   PipelineStageRollupView,
   PlacementCountReportView,
@@ -237,6 +239,11 @@ export class ReportingService {
     // PULLED via the reporting→placement edge (§14). Trailing param
     // (ctor-ripple contained). Provided by PlacementPipelineReadModule.
     private readonly placementPipelineRepository: AssignmentPipelineReadRepository,
+    // T7-P4 — the placement-owned guarantee-exposure aggregate, PULLED via the same
+    // reporting→placement edge (§3.6). Trailing param (ctor-ripple contained). Read-only over
+    // the immutable PermanentPlacement snapshot + remedy facts. Provided by
+    // GuaranteeExposureReadModule.
+    private readonly guaranteeExposureRepository: GuaranteeExposureReadRepository,
     // T9-B4 — the placement-owned current-snapshot commercial margin aggregate,
     // PULLED via the reporting→placement edge (§19). Trailing param (ctor-ripple
     // contained). Provided by CommercialMarginReadModule.
@@ -586,6 +593,66 @@ export class ReportingService {
         ...snapshot.contract_assignments,
         coverage: 'forward_materialized' as const,
       },
+    };
+  }
+
+  // -------------------------------------------------------------------------
+  // T7-P4 — guarantee-exposure summary report. Governed by
+  // Aramo-T7-P4-Guarantee-Exposure-Reporting-Implementation-Directive-v1_0-LOCKED. Placement
+  // owns the aggregate (readGuaranteeExposureSnapshot over the IMMUTABLE PermanentPlacement
+  // snapshot + immutable PermanentPlacementRemedy obligation facts — never the mutable P3 term
+  // versions, never deriveCommercialMetrics). This service echoes the period, aliases
+  // at_risk = active, nests remedy_due, and computes falloff_rate as an integer percent
+  // (Math.round(rate*100)) — 0 when the cohort is empty (the T9-B2 rate convention). Summary-
+  // only; per-currency money; NO cross-currency total. report:read + tenant/site/A3. Cohort by
+  // created_at in [from, to).
+  // -------------------------------------------------------------------------
+  async getGuaranteeExposure(
+    actor: ActorContext,
+    period: { from: Date; to: Date },
+  ): Promise<GuaranteeExposureReportView> {
+    const visibleReqIds = await this.resolveVisibleRequisitionIds(actor);
+    const snapshot = await this.guaranteeExposureRepository.readGuaranteeExposureSnapshot({
+      tenant_id: actor.tenant_id,
+      from: period.from,
+      to: period.to,
+      ...(visibleReqIds === undefined ? {} : { requisition_ids: visibleReqIds }),
+    });
+
+    const falloff_rate =
+      snapshot.cohort_count === 0
+        ? 0
+        : Math.round((snapshot.states.fell_off / snapshot.cohort_count) * 100);
+
+    return {
+      period: { from: period.from.toISOString(), to: period.to.toISOString() },
+      cohort_count: snapshot.cohort_count,
+      // at_risk == active in P4 (§6).
+      exposure_by_currency: snapshot.exposure_by_currency.map((r) => ({
+        currency: r.currency,
+        total: r.total,
+        active: r.active,
+        satisfied: r.satisfied,
+        fell_off: r.fell_off,
+        at_risk: r.active,
+      })),
+      states: {
+        active: snapshot.states.active,
+        satisfied: snapshot.states.satisfied,
+        fell_off: snapshot.states.fell_off,
+        remedy_due: {
+          replacement: snapshot.states.replacement_due,
+          refund: snapshot.states.refund_due,
+          prorated_credit: snapshot.states.prorated_credit_due,
+        },
+        remedy_completed: snapshot.states.remedy_completed,
+      },
+      remedy_obligation_by_currency: snapshot.remedy_obligation_by_currency.map((r) => ({
+        currency: r.currency,
+        refund_total: r.refund_total,
+        prorated_credit_total: r.prorated_credit_total,
+      })),
+      falloff_rate,
     };
   }
 

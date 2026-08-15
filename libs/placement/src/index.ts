@@ -8,6 +8,10 @@ export { PlacementEventReadModule } from './lib/placement-event-read.module.js';
 export { AssignmentPipelineReadRepository } from './lib/assignment-pipeline-read.repository.js';
 export type { AssignmentPipelineSnapshot } from './lib/assignment-pipeline-read.repository.js';
 export { PlacementPipelineReadModule } from './lib/placement-pipeline-read.module.js';
+// Track 7 / T7-P4 — the placement-owned guarantee-exposure reporting aggregate + its read module.
+export { GuaranteeExposureReadRepository } from './lib/guarantee-exposure-read.repository.js';
+export type { GuaranteeExposureSnapshot } from './lib/guarantee-exposure-read.repository.js';
+export { GuaranteeExposureReadModule } from './lib/guarantee-exposure-read.module.js';
 // T9-B4 — placement-owned current-snapshot commercial margin read boundary.
 export { CommercialMarginReadRepository } from './lib/commercial-margin-read.repository.js';
 export type {

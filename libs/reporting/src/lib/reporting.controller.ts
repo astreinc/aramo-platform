@@ -23,6 +23,7 @@ import type {
   CompanyPlacementsReportView,
   FallthroughReportView,
   FillPerformanceReportView,
+  GuaranteeExposureReportView,
   MarginReportView,
   PipelineStageRollupView,
   PlacementCountReportView,
@@ -259,6 +260,49 @@ export class ReportingController {
     }
     const visibility = await req.resolveVisibility!();
     return this.reportingService.getFillPerformance(
+      {
+        tenant_id: authContext.tenant_id,
+        user_id: authContext.sub,
+        scopes: authContext.scopes,
+        visibility,
+        ...(siteIdFromQuery === undefined ? {} : { site_id: siteIdFromQuery }),
+      },
+      { from, to },
+    );
+  }
+
+  // T7-P4 — authoritative guarantee-exposure summary report. Governed by
+  // Aramo-T7-P4-Guarantee-Exposure-Reporting-Implementation-Directive-v1_0-LOCKED. Summary of
+  // permanent-placement guarantee exposure for the cohort of PermanentPlacements whose
+  // created_at (immutable activation instant) ∈ [from, to). `from`/`to` are REQUIRED absolute
+  // ISO instants carrying `Z`/offset (reuses parseAbsoluteInstant); date-only/zone-less
+  // rejected 400 (VALIDATION_ERROR — an existing code; no new ErrorCode). Per-currency money,
+  // NO cross-currency total; summary-only, no row-level ids/PII. report:read + tenant/site/A3 —
+  // the same guard chain as every other reporting route.
+  @Get('guarantee-exposure')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('report:read')
+  @RequireSiteMatch()
+  async guaranteeExposure(
+    @AuthContext() authContext: AuthContextType,
+    @RequestId() requestId: string,
+    @Query('from') fromRaw: string | undefined,
+    @Query('to') toRaw: string | undefined,
+    @Query('site_id') siteIdFromQuery: string | undefined,
+    @Req() req: Request,
+  ): Promise<GuaranteeExposureReportView> {
+    const from = this.parseAbsoluteInstant('from', fromRaw, requestId);
+    const to = this.parseAbsoluteInstant('to', toRaw, requestId);
+    if (from.getTime() >= to.getTime()) {
+      throw new AramoError(
+        'VALIDATION_ERROR',
+        'from must be strictly before to',
+        400,
+        { requestId, details: { from: fromRaw, to: toRaw } },
+      );
+    }
+    const visibility = await req.resolveVisibility!();
+    return this.reportingService.getGuaranteeExposure(
       {
         tenant_id: authContext.tenant_id,
         user_id: authContext.sub,

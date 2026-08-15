@@ -46,6 +46,7 @@ function makeService(snapshot: Snapshot, visibleReqs?: ReadonlyArray<{ id: strin
     stub, // capacity
     stub, // placementEventRepository
     stub, // placementPipelineRepository
+    stub, // guaranteeExposureRepository (T7-P4; unused here)
     commercialMarginRepository as never,
   );
   return { svc, commercialMarginRepository, requisitionRepository };

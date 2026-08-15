@@ -2787,6 +2787,64 @@ paths:
       security:
         - BearerAuth: []
 
+  /v1/reports/guarantee-exposure:
+    get:
+      operationId: getGuaranteeExposureReport
+      summary: Permanent-placement guarantee-exposure summary report (T7-P4).
+      description: |
+        Authoritative T7 guarantee-exposure summary for the cohort of permanent
+        placements whose activation instant `created_at` ∈ [from, to). Historical
+        exposure is sourced ONLY from the immutable PermanentPlacement activation
+        snapshot (`guarantee_exposure_amount` + `guarantee_exposure_currency`); a
+        later guarantee-terms revision never changes an older placement's value.
+        Monetary values are returned ONLY in per-currency buckets (scale-2 decimal
+        strings) — never summed across currencies and never FX-converted. Counts may
+        be cross-currency. `remedy_obligation_by_currency` totals are OBLIGATIONS
+        (owed), never paid/settled amounts; REPLACEMENT is count-only. Summary-only
+        (no row-level ids / PII). Tenant / site / A3 visibility scoped; report:read.
+      parameters:
+        - name: from
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+          description: |
+            Inclusive period start. An absolute ISO 8601 date-time carrying
+            `Z` or an explicit numeric offset; date-only and zone-less values
+            are rejected 400. Cohort predicate: PermanentPlacement.created_at >= from.
+        - name: to
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+          description: |
+            Exclusive period end (half-open [from, to)). Same absolute
+            date-time rules as `from`; must be strictly after `from`.
+        - name: site_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+          description: Optional site narrowing (must match the actor's site claim).
+      responses:
+        '200':
+          description: Guarantee-exposure summary for the period cohort.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GuaranteeExposureReport'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+      security:
+        - BearerAuth: []
+
   /v1/reports/fallthrough:
     get:
       operationId: getFallthroughReport
@@ -3111,6 +3169,113 @@ components:
 
     # T9-B1 — fill rate + time-to-fill operational report
     # (GET /v1/reports/fill-performance). Computed-on-read; no persistence.
+    GuaranteeExposureReport:
+      type: object
+      additionalProperties: false
+      required:
+        - period
+        - cohort_count
+        - exposure_by_currency
+        - states
+        - remedy_obligation_by_currency
+        - falloff_rate
+      properties:
+        period:
+          type: object
+          additionalProperties: false
+          required: [from, to]
+          properties:
+            from:
+              type: string
+              format: date-time
+            to:
+              type: string
+              format: date-time
+        cohort_count:
+          type: integer
+          minimum: 0
+          description: All authorized PermanentPlacements activated (created_at) in [from, to).
+        exposure_by_currency:
+          type: array
+          description: |
+            Per-currency guarantee-exposure sums as scale-2 decimal strings. Money is NEVER
+            summed across currencies and NEVER FX-converted; there is no global monetary total.
+          items:
+            type: object
+            additionalProperties: false
+            required: [currency, total, active, satisfied, fell_off, at_risk]
+            properties:
+              currency:
+                type: string
+              total:
+                type: string
+                description: Σ guarantee_exposure_amount over the currency's cohort.
+              active:
+                type: string
+                description: Σ where lifecycle_state = GUARANTEE_ACTIVE.
+              satisfied:
+                type: string
+                description: Σ where lifecycle_state = GUARANTEE_SATISFIED.
+              fell_off:
+                type: string
+                description: Σ where lifecycle_state is in the fell-off family.
+              at_risk:
+                type: string
+                description: Equal to active in P4 (still within an active guarantee window).
+        states:
+          type: object
+          additionalProperties: false
+          required: [active, satisfied, fell_off, remedy_due, remedy_completed]
+          properties:
+            active:
+              type: integer
+              minimum: 0
+            satisfied:
+              type: integer
+              minimum: 0
+            fell_off:
+              type: integer
+              minimum: 0
+              description: Count of the fell-off family (FELL_OFF + all remedy-due + REMEDY_COMPLETED).
+            remedy_due:
+              type: object
+              additionalProperties: false
+              required: [replacement, refund, prorated_credit]
+              properties:
+                replacement:
+                  type: integer
+                  minimum: 0
+                refund:
+                  type: integer
+                  minimum: 0
+                prorated_credit:
+                  type: integer
+                  minimum: 0
+            remedy_completed:
+              type: integer
+              minimum: 0
+              description: Remedy evidence completed — NOT payment.
+        remedy_obligation_by_currency:
+          type: array
+          description: |
+            Per-currency remedy OBLIGATION totals (amounts owed, never paid/settled). REFUND and
+            PRORATED_CREDIT only; REPLACEMENT is count-only (non-monetary).
+          items:
+            type: object
+            additionalProperties: false
+            required: [currency, refund_total, prorated_credit_total]
+            properties:
+              currency:
+                type: string
+              refund_total:
+                type: string
+              prorated_credit_total:
+                type: string
+        falloff_rate:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: states.fell_off / cohort_count as a percent 0-100; 0 when cohort_count == 0.
     FillPerformanceReport:
       type: object
       additionalProperties: false

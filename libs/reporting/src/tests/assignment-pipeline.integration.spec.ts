@@ -67,6 +67,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         {} as never, {} as never, {} as never, {} as never, {} as never,
         {} as never, // placementEventRepository
         repo,
+        {} as never, // T7-P4 guaranteeExposureRepository (unused here)
         {} as never, // commercialMarginRepository (T9-B4; unused here)
       );
     }, 180_000);
