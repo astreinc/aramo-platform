@@ -161,6 +161,7 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       'PERMANENT_PLACEMENT_FALLOFF_REASON_INVALID',
       'PERMANENT_PLACEMENT_REMEDY_INVALID',
       'PERMANENT_PLACEMENT_REMEDY_ALREADY_COMPLETED',
+      'CONNECTOR_CONFIGURATION_INVALID',
       // Track 7 / T7-P3 — guarantee-term-versioning family (appended in order).
       'PERMANENT_PLACEMENT_TERMS_NOT_FOUND',
       'PERMANENT_PLACEMENT_TERMS_WINDOW_INVALID',

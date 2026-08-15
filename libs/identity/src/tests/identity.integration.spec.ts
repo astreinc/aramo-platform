@@ -227,6 +227,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'identity:tenant:read',
         'identity:user:read',
         'import:read',
+        'integration:read',
+        'integration:write',
         'org:manage',
         'pipeline:add',
         'pipeline:add-activity',
@@ -397,7 +399,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Track7/T7-P1: +7 placement:permanent grants (read×4 + transition×3) -> 559.
       // Track7/T7-P2: +3 placement:remedy:resolve grants (account_manager/tenant_admin/tenant_owner) -> 562.
       // Track7/T7-P3: +3 placement:permanent:terms:write grants (account_manager/tenant_admin/tenant_owner) -> 565.
-      expect(roleScopes).toBe(565);
+      // Track8/T8-CONNECTOR-A: +4 integration:read/write grants (tenant_admin/tenant_owner ×2) -> 569.
+      expect(roleScopes).toBe(569);
 
       const utmRole = await prisma.userTenantMembershipRole.findUnique({
         where: { id: SEED_IDS.membership_role_admin },
@@ -499,7 +502,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Track 3 / E2: +7 pre_start_requirement (all non-platform). Re-derived
       // actual 96 (prior literal 85 was pre-existingly understated by 4 — F-2).
       // Track 3 / E2 v1.2.2: +1 pre_start_requirement:reopen (non-platform) → 97.
-      expect(tenantScopes.length).toBe(115); // +5 placement + 1 placement:replace + 2 T7-P1 placement:permanent + 1 T7-P2 placement:remedy:resolve + 1 T7-P3 placement:permanent:terms:write + 4 T4-D assignment + 2 T5-P1 assignment:commercials + 2 T8-P2 requisition:import (all non-platform)
+      expect(tenantScopes.length).toBe(117); // +5 placement +1 placement:replace +2 T7-P1 permanent +1 T7-P2 remedy:resolve +1 T7-P3 permanent:terms:write +4 T4-D assignment +2 T5-P1 commercials +2 T8-P2 requisition:import +2 T8-CONNECTOR-A integration (all non-platform)
       for (const s of tenantScopes) {
         expect(s.key.startsWith('platform:')).toBe(false);
       }
@@ -753,6 +756,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'identity:tenant:read',
         'identity:user:read',
         'import:read',
+        'integration:read',
+        'integration:write',
         'org:manage',
         'pipeline:add',
         'pipeline:add-activity',
@@ -1005,6 +1010,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'identity:tenant:read',
         'identity:user:read',
         'import:read',
+        'integration:read',
+        'integration:write',
         'org:manage',
         'pipeline:add',
         'pipeline:add-activity',
@@ -1277,6 +1284,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'identity:tenant:read',
         'identity:user:read',
         'import:read',
+        'integration:read',
+        'integration:write',
         'org:manage',
         'pipeline:add',
         'pipeline:add-activity',

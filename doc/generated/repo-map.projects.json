@@ -1,5 +1,5 @@
 {
-  "aliasTotals": { "apps": 2, "libs": 60, "total": 62 },
+  "aliasTotals": { "apps": 2, "libs": 61, "total": 63 },
   "aliases": {
     "@aramo/activity": "libs/activity/src/index.ts",
     "@aramo/ai-draft": "libs/ai-draft/src/index.ts",
@@ -30,6 +30,7 @@
     "@aramo/identity-index": "libs/identity-index/src/index.ts",
     "@aramo/import": "libs/import/src/index.ts",
     "@aramo/ingestion": "libs/ingestion/src/index.ts",
+    "@aramo/integration": "libs/integration/src/index.ts",
     "@aramo/job-distribution": "libs/job-distribution/src/index.ts",
     "@aramo/job-domain": "libs/job-domain/src/index.ts",
     "@aramo/mailer": "libs/mailer/src/index.ts",
@@ -464,6 +465,30 @@
       "IngestionService",
       "PrismaService",
       "deriveSourceClass"
+    ],
+    "@aramo/integration": [
+      "CONNECTION_STATUSES",
+      "CONNECTOR_EXECUTION_SCOPES",
+      "CONNECTOR_QUEUE_ATTEMPTS",
+      "CONNECTOR_QUEUE_BACKOFF",
+      "CONNECTOR_SERVICE_ACCOUNT_ID",
+      "ConnectionServiceError",
+      "ConnectorAdapterRegistry",
+      "ConnectorExecutionService",
+      "ConnectorTransientError",
+      "IntegrationConnectionService",
+      "IntegrationController",
+      "IntegrationModule",
+      "IntegrationPrismaService",
+      "REDACTED",
+      "SECRETS_MANAGER_PORT",
+      "SECRETS_MANAGER_WRITER",
+      "assertConnectorSecretRefBinding",
+      "buildConnectorSecretRef",
+      "deriveConnectorSecretManagerId",
+      "parseConnectorSecretRef",
+      "redactForLog",
+      "redactString"
     ],
     "@aramo/job-distribution": [
       "INDEED_APPLY_WEBHOOK_PATH",
@@ -1087,6 +1112,7 @@
       { "project": "identity", "status": "production" },
       { "project": "import", "status": "production" },
       { "project": "ingestion", "status": "production" },
+      { "project": "integration", "status": "production" },
       { "project": "pipeline", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
@@ -1395,6 +1421,7 @@
       { "project": "export", "status": "production" },
       { "project": "identity", "status": "production" },
       { "project": "import", "status": "production" },
+      { "project": "integration", "status": "production" },
       { "project": "pipeline", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
@@ -1849,6 +1876,7 @@
       },
       { "project": "import", "status": "production" },
       { "project": "ingestion", "status": "production" },
+      { "project": "integration", "status": "production" },
       { "project": "mailer", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
@@ -2197,6 +2225,7 @@
       { "project": "export", "status": "production" },
       { "project": "identity", "status": "production" },
       { "project": "import", "status": "production" },
+      { "project": "integration", "status": "production" },
       { "project": "pipeline", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
@@ -2427,6 +2456,12 @@
       {
         "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/ats-web/src/identity-advisories/IdentityAdvisoriesView.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/integrations/IntegrationConnectionsPanel.spec.tsx",
         "project": "aramo-ats-web",
         "status": "excluded"
       },
@@ -2970,7 +3005,26 @@
         "project": "api",
         "status": "excluded"
       },
-      { "project": "api", "status": "production" }
+      { "project": "api", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/integration/src/tests/connector-execution-idempotency.spec.ts",
+        "project": "integration",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/integration/src/tests/connector-execution-service.spec.ts",
+        "project": "integration",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/integration/src/tests/support/fakes.ts",
+        "project": "integration",
+        "status": "excluded"
+      },
+      { "project": "integration", "status": "production" }
     ],
     "@aramo/ingestion": [
       {
@@ -2994,6 +3048,20 @@
       { "project": "api", "status": "production" },
       { "project": "canonicalization", "status": "production" },
       { "project": "cold-ingest-extraction", "status": "production" }
+    ],
+    "@aramo/integration": [
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/connector-integration-authz.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      { "project": "api", "status": "production" },
+      {
+        "from": "pact/provider/src/verify-api.ts",
+        "project": "aramo-pact-provider",
+        "status": "unscoped"
+      }
     ],
     "@aramo/job-distribution": [
       {
@@ -4124,6 +4192,13 @@
       "sourceRoot": "pact/consumers/ingestion-consumer/src",
       "tags": ["pact-consumer"],
       "targets": ["lint", "pact-test", "test"]
+    },
+    {
+      "name": "integration",
+      "root": "libs/integration",
+      "sourceRoot": "libs/integration/src",
+      "tags": ["scope:ats"],
+      "targets": ["build", "lint", "test"]
     },
     {
       "name": "job-distribution",

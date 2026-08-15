@@ -562,6 +562,11 @@ export const ERROR_CODES = [
   // PERMANENT_PLACEMENT_REMEDY_ALREADY_COMPLETED (409): a completion was attempted on a
   // remedy already resolved (completion facts are write-once). Mirrors PERMANENT_PLACEMENT_ALREADY_EXISTS.
   'PERMANENT_PLACEMENT_REMEDY_ALREADY_COMPLETED',
+  // CONNECTOR_CONFIGURATION_INVALID (409): a connector connection management op
+  // conflicts with the connection's current state — e.g. enabling a connection
+  // with no configured credential, or an illegal lifecycle transition. T8-CONNECTOR-A;
+  // narrowly scoped, deterministic, non-secret (directive §18).
+  'CONNECTOR_CONFIGURATION_INVALID',
   // Track 7 / T7-P3 — the reusable guarantee-term-versioning family (appended in order — the
   // ordered-parity surfaces read positionally). Reuses P1 GUARANTEE_WINDOW_INVALID (422, bad
   // duration/policy) + EXPOSURE_INVALID (422, bad exposure/currency).

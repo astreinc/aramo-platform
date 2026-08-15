@@ -11,6 +11,7 @@ import {
 
 import { SettingsSeam, SettingsSection } from '../components';
 import { RequisitionIngestionView } from '../../requisition-imports/RequisitionIngestionView';
+import { IntegrationConnectionsPanel } from '../../integrations/IntegrationConnectionsPanel';
 
 // Settings Rebuild Directive 1 — the honest seams.
 //
@@ -155,6 +156,12 @@ export function IntegrationsSection() {
           no fetch). Only this requisition-ingestion portion of the Integrations
           seam is wired; everything below remains an honest seam. */}
       <RequisitionIngestionView />
+
+      {/* T8-CONNECTOR-A — connector connection management. INDEPENDENTLY gated
+          on integration:read/write (self-gates; absent scope => absent + no
+          fetch). A separate sibling from the P3 monitoring view above, which
+          remains governed by requisition:import:read (not regated). */}
+      <IntegrationConnectionsPanel />
 
       <SettingsSeam
         icon={<IconPlug />}

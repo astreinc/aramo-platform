@@ -20,6 +20,7 @@ import {
   type KeyObject,
 } from 'jose';
 import { AppModule } from '@aramo/api';
+import { SECRETS_MANAGER_WRITER } from '@aramo/integration';
 // ADR-0024 PR-4a — the /v1/pipelines + /v1/sourcing/pipeline replays now RETRIEVE
 // the lifecycle package and fail closed without it, so the verifier publishes one
 // for its tenant. The module-boundary wall forbids importing the apps/api test
@@ -239,6 +240,12 @@ const TALENT_RECORD_MIGRATIONS = [
 // the portal-thin pact interactions (5 interactions traversing the now
 // class-level @RequireCapability('portal') gate) can pass through
 // EntitlementGuard.
+// T8-CONNECTOR-A — connector connection schema for the ats-web connector-
+// management interactions (IntegrationController is @RequireCapability('ats')).
+const INTEGRATION_INIT_MIGRATION = resolve(
+  ROOT,
+  'libs/integration/prisma/migrations/20260814170000_init_integration_connection/migration.sql',
+);
 const ENTITLEMENT_INIT_MIGRATION = resolve(
   ROOT,
   'libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql',
@@ -2946,6 +2953,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         // interactions; @RequireCapability('portal') on PortalController
         // requires the tenant to be entitled before RolesGuard runs.
         ENTITLEMENT_INIT_MIGRATION,
+        INTEGRATION_INIT_MIGRATION,
         // PR-A1c §4 — metering schema (in-tx UsageEvent INSERT in every
         // selection + submittal state-transition write method).
         METERING_INIT_MIGRATION,
@@ -3162,6 +3170,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       process.env['DATABASE_URL'] = url;
       process.env['AUTH_AUDIENCE'] = AUDIENCE;
       process.env['AUTH_PUBLIC_KEY'] = publicPem;
+      // T8-CONNECTOR-A — the connector credential-set derives an env-scoped SM id.
+      process.env['ARAMO_ENV'] = process.env['ARAMO_ENV'] ?? 'pact';
       // TR-3 B2 — pin the STUB mailer so the email-verification request state's
       // MAILER_PORT.send is a no-op (never SES). MailerModule's useFactory reads
       // MAILER_PORT at binding; AppModule already imports it (via IdentityModule
@@ -3245,6 +3255,10 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           // batch/list routes. Additive; inert for prior interactions.
           'requisition:import:read',
           'requisition:import:write',
+          // T8-CONNECTOR-A — connector connection management (Settings →
+          // Integrations). Additive; inert for prior interactions.
+          'integration:read',
+          'integration:write',
           // PC-5c — pipeline state machine + activity RolesGuard
           // @RequireScopes. pipeline:change-status gates the transition
           // endpoint (the state machine); pipeline:remove omitted (DELETE is
@@ -3541,6 +3555,9 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         .useValue(mockAuditFinancialsGate)
         .overrideProvider('MAILER_PORT')
         .useValue(mockMailer)
+        // T8-CONNECTOR-A — the write-only credential set must not hit AWS SM.
+        .overrideProvider(SECRETS_MANAGER_WRITER)
+        .useValue({ putSecretValue: async () => undefined })
         .compile();
 
       app = module.createNestApplication();
@@ -3626,6 +3643,41 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     }
 
     const stateHandlers: Record<string, () => Promise<void>> = {
+      // ===== T8-CONNECTOR-A connector-management pacts (ats-web integration.consumer) =====
+      // Fixture connection id mirrors pact/consumers/ats-web/src/integration.consumer.test.ts (dddddddd-dddd-7ddd-8ddd-dddddddddddd).
+      'a tenant entitled to ats with a caller holding integration:read and one connector connection': async () => {
+        await withClient(async (c) => {
+          await c.query(`DELETE FROM integration."IntegrationConnection" WHERE tenant_id = $1::uuid`, [TENANT_ID]);
+          await c.query(
+            `INSERT INTO integration."IntegrationConnection" (id, tenant_id, provider_key, status, secret_ref, version, created_at, updated_at)
+             VALUES ($1::uuid,$2::uuid,'acme_vms','configured',$3,0,now(),now())`,
+            ['dddddddd-dddd-7ddd-8ddd-dddddddddddd', TENANT_ID, `connector:v1:${TENANT_ID}:dddddddd-dddd-7ddd-8ddd-dddddddddddd`],
+          );
+        });
+      },
+      'a tenant entitled to ats with a caller holding integration:write': async () => {
+        await withClient((c) => c.query(`DELETE FROM integration."IntegrationConnection" WHERE tenant_id = $1::uuid`, [TENANT_ID]).then(() => undefined));
+      },
+      'a tenant entitled to ats with a caller holding integration:write and one connector connection': async () => {
+        await withClient(async (c) => {
+          await c.query(`DELETE FROM integration."IntegrationConnection" WHERE tenant_id = $1::uuid`, [TENANT_ID]);
+          await c.query(
+            `INSERT INTO integration."IntegrationConnection" (id, tenant_id, provider_key, status, version, created_at, updated_at)
+             VALUES ($1::uuid,$2::uuid,'acme_vms','disconnected',0,now(),now())`,
+            ['dddddddd-dddd-7ddd-8ddd-dddddddddddd', TENANT_ID],
+          );
+        });
+      },
+      'a tenant entitled to ats with a caller holding integration:write and a connector connection with no credential': async () => {
+        await withClient(async (c) => {
+          await c.query(`DELETE FROM integration."IntegrationConnection" WHERE tenant_id = $1::uuid`, [TENANT_ID]);
+          await c.query(
+            `INSERT INTO integration."IntegrationConnection" (id, tenant_id, provider_key, status, version, created_at, updated_at)
+             VALUES ($1::uuid,$2::uuid,'acme_vms','disconnected',0,now(),now())`,
+            ['dddddddd-dddd-7ddd-8ddd-dddddddddddd', TENANT_ID],
+          );
+        });
+      },
       // ===== E1-d placement read pacts (ats-web placement.consumer) =====
       // Fixture UUIDs mirror pact/consumers/ats-web/src/placement.consumer.test.ts.
       // The placement is seeded under TENANT_ID (the JWT tenant); requisition:

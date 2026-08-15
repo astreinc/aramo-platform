@@ -60,12 +60,12 @@ const CATALOG_ROLE_COUNT = 14;
 // was added to SEED_IDS.scopes after this constant was last reconciled — F-2, not
 // reconciled here). +23 pre_start_requirement RoleScope rows.
 // Track 3 / E2 v1.2.2: +1 pre_start_requirement:reopen (zero-grant) → 101.
-const CATALOG_SCOPE_COUNT = 119; // +5 Track3/E1-b placement; +1 Track3/E4 placement:replace; +4 Track4/T4-D assignment; +2 Track5/T5-P1 assignment:commercials; +2 Track8/T8-P2 requisition:import; +2 Track7/T7-P1 placement:permanent; +1 Track7/T7-P2 placement:remedy:resolve; +1 Track7/T7-P3 placement:permanent:terms:write
+const CATALOG_SCOPE_COUNT = 121; // +5 Track3/E1-b placement; +1 Track3/E4 placement:replace; +4 Track4/T4-D assignment; +2 Track5/T5-P1 assignment:commercials; +2 Track8/T8-P2 requisition:import; +2 Track7/T7-P1 placement:permanent; +1 Track7/T7-P2 placement:remedy:resolve; +1 Track7/T7-P3 placement:permanent:terms:write; +2 Track8/T8-CONNECTOR-A integration
 // Re-derived actual 505 (prior literal 478 was pre-existingly understated by 4;
 // actual pre-change 482 + 23 pre_start_requirement grants = 505 — F-2).
 // v1.2.2 reopen adds ZERO RoleScope rows (§13c-1) — UNCHANGED at 505.
 // Track 4 / T4-D: +13 assignment role-matrix grants (read×4 + create/update/end×3) → 526→539.
-const CATALOG_ROLE_SCOPE_COUNT = 565; // +18 Track3/E1-b placement matrix; +3 Track3/E4 placement:replace; +13 Track4/T4-D assignment matrix; +6 Track5/T5-P1 assignment:commercials matrix; +7 Track8/T8-P2 requisition:import matrix; +7 Track7/T7-P1 placement:permanent matrix; +3 Track7/T7-P2 placement:remedy:resolve matrix; +3 Track7/T7-P3 placement:permanent:terms:write matrix
+const CATALOG_ROLE_SCOPE_COUNT = 569; // +18 Track3/E1-b placement matrix; +3 Track3/E4 placement:replace; +13 Track4/T4-D assignment matrix; +6 Track5/T5-P1 assignment:commercials matrix; +7 Track8/T8-P2 requisition:import matrix; +7 Track7/T7-P1 placement:permanent matrix; +3 Track7/T7-P2 placement:remedy:resolve matrix; +3 Track7/T7-P3 placement:permanent:terms:write matrix; +4 Track8/T8-CONNECTOR-A integration matrix
 
 // Naive DDL splitter — mirrors identity.integration.spec.ts.
 function splitDdl(sql: string): string[] {
@@ -191,7 +191,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(await prisma.role.count()).toBe(CATALOG_ROLE_COUNT);
       expect(await prisma.scope.count()).toBe(CATALOG_SCOPE_COUNT);
       expect(await prisma.roleScope.count()).toBe(CATALOG_ROLE_SCOPE_COUNT);
-      expect(await prisma.serviceAccount.count()).toBe(1);
+      // 2 catalog ServiceAccounts: system-bootstrap + T8-CONNECTOR-A connector-execution.
+      expect(await prisma.serviceAccount.count()).toBe(2);
       // The `Aramo Platform` sentinel tenant is catalog (not a dev fixture).
       expect(
         await prisma.tenant.findUnique({
