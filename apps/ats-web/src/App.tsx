@@ -30,6 +30,7 @@ import { PlacementDetailView } from './placement/PlacementDetailView';
 import { RequisitionCreateView } from './requisitions/RequisitionCreateView';
 import { RequisitionDetailView } from './requisitions/RequisitionDetailView';
 import { RequisitionsListView } from './requisitions/RequisitionsListView';
+import { AssignmentPipelineView } from './reporting/AssignmentPipelineView';
 import { FallthroughView } from './reporting/FallthroughView';
 import { FillPerformanceView } from './reporting/FillPerformanceView';
 import { ReportingLanding } from './reporting/ReportingLanding';
@@ -154,6 +155,17 @@ export function App() {
                           sessionStateOverride={state}
                         >
                           <FallthroughView />
+                        </RouteGuard>
+                      }
+                    />
+                    <Route
+                      path="reports/assignment-pipeline"
+                      element={
+                        <RouteGuard
+                          requireScope="report:read"
+                          sessionStateOverride={state}
+                        >
+                          <AssignmentPipelineView />
                         </RouteGuard>
                       }
                     />

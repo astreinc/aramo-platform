@@ -64,6 +64,12 @@ const EXACT_ALLOWLIST = new Set<string>([
   // Track 7 / T7-P2 — the falloff+remedy integration proof exercises the tenant-reset
   // DELETE escape (remedy-row cleanup) via raw SET LOCAL.
   'libs/placement/src/tests/t7-p2-falloff-remedy.integration.spec.ts',
+  // Track 7 / T7-P3 — the guarantee-term-versioning migration's append-only trigger carries
+  // the same exact-value tenant_reset DELETE escape on the version table.
+  'libs/placement/prisma/migrations/20260816120000_t7_p3_guarantee_term_versioning/migration.sql',
+  // Track 7 / T7-P3 — the guarantee-term-versioning integration proof exercises the
+  // tenant-reset DELETE escape (governed version-row cleanup) via raw SET LOCAL.
+  'libs/placement/src/tests/t7-p3-guarantee-term-versioning.integration.spec.ts',
 ]);
 
 describe('reset-marker confinement — exact-path default-deny (§2.4)', () => {

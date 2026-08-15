@@ -567,6 +567,24 @@ export const ERROR_CODES = [
   // with no configured credential, or an illegal lifecycle transition. T8-CONNECTOR-A;
   // narrowly scoped, deterministic, non-secret (directive §18).
   'CONNECTOR_CONFIGURATION_INVALID',
+  // Track 7 / T7-P3 — the reusable guarantee-term-versioning family (appended in order — the
+  // ordered-parity surfaces read positionally). Reuses P1 GUARANTEE_WINDOW_INVALID (422, bad
+  // duration/policy) + EXPOSURE_INVALID (422, bad exposure/currency).
+  // PERMANENT_PLACEMENT_TERMS_NOT_FOUND (404): no guarantee-term version is effective for the
+  // requisition at the given as_of date, or there is no open version to revise.
+  'PERMANENT_PLACEMENT_TERMS_NOT_FOUND',
+  // PERMANENT_PLACEMENT_TERMS_WINDOW_INVALID (422): the effective window is invalid — bad
+  // effective_from, a backdated revision, or a revision not after the current version's start.
+  'PERMANENT_PLACEMENT_TERMS_WINDOW_INVALID',
+  // PERMANENT_PLACEMENT_TERMS_OVERLAP (409): the effective window overlaps an existing version
+  // for the (tenant, requisition) — the DB daterange EXCLUDE / effective_from unique floor.
+  'PERMANENT_PLACEMENT_TERMS_OVERLAP',
+  // PERMANENT_PLACEMENT_TERMS_AMBIGUOUS (500): more than one version resolves as effective for
+  // the same as_of date — impossible under the EXCLUDE, so a fail-closed internal invariant.
+  'PERMANENT_PLACEMENT_TERMS_AMBIGUOUS',
+  // PERMANENT_PLACEMENT_TERMS_IMMUTABLE (409): a forbidden historical mutation of an
+  // append-only guarantee-term version (only a governed effective_to first-close is allowed).
+  'PERMANENT_PLACEMENT_TERMS_IMMUTABLE',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

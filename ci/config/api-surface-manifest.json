@@ -12,6 +12,7 @@
     "apps/api/src/controllers/public-verification.controller.ts": "PZ",
     "apps/api/src/controllers/tenant-settings.controller.ts": "AP",
     "apps/api/src/placement/placement.controller.ts": "AP",
+    "apps/api/src/placement/guarantee-terms.controller.ts": "AP",
     "apps/api/src/pre-start-requirement/pre-start-requirement.controller.ts": "AP",
     "apps/api/src/talent-identity/advisory-resolution.controller.ts": "AP",
     "apps/api/src/talent-identity/contradiction-resolution.controller.ts": "AP",

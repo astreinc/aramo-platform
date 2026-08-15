@@ -42,6 +42,7 @@ function makeService(cohort: Cohort, visibleReqs?: ReadonlyArray<{ id: string }>
     stub, // tenantSetting
     stub, // capacity
     placementEventRepository as never,
+    stub, // placementPipelineRepository (T9-B3; unused here)
   );
   return { svc, placementEventRepository, requisitionRepository };
 }

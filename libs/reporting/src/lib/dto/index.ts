@@ -6,5 +6,7 @@ export type {
   FillPerformanceReportView,
   FallthroughReportView,
   FallthroughReasonView,
+  AssignmentPipelineReportView,
+  AssignmentPipelineStateCount,
   DashboardView,
 } from './report.view.js';

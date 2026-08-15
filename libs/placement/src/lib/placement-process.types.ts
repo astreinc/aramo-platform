@@ -67,6 +67,14 @@ export type TransitionPlacementInput = {
   // minted on this branch, and there is NO cross-schema requisition read). The
   // recording principal is TransitionPlacementInput.recorded_by (JWT sub).
   readonly guarantee_terms?: GuaranteeTermsInput | null;
+  // Track 7 / T7-P3 — the employment start (calendar date, ISO yyyy-mm-dd) for a
+  // PERMANENT STARTED that relies on the reusable stored guarantee-term versions
+  // (directive §3.4 / §7). The start is a per-placement fact (never a reusable term),
+  // so it is supplied here when guarantee_terms is absent; the stored version effective
+  // as-of this date supplies duration/remedy/exposure/currency, copied into the
+  // immutable snapshot. When the legacy guarantee_terms bundle is present its own
+  // guarantee_start_date is authoritative and this field is ignored.
+  readonly guarantee_start_date?: string | null;
 };
 
 // Caller-supplied org snapshot for the forward STARTED -> ContractAssignment path.

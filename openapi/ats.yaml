@@ -2105,6 +2105,198 @@ paths:
       security:
         - BearerAuth: []
 
+  /v1/permanent-placement-guarantee-terms/requisitions/{requisitionId}:
+    post:
+      operationId: createGuaranteeTerms
+      summary: Create the initial reusable guarantee-term version for a requisition (Track 7 / T7-P3).
+      description: |
+        Creates the initial, open (`effective_to = null`) guarantee-term version for a
+        requisition — the reusable, placement-owned source of permanent-placement guarantee
+        terms, keyed by `(tenant, requisitionId)`. Effective windows are calendar dates,
+        half-open `[effective_from, effective_to)`. The version supplies
+        `guarantee_duration_days`, `remedy_policy`, `guarantee_exposure_amount` + `currency`,
+        and structured provenance (`source_type` ∈ `{MANUAL, IMPORTED}`). At permanent activation
+        the version effective as-of the employment start is copied into the immutable
+        PermanentPlacement snapshot.
+
+        Guarded by capability `ats` and scope `placement:permanent:terms:write`. Tenant-scoped;
+        the recording principal is the JWT subject (never the body). Overlap with an existing
+        version → `PERMANENT_PLACEMENT_TERMS_OVERLAP` (409); use `/revise` to supersede.
+      parameters:
+        - name: requisitionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GuaranteeTermsCreateRequest'
+      responses:
+        '201':
+          description: Created — the new guarantee-term version.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GuaranteeTermVersion'
+        '403':
+          description: Insufficient permissions or tenant not entitled.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '409':
+          description: The effective window overlaps an existing version.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '422':
+          description: Invalid effective window, duration, exposure, or currency.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+      security:
+        - BearerAuth: []
+    get:
+      operationId: listGuaranteeTerms
+      summary: List the guarantee-term version history for a requisition (Track 7 / T7-P3).
+      description: |
+        Returns the full guarantee-term version history for the requisition, newest
+        `effective_from` first (append-only business history — no separate history model).
+        Guarded by capability `ats` and scope `placement:permanent:read`. Tenant-scoped.
+      parameters:
+        - name: requisitionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK — the version history (may be empty).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GuaranteeTermVersionList'
+        '403':
+          description: Insufficient permissions or tenant not entitled.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+      security:
+        - BearerAuth: []
+
+  /v1/permanent-placement-guarantee-terms/requisitions/{requisitionId}/effective:
+    get:
+      operationId: getEffectiveGuaranteeTerms
+      summary: Get the guarantee-term version effective at a calendar date (Track 7 / T7-P3).
+      description: |
+        Returns the single guarantee-term version whose half-open window
+        `[effective_from, effective_to)` contains the `as_of` calendar date (defaults to the
+        current UTC date). More than one effective version is impossible under the DB exclusion
+        constraint and fails closed (`PERMANENT_PLACEMENT_TERMS_AMBIGUOUS`, 500). No effective
+        version → `PERMANENT_PLACEMENT_TERMS_NOT_FOUND` (404). Guarded by capability `ats` and
+        scope `placement:permanent:read`. Tenant-scoped.
+      parameters:
+        - name: requisitionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: as_of
+          in: query
+          required: false
+          description: Calendar date (yyyy-mm-dd) to resolve the effective version at; defaults to today (UTC).
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: OK — the effective guarantee-term version.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GuaranteeTermVersion'
+        '403':
+          description: Insufficient permissions or tenant not entitled.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '422':
+          description: Malformed as_of date.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+      security:
+        - BearerAuth: []
+
+  /v1/permanent-placement-guarantee-terms/requisitions/{requisitionId}/revise:
+    post:
+      operationId: reviseGuaranteeTerms
+      summary: Revise the current guarantee-term version (first-close + successor, Track 7 / T7-P3).
+      description: |
+        Governed revision: first-closes the current open version at `effective_from` and inserts
+        the successor `[effective_from, null)` atomically. No backdating (`effective_from` must be
+        today-or-later and strictly after the current version's start). Nothing open to revise →
+        `PERMANENT_PLACEMENT_TERMS_NOT_FOUND` (404). Future-version cancellation is NOT part of
+        T7-P3.
+
+        Guarded by capability `ats` and scope `placement:permanent:terms:write`. Tenant-scoped;
+        the recording principal is the JWT subject (never the body).
+      parameters:
+        - name: requisitionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GuaranteeTermsReviseRequest'
+      responses:
+        '201':
+          description: Created — the successor guarantee-term version.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GuaranteeTermVersion'
+        '403':
+          description: Insufficient permissions or tenant not entitled.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '409':
+          description: The effective window overlaps an existing version.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '422':
+          description: Backdated or otherwise invalid effective window, duration, exposure, or currency.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+      security:
+        - BearerAuth: []
+
   /v1/placements/{id}/assignment/commercials:
     get:
       operationId: getPlacementAssignmentCommercials
@@ -2864,6 +3056,40 @@ paths:
             application/json:
               schema:
                 $ref: 'common.yaml#/components/schemas/ErrorResponse'
+  /v1/reports/assignment-pipeline:
+    get:
+      operationId: getAssignmentPipelineReport
+      summary: Assignment-pipeline current-snapshot operational view (T9-B3).
+      description: |
+        Current snapshot (no period) of the assignment pipeline over the five
+        live PlacementProcess states — OFFER_ACCEPTED, PRE_START, BLOCKED,
+        READY_TO_START, STARTED — with total_live = their sum. A UTC start-date
+        breakdown buckets the four pre-start states by proposed_start_date
+        (null → unspecified). contract_assignments is BOUNDED / forward-
+        materialized only: a STARTED placement may have no ContractAssignment,
+        so STARTED != active + ended. Counts only — no rows, no commercial
+        fields, no ended_at. report:read + tenant/site/A3.
+      parameters:
+        - name: site_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+          description: Optional site narrowing (must match the actor's site claim).
+      responses:
+        '200':
+          description: Current assignment-pipeline counts.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssignmentPipelineReport'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
       security:
         - BearerAuth: []
 
@@ -2960,6 +3186,60 @@ components:
         credential:
           type: string
           description: Write-only. Stored in Secrets Manager under a server-derived id; never persisted to the database, echoed, or returned.
+    # T9-B3 — assignment-pipeline current-snapshot operational view
+    # (GET /v1/reports/assignment-pipeline). Counts only; no row items, no
+    # financial fields, no ended_at; additionalProperties:false closes the
+    # contract (§21/§27 data-safety).
+    AssignmentPipelineReport:
+      type: object
+      additionalProperties: false
+      required:
+        - total_live
+        - by_state
+        - start_date
+        - contract_assignments
+      properties:
+        total_live:
+          type: integer
+          minimum: 0
+          description: Sum of the five live by_state counts (contract_assignments excluded).
+        by_state:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [state, count]
+            properties:
+              state:
+                type: string
+                enum: [OFFER_ACCEPTED, PRE_START, BLOCKED, READY_TO_START, STARTED]
+              count:
+                type: integer
+                minimum: 0
+        start_date:
+          type: object
+          additionalProperties: false
+          required: [overdue, today, next_7_days, later, unspecified, timezone_basis]
+          properties:
+            overdue: { type: integer, minimum: 0 }
+            today: { type: integer, minimum: 0 }
+            next_7_days: { type: integer, minimum: 0 }
+            later: { type: integer, minimum: 0 }
+            unspecified: { type: integer, minimum: 0 }
+            timezone_basis:
+              type: string
+              enum: [UTC]
+        contract_assignments:
+          type: object
+          additionalProperties: false
+          required: [active, ended, coverage]
+          properties:
+            active: { type: integer, minimum: 0 }
+            ended: { type: integer, minimum: 0 }
+            coverage:
+              type: string
+              enum: [forward_materialized]
+
     # T9-B2 — fallthrough rate + reasons operational report
     # (GET /v1/reports/fallthrough). Computed-on-read; no persistence. Note:
     # reason_detail (PII) is deliberately absent; additionalProperties:false
@@ -3583,6 +3863,111 @@ components:
           type: string
           maxLength: 255
           description: REFUND/PRORATED_CREDIT evidence — a bounded governed settlement/credit reference.
+    # Track 7 / T7-P3 — the reusable guarantee-term-version payload shared by create + revise.
+    GuaranteeTermsPayload:
+      type: object
+      additionalProperties: false
+      required: [effective_from, guarantee_duration_days, remedy_policy, guarantee_exposure_amount, currency, source_type]
+      properties:
+        effective_from:
+          type: string
+          format: date
+          description: Calendar date (yyyy-mm-dd) the terms become effective (half-open window start).
+        guarantee_duration_days:
+          type: integer
+          minimum: 1
+          description: Positive integer guarantee duration in calendar days.
+        remedy_policy:
+          type: string
+          enum: [REPLACEMENT, REFUND, PRORATED_CREDIT]
+        guarantee_exposure_amount:
+          type: string
+          description: Non-negative Decimal(12,2) money string (never a float).
+        currency:
+          type: string
+          description: Active ISO-4217 currency code.
+        source_type:
+          type: string
+          enum: [MANUAL, IMPORTED]
+          description: Closed code-owned provenance registry (no premature CLIENT_CONTRACT/RATE_CARD).
+        source_reference:
+          type: string
+          maxLength: 255
+          description: Optional governed source reference (e.g. an import batch id).
+        source_version:
+          type: string
+          maxLength: 255
+          description: Optional governed source version.
+        correlation_id:
+          type: string
+          maxLength: 255
+          description: Optional governed trace/correlation id.
+    GuaranteeTermsCreateRequest:
+      allOf:
+        - $ref: '#/components/schemas/GuaranteeTermsPayload'
+    GuaranteeTermsReviseRequest:
+      allOf:
+        - $ref: '#/components/schemas/GuaranteeTermsPayload'
+    # Track 7 / T7-P3 — the read projection of a guarantee-term version.
+    GuaranteeTermVersion:
+      type: object
+      additionalProperties: false
+      required: [id, tenant_id, requisition_id, effective_from, effective_to, guarantee_duration_days, remedy_policy, guarantee_exposure_amount, currency, source_type, source_reference, source_version, recorded_by, recorded_at, supersedes_version_id, correlation_id, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        requisition_id:
+          type: string
+          format: uuid
+        effective_from:
+          type: string
+          format: date
+        effective_to:
+          type: [string, 'null']
+          format: date
+        guarantee_duration_days:
+          type: integer
+        remedy_policy:
+          type: string
+          enum: [REPLACEMENT, REFUND, PRORATED_CREDIT]
+        guarantee_exposure_amount:
+          type: string
+        currency:
+          type: string
+        source_type:
+          type: string
+          enum: [MANUAL, IMPORTED]
+        source_reference:
+          type: [string, 'null']
+        source_version:
+          type: [string, 'null']
+        recorded_by:
+          type: string
+          format: uuid
+        recorded_at:
+          type: string
+          format: date-time
+        supersedes_version_id:
+          type: [string, 'null']
+          format: uuid
+        correlation_id:
+          type: [string, 'null']
+        created_at:
+          type: string
+          format: date-time
+    GuaranteeTermVersionList:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/GuaranteeTermVersion'
     # Track 5 / T5-P2 — the commercial projection of the CURRENT effective
     # AssignmentRateVersion. Stored actuals + DEC-5 derived views (computed on read,
     # never stored). Money + percentages are scale-2 decimal strings (never float);

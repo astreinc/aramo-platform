@@ -9,6 +9,7 @@ import {
   CapacityProjectionRepository,
   type CapacityProjection,
   PlacementProcessEventRepository,
+  AssignmentPipelineReadRepository,
 } from '@aramo/placement';
 import { RequisitionRepository } from '@aramo/requisition';
 import { SavedListRepository } from '@aramo/saved-list';
@@ -20,6 +21,7 @@ import {
 import { TalentRecordRepository } from '@aramo/talent-record';
 
 import type {
+  AssignmentPipelineReportView,
   CompanyMetricsView,
   CompanyPlacementView,
   DashboardView,
@@ -229,6 +231,10 @@ export class ReportingService {
     // existing reporting→placement edge (§11). Trailing param (ctor-ripple
     // contained). Provided by PlacementEventReadModule.
     private readonly placementEventRepository: PlacementProcessEventRepository,
+    // T9-B3 — the placement-owned current-state assignment-pipeline snapshot,
+    // PULLED via the reporting→placement edge (§14). Trailing param
+    // (ctor-ripple contained). Provided by PlacementPipelineReadModule.
+    private readonly placementPipelineRepository: AssignmentPipelineReadRepository,
   ) {}
 
   // Track 4 / T4-B1 (CASE A access) — single-requisition derived capacity, PULLED
@@ -523,6 +529,57 @@ export class ReportingService {
       fallthrough_attempts,
       fallthrough_rate,
       reasons,
+    };
+  }
+
+  // -------------------------------------------------------------------------
+  // T9-B3 — assignment-pipeline current-snapshot operational view. Governed by
+  // Aramo-T9-B3-Directive-v1_0-LOCKED. Placement owns the current-state aggregate
+  // (readAssignmentPipelineSnapshot over PlacementProcess.state +
+  // proposed_start_date + bounded ContractAssignment); this service zero-fills
+  // the FIVE live states in fixed lifecycle order, computes total_live as their
+  // exact sum (§10 — the contract_assignments block never contributes), and
+  // stamps the UTC / forward-materialized coverage labels. Counts-only, no rows,
+  // no from/to, no commercial data. report:read + tenant/site/A3.
+  // -------------------------------------------------------------------------
+  async getAssignmentPipeline(
+    actor: ActorContext,
+    opts?: { now?: Date },
+  ): Promise<AssignmentPipelineReportView> {
+    const visibleReqIds = await this.resolveVisibleRequisitionIds(actor);
+    const snapshot =
+      await this.placementPipelineRepository.readAssignmentPipelineSnapshot({
+        tenant_id: actor.tenant_id,
+        now: opts?.now ?? new Date(),
+        ...(visibleReqIds === undefined
+          ? {}
+          : { requisition_ids: visibleReqIds }),
+      });
+
+    const counts = new Map(snapshot.by_state.map((r) => [r.state, r.count]));
+    // Fixed lifecycle order; zero-filled; the five live states only (§3).
+    const LIVE_ORDER = [
+      'OFFER_ACCEPTED',
+      'PRE_START',
+      'BLOCKED',
+      'READY_TO_START',
+      'STARTED',
+    ] as const;
+    const by_state = LIVE_ORDER.map((state) => ({
+      state,
+      count: counts.get(state) ?? 0,
+    }));
+    // §10 invariant — total_live is exactly the sum of the five live states.
+    const total_live = by_state.reduce((sum, r) => sum + r.count, 0);
+
+    return {
+      total_live,
+      by_state,
+      start_date: { ...snapshot.start_date, timezone_basis: 'UTC' as const },
+      contract_assignments: {
+        ...snapshot.contract_assignments,
+        coverage: 'forward_materialized' as const,
+      },
     };
   }
 

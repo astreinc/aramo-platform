@@ -5,6 +5,9 @@ export { PrismaService } from './lib/prisma/prisma.service.js';
 export { PlacementRepository } from './lib/placement.repository.js';
 export { PlacementProcessEventRepository } from './lib/placement-process-event.repository.js';
 export { PlacementEventReadModule } from './lib/placement-event-read.module.js';
+export { AssignmentPipelineReadRepository } from './lib/assignment-pipeline-read.repository.js';
+export type { AssignmentPipelineSnapshot } from './lib/assignment-pipeline-read.repository.js';
+export { PlacementPipelineReadModule } from './lib/placement-pipeline-read.module.js';
 // Track 7 / T7-P1 — the PermanentPlacement aggregate repository (read + happy-path
 // guarantee lifecycle) and its governed guarantee-terms validation.
 export { PermanentPlacementRepository } from './lib/permanent/permanent-placement.repository.js';
@@ -62,6 +65,30 @@ export {
 export type { PermanentFalloffReasonCode } from './lib/reasons/permanent-falloff-reasons.js';
 export { computeRemedyObligation, calendarDaysBetween } from './lib/permanent/remedy-computation.js';
 export type { RemedyObligation } from './lib/permanent/remedy-computation.js';
+
+// Track 7 / T7-P3 — the reusable guarantee-term-versioning source (create/revise/resolve),
+// its closed provenance registry, and the version types.
+export {
+  GuaranteeTermRepository,
+  resolveEffectiveTermRow,
+  resolvedTermsFromRow,
+  OUTBOX_GUARANTEE_TERMS_CREATED,
+  OUTBOX_GUARANTEE_TERMS_REVISED,
+  OUTBOX_GUARANTEE_TERMS_APPLIED,
+} from './lib/permanent/guarantee-term.repository.js';
+export type { GuaranteeTermVersionRow } from './lib/permanent/guarantee-term.repository.js';
+export {
+  GUARANTEE_TERMS_SOURCE_TYPES,
+  isGuaranteeTermsSourceType,
+} from './lib/permanent/guarantee-terms-source.js';
+export type { GuaranteeTermsSourceType } from './lib/permanent/guarantee-terms-source.js';
+export { parseTermCalendarDate } from './lib/permanent/guarantee-term-version.js';
+export type {
+  GuaranteeTermVersionView,
+  CreateGuaranteeTermVersionInput,
+  ReviseGuaranteeTermVersionInput,
+  ResolvedGuaranteeTerms,
+} from './lib/permanent/guarantee-term-version.js';
 
 // SQL generator (§5c/§5d) — registry → typed AST → migration SQL.
 export {

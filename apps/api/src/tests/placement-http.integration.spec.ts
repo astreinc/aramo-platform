@@ -70,6 +70,8 @@ const COMMERCIAL_CANCELLATION_MIGRATION = resolve(__dirname, '../../../../libs/p
 const PERMANENT_PLACEMENT_MIGRATION = resolve(__dirname, '../../../../libs/placement/prisma/migrations/20260814120000_t7_permanent_placement/migration.sql');
 // T7-P2: PermanentPlacement.falloff_* columns + PermanentPlacementRemedy table (SEPARATE const).
 const FALLOFF_REMEDY_MIGRATION = resolve(__dirname, '../../../../libs/placement/prisma/migrations/20260815120000_t7_p2_falloff_remedy/migration.sql');
+// T7-P3: SEPARATE const (never a 2nd resolve() arg — that path-joins to ENOTDIR).
+const GUARANTEE_TERMS_MIGRATION = resolve(__dirname, '../../../../libs/placement/prisma/migrations/20260816120000_t7_p3_guarantee_term_versioning/migration.sql');
 // T6-B1 overlap exclusion constraint — dropped+restored around the legacy-corruption
 // defensive proof (the only way to seed a state the constraint now forbids).
 const OVERLAP_CONSTRAINT = 'AssignmentRateVersion_no_window_overlap_excl';
@@ -108,7 +110,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('E1-b PlacementCon
     const url = container.getConnectionUri();
     setup = new PrismaService(url);
     await setup.$connect();
-    for (const migration of [INIT_MIGRATION, OFFER_OUTBOX_MIGRATION, REASON_MIGRATION, REPLACEMENT_MIGRATION, CONTRACT_ASSIGNMENT_MIGRATION, ASSIGNMENT_ENDED_MIGRATION, ASSIGNMENT_GUARD_MIGRATION, ASSIGNMENT_END_REASON_MIGRATION, ASSIGNMENT_RATE_VERSION_MIGRATION, EFFECTIVE_WINDOW_MIGRATION, COMMERCIAL_CANCELLATION_MIGRATION, PERMANENT_PLACEMENT_MIGRATION, FALLOFF_REMEDY_MIGRATION]) {
+    for (const migration of [INIT_MIGRATION, OFFER_OUTBOX_MIGRATION, REASON_MIGRATION, REPLACEMENT_MIGRATION, CONTRACT_ASSIGNMENT_MIGRATION, ASSIGNMENT_ENDED_MIGRATION, ASSIGNMENT_GUARD_MIGRATION, ASSIGNMENT_END_REASON_MIGRATION, ASSIGNMENT_RATE_VERSION_MIGRATION, EFFECTIVE_WINDOW_MIGRATION, COMMERCIAL_CANCELLATION_MIGRATION, PERMANENT_PLACEMENT_MIGRATION, FALLOFF_REMEDY_MIGRATION, GUARANTEE_TERMS_MIGRATION]) {
       for (const s of splitDdl(readFileSync(migration, 'utf8'))) {
         if (s.trim()) await setup.$executeRawUnsafe(s.trim());
       }

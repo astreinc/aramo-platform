@@ -863,6 +863,14 @@ const PLACEMENT_FALLOFF_REMEDY_MIGRATION = resolve(
   ROOT,
   'libs/placement/prisma/migrations/20260815120000_t7_p2_falloff_remedy/migration.sql',
 );
+// Track 7 / T7-P3 — guarantee-term-versioning substrate. Applied so the provider schema carries
+// the PermanentPlacement.guarantee_terms_* provenance columns (the regenerated client selects
+// them) + the PermanentPlacementGuaranteeTermVersion table (SEPARATE const — never a 2nd
+// resolve() arg, ENOTDIR).
+const PLACEMENT_GUARANTEE_TERMS_MIGRATION = resolve(
+  ROOT,
+  'libs/placement/prisma/migrations/20260816120000_t7_p3_guarantee_term_versioning/migration.sql',
+);
 // Track 4 / T4-B2 §6 — the dedicated stored openings_available DROP. Applied here so
 // the provider schema matches the retired-column reality; the requisition read is
 // derived and does not depend on the physical column.
@@ -3073,6 +3081,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         // Track 7 / T7-P1 — PlacementProcess.placement_kind + PermanentPlacement substrate.
         PLACEMENT_PERMANENT_PLACEMENT_MIGRATION,
         PLACEMENT_FALLOFF_REMEDY_MIGRATION,
+        PLACEMENT_GUARANTEE_TERMS_MIGRATION,
         // T4-B2 §6 — retire the stored openings_available column (derived-only).
         REQUISITION_DROP_OPENINGS_AVAILABLE_MIGRATION,
         // T8-P1 — the external-identity partial-unique index (applied last;
@@ -6189,6 +6198,51 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
                      '{"from":"OFFER_ACCEPTED","to":"FELL_THROUGH"}'::jsonb, 'start_date_failed', 'Start date failed', '2026-05-20T00:00:00Z')
              ON CONFLICT (id) DO NOTHING`,
             ['00000000-0000-7000-8000-fa1100000011', TENANT_ID, pp],
+          );
+        });
+      },
+
+      // T9-B3 — a DEDICATED assignment-pipeline state (kept separate from the
+      // fill-performance/fallthrough/shared states). Seeds placements across all
+      // five live states with STARTED×3 (none / ACTIVE / ENDED — proving
+      // STARTED != active + ended) plus start-date examples incl. a null
+      // proposed_start_date. Visible tenant-wide via requisition:read:all.
+      'an ats-web recruiter and assignment-pipeline placements exist': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedAtsWebTenant(c);
+          const AP_REQ = '00000000-0000-7000-8000-a91100000001';
+          const FILL = '00000000-0000-7000-8000-a9110000ffff';
+          const rows: Array<[string, string, string | null]> = [
+            ['00000000-0000-7000-8000-a91100000011', 'OFFER_ACCEPTED', '2026-06-18'],
+            ['00000000-0000-7000-8000-a91100000012', 'PRE_START', '2026-07-30'],
+            ['00000000-0000-7000-8000-a91100000013', 'BLOCKED', null],
+            ['00000000-0000-7000-8000-a91100000014', 'READY_TO_START', '2026-06-18'],
+            ['00000000-0000-7000-8000-a91100000015', 'STARTED', null],
+            ['00000000-0000-7000-8000-a91100000016', 'STARTED', null],
+            ['00000000-0000-7000-8000-a91100000017', 'STARTED', null],
+          ];
+          for (const [id, state, psd] of rows) {
+            await c.query(
+              `INSERT INTO placement."PlacementProcess"
+                 (id, tenant_id, submittal_id, requisition_id, talent_record_id, state, offered_at, proposed_start_date)
+               VALUES ($1,$2,$3,$4,$5,$6::placement."PlacementState", now(), $7::date)
+               ON CONFLICT (id) DO NOTHING`,
+              [id, TENANT_ID, FILL, AP_REQ, FILL, state, psd],
+            );
+          }
+          // Bounded enrichment: one ACTIVE, one ENDED; the third STARTED has none.
+          await c.query(
+            `INSERT INTO placement."ContractAssignment"
+               (id, tenant_id, placement_process_id, submittal_id, requisition_id, talent_record_id, started_at, provenance, lifecycle_state, company_id)
+             VALUES ($1,$2,$3,$4,$5,$6, now(),'FORWARD','ACTIVE',$7) ON CONFLICT (id) DO NOTHING`,
+            ['00000000-0000-7000-8000-a91100000021', TENANT_ID, '00000000-0000-7000-8000-a91100000016', FILL, AP_REQ, FILL, FILL],
+          );
+          await c.query(
+            `INSERT INTO placement."ContractAssignment"
+               (id, tenant_id, placement_process_id, submittal_id, requisition_id, talent_record_id, started_at, provenance, lifecycle_state, end_reason, ended_at, company_id)
+             VALUES ($1,$2,$3,$4,$5,$6, now(),'FORWARD','ENDED','COMPLETED', now(), $7) ON CONFLICT (id) DO NOTHING`,
+            ['00000000-0000-7000-8000-a91100000022', TENANT_ID, '00000000-0000-7000-8000-a91100000017', FILL, AP_REQ, FILL, FILL],
           );
         });
       },

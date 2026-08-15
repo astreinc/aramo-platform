@@ -584,13 +584,19 @@
     ],
     "@aramo/placement": [
       "ASSIGNMENT_ENDED_CANCELLATION_REASON",
+      "AssignmentPipelineReadRepository",
       "CAPACITY_STATUSES",
       "CapacityProjectionRepository",
       "DUPLICATE_GUARD_INACTIVE",
       "GOVERNED_TERMINAL_TARGETS",
+      "GUARANTEE_TERMS_SOURCE_TYPES",
+      "GuaranteeTermRepository",
       "INITIAL_STATE",
       "LEGAL_TRANSITIONS",
       "LIFECYCLE_POSITIONS",
+      "OUTBOX_GUARANTEE_TERMS_APPLIED",
+      "OUTBOX_GUARANTEE_TERMS_CREATED",
+      "OUTBOX_GUARANTEE_TERMS_REVISED",
       "PERMANENT_FALLOFF_REASON_CODES",
       "PERMANENT_PLACEMENT_INITIAL_STATE",
       "PERMANENT_PLACEMENT_STATES",
@@ -603,6 +609,7 @@
       "PlacementEventReadModule",
       "PlacementOutboxModule",
       "PlacementOutboxRepository",
+      "PlacementPipelineReadModule",
       "PlacementProcessEventRepository",
       "PlacementRepository",
       "PrismaService",
@@ -631,10 +638,14 @@
       "generatePlacementMigrationSql",
       "getReason",
       "isGovernedTerminalTarget",
+      "isGuaranteeTermsSourceType",
       "isPermanentFalloffReasonCode",
       "isUserCancellationReasonCode",
       "lifecyclePositionOf",
       "normalizeReasonDetail",
+      "parseTermCalendarDate",
+      "resolveEffectiveTermRow",
+      "resolvedTermsFromRow",
       "validateGuaranteeTerms"
     ],
     "@aramo/platform-trust": [
@@ -1895,6 +1906,18 @@
       { "project": "platform-admin", "status": "production" },
       { "project": "portal", "status": "production" },
       { "project": "pre-start-requirement", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/reporting/src/tests/assignment-pipeline.integration.spec.ts",
+        "project": "reporting",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/reporting/src/tests/assignment-pipeline.spec.ts",
+        "project": "reporting",
+        "status": "excluded"
+      },
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/reporting/src/tests/company-metrics.spec.ts",
@@ -3187,6 +3210,12 @@
         "status": "excluded"
       },
       { "project": "outbox-publisher", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/reporting/src/tests/assignment-pipeline.integration.spec.ts",
+        "project": "reporting",
+        "status": "excluded"
+      },
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/reporting/src/tests/capacity-projection-edge.integration.spec.ts",
