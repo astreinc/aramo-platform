@@ -49,6 +49,13 @@ export const SEED_IDS = {
   tenant: '01900000-0000-7000-8000-000000000001',
   user_admin: '01900000-0000-7000-8000-000000000002',
   service_account_system: '01900000-0000-7000-8000-000000000003',
+  // Track 8 / T8-CONNECTOR-A — the dedicated connector execution ServiceAccount
+  // (machine actor). MUST equal CONNECTOR_SERVICE_ACCOUNT_ID in
+  // libs/integration/src/lib/domain/connector-actor.ts. Written as imported_by_id
+  // on connector-produced ImportBatches so machine execution is unmistakable. It
+  // holds NO connector-management scopes; execution authority is supplied
+  // programmatically (requisition:import:write) at the P2 handoff.
+  service_account_connector: '01900000-0000-7000-8000-000000000004',
   external_identity_admin: '01900000-0000-7000-8000-000000000004',
   membership_admin: '01900000-0000-7000-8000-000000000005',
   // AUTHZ-2 — sentinel Tenant for the platform tier (Lead ruling 2 B1).
@@ -327,6 +334,13 @@ export const SEED_IDS = {
     // d3/d4 consumed by T5-P1 assignment:commercials during R-SYNC).
     'requisition:import:read': '01900000-0000-7000-8000-0000000000d5',
     'requisition:import:write': '01900000-0000-7000-8000-0000000000d6',
+    // Track 8 / T8-CONNECTOR-A — connector-connection management scope family
+    // (da/db; d7/d8/d9 consumed by T7-P1/P2 placement:permanent/remedy).
+    // Administration of Settings → Integrations connections.
+    // R-SYNC: da/db taken by T7-P3 placement:permanent:terms:write on main;
+    // moved to dc/dd (mechanical id reconciliation; grants unchanged).
+    'integration:read': '01900000-0000-7000-8000-0000000000dc',
+    'integration:write': '01900000-0000-7000-8000-0000000000dd',
   },
   // RoleScope ids — one per (role,scope) assignment. Hardcoded sequence
   // 0x30..0x39 (10 assignments: 6 tenant_admin + 4 recruiter; the 3
@@ -568,6 +582,11 @@ export const SEED_ADMIN_DISPLAY_NAME = 'Aramo Dev Admin';
 export const SEED_SERVICE_ACCOUNT_NAME = 'system-bootstrap';
 export const SEED_SERVICE_ACCOUNT_DESCRIPTION =
   'System actor for seed/migration audit events';
+
+// Track 8 / T8-CONNECTOR-A — the connector execution ServiceAccount identity.
+export const CONNECTOR_SERVICE_ACCOUNT_NAME = 'connector-execution';
+export const CONNECTOR_SERVICE_ACCOUNT_DESCRIPTION =
+  'Machine actor for provider-neutral connector execution (T8-CONNECTOR-A). Holds no connector-management scopes; imports run with requisition:import:write only.';
 
 // Per-role scope assignments (directive §6 + §9 test 17, locked).
 export const ROLE_SCOPE_ASSIGNMENTS = {
@@ -1989,6 +2008,34 @@ const REQUISITION_IMPORT_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() =
   return map;
 })();
 
+// Track 8 / T8-CONNECTOR-A — connector-connection MANAGEMENT role-matrix.
+// integration:read + integration:write granted to tenant_admin + tenant_owner
+// ONLY (administrative tier; recruiter/account_manager/others excluded — no
+// wildcard widening). The connector ServiceAccount is a separate execution
+// identity and does NOT appear here.
+export const INTEGRATION_MANAGEMENT_SEED_BUNDLES: ReadonlyArray<
+  readonly [string, readonly string[]]
+> = [
+  ['tenant_admin', ['integration:read', 'integration:write']],
+  ['tenant_owner', ['integration:read', 'integration:write']],
+];
+
+// Deterministic RoleScope row ids for the 4 connector-management grants. Fresh
+// disjoint range 0xc10+ (append-don't-renumber; requisition-import occupies
+// 0xc00..0xc06). DO NOT REORDER without bumping the offset.
+const INTEGRATION_MANAGEMENT_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
+  const map: Record<string, string> = {};
+  let i = 0xc10;
+  for (const [role, scopes] of INTEGRATION_MANAGEMENT_SEED_BUNDLES) {
+    for (const scope of scopes) {
+      map[`${role}:${scope}`] =
+        `01900000-0000-7000-8000-${i.toString(16).padStart(12, '0')}`;
+      i++;
+    }
+  }
+  return map;
+})();
+
 interface IdentityPrismaClient {
   tenant: typeof PrismaClient.prototype.tenant;
   user: typeof PrismaClient.prototype.user;
@@ -2084,6 +2131,21 @@ export async function runIdentitySeed(
       id: SEED_IDS.service_account_system,
       name: SEED_SERVICE_ACCOUNT_NAME,
       description: SEED_SERVICE_ACCOUNT_DESCRIPTION,
+      is_active: true,
+    },
+  });
+
+  // Track 8 / T8-CONNECTOR-A — the dedicated connector execution ServiceAccount
+  // (machine actor). A true service identity, separate from any human. It holds
+  // NO connector-management scopes; its P2-handoff authority is supplied
+  // programmatically (requisition:import:write).
+  await prisma.serviceAccount.upsert({
+    where: { id: SEED_IDS.service_account_connector },
+    update: {},
+    create: {
+      id: SEED_IDS.service_account_connector,
+      name: CONNECTOR_SERVICE_ACCOUNT_NAME,
+      description: CONNECTOR_SERVICE_ACCOUNT_DESCRIPTION,
       is_active: true,
     },
   });
@@ -2312,6 +2374,8 @@ export async function runIdentitySeed(
   await upsertScope(prisma, SEED_IDS.scopes['assignment:commercials:write'], 'assignment:commercials:write', 'Track 5 / T5-P1 — record the initial actual commercial terms of a ContractAssignment. The SECOND leg of the FORWARD STARTED conjunction (required IN CONJUNCTION with placement:activate, never alone; placement:* and requisition-financials never substitute). GRANTED to account_manager, tenant_admin, tenant_owner only; recruiter excluded. NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['requisition:import:read'], 'requisition:import:read', 'Track 8 / T8-P2 — read the canonical requisition-import batch history + per-record failures (GET /v1/requisition-imports, GET /v1/requisition-imports/:id). Provider-neutral external-system requisition ingestion; distinct from the generic CSV import:* family. GRANTED to recruiter, account_manager, tenant_admin, tenant_owner (mirrors assignment:read). NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['requisition:import:write'], 'requisition:import:write', 'Track 8 / T8-P2 — run a canonical requisition import (POST /v1/requisition-imports): validate + map provider-neutral records through the governed createForImport path. GRANTED to account_manager, tenant_admin, tenant_owner only; recruiter excluded (bulk external ingestion is an authoritative-tier act, mirrors assignment:create). NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['integration:read'], 'integration:read', 'Track 8 / T8-CONNECTOR-A — read provider-neutral connector connections (Settings → Integrations): list/status/last-sync/error summary. Connector connection ADMINISTRATION; distinct from requisition:import:read (P3 ingestion monitoring). GRANTED to tenant_admin, tenant_owner only. NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['integration:write'], 'integration:write', 'Track 8 / T8-CONNECTOR-A — administer provider-neutral connector connections (create/configure-credential/enable/disable). Never returns raw secret material. GRANTED to tenant_admin, tenant_owner only; recruiter/account_manager excluded (administrative tier). The connector ServiceAccount does NOT hold this — execution authority is requisition:import:write only. NO scope.created (scope-seed precedent).');
 
   // 7. RoleScope assignments — pre-AUTHZ-1 (88 rows: 13 + 12 + 52 + 11).
   for (const [roleKey, scopeKeys] of Object.entries(ROLE_SCOPE_ASSIGNMENTS)) {
@@ -2806,6 +2870,25 @@ export async function runIdentitySeed(
       const rsId = REQUISITION_IMPORT_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
       if (rsId === undefined) {
         throw new Error(`T8-P2 Requisition-Import-Role-Matrix: Missing generated RoleScope id for ${roleKey}:${scopeKey}`);
+      }
+      const scope_id = scopeIdForKey(scopeKey);
+      await prisma.roleScope.upsert({
+        where: { role_id_scope_id: { role_id, scope_id } },
+        update: {},
+        create: { id: rsId, role_id, scope_id },
+      });
+    }
+  }
+
+  // Track 8 / T8-CONNECTOR-A — connector-connection management grants (4 rows;
+  // range 0xc10+). integration:read + integration:write -> tenant_admin +
+  // tenant_owner ONLY (recruiter/account_manager excluded).
+  for (const [roleKey, scopeKeys] of INTEGRATION_MANAGEMENT_SEED_BUNDLES) {
+    const role_id = roleIdForKey(roleKey);
+    for (const scopeKey of scopeKeys) {
+      const rsId = INTEGRATION_MANAGEMENT_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
+      if (rsId === undefined) {
+        throw new Error(`T8-CONNECTOR-A Integration-Management-Role-Matrix: Missing generated RoleScope id for ${roleKey}:${scopeKey}`);
       }
       const scope_id = scopeIdForKey(scopeKey);
       await prisma.roleScope.upsert({

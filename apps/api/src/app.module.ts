@@ -26,6 +26,7 @@ import { IdentityIndexModule } from '@aramo/identity-index';
 import { PortalIdentityModule } from '@aramo/portal-identity';
 import { AuthStorageModule } from '@aramo/auth-storage';
 import { ImportModule } from '@aramo/import';
+import { IntegrationModule } from '@aramo/integration';
 import { IngestionModule } from '@aramo/ingestion';
 import { JobDomainModule } from '@aramo/job-domain';
 import { MailerModule } from '@aramo/mailer';
@@ -58,6 +59,7 @@ import { TaskModule } from '@aramo/task';
 import { RequisitionStateReaderModule } from './requisition-state/requisition-state-reader.module.js';
 import { PreStartRequirementModule } from './pre-start-requirement/pre-start-requirement.module.js';
 import { PlacementModule } from './placement/placement.module.js';
+import { ConnectorExecutionModule } from './connector/connector-execution.module.js';
 import { TenantCognitoAdapter } from './cognito/tenant-cognito.adapter.js';
 import { TenantWriteFreezeInterceptor } from './tenant-write-freeze/tenant-write-freeze.interceptor.js';
 import { TalentAnchorInterceptor } from './talent-anchor/talent-anchor.interceptor.js';
@@ -303,6 +305,10 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     // (T2). The integration spec proves it via bit-identical talent.*
     // row-counts pre/post.
     ImportModule,
+    // T8-CONNECTOR-A — connector-connection management routes (Settings →
+    // Integrations) + the dormant connector-execution worker (no schedule).
+    IntegrationModule,
+    ConnectorExecutionModule,
     // M5 PR-11 §4.5/§4.6 — SkillsTaxonomyModule registers the
     // skill-canonicalization queue + no-op processor (Architecture v2.1
     // §9.2 / Plan v1.5 §M5 Track A item 6 binding).
