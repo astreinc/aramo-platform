@@ -18,6 +18,7 @@ import { AramoError, RequestId } from '@aramo/common';
 import { EntitlementGuard, RequireCapability } from '@aramo/entitlement';
 
 import type {
+  AssignmentPipelineReportView,
   CompanyMetricsReportView,
   CompanyPlacementsReportView,
   FallthroughReportView,
@@ -266,6 +267,29 @@ export class ReportingController {
       },
       { from, to },
     );
+  }
+
+  // T9-B3 — assignment-pipeline current-snapshot operational view. Governed by
+  // Aramo-T9-B3-Directive-v1_0-LOCKED. Counts-only current snapshot — NO query
+  // parameters (no from/to, §4/§10). report:read + tenant/site/A3. No commercial
+  // data, no row-level items.
+  @Get('assignment-pipeline')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('report:read')
+  @RequireSiteMatch()
+  async assignmentPipeline(
+    @AuthContext() authContext: AuthContextType,
+    @Query('site_id') siteIdFromQuery: string | undefined,
+    @Req() req: Request,
+  ): Promise<AssignmentPipelineReportView> {
+    const visibility = await req.resolveVisibility!();
+    return this.reportingService.getAssignmentPipeline({
+      tenant_id: authContext.tenant_id,
+      user_id: authContext.sub,
+      scopes: authContext.scopes,
+      visibility,
+      ...(siteIdFromQuery === undefined ? {} : { site_id: siteIdFromQuery }),
+    });
   }
 
   // T9-B2 — authoritative fallthrough-rate + reasons operational report.

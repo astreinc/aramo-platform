@@ -5,6 +5,9 @@ export { PrismaService } from './lib/prisma/prisma.service.js';
 export { PlacementRepository } from './lib/placement.repository.js';
 export { PlacementProcessEventRepository } from './lib/placement-process-event.repository.js';
 export { PlacementEventReadModule } from './lib/placement-event-read.module.js';
+export { AssignmentPipelineReadRepository } from './lib/assignment-pipeline-read.repository.js';
+export type { AssignmentPipelineSnapshot } from './lib/assignment-pipeline-read.repository.js';
+export { PlacementPipelineReadModule } from './lib/placement-pipeline-read.module.js';
 // Track 7 / T7-P1 — the PermanentPlacement aggregate repository (read + happy-path
 // guarantee lifecycle) and its governed guarantee-terms validation.
 export { PermanentPlacementRepository } from './lib/permanent/permanent-placement.repository.js';

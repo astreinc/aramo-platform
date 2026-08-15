@@ -203,6 +203,46 @@ export interface FallthroughReportView {
   reasons: FallthroughReasonView[];
 }
 
+// AssignmentPipelineReportView — T9-B3 assignment-pipeline operational view
+// (GET /v1/reports/assignment-pipeline). Governed by
+// Aramo-T9-B3-Directive-v1_0-LOCKED. CURRENT-SNAPSHOT, counts-only.
+//
+// The authoritative spine is `PlacementProcess.state` (COMPLETE). `by_state`
+// carries the FIVE live states in fixed lifecycle order — OFFER_ACCEPTED,
+// PRE_START, BLOCKED, READY_TO_START, STARTED — always present (zero-filled);
+// OFFER_EXTENDED and the terminal losses are excluded (§3). `total_live` is the
+// sum of exactly those five counts (§10); the `contract_assignments` block does
+// NOT contribute to it.
+//
+// `start_date` buckets the four pre-start states by `proposed_start_date` on a
+// UTC calendar (no tenant timezone exists); NULL → `unspecified` (§8); STARTED
+// is excluded. `contract_assignments` is BOUNDED / forward-materialized only —
+// `coverage: "forward_materialized"` labels that a STARTED placement may lack a
+// ContractAssignment, so STARTED ≠ active + ended (§6). No commercial field, no
+// row-level item, no `ended_at` (§5/§11/§20).
+export interface AssignmentPipelineStateCount {
+  state: string;
+  count: number;
+}
+
+export interface AssignmentPipelineReportView {
+  total_live: number;
+  by_state: AssignmentPipelineStateCount[];
+  start_date: {
+    overdue: number;
+    today: number;
+    next_7_days: number;
+    later: number;
+    unspecified: number;
+    timezone_basis: 'UTC';
+  };
+  contract_assignments: {
+    active: number;
+    ended: number;
+    coverage: 'forward_materialized';
+  };
+}
+
 // DashboardView — the composition payload for GET /v1/dashboard.
 // Bundles the ATS-internal metrics into a single response so a
 // recruiter UI doesn't have to N-round-trip on load.

@@ -798,6 +798,108 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     });
 
     // -------------------------------------------------------------------------
+    // T9-B3 — assignment-pipeline: guard axes, response shape + total invariant
+    // + data-safety (no commercial/ended_at), and A3 + boundedness at the HTTP
+    // boundary. Metric math is proven in the libs/placement + libs/reporting
+    // integration specs; here we prove the wired endpoint.
+    // -------------------------------------------------------------------------
+
+    const apUrl = (): string =>
+      `http://127.0.0.1:${port}/v1/reports/assignment-pipeline?site_id=${SITE_A}`;
+
+    async function seedStartedPlacement(
+      requisition_id: string,
+      assignment?: 'ACTIVE' | 'ENDED',
+    ): Promise<void> {
+      const pp = globalThis.crypto.randomUUID();
+      await setupClient.query(
+        `INSERT INTO placement."PlacementProcess"
+           (id, tenant_id, submittal_id, requisition_id, talent_record_id, state, offered_at)
+         VALUES ($1,$2,$3,$4,$5,'STARTED'::placement."PlacementState", now())`,
+        [pp, TENANT_ATS, globalThis.crypto.randomUUID(), requisition_id, globalThis.crypto.randomUUID()],
+      );
+      if (assignment !== undefined) {
+        await setupClient.query(
+          `INSERT INTO placement."ContractAssignment"
+             (id, tenant_id, placement_process_id, submittal_id, requisition_id, talent_record_id,
+              started_at, provenance, company_id, lifecycle_state, end_reason, ended_at)
+           VALUES ($1,$2,$3,$4,$5,$6, now(),
+                   'FORWARD'::placement."ContractAssignmentProvenance", $7,
+                   $8::placement."ContractAssignmentState",
+                   $9::placement."ContractAssignmentEndReason", $10)`,
+          [
+            globalThis.crypto.randomUUID(), TENANT_ATS, pp, globalThis.crypto.randomUUID(),
+            requisition_id, globalThis.crypto.randomUUID(), globalThis.crypto.randomUUID(),
+            assignment,
+            assignment === 'ENDED' ? 'COMPLETED' : null,
+            assignment === 'ENDED' ? new Date().toISOString() : null,
+          ],
+        );
+      }
+    }
+
+    it('assignment-pipeline entitlement axis: tenant lacking ats → 403', async () => {
+      const res = await fetch(apUrl(), { method: 'GET', headers: { Authorization: `Bearer ${recruiterJwt_NotAts}` } });
+      expect(res.status).toBe(403);
+      const body = (await res.json()) as { error: { code: string } };
+      expect(body.error?.code).toBe('TENANT_CAPABILITY_NOT_ENTITLED');
+    });
+
+    it('assignment-pipeline authorization axis: unscoped → 403', async () => {
+      const res = await fetch(apUrl(), { method: 'GET', headers: { Authorization: `Bearer ${unscopedJwt}` } });
+      expect(res.status).toBe(403);
+    });
+
+    it('assignment-pipeline site axis: token site != requested site → 403', async () => {
+      const res = await fetch(apUrl(), { method: 'GET', headers: { Authorization: `Bearer ${recruiterJwt_WrongSite}` } });
+      expect(res.status).toBe(403);
+    });
+
+    it('assignment-pipeline shape: five ordered live states, total_live = their sum, UTC/coverage labels, no commercial/ended_at', async () => {
+      const res = await fetch(apUrl(), { method: 'GET', headers: { Authorization: `Bearer ${tenantAdminJwt}` } });
+      expect(res.status).toBe(200);
+      const raw = await res.text();
+      for (const banned of ['pay_rate', 'bill_rate', 'margin', 'currency', 'reason_detail', 'ended_at']) {
+        expect(raw).not.toContain(banned);
+      }
+      const body = JSON.parse(raw) as {
+        total_live: number;
+        by_state: Array<{ state: string; count: number }>;
+        start_date: { timezone_basis: string };
+        contract_assignments: { coverage: string };
+      };
+      expect(body.by_state.map((r) => r.state)).toEqual([
+        'OFFER_ACCEPTED', 'PRE_START', 'BLOCKED', 'READY_TO_START', 'STARTED',
+      ]);
+      expect(body.total_live).toBe(body.by_state.reduce((s, r) => s + r.count, 0));
+      expect(body.start_date.timezone_basis).toBe('UTC');
+      expect(body.contract_assignments.coverage).toBe('forward_materialized');
+    });
+
+    it('assignment-pipeline A3 + boundedness: admin STARTED=2 (active=1); recruiter STARTED=1', async () => {
+      // reqAssigned (visible to recruiter) — STARTED with ACTIVE assignment.
+      await seedStartedPlacement(ftReqAssigned, 'ACTIVE');
+      // reqUnassigned (admin-only) — STARTED with NO ContractAssignment.
+      await seedStartedPlacement(ftReqUnassigned);
+
+      const adminRes = await fetch(apUrl(), { method: 'GET', headers: { Authorization: `Bearer ${tenantAdminJwt}` } });
+      expect(adminRes.status).toBe(200);
+      const admin = (await adminRes.json()) as {
+        by_state: Array<{ state: string; count: number }>;
+        contract_assignments: { active: number; ended: number };
+      };
+      const adminStarted = admin.by_state.find((r) => r.state === 'STARTED')?.count;
+      expect(adminStarted).toBe(2); // both reqs, tenant-wide
+      // boundedness: STARTED(2) != active(1) — the no-assignment STARTED is invisible to the assignment count
+      expect(admin.contract_assignments.active).toBe(1);
+
+      const recRes = await fetch(apUrl(), { method: 'GET', headers: { Authorization: `Bearer ${recruiterJwt}` } });
+      expect(recRes.status).toBe(200);
+      const rec = (await recRes.json()) as { by_state: Array<{ state: string; count: number }> };
+      expect(rec.by_state.find((r) => r.state === 'STARTED')?.count).toBe(1); // A3 narrows to the assigned req
+    });
+
+    // -------------------------------------------------------------------------
     // B) Metric correctness — tenant_admin sees tenant-wide truth.
     // -------------------------------------------------------------------------
 
