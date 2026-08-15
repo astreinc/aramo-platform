@@ -72,7 +72,7 @@ describe('ReportingService.getMargin', () => {
         { currency: 'USD', rate_period: 'HOURLY', assignment_count: 2, group_margin_percent: '25.00' },
       ],
     });
-    const v = await svc.getMargin(seeAll);
+    const v = await svc.getMargin(seeAll, 'req-test');
     expect(v).toEqual({
       eligible_count: 3,
       commercialized_count: 2,
@@ -91,7 +91,7 @@ describe('ReportingService.getMargin', () => {
       missing_commercial_count: 0,
       groups: [],
     });
-    const v = await svc.getMargin(seeAll);
+    const v = await svc.getMargin(seeAll, 'req-test');
     expect(v.coverage).toBe('forward_materialized');
     expect(v.groups).toEqual([]);
     expect(v.eligible_count).toBe(0);
@@ -102,7 +102,7 @@ describe('ReportingService.getMargin', () => {
       missing_commercial_count: 0,
       groups: [{ currency: 'USD', rate_period: 'HOURLY', assignment_count: 1, group_margin_percent: null }],
     });
-    const v2 = await svc2.getMargin(seeAll);
+    const v2 = await svc2.getMargin(seeAll, 'req-test');
     expect(v2.groups[0]?.group_margin_percent).toBeNull();
   });
 
@@ -113,7 +113,7 @@ describe('ReportingService.getMargin', () => {
       missing_commercial_count: 0,
       groups: [{ currency: 'USD', rate_period: 'HOURLY', assignment_count: 1, group_margin_percent: '20.00' }],
     });
-    const v = await svc.getMargin(seeAll);
+    const v = await svc.getMargin(seeAll, 'req-test');
     const serialized = JSON.stringify(v);
     for (const banned of [
       'pay_rate_amount',
@@ -137,7 +137,7 @@ describe('ReportingService.getMargin', () => {
       missing_commercial_count: 0,
       groups: [],
     });
-    await svcAll.getMargin(seeAll);
+    await svcAll.getMargin(seeAll, 'req-test');
     const argAll = repoAll.readCurrentMarginSnapshot.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(argAll['tenant_id']).toBe(TENANT);
     expect('requisition_ids' in argAll).toBe(false);
@@ -152,7 +152,7 @@ describe('ReportingService.getMargin', () => {
       { eligible_count: 0, commercialized_count: 0, missing_commercial_count: 0, groups: [] },
       [{ id: 'r-1' }, { id: 'r-2' }],
     );
-    await svcRec.getMargin(recruiter);
+    await svcRec.getMargin(recruiter, 'req-test');
     expect(repoRec.readCurrentMarginSnapshot).toHaveBeenCalledWith(
       expect.objectContaining({ requisition_ids: ['r-1', 'r-2'] }),
     );

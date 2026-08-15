@@ -667,12 +667,14 @@ export class ReportingService {
   // -------------------------------------------------------------------------
   async getMargin(
     actor: ActorContext,
+    requestId: string,
     opts?: { now?: Date },
   ): Promise<MarginReportView> {
     const visibleReqIds = await this.resolveVisibleRequisitionIds(actor);
     const snapshot =
       await this.commercialMarginRepository.readCurrentMarginSnapshot({
         tenant_id: actor.tenant_id,
+        requestId,
         ...(opts?.now === undefined ? {} : { now: opts.now }),
         ...(visibleReqIds === undefined ? {} : { requisition_ids: visibleReqIds }),
       });

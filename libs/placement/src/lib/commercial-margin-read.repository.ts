@@ -76,9 +76,9 @@ export class CommercialMarginReadRepository {
 
   async readCurrentMarginSnapshot(args: {
     tenant_id: string;
+    requestId: string;
     requisition_ids?: readonly string[];
     now?: Date;
-    requestId?: string;
   }): Promise<CommercialMarginSnapshot> {
     const empty: CommercialMarginSnapshot = {
       eligible_count: 0,
@@ -125,7 +125,7 @@ export class CommercialMarginReadRepository {
         'ambiguous commercial version state: more than one effective AssignmentRateVersion',
         500,
         {
-          ...(args.requestId === undefined ? {} : { requestId: args.requestId }),
+          requestId: args.requestId,
           details: {
             contract_assignment_id: ambiguous[0]!.assignment_id,
             reason: 'commercial_version_ambiguity',

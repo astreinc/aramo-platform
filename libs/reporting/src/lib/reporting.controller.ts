@@ -348,17 +348,21 @@ export class ReportingController {
   @RequireSiteMatch()
   async margin(
     @AuthContext() authContext: AuthContextType,
+    @RequestId() requestId: string,
     @Query('site_id') siteIdFromQuery: string | undefined,
     @Req() req: Request,
   ): Promise<MarginReportView> {
     const visibility = await req.resolveVisibility!();
-    return this.reportingService.getMargin({
-      tenant_id: authContext.tenant_id,
-      user_id: authContext.sub,
-      scopes: authContext.scopes,
-      visibility,
-      ...(siteIdFromQuery === undefined ? {} : { site_id: siteIdFromQuery }),
-    });
+    return this.reportingService.getMargin(
+      {
+        tenant_id: authContext.tenant_id,
+        user_id: authContext.sub,
+        scopes: authContext.scopes,
+        visibility,
+        ...(siteIdFromQuery === undefined ? {} : { site_id: siteIdFromQuery }),
+      },
+      requestId,
+    );
   }
 
   // T9-B2 — authoritative fallthrough-rate + reasons operational report.

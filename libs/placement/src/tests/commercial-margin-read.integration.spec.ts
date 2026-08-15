@@ -151,7 +151,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await commercialized({ tenant_id: t, requisition_id: req, pay: '80.00', bill: '100.00' });
       await commercialized({ tenant_id: t, requisition_id: req, pay: '10.00', bill: '20.00' });
 
-      const snap = await repo.readCurrentMarginSnapshot({ tenant_id: t, now: new Date(NOW) });
+      const snap = await repo.readCurrentMarginSnapshot({ requestId: 'req-test', tenant_id: t, now: new Date(NOW) });
       expect(snap.groups).toHaveLength(1);
       const g = snap.groups[0]!;
       expect(g.currency).toBe('USD');
@@ -169,7 +169,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     it('a group whose bill total is zero yields margin_percent = null', async () => {
       const t = randomUUID(); const req = randomUUID();
       await commercialized({ tenant_id: t, requisition_id: req, pay: '50.00', bill: '0.00' });
-      const snap = await repo.readCurrentMarginSnapshot({ tenant_id: t, now: new Date(NOW) });
+      const snap = await repo.readCurrentMarginSnapshot({ requestId: 'req-test', tenant_id: t, now: new Date(NOW) });
       expect(snap.groups).toHaveLength(1);
       expect(snap.groups[0]!.group_margin_percent).toBeNull();
     });
@@ -178,7 +178,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     it('a negative group spread yields a negative margin_percent', async () => {
       const t = randomUUID(); const req = randomUUID();
       await commercialized({ tenant_id: t, requisition_id: req, pay: '100.00', bill: '80.00' });
-      const snap = await repo.readCurrentMarginSnapshot({ tenant_id: t, now: new Date(NOW) });
+      const snap = await repo.readCurrentMarginSnapshot({ requestId: 'req-test', tenant_id: t, now: new Date(NOW) });
       // spread=-20, margin=-20/80*100 = -25.00
       expect(snap.groups[0]!.group_margin_percent).toBe('-25.00');
     });
@@ -189,7 +189,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await commercialized({ tenant_id: t, requisition_id: req, pay: '0.10', bill: '0.30' });
       await commercialized({ tenant_id: t, requisition_id: req, pay: '0.10', bill: '0.30' });
       await commercialized({ tenant_id: t, requisition_id: req, pay: '0.10', bill: '0.30' });
-      const snap = await repo.readCurrentMarginSnapshot({ tenant_id: t, now: new Date(NOW) });
+      const snap = await repo.readCurrentMarginSnapshot({ requestId: 'req-test', tenant_id: t, now: new Date(NOW) });
       // sum_pay=0.30, sum_bill=0.90, margin=0.60/0.90*100 = 66.666… → 66.67
       expect(snap.groups[0]!.group_margin_percent).toBe('66.67');
     });
@@ -200,7 +200,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await commercialized({ tenant_id: t, requisition_id: req, pay: '80.00', bill: '100.00', currency: 'USD', rate_period: 'HOURLY' });
       await commercialized({ tenant_id: t, requisition_id: req, pay: '80.00', bill: '100.00', currency: 'CAD', rate_period: 'HOURLY' });
       await commercialized({ tenant_id: t, requisition_id: req, pay: '80.00', bill: '100.00', currency: 'USD', rate_period: 'ANNUAL' });
-      const snap = await repo.readCurrentMarginSnapshot({ tenant_id: t, now: new Date(NOW) });
+      const snap = await repo.readCurrentMarginSnapshot({ requestId: 'req-test', tenant_id: t, now: new Date(NOW) });
       // Deterministic order: currency ASC then canonical rate-period (HOURLY<ANNUAL).
       expect(snap.groups.map((g) => `${g.currency}/${g.rate_period}`)).toEqual([
         'CAD/HOURLY', 'USD/HOURLY', 'USD/ANNUAL',
@@ -213,7 +213,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const t = randomUUID(); const req = randomUUID();
       const ended = await insertAssignment({ tenant_id: t, requisition_id: req, lifecycle_state: 'ENDED' });
       await insertVersion({ tenant_id: t, contract_assignment_id: ended, pay: '80.00', bill: '100.00' });
-      const snap = await repo.readCurrentMarginSnapshot({ tenant_id: t, now: new Date(NOW) });
+      const snap = await repo.readCurrentMarginSnapshot({ requestId: 'req-test', tenant_id: t, now: new Date(NOW) });
       expect(snap.eligible_count).toBe(0);
       expect(snap.groups).toHaveLength(0);
     });
@@ -230,7 +230,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // no-version-at-all
       await insertAssignment({ tenant_id: t, requisition_id: req, lifecycle_state: 'ACTIVE' });
 
-      const snap = await repo.readCurrentMarginSnapshot({ tenant_id: t, now: new Date(NOW) });
+      const snap = await repo.readCurrentMarginSnapshot({ requestId: 'req-test', tenant_id: t, now: new Date(NOW) });
       expect(snap.eligible_count).toBe(4);
       expect(snap.commercialized_count).toBe(1);
       expect(snap.missing_commercial_count).toBe(3);
@@ -247,14 +247,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await commercialized({ tenant_id: t, requisition_id: reqA, pay: '80.00', bill: '100.00' });
       await commercialized({ tenant_id: t, requisition_id: reqB, pay: '0.00', bill: '100.00' });
       // see-all (undefined) → both
-      const all = await repo.readCurrentMarginSnapshot({ tenant_id: t, now: new Date(NOW) });
+      const all = await repo.readCurrentMarginSnapshot({ requestId: 'req-test', tenant_id: t, now: new Date(NOW) });
       expect(all.eligible_count).toBe(2);
       // visible = [reqA] only → 1 assignment, the 80/100 → 20.00
-      const subset = await repo.readCurrentMarginSnapshot({ tenant_id: t, requisition_ids: [reqA], now: new Date(NOW) });
+      const subset = await repo.readCurrentMarginSnapshot({ requestId: 'req-test', tenant_id: t, requisition_ids: [reqA], now: new Date(NOW) });
       expect(subset.eligible_count).toBe(1);
       expect(subset.groups[0]!.group_margin_percent).toBe('20.00');
       // empty visible-set → all-zero
-      const none = await repo.readCurrentMarginSnapshot({ tenant_id: t, requisition_ids: [], now: new Date(NOW) });
+      const none = await repo.readCurrentMarginSnapshot({ requestId: 'req-test', tenant_id: t, requisition_ids: [], now: new Date(NOW) });
       expect(none.eligible_count).toBe(0);
       expect(none.groups).toHaveLength(0);
     });
@@ -274,7 +274,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         await insertVersion({ tenant_id: t, contract_assignment_id: ca, pay: '80.00', bill: '100.00', effective_from: PAST, effective_to: null });
         await insertVersion({ tenant_id: t, contract_assignment_id: ca, pay: '10.00', bill: '20.00', effective_from: NOW, effective_to: null });
         await expect(
-          repo.readCurrentMarginSnapshot({ tenant_id: t, now: new Date(FUTURE) }),
+          repo.readCurrentMarginSnapshot({ requestId: 'req-test', tenant_id: t, now: new Date(FUTURE) }),
         ).rejects.toMatchObject({ code: 'INTERNAL_ERROR', statusCode: 500 });
       } finally {
         await client.$transaction(async (tx) => {
@@ -297,7 +297,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const t1 = randomUUID(); const t2 = randomUUID(); const req = randomUUID();
       await commercialized({ tenant_id: t1, requisition_id: req, pay: '80.00', bill: '100.00' });
       await commercialized({ tenant_id: t2, requisition_id: req, pay: '0.00', bill: '100.00' });
-      const snap = await repo.readCurrentMarginSnapshot({ tenant_id: t1, now: new Date(NOW) });
+      const snap = await repo.readCurrentMarginSnapshot({ requestId: 'req-test', tenant_id: t1, now: new Date(NOW) });
       expect(snap.eligible_count).toBe(1);
       expect(snap.groups[0]!.group_margin_percent).toBe('20.00');
     });
