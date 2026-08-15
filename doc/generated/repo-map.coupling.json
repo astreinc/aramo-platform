@@ -3572,6 +3572,12 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/placement-http.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/placement/prisma/migrations/20260816120000_t7_p3_guarantee_term_versioning/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/placement-offer-openapi-conformance.spec.ts",
       "status": "excluded",
       "to": "openapi/ats.yaml"
@@ -3617,6 +3623,12 @@
       "from": "apps/api/src/tests/placement-read-http.integration.spec.ts",
       "status": "excluded",
       "to": "libs/placement/prisma/migrations/20260815120000_t7_p2_falloff_remedy/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/placement-read-http.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/placement/prisma/migrations/20260816120000_t7_p3_guarantee_term_versioning/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -3784,6 +3796,12 @@
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/pre-start-requirement/marker-confinement.spec.ts",
       "status": "excluded",
+      "to": "libs/placement/prisma/migrations/20260816120000_t7_p3_guarantee_term_versioning/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/pre-start-requirement/marker-confinement.spec.ts",
+      "status": "excluded",
       "to": "libs/placement/src/tests/t6-b1-effective-window.integration.spec.ts"
     },
     {
@@ -3797,6 +3815,12 @@
       "from": "apps/api/src/tests/pre-start-requirement/marker-confinement.spec.ts",
       "status": "excluded",
       "to": "libs/placement/src/tests/t7-p2-falloff-remedy.integration.spec.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/pre-start-requirement/marker-confinement.spec.ts",
+      "status": "excluded",
+      "to": "libs/placement/src/tests/t7-p3-guarantee-term-versioning.integration.spec.ts"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -8431,6 +8455,11 @@
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
       "to": "apps/api/src/controllers/version.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "apps/api/src/placement/guarantee-terms.controller.ts"
     },
     {
       "from": "ci/config/api-surface-manifest.json",
@@ -13948,6 +13977,11 @@
       "from": "pact/provider/src/verify-api.ts",
       "status": "unscoped",
       "to": "libs/placement/prisma/migrations/20260815120000_t7_p2_falloff_remedy/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "libs/placement/prisma/migrations/20260816120000_t7_p3_guarantee_term_versioning/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",

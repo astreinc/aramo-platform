@@ -32,6 +32,7 @@ const MIGRATIONS = [
   '20260813130000_t6_b3_commercial_cancellation',
   '20260814120000_t7_permanent_placement',
   '20260815120000_t7_p2_falloff_remedy',
+  '20260816120000_t7_p3_guarantee_term_versioning',
 ].map((d) => resolve(__dirname, `../../prisma/migrations/${d}/migration.sql`));
 
 const T5_TERMS = { pay_rate_amount: '80.00', bill_rate_amount: '120.00', currency: 'USD', rate_period: 'HOURLY' } as const;

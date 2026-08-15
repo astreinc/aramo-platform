@@ -283,9 +283,15 @@ export const SEED_SCOPE_KEYS = [
   // placement:* / assignment:*. Role posture mirrors the placement authoritative
   // tier: read -> all four grant-receiving roles; transition ->
   // account_manager/tenant_admin/tenant_owner (the tier holding placement:activate).
-  // Falloff/remedy/terms-management scopes are T7-P2/P3 — NOT added here.
+  // Falloff/remedy (T7-P2) and guarantee-terms management (T7-P3) authorities follow.
   'placement:permanent:read',
   'placement:permanent:transition',
+  // Track 7 / T7-P3 — the DEDICATED guarantee-terms management authority (§3.7). Governs
+  // creating/revising the reusable requisition-keyed guarantee-term versions (POST
+  // /v1/permanent-placement-guarantee-terms/requisitions/:requisitionId[/revise]). Reads use
+  // placement:permanent:read. GRANTED to account_manager, tenant_admin, tenant_owner; recruiter
+  // excluded (least privilege — terms authorship is authority-separated from operational work).
+  'placement:permanent:terms:write',
   // Track 7 / T7-P2 — the DEDICATED remedy-resolution authority (§3.6). Governs the
   // evidence-gated remedy completion (POST /v1/placements/:id/permanent/remedy/complete)
   // — a high-consequence act authority-separated from the guarantee lifecycle:
