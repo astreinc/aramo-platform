@@ -475,7 +475,8 @@ export class ReportingService {
     actor: ActorContext,
     period: { from: Date; to: Date },
   ): Promise<FallthroughReportView> {
-    const visibleReqIds = await this.resolveVisibleRequisitionIds(actor);
+    // T9-B5 / AV-1 — explicit site narrows even for see_all principals.
+    const visibleReqIds = await this.resolveSiteNarrowedRequisitionIds(actor);
     const cohort = await this.placementEventRepository.readFallthroughCohort({
       tenant_id: actor.tenant_id,
       from: period.from,
@@ -559,7 +560,8 @@ export class ReportingService {
     actor: ActorContext,
     opts?: { now?: Date },
   ): Promise<AssignmentPipelineReportView> {
-    const visibleReqIds = await this.resolveVisibleRequisitionIds(actor);
+    // T9-B5 / AV-1 — explicit site narrows even for see_all principals.
+    const visibleReqIds = await this.resolveSiteNarrowedRequisitionIds(actor);
     const snapshot =
       await this.placementPipelineRepository.readAssignmentPipelineSnapshot({
         tenant_id: actor.tenant_id,
@@ -670,7 +672,8 @@ export class ReportingService {
     requestId: string,
     opts?: { now?: Date },
   ): Promise<MarginReportView> {
-    const visibleReqIds = await this.resolveVisibleRequisitionIds(actor);
+    // T9-B5 / AV-1 — explicit site narrows even for see_all principals.
+    const visibleReqIds = await this.resolveSiteNarrowedRequisitionIds(actor);
     const snapshot =
       await this.commercialMarginRepository.readCurrentMarginSnapshot({
         tenant_id: actor.tenant_id,
@@ -1006,5 +1009,35 @@ export class ReportingService {
       limit: 200,
     });
     return reqs.map((r) => r.id);
+  }
+
+  /**
+   * T9-B5 / AV-1 — like {@link resolveVisibleRequisitionIds}, but an EXPLICIT
+   * `site_id` narrows the returned set even for tenant-wide (`see_all`)
+   * principals. `see_all` grants cross-site visibility; it must NOT silently
+   * ignore an explicit site filter (directive §3). Used ONLY by the three
+   * site-accepting placement/event reports — fallthrough / assignment-pipeline /
+   * margin — so A7 rollups and T7-P4 guarantee-exposure keep their existing
+   * shared-resolver behavior unchanged.
+   *
+   *   - see_all + no `site_id`  → undefined (tenant-wide, preserved);
+   *   - see_all + `site_id`     → EVERY requisition id in (tenant, site), resolved
+   *     set-based over the existing `requisition.site_id` column (unbounded — the
+   *     visibility set does not bound a see_all principal, so `listForActor`'s
+   *     200-cap cannot enumerate a site completely);
+   *   - non-see_all             → the existing A3 visible-requisition set, which
+   *     already threads `site_id` into `listForActor` (unchanged).
+   */
+  private async resolveSiteNarrowedRequisitionIds(
+    actor: ActorContext,
+  ): Promise<readonly string[] | undefined> {
+    if (actor.visibility.see_all_requisition) {
+      if (actor.site_id === undefined) return undefined;
+      return this.requisitionRepository.findRequisitionIdsForTenantSite({
+        tenant_id: actor.tenant_id,
+        site_id: actor.site_id,
+      });
+    }
+    return this.resolveVisibleRequisitionIds(actor);
   }
 }

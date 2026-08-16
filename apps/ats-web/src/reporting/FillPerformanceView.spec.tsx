@@ -77,4 +77,27 @@ describe('FillPerformanceView', () => {
     await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
     expect(fetchSpy).not.toHaveBeenCalled();
   });
+
+  // T9-B5 (§6) — the network-failure (catch) branch, previously untested.
+  it('shows an error alert when the request fails', async () => {
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('boom'));
+    render(<FillPerformanceView />);
+    fireEvent.change(screen.getByTestId('fp-from'), { target: { value: '2026-03-01T00:00' } });
+    fireEvent.change(screen.getByTestId('fp-to'), { target: { value: '2026-04-01T00:00' } });
+    fireEvent.click(screen.getByTestId('fp-run'));
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
+  });
+
+  // T9-B5 (§6) — the loading (role="status") state while the request is in flight.
+  it('shows the loading state while the request is in flight', async () => {
+    // never-resolving fetch keeps the view in the loading state.
+    vi.spyOn(globalThis, 'fetch').mockReturnValue(
+      new Promise<Response>(() => undefined) as unknown as Promise<Response>,
+    );
+    render(<FillPerformanceView />);
+    fireEvent.change(screen.getByTestId('fp-from'), { target: { value: '2026-03-01T00:00' } });
+    fireEvent.change(screen.getByTestId('fp-to'), { target: { value: '2026-04-01T00:00' } });
+    fireEvent.click(screen.getByTestId('fp-run'));
+    await waitFor(() => expect(screen.getByRole('status')).toBeInTheDocument());
+  });
 });

@@ -1801,4 +1801,22 @@ export class RequisitionRepository {
     });
     return rows.map((r) => r.id);
   }
+
+  // T9-B5 / AV-1 — resolve EVERY requisition id in a tenant's site, unbounded and
+  // set-based (single SELECT id over the existing requisition.site_id column; NO
+  // schema change, NO limit cap, NO N+1). Used by the reporting service to narrow
+  // the fallthrough / assignment-pipeline / margin aggregates to an explicitly
+  // requested site for tenant-wide (see_all) principals, whose visibility does NOT
+  // constrain the requisition set — so `listForActor`'s 200-row cap cannot be used
+  // to enumerate a site completely. tenant-scoped; returns [] for an empty site.
+  async findRequisitionIdsForTenantSite(args: {
+    tenant_id: string;
+    site_id: string;
+  }): Promise<string[]> {
+    const rows = await this.prisma.requisition.findMany({
+      where: { tenant_id: args.tenant_id, site_id: args.site_id },
+      select: { id: true },
+    });
+    return rows.map((r) => r.id);
+  }
 }

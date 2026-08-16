@@ -13158,6 +13158,11 @@
       "to": "libs/reporting/tsconfig.lib.json"
     },
     {
+      "from": "libs/reporting/src/lib/reporting.controller.ts",
+      "status": "production",
+      "to": "libs/identity/prisma/seed.ts"
+    },
+    {
       "from": "libs/requisition/prisma/schema.prisma",
       "status": "unscoped",
       "to": "doc/05-conventions.md"
