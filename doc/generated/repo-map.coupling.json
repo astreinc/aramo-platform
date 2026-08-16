@@ -9927,6 +9927,11 @@
     {
       "from": "doc/governance/current/Aramo-Repository-Baseline.md",
       "status": "unscoped",
+      "to": "doc/t8-connector-a-closure-and-connector-b-deferment.md"
+    },
+    {
+      "from": "doc/governance/current/Aramo-Repository-Baseline.md",
+      "status": "unscoped",
       "to": "libs/requisition/prisma/schema.prisma"
     },
     {
