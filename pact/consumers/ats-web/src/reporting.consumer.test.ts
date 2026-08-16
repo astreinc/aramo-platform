@@ -213,6 +213,77 @@ describe('ats-web → reporting', () => {
         expect(body.contract_assignments.coverage).toBe('forward_materialized');
       });
   });
+
+  // T9-B4 — margin current-snapshot aggregate. report:read AND
+  // assignment:commercials:read (the ACCESS_COOKIE recruiter holds both). The
+  // aggregate field is group_margin_percent (NOT the row-level margin_percent
+  // that the global D5 mask strips) per the T9-B4 field-masking amendment.
+  it('GET /v1/reports/margin returns the current-snapshot aggregate by (currency, rate_period)', async () => {
+    await provider
+      .addInteraction()
+      .given('an ats-web recruiter and a commercialized contract assignment exist')
+      .uponReceiving('a margin read')
+      .withRequest('GET', '/v1/reports/margin', (b) => {
+        b.headers({ Cookie: like(ACCESS_COOKIE) });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          eligible_count: like(1),
+          commercialized_count: like(1),
+          missing_commercial_count: like(0),
+          coverage: 'forward_materialized',
+          groups: like([
+            {
+              currency: like('USD'),
+              rate_period: like('HOURLY'),
+              assignment_count: like(1),
+              group_margin_percent: like('20.00'),
+            },
+          ]),
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/reports/margin`, { headers: { Cookie: ACCESS_COOKIE } });
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as {
+          coverage: string;
+          groups: Array<{ group_margin_percent: string | null }>;
+        };
+        expect(body.coverage).toBe('forward_materialized');
+        expect(body.groups[0]?.group_margin_percent).toBe('20.00');
+      });
+  });
+
+  // T9-B4 §15 — an actor WITH reporting access (report:read) but WITHOUT
+  // assignment:commercials:read is rejected 403 by the compound gate (the
+  // reportonly fake token → a report:read-only recruiter JWT provider-side).
+  it('GET /v1/reports/margin without assignment:commercials:read → 403', async () => {
+    await provider
+      .addInteraction()
+      .given('an ats-web recruiter and a commercialized contract assignment exist')
+      .uponReceiving('a margin read without the commercial scope')
+      .withRequest('GET', '/v1/reports/margin', (b) => {
+        b.headers({ Authorization: 'Bearer eyJfake.reportonly.token' });
+      })
+      .willRespondWith(403, (b) => {
+        b.jsonBody({
+          error: {
+            code: 'INSUFFICIENT_PERMISSIONS',
+            message: like('Required scopes not granted'),
+            request_id: uuid(),
+            details: like({}),
+          },
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/reports/margin`, {
+          headers: { Authorization: 'Bearer eyJfake.reportonly.token' },
+        });
+        expect(res.status).toBe(403);
+        const body = (await res.json()) as { error: { code: string } };
+        expect(body.error.code).toBe('INSUFFICIENT_PERMISSIONS');
+      });
+  });
 });
 
 describe('ats-web → me', () => {

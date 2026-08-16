@@ -11,6 +11,7 @@ import {
   PlacementProcessEventRepository,
   AssignmentPipelineReadRepository,
   GuaranteeExposureReadRepository,
+  CommercialMarginReadRepository,
 } from '@aramo/placement';
 import { RequisitionRepository } from '@aramo/requisition';
 import { SavedListRepository } from '@aramo/saved-list';
@@ -30,6 +31,7 @@ import type {
   FallthroughReportView,
   FillPerformanceReportView,
   GuaranteeExposureReportView,
+  MarginReportView,
   PipelineStageRollupView,
   PlacementCountReportView,
   RecruiterMetricKey,
@@ -242,6 +244,10 @@ export class ReportingService {
     // the immutable PermanentPlacement snapshot + remedy facts. Provided by
     // GuaranteeExposureReadModule.
     private readonly guaranteeExposureRepository: GuaranteeExposureReadRepository,
+    // T9-B4 — the placement-owned current-snapshot commercial margin aggregate,
+    // PULLED via the reporting→placement edge (§19). Trailing param (ctor-ripple
+    // contained). Provided by CommercialMarginReadModule.
+    private readonly commercialMarginRepository: CommercialMarginReadRepository,
   ) {}
 
   // Track 4 / T4-B1 (CASE A access) — single-requisition derived capacity, PULLED
@@ -647,6 +653,37 @@ export class ReportingService {
         prorated_credit_total: r.prorated_credit_total,
       })),
       falloff_rate,
+    };
+  }
+
+  // -------------------------------------------------------------------------
+  // T9-B4 — margin current-snapshot operational view. Governed by
+  // Aramo-T9-B4-Directive-v1_0-LOCKED. Placement OWNS the commercial aggregate +
+  // arithmetic (readCurrentMarginSnapshot consumes deriveCommercialMetrics on the
+  // Decimal SUM(pay)/SUM(bill) totals — the ONE formula home; §7/§8). This service
+  // resolves the A3 visible-requisition set, PULLS the aggregate, and stamps the
+  // FORWARD_MATERIALIZED coverage label — NO margin arithmetic here (§29). Aggregate-
+  // only, no query params; report:read AND assignment:commercials:read + tenant/site/A3.
+  // -------------------------------------------------------------------------
+  async getMargin(
+    actor: ActorContext,
+    requestId: string,
+    opts?: { now?: Date },
+  ): Promise<MarginReportView> {
+    const visibleReqIds = await this.resolveVisibleRequisitionIds(actor);
+    const snapshot =
+      await this.commercialMarginRepository.readCurrentMarginSnapshot({
+        tenant_id: actor.tenant_id,
+        requestId,
+        ...(opts?.now === undefined ? {} : { now: opts.now }),
+        ...(visibleReqIds === undefined ? {} : { requisition_ids: visibleReqIds }),
+      });
+    return {
+      eligible_count: snapshot.eligible_count,
+      commercialized_count: snapshot.commercialized_count,
+      missing_commercial_count: snapshot.missing_commercial_count,
+      coverage: 'forward_materialized' as const,
+      groups: snapshot.groups,
     };
   }
 

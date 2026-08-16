@@ -326,6 +326,15 @@ export const SEED_SCOPE_KEYS = [
   // (authoritative-tier act, recruiter excluded — mirrors assignment:create).
   'requisition:import:read',
   'requisition:import:write',
+  // Track 8 / T8-CONNECTOR-A — provider-neutral connector-connection MANAGEMENT
+  // (Settings → Integrations). Distinct from requisition:import:* (which governs
+  // P3 ingestion monitoring): this governs connector connection administration
+  // (list/configure/enable/disable). read + write GRANTED to tenant_admin +
+  // tenant_owner ONLY (administrative tier; recruiter/account_manager excluded).
+  // The connector ServiceAccount does NOT hold these — its execution authority
+  // is requisition:import:write only.
+  'integration:read',
+  'integration:write',
 ] as const;
 export type SeedScopeKey = (typeof SEED_SCOPE_KEYS)[number];
 

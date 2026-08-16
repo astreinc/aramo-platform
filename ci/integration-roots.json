@@ -15,6 +15,7 @@
     "libs/identity",
     "libs/identity-index",
     "libs/ingestion",
+    "libs/integration",
     "libs/job-domain",
     "libs/matching",
     "libs/metering",

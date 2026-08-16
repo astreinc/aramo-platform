@@ -20,6 +20,7 @@ import {
   type KeyObject,
 } from 'jose';
 import { AppModule } from '@aramo/api';
+import { SECRETS_MANAGER_WRITER } from '@aramo/integration';
 // ADR-0024 PR-4a — the /v1/pipelines + /v1/sourcing/pipeline replays now RETRIEVE
 // the lifecycle package and fail closed without it, so the verifier publishes one
 // for its tenant. The module-boundary wall forbids importing the apps/api test
@@ -239,6 +240,12 @@ const TALENT_RECORD_MIGRATIONS = [
 // the portal-thin pact interactions (5 interactions traversing the now
 // class-level @RequireCapability('portal') gate) can pass through
 // EntitlementGuard.
+// T8-CONNECTOR-A — connector connection schema for the ats-web connector-
+// management interactions (IntegrationController is @RequireCapability('ats')).
+const INTEGRATION_INIT_MIGRATION = resolve(
+  ROOT,
+  'libs/integration/prisma/migrations/20260814170000_init_integration_connection/migration.sql',
+);
 const ENTITLEMENT_INIT_MIGRATION = resolve(
   ROOT,
   'libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql',
@@ -909,6 +916,10 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     // TR-15 B1 — a recruiter-tenant session that LACKS consent:decision-log:read
     // (a general authenticated principal), for the decision-log 403 refusal pact.
     let insufficientJwt: string;
+    // T9-B4 — a recruiter session WITH report:read but WITHOUT
+    // assignment:commercials:read, for the margin compound-gate 403 refusal pact
+    // (§15: reporting access is not sufficient; the commercial scope is required).
+    let reportOnlyJwt: string;
     // Assigned in beforeAll before any state handler runs; initialized empty
     // for strict null-checks compliance.
     let dbUrl = '';
@@ -2954,6 +2965,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         // interactions; @RequireCapability('portal') on PortalController
         // requires the tenant to be entitled before RolesGuard runs.
         ENTITLEMENT_INIT_MIGRATION,
+        INTEGRATION_INIT_MIGRATION,
         // PR-A1c §4 — metering schema (in-tx UsageEvent INSERT in every
         // selection + submittal state-transition write method).
         METERING_INIT_MIGRATION,
@@ -3170,6 +3182,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       process.env['DATABASE_URL'] = url;
       process.env['AUTH_AUDIENCE'] = AUDIENCE;
       process.env['AUTH_PUBLIC_KEY'] = publicPem;
+      // T8-CONNECTOR-A — the connector credential-set derives an env-scoped SM id.
+      process.env['ARAMO_ENV'] = process.env['ARAMO_ENV'] ?? 'pact';
       // TR-3 B2 — pin the STUB mailer so the email-verification request state's
       // MAILER_PORT.send is a no-op (never SES). MailerModule's useFactory reads
       // MAILER_PORT at binding; AppModule already imports it (via IdentityModule
@@ -3253,6 +3267,10 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           // batch/list routes. Additive; inert for prior interactions.
           'requisition:import:read',
           'requisition:import:write',
+          // T8-CONNECTOR-A — connector connection management (Settings →
+          // Integrations). Additive; inert for prior interactions.
+          'integration:read',
+          'integration:write',
           // PC-5c — pipeline state machine + activity RolesGuard
           // @RequireScopes. pipeline:change-status gates the transition
           // endpoint (the state machine); pipeline:remove omitted (DELETE is
@@ -3420,6 +3438,24 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         .setExpirationTime('1h')
         .sign(privateKey);
 
+      // T9-B4 — a valid recruiter session holding report:read (+ requisition:read
+      // for visibility resolution) but NOT assignment:commercials:read. JwtAuthGuard
+      // accepts it; RolesGuard on GET /v1/reports/margin rejects 403 because the
+      // compound gate requires the commercial scope (§12/§15). ATS-entitled tenant.
+      reportOnlyJwt = await new SignJWT({
+        sub: RECRUITER_ID,
+        consumer_type: 'recruiter',
+        actor_kind: 'user',
+        tenant_id: TENANT_ID,
+        scopes: ['report:read', 'requisition:read'],
+      })
+        .setProtectedHeader({ alg: ALG })
+        .setIssuedAt()
+        .setIssuer(ISSUER)
+        .setAudience(AUDIENCE)
+        .setExpirationTime('1h')
+        .sign(privateKey);
+
       // M5 PR-6 §4.14 — mock DraftProvider + DeliveryProvider canned
       // results. The outreach-send happy-path interaction asserts
       // model_used + token counts + delivery_channel + delivery_id —
@@ -3539,6 +3575,9 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         .useValue(mockAuditFinancialsGate)
         .overrideProvider('MAILER_PORT')
         .useValue(mockMailer)
+        // T8-CONNECTOR-A — the write-only credential set must not hit AWS SM.
+        .overrideProvider(SECRETS_MANAGER_WRITER)
+        .useValue({ putSecretValue: async () => undefined })
         .compile();
 
       app = module.createNestApplication();
@@ -3898,6 +3937,41 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         await withClient((c) => resetAllRows(c));
       },
 
+      // ===== T8-CONNECTOR-A connector-management pacts (ats-web integration.consumer) =====
+      // Fixture connection id mirrors pact/consumers/ats-web/src/integration.consumer.test.ts (dddddddd-dddd-7ddd-8ddd-dddddddddddd).
+      'a tenant entitled to ats with a caller holding integration:read and one connector connection': async () => {
+        await withClient(async (c) => {
+          await c.query(`DELETE FROM integration."IntegrationConnection" WHERE tenant_id = $1::uuid`, [TENANT_ID]);
+          await c.query(
+            `INSERT INTO integration."IntegrationConnection" (id, tenant_id, provider_key, status, secret_ref, version, created_at, updated_at)
+             VALUES ($1::uuid,$2::uuid,'acme_vms','configured',$3,0,now(),now())`,
+            ['dddddddd-dddd-7ddd-8ddd-dddddddddddd', TENANT_ID, `connector:v1:${TENANT_ID}:dddddddd-dddd-7ddd-8ddd-dddddddddddd`],
+          );
+        });
+      },
+      'a tenant entitled to ats with a caller holding integration:write': async () => {
+        await withClient((c) => c.query(`DELETE FROM integration."IntegrationConnection" WHERE tenant_id = $1::uuid`, [TENANT_ID]).then(() => undefined));
+      },
+      'a tenant entitled to ats with a caller holding integration:write and one connector connection': async () => {
+        await withClient(async (c) => {
+          await c.query(`DELETE FROM integration."IntegrationConnection" WHERE tenant_id = $1::uuid`, [TENANT_ID]);
+          await c.query(
+            `INSERT INTO integration."IntegrationConnection" (id, tenant_id, provider_key, status, version, created_at, updated_at)
+             VALUES ($1::uuid,$2::uuid,'acme_vms','disconnected',0,now(),now())`,
+            ['dddddddd-dddd-7ddd-8ddd-dddddddddddd', TENANT_ID],
+          );
+        });
+      },
+      'a tenant entitled to ats with a caller holding integration:write and a connector connection with no credential': async () => {
+        await withClient(async (c) => {
+          await c.query(`DELETE FROM integration."IntegrationConnection" WHERE tenant_id = $1::uuid`, [TENANT_ID]);
+          await c.query(
+            `INSERT INTO integration."IntegrationConnection" (id, tenant_id, provider_key, status, version, created_at, updated_at)
+             VALUES ($1::uuid,$2::uuid,'acme_vms','disconnected',0,now(),now())`,
+            ['dddddddd-dddd-7ddd-8ddd-dddddddddddd', TENANT_ID],
+          );
+        });
+      },
       // ===== E1-d placement read pacts (ats-web placement.consumer) =====
       // Fixture UUIDs mirror pact/consumers/ats-web/src/placement.consumer.test.ts.
       // The placement is seeded under TENANT_ID (the JWT tenant); requisition:
@@ -6489,6 +6563,42 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         });
       },
 
+      // T9-B4 — one commercialized ACTIVE CONTRACT assignment (STARTED placement →
+      // ACTIVE ContractAssignment → a current open USD/HOURLY 80/100 rate version) so
+      // the margin read returns a single USD/HOURLY group at group_margin_percent
+      // 20.00. accessJwt is see-all (requisition:read:all), so the assignment is visible.
+      'an ats-web recruiter and a commercialized contract assignment exist': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedAtsWebTenant(c);
+          const M_REQ = '00000000-0000-7000-8000-a91200000001';
+          const M_PP = '00000000-0000-7000-8000-a91200000002';
+          const M_CA = '00000000-0000-7000-8000-a91200000003';
+          const M_ARV = '00000000-0000-7000-8000-a91200000004';
+          const FILL = '00000000-0000-7000-8000-a9120000ffff';
+          await c.query(
+            `INSERT INTO placement."PlacementProcess"
+               (id, tenant_id, submittal_id, requisition_id, talent_record_id, state, offered_at)
+             VALUES ($1,$2,$3,$4,$5,'STARTED'::placement."PlacementState", now())
+             ON CONFLICT (id) DO NOTHING`,
+            [M_PP, TENANT_ID, FILL, M_REQ, FILL],
+          );
+          await c.query(
+            `INSERT INTO placement."ContractAssignment"
+               (id, tenant_id, placement_process_id, submittal_id, requisition_id, talent_record_id, started_at, provenance, lifecycle_state, company_id)
+             VALUES ($1,$2,$3,$4,$5,$6, now(),'FORWARD','ACTIVE',$7) ON CONFLICT (id) DO NOTHING`,
+            [M_CA, TENANT_ID, M_PP, FILL, M_REQ, FILL, FILL],
+          );
+          await c.query(
+            `INSERT INTO placement."AssignmentRateVersion"
+               (id, tenant_id, contract_assignment_id, requisition_id, talent_record_id, pay_rate_amount, bill_rate_amount, currency, rate_period, effective_from, effective_to, recorded_by, cancelled_at, change_reason)
+             VALUES ($1,$2,$3,$4,$5, 80.00, 100.00, 'USD','HOURLY','2026-01-01T00:00:00Z', NULL, $6, NULL,'seed')
+             ON CONFLICT (id) DO NOTHING`,
+            [M_ARV, TENANT_ID, M_CA, M_REQ, FILL, FILL],
+          );
+        });
+      },
+
       // /me — the authenticated recruiter (sub = RECRUITER_ID) resolves via
       // UserTenantMembership(user_id, tenant_id) → user + active roles + tenant.
       'an ats-web user with a membership and a role exist': async () => {
@@ -6727,6 +6837,14 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         // token → rewrite to insufficientJwt (a valid session WITHOUT
         // consent:decision-log:read). RolesGuard returns 403 INSUFFICIENT_PERMISSIONS.
         req.headers['authorization'] = `Bearer ${insufficientJwt}`;
+      } else if (
+        typeof authHeader === 'string' &&
+        authHeader === 'Bearer eyJfake.reportonly.token'
+      ) {
+        // T9-B4 — the margin compound-gate 403 interaction ships a fake token →
+        // rewrite to reportOnlyJwt (report:read but NOT assignment:commercials:read).
+        // RolesGuard on GET /v1/reports/margin returns 403 INSUFFICIENT_PERMISSIONS.
+        req.headers['authorization'] = `Bearer ${reportOnlyJwt}`;
       }
       next();
     }

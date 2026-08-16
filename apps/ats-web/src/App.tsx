@@ -1,4 +1,4 @@
-import { RouteGuard, ToastProvider, useSession } from '@aramo/fe-foundation';
+import { ForbiddenState, RouteGuard, ToastProvider, hasScope, useSession } from '@aramo/fe-foundation';
 import { Navigate, Route, Routes } from 'react-router-dom';
 
 import { AdminGate } from './admin/AdminGate';
@@ -34,6 +34,7 @@ import { AssignmentPipelineView } from './reporting/AssignmentPipelineView';
 import { FallthroughView } from './reporting/FallthroughView';
 import { FillPerformanceView } from './reporting/FillPerformanceView';
 import { GuaranteeExposureView } from './reporting/GuaranteeExposureView';
+import { MarginView } from './reporting/MarginView';
 import { ReportingLanding } from './reporting/ReportingLanding';
 import { SearchView } from './search/SearchView';
 import { SourcingPoolView } from './sourcing/SourcingPoolView';
@@ -180,6 +181,21 @@ export function App() {
                           sessionStateOverride={state}
                         >
                           <GuaranteeExposureView />
+                        </RouteGuard>
+                      }
+                    />
+                    {/* T9-B4 — Margin. The route stays report:read (the reporting
+                        surface); the assignment:commercials:read gate is enforced by
+                        the hidden landing link + the backend 403 + the view's own
+                        scope check (no fetch when gated away). */}
+                    <Route
+                      path="reports/margin"
+                      element={
+                        <RouteGuard
+                          requireScope="report:read"
+                          sessionStateOverride={state}
+                        >
+                          <MarginView />
                         </RouteGuard>
                       }
                     />
@@ -474,11 +490,16 @@ export function App() {
                     <Route
                       path="admin/settings/integrations/*"
                       element={
-                        <RouteGuard
-                          requireScope="requisition:import:read"
-                          sessionStateOverride={state}
-                        >
-                          {hasAdminScope(state.session) ? (
+                        // T8-CONNECTOR-A: the Integrations page now hosts TWO
+                        // independently-governed siblings — P3 ingestion
+                        // monitoring (`requisition:import:read`) and connector
+                        // connection management (`integration:read`). The route
+                        // is reachable by EITHER scope; each panel self-gates on
+                        // its OWN scope (§38 — a narrower permission must NOT
+                        // become dependent on an unrelated broader gate).
+                        hasScope(state.session, 'requisition:import:read') ||
+                        hasScope(state.session, 'integration:read') ? (
+                          hasAdminScope(state.session) ? (
                             <Routes>
                               <Route element={<SettingsShell />}>
                                 <Route
@@ -489,8 +510,10 @@ export function App() {
                             </Routes>
                           ) : (
                             <IntegrationsSection />
-                          )}
-                        </RouteGuard>
+                          )
+                        ) : (
+                          <ForbiddenState scope="integration:read" />
+                        )
                       }
                     />
                     {/* Admin-gated section. AdminGate is the single

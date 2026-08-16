@@ -2904,6 +2904,216 @@ paths:
       security:
         - BearerAuth: []
 
+  # T8-CONNECTOR-A — provider-neutral connector connection MANAGEMENT
+  # (Settings → Integrations). `integration:read` governs visibility;
+  # `integration:write` governs mutations. NO response ever exposes secret_ref,
+  # an AWS identifier, or credential material; credential set is a dedicated
+  # write-only endpoint. Provider-neutral: no provider name/transport/OAuth/
+  # webhook/SFTP/polling/run-now.
+  /v1/integrations:
+    get:
+      operationId: listIntegrationConnections
+      summary: List connector connections (T8-CONNECTOR-A).
+      description: Returns the tenant's connector connections (secret-free view). Guarded by `integration:read`.
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IntegrationConnectionListResponse'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+      security:
+        - BearerAuth: []
+    post:
+      operationId: createIntegrationConnection
+      summary: Create a connector connection (T8-CONNECTOR-A).
+      description: Creates a connection in `disconnected` state. Guarded by `integration:write`. No credential is accepted here.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateIntegrationConnectionRequest'
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IntegrationConnectionView'
+        '400':
+          description: Validation error.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+      security:
+        - BearerAuth: []
+  /v1/integrations/{id}:
+    get:
+      operationId: getIntegrationConnection
+      summary: Get a connector connection, secret-free (T8-CONNECTOR-A).
+      description: Returns a single connector connection (secret-free view). Guarded by `integration:read`. A cross-tenant / absent id returns 404 (never 403).
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IntegrationConnectionView'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+    patch:
+      operationId: updateIntegrationConnection
+      summary: Update non-secret connection metadata (T8-CONNECTOR-A).
+      description: Updates non-secret connection metadata. Guarded by `integration:write`. Never accepts credential material.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateIntegrationConnectionRequest'
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IntegrationConnectionView'
+        '400':
+          description: Validation error.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+  /v1/integrations/{id}/credential:
+    post:
+      operationId: setIntegrationConnectionCredential
+      summary: Set a connection credential, write-only (T8-CONNECTOR-A).
+      description: |
+        Stores the credential in AWS Secrets Manager under a server-derived id and
+        transitions the connection to `configured`. The value is NEVER persisted to
+        the database, echoed, or returned. Guarded by `integration:write`.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetIntegrationCredentialRequest'
+      responses:
+        '200':
+          description: OK. Returns the secret-free view (no credential echoed).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IntegrationConnectionView'
+        '400':
+          description: Validation error.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+  /v1/integrations/{id}/enable:
+    post:
+      operationId: enableIntegrationConnection
+      summary: Enable a connector connection (T8-CONNECTOR-A).
+      description: Transitions a configured/degraded/disabled connection to active. Guarded by `integration:write`. Fails 409 when no credential is configured.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IntegrationConnectionView'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '409':
+          description: The connection cannot be enabled in its current state (e.g. no credential configured) — code CONNECTOR_CONFIGURATION_INVALID.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+      security:
+        - BearerAuth: []
+  /v1/integrations/{id}/disable:
+    post:
+      operationId: disableIntegrationConnection
+      summary: Disable a connector connection, history preserved (T8-CONNECTOR-A).
+      description: Administratively disables a connection while preserving execution/audit history. Guarded by `integration:write`.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IntegrationConnectionView'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '409':
+          description: Illegal lifecycle transition — code CONNECTOR_CONFIGURATION_INVALID.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
   /v1/reports/assignment-pipeline:
     get:
       operationId: getAssignmentPipelineReport
@@ -2941,6 +3151,44 @@ paths:
       security:
         - BearerAuth: []
 
+  /v1/reports/margin:
+    get:
+      operationId: getMarginReport
+      summary: Margin current-snapshot operational view (T9-B4).
+      description: |
+        Current snapshot (no period) of contract-assignment margin, aggregated
+        by (currency, rate_period). group_margin_percent is the GOVERNED
+        bill-rate-weighted aggregate SUM(bill-pay)/SUM(bill)*100 as a scale-2
+        decimal string (null when the group bill total is zero) — never the
+        arithmetic mean of per-assignment margins. Coverage is FORWARD_MATERIALIZED:
+        eligible_count = commercialized_count + missing_commercial_count. CONTRACT
+        assignments only — PermanentPlacement, ENDED, and future/cancelled-only
+        versions are excluded. Aggregate-only: no per-assignment rows, no
+        talent/person ids, no pay/bill/spread/markup, no version lineage.
+        COMPOUND authorization: report:read AND assignment:commercials:read, plus
+        tenant/site/A3. The finer compensation:view:* scopes are NOT a gate here.
+      parameters:
+        - name: site_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+          description: Optional site narrowing (must match the actor's site claim).
+      responses:
+        '200':
+          description: Current margin aggregate by (currency, rate_period).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MarginReport'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+      security:
+        - BearerAuth: []
+
 components:
   securitySchemes:
     # Duplicated byte-for-byte from openapi/common.yaml per locked invariant
@@ -2962,6 +3210,78 @@ components:
         secret — the shared signing secret is provisioned out-of-band and never documented.
 
   schemas:
+    # T8-CONNECTOR-A — provider-neutral connector connection views/requests. NO
+    # schema exposes secret_ref, an AWS identifier, or credential material.
+    IntegrationConnectionView:
+      type: object
+      additionalProperties: false
+      required: [id, tenant_id, provider_key, status, has_secret, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        provider_key:
+          type: string
+        status:
+          type: string
+          enum: [disconnected, configured, active, degraded, disabled]
+        has_secret:
+          type: boolean
+          description: Whether a credential has been configured. The value/reference is never exposed.
+        provider_account_id:
+          type: [string, 'null']
+        last_attempted_at:
+          type: [string, 'null']
+          format: date-time
+        last_successful_at:
+          type: [string, 'null']
+          format: date-time
+        last_error_code:
+          type: [string, 'null']
+        last_error_summary:
+          type: [string, 'null']
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    IntegrationConnectionListResponse:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/IntegrationConnectionView'
+    CreateIntegrationConnectionRequest:
+      type: object
+      additionalProperties: false
+      required: [provider_key]
+      properties:
+        provider_key:
+          type: string
+          description: Normalized extensible provider key (never a frozen vendor enum).
+        provider_account_id:
+          type: [string, 'null']
+    UpdateIntegrationConnectionRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        provider_account_id:
+          type: [string, 'null']
+    SetIntegrationCredentialRequest:
+      type: object
+      additionalProperties: false
+      required: [credential]
+      properties:
+        credential:
+          type: string
+          description: Write-only. Stored in Secrets Manager under a server-derived id; never persisted to the database, echoed, or returned.
     # T9-B3 — assignment-pipeline current-snapshot operational view
     # (GET /v1/reports/assignment-pipeline). Counts only; no row items, no
     # financial fields, no ended_at; additionalProperties:false closes the
@@ -3015,6 +3335,59 @@ components:
             coverage:
               type: string
               enum: [forward_materialized]
+
+    # T9-B4 — margin current-snapshot operational view (GET /v1/reports/margin).
+    # Aggregate-only by (currency, rate_period); group_margin_percent is the
+    # governed bill-rate-weighted aggregate (scale-2 string or null). NO per-row
+    # commercial fields, NO ids, NO version lineage; additionalProperties:false
+    # closes the contract (§13/§25 data-safety). Field name is group_margin_percent
+    # per Aramo-T9-B4-Margin-Field-Masking-Amendment-v1_0-LOCKED (D5 mask collision).
+    MarginReport:
+      type: object
+      additionalProperties: false
+      required:
+        - eligible_count
+        - commercialized_count
+        - missing_commercial_count
+        - coverage
+        - groups
+      properties:
+        eligible_count:
+          type: integer
+          minimum: 0
+          description: ACTIVE CONTRACT assignments in the visible set (= commercialized + missing).
+        commercialized_count:
+          type: integer
+          minimum: 0
+          description: Eligible assignments with exactly one current non-cancelled commercial version.
+        missing_commercial_count:
+          type: integer
+          minimum: 0
+          description: Eligible assignments with no usable current commercial version (counted, not dropped).
+        coverage:
+          type: string
+          enum: [forward_materialized]
+        groups:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [currency, rate_period, assignment_count, group_margin_percent]
+            properties:
+              currency:
+                type: string
+                description: Grouping key; no cross-currency monetary total is produced (no FX substrate).
+              rate_period:
+                type: string
+                enum: [HOURLY, DAILY, WEEKLY, MONTHLY, ANNUAL]
+              assignment_count:
+                type: integer
+                minimum: 0
+              group_margin_percent:
+                type: [string, 'null']
+                description: |
+                  Bill-rate-weighted aggregate SUM(bill-pay)/SUM(bill)*100 for the group,
+                  scale-2 decimal string; null when the group bill total is zero.
 
     # T9-B2 — fallthrough rate + reasons operational report
     # (GET /v1/reports/fallthrough). Computed-on-read; no persistence. Note:

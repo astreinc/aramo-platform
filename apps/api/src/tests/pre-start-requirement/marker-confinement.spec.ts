@@ -70,6 +70,10 @@ const EXACT_ALLOWLIST = new Set<string>([
   // Track 7 / T7-P3 — the guarantee-term-versioning integration proof exercises the
   // tenant-reset DELETE escape (governed version-row cleanup) via raw SET LOCAL.
   'libs/placement/src/tests/t7-p3-guarantee-term-versioning.integration.spec.ts',
+  // T9-B4 — the commercial-margin read integration proof exercises the tenant-reset
+  // DELETE escape (self-restoring DDL window: cleans up the injected corrupt
+  // >1-current-version rows before re-adding the overlap EXCLUDE) via raw SET LOCAL.
+  'libs/placement/src/tests/commercial-margin-read.integration.spec.ts',
 ]);
 
 describe('reset-marker confinement — exact-path default-deny (§2.4)', () => {
