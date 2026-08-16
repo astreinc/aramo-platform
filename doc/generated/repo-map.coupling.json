@@ -8063,6 +8063,33 @@
       "to": "libs/talent-record/src/lib/dto/talent-record.view.ts"
     },
     {
+      "excludedBy": "src/**/*.spec.ts",
+      "from": "apps/ats-web/src/placement/falloff-reason-drift.spec.ts",
+      "status": "excluded",
+      "to": "libs/placement/src/lib/reasons/permanent-falloff-reasons.ts"
+    },
+    {
+      "from": "apps/ats-web/src/placement/falloff-reason-labels.ts",
+      "status": "production",
+      "to": "libs/placement/src/lib/reasons/permanent-falloff-reasons.ts"
+    },
+    {
+      "from": "apps/ats-web/src/placement/permanent-placement-api.ts",
+      "status": "production",
+      "to": "pact/consumers/ats-web/src/permanent-placement.consumer.test.ts"
+    },
+    {
+      "excludedBy": "src/**/*.spec.ts",
+      "from": "apps/ats-web/src/placement/permanent-placement-drift.spec.ts",
+      "status": "excluded",
+      "to": "libs/placement/src/lib/lifecycle/placement-lifecycle.ts"
+    },
+    {
+      "from": "apps/ats-web/src/placement/permanent-placement-types.ts",
+      "status": "production",
+      "to": "libs/placement/src/lib/placement-process.types.ts"
+    },
+    {
       "from": "apps/ats-web/src/placement/placement-api.ts",
       "status": "production",
       "to": "pact/consumers/ats-web/src/placement.consumer.test.ts"
@@ -8107,6 +8134,28 @@
       "from": "apps/ats-web/src/requisitions/decimal-format.ts",
       "status": "production",
       "to": "libs/requisition/src/lib/compensation-validation.ts"
+    },
+    {
+      "from": "apps/ats-web/src/requisitions/guarantee-terms-api.ts",
+      "status": "production",
+      "to": "pact/consumers/ats-web/src/permanent-placement.consumer.test.ts"
+    },
+    {
+      "excludedBy": "src/**/*.spec.ts",
+      "from": "apps/ats-web/src/requisitions/guarantee-terms-drift.spec.ts",
+      "status": "excluded",
+      "to": "libs/placement/src/lib/lifecycle/placement-lifecycle.ts"
+    },
+    {
+      "excludedBy": "src/**/*.spec.ts",
+      "from": "apps/ats-web/src/requisitions/guarantee-terms-drift.spec.ts",
+      "status": "excluded",
+      "to": "libs/placement/src/lib/permanent/guarantee-terms-source.ts"
+    },
+    {
+      "from": "apps/ats-web/src/requisitions/guarantee-terms-types.ts",
+      "status": "production",
+      "to": "libs/placement/src/lib/permanent/guarantee-term-version.ts"
     },
     {
       "from": "apps/ats-web/src/requisitions/iso-4217-currency.ts",
@@ -13589,6 +13638,26 @@
     { "from": "package.json", "status": "unscoped", "to": "scripts/verify-vocabulary.sh" },
     { "from": "package.json", "status": "unscoped", "to": "tools/db-sync-local.sh" },
     {
+      "from": "pact/consumers/ats-web/src/permanent-placement.consumer.test.ts",
+      "status": "unscoped",
+      "to": "apps/ats-web/src/placement/permanent-placement-api.ts"
+    },
+    {
+      "from": "pact/consumers/ats-web/src/permanent-placement.consumer.test.ts",
+      "status": "unscoped",
+      "to": "apps/ats-web/src/reporting/guarantee-exposure-api.ts"
+    },
+    {
+      "from": "pact/consumers/ats-web/src/permanent-placement.consumer.test.ts",
+      "status": "unscoped",
+      "to": "apps/ats-web/src/requisitions/guarantee-terms-api.ts"
+    },
+    {
+      "from": "pact/consumers/ats-web/src/permanent-placement.consumer.test.ts",
+      "status": "unscoped",
+      "to": "pact/provider/src/verify-api.ts"
+    },
+    {
       "from": "pact/consumers/ats-web/src/placement.consumer.test.ts",
       "status": "unscoped",
       "to": "apps/ats-web/src/placement/placement-api.ts"
@@ -14302,6 +14371,11 @@
       "from": "pact/provider/src/verify-api.ts",
       "status": "unscoped",
       "to": "libs/task/prisma/migrations/20260617120000_task_workspace_fields/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "pact/consumers/ats-web/src/permanent-placement.consumer.test.ts"
     },
     {
       "from": "pact/provider/src/verify-api.ts",

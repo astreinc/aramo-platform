@@ -1033,6 +1033,18 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // so the PlacementProcess CASCADE does not clear them. TRUNCATE bypasses the
       // AssignmentRateVersion append-only DELETE-reject trigger (a table-level op).
       await c.query('TRUNCATE TABLE placement."AssignmentRateVersion", placement."ContractAssignment" CASCADE');
+      // Track 7 / T7-P5 — the permanent-placement aggregate + its children are
+      // UUID-linked to PlacementProcess (NO FK), so the CASCADE above does not
+      // clear them. PermanentPlacementRemedy + PermanentPlacementEvent FK to
+      // PermanentPlacement, so TRUNCATE PermanentPlacement CASCADE clears them;
+      // the guarantee-term-version table has no FK (a plain requisition_id axis),
+      // so it needs its own TRUNCATE. A table-level TRUNCATE bypasses the
+      // append-only DELETE-reject row triggers on the remedy + term-version tables
+      // (the AssignmentRateVersion precedent above). Cleared per interaction so a
+      // prior T7 state cannot shadow the null / empty / not-found interactions.
+      await c.query(
+        'TRUNCATE TABLE placement."PermanentPlacement", placement."PermanentPlacementGuaranteeTermVersion" CASCADE',
+      );
       // PC-5d — task + attachment (no FK; standalone truncates). The
       // attachment 'talent' owner lives in talent_record."TalentRecord",
       // already truncated above.
@@ -3303,6 +3315,14 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           // for prior interactions (they hit neither commercials route).
           'assignment:commercials:read',
           'assignment:commercials:write',
+          // Track 7 / T7-P5 — the permanent-placement guarantee scopes so the ats-web
+          // permanent-placement.consumer interactions pass RolesGuard on GET permanent /
+          // satisfy (transition) / falloff / remedy-complete / guarantee-terms create/list/
+          // effective/revise. Additive; inert for prior interactions.
+          'placement:permanent:read',
+          'placement:permanent:transition',
+          'placement:permanent:terms:write',
+          'placement:remedy:resolve',
           // AUTHZ-D5 field-mask — the AssignmentCommercialView carries the SAME field
           // names (pay_rate_amount / bill_rate_amount / margin_percent / markup_percent)
           // the global CompensationFieldMaskInterceptor masks. A commercials actor that
@@ -3603,7 +3623,281 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       }
     }
 
+    // ===== Track 7 / T7-P5 permanent-placement seed helpers + fixtures =====
+    // The fixture UUIDs are byte-identical to those in
+    // pact/consumers/ats-web/src/permanent-placement.consumer.test.ts (the shared
+    // contract fixtures). Dates: today at authoring is 2026-08-15 — the "elapsed"
+    // window ends 2026-04-01 (satisfy allowed); the "active" window ends 2027-01-01+
+    // (satisfy premature → STATE_INVALID). All seeds run after resetAllRows (which
+    // now TRUNCATEs the four PermanentPlacement* tables), so each interaction is
+    // deterministic and self-contained.
+    const T7_PLACEMENT_ID = '00000000-0000-7000-8000-7e1200000001';
+    const T7_PERMANENT_ID = '00000000-0000-7000-8000-7e1200000002';
+    const T7_REMEDY_ID = '00000000-0000-7000-8000-7e1200000003';
+    const T7_REPLACEMENT_PID = '00000000-0000-7000-8000-7e1200000004';
+    const T7_SUB = '00000000-0000-7000-8000-50b000000001';
+    const T7_REQ = '00000000-0000-7000-8000-4e9000000001';
+    const T7_TAL = '00000000-0000-7000-8000-7a1e00000001';
+    const T7_REC = '00000000-0000-7000-8000-4ec000000001';
+    const T7_TERM_CURRENT_ID = '00000000-0000-7000-8000-7e1200000011';
+    const T7_TERM_HIST_ID = '00000000-0000-7000-8000-7e1200000012';
+
+    // Seed a PlacementProcess parent (STARTED / PERMANENT) + its immutable
+    // PermanentPlacement activation snapshot. `kind` NULL / 'CONTRACT' with no
+    // snapshot models a legacy/contract placement (GET permanent → { permanent: null }).
+    async function seedPermanentAggregate(
+      c: Client,
+      o: {
+        placementId?: string;
+        permanentId?: string;
+        lifecycleState: string;
+        startDate: string;
+        durationDays: number;
+        endDate: string;
+        remedyPolicy: string;
+        exposureAmount?: string;
+        exposureCurrency?: string;
+        createdAt?: string;
+        falloffDate?: string | null;
+        falloffReason?: string | null;
+      },
+    ): Promise<void> {
+      const pid = o.placementId ?? T7_PLACEMENT_ID;
+      const createdAt = o.createdAt ?? '2026-02-01T00:00:00Z';
+      await c.query(
+        `INSERT INTO placement."PlacementProcess"
+           (id, tenant_id, submittal_id, requisition_id, talent_record_id, state, placement_kind, offered_at, created_at)
+         VALUES ($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,'STARTED','PERMANENT'::placement."PlacementKind",'2026-01-01T00:00:00Z',$6::timestamptz)`,
+        [pid, TENANT_ID, T7_SUB, T7_REQ, T7_TAL, createdAt],
+      );
+      const falloffSet = o.falloffDate != null;
+      await c.query(
+        `INSERT INTO placement."PermanentPlacement"
+           (id, tenant_id, placement_process_id, submittal_id, requisition_id, talent_record_id,
+            lifecycle_state, guarantee_start_date, guarantee_duration_days, guarantee_end_date,
+            remedy_policy, guarantee_exposure_amount, guarantee_exposure_currency, terms_source,
+            recorded_by, created_at, falloff_effective_date, falloff_reason, falloff_recorded_by, falloff_recorded_at)
+         VALUES ($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,$6::uuid,
+                 $7::placement."PermanentPlacementState",$8::date,$9,$10::date,
+                 $11::placement."RemedyPolicy",$12,$13,'MANUAL',
+                 $14::uuid,$15::timestamptz,$16::date,$17,$18::uuid,$19::timestamptz)`,
+        [
+          o.permanentId ?? T7_PERMANENT_ID, TENANT_ID, pid, T7_SUB, T7_REQ, T7_TAL,
+          o.lifecycleState, o.startDate, o.durationDays, o.endDate,
+          o.remedyPolicy, o.exposureAmount ?? '10000.00', o.exposureCurrency ?? 'USD',
+          T7_REC, createdAt,
+          falloffSet ? o.falloffDate : null, falloffSet ? o.falloffReason : null,
+          falloffSet ? T7_REC : null, falloffSet ? createdAt : null,
+        ],
+      );
+    }
+
+    // Seed a PermanentPlacementRemedy obligation row. REPLACEMENT ⇒ amount/currency NULL;
+    // REFUND/PRORATED_CREDIT ⇒ both set. A completed remedy carries the coherent completion
+    // field set (monetary → completion_reference; replacement → replacement id).
+    async function seedPermanentRemedyRow(
+      c: Client,
+      o: {
+        remedyType: string;
+        calculatedAmount?: string | null;
+        currency?: string | null;
+        remainingDays?: number | null;
+        falloffDate: string;
+        dueAt: string;
+        completedAt?: string | null;
+        completionReference?: string | null;
+        replacementPid?: string | null;
+      },
+    ): Promise<void> {
+      const completed = o.completedAt != null;
+      await c.query(
+        `INSERT INTO placement."PermanentPlacementRemedy"
+           (id, tenant_id, permanent_placement_id, requisition_id, talent_record_id, remedy_type,
+            calculated_amount, currency, exposure_amount_snapshot, duration_days_snapshot, remaining_days,
+            falloff_effective_date, created_by, due_at, completed_at, completed_by, completion_reference, replacement_placement_process_id)
+         VALUES ($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,$6::placement."RemedyPolicy",
+                 $7,$8,'10000.00',90,$9,$10::date,$11::uuid,$12::timestamptz,$13::timestamptz,$14::uuid,$15,$16::uuid)`,
+        [
+          T7_REMEDY_ID, TENANT_ID, T7_PERMANENT_ID, T7_REQ, T7_TAL, o.remedyType,
+          o.calculatedAmount ?? null, o.currency ?? null, o.remainingDays ?? null,
+          o.falloffDate, T7_REC, o.dueAt,
+          o.completedAt ?? null, completed ? T7_REC : null,
+          o.completionReference ?? null, o.replacementPid ?? null,
+        ],
+      );
+    }
+
+    // Seed a reusable requisition-level guarantee-term version (distinct from the
+    // per-placement snapshot). An open current version has effective_to = null.
+    async function seedGuaranteeTermVersionRow(
+      c: Client,
+      o: { id: string; effectiveFrom: string; effectiveTo?: string | null; recordedAt?: string },
+    ): Promise<void> {
+      await c.query(
+        `INSERT INTO placement."PermanentPlacementGuaranteeTermVersion"
+           (id, tenant_id, requisition_id, effective_from, effective_to, guarantee_duration_days,
+            remedy_policy, guarantee_exposure_amount, currency, source_type, source_reference, source_version,
+            recorded_by, recorded_at, supersedes_version_id, correlation_id)
+         VALUES ($1::uuid,$2::uuid,$3::uuid,$4::date,$5::date,90,
+                 'REPLACEMENT'::placement."RemedyPolicy",'10000.00','USD','MANUAL',NULL,NULL,
+                 $6::uuid,$7::timestamptz,NULL,NULL)`,
+        [o.id, TENANT_ID, T7_REQ, o.effectiveFrom, o.effectiveTo ?? null, T7_REC, o.recordedAt ?? '2026-01-01T00:00:00Z'],
+      );
+    }
+
     const stateHandlers: Record<string, () => Promise<void>> = {
+      // ===== Track 7 / T7-P5 permanent-placement pacts (ats-web permanent-placement.consumer) =====
+      // Deterministic T7 states for the ats-web permanent-placement + guarantee-terms +
+      // guarantee-exposure interactions. Each seeds via the helpers above after resetAllRows.
+      'an ats-web reader and a permanent placement exists': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedPermanentAggregate(c, {
+            lifecycleState: 'GUARANTEE_ACTIVE',
+            startDate: '2026-06-01', durationDays: 365, endDate: '2027-06-01',
+            remedyPolicy: 'REPLACEMENT', createdAt: '2026-06-01T00:00:00Z',
+          });
+        });
+      },
+      'an ats-web reader and a contract placement without a permanent aggregate exists': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          // A CONTRACT/legacy placement: PlacementProcess only, no PermanentPlacement snapshot.
+          await c.query(
+            `INSERT INTO placement."PlacementProcess"
+               (id, tenant_id, submittal_id, requisition_id, talent_record_id, state, placement_kind, offered_at, created_at)
+             VALUES ($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,'STARTED','CONTRACT'::placement."PlacementKind",'2026-01-01T00:00:00Z','2026-01-01T00:00:00Z')`,
+            [T7_PLACEMENT_ID, TENANT_ID, T7_SUB, T7_REQ, T7_TAL],
+          );
+        });
+      },
+      'an ats-web writer and a permanent placement whose guarantee window has elapsed exists': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedPermanentAggregate(c, {
+            lifecycleState: 'GUARANTEE_ACTIVE',
+            startDate: '2026-01-01', durationDays: 90, endDate: '2026-04-01',
+            remedyPolicy: 'REPLACEMENT', createdAt: '2026-01-01T00:00:00Z',
+          });
+        });
+      },
+      'an ats-web writer and a permanent placement still within its guarantee window exists': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedPermanentAggregate(c, {
+            lifecycleState: 'GUARANTEE_ACTIVE',
+            startDate: '2026-06-01', durationDays: 365, endDate: '2027-06-01',
+            remedyPolicy: 'REPLACEMENT', createdAt: '2026-06-01T00:00:00Z',
+          });
+        });
+      },
+      'an ats-web writer and an active permanent placement within its guarantee window exists': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          // Window [2026-01-01, 2027-01-01): a falloff date of 2026-06-01 is valid;
+          // 2027-06-01 (>= end) is out-of-window (FALLOFF_WINDOW_INVALID).
+          await seedPermanentAggregate(c, {
+            lifecycleState: 'GUARANTEE_ACTIVE',
+            startDate: '2026-01-01', durationDays: 365, endDate: '2027-01-01',
+            remedyPolicy: 'REPLACEMENT', createdAt: '2026-01-01T00:00:00Z',
+          });
+        });
+      },
+      'an ats-web resolver and a permanent placement with an open replacement obligation exists': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedPermanentAggregate(c, {
+            lifecycleState: 'REPLACEMENT_DUE',
+            startDate: '2026-01-01', durationDays: 365, endDate: '2027-01-01',
+            remedyPolicy: 'REPLACEMENT', createdAt: '2026-01-01T00:00:00Z',
+            falloffDate: '2026-06-01', falloffReason: 'CLIENT_TERMINATED_PERFORMANCE',
+          });
+          await seedPermanentRemedyRow(c, {
+            remedyType: 'REPLACEMENT', falloffDate: '2026-06-01', dueAt: '2026-09-01T00:00:00Z',
+          });
+          // A valid replacement candidate: same tenant + requisition, PERMANENT + STARTED.
+          await c.query(
+            `INSERT INTO placement."PlacementProcess"
+               (id, tenant_id, submittal_id, requisition_id, talent_record_id, state, placement_kind, offered_at, created_at)
+             VALUES ($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,'STARTED','PERMANENT'::placement."PlacementKind",'2026-07-01T00:00:00Z','2026-07-01T00:00:00Z')`,
+            [T7_REPLACEMENT_PID, TENANT_ID, T7_SUB, T7_REQ, T7_TAL],
+          );
+        });
+      },
+      'an ats-web resolver and a permanent placement with an open refund obligation exists': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedPermanentAggregate(c, {
+            lifecycleState: 'REFUND_DUE',
+            startDate: '2026-01-01', durationDays: 365, endDate: '2027-01-01',
+            remedyPolicy: 'REFUND', createdAt: '2026-01-01T00:00:00Z',
+            falloffDate: '2026-06-01', falloffReason: 'TALENT_RESIGNED',
+          });
+          await seedPermanentRemedyRow(c, {
+            remedyType: 'REFUND', calculatedAmount: '5863.01', currency: 'USD',
+            falloffDate: '2026-06-01', dueAt: '2026-09-01T00:00:00Z',
+          });
+        });
+      },
+      'an ats-web resolver and a permanent placement whose remedy is already completed exists': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedPermanentAggregate(c, {
+            lifecycleState: 'REMEDY_COMPLETED',
+            startDate: '2026-01-01', durationDays: 365, endDate: '2027-01-01',
+            remedyPolicy: 'REFUND', createdAt: '2026-01-01T00:00:00Z',
+            falloffDate: '2026-06-01', falloffReason: 'TALENT_RESIGNED',
+          });
+          await seedPermanentRemedyRow(c, {
+            remedyType: 'REFUND', calculatedAmount: '5863.01', currency: 'USD',
+            falloffDate: '2026-06-01', dueAt: '2026-09-01T00:00:00Z',
+            completedAt: '2026-07-01T00:00:00Z', completionReference: 'CN-2026-0001',
+          });
+        });
+      },
+      'an ats-web reader and a requisition with a guarantee-terms history exists': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          // A closed historical version + an open current version (newest first on read).
+          await seedGuaranteeTermVersionRow(c, {
+            id: T7_TERM_HIST_ID, effectiveFrom: '2026-01-01', effectiveTo: '2026-06-01',
+            recordedAt: '2026-01-01T00:00:00Z',
+          });
+          await seedGuaranteeTermVersionRow(c, {
+            id: T7_TERM_CURRENT_ID, effectiveFrom: '2026-06-01', effectiveTo: null,
+            recordedAt: '2026-06-01T00:00:00Z',
+          });
+        });
+      },
+      'an ats-web reader and a requisition with no guarantee terms exists': async () => {
+        await withClient((c) => resetAllRows(c));
+      },
+      'an ats-web writer and a requisition with an open current guarantee-terms version exists': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedGuaranteeTermVersionRow(c, {
+            id: T7_TERM_CURRENT_ID, effectiveFrom: '2026-06-01', effectiveTo: null,
+            recordedAt: '2026-06-01T00:00:00Z',
+          });
+        });
+      },
+      'an ats-web recruiter and permanent-placement guarantee exposure data exist': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          // One GUARANTEE_ACTIVE placement whose activation instant (created_at) is in the
+          // report window [2026-08-01, 2026-09-01). requisition:read:all → see-all.
+          await seedPermanentAggregate(c, {
+            lifecycleState: 'GUARANTEE_ACTIVE',
+            startDate: '2026-08-05', durationDays: 365, endDate: '2027-08-05',
+            remedyPolicy: 'REPLACEMENT', exposureAmount: '10000.00', exposureCurrency: 'USD',
+            createdAt: '2026-08-10T00:00:00Z',
+          });
+        });
+      },
+      'an ats-web recruiter and no permanent-placement guarantee exposure data exist': async () => {
+        await withClient((c) => resetAllRows(c));
+      },
+
       // ===== E1-d placement read pacts (ats-web placement.consumer) =====
       // Fixture UUIDs mirror pact/consumers/ats-web/src/placement.consumer.test.ts.
       // The placement is seeded under TENANT_ID (the JWT tenant); requisition:

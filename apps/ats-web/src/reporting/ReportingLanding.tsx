@@ -29,6 +29,11 @@ export function ReportingLanding(): JSX.Element {
             Assignment Pipeline
           </Link>
         </li>
+        <li>
+          <Link to="/reports/guarantee-exposure" data-testid="reports-link-guarantee-exposure">
+            Guarantee Exposure
+          </Link>
+        </li>
       </ul>
     </section>
   );
