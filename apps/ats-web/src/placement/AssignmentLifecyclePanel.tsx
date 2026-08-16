@@ -1,17 +1,20 @@
 import { hasScope, type Session, useSession } from '@aramo/fe-foundation';
 import { useCallback, useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 import { Button, Card, CardHead, InlineAlert } from '../ui';
 
+import { ConvertToPermanentDialog } from './ConvertToPermanentDialog';
 import { EndAssignmentDialog } from './EndAssignmentDialog';
 import { getPlacementAssignment } from './placement-api';
 import {
-  ASSIGNMENT_END_REASON_LABELS,
+  ASSIGNMENT_END_REASON_DISPLAY_LABELS,
   ASSIGNMENT_LIFECYCLE_LABELS,
   ASSIGNMENT_PROVENANCE_LABELS,
   type ContractAssignmentEndReason,
   type ContractAssignmentLifecycleState,
   type ContractAssignmentView,
+  type ConvertToPermanentResponse,
   type PlacementAssignmentResponse,
 } from './types';
 
@@ -39,6 +42,9 @@ export interface AssignmentLifecyclePanelProps {
     id: string,
     endReason: ContractAssignmentEndReason,
   ) => Promise<{ ok: true }>;
+  // Track 7 / T7-PX — injectable conversion seams (mirror the end/get seams for tests).
+  readonly convertToPermanentFn?: (id: string) => Promise<ConvertToPermanentResponse>;
+  readonly effectiveTermsFn?: (requisitionId: string) => Promise<import('../requisitions/guarantee-terms-types').GuaranteeTermVersionView>;
 }
 
 type LoadState =
@@ -55,21 +61,27 @@ export function AssignmentLifecyclePanel({
   sessionOverride,
   getAssignmentFn,
   endAssignmentFn,
+  convertToPermanentFn,
+  effectiveTermsFn,
 }: AssignmentLifecyclePanelProps) {
   const sessionState = useSession();
+  const navigate = useNavigate();
   const session: Session | null =
     sessionOverride ??
     (sessionState.status === 'authenticated' ? sessionState.session : null);
-  const canRead =
-    session !== null && Array.isArray(session.scopes) && hasScope(session, 'assignment:read');
-  const canEnd =
-    session !== null && Array.isArray(session.scopes) && hasScope(session, 'assignment:end');
+  const scoped = session !== null && Array.isArray(session.scopes);
+  const canRead = scoped && hasScope(session, 'assignment:read');
+  const canEnd = scoped && hasScope(session, 'assignment:end');
+  // Track 7 / T7-PX §9 — conversion needs the EXACT conjunction assignment:end AND
+  // placement:permanent:transition (both authoritative-tier; exact-string match, no wildcard).
+  const canConvert = scoped && hasScope(session, 'assignment:end') && hasScope(session, 'placement:permanent:transition');
 
   const getAssignmentFun = getAssignmentFn ?? getPlacementAssignment;
 
   const [state, setState] = useState<LoadState>({ status: 'loading' });
   const [refreshKey, setRefreshKey] = useState(0);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [convertOpen, setConvertOpen] = useState(false);
   const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
 
   useEffect(() => {
@@ -95,6 +107,7 @@ export function AssignmentLifecyclePanel({
   const assignment = state.status === 'ready' ? state.assignment : null;
   const isActive = assignment?.lifecycle_state === 'ACTIVE';
   const showEndControl = isActive && canEnd;
+  const showConvertControl = isActive && canConvert;
 
   return (
     <section className="rc-stack" data-testid="assignment-lifecycle-panel">
@@ -148,20 +161,30 @@ export function AssignmentLifecyclePanel({
                     data-testid="assignment-end-reason"
                     data-end-reason={assignment.end_reason}
                   >
-                    {ASSIGNMENT_END_REASON_LABELS[assignment.end_reason]}
+                    {ASSIGNMENT_END_REASON_DISPLAY_LABELS[assignment.end_reason]}
                   </dd>
                 </div>
               )}
             </dl>
-            {showEndControl && (
+            {(showEndControl || showConvertControl) && (
               <div className="rc-formfoot">
-                <Button
-                  variant="secondary"
-                  onClick={() => setDialogOpen(true)}
-                  data-testid="assignment-end-action"
-                >
-                  End assignment
-                </Button>
+                {showEndControl && (
+                  <Button
+                    variant="secondary"
+                    onClick={() => setDialogOpen(true)}
+                    data-testid="assignment-end-action"
+                  >
+                    End assignment
+                  </Button>
+                )}
+                {showConvertControl && (
+                  <Button
+                    onClick={() => setConvertOpen(true)}
+                    data-testid="convert-to-permanent-action"
+                  >
+                    Convert to permanent
+                  </Button>
+                )}
               </div>
             )}
           </>
@@ -174,6 +197,19 @@ export function AssignmentLifecyclePanel({
           endAssignmentFn={endAssignmentFn}
           onClose={() => setDialogOpen(false)}
           onEnded={refresh}
+        />
+      )}
+      {showConvertControl && assignment !== null && (
+        <ConvertToPermanentDialog
+          open={convertOpen}
+          placementId={placementId}
+          requisitionId={assignment.requisition_id}
+          onClose={() => setConvertOpen(false)}
+          // §14 — navigate to the NEW permanent PlacementProcess; its guarantee panel then
+          // renders naturally via GET :id/permanent (server truth, never manufactured).
+          onConverted={(result) => navigate(`/placements/${result.target_placement_process_id}`)}
+          convertFn={convertToPermanentFn}
+          effectiveTermsFn={effectiveTermsFn}
         />
       )}
     </section>

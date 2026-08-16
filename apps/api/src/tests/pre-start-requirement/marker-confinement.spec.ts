@@ -74,6 +74,10 @@ const EXACT_ALLOWLIST = new Set<string>([
   // DELETE escape (self-restoring DDL window: cleans up the injected corrupt
   // >1-current-version rows before re-adding the overlap EXCLUDE) via raw SET LOCAL.
   'libs/placement/src/tests/commercial-margin-read.integration.spec.ts',
+  // Track 7 / T7-PX — the Contract-to-Permanent conversion migration: its
+  // PermanentPlacementConversionLineage append-only trigger carries the same exact-value
+  // tenant_reset DELETE escape (the AssignmentRateVersion / remedy precedent).
+  'libs/placement/prisma/migrations/20260817120000_t7_px_contract_to_permanent_conversion/migration.sql',
 ]);
 
 describe('reset-marker confinement — exact-path default-deny (§2.4)', () => {

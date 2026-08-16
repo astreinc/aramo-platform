@@ -98,12 +98,65 @@ const OUTBOX_RATE_VERSION_CREATED = 'placement.assignment.rate_version.created';
 // (the append-only, non-reset-covered outbox convention shared with rate_version.
 // created); the cancellation reason + original effective_from are provenance, not money.
 const OUTBOX_RATE_VERSION_CANCELLED = 'placement.assignment.rate_version.cancelled';
+// Track 7 / T7-PX — the dedicated Contract-to-Permanent conversion domain event, so
+// downstream consumers see the lineage as ONE semantic act (not an END adjacent to a
+// permanent CREATE). Identity + governed lineage facts ONLY — NO PII, NO pay/bill/
+// margin/markup, no free text (the append-only, non-reset-covered outbox convention).
+const OUTBOX_ASSIGNMENT_CONVERTED_TO_PERMANENT = 'placement.assignment.converted_to_permanent';
 
 // Track 5 / T5-P1 — a decimal money string (never a float): up to 10 integer
 // digits and up to 2 fractional, matching the Decimal(12,2) column. Defensive
 // repository guard (the HTTP DTO also validates) — the repo is called directly by
 // integration proofs, so the write boundary must not trust the amount format.
 const MONEY_12_2 = /^\d{1,10}(\.\d{1,2})?$/;
+
+// Track 7 / T7-PX — the Contract-to-Permanent conversion result. Carries enough for the
+// caller (and the FE) to navigate to the NEW permanent PlacementProcess (§10). `replayed`
+// is true when an already-converted source returns its existing target (idempotent §11).
+export interface ConvertToPermanentResult {
+  readonly replayed: boolean;
+  readonly source_placement_process_id: string;
+  readonly source_contract_assignment_id: string;
+  readonly target_placement_process_id: string;
+  readonly target_permanent_placement_id: string;
+}
+
+interface ConversionLineageRow {
+  source_placement_process_id: string;
+  source_contract_assignment_id: string;
+  target_placement_process_id: string;
+  target_permanent_placement_id: string;
+}
+
+function conversionResult(row: ConversionLineageRow, replayed: boolean): ConvertToPermanentResult {
+  return {
+    replayed,
+    source_placement_process_id: row.source_placement_process_id,
+    source_contract_assignment_id: row.source_contract_assignment_id,
+    target_placement_process_id: row.target_placement_process_id,
+    target_permanent_placement_id: row.target_permanent_placement_id,
+  };
+}
+
+// The conversion-lineage unique keys are the idempotency race floor. A collision is
+// Prisma P2002 or the raw partial-index message (PrismaPg surfaces raw violations at the
+// driver-adapter layer, NOT meta.target — the T7-P2 lesson), so match defensively.
+function isConversionLineageDuplicate(err: unknown): boolean {
+  if (err !== null && typeof err === 'object') {
+    const e = err as { code?: string; meta?: { modelName?: string; target?: unknown }; message?: string };
+    if (e.code === 'P2002') {
+      const t = e.meta?.target;
+      const target = Array.isArray(t) ? t.join(',') : String(t ?? '');
+      return (
+        e.meta?.modelName === 'PermanentPlacementConversionLineage' ||
+        target.includes('source_contract_assignment_id') ||
+        target.includes('source_placement_process_id')
+      );
+    }
+    if (typeof e.message === 'string' && e.message.includes('PermanentPlacementConversionLineage')) return true;
+  }
+  return false;
+}
 
 // The BEFORE INSERT / BEFORE UPDATE lifecycle trigger raises a named
 // check_violation. Detection is by the RAISE message substring (E7 precedent):
@@ -927,6 +980,320 @@ export class PlacementRepository {
         },
       });
     });
+  }
+
+  // Track 7 / T7-PX — Contract-to-Permanent conversion. ONE atomic placement-domain
+  // transaction that ENDS the ACTIVE ContractAssignment (CONVERTED_TO_PERMANENT) and
+  // materialises a NEW PERMANENT PlacementProcess + its GUARANTEE_ACTIVE PermanentPlacement
+  // (§1/§2). The originating STARTED contract placement is NEVER reused or mutated (it stays
+  // historical + frozen); the new placement is the permanent lineage anchor. Capacity holds
+  // exactly 1 consumer across the commit (−1 contract ACTIVE, +1 permanent GUARANTEE_ACTIVE
+  // in the same tx → no committed 0/2 seat state, §7). Guarantee terms come ONLY from the
+  // governed stored version effective at guarantee_start_date (§6); no caller money/policy.
+  // Idempotent: a prior conversion of this source placement REPLAYS the same target (§11).
+  async convertToPermanent(
+    input: { tenant_id: string; placement_process_id: string; converted_by: string },
+    requestId: string,
+  ): Promise<ConvertToPermanentResult> {
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        // §11 — take the SAME per-assignment row lock END/revision/cancellation take,
+        // FIRST, so CONVERT serialises against END and a concurrent CONVERT (the sole
+        // primitive). Two concurrent conversions of this placement serialise here; the
+        // second, after the first commits, replays via the lineage check below.
+        await tx.$executeRawUnsafe(
+          `SELECT "id" FROM "placement"."ContractAssignment"
+            WHERE "tenant_id" = $1::uuid AND "placement_process_id" = $2::uuid
+            FOR UPDATE`,
+          input.tenant_id,
+          input.placement_process_id,
+        );
+
+        // §11 — deterministic replay: a source placement already converted returns its
+        // existing target rather than minting a second permanent placement.
+        const priorLineage = (await tx.permanentPlacementConversionLineage.findFirst({
+          where: { tenant_id: input.tenant_id, source_placement_process_id: input.placement_process_id },
+        })) as ConversionLineageRow | null;
+        if (priorLineage !== null) {
+          return conversionResult(priorLineage, true);
+        }
+
+        // Eligibility: a STARTED source placement with an ACTIVE ContractAssignment.
+        const source = (await tx.placementProcess.findFirst({
+          where: { tenant_id: input.tenant_id, id: input.placement_process_id },
+        })) as PlacementProcessRow | null;
+        if (source === null) {
+          throw new AramoError('NOT_FOUND', 'PlacementProcess not found', 404, {
+            requestId,
+            details: { placement_process_id: input.placement_process_id, reason: 'placement_process_not_found' },
+          });
+        }
+        if (source.state !== 'STARTED') {
+          throw new AramoError('PLACEMENT_STATE_INVALID', 'only a STARTED contract placement can be converted to permanent', 422, {
+            requestId,
+            details: { placement_process_id: input.placement_process_id, state: source.state, reason: 'source_not_started' },
+          });
+        }
+        const assignment = (await tx.contractAssignment.findFirst({
+          where: { tenant_id: input.tenant_id, placement_process_id: input.placement_process_id, lifecycle_state: 'ACTIVE' },
+          select: { id: true, submittal_id: true, requisition_id: true, talent_record_id: true },
+        })) as { id: string; submittal_id: string; requisition_id: string; talent_record_id: string } | null;
+        if (assignment === null) {
+          throw new AramoError('NOT_FOUND', 'No active ContractAssignment to convert', 404, {
+            requestId,
+            details: { placement_process_id: input.placement_process_id, reason: 'active_assignment_not_found' },
+          });
+        }
+
+        // §5 — ONE absolute instant captured once. guarantee_start_date is its UTC
+        // CALENDAR date (no browser/tenant-local timezone, no caller-supplied tz).
+        const tConvert = new Date();
+        const guaranteeStartStr = tConvert.toISOString().slice(0, 10);
+        const guaranteeStart = parseCalendarDate(guaranteeStartStr);
+        if (guaranteeStart === null) {
+          throw new AramoError('PERMANENT_PLACEMENT_GUARANTEE_WINDOW_INVALID', 'derived guarantee_start_date is not a valid calendar date', 422, {
+            requestId,
+            details: { reason: 'start_date_invalid', guarantee_start_date: guaranteeStartStr },
+          });
+        }
+
+        // §6 — governed guarantee terms come ONLY from the stored version effective at
+        // guarantee_start_date; NO caller exposure/policy/duration/currency. Fail closed
+        // when none is effective; >1 effective is PERMANENT_PLACEMENT_TERMS_AMBIGUOUS (500).
+        const storedRow = await resolveEffectiveTermRow(
+          tx as unknown as PrismaService,
+          input.tenant_id,
+          source.requisition_id,
+          guaranteeStart,
+          requestId,
+        );
+        if (storedRow === null) {
+          throw new AramoError('PERMANENT_PLACEMENT_TERMS_NOT_FOUND', 'no guarantee-term version is effective for the requisition at the conversion date', 404, {
+            requestId,
+            details: { requisition_id: source.requisition_id, reason: 'no_stored_terms_for_conversion' },
+          });
+        }
+        const resolved = resolvedTermsFromRow(storedRow);
+        const guaranteeEnd = addUtcDaysLocal(guaranteeStart, resolved.guarantee_duration_days);
+
+        // §8 — close the contract commercial window at T_convert, reusing the T6 END
+        // reconciliation logic: set BOTH governed markers, cancel every version starting
+        // at/after T_convert (emitting one rate_version.cancelled each), then first-close
+        // the containing version at T_convert. History is PRESERVED (closed, never
+        // deleted/rewritten); the append-only DELETE-reject trigger forbids destruction.
+        const versions = await tx.assignmentRateVersion.findMany({
+          where: { tenant_id: input.tenant_id, contract_assignment_id: assignment.id, cancelled_at: null },
+          orderBy: { effective_from: 'asc' },
+        });
+        await tx.$executeRawUnsafe(`SET LOCAL app.assignment_commercial_cancellation = 'authorized'`);
+        await tx.$executeRawUnsafe(`SET LOCAL app.assignment_commercial_revision = 'authorized'`);
+        for (const v of versions) {
+          if (v.effective_from.getTime() >= tConvert.getTime()) {
+            await tx.assignmentRateVersion.update({
+              where: { id: v.id },
+              data: { cancelled_at: tConvert, cancelled_by: input.converted_by, cancellation_reason_code: ASSIGNMENT_ENDED_CANCELLATION_REASON },
+            });
+            await tx.outboxEvent.create({
+              data: this.cancelledEventData({
+                tenant_id: input.tenant_id,
+                placement_process_id: input.placement_process_id,
+                contract_assignment_id: assignment.id,
+                assignment_rate_version_id: v.id,
+                original_effective_from: v.effective_from,
+                cancelled_by: input.converted_by,
+                cancellation_reason_code: ASSIGNMENT_ENDED_CANCELLATION_REASON,
+                occurred_at: tConvert,
+              }),
+            });
+          }
+        }
+        const containing = versions.find(
+          (v) => v.effective_from.getTime() < tConvert.getTime() && (v.effective_to === null || v.effective_to.getTime() > tConvert.getTime()),
+        );
+        if (containing !== undefined) {
+          if (containing.effective_to !== null) {
+            await tx.assignmentRateVersion.update({ where: { id: containing.id }, data: { effective_to: null } });
+          }
+          await tx.assignmentRateVersion.update({ where: { id: containing.id }, data: { effective_to: tConvert } });
+        }
+
+        // §2 — END the source ContractAssignment with the CONVERTED_TO_PERMANENT reason
+        // (a genuine domain value, NOT attrition — §3/§13), atomically with the durable
+        // T_convert instant, then emit the assignment.ended event (reuse).
+        await tx.contractAssignment.update({
+          where: { id: assignment.id },
+          data: { lifecycle_state: 'ENDED', end_reason: 'CONVERTED_TO_PERMANENT', ended_at: tConvert },
+        });
+        await tx.outboxEvent.create({
+          data: {
+            id: uuidv7(),
+            tenant_id: input.tenant_id,
+            event_type: OUTBOX_ASSIGNMENT_ENDED,
+            event_payload: {
+              assignment_id: assignment.id,
+              placement_process_id: input.placement_process_id,
+              tenant_id: input.tenant_id,
+              submittal_id: assignment.submittal_id,
+              requisition_id: assignment.requisition_id,
+              talent_record_id: assignment.talent_record_id,
+              end_reason: 'CONVERTED_TO_PERMANENT',
+              occurred_at: tConvert.toISOString(),
+            },
+          },
+        });
+
+        // §1/§2 — mint the NEW PERMANENT PlacementProcess directly in STARTED (the
+        // lifecycle trigger is UPDATE-only; INSERT is governed by the assignment-aware
+        // one-live guard, which RELEASES the old STARTED-with-ENDED-assignment placement
+        // — ENDED above in this tx — so this insert passes). Same submittal/requisition/
+        // talent (the same engagement). NOT E4 replaces_* (§4).
+        const targetPlacementId = uuidv7();
+        await tx.placementProcess.create({
+          data: {
+            id: targetPlacementId,
+            tenant_id: input.tenant_id,
+            submittal_id: assignment.submittal_id,
+            requisition_id: assignment.requisition_id,
+            talent_record_id: assignment.talent_record_id,
+            state: 'STARTED',
+            offered_at: tConvert,
+            placement_kind: 'PERMANENT',
+          },
+        });
+        await tx.placementProcessEvent.create({
+          data: {
+            id: uuidv7(),
+            tenant_id: input.tenant_id,
+            placement_process_id: targetPlacementId,
+            event_type: 'state_transition',
+            event_payload: { from: null, to: 'STARTED' },
+          },
+        });
+
+        // §2 — the PermanentPlacement in GUARANTEE_ACTIVE, carrying the immutable governed
+        // snapshot copied from the stored term version at activation.
+        const permanentId = uuidv7();
+        await tx.permanentPlacement.create({
+          data: {
+            id: permanentId,
+            tenant_id: input.tenant_id,
+            placement_process_id: targetPlacementId,
+            submittal_id: assignment.submittal_id,
+            requisition_id: assignment.requisition_id,
+            talent_record_id: assignment.talent_record_id,
+            lifecycle_state: 'GUARANTEE_ACTIVE',
+            guarantee_start_date: guaranteeStart,
+            guarantee_duration_days: resolved.guarantee_duration_days,
+            guarantee_end_date: guaranteeEnd,
+            remedy_policy: resolved.remedy_policy,
+            guarantee_exposure_amount: resolved.guarantee_exposure_amount,
+            guarantee_exposure_currency: resolved.currency,
+            terms_source: resolved.source_type,
+            recorded_by: input.converted_by,
+            guarantee_term_version_id: resolved.guarantee_term_version_id,
+            guarantee_terms_source_type: resolved.source_type,
+            guarantee_terms_source_reference: resolved.source_reference,
+            guarantee_terms_source_version: resolved.source_version,
+          },
+        });
+        await tx.permanentPlacementEvent.create({
+          data: {
+            id: uuidv7(),
+            tenant_id: input.tenant_id,
+            permanent_placement_id: permanentId,
+            event_type: 'state_transition',
+            event_payload: { from: null, to: 'GUARANTEE_ACTIVE' },
+          },
+        });
+
+        // §4 — the immutable conversion lineage (idempotency anchor). Its unique keys are
+        // the DB race floor: a concurrent duplicate collides here and replays (see catch).
+        await tx.permanentPlacementConversionLineage.create({
+          data: {
+            id: uuidv7(),
+            tenant_id: input.tenant_id,
+            source_placement_process_id: input.placement_process_id,
+            source_contract_assignment_id: assignment.id,
+            target_placement_process_id: targetPlacementId,
+            target_permanent_placement_id: permanentId,
+            converted_at: tConvert,
+            converted_by: input.converted_by,
+          },
+        });
+
+        // §12 — governed events (identity/lineage facts ONLY; NO PII, NO money): the
+        // permanent creation + guarantee activation (reuse), the optional terms-applied
+        // event, and the dedicated conversion event.
+        const permanentPayload = {
+          tenant_id: input.tenant_id,
+          permanent_placement_id: permanentId,
+          placement_process_id: targetPlacementId,
+          submittal_id: assignment.submittal_id,
+          requisition_id: assignment.requisition_id,
+          talent_record_id: assignment.talent_record_id,
+          lifecycle_state: 'GUARANTEE_ACTIVE',
+          guarantee_start_date: guaranteeStart.toISOString().slice(0, 10),
+          guarantee_end_date: guaranteeEnd.toISOString().slice(0, 10),
+          remedy_policy: resolved.remedy_policy,
+          occurred_at: tConvert.toISOString(),
+        };
+        await tx.outboxEvent.create({ data: { id: uuidv7(), tenant_id: input.tenant_id, event_type: OUTBOX_PERMANENT_PLACEMENT_CREATED, event_payload: permanentPayload } });
+        await tx.outboxEvent.create({ data: { id: uuidv7(), tenant_id: input.tenant_id, event_type: OUTBOX_PERMANENT_PLACEMENT_GUARANTEE_ACTIVE, event_payload: permanentPayload } });
+        if (resolved.guarantee_term_version_id !== null) {
+          await tx.outboxEvent.create({
+            data: {
+              id: uuidv7(),
+              tenant_id: input.tenant_id,
+              event_type: OUTBOX_GUARANTEE_TERMS_APPLIED,
+              event_payload: {
+                tenant_id: input.tenant_id,
+                requisition_id: source.requisition_id,
+                permanent_placement_id: permanentId,
+                guarantee_term_version_id: resolved.guarantee_term_version_id,
+                source_type: resolved.source_type,
+                occurred_at: tConvert.toISOString(),
+              },
+            },
+          });
+        }
+        await tx.outboxEvent.create({
+          data: {
+            id: uuidv7(),
+            tenant_id: input.tenant_id,
+            event_type: OUTBOX_ASSIGNMENT_CONVERTED_TO_PERMANENT,
+            event_payload: {
+              tenant_id: input.tenant_id,
+              source_placement_process_id: input.placement_process_id,
+              source_contract_assignment_id: assignment.id,
+              target_placement_process_id: targetPlacementId,
+              target_permanent_placement_id: permanentId,
+              requisition_id: source.requisition_id,
+              submittal_id: assignment.submittal_id,
+              talent_record_id: assignment.talent_record_id,
+              occurred_at: tConvert.toISOString(),
+            },
+          },
+        });
+
+        return {
+          replayed: false,
+          source_placement_process_id: input.placement_process_id,
+          source_contract_assignment_id: assignment.id,
+          target_placement_process_id: targetPlacementId,
+          target_permanent_placement_id: permanentId,
+        };
+      });
+    } catch (err) {
+      // §11 race floor: two conversions that both passed the lock check (a rare window)
+      // collide on the lineage unique key. Re-read the committed winner and replay.
+      if (isConversionLineageDuplicate(err)) {
+        const won = (await this.prisma.permanentPlacementConversionLineage.findFirst({
+          where: { tenant_id: input.tenant_id, source_placement_process_id: input.placement_process_id },
+        })) as ConversionLineageRow | null;
+        if (won !== null) return conversionResult(won, true);
+      }
+      throw err;
+    }
   }
 
   // Track 4 / T4-D (assignment:read) — the authoritative assignment-state read for
