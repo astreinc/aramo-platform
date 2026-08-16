@@ -7944,6 +7944,11 @@
       "to": "apps/ats-web/playwright.config.ts"
     },
     {
+      "from": "apps/ats-web/e2e/t7-permanent-placement.spec.ts",
+      "status": "unscoped",
+      "to": "tools/seed-e2e-data.ts"
+    },
+    {
       "from": "apps/ats-web/playwright.config.ts",
       "status": "unscoped",
       "to": "apps/ats-web/vite.config.ts"

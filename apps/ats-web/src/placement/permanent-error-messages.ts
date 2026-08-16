@@ -28,8 +28,18 @@ const REPLACEMENT_REASON_COPY: Record<string, string> = {
 };
 
 export function satisfyErrorMessage(err: unknown): string {
-  if (err instanceof ApiError && err.code === 'PERMANENT_PLACEMENT_STATE_INVALID') {
-    return 'This guarantee cannot be satisfied yet — it can only be satisfied on or after the guarantee end date.';
+  if (err instanceof ApiError) {
+    // A PREMATURE satisfy (before the guarantee end date) is the governed
+    // PERMANENT_PLACEMENT_GUARANTEE_WINDOW_INVALID (422) — NOT STATE_INVALID. (Confirmed
+    // against the provider: permanent-placement.repository throws GUARANTEE_WINDOW_INVALID
+    // when today < guarantee_end_date.)
+    if (err.code === 'PERMANENT_PLACEMENT_GUARANTEE_WINDOW_INVALID') {
+      return 'This guarantee cannot be satisfied yet — it can only be satisfied on or after the guarantee end date.';
+    }
+    // A genuinely illegal transition (e.g. the guarantee is already terminal).
+    if (err.code === 'PERMANENT_PLACEMENT_STATE_INVALID') {
+      return 'This guarantee can no longer be satisfied.';
+    }
   }
   return 'Could not satisfy the guarantee. Please try again.';
 }

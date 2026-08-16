@@ -191,7 +191,7 @@ describe('ats-web → POST /v1/placements/:id/permanent/transition', () => {
         b.jsonBody({ to: 'GUARANTEE_SATISFIED' });
       })
       .willRespondWith(422, (b) => {
-        b.jsonBody(errorBody('PERMANENT_PLACEMENT_STATE_INVALID', 'the guarantee window has not yet elapsed'));
+        b.jsonBody(errorBody('PERMANENT_PLACEMENT_GUARANTEE_WINDOW_INVALID', 'the guarantee window has not yet elapsed'));
       })
       .executeTest(async (mock) => {
         const res = await fetch(`${mock.url}/v1/placements/${PLACEMENT_ID}/permanent/transition`, {
@@ -201,7 +201,7 @@ describe('ats-web → POST /v1/placements/:id/permanent/transition', () => {
         });
         expect(res.status).toBe(422);
         const body = (await res.json()) as { error: { code: string } };
-        expect(body.error.code).toBe('PERMANENT_PLACEMENT_STATE_INVALID');
+        expect(body.error.code).toBe('PERMANENT_PLACEMENT_GUARANTEE_WINDOW_INVALID');
       });
   });
 });
@@ -570,7 +570,9 @@ describe('ats-web → guarantee-terms create + revise', () => {
         b.jsonBody(REVISE_REQ);
       })
       .willRespondWith(201, (b) => {
-        b.jsonBody(termVersionView({ effective_from: like('2026-12-01') }));
+        // The successor version is a NEW server-generated row whose supersedes_version_id
+        // references the first-closed predecessor (a uuid, not null).
+        b.jsonBody(termVersionView({ effective_from: like('2026-12-01'), supersedes_version_id: uuid('00000000-0000-7000-8000-7e1200000011') }));
       })
       .executeTest(async (mock) => {
         const res = await fetch(`${mock.url}${TERMS_BASE}/${REQ_ID}/revise`, {

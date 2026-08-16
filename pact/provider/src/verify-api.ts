@@ -3854,12 +3854,19 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           await seedPermanentRemedyRow(c, {
             remedyType: 'REPLACEMENT', falloffDate: '2026-06-01', dueAt: '2026-09-01T00:00:00Z',
           });
-          // A valid replacement candidate: same tenant + requisition, PERMANENT + STARTED.
+          // A valid replacement candidate: same tenant + requisition, PERMANENT + STARTED, a
+          // DIFFERENT placement (distinct submittal + talent) than the original.
           await c.query(
             `INSERT INTO placement."PlacementProcess"
                (id, tenant_id, submittal_id, requisition_id, talent_record_id, state, placement_kind, offered_at, created_at)
              VALUES ($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,'STARTED','PERMANENT'::placement."PlacementKind",'2026-07-01T00:00:00Z','2026-07-01T00:00:00Z')`,
-            [T7_REPLACEMENT_PID, TENANT_ID, T7_SUB, T7_REQ, T7_TAL],
+            [
+              T7_REPLACEMENT_PID,
+              TENANT_ID,
+              '00000000-0000-7000-8000-50b000000002',
+              T7_REQ,
+              '00000000-0000-7000-8000-7a1e00000002',
+            ],
           );
         });
       },

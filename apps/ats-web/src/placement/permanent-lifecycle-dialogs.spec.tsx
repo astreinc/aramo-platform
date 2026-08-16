@@ -47,8 +47,8 @@ describe('SatisfyGuaranteeDialog', () => {
     await waitFor(() => expect(onSatisfied).toHaveBeenCalledTimes(1));
   });
 
-  it('maps a premature STATE_INVALID 422 to actionable copy and does NOT re-read', async () => {
-    const satisfyFn = vi.fn().mockRejectedValue(new ApiError(422, 'x', 'PERMANENT_PLACEMENT_STATE_INVALID'));
+  it('maps a premature GUARANTEE_WINDOW_INVALID 422 to actionable copy and does NOT re-read', async () => {
+    const satisfyFn = vi.fn().mockRejectedValue(new ApiError(422, 'x', 'PERMANENT_PLACEMENT_GUARANTEE_WINDOW_INVALID'));
     const onSatisfied = vi.fn();
     wrap(<SatisfyGuaranteeDialog open placementId="p1" onClose={vi.fn()} onSatisfied={onSatisfied} satisfyFn={satisfyFn} />);
 
