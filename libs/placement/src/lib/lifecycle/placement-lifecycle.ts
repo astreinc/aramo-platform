@@ -152,6 +152,95 @@ export const CONTRACT_ASSIGNMENT_TRANSITIONS: Record<'ACTIVE' | 'ENDED', readonl
 };
 
 // ---------------------------------------------------------------------------
+// Track 7 / T7-P1 — the PermanentPlacement guarantee lifecycle registry.
+// TYPED-MAP enforcement (T7-P1 directive §3.3), analogous to
+// CONTRACT_ASSIGNMENT_TRANSITIONS — NOT a generated DB lifecycle trigger. P2 may
+// revisit DB-generated enforcement if the expanded lifecycle warrants it.
+//
+// P1 ships EXACTLY the happy path: GUARANTEE_ACTIVE -> GUARANTEE_SATISFIED.
+// GUARANTEE_SATISFIED is terminal. FELL_OFF and the remedy states are T7-P2 and
+// land here as additive members with their ratified edges — mirroring the
+// ContractAssignment "ships ACTIVE only" precedent. `satisfies Record<…>` forces
+// every P1 state to declare a treatment, so adding a state without an edge list
+// is a compile-time error.
+// ---------------------------------------------------------------------------
+
+// Track 7 / T7-P1 — the closed permanent-vs-contract branch vocabulary (the
+// runtime companion of the PlacementKind type / Postgres enum), for wire
+// validation (@IsIn) and seed/parity surfaces.
+export const PLACEMENT_KINDS = ['CONTRACT', 'PERMANENT'] as const;
+
+// Track 7 / T7-P2 — the guarantee lifecycle grows to the full falloff + remedy
+// machine (T7-P2 directive §4). Additive states; the typed map stays canonical
+// (§3.7 — NO generated DB lifecycle trigger). GUARANTEE_ACTIVE, GUARANTEE_SATISFIED
+// ship in P1; FELL_OFF + the three remedy-due states + REMEDY_COMPLETED are P2.
+export const PERMANENT_PLACEMENT_STATES = [
+  'GUARANTEE_ACTIVE',
+  'GUARANTEE_SATISFIED',
+  'FELL_OFF',
+  'REPLACEMENT_DUE',
+  'REFUND_DUE',
+  'PRORATED_CREDIT_DUE',
+  'REMEDY_COMPLETED',
+] as const;
+
+export type PermanentPlacementState = (typeof PERMANENT_PLACEMENT_STATES)[number];
+
+// A PermanentPlacement is materialised (at the permanent STARTED handoff) already
+// inside its guarantee window — GUARANTEE_ACTIVE is the birth state.
+export const PERMANENT_PLACEMENT_INITIAL_STATE: PermanentPlacementState = 'GUARANTEE_ACTIVE';
+
+// The three remedy-due obligation states. FELL_OFF is atomically traversed into
+// exactly one of these in the falloff transaction (§3.2) — never a stable
+// externally-observable adjudication-pending state.
+export const REMEDY_DUE_STATES = ['REPLACEMENT_DUE', 'REFUND_DUE', 'PRORATED_CREDIT_DUE'] as const;
+export type RemedyDueState = (typeof REMEDY_DUE_STATES)[number];
+
+// T7-P2 lifecycle edges (§4). GUARANTEE_ACTIVE branches to SATISFIED (P1 happy
+// path) OR FELL_OFF (P2); FELL_OFF → exactly one *_DUE; each *_DUE → REMEDY_COMPLETED.
+// GUARANTEE_SATISFIED and REMEDY_COMPLETED are terminal (§3.7). No other P2 edges.
+export const PERMANENT_PLACEMENT_TRANSITIONS = {
+  GUARANTEE_ACTIVE: ['GUARANTEE_SATISFIED', 'FELL_OFF'],
+  GUARANTEE_SATISFIED: [],
+  FELL_OFF: ['REPLACEMENT_DUE', 'REFUND_DUE', 'PRORATED_CREDIT_DUE'],
+  REPLACEMENT_DUE: ['REMEDY_COMPLETED'],
+  REFUND_DUE: ['REMEDY_COMPLETED'],
+  PRORATED_CREDIT_DUE: ['REMEDY_COMPLETED'],
+  REMEDY_COMPLETED: [],
+} as const satisfies Record<PermanentPlacementState, readonly PermanentPlacementState[]>;
+
+// Runtime guard (defense-in-depth in application code; the typed map is authority
+// — §3.7). Returns the structured answer before the UPDATE.
+export function canTransitionPermanentPlacement(
+  from: PermanentPlacementState,
+  to: PermanentPlacementState,
+): boolean {
+  return (PERMANENT_PLACEMENT_TRANSITIONS[from] as readonly PermanentPlacementState[]).includes(to);
+}
+
+// Track 7 — the closed, terms-driven remedy policy the guarantee snapshot commits
+// to at activation (snapshotted in P1, executed in P2). Exactly one is chosen
+// from governed terms — never heuristically among several (T7-PRE §8).
+export const REMEDY_POLICIES = ['REPLACEMENT', 'REFUND', 'PRORATED_CREDIT'] as const;
+
+export type RemedyPolicy = (typeof REMEDY_POLICIES)[number];
+
+// Track 7 / T7-P2 — the EXACT, TOTAL, deterministic map from the immutable snapshot
+// RemedyPolicy to the single remedy-due state (§6). No priority order, no heuristic,
+// no caller choice; a value outside the three fails closed at the call site.
+export const REMEDY_POLICY_TO_DUE_STATE = {
+  REPLACEMENT: 'REPLACEMENT_DUE',
+  REFUND: 'REFUND_DUE',
+  PRORATED_CREDIT: 'PRORATED_CREDIT_DUE',
+} as const satisfies Record<RemedyPolicy, RemedyDueState>;
+
+// The due-state for a snapshot remedy policy, or null if the policy is not one of
+// the three governed values (fail-closed — the caller raises PERMANENT_PLACEMENT_REMEDY_INVALID).
+export function dueStateForRemedyPolicy(policy: string): RemedyDueState | null {
+  return (REMEDY_POLICY_TO_DUE_STATE as Record<string, RemedyDueState>)[policy] ?? null;
+}
+
+// ---------------------------------------------------------------------------
 // Runtime guard (defense-in-depth atop the DB trigger; §6). The DB trigger is
 // the authority — this returns a structured answer before the SQL UPDATE.
 // ---------------------------------------------------------------------------

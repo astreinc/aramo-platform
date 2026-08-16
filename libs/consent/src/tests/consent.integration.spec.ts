@@ -391,7 +391,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const decision = await repo.resolveConsentState({
         tenant_id: tenant,
         talent_record_id: talent,
-        operation: 'engagement',
+        operation: 'selection',
         channel: 'email',
         requestHash: 'cci-check-h',
         requestId: 'cci-check-req',
@@ -434,7 +434,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         await repo.resolveConsentState({
           tenant_id: tenant,
           talent_record_id: talent,
-          operation: 'engagement',
+          operation: 'selection',
           channel: 'email',
           requestHash: 'dep-check-h',
           requestId: 'dep-check-req',
@@ -487,7 +487,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const decision = await repo.resolveConsentState({
         tenant_id: tenant,
         talent_record_id: talent,
-        operation: 'engagement',
+        operation: 'selection',
         channel: 'email',
         requestHash: 'stale-check-h',
         requestId: 'stale-check-req',

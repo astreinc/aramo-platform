@@ -7,9 +7,9 @@ import type { MailerPort, SendEmailInput, SendEmailResult } from './mailer.port.
 
 // Email-S1 §1.3 — StubMailerAdapter: the non-prod (local/dev/test) mailer.
 //
-// Mirrors libs/engagement SendStubDeliveryProvider: an in-process adapter
+// Mirrors libs/selection SendStubDeliveryProvider: an in-process adapter
 // that performs NO network I/O — no SES, no SMTP. It returns a synthetic
-// message_id so callers can correlate, exactly as the engagement-delivery
+// message_id so callers can correlate, exactly as the selection-delivery
 // stub does.
 //
 // FAIL-LOUD, NOT SILENT: unlike a no-op that masquerades as a successful

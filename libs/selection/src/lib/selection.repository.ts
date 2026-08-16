@@ -27,11 +27,11 @@ import { PrismaService } from './prisma/prisma.service.js';
 //     - findByTenantAndTalent
 //     - findByTenantAndRequisition
 //   PR-3 write methods (new):
-//     - createEngagement (3-pattern cross-schema validators + atomic txn)
+//     - createSelection (3-pattern cross-schema validators + atomic txn)
 //     - transitionState (canTransition guard + atomic txn)
 //
-// Write-method scope per Directive Ruling 2: createEngagement +
-// transitionState are the ONLY write methods. NO general updateEngagement
+// Write-method scope per Directive Ruling 2: createSelection +
+// transitionState are the ONLY write methods. NO general updateSelection
 // (rejected on column-scoped immutability principle — only the state
 // column is mutable and only via transitionState's canTransition-guarded
 // path; the DB-level trigger from M5 PR-1 enforces this regardless of
@@ -54,7 +54,7 @@ import { PrismaService } from './prisma/prisma.service.js';
 // take tenant_id explicitly. `findById` is the exception (UUID lookup;
 // tenant assertion is the caller's responsibility at the consumer site).
 // All write methods enforce tenant scope via the Pattern A/B/C validators
-// (createEngagement) or via findByTenantAndId (transitionState).
+// (createSelection) or via findByTenantAndId (transitionState).
 //
 // Cross-schema read validation (Architecture §7.3 — UUID-only, no FK):
 // `examination_id` and `requisition_id` are UUID-only references with
@@ -62,7 +62,7 @@ import { PrismaService } from './prisma/prisma.service.js';
 // existence + tenant check at write time.
 //
 // Observability (Plan v1.5 §M4; HK-PR-4 adoption): Style A constructor-DI
-// AramoLogger via 'EngagementRepositoryLogger'. Structured INFO-level
+// AramoLogger via 'SelectionRepositoryLogger'. Structured INFO-level
 // logging at entry + hit/miss/result-count + validator-refusal + success
 // paths.
 
@@ -88,8 +88,8 @@ function projectView(row: TalentSelectionRow): TalentSelectionView {
   };
 }
 
-// M5 PR-3 §4.1 — createEngagement input/output shapes.
-export interface CreateEngagementInput {
+// M5 PR-3 §4.1 — createSelection input/output shapes.
+export interface CreateSelectionInput {
   id: string;
   event_id: string;
   tenant_id: string;
@@ -98,8 +98,8 @@ export interface CreateEngagementInput {
   examination_id?: string | null;
 }
 
-export interface CreateEngagementResult {
-  engagement: TalentSelectionView;
+export interface CreateSelectionResult {
+  selection: TalentSelectionView;
   event: TalentSelectionEventView;
 }
 
@@ -109,7 +109,7 @@ export interface CreateEngagementResult {
 // 4 mutate-existing endpoints inherit the visibility check via the
 // repo's single source of truth).
 export interface TransitionStateInput {
-  engagement_id: string;
+  selection_id: string;
   event_id: string;
   tenant_id: string;
   to_state: SelectionStateValue;
@@ -117,7 +117,7 @@ export interface TransitionStateInput {
 }
 
 export interface TransitionStateResult {
-  engagement: TalentSelectionView;
+  selection: TalentSelectionView;
   event: TalentSelectionEventView;
 }
 
@@ -131,13 +131,13 @@ export interface TransitionStateResult {
 // unaffected).
 //
 // Pre-append guards:
-//   - findByTenantAndId(engagement_id, tenant_id) → null ⇒ NOT_FOUND 404.
+//   - findByTenantAndId(selection_id, tenant_id) → null ⇒ NOT_FOUND 404.
 //   - canTransition(current.state, 'awaiting_response') ⇒ false ⇒
-//     ENGAGEMENT_STATE_INVALID 422 (Amendment v1.1 Ruling 2 — DRAFT is
+//     SELECTION_STATE_INVALID 422 (Amendment v1.1 Ruling 2 — DRAFT is
 //     GATED to `engaged`, the same precondition SEND enforces: "you can
 //     only draft what you can send", no stranded drafts).
 export interface DraftOutreachInput {
-  engagement_id: string;
+  selection_id: string;
   tenant_id: string;
   draft_event_id: string;
   drafted_payload: OutreachDraftedPayload;
@@ -151,28 +151,28 @@ export interface DraftOutreachResult {
 
 // M5 PR-6 §4.4 — sendOutreach input/output shapes (Ruling 1 Sub-Q1b).
 //
-// Single repository method paired with the EngagementController
+// Single repository method paired with the SelectionController
 // sendOutreach endpoint. Three-write atomic transaction:
-//   1. engagement.update(state = 'awaiting_response')
+//   1. selection.update(state = 'awaiting_response')
 //   2. talentSelectionEvent.create(event_type = 'outreach_sent', payload = OutreachSentPayload)
 //   3. talentSelectionEvent.create(event_type = 'state_transition', payload = { from_state, to_state })
 //
 // Pre-transaction guards:
-//   - findByTenantAndId(engagement_id, tenant_id) → null ⇒ NOT_FOUND 404.
+//   - findByTenantAndId(selection_id, tenant_id) → null ⇒ NOT_FOUND 404.
 //   - Cross-event reference validation (Outreach Draft/Preview Amendment
 //     v1.1 §2): source_draft_event_id MUST resolve to an event in the
-//     SAME tenant + SAME engagement + event_type='outreach_drafted'. Any
-//     of (null lookup / cross-engagement / cross-tenant / wrong-event-
-//     type) ⇒ ENGAGEMENT_REFERENCE_NOT_FOUND 422. Mirrors recordResponse's
+//     SAME tenant + SAME selection + event_type='outreach_drafted'. Any
+//     of (null lookup / cross-selection / cross-tenant / wrong-event-
+//     type) ⇒ SELECTION_REFERENCE_NOT_FOUND 422. Mirrors recordResponse's
 //     outreach_event_ref_id guard.
 //   - canTransition(current.state, 'awaiting_response') ⇒ false ⇒
-//     ENGAGEMENT_STATE_INVALID 422.
+//     SELECTION_STATE_INVALID 422.
 //
 // The transition target is hardcoded to 'awaiting_response' — the only
-// legal next state for an 'engaged' engagement per the 11-state matrix
+// legal next state for an 'engaged' selection per the 11-state matrix
 // (PR-1 Amendment v1.1 §4). Callers cannot pass a different to_state.
 export interface SendOutreachInput {
-  engagement_id: string;
+  selection_id: string;
   tenant_id: string;
   // Outreach Draft/Preview Amendment v1.1 §2 — the source outreach_drafted
   // event this send was produced from (cross-event-ref validated).
@@ -185,41 +185,41 @@ export interface SendOutreachInput {
 }
 
 export interface SendOutreachResult {
-  engagement: TalentSelectionView;
+  selection: TalentSelectionView;
   outreach_event: TalentSelectionEventView;
   transition_event: TalentSelectionEventView;
 }
 
 // M5 PR-7 §4.3 — recordResponse input/output shapes (Ruling 1).
 //
-// Single repository method paired with the EngagementController
+// Single repository method paired with the SelectionController
 // recordResponse endpoint. Three-write atomic transaction:
-//   1. engagement.update(state = 'responded')
+//   1. selection.update(state = 'responded')
 //   2. talentSelectionEvent.create(event_type = 'response_received',
 //      payload = SelectionResponseReceivedPayload)
 //   3. talentSelectionEvent.create(event_type = 'state_transition',
 //      payload = { from_state, to_state })
 //
 // Pre-transaction guards (in order):
-//   - findByTenantAndId(engagement_id, tenant_id) → null ⇒ NOT_FOUND 404.
+//   - findByTenantAndId(selection_id, tenant_id) → null ⇒ NOT_FOUND 404.
 //   - Cross-event reference validation (Ruling 4): the
 //     response_payload.outreach_event_ref_id must resolve to an event
-//     in the SAME tenant + SAME engagement + with event_type =
-//     'outreach_sent'. Any of (null lookup / cross-engagement /
+//     in the SAME tenant + SAME selection + with event_type =
+//     'outreach_sent'. Any of (null lookup / cross-selection /
 //     cross-tenant / wrong-event-type) ⇒
-//     ENGAGEMENT_REFERENCE_NOT_FOUND 422.
+//     SELECTION_REFERENCE_NOT_FOUND 422.
 //   - canTransition(current.state, 'responded') ⇒ false ⇒
-//     ENGAGEMENT_STATE_INVALID 422. State-machine itself enforces
-//     single-response semantics (engagement already in 'responded'
+//     SELECTION_STATE_INVALID 422. State-machine itself enforces
+//     single-response semantics (selection already in 'responded'
 //     state cannot transition to 'responded' again — natural-key
 //     dedup atop the standard Idempotency-Key replay path).
 //
 // The transition target is hardcoded to 'responded' — the only legal
-// next state for an 'awaiting_response' engagement per the 11-state
+// next state for an 'awaiting_response' selection per the 11-state
 // matrix (PR-1 Amendment v1.1 §4). Callers cannot pass a different
 // to_state.
 export interface RecordResponseInput {
-  engagement_id: string;
+  selection_id: string;
   tenant_id: string;
   response_event_id: string;
   transition_event_id: string;
@@ -229,16 +229,16 @@ export interface RecordResponseInput {
 }
 
 export interface RecordResponseResult {
-  engagement: TalentSelectionView;
+  selection: TalentSelectionView;
   response_event: TalentSelectionEventView;
   transition_event: TalentSelectionEventView;
 }
 
 // M5 PR-8a §4.3 — recordConversationStarted input/output shapes (Ruling 1 + 5).
 //
-// Single repository method paired with the EngagementController
+// Single repository method paired with the SelectionController
 // recordConversationStarted endpoint. Three-write atomic transaction:
-//   1. engagement.update(state = 'in_conversation')
+//   1. selection.update(state = 'in_conversation')
 //   2. talentSelectionEvent.create(event_type = 'conversation_started',
 //      payload = SelectionConversationStartedPayload)
 //   3. talentSelectionEvent.create(event_type = 'state_transition',
@@ -246,20 +246,20 @@ export interface RecordResponseResult {
 //
 // Pre-transaction guards (in order; SIMPLER than PR-7 — no cross-event
 // reference validation per Ruling 3):
-//   - findByTenantAndId(engagement_id, tenant_id) → null ⇒ NOT_FOUND 404.
+//   - findByTenantAndId(selection_id, tenant_id) → null ⇒ NOT_FOUND 404.
 //   - canTransition(current.state, 'in_conversation') ⇒ false ⇒
-//     ENGAGEMENT_STATE_INVALID 422. State-machine itself enforces
-//     single-conversation semantics: an engagement already in
+//     SELECTION_STATE_INVALID 422. State-machine itself enforces
+//     single-conversation semantics: an selection already in
 //     'in_conversation' state cannot transition to 'in_conversation'
 //     again (natural-key dedup atop the standard Idempotency-Key replay
-//     path); an engagement in 'engaged' or 'awaiting_response' cannot
+//     path); an selection in 'engaged' or 'awaiting_response' cannot
 //     skip the 'responded' step.
 //
 // The transition target is hardcoded to 'in_conversation' — the only
-// legal next state for a 'responded' engagement per the 11-state matrix
+// legal next state for a 'responded' selection per the 11-state matrix
 // (PR-1 Amendment v1.1 §4). Callers cannot pass a different to_state.
 export interface RecordConversationStartedInput {
-  engagement_id: string;
+  selection_id: string;
   tenant_id: string;
   conversation_event_id: string;
   transition_event_id: string;
@@ -269,7 +269,7 @@ export interface RecordConversationStartedInput {
 }
 
 export interface RecordConversationStartedResult {
-  engagement: TalentSelectionView;
+  selection: TalentSelectionView;
   conversation_event: TalentSelectionEventView;
   transition_event: TalentSelectionEventView;
 }
@@ -277,7 +277,7 @@ export interface RecordConversationStartedResult {
 interface TalentSelectionEventRow {
   id: string;
   tenant_id: string;
-  engagement_id: string;
+  selection_id: string;
   event_type: SelectionEventTypeValue;
   event_payload: unknown;
   created_at: Date;
@@ -287,7 +287,7 @@ function projectEventView(row: TalentSelectionEventRow): TalentSelectionEventVie
   return {
     id: row.id,
     tenant_id: row.tenant_id,
-    engagement_id: row.engagement_id,
+    selection_id: row.selection_id,
     event_type: row.event_type,
     event_payload: row.event_payload,
     created_at: row.created_at,
@@ -303,9 +303,9 @@ export class SelectionRepository {
     // retained in the constructor for module-graph clarity and future
     // M5 PR-5/6/7 consumers that may delegate event-append to the
     // dedicated repository.
-    private readonly engagementEventRepository: SelectionEventRepository,
-    // Pattern C cross-schema validator dep. engagement.talent_id IS a
-    // TalentRecord.id (4e-engagement-key); createEngagement validates it
+    private readonly selectionEventRepository: SelectionEventRepository,
+    // Pattern C cross-schema validator dep. selection.talent_id IS a
+    // TalentRecord.id (4e-selection-key); createSelection validates it
     // against the tenant-scoped TalentRecord. (The dead Core TalentRepository
     // was removed in 4e-rest — Core retirement.)
     private readonly talentRecordRepository: TalentRecordRepository,
@@ -315,7 +315,7 @@ export class SelectionRepository {
     private readonly requisitionRepository: RequisitionRepository,
     // M5 PR-3 — Pattern B (Examination) cross-schema validator dep.
     private readonly examinationRepository: ExaminationRepository,
-    @Inject('EngagementRepositoryLogger')
+    @Inject('SelectionRepositoryLogger')
     private readonly logger: AramoLogger,
   ) {}
 
@@ -328,8 +328,8 @@ export class SelectionRepository {
     });
     const view = row === null ? null : projectView(row as TalentSelectionRow);
     this.logger.log({
-      event: 'engagement.findById',
-      engagement_id: id,
+      event: 'selection.findById',
+      selection_id: id,
       hit: view !== null,
       latency_ms: Date.now() - startedAt,
     });
@@ -341,7 +341,7 @@ export class SelectionRepository {
   // visible-requisition set (from req.resolveVisibleRequisitionIds!()):
   //   - null  ⇒ see-all (no filter; see-all-requisition callers, internal,
   //              and back-compat unguarded test paths fall here).
-  //   - Set   ⇒ engagement is visible iff its requisition_id ∈ the set.
+  //   - Set   ⇒ selection is visible iff its requisition_id ∈ the set.
   // Single source of truth — write-method internal pre-reads also flow
   // through findByTenantAndId, so the write paths inherit the check
   // uniformly via the write-method's `visible_requisition_ids` pass-through.
@@ -368,9 +368,9 @@ export class SelectionRepository {
       view = null;
     }
     this.logger.log({
-      event: 'engagement.findByTenantAndId',
+      event: 'selection.findByTenantAndId',
       tenant_id: input.tenant_id,
-      engagement_id: input.id,
+      selection_id: input.id,
       hit: view !== null,
       latency_ms: Date.now() - startedAt,
     });
@@ -398,7 +398,7 @@ export class SelectionRepository {
     });
     const views = (rows as TalentSelectionRow[]).map((r) => projectView(r));
     this.logger.log({
-      event: 'engagement.findByTenantAndTalent',
+      event: 'selection.findByTenantAndTalent',
       tenant_id: input.tenant_id,
       talent_id: input.talent_id,
       result_count: views.length,
@@ -421,7 +421,7 @@ export class SelectionRepository {
       // short-circuit empty (avoids the DB round-trip; mirrors the
       // requisition repo's see-all-skip posture).
       this.logger.log({
-        event: 'engagement.findByTenantAndRequisition',
+        event: 'selection.findByTenantAndRequisition',
         tenant_id: input.tenant_id,
         requisition_id: input.requisition_id,
         result_count: 0,
@@ -439,7 +439,7 @@ export class SelectionRepository {
     });
     const views = (rows as TalentSelectionRow[]).map((r) => projectView(r));
     this.logger.log({
-      event: 'engagement.findByTenantAndRequisition',
+      event: 'selection.findByTenantAndRequisition',
       tenant_id: input.tenant_id,
       requisition_id: input.requisition_id,
       result_count: views.length,
@@ -449,8 +449,8 @@ export class SelectionRepository {
   }
 
   // R7 BE-prereq P1 §1 — the new findByTenant for the LIST no-filter
-  // branch. D4b-composed: returns the tenant's engagements narrowed to
-  // the actor's visible-requisition set (or all engagements when the
+  // branch. D4b-composed: returns the tenant's selections narrowed to
+  // the actor's visible-requisition set (or all selections when the
   // visibility set is null — see-all callers).
   async findByTenant(input: {
     tenant_id: string;
@@ -471,7 +471,7 @@ export class SelectionRepository {
     });
     const views = (rows as TalentSelectionRow[]).map((r) => projectView(r));
     this.logger.log({
-      event: 'engagement.findByTenant',
+      event: 'selection.findByTenant',
       tenant_id: input.tenant_id,
       result_count: views.length,
       latency_ms: Date.now() - startedAt,
@@ -512,10 +512,10 @@ export class SelectionRepository {
     });
   }
 
-  // TR-2a-B3b (DDR-3 §6) — the engagement ids currently keyed to a TalentRecord.
+  // TR-2a-B3b (DDR-3 §6) — the selection ids currently keyed to a TalentRecord.
   // The reversal uses this on the survivor to enumerate POST-MERGE ACCRETIONS (ids
   // present on R_S but NOT among the operation's recorded repointed rows) for human
-  // triage — never auto-redistributed. Engagement is the representative operational
+  // triage — never auto-redistributed. Selection is the representative operational
   // holder for accretion detection (the send-gate-relevant surface).
   async listIdsByTalentRecord(args: {
     tenant_id: string;
@@ -532,16 +532,16 @@ export class SelectionRepository {
 
   // ---- Write methods (M5 PR-3) -----------------------------------------
 
-  // createEngagement — Directive v1.0 §4.1 + Amendment v1.1 §2.
+  // createSelection — Directive v1.0 §4.1 + Amendment v1.1 §2.
   // 5-step flow: input-validation → 3 cross-schema validators →
-  // atomic prisma.$transaction(engagement.create + event.create) →
+  // atomic prisma.$transaction(selection.create + event.create) →
   // project + return → structured logging.
-  async createEngagement(input: CreateEngagementInput): Promise<CreateEngagementResult> {
+  async createSelection(input: CreateSelectionInput): Promise<CreateSelectionResult> {
     const startedAt = Date.now();
     this.logger.log({
-      event: 'engagement.create_started',
+      event: 'selection.create_started',
       tenant_id: input.tenant_id,
-      engagement_id: input.id,
+      selection_id: input.id,
       talent_id: input.talent_id,
       requisition_id: input.requisition_id,
       examination_id: input.examination_id ?? null,
@@ -551,7 +551,7 @@ export class SelectionRepository {
     this.validateCreateInput(input);
 
     // ---- Step 2a: Pattern C — TalentRecord (in-tenant existence) ------
-    // 4e-engagement-key: engagement.talent_id is now a TalentRecord.id (the
+    // 4e-selection-key: selection.talent_id is now a TalentRecord.id (the
     // ATS heart), not a Core talent.Talent.id. The caller supplies it; we
     // validate it exists in the requesting tenant against the TalentRecord
     // table (was Core findOverlayByTenant before the re-point). null → 422.
@@ -560,13 +560,13 @@ export class SelectionRepository {
       id: input.talent_id,
     });
     if (talentRecord === null) {
-      this.logRefused('ENGAGEMENT_REFERENCE_NOT_FOUND', input, 'talent_id');
+      this.logRefused('SELECTION_REFERENCE_NOT_FOUND', input, 'talent_id');
       throw new AramoError(
-        'ENGAGEMENT_REFERENCE_NOT_FOUND',
+        'SELECTION_REFERENCE_NOT_FOUND',
         'Talent not visible in tenant',
         422,
         {
-          requestId: 'engagement-create',
+          requestId: 'selection-create',
           details: { field: 'talent_id', talent_id: input.talent_id, tenant_id: input.tenant_id },
         },
       );
@@ -574,7 +574,7 @@ export class SelectionRepository {
 
     // ---- Step 2a′: TR-2a-B3a (DDR-3 §3) supersession gate -------------
     // "Non-operational" covers being the TARGET of new operational work, not
-    // only outbound sends (Gate-6 Lead ruling). Creating an engagement against a
+    // only outbound sends (Gate-6 Lead ruling). Creating an selection against a
     // superseded record mints an operational row born needing re-point — reject
     // it here, at the same TalentRecord validation site, with the send-gate's
     // 422 TALENT_RECORD_SUPERSEDED. findById returns the record of ANY status
@@ -587,7 +587,7 @@ export class SelectionRepository {
         'talent record is superseded (non-operational) — the surviving record speaks for this human',
         422,
         {
-          requestId: 'engagement-create',
+          requestId: 'selection-create',
           details: {
             field: 'talent_id',
             talent_id: input.talent_id,
@@ -602,20 +602,20 @@ export class SelectionRepository {
     // T1-a — validate against the ATS requisition directly. findStatusById is
     // tenant-scoped: null means the requisition does not exist in this tenant
     // (byte-identical outcome to the old mirror existence + tenant check). Any
-    // stored status counts as "exists" — engagement create never gated on the
+    // stored status counts as "exists" — selection create never gated on the
     // requisition's lifecycle state, and that is preserved.
     const requisitionStatus = await this.requisitionRepository.findStatusById({
       tenant_id: input.tenant_id,
       id: input.requisition_id,
     });
     if (requisitionStatus === null) {
-      this.logRefused('ENGAGEMENT_REFERENCE_NOT_FOUND', input, 'requisition_id');
+      this.logRefused('SELECTION_REFERENCE_NOT_FOUND', input, 'requisition_id');
       throw new AramoError(
-        'ENGAGEMENT_REFERENCE_NOT_FOUND',
+        'SELECTION_REFERENCE_NOT_FOUND',
         'Requisition not found or not visible in tenant',
         422,
         {
-          requestId: 'engagement-create',
+          requestId: 'selection-create',
           details: { field: 'requisition_id', requisition_id: input.requisition_id, tenant_id: input.tenant_id },
         },
       );
@@ -625,26 +625,26 @@ export class SelectionRepository {
     if (input.examination_id !== undefined && input.examination_id !== null) {
       const examination = await this.examinationRepository.findById(input.examination_id);
       if (examination === null || examination.tenant_id !== input.tenant_id) {
-        this.logRefused('ENGAGEMENT_REFERENCE_NOT_FOUND', input, 'examination_id');
+        this.logRefused('SELECTION_REFERENCE_NOT_FOUND', input, 'examination_id');
         throw new AramoError(
-          'ENGAGEMENT_REFERENCE_NOT_FOUND',
+          'SELECTION_REFERENCE_NOT_FOUND',
           'TalentJobExamination not found or not visible in tenant',
           422,
           {
-            requestId: 'engagement-create',
+            requestId: 'selection-create',
             details: { field: 'examination_id', examination_id: input.examination_id, tenant_id: input.tenant_id },
           },
         );
       }
     }
 
-    // ---- Step 3: atomic transaction (engagement.create + event.create
+    // ---- Step 3: atomic transaction (selection.create + event.create
     // + outbox.create) — M6 PR-2 §3 adds the in-tx outbox emission;
     // rollback leaves no orphan outbox row (Cat 5 proof).
     // Initial state hardcoded to 'surfaced' per Ruling 3 (matching engine
     // creates the row in surfaced; the from_state on the initial event
     // is null because there is no prior state).
-    const [engagementRow, eventRow] = await this.prisma.$transaction([
+    const [selectionRow, eventRow] = await this.prisma.$transaction([
       this.prisma.talentSelection.create({
         data: {
           id: input.id,
@@ -659,7 +659,7 @@ export class SelectionRepository {
         data: {
           id: input.event_id,
           tenant_id: input.tenant_id,
-          engagement_id: input.id,
+          selection_id: input.id,
           event_type: 'state_transition',
           event_payload: { from_state: null, to_state: 'surfaced' } as never,
         },
@@ -668,9 +668,9 @@ export class SelectionRepository {
         data: {
           id: uuidv7(),
           tenant_id: input.tenant_id,
-          event_type: 'engagement.state_transition',
+          event_type: 'selection.state_transition',
           event_payload: {
-            engagement_id: input.id,
+            selection_id: input.id,
             tenant_id: input.tenant_id,
             from_state: null,
             to_state: 'surfaced',
@@ -682,21 +682,21 @@ export class SelectionRepository {
       // same PG transaction = atomicity with the domain write (Ruling 6).
       recordUsage(this.prisma, {
         tenant_id: input.tenant_id,
-        event_type: 'engagement.state_transition',
+        event_type: 'selection.state_transition',
       }),
     ]);
 
     // ---- Step 4 + 5: project + return + success log -------------------
-    const result: CreateEngagementResult = {
-      engagement: projectView(engagementRow as TalentSelectionRow),
+    const result: CreateSelectionResult = {
+      selection: projectView(selectionRow as TalentSelectionRow),
       event: projectEventView(eventRow as TalentSelectionEventRow),
     };
     this.logger.log({
-      event: 'engagement.created',
-      tenant_id: result.engagement.tenant_id,
-      engagement_id: result.engagement.id,
-      engagement_event_id: result.event.id,
-      initial_state: result.engagement.state,
+      event: 'selection.created',
+      tenant_id: result.selection.tenant_id,
+      selection_id: result.selection.id,
+      selection_event_id: result.event.id,
+      initial_state: result.selection.state,
       latency_ms: Date.now() - startedAt,
     });
     return result;
@@ -707,35 +707,35 @@ export class SelectionRepository {
   async transitionState(input: TransitionStateInput): Promise<TransitionStateResult> {
     const startedAt = Date.now();
     this.logger.log({
-      event: 'engagement.transition_started',
+      event: 'selection.transition_started',
       tenant_id: input.tenant_id,
-      engagement_id: input.engagement_id,
+      selection_id: input.selection_id,
       to_state: input.to_state,
     });
 
-    // ---- Step 1: read current engagement (tenant-scoped + D4b) -------
+    // ---- Step 1: read current selection (tenant-scoped + D4b) -------
     // R7 BE-prereq §3 — visibility passed through to the single source
     // of truth (findByTenantAndId composes; invisible requisition →
     // null → NOT_FOUND, the non-leak posture).
     const current = await this.findByTenantAndId({
       tenant_id: input.tenant_id,
-      id: input.engagement_id,
+      id: input.selection_id,
       visible_requisition_ids: input.visible_requisition_ids,
     });
     if (current === null) {
       this.logger.log({
-        event: 'engagement.transition_refused',
+        event: 'selection.transition_refused',
         error_code: 'NOT_FOUND',
         tenant_id: input.tenant_id,
-        engagement_id: input.engagement_id,
+        selection_id: input.selection_id,
       });
       throw new AramoError(
         'NOT_FOUND',
         'TalentSelection not found',
         404,
         {
-          requestId: 'engagement-transition',
-          details: { engagement_id: input.engagement_id, tenant_id: input.tenant_id },
+          requestId: 'selection-transition',
+          details: { selection_id: input.selection_id, tenant_id: input.tenant_id },
         },
       );
     }
@@ -743,21 +743,21 @@ export class SelectionRepository {
     // ---- Step 2: canTransition guard -----------------------------------
     if (!canTransition(current.state, input.to_state)) {
       this.logger.log({
-        event: 'engagement.transition_refused',
-        error_code: 'ENGAGEMENT_STATE_INVALID',
+        event: 'selection.transition_refused',
+        error_code: 'SELECTION_STATE_INVALID',
         tenant_id: input.tenant_id,
-        engagement_id: input.engagement_id,
+        selection_id: input.selection_id,
         from_state: current.state,
         to_state: input.to_state,
       });
       throw new AramoError(
-        'ENGAGEMENT_STATE_INVALID',
-        `Illegal engagement state transition: ${current.state} -> ${input.to_state}`,
+        'SELECTION_STATE_INVALID',
+        `Illegal selection state transition: ${current.state} -> ${input.to_state}`,
         422,
         {
-          requestId: 'engagement-transition',
+          requestId: 'selection-transition',
           details: {
-            engagement_id: input.engagement_id,
+            selection_id: input.selection_id,
             from_state: current.state,
             to_state: input.to_state,
           },
@@ -765,18 +765,18 @@ export class SelectionRepository {
       );
     }
 
-    // ---- Step 3: atomic transaction (engagement.update + event.create
+    // ---- Step 3: atomic transaction (selection.update + event.create
     // + outbox.create) — M6 PR-2 §3 in-tx outbox emission.
     const [updatedRow, eventRow] = await this.prisma.$transaction([
       this.prisma.talentSelection.update({
-        where: { id: input.engagement_id },
+        where: { id: input.selection_id },
         data: { state: input.to_state },
       }),
       this.prisma.talentSelectionEvent.create({
         data: {
           id: input.event_id,
           tenant_id: input.tenant_id,
-          engagement_id: input.engagement_id,
+          selection_id: input.selection_id,
           event_type: 'state_transition',
           event_payload: {
             from_state: current.state,
@@ -788,9 +788,9 @@ export class SelectionRepository {
         data: {
           id: uuidv7(),
           tenant_id: input.tenant_id,
-          event_type: 'engagement.state_transition',
+          event_type: 'selection.state_transition',
           event_payload: {
-            engagement_id: input.engagement_id,
+            selection_id: input.selection_id,
             tenant_id: input.tenant_id,
             from_state: current.state,
             to_state: input.to_state,
@@ -801,22 +801,22 @@ export class SelectionRepository {
       // PR-A1c — in-tx metered usage event (Ruling 6 same-transaction).
       recordUsage(this.prisma, {
         tenant_id: input.tenant_id,
-        event_type: 'engagement.state_transition',
+        event_type: 'selection.state_transition',
       }),
     ]);
 
     // ---- Step 4 + 5: project + return + success log -------------------
     const result: TransitionStateResult = {
-      engagement: projectView(updatedRow as TalentSelectionRow),
+      selection: projectView(updatedRow as TalentSelectionRow),
       event: projectEventView(eventRow as TalentSelectionEventRow),
     };
     this.logger.log({
-      event: 'engagement.transitioned',
-      tenant_id: result.engagement.tenant_id,
-      engagement_id: result.engagement.id,
-      engagement_event_id: result.event.id,
+      event: 'selection.transitioned',
+      tenant_id: result.selection.tenant_id,
+      selection_id: result.selection.id,
+      selection_event_id: result.event.id,
       from_state: current.state,
-      to_state: result.engagement.state,
+      to_state: result.selection.state,
       latency_ms: Date.now() - startedAt,
     });
     return result;
@@ -829,63 +829,63 @@ export class SelectionRepository {
   //
   // Generation only: NO state mutation, NO outbox, NO transaction. The
   // single append is atomic by itself; the append-only immutability
-  // trigger is unaffected. Multiple drafts per engagement are permitted
+  // trigger is unaffected. Multiple drafts per selection are permitted
   // (the recruiter may re-draft) — each call appends a fresh row.
   async draftOutreach(input: DraftOutreachInput): Promise<DraftOutreachResult> {
     const startedAt = Date.now();
     this.logger.log({
-      event: 'engagement.outreach_draft_started',
+      event: 'selection.outreach_draft_started',
       tenant_id: input.tenant_id,
-      engagement_id: input.engagement_id,
+      selection_id: input.selection_id,
       draft_event_id: input.draft_event_id,
     });
 
-    // ---- Step 1: read current engagement (tenant-scoped + D4b) -------
+    // ---- Step 1: read current selection (tenant-scoped + D4b) -------
     const current = await this.findByTenantAndId({
       tenant_id: input.tenant_id,
-      id: input.engagement_id,
+      id: input.selection_id,
       visible_requisition_ids: input.visible_requisition_ids,
     });
     if (current === null) {
       this.logger.log({
-        event: 'engagement.outreach_draft_refused',
+        event: 'selection.outreach_draft_refused',
         error_code: 'NOT_FOUND',
         tenant_id: input.tenant_id,
-        engagement_id: input.engagement_id,
+        selection_id: input.selection_id,
       });
       throw new AramoError(
         'NOT_FOUND',
         'TalentSelection not found',
         404,
         {
-          requestId: 'engagement-outreach-draft',
-          details: { engagement_id: input.engagement_id, tenant_id: input.tenant_id },
+          requestId: 'selection-outreach-draft',
+          details: { selection_id: input.selection_id, tenant_id: input.tenant_id },
         },
       );
     }
 
     // ---- Step 2: DRAFT state-gate (Amendment v1.1 Ruling 2) -----------
-    // DRAFT requires the engagement be in a send-eligible state — i.e.
+    // DRAFT requires the selection be in a send-eligible state — i.e.
     // canTransition(state, 'awaiting_response') (only `engaged` qualifies).
     // No stranded drafts: you can only draft what you can send.
     const SEND_TARGET: SelectionStateValue = 'awaiting_response';
     if (!canTransition(current.state, SEND_TARGET)) {
       this.logger.log({
-        event: 'engagement.outreach_draft_refused',
-        error_code: 'ENGAGEMENT_STATE_INVALID',
+        event: 'selection.outreach_draft_refused',
+        error_code: 'SELECTION_STATE_INVALID',
         tenant_id: input.tenant_id,
-        engagement_id: input.engagement_id,
+        selection_id: input.selection_id,
         from_state: current.state,
         to_state: SEND_TARGET,
       });
       throw new AramoError(
-        'ENGAGEMENT_STATE_INVALID',
-        `Illegal engagement state transition: ${current.state} -> ${SEND_TARGET}`,
+        'SELECTION_STATE_INVALID',
+        `Illegal selection state transition: ${current.state} -> ${SEND_TARGET}`,
         422,
         {
-          requestId: 'engagement-outreach-draft',
+          requestId: 'selection-outreach-draft',
           details: {
-            engagement_id: input.engagement_id,
+            selection_id: input.selection_id,
             from_state: current.state,
             to_state: SEND_TARGET,
           },
@@ -900,7 +900,7 @@ export class SelectionRepository {
       data: {
         id: input.draft_event_id,
         tenant_id: input.tenant_id,
-        engagement_id: input.engagement_id,
+        selection_id: input.selection_id,
         event_type: 'outreach_drafted',
         event_payload: input.drafted_payload as never,
       },
@@ -910,9 +910,9 @@ export class SelectionRepository {
       draft_event: projectEventView(draftRow as TalentSelectionEventRow),
     };
     this.logger.log({
-      event: 'engagement.outreach_drafted',
+      event: 'selection.outreach_drafted',
       tenant_id: result.draft_event.tenant_id,
-      engagement_id: result.draft_event.engagement_id,
+      selection_id: result.draft_event.selection_id,
       draft_event_id: result.draft_event.id,
       latency_ms: Date.now() - startedAt,
     });
@@ -923,85 +923,85 @@ export class SelectionRepository {
   // extended by the Outreach Draft/Preview Amendment v1.1 §2.
   // Read current → NOT_FOUND guard → source-draft cross-event-ref guard →
   // canTransition(engaged → awaiting_response) guard → atomic 4-write
-  // transaction (engagement update + outreach_sent event [now carrying
+  // transaction (selection update + outreach_sent event [now carrying
   // final_text + source_draft_event_id] + state_transition event +
   // outbox). Mirrors the transitionState fail-fast pattern: AI/delivery
   // side-effects occur in the controller BEFORE this method is called, so
-  // a pre-transaction failure (AI provider, delivery) leaves engagement
+  // a pre-transaction failure (AI provider, delivery) leaves selection
   // state + event log unchanged (no partial-state observability).
   async sendOutreach(input: SendOutreachInput): Promise<SendOutreachResult> {
     const startedAt = Date.now();
     this.logger.log({
-      event: 'engagement.outreach_started',
+      event: 'selection.outreach_started',
       tenant_id: input.tenant_id,
-      engagement_id: input.engagement_id,
+      selection_id: input.selection_id,
       outreach_event_id: input.outreach_event_id,
       transition_event_id: input.transition_event_id,
     });
 
-    // ---- Step 1: read current engagement (tenant-scoped + D4b) -------
+    // ---- Step 1: read current selection (tenant-scoped + D4b) -------
     // R7 BE-prereq §3 — visibility passed through; invisible
     // requisition → null → NOT_FOUND.
     const current = await this.findByTenantAndId({
       tenant_id: input.tenant_id,
-      id: input.engagement_id,
+      id: input.selection_id,
       visible_requisition_ids: input.visible_requisition_ids,
     });
     if (current === null) {
       this.logger.log({
-        event: 'engagement.outreach_refused',
+        event: 'selection.outreach_refused',
         error_code: 'NOT_FOUND',
         tenant_id: input.tenant_id,
-        engagement_id: input.engagement_id,
+        selection_id: input.selection_id,
       });
       throw new AramoError(
         'NOT_FOUND',
         'TalentSelection not found',
         404,
         {
-          requestId: 'engagement-outreach',
-          details: { engagement_id: input.engagement_id, tenant_id: input.tenant_id },
+          requestId: 'selection-outreach',
+          details: { selection_id: input.selection_id, tenant_id: input.tenant_id },
         },
       );
     }
 
     // ---- Step 1.5: source-draft cross-event-ref validation -----------
     // Outreach Draft/Preview Amendment v1.1 §2. The source_draft_event_id
-    // MUST resolve to an event in the SAME tenant + SAME engagement +
+    // MUST resolve to an event in the SAME tenant + SAME selection +
     // event_type='outreach_drafted'. Mirrors recordResponse's
     // outreach_event_ref_id guard: defends against null lookup,
-    // cross-tenant (findByTenantAndId returns null), cross-engagement
+    // cross-tenant (findByTenantAndId returns null), cross-selection
     // pollution, and pointing at a non-draft event type.
-    const draftRef = await this.engagementEventRepository.findByTenantAndId({
+    const draftRef = await this.selectionEventRepository.findByTenantAndId({
       tenant_id: input.tenant_id,
       id: input.source_draft_event_id,
     });
     if (
       draftRef === null ||
-      draftRef.engagement_id !== input.engagement_id ||
+      draftRef.selection_id !== input.selection_id ||
       draftRef.event_type !== 'outreach_drafted'
     ) {
       this.logger.log({
-        event: 'engagement.outreach_refused',
-        error_code: 'ENGAGEMENT_REFERENCE_NOT_FOUND',
+        event: 'selection.outreach_refused',
+        error_code: 'SELECTION_REFERENCE_NOT_FOUND',
         tenant_id: input.tenant_id,
-        engagement_id: input.engagement_id,
+        selection_id: input.selection_id,
         source_draft_event_id: input.source_draft_event_id,
         ref_resolved: draftRef !== null,
-        ref_engagement_match:
-          draftRef !== null && draftRef.engagement_id === input.engagement_id,
+        ref_selection_match:
+          draftRef !== null && draftRef.selection_id === input.selection_id,
         ref_event_type: draftRef?.event_type ?? null,
       });
       throw new AramoError(
-        'ENGAGEMENT_REFERENCE_NOT_FOUND',
+        'SELECTION_REFERENCE_NOT_FOUND',
         'draft_event_id not found, not in tenant, or not an outreach_drafted event',
         422,
         {
-          requestId: 'engagement-outreach',
+          requestId: 'selection-outreach',
           details: {
             field: 'draft_event_id',
             draft_event_id: input.source_draft_event_id,
-            engagement_id: input.engagement_id,
+            selection_id: input.selection_id,
             tenant_id: input.tenant_id,
           },
         },
@@ -1012,21 +1012,21 @@ export class SelectionRepository {
     const TO_STATE: SelectionStateValue = 'awaiting_response';
     if (!canTransition(current.state, TO_STATE)) {
       this.logger.log({
-        event: 'engagement.outreach_refused',
-        error_code: 'ENGAGEMENT_STATE_INVALID',
+        event: 'selection.outreach_refused',
+        error_code: 'SELECTION_STATE_INVALID',
         tenant_id: input.tenant_id,
-        engagement_id: input.engagement_id,
+        selection_id: input.selection_id,
         from_state: current.state,
         to_state: TO_STATE,
       });
       throw new AramoError(
-        'ENGAGEMENT_STATE_INVALID',
-        `Illegal engagement state transition: ${current.state} -> ${TO_STATE}`,
+        'SELECTION_STATE_INVALID',
+        `Illegal selection state transition: ${current.state} -> ${TO_STATE}`,
         422,
         {
-          requestId: 'engagement-outreach',
+          requestId: 'selection-outreach',
           details: {
-            engagement_id: input.engagement_id,
+            selection_id: input.selection_id,
             from_state: current.state,
             to_state: TO_STATE,
           },
@@ -1040,14 +1040,14 @@ export class SelectionRepository {
     const [updatedRow, outreachEventRow, transitionEventRow] =
       await this.prisma.$transaction([
         this.prisma.talentSelection.update({
-          where: { id: input.engagement_id },
+          where: { id: input.selection_id },
           data: { state: TO_STATE },
         }),
         this.prisma.talentSelectionEvent.create({
           data: {
             id: input.outreach_event_id,
             tenant_id: input.tenant_id,
-            engagement_id: input.engagement_id,
+            selection_id: input.selection_id,
             event_type: 'outreach_sent',
             event_payload: input.outreach_payload as never,
           },
@@ -1056,7 +1056,7 @@ export class SelectionRepository {
           data: {
             id: input.transition_event_id,
             tenant_id: input.tenant_id,
-            engagement_id: input.engagement_id,
+            selection_id: input.selection_id,
             event_type: 'state_transition',
             event_payload: {
               from_state: current.state,
@@ -1068,9 +1068,9 @@ export class SelectionRepository {
           data: {
             id: uuidv7(),
             tenant_id: input.tenant_id,
-            event_type: 'engagement.state_transition',
+            event_type: 'selection.state_transition',
             event_payload: {
-              engagement_id: input.engagement_id,
+              selection_id: input.selection_id,
               tenant_id: input.tenant_id,
               from_state: current.state,
               to_state: TO_STATE,
@@ -1081,24 +1081,24 @@ export class SelectionRepository {
         // PR-A1c — in-tx metered usage event (Ruling 6 same-transaction).
         recordUsage(this.prisma, {
           tenant_id: input.tenant_id,
-          event_type: 'engagement.state_transition',
+          event_type: 'selection.state_transition',
         }),
       ]);
 
     // ---- Step 4 + 5: project + return + success log ------------------
     const result: SendOutreachResult = {
-      engagement: projectView(updatedRow as TalentSelectionRow),
+      selection: projectView(updatedRow as TalentSelectionRow),
       outreach_event: projectEventView(outreachEventRow as TalentSelectionEventRow),
       transition_event: projectEventView(transitionEventRow as TalentSelectionEventRow),
     };
     this.logger.log({
-      event: 'engagement.outreach_sent',
-      tenant_id: result.engagement.tenant_id,
-      engagement_id: result.engagement.id,
+      event: 'selection.outreach_sent',
+      tenant_id: result.selection.tenant_id,
+      selection_id: result.selection.id,
       outreach_event_id: result.outreach_event.id,
       transition_event_id: result.transition_event.id,
       from_state: current.state,
-      to_state: result.engagement.state,
+      to_state: result.selection.state,
       latency_ms: Date.now() - startedAt,
     });
     return result;
@@ -1107,42 +1107,42 @@ export class SelectionRepository {
   // recordResponse — M5 PR-7 Directive v1.0 §4.3 + Rulings 1, 2, 4, 5.
   // Read current → NOT_FOUND guard → cross-event-ref validation (Ruling
   // 4) → canTransition(awaiting_response → responded) guard → atomic
-  // 3-write transaction (engagement update + response_received event +
-  // state_transition event). All refusals leave engagement state +
+  // 3-write transaction (selection update + response_received event +
+  // state_transition event). All refusals leave selection state +
   // event log unchanged (pre-transaction failure semantics).
   async recordResponse(input: RecordResponseInput): Promise<RecordResponseResult> {
     const startedAt = Date.now();
     this.logger.log({
-      event: 'engagement.response_recording_started',
+      event: 'selection.response_recording_started',
       tenant_id: input.tenant_id,
-      engagement_id: input.engagement_id,
+      selection_id: input.selection_id,
       response_event_id: input.response_event_id,
       transition_event_id: input.transition_event_id,
       outreach_event_ref_id: input.response_payload.outreach_event_ref_id,
     });
 
-    // ---- Step 1: read current engagement (tenant-scoped + D4b) -------
+    // ---- Step 1: read current selection (tenant-scoped + D4b) -------
     // R7 BE-prereq §3 — visibility passed through; invisible
     // requisition → null → NOT_FOUND.
     const current = await this.findByTenantAndId({
       tenant_id: input.tenant_id,
-      id: input.engagement_id,
+      id: input.selection_id,
       visible_requisition_ids: input.visible_requisition_ids,
     });
     if (current === null) {
       this.logger.log({
-        event: 'engagement.response_recording_refused',
+        event: 'selection.response_recording_refused',
         error_code: 'NOT_FOUND',
         tenant_id: input.tenant_id,
-        engagement_id: input.engagement_id,
+        selection_id: input.selection_id,
       });
       throw new AramoError(
         'NOT_FOUND',
         'TalentSelection not found',
         404,
         {
-          requestId: 'engagement-record-response',
-          details: { engagement_id: input.engagement_id, tenant_id: input.tenant_id },
+          requestId: 'selection-record-response',
+          details: { selection_id: input.selection_id, tenant_id: input.tenant_id },
         },
       );
     }
@@ -1151,39 +1151,39 @@ export class SelectionRepository {
     // The referenced event must:
     //   (a) exist (findByTenantAndId returns non-null), which also
     //       enforces tenant scope — cross-tenant attack returns null.
-    //   (b) live on the SAME engagement_id (defends against
-    //       cross-engagement pollution within the same tenant).
+    //   (b) live on the SAME selection_id (defends against
+    //       cross-selection pollution within the same tenant).
     //   (c) have event_type='outreach_sent' (defends against pointing
     //       at a sibling state_transition or future event type).
-    const refEvent = await this.engagementEventRepository.findByTenantAndId({
+    const refEvent = await this.selectionEventRepository.findByTenantAndId({
       tenant_id: input.tenant_id,
       id: input.response_payload.outreach_event_ref_id,
     });
     if (
       refEvent === null ||
-      refEvent.engagement_id !== input.engagement_id ||
+      refEvent.selection_id !== input.selection_id ||
       refEvent.event_type !== 'outreach_sent'
     ) {
       this.logger.log({
-        event: 'engagement.response_recording_refused',
-        error_code: 'ENGAGEMENT_REFERENCE_NOT_FOUND',
+        event: 'selection.response_recording_refused',
+        error_code: 'SELECTION_REFERENCE_NOT_FOUND',
         tenant_id: input.tenant_id,
-        engagement_id: input.engagement_id,
+        selection_id: input.selection_id,
         outreach_event_ref_id: input.response_payload.outreach_event_ref_id,
         ref_resolved: refEvent !== null,
-        ref_engagement_match: refEvent !== null && refEvent.engagement_id === input.engagement_id,
+        ref_selection_match: refEvent !== null && refEvent.selection_id === input.selection_id,
         ref_event_type: refEvent?.event_type ?? null,
       });
       throw new AramoError(
-        'ENGAGEMENT_REFERENCE_NOT_FOUND',
+        'SELECTION_REFERENCE_NOT_FOUND',
         'outreach_event_ref_id not found, not in tenant, or not an outreach_sent event',
         422,
         {
-          requestId: 'engagement-record-response',
+          requestId: 'selection-record-response',
           details: {
             field: 'outreach_event_ref_id',
             outreach_event_ref_id: input.response_payload.outreach_event_ref_id,
-            engagement_id: input.engagement_id,
+            selection_id: input.selection_id,
             tenant_id: input.tenant_id,
           },
         },
@@ -1194,21 +1194,21 @@ export class SelectionRepository {
     const TO_STATE: SelectionStateValue = 'responded';
     if (!canTransition(current.state, TO_STATE)) {
       this.logger.log({
-        event: 'engagement.response_recording_refused',
-        error_code: 'ENGAGEMENT_STATE_INVALID',
+        event: 'selection.response_recording_refused',
+        error_code: 'SELECTION_STATE_INVALID',
         tenant_id: input.tenant_id,
-        engagement_id: input.engagement_id,
+        selection_id: input.selection_id,
         from_state: current.state,
         to_state: TO_STATE,
       });
       throw new AramoError(
-        'ENGAGEMENT_STATE_INVALID',
-        `Illegal engagement state transition: ${current.state} -> ${TO_STATE}`,
+        'SELECTION_STATE_INVALID',
+        `Illegal selection state transition: ${current.state} -> ${TO_STATE}`,
         422,
         {
-          requestId: 'engagement-record-response',
+          requestId: 'selection-record-response',
           details: {
-            engagement_id: input.engagement_id,
+            selection_id: input.selection_id,
             from_state: current.state,
             to_state: TO_STATE,
           },
@@ -1221,14 +1221,14 @@ export class SelectionRepository {
     const [updatedRow, responseEventRow, transitionEventRow] =
       await this.prisma.$transaction([
         this.prisma.talentSelection.update({
-          where: { id: input.engagement_id },
+          where: { id: input.selection_id },
           data: { state: TO_STATE },
         }),
         this.prisma.talentSelectionEvent.create({
           data: {
             id: input.response_event_id,
             tenant_id: input.tenant_id,
-            engagement_id: input.engagement_id,
+            selection_id: input.selection_id,
             event_type: 'response_received',
             event_payload: input.response_payload as never,
           },
@@ -1237,7 +1237,7 @@ export class SelectionRepository {
           data: {
             id: input.transition_event_id,
             tenant_id: input.tenant_id,
-            engagement_id: input.engagement_id,
+            selection_id: input.selection_id,
             event_type: 'state_transition',
             event_payload: {
               from_state: current.state,
@@ -1249,9 +1249,9 @@ export class SelectionRepository {
           data: {
             id: uuidv7(),
             tenant_id: input.tenant_id,
-            event_type: 'engagement.state_transition',
+            event_type: 'selection.state_transition',
             event_payload: {
-              engagement_id: input.engagement_id,
+              selection_id: input.selection_id,
               tenant_id: input.tenant_id,
               from_state: current.state,
               to_state: TO_STATE,
@@ -1262,25 +1262,25 @@ export class SelectionRepository {
         // PR-A1c — in-tx metered usage event (Ruling 6 same-transaction).
         recordUsage(this.prisma, {
           tenant_id: input.tenant_id,
-          event_type: 'engagement.state_transition',
+          event_type: 'selection.state_transition',
         }),
       ]);
 
     // ---- Step 5 + 6: project + return + success log ------------------
     const result: RecordResponseResult = {
-      engagement: projectView(updatedRow as TalentSelectionRow),
+      selection: projectView(updatedRow as TalentSelectionRow),
       response_event: projectEventView(responseEventRow as TalentSelectionEventRow),
       transition_event: projectEventView(transitionEventRow as TalentSelectionEventRow),
     };
     this.logger.log({
-      event: 'engagement.response_recorded',
-      tenant_id: result.engagement.tenant_id,
-      engagement_id: result.engagement.id,
+      event: 'selection.response_recorded',
+      tenant_id: result.selection.tenant_id,
+      selection_id: result.selection.id,
       response_event_id: result.response_event.id,
       transition_event_id: result.transition_event.id,
       outreach_event_ref_id: input.response_payload.outreach_event_ref_id,
       from_state: current.state,
-      to_state: result.engagement.state,
+      to_state: result.selection.state,
       latency_ms: Date.now() - startedAt,
     });
     return result;
@@ -1288,7 +1288,7 @@ export class SelectionRepository {
 
   // recordConversationStarted — M5 PR-8a Directive v1.0 §4.3 + Rulings
   // 1, 2, 3, 5. Read current → NOT_FOUND guard → canTransition(responded
-  // → in_conversation) guard → atomic 3-write transaction (engagement
+  // → in_conversation) guard → atomic 3-write transaction (selection
   // update + conversation_started event + state_transition event).
   //
   // SIMPLER than PR-7 recordResponse (5 internal steps vs PR-7's 6):
@@ -1297,69 +1297,69 @@ export class SelectionRepository {
   // response_received event is implicit and not explicitly referenced
   // in the conversation_started payload).
   //
-  // All refusals leave engagement state + event log unchanged (pre-
+  // All refusals leave selection state + event log unchanged (pre-
   // transaction failure semantics).
   async recordConversationStarted(
     input: RecordConversationStartedInput,
   ): Promise<RecordConversationStartedResult> {
     const startedAt = Date.now();
     this.logger.log({
-      event: 'engagement.conversation_started_recording_started',
+      event: 'selection.conversation_started_recording_started',
       tenant_id: input.tenant_id,
-      engagement_id: input.engagement_id,
+      selection_id: input.selection_id,
       conversation_event_id: input.conversation_event_id,
       transition_event_id: input.transition_event_id,
       conversation_started_at: input.conversation_payload.conversation_started_at,
     });
 
-    // ---- Step 1: read current engagement (tenant-scoped + D4b) -------
+    // ---- Step 1: read current selection (tenant-scoped + D4b) -------
     // R7 BE-prereq §3 — visibility passed through; invisible
     // requisition → null → NOT_FOUND.
     const current = await this.findByTenantAndId({
       tenant_id: input.tenant_id,
-      id: input.engagement_id,
+      id: input.selection_id,
       visible_requisition_ids: input.visible_requisition_ids,
     });
     if (current === null) {
       this.logger.log({
-        event: 'engagement.conversation_started_recording_refused',
+        event: 'selection.conversation_started_recording_refused',
         error_code: 'NOT_FOUND',
         tenant_id: input.tenant_id,
-        engagement_id: input.engagement_id,
+        selection_id: input.selection_id,
       });
       throw new AramoError(
         'NOT_FOUND',
         'TalentSelection not found',
         404,
         {
-          requestId: 'engagement-record-conversation-started',
-          details: { engagement_id: input.engagement_id, tenant_id: input.tenant_id },
+          requestId: 'selection-record-conversation-started',
+          details: { selection_id: input.selection_id, tenant_id: input.tenant_id },
         },
       );
     }
 
     // ---- Step 2: canTransition guard (responded → in_conversation) ----
-    // Also handles natural-key dedup: an engagement already in
+    // Also handles natural-key dedup: an selection already in
     // 'in_conversation' cannot transition to 'in_conversation' again
     // (canTransition returns false because the matrix has no self-loop).
     const TO_STATE: SelectionStateValue = 'in_conversation';
     if (!canTransition(current.state, TO_STATE)) {
       this.logger.log({
-        event: 'engagement.conversation_started_recording_refused',
-        error_code: 'ENGAGEMENT_STATE_INVALID',
+        event: 'selection.conversation_started_recording_refused',
+        error_code: 'SELECTION_STATE_INVALID',
         tenant_id: input.tenant_id,
-        engagement_id: input.engagement_id,
+        selection_id: input.selection_id,
         from_state: current.state,
         to_state: TO_STATE,
       });
       throw new AramoError(
-        'ENGAGEMENT_STATE_INVALID',
-        `Illegal engagement state transition: ${current.state} -> ${TO_STATE}`,
+        'SELECTION_STATE_INVALID',
+        `Illegal selection state transition: ${current.state} -> ${TO_STATE}`,
         422,
         {
-          requestId: 'engagement-record-conversation-started',
+          requestId: 'selection-record-conversation-started',
           details: {
-            engagement_id: input.engagement_id,
+            selection_id: input.selection_id,
             from_state: current.state,
             to_state: TO_STATE,
           },
@@ -1372,14 +1372,14 @@ export class SelectionRepository {
     const [updatedRow, conversationEventRow, transitionEventRow] =
       await this.prisma.$transaction([
         this.prisma.talentSelection.update({
-          where: { id: input.engagement_id },
+          where: { id: input.selection_id },
           data: { state: TO_STATE },
         }),
         this.prisma.talentSelectionEvent.create({
           data: {
             id: input.conversation_event_id,
             tenant_id: input.tenant_id,
-            engagement_id: input.engagement_id,
+            selection_id: input.selection_id,
             event_type: 'conversation_started',
             event_payload: input.conversation_payload as never,
           },
@@ -1388,7 +1388,7 @@ export class SelectionRepository {
           data: {
             id: input.transition_event_id,
             tenant_id: input.tenant_id,
-            engagement_id: input.engagement_id,
+            selection_id: input.selection_id,
             event_type: 'state_transition',
             event_payload: {
               from_state: current.state,
@@ -1400,9 +1400,9 @@ export class SelectionRepository {
           data: {
             id: uuidv7(),
             tenant_id: input.tenant_id,
-            event_type: 'engagement.state_transition',
+            event_type: 'selection.state_transition',
             event_payload: {
-              engagement_id: input.engagement_id,
+              selection_id: input.selection_id,
               tenant_id: input.tenant_id,
               from_state: current.state,
               to_state: TO_STATE,
@@ -1413,24 +1413,24 @@ export class SelectionRepository {
         // PR-A1c — in-tx metered usage event (Ruling 6 same-transaction).
         recordUsage(this.prisma, {
           tenant_id: input.tenant_id,
-          event_type: 'engagement.state_transition',
+          event_type: 'selection.state_transition',
         }),
       ]);
 
     // ---- Step 4 + 5: project + return + success log ------------------
     const result: RecordConversationStartedResult = {
-      engagement: projectView(updatedRow as TalentSelectionRow),
+      selection: projectView(updatedRow as TalentSelectionRow),
       conversation_event: projectEventView(conversationEventRow as TalentSelectionEventRow),
       transition_event: projectEventView(transitionEventRow as TalentSelectionEventRow),
     };
     this.logger.log({
-      event: 'engagement.conversation_started_recorded',
-      tenant_id: result.engagement.tenant_id,
-      engagement_id: result.engagement.id,
+      event: 'selection.conversation_started_recorded',
+      tenant_id: result.selection.tenant_id,
+      selection_id: result.selection.id,
       conversation_event_id: result.conversation_event.id,
       transition_event_id: result.transition_event.id,
       from_state: current.state,
-      to_state: result.engagement.state,
+      to_state: result.selection.state,
       latency_ms: Date.now() - startedAt,
     });
     return result;
@@ -1438,7 +1438,7 @@ export class SelectionRepository {
 
   // ---- Helpers ----------------------------------------------------------
 
-  private validateCreateInput(input: CreateEngagementInput): void {
+  private validateCreateInput(input: CreateSelectionInput): void {
     const UUID_REGEX =
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     const identityFields: ReadonlyArray<['id' | 'event_id' | 'tenant_id' | 'talent_id' | 'requisition_id', string]> = [
@@ -1452,10 +1452,10 @@ export class SelectionRepository {
       if (typeof value !== 'string' || value.length === 0 || !UUID_REGEX.test(value)) {
         throw new AramoError(
           'VALIDATION_ERROR',
-          `CreateEngagementInput.${name} is not a well-formed UUID`,
+          `CreateSelectionInput.${name} is not a well-formed UUID`,
           400,
           {
-            requestId: 'engagement-create',
+            requestId: 'selection-create',
             details: { invalid_field: name },
           },
         );
@@ -1468,10 +1468,10 @@ export class SelectionRepository {
     ) {
       throw new AramoError(
         'VALIDATION_ERROR',
-        'CreateEngagementInput.examination_id is not a well-formed UUID',
+        'CreateSelectionInput.examination_id is not a well-formed UUID',
         400,
         {
-          requestId: 'engagement-create',
+          requestId: 'selection-create',
           details: { invalid_field: 'examination_id' },
         },
       );
@@ -1479,17 +1479,17 @@ export class SelectionRepository {
   }
 
   private logRefused(
-    // TR-2a-B3a — createEngagement now also refuses a superseded TalentRecord.
-    code: 'ENGAGEMENT_REFERENCE_NOT_FOUND' | 'TALENT_RECORD_SUPERSEDED',
-    input: CreateEngagementInput,
+    // TR-2a-B3a — createSelection now also refuses a superseded TalentRecord.
+    code: 'SELECTION_REFERENCE_NOT_FOUND' | 'TALENT_RECORD_SUPERSEDED',
+    input: CreateSelectionInput,
     field: 'talent_id' | 'requisition_id' | 'examination_id',
   ): void {
     this.logger.log({
-      event: 'engagement.create_refused',
+      event: 'selection.create_refused',
       error_code: code,
       field,
       tenant_id: input.tenant_id,
-      engagement_id: input.id,
+      selection_id: input.id,
     });
   }
 }

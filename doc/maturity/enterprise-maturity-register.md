@@ -219,7 +219,7 @@ Do not implement `resolveByExternalIdentity`, `updateForImport`, `upsertForImpor
 **Status:** `DEFERRED-MATURITY`
 
 **Current posture:**  
-T8-P2 is provider-neutral and transport-neutral. It contains no production provider connector, credentials, polling, webhook transport, or provider-specific state.
+T8-P2 is provider-neutral and transport-neutral. The T8-CONNECTOR-A provider-neutral connector foundation is now AUTHORIZED / MERGED / NOT DEPLOYED (PR #628, merge `3aba5ff38bc8997a1ad31774fb2978dbd826fd41`). It still contains no production provider connector, credentials, polling, webhook transport, provider-specific state, or selected provider; the production provider connector layer remains absent.
 
 **Enterprise target:**  
 Production-grade provider connectivity with governed:
@@ -262,7 +262,7 @@ Before authorization of `T8-CONNECTOR` production implementation or onboarding o
 **Implementation authority:** `NONE`
 
 **Last disposition:**  
-`T8-CONNECTOR` remains separately unauthorized.
+Scope now distinguishes two layers. The **T8-CONNECTOR-A provider-neutral connector foundation** is AUTHORIZED / MERGED / NOT DEPLOYED (PR #628, merge `3aba5ff38bc8997a1ad31774fb2978dbd826fd41`). The **production provider connector layer / T8-CONNECTOR-B activation** REMAINS DEFERRED / NOT AUTHORIZED — first real VMS/provider NOT SELECTED, production onboarding NOT AUTHORIZED, requisition update/upsert NOT AUTHORIZED. This maturity obligation is NOT discharged; its production/provider-specific target remains open.
 
 **Notes:**  
 Do not smuggle a provider-specific connector into UI or import-framework increments.

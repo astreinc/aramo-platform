@@ -8,7 +8,7 @@ import { RequisitionRepositoryStateReaderAdapter } from './requisition-state-rea
 // RequisitionStateReader port. @Global because the port's consumers
 // (ExaminationRepository + MatchListController) are declared inside
 // ExaminationModule (scope:cip), which is transitively imported by
-// Matching/Submittal/Evidence/Engagement modules; a @Global export makes the
+// Matching/Submittal/Evidence/Selection modules; a @Global export makes the
 // single ATS-backed adapter resolvable in every injector without any of those
 // CIP libs importing scope:ats. RequisitionModule is imported so the adapter can
 // depend on RequisitionRepository.

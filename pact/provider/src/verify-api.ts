@@ -20,6 +20,7 @@ import {
   type KeyObject,
 } from 'jose';
 import { AppModule } from '@aramo/api';
+import { SECRETS_MANAGER_WRITER } from '@aramo/integration';
 // ADR-0024 PR-4a — the /v1/pipelines + /v1/sourcing/pipeline replays now RETRIEVE
 // the lifecycle package and fail closed without it, so the verifier publishes one
 // for its tenant. The module-boundary wall forbids importing the apps/api test
@@ -46,7 +47,7 @@ import { hashCanonicalizedBody } from '@aramo/common';
 // M5 PR-6 §4.14 — string-DI-token literals overridden so the verify
 // harness doesn't need real Anthropic API + AWS Secrets Manager +
 // SES/SendGrid wiring. The strings here match the const values in
-// libs/ai-draft/src/lib/providers/tokens.ts and libs/engagement/src/lib/
+// libs/ai-draft/src/lib/providers/tokens.ts and libs/selection/src/lib/
 // delivery/tokens.ts respectively. Per Ruling 13: provider verification
 // with mocked adapters is the supported test posture for substrate
 // that crosses external-service boundaries.
@@ -65,10 +66,10 @@ const PACT_DELIVERY_PROVIDER_TOKEN = 'DELIVERY_PROVIDER_TOKEN';
 //     given-states survive below, driven by the ats-web consent reads
 //     (PC-7a).
 //   - (retired) the thin recruiter consumer formerly contributed 23
-//     consent + 4 match-list interactions plus the engagement / submittal
+//     consent + 4 match-list interactions plus the selection / submittal
 //     / examination / outreach surface. Its pact was removed in the
 //     Architecture-Realignment thin-consumer retirement; the dead consent,
-//     engagement, match-list and submittal state handlers + fixtures it
+//     selection, match-list and submittal state handlers + fixtures it
 //     drove were deleted in the backlog-item-2 prune (directive + v1.1
 //     amendment). 'a recruiter token' / 'no valid token' are retained
 //     (still exercised by live examination / portal-thin pacts).
@@ -213,9 +214,9 @@ const JOB_DOMAIN_DROP_REQUISITION_MIGRATION = resolve(
 );
 // Fix-Slice-Final-Drop — the talent (Core husk) schema is retired; no provider
 // state seeds or reads talent.Talent, so its init migration is no longer applied.
-// 4e-engagement-key — engagement.talent_id now references
-// talent_record.TalentRecord.id, so the engagement-create provider state
-// (seedEngagementBasics) seeds a TalentRecord. The column-mutating
+// 4e-selection-key — selection.talent_id now references
+// talent_record.TalentRecord.id, so the selection-create provider state
+// (seedSelectionBasics) seeds a TalentRecord. The column-mutating
 // talent-record migrations (whole files; pg parses them natively).
 const TALENT_RECORD_MIGRATIONS = [
   'libs/talent-record/prisma/migrations/20260602120000_init_talent_record_model/migration.sql',
@@ -239,11 +240,17 @@ const TALENT_RECORD_MIGRATIONS = [
 // the portal-thin pact interactions (5 interactions traversing the now
 // class-level @RequireCapability('portal') gate) can pass through
 // EntitlementGuard.
+// T8-CONNECTOR-A — connector connection schema for the ats-web connector-
+// management interactions (IntegrationController is @RequireCapability('ats')).
+const INTEGRATION_INIT_MIGRATION = resolve(
+  ROOT,
+  'libs/integration/prisma/migrations/20260814170000_init_integration_connection/migration.sql',
+);
 const ENTITLEMENT_INIT_MIGRATION = resolve(
   ROOT,
   'libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql',
 );
-// PR-A1c §4 sweep — metering schema applied because every engagement +
+// PR-A1c §4 sweep — metering schema applied because every selection +
 // submittal state-transition write method (the methods the pact provider
 // formerly exercised through the retired thin-consumer pacts) now emits
 // an in-tx UsageEvent INSERT in the same $transaction array.
@@ -255,7 +262,7 @@ const METERING_INIT_MIGRATION = resolve(
 // submittal-create pact verification can seed an examination (via
 // seedSubmittalFixture below), trigger the SubmittalController which
 // calls buildPackage (writes evidence schema) and then writes the
-// submittal record (engagement schema).
+// submittal record (selection schema).
 const EVIDENCE_INIT_MIGRATION = resolve(
   ROOT,
   'libs/evidence/prisma/migrations/20260522090000_init_evidence_model/migration.sql',
@@ -313,33 +320,21 @@ const TALENT_EVIDENCE_TR7_MIGRATION = resolve(
   ROOT,
   'libs/talent-evidence/prisma/migrations/20260714120000_tr7_b1_education_certification/migration.sql',
 );
-// M5 PR-1 + PR-2 — engagement schema migrations: TalentJobEngagement
-// init + TalentEngagementEvent event-log + absolute-immutability trigger.
-// Required for M5 PR-4 engagement-* pact interactions.
-const ENGAGEMENT_INIT_MIGRATION = resolve(
+// M5 PR-1 + PR-2 — selection schema migrations: TalentSelection
+// init + TalentSelectionEvent event-log + absolute-immutability trigger.
+// Required for M5 PR-4 selection-* pact interactions.
+const SELECTION_INIT_MIGRATION = resolve(
   ROOT,
-  'libs/selection/prisma/migrations/20260525120000_init_engagement_model/migration.sql',
+  'libs/selection/prisma/migrations/20260525120000_init_selection_model/migration.sql',
 );
-const ENGAGEMENT_EVENT_LOG_MIGRATION = resolve(
-  ROOT,
-  'libs/selection/prisma/migrations/20260525150000_add_engagement_event_log/migration.sql',
-);
-// M6 PR-2 §3 — engagement schema OutboxEvent. Applied AFTER the event-log
-// substrate (same schema namespace). Required by the engagement-* pact
+// M6 PR-2 §3 — selection schema OutboxEvent. Applied AFTER the event-log
+// substrate (same schema namespace). Required by the selection-* pact
 // interactions because the M6 emit points now write an outbox row inside
-// the same $transaction as the engagement state transition; without this
+// the same $transaction as the selection state transition; without this
 // migration, prisma.outboxEvent.create raises "relation does not exist".
-const ENGAGEMENT_OUTBOX_MIGRATION = resolve(
-  ROOT,
-  'libs/selection/prisma/migrations/20260531000000_add_outbox_event/migration.sql',
-);
 // Outreach Draft/Preview Amendment v1.1 §3 — the outreach_drafted enum value.
 // Required by the outreach draft + send pact interactions (the send path
 // reads a seeded outreach_drafted event for the cross-event-ref check).
-const ENGAGEMENT_OUTREACH_DRAFTED_MIGRATION = resolve(
-  ROOT,
-  'libs/selection/prisma/migrations/20260609000000_add_outreach_drafted_event_type/migration.sql',
-);
 // M6 PR-2 §3 — submittal schema OutboxEvent (in its own `submittal` PG
 // namespace; the migration includes CREATE SCHEMA IF NOT EXISTS). Applied
 // after the submittal canonical-rename so the schema-creation step runs
@@ -356,18 +351,10 @@ const SUBMITTAL_OUTBOX_MIGRATION = resolve(
 // repoint methods), but registered so the provider carries the amended trigger
 // fns. COUPLING FLAG: verify-api.ts is the TR-2a↔Pact coupling point — the second
 // of {this track, a concurrent pact track} to land rebases (--force-with-lease).
-const ENGAGEMENT_RECONCILE_REKEY_MIGRATION = resolve(
-  ROOT,
-  'libs/selection/prisma/migrations/20260706240000_tr2a_b3b_reconcile_rekey_exemption/migration.sql',
-);
-// T2-P2 — relocate + rename the engagement objects into the selection schema
-// (existence-guarded; moves whatever objects the prior engagement migrations
-// created). The engagement-* pact interactions now seed + run against
+// T2-P2 — relocate + rename the selection objects into the selection schema
+// (existence-guarded; moves whatever objects the prior selection migrations
+// created). The selection-* pact interactions now seed + run against
 // selection."TalentSelection" / selection."TalentSelectionEvent".
-const ENGAGEMENT_T2P2_MIGRATION = resolve(
-  ROOT,
-  'libs/selection/prisma/migrations/20260813120000_t2p2_relocate_engagement_to_selection/migration.sql',
-);
 const EXAMINATION_RECONCILE_REKEY_MIGRATION = resolve(
   ROOT,
   'libs/examination/prisma/migrations/20260706240000_tr2a_b3b_reconcile_rekey_exemption/migration.sql',
@@ -376,7 +363,7 @@ const SUBMITTAL_RECONCILE_REKEY_MIGRATION = resolve(
   ROOT,
   'libs/submittal/prisma/migrations/20260706240000_tr2a_b3b_reconcile_rekey_exemption/migration.sql',
 );
-// T2-P1 — relocate Submittal persistence engagement -> submittal schema.
+// T2-P1 — relocate Submittal persistence selection -> submittal schema.
 const SUBMITTAL_T2P1_MIGRATION = resolve(
   ROOT,
   'libs/submittal/prisma/migrations/20260812120000_t2p1_relocate_submittal_to_submittal_schema/migration.sql',
@@ -762,7 +749,7 @@ const PROHIBITED_PACT = resolve(
   'pact/pacts/prohibited-source-type-aramo-core.json',
 );
 const PORTAL_THIN_PACT = resolve(ROOT, 'pact/pacts/portal-thin-aramo-core.json');
-// PC-1 — ats-web consumer, engagement domain (the only live FE, Lead R1).
+// PC-1 — ats-web consumer, selection domain (the only live FE, Lead R1).
 const ATS_WEB_PACT = resolve(ROOT, 'pact/pacts/ats-web-aramo-core.json');
 // T8-P2 — requisition-import consumer (the future T8-CONNECTOR ingestion side).
 const REQUISITION_IMPORT_PACT = resolve(
@@ -846,6 +833,44 @@ const PLACEMENT_ASSIGNMENT_RATE_VERSION_MIGRATION = resolve(
   ROOT,
   'libs/placement/prisma/migrations/20260810130000_t5_assignment_rate_version/migration.sql',
 );
+// Track 6 / T6-B1 — the effective-window substrate. Applied so the provider schema
+// carries the cancelled_* columns the regenerated client selects, plus the interval
+// CHECK, btree_gist overlap EXCLUDE, and governed effective_to first-close trigger.
+const PLACEMENT_EFFECTIVE_WINDOW_MIGRATION = resolve(
+  ROOT,
+  'libs/placement/prisma/migrations/20260812140000_t6_b1_effective_window_substrate/migration.sql',
+);
+// Track 6 / T6-B3 — the commercial-cancellation substrate. Applied so the provider
+// schema carries ContractAssignment.ended_at (the regenerated client selects it) and
+// the extended ARV trigger (cancellation + future-only re-open branches), preserving
+// the B1 first-close and tenant-reset DELETE behaviour.
+const PLACEMENT_COMMERCIAL_CANCELLATION_MIGRATION = resolve(
+  ROOT,
+  'libs/placement/prisma/migrations/20260813130000_t6_b3_commercial_cancellation/migration.sql',
+);
+// Track 7 / T7-P1 — the PermanentPlacement substrate. Applied so the provider schema
+// carries PlacementProcess.placement_kind (the regenerated client selects it on every
+// PlacementProcess read) plus the PermanentPlacement table/enums the capacity union
+// queries (SEPARATE const — never a 2nd resolve() arg, the ENOTDIR trap).
+const PLACEMENT_PERMANENT_PLACEMENT_MIGRATION = resolve(
+  ROOT,
+  'libs/placement/prisma/migrations/20260814120000_t7_permanent_placement/migration.sql',
+);
+// Track 7 / T7-P2 — falloff + remedy substrate. Applied so the provider schema carries
+// PermanentPlacement.falloff_* columns (the regenerated client selects them) + the
+// PermanentPlacementRemedy table (SEPARATE const — never a 2nd resolve() arg, ENOTDIR).
+const PLACEMENT_FALLOFF_REMEDY_MIGRATION = resolve(
+  ROOT,
+  'libs/placement/prisma/migrations/20260815120000_t7_p2_falloff_remedy/migration.sql',
+);
+// Track 7 / T7-P3 — guarantee-term-versioning substrate. Applied so the provider schema carries
+// the PermanentPlacement.guarantee_terms_* provenance columns (the regenerated client selects
+// them) + the PermanentPlacementGuaranteeTermVersion table (SEPARATE const — never a 2nd
+// resolve() arg, ENOTDIR).
+const PLACEMENT_GUARANTEE_TERMS_MIGRATION = resolve(
+  ROOT,
+  'libs/placement/prisma/migrations/20260816120000_t7_p3_guarantee_term_versioning/migration.sql',
+);
 // Track 4 / T4-B2 §6 — the dedicated stored openings_available DROP. Applied here so
 // the provider schema matches the retired-column reality; the requisition read is
 // derived and does not depend on the physical column.
@@ -891,6 +916,10 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     // TR-15 B1 — a recruiter-tenant session that LACKS consent:decision-log:read
     // (a general authenticated principal), for the decision-log 403 refusal pact.
     let insufficientJwt: string;
+    // T9-B4 — a recruiter session WITH report:read but WITHOUT
+    // assignment:commercials:read, for the margin compound-gate 403 refusal pact
+    // (§15: reporting access is not sufficient; the commercial scope is required).
+    let reportOnlyJwt: string;
     // Assigned in beforeAll before any state handler runs; initialized empty
     // for strict null-checks compliance.
     let dbUrl = '';
@@ -956,14 +985,14 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // with the rest of the requisition schema elsewhere in this reset.
       // Fix-Slice-Final-Drop: the Core husk (talent.Talent + overlay) is
       // dropped; no provider state seeds it (nothing reads it post-fix-sequence).
-      // 4e-engagement-key — engagement.talent_id references TalentRecord.
+      // 4e-selection-key — selection.talent_id references TalentRecord.
       await c.query('TRUNCATE TABLE talent_record."TalentRecord" CASCADE');
       // M4 PR-3 — submittal-create state handlers seed an examination
       // and trigger buildPackage which writes the evidence package +
       // submittal record. Truncate both tables so prior runs don't leak.
       // M5 PR-8b1 §4.9 — TalentSubmittalEvent has FK to TalentSubmittalRecord;
       // CASCADE on the parent truncates child rows, but explicit child
-      // TRUNCATE here mirrors the engagement-side pattern (line ~308)
+      // TRUNCATE here mirrors the selection-side pattern (line ~308)
       // for clarity. No PR-8b1 state handlers append rows to this table
       // yet (substrate-only PR).
       await c.query('TRUNCATE TABLE submittal."TalentSubmittalEvent" CASCADE');
@@ -973,12 +1002,12 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // the controller persists override rows at request time. Truncate
       // ExaminationOverride so prior runs don't leak.
       await c.query('TRUNCATE TABLE examination."ExaminationOverride" CASCADE');
-      // M5 PR-4 — engagement-* state handlers seed TalentJobEngagement +
-      // TalentEngagementEvent rows + the controller persists more on
+      // M5 PR-4 — selection-* state handlers seed TalentSelection +
+      // TalentSelectionEvent rows + the controller persists more on
       // create/transition. Truncate so prior runs don't leak.
       await c.query('TRUNCATE TABLE selection."TalentSelectionEvent" CASCADE');
       await c.query('TRUNCATE TABLE selection."TalentSelection" CASCADE');
-      // M6 PR-2 §3 — engagement + submittal OutboxEvent. Each state-
+      // M6 PR-2 §3 — selection + submittal OutboxEvent. Each state-
       // transition emit point now writes an outbox row inside the same
       // $transaction; truncate per interaction so prior runs don't leak.
       await c.query('TRUNCATE TABLE selection."OutboxEvent" CASCADE');
@@ -1011,6 +1040,22 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // (FK placement_process_id). Cleared per interaction so a prior placement
       // state does not shadow the empty-collection / not-found interactions.
       await c.query('TRUNCATE TABLE placement."PlacementProcess" CASCADE');
+      // Track 6 / T6-B2 — the assignment + rate-version tables are UUID-linked (no FK),
+      // so the PlacementProcess CASCADE does not clear them. TRUNCATE bypasses the
+      // AssignmentRateVersion append-only DELETE-reject trigger (a table-level op).
+      await c.query('TRUNCATE TABLE placement."AssignmentRateVersion", placement."ContractAssignment" CASCADE');
+      // Track 7 / T7-P5 — the permanent-placement aggregate + its children are
+      // UUID-linked to PlacementProcess (NO FK), so the CASCADE above does not
+      // clear them. PermanentPlacementRemedy + PermanentPlacementEvent FK to
+      // PermanentPlacement, so TRUNCATE PermanentPlacement CASCADE clears them;
+      // the guarantee-term-version table has no FK (a plain requisition_id axis),
+      // so it needs its own TRUNCATE. A table-level TRUNCATE bypasses the
+      // append-only DELETE-reject row triggers on the remedy + term-version tables
+      // (the AssignmentRateVersion precedent above). Cleared per interaction so a
+      // prior T7 state cannot shadow the null / empty / not-found interactions.
+      await c.query(
+        'TRUNCATE TABLE placement."PermanentPlacement", placement."PermanentPlacementGuaranteeTermVersion" CASCADE',
+      );
       // PC-5d — task + attachment (no FK; standalone truncates). The
       // attachment 'talent' owner lives in talent_record."TalentRecord",
       // already truncated above.
@@ -1099,7 +1144,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     // proven by the apps/api chain integration spec; the pact pins the shape.
     async function seedPortalUserWithOneRecord(c: Client): Promise<void> {
       // Portal P2 P2b — the records read enriches tenant_name via
-      // TenantService.getTenantById, so the engagement tenant must exist with a
+      // TenantService.getTenantById, so the selection tenant must exist with a
       // name (the contract's tenant_name matcher expects a string, not null).
       await c.query(
         `INSERT INTO identity."Tenant" (id, name, updated_at)
@@ -1201,20 +1246,20 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     }
 
     // ===================================================================
-    // PC-1 — ats-web engagement domain live fixtures.
+    // PC-1 — ats-web selection domain live fixtures.
     //
     // NEW live seed helpers — deliberately NOT reusing the ats-thin-era
-    // seedEngagementBasics / seedEngagementRow / seedIdempotencyKey (dead
+    // seedSelectionBasics / seedSelectionRow / seedIdempotencyKey (dead
     // code). Keeping these separate keeps the eventual dead-handler prune
     // (backlog item 2) clean and satisfies "derive from live DTOs, not the
     // retired ats-thin files". resetAllRows already truncates every table
     // these touch (job_domain.Requisition, talent_record.TalentRecord,
-    // engagement.TalentJobEngagement / TalentEngagementEvent,
+    // selection.TalentSelection / TalentSelectionEvent,
     // consent.IdempotencyKey), so NO new TRUNCATE lines are required.
     // ===================================================================
     const ATSW_JOB_ID = 'eeeeeeee-eeee-7eee-8eee-eeeeeeeeeeee';
     const ATSW_REQUISITION_ID = 'cccccccc-cccc-7ccc-8ccc-cccccccccccc';
-    // Engagement fixtures — one id per seeded state (mirror the consumer).
+    // Selection fixtures — one id per seeded state (mirror the consumer).
     const ATSW_SURFACED_ID = '00000000-0000-7000-8000-a00000000001';
     const ATSW_AWAITING_ID = '00000000-0000-7000-8000-a00000000002';
     const ATSW_RESPONDED_ID = '00000000-0000-7000-8000-a00000000003';
@@ -1279,7 +1324,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     };
     // Cached response bodies for the idempotency-replay fixtures (returned
     // verbatim by the controller's idempotency.lookup replay branch).
-    function atswEngagementBody(id: string, state: string): unknown {
+    function atswSelectionBody(id: string, state: string): unknown {
       return {
         id,
         tenant_id: TENANT_ID,
@@ -1290,18 +1335,18 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         created_at: '2026-05-25T00:00:00.000Z',
       };
     }
-    function atswEventBody(id: string, engagementId: string, eventType: string): unknown {
+    function atswEventBody(id: string, selectionId: string, eventType: string): unknown {
       return {
         id,
         tenant_id: TENANT_ID,
-        engagement_id: engagementId,
+        selection_id: selectionId,
         event_type: eventType,
         event_payload: {},
         created_at: '2026-05-25T00:00:00.000Z',
       };
     }
 
-    async function seedAtsWebEngagementBasics(c: Client): Promise<void> {
+    async function seedAtsWebSelectionBasics(c: Client): Promise<void> {
       await c.query(
         `INSERT INTO talent_record."TalentRecord"
            (id, tenant_id, first_name, last_name, created_at, updated_at)
@@ -1315,7 +1360,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
          ON CONFLICT (id) DO NOTHING`,
         [ATSW_JOB_ID, TENANT_ID],
       );
-      // T1-a — the ATS requisition the engagement-create contract validates
+      // T1-a — the ATS requisition the selection-create contract validates
       // (requisition_id = ATSW_REQUISITION_ID). $3::text/$4 are inert fixture
       // fillers (title/company_id); only id + tenant + active status matter.
       await c.query(
@@ -1327,7 +1372,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       );
     }
 
-    async function seedAtsWebEngagement(
+    async function seedAtsWebSelection(
       c: Client,
       params: { id: string; state: string },
     ): Promise<void> {
@@ -1339,23 +1384,23 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       );
     }
 
-    async function seedAtsWebEngagementEvent(
+    async function seedAtsWebSelectionEvent(
       c: Client,
       params: {
         id: string;
-        engagementId: string;
+        selectionId: string;
         eventType: string;
         payload: Record<string, unknown>;
       },
     ): Promise<void> {
       await c.query(
         `INSERT INTO selection."TalentSelectionEvent"
-           (id, tenant_id, engagement_id, event_type, event_payload, created_at)
+           (id, tenant_id, selection_id, event_type, event_payload, created_at)
          VALUES ($1, $2, $3, $4::selection."SelectionEventType", $5::jsonb, NOW())`,
         [
           params.id,
           TENANT_ID,
-          params.engagementId,
+          params.selectionId,
           params.eventType,
           JSON.stringify(params.payload),
         ],
@@ -1386,7 +1431,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         ],
       );
     }
-    // Grants the 'contacting' scope (consent operation 'engagement' maps to
+    // Grants the 'contacting' scope (consent operation 'selection' maps to
     // 'contacting') so the draft soft-check + the send binding gate pass.
     async function seedAtsWebContactingConsent(c: Client): Promise<void> {
       await seedConsentEvent(c, {
@@ -2382,7 +2427,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         `INSERT INTO evidence."TalentJobEvidencePackage"
            (id, tenant_id, talent_id, job_id, examination_id, submittal_record_id,
             talent_identity, contact_summary, capability_summary,
-            match_justification, recruiter_contribution, engagement_event_refs)
+            match_justification, recruiter_contribution, selection_event_refs)
          VALUES ($1,$2,$3,$4,$5,$6,
                  $7::jsonb,$8::jsonb,$9::jsonb,$10::jsonb,$11::jsonb,$12::jsonb)`,
         [
@@ -2702,7 +2747,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     // handoff_draft -> ready_for_review -> submitted_to_ats ->
     // confirmed) in order via raw SQL UPDATEs, each going through
     // the M5 PR-8b2-rewritten column-scoped trigger
-    // (engagement.reject_submittal_record_update). For
+    // (selection.reject_submittal_record_update). For
     // submittalState='revoked', sibling-revoke fires directly from
     // 'created' (legal Q3 transition) with all three revoke columns
     // populated atomically.
@@ -2865,7 +2910,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         // T1-a — applied right after the job-domain init so the retired
         // Requisition table + enum are gone before any provider state runs.
         JOB_DOMAIN_DROP_REQUISITION_MIGRATION,
-        // 4e-engagement-key — talent_record schema (engagement.talent_id).
+        // 4e-selection-key — talent_record schema (selection.talent_id).
         ...TALENT_RECORD_MIGRATIONS,
         // M4 PR-3 §4.8 — evidence + talent-evidence + submittal
         // migrations applied so the submittal-create pact verification
@@ -2895,24 +2940,19 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         // the submittal sequence because it CREATEs the new `submittal`
         // PG namespace alongside its OutboxEvent table.
         SUBMITTAL_OUTBOX_MIGRATION,
-        // M5 PR-4 — engagement schema + event log for engagement-*
+        // M5 PR-4 — selection schema + event log for selection-*
         // pact verification.
-        ENGAGEMENT_INIT_MIGRATION,
-        ENGAGEMENT_EVENT_LOG_MIGRATION,
-        // M6 PR-2 §3 — engagement schema OutboxEvent. Applied after
+        SELECTION_INIT_MIGRATION,
+        // M6 PR-2 §3 — selection schema OutboxEvent. Applied after
         // the event-log substrate so the OutboxEvent table is in the
-        // same `engagement` namespace as the prior tables.
-        ENGAGEMENT_OUTBOX_MIGRATION,
+        // same `selection` namespace as the prior tables.
         // Outreach Draft/Preview Amendment v1.1 §3 — the outreach_drafted
         // enum value (the draft + send pact split).
-        ENGAGEMENT_OUTREACH_DRAFTED_MIGRATION,
         // TR-2a-B3b — the four immutability reconcile-re-key amendments (applied
         // AFTER each schema's trigger-defining migrations; CREATE OR REPLACE FUNCTION
         // redefines the final trigger fn — GUC-off behaviour is unchanged).
-        ENGAGEMENT_RECONCILE_REKEY_MIGRATION,
-        // T2-P2 — after all engagement-schema migrations; relocates + renames
+        // T2-P2 — after all selection-schema migrations; relocates + renames
         // the objects into the selection schema (existence-guarded).
-        ENGAGEMENT_T2P2_MIGRATION,
         EXAMINATION_RECONCILE_REKEY_MIGRATION,
         SUBMITTAL_RECONCILE_REKEY_MIGRATION,
         SUBMITTAL_T2P1_MIGRATION,
@@ -2925,8 +2965,9 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         // interactions; @RequireCapability('portal') on PortalController
         // requires the tenant to be entitled before RolesGuard runs.
         ENTITLEMENT_INIT_MIGRATION,
+        INTEGRATION_INIT_MIGRATION,
         // PR-A1c §4 — metering schema (in-tx UsageEvent INSERT in every
-        // engagement + submittal state-transition write method).
+        // selection + submittal state-transition write method).
         METERING_INIT_MIGRATION,
         // Settings S1 — additive substrate for the GET /v1/tenant/settings
         // endpoint AppModule wires post-S1. No current consumer pact targets
@@ -3049,6 +3090,14 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         PLACEMENT_ASSIGNMENT_END_REASON_MIGRATION,
         // Track 5 / T5-P1 — the additive AssignmentRateVersion table.
         PLACEMENT_ASSIGNMENT_RATE_VERSION_MIGRATION,
+        // Track 6 / T6-B1 — effective-window substrate (after the ARV table exists).
+        PLACEMENT_EFFECTIVE_WINDOW_MIGRATION,
+        // Track 6 / T6-B3 — ended_at + cancellation/re-open trigger branches.
+        PLACEMENT_COMMERCIAL_CANCELLATION_MIGRATION,
+        // Track 7 / T7-P1 — PlacementProcess.placement_kind + PermanentPlacement substrate.
+        PLACEMENT_PERMANENT_PLACEMENT_MIGRATION,
+        PLACEMENT_FALLOFF_REMEDY_MIGRATION,
+        PLACEMENT_GUARANTEE_TERMS_MIGRATION,
         // T4-B2 §6 — retire the stored openings_available column (derived-only).
         REQUISITION_DROP_OPENINGS_AVAILABLE_MIGRATION,
         // T8-P1 — the external-identity partial-unique index (applied last;
@@ -3070,7 +3119,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       );
       // PC-4 — the 'ats' capability so TENANT_ID traverses EntitlementGuard
       // on the talent-record controller's @RequireCapability('ats'). Additive
-      // (mirrors the 'portal' seed above); the engagement/submittal/examination
+      // (mirrors the 'portal' seed above); the selection/submittal/examination
       // interactions don't use EntitlementGuard, so this is inert for them.
       await setup.query(
         `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability)
@@ -3133,6 +3182,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       process.env['DATABASE_URL'] = url;
       process.env['AUTH_AUDIENCE'] = AUDIENCE;
       process.env['AUTH_PUBLIC_KEY'] = publicPem;
+      // T8-CONNECTOR-A — the connector credential-set derives an env-scoped SM id.
+      process.env['ARAMO_ENV'] = process.env['ARAMO_ENV'] ?? 'pact';
       // TR-3 B2 — pin the STUB mailer so the email-verification request state's
       // MAILER_PORT.send is a no-op (never SES). MailerModule's useFactory reads
       // MAILER_PORT at binding; AppModule already imports it (via IdentityModule
@@ -3165,13 +3216,13 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           'submittal:create',
           'submittal:approve',
           'requisition:read:all',
-          // R7 BE-prereq: engagement endpoints now scope-gated.
+          // R7 BE-prereq: selection endpoints now scope-gated.
           // requisition:read:all is already present above and bypasses
-          // the D4b visibility check on engagement endpoints (provider
+          // the D4b visibility check on selection endpoints (provider
           // tests verify the API contract, not visibility scoping).
-          'engagement:read',
-          'engagement:write',
-          'engagement:outreach',
+          'selection:read',
+          'selection:write',
+          'selection:outreach',
           // PC-4 — talent-record CRUD scopes (RolesGuard @RequireScopes on
           // libs/talent-record/src/lib/talent-record.controller.ts). Additive;
           // existing interactions check their own scopes, so extra scopes are
@@ -3216,6 +3267,10 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           // batch/list routes. Additive; inert for prior interactions.
           'requisition:import:read',
           'requisition:import:write',
+          // T8-CONNECTOR-A — connector connection management (Settings →
+          // Integrations). Additive; inert for prior interactions.
+          'integration:read',
+          'integration:write',
           // PC-5c — pipeline state machine + activity RolesGuard
           // @RequireScopes. pipeline:change-status gates the transition
           // endpoint (the state machine); pipeline:remove omitted (DELETE is
@@ -3272,6 +3327,33 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           // read:all (above) short-circuits the visibility resolver to see-all.
           // Additive; inert for prior interactions.
           'placement:read',
+          // Track 6 / T6-B2 — the DEDICATED financial scopes for the commercial
+          // version-series read and the governed post-start revision write, so the
+          // ats-web commercial-revision interactions pass RolesGuard. Additive; inert
+          // for prior interactions (they hit neither commercials route).
+          'assignment:commercials:read',
+          'assignment:commercials:write',
+          // Track 7 / T7-P5 — the permanent-placement guarantee scopes so the ats-web
+          // permanent-placement.consumer interactions pass RolesGuard on GET permanent /
+          // satisfy (transition) / falloff / remedy-complete / guarantee-terms create/list/
+          // effective/revise. Additive; inert for prior interactions.
+          'placement:permanent:read',
+          'placement:permanent:transition',
+          'placement:permanent:terms:write',
+          'placement:remedy:resolve',
+          // AUTHZ-D5 field-mask — the AssignmentCommercialView carries the SAME field
+          // names (pay_rate_amount / bill_rate_amount / margin_percent / markup_percent)
+          // the global CompensationFieldMaskInterceptor masks. A commercials actor that
+          // sees ALL figures is the see-all tier (tenant_admin / tenant_owner), which
+          // holds the full compensation:view:* set — so the pact fixture carries it to
+          // model that full-visibility commercials actor. (An account_manager sees pay
+          // masked by design; the HTTP integration spec covers that dimension.)
+          'compensation:view:pay',
+          'compensation:view:bill',
+          'compensation:view:revenue',
+          'compensation:view:spread:amount',
+          'compensation:view:spread:percent',
+          'compensation:view:margin:percent',
         ],
       })
         .setProtectedHeader({ alg: ALG })
@@ -3356,6 +3438,24 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         .setExpirationTime('1h')
         .sign(privateKey);
 
+      // T9-B4 — a valid recruiter session holding report:read (+ requisition:read
+      // for visibility resolution) but NOT assignment:commercials:read. JwtAuthGuard
+      // accepts it; RolesGuard on GET /v1/reports/margin rejects 403 because the
+      // compound gate requires the commercial scope (§12/§15). ATS-entitled tenant.
+      reportOnlyJwt = await new SignJWT({
+        sub: RECRUITER_ID,
+        consumer_type: 'recruiter',
+        actor_kind: 'user',
+        tenant_id: TENANT_ID,
+        scopes: ['report:read', 'requisition:read'],
+      })
+        .setProtectedHeader({ alg: ALG })
+        .setIssuedAt()
+        .setIssuer(ISSUER)
+        .setAudience(AUDIENCE)
+        .setExpirationTime('1h')
+        .sign(privateKey);
+
       // M5 PR-6 §4.14 — mock DraftProvider + DeliveryProvider canned
       // results. The outreach-send happy-path interaction asserts
       // model_used + token counts + delivery_channel + delivery_id —
@@ -3366,7 +3466,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // JSON-tolerant, so ONE merged JSON satisfies parseIntakeCompletion
       // (fields/jd_text/required_skills/nice_to_have_skills) AND
       // parseProfileCompletion (jd_text/golden_profile). Anything else (the
-      // engagement outreach draft) falls through to the original prose.
+      // selection outreach draft) falls through to the original prose.
       const PACT_DRAFT_JSON = JSON.stringify({
         fields: {},
         jd_text: 'Senior Engineer — pact draft.',
@@ -3475,6 +3575,9 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         .useValue(mockAuditFinancialsGate)
         .overrideProvider('MAILER_PORT')
         .useValue(mockMailer)
+        // T8-CONNECTOR-A — the write-only credential set must not hit AWS SM.
+        .overrideProvider(SECRETS_MANAGER_WRITER)
+        .useValue({ putSecretValue: async () => undefined })
         .compile();
 
       app = module.createNestApplication();
@@ -3522,7 +3625,360 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     // of these strings are introduced by this harness — they ship with the
     // consumer pacts (no token-free re-authoring needed beyond what the
     // consumer tests already produced).
+    // Track 6 / T6-B2 — seed a STARTED placement + its FORWARD/ACTIVE
+    // ContractAssignment + the given non-/cancelled commercial versions. Fixture
+    // UUIDs mirror pact/consumers/ats-web/src/placement.consumer.test.ts.
+    const B2_PID = '00000000-0000-7000-8000-9ace00000001';
+    const B2_AID = '00000000-0000-7000-8000-ca0000000001';
+    const B2_REQ = '00000000-0000-7000-8000-4e9000000001';
+    const B2_SUB = '00000000-0000-7000-8000-50b000000001';
+    const B2_TAL = '00000000-0000-7000-8000-7a1e00000001';
+    const B2_REC = '00000000-0000-7000-8000-4ec000000001';
+    const B2_COMPANY = '00000000-0000-7000-8000-c0a000000001';
+    async function seedActiveCommercialAssignment(
+      c: Client,
+      versions: Array<{ id: string; effective_from: string; effective_to: string | null; cancelled_at?: string | null }>,
+    ): Promise<void> {
+      await resetAllRows(c);
+      await c.query(
+        `INSERT INTO placement."PlacementProcess"
+           (id, tenant_id, submittal_id, requisition_id, talent_record_id, state, offered_at, created_at)
+         VALUES ($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,'STARTED','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z')`,
+        [B2_PID, TENANT_ID, B2_SUB, B2_REQ, B2_TAL],
+      );
+      await c.query(
+        `INSERT INTO placement."ContractAssignment"
+           (id, tenant_id, placement_process_id, submittal_id, requisition_id, talent_record_id, started_at, provenance, lifecycle_state, company_id)
+         VALUES ($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,$6::uuid,'2026-01-01T00:00:00Z','FORWARD','ACTIVE',$7::uuid)`,
+        [B2_AID, TENANT_ID, B2_PID, B2_SUB, B2_REQ, B2_TAL, B2_COMPANY],
+      );
+      for (const v of versions) {
+        await c.query(
+          `INSERT INTO placement."AssignmentRateVersion"
+             (id, tenant_id, contract_assignment_id, requisition_id, talent_record_id, pay_rate_amount, bill_rate_amount, currency, rate_period, effective_from, effective_to, recorded_by, cancelled_at, change_reason)
+           VALUES ($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,80.00,120.00,'USD','HOURLY',$6::timestamptz,$7::timestamptz,$8::uuid,$9::timestamptz,'seed')`,
+          [v.id, TENANT_ID, B2_AID, B2_REQ, B2_TAL, v.effective_from, v.effective_to, B2_REC, v.cancelled_at ?? null],
+        );
+      }
+    }
+
+    // ===== Track 7 / T7-P5 permanent-placement seed helpers + fixtures =====
+    // The fixture UUIDs are byte-identical to those in
+    // pact/consumers/ats-web/src/permanent-placement.consumer.test.ts (the shared
+    // contract fixtures). Dates: today at authoring is 2026-08-15 — the "elapsed"
+    // window ends 2026-04-01 (satisfy allowed); the "active" window ends 2027-01-01+
+    // (satisfy premature → STATE_INVALID). All seeds run after resetAllRows (which
+    // now TRUNCATEs the four PermanentPlacement* tables), so each interaction is
+    // deterministic and self-contained.
+    const T7_PLACEMENT_ID = '00000000-0000-7000-8000-7e1200000001';
+    const T7_PERMANENT_ID = '00000000-0000-7000-8000-7e1200000002';
+    const T7_REMEDY_ID = '00000000-0000-7000-8000-7e1200000003';
+    const T7_REPLACEMENT_PID = '00000000-0000-7000-8000-7e1200000004';
+    const T7_SUB = '00000000-0000-7000-8000-50b000000001';
+    const T7_REQ = '00000000-0000-7000-8000-4e9000000001';
+    const T7_TAL = '00000000-0000-7000-8000-7a1e00000001';
+    const T7_REC = '00000000-0000-7000-8000-4ec000000001';
+    const T7_TERM_CURRENT_ID = '00000000-0000-7000-8000-7e1200000011';
+    const T7_TERM_HIST_ID = '00000000-0000-7000-8000-7e1200000012';
+
+    // Seed a PlacementProcess parent (STARTED / PERMANENT) + its immutable
+    // PermanentPlacement activation snapshot. `kind` NULL / 'CONTRACT' with no
+    // snapshot models a legacy/contract placement (GET permanent → { permanent: null }).
+    async function seedPermanentAggregate(
+      c: Client,
+      o: {
+        placementId?: string;
+        permanentId?: string;
+        lifecycleState: string;
+        startDate: string;
+        durationDays: number;
+        endDate: string;
+        remedyPolicy: string;
+        exposureAmount?: string;
+        exposureCurrency?: string;
+        createdAt?: string;
+        falloffDate?: string | null;
+        falloffReason?: string | null;
+      },
+    ): Promise<void> {
+      const pid = o.placementId ?? T7_PLACEMENT_ID;
+      const createdAt = o.createdAt ?? '2026-02-01T00:00:00Z';
+      await c.query(
+        `INSERT INTO placement."PlacementProcess"
+           (id, tenant_id, submittal_id, requisition_id, talent_record_id, state, placement_kind, offered_at, created_at)
+         VALUES ($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,'STARTED','PERMANENT'::placement."PlacementKind",'2026-01-01T00:00:00Z',$6::timestamptz)`,
+        [pid, TENANT_ID, T7_SUB, T7_REQ, T7_TAL, createdAt],
+      );
+      const falloffSet = o.falloffDate != null;
+      await c.query(
+        `INSERT INTO placement."PermanentPlacement"
+           (id, tenant_id, placement_process_id, submittal_id, requisition_id, talent_record_id,
+            lifecycle_state, guarantee_start_date, guarantee_duration_days, guarantee_end_date,
+            remedy_policy, guarantee_exposure_amount, guarantee_exposure_currency, terms_source,
+            recorded_by, created_at, falloff_effective_date, falloff_reason, falloff_recorded_by, falloff_recorded_at)
+         VALUES ($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,$6::uuid,
+                 $7::placement."PermanentPlacementState",$8::date,$9,$10::date,
+                 $11::placement."RemedyPolicy",$12,$13,'MANUAL',
+                 $14::uuid,$15::timestamptz,$16::date,$17,$18::uuid,$19::timestamptz)`,
+        [
+          o.permanentId ?? T7_PERMANENT_ID, TENANT_ID, pid, T7_SUB, T7_REQ, T7_TAL,
+          o.lifecycleState, o.startDate, o.durationDays, o.endDate,
+          o.remedyPolicy, o.exposureAmount ?? '10000.00', o.exposureCurrency ?? 'USD',
+          T7_REC, createdAt,
+          falloffSet ? o.falloffDate : null, falloffSet ? o.falloffReason : null,
+          falloffSet ? T7_REC : null, falloffSet ? createdAt : null,
+        ],
+      );
+    }
+
+    // Seed a PermanentPlacementRemedy obligation row. REPLACEMENT ⇒ amount/currency NULL;
+    // REFUND/PRORATED_CREDIT ⇒ both set. A completed remedy carries the coherent completion
+    // field set (monetary → completion_reference; replacement → replacement id).
+    async function seedPermanentRemedyRow(
+      c: Client,
+      o: {
+        remedyType: string;
+        calculatedAmount?: string | null;
+        currency?: string | null;
+        remainingDays?: number | null;
+        falloffDate: string;
+        dueAt: string;
+        completedAt?: string | null;
+        completionReference?: string | null;
+        replacementPid?: string | null;
+      },
+    ): Promise<void> {
+      const completed = o.completedAt != null;
+      await c.query(
+        `INSERT INTO placement."PermanentPlacementRemedy"
+           (id, tenant_id, permanent_placement_id, requisition_id, talent_record_id, remedy_type,
+            calculated_amount, currency, exposure_amount_snapshot, duration_days_snapshot, remaining_days,
+            falloff_effective_date, created_by, due_at, completed_at, completed_by, completion_reference, replacement_placement_process_id)
+         VALUES ($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,$6::placement."RemedyPolicy",
+                 $7,$8,'10000.00',90,$9,$10::date,$11::uuid,$12::timestamptz,$13::timestamptz,$14::uuid,$15,$16::uuid)`,
+        [
+          T7_REMEDY_ID, TENANT_ID, T7_PERMANENT_ID, T7_REQ, T7_TAL, o.remedyType,
+          o.calculatedAmount ?? null, o.currency ?? null, o.remainingDays ?? null,
+          o.falloffDate, T7_REC, o.dueAt,
+          o.completedAt ?? null, completed ? T7_REC : null,
+          o.completionReference ?? null, o.replacementPid ?? null,
+        ],
+      );
+    }
+
+    // Seed a reusable requisition-level guarantee-term version (distinct from the
+    // per-placement snapshot). An open current version has effective_to = null.
+    async function seedGuaranteeTermVersionRow(
+      c: Client,
+      o: { id: string; effectiveFrom: string; effectiveTo?: string | null; recordedAt?: string },
+    ): Promise<void> {
+      await c.query(
+        `INSERT INTO placement."PermanentPlacementGuaranteeTermVersion"
+           (id, tenant_id, requisition_id, effective_from, effective_to, guarantee_duration_days,
+            remedy_policy, guarantee_exposure_amount, currency, source_type, source_reference, source_version,
+            recorded_by, recorded_at, supersedes_version_id, correlation_id)
+         VALUES ($1::uuid,$2::uuid,$3::uuid,$4::date,$5::date,90,
+                 'REPLACEMENT'::placement."RemedyPolicy",'10000.00','USD','MANUAL',NULL,NULL,
+                 $6::uuid,$7::timestamptz,NULL,NULL)`,
+        [o.id, TENANT_ID, T7_REQ, o.effectiveFrom, o.effectiveTo ?? null, T7_REC, o.recordedAt ?? '2026-01-01T00:00:00Z'],
+      );
+    }
+
     const stateHandlers: Record<string, () => Promise<void>> = {
+      // ===== Track 7 / T7-P5 permanent-placement pacts (ats-web permanent-placement.consumer) =====
+      // Deterministic T7 states for the ats-web permanent-placement + guarantee-terms +
+      // guarantee-exposure interactions. Each seeds via the helpers above after resetAllRows.
+      'an ats-web reader and a permanent placement exists': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedPermanentAggregate(c, {
+            lifecycleState: 'GUARANTEE_ACTIVE',
+            startDate: '2026-06-01', durationDays: 365, endDate: '2027-06-01',
+            remedyPolicy: 'REPLACEMENT', createdAt: '2026-06-01T00:00:00Z',
+          });
+        });
+      },
+      'an ats-web reader and a contract placement without a permanent aggregate exists': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          // A CONTRACT/legacy placement: PlacementProcess only, no PermanentPlacement snapshot.
+          await c.query(
+            `INSERT INTO placement."PlacementProcess"
+               (id, tenant_id, submittal_id, requisition_id, talent_record_id, state, placement_kind, offered_at, created_at)
+             VALUES ($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,'STARTED','CONTRACT'::placement."PlacementKind",'2026-01-01T00:00:00Z','2026-01-01T00:00:00Z')`,
+            [T7_PLACEMENT_ID, TENANT_ID, T7_SUB, T7_REQ, T7_TAL],
+          );
+        });
+      },
+      'an ats-web writer and a permanent placement whose guarantee window has elapsed exists': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedPermanentAggregate(c, {
+            lifecycleState: 'GUARANTEE_ACTIVE',
+            startDate: '2026-01-01', durationDays: 90, endDate: '2026-04-01',
+            remedyPolicy: 'REPLACEMENT', createdAt: '2026-01-01T00:00:00Z',
+          });
+        });
+      },
+      'an ats-web writer and a permanent placement still within its guarantee window exists': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedPermanentAggregate(c, {
+            lifecycleState: 'GUARANTEE_ACTIVE',
+            startDate: '2026-06-01', durationDays: 365, endDate: '2027-06-01',
+            remedyPolicy: 'REPLACEMENT', createdAt: '2026-06-01T00:00:00Z',
+          });
+        });
+      },
+      'an ats-web writer and an active permanent placement within its guarantee window exists': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          // Window [2026-01-01, 2027-01-01): a falloff date of 2026-06-01 is valid;
+          // 2027-06-01 (>= end) is out-of-window (FALLOFF_WINDOW_INVALID).
+          await seedPermanentAggregate(c, {
+            lifecycleState: 'GUARANTEE_ACTIVE',
+            startDate: '2026-01-01', durationDays: 365, endDate: '2027-01-01',
+            remedyPolicy: 'REPLACEMENT', createdAt: '2026-01-01T00:00:00Z',
+          });
+        });
+      },
+      'an ats-web resolver and a permanent placement with an open replacement obligation exists': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedPermanentAggregate(c, {
+            lifecycleState: 'REPLACEMENT_DUE',
+            startDate: '2026-01-01', durationDays: 365, endDate: '2027-01-01',
+            remedyPolicy: 'REPLACEMENT', createdAt: '2026-01-01T00:00:00Z',
+            falloffDate: '2026-06-01', falloffReason: 'CLIENT_TERMINATED_PERFORMANCE',
+          });
+          await seedPermanentRemedyRow(c, {
+            remedyType: 'REPLACEMENT', falloffDate: '2026-06-01', dueAt: '2026-09-01T00:00:00Z',
+          });
+          // A valid replacement candidate: same tenant + requisition, PERMANENT + STARTED, a
+          // DIFFERENT placement (distinct submittal + talent) than the original.
+          await c.query(
+            `INSERT INTO placement."PlacementProcess"
+               (id, tenant_id, submittal_id, requisition_id, talent_record_id, state, placement_kind, offered_at, created_at)
+             VALUES ($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,'STARTED','PERMANENT'::placement."PlacementKind",'2026-07-01T00:00:00Z','2026-07-01T00:00:00Z')`,
+            [
+              T7_REPLACEMENT_PID,
+              TENANT_ID,
+              '00000000-0000-7000-8000-50b000000002',
+              T7_REQ,
+              '00000000-0000-7000-8000-7a1e00000002',
+            ],
+          );
+        });
+      },
+      'an ats-web resolver and a permanent placement with an open refund obligation exists': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedPermanentAggregate(c, {
+            lifecycleState: 'REFUND_DUE',
+            startDate: '2026-01-01', durationDays: 365, endDate: '2027-01-01',
+            remedyPolicy: 'REFUND', createdAt: '2026-01-01T00:00:00Z',
+            falloffDate: '2026-06-01', falloffReason: 'TALENT_RESIGNED',
+          });
+          await seedPermanentRemedyRow(c, {
+            remedyType: 'REFUND', calculatedAmount: '5863.01', currency: 'USD',
+            falloffDate: '2026-06-01', dueAt: '2026-09-01T00:00:00Z',
+          });
+        });
+      },
+      'an ats-web resolver and a permanent placement whose remedy is already completed exists': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedPermanentAggregate(c, {
+            lifecycleState: 'REMEDY_COMPLETED',
+            startDate: '2026-01-01', durationDays: 365, endDate: '2027-01-01',
+            remedyPolicy: 'REFUND', createdAt: '2026-01-01T00:00:00Z',
+            falloffDate: '2026-06-01', falloffReason: 'TALENT_RESIGNED',
+          });
+          await seedPermanentRemedyRow(c, {
+            remedyType: 'REFUND', calculatedAmount: '5863.01', currency: 'USD',
+            falloffDate: '2026-06-01', dueAt: '2026-09-01T00:00:00Z',
+            completedAt: '2026-07-01T00:00:00Z', completionReference: 'CN-2026-0001',
+          });
+        });
+      },
+      'an ats-web reader and a requisition with a guarantee-terms history exists': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          // A closed historical version + an open current version (newest first on read).
+          await seedGuaranteeTermVersionRow(c, {
+            id: T7_TERM_HIST_ID, effectiveFrom: '2026-01-01', effectiveTo: '2026-06-01',
+            recordedAt: '2026-01-01T00:00:00Z',
+          });
+          await seedGuaranteeTermVersionRow(c, {
+            id: T7_TERM_CURRENT_ID, effectiveFrom: '2026-06-01', effectiveTo: null,
+            recordedAt: '2026-06-01T00:00:00Z',
+          });
+        });
+      },
+      'an ats-web reader and a requisition with no guarantee terms exists': async () => {
+        await withClient((c) => resetAllRows(c));
+      },
+      'an ats-web writer and a requisition with an open current guarantee-terms version exists': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedGuaranteeTermVersionRow(c, {
+            id: T7_TERM_CURRENT_ID, effectiveFrom: '2026-06-01', effectiveTo: null,
+            recordedAt: '2026-06-01T00:00:00Z',
+          });
+        });
+      },
+      'an ats-web recruiter and permanent-placement guarantee exposure data exist': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          // One GUARANTEE_ACTIVE placement whose activation instant (created_at) is in the
+          // report window [2026-08-01, 2026-09-01). requisition:read:all → see-all.
+          await seedPermanentAggregate(c, {
+            lifecycleState: 'GUARANTEE_ACTIVE',
+            startDate: '2026-08-05', durationDays: 365, endDate: '2027-08-05',
+            remedyPolicy: 'REPLACEMENT', exposureAmount: '10000.00', exposureCurrency: 'USD',
+            createdAt: '2026-08-10T00:00:00Z',
+          });
+        });
+      },
+      'an ats-web recruiter and no permanent-placement guarantee exposure data exist': async () => {
+        await withClient((c) => resetAllRows(c));
+      },
+
+      // ===== T8-CONNECTOR-A connector-management pacts (ats-web integration.consumer) =====
+      // Fixture connection id mirrors pact/consumers/ats-web/src/integration.consumer.test.ts (dddddddd-dddd-7ddd-8ddd-dddddddddddd).
+      'a tenant entitled to ats with a caller holding integration:read and one connector connection': async () => {
+        await withClient(async (c) => {
+          await c.query(`DELETE FROM integration."IntegrationConnection" WHERE tenant_id = $1::uuid`, [TENANT_ID]);
+          await c.query(
+            `INSERT INTO integration."IntegrationConnection" (id, tenant_id, provider_key, status, secret_ref, version, created_at, updated_at)
+             VALUES ($1::uuid,$2::uuid,'acme_vms','configured',$3,0,now(),now())`,
+            ['dddddddd-dddd-7ddd-8ddd-dddddddddddd', TENANT_ID, `connector:v1:${TENANT_ID}:dddddddd-dddd-7ddd-8ddd-dddddddddddd`],
+          );
+        });
+      },
+      'a tenant entitled to ats with a caller holding integration:write': async () => {
+        await withClient((c) => c.query(`DELETE FROM integration."IntegrationConnection" WHERE tenant_id = $1::uuid`, [TENANT_ID]).then(() => undefined));
+      },
+      'a tenant entitled to ats with a caller holding integration:write and one connector connection': async () => {
+        await withClient(async (c) => {
+          await c.query(`DELETE FROM integration."IntegrationConnection" WHERE tenant_id = $1::uuid`, [TENANT_ID]);
+          await c.query(
+            `INSERT INTO integration."IntegrationConnection" (id, tenant_id, provider_key, status, version, created_at, updated_at)
+             VALUES ($1::uuid,$2::uuid,'acme_vms','disconnected',0,now(),now())`,
+            ['dddddddd-dddd-7ddd-8ddd-dddddddddddd', TENANT_ID],
+          );
+        });
+      },
+      'a tenant entitled to ats with a caller holding integration:write and a connector connection with no credential': async () => {
+        await withClient(async (c) => {
+          await c.query(`DELETE FROM integration."IntegrationConnection" WHERE tenant_id = $1::uuid`, [TENANT_ID]);
+          await c.query(
+            `INSERT INTO integration."IntegrationConnection" (id, tenant_id, provider_key, status, version, created_at, updated_at)
+             VALUES ($1::uuid,$2::uuid,'acme_vms','disconnected',0,now(),now())`,
+            ['dddddddd-dddd-7ddd-8ddd-dddddddddddd', TENANT_ID],
+          );
+        });
+      },
       // ===== E1-d placement read pacts (ats-web placement.consumer) =====
       // Fixture UUIDs mirror pact/consumers/ats-web/src/placement.consumer.test.ts.
       // The placement is seeded under TENANT_ID (the JWT tenant); requisition:
@@ -3594,6 +4050,85 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
             );
           });
         },
+
+      // ===== Track 6 / T6-B2 commercial-revision pacts (ats-web placement.consumer) =====
+      'an ats-web writer and an active assignment with an open commercial version exist': async () => {
+        await withClient((c) =>
+          seedActiveCommercialAssignment(c, [
+            { id: '00000000-0000-7000-8000-a1e000000001', effective_from: '2026-01-01T00:00:00Z', effective_to: null },
+          ]),
+        );
+      },
+      'an ats-web reader and an active assignment with an open commercial version exist': async () => {
+        await withClient((c) =>
+          seedActiveCommercialAssignment(c, [
+            { id: '00000000-0000-7000-8000-a1e000000001', effective_from: '2026-01-01T00:00:00Z', effective_to: null },
+          ]),
+        );
+      },
+      // A CANCELLED version already reserves the requested instant (2030-01-01) under
+      // the NON-partial unique key, so the revision insert collides → 409
+      // duplicate_effective_from. The cancelled row is excluded from the overlap
+      // EXCLUDE, so it does not conflict with the open predecessor at seed time.
+      'an ats-web writer and an active assignment whose requested revision instant is already reserved': async () => {
+        await withClient((c) =>
+          seedActiveCommercialAssignment(c, [
+            { id: '00000000-0000-7000-8000-a1e000000001', effective_from: '2026-01-01T00:00:00Z', effective_to: null },
+            { id: '00000000-0000-7000-8000-a1e000000003', effective_from: '2030-01-01T00:00:00Z', effective_to: null, cancelled_at: '2026-06-01T00:00:00Z' },
+          ]),
+        );
+      },
+      // A closed historical window [2026-01, 2026-06) + the open current [2026-06, ∞):
+      // adjacent, non-cancelled → the series read returns both, effective_from DESC.
+      'an ats-web reader and an active assignment with a closed historical and an open current commercial version exist': async () => {
+        await withClient((c) =>
+          seedActiveCommercialAssignment(c, [
+            { id: '00000000-0000-7000-8000-a1e000000002', effective_from: '2026-01-01T00:00:00Z', effective_to: '2026-06-01T00:00:00Z' },
+            { id: '00000000-0000-7000-8000-a1e000000001', effective_from: '2026-06-01T00:00:00Z', effective_to: null },
+          ]),
+        );
+      },
+
+      // ===== Track 6 / T6-B3 cancellation pacts (ats-web placement.consumer) =====
+      // A future open tail c1 [2030-01-01, ∞) preceded by [2026-01-01, 2030-01-01):
+      // cancelling c1 re-opens the predecessor to [2026-01-01, ∞), so the refreshed
+      // series is a single open current version (effective_to null).
+      'an ats-web writer and an active assignment with a future open-tail commercial revision exist': async () => {
+        await withClient((c) =>
+          seedActiveCommercialAssignment(c, [
+            { id: '00000000-0000-7000-8000-a1e000000001', effective_from: '2026-01-01T00:00:00Z', effective_to: '2030-01-01T00:00:00Z' },
+            { id: '00000000-0000-7000-8000-a1e0000000c1', effective_from: '2030-01-01T00:00:00Z', effective_to: null },
+          ]),
+        );
+      },
+      // The current open version c2 [2026-01-01, ∞) starts in the past → not a future
+      // tail → cancellation refused 409 revision_not_future.
+      'an ats-web writer and an active assignment whose current commercial version is not a future tail': async () => {
+        await withClient((c) =>
+          seedActiveCommercialAssignment(c, [
+            { id: '00000000-0000-7000-8000-a1e0000000c2', effective_from: '2026-01-01T00:00:00Z', effective_to: null },
+          ]),
+        );
+      },
+      // The future tail c1 is ALREADY cancelled; the predecessor is the open current
+      // version. Re-cancelling c1 is refused 409 already_cancelled.
+      'an ats-web writer and an active assignment with an already-cancelled future commercial revision': async () => {
+        await withClient((c) =>
+          seedActiveCommercialAssignment(c, [
+            { id: '00000000-0000-7000-8000-a1e000000001', effective_from: '2026-01-01T00:00:00Z', effective_to: null },
+            { id: '00000000-0000-7000-8000-a1e0000000c1', effective_from: '2030-01-01T00:00:00Z', effective_to: null, cancelled_at: '2026-06-01T00:00:00Z' },
+          ]),
+        );
+      },
+      // The assignment exists with an open current version, but the requested revision
+      // id (…0000cf) is not present → 404 revision_not_found.
+      'an ats-web writer and an active assignment exist but the requested revision id is unknown': async () => {
+        await withClient((c) =>
+          seedActiveCommercialAssignment(c, [
+            { id: '00000000-0000-7000-8000-a1e000000001', effective_from: '2026-01-01T00:00:00Z', effective_to: null },
+          ]),
+        );
+      },
 
       // ===== PR-14 ingestion pacts =====
       'a recruiter session and a prohibited source value at the wire':
@@ -3696,7 +4231,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // body without touching the repository. Each conflict handler seeds
       // a known-different hash so the lookup throws IDEMPOTENCY_KEY_CONFLICT
       // 409 before touching the repository. Resource seeds (submittal,
-      // engagement, examination rows) are NOT required because the
+      // selection, examination rows) are NOT required because the
       // controller short-circuits on idempotency hit/conflict before any
       // findById call.
       //
@@ -3897,8 +4432,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           });
         },
 
-      // --- POST /v1/engagements (create) ---
-      'an idempotency key has been recorded with a prior engagement-create response':
+      // --- POST /v1/selections (create) ---
+      'an idempotency key has been recorded with a prior selection-create response':
         async () => {
           await withClient(async (c) => {
             await resetAllRows(c);
@@ -3910,24 +4445,24 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
                 requisition_id: 'cccccccc-cccc-7ccc-8ccc-cccccccccccc',
               }),
               responseStatus: 201,
-              responseBody: { engagement: { id: '00000000-0000-7000-8000-cccc00000c01', state: 'surfaced' } },
+              responseBody: { selection: { id: '00000000-0000-7000-8000-cccc00000c01', state: 'surfaced' } },
             });
           });
         },
-      'an idempotency key has been recorded with a different engagement-create body (PR-9)':
+      'an idempotency key has been recorded with a different selection-create body (PR-9)':
         async () => {
           await withClient(async (c) => {
             await resetAllRows(c);
             await seedIdempotencyKey(c, {
               id: '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b1f8d',
               key: '0190d5a4-7e01-7e2a-a4d3-cccc00000c21',
-              requestHash: 'pact-pr9-conflict-hash-engagement-create',
+              requestHash: 'pact-pr9-conflict-hash-selection-create',
             });
           });
         },
 
-      // --- POST /v1/engagements/:id/transitions ---
-      'an idempotency key has been recorded with a prior engagement-transition response':
+      // --- POST /v1/selections/:id/transitions ---
+      'an idempotency key has been recorded with a prior selection-transition response':
         async () => {
           await withClient(async (c) => {
             await resetAllRows(c);
@@ -3939,23 +4474,23 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
                 event_id: '00000000-0000-7000-8000-dddd0e0000e1',
               }),
               responseStatus: 200,
-              responseBody: { engagement: { id: '00000000-0000-7000-8000-dddd00000d01', state: 'evaluated' } },
+              responseBody: { selection: { id: '00000000-0000-7000-8000-dddd00000d01', state: 'evaluated' } },
             });
           });
         },
-      'an idempotency key has been recorded with a different engagement-transition body':
+      'an idempotency key has been recorded with a different selection-transition body':
         async () => {
           await withClient(async (c) => {
             await resetAllRows(c);
             await seedIdempotencyKey(c, {
               id: '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b1f8f',
               key: '0190d5a4-7e01-7e2a-a4d3-dddd00000d21',
-              requestHash: 'pact-pr9-conflict-hash-engagement-transition',
+              requestHash: 'pact-pr9-conflict-hash-selection-transition',
             });
           });
         },
 
-      // --- POST /v1/engagements/:id/outreach ---
+      // --- POST /v1/selections/:id/outreach ---
       'an idempotency key has been recorded with a prior outreach-send response':
         async () => {
           await withClient(async (c) => {
@@ -3965,7 +4500,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
               key: '0190d5a4-7e01-7e2a-a4d3-ffff00000f20',
               requestHash: hashCanonicalizedBody({ prompt: 'Reach out to talent about the role.' }),
               responseStatus: 200,
-              responseBody: { engagement: { id: '00000000-0000-7000-8000-ffff00000f01', state: 'awaiting_response' } },
+              responseBody: { selection: { id: '00000000-0000-7000-8000-ffff00000f01', state: 'awaiting_response' } },
             });
           });
         },
@@ -3981,7 +4516,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           });
         },
 
-      // --- POST /v1/engagements/:id/response ---
+      // --- POST /v1/selections/:id/response ---
       'an idempotency key has been recorded with a prior response-received response':
         async () => {
           await withClient(async (c) => {
@@ -3995,7 +4530,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
                 outreach_event_ref_id: '00000000-0000-7000-8000-eeee0e000001',
               }),
               responseStatus: 200,
-              responseBody: { engagement: { id: '00000000-0000-7000-8000-eeee00000e01', state: 'responded' } },
+              responseBody: { selection: { id: '00000000-0000-7000-8000-eeee00000e01', state: 'responded' } },
             });
           });
         },
@@ -4011,7 +4546,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           });
         },
 
-      // --- POST /v1/engagements/:id/conversation ---
+      // --- POST /v1/selections/:id/conversation ---
       'an idempotency key has been recorded with a prior conversation-started response':
         async () => {
           await withClient(async (c) => {
@@ -4024,7 +4559,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
                 conversation_started_at: '2026-05-25T12:00:00.000Z',
               }),
               responseStatus: 200,
-              responseBody: { engagement: { id: '00000000-0000-7000-8000-eeee00000e02', state: 'in_conversation' } },
+              responseBody: { selection: { id: '00000000-0000-7000-8000-eeee00000e02', state: 'in_conversation' } },
             });
           });
         },
@@ -4358,112 +4893,112 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       },
 
       // ===============================================================
-      // PC-1 — ats-web engagement domain state handlers (17). NEW live
-      // handlers; the dead ats-thin engagement handlers above are left
+      // PC-1 — ats-web selection domain state handlers (17). NEW live
+      // handlers; the dead ats-thin selection handlers above are left
       // untouched (distinct given strings → they stay unexercised).
       // ===============================================================
 
-      // -- shared read/mutate fixture: engagement in surfaced state.
+      // -- shared read/mutate fixture: selection in surfaced state.
       // Serves: list-happy, get-happy, transitions-happy (surfaced ->
       // evaluated), transitions-illegal (surfaced -> engaged), draft-
       // illegal + send-illegal (surfaced cannot reach awaiting_response).
-      'an ats-web recruiter and an engagement in surfaced state exist for the talent':
+      'an ats-web recruiter and an selection in surfaced state exist for the talent':
         async () => {
           await withClient(async (c) => {
             await resetAllRows(c);
-            await seedAtsWebEngagementBasics(c);
-            await seedAtsWebEngagement(c, { id: ATSW_SURFACED_ID, state: 'surfaced' });
+            await seedAtsWebSelectionBasics(c);
+            await seedAtsWebSelection(c, { id: ATSW_SURFACED_ID, state: 'surfaced' });
           });
         },
 
-      // -- engagement in responded state + prior outreach_sent event.
+      // -- selection in responded state + prior outreach_sent event.
       // Serves: conversation-happy (responded -> in_conversation) and
       // response-illegal (ref resolves, then state guard 422s because
       // responded cannot -> responded).
-      'an ats-web recruiter and an engagement in responded state with a prior outreach_sent event exist':
+      'an ats-web recruiter and an selection in responded state with a prior outreach_sent event exist':
         async () => {
           await withClient(async (c) => {
             await resetAllRows(c);
-            await seedAtsWebEngagementBasics(c);
-            await seedAtsWebEngagement(c, { id: ATSW_RESPONDED_ID, state: 'responded' });
-            await seedAtsWebEngagementEvent(c, {
+            await seedAtsWebSelectionBasics(c);
+            await seedAtsWebSelection(c, { id: ATSW_RESPONDED_ID, state: 'responded' });
+            await seedAtsWebSelectionEvent(c, {
               id: ATSW_OUTREACH_SENT_EVENT_ID,
-              engagementId: ATSW_RESPONDED_ID,
+              selectionId: ATSW_RESPONDED_ID,
               eventType: 'outreach_sent',
               payload: ATSW_SENT_PAYLOAD,
             });
           });
         },
 
-      // -- engagement in engaged state (conversation-illegal: engaged is
+      // -- selection in engaged state (conversation-illegal: engaged is
       // not responded → 422).
-      'an ats-web recruiter and an engagement in engaged state exist':
+      'an ats-web recruiter and an selection in engaged state exist':
         async () => {
           await withClient(async (c) => {
             await resetAllRows(c);
-            await seedAtsWebEngagementBasics(c);
-            await seedAtsWebEngagement(c, { id: ATSW_ENGAGED_ID, state: 'engaged' });
+            await seedAtsWebSelectionBasics(c);
+            await seedAtsWebSelection(c, { id: ATSW_ENGAGED_ID, state: 'engaged' });
           });
         },
 
-      // -- engagement in awaiting_response + prior outreach_sent event
+      // -- selection in awaiting_response + prior outreach_sent event
       // (response-happy: awaiting_response -> responded, ref resolves).
-      'an ats-web recruiter and an engagement in awaiting_response state with a prior outreach_sent event exist':
+      'an ats-web recruiter and an selection in awaiting_response state with a prior outreach_sent event exist':
         async () => {
           await withClient(async (c) => {
             await resetAllRows(c);
-            await seedAtsWebEngagementBasics(c);
-            await seedAtsWebEngagement(c, { id: ATSW_AWAITING_ID, state: 'awaiting_response' });
-            await seedAtsWebEngagementEvent(c, {
+            await seedAtsWebSelectionBasics(c);
+            await seedAtsWebSelection(c, { id: ATSW_AWAITING_ID, state: 'awaiting_response' });
+            await seedAtsWebSelectionEvent(c, {
               id: ATSW_OUTREACH_SENT_EVENT_ID,
-              engagementId: ATSW_AWAITING_ID,
+              selectionId: ATSW_AWAITING_ID,
               eventType: 'outreach_sent',
               payload: ATSW_SENT_PAYLOAD,
             });
           });
         },
 
-      // -- engagement with a recorded event (events-happy).
-      'an ats-web recruiter and an engagement with a recorded event exist':
+      // -- selection with a recorded event (events-happy).
+      'an ats-web recruiter and an selection with a recorded event exist':
         async () => {
           await withClient(async (c) => {
             await resetAllRows(c);
-            await seedAtsWebEngagementBasics(c);
-            await seedAtsWebEngagement(c, { id: ATSW_EVENTS_ID, state: 'awaiting_response' });
-            await seedAtsWebEngagementEvent(c, {
+            await seedAtsWebSelectionBasics(c);
+            await seedAtsWebSelection(c, { id: ATSW_EVENTS_ID, state: 'awaiting_response' });
+            await seedAtsWebSelectionEvent(c, {
               id: '00000000-0000-7000-8000-b00000000004',
-              engagementId: ATSW_EVENTS_ID,
+              selectionId: ATSW_EVENTS_ID,
               eventType: 'outreach_sent',
               payload: ATSW_SENT_PAYLOAD,
             });
           });
         },
 
-      // -- engagement in engaged state + contacting consent (draft-happy:
+      // -- selection in engaged state + contacting consent (draft-happy:
       // soft consent check passes, no consent_warning).
-      'an ats-web recruiter and an engagement in engaged state with contacting consent granted exist':
+      'an ats-web recruiter and an selection in engaged state with contacting consent granted exist':
         async () => {
           await withClient(async (c) => {
             await resetAllRows(c);
-            await seedAtsWebEngagementBasics(c);
-            await seedAtsWebEngagement(c, { id: ATSW_ENGAGED_DRAFT_ID, state: 'engaged' });
+            await seedAtsWebSelectionBasics(c);
+            await seedAtsWebSelection(c, { id: ATSW_ENGAGED_DRAFT_ID, state: 'engaged' });
             await seedAtsWebContactingConsent(c);
           });
         },
 
-      // -- engagement in engaged state + prior outreach_drafted event +
+      // -- selection in engaged state + prior outreach_drafted event +
       // contacting consent (send-happy: state gate + ref resolve +
       // binding consent gate all pass).
-      'an ats-web recruiter and an engagement in engaged state with a prior outreach_drafted event and contacting consent granted exist':
+      'an ats-web recruiter and an selection in engaged state with a prior outreach_drafted event and contacting consent granted exist':
         async () => {
           await withClient(async (c) => {
             await resetAllRows(c);
-            await seedAtsWebEngagementBasics(c);
-            await seedAtsWebEngagement(c, { id: ATSW_ENGAGED_SEND_ID, state: 'engaged' });
+            await seedAtsWebSelectionBasics(c);
+            await seedAtsWebSelection(c, { id: ATSW_ENGAGED_SEND_ID, state: 'engaged' });
             await seedAtsWebContactingConsent(c);
-            await seedAtsWebEngagementEvent(c, {
+            await seedAtsWebSelectionEvent(c, {
               id: ATSW_OUTREACH_DRAFTED_EVENT_ID,
-              engagementId: ATSW_ENGAGED_SEND_ID,
+              selectionId: ATSW_ENGAGED_SEND_ID,
               eventType: 'outreach_drafted',
               payload: ATSW_DRAFTED_PAYLOAD,
             });
@@ -4475,19 +5010,19 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // consent gate denies → 403 CONSENT_NOT_GRANTED_AT_SEND). Note the
       // ledger is non-empty (profile_storage + matching granted) so the
       // check returns 'denied', not the empty-ledger Decision K 'error'.
-      'an ats-web recruiter and an engagement in engaged state with a prior outreach_drafted event but contacting consent not granted exist':
+      'an ats-web recruiter and an selection in engaged state with a prior outreach_drafted event but contacting consent not granted exist':
         async () => {
           await withClient(async (c) => {
             await resetAllRows(c);
-            await seedAtsWebEngagementBasics(c);
-            await seedAtsWebEngagement(c, {
+            await seedAtsWebSelectionBasics(c);
+            await seedAtsWebSelection(c, {
               id: ATSW_ENGAGED_SEND_NO_CONSENT_ID,
               state: 'engaged',
             });
             await seedAtsWebNoContactingConsent(c);
-            await seedAtsWebEngagementEvent(c, {
+            await seedAtsWebSelectionEvent(c, {
               id: ATSW_OUTREACH_DRAFTED_EVENT_ID,
-              engagementId: ATSW_ENGAGED_SEND_NO_CONSENT_ID,
+              selectionId: ATSW_ENGAGED_SEND_NO_CONSENT_ID,
               eventType: 'outreach_drafted',
               payload: ATSW_DRAFTED_PAYLOAD,
             });
@@ -4498,7 +5033,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // seeds a request_hash matching the consumer body + a cached body
       // the controller returns verbatim; conflict seeds a non-matching
       // request_hash so idempotency.lookup throws 409.
-      'a prior engagement-transition response is cached under an Idempotency-Key':
+      'a prior selection-transition response is cached under an Idempotency-Key':
         async () => {
           await withClient(async (c) => {
             await resetAllRows(c);
@@ -4507,11 +5042,11 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
               key: ATSW_K_TRANSITION_REPLAY,
               requestHash: hashCanonicalizedBody(ATSW_TRANSITION_BODY),
               responseStatus: 200,
-              responseBody: { engagement: atswEngagementBody(ATSW_SURFACED_ID, 'evaluated') },
+              responseBody: { selection: atswSelectionBody(ATSW_SURFACED_ID, 'evaluated') },
             });
           });
         },
-      'an Idempotency-Key was used with a different engagement-transition body':
+      'an Idempotency-Key was used with a different selection-transition body':
         async () => {
           await withClient(async (c) => {
             await resetAllRows(c);
@@ -4533,7 +5068,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
               requestHash: hashCanonicalizedBody(ATSW_RESPONSE_BODY),
               responseStatus: 200,
               responseBody: {
-                engagement: atswEngagementBody(ATSW_AWAITING_ID, 'responded'),
+                selection: atswSelectionBody(ATSW_AWAITING_ID, 'responded'),
                 response_event: atswEventBody(
                   '00000000-0000-7000-8000-b00000000021',
                   ATSW_AWAITING_ID,
@@ -4565,7 +5100,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
               requestHash: hashCanonicalizedBody(ATSW_CONVERSATION_BODY),
               responseStatus: 200,
               responseBody: {
-                engagement: atswEngagementBody(ATSW_RESPONDED_ID, 'in_conversation'),
+                selection: atswSelectionBody(ATSW_RESPONDED_ID, 'in_conversation'),
                 conversation_event: atswEventBody(
                   '00000000-0000-7000-8000-b00000000031',
                   ATSW_RESPONDED_ID,
@@ -4626,7 +5161,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
               requestHash: hashCanonicalizedBody(ATSW_SEND_BODY),
               responseStatus: 200,
               responseBody: {
-                engagement: atswEngagementBody(ATSW_ENGAGED_SEND_ID, 'awaiting_response'),
+                selection: atswSelectionBody(ATSW_ENGAGED_SEND_ID, 'awaiting_response'),
                 outreach_event: atswEventBody(
                   '00000000-0000-7000-8000-b00000000051',
                   ATSW_ENGAGED_SEND_ID,
@@ -5905,6 +6440,172 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         });
       },
 
+      // T9-B1 — a DEDICATED state for the fill-performance interaction. Kept
+      // separate from the shared reporting state above because seeding a
+      // requisition + placed pipeline would give the company openings (breaking
+      // the company-metrics `fill_rate: null` / company-placements `[]` /
+      // dashboard empty-`by_status` expectations). A single-opening requisition
+      // (default openings = 1) with one `placed` pipeline + a placed history row
+      // → GET /v1/reports/fill-performance over a wide window returns a
+      // deterministic 100% fill rate and one fully-filled requisition with a
+      // time-to-fill value (§14). Visible tenant-wide via requisition:read:all.
+      'an ats-web recruiter and a fully-filled requisition exist': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedAtsWebTenant(c);
+          await seedAtsWebCompany(c, { id: ATSW_COMPANY_ID, name: 'Acme Corp' });
+          await seedAtsWebTalentRecord(c, {
+            id: ATSW_TALENT_ID,
+            firstName: 'Ada',
+            lastName: 'Lovelace',
+            tenantStatus: 'active',
+            sourceChannel: 'recruiter_added',
+          });
+          await seedAtsWebRequisition(c, {
+            id: ATSW_PIPE_FULL_REQ_ID,
+            title: 'Filled Req',
+            companyId: ATSW_COMPANY_ID,
+          });
+          await seedAtsWebPipeline(c, {
+            id: ATSW_PIPE_ID,
+            talentRecordId: ATSW_PIPE_TALENT_ID,
+            requisitionId: ATSW_PIPE_FULL_REQ_ID,
+            status: 'placed',
+          });
+          await seedAtsWebPipelineHistory(c, {
+            id: ATSW_PIPE_HISTORY_ID,
+            pipelineId: ATSW_PIPE_ID,
+            statusFrom: 'offered',
+            statusTo: 'placed',
+          });
+        });
+      },
+
+      // T9-B2 — a DEDICATED state for the fallthrough interaction, kept separate
+      // from the shared reporting state so seeding a placement attempt cannot
+      // perturb the fill_rate:null / empty-rollup sibling interactions. One
+      // placement attempt that first-accepts in-window then FELL_THROUGH with a
+      // canonical reason → GET /v1/reports/fallthrough over a wide window returns
+      // a deterministic 100% fallthrough rate + one reason bucket (§15). Visible
+      // tenant-wide via requisition:read:all; reason_detail is never exposed.
+      'an ats-web recruiter and a fallen-through placement exist': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedAtsWebTenant(c);
+          const pp = '00000000-0000-7000-8000-fa1100000001';
+          await c.query(
+            `INSERT INTO placement."PlacementProcess"
+               (id, tenant_id, submittal_id, requisition_id, talent_record_id, state, offered_at)
+             VALUES ($1,$2,$3,$4,$5,'FELL_THROUGH'::placement."PlacementState", now())
+             ON CONFLICT (id) DO NOTHING`,
+            [
+              pp,
+              TENANT_ID,
+              '00000000-0000-7000-8000-fa1100000002',
+              '00000000-0000-7000-8000-fa1100000003',
+              '00000000-0000-7000-8000-fa1100000004',
+            ],
+          );
+          await c.query(
+            `INSERT INTO placement."PlacementProcessEvent"
+               (id, tenant_id, placement_process_id, event_type, event_payload, created_at)
+             VALUES ($1,$2,$3,'state_transition'::placement."PlacementEventType",
+                     '{"from":"OFFER_EXTENDED","to":"OFFER_ACCEPTED"}'::jsonb, '2026-05-15T00:00:00Z')
+             ON CONFLICT (id) DO NOTHING`,
+            ['00000000-0000-7000-8000-fa1100000010', TENANT_ID, pp],
+          );
+          await c.query(
+            `INSERT INTO placement."PlacementProcessEvent"
+               (id, tenant_id, placement_process_id, event_type, event_payload, reason_code, reason_label_snapshot, created_at)
+             VALUES ($1,$2,$3,'state_transition'::placement."PlacementEventType",
+                     '{"from":"OFFER_ACCEPTED","to":"FELL_THROUGH"}'::jsonb, 'start_date_failed', 'Start date failed', '2026-05-20T00:00:00Z')
+             ON CONFLICT (id) DO NOTHING`,
+            ['00000000-0000-7000-8000-fa1100000011', TENANT_ID, pp],
+          );
+        });
+      },
+
+      // T9-B3 — a DEDICATED assignment-pipeline state (kept separate from the
+      // fill-performance/fallthrough/shared states). Seeds placements across all
+      // five live states with STARTED×3 (none / ACTIVE / ENDED — proving
+      // STARTED != active + ended) plus start-date examples incl. a null
+      // proposed_start_date. Visible tenant-wide via requisition:read:all.
+      'an ats-web recruiter and assignment-pipeline placements exist': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedAtsWebTenant(c);
+          const AP_REQ = '00000000-0000-7000-8000-a91100000001';
+          const FILL = '00000000-0000-7000-8000-a9110000ffff';
+          const rows: Array<[string, string, string | null]> = [
+            ['00000000-0000-7000-8000-a91100000011', 'OFFER_ACCEPTED', '2026-06-18'],
+            ['00000000-0000-7000-8000-a91100000012', 'PRE_START', '2026-07-30'],
+            ['00000000-0000-7000-8000-a91100000013', 'BLOCKED', null],
+            ['00000000-0000-7000-8000-a91100000014', 'READY_TO_START', '2026-06-18'],
+            ['00000000-0000-7000-8000-a91100000015', 'STARTED', null],
+            ['00000000-0000-7000-8000-a91100000016', 'STARTED', null],
+            ['00000000-0000-7000-8000-a91100000017', 'STARTED', null],
+          ];
+          for (const [id, state, psd] of rows) {
+            await c.query(
+              `INSERT INTO placement."PlacementProcess"
+                 (id, tenant_id, submittal_id, requisition_id, talent_record_id, state, offered_at, proposed_start_date)
+               VALUES ($1,$2,$3,$4,$5,$6::placement."PlacementState", now(), $7::date)
+               ON CONFLICT (id) DO NOTHING`,
+              [id, TENANT_ID, FILL, AP_REQ, FILL, state, psd],
+            );
+          }
+          // Bounded enrichment: one ACTIVE, one ENDED; the third STARTED has none.
+          await c.query(
+            `INSERT INTO placement."ContractAssignment"
+               (id, tenant_id, placement_process_id, submittal_id, requisition_id, talent_record_id, started_at, provenance, lifecycle_state, company_id)
+             VALUES ($1,$2,$3,$4,$5,$6, now(),'FORWARD','ACTIVE',$7) ON CONFLICT (id) DO NOTHING`,
+            ['00000000-0000-7000-8000-a91100000021', TENANT_ID, '00000000-0000-7000-8000-a91100000016', FILL, AP_REQ, FILL, FILL],
+          );
+          await c.query(
+            `INSERT INTO placement."ContractAssignment"
+               (id, tenant_id, placement_process_id, submittal_id, requisition_id, talent_record_id, started_at, provenance, lifecycle_state, end_reason, ended_at, company_id)
+             VALUES ($1,$2,$3,$4,$5,$6, now(),'FORWARD','ENDED','COMPLETED', now(), $7) ON CONFLICT (id) DO NOTHING`,
+            ['00000000-0000-7000-8000-a91100000022', TENANT_ID, '00000000-0000-7000-8000-a91100000017', FILL, AP_REQ, FILL, FILL],
+          );
+        });
+      },
+
+      // T9-B4 — one commercialized ACTIVE CONTRACT assignment (STARTED placement →
+      // ACTIVE ContractAssignment → a current open USD/HOURLY 80/100 rate version) so
+      // the margin read returns a single USD/HOURLY group at group_margin_percent
+      // 20.00. accessJwt is see-all (requisition:read:all), so the assignment is visible.
+      'an ats-web recruiter and a commercialized contract assignment exist': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedAtsWebTenant(c);
+          const M_REQ = '00000000-0000-7000-8000-a91200000001';
+          const M_PP = '00000000-0000-7000-8000-a91200000002';
+          const M_CA = '00000000-0000-7000-8000-a91200000003';
+          const M_ARV = '00000000-0000-7000-8000-a91200000004';
+          const FILL = '00000000-0000-7000-8000-a9120000ffff';
+          await c.query(
+            `INSERT INTO placement."PlacementProcess"
+               (id, tenant_id, submittal_id, requisition_id, talent_record_id, state, offered_at)
+             VALUES ($1,$2,$3,$4,$5,'STARTED'::placement."PlacementState", now())
+             ON CONFLICT (id) DO NOTHING`,
+            [M_PP, TENANT_ID, FILL, M_REQ, FILL],
+          );
+          await c.query(
+            `INSERT INTO placement."ContractAssignment"
+               (id, tenant_id, placement_process_id, submittal_id, requisition_id, talent_record_id, started_at, provenance, lifecycle_state, company_id)
+             VALUES ($1,$2,$3,$4,$5,$6, now(),'FORWARD','ACTIVE',$7) ON CONFLICT (id) DO NOTHING`,
+            [M_CA, TENANT_ID, M_PP, FILL, M_REQ, FILL, FILL],
+          );
+          await c.query(
+            `INSERT INTO placement."AssignmentRateVersion"
+               (id, tenant_id, contract_assignment_id, requisition_id, talent_record_id, pay_rate_amount, bill_rate_amount, currency, rate_period, effective_from, effective_to, recorded_by, cancelled_at, change_reason)
+             VALUES ($1,$2,$3,$4,$5, 80.00, 100.00, 'USD','HOURLY','2026-01-01T00:00:00Z', NULL, $6, NULL,'seed')
+             ON CONFLICT (id) DO NOTHING`,
+            [M_ARV, TENANT_ID, M_CA, M_REQ, FILL, FILL],
+          );
+        });
+      },
+
       // /me — the authenticated recruiter (sub = RECRUITER_ID) resolves via
       // UserTenantMembership(user_id, tenant_id) → user + active roles + tenant.
       'an ats-web user with a membership and a role exist': async () => {
@@ -6143,6 +6844,14 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         // token → rewrite to insufficientJwt (a valid session WITHOUT
         // consent:decision-log:read). RolesGuard returns 403 INSUFFICIENT_PERMISSIONS.
         req.headers['authorization'] = `Bearer ${insufficientJwt}`;
+      } else if (
+        typeof authHeader === 'string' &&
+        authHeader === 'Bearer eyJfake.reportonly.token'
+      ) {
+        // T9-B4 — the margin compound-gate 403 interaction ships a fake token →
+        // rewrite to reportOnlyJwt (report:read but NOT assignment:commercials:read).
+        // RolesGuard on GET /v1/reports/margin returns 403 INSUFFICIENT_PERMISSIONS.
+        req.headers['authorization'] = `Bearer ${reportOnlyJwt}`;
       }
       next();
     }

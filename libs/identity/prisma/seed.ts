@@ -49,6 +49,13 @@ export const SEED_IDS = {
   tenant: '01900000-0000-7000-8000-000000000001',
   user_admin: '01900000-0000-7000-8000-000000000002',
   service_account_system: '01900000-0000-7000-8000-000000000003',
+  // Track 8 / T8-CONNECTOR-A — the dedicated connector execution ServiceAccount
+  // (machine actor). MUST equal CONNECTOR_SERVICE_ACCOUNT_ID in
+  // libs/integration/src/lib/domain/connector-actor.ts. Written as imported_by_id
+  // on connector-produced ImportBatches so machine execution is unmistakable. It
+  // holds NO connector-management scopes; execution authority is supplied
+  // programmatically (requisition:import:write) at the P2 handoff.
+  service_account_connector: '01900000-0000-7000-8000-000000000004',
   external_identity_admin: '01900000-0000-7000-8000-000000000004',
   membership_admin: '01900000-0000-7000-8000-000000000005',
   // AUTHZ-2 — sentinel Tenant for the platform tier (Lead ruling 2 B1).
@@ -193,13 +200,13 @@ export const SEED_IDS = {
     // Reporting/Audit DDR (Ruling B-iii).
     'dashboard:read': '01900000-0000-7000-8000-000000000098',
     'report:read': '01900000-0000-7000-8000-000000000099',
-    // R7 BE-prereq — 3 engagement-domain scopes (Amendment v1.1 §1
+    // R7 BE-prereq — 3 selection-domain scopes (Amendment v1.1 §1
     // Ruling B: outreach SoD). Continues the 0x90 reporting range:
     // 0x9a / 0x9b / 0x9c. Closes the documented A1a-2 deferral
     // (scope.dto.ts:23-25 prior to this PR).
-    'engagement:read': '01900000-0000-7000-8000-00000000009a',
-    'engagement:write': '01900000-0000-7000-8000-00000000009b',
-    'engagement:outreach': '01900000-0000-7000-8000-00000000009c',
+    'selection:read': '01900000-0000-7000-8000-00000000009a',
+    'selection:write': '01900000-0000-7000-8000-00000000009b',
+    'selection:outreach': '01900000-0000-7000-8000-00000000009c',
     // Search PR-1 — 3 per-entity quick-search scopes (continue the 0x90
     // range: 0x9d / 0x9e / 0x9f). talent:search is REUSED (0x6c above), so
     // only company/requisition/contact get new scope ids. Granted via
@@ -307,6 +314,14 @@ export const SEED_IDS = {
     'placement:activate': '01900000-0000-7000-8000-0000000000cc',
     'placement:terminate': '01900000-0000-7000-8000-0000000000cd',
     'placement:replace': '01900000-0000-7000-8000-0000000000ce',
+    // Track 7 / T7-P1 — PermanentPlacement guarantee authority family (next free
+    // ids d7/d8; ce consumed by placement:replace, cf-d6 by T4/T5/T8 families).
+    'placement:permanent:read': '01900000-0000-7000-8000-0000000000d7',
+    'placement:permanent:transition': '01900000-0000-7000-8000-0000000000d8',
+    // Track 7 / T7-P2 — the remedy-resolution scope (next free id d9).
+    'placement:remedy:resolve': '01900000-0000-7000-8000-0000000000d9',
+    // Track 7 / T7-P3 — the guarantee-terms management scope (next free id da).
+    'placement:permanent:terms:write': '01900000-0000-7000-8000-0000000000da',
     // Track 4 / T4-D — ContractAssignment authority family.
     'assignment:read': '01900000-0000-7000-8000-0000000000cf',
     'assignment:create': '01900000-0000-7000-8000-0000000000d0',
@@ -319,6 +334,13 @@ export const SEED_IDS = {
     // d3/d4 consumed by T5-P1 assignment:commercials during R-SYNC).
     'requisition:import:read': '01900000-0000-7000-8000-0000000000d5',
     'requisition:import:write': '01900000-0000-7000-8000-0000000000d6',
+    // Track 8 / T8-CONNECTOR-A — connector-connection management scope family
+    // (da/db; d7/d8/d9 consumed by T7-P1/P2 placement:permanent/remedy).
+    // Administration of Settings → Integrations connections.
+    // R-SYNC: da/db taken by T7-P3 placement:permanent:terms:write on main;
+    // moved to dc/dd (mechanical id reconciliation; grants unchanged).
+    'integration:read': '01900000-0000-7000-8000-0000000000dc',
+    'integration:write': '01900000-0000-7000-8000-0000000000dd',
   },
   // RoleScope ids — one per (role,scope) assignment. Hardcoded sequence
   // 0x30..0x39 (10 assignments: 6 tenant_admin + 4 recruiter; the 3
@@ -560,6 +582,11 @@ export const SEED_ADMIN_DISPLAY_NAME = 'Aramo Dev Admin';
 export const SEED_SERVICE_ACCOUNT_NAME = 'system-bootstrap';
 export const SEED_SERVICE_ACCOUNT_DESCRIPTION =
   'System actor for seed/migration audit events';
+
+// Track 8 / T8-CONNECTOR-A — the connector execution ServiceAccount identity.
+export const CONNECTOR_SERVICE_ACCOUNT_NAME = 'connector-execution';
+export const CONNECTOR_SERVICE_ACCOUNT_DESCRIPTION =
+  'Machine actor for provider-neutral connector execution (T8-CONNECTOR-A). Holds no connector-management scopes; imports run with requisition:import:write only.';
 
 // Per-role scope assignments (directive §6 + §9 test 17, locked).
 export const ROLE_SCOPE_ASSIGNMENTS = {
@@ -1220,12 +1247,12 @@ const REPORTING_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
   return map;
 })();
 
-// R7 BE-prereq — engagement-domain role-scope bundle (Amendment v1.1 §2
+// R7 BE-prereq — selection-domain role-scope bundle (Amendment v1.1 §2
 // Ruling 2: 8-role grant set, 20 RoleScope rows). Write-tier 6 roles get
 // :read + :write + :outreach; read-only 2 roles (delivery_manager / back_office)
 // get :read only. The 6 excluded roles (sourcer / finance / auditor /
-// auditor_with_financials / candidate / super_admin) hold zero engagement
-// scopes — they 403 on every engagement route.
+// auditor_with_financials / candidate / super_admin) hold zero selection
+// scopes — they 403 on every selection route.
 //
 // Bundle composition rationale:
 //   - tenant_owner / tenant_admin: full operational tier; write-tier baseline.
@@ -1238,30 +1265,30 @@ const REPORTING_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
 //   - recruiter (the FLOOR): the workflow's primary actor.
 //   - delivery_manager / back_office (read-only): fulfillment-quality + ops
 //     read; mirror their existing broad-read bundles (talent:read + pipeline:read
-//     + activity:read etc.) — they SEE engagement workflow state but neither
+//     + activity:read etc.) — they SEE selection workflow state but neither
 //     drive it nor send outreach.
-const ENGAGEMENT_SEED_BUNDLES: ReadonlyArray<readonly [string, readonly string[]]> = [
-  ['tenant_owner', ['engagement:read', 'engagement:write', 'engagement:outreach']],
-  ['tenant_admin', ['engagement:read', 'engagement:write', 'engagement:outreach']],
-  ['account_manager', ['engagement:read', 'engagement:write', 'engagement:outreach']],
-  ['recruiting_manager', ['engagement:read', 'engagement:write', 'engagement:outreach']],
-  ['recruiter', ['engagement:read', 'engagement:write', 'engagement:outreach']],
-  ['lead_recruiter', ['engagement:read', 'engagement:write', 'engagement:outreach']],
-  ['delivery_manager', ['engagement:read']],
-  ['back_office', ['engagement:read']],
+const SELECTION_SEED_BUNDLES: ReadonlyArray<readonly [string, readonly string[]]> = [
+  ['tenant_owner', ['selection:read', 'selection:write', 'selection:outreach']],
+  ['tenant_admin', ['selection:read', 'selection:write', 'selection:outreach']],
+  ['account_manager', ['selection:read', 'selection:write', 'selection:outreach']],
+  ['recruiting_manager', ['selection:read', 'selection:write', 'selection:outreach']],
+  ['recruiter', ['selection:read', 'selection:write', 'selection:outreach']],
+  ['lead_recruiter', ['selection:read', 'selection:write', 'selection:outreach']],
+  ['delivery_manager', ['selection:read']],
+  ['back_office', ['selection:read']],
 ];
 
-// R7 BE-prereq — deterministic RoleScope row IDs for the 20 engagement-
+// R7 BE-prereq — deterministic RoleScope row IDs for the 20 selection-
 // bundle grants above. Disjoint range starting at 0x700 (AUTHZ-1's 0x400+,
 // AUTHZ-D5's 0x500+, Reporting's 0x600+ all stay untouched — append-don't-
 // renumber per Amendment v1.1 §2). The (role, scope) iteration order in
-// ENGAGEMENT_SEED_BUNDLES pins the assignment, so a given pair always
+// SELECTION_SEED_BUNDLES pins the assignment, so a given pair always
 // produces the same UUID on every seed run. DO NOT REORDER without
 // bumping the offset to a fresh range.
-const ENGAGEMENT_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
+const SELECTION_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
   const map: Record<string, string> = {};
   let i = 0x700;
-  for (const [role, scopes] of ENGAGEMENT_SEED_BUNDLES) {
+  for (const [role, scopes] of SELECTION_SEED_BUNDLES) {
     for (const scope of scopes) {
       map[`${role}:${scope}`] =
         `01900000-0000-7000-8000-${i.toString(16).padStart(12, '0')}`;
@@ -1313,7 +1340,7 @@ const SEARCH_SEED_BUNDLES: ReadonlyArray<readonly [string, readonly string[]]> =
 
 // Search PR-1 — deterministic RoleScope row ids for the 28 search-bundle
 // grants (9 roles × 3 + finance × 1). Disjoint range starting at 0x800
-// (AUTHZ-1 0x400+, D5 0x500+, Reporting 0x600+, Engagement 0x700+ all stay
+// (AUTHZ-1 0x400+, D5 0x500+, Reporting 0x600+, Selection 0x700+ all stay
 // untouched — append-don't-renumber). The (role, scope) iteration order in
 // SEARCH_SEED_BUNDLES pins the assignment, so a given pair always produces
 // the same UUID on every seed run.
@@ -1349,7 +1376,7 @@ const TASK_SEED_BUNDLES: ReadonlyArray<readonly [string, readonly string[]]> = [
 
 // Deterministic RoleScope row ids for the 18 task-bundle grants. Disjoint
 // range starting at 0x81c (the next free after Search PR-1's 0x800..0x81b;
-// AUTHZ-1 0x400+, D5 0x500+, Reporting 0x600+, Engagement 0x700+, Search
+// AUTHZ-1 0x400+, D5 0x500+, Reporting 0x600+, Selection 0x700+, Search
 // 0x800+ all stay untouched — append-don't-renumber). The (role, scope)
 // iteration order pins the assignment.
 const TASK_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
@@ -1830,6 +1857,93 @@ const PLACEMENT_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
   return map;
 })();
 
+// Track 7 / T7-P1 — the PermanentPlacement guarantee role matrix (§8). Role posture
+// MIRRORS the ratified placement AUTHORITATIVE tier (grounded from
+// PLACEMENT_SEED_BUNDLES, not invented): placement:permanent:read -> all four
+// grant-receiving roles (as placement:read); placement:permanent:transition ->
+// account_manager/tenant_admin/tenant_owner only (the tier holding
+// placement:activate — authoritative post-start guarantee mutation, and the second
+// leg of the PERMANENT STARTED conjunction). recruiter does operational placement
+// work but NOT authoritative guarantee mutation. super_admin/recruiting_manager/all
+// others: ZERO. Separate bundle + row-id range so PLACEMENT's 0xa00 grants are NOT
+// renumbered (append-don't-renumber).
+export const PERMANENT_PLACEMENT_SEED_BUNDLES: ReadonlyArray<
+  readonly [string, readonly string[]]
+> = [
+  ['recruiter', ['placement:permanent:read']],
+  ['account_manager', ['placement:permanent:read', 'placement:permanent:transition']],
+  ['tenant_admin', ['placement:permanent:read', 'placement:permanent:transition']],
+  ['tenant_owner', ['placement:permanent:read', 'placement:permanent:transition']],
+];
+
+// Deterministic RoleScope row ids for the 7 permanent-placement grants. Fresh
+// disjoint range after REQUISITION_IMPORT's 0xc00 (append-don't-renumber): 0xd00+.
+const PERMANENT_PLACEMENT_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
+  const map: Record<string, string> = {};
+  let i = 0xd00;
+  for (const [role, scopes] of PERMANENT_PLACEMENT_SEED_BUNDLES) {
+    for (const scope of scopes) {
+      map[`${role}:${scope}`] =
+        `01900000-0000-7000-8000-${i.toString(16).padStart(12, '0')}`;
+      i++;
+    }
+  }
+  return map;
+})();
+
+// Track 7 / T7-P2 — the remedy-resolution role matrix (§3.6). GRANTED to
+// account_manager, tenant_admin, tenant_owner only (recruiter excluded — high-consequence
+// evidence-gated completion). Separate bundle + row-id range (0xe00+) so PERMANENT's 0xd00
+// grants are NOT renumbered (append-don't-renumber).
+export const PERMANENT_REMEDY_SEED_BUNDLES: ReadonlyArray<
+  readonly [string, readonly string[]]
+> = [
+  ['account_manager', ['placement:remedy:resolve']],
+  ['tenant_admin', ['placement:remedy:resolve']],
+  ['tenant_owner', ['placement:remedy:resolve']],
+];
+
+// Deterministic RoleScope row ids for the 3 remedy grants. Range 0xe00+.
+const PERMANENT_REMEDY_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
+  const map: Record<string, string> = {};
+  let i = 0xe00;
+  for (const [role, scopes] of PERMANENT_REMEDY_SEED_BUNDLES) {
+    for (const scope of scopes) {
+      map[`${role}:${scope}`] =
+        `01900000-0000-7000-8000-${i.toString(16).padStart(12, '0')}`;
+      i++;
+    }
+  }
+  return map;
+})();
+
+// Track 7 / T7-P3 — the guarantee-terms management role matrix (§3.7). GRANTED to
+// account_manager, tenant_admin, tenant_owner only (recruiter excluded — terms authorship is
+// authority-separated; reads use placement:permanent:read). Separate bundle + row-id range
+// (0xf00+) so PERMANENT's 0xd00 and REMEDY's 0xe00 grants are NOT renumbered
+// (append-don't-renumber).
+export const PERMANENT_TERMS_SEED_BUNDLES: ReadonlyArray<
+  readonly [string, readonly string[]]
+> = [
+  ['account_manager', ['placement:permanent:terms:write']],
+  ['tenant_admin', ['placement:permanent:terms:write']],
+  ['tenant_owner', ['placement:permanent:terms:write']],
+];
+
+// Deterministic RoleScope row ids for the 3 guarantee-terms grants. Range 0xf00+.
+const PERMANENT_TERMS_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
+  const map: Record<string, string> = {};
+  let i = 0xf00;
+  for (const [role, scopes] of PERMANENT_TERMS_SEED_BUNDLES) {
+    for (const scope of scopes) {
+      map[`${role}:${scope}`] =
+        `01900000-0000-7000-8000-${i.toString(16).padStart(12, '0')}`;
+      i++;
+    }
+  }
+  return map;
+})();
+
 // Track 4 / T4-D — the ContractAssignment role matrix. Role posture MIRRORS the
 // ratified placement AUTHORITATIVE tier (grounded from PLACEMENT_SEED_BUNDLES,
 // not invented): assignment:read -> all four grant-receiving roles (as placement:
@@ -1885,6 +1999,34 @@ const REQUISITION_IMPORT_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() =
   const map: Record<string, string> = {};
   let i = 0xc00;
   for (const [role, scopes] of REQUISITION_IMPORT_SEED_BUNDLES) {
+    for (const scope of scopes) {
+      map[`${role}:${scope}`] =
+        `01900000-0000-7000-8000-${i.toString(16).padStart(12, '0')}`;
+      i++;
+    }
+  }
+  return map;
+})();
+
+// Track 8 / T8-CONNECTOR-A — connector-connection MANAGEMENT role-matrix.
+// integration:read + integration:write granted to tenant_admin + tenant_owner
+// ONLY (administrative tier; recruiter/account_manager/others excluded — no
+// wildcard widening). The connector ServiceAccount is a separate execution
+// identity and does NOT appear here.
+export const INTEGRATION_MANAGEMENT_SEED_BUNDLES: ReadonlyArray<
+  readonly [string, readonly string[]]
+> = [
+  ['tenant_admin', ['integration:read', 'integration:write']],
+  ['tenant_owner', ['integration:read', 'integration:write']],
+];
+
+// Deterministic RoleScope row ids for the 4 connector-management grants. Fresh
+// disjoint range 0xc10+ (append-don't-renumber; requisition-import occupies
+// 0xc00..0xc06). DO NOT REORDER without bumping the offset.
+const INTEGRATION_MANAGEMENT_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
+  const map: Record<string, string> = {};
+  let i = 0xc10;
+  for (const [role, scopes] of INTEGRATION_MANAGEMENT_SEED_BUNDLES) {
     for (const scope of scopes) {
       map[`${role}:${scope}`] =
         `01900000-0000-7000-8000-${i.toString(16).padStart(12, '0')}`;
@@ -1989,6 +2131,21 @@ export async function runIdentitySeed(
       id: SEED_IDS.service_account_system,
       name: SEED_SERVICE_ACCOUNT_NAME,
       description: SEED_SERVICE_ACCOUNT_DESCRIPTION,
+      is_active: true,
+    },
+  });
+
+  // Track 8 / T8-CONNECTOR-A — the dedicated connector execution ServiceAccount
+  // (machine actor). A true service identity, separate from any human. It holds
+  // NO connector-management scopes; its P2-handoff authority is supplied
+  // programmatically (requisition:import:write).
+  await prisma.serviceAccount.upsert({
+    where: { id: SEED_IDS.service_account_connector },
+    update: {},
+    create: {
+      id: SEED_IDS.service_account_connector,
+      name: CONNECTOR_SERVICE_ACCOUNT_NAME,
+      description: CONNECTOR_SERVICE_ACCOUNT_DESCRIPTION,
       is_active: true,
     },
   });
@@ -2125,21 +2282,21 @@ export async function runIdentitySeed(
   // in the dashboard:read description).
   await upsertScope(prisma, SEED_IDS.scopes['dashboard:read'], 'dashboard:read', 'Read the ATS-internal dashboard composition (tenant counts, requisition/pipeline rollups, ATS-internal placement count, upcoming events, recent activity). ATS-domain only; no Core/examination read.');
   await upsertScope(prisma, SEED_IDS.scopes['report:read'], 'report:read', 'Read per-metric ATS-internal reports (tenant-counts, requisition-rollup, pipeline-rollup, placement-count).');
-  // R7 BE-prereq — 3 engagement-domain scopes (closes the A1a-2 deferral).
-  // 3-scope split (Amendment v1.1 §1 Ruling B; outreach SoD). The 8 engagement
+  // R7 BE-prereq — 3 selection-domain scopes (closes the A1a-2 deferral).
+  // 3-scope split (Amendment v1.1 §1 Ruling B; outreach SoD). The 8 selection
   // routes gate via @RequireScopes(...) — read on the 3 GETs (incl. the new
   // LIST), write on create/transitions/response/conversation, outreach on the
   // outreach route. NO scope.created audit events (mirrors the Reporting-Scope-
   // Seed precedent).
-  await upsertScope(prisma, SEED_IDS.scopes['engagement:read'], 'engagement:read', 'Read engagements (GET /v1/engagements LIST, GET /v1/engagements/:id, GET /v1/engagements/:id/events). 8 roles: write-tier 6 + read-only 2 (delivery_manager / back_office). D4b-composed at read time (engagement visible iff its requisition_id is in the actor visible-requisition set).');
-  await upsertScope(prisma, SEED_IDS.scopes['engagement:write'], 'engagement:write', 'Mutate engagements (POST create / transitions / response / conversation). 6 roles: TA / TO / AM / RM / LR / recruiter[floor]. Write-path visibility: the controller (create) + the repo findByTenantAndId (the 4 mutate-existing) compose D4b — invisible-requisition engagements return 404.');
-  await upsertScope(prisma, SEED_IDS.scopes['engagement:outreach'], 'engagement:outreach', 'Send outbound engagement outreach (POST /v1/engagements/:id/outreach). Separate from :write per outreach SoD — the only engagement write with external side-effects (AI draft + consent-at-send + outbound delivery + LLM cost). Same 6 roles as :write.');
+  await upsertScope(prisma, SEED_IDS.scopes['selection:read'], 'selection:read', 'Read selections (GET /v1/selections LIST, GET /v1/selections/:id, GET /v1/selections/:id/events). 8 roles: write-tier 6 + read-only 2 (delivery_manager / back_office). D4b-composed at read time (selection visible iff its requisition_id is in the actor visible-requisition set).');
+  await upsertScope(prisma, SEED_IDS.scopes['selection:write'], 'selection:write', 'Mutate selections (POST create / transitions / response / conversation). 6 roles: TA / TO / AM / RM / LR / recruiter[floor]. Write-path visibility: the controller (create) + the repo findByTenantAndId (the 4 mutate-existing) compose D4b — invisible-requisition selections return 404.');
+  await upsertScope(prisma, SEED_IDS.scopes['selection:outreach'], 'selection:outreach', 'Send outbound selection outreach (POST /v1/selections/:id/outreach). Separate from :write per outreach SoD — the only selection write with external side-effects (AI draft + consent-at-send + outbound delivery + LLM cost). Same 6 roles as :write.');
   // Search PR-1 — 3 per-entity quick-search scopes (Lead rulings R1/R2).
   // Gate the ?q= trigram filter on the per-entity LIST endpoints WHEN q is
   // present (the no-q LIST keeps its :read gate). talent:search is REUSED
   // (seeded above) for /v1/talent-records?q=. Granted via SEARCH_SEED_BUNDLES
   // (per-entity :read-holder parity). NO scope.created audit events (mirrors
-  // the Reporting / Engagement-Scope-Seed precedent).
+  // the Reporting / Selection-Scope-Seed precedent).
   await upsertScope(prisma, SEED_IDS.scopes['company:search'], 'company:search', 'Quick-search companies by name (GET /v1/companies?q=). Trigram (ILIKE-contains) match ANDed with the D4b company visibility predicate — narrows within the visible set. Granted to the 9 company:read holders.');
   await upsertScope(prisma, SEED_IDS.scopes['requisition:search'], 'requisition:search', 'Quick-search requisitions by title (GET /v1/requisitions?q=). Trigram (ILIKE-contains) match ANDed with the A3-OR-D4b requisition visibility predicate. Granted to the 10 requisition:read holders (the 9 + finance).');
   await upsertScope(prisma, SEED_IDS.scopes['contact:search'], 'contact:search', 'Quick-search contacts by name (GET /v1/contacts?q=). Trigram (ILIKE-contains) match over first_name/last_name ANDed with the D4b contact visibility predicate. Granted to the 9 contact:read holders.');
@@ -2165,10 +2322,10 @@ export async function runIdentitySeed(
 
   // Settings Rebuild D1 — the 2 read scopes behind the settings Import +
   // Export LIVE sections. NO scope.created audit events (mirrors the
-  // Reporting / Engagement / Search / Task scope-seed precedent).
+  // Reporting / Selection / Search / Task scope-seed precedent).
   await upsertScope(prisma, SEED_IDS.scopes['import:read'], 'import:read', 'Read the CSV bulk-import history + per-batch failures (GET /v1/imports, GET /v1/imports/:id, GET /v1/imports/:id/failures). Read-only audit of imports; the write/revert surface gates on import:create / import:delete (unseeded — a later increment). Granted to the operational tier (recruiter+: tenant_admin + tenant_owner + account_manager + recruiting_manager + recruiter + lead_recruiter + back_office + delivery_manager). RequireSiteMatch + the actor visibility still govern WHAT each row shows.');
   await upsertScope(prisma, SEED_IDS.scopes['export:read'], 'export:read', 'Export the 5 R10-bounded ATS entities as CSV (GET /v1/exports/:entity_type). The A3/D4b visibility predicate at the service layer governs WHAT each role exports; R10 keeps the column set ATS-only (no Core-judgment field). Granted to tenant_admin + tenant_owner (the settings Export surface is admin-gated).');
-  await upsertScope(prisma, SEED_IDS.scopes['audit:read'], 'audit:read', 'Read the tenant audit log (GET /v1/tenant/audit-events) — the keyset-paginated, filterable read over the IdentityAuditEvent trail (who did what, when). Tenant-scoped (never cross-tenant); detail is redacted of values the viewer\'s scopes don\'t permit. Granted to tenant_admin + tenant_owner (the admin/compliance tier; NOT recruiters). NO scope.created audit event (mirrors the Reporting/Engagement/Search/Task/Settings-D1 scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['audit:read'], 'audit:read', 'Read the tenant audit log (GET /v1/tenant/audit-events) — the keyset-paginated, filterable read over the IdentityAuditEvent trail (who did what, when). Tenant-scoped (never cross-tenant); detail is redacted of values the viewer\'s scopes don\'t permit. Granted to tenant_admin + tenant_owner (the admin/compliance tier; NOT recruiters). NO scope.created audit event (mirrors the Reporting/Selection/Search/Task/Settings-D1 scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['tenant:admin:profile'], 'tenant:admin:profile', 'Read + edit the tenant profile (GET/PATCH /v1/tenant/profile) — the org legal identity (legal/display name, address, tax/registration IDs, primary contact, logo). DEDICATED scope (Lead ruling): kept distinct from tenant:admin:settings so org-legal-identity and app-config stay separable, and the audit trail (identity.tenant_profile.updated) carries a clean per-scope authorization story. Granted to tenant_admin + tenant_owner ONLY (NOT recruiters). NO scope.created audit event (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['tenant:admin:sites'], 'tenant:admin:sites', 'Manage sites/branches (CRUD /v1/tenant/sites) — the org STRUCTURE: sub-tenant branch partitions + the parent/child branch hierarchy. DEDICATED scope (Lead ruling): kept distinct from tenant:admin:settings (config) and tenant:admin:profile (legal identity) so the admin taxonomy stays coherent and sites stay separable later. Emits identity.site.created/updated/deactivated (field names only). Granted to tenant_admin + tenant_owner ONLY (NOT recruiters). NO scope.created audit event (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['tenant:admin:domain'], 'tenant:admin:domain', 'Prove DNS-TXT ownership of the tenant\'s locked domain (GET/POST /v1/tenant/domain-verification + /check) — request a verification token, publish it in a DNS TXT record, and have Aramo resolve+match it to mark the domain VERIFIED. INFORMATIONAL in P2b (gates nothing — P1\'s invite domain-lock works regardless of verification status). DEDICATED scope: kept distinct from settings/profile/sites so the admin taxonomy stays coherent. Emits identity.domain.verification.requested/verified. Granted to tenant_admin + tenant_owner ONLY (NOT recruiters). NO scope.created audit event (scope-seed precedent).');
@@ -2200,6 +2357,10 @@ export async function runIdentitySeed(
   await upsertScope(prisma, SEED_IDS.scopes['placement:activate'], 'placement:activate', 'Track 3 / E1-b — the edge that establishes the authoritative live/committed placement (ready_to_start->started). Distinct authority from ordinary progression (§2). GRANTED (#577 matrix) to account_manager, tenant_admin, tenant_owner only; recruiter excluded. NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['placement:terminate'], 'placement:terminate', 'Track 3 / E1-b — terminal/irreversible PlacementProcess termination (the 8 edges into OFFER_DECLINED/OFFER_RESCINDED/NO_SHOW/FELL_THROUGH). GRANTED (#577 matrix) to account_manager, tenant_admin, tenant_owner only; recruiter excluded. NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['placement:replace'], 'placement:replace', 'Track 3 / E4 — authorize CREATING a replacement PlacementProcess against a terminal predecessor (POST /v1/placements with replaces_placement_process_id). Required IN CONJUNCTION with placement:create, never as an alternative creation path (§3). GRANTED (E4 ratified matrix) to account_manager, tenant_admin and tenant_owner only; recruiter, super_admin, recruiting_manager and all others ZERO (Owner=Admin mirror). NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['placement:permanent:read'], 'placement:permanent:read', 'Track 7 / T7-P1 — read a PermanentPlacement and its immutable guarantee snapshot (GET /v1/placements/:id/permanent). Dedicated least-privilege authority; placement:* / assignment:* NEVER satisfy it. GRANTED (PERMANENT_PLACEMENT_SEED_BUNDLES) to recruiter, account_manager, tenant_admin, tenant_owner (mirrors placement:read). NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['placement:permanent:transition'], 'placement:permanent:transition', 'Track 7 / T7-P1 — transition the PermanentPlacement guarantee lifecycle (POST /v1/placements/:id/permanent/transition; P1 edge GUARANTEE_ACTIVE->GUARANTEE_SATISFIED) AND the second leg of the PERMANENT STARTED conjunction (with placement:activate). Dedicated authority; assignment:commercials:write / placement:* NEVER substitute. GRANTED (PERMANENT_PLACEMENT_SEED_BUNDLES) to account_manager, tenant_admin, tenant_owner only; recruiter excluded (mirrors placement:activate). NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['placement:remedy:resolve'], 'placement:remedy:resolve', 'Track 7 / T7-P2 — resolve a permanent-placement remedy obligation with governed evidence (POST /v1/placements/:id/permanent/remedy/complete). DEDICATED high-consequence authority, authority-separated from the guarantee lifecycle; placement:permanent:transition / placement:* NEVER satisfy it. GRANTED (PERMANENT_REMEDY_SEED_BUNDLES) to account_manager, tenant_admin, tenant_owner only; recruiter excluded. NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['placement:permanent:terms:write'], 'placement:permanent:terms:write', 'Track 7 / T7-P3 — create/revise the reusable requisition-keyed guarantee-term versions (POST /v1/permanent-placement-guarantee-terms/requisitions/:requisitionId[/revise]). DEDICATED terms-authorship authority, authority-separated from operational work; reads use placement:permanent:read and placement:* NEVER satisfy it. GRANTED (PERMANENT_TERMS_SEED_BUNDLES) to account_manager, tenant_admin, tenant_owner only; recruiter excluded. NO scope.created (scope-seed precedent).');
   // Track 4 / T4-D — ContractAssignment authority family. Role posture mirrors the
   // placement authoritative tier (ASSIGNMENT_SEED_BUNDLES). NO scope.created (scope-seed precedent).
   await upsertScope(prisma, SEED_IDS.scopes['assignment:read'], 'assignment:read', 'Track 4 / T4-D — read a ContractAssignment (the authoritative post-start commitment) and its derived capacity. GRANTED to recruiter, account_manager, tenant_admin, tenant_owner (mirrors placement:read). NO scope.created (scope-seed precedent).');
@@ -2213,6 +2374,8 @@ export async function runIdentitySeed(
   await upsertScope(prisma, SEED_IDS.scopes['assignment:commercials:write'], 'assignment:commercials:write', 'Track 5 / T5-P1 — record the initial actual commercial terms of a ContractAssignment. The SECOND leg of the FORWARD STARTED conjunction (required IN CONJUNCTION with placement:activate, never alone; placement:* and requisition-financials never substitute). GRANTED to account_manager, tenant_admin, tenant_owner only; recruiter excluded. NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['requisition:import:read'], 'requisition:import:read', 'Track 8 / T8-P2 — read the canonical requisition-import batch history + per-record failures (GET /v1/requisition-imports, GET /v1/requisition-imports/:id). Provider-neutral external-system requisition ingestion; distinct from the generic CSV import:* family. GRANTED to recruiter, account_manager, tenant_admin, tenant_owner (mirrors assignment:read). NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['requisition:import:write'], 'requisition:import:write', 'Track 8 / T8-P2 — run a canonical requisition import (POST /v1/requisition-imports): validate + map provider-neutral records through the governed createForImport path. GRANTED to account_manager, tenant_admin, tenant_owner only; recruiter excluded (bulk external ingestion is an authoritative-tier act, mirrors assignment:create). NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['integration:read'], 'integration:read', 'Track 8 / T8-CONNECTOR-A — read provider-neutral connector connections (Settings → Integrations): list/status/last-sync/error summary. Connector connection ADMINISTRATION; distinct from requisition:import:read (P3 ingestion monitoring). GRANTED to tenant_admin, tenant_owner only. NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['integration:write'], 'integration:write', 'Track 8 / T8-CONNECTOR-A — administer provider-neutral connector connections (create/configure-credential/enable/disable). Never returns raw secret material. GRANTED to tenant_admin, tenant_owner only; recruiter/account_manager excluded (administrative tier). The connector ServiceAccount does NOT hold this — execution authority is requisition:import:write only. NO scope.created (scope-seed precedent).');
 
   // 7. RoleScope assignments — pre-AUTHZ-1 (88 rows: 13 + 12 + 52 + 11).
   for (const [roleKey, scopeKeys] of Object.entries(ROLE_SCOPE_ASSIGNMENTS)) {
@@ -2293,16 +2456,16 @@ export async function runIdentitySeed(
   }
 
   // 7e. R7 BE-prereq RoleScope assignments — 20 rows (6 write-tier × 3 +
-  // 2 read-only × 1) per ENGAGEMENT_SEED_BUNDLES. UUID range 0x700+
+  // 2 read-only × 1) per SELECTION_SEED_BUNDLES. UUID range 0x700+
   // (append-don't-renumber per Amendment v1.1 §2 — AUTHZ-1's 0x400+,
   // AUTHZ-D5's 0x500+, Reporting's 0x600+ all stay untouched). Closes
-  // the documented A1a-2 engagement-scope deferral and enables the R7 FE.
-  for (const [roleKey, scopeKeys] of ENGAGEMENT_SEED_BUNDLES) {
+  // the documented A1a-2 selection-scope deferral and enables the R7 FE.
+  for (const [roleKey, scopeKeys] of SELECTION_SEED_BUNDLES) {
     const role_id = roleIdForKey(roleKey);
     for (const scopeKey of scopeKeys) {
-      const rsId = ENGAGEMENT_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
+      const rsId = SELECTION_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
       if (rsId === undefined) {
-        throw new Error(`R7 Engagement-Scope-Seed: Missing generated RoleScope id for ${roleKey}:${scopeKey}`);
+        throw new Error(`R7 Selection-Scope-Seed: Missing generated RoleScope id for ${roleKey}:${scopeKey}`);
       }
       const scope_id = scopeIdForKey(scopeKey);
       await prisma.roleScope.upsert({
@@ -2316,7 +2479,7 @@ export async function runIdentitySeed(
   // 7f. Search PR-1 RoleScope assignments — 28 rows (9 roles × 3 search
   // scopes + finance × 1) per SEARCH_SEED_BUNDLES. UUID range 0x800+
   // (append-don't-renumber — AUTHZ-1's 0x400+, AUTHZ-D5's 0x500+,
-  // Reporting's 0x600+, Engagement's 0x700+ all stay untouched). Grants the
+  // Reporting's 0x600+, Selection's 0x700+ all stay untouched). Grants the
   // 3 NEW company/requisition/contact :search scopes by per-entity
   // :read-holder parity; talent:search is REUSED (granted in 7/7b above).
   for (const [roleKey, scopeKeys] of SEARCH_SEED_BUNDLES) {
@@ -2623,6 +2786,62 @@ export async function runIdentitySeed(
     }
   }
 
+  // Track 7 / T7-P1 — PermanentPlacement guarantee role-matrix grants (7 rows;
+  // range 0xd00+). read -> all four grant-receiving roles; transition -> the
+  // authoritative tier only (recruiter excluded). Separate range so PLACEMENT's
+  // 0xa00 grants are not renumbered.
+  for (const [roleKey, scopeKeys] of PERMANENT_PLACEMENT_SEED_BUNDLES) {
+    const role_id = roleIdForKey(roleKey);
+    for (const scopeKey of scopeKeys) {
+      const rsId = PERMANENT_PLACEMENT_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
+      if (rsId === undefined) {
+        throw new Error(`T7-P1 Permanent-Placement-Role-Matrix: Missing generated RoleScope id for ${roleKey}:${scopeKey}`);
+      }
+      const scope_id = scopeIdForKey(scopeKey);
+      await prisma.roleScope.upsert({
+        where: { role_id_scope_id: { role_id, scope_id } },
+        update: {},
+        create: { id: rsId, role_id, scope_id },
+      });
+    }
+  }
+
+  // Track 7 / T7-P2 — remedy-resolution role-matrix grants (3 rows; range 0xe00+).
+  // account_manager/tenant_admin/tenant_owner only (recruiter excluded).
+  for (const [roleKey, scopeKeys] of PERMANENT_REMEDY_SEED_BUNDLES) {
+    const role_id = roleIdForKey(roleKey);
+    for (const scopeKey of scopeKeys) {
+      const rsId = PERMANENT_REMEDY_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
+      if (rsId === undefined) {
+        throw new Error(`T7-P2 Permanent-Remedy-Role-Matrix: Missing generated RoleScope id for ${roleKey}:${scopeKey}`);
+      }
+      const scope_id = scopeIdForKey(scopeKey);
+      await prisma.roleScope.upsert({
+        where: { role_id_scope_id: { role_id, scope_id } },
+        update: {},
+        create: { id: rsId, role_id, scope_id },
+      });
+    }
+  }
+
+  // Track 7 / T7-P3 — guarantee-terms management role-matrix grants (3 rows; range 0xf00+).
+  // account_manager/tenant_admin/tenant_owner only (recruiter excluded).
+  for (const [roleKey, scopeKeys] of PERMANENT_TERMS_SEED_BUNDLES) {
+    const role_id = roleIdForKey(roleKey);
+    for (const scopeKey of scopeKeys) {
+      const rsId = PERMANENT_TERMS_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
+      if (rsId === undefined) {
+        throw new Error(`T7-P3 Permanent-Terms-Role-Matrix: Missing generated RoleScope id for ${roleKey}:${scopeKey}`);
+      }
+      const scope_id = scopeIdForKey(scopeKey);
+      await prisma.roleScope.upsert({
+        where: { role_id_scope_id: { role_id, scope_id } },
+        update: {},
+        create: { id: rsId, role_id, scope_id },
+      });
+    }
+  }
+
   // Track 4 / T4-D — ContractAssignment role-matrix grants (13 rows; range 0xb00+).
   // Mirrors the placement authoritative tier: recruiter gets assignment:read only;
   // account_manager/tenant_admin/tenant_owner get read/create/update/end.
@@ -2651,6 +2870,25 @@ export async function runIdentitySeed(
       const rsId = REQUISITION_IMPORT_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
       if (rsId === undefined) {
         throw new Error(`T8-P2 Requisition-Import-Role-Matrix: Missing generated RoleScope id for ${roleKey}:${scopeKey}`);
+      }
+      const scope_id = scopeIdForKey(scopeKey);
+      await prisma.roleScope.upsert({
+        where: { role_id_scope_id: { role_id, scope_id } },
+        update: {},
+        create: { id: rsId, role_id, scope_id },
+      });
+    }
+  }
+
+  // Track 8 / T8-CONNECTOR-A — connector-connection management grants (4 rows;
+  // range 0xc10+). integration:read + integration:write -> tenant_admin +
+  // tenant_owner ONLY (recruiter/account_manager excluded).
+  for (const [roleKey, scopeKeys] of INTEGRATION_MANAGEMENT_SEED_BUNDLES) {
+    const role_id = roleIdForKey(roleKey);
+    for (const scopeKey of scopeKeys) {
+      const rsId = INTEGRATION_MANAGEMENT_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
+      if (rsId === undefined) {
+        throw new Error(`T8-CONNECTOR-A Integration-Management-Role-Matrix: Missing generated RoleScope id for ${roleKey}:${scopeKey}`);
       }
       const scope_id = scopeIdForKey(scopeKey);
       await prisma.roleScope.upsert({

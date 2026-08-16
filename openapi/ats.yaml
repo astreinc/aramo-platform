@@ -624,55 +624,55 @@ paths:
         - BearerAuth: []
 
   # =========================================================================
-  # M5 PR-4 — Engagement HTTP surface (Charter v1.2 §4.3 row 4).
+  # M5 PR-4 — Selection HTTP surface (Charter v1.2 §4.3 row 4).
   #
-  # Four endpoints exposing the M5 PR-1/2/3 engagement substrate at the
+  # Four endpoints exposing the M5 PR-1/2/3 selection substrate at the
   # recruiter-facing ATS surface:
-  #   GET  /v1/engagements                   — LIST (R7 BE-prereq P1; D4b-composed)
-  #   POST /v1/engagements                   — create (Ruling 4 + Ruling 9)
-  #   POST /v1/engagements/{id}/transitions  — state transition (Ruling 10)
-  #   POST /v1/engagements/{id}/outreach     — outreach send (M5 PR-6)
-  #   POST /v1/engagements/{id}/response     — record response (M5 PR-7)
-  #   POST /v1/engagements/{id}/conversation — record conversation (M5 PR-8a)
-  #   GET  /v1/engagements/{id}              — read engagement (Ruling 5)
-  #   GET  /v1/engagements/{id}/events       — read event log (Ruling 5)
+  #   GET  /v1/selections                   — LIST (R7 BE-prereq P1; D4b-composed)
+  #   POST /v1/selections                   — create (Ruling 4 + Ruling 9)
+  #   POST /v1/selections/{id}/transitions  — state transition (Ruling 10)
+  #   POST /v1/selections/{id}/outreach     — outreach send (M5 PR-6)
+  #   POST /v1/selections/{id}/response     — record response (M5 PR-7)
+  #   POST /v1/selections/{id}/conversation — record conversation (M5 PR-8a)
+  #   GET  /v1/selections/{id}              — read selection (Ruling 5)
+  #   GET  /v1/selections/{id}/events       — read event log (Ruling 5)
   #
   # All endpoints recruiter-only (Ruling 8); non-recruiter consumers 403'd
   # with INSUFFICIENT_PERMISSIONS. POST endpoints require Idempotency-Key
   # header (M4 PR-3 precedent).
   #
   # R7 BE-prereq (Amendment v1.1) — scope-gating + D4b visibility:
-  #   - engagement:read    gates the 3 GETs (LIST + read + events)
-  #   - engagement:write   gates create / transitions / response / conversation
-  #   - engagement:outreach gates the outreach send (SoD — external side-effects)
+  #   - selection:read    gates the 3 GETs (LIST + read + events)
+  #   - selection:write   gates create / transitions / response / conversation
+  #   - selection:outreach gates the outreach send (SoD — external side-effects)
   # The controller decorators (@RequireScopes(...)) carry the gate; openapi
   # documents shape, not authz (uniform with the rest of ATS — Amendment v1.1
   # §5 Ruling 5(c)).
-  # D4b visibility: engagement is visible iff its requisition_id is in the
+  # D4b visibility: selection is visible iff its requisition_id is in the
   # actor's visible-requisition set; invisible → 404 (the non-leak posture).
   # =========================================================================
 
-  /v1/engagements:
+  /v1/selections:
     get:
-      operationId: listEngagements
-      summary: List the actor's visible engagements (R7 BE-prereq P1).
+      operationId: listSelections
+      summary: List the actor's visible selections (R7 BE-prereq P1).
       description: |
-        Returns the engagements visible to the authenticated actor in the
-        current tenant. D4b-composed: an engagement is visible iff its
+        Returns the selections visible to the authenticated actor in the
+        current tenant. D4b-composed: an selection is visible iff its
         requisition_id is in the actor's visible-requisition set (A3
         directly-assigned OR D4b pod-resolved).
 
         Filter semantics (both query params optional):
-          - no filter        → all visible engagements in tenant
-          - ?talent_id       → that talent's visible engagements
-          - ?requisition_id  → that requisition's engagements (empty if
+          - no filter        → all visible selections in tenant
+          - ?talent_id       → that talent's visible selections
+          - ?requisition_id  → that requisition's selections (empty if
                                the requisition itself is invisible to
                                the actor — no existence leak)
           - both             → the intersection (at most one row by the
                                natural key (tenant, talent, requisition))
 
         Refusal codes:
-          - 403 INSUFFICIENT_PERMISSIONS — missing engagement:read scope
+          - 403 INSUFFICIENT_PERMISSIONS — missing selection:read scope
             OR non-recruiter consumer.
       parameters:
         - name: talent_id
@@ -691,7 +691,7 @@ paths:
           description: Optional requisition_id filter.
       responses:
         '200':
-          description: Engagement list (D4b-scoped to the actor's visible set).
+          description: Selection list (D4b-scoped to the actor's visible set).
           content:
             application/json:
               schema:
@@ -702,7 +702,7 @@ paths:
                   items:
                     type: array
                     items:
-                      $ref: 'common.yaml#/components/schemas/TalentJobEngagementView'
+                      $ref: 'common.yaml#/components/schemas/TalentSelectionView'
         '401':
           $ref: 'common.yaml#/components/responses/Unauthorized'
         '403':
@@ -711,10 +711,10 @@ paths:
         - BearerAuth: []
 
     post:
-      operationId: createEngagement
-      summary: Create a new TalentJobEngagement (M5 PR-4).
+      operationId: createSelection
+      summary: Create a new TalentSelection (M5 PR-4).
       description: |
-        Creates a new TalentJobEngagement row in initial state
+        Creates a new TalentSelection row in initial state
         `surfaced` (Group 2 §2.3b Loop 1) and appends the initial
         state_transition event row atomically via prisma.$transaction.
 
@@ -722,17 +722,17 @@ paths:
         transaction opens (M5 PR-3 Amendment v1.1 §2, three substrate-
         derived patterns):
           - Pattern C (Talent): TalentRepository.findOverlayByTenant;
-            overlay absence → 422 ENGAGEMENT_REFERENCE_NOT_FOUND.
+            overlay absence → 422 SELECTION_REFERENCE_NOT_FOUND.
           - Pattern A (Requisition): findRequisitionById + tenant
-            check; null/mismatch → 422 ENGAGEMENT_REFERENCE_NOT_FOUND.
+            check; null/mismatch → 422 SELECTION_REFERENCE_NOT_FOUND.
           - Pattern B (Examination, nullable): findById + tenant check;
-            null/mismatch → 422 ENGAGEMENT_REFERENCE_NOT_FOUND.
+            null/mismatch → 422 SELECTION_REFERENCE_NOT_FOUND.
 
-        Response shape: { engagement } only per Ruling 9. The initial
-        event row is accessible via GET /v1/engagements/{id}/events.
+        Response shape: { selection } only per Ruling 9. The initial
+        event row is accessible via GET /v1/selections/{id}/events.
 
         Refusal codes:
-          - 422 ENGAGEMENT_REFERENCE_NOT_FOUND — cross-schema validator.
+          - 422 SELECTION_REFERENCE_NOT_FOUND — cross-schema validator.
           - 409 IDEMPOTENCY_KEY_CONFLICT — same key, different body.
           - 403 INSUFFICIENT_PERMISSIONS — non-recruiter consumer.
           - 400 VALIDATION_ERROR — DTO shape / Idempotency-Key issues.
@@ -753,14 +753,14 @@ paths:
         content:
           application/json:
             schema:
-              $ref: 'common.yaml#/components/schemas/CreateEngagementRequest'
+              $ref: 'common.yaml#/components/schemas/CreateSelectionRequest'
       responses:
         '201':
-          description: Engagement created in initial state `surfaced`.
+          description: Selection created in initial state `surfaced`.
           content:
             application/json:
               schema:
-                $ref: 'common.yaml#/components/schemas/CreateEngagementResponse'
+                $ref: 'common.yaml#/components/schemas/CreateSelectionResponse'
         '400':
           $ref: 'common.yaml#/components/responses/BadRequest'
         '401':
@@ -778,37 +778,37 @@ paths:
       security:
         - BearerAuth: []
 
-  /v1/engagements/{engagement_id}/transitions:
+  /v1/selections/{selection_id}/transitions:
     post:
-      operationId: transitionEngagement
-      summary: Transition an engagement to a new state (M5 PR-4).
+      operationId: transitionSelection
+      summary: Transition an selection to a new state (M5 PR-4).
       description: |
-        Transitions an existing engagement's state column via the
+        Transitions an existing selection's state column via the
         repository's transitionState method. Atomic prisma.$transaction
-        pairs the engagement.update with a state_transition event row
+        pairs the selection.update with a state_transition event row
         append per M5 PR-3 substrate.
 
         Pre-write guards (in order):
           1. consumer_type === 'recruiter' (403 INSUFFICIENT_PERMISSIONS).
           2. Idempotency-Key required + UUID-shaped.
-          3. engagement_id path param UUID validation.
+          3. selection_id path param UUID validation.
           4. Read current via findByTenantAndId (404 NOT_FOUND if null).
-          5. canTransition guard (422 ENGAGEMENT_STATE_INVALID if illegal).
+          5. canTransition guard (422 SELECTION_STATE_INVALID if illegal).
 
         Column-scoped DB trigger (PR-1 substrate) is defense-in-depth.
 
-        Response shape: { engagement } only per Ruling 9 + Ruling 11
+        Response shape: { selection } only per Ruling 9 + Ruling 11
         (NO state-isolation literal field).
 
         Refusal codes:
-          - 422 ENGAGEMENT_STATE_INVALID — illegal transition (satisfies
+          - 422 SELECTION_STATE_INVALID — illegal transition (satisfies
             Plan v1.5 §M5 Track B item 1).
           - 409 IDEMPOTENCY_KEY_CONFLICT — same key, different body.
-          - 404 NOT_FOUND — engagement_id not visible in tenant.
+          - 404 NOT_FOUND — selection_id not visible in tenant.
           - 403 INSUFFICIENT_PERMISSIONS — non-recruiter consumer.
           - 400 VALIDATION_ERROR — DTO shape / Idempotency-Key issues.
       parameters:
-        - name: engagement_id
+        - name: selection_id
           in: path
           required: true
           schema:
@@ -830,14 +830,14 @@ paths:
         content:
           application/json:
             schema:
-              $ref: 'common.yaml#/components/schemas/TransitionEngagementRequest'
+              $ref: 'common.yaml#/components/schemas/TransitionSelectionRequest'
       responses:
         '200':
-          description: Engagement state transitioned; event row appended.
+          description: Selection state transitioned; event row appended.
           content:
             application/json:
               schema:
-                $ref: 'common.yaml#/components/schemas/TransitionEngagementResponse'
+                $ref: 'common.yaml#/components/schemas/TransitionSelectionResponse'
         '400':
           $ref: 'common.yaml#/components/responses/BadRequest'
         '401':
@@ -858,12 +858,12 @@ paths:
         - BearerAuth: []
 
   # Outreach Draft/Preview Directive v1.0 / Amendment v1.1 — the atomic
-  # POST /v1/engagements/{id}/outreach (prompt→draft→send in one call, no
+  # POST /v1/selections/{id}/outreach (prompt→draft→send in one call, no
   # preview) was REMOVED and split into /outreach/draft + /outreach/send.
   # Leaving the atomic path live would let a caller send without preview,
   # defeating the human-in-the-loop guarantee — its removal is a
   # compliance requirement, and draft→preview→send is now the only path.
-  /v1/engagements/{engagement_id}/outreach/draft:
+  /v1/selections/{selection_id}/outreach/draft:
     post:
       operationId: draftOutreach
       summary: Generate + persist a PENDING AI outreach draft (no delivery).
@@ -880,11 +880,11 @@ paths:
         Guards (in order):
           1. consumer_type === 'recruiter' (403 INSUFFICIENT_PERMISSIONS).
           2. Idempotency-Key required + UUID-shaped.
-          3. engagement_id path param UUID validation + idempotency lookup.
-          4. Pre-read engagement (visibility) → 404 NOT_FOUND.
-          5. DRAFT state-gate (Amendment v1.1 Ruling 2): the engagement
+          3. selection_id path param UUID validation + idempotency lookup.
+          4. Pre-read selection (visibility) → 404 NOT_FOUND.
+          5. DRAFT state-gate (Amendment v1.1 Ruling 2): the selection
              MUST be in 'engaged' (the only send-eligible state) → 422
-             ENGAGEMENT_STATE_INVALID otherwise. You can only draft what
+             SELECTION_STATE_INVALID otherwise. You can only draft what
              you can send (no stranded drafts; no wasted LLM tokens).
           6. SOFT consent pre-check (Amendment v1.1 Ruling 1): NON-BLOCKING
              — on denied the response carries `consent_warning`, but the
@@ -898,13 +898,13 @@ paths:
           - kind === 'provider_rate_limited' → 429 AI_RATE_LIMITED.
           - any other kind → 500 INTERNAL_ERROR pass-through.
 
-        Refusal codes: 422 ENGAGEMENT_STATE_INVALID, 502
+        Refusal codes: 422 SELECTION_STATE_INVALID, 502
         AI_PROVIDER_UNAVAILABLE, 429 AI_RATE_LIMITED, 409
         IDEMPOTENCY_KEY_CONFLICT, 404 NOT_FOUND, 403 INSUFFICIENT_PERMISSIONS,
         400 VALIDATION_ERROR. NOTE: no 403 CONSENT_NOT_GRANTED_AT_SEND here
         — consent is a non-blocking warning at draft; it binds at SEND.
       parameters:
-        - name: engagement_id
+        - name: selection_id
           in: path
           required: true
           schema:
@@ -974,7 +974,7 @@ paths:
       security:
         - BearerAuth: []
 
-  /v1/engagements/{engagement_id}/outreach/send:
+  /v1/selections/{selection_id}/outreach/send:
     post:
       operationId: sendOutreach
       summary: Deliver a recruiter-approved outreach draft (consent-at-send).
@@ -983,7 +983,7 @@ paths:
         draft event id + the recruiter-approved (possibly-edited) final
         text; runs the BINDING consent-at-send check; delivers via the
         injected DeliveryProvider (SendStub at PR-6); then atomically
-        transitions the engagement from 'engaged' to 'awaiting_response'
+        transitions the selection from 'engaged' to 'awaiting_response'
         with a paired `outreach_sent` event (carrying the final sent text
         + a back-reference to the source draft) + `state_transition` event
         + outbox emit. The repository $transaction guarantees all writes
@@ -997,27 +997,27 @@ paths:
         Guards (in order):
           1. consumer_type === 'recruiter' (403 INSUFFICIENT_PERMISSIONS).
           2. Idempotency-Key required + UUID-shaped (the SEND key).
-          3. engagement_id path param UUID validation + idempotency lookup.
-          4. Pre-read engagement (visibility) → 404 NOT_FOUND.
+          3. selection_id path param UUID validation + idempotency lookup.
+          4. Pre-read selection (visibility) → 404 NOT_FOUND.
           5. State pre-gate BEFORE delivery (canTransition → 422). True
              single-send: a second send finds 'awaiting_response' and 422s
              WITHOUT re-delivering.
           6. Source-draft cross-event-ref validation: draft_event_id must
-             resolve to an outreach_drafted event on this engagement +
-             tenant → 422 ENGAGEMENT_REFERENCE_NOT_FOUND otherwise.
+             resolve to an outreach_drafted event on this selection +
+             tenant → 422 SELECTION_REFERENCE_NOT_FOUND otherwise.
           7. BINDING consent-at-send → 403 CONSENT_NOT_GRANTED_AT_SEND
              (denied) / 500 INTERNAL_ERROR (resolver fault).
           8. DeliveryProvider.deliver(final_text).
-          9. EngagementRepository.sendOutreach atomic transaction.
+          9. SelectionRepository.sendOutreach atomic transaction.
 
-        Refusal codes: 422 ENGAGEMENT_STATE_INVALID, 422
-        ENGAGEMENT_REFERENCE_NOT_FOUND, 403 CONSENT_NOT_GRANTED_AT_SEND, 403
+        Refusal codes: 422 SELECTION_STATE_INVALID, 422
+        SELECTION_REFERENCE_NOT_FOUND, 403 CONSENT_NOT_GRANTED_AT_SEND, 403
         INSUFFICIENT_PERMISSIONS, 500 INTERNAL_ERROR (consent resolver
         fault), 409 IDEMPOTENCY_KEY_CONFLICT, 404 NOT_FOUND, 400
         VALIDATION_ERROR. NOTE: no AI error codes here — generation
         happened at /outreach/draft.
       parameters:
-        - name: engagement_id
+        - name: selection_id
           in: path
           required: true
           schema:
@@ -1042,7 +1042,7 @@ paths:
       responses:
         '200':
           description: |
-            Final text delivered (stub) + engagement transitioned to
+            Final text delivered (stub) + selection transitioned to
             'awaiting_response'; outreach_sent event persists the final
             text + source draft back-reference.
           content:
@@ -1085,7 +1085,7 @@ paths:
       security:
         - BearerAuth: []
 
-  /v1/engagements/{engagement_id}/response:
+  /v1/selections/{selection_id}/response:
     post:
       operationId: recordResponse
       summary: Record a talent response to a prior outreach (M5 PR-7).
@@ -1094,41 +1094,41 @@ paths:
         outreach. Compressed-scope mirror of POST .../outreach: no AI
         consumption, no delivery side-effect, no new error codes.
 
-        Atomic 3-write transaction (EngagementRepository.recordResponse):
-          1. engagement.update(state = 'responded').
-          2. talentEngagementEvent.create(event_type='response_received',
-             event_payload=EngagementResponseReceivedPayload).
-          3. talentEngagementEvent.create(event_type='state_transition',
+        Atomic 3-write transaction (SelectionRepository.recordResponse):
+          1. selection.update(state = 'responded').
+          2. talentSelectionEvent.create(event_type='response_received',
+             event_payload=SelectionResponseReceivedPayload).
+          3. talentSelectionEvent.create(event_type='state_transition',
              event_payload={from_state, to_state}).
 
         Pre-write guards (in order):
           1. consumer_type === 'recruiter' (403 INSUFFICIENT_PERMISSIONS).
           2. Idempotency-Key required + UUID-shaped.
-          3. engagement_id path param UUID validation.
+          3. selection_id path param UUID validation.
           4. Body hash for replay-vs-conflict.
           5. Idempotency lookup (replay short-circuit).
           6. NOT_FOUND guard (findByTenantAndId).
           7. Cross-event reference validation (Ruling 4): the
              outreach_event_ref_id MUST resolve to an event in the same
-             tenant + same engagement + event_type='outreach_sent'.
-             Any of (null lookup / cross-engagement / cross-tenant /
-             wrong-event-type) → 422 ENGAGEMENT_REFERENCE_NOT_FOUND.
+             tenant + same selection + event_type='outreach_sent'.
+             Any of (null lookup / cross-selection / cross-tenant /
+             wrong-event-type) → 422 SELECTION_REFERENCE_NOT_FOUND.
           8. canTransition(current.state, 'responded') — natural-key
              dedup atop the standard Idempotency-Key replay path.
 
         Refusal codes (closed list):
-          - 422 ENGAGEMENT_STATE_INVALID — engagement not in
-            'awaiting_response' state (covers engagement already in
+          - 422 SELECTION_STATE_INVALID — selection not in
+            'awaiting_response' state (covers selection already in
             'responded' state — natural-key dedup).
-          - 422 ENGAGEMENT_REFERENCE_NOT_FOUND — outreach_event_ref_id
+          - 422 SELECTION_REFERENCE_NOT_FOUND — outreach_event_ref_id
             doesn't resolve to a valid outreach_sent event in tenant +
-            engagement.
+            selection.
           - 409 IDEMPOTENCY_KEY_CONFLICT — same key, different body.
-          - 404 NOT_FOUND — engagement_id not visible in tenant.
+          - 404 NOT_FOUND — selection_id not visible in tenant.
           - 403 INSUFFICIENT_PERMISSIONS — non-recruiter consumer.
           - 400 VALIDATION_ERROR — DTO shape / Idempotency-Key issues.
       parameters:
-        - name: engagement_id
+        - name: selection_id
           in: path
           required: true
           schema:
@@ -1154,7 +1154,7 @@ paths:
       responses:
         '200':
           description: |
-            Response recorded; engagement transitioned to 'responded'.
+            Response recorded; selection transitioned to 'responded'.
           content:
             application/json:
               schema:
@@ -1178,7 +1178,7 @@ paths:
       security:
         - BearerAuth: []
 
-  /v1/engagements/{engagement_id}/conversation:
+  /v1/selections/{selection_id}/conversation:
     post:
       operationId: recordConversationStarted
       summary: Record that an in-bound conversation has begun (M5 PR-8a).
@@ -1192,37 +1192,37 @@ paths:
         response_received event is implicit).
 
         Atomic 3-write transaction
-        (EngagementRepository.recordConversationStarted):
-          1. engagement.update(state = 'in_conversation').
-          2. talentEngagementEvent.create(event_type='conversation_started',
-             event_payload=EngagementConversationStartedPayload).
-          3. talentEngagementEvent.create(event_type='state_transition',
+        (SelectionRepository.recordConversationStarted):
+          1. selection.update(state = 'in_conversation').
+          2. talentSelectionEvent.create(event_type='conversation_started',
+             event_payload=SelectionConversationStartedPayload).
+          3. talentSelectionEvent.create(event_type='state_transition',
              event_payload={from_state, to_state}).
 
         Pre-write guards (in order):
           1. consumer_type === 'recruiter' (403 INSUFFICIENT_PERMISSIONS).
           2. Idempotency-Key required + UUID-shaped.
-          3. engagement_id path param UUID validation.
+          3. selection_id path param UUID validation.
           4. Body hash for replay-vs-conflict.
           5. Idempotency lookup (replay short-circuit).
           6. NOT_FOUND guard (findByTenantAndId).
           7. canTransition(current.state, 'in_conversation') — natural-
              key dedup atop the standard Idempotency-Key replay path
-             (engagement already in 'in_conversation' refuses with
-             ENGAGEMENT_STATE_INVALID even with a fresh key).
+             (selection already in 'in_conversation' refuses with
+             SELECTION_STATE_INVALID even with a fresh key).
 
         Refusal codes (closed list):
-          - 422 ENGAGEMENT_STATE_INVALID — engagement not in
-            'responded' state (covers engagement already in
+          - 422 SELECTION_STATE_INVALID — selection not in
+            'responded' state (covers selection already in
             'in_conversation' state — natural-key dedup — and
-            engagements in 'engaged' / 'awaiting_response' / earlier
+            selections in 'engaged' / 'awaiting_response' / earlier
             states).
           - 409 IDEMPOTENCY_KEY_CONFLICT — same key, different body.
-          - 404 NOT_FOUND — engagement_id not visible in tenant.
+          - 404 NOT_FOUND — selection_id not visible in tenant.
           - 403 INSUFFICIENT_PERMISSIONS — non-recruiter consumer.
           - 400 VALIDATION_ERROR — DTO shape / Idempotency-Key issues.
       parameters:
-        - name: engagement_id
+        - name: selection_id
           in: path
           required: true
           schema:
@@ -1248,7 +1248,7 @@ paths:
       responses:
         '200':
           description: |
-            Conversation recorded; engagement transitioned to
+            Conversation recorded; selection transitioned to
             'in_conversation'.
           content:
             application/json:
@@ -1273,20 +1273,20 @@ paths:
       security:
         - BearerAuth: []
 
-  /v1/engagements/{engagement_id}:
+  /v1/selections/{selection_id}:
     get:
-      operationId: getEngagement
-      summary: Read a TalentJobEngagement by id (M5 PR-4).
+      operationId: getSelection
+      summary: Read a TalentSelection by id (M5 PR-4).
       description: |
-        Tenant-scoped read of a single engagement via
-        EngagementRepository.findByTenantAndId. Cross-tenant or
+        Tenant-scoped read of a single selection via
+        SelectionRepository.findByTenantAndId. Cross-tenant or
         non-existent → 404 NOT_FOUND (Architecture §7.2 — cross-tenant
         reads surface as invisibility, not 403).
 
         No Idempotency-Key handling per Ruling 5 (GET routes are
         side-effect-free).
       parameters:
-        - name: engagement_id
+        - name: selection_id
           in: path
           required: true
           schema:
@@ -1294,11 +1294,11 @@ paths:
             format: uuid
       responses:
         '200':
-          description: Engagement view.
+          description: Selection view.
           content:
             application/json:
               schema:
-                $ref: 'common.yaml#/components/schemas/TalentJobEngagementView'
+                $ref: 'common.yaml#/components/schemas/TalentSelectionView'
         '400':
           $ref: 'common.yaml#/components/responses/BadRequest'
         '401':
@@ -1310,22 +1310,22 @@ paths:
       security:
         - BearerAuth: []
 
-  /v1/engagements/{engagement_id}/events:
+  /v1/selections/{selection_id}/events:
     get:
-      operationId: getEngagementEvents
-      summary: List event-log entries for an engagement (M5 PR-4).
+      operationId: getSelectionEvents
+      summary: List event-log entries for an selection (M5 PR-4).
       description: |
         Tenant-scoped read of the chronological event log for an
-        engagement via EngagementEventRepository
-        .findByTenantAndEngagementId. Order: ASC by created_at.
+        selection via SelectionEventRepository
+        .findByTenantAndSelectionId. Order: ASC by created_at.
 
-        Includes a parent-engagement existence pre-check (404 NOT_FOUND
-        if the engagement itself is not visible in tenant) to avoid the
-        information-leak path where a non-existent engagement_id would
+        Includes a parent-selection existence pre-check (404 NOT_FOUND
+        if the selection itself is not visible in tenant) to avoid the
+        information-leak path where a non-existent selection_id would
         return an empty events array (same response shape as a
-        newly-created engagement with no events yet).
+        newly-created selection with no events yet).
       parameters:
-        - name: engagement_id
+        - name: selection_id
           in: path
           required: true
           schema:
@@ -1337,7 +1337,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: 'common.yaml#/components/schemas/EngagementListEventsResponse'
+                $ref: 'common.yaml#/components/schemas/SelectionListEventsResponse'
         '400':
           $ref: 'common.yaml#/components/responses/BadRequest'
         '401':
@@ -1412,7 +1412,7 @@ paths:
 
         R10 boundary (load-bearing, structural): emits ATS fields ONLY —
         company / contact / requisition / talent_record / pipeline.
-        NO Core tier / score / match / examination / engagement /
+        NO Core tier / score / match / examination / selection /
         submittal column appears. The export lib reads NO Core schema
         (the lint:nx-boundaries graph for libs/export has zero Core
         edges; the integration spec verifies it by omitting every
@@ -1892,6 +1892,411 @@ paths:
       security:
         - BearerAuth: []
 
+  /v1/placements/{id}/permanent:
+    get:
+      operationId: getPlacementPermanent
+      summary: Read the PermanentPlacement guarantee state for a placement (Track 7 / T7-P1).
+      description: |
+        Returns the first-class PermanentPlacement aggregate for the placement:
+        `lifecycle_state` (GUARANTEE_ACTIVE | GUARANTEE_SATISFIED) and the immutable
+        guarantee snapshot (window dates, duration, remedy policy, exposure amount +
+        currency, provenance). A placement with no PermanentPlacement (e.g. a CONTRACT
+        placement) returns `{ "permanent": null }` — a coherent absence, never a
+        fabricated row.
+
+        Guarded by capability `ats` and scope `placement:permanent:read` — a DEDICATED
+        guarantee authority that `placement:*` / `assignment:*` do NOT satisfy
+        (least-visibility). The placement is first loaded under the actor-visibility
+        predicate — a not-found / not-visible / cross-tenant placement returns 404
+        (never 403) before any guarantee figure is read.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlacementPermanentResponse'
+        '403':
+          description: Insufficient permissions or tenant not entitled.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+
+  /v1/placements/{id}/permanent/transition:
+    post:
+      operationId: transitionPlacementPermanent
+      summary: Transition the PermanentPlacement guarantee lifecycle (Track 7 / T7-P1).
+      description: |
+        The ONE generic governed guarantee-lifecycle transition: the target state is in
+        the body and the typed transition registry owns legality. P1 ships the single
+        legal edge `GUARANTEE_ACTIVE -> GUARANTEE_SATISFIED`, allowed only on/after the
+        guarantee end date (calendar). No falloff/remedy path in P1.
+
+        Guarded by capability `ats` and scope `placement:permanent:transition` — a
+        DEDICATED authority that `placement:transition` / `placement:activate` /
+        `assignment:commercials:write` do NOT satisfy. Tenant-scoped. An absent
+        aggregate is `PERMANENT_PLACEMENT_NOT_FOUND` (404); an illegal edge is
+        `PERMANENT_PLACEMENT_STATE_INVALID` (422); a premature satisfy is
+        `PERMANENT_PLACEMENT_GUARANTEE_WINDOW_INVALID` (422).
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PermanentPlacementTransitionRequest'
+      responses:
+        '200':
+          description: OK — the updated PermanentPlacement.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PermanentPlacement'
+        '403':
+          description: Insufficient permissions or tenant not entitled.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '422':
+          description: Illegal guarantee transition or invalid/unelapsed guarantee window.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+      security:
+        - BearerAuth: []
+
+  /v1/placements/{id}/permanent/falloff:
+    post:
+      operationId: recordPermanentFalloff
+      summary: Record a qualifying permanent-placement falloff (Track 7 / T7-P2).
+      description: |
+        Records a governed post-start falloff on a `GUARANTEE_ACTIVE` PermanentPlacement:
+        an effective calendar date in the half-open guarantee window `[start, end)` and a
+        governed `reason` from the closed T7 permanent-falloff registry (exact-match, no
+        OTHER). The command atomically transitions `GUARANTEE_ACTIVE -> FELL_OFF` and lands
+        directly in the deterministic remedy-due state (`REPLACEMENT_DUE` / `REFUND_DUE` /
+        `PRORATED_CREDIT_DUE`) derived from the immutable snapshot remedy policy, creating
+        exactly one remedy obligation. FELL_OFF is not a stable externally-observable state.
+
+        Guarded by capability `ats` and scope `placement:permanent:transition`. Tenant-scoped;
+        the acting principal is the JWT subject (never the body). Absent aggregate → 404;
+        non-active state → `PERMANENT_PLACEMENT_STATE_INVALID` (422); out-of-window →
+        `PERMANENT_PLACEMENT_FALLOFF_WINDOW_INVALID` (422); ungoverned reason →
+        `PERMANENT_PLACEMENT_FALLOFF_REASON_INVALID` (422).
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PermanentFalloffRequest'
+      responses:
+        '200':
+          description: OK — the PermanentPlacement now in its deterministic remedy-due state.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PermanentPlacement'
+        '403':
+          description: Insufficient permissions or tenant not entitled.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '422':
+          description: Non-active state, out-of-window effective date, or ungoverned falloff reason.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+      security:
+        - BearerAuth: []
+
+  /v1/placements/{id}/permanent/remedy/complete:
+    post:
+      operationId: completePermanentRemedy
+      summary: Complete a permanent-placement remedy obligation with governed evidence (Track 7 / T7-P2).
+      description: |
+        Resolves the remedy obligation of a PermanentPlacement in a remedy-due state,
+        transitioning to `REMEDY_COMPLETED`. Evidence is required and depends on the
+        immutable remedy type: `REPLACEMENT` requires `replacement_placement_process_id`
+        (a same-tenant, same-requisition, PERMANENT placement that reached `STARTED` —
+        evidence linkage only, NOT an E4 predecessor relation, and no replacement is
+        auto-created); `REFUND` / `PRORATED_CREDIT` require a bounded `external_reference`
+        (a governed settlement/credit reference). Aramo executes NO money movement — it
+        records the obligation and a governed completion reference only. The caller never
+        supplies the amount; the acting principal is the JWT subject.
+
+        Guarded by capability `ats` and the DEDICATED scope `placement:remedy:resolve`
+        (`placement:permanent:transition` does NOT satisfy it). Absent aggregate/remedy →
+        404; invalid evidence → `PERMANENT_PLACEMENT_REMEDY_INVALID` (422); already resolved →
+        `PERMANENT_PLACEMENT_REMEDY_ALREADY_COMPLETED` (409); not in a due state →
+        `PERMANENT_PLACEMENT_STATE_INVALID` (422).
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PermanentRemedyCompletionRequest'
+      responses:
+        '200':
+          description: OK — the PermanentPlacement now REMEDY_COMPLETED.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PermanentPlacement'
+        '403':
+          description: Insufficient permissions or tenant not entitled.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '409':
+          description: The remedy obligation is already completed.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '422':
+          description: Not in a remedy-due state, or invalid completion evidence.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+      security:
+        - BearerAuth: []
+
+  /v1/permanent-placement-guarantee-terms/requisitions/{requisitionId}:
+    post:
+      operationId: createGuaranteeTerms
+      summary: Create the initial reusable guarantee-term version for a requisition (Track 7 / T7-P3).
+      description: |
+        Creates the initial, open (`effective_to = null`) guarantee-term version for a
+        requisition — the reusable, placement-owned source of permanent-placement guarantee
+        terms, keyed by `(tenant, requisitionId)`. Effective windows are calendar dates,
+        half-open `[effective_from, effective_to)`. The version supplies
+        `guarantee_duration_days`, `remedy_policy`, `guarantee_exposure_amount` + `currency`,
+        and structured provenance (`source_type` ∈ `{MANUAL, IMPORTED}`). At permanent activation
+        the version effective as-of the employment start is copied into the immutable
+        PermanentPlacement snapshot.
+
+        Guarded by capability `ats` and scope `placement:permanent:terms:write`. Tenant-scoped;
+        the recording principal is the JWT subject (never the body). Overlap with an existing
+        version → `PERMANENT_PLACEMENT_TERMS_OVERLAP` (409); use `/revise` to supersede.
+      parameters:
+        - name: requisitionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GuaranteeTermsCreateRequest'
+      responses:
+        '201':
+          description: Created — the new guarantee-term version.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GuaranteeTermVersion'
+        '403':
+          description: Insufficient permissions or tenant not entitled.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '409':
+          description: The effective window overlaps an existing version.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '422':
+          description: Invalid effective window, duration, exposure, or currency.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+      security:
+        - BearerAuth: []
+    get:
+      operationId: listGuaranteeTerms
+      summary: List the guarantee-term version history for a requisition (Track 7 / T7-P3).
+      description: |
+        Returns the full guarantee-term version history for the requisition, newest
+        `effective_from` first (append-only business history — no separate history model).
+        Guarded by capability `ats` and scope `placement:permanent:read`. Tenant-scoped.
+      parameters:
+        - name: requisitionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK — the version history (may be empty).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GuaranteeTermVersionList'
+        '403':
+          description: Insufficient permissions or tenant not entitled.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+      security:
+        - BearerAuth: []
+
+  /v1/permanent-placement-guarantee-terms/requisitions/{requisitionId}/effective:
+    get:
+      operationId: getEffectiveGuaranteeTerms
+      summary: Get the guarantee-term version effective at a calendar date (Track 7 / T7-P3).
+      description: |
+        Returns the single guarantee-term version whose half-open window
+        `[effective_from, effective_to)` contains the `as_of` calendar date (defaults to the
+        current UTC date). More than one effective version is impossible under the DB exclusion
+        constraint and fails closed (`PERMANENT_PLACEMENT_TERMS_AMBIGUOUS`, 500). No effective
+        version → `PERMANENT_PLACEMENT_TERMS_NOT_FOUND` (404). Guarded by capability `ats` and
+        scope `placement:permanent:read`. Tenant-scoped.
+      parameters:
+        - name: requisitionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: as_of
+          in: query
+          required: false
+          description: Calendar date (yyyy-mm-dd) to resolve the effective version at; defaults to today (UTC).
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: OK — the effective guarantee-term version.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GuaranteeTermVersion'
+        '403':
+          description: Insufficient permissions or tenant not entitled.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '422':
+          description: Malformed as_of date.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+      security:
+        - BearerAuth: []
+
+  /v1/permanent-placement-guarantee-terms/requisitions/{requisitionId}/revise:
+    post:
+      operationId: reviseGuaranteeTerms
+      summary: Revise the current guarantee-term version (first-close + successor, Track 7 / T7-P3).
+      description: |
+        Governed revision: first-closes the current open version at `effective_from` and inserts
+        the successor `[effective_from, null)` atomically. No backdating (`effective_from` must be
+        today-or-later and strictly after the current version's start). Nothing open to revise →
+        `PERMANENT_PLACEMENT_TERMS_NOT_FOUND` (404). Future-version cancellation is NOT part of
+        T7-P3.
+
+        Guarded by capability `ats` and scope `placement:permanent:terms:write`. Tenant-scoped;
+        the recording principal is the JWT subject (never the body).
+      parameters:
+        - name: requisitionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GuaranteeTermsReviseRequest'
+      responses:
+        '201':
+          description: Created — the successor guarantee-term version.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GuaranteeTermVersion'
+        '403':
+          description: Insufficient permissions or tenant not entitled.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '409':
+          description: The effective window overlaps an existing version.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '422':
+          description: Backdated or otherwise invalid effective window, duration, exposure, or currency.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+      security:
+        - BearerAuth: []
+
   /v1/placements/{id}/assignment/commercials:
     get:
       operationId: getPlacementAssignmentCommercials
@@ -1933,6 +2338,180 @@ paths:
                 $ref: 'common.yaml#/components/schemas/ErrorResponse'
         '404':
           $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+
+  # Track 6 / T6-B2 — the governed post-start commercial-revision surface.
+  /v1/placements/{id}/assignment/commercials/revisions:
+    post:
+      operationId: createAssignmentCommercialRevision
+      summary: Create a governed post-start commercial revision (Track 6 / T6-B2).
+      description: |
+        Appends a new commercial version to the OPEN tail of the assignment's
+        commercial sequence: the current open window is first-closed at the resolved
+        effective instant and the successor opened at that same instant, atomically.
+        Open-tail ONLY — inserting between, or re-closing, an already-bounded version is
+        refused (deferred to a later slice). Permitted only while the ContractAssignment
+        is ACTIVE.
+
+        Guarded by the DEDICATED write scope `assignment:commercials:write` (a post-start
+        enforcement site): `assignment:commercials:read`, `placement:*`, and
+        `assignment:update` do NOT satisfy it. `recorded_by` is the authenticated
+        subject — never the request body. `effective_from` is optional; omitted means the
+        server "now" instant (used for BOTH the close and the open). A supplied instant
+        in the past is refused (400). A requested instant that overlaps or duplicates an
+        existing effective window is refused 409 `ASSIGNMENT_COMMERCIAL_REVISION_CONFLICT`
+        (`details.reason`: `window_overlap` | `duplicate_effective_from`). An absent /
+        not-ACTIVE / no-open-version assignment is 404 (never 403).
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommercialRevisionRequest'
+      responses:
+        '201':
+          description: Created — the new current commercial version.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssignmentCommercialCreatedResponse'
+        '400':
+          description: Validation error (malformed money / currency / rate_period, effective_from in the past or not after the current version start).
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '403':
+          description: Insufficient permissions or tenant not entitled.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '409':
+          description: The revision conflicts with an existing effective commercial window (details.reason = window_overlap | duplicate_effective_from).
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+      security:
+        - BearerAuth: []
+    get:
+      operationId: listAssignmentCommercialRevisions
+      summary: List the commercial version series of a placement's assignment (Track 6 / T6-B2).
+      description: |
+        Returns the non-cancelled commercial version series (historical + current +
+        future) for the placement's assignment, ordered by `effective_from` DESC. Each
+        item carries the stored actuals + DEC-5 derived views (computed on read). A
+        visible placement with no assignment / no versions returns `{ "items": [] }`.
+
+        Guarded by `assignment:commercials:read` (the DEDICATED financial scope — least
+        visibility). The placement is first loaded under the actor-visibility predicate;
+        a not-found / not-visible / cross-tenant placement returns 404 (never 403).
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssignmentCommercialSeriesResponse'
+        '403':
+          description: Insufficient permissions or tenant not entitled.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+
+  # Track 6 / T6-B3 — governed cancellation of a FUTURE open-tail commercial revision.
+  /v1/placements/{id}/assignment/commercials/revisions/{revisionId}/cancel:
+    post:
+      operationId: cancelAssignmentCommercialRevision
+      summary: Cancel a future open-tail commercial revision (Track 6 / T6-B3).
+      description: |
+        Withdraws a NOT-YET-EFFECTIVE commercial revision: the target version (the
+        future open tail) is cancelled and its predecessor re-opened to `[start, ∞)`,
+        atomically, restoring schedule continuity with no gap and no historical rewrite.
+
+        Eligible ONLY when the target is simultaneously on an ACTIVE assignment, not
+        already cancelled, starts strictly in the future, and is the open tail
+        (`effective_to` is null). Historical, current, bounded/interior future, and
+        already-cancelled versions — and any version on an ENDED assignment — are refused.
+
+        Guarded by the DEDICATED write scope `assignment:commercials:write` (§13):
+        `assignment:commercials:read`, `placement:*`, and `assignment:update` do NOT
+        satisfy it. `cancelled_by` is the authenticated subject — never the request body.
+        The placement is loaded under the actor-visibility predicate; a not-found /
+        not-visible / cross-tenant placement or an unknown revision returns 404 (never
+        403). An ineligible target is refused 409 `ASSIGNMENT_COMMERCIAL_REVISION_CONFLICT`
+        (`details.reason`: `already_cancelled` | `revision_not_future` |
+        `cancellation_would_create_gap`). The response is the refreshed non-cancelled
+        commercial series — cancellation metadata is never returned in the normal series.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: revisionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommercialRevisionCancelRequest'
+      responses:
+        '200':
+          description: OK — the refreshed non-cancelled commercial series.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssignmentCommercialSeriesResponse'
+        '400':
+          description: Validation error (missing or non-user-selectable cancellation_reason_code).
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '403':
+          description: Insufficient permissions or tenant not entitled.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '409':
+          description: The target is not an eligible future open tail (details.reason = already_cancelled | revision_not_future | cancellation_would_create_gap).
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
       security:
         - BearerAuth: []
 
@@ -2151,6 +2730,466 @@ paths:
         '503':
           description: Webhook dark — signing secret not provisioned.
 
+  /v1/reports/fill-performance:
+    get:
+      operationId: getFillPerformanceReport
+      summary: Fill rate + time-to-fill operational report (T9-B1).
+      description: |
+        Authoritative T9 fill-rate and time-to-fill for the cohort of
+        requisitions created within [from, to). Fill authority is ATS
+        pipeline terminal `placed` (distinct talents per requisition, clamped
+        to declared openings); fill_rate = round(Σ filled_openings / Σ
+        openings * 100), null when the cohort has no openings. Time-to-fill is
+        measured ONLY for fully-filled requisitions: created_at → the Nth
+        distinct talent's first `placed` transition (N = openings). `canceled`
+        requisitions are excluded from numerator and denominator. Tenant /
+        site / A3 visibility scoped; report:read.
+      parameters:
+        - name: from
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+          description: |
+            Inclusive period start. An absolute ISO 8601 date-time carrying
+            `Z` or an explicit numeric offset; date-only and zone-less values
+            are rejected 400. Cohort predicate: Requisition.created_at >= from.
+        - name: to
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+          description: |
+            Exclusive period end (half-open [from, to)). Same absolute
+            date-time rules as `from`; must be strictly after `from`.
+        - name: site_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+          description: Optional site narrowing (must match the actor's site claim).
+      responses:
+        '200':
+          description: Fill-rate + time-to-fill metrics for the period cohort.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FillPerformanceReport'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+      security:
+        - BearerAuth: []
+
+  /v1/reports/guarantee-exposure:
+    get:
+      operationId: getGuaranteeExposureReport
+      summary: Permanent-placement guarantee-exposure summary report (T7-P4).
+      description: |
+        Authoritative T7 guarantee-exposure summary for the cohort of permanent
+        placements whose activation instant `created_at` ∈ [from, to). Historical
+        exposure is sourced ONLY from the immutable PermanentPlacement activation
+        snapshot (`guarantee_exposure_amount` + `guarantee_exposure_currency`); a
+        later guarantee-terms revision never changes an older placement's value.
+        Monetary values are returned ONLY in per-currency buckets (scale-2 decimal
+        strings) — never summed across currencies and never FX-converted. Counts may
+        be cross-currency. `remedy_obligation_by_currency` totals are OBLIGATIONS
+        (owed), never paid/settled amounts; REPLACEMENT is count-only. Summary-only
+        (no row-level ids / PII). Tenant / site / A3 visibility scoped; report:read.
+      parameters:
+        - name: from
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+          description: |
+            Inclusive period start. An absolute ISO 8601 date-time carrying
+            `Z` or an explicit numeric offset; date-only and zone-less values
+            are rejected 400. Cohort predicate: PermanentPlacement.created_at >= from.
+        - name: to
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+          description: |
+            Exclusive period end (half-open [from, to)). Same absolute
+            date-time rules as `from`; must be strictly after `from`.
+        - name: site_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+          description: Optional site narrowing (must match the actor's site claim).
+      responses:
+        '200':
+          description: Guarantee-exposure summary for the period cohort.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GuaranteeExposureReport'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+      security:
+        - BearerAuth: []
+
+  /v1/reports/fallthrough:
+    get:
+      operationId: getFallthroughReport
+      summary: Fallthrough rate + reasons operational report (T9-B2).
+      description: |
+        Authoritative T9 fallthrough rate + reasons, placement-attempt level and
+        post-acceptance/pre-start ONLY. Cohort = PlacementProcess attempts whose
+        FIRST OFFER_ACCEPTED transition ∈ [from, to). `accepted_attempts` is the
+        denominator; `fallthrough_attempts` counts those that later terminate in
+        FELL_THROUGH or NO_SHOW only (offer-decline/rescind, submittal, pipeline,
+        requisition closure and post-start assignment ending are excluded).
+        `fallthrough_rate` = round(fallthrough / accepted * 100), null when
+        accepted_attempts == 0. `reasons` groups by the canonical placement reason
+        (reason_code + reason_label); terminals with no persisted reason group into
+        a report-only null / "Unspecified" bucket. reason_detail (PII) is never
+        exposed. Tenant / site / A3 visibility scoped; report:read.
+      parameters:
+        - name: from
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+          description: |
+            Inclusive period start. Absolute ISO 8601 date-time carrying `Z` or an
+            explicit offset; date-only / zone-less values are rejected 400. Cohort
+            predicate: first OFFER_ACCEPTED transition >= from.
+        - name: to
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+          description: |
+            Exclusive period end (half-open [from, to)); same absolute date-time
+            rules as `from`; must be strictly after `from`.
+        - name: site_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+          description: Optional site narrowing (must match the actor's site claim).
+      responses:
+        '200':
+          description: Fallthrough rate + reason breakdown for the period cohort.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FallthroughReport'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+      security:
+        - BearerAuth: []
+
+  # T8-CONNECTOR-A — provider-neutral connector connection MANAGEMENT
+  # (Settings → Integrations). `integration:read` governs visibility;
+  # `integration:write` governs mutations. NO response ever exposes secret_ref,
+  # an AWS identifier, or credential material; credential set is a dedicated
+  # write-only endpoint. Provider-neutral: no provider name/transport/OAuth/
+  # webhook/SFTP/polling/run-now.
+  /v1/integrations:
+    get:
+      operationId: listIntegrationConnections
+      summary: List connector connections (T8-CONNECTOR-A).
+      description: Returns the tenant's connector connections (secret-free view). Guarded by `integration:read`.
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IntegrationConnectionListResponse'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+      security:
+        - BearerAuth: []
+    post:
+      operationId: createIntegrationConnection
+      summary: Create a connector connection (T8-CONNECTOR-A).
+      description: Creates a connection in `disconnected` state. Guarded by `integration:write`. No credential is accepted here.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateIntegrationConnectionRequest'
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IntegrationConnectionView'
+        '400':
+          description: Validation error.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+      security:
+        - BearerAuth: []
+  /v1/integrations/{id}:
+    get:
+      operationId: getIntegrationConnection
+      summary: Get a connector connection, secret-free (T8-CONNECTOR-A).
+      description: Returns a single connector connection (secret-free view). Guarded by `integration:read`. A cross-tenant / absent id returns 404 (never 403).
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IntegrationConnectionView'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+    patch:
+      operationId: updateIntegrationConnection
+      summary: Update non-secret connection metadata (T8-CONNECTOR-A).
+      description: Updates non-secret connection metadata. Guarded by `integration:write`. Never accepts credential material.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateIntegrationConnectionRequest'
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IntegrationConnectionView'
+        '400':
+          description: Validation error.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+  /v1/integrations/{id}/credential:
+    post:
+      operationId: setIntegrationConnectionCredential
+      summary: Set a connection credential, write-only (T8-CONNECTOR-A).
+      description: |
+        Stores the credential in AWS Secrets Manager under a server-derived id and
+        transitions the connection to `configured`. The value is NEVER persisted to
+        the database, echoed, or returned. Guarded by `integration:write`.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetIntegrationCredentialRequest'
+      responses:
+        '200':
+          description: OK. Returns the secret-free view (no credential echoed).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IntegrationConnectionView'
+        '400':
+          description: Validation error.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+  /v1/integrations/{id}/enable:
+    post:
+      operationId: enableIntegrationConnection
+      summary: Enable a connector connection (T8-CONNECTOR-A).
+      description: Transitions a configured/degraded/disabled connection to active. Guarded by `integration:write`. Fails 409 when no credential is configured.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IntegrationConnectionView'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '409':
+          description: The connection cannot be enabled in its current state (e.g. no credential configured) — code CONNECTOR_CONFIGURATION_INVALID.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+      security:
+        - BearerAuth: []
+  /v1/integrations/{id}/disable:
+    post:
+      operationId: disableIntegrationConnection
+      summary: Disable a connector connection, history preserved (T8-CONNECTOR-A).
+      description: Administratively disables a connection while preserving execution/audit history. Guarded by `integration:write`.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IntegrationConnectionView'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '409':
+          description: Illegal lifecycle transition — code CONNECTOR_CONFIGURATION_INVALID.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+  /v1/reports/assignment-pipeline:
+    get:
+      operationId: getAssignmentPipelineReport
+      summary: Assignment-pipeline current-snapshot operational view (T9-B3).
+      description: |
+        Current snapshot (no period) of the assignment pipeline over the five
+        live PlacementProcess states — OFFER_ACCEPTED, PRE_START, BLOCKED,
+        READY_TO_START, STARTED — with total_live = their sum. A UTC start-date
+        breakdown buckets the four pre-start states by proposed_start_date
+        (null → unspecified). contract_assignments is BOUNDED / forward-
+        materialized only: a STARTED placement may have no ContractAssignment,
+        so STARTED != active + ended. Counts only — no rows, no commercial
+        fields, no ended_at. report:read + tenant/site/A3.
+      parameters:
+        - name: site_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+          description: Optional site narrowing (must match the actor's site claim).
+      responses:
+        '200':
+          description: Current assignment-pipeline counts.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssignmentPipelineReport'
+        # T9-B5 — no reachable 400: the route takes no from/to and runs no
+        # request-body/param validation (identical posture to /v1/reports/margin,
+        # which likewise documents no 400). Site-claim mismatch is a 403, not 400.
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+      security:
+        - BearerAuth: []
+
+  /v1/reports/margin:
+    get:
+      operationId: getMarginReport
+      summary: Margin current-snapshot operational view (T9-B4).
+      description: |
+        Current snapshot (no period) of contract-assignment margin, aggregated
+        by (currency, rate_period). group_margin_percent is the GOVERNED
+        bill-rate-weighted aggregate SUM(bill-pay)/SUM(bill)*100 as a scale-2
+        decimal string (null when the group bill total is zero) — never the
+        arithmetic mean of per-assignment margins. Coverage is FORWARD_MATERIALIZED:
+        eligible_count = commercialized_count + missing_commercial_count. CONTRACT
+        assignments only — PermanentPlacement, ENDED, and future/cancelled-only
+        versions are excluded. Aggregate-only: no per-assignment rows, no
+        talent/person ids, no pay/bill/spread/markup, no version lineage.
+        COMPOUND authorization: report:read AND assignment:commercials:read, plus
+        tenant/site/A3. The finer compensation:view:* scopes are NOT a gate here.
+      parameters:
+        - name: site_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+          description: Optional site narrowing (must match the actor's site claim).
+      responses:
+        '200':
+          description: Current margin aggregate by (currency, rate_period).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MarginReport'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+      security:
+        - BearerAuth: []
+
 components:
   securitySchemes:
     # Duplicated byte-for-byte from openapi/common.yaml per locked invariant
@@ -2172,6 +3211,406 @@ components:
         secret — the shared signing secret is provisioned out-of-band and never documented.
 
   schemas:
+    # T8-CONNECTOR-A — provider-neutral connector connection views/requests. NO
+    # schema exposes secret_ref, an AWS identifier, or credential material.
+    IntegrationConnectionView:
+      type: object
+      additionalProperties: false
+      required: [id, tenant_id, provider_key, status, has_secret, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        provider_key:
+          type: string
+        status:
+          type: string
+          enum: [disconnected, configured, active, degraded, disabled]
+        has_secret:
+          type: boolean
+          description: Whether a credential has been configured. The value/reference is never exposed.
+        provider_account_id:
+          type: [string, 'null']
+        last_attempted_at:
+          type: [string, 'null']
+          format: date-time
+        last_successful_at:
+          type: [string, 'null']
+          format: date-time
+        last_error_code:
+          type: [string, 'null']
+        last_error_summary:
+          type: [string, 'null']
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    IntegrationConnectionListResponse:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/IntegrationConnectionView'
+    CreateIntegrationConnectionRequest:
+      type: object
+      additionalProperties: false
+      required: [provider_key]
+      properties:
+        provider_key:
+          type: string
+          description: Normalized extensible provider key (never a frozen vendor enum).
+        provider_account_id:
+          type: [string, 'null']
+    UpdateIntegrationConnectionRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        provider_account_id:
+          type: [string, 'null']
+    SetIntegrationCredentialRequest:
+      type: object
+      additionalProperties: false
+      required: [credential]
+      properties:
+        credential:
+          type: string
+          description: Write-only. Stored in Secrets Manager under a server-derived id; never persisted to the database, echoed, or returned.
+    # T9-B3 — assignment-pipeline current-snapshot operational view
+    # (GET /v1/reports/assignment-pipeline). Counts only; no row items, no
+    # financial fields, no ended_at; additionalProperties:false closes the
+    # contract (§21/§27 data-safety).
+    AssignmentPipelineReport:
+      type: object
+      additionalProperties: false
+      required:
+        - total_live
+        - by_state
+        - start_date
+        - contract_assignments
+      properties:
+        total_live:
+          type: integer
+          minimum: 0
+          description: Sum of the five live by_state counts (contract_assignments excluded).
+        by_state:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [state, count]
+            properties:
+              state:
+                type: string
+                enum: [OFFER_ACCEPTED, PRE_START, BLOCKED, READY_TO_START, STARTED]
+              count:
+                type: integer
+                minimum: 0
+        start_date:
+          type: object
+          additionalProperties: false
+          required: [overdue, today, next_7_days, later, unspecified, timezone_basis]
+          properties:
+            overdue: { type: integer, minimum: 0 }
+            today: { type: integer, minimum: 0 }
+            next_7_days: { type: integer, minimum: 0 }
+            later: { type: integer, minimum: 0 }
+            unspecified: { type: integer, minimum: 0 }
+            timezone_basis:
+              type: string
+              enum: [UTC]
+        contract_assignments:
+          type: object
+          additionalProperties: false
+          required: [active, ended, coverage]
+          properties:
+            active: { type: integer, minimum: 0 }
+            ended: { type: integer, minimum: 0 }
+            coverage:
+              type: string
+              enum: [forward_materialized]
+
+    # T9-B4 — margin current-snapshot operational view (GET /v1/reports/margin).
+    # Aggregate-only by (currency, rate_period); group_margin_percent is the
+    # governed bill-rate-weighted aggregate (scale-2 string or null). NO per-row
+    # commercial fields, NO ids, NO version lineage; additionalProperties:false
+    # closes the contract (§13/§25 data-safety). Field name is group_margin_percent
+    # per Aramo-T9-B4-Margin-Field-Masking-Amendment-v1_0-LOCKED (D5 mask collision).
+    MarginReport:
+      type: object
+      additionalProperties: false
+      required:
+        - eligible_count
+        - commercialized_count
+        - missing_commercial_count
+        - coverage
+        - groups
+      properties:
+        eligible_count:
+          type: integer
+          minimum: 0
+          description: ACTIVE CONTRACT assignments in the visible set (= commercialized + missing).
+        commercialized_count:
+          type: integer
+          minimum: 0
+          description: Eligible assignments with exactly one current non-cancelled commercial version.
+        missing_commercial_count:
+          type: integer
+          minimum: 0
+          description: Eligible assignments with no usable current commercial version (counted, not dropped).
+        coverage:
+          type: string
+          enum: [forward_materialized]
+        groups:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [currency, rate_period, assignment_count, group_margin_percent]
+            properties:
+              currency:
+                type: string
+                description: Grouping key; no cross-currency monetary total is produced (no FX substrate).
+              rate_period:
+                type: string
+                enum: [HOURLY, DAILY, WEEKLY, MONTHLY, ANNUAL]
+              assignment_count:
+                type: integer
+                minimum: 0
+              group_margin_percent:
+                type: [string, 'null']
+                description: |
+                  Bill-rate-weighted aggregate SUM(bill-pay)/SUM(bill)*100 for the group,
+                  scale-2 decimal string; null when the group bill total is zero.
+
+    # T9-B2 — fallthrough rate + reasons operational report
+    # (GET /v1/reports/fallthrough). Computed-on-read; no persistence. Note:
+    # reason_detail (PII) is deliberately absent; additionalProperties:false
+    # keeps it out of the contract (§16 data-safety).
+    FallthroughReport:
+      type: object
+      additionalProperties: false
+      required:
+        - period
+        - accepted_attempts
+        - fallthrough_attempts
+        - fallthrough_rate
+        - reasons
+      properties:
+        period:
+          type: object
+          additionalProperties: false
+          required: [from, to]
+          properties:
+            from:
+              type: string
+              format: date-time
+            to:
+              type: string
+              format: date-time
+        accepted_attempts:
+          type: integer
+          minimum: 0
+          description: Denominator — distinct placement attempts first accepted in the period.
+        fallthrough_attempts:
+          type: integer
+          minimum: 0
+          description: Numerator — cohort attempts terminating in FELL_THROUGH or NO_SHOW.
+        fallthrough_rate:
+          type: [integer, 'null']
+          minimum: 0
+          maximum: 100
+          description: Percent 0-100; null when accepted_attempts == 0.
+        reasons:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [reason_code, reason_label, count, rate]
+            properties:
+              reason_code:
+                type: [string, 'null']
+                description: Canonical placement reason code, or null for the "Unspecified" bucket.
+              reason_label:
+                type: string
+                description: Snapshotted reason label, or "Unspecified" for the null bucket.
+              count:
+                type: integer
+                minimum: 0
+              rate:
+                type: integer
+                minimum: 0
+                maximum: 100
+                description: Percent of fallthrough_attempts represented by this bucket.
+
+    # T7-P4 — guarantee-exposure summary report
+    # (GET /v1/reports/guarantee-exposure). Computed-on-read; no persistence.
+    GuaranteeExposureReport:
+      type: object
+      additionalProperties: false
+      required:
+        - period
+        - cohort_count
+        - exposure_by_currency
+        - states
+        - remedy_obligation_by_currency
+        - falloff_rate
+      properties:
+        period:
+          type: object
+          additionalProperties: false
+          required: [from, to]
+          properties:
+            from:
+              type: string
+              format: date-time
+            to:
+              type: string
+              format: date-time
+        cohort_count:
+          type: integer
+          minimum: 0
+          description: All authorized PermanentPlacements activated (created_at) in [from, to).
+        exposure_by_currency:
+          type: array
+          description: |
+            Per-currency guarantee-exposure sums as scale-2 decimal strings. Money is NEVER
+            summed across currencies and NEVER FX-converted; there is no global monetary total.
+          items:
+            type: object
+            additionalProperties: false
+            required: [currency, total, active, satisfied, fell_off, at_risk]
+            properties:
+              currency:
+                type: string
+              total:
+                type: string
+                description: Σ guarantee_exposure_amount over the currency's cohort.
+              active:
+                type: string
+                description: Σ where lifecycle_state = GUARANTEE_ACTIVE.
+              satisfied:
+                type: string
+                description: Σ where lifecycle_state = GUARANTEE_SATISFIED.
+              fell_off:
+                type: string
+                description: Σ where lifecycle_state is in the fell-off family.
+              at_risk:
+                type: string
+                description: Equal to active in P4 (still within an active guarantee window).
+        states:
+          type: object
+          additionalProperties: false
+          required: [active, satisfied, fell_off, remedy_due, remedy_completed]
+          properties:
+            active:
+              type: integer
+              minimum: 0
+            satisfied:
+              type: integer
+              minimum: 0
+            fell_off:
+              type: integer
+              minimum: 0
+              description: Count of the fell-off family (FELL_OFF + all remedy-due + REMEDY_COMPLETED).
+            remedy_due:
+              type: object
+              additionalProperties: false
+              required: [replacement, refund, prorated_credit]
+              properties:
+                replacement:
+                  type: integer
+                  minimum: 0
+                refund:
+                  type: integer
+                  minimum: 0
+                prorated_credit:
+                  type: integer
+                  minimum: 0
+            remedy_completed:
+              type: integer
+              minimum: 0
+              description: Remedy evidence completed — NOT payment.
+        remedy_obligation_by_currency:
+          type: array
+          description: |
+            Per-currency remedy OBLIGATION totals (amounts owed, never paid/settled). REFUND and
+            PRORATED_CREDIT only; REPLACEMENT is count-only (non-monetary).
+          items:
+            type: object
+            additionalProperties: false
+            required: [currency, refund_total, prorated_credit_total]
+            properties:
+              currency:
+                type: string
+              refund_total:
+                type: string
+              prorated_credit_total:
+                type: string
+        falloff_rate:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: states.fell_off / cohort_count as a percent 0-100; 0 when cohort_count == 0.
+    FillPerformanceReport:
+      type: object
+      additionalProperties: false
+      required:
+        - period
+        - openings
+        - filled_openings
+        - fill_rate
+        - fully_filled_requisitions
+        - time_to_fill
+      properties:
+        period:
+          type: object
+          additionalProperties: false
+          required: [from, to]
+          properties:
+            from:
+              type: string
+              format: date-time
+            to:
+              type: string
+              format: date-time
+        openings:
+          type: integer
+          minimum: 0
+          description: Σ requisition openings over the non-canceled cohort (denominator).
+        filled_openings:
+          type: integer
+          minimum: 0
+          description: Σ min(distinct placed talents, openings) (numerator).
+        fill_rate:
+          type: [integer, 'null']
+          minimum: 0
+          maximum: 100
+          description: Percent 0-100; null when openings == 0.
+        fully_filled_requisitions:
+          type: integer
+          minimum: 0
+        time_to_fill:
+          type: object
+          additionalProperties: false
+          required: [count, average_days]
+          properties:
+            count:
+              type: integer
+              minimum: 0
+              description: Number of fully-filled requisitions contributing a value.
+            average_days:
+              type: [number, 'null']
+              minimum: 0
+              description: Mean days created_at→Nth-placed; null when count == 0.
+
     # Track 3 / E1-b — PlacementProcess HTTP surface.
     CreatePlacementRequest:
       type: object
@@ -2217,6 +3656,14 @@ components:
             NO_SHOW, FELL_THROUGH); otherwise PLACEMENT_REPLACEMENT_INVALID (422).
             Absent → an ordinary first creation. No predecessor reason is copied
             onto the successor.
+        placement_kind:
+          type: [string, 'null']
+          enum: [CONTRACT, PERMANENT, null]
+          description: >
+            Track 7 / T7-P1 — the permanent-vs-contract branch fact, persisted once
+            at create. Omitted → null (legacy/CONTRACT-compatible at STARTED). An
+            explicit PERMANENT is required to later start a permanent placement (the
+            guarantee path); a CONTRACT/null start materialises a ContractAssignment.
     TransitionPlacementRequest:
       type: object
       additionalProperties: false
@@ -2297,10 +3744,48 @@ components:
                 - WEEKLY
                 - MONTHLY
                 - ANNUAL
+        guarantee_terms:
+          type: object
+          additionalProperties: false
+          required: [guarantee_start_date, guarantee_duration_days, remedy_policy, exposure_amount, exposure_currency, terms_source]
+          description: >
+            Track 7 / T7-P1 — the governed guarantee terms of the immutable
+            activation snapshot, materialised with the PermanentPlacement in the same
+            transaction as the PERMANENT STARTED handoff. REQUIRED for a PERMANENT
+            start (else PERMANENT_PLACEMENT_TERMS_REQUIRED, 422); supplying it for a
+            CONTRACT/null start or any non-STARTED target is rejected
+            (VALIDATION_ERROR). Exposure is a governed input (no rate version is
+            minted on this branch); no cross-schema requisition read.
+          properties:
+            guarantee_start_date:
+              type: string
+              format: date
+              description: The actual permanent employment start (calendar date). Window is half-open [start, start + duration_days).
+            guarantee_duration_days:
+              type: integer
+              minimum: 1
+              description: A positive integer; zero/negative fails closed (PERMANENT_PLACEMENT_GUARANTEE_WINDOW_INVALID).
+            remedy_policy:
+              type: string
+              description: The single terms-driven remedy a qualifying falloff will require (snapshotted in P1, executed in P2).
+              enum:
+                - REPLACEMENT
+                - REFUND
+                - PRORATED_CREDIT
+            exposure_amount:
+              type: string
+              description: Decimal(12,2) money string (never a float); the maximum amount subject to refund/credit under the guarantee.
+            exposure_currency:
+              type: string
+              description: An active ISO-4217 currency code.
+            terms_source:
+              type: string
+              maxLength: 255
+              description: Governed provenance label for the guarantee terms (no hidden default).
     PlacementProcess:
       type: object
       additionalProperties: false
-      required: [id, tenant_id, submittal_id, requisition_id, talent_record_id, state, offered_at, proposed_start_date, offer_expires_at, client_offer_reference, offer_terms_summary, created_at]
+      required: [id, tenant_id, submittal_id, requisition_id, talent_record_id, state, offered_at, proposed_start_date, offer_expires_at, client_offer_reference, offer_terms_summary, placement_kind, created_at]
       properties:
         id:
           type: string
@@ -2317,6 +3802,10 @@ components:
         talent_record_id:
           type: string
           format: uuid
+        placement_kind:
+          type: [string, 'null']
+          enum: [CONTRACT, PERMANENT, null]
+          description: Track 7 / T7-P1 — the persisted permanent-vs-contract branch fact; null for legacy/kind-agnostic placements.
         state:
           type: string
           enum:
@@ -2456,6 +3945,286 @@ components:
           oneOf:
             - $ref: '#/components/schemas/ContractAssignmentView'
             - type: 'null'
+    # Track 7 / T7-P1 — the PermanentPlacement aggregate + its immutable guarantee
+    # snapshot. guarantee_exposure_amount is a scale-2 decimal string (never float).
+    PermanentPlacement:
+      type: object
+      additionalProperties: false
+      required: [id, tenant_id, placement_process_id, submittal_id, requisition_id, talent_record_id, lifecycle_state, guarantee_start_date, guarantee_duration_days, guarantee_end_date, remedy_policy, guarantee_exposure_amount, guarantee_exposure_currency, terms_source, recorded_by, created_at, falloff_effective_date, falloff_reason, falloff_recorded_by, falloff_recorded_at, remedy]
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        placement_process_id:
+          type: string
+          format: uuid
+        submittal_id:
+          type: string
+          format: uuid
+        requisition_id:
+          type: string
+          format: uuid
+        talent_record_id:
+          type: string
+          format: uuid
+        lifecycle_state:
+          type: string
+          enum:
+            - GUARANTEE_ACTIVE
+            - GUARANTEE_SATISFIED
+            - FELL_OFF
+            - REPLACEMENT_DUE
+            - REFUND_DUE
+            - PRORATED_CREDIT_DUE
+            - REMEDY_COMPLETED
+        guarantee_start_date:
+          type: string
+          format: date
+        guarantee_duration_days:
+          type: integer
+        guarantee_end_date:
+          type: string
+          format: date
+        remedy_policy:
+          type: string
+          enum:
+            - REPLACEMENT
+            - REFUND
+            - PRORATED_CREDIT
+        guarantee_exposure_amount:
+          type: string
+          description: Decimal(12,2) money string (never a float).
+        guarantee_exposure_currency:
+          type: string
+        terms_source:
+          type: string
+        recorded_by:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+        falloff_effective_date:
+          type: [string, 'null']
+          format: date
+          description: Track 7 / T7-P2 — the qualifying falloff effective date; null until a falloff.
+        falloff_reason:
+          type: [string, 'null']
+          description: Track 7 / T7-P2 — the governed falloff reason code; null until a falloff.
+        falloff_recorded_by:
+          type: [string, 'null']
+          format: uuid
+        falloff_recorded_at:
+          type: [string, 'null']
+          format: date-time
+        remedy:
+          # Track 7 / T7-P2 — the remedy obligation; null until a falloff creates it.
+          oneOf:
+            - $ref: '#/components/schemas/PermanentPlacementRemedy'
+            - type: 'null'
+    # Track 7 / T7-P2 — the remedy obligation + completion state. calculated_amount is a
+    # scale-2 decimal string for REFUND/PRORATED_CREDIT; null for REPLACEMENT. The
+    # protected read exposes the amount; the outbox does not.
+    PermanentPlacementRemedy:
+      type: object
+      additionalProperties: false
+      required: [remedy_type, calculated_amount, currency, remaining_days, falloff_effective_date, due_at, completed_at, completed_by, completion_reference, replacement_placement_process_id]
+      properties:
+        remedy_type:
+          type: string
+          enum:
+            - REPLACEMENT
+            - REFUND
+            - PRORATED_CREDIT
+        calculated_amount:
+          type: [string, 'null']
+          description: Decimal(12,2) money string; null for REPLACEMENT.
+        currency:
+          type: [string, 'null']
+        remaining_days:
+          type: [integer, 'null']
+        falloff_effective_date:
+          type: string
+          format: date
+        due_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: [string, 'null']
+          format: date-time
+        completed_by:
+          type: [string, 'null']
+          format: uuid
+        completion_reference:
+          type: [string, 'null']
+        replacement_placement_process_id:
+          type: [string, 'null']
+          format: uuid
+    PlacementPermanentResponse:
+      type: object
+      additionalProperties: false
+      required: [permanent]
+      properties:
+        permanent:
+          # A coherent absence when the placement has no PermanentPlacement.
+          oneOf:
+            - $ref: '#/components/schemas/PermanentPlacement'
+            - type: 'null'
+    PermanentPlacementTransitionRequest:
+      type: object
+      additionalProperties: false
+      required: [to]
+      properties:
+        to:
+          type: string
+          description: The target guarantee state; the typed registry enforces legality (P1 edge GUARANTEE_ACTIVE -> GUARANTEE_SATISFIED).
+          enum:
+            - GUARANTEE_ACTIVE
+            - GUARANTEE_SATISFIED
+    # Track 7 / T7-P2 — the governed falloff command body.
+    PermanentFalloffRequest:
+      type: object
+      additionalProperties: false
+      required: [effective_date, reason]
+      properties:
+        effective_date:
+          type: string
+          format: date
+          description: The falloff effective calendar date; must fall in the half-open guarantee window [start, end).
+        reason:
+          type: string
+          description: A governed permanent-falloff reason code (closed T7 registry, exact-match, no OTHER).
+          enum:
+            - TALENT_RESIGNED
+            - CLIENT_TERMINATED_PERFORMANCE
+            - CLIENT_TERMINATED_CONDUCT
+            - CLIENT_TERMINATED_BUSINESS_NEED
+            - MUTUAL_SEPARATION
+            - JOB_ABANDONMENT
+            - EMPLOYMENT_INELIGIBILITY
+    # Track 7 / T7-P2 — the evidence-gated remedy-completion command body. Supply
+    # replacement_placement_process_id for a REPLACEMENT remedy, or external_reference for a
+    # REFUND/PRORATED_CREDIT remedy; the server validates coherence against the remedy type.
+    PermanentRemedyCompletionRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        replacement_placement_process_id:
+          type: string
+          format: uuid
+          description: REPLACEMENT evidence — a same-tenant, same-requisition, PERMANENT placement that reached STARTED (evidence linkage only, not an E4 predecessor).
+        external_reference:
+          type: string
+          maxLength: 255
+          description: REFUND/PRORATED_CREDIT evidence — a bounded governed settlement/credit reference.
+    # Track 7 / T7-P3 — the reusable guarantee-term-version payload shared by create + revise.
+    GuaranteeTermsPayload:
+      type: object
+      additionalProperties: false
+      required: [effective_from, guarantee_duration_days, remedy_policy, guarantee_exposure_amount, currency, source_type]
+      properties:
+        effective_from:
+          type: string
+          format: date
+          description: Calendar date (yyyy-mm-dd) the terms become effective (half-open window start).
+        guarantee_duration_days:
+          type: integer
+          minimum: 1
+          description: Positive integer guarantee duration in calendar days.
+        remedy_policy:
+          type: string
+          enum: [REPLACEMENT, REFUND, PRORATED_CREDIT]
+        guarantee_exposure_amount:
+          type: string
+          description: Non-negative Decimal(12,2) money string (never a float).
+        currency:
+          type: string
+          description: Active ISO-4217 currency code.
+        source_type:
+          type: string
+          enum: [MANUAL, IMPORTED]
+          description: Closed code-owned provenance registry (no premature CLIENT_CONTRACT/RATE_CARD).
+        source_reference:
+          type: string
+          maxLength: 255
+          description: Optional governed source reference (e.g. an import batch id).
+        source_version:
+          type: string
+          maxLength: 255
+          description: Optional governed source version.
+        correlation_id:
+          type: string
+          maxLength: 255
+          description: Optional governed trace/correlation id.
+    GuaranteeTermsCreateRequest:
+      allOf:
+        - $ref: '#/components/schemas/GuaranteeTermsPayload'
+    GuaranteeTermsReviseRequest:
+      allOf:
+        - $ref: '#/components/schemas/GuaranteeTermsPayload'
+    # Track 7 / T7-P3 — the read projection of a guarantee-term version.
+    GuaranteeTermVersion:
+      type: object
+      additionalProperties: false
+      required: [id, tenant_id, requisition_id, effective_from, effective_to, guarantee_duration_days, remedy_policy, guarantee_exposure_amount, currency, source_type, source_reference, source_version, recorded_by, recorded_at, supersedes_version_id, correlation_id, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        requisition_id:
+          type: string
+          format: uuid
+        effective_from:
+          type: string
+          format: date
+        effective_to:
+          type: [string, 'null']
+          format: date
+        guarantee_duration_days:
+          type: integer
+        remedy_policy:
+          type: string
+          enum: [REPLACEMENT, REFUND, PRORATED_CREDIT]
+        guarantee_exposure_amount:
+          type: string
+        currency:
+          type: string
+        source_type:
+          type: string
+          enum: [MANUAL, IMPORTED]
+        source_reference:
+          type: [string, 'null']
+        source_version:
+          type: [string, 'null']
+        recorded_by:
+          type: string
+          format: uuid
+        recorded_at:
+          type: string
+          format: date-time
+        supersedes_version_id:
+          type: [string, 'null']
+          format: uuid
+        correlation_id:
+          type: [string, 'null']
+        created_at:
+          type: string
+          format: date-time
+    GuaranteeTermVersionList:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/GuaranteeTermVersion'
     # Track 5 / T5-P2 — the commercial projection of the CURRENT effective
     # AssignmentRateVersion. Stored actuals + DEC-5 derived views (computed on read,
     # never stored). Money + percentages are scale-2 decimal strings (never float);
@@ -2522,6 +4291,67 @@ components:
           oneOf:
             - $ref: '#/components/schemas/AssignmentCommercialView'
             - type: 'null'
+    # Track 6 / T6-B2 — the post-start commercial-revision request. The four commercial
+    # fields (as at initial START) + optional effective_from (omitted = server now) +
+    # required change_reason. tenant / assignment / version ids, lineage, recorded_by,
+    # and effective_to are server-derived / forbidden on the wire.
+    CommercialRevisionRequest:
+      type: object
+      additionalProperties: false
+      required: [pay_rate_amount, bill_rate_amount, currency, rate_period, change_reason]
+      properties:
+        pay_rate_amount:
+          type: string
+          description: Decimal(12,2) money string (never a float).
+        bill_rate_amount:
+          type: string
+          description: Decimal(12,2) money string (never a float).
+        currency:
+          type: string
+          description: An active ISO-4217 currency code (uppercase).
+        rate_period:
+          type: string
+          enum: [HOURLY, DAILY, WEEKLY, MONTHLY, ANNUAL]
+        effective_from:
+          type: string
+          format: date-time
+          description: Optional ISO-8601 instant; omitted = the server 'now'. Must not be in the past and must be after the current version start.
+        change_reason:
+          type: string
+          maxLength: 2000
+          description: Required free-text note recorded on the successor version.
+    # Track 6 / T6-B3 — the explicit cancellation request. The ONLY wire field is the
+    # cancellation reason, constrained to the closed USER-selectable vocabulary. The
+    # reserved internal ASSIGNMENT_ENDED is deliberately absent (END-reconciliation only,
+    # never user-mintable). tenant / assignment / revision id, cancelled_at, cancelled_by
+    # are server-derived / forbidden on the wire.
+    CommercialRevisionCancelRequest:
+      type: object
+      additionalProperties: false
+      required: [cancellation_reason_code]
+      properties:
+        cancellation_reason_code:
+          type: string
+          enum: [SCHEDULE_WITHDRAWN, CLIENT_REQUEST, WORKER_REQUEST, DATA_CORRECTION]
+          description: The user-selectable reason for withdrawing the future revision.
+    # The revision create response — the new CURRENT version (never null on success).
+    AssignmentCommercialCreatedResponse:
+      type: object
+      additionalProperties: false
+      required: [commercials]
+      properties:
+        commercials:
+          $ref: '#/components/schemas/AssignmentCommercialView'
+    # The commercial version series (current + historical + future, effective_from DESC).
+    AssignmentCommercialSeriesResponse:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AssignmentCommercialView'
     # M3 PR-8 §4.4 — match-list response envelope. The endpoint emits
     # TalentJobExaminationSummary items only (Full is NOT referenced from
     # this endpoint — see directive §4.4). additionalProperties: false plus

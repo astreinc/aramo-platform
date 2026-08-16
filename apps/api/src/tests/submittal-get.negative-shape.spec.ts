@@ -34,7 +34,7 @@ import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
 // Match-Class forbidden keys (API Contracts v1.0 Phase 6 / R10):
 //   tier, rank, rank_ordinal, score, internal_reasoning,
 //   why_matched_sentence, strengths, gaps, risk_flags, recruiter_notes,
-//   override_id, action_queue_item_id, internal_engagement_state
+//   override_id, action_queue_item_id, internal_selection_state
 //
 // Gated on ARAMO_RUN_INTEGRATION=1.
 
@@ -103,7 +103,7 @@ const SUBMITTAL_RENAME_MIGRATION = resolve(
   ROOT,
   'libs/submittal/prisma/migrations/20260527000000_rename_submittal_state_canonical/migration.sql',
 );
-// T2-P1 — relocate Submittal persistence engagement -> submittal schema.
+// T2-P1 — relocate Submittal persistence selection -> submittal schema.
 const SUBMITTAL_T2P1_MIGRATION = resolve(
   ROOT,
   'libs/submittal/prisma/migrations/20260812120000_t2p1_relocate_submittal_to_submittal_schema/migration.sql',
@@ -133,7 +133,7 @@ const FORBIDDEN_MATCH_CLASS_KEYS: ReadonlyArray<string> = [
   'recruiter_notes',
   'override_id',
   'action_queue_item_id',
-  'internal_engagement_state',
+  'internal_selection_state',
 ];
 
 function walkForForbiddenKeys(

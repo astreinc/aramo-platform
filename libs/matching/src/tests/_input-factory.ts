@@ -44,7 +44,7 @@ export function entrustablePass(
     blocking_conditions: {
       has_verified_contact_channel: true,
       consent_state_sufficient: true,
-      has_conflicting_active_engagement: false,
+      has_conflicting_active_selection: false,
     },
 
     why_matched_sentence: 'meets all critical skills with strong evidence',

@@ -37,7 +37,7 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
     expect(yamlValues).toEqual([...ERROR_CODES]);
   });
 
-  it('ERROR_CODES contains the 76 codes (37 pre-AUTHZ-2 + 3 AUTHZ-2 + 1 AUTHZ-D4a + 1 TR-2a-B3a + 6 TR-6-B2 + 1 TR-3-B2 + 1 TR-4-B1 + 1 TR-4-B3 + 2 PC-Inc2-lifecycle + 1 TR-12-B1 + 3 TR-15-B1 + 1 Portal-P3a + 1 Portal-P3b + 1 ADR-0024-PR-3a + 2 D3b-activity-redaction + 1 Track1-T1-b + 1 Track1-T1-e + 2 Track3-E7-restriction + 2 Track3-E1a-placement + 2 Track3-E2-pre-start + 1 Track3-E3-placement-reason + 1 Track3-E4-placement-replacement + 2 Track3-E6-pipeline + 1 Track4-T4A1-placement-start-context + 1 Track8-T8P1-vms-external-identity)', () => {
+  it('ERROR_CODES contains the closed code set (Track8-T8P1-vms-external-identity + 3 T2-P3B-selection-evidence normalization + 1 Track6-T6B2-commercial-revision-conflict); the toEqual array below is the authoritative membership+order assertion', () => {
     expect(ERROR_CODES).toEqual([
       'AUTH_REQUIRED',
       'INVALID_TOKEN',
@@ -58,9 +58,9 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       'SUBMITTAL_ALREADY_CONFIRMED',
       'OVERRIDE_INVALID',
       'REVOKE_NOT_ALLOWED',
-      'ENGAGEMENT_EVENT_REF_NOT_FOUND',
-      'ENGAGEMENT_REFERENCE_NOT_FOUND',
-      'ENGAGEMENT_STATE_INVALID',
+      'SELECTION_EVENT_REF_NOT_FOUND',
+      'SELECTION_REFERENCE_NOT_FOUND',
+      'SELECTION_STATE_INVALID',
       'AI_PROVIDER_UNAVAILABLE',
       'AI_RATE_LIMITED',
       'SUBMITTAL_STATE_INVALID',
@@ -148,6 +148,26 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       // Track 3 E6 — 1 pre-flight reconciliation live/live refusal (A4, §5.2; 409).
       'PIPELINE_RECONCILE_LIVE_CONFLICT',
       'REQUISITION_EXTERNAL_IDENTITY_CONFLICT',
+      'ASSIGNMENT_COMMERCIAL_REVISION_CONFLICT',
+      // Track 7 / T7-P1 — the PermanentPlacement guarantee family (appended in order).
+      'PERMANENT_PLACEMENT_NOT_FOUND',
+      'PERMANENT_PLACEMENT_STATE_INVALID',
+      'PERMANENT_PLACEMENT_GUARANTEE_WINDOW_INVALID',
+      'PERMANENT_PLACEMENT_TERMS_REQUIRED',
+      'PERMANENT_PLACEMENT_EXPOSURE_INVALID',
+      'PERMANENT_PLACEMENT_ALREADY_EXISTS',
+      // Track 7 / T7-P2 — falloff + remedy family (appended in order).
+      'PERMANENT_PLACEMENT_FALLOFF_WINDOW_INVALID',
+      'PERMANENT_PLACEMENT_FALLOFF_REASON_INVALID',
+      'PERMANENT_PLACEMENT_REMEDY_INVALID',
+      'PERMANENT_PLACEMENT_REMEDY_ALREADY_COMPLETED',
+      'CONNECTOR_CONFIGURATION_INVALID',
+      // Track 7 / T7-P3 — guarantee-term-versioning family (appended in order).
+      'PERMANENT_PLACEMENT_TERMS_NOT_FOUND',
+      'PERMANENT_PLACEMENT_TERMS_WINDOW_INVALID',
+      'PERMANENT_PLACEMENT_TERMS_OVERLAP',
+      'PERMANENT_PLACEMENT_TERMS_AMBIGUOUS',
+      'PERMANENT_PLACEMENT_TERMS_IMMUTABLE',
     ]);
   });
 });

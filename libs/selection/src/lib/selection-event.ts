@@ -1,8 +1,8 @@
 // SelectionEventType — closed-list runtime const tuple + derived type
 // for TalentSelectionEvent (M5 PR-2).
 //
-// Per M5 PR-2 directive §4.3 + Charter v1.2 §4.4 Ruling D (engagement
-// event-log scope). Five event types covering the M5 engagement
+// Per M5 PR-2 directive §4.3 + Charter v1.2 §4.4 Ruling D (selection
+// event-log scope). Five event types covering the M5 selection
 // workflow surface:
 //   - state_transition: state-machine transition event (M5 PR-4
 //     consumer wires the actual transition emit-path)
@@ -11,7 +11,7 @@
 //     §2 — the human-in-the-loop preview substrate; carries the AI draft
 //     text + ai_draft_audit_record_id; appended by POST .../outreach/draft
 //     with NO delivery/outbox/transition side-effect; multiple per
-//     engagement permitted, append-only)
+//     selection permitted, append-only)
 //   - outreach_sent: outbound message dispatched (Outreach Draft/Preview
 //     SEND — carries the FINAL sent text + the source_draft_event_id
 //     back-reference; the draft may have been edited, so drafted text and

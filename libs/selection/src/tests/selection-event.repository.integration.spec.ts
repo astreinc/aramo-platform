@@ -13,14 +13,14 @@ import { PrismaService } from '../lib/prisma/prisma.service.js';
 
 // M5 PR-2 §4.11 — integration spec for SelectionEventRepository.
 //
-// Brings up a Postgres 17 testcontainer, applies the engagement init
-// migration (PR-1) + the add_engagement_event_log migration (PR-2),
+// Brings up a Postgres 17 testcontainer, applies the selection init
+// migration (PR-1) + the add_selection_event_log migration (PR-2),
 // constructs SelectionEventRepository, and asserts:
 //   - appendEvent round-trips against real Postgres.
 //   - Intra-schema FK constraint: appending with a non-existent
-//     engagement_id is rejected by Postgres.
+//     selection_id is rejected by Postgres.
 //   - Absolute-immutability trigger: raw SQL UPDATE on any column raises
-//     check_violation with the spec'd "TalentEngagementEvent is immutable"
+//     check_violation with the spec'd "TalentSelectionEvent is immutable"
 //     message.
 //   - Enum closed-list: raw SQL insert with an invalid event_type value
 //     is rejected by Postgres at the enum-type layer.
@@ -29,17 +29,9 @@ import { PrismaService } from '../lib/prisma/prisma.service.js';
 // Dollar-quote-aware splitDdl handles the migration's CREATE FUNCTION
 // blocks (PR-1 column-scoped trigger + PR-2 absolute-immutability trigger).
 
-const ENGAGEMENT_INIT_MIGRATION_PATH = resolve(
+const SELECTION_INIT_MIGRATION_PATH = resolve(
   __dirname,
-  '../../prisma/migrations/20260525120000_init_engagement_model/migration.sql',
-);
-const ENGAGEMENT_EVENT_LOG_MIGRATION_PATH = resolve(
-  __dirname,
-  '../../prisma/migrations/20260525150000_add_engagement_event_log/migration.sql',
-);
-const ENGAGEMENT_T2P2_MIGRATION_PATH = resolve(
-  __dirname,
-  '../../prisma/migrations/20260813120000_t2p2_relocate_engagement_to_selection/migration.sql',
+  '../../prisma/migrations/20260525120000_init_selection_model/migration.sql',
 );
 
 const TENANT_A = '11111111-1111-7111-8111-111111111111';
@@ -47,8 +39,8 @@ const TENANT_B = '22222222-2222-7222-8222-222222222222';
 const TALENT = 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa';
 const REQUISITION = 'cccccccc-cccc-7ccc-8ccc-cccccccccccc';
 
-const ENGAGEMENT_A = '33333333-3333-7333-8333-333333333333';
-const ENGAGEMENT_B_TENANT_B = '44444444-4444-7444-8444-444444444444';
+const SELECTION_A = '33333333-3333-7333-8333-333333333333';
+const SELECTION_B_TENANT_B = '44444444-4444-7444-8444-444444444444';
 
 let eventSeq = 0;
 function nextEventId(): string {
@@ -68,9 +60,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const url = container.getConnectionUri();
 
       const migrations = [
-        readFileSync(ENGAGEMENT_INIT_MIGRATION_PATH, 'utf8'),
-        readFileSync(ENGAGEMENT_EVENT_LOG_MIGRATION_PATH, 'utf8'),
-        readFileSync(ENGAGEMENT_T2P2_MIGRATION_PATH, 'utf8'),
+        readFileSync(SELECTION_INIT_MIGRATION_PATH, 'utf8'),
       ];
 
       client = new PrismaService(url);
@@ -85,15 +75,15 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       repo = new SelectionEventRepository(client, makeMockLogger());
 
-      // Seed parent engagements for FK resolution.
-      await seedEngagement(client, {
-        id: ENGAGEMENT_A,
+      // Seed parent selections for FK resolution.
+      await seedSelection(client, {
+        id: SELECTION_A,
         tenant_id: TENANT_A,
         talent_id: TALENT,
         requisition_id: REQUISITION,
       });
-      await seedEngagement(client, {
-        id: ENGAGEMENT_B_TENANT_B,
+      await seedSelection(client, {
+        id: SELECTION_B_TENANT_B,
         tenant_id: TENANT_B,
         talent_id: TALENT,
         requisition_id: REQUISITION,
@@ -110,13 +100,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const view = await repo.appendEvent({
         id,
         tenant_id: TENANT_A,
-        engagement_id: ENGAGEMENT_A,
+        selection_id: SELECTION_A,
         event_type: 'state_transition',
         event_payload: { from: 'surfaced', to: 'evaluated' },
       });
       expect(view.id).toBe(id);
       expect(view.tenant_id).toBe(TENANT_A);
-      expect(view.engagement_id).toBe(ENGAGEMENT_A);
+      expect(view.selection_id).toBe(SELECTION_A);
       expect(view.event_type).toBe('state_transition');
       expect(view.event_payload).toEqual({ from: 'surfaced', to: 'evaluated' });
       expect(view.created_at).toBeInstanceOf(Date);
@@ -127,17 +117,17 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(reread?.event_payload).toEqual({ from: 'surfaced', to: 'evaluated' });
     });
 
-    it('intra-schema FK rejects append with non-existent engagement_id', async () => {
-      const ghostEngagement = '99999999-9999-7999-8999-999999999999';
+    it('intra-schema FK rejects append with non-existent selection_id', async () => {
+      const ghostSelection = '99999999-9999-7999-8999-999999999999';
       await expect(
         repo.appendEvent({
           id: nextEventId(),
           tenant_id: TENANT_A,
-          engagement_id: ghostEngagement,
+          selection_id: ghostSelection,
           event_type: 'outreach_sent',
           event_payload: {},
         }),
-      ).rejects.toThrow(/foreign key|TalentSelectionEvent_engagement_id_fkey/i);
+      ).rejects.toThrow(/foreign key|TalentSelectionEvent_selection_id_fkey/i);
     });
 
     it('absolute-immutability trigger rejects raw SQL UPDATE on any column', async () => {
@@ -145,7 +135,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await repo.appendEvent({
         id,
         tenant_id: TENANT_A,
-        engagement_id: ENGAGEMENT_A,
+        selection_id: SELECTION_A,
         event_type: 'response_received',
         event_payload: { snippet: 'hello' },
       });
@@ -156,7 +146,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
              WHERE id = '${id}'::uuid`,
         ),
       ).rejects.toThrow(
-        /TalentEngagementEvent is immutable per Charter v1\.2 §4\.4 Ruling D/,
+        /TalentSelectionEvent is immutable per Charter v1\.2 §4\.4 Ruling D/,
       );
     });
 
@@ -165,11 +155,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await expect(
         client.$executeRawUnsafe(
           `INSERT INTO selection."TalentSelectionEvent" (
-             id, tenant_id, engagement_id, event_type, event_payload
+             id, tenant_id, selection_id, event_type, event_payload
            ) VALUES (
              '${id}'::uuid,
              '${TENANT_A}'::uuid,
-             '${ENGAGEMENT_A}'::uuid,
+             '${SELECTION_A}'::uuid,
              'definitely_not_an_event_type'::selection."SelectionEventType",
              '{}'::jsonb
            )`,
@@ -182,7 +172,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await repo.appendEvent({
         id,
         tenant_id: TENANT_A,
-        engagement_id: ENGAGEMENT_A,
+        selection_id: SELECTION_A,
         event_type: 'conversation_started',
         event_payload: {},
       });
@@ -194,13 +184,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(crossTenant).toBeNull();
     });
 
-    it('findByEngagementId returns rows ASC by created_at', async () => {
-      // Append two more events on ENGAGEMENT_A and ensure ordering.
+    it('findBySelectionId returns rows ASC by created_at', async () => {
+      // Append two more events on SELECTION_A and ensure ordering.
       const idA = nextEventId();
       await repo.appendEvent({
         id: idA,
         tenant_id: TENANT_A,
-        engagement_id: ENGAGEMENT_A,
+        selection_id: SELECTION_A,
         event_type: 'outreach_sent',
         event_payload: { seq: 'first' },
       });
@@ -210,12 +200,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await repo.appendEvent({
         id: idB,
         tenant_id: TENANT_A,
-        engagement_id: ENGAGEMENT_A,
+        selection_id: SELECTION_A,
         event_type: 'response_received',
         event_payload: { seq: 'second' },
       });
-      const rows = await repo.findByEngagementId(ENGAGEMENT_A);
-      // ENGAGEMENT_A accumulates events across tests in this suite —
+      const rows = await repo.findBySelectionId(SELECTION_A);
+      // SELECTION_A accumulates events across tests in this suite —
       // we only check that idA precedes idB.
       const idAIdx = rows.findIndex((r) => r.id === idA);
       const idBIdx = rows.findIndex((r) => r.id === idB);
@@ -223,12 +213,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(idBIdx).toBeGreaterThan(idAIdx);
     });
 
-    it('findByTenantAndEngagementId scopes to tenant', async () => {
-      const tenantBView = await repo.findByTenantAndEngagementId({
+    it('findByTenantAndSelectionId scopes to tenant', async () => {
+      const tenantBView = await repo.findByTenantAndSelectionId({
         tenant_id: TENANT_B,
-        engagement_id: ENGAGEMENT_A,
+        selection_id: SELECTION_A,
       });
-      // ENGAGEMENT_A is in TENANT_A; tenant-B-scoped read returns [].
+      // SELECTION_A is in TENANT_A; tenant-B-scoped read returns [].
       expect(tenantBView).toEqual([]);
     });
   },
@@ -238,7 +228,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 // Helpers
 // -----------------------------------------------------------------------------
 
-async function seedEngagement(
+async function seedSelection(
   client: PrismaService,
   opts: {
     id: string;

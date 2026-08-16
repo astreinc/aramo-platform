@@ -93,7 +93,7 @@ export function ComplianceSection() {
         <div className="rc-card--pad set-rows">
           <SettingRow
             title="Require consent before contact"
-            sub="Contact is blocked unless contacting-consent is on the record. Enforced in the engagement layer."
+            sub="Contact is blocked unless contacting-consent is on the record. Enforced in the selection layer."
           >
             <StatChip tone="ok" dot>
               Enforced

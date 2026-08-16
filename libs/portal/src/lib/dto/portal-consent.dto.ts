@@ -2,7 +2,7 @@ import { IsIn, IsOptional, IsString } from 'class-validator';
 import { CONSENT_SCOPES, type ConsentScopeValue } from '@aramo/consent';
 
 // Portal P2 P2a (Directive §PR-1.2) — the portal-actor consent grant/revoke
-// request/response envelopes. Engagement-class (ruling 1): a consent flow names
+// request/response envelopes. Selection-class (ruling 1): a consent flow names
 // its recipient tenant — these are NOT trust-class (never in TRUST_CLASS_SCHEMAS).
 //
 // The request carries ONLY the scope (+ optionally the consent-text version the

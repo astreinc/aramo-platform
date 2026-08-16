@@ -12,7 +12,7 @@
 //      ATS entity schemas structurally hold no Core-judgment field
 //      (the Gate-5 §1 check confirmed this); the export consequently
 //      CAN'T leak any of those — there is nothing to leak. The
-//      lint:nx-boundaries graph records ZERO Core/engagement/submittal/
+//      lint:nx-boundaries graph records ZERO Core/selection/submittal/
 //      examination/talent/job_domain edges from libs/export — the
 //      structural proof.
 //

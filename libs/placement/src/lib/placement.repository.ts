@@ -10,18 +10,34 @@ import {
   INITIAL_STATE,
   isPlacementGuardReleased,
   type PlacementState,
+  type RemedyPolicy,
 } from './lifecycle/placement-lifecycle.js';
 import {
   classifyTransitionReason,
   type ReasonClassification,
   type ReasonEvidence,
 } from './reasons/placement-reason-registry.js';
+import {
+  ASSIGNMENT_ENDED_CANCELLATION_REASON,
+  isUserCancellationReasonCode,
+} from './reasons/commercial-cancellation-reasons.js';
+import { validateGuaranteeTerms, parseCalendarDate } from './permanent/guarantee-validation.js';
+import {
+  OUTBOX_PERMANENT_PLACEMENT_CREATED,
+  OUTBOX_PERMANENT_PLACEMENT_GUARANTEE_ACTIVE,
+} from './permanent/permanent-placement.repository.js';
+import {
+  resolveEffectiveTermRow,
+  resolvedTermsFromRow,
+  OUTBOX_GUARANTEE_TERMS_APPLIED,
+} from './permanent/guarantee-term.repository.js';
 import type {
   AssignmentCommercialView,
   CommercialTermsInput,
   ContractAssignmentEndReason,
   ContractAssignmentView,
   CreatePlacementInput,
+  PlacementKind,
   PlacementProcessView,
   TransitionPlacementInput,
 } from './placement-process.types.js';
@@ -40,6 +56,8 @@ interface PlacementProcessRow {
   offer_expires_at: Date | null;
   client_offer_reference: string | null;
   offer_terms_summary: string | null;
+  // Track 7 / T7-P1 — the persisted branch fact, read at the STARTED handoff.
+  placement_kind: PlacementKind | null;
   created_at: Date;
 }
 
@@ -56,6 +74,7 @@ function projectView(row: PlacementProcessRow): PlacementProcessView {
     offer_expires_at: row.offer_expires_at,
     client_offer_reference: row.client_offer_reference,
     offer_terms_summary: row.offer_terms_summary,
+    placement_kind: row.placement_kind,
     created_at: row.created_at,
   };
 }
@@ -72,6 +91,13 @@ const OUTBOX_ASSIGNMENT_ENDED = 'placement.assignment.ended';
 // served by the protected read surface (T5-P2), never the append-only, non-reset-
 // covered outbox.
 const OUTBOX_RATE_VERSION_CREATED = 'placement.assignment.rate_version.created';
+// Track 6 / T6-B3 — the AssignmentRateVersion CANCELLATION domain event. Emitted
+// exactly once per version cancelled: once for an explicit user cancellation, and
+// once per future version reconciled-as-cancelled at assignment END. Identity/
+// provenance ONLY — NEVER pay/bill/spread/margin/markup/currency/rate_period
+// (the append-only, non-reset-covered outbox convention shared with rate_version.
+// created); the cancellation reason + original effective_from are provenance, not money.
+const OUTBOX_RATE_VERSION_CANCELLED = 'placement.assignment.rate_version.cancelled';
 
 // Track 5 / T5-P1 — a decimal money string (never a float): up to 10 integer
 // digits and up to 2 fractional, matching the Decimal(12,2) column. Defensive
@@ -97,15 +123,189 @@ function isTransitionViolation(err: unknown): boolean {
   return errMessage(err).includes('only the 14 legal state transitions');
 }
 
+// Track 7 / T7-P1 — a PermanentPlacement (tenant_id, placement_process_id) unique
+// violation, translated to the exact-name PERMANENT_PLACEMENT_ALREADY_EXISTS
+// (never a generic P2002 catch). Prisma 7 + PrismaPg surfaces the raw constraint at
+// meta.driverAdapterError.cause.originalMessage / .constraint.index, NOT meta.target
+// — match on the index NAME across both the top-level message and the driver cause.
+function isPermanentPlacementDuplicate(err: unknown): boolean {
+  const NAME = 'PermanentPlacement_tenant_process_key';
+  if (errMessage(err).includes(NAME)) return true;
+  if (typeof err !== 'object' || err === null) return false;
+  const cause = (
+    err as { meta?: { driverAdapterError?: { cause?: { originalMessage?: unknown; constraint?: { index?: unknown } } } } }
+  ).meta?.driverAdapterError?.cause;
+  const orig = typeof cause?.originalMessage === 'string' ? cause.originalMessage : '';
+  if (orig.includes(NAME)) return true;
+  const idx = cause?.constraint?.index;
+  return typeof idx === 'string' && idx.includes(NAME);
+}
+
+// Track 6 / T6-B2 — the AssignmentRateVersion DB constraints raise by CONSTRAINT
+// NAME, which Prisma 7 (PrismaPg adapter) surfaces NOT at `meta.target` but at
+// `meta.driverAdapterError.cause.originalMessage` / `.constraint` (the raw
+// partial-index / exclusion shape — the E6 P2002 trap). A unique 23505 via the
+// client MAY also populate `meta.target`. Gather every available message string so the
+// named-constraint match is robust across shapes; NEVER a generic P2002/23505/
+// 23P01 catch (the PIPELINE_EPISODE_ALREADY_LIVE / REQUISITION_EXTERNAL_IDENTITY_
+// CONFLICT contract). The overlap EXCLUDE (23P01) has no Prisma code at all.
+function constraintText(err: unknown): string {
+  if (typeof err !== 'object' || err === null) return '';
+  const e = err as {
+    message?: unknown;
+    meta?: { target?: unknown; driverAdapterError?: { cause?: { originalMessage?: unknown; constraint?: unknown } } };
+  };
+  const parts: string[] = [];
+  if (typeof e.message === 'string') parts.push(e.message);
+  if (Array.isArray(e.meta?.target)) parts.push(e.meta!.target!.join(','));
+  const cause = e.meta?.driverAdapterError?.cause;
+  if (cause) {
+    if (typeof cause.originalMessage === 'string') parts.push(cause.originalMessage);
+    const c = cause.constraint as { index?: unknown; fields?: unknown } | string | undefined;
+    if (typeof c === 'string') parts.push(c);
+    else if (c && typeof c === 'object') {
+      if (typeof c.index === 'string') parts.push(c.index);
+      if (Array.isArray(c.fields)) parts.push(c.fields.join(','));
+    }
+  }
+  return parts.join(' | ');
+}
+function isWindowOverlapViolation(err: unknown): boolean {
+  return constraintText(err).includes('AssignmentRateVersion_no_window_overlap_excl');
+}
+function isDuplicateEffectiveFromViolation(err: unknown): boolean {
+  return constraintText(err).includes('AssignmentRateVersion_tenant_assignment_effective_key');
+}
+
 // PlacementRepository — create + governed transition + event persistence for
 // the PlacementProcess spine (Track 3 / E1-a §9).
 //
 // The DB trigger is the authority (the one-live-attempt guard and the 14-edge
 // matrix are enforced there, generated from the registry). The repository adds
-// the dominant submittal/engagement pattern: a pre-emptive application-layer
+// the dominant submittal/selection pattern: a pre-emptive application-layer
 // guard that returns a structured domain error BEFORE the SQL, with the trigger
 // as the race-safe floor caught by message substring. Raw Postgres exceptions
 // are never surfaced to the caller (§ error handling).
+// Track 7 / T7-P3 — the resolved permanent-activation snapshot (directive §3.4 / §7). The
+// employment start is always a per-placement fact; duration/remedy/exposure/currency come
+// from the canonical stored guarantee-term version when one is effective, else from the
+// legacy explicit guarantee_terms. The four *_source*/version fields are the copied
+// provenance (NULL for the legacy path).
+interface PermanentActivation {
+  readonly guarantee_start_date: Date;
+  readonly guarantee_duration_days: number;
+  readonly guarantee_end_date: Date;
+  readonly remedy_policy: RemedyPolicy;
+  readonly guarantee_exposure_amount: string;
+  readonly guarantee_exposure_currency: string;
+  readonly terms_source: string;
+  readonly recorded_by: string;
+  readonly guarantee_term_version_id: string | null;
+  readonly guarantee_terms_source_type: string | null;
+  readonly guarantee_terms_source_reference: string | null;
+  readonly guarantee_terms_source_version: string | null;
+}
+
+function addUtcDaysLocal(start: Date, days: number): Date {
+  const end = new Date(start.getTime());
+  end.setUTCDate(end.getUTCDate() + days);
+  return end;
+}
+
+// Resolve the PERMANENT activation snapshot BEFORE any mutation (directive §3.4). Precedence:
+// exactly one effective stored version => copy it (canonical); a conflicting explicit input =>
+// reject; 0 stored + legacy explicit terms => legacy path; 0 stored + no explicit terms => fail
+// closed; >1 effective => fail closed ambiguous (in resolveEffectiveTermRow). No live-read after.
+async function resolvePermanentActivation(
+  prisma: PrismaService,
+  requisition_id: string,
+  input: TransitionPlacementInput,
+  requestId: string,
+): Promise<PermanentActivation> {
+  const recorded_by = input.recorded_by;
+  if (!recorded_by) {
+    throw new AramoError('VALIDATION_ERROR', 'a recording principal (recorded_by) is required to start a permanent placement', 400, {
+      requestId,
+      details: { field: 'recorded_by' },
+    });
+  }
+
+  // Employment start (per-placement fact): the legacy bundle's start when present, else the
+  // standalone guarantee_start_date. Required either way.
+  const startStr = input.guarantee_terms?.guarantee_start_date ?? input.guarantee_start_date ?? null;
+  if (startStr == null) {
+    throw new AramoError('PERMANENT_PLACEMENT_TERMS_REQUIRED', 'a permanent start requires guarantee_start_date (or the legacy guarantee_terms)', 422, {
+      requestId,
+      details: { reason: 'guarantee_start_date_required' },
+    });
+  }
+  const start = parseCalendarDate(startStr);
+  if (start === null) {
+    throw new AramoError('PERMANENT_PLACEMENT_GUARANTEE_WINDOW_INVALID', 'guarantee_start_date is not a valid calendar date', 422, {
+      requestId,
+      details: { reason: 'start_date_invalid', guarantee_start_date: startStr },
+    });
+  }
+
+  // Stored terms are canonical when an effective version exists (§3.4).
+  const storedRow = await resolveEffectiveTermRow(prisma, input.tenant_id, requisition_id, start, requestId);
+  if (storedRow !== null) {
+    const resolved = resolvedTermsFromRow(storedRow);
+    // A conflicting explicit input, if ALSO supplied, is rejected (never silently ignored).
+    if (input.guarantee_terms != null) {
+      const explicit = validateGuaranteeTerms(input.guarantee_terms, recorded_by, requestId);
+      const conflict =
+        explicit.guarantee_duration_days !== resolved.guarantee_duration_days ||
+        explicit.remedy_policy !== resolved.remedy_policy ||
+        Number(explicit.guarantee_exposure_amount).toFixed(2) !== resolved.guarantee_exposure_amount ||
+        explicit.guarantee_exposure_currency !== resolved.currency;
+      if (conflict) {
+        throw new AramoError('VALIDATION_ERROR', 'the supplied guarantee_terms conflict with the canonical stored guarantee-term version', 400, {
+          requestId,
+          details: { reason: 'explicit_terms_conflict_with_stored', requisition_id, guarantee_term_version_id: resolved.guarantee_term_version_id },
+        });
+      }
+    }
+    return {
+      guarantee_start_date: start,
+      guarantee_duration_days: resolved.guarantee_duration_days,
+      guarantee_end_date: addUtcDaysLocal(start, resolved.guarantee_duration_days),
+      remedy_policy: resolved.remedy_policy,
+      guarantee_exposure_amount: resolved.guarantee_exposure_amount,
+      guarantee_exposure_currency: resolved.currency,
+      terms_source: resolved.source_type,
+      recorded_by,
+      guarantee_term_version_id: resolved.guarantee_term_version_id,
+      guarantee_terms_source_type: resolved.source_type,
+      guarantee_terms_source_reference: resolved.source_reference,
+      guarantee_terms_source_version: resolved.source_version,
+    };
+  }
+
+  // No stored version: legacy explicit P1 path when full terms are present, else fail closed.
+  if (input.guarantee_terms == null) {
+    throw new AramoError('PERMANENT_PLACEMENT_TERMS_NOT_FOUND', 'no guarantee-term version is effective for the requisition and no explicit guarantee_terms were supplied', 404, {
+      requestId,
+      details: { requisition_id, reason: 'no_stored_terms_no_explicit_input' },
+    });
+  }
+  const legacy = validateGuaranteeTerms(input.guarantee_terms, recorded_by, requestId);
+  return {
+    guarantee_start_date: legacy.guarantee_start_date,
+    guarantee_duration_days: legacy.guarantee_duration_days,
+    guarantee_end_date: legacy.guarantee_end_date,
+    remedy_policy: legacy.remedy_policy,
+    guarantee_exposure_amount: legacy.guarantee_exposure_amount,
+    guarantee_exposure_currency: legacy.guarantee_exposure_currency,
+    terms_source: legacy.terms_source,
+    recorded_by: legacy.recorded_by,
+    guarantee_term_version_id: null,
+    guarantee_terms_source_type: null,
+    guarantee_terms_source_reference: null,
+    guarantee_terms_source_version: null,
+  };
+}
+
 @Injectable()
 export class PlacementRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -192,6 +392,11 @@ export class PlacementRepository {
             offer_terms_summary: input.offer_terms_summary ?? null,
             // E4 — replacement lineage, written once at INSERT (§4/§5).
             replaces_placement_process_id: replacesId,
+            // Track 7 / T7-P1 — the permanent-vs-contract branch fact, written
+            // once at INSERT (§3.1). NULL when the caller is kind-agnostic
+            // (legacy/CONTRACT-compatible at STARTED); an explicit PERMANENT is
+            // required to later start a permanent placement.
+            placement_kind: input.placement_kind ?? null,
           },
         })) as PlacementProcessRow;
         await tx.outboxEvent.create({
@@ -267,12 +472,46 @@ export class PlacementRepository {
     }
     const evidence: ReasonEvidence | null = classification.evidence;
 
-    // Track 4 / T4-A1 — a transition to STARTED materialises the authoritative
-    // ContractAssignment, whose FORWARD provenance requires a company snapshot
-    // (the DB CHECK). Validate the caller supplied it BEFORE the tx, so a missing
-    // context is a clean 422, never a raw check_violation rollback (§4: the org
-    // snapshot is caller-supplied — placement performs no cross-schema read).
-    if (input.to === 'STARTED' && !input.assignment_context?.company_id) {
+    // Track 7 / T7-P1 — the persisted branch fact decides which post-start
+    // aggregate STARTED materialises (§3.1). PERMANENT -> PermanentPlacement (the
+    // guarantee path); CONTRACT or legacy NULL -> ContractAssignment (the existing
+    // path, backward-compatible). Read from the AGGREGATE, never a transient flag.
+    const isStart = input.to === 'STARTED';
+    const isPermanentStart = isStart && current.placement_kind === 'PERMANENT';
+
+    // guarantee_terms belong ONLY to the PERMANENT start seam — the symmetric
+    // mirror of commercial_terms. Supplying them on a CONTRACT/NULL start or a
+    // non-STARTED target is a fail-closed misuse: a placement whose kind is not an
+    // explicit PERMANENT cannot be started permanent (§3.1 — the branch is proven
+    // from the persisted fact, never inferred from the presence of terms).
+    if (input.guarantee_terms != null && !isPermanentStart) {
+      throw new AramoError('VALIDATION_ERROR', 'guarantee_terms may only be supplied on a transition to STARTED of a PERMANENT placement', 400, {
+        requestId,
+        details: { field: 'guarantee_terms', to_state: input.to, placement_kind: current.placement_kind },
+      });
+    }
+    if (input.guarantee_start_date != null && !isPermanentStart) {
+      throw new AramoError('VALIDATION_ERROR', 'guarantee_start_date may only be supplied on a transition to STARTED of a PERMANENT placement', 400, {
+        requestId,
+        details: { field: 'guarantee_start_date', to_state: input.to, placement_kind: current.placement_kind },
+      });
+    }
+
+    // Track 7 / T7-P3 — resolve the governed activation snapshot BEFORE the transaction
+    // (fail-closed, ZERO mutation). Stored guarantee-term versions are canonical when one is
+    // effective as-of the employment start; else the legacy explicit guarantee_terms; else
+    // fail closed (§3.4). Copy-at-activation — the snapshot is frozen, no live-read afterward.
+    const permanentActivation = isPermanentStart
+      ? await resolvePermanentActivation(this.prisma, current.requisition_id, input, requestId)
+      : null;
+
+    // Track 4 / T4-A1 — a CONTRACT transition to STARTED materialises the
+    // authoritative ContractAssignment, whose FORWARD provenance requires a company
+    // snapshot (the DB CHECK). Validate the caller supplied it BEFORE the tx, so a
+    // missing context is a clean 422, never a raw check_violation rollback (§4: the
+    // org snapshot is caller-supplied — placement performs no cross-schema read).
+    // NOT required for a PERMANENT start (no ContractAssignment is minted — §6).
+    if (isStart && !isPermanentStart && !input.assignment_context?.company_id) {
       throw new AramoError(
         'PLACEMENT_START_CONTEXT_REQUIRED',
         'Starting a placement requires assignment org context (company_id)',
@@ -286,12 +525,13 @@ export class PlacementRepository {
 
     // Track 5 / T5-P1 — commercial-terms policy, validated BEFORE the transaction
     // so a missing/invalid payload is a clean 422/400 with ZERO mutation
-    // (Amendment A1-3). Commercial terms belong ONLY to the FORWARD assignment-start
-    // seam: REQUIRED for STARTED, REJECTED for every other target (never silently
-    // discarded). currency/rate_period are checked against the libs/common shared
-    // closed sets; amounts against the Decimal(12,2) money shape. Company defaults
-    // and requisition targets are NEVER promoted here — only the explicit payload.
-    if (input.to === 'STARTED') {
+    // (Amendment A1-3). Commercial terms belong ONLY to the FORWARD CONTRACT
+    // assignment-start seam: REQUIRED for a CONTRACT STARTED, REJECTED for a
+    // PERMANENT start (which mints no AssignmentRateVersion — §6) and for every
+    // other target (never silently discarded). currency/rate_period are checked
+    // against the libs/common shared closed sets; amounts against the Decimal(12,2)
+    // money shape. Company defaults and requisition targets are NEVER promoted here.
+    if (isStart && !isPermanentStart) {
       const terms = input.commercial_terms;
       if (!terms) {
         throw new AramoError(
@@ -314,7 +554,7 @@ export class PlacementRepository {
         throw new AramoError('VALIDATION_ERROR', 'a recording principal (recorded_by) is required for commercial terms', 400, { requestId, details: { field: 'recorded_by' } });
       }
     } else if (input.commercial_terms != null) {
-      throw new AramoError('VALIDATION_ERROR', 'commercial_terms may only be supplied on a transition to STARTED', 400, { requestId, details: { field: 'commercial_terms', to_state: input.to } });
+      throw new AramoError('VALIDATION_ERROR', 'commercial_terms may only be supplied on a transition to STARTED of a CONTRACT placement', 400, { requestId, details: { field: 'commercial_terms', to_state: input.to, placement_kind: current.placement_kind } });
     }
 
     // ONE transaction-level effective instant (Amendment A1-8): the ContractAssignment
@@ -378,13 +618,98 @@ export class PlacementRepository {
             },
           },
         });
-        // Track 4 / T4-A1 — the forward STARTED -> ContractAssignment path. When a
-        // placement starts, its authoritative post-start assignment is created in
-        // the SAME transaction (the §10 assignment/capacity atomicity foundation).
-        // start fact = now; provenance FORWARD; lifecycle ACTIVE; org snapshot is
-        // caller-supplied (no cross-schema read, §4). The unique
-        // (tenant_id, placement_process_id) index is the idempotency floor.
-        if (input.to === 'STARTED') {
+        // Track 7 / T7-P1 — the PERMANENT STARTED -> PermanentPlacement path. When
+        // a PERMANENT placement starts, its first-class post-start PermanentPlacement
+        // is created in the SAME transaction (§6), in GUARANTEE_ACTIVE, carrying the
+        // immutable guarantee snapshot validated above. NO ContractAssignment and NO
+        // AssignmentRateVersion are minted on this branch (§6 / §3.2 — branch
+        // exclusivity). The unique (tenant_id, placement_process_id) index is the
+        // idempotency + exclusivity floor (a replay cannot double-insert, and a
+        // placement never materialises both a ContractAssignment and a
+        // PermanentPlacement). Append-only event + transactional outbox, PII-free.
+        if (isPermanentStart) {
+          const act = permanentActivation as NonNullable<typeof permanentActivation>;
+          const permanentId = uuidv7();
+          await tx.permanentPlacement.create({
+            data: {
+              id: permanentId,
+              tenant_id: input.tenant_id,
+              placement_process_id: input.placement_process_id,
+              submittal_id: current.submittal_id,
+              requisition_id: current.requisition_id,
+              talent_record_id: current.talent_record_id,
+              lifecycle_state: 'GUARANTEE_ACTIVE',
+              guarantee_start_date: act.guarantee_start_date,
+              guarantee_duration_days: act.guarantee_duration_days,
+              guarantee_end_date: act.guarantee_end_date,
+              remedy_policy: act.remedy_policy,
+              guarantee_exposure_amount: act.guarantee_exposure_amount,
+              guarantee_exposure_currency: act.guarantee_exposure_currency,
+              terms_source: act.terms_source,
+              recorded_by: act.recorded_by,
+              // T7-P3 — copy-at-activation provenance (NULL for the legacy path); frozen by
+              // the snapshot-immutability trigger.
+              guarantee_term_version_id: act.guarantee_term_version_id,
+              guarantee_terms_source_type: act.guarantee_terms_source_type,
+              guarantee_terms_source_reference: act.guarantee_terms_source_reference,
+              guarantee_terms_source_version: act.guarantee_terms_source_version,
+            },
+          });
+          // Append-only activation event (from null -> GUARANTEE_ACTIVE).
+          await tx.permanentPlacementEvent.create({
+            data: {
+              id: uuidv7(),
+              tenant_id: input.tenant_id,
+              permanent_placement_id: permanentId,
+              event_type: 'state_transition',
+              event_payload: { from: null, to: 'GUARANTEE_ACTIVE' },
+            },
+          });
+          // Two governed outbox events (§12): the aggregate creation and its
+          // guarantee activation. Identity + governed window facts ONLY — NO PII,
+          // NO pay/bill/margin/markup, no free-text notes. (The exposure amount is
+          // deliberately withheld from the append-only, non-reset-covered outbox,
+          // mirroring the rate_version.created identity-only convention.)
+          const permanentOutboxPayload = {
+            tenant_id: input.tenant_id,
+            permanent_placement_id: permanentId,
+            placement_process_id: input.placement_process_id,
+            submittal_id: current.submittal_id,
+            requisition_id: current.requisition_id,
+            talent_record_id: current.talent_record_id,
+            lifecycle_state: 'GUARANTEE_ACTIVE',
+            guarantee_start_date: act.guarantee_start_date.toISOString().slice(0, 10),
+            guarantee_end_date: act.guarantee_end_date.toISOString().slice(0, 10),
+            remedy_policy: act.remedy_policy,
+            occurred_at: startedAt.toISOString(),
+          };
+          await tx.outboxEvent.create({
+            data: { id: uuidv7(), tenant_id: input.tenant_id, event_type: OUTBOX_PERMANENT_PLACEMENT_CREATED, event_payload: permanentOutboxPayload },
+          });
+          await tx.outboxEvent.create({
+            data: { id: uuidv7(), tenant_id: input.tenant_id, event_type: OUTBOX_PERMANENT_PLACEMENT_GUARANTEE_ACTIVE, event_payload: permanentOutboxPayload },
+          });
+          // T7-P3 — when a stored guarantee-term version was applied, emit the governed
+          // "applied" event (§9). Safe payload only: identity + version id + source_type; NO
+          // exposure amount, source_reference, source_version, free text, or PII.
+          if (act.guarantee_term_version_id !== null) {
+            await tx.outboxEvent.create({
+              data: {
+                id: uuidv7(),
+                tenant_id: input.tenant_id,
+                event_type: OUTBOX_GUARANTEE_TERMS_APPLIED,
+                event_payload: {
+                  tenant_id: input.tenant_id,
+                  requisition_id: current.requisition_id,
+                  permanent_placement_id: permanentId,
+                  guarantee_term_version_id: act.guarantee_term_version_id,
+                  source_type: act.guarantee_terms_source_type,
+                  occurred_at: startedAt.toISOString(),
+                },
+              },
+            });
+          }
+        } else if (input.to === 'STARTED') {
           const ctx = input.assignment_context;
           const terms = input.commercial_terms as CommercialTermsInput;
           const assignmentId = uuidv7();
@@ -456,6 +781,15 @@ export class PlacementRepository {
       if (isTransitionViolation(err)) {
         throw this.stateInvalid(current.state, input.to, requestId, input.placement_process_id);
       }
+      // Track 7 / T7-P1 — race-safe branch-exclusivity/idempotency floor: two
+      // concurrent PERMANENT starts that both pass the pre-check collide on the
+      // (tenant, placement_process_id) unique key. Translate to the exact-name 409.
+      if (isPermanentStart && isPermanentPlacementDuplicate(err)) {
+        throw new AramoError('PERMANENT_PLACEMENT_ALREADY_EXISTS', 'a PermanentPlacement already exists for this placement', 409, {
+          requestId,
+          details: { placement_process_id: input.placement_process_id, reason: 'permanent_placement_already_exists' },
+        });
+      }
       throw err;
     }
   }
@@ -467,12 +801,31 @@ export class PlacementRepository {
   // capacity. Only an ACTIVE assignment transitions; a no-op returns NOT_FOUND so
   // the caller cannot mistake an absent/already-ended assignment for a state flip.
   async endAssignment(
-    input: { tenant_id: string; placement_process_id: string; end_reason: ContractAssignmentEndReason },
+    input: {
+      tenant_id: string;
+      placement_process_id: string;
+      end_reason: ContractAssignmentEndReason;
+      // T6-B3 §16 — the acting principal (JWT sub) recorded as cancelled_by on
+      // every commercial version END reconciliation withdraws (ASSIGNMENT_ENDED).
+      ended_by: string;
+    },
     requestId: string,
   ): Promise<void> {
-    // §10 / T4-D — the state flip and its domain event commit atomically or not at
-    // all: an assignment cannot end without its evidence, nor emit without ending.
+    // §10 / T4-D + T6-B3 §16 — the state flip, the mandatory commercial-window
+    // reconciliation, and every domain event commit atomically or not at all: an
+    // assignment cannot end leaving a future commercial version selectable, nor
+    // reconcile without ending, nor emit without both.
     await this.prisma.$transaction(async (tx) => {
+      // T6-B2 §12.1 / T6-B3 §19 — take the SAME per-assignment row lock the
+      // revision + cancellation transactions take, FIRST, so END serializes against
+      // revision, explicit cancellation, and a concurrent END (the sole primitive).
+      await tx.$executeRawUnsafe(
+        `SELECT "id" FROM "placement"."ContractAssignment"
+          WHERE "tenant_id" = $1::uuid AND "placement_process_id" = $2::uuid
+          FOR UPDATE`,
+        input.tenant_id,
+        input.placement_process_id,
+      );
       const existing = (await tx.contractAssignment.findFirst({
         where: { tenant_id: input.tenant_id, placement_process_id: input.placement_process_id, lifecycle_state: 'ACTIVE' },
         select: { id: true, submittal_id: true, requisition_id: true, talent_record_id: true },
@@ -483,11 +836,78 @@ export class PlacementRepository {
           details: { placement_process_id: input.placement_process_id, reason: 'active_assignment_not_found' },
         });
       }
+
+      // §15 — derive ONE server instant T_end, reused for ContractAssignment.ended_at,
+      // commercial-window reconciliation, and the assignment-ended event occurrence.
+      // No independent clocks.
+      const tEnd = new Date();
+
+      // §16 — the non-cancelled commercial sequence at END, ascending. Reconciliation
+      // guarantees NO non-cancelled version remains effective beyond T_end.
+      const versions = await tx.assignmentRateVersion.findMany({
+        where: { tenant_id: input.tenant_id, contract_assignment_id: existing.id, cancelled_at: null },
+        orderBy: { effective_from: 'asc' },
+      });
+
+      // §18 — an END transaction may need cancellation, future-boundary re-open, AND
+      // final first-close, so it sets BOTH governed markers (never one broad marker).
+      await tx.$executeRawUnsafe(`SET LOCAL app.assignment_commercial_cancellation = 'authorized'`);
+      await tx.$executeRawUnsafe(`SET LOCAL app.assignment_commercial_revision = 'authorized'`);
+
+      // §16.5 — cancel every version starting at or after T_end (ASSIGNMENT_ENDED),
+      // emitting one rate_version.cancelled event each. These future/boundary-start
+      // windows can never become effective commercial truth for an ended assignment.
+      for (const v of versions) {
+        if (v.effective_from.getTime() >= tEnd.getTime()) {
+          await tx.assignmentRateVersion.update({
+            where: { id: v.id },
+            data: {
+              cancelled_at: tEnd,
+              cancelled_by: input.ended_by,
+              cancellation_reason_code: ASSIGNMENT_ENDED_CANCELLATION_REASON,
+            },
+          });
+          await tx.outboxEvent.create({
+            data: this.cancelledEventData({
+              tenant_id: input.tenant_id,
+              placement_process_id: input.placement_process_id,
+              contract_assignment_id: existing.id,
+              assignment_rate_version_id: v.id,
+              original_effective_from: v.effective_from,
+              cancelled_by: input.ended_by,
+              cancellation_reason_code: ASSIGNMENT_ENDED_CANCELLATION_REASON,
+              occurred_at: tEnd,
+            }),
+          });
+        }
+      }
+
+      // §16.6/§16.7 — the version whose half-open interval CONTAINS T_end
+      // (effective_from < T_end AND (effective_to IS NULL OR effective_to > T_end))
+      // must end EXACTLY at T_end. A version already ending exactly at T_end, or one
+      // whose start coincides with T_end (cancelled above), needs no boundary edit —
+      // then there is no containing version and the sequence is already reconciled.
+      const containing = versions.find(
+        (v) =>
+          v.effective_from.getTime() < tEnd.getTime() &&
+          (v.effective_to === null || v.effective_to.getTime() > tEnd.getTime()),
+      );
+      if (containing !== undefined) {
+        // A bounded future boundary is first RE-OPENED (its close was never-effective),
+        // leaving a single open tail after the future-cancel pass, THEN first-closed at
+        // T_end. An already-open tail is first-closed directly. Both land on [start,T_end).
+        if (containing.effective_to !== null) {
+          await tx.assignmentRateVersion.update({ where: { id: containing.id }, data: { effective_to: null } });
+        }
+        await tx.assignmentRateVersion.update({ where: { id: containing.id }, data: { effective_to: tEnd } });
+      }
+
       await tx.contractAssignment.update({
         where: { id: existing.id },
         // The ratified ending reason is recorded structurally (COMPLETED /
-        // WORKER_ENDED / CLIENT_ENDED), atomically with the state flip.
-        data: { lifecycle_state: 'ENDED', end_reason: input.end_reason },
+        // WORKER_ENDED / CLIENT_ENDED), atomically with the state flip and the
+        // durable T_end instant (§15).
+        data: { lifecycle_state: 'ENDED', end_reason: input.end_reason, ended_at: tEnd },
       });
       await tx.outboxEvent.create({
         data: {
@@ -502,7 +922,7 @@ export class PlacementRepository {
             requisition_id: existing.requisition_id,
             talent_record_id: existing.talent_record_id,
             end_reason: input.end_reason,
-            occurred_at: new Date().toISOString(),
+            occurred_at: tEnd.toISOString(),
           },
         },
       });
@@ -535,22 +955,27 @@ export class PlacementRepository {
     return row;
   }
 
-  // Track 5 / T5-P2 — the CURRENT-effective commercial projection of the assignment
-  // on a placement. Reads the tenant-scoped ContractAssignment to resolve the
-  // assignment id + lineage, then the CURRENT effective AssignmentRateVersion
-  // (effective_from <= now AND (effective_to IS NULL OR effective_to > now)), and
-  // derives spread/margin/markup ON READ (deriveCommercialMetrics — never stored).
-  // Returns null on coherent absence: no assignment, or no active version. Visibility
+  // Track 6 / T6-B1 — the canonical point-in-time commercial projection of the
+  // assignment on a placement. Reads the tenant-scoped ContractAssignment to resolve
+  // the assignment id + lineage, then the AS-OF effective AssignmentRateVersion
+  // (cancelled_at IS NULL AND effective_from <= asOf AND (effective_to IS NULL OR
+  // effective_to > asOf)), and derives spread/margin/markup ON READ
+  // (deriveCommercialMetrics — never stored). asOf defaults to the current instant so
+  // every existing caller keeps its "now" behaviour; historical (asOf < now) and
+  // future-preview (asOf > now) resolution are expressed by an explicit asOf and are
+  // internal-only in B1 (no new route/param). Returns null on coherent absence: no
+  // assignment, or no selectable version. Cancelled versions are ignored. Visibility
   // is enforced by the caller loading the placement through findByIdForActor FIRST
-  // (house pattern), so this can never reveal a non-visible row. NOTE: at-most-one
-  // active version is NOT a DB invariant (the only unique key is
-  // (tenant,assignment,effective_from); T6 owns overlap prevention). For T5-P1 data
-  // exactly one active version exists; the resolver is deterministic (latest
-  // effective_from wins) so a read never breaks on a hypothetical overlap.
+  // (house pattern) — placement_process_id stays the public anchor and the assignment
+  // UUID is never a public visibility boundary. NOTE: from T6-B1 a btree_gist EXCLUDE
+  // prevents overlapping non-cancelled windows at the DB, so sanctioned writes can no
+  // longer create ambiguity; the AT-MOST-TWO fetch + fail-closed check below is
+  // retained as legacy/corruption defence, never a winner-picker.
   async findAssignmentCommercialProjection(
     tenant_id: string,
     placement_process_id: string,
     requestId: string,
+    asOf: Date = new Date(),
   ): Promise<AssignmentCommercialView | null> {
     const assignment = await this.prisma.contractAssignment.findFirst({
       where: { tenant_id, placement_process_id },
@@ -558,17 +983,16 @@ export class PlacementRepository {
     });
     if (assignment === null) return null;
 
-    const now = new Date();
-    // Fetch AT MOST TWO effective versions so overlap is DETECTED, not silently
-    // collapsed to a latest-wins winner. T5-P2 is read-side detection only; T6 owns
-    // prevention/correction. There is no DB invariant guaranteeing a single active
-    // version (only unique key = (tenant, assignment, effective_from)).
+    // Fetch AT MOST TWO effective versions so a legacy/corrupt overlap is DETECTED,
+    // not silently collapsed to a latest-wins winner. Cancelled versions never
+    // participate in resolution (they also drop out of the DB overlap constraint).
     const active = await this.prisma.assignmentRateVersion.findMany({
       where: {
         tenant_id,
         contract_assignment_id: assignment.id,
-        effective_from: { lte: now },
-        OR: [{ effective_to: null }, { effective_to: { gt: now } }],
+        cancelled_at: null,
+        effective_from: { lte: asOf },
+        OR: [{ effective_to: null }, { effective_to: { gt: asOf } }],
       },
       orderBy: { effective_from: 'desc' },
       take: 2,
@@ -614,6 +1038,326 @@ export class PlacementRepository {
       recorded_by: version.recorded_by,
       created_at: version.created_at,
     };
+  }
+
+  // Track 6 / T6-B2 — the first governed POST-START commercial revision. Open-tail
+  // ONLY (§3): close the single non-cancelled OPEN predecessor at T_new, then append
+  // the successor at [T_new, ∞). ACTIVE-only, atomic, and serialized against
+  // endAssignment by a FOR UPDATE lock on the owning ContractAssignment. The clock is
+  // read ONCE — the same T_new bounds the predecessor close and the successor open.
+  async createCommercialRevision(
+    input: {
+      tenant_id: string;
+      placement_process_id: string;
+      pay_rate_amount: string;
+      bill_rate_amount: string;
+      currency: string;
+      rate_period: string;
+      effective_from?: string | null;
+      change_reason: string;
+      recorded_by: string;
+    },
+    requestId: string,
+  ): Promise<AssignmentCommercialView> {
+    // Pre-transaction, ZERO-mutation validation (mirrors the STARTED write boundary).
+    if (!isIso4217Currency(input.currency)) {
+      throw new AramoError('VALIDATION_ERROR', 'currency must be a valid ISO-4217 code', 400, { requestId, details: { field: 'currency' } });
+    }
+    if (!isRatePeriod(input.rate_period)) {
+      throw new AramoError('VALIDATION_ERROR', 'rate_period must be a supported value', 400, { requestId, details: { field: 'rate_period' } });
+    }
+    if (!MONEY_12_2.test(input.pay_rate_amount) || !MONEY_12_2.test(input.bill_rate_amount)) {
+      throw new AramoError('VALIDATION_ERROR', 'pay/bill must be a non-negative Decimal(12,2) money string', 400, { requestId, details: { field: 'amount' } });
+    }
+    const changeReason = input.change_reason.trim();
+    if (changeReason.length === 0) {
+      throw new AramoError('VALIDATION_ERROR', 'change_reason is required', 400, { requestId, details: { field: 'change_reason' } });
+    }
+    const now = new Date();
+    let tNew = now;
+    if (input.effective_from != null) {
+      const parsed = new Date(input.effective_from);
+      if (Number.isNaN(parsed.getTime())) {
+        throw new AramoError('VALIDATION_ERROR', 'effective_from must be a valid ISO-8601 instant', 400, { requestId, details: { field: 'effective_from' } });
+      }
+      // No backdating (§6.1): a supplied instant materially in the past is refused.
+      if (parsed.getTime() < now.getTime()) {
+        throw new AramoError('VALIDATION_ERROR', 'effective_from cannot be in the past', 400, { requestId, details: { field: 'effective_from', reason: 'effective_from_in_past' } });
+      }
+      tNew = parsed;
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      // §12.1 — lock the owning assignment row FIRST. endAssignment takes the SAME
+      // lock, serializing revision-vs-revision AND revision-vs-end (no shared column
+      // otherwise couples them).
+      const locked = await tx.$queryRawUnsafe<
+        Array<{ id: string; requisition_id: string; talent_record_id: string; lifecycle_state: string | null }>
+      >(
+        `SELECT "id", "requisition_id", "talent_record_id", "lifecycle_state"::text AS "lifecycle_state"
+           FROM "placement"."ContractAssignment"
+          WHERE "tenant_id" = $1::uuid AND "placement_process_id" = $2::uuid
+          FOR UPDATE`,
+        input.tenant_id,
+        input.placement_process_id,
+      );
+      const assignment = locked[0];
+      if (assignment === undefined) {
+        throw new AramoError('NOT_FOUND', 'No ContractAssignment for placement', 404, { requestId, details: { placement_process_id: input.placement_process_id, reason: 'assignment_not_found' } });
+      }
+      if (assignment.lifecycle_state !== 'ACTIVE') {
+        throw new AramoError('NOT_FOUND', 'No active ContractAssignment to revise', 404, { requestId, details: { placement_process_id: input.placement_process_id, reason: 'active_assignment_not_found' } });
+      }
+      // The open tail = the single non-cancelled version with NULL effective_to (B1's
+      // overlap EXCLUDE guarantees at most one). No open version → nothing to revise
+      // (a BACKFILLED assignment lacking initial terms lands here — §4).
+      const predecessor = await tx.assignmentRateVersion.findFirst({
+        where: { tenant_id: input.tenant_id, contract_assignment_id: assignment.id, cancelled_at: null, effective_to: null },
+      });
+      if (predecessor === null) {
+        throw new AramoError('NOT_FOUND', 'No open commercial version to revise', 404, { requestId, details: { placement_process_id: input.placement_process_id, reason: 'open_commercial_version_not_found' } });
+      }
+      if (tNew.getTime() <= predecessor.effective_from.getTime()) {
+        throw new AramoError('VALIDATION_ERROR', 'effective_from must be after the current version start', 400, { requestId, details: { field: 'effective_from', reason: 'effective_from_not_after_current' } });
+      }
+
+      const successorId = uuidv7();
+      try {
+        // §11 — the governed effective_to first-close (B1 capability) under the
+        // transaction-local marker, confined to this method; then append the
+        // successor and its atomic outbox event.
+        await tx.$executeRawUnsafe(`SET LOCAL app.assignment_commercial_revision = 'authorized'`);
+        await tx.assignmentRateVersion.update({ where: { id: predecessor.id }, data: { effective_to: tNew } });
+        const successor = await tx.assignmentRateVersion.create({
+          data: {
+            id: successorId,
+            tenant_id: input.tenant_id,
+            contract_assignment_id: assignment.id,
+            requisition_id: assignment.requisition_id,
+            talent_record_id: assignment.talent_record_id,
+            pay_rate_amount: input.pay_rate_amount,
+            bill_rate_amount: input.bill_rate_amount,
+            currency: input.currency,
+            rate_period: input.rate_period,
+            effective_from: tNew,
+            recorded_by: input.recorded_by,
+            change_reason: changeReason,
+          },
+        });
+        // Atomic outbox: identity/provenance ONLY (money EXCLUDED, A2 §8) + the
+        // superseded predecessor id so a consumer can walk the revision chain.
+        await tx.outboxEvent.create({
+          data: {
+            id: uuidv7(),
+            tenant_id: input.tenant_id,
+            event_type: OUTBOX_RATE_VERSION_CREATED,
+            event_payload: {
+              tenant_id: input.tenant_id,
+              contract_assignment_id: assignment.id,
+              assignment_rate_version_id: successorId,
+              superseded_rate_version_id: predecessor.id,
+              requisition_id: assignment.requisition_id,
+              talent_record_id: assignment.talent_record_id,
+              effective_from: tNew.toISOString(),
+            },
+          },
+        });
+        const metrics = deriveCommercialMetrics(successor.pay_rate_amount, successor.bill_rate_amount);
+        return {
+          contract_assignment_id: assignment.id,
+          assignment_rate_version_id: successor.id,
+          requisition_id: assignment.requisition_id,
+          talent_record_id: assignment.talent_record_id,
+          pay_rate_amount: successor.pay_rate_amount.toFixed(2),
+          bill_rate_amount: successor.bill_rate_amount.toFixed(2),
+          currency: successor.currency,
+          rate_period: successor.rate_period,
+          spread_amount: metrics.spread_amount,
+          margin_percent: metrics.margin_percent,
+          markup_percent: metrics.markup_percent,
+          effective_from: successor.effective_from,
+          effective_to: successor.effective_to,
+          change_reason: successor.change_reason,
+          recorded_by: successor.recorded_by,
+          created_at: successor.created_at,
+        };
+      } catch (err) {
+        // §16 — named-constraint translation; NEVER a raw P2002/23505/23P01 leak.
+        // A cancelled row still reserves its exact effective_from (non-partial unique
+        // key), so a same-instant re-schedule after cancellation stays this 409
+        // duplicate_effective_from (T6-B3 §5).
+        if (isWindowOverlapViolation(err)) {
+          throw this.commercialConflict('window_overlap', assignment.id, requestId);
+        }
+        if (isDuplicateEffectiveFromViolation(err)) {
+          throw this.commercialConflict('duplicate_effective_from', assignment.id, requestId);
+        }
+        throw err;
+      }
+    });
+  }
+
+  // Track 6 / T6-B3 — explicit governed cancellation of a FUTURE open-tail
+  // commercial revision (§3/§4). Eligible ONLY when the target is, simultaneously,
+  // on an ACTIVE assignment, not already cancelled, starts strictly in the future,
+  // and is the open tail (effective_to IS NULL). Cancellation is atomic: cancel the
+  // tail (its start Y is still future, so it was never effective truth) AND re-open
+  // its predecessor from [X,Y) back to [X,∞), restoring continuity with no gap and
+  // no historical rewrite. Serialized against revision + END by the SAME owning-
+  // assignment FOR UPDATE lock. Returns the refreshed non-cancelled series (§12).
+  async cancelCommercialRevision(
+    input: {
+      tenant_id: string;
+      placement_process_id: string;
+      revision_id: string;
+      cancellation_reason_code: string;
+      cancelled_by: string;
+    },
+    requestId: string,
+  ): Promise<AssignmentCommercialView[]> {
+    // Defensive write-boundary guard (the DTO also constrains the wire): only a
+    // user-selectable reason may drive an explicit cancellation. The reserved
+    // ASSIGNMENT_ENDED is END-reconciliation-only and is refused here (§10).
+    if (!isUserCancellationReasonCode(input.cancellation_reason_code)) {
+      throw new AramoError('VALIDATION_ERROR', 'cancellation_reason_code must be a user-selectable cancellation reason', 400, {
+        requestId,
+        details: { field: 'cancellation_reason_code' },
+      });
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      // §19 — lock the owning assignment FIRST (sole serialization primitive).
+      const locked = await tx.$queryRawUnsafe<
+        Array<{ id: string; requisition_id: string; talent_record_id: string; lifecycle_state: string | null }>
+      >(
+        `SELECT "id", "requisition_id", "talent_record_id", "lifecycle_state"::text AS "lifecycle_state"
+           FROM "placement"."ContractAssignment"
+          WHERE "tenant_id" = $1::uuid AND "placement_process_id" = $2::uuid
+          FOR UPDATE`,
+        input.tenant_id,
+        input.placement_process_id,
+      );
+      const assignment = locked[0];
+      if (assignment === undefined) {
+        throw new AramoError('NOT_FOUND', 'No ContractAssignment for placement', 404, { requestId, details: { placement_process_id: input.placement_process_id, reason: 'assignment_not_found' } });
+      }
+      // §3 — a version on an ENDED assignment is never user-cancellable.
+      if (assignment.lifecycle_state !== 'ACTIVE') {
+        throw new AramoError('NOT_FOUND', 'No active ContractAssignment', 404, { requestId, details: { placement_process_id: input.placement_process_id, reason: 'active_assignment_not_found' } });
+      }
+
+      // Load the target WITHIN the lock, scoped to (tenant, assignment). A revision
+      // that is unknown, cross-tenant, or attached to a different assignment is 404
+      // (never disclose existence — §20).
+      const target = await tx.assignmentRateVersion.findFirst({
+        where: { tenant_id: input.tenant_id, contract_assignment_id: assignment.id, id: input.revision_id },
+      });
+      if (target === null) {
+        throw new AramoError('NOT_FOUND', 'AssignmentRateVersion not found', 404, { requestId, details: { placement_process_id: input.placement_process_id, revision_id: input.revision_id, reason: 'revision_not_found' } });
+      }
+
+      const operationTime = new Date();
+      // §3 eligibility, most-specific refusal first (all 409 with details.reason).
+      if (target.cancelled_at !== null) {
+        throw this.commercialConflict('already_cancelled', assignment.id, requestId);
+      }
+      // Must start strictly in the future — rejects current AND historical versions.
+      if (target.effective_from.getTime() <= operationTime.getTime()) {
+        throw this.commercialConflict('revision_not_future', assignment.id, requestId);
+      }
+      // Must be the OPEN tail — a bounded future version is interior; cancelling it
+      // would strand a later window behind a gap (§4 interior refusal).
+      if (target.effective_to !== null) {
+        throw this.commercialConflict('cancellation_would_create_gap', assignment.id, requestId);
+      }
+
+      // The predecessor closed at Y = target.effective_from (§4 Vprev [X,Y)). It is
+      // the single non-cancelled version whose effective_to == the tail's start.
+      const predecessor = await tx.assignmentRateVersion.findFirst({
+        where: { tenant_id: input.tenant_id, contract_assignment_id: assignment.id, cancelled_at: null, effective_to: target.effective_from },
+      });
+      if (predecessor === null) {
+        // Fail-closed: a future open tail with no predecessor to re-open would leave
+        // a gap. Unreachable via the B2 revision path (which always closes a
+        // predecessor at Y); retained as a corruption/integrity guard.
+        throw this.commercialConflict('cancellation_would_create_gap', assignment.id, requestId);
+      }
+
+      // §6 — the cancellation capability authorizes BOTH the cancellation write and
+      // the future-boundary re-open; SET LOCAL, confined to this method.
+      await tx.$executeRawUnsafe(`SET LOCAL app.assignment_commercial_cancellation = 'authorized'`);
+
+      // §4 — cancel the tail FIRST (drops it from the non-cancelled overlap set),
+      // THEN re-open the predecessor to [X,∞). The reverse order would transiently
+      // overlap [X,∞) with the still-live tail and trip the B1 EXCLUDE.
+      await tx.assignmentRateVersion.update({
+        where: { id: target.id },
+        data: {
+          cancelled_at: operationTime,
+          cancelled_by: input.cancelled_by,
+          cancellation_reason_code: input.cancellation_reason_code,
+        },
+      });
+      await tx.outboxEvent.create({
+        data: this.cancelledEventData({
+          tenant_id: input.tenant_id,
+          placement_process_id: input.placement_process_id,
+          contract_assignment_id: assignment.id,
+          assignment_rate_version_id: target.id,
+          original_effective_from: target.effective_from,
+          cancelled_by: input.cancelled_by,
+          cancellation_reason_code: input.cancellation_reason_code,
+          occurred_at: operationTime,
+        }),
+      });
+      await tx.assignmentRateVersion.update({ where: { id: predecessor.id }, data: { effective_to: null } });
+    });
+
+    // §12 — the refreshed non-cancelled series after the committed cancellation.
+    return this.listAssignmentCommercialRevisions(input.tenant_id, input.placement_process_id);
+  }
+
+  // Track 6 / T6-B2 — the version-series read (B4 substrate). NON-cancelled rate
+  // versions for the assignment (historical + current + future), effective_from DESC.
+  // Visibility is enforced by the caller loading the placement through findByIdForActor
+  // FIRST (house pattern); a placement with no assignment returns an EMPTY series. This
+  // is the uncapped per-assignment series — NOT the point-in-time resolver (no
+  // fail-closed on multiplicity). Cancelled rows are excluded in B2 (B3 owns any
+  // cancellation-audit view). Derived metrics remain the ONE canonical formula.
+  async listAssignmentCommercialRevisions(
+    tenant_id: string,
+    placement_process_id: string,
+  ): Promise<AssignmentCommercialView[]> {
+    const assignment = await this.prisma.contractAssignment.findFirst({
+      where: { tenant_id, placement_process_id },
+      select: { id: true, requisition_id: true, talent_record_id: true },
+    });
+    if (assignment === null) return [];
+    const versions = await this.prisma.assignmentRateVersion.findMany({
+      where: { tenant_id, contract_assignment_id: assignment.id, cancelled_at: null },
+      orderBy: { effective_from: 'desc' },
+    });
+    return versions.map((v) => {
+      const metrics = deriveCommercialMetrics(v.pay_rate_amount, v.bill_rate_amount);
+      return {
+        contract_assignment_id: assignment.id,
+        assignment_rate_version_id: v.id,
+        requisition_id: assignment.requisition_id,
+        talent_record_id: assignment.talent_record_id,
+        pay_rate_amount: v.pay_rate_amount.toFixed(2),
+        bill_rate_amount: v.bill_rate_amount.toFixed(2),
+        currency: v.currency,
+        rate_period: v.rate_period,
+        spread_amount: metrics.spread_amount,
+        margin_percent: metrics.margin_percent,
+        markup_percent: metrics.markup_percent,
+        effective_from: v.effective_from,
+        effective_to: v.effective_to,
+        change_reason: v.change_reason,
+        recorded_by: v.recorded_by,
+        created_at: v.created_at,
+      };
+    });
   }
 
   async findById(tenant_id: string, id: string): Promise<PlacementProcessView | null> {
@@ -692,6 +1436,60 @@ export class PlacementRepository {
       take: limit,
     })) as PlacementProcessRow[];
     return rows.map(projectView);
+  }
+
+  // Track 6 / T6-B3 — the single 409 for a commercial-lifecycle state conflict
+  // (§20). NO new ErrorCode: the reused ASSIGNMENT_COMMERCIAL_REVISION_CONFLICT
+  // carries the machine-readable discriminator in details.reason. The closed reason
+  // set spans B2 (duplicate_effective_from | window_overlap) and B3 (already_cancelled
+  // | revision_not_future | cancellation_would_create_gap). No raw Prisma/PG/trigger
+  // error ever reaches the caller.
+  private commercialConflict(
+    reason:
+      | 'duplicate_effective_from'
+      | 'window_overlap'
+      | 'already_cancelled'
+      | 'revision_not_future'
+      | 'cancellation_would_create_gap',
+    contract_assignment_id: string,
+    requestId: string,
+  ): AramoError {
+    return new AramoError('ASSIGNMENT_COMMERCIAL_REVISION_CONFLICT', `commercial revision conflict: ${reason}`, 409, {
+      requestId,
+      details: { contract_assignment_id, reason },
+    });
+  }
+
+  // Track 6 / T6-B3 — the rate_version.cancelled outbox row (§21). Identity/
+  // provenance ONLY: NO pay/bill/spread/margin/markup/currency/rate_period. The
+  // cancellation reason + original effective_from are provenance, not money. Shared
+  // by explicit cancellation (one event) and END reconciliation (one per cancelled
+  // version). Pure builder — the caller writes it inside the governed transaction.
+  private cancelledEventData(args: {
+    tenant_id: string;
+    placement_process_id: string;
+    contract_assignment_id: string;
+    assignment_rate_version_id: string;
+    original_effective_from: Date;
+    cancelled_by: string;
+    cancellation_reason_code: string;
+    occurred_at: Date;
+  }) {
+    return {
+      id: uuidv7(),
+      tenant_id: args.tenant_id,
+      event_type: OUTBOX_RATE_VERSION_CANCELLED,
+      event_payload: {
+        tenant_id: args.tenant_id,
+        placement_process_id: args.placement_process_id,
+        contract_assignment_id: args.contract_assignment_id,
+        assignment_rate_version_id: args.assignment_rate_version_id,
+        cancelled_by: args.cancelled_by,
+        cancellation_reason_code: args.cancellation_reason_code,
+        original_effective_from: args.original_effective_from.toISOString(),
+        occurred_at: args.occurred_at.toISOString(),
+      },
+    };
   }
 
   private alreadyLive(input: CreatePlacementInput, requestId: string, existingId: string | undefined): AramoError {

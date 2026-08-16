@@ -925,6 +925,55 @@ export class PipelineRepository {
     }));
   }
 
+  // T9-B1 — the FIRST `placed` transition per (talent, requisition), for the
+  // reporting fill-rate numerator + time-to-fill completion (directive §5;
+  // amendment D-1/D-2). Reads PipelineStatusHistory rows that transitioned
+  // INTO `placed`, joining the INTRA-schema Pipeline relation for
+  // talent_record_id + requisition_id (both live in the pipeline schema —
+  // never a cross-schema join). MIN(changed_at) per (talent, requisition)
+  // collapses multiple placed episodes for the same human on the same req to
+  // the FIRST placed instant, so a later duplicate placed episode neither
+  // double-counts (fill) nor advances completion (TTF). Bounded by the
+  // caller's cohort requisition_ids (already [from,to)+A3-scoped upstream);
+  // empty id list short-circuits. DB-side aggregation (D-6) — no capped
+  // in-memory fold. BUSINESS helper — not an episode/history view.
+  async listFirstPlacedByRequisitions(args: {
+    tenant_id: string;
+    requisition_ids: readonly string[];
+  }): Promise<
+    Array<{
+      requisition_id: string;
+      talent_record_id: string;
+      first_placed_at: Date;
+    }>
+  > {
+    if (args.requisition_ids.length === 0) return [];
+    const rows = await this.prisma.$queryRawUnsafe<
+      Array<{
+        requisition_id: string;
+        talent_record_id: string;
+        first_placed_at: Date;
+      }>
+    >(
+      `SELECT p.requisition_id   AS requisition_id,
+              p.talent_record_id AS talent_record_id,
+              MIN(h.changed_at)  AS first_placed_at
+         FROM "pipeline"."PipelineStatusHistory" h
+         JOIN "pipeline"."Pipeline" p ON p.id = h.pipeline_id
+        WHERE h.tenant_id = $1::uuid
+          AND h.status_to = 'placed'::"pipeline"."PipelineStatus"
+          AND p.requisition_id = ANY($2::uuid[])
+        GROUP BY p.requisition_id, p.talent_record_id`,
+      args.tenant_id,
+      [...args.requisition_ids],
+    );
+    return rows.map((r) => ({
+      requisition_id: r.requisition_id,
+      talent_record_id: r.talent_record_id,
+      first_placed_at: r.first_placed_at,
+    }));
+  }
+
   async listHistory(args: {
     tenant_id: string;
     pipeline_id: string;

@@ -1,7 +1,11 @@
 import { apiClient } from '@aramo/fe-foundation';
 
 import type {
+  AssignmentCommercialCreatedResponse,
   AssignmentCommercialResponse,
+  AssignmentCommercialSeriesResponse,
+  CommercialRevisionCancelRequest,
+  CommercialRevisionCreateRequest,
   ContractAssignmentEndReason,
   PlacementAssignmentResponse,
   PlacementEventListResponse,
@@ -67,6 +71,48 @@ export async function getPlacementAssignmentCommercials(
 ): Promise<AssignmentCommercialResponse> {
   return apiClient.get<AssignmentCommercialResponse>(
     `/v1/placements/${encodeURIComponent(id)}/assignment/commercials`,
+  );
+}
+
+// Track 6 / T6-B4 §14 — the non-cancelled commercial revision SERIES
+// (GET .../assignment/commercials/revisions, assignment:commercials:read). Historical +
+// current + future versions, effective_from DESC; a visible placement with no assignment
+// or no versions returns { items: [] }. Rides the compensation mask like the singular read.
+export async function listAssignmentCommercialRevisions(
+  id: string,
+): Promise<AssignmentCommercialSeriesResponse> {
+  return apiClient.get<AssignmentCommercialSeriesResponse>(
+    `/v1/placements/${encodeURIComponent(id)}/assignment/commercials/revisions`,
+  );
+}
+
+// Track 6 / T6-B4 §14 amendment — create a governed post-start commercial revision
+// (POST .../assignment/commercials/revisions, assignment:commercials:write). B4 v1 is
+// Effective-now ONLY: the request DELIBERATELY omits effective_from (the type has no such
+// field), so the server supplies the authoritative instant (Amendment §4). Returns the
+// new current version. recorded_by is the JWT subject, never the wire.
+export async function createAssignmentCommercialRevision(
+  id: string,
+  body: CommercialRevisionCreateRequest,
+): Promise<AssignmentCommercialCreatedResponse> {
+  return apiClient.post<AssignmentCommercialCreatedResponse>(
+    `/v1/placements/${encodeURIComponent(id)}/assignment/commercials/revisions`,
+    body,
+  );
+}
+
+// Track 6 / T6-B4 §14 — cancel a future open-tail commercial revision
+// (POST .../revisions/:revisionId/cancel, assignment:commercials:write). The only wire
+// field is the user-selectable cancellation reason; cancelled_by is the JWT subject. The
+// server re-opens the predecessor and returns the refreshed non-cancelled series.
+export async function cancelAssignmentCommercialRevision(
+  id: string,
+  revisionId: string,
+  body: CommercialRevisionCancelRequest,
+): Promise<AssignmentCommercialSeriesResponse> {
+  return apiClient.post<AssignmentCommercialSeriesResponse>(
+    `/v1/placements/${encodeURIComponent(id)}/assignment/commercials/revisions/${encodeURIComponent(revisionId)}/cancel`,
+    body,
   );
 }
 

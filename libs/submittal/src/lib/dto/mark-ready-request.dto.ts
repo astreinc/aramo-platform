@@ -24,7 +24,7 @@ import type { TalentSubmittalRecordView } from './talent-submittal-record.view.j
 // Response shape per Ruling 14: { submittal, event } -- the updated
 // TalentSubmittalRecord projection alongside the freshly appended
 // TalentSubmittalEvent (state_transition; payload {from_state,to_state}
-// per Ruling 16 minimum-viable shape; mirrors M5 PR-3 engagement
+// per Ruling 16 minimum-viable shape; mirrors M5 PR-3 selection
 // transitionState response shape).
 
 export class MarkReadyRequestDto {

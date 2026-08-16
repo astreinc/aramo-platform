@@ -38,7 +38,7 @@ import { placementCapacityMigrations } from './support/placement-capacity-migrat
 //      - The test container is set up with ONLY the 8 ATS-side
 //        schemas applied (company / contact / requisition / pipeline /
 //        activity / calendar / saved_list / talent_record /
-//        entitlement). NO engagement / submittal / examination /
+//        entitlement). NO selection / submittal / examination /
 //        matching / talent / job_domain migration is applied. If the
 //        reporting service touched ANY Core schema, every call would
 //        500 with "relation does not exist". All metric calls return
@@ -243,14 +243,14 @@ const TALENT_RECORD_SUPERSESSION = resolve(
   'libs/talent-record/prisma/migrations/20260706210000_tr2a_b3a_talent_record_supersession/migration.sql',
 );
 
-// === CORE / ENGAGEMENT / SUBMITTAL MIGRATIONS — DELIBERATELY OMITTED ===
+// === CORE / SELECTION / SUBMITTAL MIGRATIONS — DELIBERATELY OMITTED ===
 //
 // This spec applies ONLY the 8 ATS-side schemas + entitlement +
-// metering. The engagement / submittal / examination / matching /
+// metering. The selection / submittal / examination / matching /
 // talent / job_domain schemas are NOT created in the test container.
 // If ReportingService or any controller it depends on were to issue a
 // query against any of those schemas, the route would 500 with
-// `relation "engagement.Engagement" does not exist` (or similar). The
+// `relation "selection.Selection" does not exist` (or similar). The
 // fact that every metric route returns 200 is the seam-exclusion
 // proof: A7 reads no Core schema.
 
@@ -290,6 +290,18 @@ const REPORT_TENANT_ADMIN_SCOPES = [
   ...REPORT_RECRUITER_SCOPES,
   'requisition:read:all', // the A3 see-all proxy
 ];
+// T9-B4 — margin requires the COMPOUND gate report:read AND assignment:commercials:read
+// (§12 D-9). These add the commercial-disclosure scope on top of the report scopes.
+const MARGIN_TENANT_ADMIN_SCOPES = [
+  ...REPORT_TENANT_ADMIN_SCOPES,
+  'assignment:commercials:read',
+];
+const MARGIN_RECRUITER_SCOPES = [
+  ...REPORT_RECRUITER_SCOPES,
+  'assignment:commercials:read',
+];
+// commercial scope but NO report:read → the compound gate must still 403.
+const COMMERCIAL_ONLY_SCOPES = ['assignment:commercials:read', 'requisition:read'];
 
 describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
   'PR-A7 ATS finishers — reporting + dashboard proofs (real Postgres 17)',
@@ -300,6 +312,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     let port = 0;
     let savedEnv: Partial<Record<string, string | undefined>> = {};
     let setupClient: Client;
+    // T9-B2 — the two seeded requisitions hoisted for the fallthrough A3 test
+    // (reqAssigned is visible to RECRUITER; reqUnassigned is tenant-admin-only).
+    let ftReqAssigned = '';
+    let ftReqUnassigned = '';
 
     let recruiterJwt: string;
     let recruiterOtherJwt: string;
@@ -307,6 +323,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     let recruiterJwt_WrongSite: string;
     let unscopedJwt: string;
     let tenantAdminJwt: string;
+    // T9-B4 — margin compound-authorization tokens.
+    let marginAdminJwt: string; // report:read + commercials, see-all
+    let marginRecruiterJwt: string; // report:read + commercials, A3-scoped
+    let marginWrongSiteJwt: string; // full margin scopes but token.site != requested
+    let commercialOnlyJwt: string; // commercials WITHOUT report:read → 403
+    // T9-B5 / AV-1 — a TENANT-WIDE admin: see_all visibility + NULL site claim, so
+    // it may create and query across BOTH sites (site-axis model A1a).
+    let tenantWideAdminJwt: string;
 
     async function signJwt(
       privateKey: SignKey,
@@ -336,7 +360,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await setupClient.connect();
 
       // Apply ONLY ATS-side migrations + entitlement + metering. See the
-      // header note: the absence of engagement/submittal/examination/etc.
+      // header note: the absence of selection/submittal/examination/etc.
       // is the seam-exclusion structural proof.
       for (const p of [
         ENTITLEMENT_INIT,
@@ -438,6 +462,37 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         site_id: SITE_A,
         scopes: REPORT_TENANT_ADMIN_SCOPES,
       });
+      marginAdminJwt = await signJwt(privateKey, {
+        sub: TENANT_ADMIN,
+        tenant_id: TENANT_ATS,
+        site_id: SITE_A,
+        scopes: MARGIN_TENANT_ADMIN_SCOPES,
+      });
+      marginRecruiterJwt = await signJwt(privateKey, {
+        sub: RECRUITER,
+        tenant_id: TENANT_ATS,
+        site_id: SITE_A,
+        scopes: MARGIN_RECRUITER_SCOPES,
+      });
+      marginWrongSiteJwt = await signJwt(privateKey, {
+        sub: RECRUITER,
+        tenant_id: TENANT_ATS,
+        site_id: SITE_B,
+        scopes: MARGIN_RECRUITER_SCOPES,
+      });
+      commercialOnlyJwt = await signJwt(privateKey, {
+        sub: RECRUITER,
+        tenant_id: TENANT_ATS,
+        site_id: SITE_A,
+        scopes: COMMERCIAL_ONLY_SCOPES,
+      });
+      // T9-B5 / AV-1 — tenant-wide admin: NO site_id claim (site-unconfined) +
+      // full margin/report + read:all (see_all) + create scopes.
+      tenantWideAdminJwt = await signJwt(privateKey, {
+        sub: TENANT_ADMIN,
+        tenant_id: TENANT_ATS,
+        scopes: MARGIN_TENANT_ADMIN_SCOPES,
+      });
 
       module = await Test.createTestingModule({ imports: [AppModule] }).compile();
       app = module.createNestApplication();
@@ -489,7 +544,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         company_id: companyA.id,
         site_id: SITE_A,
       });
-      void reqUnassigned;
+      ftReqAssigned = reqAssigned.id;
+      ftReqUnassigned = reqUnassigned.id;
       // Assign reqAssigned to RECRUITER via the tenant_admin assign route.
       await postJson(
         `/v1/requisitions/${reqAssigned.id}/assignments`,
@@ -616,6 +672,498 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         },
       );
       expect(r2.status).toBe(403);
+    });
+
+    // -------------------------------------------------------------------------
+    // T9-B1 — fill-performance: guard axes reuse, from/to validation (§8/D-5),
+    // and the A3 shape. Metric math + tenant isolation are proven in the
+    // libs/reporting bearing integration spec; here we prove the HTTP boundary.
+    // -------------------------------------------------------------------------
+
+    const FP_FROM = '2020-01-01T00:00:00.000Z';
+    const FP_TO = '2100-01-01T00:00:00.000Z';
+    const fpUrl = (from: string, to: string): string =>
+      `http://127.0.0.1:${port}/v1/reports/fill-performance` +
+      `?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&site_id=${SITE_A}`;
+
+    it('fill-performance entitlement axis: tenant lacking ats → 403 TENANT_CAPABILITY_NOT_ENTITLED', async () => {
+      const res = await fetch(fpUrl(FP_FROM, FP_TO), {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${recruiterJwt_NotAts}` },
+      });
+      expect(res.status).toBe(403);
+      const body = (await res.json()) as { error: { code: string } };
+      expect(body.error?.code).toBe('TENANT_CAPABILITY_NOT_ENTITLED');
+    });
+
+    it('fill-performance authorization axis: unscoped → 403', async () => {
+      const res = await fetch(fpUrl(FP_FROM, FP_TO), {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${unscopedJwt}` },
+      });
+      expect(res.status).toBe(403);
+    });
+
+    it('fill-performance site axis: token site != requested site → 403', async () => {
+      const res = await fetch(fpUrl(FP_FROM, FP_TO), {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${recruiterJwt_WrongSite}` },
+      });
+      expect(res.status).toBe(403);
+    });
+
+    it('fill-performance rejects a date-only `from` → 400 VALIDATION_ERROR', async () => {
+      const res = await fetch(fpUrl('2026-03-01', FP_TO), {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${tenantAdminJwt}` },
+      });
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error: { code: string } };
+      expect(body.error?.code).toBe('VALIDATION_ERROR');
+    });
+
+    it('fill-performance requires from and to → 400 when missing', async () => {
+      const res = await fetch(
+        `http://127.0.0.1:${port}/v1/reports/fill-performance?site_id=${SITE_A}`,
+        { method: 'GET', headers: { Authorization: `Bearer ${tenantAdminJwt}` } },
+      );
+      expect(res.status).toBe(400);
+    });
+
+    it('fill-performance A3: tenant_admin sees both reqs (openings 2); recruiter sees only the assigned req (openings 1)', async () => {
+      const adminRes = await fetch(fpUrl(FP_FROM, FP_TO), {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${tenantAdminJwt}` },
+      });
+      expect(adminRes.status).toBe(200);
+      const admin = (await adminRes.json()) as {
+        openings: number;
+        filled_openings: number;
+        fill_rate: number | null;
+      };
+      expect(admin.openings).toBe(2); // both seeded requisitions, tenant-wide
+      expect(admin.filled_openings).toBe(0); // nothing placed
+      expect(admin.fill_rate).toBe(0);
+
+      const recRes = await fetch(fpUrl(FP_FROM, FP_TO), {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${recruiterJwt}` },
+      });
+      expect(recRes.status).toBe(200);
+      const rec = (await recRes.json()) as { openings: number };
+      expect(rec.openings).toBe(1); // A3 narrows to the recruiter's assigned req
+    });
+
+    // -------------------------------------------------------------------------
+    // T9-B2 — fallthrough: guard axes, from/to validation, and end-to-end A3
+    // through the real reporting→placement read. Directive §19.
+    // -------------------------------------------------------------------------
+
+    const FT_FROM = '2020-01-01T00:00:00.000Z';
+    const FT_TO = '2100-01-01T00:00:00.000Z';
+    const ftUrl = (from: string, to: string): string =>
+      `http://127.0.0.1:${port}/v1/reports/fallthrough` +
+      `?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&site_id=${SITE_A}`;
+
+    // Seed a placement attempt that first-accepts in-window then FELL_THROUGH.
+    // Raw insert (no HTTP path creates OFFER_ACCEPTED transitions in this spec);
+    // the PlacementProcess event log carries {from,to} + reason on the terminal.
+    async function seedFallthrough(requisition_id: string): Promise<void> {
+      const pp = globalThis.crypto.randomUUID();
+      await setupClient.query(
+        `INSERT INTO placement."PlacementProcess"
+           (id, tenant_id, submittal_id, requisition_id, talent_record_id, state, offered_at)
+         VALUES ($1,$2,$3,$4,$5,'FELL_THROUGH'::placement."PlacementState", now())`,
+        [pp, TENANT_ATS, globalThis.crypto.randomUUID(), requisition_id, globalThis.crypto.randomUUID()],
+      );
+      await setupClient.query(
+        `INSERT INTO placement."PlacementProcessEvent"
+           (id, tenant_id, placement_process_id, event_type, event_payload, created_at)
+         VALUES ($1,$2,$3,'state_transition'::placement."PlacementEventType",
+                 '{"from":"OFFER_EXTENDED","to":"OFFER_ACCEPTED"}'::jsonb, '2026-05-15T00:00:00Z')`,
+        [globalThis.crypto.randomUUID(), TENANT_ATS, pp],
+      );
+      await setupClient.query(
+        `INSERT INTO placement."PlacementProcessEvent"
+           (id, tenant_id, placement_process_id, event_type, event_payload, reason_code, reason_label_snapshot, created_at)
+         VALUES ($1,$2,$3,'state_transition'::placement."PlacementEventType",
+                 '{"from":"OFFER_ACCEPTED","to":"FELL_THROUGH"}'::jsonb, 'start_date_failed', 'Start date failed', '2026-05-20T00:00:00Z')`,
+        [globalThis.crypto.randomUUID(), TENANT_ATS, pp],
+      );
+    }
+
+    it('fallthrough entitlement axis: tenant lacking ats → 403', async () => {
+      const res = await fetch(ftUrl(FT_FROM, FT_TO), { method: 'GET', headers: { Authorization: `Bearer ${recruiterJwt_NotAts}` } });
+      expect(res.status).toBe(403);
+      const body = (await res.json()) as { error: { code: string } };
+      expect(body.error?.code).toBe('TENANT_CAPABILITY_NOT_ENTITLED');
+    });
+
+    it('fallthrough authorization axis: unscoped → 403', async () => {
+      const res = await fetch(ftUrl(FT_FROM, FT_TO), { method: 'GET', headers: { Authorization: `Bearer ${unscopedJwt}` } });
+      expect(res.status).toBe(403);
+    });
+
+    it('fallthrough site axis: token site != requested site → 403', async () => {
+      const res = await fetch(ftUrl(FT_FROM, FT_TO), { method: 'GET', headers: { Authorization: `Bearer ${recruiterJwt_WrongSite}` } });
+      expect(res.status).toBe(403);
+    });
+
+    it('fallthrough rejects a date-only `from` → 400 VALIDATION_ERROR', async () => {
+      const res = await fetch(ftUrl('2026-05-01', FT_TO), { method: 'GET', headers: { Authorization: `Bearer ${tenantAdminJwt}` } });
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error: { code: string } };
+      expect(body.error?.code).toBe('VALIDATION_ERROR');
+    });
+
+    it('fallthrough requires from and to → 400 when missing', async () => {
+      const res = await fetch(`http://127.0.0.1:${port}/v1/reports/fallthrough?site_id=${SITE_A}`, { method: 'GET', headers: { Authorization: `Bearer ${tenantAdminJwt}` } });
+      expect(res.status).toBe(400);
+    });
+
+    it('fallthrough end-to-end + A3: admin sees both attempts (rate 100); recruiter sees only the assigned req; no reason_detail leaks', async () => {
+      await seedFallthrough(ftReqAssigned); // recruiter-visible
+      await seedFallthrough(ftReqUnassigned); // tenant-admin-only
+
+      const adminRes = await fetch(ftUrl(FT_FROM, FT_TO), { method: 'GET', headers: { Authorization: `Bearer ${tenantAdminJwt}` } });
+      expect(adminRes.status).toBe(200);
+      const adminText = await adminRes.text();
+      expect(adminText).not.toContain('reason_detail'); // §16 PII wall
+      const admin = JSON.parse(adminText) as {
+        accepted_attempts: number;
+        fallthrough_attempts: number;
+        fallthrough_rate: number | null;
+        reasons: Array<{ reason_code: string | null; reason_label: string; count: number }>;
+      };
+      expect(admin.accepted_attempts).toBe(2);
+      expect(admin.fallthrough_attempts).toBe(2);
+      expect(admin.fallthrough_rate).toBe(100);
+      expect(admin.reasons).toEqual([
+        { reason_code: 'start_date_failed', reason_label: 'Start date failed', count: 2, rate: 100 },
+      ]);
+
+      const recRes = await fetch(ftUrl(FT_FROM, FT_TO), { method: 'GET', headers: { Authorization: `Bearer ${recruiterJwt}` } });
+      expect(recRes.status).toBe(200);
+      const rec = (await recRes.json()) as { accepted_attempts: number };
+      expect(rec.accepted_attempts).toBe(1); // A3 narrows to the assigned req
+    });
+
+    // -------------------------------------------------------------------------
+    // T9-B3 — assignment-pipeline: guard axes, response shape + total invariant
+    // + data-safety (no commercial/ended_at), and A3 + boundedness at the HTTP
+    // boundary. Metric math is proven in the libs/placement + libs/reporting
+    // integration specs; here we prove the wired endpoint.
+    // -------------------------------------------------------------------------
+
+    const apUrl = (): string =>
+      `http://127.0.0.1:${port}/v1/reports/assignment-pipeline?site_id=${SITE_A}`;
+
+    async function seedStartedPlacement(
+      requisition_id: string,
+      assignment?: 'ACTIVE' | 'ENDED',
+    ): Promise<void> {
+      const pp = globalThis.crypto.randomUUID();
+      await setupClient.query(
+        `INSERT INTO placement."PlacementProcess"
+           (id, tenant_id, submittal_id, requisition_id, talent_record_id, state, offered_at)
+         VALUES ($1,$2,$3,$4,$5,'STARTED'::placement."PlacementState", now())`,
+        [pp, TENANT_ATS, globalThis.crypto.randomUUID(), requisition_id, globalThis.crypto.randomUUID()],
+      );
+      if (assignment !== undefined) {
+        await setupClient.query(
+          `INSERT INTO placement."ContractAssignment"
+             (id, tenant_id, placement_process_id, submittal_id, requisition_id, talent_record_id,
+              started_at, provenance, company_id, lifecycle_state, end_reason, ended_at)
+           VALUES ($1,$2,$3,$4,$5,$6, now(),
+                   'FORWARD'::placement."ContractAssignmentProvenance", $7,
+                   $8::placement."ContractAssignmentState",
+                   $9::placement."ContractAssignmentEndReason", $10)`,
+          [
+            globalThis.crypto.randomUUID(), TENANT_ATS, pp, globalThis.crypto.randomUUID(),
+            requisition_id, globalThis.crypto.randomUUID(), globalThis.crypto.randomUUID(),
+            assignment,
+            assignment === 'ENDED' ? 'COMPLETED' : null,
+            assignment === 'ENDED' ? new Date().toISOString() : null,
+          ],
+        );
+      }
+    }
+
+    it('assignment-pipeline entitlement axis: tenant lacking ats → 403', async () => {
+      const res = await fetch(apUrl(), { method: 'GET', headers: { Authorization: `Bearer ${recruiterJwt_NotAts}` } });
+      expect(res.status).toBe(403);
+      const body = (await res.json()) as { error: { code: string } };
+      expect(body.error?.code).toBe('TENANT_CAPABILITY_NOT_ENTITLED');
+    });
+
+    it('assignment-pipeline authorization axis: unscoped → 403', async () => {
+      const res = await fetch(apUrl(), { method: 'GET', headers: { Authorization: `Bearer ${unscopedJwt}` } });
+      expect(res.status).toBe(403);
+    });
+
+    it('assignment-pipeline site axis: token site != requested site → 403', async () => {
+      const res = await fetch(apUrl(), { method: 'GET', headers: { Authorization: `Bearer ${recruiterJwt_WrongSite}` } });
+      expect(res.status).toBe(403);
+    });
+
+    it('assignment-pipeline shape: five ordered live states, total_live = their sum, UTC/coverage labels, no commercial/ended_at', async () => {
+      const res = await fetch(apUrl(), { method: 'GET', headers: { Authorization: `Bearer ${tenantAdminJwt}` } });
+      expect(res.status).toBe(200);
+      const raw = await res.text();
+      for (const banned of ['pay_rate', 'bill_rate', 'margin', 'currency', 'reason_detail', 'ended_at']) {
+        expect(raw).not.toContain(banned);
+      }
+      const body = JSON.parse(raw) as {
+        total_live: number;
+        by_state: Array<{ state: string; count: number }>;
+        start_date: { timezone_basis: string };
+        contract_assignments: { coverage: string };
+      };
+      expect(body.by_state.map((r) => r.state)).toEqual([
+        'OFFER_ACCEPTED', 'PRE_START', 'BLOCKED', 'READY_TO_START', 'STARTED',
+      ]);
+      expect(body.total_live).toBe(body.by_state.reduce((s, r) => s + r.count, 0));
+      expect(body.start_date.timezone_basis).toBe('UTC');
+      expect(body.contract_assignments.coverage).toBe('forward_materialized');
+    });
+
+    it('assignment-pipeline A3 + boundedness: admin STARTED=2 (active=1); recruiter STARTED=1', async () => {
+      // reqAssigned (visible to recruiter) — STARTED with ACTIVE assignment.
+      await seedStartedPlacement(ftReqAssigned, 'ACTIVE');
+      // reqUnassigned (admin-only) — STARTED with NO ContractAssignment.
+      await seedStartedPlacement(ftReqUnassigned);
+
+      const adminRes = await fetch(apUrl(), { method: 'GET', headers: { Authorization: `Bearer ${tenantAdminJwt}` } });
+      expect(adminRes.status).toBe(200);
+      const admin = (await adminRes.json()) as {
+        by_state: Array<{ state: string; count: number }>;
+        contract_assignments: { active: number; ended: number };
+      };
+      const adminStarted = admin.by_state.find((r) => r.state === 'STARTED')?.count;
+      expect(adminStarted).toBe(2); // both reqs, tenant-wide
+      // boundedness: STARTED(2) != active(1) — the no-assignment STARTED is invisible to the assignment count
+      expect(admin.contract_assignments.active).toBe(1);
+
+      const recRes = await fetch(apUrl(), { method: 'GET', headers: { Authorization: `Bearer ${recruiterJwt}` } });
+      expect(recRes.status).toBe(200);
+      const rec = (await recRes.json()) as { by_state: Array<{ state: string; count: number }> };
+      expect(rec.by_state.find((r) => r.state === 'STARTED')?.count).toBe(1); // A3 narrows to the assigned req
+    });
+
+    // -------------------------------------------------------------------------
+    // T9-B4 — margin: COMPOUND authorization (report:read AND
+    // assignment:commercials:read), aggregate shape + governed weighted metric,
+    // data-safety (no per-row commercial fields), and A3 visibility at the HTTP
+    // boundary. The weighted arithmetic + ambiguity fail-closed are proven in the
+    // libs/placement + libs/reporting specs; here we prove the wired endpoint and
+    // the compound gate.
+    // -------------------------------------------------------------------------
+
+    const marginUrl = (): string =>
+      `http://127.0.0.1:${port}/v1/reports/margin?site_id=${SITE_A}`;
+
+    // Seed a commercialized ACTIVE CONTRACT assignment: PlacementProcess (STARTED)
+    // → ContractAssignment (ACTIVE/FORWARD) → a current open, non-cancelled
+    // AssignmentRateVersion carrying the given pay/bill/currency/rate_period.
+    async function seedCommercialized(
+      requisition_id: string,
+      pay: string,
+      bill: string,
+      currency: string,
+      rate_period: string,
+    ): Promise<void> {
+      const pp = globalThis.crypto.randomUUID();
+      const ca = globalThis.crypto.randomUUID();
+      await setupClient.query(
+        `INSERT INTO placement."PlacementProcess"
+           (id, tenant_id, submittal_id, requisition_id, talent_record_id, state, offered_at)
+         VALUES ($1,$2,$3,$4,$5,'STARTED'::placement."PlacementState", now())`,
+        [pp, TENANT_ATS, globalThis.crypto.randomUUID(), requisition_id, globalThis.crypto.randomUUID()],
+      );
+      await setupClient.query(
+        `INSERT INTO placement."ContractAssignment"
+           (id, tenant_id, placement_process_id, submittal_id, requisition_id, talent_record_id,
+            started_at, provenance, company_id, lifecycle_state, end_reason, ended_at)
+         VALUES ($1,$2,$3,$4,$5,$6, now(),
+                 'FORWARD'::placement."ContractAssignmentProvenance", $7,
+                 'ACTIVE'::placement."ContractAssignmentState", NULL, NULL)`,
+        [ca, TENANT_ATS, pp, globalThis.crypto.randomUUID(), requisition_id,
+         globalThis.crypto.randomUUID(), globalThis.crypto.randomUUID()],
+      );
+      await setupClient.query(
+        `INSERT INTO placement."AssignmentRateVersion"
+           (id, tenant_id, contract_assignment_id, requisition_id, talent_record_id,
+            pay_rate_amount, bill_rate_amount, currency, rate_period,
+            effective_from, effective_to, recorded_by, cancelled_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'2026-01-01T00:00:00.000Z', NULL, $10, NULL)`,
+        [globalThis.crypto.randomUUID(), TENANT_ATS, ca, requisition_id,
+         globalThis.crypto.randomUUID(), pay, bill, currency, rate_period,
+         globalThis.crypto.randomUUID()],
+      );
+    }
+
+    type MarginBody = {
+      eligible_count: number;
+      commercialized_count: number;
+      missing_commercial_count: number;
+      coverage: string;
+      groups: Array<{
+        currency: string;
+        rate_period: string;
+        assignment_count: number;
+        group_margin_percent: string | null;
+      }>;
+    };
+
+    it('margin entitlement axis: tenant lacking ats → 403', async () => {
+      const res = await fetch(marginUrl(), { method: 'GET', headers: { Authorization: `Bearer ${recruiterJwt_NotAts}` } });
+      expect(res.status).toBe(403);
+    });
+
+    it('margin authorization axis: report:read WITHOUT assignment:commercials:read → 403', async () => {
+      const res = await fetch(marginUrl(), { method: 'GET', headers: { Authorization: `Bearer ${recruiterJwt}` } });
+      expect(res.status).toBe(403);
+    });
+
+    it('margin authorization axis: assignment:commercials:read WITHOUT report:read → 403', async () => {
+      const res = await fetch(marginUrl(), { method: 'GET', headers: { Authorization: `Bearer ${commercialOnlyJwt}` } });
+      expect(res.status).toBe(403);
+    });
+
+    it('margin site axis: token site != requested site → 403', async () => {
+      const res = await fetch(marginUrl(), { method: 'GET', headers: { Authorization: `Bearer ${marginWrongSiteJwt}` } });
+      expect(res.status).toBe(403);
+    });
+
+    it('margin compound success: governed 25.00% USD·HOURLY group, coverage + invariant, no per-row commercial fields', async () => {
+      // Two commercialized ACTIVE assignments on the recruiter-visible req →
+      // ONE USD/HOURLY group weighting to 25.00% (not the 35% mean). A CAD group
+      // on the admin-only req proves A3 below.
+      await seedCommercialized(ftReqAssigned, '80.00', '100.00', 'USD', 'HOURLY');
+      await seedCommercialized(ftReqAssigned, '10.00', '20.00', 'USD', 'HOURLY');
+      await seedCommercialized(ftReqUnassigned, '50.00', '100.00', 'CAD', 'HOURLY');
+
+      const res = await fetch(marginUrl(), { method: 'GET', headers: { Authorization: `Bearer ${marginAdminJwt}` } });
+      expect(res.status).toBe(200);
+      const raw = await res.text();
+      // Data-safety (§13/§25): no per-row commercial or identity fields leak.
+      for (const banned of [
+        'pay_rate_amount', 'bill_rate_amount', 'spread_amount', 'total_spread_amount',
+        'markup_percent', 'talent_record_id', 'assignment_id', 'effective_from', 'ended_at',
+      ]) {
+        expect(raw).not.toContain(banned);
+      }
+      const body = JSON.parse(raw) as MarginBody;
+      expect(body.coverage).toBe('forward_materialized');
+      expect(body.eligible_count).toBe(
+        body.commercialized_count + body.missing_commercial_count,
+      );
+      const usdHourly = body.groups.find((g) => g.currency === 'USD' && g.rate_period === 'HOURLY');
+      expect(usdHourly?.assignment_count).toBe(2);
+      expect(usdHourly?.group_margin_percent).toBe('25.00'); // NOT the 35% simple mean
+      const cadHourly = body.groups.find((g) => g.currency === 'CAD');
+      expect(cadHourly?.group_margin_percent).toBe('50.00'); // admin sees the tenant-wide CAD group
+    });
+
+    it('margin A3: recruiter sees only visible-requisition groups (no admin-only CAD group)', async () => {
+      const res = await fetch(marginUrl(), { method: 'GET', headers: { Authorization: `Bearer ${marginRecruiterJwt}` } });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as MarginBody;
+      // The recruiter-visible USD/HOURLY group is present and correct...
+      const usdHourly = body.groups.find((g) => g.currency === 'USD' && g.rate_period === 'HOURLY');
+      expect(usdHourly?.group_margin_percent).toBe('25.00');
+      // ...but the admin-only CAD group (ftReqUnassigned) is invisible under A3.
+      expect(body.groups.some((g) => g.currency === 'CAD')).toBe(false);
+    });
+
+    // -------------------------------------------------------------------------
+    // T9-B5 / AV-1 — explicit site_id narrows fallthrough / assignment-pipeline /
+    // margin even for a tenant-wide (see_all) principal. Every prior TENANT_ATS
+    // datum is on a SITE_A requisition; we add ONE SITE_B requisition with its own
+    // data, so the tenant partitions disjointly (tenant-wide = SITE_A ⊎ SITE_B).
+    // Proves: ?site=SITE_B is EXACT (no SITE_B contamination), ?site=SITE_A
+    // EXCLUDES SITE_B, and no-site (tenant-wide) = SITE_A + SITE_B (additivity).
+    // The actor is tenantWideAdminJwt (see_all + NULL site claim → may query any
+    // site). tenant isolation is unchanged (all queries stay within TENANT_ATS).
+    // -------------------------------------------------------------------------
+    describe('AV-1 explicit-site narrowing for see_all principals', () => {
+      let reqSiteB = '';
+      const marginGet = async (site?: string): Promise<MarginBody> => {
+        const url =
+          `http://127.0.0.1:${port}/v1/reports/margin` +
+          (site === undefined ? '' : `?site_id=${site}`);
+        const res = await fetch(url, { headers: { Authorization: `Bearer ${tenantWideAdminJwt}` } });
+        expect(res.status).toBe(200);
+        return (await res.json()) as MarginBody;
+      };
+      const apGet = async (site?: string) => {
+        const url =
+          `http://127.0.0.1:${port}/v1/reports/assignment-pipeline` +
+          (site === undefined ? '' : `?site_id=${site}`);
+        const res = await fetch(url, { headers: { Authorization: `Bearer ${tenantWideAdminJwt}` } });
+        expect(res.status).toBe(200);
+        return (await res.json()) as { total_live: number; by_state: Array<{ state: string; count: number }> };
+      };
+      const ftGet = async (site?: string) => {
+        const url =
+          `http://127.0.0.1:${port}/v1/reports/fallthrough?from=${encodeURIComponent(FT_FROM)}&to=${encodeURIComponent(FT_TO)}` +
+          (site === undefined ? '' : `&site_id=${site}`);
+        const res = await fetch(url, { headers: { Authorization: `Bearer ${tenantWideAdminJwt}` } });
+        expect(res.status).toBe(200);
+        return (await res.json()) as { accepted_attempts: number; fallthrough_attempts: number };
+      };
+      const started = (b: { by_state: Array<{ state: string; count: number }> }): number =>
+        b.by_state.find((r) => r.state === 'STARTED')?.count ?? 0;
+
+      beforeAll(async () => {
+        const coB = await postJson('/v1/companies', tenantWideAdminJwt, { name: 'Co SiteB', site_id: SITE_B });
+        const r = await postJson('/v1/requisitions', tenantWideAdminJwt, {
+          title: 'SiteB req', company_id: coB.id, site_id: SITE_B,
+        });
+        reqSiteB = r.id;
+        // SITE_B-only data: margin NZD/HOURLY 50% (unique currency), 2 STARTED, 1 fallthrough.
+        await seedCommercialized(reqSiteB, '50.00', '100.00', 'NZD', 'HOURLY');
+        await seedStartedPlacement(reqSiteB, 'ACTIVE');
+        await seedStartedPlacement(reqSiteB);
+        await seedFallthrough(reqSiteB);
+      });
+
+      it('margin: ?site=SITE_B exact (NZD only); ?site=SITE_A excludes NZD; no-site includes it', async () => {
+        const siteB = await marginGet(SITE_B);
+        const nzd = siteB.groups.find((g) => g.currency === 'NZD' && g.rate_period === 'HOURLY');
+        expect(nzd?.group_margin_percent).toBe('50.00'); // (100-50)/100*100
+        expect(siteB.groups.every((g) => g.currency === 'NZD')).toBe(true); // uncontaminated
+        const siteA = await marginGet(SITE_A);
+        expect(siteA.groups.some((g) => g.currency === 'NZD')).toBe(false); // SITE_B excluded
+        const all = await marginGet(undefined);
+        expect(all.groups.some((g) => g.currency === 'NZD')).toBe(true); // tenant-wide includes SITE_B
+      });
+
+      it('assignment-pipeline: SITE_B STARTED exact; no-site = SITE_A + SITE_B (additivity)', async () => {
+        const siteB = await apGet(SITE_B);
+        // SITE_B STARTED = 2 seedStartedPlacement + 1 seedCommercialized (also STARTED) = 3.
+        expect(started(siteB)).toBe(3); // uncontaminated SITE_B
+        const siteA = await apGet(SITE_A);
+        const all = await apGet(undefined);
+        expect(started(all)).toBe(started(siteA) + started(siteB)); // narrowing is a disjoint partition
+      });
+
+      it('fallthrough: SITE_B exact (1 accepted, 1 fell); no-site = SITE_A + SITE_B (additivity)', async () => {
+        const siteB = await ftGet(SITE_B);
+        expect(siteB.accepted_attempts).toBe(1);
+        expect(siteB.fallthrough_attempts).toBe(1);
+        const siteA = await ftGet(SITE_A);
+        const all = await ftGet(undefined);
+        expect(all.accepted_attempts).toBe(siteA.accepted_attempts + siteB.accepted_attempts);
+        expect(all.fallthrough_attempts).toBe(siteA.fallthrough_attempts + siteB.fallthrough_attempts);
+      });
+
+      it('margin compound gate preserved under AV-1: report:read without commercials → 403', async () => {
+        const res = await fetch(`http://127.0.0.1:${port}/v1/reports/margin?site_id=${SITE_B}`, {
+          headers: { Authorization: `Bearer ${recruiterJwt}` },
+        });
+        expect(res.status).toBe(403);
+      });
     });
 
     // -------------------------------------------------------------------------
@@ -767,7 +1315,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     // D) THE SEAM-EXCLUSION — structural proof.
     // -------------------------------------------------------------------------
 
-    it('Seam-exclusion: GET /v1/dashboard returns 200 even though engagement/submittal/examination/talent/job_domain schemas are NOT applied to the container', async () => {
+    it('Seam-exclusion: GET /v1/dashboard returns 200 even though selection/submittal/examination/talent/job_domain schemas are NOT applied to the container', async () => {
       const res = await fetch(
         `http://127.0.0.1:${port}/v1/dashboard?site_id=${SITE_A}`,
         {
@@ -776,7 +1324,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         },
       );
       // If the reporting service touched any Core schema, this would
-      // 500 with `relation "engagement.X" does not exist`.
+      // 500 with `relation "selection.X" does not exist`.
       expect(res.status).toBe(200);
       const body = (await res.json()) as {
         tenant_counts: { companies: number };

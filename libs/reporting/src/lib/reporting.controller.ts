@@ -14,11 +14,17 @@ import {
   RequireSiteMatch,
   RolesGuard,
 } from '@aramo/authorization';
+import { AramoError, RequestId } from '@aramo/common';
 import { EntitlementGuard, RequireCapability } from '@aramo/entitlement';
 
 import type {
+  AssignmentPipelineReportView,
   CompanyMetricsReportView,
   CompanyPlacementsReportView,
+  FallthroughReportView,
+  FillPerformanceReportView,
+  GuaranteeExposureReportView,
+  MarginReportView,
   PipelineStageRollupView,
   PlacementCountReportView,
   RecruiterMetricsReportView,
@@ -35,13 +41,14 @@ import { ReportingService } from './reporting.service.js';
 //   @RequireScopes(...)                 // route-level — scope axis
 //   @RequireSiteMatch()                 // route-level — site axis
 //
-// Scope (NOT seeded — gap-and-note per A7 directive §1):
+// Scope (`report:read`, SEEDED to the 8 operational roles in
+// libs/identity/prisma/seed.ts — T9-B5 refresh of the original gap-and-note):
 //   - `report:read` — read-only (recruiter+ AND tenant_admin; the
 //     role-visibility predicate at the service layer governs what
 //     each role sees, NOT a separate `:all` scope here).
 //
 // A7's HARD EXCLUSIONS (every refused metric here):
-//   - submittal rollups (Core engagement schema; T5, M6).
+//   - submittal rollups (Core selection schema; T5, M6).
 //   - match / tier / judgment / examination metrics (Core; R10).
 //   - EEO reporting (A4-deferred fields; compliance-scoped).
 //   - PDF/FPDF rendering (presentation; defer).
@@ -220,5 +227,214 @@ export class ReportingController {
       visibility,
       ...(siteIdFromQuery === undefined ? {} : { site_id: siteIdFromQuery }),
     });
+  }
+
+  // T9-B1 — authoritative fill-rate + time-to-fill operational report.
+  // Governed by Aramo-T9-B1-Directive-v1_0-LOCKED + the Gate-5 Finalization
+  // Amendment. ONE combined route (D-7) returning both metrics for the cohort
+  // of requisitions whose created_at ∈ [from, to). `from`/`to` are REQUIRED
+  // absolute ISO instants carrying `Z` or an explicit offset (§8 / D-5);
+  // date-only and zone-less values are rejected 400 (VALIDATION_ERROR — an
+  // existing code; no new ErrorCode per §8). report:read + tenant/site/A3
+  // (D-4) — the same guard chain as every other reporting route.
+  @Get('fill-performance')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('report:read')
+  @RequireSiteMatch()
+  async fillPerformance(
+    @AuthContext() authContext: AuthContextType,
+    @RequestId() requestId: string,
+    @Query('from') fromRaw: string | undefined,
+    @Query('to') toRaw: string | undefined,
+    @Query('site_id') siteIdFromQuery: string | undefined,
+    @Req() req: Request,
+  ): Promise<FillPerformanceReportView> {
+    const from = this.parseAbsoluteInstant('from', fromRaw, requestId);
+    const to = this.parseAbsoluteInstant('to', toRaw, requestId);
+    if (from.getTime() >= to.getTime()) {
+      throw new AramoError(
+        'VALIDATION_ERROR',
+        'from must be strictly before to',
+        400,
+        { requestId, details: { from: fromRaw, to: toRaw } },
+      );
+    }
+    const visibility = await req.resolveVisibility!();
+    return this.reportingService.getFillPerformance(
+      {
+        tenant_id: authContext.tenant_id,
+        user_id: authContext.sub,
+        scopes: authContext.scopes,
+        visibility,
+        ...(siteIdFromQuery === undefined ? {} : { site_id: siteIdFromQuery }),
+      },
+      { from, to },
+    );
+  }
+
+  // T7-P4 — authoritative guarantee-exposure summary report. Governed by
+  // Aramo-T7-P4-Guarantee-Exposure-Reporting-Implementation-Directive-v1_0-LOCKED. Summary of
+  // permanent-placement guarantee exposure for the cohort of PermanentPlacements whose
+  // created_at (immutable activation instant) ∈ [from, to). `from`/`to` are REQUIRED absolute
+  // ISO instants carrying `Z`/offset (reuses parseAbsoluteInstant); date-only/zone-less
+  // rejected 400 (VALIDATION_ERROR — an existing code; no new ErrorCode). Per-currency money,
+  // NO cross-currency total; summary-only, no row-level ids/PII. report:read + tenant/site/A3 —
+  // the same guard chain as every other reporting route.
+  @Get('guarantee-exposure')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('report:read')
+  @RequireSiteMatch()
+  async guaranteeExposure(
+    @AuthContext() authContext: AuthContextType,
+    @RequestId() requestId: string,
+    @Query('from') fromRaw: string | undefined,
+    @Query('to') toRaw: string | undefined,
+    @Query('site_id') siteIdFromQuery: string | undefined,
+    @Req() req: Request,
+  ): Promise<GuaranteeExposureReportView> {
+    const from = this.parseAbsoluteInstant('from', fromRaw, requestId);
+    const to = this.parseAbsoluteInstant('to', toRaw, requestId);
+    if (from.getTime() >= to.getTime()) {
+      throw new AramoError(
+        'VALIDATION_ERROR',
+        'from must be strictly before to',
+        400,
+        { requestId, details: { from: fromRaw, to: toRaw } },
+      );
+    }
+    const visibility = await req.resolveVisibility!();
+    return this.reportingService.getGuaranteeExposure(
+      {
+        tenant_id: authContext.tenant_id,
+        user_id: authContext.sub,
+        scopes: authContext.scopes,
+        visibility,
+        ...(siteIdFromQuery === undefined ? {} : { site_id: siteIdFromQuery }),
+      },
+      { from, to },
+    );
+  }
+
+  // T9-B3 — assignment-pipeline current-snapshot operational view. Governed by
+  // Aramo-T9-B3-Directive-v1_0-LOCKED. Counts-only current snapshot — NO query
+  // parameters (no from/to, §4/§10). report:read + tenant/site/A3. No commercial
+  // data, no row-level items.
+  @Get('assignment-pipeline')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('report:read')
+  @RequireSiteMatch()
+  async assignmentPipeline(
+    @AuthContext() authContext: AuthContextType,
+    @Query('site_id') siteIdFromQuery: string | undefined,
+    @Req() req: Request,
+  ): Promise<AssignmentPipelineReportView> {
+    const visibility = await req.resolveVisibility!();
+    return this.reportingService.getAssignmentPipeline({
+      tenant_id: authContext.tenant_id,
+      user_id: authContext.sub,
+      scopes: authContext.scopes,
+      visibility,
+      ...(siteIdFromQuery === undefined ? {} : { site_id: siteIdFromQuery }),
+    });
+  }
+
+  // T9-B4 — margin current-snapshot operational view. Governed by
+  // Aramo-T9-B4-Directive-v1_0-LOCKED. AGGREGATE-ONLY current snapshot — NO query
+  // parameters (§5/§22). COMPOUND authorization: report:read AND
+  // assignment:commercials:read (§12 D-9 — RolesGuard requires every listed scope,
+  // so either alone → 403), plus tenant/site/A3. No row-level commercial data.
+  @Get('margin')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('report:read', 'assignment:commercials:read')
+  @RequireSiteMatch()
+  async margin(
+    @AuthContext() authContext: AuthContextType,
+    @RequestId() requestId: string,
+    @Query('site_id') siteIdFromQuery: string | undefined,
+    @Req() req: Request,
+  ): Promise<MarginReportView> {
+    const visibility = await req.resolveVisibility!();
+    return this.reportingService.getMargin(
+      {
+        tenant_id: authContext.tenant_id,
+        user_id: authContext.sub,
+        scopes: authContext.scopes,
+        visibility,
+        ...(siteIdFromQuery === undefined ? {} : { site_id: siteIdFromQuery }),
+      },
+      requestId,
+    );
+  }
+
+  // T9-B2 — authoritative fallthrough-rate + reasons operational report.
+  // Governed by Aramo-T9-B2-Directive-v1_0-LOCKED. Placement-attempt level,
+  // post-acceptance/pre-start (FELL_THROUGH + NO_SHOW) over the cohort of
+  // attempts whose first OFFER_ACCEPTED ∈ [from,to). `from`/`to` REQUIRED
+  // absolute ISO instants (reuses parseAbsoluteInstant); report:read +
+  // tenant/site/A3. Reasons are grouped by canonical reason_code/label only —
+  // reason_detail (PII) is never read or exposed (§16).
+  @Get('fallthrough')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('report:read')
+  @RequireSiteMatch()
+  async fallthrough(
+    @AuthContext() authContext: AuthContextType,
+    @RequestId() requestId: string,
+    @Query('from') fromRaw: string | undefined,
+    @Query('to') toRaw: string | undefined,
+    @Query('site_id') siteIdFromQuery: string | undefined,
+    @Req() req: Request,
+  ): Promise<FallthroughReportView> {
+    const from = this.parseAbsoluteInstant('from', fromRaw, requestId);
+    const to = this.parseAbsoluteInstant('to', toRaw, requestId);
+    if (from.getTime() >= to.getTime()) {
+      throw new AramoError(
+        'VALIDATION_ERROR',
+        'from must be strictly before to',
+        400,
+        { requestId, details: { from: fromRaw, to: toRaw } },
+      );
+    }
+    const visibility = await req.resolveVisibility!();
+    return this.reportingService.getFallthrough(
+      {
+        tenant_id: authContext.tenant_id,
+        user_id: authContext.sub,
+        scopes: authContext.scopes,
+        visibility,
+        ...(siteIdFromQuery === undefined ? {} : { site_id: siteIdFromQuery }),
+      },
+      { from, to },
+    );
+  }
+
+  // T9-B1 (§8 / D-5) — parse a REQUIRED reporting-period boundary. The value
+  // must be an ISO 8601 date-TIME carrying an explicit zone (`Z` or ±hh:mm);
+  // date-only ("2026-01-01") and zone-less ("2026-01-01T00:00:00") values are
+  // rejected. Absolute instants ONLY — no date-only business-day semantics and
+  // no tenant/user timezone inference. Returns the UTC-absolute Date.
+  private parseAbsoluteInstant(
+    field: 'from' | 'to',
+    raw: string | undefined,
+    requestId: string,
+  ): Date {
+    if (raw === undefined || raw.trim() === '') {
+      throw new AramoError('VALIDATION_ERROR', `${field} is required`, 400, {
+        requestId,
+        details: { [field]: raw ?? null },
+      });
+    }
+    const ISO_INSTANT =
+      /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$/;
+    const d = new Date(raw);
+    if (!ISO_INSTANT.test(raw) || Number.isNaN(d.getTime())) {
+      throw new AramoError(
+        'VALIDATION_ERROR',
+        `invalid ${field}: expected an absolute ISO date-time with Z or explicit offset`,
+        400,
+        { requestId, details: { [field]: raw } },
+      );
+    }
+    return d;
   }
 }

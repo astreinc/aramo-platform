@@ -1,0 +1,178 @@
+// Per-module Prisma schema for the `integration` module — T8-CONNECTOR-A
+// (provider-neutral connector foundation).
+//
+// Per Architecture v2.0/v2.1 §7.1 (Schema-per-Module) and
+// doc/05-conventions.md "Database Conventions". Cross-schema references are
+// UUID-only WITHOUT FK constraints (§7.3).
+//
+// SCOPE (Aramo-T8-CONNECTOR-A-Directive-v1_0-LOCKED):
+//   - provider-neutral connection metadata only (§13/§33) — NO provider enum,
+//     NO raw credentials, NO raw provider payload;
+//   - AWS Secrets Manager owns credential material; Postgres stores ONLY an
+//     opaque, tenant-bound `secret_ref` (§7/§8);
+//   - a dedicated transport-delivery idempotency ledger distinguishes an exact
+//     transport redelivery (benign ALREADY_PROCESSED) from a changed-content
+//     business amendment (unsupported/deferred — §15/§19/§41);
+//   - CREATE-only is preserved; this schema NEVER stores or mutates a
+//     requisition — the canonical handoff remains the T8-P2 ImportService.
+//
+// Cross-schema logical references (§7.3 — UUID-only, no FK):
+//   - tenant_id                       → identity.Tenant (the connection tenant)
+//   - ConnectorDelivery.connection_id → INTRA-SCHEMA FK to IntegrationConnection
+//   - ConnectorDelivery.import_batch_id → import.ImportBatch (UUID-only, no FK;
+//                                          traceability to the P2 result, §27)
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "./generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["integration"]
+}
+
+// IntegrationConnectionStatus — the provider-neutral connection lifecycle
+// (directive §14; repository-convention lowercase, materially equivalent to the
+// directive's DISCONNECTED/CONFIGURED/ACTIVE/DEGRADED/DISABLED). Health is
+// OPERATIONAL metadata only — it MUST NOT mutate requisition/import status.
+//   - disconnected → no usable credentials/config yet;
+//   - configured   → secret_ref/config present, not necessarily proven healthy;
+//   - active        → eligible for execution;
+//   - degraded      → execution failures requiring attention (retry-exhausted);
+//   - disabled      → administratively disabled (history retained).
+enum IntegrationConnectionStatus {
+  disconnected
+  configured
+  active
+  degraded
+  disabled
+
+  @@schema("integration")
+}
+
+// ConnectorDeliveryStatus — the disposition of ONE transport delivery through
+// the connector (the idempotency ledger, directive §15/§19/§41).
+//   - pending     → recorded, handoff in flight;
+//   - processed   → canonical handoff succeeded (records → T8-P2); a redelivery
+//                    with the SAME delivery_key resolves as benign no-op;
+//   - failed       → transient/permanent execution failure (see retry policy);
+//   - unsupported  → the delivery targets an EXISTING external identity with
+//                    CHANGED business content — a business amendment, which is
+//                    UNSUPPORTED/DEFERRED. NON-mutating: no requisition write.
+enum ConnectorDeliveryStatus {
+  pending
+  processed
+  failed
+  unsupported
+
+  @@schema("integration")
+}
+
+// IntegrationConnection — a tenant-scoped, provider-neutral connector
+// connection. The CONNECTION is the identity (directive ruling #2): there is
+// deliberately NO unique(tenant_id, provider_key) — an enterprise tenant may
+// hold multiple accounts/instances of the same VMS. Any provider-account
+// uniqueness is deferred to Connector-B under provider-specific authority.
+model IntegrationConnection {
+  // Identity — the connection id IS the connection identity.
+  id        String @id @default(uuid()) @db.Uuid
+  tenant_id String @db.Uuid
+
+  // Provider key — a NORMALIZED, EXTENSIBLE lowercase string (directive §4/§33).
+  // NEVER a closed VMS enum; no vendor names are frozen here.
+  provider_key String
+
+  // Operational lifecycle (health metadata only).
+  status IntegrationConnectionStatus @default(disconnected)
+
+  // Opaque, tenant-bound secret reference (directive §7/§8). Postgres stores
+  // ONLY this metadata handle — never raw credential material. The value is
+  // SERVER-GENERATED/validated and is never an arbitrary client-supplied AWS
+  // Secrets Manager path. NULL until credentials are configured.
+  secret_ref String?
+
+  // Non-secret connection configuration (directive §6). MUST NOT carry
+  // credentials/tokens/secret material. Optional; provider-neutral.
+  config Json?
+
+  // Optional provider-neutral account/instance identifier the tenant recognizes
+  // (NOT a credential; NOT a uniqueness key in Connector-A).
+  provider_account_id String?
+
+  // Bounded, opaque cursor/watermark for future polling transports (directive
+  // §16). NO credentials. Advanced only after successful processing.
+  cursor String?
+
+  // Operational execution state (directive §26). Bounded, non-secret.
+  last_attempted_at  DateTime? @db.Timestamptz
+  last_successful_at DateTime? @db.Timestamptz
+  last_error_code    String?
+  last_error_summary String?
+
+  // Optimistic-concurrency guard for lifecycle transitions.
+  version Int @default(0)
+
+  // Timeline (repository UTC/TIMESTAMPTZ convention).
+  created_at DateTime @default(now()) @db.Timestamptz
+  updated_at DateTime @default(now()) @updatedAt @db.Timestamptz
+
+  // Intra-schema relation to the delivery idempotency ledger.
+  deliveries ConnectorDelivery[]
+
+  // Indexes — every query path leads with tenant_id. NO unique(tenant_id,
+  // provider_key) (ruling #2): connection.id is the identity.
+  @@index([tenant_id])
+  @@index([tenant_id, provider_key])
+  @@index([tenant_id, status])
+
+  @@schema("integration")
+}
+
+// ConnectorDelivery — the transport-delivery idempotency ledger (directive
+// §15, Architect ruling). ONE row per distinct transport delivery. The
+// load-bearing distinction:
+//   - same delivery_key already `processed`  → benign ALREADY_PROCESSED;
+//     ImportService is NOT invoked again → NO second ImportBatch;
+//   - same external requisition identity with DIFFERENT business content →
+//     a DIFFERENT delivery_key → a new row → handed to T8-P2 → existing-identity
+//     conflict → classified `unsupported` (business amendment, deferred). No
+//     requisition mutation, ever.
+model ConnectorDelivery {
+  // Identity.
+  id            String @id @default(uuid()) @db.Uuid
+  tenant_id     String @db.Uuid
+  connection_id String @db.Uuid
+
+  // The provider-neutral idempotency key for a transport delivery (directive
+  // §15): a provider delivery id / normalized message id / deterministic
+  // payload fingerprint. Opaque to this layer; supplied/derived by the
+  // adapter+orchestrator, NEVER a credential.
+  delivery_key String
+
+  status ConnectorDeliveryStatus @default(pending)
+
+  // Traceability to the canonical P2 result (directive §27) — UUID-only ref to
+  // import.ImportBatch, no cross-schema FK. NULL until a batch is produced.
+  import_batch_id String? @db.Uuid
+
+  // Bounded, non-secret failure/classification detail (e.g. the
+  // unsupported-existing-requisition-update token). NEVER a provider payload.
+  detail_code String?
+
+  created_at   DateTime  @default(now()) @db.Timestamptz
+  processed_at DateTime? @db.Timestamptz
+
+  // Intra-schema FK to the owning connection. ON DELETE CASCADE is a safety net
+  // only; connections are DISABLED not deleted (directive §42), so history is
+  // retained in practice.
+  connection IntegrationConnection @relation(fields: [connection_id], references: [id], onDelete: Cascade)
+
+  // Deterministic idempotency uniqueness (Architect ruling): a transport
+  // redelivery collides here and resolves to ALREADY_PROCESSED.
+  @@unique([tenant_id, connection_id, delivery_key])
+  @@index([tenant_id, connection_id, status])
+  @@index([tenant_id, import_batch_id])
+
+  @@schema("integration")
+}

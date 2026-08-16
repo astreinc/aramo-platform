@@ -20,8 +20,8 @@
 // Viewer is read-only on the domain entities recruiter can see (+ search +
 // examination/activity reads).
 //
-// Note: the engagement-domain scopes shipped at R7 BE-prereq (3 scopes:
-// engagement:read/write/outreach; outreach SoD per Lead ruling). The
+// Note: the selection-domain scopes shipped at R7 BE-prereq (3 scopes:
+// selection:read/write/outreach; outreach SoD per Lead ruling). The
 // remaining `submittal:read` deferral (the bare GET /v1/submittals/:id
 // route) stays a separate carry — own follow-on PR.
 export const SEED_SCOPE_KEYS = [
@@ -158,14 +158,14 @@ export const SEED_SCOPE_KEYS = [
   // Reporting/Audit DDR (Reporting-Scope-Seed v1.1 Ruling B-iii).
   'dashboard:read',                     // 8 operational roles (recruiter floor; tenant_admin/owner/AM/RM/LR/BO/DM)
   'report:read',                        // 8 operational roles (mirrors dashboard:read; auditor-tier deferred to Reporting/Audit DDR)
-  // R7 BE-prereq — engagement-domain scopes (closes the A1a-2 deferral).
+  // R7 BE-prereq — selection-domain scopes (closes the A1a-2 deferral).
   // 3-scope split per Lead Amendment v1.1 §1 Ruling B (outreach SoD):
-  // outreach is the only engagement write with EXTERNAL side-effects
+  // outreach is the only selection write with EXTERNAL side-effects
   // (AI draft + consent-at-send + outbound delivery + LLM cost) — gets
   // its OWN scope so "record-but-not-send" is encodable.
-  'engagement:read',                    // 8 roles: write-tier 6 + read-only 2 (delivery_manager / back_office)
-  'engagement:write',                   // 6 write-tier roles: TA / TO / AM / RM / LR / recruiter (floor)
-  'engagement:outreach',                // 6 write-tier roles (mirrors :write; outreach SoD encoding)
+  'selection:read',                    // 8 roles: write-tier 6 + read-only 2 (delivery_manager / back_office)
+  'selection:write',                   // 6 write-tier roles: TA / TO / AM / RM / LR / recruiter (floor)
+  'selection:outreach',                // 6 write-tier roles (mirrors :write; outreach SoD encoding)
   // Search PR-1 — per-entity quick-search scopes (Lead rulings R1/R2). The
   // ?q= text-search parameter on the per-entity LIST endpoints is gated on
   // these scopes WHEN q is present (the no-q LIST keeps its existing :read
@@ -275,6 +275,29 @@ export const SEED_SCOPE_KEYS = [
   // account_manager/tenant_admin/tenant_owner, required in conjunction with
   // placement:create for a replacement create.
   'placement:replace',
+  // Track 7 / T7-P1 — PermanentPlacement guarantee authority. Dedicated least-
+  // privilege scopes (§8): read governs the guarantee read surface; transition
+  // governs the guarantee lifecycle (GUARANTEE_ACTIVE -> GUARANTEE_SATISFIED) AND
+  // is the second leg of the PERMANENT STARTED conjunction (mirroring
+  // assignment:commercials:write for CONTRACT). NEVER satisfied by generic
+  // placement:* / assignment:*. Role posture mirrors the placement authoritative
+  // tier: read -> all four grant-receiving roles; transition ->
+  // account_manager/tenant_admin/tenant_owner (the tier holding placement:activate).
+  // Falloff/remedy (T7-P2) and guarantee-terms management (T7-P3) authorities follow.
+  'placement:permanent:read',
+  'placement:permanent:transition',
+  // Track 7 / T7-P3 — the DEDICATED guarantee-terms management authority (§3.7). Governs
+  // creating/revising the reusable requisition-keyed guarantee-term versions (POST
+  // /v1/permanent-placement-guarantee-terms/requisitions/:requisitionId[/revise]). Reads use
+  // placement:permanent:read. GRANTED to account_manager, tenant_admin, tenant_owner; recruiter
+  // excluded (least privilege — terms authorship is authority-separated from operational work).
+  'placement:permanent:terms:write',
+  // Track 7 / T7-P2 — the DEDICATED remedy-resolution authority (§3.6). Governs the
+  // evidence-gated remedy completion (POST /v1/placements/:id/permanent/remedy/complete)
+  // — a high-consequence act authority-separated from the guarantee lifecycle:
+  // placement:permanent:transition does NOT satisfy it. GRANTED to account_manager,
+  // tenant_admin, tenant_owner; recruiter excluded. Falloff itself uses permanent:transition.
+  'placement:remedy:resolve',
   // Track 4 / T4-D — ContractAssignment authority (the authoritative post-start
   // commitment). Dedicated family: reuse of requisition:assign / company:assign
   // (user<->entity assignment) and generic placement:* is rejected as semantically
@@ -303,6 +326,15 @@ export const SEED_SCOPE_KEYS = [
   // (authoritative-tier act, recruiter excluded — mirrors assignment:create).
   'requisition:import:read',
   'requisition:import:write',
+  // Track 8 / T8-CONNECTOR-A — provider-neutral connector-connection MANAGEMENT
+  // (Settings → Integrations). Distinct from requisition:import:* (which governs
+  // P3 ingestion monitoring): this governs connector connection administration
+  // (list/configure/enable/disable). read + write GRANTED to tenant_admin +
+  // tenant_owner ONLY (administrative tier; recruiter/account_manager excluded).
+  // The connector ServiceAccount does NOT hold these — its execution authority
+  // is requisition:import:write only.
+  'integration:read',
+  'integration:write',
 ] as const;
 export type SeedScopeKey = (typeof SEED_SCOPE_KEYS)[number];
 

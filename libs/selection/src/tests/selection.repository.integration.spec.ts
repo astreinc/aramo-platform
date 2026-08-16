@@ -31,9 +31,9 @@ const requisitionRepositoryStub = {
     ACTIVE_REQS.has(`${tenant_id}:${id}`) ? 'active' : null,
 } as unknown as RequisitionRepository;
 
-// M5 PR-1 §4.9 + M5 PR-3 §4.6 — integration spec for libs/engagement.
+// M5 PR-1 §4.9 + M5 PR-3 §4.6 — integration spec for libs/selection.
 //
-// Brings up a Postgres 17 testcontainer, applies the engagement init
+// Brings up a Postgres 17 testcontainer, applies the selection init
 // migration (PR-1) + the three cross-schema lib migrations needed for
 // PR-3 write-path validators (talent + job-domain + examination init),
 // constructs SelectionRepository with all real cross-schema deps wired,
@@ -41,34 +41,22 @@ const requisitionRepositoryStub = {
 //   PR-1 read-path scope: 8 tests (findById round-trip, null on unknown,
 //     nullable examination_id projection, tenant-scoped lookups, sorted
 //     reads, tenant isolation).
-//   PR-3 write-path scope: createEngagement happy + 5 validator refusal
+//   PR-3 write-path scope: createSelection happy + 5 validator refusal
 //     paths + atomicity; transitionState happy + illegal-transition +
 //     DB-trigger defense + tenant isolation; initial-state-and-event
 //     assertions.
 
-const ENGAGEMENT_MIGRATION_PATH = resolve(
+const SELECTION_MIGRATION_PATH = resolve(
   __dirname,
-  '../../prisma/migrations/20260525120000_init_engagement_model/migration.sql',
+  '../../prisma/migrations/20260525120000_init_selection_model/migration.sql',
 );
-const ENGAGEMENT_EVENT_LOG_MIGRATION_PATH = resolve(
-  __dirname,
-  '../../prisma/migrations/20260525150000_add_engagement_event_log/migration.sql',
-);
-// M6 PR-2 §3 — engagement OutboxEvent. Required because createEngagement
+// M6 PR-2 §3 — selection OutboxEvent. Required because createSelection
 // + transitionState (and any other state-transition write method) now
 // emit an in-tx outbox row inside the same $transaction array as the
-// state change. Applied after the event-log substrate (same `engagement`
+// state change. Applied after the event-log substrate (same `selection`
 // namespace) — additive, no existing table altered.
-const ENGAGEMENT_OUTBOX_MIGRATION_PATH = resolve(
-  __dirname,
-  '../../prisma/migrations/20260531000000_add_outbox_event/migration.sql',
-);
-const ENGAGEMENT_T2P2_MIGRATION_PATH = resolve(
-  __dirname,
-  '../../prisma/migrations/20260813120000_t2p2_relocate_engagement_to_selection/migration.sql',
-);
 // PR-A1c §4 — metering schema required because every metered transition
-// method (createEngagement / transitionState / recordOutreachSent /
+// method (createSelection / transitionState / recordOutreachSent /
 // recordResponse / recordConversationStarted) now emits a UsageEvent
 // INSERT inside the existing $transaction array. Same PG transaction =
 // atomicity (Ruling 6).
@@ -84,8 +72,8 @@ const EXAMINATION_INIT_MIGRATION_PATH = resolve(
   __dirname,
   '../../../examination/prisma/migrations/20260517200000_init_examination_model/migration.sql',
 );
-// 4e-engagement-key — the Pattern-C create validator now resolves against
-// talent_record.TalentRecord (engagement.talent_id is a TalentRecord.id).
+// 4e-selection-key — the Pattern-C create validator now resolves against
+// talent_record.TalentRecord (selection.talent_id is a TalentRecord.id).
 // The 5 column-adding talent-record migrations (init + the additive columns
 // the regenerated Prisma client projects); the trgm/resume/search-index
 // migrations are not needed for the TalentRecord scalar projection.
@@ -114,15 +102,15 @@ const GOLDEN_PROFILE_ID = 'bbbbbbbb-bbbb-7bbb-8bbb-bbbbbbbbbbbb';
 const EXAM_A = 'dddddddd-dddd-7ddd-8ddd-dddddddddddd';
 const EXAM_TENANT_B = 'dddddddd-dddd-7ddd-8ddd-ddddddddd999';
 
-// PR-1 read-path seeded engagements.
-const ENGAGEMENT_1 = '00000000-0000-7000-8000-000000000001';
-const ENGAGEMENT_2 = '00000000-0000-7000-8000-000000000002';
-const ENGAGEMENT_3 = '00000000-0000-7000-8000-000000000003';
-const ENGAGEMENT_TENANT_B = '00000000-0000-7000-8000-000000000004';
+// PR-1 read-path seeded selections.
+const SELECTION_1 = '00000000-0000-7000-8000-000000000001';
+const SELECTION_2 = '00000000-0000-7000-8000-000000000002';
+const SELECTION_3 = '00000000-0000-7000-8000-000000000003';
+const SELECTION_TENANT_B = '00000000-0000-7000-8000-000000000004';
 
 // PR-3 write-path scenario UUIDs. Final group must be exactly 12 hex
 // chars per evidence.repository UUID_REGEX validation (also applied in
-// engagement.repository.validateCreateInput).
+// selection.repository.validateCreateInput).
 const CREATE_HAPPY_ID = '00000000-0000-7000-8000-cccc00000001';
 const CREATE_HAPPY_EVENT_ID = '00000000-0000-7000-8000-eeeec0000001';
 const CREATE_TALENT_REFUSE_ID = '00000000-0000-7000-8000-cccc00000002';
@@ -156,11 +144,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const url = container.getConnectionUri();
 
       const migrations = [
-        readFileSync(ENGAGEMENT_MIGRATION_PATH, 'utf8'),
-        readFileSync(ENGAGEMENT_EVENT_LOG_MIGRATION_PATH, 'utf8'),
-        // M6 PR-2 §3 — engagement OutboxEvent (same `engagement` namespace).
-        readFileSync(ENGAGEMENT_OUTBOX_MIGRATION_PATH, 'utf8'),
-        readFileSync(ENGAGEMENT_T2P2_MIGRATION_PATH, 'utf8'),
+        readFileSync(SELECTION_MIGRATION_PATH, 'utf8'),
+        // M6 PR-2 §3 — selection OutboxEvent (same `selection` namespace).
         // PR-A1c §4 — metering schema (cross-schema in-tx UsageEvent INSERT).
         readFileSync(METERING_INIT_MIGRATION_PATH, 'utf8'),
         readFileSync(TALENT_MIGRATION_PATH, 'utf8'),
@@ -187,19 +172,19 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       const talentRecordRepo = new TalentRecordRepository(talentRecordPrisma);
       const examRepo = new ExaminationRepository(examPrisma, undefined as never);
-      const engagementEventRepo = new SelectionEventRepository(prisma, makeMockLogger());
+      const selectionEventRepo = new SelectionEventRepository(prisma, makeMockLogger());
       repo = new SelectionRepository(
         prisma,
-        engagementEventRepo,
+        selectionEventRepo,
         talentRecordRepo,
         requisitionRepositoryStub,
         examRepo,
         makeMockLogger(),
       );
 
-      // ---- PR-1 read-path seeds (engagement-only) ---------------------
-      await seedEngagement(setupClient, {
-        id: ENGAGEMENT_1,
+      // ---- PR-1 read-path seeds (selection-only) ---------------------
+      await seedSelection(setupClient, {
+        id: SELECTION_1,
         tenant_id: TENANT_A,
         talent_id: TALENT_A,
         requisition_id: REQUISITION_A,
@@ -207,8 +192,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         state: 'surfaced',
         created_at: '2026-05-23T10:00:00Z',
       });
-      await seedEngagement(setupClient, {
-        id: ENGAGEMENT_2,
+      await seedSelection(setupClient, {
+        id: SELECTION_2,
         tenant_id: TENANT_A,
         talent_id: TALENT_A,
         requisition_id: REQUISITION_A,
@@ -216,8 +201,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         state: 'evaluated',
         created_at: '2026-05-24T10:00:00Z',
       });
-      await seedEngagement(setupClient, {
-        id: ENGAGEMENT_3,
+      await seedSelection(setupClient, {
+        id: SELECTION_3,
         tenant_id: TENANT_A,
         talent_id: TALENT_B,
         requisition_id: REQUISITION_B,
@@ -225,8 +210,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         state: 'engaged',
         created_at: '2026-05-25T10:00:00Z',
       });
-      await seedEngagement(setupClient, {
-        id: ENGAGEMENT_TENANT_B,
+      await seedSelection(setupClient, {
+        id: SELECTION_TENANT_B,
         tenant_id: TENANT_B,
         talent_id: TALENT_A,
         requisition_id: REQUISITION_A,
@@ -248,7 +233,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         talent_id: TALENT_B,
         tenant_id: TENANT_A,
       });
-      // 4e-engagement-key — the Pattern-C validator now resolves against
+      // 4e-selection-key — the Pattern-C validator now resolves against
       // TalentRecord (id == talent_id, tenant-scoped). Seed the same
       // (talent, tenant) pairs the overlays cover; NO TalentRecord for
       // TALENT_A in TENANT_B → Pattern C refusal stays a 422.
@@ -279,9 +264,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         job_id: JOB_ID,
       });
 
-      // Pre-seed engagement rows for transitionState tests (avoid coupling
-      // to createEngagement happy path which is its own test).
-      await seedEngagement(setupClient, {
+      // Pre-seed selection rows for transitionState tests (avoid coupling
+      // to createSelection happy path which is its own test).
+      await seedSelection(setupClient, {
         id: TRANSITION_HAPPY_ID,
         tenant_id: TENANT_A,
         talent_id: TALENT_A,
@@ -290,7 +275,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         state: 'surfaced',
         created_at: '2026-05-25T12:00:00Z',
       });
-      await seedEngagement(setupClient, {
+      await seedSelection(setupClient, {
         id: TRANSITION_ILLEGAL_ID,
         tenant_id: TENANT_A,
         talent_id: TALENT_A,
@@ -299,7 +284,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         state: 'surfaced',
         created_at: '2026-05-25T12:00:00Z',
       });
-      await seedEngagement(setupClient, {
+      await seedSelection(setupClient, {
         id: TRANSITION_DBTRIG_ID,
         tenant_id: TENANT_A,
         talent_id: TALENT_A,
@@ -308,7 +293,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         state: 'surfaced',
         created_at: '2026-05-25T12:00:00Z',
       });
-      await seedEngagement(setupClient, {
+      await seedSelection(setupClient, {
         id: TRANSITION_XTENANT_ID,
         tenant_id: TENANT_A,
         talent_id: TALENT_A,
@@ -333,9 +318,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     // =====================================================================
 
     it('findById returns the row and projects the typed view shape', async () => {
-      const view = await repo.findById(ENGAGEMENT_1);
+      const view = await repo.findById(SELECTION_1);
       expect(view).not.toBeNull();
-      expect(view?.id).toBe(ENGAGEMENT_1);
+      expect(view?.id).toBe(SELECTION_1);
       expect(view?.tenant_id).toBe(TENANT_A);
       expect(view?.talent_id).toBe(TALENT_A);
       expect(view?.requisition_id).toBe(REQUISITION_A);
@@ -350,7 +335,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     });
 
     it('findById projects nullable examination_id as null', async () => {
-      const view = await repo.findById(ENGAGEMENT_2);
+      const view = await repo.findById(SELECTION_2);
       expect(view).not.toBeNull();
       expect(view?.examination_id).toBeNull();
     });
@@ -358,14 +343,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     it('findByTenantAndId is tenant-scoped (cross-tenant returns null)', async () => {
       const hit = await repo.findByTenantAndId({
         tenant_id: TENANT_A,
-        id: ENGAGEMENT_1,
+        id: SELECTION_1,
       });
       expect(hit).not.toBeNull();
-      expect(hit?.id).toBe(ENGAGEMENT_1);
+      expect(hit?.id).toBe(SELECTION_1);
 
       const miss = await repo.findByTenantAndId({
         tenant_id: TENANT_B,
-        id: ENGAGEMENT_1,
+        id: SELECTION_1,
       });
       expect(miss).toBeNull();
     });
@@ -375,16 +360,16 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         tenant_id: TENANT_A,
         talent_id: TALENT_A,
       });
-      // 2 PR-1-seeded (ENGAGEMENT_1, ENGAGEMENT_2) + 4 PR-3-seeded for
+      // 2 PR-1-seeded (SELECTION_1, SELECTION_2) + 4 PR-3-seeded for
       // transition tests (TRANSITION_HAPPY/ILLEGAL/DBTRIG/XTENANT, all
       // surfaced/TALENT_A/TENANT_A). Ordering: PR-3 seeds (most recent)
-      // first, then PR-1 ENGAGEMENT_2, then PR-1 ENGAGEMENT_1.
+      // first, then PR-1 SELECTION_2, then PR-1 SELECTION_1.
       expect(views.length).toBeGreaterThanOrEqual(2);
       // Spot-check the chronological-DESC ordering invariant on the two
       // earliest seeds.
       const idsInOrder = views.map((v) => v.id);
-      const idx1 = idsInOrder.indexOf(ENGAGEMENT_1);
-      const idx2 = idsInOrder.indexOf(ENGAGEMENT_2);
+      const idx1 = idsInOrder.indexOf(SELECTION_1);
+      const idx2 = idsInOrder.indexOf(SELECTION_2);
       expect(idx2).toBeGreaterThanOrEqual(0);
       expect(idx1).toBeGreaterThan(idx2);
     });
@@ -402,13 +387,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         tenant_id: TENANT_A,
         requisition_id: REQUISITION_A,
       });
-      // ENGAGEMENT_1 + ENGAGEMENT_2 + 4 PR-3-seeded engagements all on
+      // SELECTION_1 + SELECTION_2 + 4 PR-3-seeded selections all on
       // (TENANT_A, REQUISITION_A). DESC ordering invariant verified on
       // the two PR-1 seeds.
       expect(views.length).toBeGreaterThanOrEqual(2);
       const idsInOrder = views.map((v) => v.id);
-      const idx1 = idsInOrder.indexOf(ENGAGEMENT_1);
-      const idx2 = idsInOrder.indexOf(ENGAGEMENT_2);
+      const idx1 = idsInOrder.indexOf(SELECTION_1);
+      const idx2 = idsInOrder.indexOf(SELECTION_2);
       expect(idx1).toBeGreaterThan(idx2);
     });
 
@@ -417,19 +402,19 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         tenant_id: TENANT_B,
         requisition_id: REQUISITION_A,
       });
-      // Tenant B has 1 row for REQUISITION_A (ENGAGEMENT_TENANT_B);
+      // Tenant B has 1 row for REQUISITION_A (SELECTION_TENANT_B);
       // tenant A's rows for the same requisition not visible.
       expect(tenantBViews).toHaveLength(1);
-      expect(tenantBViews[0]?.id).toBe(ENGAGEMENT_TENANT_B);
+      expect(tenantBViews[0]?.id).toBe(SELECTION_TENANT_B);
       expect(tenantBViews[0]?.tenant_id).toBe(TENANT_B);
     });
 
     // =====================================================================
-    // PR-3 WRITE-PATH TESTS — createEngagement (8 scenarios)
+    // PR-3 WRITE-PATH TESTS — createSelection (8 scenarios)
     // =====================================================================
 
-    it('createEngagement happy path — all 3 validators pass; both rows persist', async () => {
-      const result = await repo.createEngagement({
+    it('createSelection happy path — all 3 validators pass; both rows persist', async () => {
+      const result = await repo.createSelection({
         id: CREATE_HAPPY_ID,
         event_id: CREATE_HAPPY_EVENT_ID,
         tenant_id: TENANT_A,
@@ -437,8 +422,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         requisition_id: REQUISITION_A,
         examination_id: EXAM_A,
       });
-      expect(result.engagement.id).toBe(CREATE_HAPPY_ID);
-      expect(result.engagement.state).toBe('surfaced');
+      expect(result.selection.id).toBe(CREATE_HAPPY_ID);
+      expect(result.selection.state).toBe('surfaced');
       expect(result.event.id).toBe(CREATE_HAPPY_EVENT_ID);
 
       // Verify both rows persisted via direct re-read.
@@ -450,9 +435,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(Number(evRows[0]?.count ?? 0n)).toBe(1);
     });
 
-    it('createEngagement Pattern C refusal — TalentRecord absent in tenant → ENGAGEMENT_REFERENCE_NOT_FOUND 422; no rows', async () => {
+    it('createSelection Pattern C refusal — TalentRecord absent in tenant → SELECTION_REFERENCE_NOT_FOUND 422; no rows', async () => {
       // TALENT_A has no TalentRecord in TENANT_B → findById returns null.
-      const promise = repo.createEngagement({
+      const promise = repo.createSelection({
         id: CREATE_TALENT_REFUSE_ID,
         event_id: '00000000-0000-7000-8000-eeeec0000002',
         tenant_id: TENANT_B,
@@ -465,7 +450,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         await promise;
       } catch (err) {
         const e = err as AramoError;
-        expect(e.code).toBe('ENGAGEMENT_REFERENCE_NOT_FOUND');
+        expect(e.code).toBe('SELECTION_REFERENCE_NOT_FOUND');
         expect(e.statusCode).toBe(422);
         expect(e.context.details?.['field']).toBe('talent_id');
       }
@@ -474,11 +459,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(noEng).toBeNull();
     });
 
-    it('createEngagement Pattern C refusal — superseded TalentRecord → TALENT_RECORD_SUPERSEDED 422; no rows (Gate-6 Lead ruling)', async () => {
+    it('createSelection Pattern C refusal — superseded TalentRecord → TALENT_RECORD_SUPERSEDED 422; no rows (Gate-6 Lead ruling)', async () => {
       // TR-2a-B3a (DDR-3 §3) — "non-operational" covers being the TARGET of new
       // operational work. Seed a SUPERSEDED record (the state B3b's reconcile
       // writer produces — seeded directly, writer-less slice) and prove
-      // createEngagement refuses it at the same TalentRecord validation site.
+      // createSelection refuses it at the same TalentRecord validation site.
       const supersededId = '00000000-0000-7000-8000-cccc00000010';
       const survivorId = '00000000-0000-7000-8000-cccc00000011';
       const engId = '00000000-0000-7000-8000-cccc00000012';
@@ -488,7 +473,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
          VALUES ('${supersededId}'::uuid, '${TENANT_A}'::uuid, 'Superseded', 'Husk',
                  'superseded', '${survivorId}'::uuid, NOW(), NOW(), NOW())`,
       );
-      const promise = repo.createEngagement({
+      const promise = repo.createSelection({
         id: engId,
         event_id: '00000000-0000-7000-8000-cccc00000013',
         tenant_id: TENANT_A,
@@ -506,14 +491,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         expect(e.context.details?.['field']).toBe('talent_id');
         expect(e.context.details?.['superseded_by_record_id']).toBe(survivorId);
       }
-      // No engagement row written (refusal is before the $transaction).
+      // No selection row written (refusal is before the $transaction).
       const noEng = await repo.findById(engId);
       expect(noEng).toBeNull();
     });
 
-    it('createEngagement Pattern A refusal — requisition absent → ENGAGEMENT_REFERENCE_NOT_FOUND 422', async () => {
+    it('createSelection Pattern A refusal — requisition absent → SELECTION_REFERENCE_NOT_FOUND 422', async () => {
       const ghostReq = '99999999-9999-7999-8999-999999999999';
-      const promise = repo.createEngagement({
+      const promise = repo.createSelection({
         id: CREATE_REQ_NULL_ID,
         event_id: '00000000-0000-7000-8000-eeeec0000003',
         tenant_id: TENANT_A,
@@ -526,21 +511,21 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         await promise;
       } catch (err) {
         const e = err as AramoError;
-        expect(e.code).toBe('ENGAGEMENT_REFERENCE_NOT_FOUND');
+        expect(e.code).toBe('SELECTION_REFERENCE_NOT_FOUND');
         expect(e.context.details?.['field']).toBe('requisition_id');
       }
       const noEng = await repo.findById(CREATE_REQ_NULL_ID);
       expect(noEng).toBeNull();
     });
 
-    it('createEngagement Pattern A refusal — requisition cross-tenant → ENGAGEMENT_REFERENCE_NOT_FOUND 422', async () => {
+    it('createSelection Pattern A refusal — requisition cross-tenant → SELECTION_REFERENCE_NOT_FOUND 422', async () => {
       // Seed a TENANT_B requisition; lookup from TENANT_A finds the row
       // but row.tenant_id mismatch → refuse.
       const reqTenantB = 'cccccccc-cccc-7ccc-8ccc-ccccccccc000';
       // Registered active in TENANT_B; the create below runs in TENANT_A, so the
       // tenant-scoped stub returns null for (TENANT_A, reqTenantB) → refusal.
       seedRequisition({ id: reqTenantB, tenant_id: TENANT_B });
-      const promise = repo.createEngagement({
+      const promise = repo.createSelection({
         id: CREATE_REQ_XTENANT_ID,
         event_id: '00000000-0000-7000-8000-eeeec0000004',
         tenant_id: TENANT_A,
@@ -553,16 +538,16 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         await promise;
       } catch (err) {
         const e = err as AramoError;
-        expect(e.code).toBe('ENGAGEMENT_REFERENCE_NOT_FOUND');
+        expect(e.code).toBe('SELECTION_REFERENCE_NOT_FOUND');
         expect(e.context.details?.['field']).toBe('requisition_id');
       }
       const noEng = await repo.findById(CREATE_REQ_XTENANT_ID);
       expect(noEng).toBeNull();
     });
 
-    it('createEngagement Pattern B refusal — examination absent → ENGAGEMENT_REFERENCE_NOT_FOUND 422', async () => {
+    it('createSelection Pattern B refusal — examination absent → SELECTION_REFERENCE_NOT_FOUND 422', async () => {
       const ghostExam = '99999999-9999-7999-8999-999999999998';
-      const promise = repo.createEngagement({
+      const promise = repo.createSelection({
         id: CREATE_EXAM_NULL_ID,
         event_id: '00000000-0000-7000-8000-eeeec0000005',
         tenant_id: TENANT_A,
@@ -575,15 +560,15 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         await promise;
       } catch (err) {
         const e = err as AramoError;
-        expect(e.code).toBe('ENGAGEMENT_REFERENCE_NOT_FOUND');
+        expect(e.code).toBe('SELECTION_REFERENCE_NOT_FOUND');
         expect(e.context.details?.['field']).toBe('examination_id');
       }
     });
 
-    it('createEngagement Pattern B refusal — examination cross-tenant → ENGAGEMENT_REFERENCE_NOT_FOUND 422', async () => {
+    it('createSelection Pattern B refusal — examination cross-tenant → SELECTION_REFERENCE_NOT_FOUND 422', async () => {
       // EXAM_TENANT_B was seeded in TENANT_B; lookup from TENANT_A
       // returns the row but tenant_id mismatch → refuse.
-      const promise = repo.createEngagement({
+      const promise = repo.createSelection({
         id: CREATE_EXAM_XTENANT_ID,
         event_id: '00000000-0000-7000-8000-eeeec0000006',
         tenant_id: TENANT_A,
@@ -596,13 +581,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         await promise;
       } catch (err) {
         const e = err as AramoError;
-        expect(e.code).toBe('ENGAGEMENT_REFERENCE_NOT_FOUND');
+        expect(e.code).toBe('SELECTION_REFERENCE_NOT_FOUND');
         expect(e.context.details?.['field']).toBe('examination_id');
       }
     });
 
-    it('createEngagement initial state is `surfaced` and initial event payload { from_state: null, to_state: surfaced }', async () => {
-      const result = await repo.createEngagement({
+    it('createSelection initial state is `surfaced` and initial event payload { from_state: null, to_state: surfaced }', async () => {
+      const result = await repo.createSelection({
         id: CREATE_NO_EXAM_ID,
         event_id: CREATE_NO_EXAM_EVENT_ID,
         tenant_id: TENANT_A,
@@ -610,8 +595,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         requisition_id: REQUISITION_A,
         examination_id: null,
       });
-      expect(result.engagement.state).toBe('surfaced');
-      expect(result.engagement.examination_id).toBeNull();
+      expect(result.selection.state).toBe('surfaced');
+      expect(result.selection.examination_id).toBeNull();
       expect(result.event.event_type).toBe('state_transition');
       expect(result.event.event_payload).toEqual({
         from_state: null,
@@ -625,37 +610,37 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
     it('transitionState legal (surfaced → evaluated): state updated + event appended atomically', async () => {
       const evRowsBefore = await setupClient.$queryRawUnsafe<{ count: bigint }[]>(
-        `SELECT COUNT(*)::bigint AS count FROM selection."TalentSelectionEvent" WHERE engagement_id = '${TRANSITION_HAPPY_ID}'::uuid`,
+        `SELECT COUNT(*)::bigint AS count FROM selection."TalentSelectionEvent" WHERE selection_id = '${TRANSITION_HAPPY_ID}'::uuid`,
       );
       const beforeCount = Number(evRowsBefore[0]?.count ?? 0n);
 
       const result = await repo.transitionState({
-        engagement_id: TRANSITION_HAPPY_ID,
+        selection_id: TRANSITION_HAPPY_ID,
         event_id: TRANSITION_HAPPY_EVENT_ID,
         tenant_id: TENANT_A,
         to_state: 'evaluated',
       });
-      expect(result.engagement.state).toBe('evaluated');
+      expect(result.selection.state).toBe('evaluated');
       expect(result.event.event_payload).toEqual({
         from_state: 'surfaced',
         to_state: 'evaluated',
       });
 
       const evRowsAfter = await setupClient.$queryRawUnsafe<{ count: bigint }[]>(
-        `SELECT COUNT(*)::bigint AS count FROM selection."TalentSelectionEvent" WHERE engagement_id = '${TRANSITION_HAPPY_ID}'::uuid`,
+        `SELECT COUNT(*)::bigint AS count FROM selection."TalentSelectionEvent" WHERE selection_id = '${TRANSITION_HAPPY_ID}'::uuid`,
       );
       expect(Number(evRowsAfter[0]?.count ?? 0n)).toBe(beforeCount + 1);
     });
 
-    it('transitionState illegal (surfaced → submitted): ENGAGEMENT_STATE_INVALID 422; NO state change + NO event appended', async () => {
+    it('transitionState illegal (surfaced → submitted): SELECTION_STATE_INVALID 422; NO state change + NO event appended', async () => {
       const stateBefore = await repo.findById(TRANSITION_ILLEGAL_ID);
       const evRowsBefore = await setupClient.$queryRawUnsafe<{ count: bigint }[]>(
-        `SELECT COUNT(*)::bigint AS count FROM selection."TalentSelectionEvent" WHERE engagement_id = '${TRANSITION_ILLEGAL_ID}'::uuid`,
+        `SELECT COUNT(*)::bigint AS count FROM selection."TalentSelectionEvent" WHERE selection_id = '${TRANSITION_ILLEGAL_ID}'::uuid`,
       );
       const beforeCount = Number(evRowsBefore[0]?.count ?? 0n);
 
       const promise = repo.transitionState({
-        engagement_id: TRANSITION_ILLEGAL_ID,
+        selection_id: TRANSITION_ILLEGAL_ID,
         event_id: TRANSITION_ILLEGAL_EVENT_ID,
         tenant_id: TENANT_A,
         to_state: 'submitted',
@@ -665,7 +650,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         await promise;
       } catch (err) {
         const e = err as AramoError;
-        expect(e.code).toBe('ENGAGEMENT_STATE_INVALID');
+        expect(e.code).toBe('SELECTION_STATE_INVALID');
         expect(e.statusCode).toBe(422);
         expect(e.context.details?.['from_state']).toBe('surfaced');
         expect(e.context.details?.['to_state']).toBe('submitted');
@@ -675,7 +660,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const stateAfter = await repo.findById(TRANSITION_ILLEGAL_ID);
       expect(stateAfter?.state).toBe(stateBefore?.state);
       const evRowsAfter = await setupClient.$queryRawUnsafe<{ count: bigint }[]>(
-        `SELECT COUNT(*)::bigint AS count FROM selection."TalentSelectionEvent" WHERE engagement_id = '${TRANSITION_ILLEGAL_ID}'::uuid`,
+        `SELECT COUNT(*)::bigint AS count FROM selection."TalentSelectionEvent" WHERE selection_id = '${TRANSITION_ILLEGAL_ID}'::uuid`,
       );
       expect(Number(evRowsAfter[0]?.count ?? 0n)).toBe(beforeCount);
     });
@@ -691,14 +676,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
              SET state = 'submitted'::selection."SelectionState"
              WHERE id = '${TRANSITION_DBTRIG_ID}'::uuid`,
         ),
-      ).rejects.toThrow(/Illegal engagement state transition/);
+      ).rejects.toThrow(/Illegal selection state transition/);
     });
 
     it('transitionState cross-tenant attempt → NOT_FOUND 404', async () => {
       // TRANSITION_XTENANT_ID is in TENANT_A; transition from TENANT_B
       // → findByTenantAndId returns null → NOT_FOUND.
       const promise = repo.transitionState({
-        engagement_id: TRANSITION_XTENANT_ID,
+        selection_id: TRANSITION_XTENANT_ID,
         event_id: TRANSITION_XTENANT_EVENT_ID,
         tenant_id: TENANT_B,
         to_state: 'evaluated',
@@ -719,7 +704,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 // Helpers
 // -----------------------------------------------------------------------------
 
-async function seedEngagement(
+async function seedSelection(
   client: PrismaService,
   opts: {
     id: string;
@@ -754,8 +739,8 @@ async function seedTalent(client: PrismaService, id: string): Promise<void> {
   );
 }
 
-// 4e-engagement-key — TalentRecord (the ATS heart) the create validator now
-// resolves against. id == the engagement's talent_id (tenant-scoped).
+// 4e-selection-key — TalentRecord (the ATS heart) the create validator now
+// resolves against. id == the selection's talent_id (tenant-scoped).
 async function seedTalentRecord(
   client: PrismaService,
   opts: { id: string; tenant_id: string },

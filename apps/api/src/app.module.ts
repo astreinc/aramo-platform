@@ -18,7 +18,6 @@ import { TalentReconcileModule } from '@aramo/talent-reconcile';
 import { CompanyModule } from '@aramo/company';
 import { ConsentModule } from '@aramo/consent';
 import { ContactModule } from '@aramo/contact';
-import { EngagementModule } from '@aramo/engagement';
 import { SelectionModule } from '@aramo/selection';
 import { EntitlementModule } from '@aramo/entitlement';
 import { ExportModule } from '@aramo/export';
@@ -27,6 +26,7 @@ import { IdentityIndexModule } from '@aramo/identity-index';
 import { PortalIdentityModule } from '@aramo/portal-identity';
 import { AuthStorageModule } from '@aramo/auth-storage';
 import { ImportModule } from '@aramo/import';
+import { IntegrationModule } from '@aramo/integration';
 import { IngestionModule } from '@aramo/ingestion';
 import { JobDomainModule } from '@aramo/job-domain';
 import { MailerModule } from '@aramo/mailer';
@@ -59,6 +59,7 @@ import { TaskModule } from '@aramo/task';
 import { RequisitionStateReaderModule } from './requisition-state/requisition-state-reader.module.js';
 import { PreStartRequirementModule } from './pre-start-requirement/pre-start-requirement.module.js';
 import { PlacementModule } from './placement/placement.module.js';
+import { ConnectorExecutionModule } from './connector/connector-execution.module.js';
 import { TenantCognitoAdapter } from './cognito/tenant-cognito.adapter.js';
 import { TenantWriteFreezeInterceptor } from './tenant-write-freeze/tenant-write-freeze.interceptor.js';
 import { TalentAnchorInterceptor } from './talent-anchor/talent-anchor.interceptor.js';
@@ -145,11 +146,9 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     // ADR-0024 PR-4a-2 — bootstrap policy-coverage guard (pg-Pool anti-join,
     // never fail-boots). Not Redis-gated: it runs on every boot.
     PolicyStartupModule,
-    EngagementModule,
-    // T2-P2 — the canonical Selection domain. EngagementModule is the frozen
-    // /v1/engagements controller facade (which imports SelectionModule for its
-    // own controller); AppModule imports SelectionModule directly too so the
-    // relocated RecordReconcileOrchestrator can inject SelectionRepository.
+    // T2-P3B — the canonical Selection domain (folded controller + wire DTOs).
+    // Provides the /v1/selections controller and the domain repositories;
+    // the relocated RecordReconcileOrchestrator injects SelectionRepository.
     SelectionModule,
     IngestionModule,
     MatchingModule,
@@ -269,7 +268,7 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     // / pipeline / activity / calendar / saved_list / talent_record) +
     // the existing per-module repositories. The dependency closure is
     // the seam-exclusion proof: ReportingModule does NOT import any
-    // Core / engagement / submittal / examination / matching / talent /
+    // Core / selection / submittal / examination / matching / talent /
     // job_domain module. The dashboard's "placement" metric is the
     // ATS-internal placed-pipeline view (A5b-1 terminal state), NOT a
     // Core submittal-confirmed-placement (which would cross the seam;
@@ -281,7 +280,7 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     // ATS-domain entities (company / contact / requisition /
     // talent_record / pipeline) — the dependency closure is the R10
     // structural seam-exclusion proof: ExportModule does NOT import
-    // any Core / engagement / submittal / examination / matching /
+    // any Core / selection / submittal / examination / matching /
     // talent / job_domain module. The integration spec replays the
     // A7 reporting-service pattern by OMITTING every Core migration
     // from the test container and asserting the export routes still
@@ -306,6 +305,10 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     // (T2). The integration spec proves it via bit-identical talent.*
     // row-counts pre/post.
     ImportModule,
+    // T8-CONNECTOR-A — connector-connection management routes (Settings →
+    // Integrations) + the dormant connector-execution worker (no schedule).
+    IntegrationModule,
+    ConnectorExecutionModule,
     // M5 PR-11 §4.5/§4.6 — SkillsTaxonomyModule registers the
     // skill-canonicalization queue + no-op processor (Architecture v2.1
     // §9.2 / Plan v1.5 §M5 Track A item 6 binding).
@@ -383,7 +386,7 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     SourcedTalentModule,
     // M6 PR-2 §4 — OutboxPublisherModule (new leaf lib). Hosts the
     // relocated outbox-publisher BullMQ queue + processor; drains
-    // consent + engagement + submittal OutboxEvent tables. Imported
+    // consent + selection + submittal OutboxEvent tables. Imported
     // here (and only here) — leaf lib, leaf import.
     OutboxPublisherModule,
     // Settings S2 — IdentityModule provides IdentityAuditService for the

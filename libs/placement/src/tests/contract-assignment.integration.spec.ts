@@ -32,6 +32,11 @@ const MIGRATIONS = [
   '20260810110000_placement_assignment_aware_guard',
   '20260810120000_placement_assignment_end_reason',
   '20260810130000_t5_assignment_rate_version',
+  '20260812140000_t6_b1_effective_window_substrate',
+  '20260813130000_t6_b3_commercial_cancellation',
+  '20260814120000_t7_permanent_placement',
+  '20260815120000_t7_p2_falloff_remedy',
+  '20260816120000_t7_p3_guarantee_term_versioning',
 ].map((d) => resolve(__dirname, `../../prisma/migrations/${d}/migration.sql`));
 
 // Track 5 / T5-P1 — a FORWARD STARTED transition now materialises the initial
@@ -235,7 +240,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const submittal_id = randomUUID();
       const first = await startPlacement(tenant_id, submittal_id);
       // End the assignment (ACTIVE -> ENDED) — releases the one-live guard.
-      await repo.endAssignment({ tenant_id, placement_process_id: first, end_reason: 'WORKER_ENDED' }, 'end');
+      await repo.endAssignment({ tenant_id, placement_process_id: first, end_reason: 'WORKER_ENDED', ended_by: randomUUID() }, 'end');
       // A later attempt on the same (tenant, submittal) is now PERMITTED.
       const second = await repo.createPlacement(baseInput({ tenant_id, submittal_id }), 'second');
       expect(second.state).toBe('OFFER_EXTENDED');
@@ -246,7 +251,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const tenant_id = randomUUID();
       const submittal_id = randomUUID();
       const started = await startPlacement(tenant_id, submittal_id);
-      await repo.endAssignment({ tenant_id, placement_process_id: started, end_reason: 'CLIENT_ENDED' }, 'end');
+      await repo.endAssignment({ tenant_id, placement_process_id: started, end_reason: 'CLIENT_ENDED', ended_by: randomUUID() }, 'end');
       // The guard is released (previous proof), but E4 replacement eligibility is a
       // SEPARATE predicate: STARTED is not in DUPLICATE_GUARD_INACTIVE, so pointing
       // replaces_placement_process_id at it is REFUSED (predecessor_not_terminal).
@@ -266,7 +271,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         const tenant_id = randomUUID();
         const submittal_id = randomUUID();
         const id = await startPlacement(tenant_id, submittal_id);
-        await repo.endAssignment({ tenant_id, placement_process_id: id, end_reason: reason }, 'end');
+        await repo.endAssignment({ tenant_id, placement_process_id: id, end_reason: reason, ended_by: randomUUID() }, 'end');
         const [row] = await prisma.contractAssignment.findMany({ where: { tenant_id, placement_process_id: id } });
         expect(row.lifecycle_state).toBe('ENDED');
         expect(row.end_reason).toBe(reason);
@@ -297,7 +302,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       });
       expect(before).toHaveLength(0);
 
-      await repo.endAssignment({ tenant_id, placement_process_id: id, end_reason: 'COMPLETED' }, 'end');
+      await repo.endAssignment({ tenant_id, placement_process_id: id, end_reason: 'COMPLETED', ended_by: randomUUID() }, 'end');
 
       // The state flip AND the event are both present (same transaction).
       const [row] = await prisma.contractAssignment.findMany({ where: { tenant_id, placement_process_id: id } });

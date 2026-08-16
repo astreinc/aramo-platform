@@ -8,5 +8,10 @@ export type {
   RequisitionStatusRollupView,
   PipelineStageRollupView,
   PlacementCountReportView,
+  FillPerformanceReportView,
+  FallthroughReportView,
+  FallthroughReasonView,
+  AssignmentPipelineReportView,
+  AssignmentPipelineStateCount,
   DashboardView,
 } from './lib/dto/index.js';

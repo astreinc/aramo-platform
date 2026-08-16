@@ -3,5 +3,10 @@ export type {
   RequisitionStatusRollupView,
   PipelineStageRollupView,
   PlacementCountReportView,
+  FillPerformanceReportView,
+  FallthroughReportView,
+  FallthroughReasonView,
+  AssignmentPipelineReportView,
+  AssignmentPipelineStateCount,
   DashboardView,
 } from './report.view.js';

@@ -29,7 +29,7 @@ import { ExportService } from './export.service.js';
 // === The TWO load-bearing guards (the Lead-review surface) ===
 //
 // (1) R10 — STRUCTURAL seam-exclusion. This module imports ZERO
-//     Core / engagement / submittal / examination / matching /
+//     Core / selection / submittal / examination / matching /
 //     talent / job_domain modules. The dependency closure is the
 //     proof: A8-4 reads no Core schema. The integration spec
 //     replays the A7 reporting-service pattern by OMITTING every

@@ -28,7 +28,7 @@
 | Seeded scope keys | **111** (`SEED_SCOPE_KEYS`) + **4** platform scopes (`PLATFORM_SCOPE_KEYS`); id-map bijection **holds** (guard-enforced) |
 | Roles | 14 |
 | Error codes | **75**; triple-parity holds (tuple == HTTP map == OpenAPI enum) |
-| Outbox tables | 5 (canonicalization, consent, engagement, placement, submittal); single drainer `libs/outbox-publisher` |
+| Outbox tables | 5 (canonicalization, consent, selection, placement, submittal); single drainer `libs/outbox-publisher` |
 | Reset inventory | DELETE **20** targets · PRESERVE 7 · freeze 19 · **restore paths 0** (reset is one-way) |
 
 **Pact roots / provider relationships:** consumer roots present **6** · tracked/executed **5**
@@ -58,17 +58,12 @@ Provider **`aramo-auth-service`** verifies **1** (auth-service-consumer, a separ
 
 **Track 4 is NOT complete** (create/update ops + transition-write UI + full deploy remain).
 
-## 5. Track 2 — Selection canonicalization (T2-ARCH RATIFIED 2026-08-10; implementation NOT started)
+## 5. Track 2 — Selection / Submittal (IMPLEMENTATION / GOVERNANCE CLOSED; MERGED; production reconciliation separate)
 
-- **T2-ARCH RATIFIED.** Canonical roots LOCKED: `libs/selection`, `TalentSelection`, `TalentSelectionEvent`, `SelectionState`, `SelectionEventType`, `/v1/selections*`, the three `selection:*` scopes (read, write, message-delivery). Physical topology: **`selection` schema owns Selection; `submittal` schema owns Submittal** (invalid hybrid `selection."TalentSubmittal*"` foreclosed). `engagement_event_refs`→`selection_event_refs` (Evidence-owned; ownership unchanged); `ENGAGEMENT_EVENT_REF_NOT_FOUND` stays Evidence-owned. Current architecture = **v2.3** (§7.1/§4.1/§7.3, supersedes v2.2 for those; §7 anchored in-repo at §14 of `doc/01-locked-baselines.md`); Ledger = **v1.8**; Lead-Q-PR-8b1-A1 schema-exception superseded. Authority: `Aramo-T2-ARCH-Selection-Submittal-Architecture-Ruling-v1_0-LOCKED`. **Implementation NOT started; each increment (T2-PRE first) separately authorized; R6 production preflight is a hard gate.**
-- **`engagement` is the legacy vocabulary for the Selection domain** (current substrate; canonicalization NOT yet implemented). `libs/selection` does not exist yet; the domain lives in `libs/engagement`.
-- **Export surface = 38 symbols (34 export statements)** — the historical "45+ exports" figure is **stale**.
-- **DeliveryProvider and the AI-draft / message-delivery domain are preserved** — that domain currently lives inside `libs/engagement` (no dedicated lib).
-- **`ats-web` is the sole implemented `/v1/engagements` consumer.**
-- **`engagement:*` scopes are tenant-staff** (internal-tenant-staff family).
-- **Physical co-location:** Selection (engagement) and Submittal share one PG schema — `libs/submittal` owns `TalentSubmittalRecord` / `TalentSubmittalEvent` but both map `@@schema("engagement")` (authority: `libs/submittal/prisma/schema.prisma:4`, Architecture v2.0/2.1 §7.1). Only submittal's `OutboxEvent` is in schema `submittal`.
-- **PO preference (recorded):** full **logical/physical canonical alignment** is preferred **unless active locked architecture requires otherwise**.
-- **Gate:** if the desired physical ownership differs from active locked architecture, an **architecture amendment is required BEFORE implementation.** Track 2 must not begin as a "mechanical" rename — it touches seed, submittal co-location, reset inventory, and the Pact provider (widest serialize surface). It was historically mis-treated as mechanical and mis-said to block Track 3; both corrected.
+- **Track 2 implementation is CLOSED on `main`.** T2-P1 (Submittal schema relocation), T2-P2 (Selection domain canonicalization), T2-P3 (public contract flip), and T2-P3B (pre-GA naming completion + Selection-native migration rebaseline, PR #617, merge `743769243e96a1919ae6be874bd742ca2c42bb5f`) are all **MERGED / NOT DEPLOYED**. Governance close-out = T2-P4 (see `doc/t2-closure-record-draft.md`). Full Track-2 detail, correction lineage, and the production-divergence boundary live in that closure record. Architecture authority: `Aramo-T2-ARCH-Selection-Submittal-Architecture-Ruling-v1_0-LOCKED` (v2.3). The canonical Master Execution Ledger is a LOCKED OneDrive artifact (latest v1.13); the T2 MERGED/close-out status carries there under separate Architect authority.
+- **Selection is canonical; `libs/engagement` and `@aramo/engagement` are ABSENT.** The domain lives in `libs/selection` (`TalentSelection`, `TalentSelectionEvent`, `SelectionState`, `SelectionEventType`, PrismaService, the DeliveryProvider / AI-draft message-delivery port, closed-list state/event tuples). Canonical roots: `/v1/selections*`, the three `selection:*` scopes (read, write, message-delivery — tenant-staff family). `ats-web` consumes `/v1/selections` (feature at `apps/ats-web/src/selection`). No live `/v1/engagements` route remains.
+- **Physical topology:** `selection` schema owns Selection (`TalentSelection` / `TalentSelectionEvent`, column `selection_id`, plus the Selection `OutboxEvent`); `submittal` schema owns Submittal (`TalentSubmittalRecord` / `TalentSubmittalEvent` + its own `OutboxEvent`); the invalid hybrid `selection."TalentSubmittal*"` was foreclosed. Evidence owns `selection_event_refs` (`ENGAGEMENT_EVENT_REF_NOT_FOUND` was normalized to `SELECTION_EVENT_REF_NOT_FOUND`).
+- **Migration baseline:** REPOSITORY = Selection-native (`20260525120000_init_selection_model`); a fresh DB bootstraps Selection directly (no `engagement` schema, no create-then-rename). **PRODUCTION migration state is temporally separate — it AWAITS a separate governed reconciliation** (`doc/runbooks/t2p3b-selection-rebaseline-prod-reconciliation.md`); `tools/db-sync-local.sh` carries a read-only fail-closed guard that blocks (never auto-repairs) a Selection-native apply against the unreconciled Engagement-era production ledger. **Merge ≠ production promotion.**
 
 ## 6. Remaining Track 5–T10 (grounded status & dependencies)
 
@@ -79,7 +74,7 @@ Provider **`aramo-auth-service`** verifies **1** (auth-service-consumer, a separ
 | **T5** | Commercial terms / person-specific effective-dated rates | NOT-STARTED / new product (no rate columns on ContractAssignment; `rate_card_id` stub at `libs/requisition/prisma/schema.prisma:264`) | Dependency **root** for T6/T7/T9-margin |
 | **T6** | Assignment revisions / extensions | NOT-STARTED; Planning enum **superseded** by Track 4 binary ACTIVE/ENDED (model shape needs re-derivation) | Builds on T4 + T5 |
 | **T7** | Permanent placement + guarantee | NOT-STARTED (no `PermanentPlacement` model) | T5 |
-| **T8** | VMS ingestion | NOT-STARTED (`source_system` is a bare `String?`; `libs/job-distribution` is outbound, not VMS) | Most parallelizable (ownership boundary) |
+| **T8** | Connector program — provider-neutral integration foundation (formerly scoped "VMS ingestion") | **Connector-A MERGED / CLOSED / NOT DEPLOYED** (PR #628, merge `3aba5ff`); **Connector-B DEFERRED / NOT STARTED** — requires separate activation governance; **first provider NOT SELECTED**; **requisition update/upsert NOT AUTHORIZED** (T8-P2 CREATE-only). Carry-forward record: [`doc/t8-connector-a-closure-and-connector-b-deferment.md`](../../t8-connector-a-closure-and-connector-b-deferment.md) | Most parallelizable (ownership boundary) |
 | **T9** | Reporting / operational analytics | PARTIALLY-BUILT (reporting/export/visibility infra exists; named analytics — fill rate, time-to-fill, fallthrough, margin — absent) | Margin analytics depends on T5 |
 | **T10** | Cross-module UX polish | ONGOING by design (placement nav is the latest increment) | Shared FE client |
 
@@ -98,7 +93,7 @@ Provider **`aramo-auth-service`** verifies **1** (auth-service-consumer, a separ
 
 - **Scopes:** 111 seeded + 4 platform; strict catalog↔id-map bijection holds (guard `scope-catalog-parity.spec.ts`); creation-parity guarded (D-SEED-SCOPES-1). No SERVICE or EXTERNAL scope family exists. Rename-sensitive scopes: `compensation:*` (8), the 3 `pre_start_requirement` PROTECTED_ZERO_GRANT scopes, `talent:search`, `platform:tenant:lifecycle:manage`, `assignment:end`, `placement:replace`.
 - **Errors:** 75 codes, triple-parity holds. `REQUISITION_NO_OPENINGS` is retired (no producer) but retained in all three registries plus a live FE dead-handler — deferred cleanup.
-- **Events:** 5 identical-shape `OutboxEvent` tables; `event_type` is a String (not an enum); `published_at` NULL = unpublished. Append-only event logs (TalentEngagementEvent, TalentSubmittalEvent, PlacementProcessEvent, PipelineStatusHistory, RequisitionLifecycleEvent, consent/identity/evidence/ai-draft/usage/policy records) are **historical evidence** — never infer an event rename from a code/module rename. Frozen wire/history enums: EngagementState, SubmittalState, PlacementState, PipelineStatus, RecruitingStatus.
+- **Events:** 5 identical-shape `OutboxEvent` tables; `event_type` is a String (not an enum); `published_at` NULL = unpublished. Append-only event logs (TalentSelectionEvent, TalentSubmittalEvent, PlacementProcessEvent, PipelineStatusHistory, RequisitionLifecycleEvent, consent/identity/evidence/ai-draft/usage/policy records) are **historical evidence** — never infer an event rename from a code/module rename (the Engagement→Selection event/enum rename in Track 2 was an explicit, separately-authorized pre-GA normalization, not an inferred one). Frozen wire/history enums: SelectionState, SubmittalState, PlacementState, PipelineStatus, RecruitingStatus.
 
 ## 10. Frontend / product — durable posture
 
@@ -136,7 +131,7 @@ demonstrated substrate. Contradictions are findings requiring disposition, never
 1. ~~Refresh Ledger~~ **DONE (G-REC-1):** Ledger v1.7 supersedes v1.6 at origin/main (#588/#589).
 2. ~~Rule on ADR-0017~~ **DONE (G-REC-1):** Pipeline-Boundary → ADR-0029; ADR-0017 remains RDS-DR.
 3. ~~Canonicalize T5–T10~~ **DONE (G-REC-1):** carried into Ledger v1.7 §5 as ACTIVE REMAINING PROGRAM.
-4. ~~Track 2 architecture ruling~~ **DONE (T2-ARCH, 2026-08-10):** `selection` owns Selection, `submittal` owns Submittal; Architecture amended via v2.3; Ledger v1.8; PR-8b1-A1 schema-exception superseded. **Next executable step = T2-PRE (production preflight), PENDING separate execution authorization; Track 2 implementation NOT started.**
+4. ~~Track 2 architecture ruling~~ ~~Track 2 implementation~~ **DONE / CLOSED:** `selection` owns Selection, `submittal` owns Submittal (Architecture v2.3); T2-P1/P2/P3/P3B all **MERGED** (T2-P3B = PR #617, merge `743769243e96a1919ae6be874bd742ca2c42bb5f`). Governance close-out = **T2-P4** (`doc/t2-closure-record-draft.md`). **Repository implementation CLOSED / NOT DEPLOYED; production migration reconciliation is a SEPARATE governed release operation (not complete, not implied by closure).**
 5. **Add the B2 migration-before-app constraint** to `doc/go-live-known-limitations.md`.
 6. **OpenAPI route↔handler drift gate** — author a bidirectional coverage check over the 172 undocumented routes.
 7. **Preflight production population** for any track that touches existing rows.

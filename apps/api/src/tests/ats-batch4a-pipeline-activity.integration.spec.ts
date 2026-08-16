@@ -192,7 +192,7 @@ const TALENT_RECORD_SUPERSESSION = resolve(
   'libs/talent-record/prisma/migrations/20260706210000_tr2a_b3a_talent_record_supersession/migration.sql',
 );
 
-// Submittal & engagement migrations carry the submittal schema (the A5b
+// Submittal & selection migrations carry the submittal schema (the A5b
 // boundary asserts no submittal row is touched). We don't load them —
 // the absence proof works either way; counting rows in a non-existent
 // table would error. Instead, the boundary is asserted structurally via

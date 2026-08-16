@@ -19,7 +19,6 @@
     "@aramo/company": "libs/company/src/index.ts",
     "@aramo/consent": "libs/consent/src/index.ts",
     "@aramo/contact": "libs/contact/src/index.ts",
-    "@aramo/engagement": "libs/engagement/src/index.ts",
     "@aramo/entitlement": "libs/entitlement/src/index.ts",
     "@aramo/events": "libs/events/src/index.ts",
     "@aramo/evidence": "libs/evidence/src/index.ts",
@@ -31,6 +30,7 @@
     "@aramo/identity-index": "libs/identity-index/src/index.ts",
     "@aramo/import": "libs/import/src/index.ts",
     "@aramo/ingestion": "libs/ingestion/src/index.ts",
+    "@aramo/integration": "libs/integration/src/index.ts",
     "@aramo/job-distribution": "libs/job-distribution/src/index.ts",
     "@aramo/job-domain": "libs/job-domain/src/index.ts",
     "@aramo/mailer": "libs/mailer/src/index.ts",
@@ -291,16 +291,6 @@
       "RELATIONSHIP_ROLE_VALUES",
       "assertContactVocab"
     ],
-    "@aramo/engagement": [
-      "CreateEngagementRequestDto",
-      "EngagementController",
-      "EngagementModule",
-      "OutreachDraftRequestDto",
-      "OutreachSendRequestDto",
-      "RecordConversationStartedRequestDto",
-      "RecordResponseRequestDto",
-      "TransitionEngagementRequestDto"
-    ],
     "@aramo/entitlement": [
       "CAPABILITY_VALUES",
       "EntitlementGuard",
@@ -476,6 +466,30 @@
       "PrismaService",
       "deriveSourceClass"
     ],
+    "@aramo/integration": [
+      "CONNECTION_STATUSES",
+      "CONNECTOR_EXECUTION_SCOPES",
+      "CONNECTOR_QUEUE_ATTEMPTS",
+      "CONNECTOR_QUEUE_BACKOFF",
+      "CONNECTOR_SERVICE_ACCOUNT_ID",
+      "ConnectionServiceError",
+      "ConnectorAdapterRegistry",
+      "ConnectorExecutionService",
+      "ConnectorTransientError",
+      "IntegrationConnectionService",
+      "IntegrationController",
+      "IntegrationModule",
+      "IntegrationPrismaService",
+      "REDACTED",
+      "SECRETS_MANAGER_PORT",
+      "SECRETS_MANAGER_WRITER",
+      "assertConnectorSecretRefBinding",
+      "buildConnectorSecretRef",
+      "deriveConnectorSecretManagerId",
+      "parseConnectorSecretRef",
+      "redactForLog",
+      "redactString"
+    ],
     "@aramo/job-distribution": [
       "INDEED_APPLY_WEBHOOK_PATH",
       "INDEED_CHANNEL",
@@ -569,19 +583,37 @@
       "toEnforcementDisposition"
     ],
     "@aramo/placement": [
+      "ASSIGNMENT_ENDED_CANCELLATION_REASON",
+      "AssignmentPipelineReadRepository",
       "CAPACITY_STATUSES",
       "CapacityProjectionRepository",
+      "CommercialMarginReadModule",
+      "CommercialMarginReadRepository",
       "DUPLICATE_GUARD_INACTIVE",
       "GOVERNED_TERMINAL_TARGETS",
+      "GUARANTEE_TERMS_SOURCE_TYPES",
+      "GuaranteeExposureReadModule",
+      "GuaranteeExposureReadRepository",
+      "GuaranteeTermRepository",
       "INITIAL_STATE",
       "LEGAL_TRANSITIONS",
       "LIFECYCLE_POSITIONS",
+      "OUTBOX_GUARANTEE_TERMS_APPLIED",
+      "OUTBOX_GUARANTEE_TERMS_CREATED",
+      "OUTBOX_GUARANTEE_TERMS_REVISED",
+      "PERMANENT_FALLOFF_REASON_CODES",
+      "PERMANENT_PLACEMENT_INITIAL_STATE",
+      "PERMANENT_PLACEMENT_STATES",
+      "PERMANENT_PLACEMENT_TRANSITIONS",
       "PLACEMENT_AUTHORITY_CLASSES",
       "PLACEMENT_REASONS",
       "PLACEMENT_STATES",
+      "PermanentPlacementRepository",
       "PlacementCapacityModule",
+      "PlacementEventReadModule",
       "PlacementOutboxModule",
       "PlacementOutboxRepository",
+      "PlacementPipelineReadModule",
       "PlacementProcessEventRepository",
       "PlacementRepository",
       "PrismaService",
@@ -589,22 +621,36 @@
       "REASON_DETAIL_POLICIES",
       "REASON_REJECTION_REASONS",
       "REASON_STATUSES",
+      "REMEDY_POLICIES",
+      "REMEDY_POLICY_TO_DUE_STATE",
       "STATE_POSITION",
       "TRANSITIONS",
       "TRANSITION_TERMINAL",
+      "USER_CANCELLATION_REASON_CODES",
       "activeReasonsForTarget",
       "buildPlacementMigrationModel",
+      "calendarDaysBetween",
       "canTransition",
+      "canTransitionPermanentPlacement",
       "canTransitionTyped",
       "classifyTransitionReason",
+      "computeRemedyObligation",
       "deriveCapacity",
       "deriveCommercialMetrics",
+      "dueStateForRemedyPolicy",
       "edgeAuthorityClass",
       "generatePlacementMigrationSql",
       "getReason",
       "isGovernedTerminalTarget",
+      "isGuaranteeTermsSourceType",
+      "isPermanentFalloffReasonCode",
+      "isUserCancellationReasonCode",
       "lifecyclePositionOf",
-      "normalizeReasonDetail"
+      "normalizeReasonDetail",
+      "parseTermCalendarDate",
+      "resolveEffectiveTermRow",
+      "resolvedTermsFromRow",
+      "validateGuaranteeTerms"
     ],
     "@aramo/platform-trust": [
       "DORMANT_LINK_STATUSES",
@@ -719,15 +765,22 @@
       "isSavedListItemType"
     ],
     "@aramo/selection": [
+      "CreateSelectionRequestDto",
       "DELIVERY_PROVIDER_TOKEN",
+      "OutreachDraftRequestDto",
+      "OutreachSendRequestDto",
       "PrismaService",
+      "RecordConversationStartedRequestDto",
+      "RecordResponseRequestDto",
       "SELECTION_EVENT_TYPE_VALUES",
       "SELECTION_STATE_VALUES",
+      "SelectionController",
       "SelectionEventRepository",
       "SelectionModule",
       "SelectionOutboxRepository",
       "SelectionRepository",
       "SendStubDeliveryProvider",
+      "TransitionSelectionRequestDto",
       "canTransition"
     ],
     "@aramo/settings": [
@@ -911,18 +964,18 @@
     "@aramo/ai-draft": [
       {
         "excludedBy": "src/tests/**/*",
-        "from": "libs/engagement/src/tests/engagement.controller.spec.ts",
-        "project": "engagement",
-        "status": "excluded"
-      },
-      { "project": "engagement", "status": "production" },
-      {
-        "excludedBy": "src/tests/**/*",
         "from": "libs/requisition/src/tests/requisition-intake.service.spec.ts",
         "project": "requisition",
         "status": "excluded"
       },
       { "project": "requisition", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/selection/src/tests/selection.controller.spec.ts",
+        "project": "selection",
+        "status": "excluded"
+      },
+      { "project": "selection", "status": "production" },
       { "project": "talent-extraction", "status": "production" }
     ],
     "@aramo/api": [
@@ -1031,13 +1084,6 @@
       { "project": "contact", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
-        "from": "libs/engagement/src/tests/engagement.controller.spec.ts",
-        "project": "engagement",
-        "status": "excluded"
-      },
-      { "project": "engagement", "status": "production" },
-      {
-        "excludedBy": "src/tests/**/*",
         "from": "libs/entitlement/src/tests/entitlement.guard.spec.ts",
         "project": "entitlement",
         "status": "excluded"
@@ -1066,6 +1112,7 @@
       { "project": "identity", "status": "production" },
       { "project": "import", "status": "production" },
       { "project": "ingestion", "status": "production" },
+      { "project": "integration", "status": "production" },
       { "project": "pipeline", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
@@ -1102,6 +1149,13 @@
       },
       { "project": "requisition", "status": "production" },
       { "project": "saved-list", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/selection/src/tests/selection.controller.spec.ts",
+        "project": "selection",
+        "status": "excluded"
+      },
+      { "project": "selection", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/submittal/src/tests/submittal.controller.unit.spec.ts",
@@ -1364,10 +1418,10 @@
       { "project": "company", "status": "production" },
       { "project": "consent", "status": "production" },
       { "project": "contact", "status": "production" },
-      { "project": "engagement", "status": "production" },
       { "project": "export", "status": "production" },
       { "project": "identity", "status": "production" },
       { "project": "import", "status": "production" },
+      { "project": "integration", "status": "production" },
       { "project": "pipeline", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
@@ -1389,9 +1443,16 @@
       },
       { "project": "platform-admin", "status": "production" },
       { "project": "portal", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/reporting/src/tests/guarantee-exposure.spec.ts",
+        "project": "reporting",
+        "status": "excluded"
+      },
       { "project": "reporting", "status": "production" },
       { "project": "requisition", "status": "production" },
       { "project": "saved-list", "status": "production" },
+      { "project": "selection", "status": "production" },
       { "project": "submittal", "status": "production" },
       { "project": "talent-record", "status": "production" },
       { "project": "task", "status": "production" }
@@ -1682,13 +1743,6 @@
         "status": "excluded"
       },
       { "project": "contact", "status": "production" },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "libs/engagement/src/tests/engagement.controller.spec.ts",
-        "project": "engagement",
-        "status": "excluded"
-      },
-      { "project": "engagement", "status": "production" },
       { "project": "entitlement", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
@@ -1822,6 +1876,7 @@
       },
       { "project": "import", "status": "production" },
       { "project": "ingestion", "status": "production" },
+      { "project": "integration", "status": "production" },
       { "project": "mailer", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
@@ -1863,7 +1918,67 @@
       { "project": "pre-start-requirement", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/reporting/src/tests/assignment-pipeline.integration.spec.ts",
+        "project": "reporting",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/reporting/src/tests/assignment-pipeline.spec.ts",
+        "project": "reporting",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/reporting/src/tests/company-metrics.spec.ts",
+        "project": "reporting",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/reporting/src/tests/fallthrough.integration.spec.ts",
+        "project": "reporting",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/reporting/src/tests/fallthrough.spec.ts",
+        "project": "reporting",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/reporting/src/tests/fill-performance.integration.spec.ts",
+        "project": "reporting",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/reporting/src/tests/fill-performance.spec.ts",
+        "project": "reporting",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/reporting/src/tests/guarantee-exposure.integration.spec.ts",
+        "project": "reporting",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/reporting/src/tests/guarantee-exposure.spec.ts",
+        "project": "reporting",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/reporting/src/tests/margin.integration.spec.ts",
+        "project": "reporting",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/reporting/src/tests/margin.spec.ts",
         "project": "reporting",
         "status": "excluded"
       },
@@ -1873,6 +1988,7 @@
         "project": "reporting",
         "status": "excluded"
       },
+      { "project": "reporting", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/requisition/src/tests/compensation-edit-gate.spec.ts",
@@ -1927,6 +2043,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/selection/src/tests/selection-event.repository.spec.ts",
+        "project": "selection",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/selection/src/tests/selection.controller.spec.ts",
         "project": "selection",
         "status": "excluded"
       },
@@ -2049,13 +2171,6 @@
       { "project": "api", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
-        "from": "libs/engagement/src/tests/engagement.controller.spec.ts",
-        "project": "engagement",
-        "status": "excluded"
-      },
-      { "project": "engagement", "status": "production" },
-      {
-        "excludedBy": "src/tests/**/*",
         "from": "libs/examination/src/tests/override.controller.unit.spec.ts",
         "project": "examination",
         "status": "excluded"
@@ -2070,6 +2185,13 @@
       },
       { "project": "outbox-publisher", "status": "production" },
       { "project": "portal", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/selection/src/tests/selection.controller.spec.ts",
+        "project": "selection",
+        "status": "excluded"
+      },
+      { "project": "selection", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/submittal/src/tests/submittal.controller.unit.spec.ts",
@@ -2093,7 +2215,6 @@
       { "project": "saved-list", "status": "production" },
       { "project": "visibility", "status": "production" }
     ],
-    "@aramo/engagement": [{ "project": "api", "status": "production" }],
     "@aramo/entitlement": [
       { "project": "activity", "status": "production" },
       { "project": "api", "status": "production" },
@@ -2110,6 +2231,7 @@
       { "project": "export", "status": "production" },
       { "project": "identity", "status": "production" },
       { "project": "import", "status": "production" },
+      { "project": "integration", "status": "production" },
       { "project": "pipeline", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
@@ -2339,13 +2461,13 @@
       },
       {
         "excludedBy": "src/**/*.spec.tsx",
-        "from": "apps/ats-web/src/engagement/EngagementDetailView.spec.tsx",
+        "from": "apps/ats-web/src/identity-advisories/IdentityAdvisoriesView.spec.tsx",
         "project": "aramo-ats-web",
         "status": "excluded"
       },
       {
         "excludedBy": "src/**/*.spec.tsx",
-        "from": "apps/ats-web/src/identity-advisories/IdentityAdvisoriesView.spec.tsx",
+        "from": "apps/ats-web/src/integrations/IntegrationConnectionsPanel.spec.tsx",
         "project": "aramo-ats-web",
         "status": "excluded"
       },
@@ -2381,7 +2503,19 @@
       },
       {
         "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/placement/PermanentPlacementGuaranteePanel.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/ats-web/src/placement/PlacementBoardView.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/placement/PlacementDetailView.permanent.spec.tsx",
         "project": "aramo-ats-web",
         "status": "excluded"
       },
@@ -2392,14 +2526,56 @@
         "status": "excluded"
       },
       {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/placement/permanent-lifecycle-dialogs.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
         "excludedBy": "src/**/*.spec.ts",
         "from": "apps/ats-web/src/placement/placement-assignment-api.spec.ts",
         "project": "aramo-ats-web",
         "status": "excluded"
       },
       {
+        "excludedBy": "src/**/*.spec.ts",
+        "from": "apps/ats-web/src/placement/placement-commercial-api.spec.ts",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
         "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/ats-web/src/portal-disputes/PortalDisputesView.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/reporting/MarginView.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/reporting/ReportingLanding.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/requisition-imports/RequisitionIngestionRoute.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/requisition-imports/RequisitionIngestionView.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/requisitions/GuaranteeTermsPanel.spec.tsx",
         "project": "aramo-ats-web",
         "status": "excluded"
       },
@@ -2448,6 +2624,12 @@
       {
         "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/ats-web/src/search/SearchView.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/selection/SelectionDetailView.spec.tsx",
         "project": "aramo-ats-web",
         "status": "excluded"
       },
@@ -2853,7 +3035,26 @@
         "project": "api",
         "status": "excluded"
       },
-      { "project": "api", "status": "production" }
+      { "project": "api", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/integration/src/tests/connector-execution-idempotency.spec.ts",
+        "project": "integration",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/integration/src/tests/connector-execution-service.spec.ts",
+        "project": "integration",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/integration/src/tests/support/fakes.ts",
+        "project": "integration",
+        "status": "excluded"
+      },
+      { "project": "integration", "status": "production" }
     ],
     "@aramo/ingestion": [
       {
@@ -2877,6 +3078,20 @@
       { "project": "api", "status": "production" },
       { "project": "canonicalization", "status": "production" },
       { "project": "cold-ingest-extraction", "status": "production" }
+    ],
+    "@aramo/integration": [
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/connector-integration-authz.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      { "project": "api", "status": "production" },
+      {
+        "from": "pact/provider/src/verify-api.ts",
+        "project": "aramo-pact-provider",
+        "status": "unscoped"
+      }
     ],
     "@aramo/job-distribution": [
       {
@@ -3011,6 +3226,12 @@
       },
       { "project": "api", "status": "production" },
       { "project": "export", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/reporting/src/tests/fill-performance.integration.spec.ts",
+        "project": "reporting",
+        "status": "excluded"
+      },
       { "project": "reporting", "status": "production" },
       { "project": "visibility", "status": "production" }
     ],
@@ -3061,7 +3282,37 @@
       { "project": "outbox-publisher", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/reporting/src/tests/assignment-pipeline.integration.spec.ts",
+        "project": "reporting",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/reporting/src/tests/capacity-projection-edge.integration.spec.ts",
+        "project": "reporting",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/reporting/src/tests/fallthrough.integration.spec.ts",
+        "project": "reporting",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/reporting/src/tests/guarantee-exposure.integration.spec.ts",
+        "project": "reporting",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/reporting/src/tests/guarantee-exposure.spec.ts",
+        "project": "reporting",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/reporting/src/tests/margin.integration.spec.ts",
         "project": "reporting",
         "status": "excluded"
       },
@@ -3307,6 +3558,12 @@
       { "project": "export", "status": "production" },
       { "project": "import", "status": "production" },
       { "project": "pipeline", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/reporting/src/tests/fill-performance.integration.spec.ts",
+        "project": "reporting",
+        "status": "excluded"
+      },
       { "project": "reporting", "status": "production" },
       { "project": "saved-list", "status": "production" },
       {
@@ -3370,13 +3627,6 @@
         "project": "auth-core",
         "status": "excluded"
       },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "libs/engagement/src/tests/engagement.controller.spec.ts",
-        "project": "engagement",
-        "status": "excluded"
-      },
-      { "project": "engagement", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/evidence/src/tests/evidence.repository.cross-schema-validator.integration.spec.ts",
@@ -3556,18 +3806,17 @@
       },
       { "project": "api", "status": "production" },
       { "project": "attachment", "status": "production" },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "libs/engagement/src/tests/engagement.controller.spec.ts",
-        "project": "engagement",
-        "status": "excluded"
-      },
-      { "project": "engagement", "status": "production" },
       { "project": "export", "status": "production" },
       { "project": "import", "status": "production" },
       { "project": "portal", "status": "production" },
       { "project": "reporting", "status": "production" },
       { "project": "saved-list", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/selection/src/tests/selection.controller.spec.ts",
+        "project": "selection",
+        "status": "excluded"
+      },
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/selection/src/tests/selection.repository.integration.spec.ts",
@@ -3897,13 +4146,6 @@
       "targets": ["build", "lint", "test"]
     },
     {
-      "name": "engagement",
-      "root": "libs/engagement",
-      "sourceRoot": "libs/engagement/src",
-      "tags": ["scope:ats"],
-      "targets": ["build", "lint", "test"]
-    },
-    {
       "name": "entitlement",
       "root": "libs/entitlement",
       "sourceRoot": "libs/entitlement/src",
@@ -3986,6 +4228,13 @@
       "sourceRoot": "pact/consumers/ingestion-consumer/src",
       "tags": ["pact-consumer"],
       "targets": ["lint", "pact-test", "test"]
+    },
+    {
+      "name": "integration",
+      "root": "libs/integration",
+      "sourceRoot": "libs/integration/src",
+      "tags": ["scope:ats"],
+      "targets": ["build", "lint", "test"]
     },
     {
       "name": "job-distribution",

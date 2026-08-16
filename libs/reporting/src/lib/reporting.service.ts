@@ -5,7 +5,14 @@ import type { VisibilityContextShape } from '@aramo/common';
 import { CompanyRepository } from '@aramo/company';
 import { ContactRepository } from '@aramo/contact';
 import { PipelineRepository } from '@aramo/pipeline';
-import { CapacityProjectionRepository, type CapacityProjection } from '@aramo/placement';
+import {
+  CapacityProjectionRepository,
+  type CapacityProjection,
+  PlacementProcessEventRepository,
+  AssignmentPipelineReadRepository,
+  GuaranteeExposureReadRepository,
+  CommercialMarginReadRepository,
+} from '@aramo/placement';
 import { RequisitionRepository } from '@aramo/requisition';
 import { SavedListRepository } from '@aramo/saved-list';
 import {
@@ -16,9 +23,15 @@ import {
 import { TalentRecordRepository } from '@aramo/talent-record';
 
 import type {
+  AssignmentPipelineReportView,
   CompanyMetricsView,
   CompanyPlacementView,
   DashboardView,
+  FallthroughReasonView,
+  FallthroughReportView,
+  FillPerformanceReportView,
+  GuaranteeExposureReportView,
+  MarginReportView,
   PipelineStageRollupView,
   PlacementCountReportView,
   RecruiterMetricKey,
@@ -40,7 +53,7 @@ import type {
 // engagement / submittal / examination / matching / talent / job_domain
 // schema:
 //   - The DI inputs are exactly the 8 ATS-domain repositories. There is
-//     no @aramo/engagement / @aramo/submittal / @aramo/examination /
+//     no @aramo/selection / @aramo/submittal / @aramo/examination /
 //     @aramo/talent / @aramo/job-domain import in this lib (enforced
 //     by tsconfig.lib.json paths + lint:nx-boundaries + the A7
 //     integration spec's seam-exclusion structural assertion).
@@ -218,6 +231,23 @@ export class ReportingService {
     // openings_available; this only makes the derived value ACCESSIBLE. The batch
     // migration (countActiveByRequisitionIds, one query) is T4-B2. Trailing param.
     private readonly capacity: CapacityProjectionRepository,
+    // T9-B2 — the placement-owned fallthrough cohort read, PULLED via the
+    // existing reporting→placement edge (§11). Trailing param (ctor-ripple
+    // contained). Provided by PlacementEventReadModule.
+    private readonly placementEventRepository: PlacementProcessEventRepository,
+    // T9-B3 — the placement-owned current-state assignment-pipeline snapshot,
+    // PULLED via the reporting→placement edge (§14). Trailing param
+    // (ctor-ripple contained). Provided by PlacementPipelineReadModule.
+    private readonly placementPipelineRepository: AssignmentPipelineReadRepository,
+    // T7-P4 — the placement-owned guarantee-exposure aggregate, PULLED via the same
+    // reporting→placement edge (§3.6). Trailing param (ctor-ripple contained). Read-only over
+    // the immutable PermanentPlacement snapshot + remedy facts. Provided by
+    // GuaranteeExposureReadModule.
+    private readonly guaranteeExposureRepository: GuaranteeExposureReadRepository,
+    // T9-B4 — the placement-owned current-snapshot commercial margin aggregate,
+    // PULLED via the reporting→placement edge (§19). Trailing param (ctor-ripple
+    // contained). Provided by CommercialMarginReadModule.
+    private readonly commercialMarginRepository: CommercialMarginReadRepository,
   ) {}
 
   // Track 4 / T4-B1 (CASE A access) — single-requisition derived capacity, PULLED
@@ -323,6 +353,340 @@ export class ReportingService {
     return {
       placed_pipelines,
       includes_core_submittal_placements: false,
+    };
+  }
+
+  // -------------------------------------------------------------------------
+  // T9-B1 — authoritative fill-rate + time-to-fill operational report.
+  // Governed by Aramo-T9-B1-Directive-v1_0-LOCKED + the Gate-5 Finalization
+  // Amendment. Fill authority = ATS pipeline terminal `placed` (D-1), NOT the
+  // rejected capacity-derived `openings - openings_available` and NOT ACTIVE
+  // ContractAssignment. Cohort = requisitions with created_at ∈ [from,to)
+  // (D-3); `canceled` reqs are excluded from BOTH numerator and denominator
+  // (§4). Time-to-fill = the Nth-distinct first-`placed` completion, N =
+  // openings (D-2/§5) — only fully-filled reqs contribute (§6). Computed on
+  // read over TWO date/cohort-bounded repository reads (D-6); no
+  // materialization, no migration, no proxy.
+  // -------------------------------------------------------------------------
+  async getFillPerformance(
+    actor: ActorContext,
+    period: { from: Date; to: Date },
+  ): Promise<FillPerformanceReportView> {
+    const cohortAll = await this.requisitionRepository.listCohortForActor({
+      tenant_id: actor.tenant_id,
+      visibility: actor.visibility,
+      from: period.from,
+      to: period.to,
+      ...(actor.site_id === undefined ? {} : { site_id: actor.site_id }),
+    });
+    // §4 — canceled requisitions are excluded from numerator AND denominator.
+    // Every other status (open / on_hold / submittals_closed / closed / …)
+    // stays in the denominator; `closed` is NOT synonymous with filled.
+    const cohort = cohortAll.filter((r) => r.status !== 'canceled');
+
+    const placedRows =
+      cohort.length === 0
+        ? []
+        : await this.pipelineRepository.listFirstPlacedByRequisitions({
+            tenant_id: actor.tenant_id,
+            requisition_ids: cohort.map((r) => r.id),
+          });
+
+    // Group first-placed instants by requisition. Each row is already ONE
+    // distinct talent (MIN(changed_at) per (talent, req) applied upstream),
+    // so per-req array length == distinct placed talents.
+    const placedByReq = new Map<string, Date[]>();
+    for (const row of placedRows) {
+      const arr = placedByReq.get(row.requisition_id);
+      if (arr === undefined) {
+        placedByReq.set(row.requisition_id, [row.first_placed_at]);
+      } else {
+        arr.push(row.first_placed_at);
+      }
+    }
+
+    let openingsTotal = 0;
+    let filledTotal = 0;
+    let fullyFilled = 0;
+    const ttfDays: number[] = [];
+
+    for (const req of cohort) {
+      const openings = req.openings;
+      openingsTotal += openings;
+      const firstPlaced = placedByReq.get(req.id) ?? [];
+      const distinctPlaced = firstPlaced.length;
+      // §3 — clamp: never count filled openings above declared openings.
+      filledTotal += Math.min(distinctPlaced, openings);
+      // §5/§6 — ONLY a fully filled requisition has a time-to-fill.
+      if (openings > 0 && distinctPlaced >= openings) {
+        fullyFilled += 1;
+        // Completion = the Nth distinct talent's FIRST placed instant
+        // (N = openings) — the moment the last required opening filled.
+        const ordered = [...firstPlaced].sort(
+          (a, b) => a.getTime() - b.getTime(),
+        );
+        // distinctPlaced ≥ openings ≥ 1 guarantees this index exists; the
+        // explicit guard satisfies noUncheckedIndexedAccess.
+        const completion = ordered[openings - 1];
+        if (completion !== undefined) {
+          const days =
+            (completion.getTime() - req.created_at.getTime()) / DAY_MS;
+          // A fully-filled req cannot complete before it was created; guard
+          // clock skew rather than emit a negative duration.
+          if (days >= 0) ttfDays.push(days);
+        }
+      }
+    }
+
+    const fill_rate =
+      openingsTotal > 0
+        ? Math.round((filledTotal / openingsTotal) * 100)
+        : null;
+    const ttfCount = ttfDays.length;
+    const average_days =
+      ttfCount > 0
+        ? round1(ttfDays.reduce((a, b) => a + b, 0) / ttfCount)
+        : null;
+
+    return {
+      period: {
+        from: period.from.toISOString(),
+        to: period.to.toISOString(),
+      },
+      openings: openingsTotal,
+      filled_openings: filledTotal,
+      fill_rate,
+      fully_filled_requisitions: fullyFilled,
+      time_to_fill: { count: ttfCount, average_days },
+    };
+  }
+
+  // -------------------------------------------------------------------------
+  // T9-B2 — authoritative fallthrough-rate + reasons operational report.
+  // Governed by Aramo-T9-B2-Directive-v1_0-LOCKED. Placement-attempt level,
+  // post-acceptance/pre-start only. The placement lib owns the date-bounded
+  // cohort read (first OFFER_ACCEPTED ∈ [from,to); terminal FELL_THROUGH/NO_SHOW
+  // with reason_code/reason_label_snapshot — NEVER reason_detail); this service
+  // folds the rate + the reason group-by. A3 visibility is resolved here and
+  // passed as the requisition-id constraint (undefined = tenant-wide see-all).
+  // No materialization, no migration, no proxy.
+  // -------------------------------------------------------------------------
+  async getFallthrough(
+    actor: ActorContext,
+    period: { from: Date; to: Date },
+  ): Promise<FallthroughReportView> {
+    // T9-B5 / AV-1 — explicit site narrows even for see_all principals.
+    const visibleReqIds = await this.resolveSiteNarrowedRequisitionIds(actor);
+    const cohort = await this.placementEventRepository.readFallthroughCohort({
+      tenant_id: actor.tenant_id,
+      from: period.from,
+      to: period.to,
+      ...(visibleReqIds === undefined ? {} : { requisition_ids: visibleReqIds }),
+    });
+
+    const accepted_attempts = cohort.accepted_attempts;
+    const fallthrough_attempts = cohort.fallthrough.length;
+    const fallthrough_rate =
+      accepted_attempts > 0
+        ? Math.round((fallthrough_attempts / accepted_attempts) * 100)
+        : null;
+
+    // Group the fallthrough terminals by canonical reason_code. A null
+    // reason_code (legacy/unrecorded — the migration CHECK pairs code↔label, so
+    // a null code implies a null label) folds into the report-only "Unspecified"
+    // bucket (D-8); it is never written back to placement or the registry.
+    const buckets = new Map<
+      string | null,
+      { reason_label: string; count: number }
+    >();
+    for (const f of cohort.fallthrough) {
+      const existing = buckets.get(f.reason_code);
+      if (existing !== undefined) {
+        existing.count += 1;
+      } else {
+        buckets.set(f.reason_code, {
+          reason_label:
+            f.reason_code === null
+              ? 'Unspecified'
+              : (f.reason_label_snapshot ?? 'Unspecified'),
+          count: 1,
+        });
+      }
+    }
+
+    const reasons: FallthroughReasonView[] =
+      fallthrough_attempts === 0
+        ? []
+        : [...buckets.entries()]
+            .map(([reason_code, b]) => ({
+              reason_code,
+              reason_label: b.reason_label,
+              count: b.count,
+              rate: Math.round((b.count / fallthrough_attempts) * 100),
+            }))
+            // Deterministic contract order: most frequent first, then reason_code
+            // ascending (the null "Unspecified" bucket sorts last).
+            .sort(
+              (a, b) =>
+                b.count - a.count ||
+                (a.reason_code ?? '￿').localeCompare(
+                  b.reason_code ?? '￿',
+                ),
+            );
+
+    return {
+      period: {
+        from: period.from.toISOString(),
+        to: period.to.toISOString(),
+      },
+      accepted_attempts,
+      fallthrough_attempts,
+      fallthrough_rate,
+      reasons,
+    };
+  }
+
+  // -------------------------------------------------------------------------
+  // T9-B3 — assignment-pipeline current-snapshot operational view. Governed by
+  // Aramo-T9-B3-Directive-v1_0-LOCKED. Placement owns the current-state aggregate
+  // (readAssignmentPipelineSnapshot over PlacementProcess.state +
+  // proposed_start_date + bounded ContractAssignment); this service zero-fills
+  // the FIVE live states in fixed lifecycle order, computes total_live as their
+  // exact sum (§10 — the contract_assignments block never contributes), and
+  // stamps the UTC / forward-materialized coverage labels. Counts-only, no rows,
+  // no from/to, no commercial data. report:read + tenant/site/A3.
+  // -------------------------------------------------------------------------
+  async getAssignmentPipeline(
+    actor: ActorContext,
+    opts?: { now?: Date },
+  ): Promise<AssignmentPipelineReportView> {
+    // T9-B5 / AV-1 — explicit site narrows even for see_all principals.
+    const visibleReqIds = await this.resolveSiteNarrowedRequisitionIds(actor);
+    const snapshot =
+      await this.placementPipelineRepository.readAssignmentPipelineSnapshot({
+        tenant_id: actor.tenant_id,
+        now: opts?.now ?? new Date(),
+        ...(visibleReqIds === undefined
+          ? {}
+          : { requisition_ids: visibleReqIds }),
+      });
+
+    const counts = new Map(snapshot.by_state.map((r) => [r.state, r.count]));
+    // Fixed lifecycle order; zero-filled; the five live states only (§3).
+    const LIVE_ORDER = [
+      'OFFER_ACCEPTED',
+      'PRE_START',
+      'BLOCKED',
+      'READY_TO_START',
+      'STARTED',
+    ] as const;
+    const by_state = LIVE_ORDER.map((state) => ({
+      state,
+      count: counts.get(state) ?? 0,
+    }));
+    // §10 invariant — total_live is exactly the sum of the five live states.
+    const total_live = by_state.reduce((sum, r) => sum + r.count, 0);
+
+    return {
+      total_live,
+      by_state,
+      start_date: { ...snapshot.start_date, timezone_basis: 'UTC' as const },
+      contract_assignments: {
+        ...snapshot.contract_assignments,
+        coverage: 'forward_materialized' as const,
+      },
+    };
+  }
+
+  // -------------------------------------------------------------------------
+  // T7-P4 — guarantee-exposure summary report. Governed by
+  // Aramo-T7-P4-Guarantee-Exposure-Reporting-Implementation-Directive-v1_0-LOCKED. Placement
+  // owns the aggregate (readGuaranteeExposureSnapshot over the IMMUTABLE PermanentPlacement
+  // snapshot + immutable PermanentPlacementRemedy obligation facts — never the mutable P3 term
+  // versions, never deriveCommercialMetrics). This service echoes the period, aliases
+  // at_risk = active, nests remedy_due, and computes falloff_rate as an integer percent
+  // (Math.round(rate*100)) — 0 when the cohort is empty (the T9-B2 rate convention). Summary-
+  // only; per-currency money; NO cross-currency total. report:read + tenant/site/A3. Cohort by
+  // created_at in [from, to).
+  // -------------------------------------------------------------------------
+  async getGuaranteeExposure(
+    actor: ActorContext,
+    period: { from: Date; to: Date },
+  ): Promise<GuaranteeExposureReportView> {
+    const visibleReqIds = await this.resolveVisibleRequisitionIds(actor);
+    const snapshot = await this.guaranteeExposureRepository.readGuaranteeExposureSnapshot({
+      tenant_id: actor.tenant_id,
+      from: period.from,
+      to: period.to,
+      ...(visibleReqIds === undefined ? {} : { requisition_ids: visibleReqIds }),
+    });
+
+    const falloff_rate =
+      snapshot.cohort_count === 0
+        ? 0
+        : Math.round((snapshot.states.fell_off / snapshot.cohort_count) * 100);
+
+    return {
+      period: { from: period.from.toISOString(), to: period.to.toISOString() },
+      cohort_count: snapshot.cohort_count,
+      // at_risk == active in P4 (§6).
+      exposure_by_currency: snapshot.exposure_by_currency.map((r) => ({
+        currency: r.currency,
+        total: r.total,
+        active: r.active,
+        satisfied: r.satisfied,
+        fell_off: r.fell_off,
+        at_risk: r.active,
+      })),
+      states: {
+        active: snapshot.states.active,
+        satisfied: snapshot.states.satisfied,
+        fell_off: snapshot.states.fell_off,
+        remedy_due: {
+          replacement: snapshot.states.replacement_due,
+          refund: snapshot.states.refund_due,
+          prorated_credit: snapshot.states.prorated_credit_due,
+        },
+        remedy_completed: snapshot.states.remedy_completed,
+      },
+      remedy_obligation_by_currency: snapshot.remedy_obligation_by_currency.map((r) => ({
+        currency: r.currency,
+        refund_total: r.refund_total,
+        prorated_credit_total: r.prorated_credit_total,
+      })),
+      falloff_rate,
+    };
+  }
+
+  // -------------------------------------------------------------------------
+  // T9-B4 — margin current-snapshot operational view. Governed by
+  // Aramo-T9-B4-Directive-v1_0-LOCKED. Placement OWNS the commercial aggregate +
+  // arithmetic (readCurrentMarginSnapshot consumes deriveCommercialMetrics on the
+  // Decimal SUM(pay)/SUM(bill) totals — the ONE formula home; §7/§8). This service
+  // resolves the A3 visible-requisition set, PULLS the aggregate, and stamps the
+  // FORWARD_MATERIALIZED coverage label — NO margin arithmetic here (§29). Aggregate-
+  // only, no query params; report:read AND assignment:commercials:read + tenant/site/A3.
+  // -------------------------------------------------------------------------
+  async getMargin(
+    actor: ActorContext,
+    requestId: string,
+    opts?: { now?: Date },
+  ): Promise<MarginReportView> {
+    // T9-B5 / AV-1 — explicit site narrows even for see_all principals.
+    const visibleReqIds = await this.resolveSiteNarrowedRequisitionIds(actor);
+    const snapshot =
+      await this.commercialMarginRepository.readCurrentMarginSnapshot({
+        tenant_id: actor.tenant_id,
+        requestId,
+        ...(opts?.now === undefined ? {} : { now: opts.now }),
+        ...(visibleReqIds === undefined ? {} : { requisition_ids: visibleReqIds }),
+      });
+    return {
+      eligible_count: snapshot.eligible_count,
+      commercialized_count: snapshot.commercialized_count,
+      missing_commercial_count: snapshot.missing_commercial_count,
+      coverage: 'forward_materialized' as const,
+      groups: snapshot.groups,
     };
   }
 
@@ -645,5 +1009,35 @@ export class ReportingService {
       limit: 200,
     });
     return reqs.map((r) => r.id);
+  }
+
+  /**
+   * T9-B5 / AV-1 — like {@link resolveVisibleRequisitionIds}, but an EXPLICIT
+   * `site_id` narrows the returned set even for tenant-wide (`see_all`)
+   * principals. `see_all` grants cross-site visibility; it must NOT silently
+   * ignore an explicit site filter (directive §3). Used ONLY by the three
+   * site-accepting placement/event reports — fallthrough / assignment-pipeline /
+   * margin — so A7 rollups and T7-P4 guarantee-exposure keep their existing
+   * shared-resolver behavior unchanged.
+   *
+   *   - see_all + no `site_id`  → undefined (tenant-wide, preserved);
+   *   - see_all + `site_id`     → EVERY requisition id in (tenant, site), resolved
+   *     set-based over the existing `requisition.site_id` column (unbounded — the
+   *     visibility set does not bound a see_all principal, so `listForActor`'s
+   *     200-cap cannot enumerate a site completely);
+   *   - non-see_all             → the existing A3 visible-requisition set, which
+   *     already threads `site_id` into `listForActor` (unchanged).
+   */
+  private async resolveSiteNarrowedRequisitionIds(
+    actor: ActorContext,
+  ): Promise<readonly string[] | undefined> {
+    if (actor.visibility.see_all_requisition) {
+      if (actor.site_id === undefined) return undefined;
+      return this.requisitionRepository.findRequisitionIdsForTenantSite({
+        tenant_id: actor.tenant_id,
+        site_id: actor.site_id,
+      });
+    }
+    return this.resolveVisibleRequisitionIds(actor);
   }
 }

@@ -174,7 +174,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // 17, AUTHZ-1) remain the HK-INTEGRATION-SPEC-COMP-STALE carry. The
       // real catalog now ALSO contains 'export:read' + 'import:read'
       // (and ~19 other scopes from Task/Commercial/Financials/Req-Gating/
-      // Engagement/Search). Full reconciliation of the ~13 stale arrays is
+      // Selection/Search). Full reconciliation of the ~13 stale arrays is
       // deferred to a dedicated HK-INTEGRATION-SPEC-COMP-STALE PR — folding
       // it into this focused authz scope-seed would balloon the manually-
       // reviewed authz surface.
@@ -221,15 +221,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'contact:read',
         'contact:search',
         'dashboard:read',
-        'engagement:outreach',
-        'engagement:read',
-        'engagement:write',
         'examination:read',
         'export:read',
         'identity:resolve',
         'identity:tenant:read',
         'identity:user:read',
         'import:read',
+        'integration:read',
+        'integration:write',
         'org:manage',
         'pipeline:add',
         'pipeline:add-activity',
@@ -238,7 +237,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'pipeline:remove',
         'placement:activate',
         'placement:create',
+        'placement:permanent:read',
+        'placement:permanent:terms:write',
+        'placement:permanent:transition',
         'placement:read',
+        'placement:remedy:resolve',
         'placement:replace',
         'placement:terminate',
         'placement:transition',
@@ -276,6 +279,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'requisition:read:all',
         'requisition:search',
         'requisition:view:financials',
+        'selection:outreach',
+        'selection:read',
+        'selection:write',
         'submittal:approve',
         'submittal:create',
         'talent:create',
@@ -314,7 +320,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       //   Sourcer / finance / auditor / auditor_with_financials NOT in this
       //   bundle — auditor-tier report:read + audit-log:read deferred to
       //   the Reporting/Audit DDR (Amendment v1.1 Ruling B-iii).
-      // ENGAGEMENT_SEED_BUNDLES rows (8 roles, 20 total) — R7 BE-prereq:
+      // SELECTION_SEED_BUNDLES rows (8 roles, 20 total) — R7 BE-prereq:
       //   write-tier 6 × 3 (read+write+outreach) = 18; read-only 2 × 1 = 2.
       //   TA 3 + TO 3 + AM 3 + RM 3 + recruiter 3 + LR 3 + DM 1 + BO 1 = 20.
       //   Sourcer / finance / auditor / auditor_with_financials / candidate
@@ -329,7 +335,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       //   - Reporting-Scope-Seed adds +16 reporting-scope assignments
       //     (the 8 operational roles × dashboard:read + report:read) —
       //     326 → 342.
-      //   - R7 BE-prereq adds +20 engagement-scope assignments (6 write-
+      //   - R7 BE-prereq adds +20 selection-scope assignments (6 write-
       //     tier × 3 + 2 read-only × 1; Amendment v1.1 §2 Ruling 2) —
       //     342 → 362.
       //   - Search PR-1 adds +28 search-scope assignments (per-entity
@@ -390,7 +396,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Track4/T4-D: +13 assignment role grants (read×4 + create/update/end×3) → 526 -> 539.
       // Track5/T5-P1: +6 assignment:commercials grants -> 545. Track8/T8-P2: +7
       // requisition:import grants (read x4 + write x3) -> 552.
-      expect(roleScopes).toBe(552);
+      // Track7/T7-P1: +7 placement:permanent grants (read×4 + transition×3) -> 559.
+      // Track7/T7-P2: +3 placement:remedy:resolve grants (account_manager/tenant_admin/tenant_owner) -> 562.
+      // Track7/T7-P3: +3 placement:permanent:terms:write grants (account_manager/tenant_admin/tenant_owner) -> 565.
+      // Track8/T8-CONNECTOR-A: +4 integration:read/write grants (tenant_admin/tenant_owner ×2) -> 569.
+      expect(roleScopes).toBe(569);
 
       const utmRole = await prisma.userTenantMembershipRole.findUnique({
         where: { id: SEED_IDS.membership_role_admin },
@@ -430,7 +440,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // testcontainer count = 82): the audit trail has emitted 82 events
       // since D-AUTHZ-COMP-WRITE-1. The prior "84" was incorrect — it
       // assumed Reporting-Scope-Seed emitted 2 scope.created events, but
-      // that seed (and EVERY scope-seed since — Engagement, Search, Task,
+      // that seed (and EVERY scope-seed since — Selection, Search, Task,
       // Commercial, Financials, Req-Gating, Settings-D1 import/export)
       // deliberately emits NO scope.created audit events. So the 18+ scopes
       // added after D-AUTHZ-COMP-WRITE-1 contribute zero audit rows; the
@@ -471,7 +481,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // 51 post-AUTHZ-D4a + 6 D5 view scopes + 2 D-AUTHZ-COMP-WRITE-1
       // edit scopes + 2 Reporting-Scope-Seed scopes (dashboard:read +
       // report:read; PR-A7 gap-and-note closure) + 3 R7 BE-prereq
-      // engagement scopes (engagement:read / :write / :outreach;
+      // selection scopes (selection:read / :write / :outreach;
       // Amendment v1.1 §1 Ruling 1 — outreach SoD) = 64. The previous
       // "51" was stale (D5 view scopes were not added when D5 landed);
       // D-AUTHZ corrected to 59; Reporting-Scope-Seed advances to 61;
@@ -486,12 +496,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // D4 +1 (tenant:user:read:assignable) = 81, then D4b +1
       // (tenant:user:read:directory) = 82, then Domain-Enforcement P2b +1
       // (tenant:admin:domain) = 83, then TR-2a-3 +1 (identity:resolve) = 84.
-      // (Distinct from SEED_SCOPE_KEYS=87, which counts the 3 platform:* scopes
-      // this query excludes.)
+      // (Distinct from SEED_SCOPE_KEYS, the full seeded catalog, which additionally
+      // counts the platform:* scopes this tenant-scope query excludes — T7-P3 hygiene:
+      // the earlier "=87 / 3 platform:*" literals were stale.)
       // Track 3 / E2: +7 pre_start_requirement (all non-platform). Re-derived
       // actual 96 (prior literal 85 was pre-existingly understated by 4 — F-2).
       // Track 3 / E2 v1.2.2: +1 pre_start_requirement:reopen (non-platform) → 97.
-      expect(tenantScopes.length).toBe(111); // +5 placement + 1 placement:replace + 4 T4-D assignment + 2 T5-P1 assignment:commercials + 2 T8-P2 requisition:import (all non-platform)
+      expect(tenantScopes.length).toBe(117); // +5 placement +1 placement:replace +2 T7-P1 permanent +1 T7-P2 remedy:resolve +1 T7-P3 permanent:terms:write +4 T4-D assignment +2 T5-P1 commercials +2 T8-P2 requisition:import +2 T8-CONNECTOR-A integration (all non-platform)
       for (const s of tenantScopes) {
         expect(s.key.startsWith('platform:')).toBe(false);
       }
@@ -685,7 +696,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     // no-change PATCH). The company table is not in this identity-only
     // testcontainer, so no Company-row assertion is made here.
 
-    it('test 14 — getScopesByUserAndTenant returns tenant_admin scope set (97 scopes; Track4/T4-D assignment + Track5/T5-P1 assignment:commercials + Track8/T8-P2 requisition:import)', async () => {
+    it('test 14 — getScopesByUserAndTenant returns tenant_admin scope set (100 scopes; Track4/T4-D assignment + Track5/T5-P1 assignment:commercials + Track7/T7-P1 placement:permanent + Track7/T7-P2 placement:remedy:resolve + Track8/T8-P2 requisition:import)', async () => {
       const scopes = await roleSvc.getScopesByUserAndTenant({
         user_id: SEED_IDS.user_admin,
         tenant_id: SEED_IDS.tenant,
@@ -739,15 +750,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'contact:read',
         'contact:search',
         'dashboard:read',
-        'engagement:outreach',
-        'engagement:read',
-        'engagement:write',
         'examination:read',
         'export:read',
         'identity:resolve',
         'identity:tenant:read',
         'identity:user:read',
         'import:read',
+        'integration:read',
+        'integration:write',
         'org:manage',
         'pipeline:add',
         'pipeline:add-activity',
@@ -756,7 +766,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'pipeline:remove',
         'placement:activate',
         'placement:create',
+        'placement:permanent:read',
+        'placement:permanent:terms:write',
+        'placement:permanent:transition',
         'placement:read',
+        'placement:remedy:resolve',
         'placement:replace',
         'placement:terminate',
         'placement:transition',
@@ -778,6 +792,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'requisition:read:all',
         'requisition:search',
         'requisition:view:financials',
+        'selection:outreach',
+        'selection:read',
+        'selection:write',
         'submittal:approve',
         'submittal:create',
         'talent:create',
@@ -938,7 +955,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     // Test 17 — scope catalog correctness
     // -----------------------------------------------------------------
 
-    it('test 17 — scope catalog correctness: 12-role staffing catalog + T5-P1 assignment:commercials + T8-P2 requisition:import (tenant_admin 97, recruiter 51, candidate 7, tenant_owner 97, account_manager 75, sourcer 25, finance 10, auditor 5, recruiting_manager 56, delivery_manager 33, lead_recruiter 53, back_office 25)', async () => {
+    it('test 17 — scope catalog correctness: 12-role staffing catalog + T5-P1 assignment:commercials + T7-P1 placement:permanent + T7-P2 placement:remedy:resolve + T8-P2 requisition:import (tenant_admin 100, recruiter 52, candidate 7, tenant_owner 100, account_manager 78, sourcer 25, finance 10, auditor 5, recruiting_manager 56, delivery_manager 33, lead_recruiter 53, back_office 25)', async () => {
       // tenant_admin scope set (47 post AUTHZ-D4a; 43 + 4 team-model scopes)
       const adminScopes = await roleSvc.getScopesByUserAndTenant({
         user_id: SEED_IDS.user_admin,
@@ -987,15 +1004,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'contact:read',
         'contact:search',
         'dashboard:read',
-        'engagement:outreach',
-        'engagement:read',
-        'engagement:write',
         'examination:read',
         'export:read',
         'identity:resolve',
         'identity:tenant:read',
         'identity:user:read',
         'import:read',
+        'integration:read',
+        'integration:write',
         'org:manage',
         'pipeline:add',
         'pipeline:add-activity',
@@ -1004,7 +1020,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'pipeline:remove',
         'placement:activate',
         'placement:create',
+        'placement:permanent:read',
+        'placement:permanent:terms:write',
+        'placement:permanent:transition',
         'placement:read',
+        'placement:remedy:resolve',
         'placement:replace',
         'placement:terminate',
         'placement:transition',
@@ -1026,6 +1046,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'requisition:read:all',
         'requisition:search',
         'requisition:view:financials',
+        'selection:outreach',
+        'selection:read',
+        'selection:write',
         'submittal:approve',
         'submittal:create',
         'talent:create',
@@ -1078,9 +1101,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'contact:read',
         'contact:search',
         'dashboard:read',
-        'engagement:outreach',
-        'engagement:read',
-        'engagement:write',
+        'selection:outreach',
+        'selection:read',
+        'selection:write',
         'examination:read',
         'import:read',
         'pipeline:add',
@@ -1088,6 +1111,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'pipeline:change-status',
         'pipeline:read',
         'placement:create',
+        'placement:permanent:read',
         'placement:read',
         'placement:transition',
         'pre_start_requirement:act',
@@ -1251,15 +1275,17 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'contact:read',
         'contact:search',
         'dashboard:read',
-        'engagement:outreach',
-        'engagement:read',
-        'engagement:write',
+        'selection:outreach',
+        'selection:read',
+        'selection:write',
         'examination:read',
         'export:read',
         'identity:resolve',
         'identity:tenant:read',
         'identity:user:read',
         'import:read',
+        'integration:read',
+        'integration:write',
         'org:manage',
         'pipeline:add',
         'pipeline:add-activity',
@@ -1268,7 +1294,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'pipeline:remove',
         'placement:activate',
         'placement:create',
+        'placement:permanent:read',
+        'placement:permanent:terms:write',
+        'placement:permanent:transition',
         'placement:read',
+        'placement:remedy:resolve',
         'placement:replace',
         'placement:terminate',
         'placement:transition',
@@ -1349,9 +1379,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'contact:read',
         'contact:search',
         'dashboard:read',
-        'engagement:outreach',
-        'engagement:read',
-        'engagement:write',
+        'selection:outreach',
+        'selection:read',
+        'selection:write',
         'examination:read',
         'import:read',
         'pipeline:add',
@@ -1360,7 +1390,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'pipeline:read',
         'placement:activate',
         'placement:create',
+        'placement:permanent:read',
+        'placement:permanent:terms:write',
+        'placement:permanent:transition',
         'placement:read',
+        'placement:remedy:resolve',
         'placement:replace',
         'placement:terminate',
         'placement:transition',
@@ -1487,9 +1521,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'contact:read',
         'contact:search',
         'dashboard:read',
-        'engagement:outreach',
-        'engagement:read',
-        'engagement:write',
+        'selection:outreach',
+        'selection:read',
+        'selection:write',
         'examination:read',
         'import:read',
         'org:manage',
@@ -1541,7 +1575,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'contact:read',
         'contact:search',
         'dashboard:read',
-        'engagement:read',
+        'selection:read',
         'examination:read',
         'import:read',
         'pipeline:read',
@@ -1589,9 +1623,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'contact:read',
         'contact:search',
         'dashboard:read',
-        'engagement:outreach',
-        'engagement:read',
-        'engagement:write',
+        'selection:outreach',
+        'selection:read',
+        'selection:write',
         'examination:read',
         'import:read',
         'pipeline:add',
@@ -1638,7 +1672,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'contact:read',
         'contact:search',
         'dashboard:read',
-        'engagement:read',
+        'selection:read',
         'examination:read',
         'import:read',
         'pipeline:read',

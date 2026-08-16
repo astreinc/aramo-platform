@@ -1,11 +1,14 @@
 import { hasScope, type Session, useSession } from '@aramo/fe-foundation';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 
 import { Card, CardHead, InlineAlert, PageHeader } from '../ui';
 
 import { AssignmentCommercialPanel } from './AssignmentCommercialPanel';
 import { AssignmentLifecyclePanel } from './AssignmentLifecyclePanel';
+import { getPermanentPlacement } from './permanent-placement-api';
+import type { PermanentPlacementResponse, PermanentPlacementView } from './permanent-placement-types';
+import { PermanentPlacementGuaranteePanel } from './PermanentPlacementGuaranteePanel';
 import { getPlacement, listPlacementEvents } from './placement-api';
 import { PlacementCard } from './PlacementCard';
 import { PlacementEventTimeline } from './PlacementEventTimeline';
@@ -31,11 +34,17 @@ export interface PlacementDetailViewProps {
   readonly sessionOverride?: Session;
   readonly getPlacementFn?: (id: string) => Promise<PlacementView>;
   readonly listEventsFn?: (id: string) => Promise<{ items: readonly PlacementEventView[] }>;
+  readonly getPermanentFn?: (id: string) => Promise<PermanentPlacementResponse>;
 }
 
 type LoadState =
   | { status: 'loading' }
-  | { status: 'ready'; placement: PlacementView; events: readonly PlacementEventView[] }
+  | {
+      status: 'ready';
+      placement: PlacementView;
+      events: readonly PlacementEventView[];
+      permanent: PermanentPlacementView | null;
+    }
   | { status: 'error' };
 
 export function PlacementDetailView({
@@ -43,6 +52,7 @@ export function PlacementDetailView({
   sessionOverride,
   getPlacementFn,
   listEventsFn,
+  getPermanentFn,
 }: PlacementDetailViewProps) {
   const params = useParams<{ placementId?: string }>();
   const placementId = placementIdOverride ?? params.placementId ?? '';
@@ -51,24 +61,40 @@ export function PlacementDetailView({
   const session: Session | null =
     sessionOverride ??
     (sessionState.status === 'authenticated' ? sessionState.session : null);
-  const canRead =
-    session !== null && Array.isArray(session.scopes) && hasScope(session, 'placement:read');
+  const scoped = session !== null && Array.isArray(session.scopes);
+  const canRead = scoped && hasScope(session, 'placement:read');
+  // T7-P5 §5.1 — the permanent read is issued ONLY when the principal holds
+  // placement:permanent:read. Absent scope → no request → the placement is treated as
+  // contract (assignment panels), never via a misread forbidden response.
+  const canReadPermanent = scoped && hasScope(session, 'placement:permanent:read');
 
   const getPlacementFun = getPlacementFn ?? getPlacement;
   const listEventsFun = listEventsFn ?? listPlacementEvents;
+  const getPermanentFun = getPermanentFn ?? getPermanentPlacement;
 
   const [state, setState] = useState<LoadState>({ status: 'loading' });
+  const [refreshKey, setRefreshKey] = useState(0);
+  const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
 
   useEffect(() => {
     if (!canRead || placementId === '') return undefined;
     let cancelled = false;
     setState({ status: 'loading' });
-    // The container reads ONLY placement + events; the assignment read is the
-    // child panel's responsibility (no duplicate read path).
-    Promise.all([getPlacementFun(placementId), listEventsFun(placementId)])
-      .then(([placement, eventsRes]) => {
+    // The container reads placement + events, and (only with the permanent read scope) the
+    // permanent aggregate — the discriminator for the T7 branch (§5.1). The assignment reads
+    // remain the child panels' responsibility on the contract branch.
+    Promise.all([
+      getPlacementFun(placementId),
+      listEventsFun(placementId),
+      canReadPermanent
+        ? getPermanentFun(placementId)
+            .then((r) => r.permanent)
+            .catch(() => null)
+        : Promise.resolve(null),
+    ])
+      .then(([placement, eventsRes, permanent]) => {
         if (!cancelled) {
-          setState({ status: 'ready', placement, events: eventsRes.items });
+          setState({ status: 'ready', placement, events: eventsRes.items, permanent });
         }
       })
       .catch(() => {
@@ -77,7 +103,7 @@ export function PlacementDetailView({
     return () => {
       cancelled = true;
     };
-  }, [getPlacementFun, listEventsFun, placementId, canRead]);
+  }, [getPlacementFun, listEventsFun, getPermanentFun, placementId, canRead, canReadPermanent, refreshKey]);
 
   // Route visibility follows placement:read (RouteGuard also gates).
   if (!canRead) return null;
@@ -120,8 +146,22 @@ export function PlacementDetailView({
             <PlacementEventTimeline events={state.events} />
           </Card>
 
-          <AssignmentLifecyclePanel placementId={placementId} sessionOverride={sessionOverride} />
-          <AssignmentCommercialPanel placementId={placementId} sessionOverride={sessionOverride} />
+          {state.permanent !== null ? (
+            // T7-P5 §5.1 — permanent aggregate present: render the guarantee UI and SUPPRESS the
+            // contract-assignment panels (their empty states are misleading for a permanent
+            // placement, which mints no ContractAssignment).
+            <PermanentPlacementGuaranteePanel
+              placementId={placementId}
+              permanent={state.permanent}
+              onRefresh={refresh}
+              sessionOverride={sessionOverride}
+            />
+          ) : (
+            <>
+              <AssignmentLifecyclePanel placementId={placementId} sessionOverride={sessionOverride} />
+              <AssignmentCommercialPanel placementId={placementId} sessionOverride={sessionOverride} />
+            </>
+          )}
         </>
       )}
     </section>

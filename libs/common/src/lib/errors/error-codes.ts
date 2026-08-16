@@ -100,11 +100,11 @@
 // semantic-refusal posture; class-validator shape failures still surface
 // as VALIDATION_ERROR (400). Total: 19 codes.
 //
-// M5 PR-2 adds ENGAGEMENT_EVENT_REF_NOT_FOUND (HTTP 422) for the
+// M5 PR-2 adds SELECTION_EVENT_REF_NOT_FOUND (HTTP 422) for the
 // evidence-package builder's cross-schema validator (Aramo-M5-PR-2-
 // Directive-v1_0-LOCKED.md §4.8 + Ruling 7). When a BuildPackageInput
-// carries engagement_event_refs that include a UUID not present in the
-// engagement.TalentEngagementEvent table (or present but not visible
+// carries selection_event_refs that include a UUID not present in the
+// selection.TalentSelectionEvent table (or present but not visible
 // in the input tenant per findByTenantAndId tenant-scoped lookup),
 // buildPackage refuses with 422. The code is registered TS-first per
 // M4 PR-2/3/4/5/7 register-ahead convention; the matching
@@ -114,8 +114,8 @@
 //
 // M5 PR-3 adds two codes (parity-quad × 2 per Aramo-M5-PR-3-Directive-
 // v1_0-LOCKED.md §4.5 + Ruling 8):
-//   - ENGAGEMENT_REFERENCE_NOT_FOUND (HTTP 422) — EngagementRepository
-//     .createEngagement refuses when any of the 3 cross-schema validator
+//   - SELECTION_REFERENCE_NOT_FOUND (HTTP 422) — SelectionRepository
+//     .createSelection refuses when any of the 3 cross-schema validator
 //     patterns fails: Pattern C (TalentRepository.findOverlayByTenant
 //     returns null), Pattern A (JobDomainRepository.findRequisitionById
 //     returns null or row.tenant_id mismatch), Pattern B (Examination
@@ -125,7 +125,7 @@
 //     overlay-existence is the tenant-visibility proxy; the other two
 //     follow the M5 PR-2 evidence-builder app-layer tenant-check
 //     precedent).
-//   - ENGAGEMENT_STATE_INVALID (HTTP 422) — EngagementRepository
+//   - SELECTION_STATE_INVALID (HTTP 422) — SelectionRepository
 //     .transitionState refuses when canTransition(from, to) returns
 //     false. Application-layer guard atop the M5 PR-1 column-scoped DB
 //     trigger (defense-in-depth: the trigger would also reject, but the
@@ -135,14 +135,14 @@
 //
 // M5 PR-6 adds two codes (parity-quad × 2 per Aramo-M5-PR-6-Directive-
 // v1_0-LOCKED.md §4.8 + Rulings 1 + 6):
-//   - AI_PROVIDER_UNAVAILABLE (HTTP 502) — EngagementController
+//   - AI_PROVIDER_UNAVAILABLE (HTTP 502) — SelectionController
 //     .sendOutreach remaps AiDraftService INTERNAL_ERROR throws whose
 //     context.details.kind is 'provider_unavailable' or
 //     'provider_internal_error' (per the M5 PR-5 AnthropicProvider
 //     error-translation table) to a stable HTTP-bearing code so the
 //     recruiter ATS client can distinguish upstream LLM transport
 //     failures from generic 5xx INTERNAL_ERROR.
-//   - AI_RATE_LIMITED (HTTP 429) — EngagementController.sendOutreach
+//   - AI_RATE_LIMITED (HTTP 429) — SelectionController.sendOutreach
 //     remaps AiDraftService INTERNAL_ERROR throws whose
 //     context.details.kind is 'provider_rate_limited' (LLM rate-limit
 //     response from the Anthropic adapter). 429 lets the client back
@@ -156,11 +156,11 @@
 // layer guard atop the canonical 5-state DB trigger (defense-in-depth:
 // the trigger would also reject, but the application-layer guard
 // returns a structured error before the SQL UPDATE attempt). Mirrors
-// the M5 PR-3 ENGAGEMENT_STATE_INVALID precedent verbatim at the
+// the M5 PR-3 SELECTION_STATE_INVALID precedent verbatim at the
 // submittal-side. Total: 25 codes.
 //
 // M5 PR-9b adds CONSENT_NOT_GRANTED_AT_SEND (HTTP 403) for
-// EngagementController.sendOutreach Step 5.5 runtime consent-at-send
+// SelectionController.sendOutreach Step 5.5 runtime consent-at-send
 // enforcement (closes Plan v1.5 §M5 Track B item 3 + satisfies M5
 // Exit Criteria "No outreach without runtime contacting consent").
 // First consent-denial HTTP error code in the registry — the existing
@@ -206,7 +206,7 @@
 //     the link is rejected.
 // 422 (Unprocessable) fits — the request is well-formed (the id is a
 // valid UUID), but the referenced data is invalid for domain reasons.
-// Mirrors the M5 PR-3 ENGAGEMENT_REFERENCE_NOT_FOUND (422) and M4
+// Mirrors the M5 PR-3 SELECTION_REFERENCE_NOT_FOUND (422) and M4
 // PR-4 EXAMINATION_PINNED_OUTDATED precedents for cross-schema
 // validator rejections. The linker is ASSOCIATE-ONLY: it never
 // resolves identity (no findTalentByEmail surface) and never creates
@@ -246,7 +246,7 @@
 //     revert refuses when the batch's created_at is older than the
 //     configured revert window (default 7 days). Reversion is bounded
 //     so a long-running import doesn't get yanked out from under
-//     downstream consumers (engagements, pipeline rows, talent links)
+//     downstream consumers (selections, pipeline rows, talent links)
 //     that may have accreted on the imported entities. The recruiter
 //     who needs a late revert escalates to a manual delete.
 // Total: 34 codes.
@@ -284,15 +284,18 @@ export const ERROR_CODES = [
   'SUBMITTAL_ALREADY_CONFIRMED',
   'OVERRIDE_INVALID',  // M4 PR-5 — invalid override payload or non-overridable field
   'REVOKE_NOT_ALLOWED',  // M4 PR-7 / M5 PR-8b2 — submittal in terminal state (confirmed | revoked) cannot be revoked
-  'ENGAGEMENT_EVENT_REF_NOT_FOUND',  // M5 PR-2 — engagement_event_refs entry not found in tenant
-  'ENGAGEMENT_REFERENCE_NOT_FOUND',  // M5 PR-3 — createEngagement cross-schema validator (Pattern A/B/C)
-  'ENGAGEMENT_STATE_INVALID',  // M5 PR-3 — transitionState canTransition guard failed
+  // T2-P3B — Selection workflow + Evidence error codes. The Selection-era
+  // codes are fully superseded pre-GA: the two dead compat codes are removed
+  // and the Evidence event-ref refusal is flipped to SELECTION_EVENT_REF_NOT_FOUND.
+  'SELECTION_EVENT_REF_NOT_FOUND',  // Evidence cross-schema validator — selection_event_refs entry not found in tenant
+  'SELECTION_REFERENCE_NOT_FOUND',  // createSelection cross-schema validator (Pattern A/B/C)
+  'SELECTION_STATE_INVALID',  // transitionState canTransition guard failed
   'AI_PROVIDER_UNAVAILABLE',  // M5 PR-6 — outreach sendOutreach LLM transport / vendor-internal failure
   'AI_RATE_LIMITED',  // M5 PR-6 — outreach sendOutreach LLM rate-limit response
   'SUBMITTAL_STATE_INVALID',  // M5 PR-8b2 — submittal canTransition guard failed (mainline + sibling-revoke)
   'CONSENT_NOT_GRANTED_AT_SEND',  // M5 PR-9b — outreach-send runtime consent-at-send refusal (Plan v1.5 §M5 Track B item 3 closure)
   'TENANT_CAPABILITY_NOT_ENTITLED',  // PR-A1b — EntitlementGuard refusal when the tenant lacks the @RequireCapability the route demands (distinct from scope-axis INSUFFICIENT_PERMISSIONS per Ruling 1)
-  'INVALID_PIPELINE_TRANSITION',  // PR-A5a — pipeline state-machine canTransition guard rejected an illegal status change; the load-bearing refusal of A5a (mirrors SUBMITTAL_STATE_INVALID / ENGAGEMENT_STATE_INVALID at the ATS-domain layer)
+  'INVALID_PIPELINE_TRANSITION',  // PR-A5a — pipeline state-machine canTransition guard rejected an illegal status change; the load-bearing refusal of A5a (mirrors SUBMITTAL_STATE_INVALID / SELECTION_STATE_INVALID at the ATS-domain layer)
   'REQUISITION_NO_OPENINGS',  // RESERVED, no longer emitted — T4-B2 §7 retired the pipeline-transition over-capacity refusal (pipeline no longer decrements capacity; stored openings_available dropped in §6; over-capacity is now a representable DERIVED state, not a 409). Kept in the registry for compatibility (still referenced by the ats-web pipeline error-message map).
   'TALENT_LINK_INVALID',  // PR-A5b-2 — TalentRecord-to-Core-Talent linker cross-schema validator refusal; details.reason ∈ {'core_talent_not_found','tenant_overlay_missing'} (the keystone's ASSOCIATE-NOT-RESOLVE refusal point)
   'SAVED_LIST_ITEM_TYPE_MISMATCH',  // PR-A6 — saved-list add-entry homogeneity-invariant refusal: entry's item_type differs from parent SavedList.item_type (the typed-polymorphism A4-shape integrity check at the list-side)
@@ -306,7 +309,7 @@ export const ERROR_CODES = [
   'COGNITO_PROVISION_FAILED',  // AUTHZ-2 — Cognito AdminCreateUser upstream failure (Pattern A; the load-bearing external integration). HTTP 502. Distinct from INTERNAL_ERROR so the platform-admin UI can surface "Cognito unavailable, retry" vs. a generic 500. Mirrors OBJECT_STORAGE_UPLOAD_FAILED at the IdP boundary.
   'INVITATION_ALREADY_EXISTS',  // AUTHZ-2 — re-invite refusal for the (email, tenant_id) pair when the User already holds a membership in the tenant with the same role set. HTTP 409. AdminGetUser is the idempotency check; Cognito is NOT re-created. The two same-tenant-different-roles / new-tenant / drift cases (Ruling 8) do NOT raise this — they reconcile.
   'MANAGEMENT_CYCLE_REJECTED',  // AUTHZ-D4a — set-management-edge refusal: the proposed (manager_user_id, report_user_id) edge would create a cycle in the management graph (e.g. A manages B; attempting B manages A, or the transitive A→B→C; attempting C→A). The cycle check walks upward from report_user_id; if manager_user_id appears in the ancestor set, the edge is rejected. HTTP 409 (mirrors SUBMITTAL_ALREADY_CONFIRMED / IMPORT_ALREADY_REVERTED for state-conflict refusals).
-  'TALENT_RECORD_SUPERSEDED',  // TR-2a-B3a (DDR-3 §3) — outreach-send refusal: the engagement's TalentRecord was superseded by a late-merge reconcile (record_status='superseded'); the surviving record speaks for the human, so the husk is non-operational. HTTP 422 (a state-invalid refusal — mirrors ENGAGEMENT_STATE_INVALID). Writer-less in B3a; the B3b reconcile writer produces the state.
+  'TALENT_RECORD_SUPERSEDED',  // TR-2a-B3a (DDR-3 §3) — outreach-send refusal: the selection's TalentRecord was superseded by a late-merge reconcile (record_status='superseded'); the surviving record speaks for the human, so the husk is non-operational. HTTP 422 (a state-invalid refusal — mirrors SELECTION_STATE_INVALID). Writer-less in B3a; the B3b reconcile writer produces the state.
   // TR-6 B2 (DDR D5 + PC Exit Accounting §5.1) — advisory-resolution domain refusal codes.
   // These REPLACE the AramoExceptionFilter status-collapse (409→IDEMPOTENCY_KEY_CONFLICT,
   // 400→VALIDATION_ERROR) on the advisory surface ONLY: the semantically-false generic
@@ -321,7 +324,7 @@ export const ERROR_CODES = [
   'REVERSAL_JUSTIFICATION_REQUIRED',  // 400 — reverse without a justification (R4 — a merge reversal is high-consequence, never silent).
   // TR-3 B2 (DDR §2.1) — the email-verification REQUEST consent gate. Fires when the
   // contacting/email consent check returns denied OR error/empty-ledger (the ruled
-  // divergence from the engagement send-gate, which maps empty-ledger to 500): a
+  // divergence from the selection send-gate, which maps empty-ledger to 500): a
   // voluntary enhancement fails CLOSED on unknown consent state. HTTP 403. (The
   // CONFIRM path is oracle-resistant and reuses the generic NOT_FOUND 404 for every
   // invalid/expired/consumed/revoked/rate-limited case — no verification-revealing code.)
@@ -430,7 +433,7 @@ export const ERROR_CODES = [
   // — the from-state has no such outgoing edge (e.g. the prohibited
   // OFFER_ACCEPTED → READY_TO_START), or a non-state column mutation. Caller
   // remedy: correct the requested transition. Mirrors SUBMITTAL_STATE_INVALID /
-  // ENGAGEMENT_STATE_INVALID (422). details.reason carries from_state/to_state.
+  // SELECTION_STATE_INVALID (422). details.reason carries from_state/to_state.
   'PLACEMENT_STATE_INVALID',
   // PLACEMENT_ALREADY_LIVE (409): a second PlacementProcess was attempted for a
   // (tenant_id, submittal_id) that already has a LIVE attempt (any non-terminal
@@ -504,6 +507,84 @@ export const ERROR_CODES = [
   'PIPELINE_EPISODE_ALREADY_LIVE',  // Track 3 E6 — pipeline create refused: a LIVE episode already exists for (tenant, talent_record_id, requisition_id). Q-2 one-live invariant. HTTP 409. This is BOTH the deterministic application-guard refusal (the controller path returns it to the caller) AND the exact-name translation of a race-floor `Pipeline_live_episode_key` partial-index violation (§4.1 — never a generic P2002/23505 catch). The sourcing path catches THIS SAME code and returns an idempotent no-op. Mirrors PLACEMENT_ALREADY_LIVE at the pipeline-episode layer.
   'PIPELINE_RECONCILE_LIVE_CONFLICT',  // Track 3 E6 (A4, §5.2) — record reconciliation refused PRE-FLIGHT: the surviving and merged talent records BOTH hold a LIVE pipeline episode for the same requisition, so repointing would put two live episodes on one triple (Q-2 violation). HTTP 409. The refusal is ATOMIC — it runs before any sweep step, so NO domain and NO record is mutated; details.requisition_ids enumerates the conflicting requisitions for explicit human resolution. Distinct from PIPELINE_EPISODE_ALREADY_LIVE (a single-write refusal) — this is a merge-time refusal.
   'REQUISITION_EXTERNAL_IDENTITY_CONFLICT',  // Track 8 T8-P1 — a requisition write refused: another requisition already holds this external identity (tenant_id, source_system, external_req_id). HTTP 409. The canonical external identity is unique per tenant when BOTH provenance fields are present. This is the exact-name translation of a `Requisition_external_identity_key` partial-unique-index violation (T8-P1 migration) — NEVER a generic P2002/23505 catch. It is the T8-P1 REJECT contract; idempotent re-import resolution is a T8-P2 ingestion-engine concern, not this code. Mirrors PIPELINE_EPISODE_ALREADY_LIVE at the requisition-identity layer.
+  'ASSIGNMENT_COMMERCIAL_REVISION_CONFLICT',  // Track 6 T6-B2 — a post-start commercial revision refused: the requested effective instant collides with an existing AssignmentRateVersion window for (tenant_id, contract_assignment_id). HTTP 409. ONE code for both DB arbitrations, distinguished by details.reason: `window_overlap` (btree_gist `AssignmentRateVersion_no_window_overlap_excl` 23P01) or `duplicate_effective_from` (`AssignmentRateVersion_tenant_assignment_effective_key` 23505 — fires even against a CANCELLED row, since the unique key is non-partial). Exact-name translation of the constraint violation — NEVER a generic P2002/23505/23P01 catch. Mirrors PIPELINE_EPISODE_ALREADY_LIVE / REQUISITION_EXTERNAL_IDENTITY_CONFLICT at the commercial-window layer.
+  // Track 7 / T7-P1 — the PermanentPlacement guarantee family. Six P1 codes,
+  // appended (order preserved — the ordered-parity surfaces read positionally).
+  // Falloff/remedy errors are T7-P2 and are deliberately NOT added here.
+  // PERMANENT_PLACEMENT_NOT_FOUND (404): a guarantee read/transition addressed a
+  // placement with no PermanentPlacement in this tenant. Mirrors NOT_FOUND at the
+  // permanent-aggregate layer (a coherent absence on a read returns { permanent: null }
+  // instead; this is the mutation-path not-found).
+  'PERMANENT_PLACEMENT_NOT_FOUND',
+  // PERMANENT_PLACEMENT_STATE_INVALID (422): an illegal guarantee-lifecycle
+  // transition — the from-state has no such outgoing edge in the typed registry
+  // (P1: only GUARANTEE_ACTIVE -> GUARANTEE_SATISFIED). Mirrors PLACEMENT_STATE_INVALID.
+  'PERMANENT_PLACEMENT_STATE_INVALID',
+  // PERMANENT_PLACEMENT_GUARANTEE_WINDOW_INVALID (422): the guarantee window is
+  // invalid or its precondition is unmet. details.reason ∈ { start_date_invalid |
+  // duration_not_positive_integer | end_not_after_start | guarantee_window_not_elapsed }.
+  // The first three are activation-time (STARTED); the last is a premature satisfy
+  // (satisfaction is allowed only on/after the guarantee end date, §5/§127).
+  'PERMANENT_PLACEMENT_GUARANTEE_WINDOW_INVALID',
+  // PERMANENT_PLACEMENT_TERMS_REQUIRED (422): a PERMANENT start with absent or
+  // ambiguous governed guarantee terms. details.reason ∈ { guarantee_terms_required |
+  // terms_source_required | remedy_policy_invalid }. Mirrors
+  // PLACEMENT_START_COMMERCIAL_TERMS_REQUIRED at the guarantee layer (a permanent
+  // placement must never activate without a determinate guarantee snapshot).
+  'PERMANENT_PLACEMENT_TERMS_REQUIRED',
+  // PERMANENT_PLACEMENT_EXPOSURE_INVALID (422): the governed guarantee exposure is
+  // invalid. details.reason ∈ { exposure_amount_invalid | exposure_currency_invalid }.
+  // Exposure is a governed INPUT on the direct-permanent path (no rate version is
+  // minted — §3.2), so it is validated at the guarantee write boundary, not derived.
+  'PERMANENT_PLACEMENT_EXPOSURE_INVALID',
+  // PERMANENT_PLACEMENT_ALREADY_EXISTS (409): a PermanentPlacement already exists
+  // for this originating PlacementProcess (the (tenant_id, placement_process_id)
+  // unique key — the idempotency + branch-exclusivity floor). Exact-name translation
+  // of a `PermanentPlacement_tenant_process_key` violation — NEVER a generic P2002
+  // catch. The normal replay of a start is already refused earlier as an illegal
+  // PlacementProcess edge; this is the race-floor conflict. Mirrors PLACEMENT_ALREADY_LIVE.
+  'PERMANENT_PLACEMENT_ALREADY_EXISTS',
+  // Track 7 / T7-P2 — the falloff + remedy family (appended in order — the ordered-parity
+  // surfaces read positionally). Reuses P1 NOT_FOUND (404) + STATE_INVALID (422).
+  // PERMANENT_PLACEMENT_FALLOFF_WINDOW_INVALID (422): the falloff effective date is not a
+  // valid calendar date in the half-open guarantee window [start, end). details.reason ∈
+  // { effective_date_invalid | effective_date_before_start | effective_date_on_or_after_end }.
+  'PERMANENT_PLACEMENT_FALLOFF_WINDOW_INVALID',
+  // PERMANENT_PLACEMENT_FALLOFF_REASON_INVALID (422): the falloff reason is not one of the
+  // seven governed permanent-falloff codes (closed T7 registry, exact-match, no OTHER).
+  'PERMANENT_PLACEMENT_FALLOFF_REASON_INVALID',
+  // PERMANENT_PLACEMENT_REMEDY_INVALID (422): the remedy policy is unprovable from the
+  // snapshot OR the remedy completion evidence is invalid. details.reason discriminates
+  // (remedy_policy_invalid | replacement_placement_process_id_required | replacement_not_found
+  // | replacement_wrong_requisition | replacement_not_permanent | replacement_not_started
+  // | external_reference_required | ...). The E7/E3 one-code + details.reason precedent.
+  'PERMANENT_PLACEMENT_REMEDY_INVALID',
+  // PERMANENT_PLACEMENT_REMEDY_ALREADY_COMPLETED (409): a completion was attempted on a
+  // remedy already resolved (completion facts are write-once). Mirrors PERMANENT_PLACEMENT_ALREADY_EXISTS.
+  'PERMANENT_PLACEMENT_REMEDY_ALREADY_COMPLETED',
+  // CONNECTOR_CONFIGURATION_INVALID (409): a connector connection management op
+  // conflicts with the connection's current state — e.g. enabling a connection
+  // with no configured credential, or an illegal lifecycle transition. T8-CONNECTOR-A;
+  // narrowly scoped, deterministic, non-secret (directive §18).
+  'CONNECTOR_CONFIGURATION_INVALID',
+  // Track 7 / T7-P3 — the reusable guarantee-term-versioning family (appended in order — the
+  // ordered-parity surfaces read positionally). Reuses P1 GUARANTEE_WINDOW_INVALID (422, bad
+  // duration/policy) + EXPOSURE_INVALID (422, bad exposure/currency).
+  // PERMANENT_PLACEMENT_TERMS_NOT_FOUND (404): no guarantee-term version is effective for the
+  // requisition at the given as_of date, or there is no open version to revise.
+  'PERMANENT_PLACEMENT_TERMS_NOT_FOUND',
+  // PERMANENT_PLACEMENT_TERMS_WINDOW_INVALID (422): the effective window is invalid — bad
+  // effective_from, a backdated revision, or a revision not after the current version's start.
+  'PERMANENT_PLACEMENT_TERMS_WINDOW_INVALID',
+  // PERMANENT_PLACEMENT_TERMS_OVERLAP (409): the effective window overlaps an existing version
+  // for the (tenant, requisition) — the DB daterange EXCLUDE / effective_from unique floor.
+  'PERMANENT_PLACEMENT_TERMS_OVERLAP',
+  // PERMANENT_PLACEMENT_TERMS_AMBIGUOUS (500): more than one version resolves as effective for
+  // the same as_of date — impossible under the EXCLUDE, so a fail-closed internal invariant.
+  'PERMANENT_PLACEMENT_TERMS_AMBIGUOUS',
+  // PERMANENT_PLACEMENT_TERMS_IMMUTABLE (409): a forbidden historical mutation of an
+  // append-only guarantee-term version (only a governed effective_to first-close is allowed).
+  'PERMANENT_PLACEMENT_TERMS_IMMUTABLE',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

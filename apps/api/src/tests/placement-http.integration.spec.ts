@@ -54,6 +54,27 @@ const ASSIGNMENT_END_REASON_MIGRATION = resolve(__dirname, '../../../../libs/pla
 // Track 5 / T5-P1 — the additive AssignmentRateVersion table; the STARTED transition
 // now INSERTs the initial rate version, so this HTTP spec (which activates placements) must apply it.
 const ASSIGNMENT_RATE_VERSION_MIGRATION = resolve(__dirname, '../../../../libs/placement/prisma/migrations/20260810130000_t5_assignment_rate_version/migration.sql');
+// Track 6 / T6-B1 — the effective-window substrate: adds cancelled_* columns (the
+// regenerated client selects them), the interval CHECK, the btree_gist overlap
+// EXCLUDE, and the governed effective_to first-close trigger. This HTTP spec drives
+// STARTED (which INSERTs an AssignmentRateVersion) so it must apply this migration.
+const EFFECTIVE_WINDOW_MIGRATION = resolve(__dirname, '../../../../libs/placement/prisma/migrations/20260812140000_t6_b1_effective_window_substrate/migration.sql');
+// Track 6 / T6-B3 — the commercial-cancellation substrate: adds ContractAssignment.
+// ended_at (the regenerated client selects it) and the cancellation + future-only
+// re-open trigger branches. This HTTP spec drives END + cancellation, so it must apply
+// this migration (SEPARATE const — never a 2nd resolve() arg, the ENOTDIR trap).
+const COMMERCIAL_CANCELLATION_MIGRATION = resolve(__dirname, '../../../../libs/placement/prisma/migrations/20260813130000_t6_b3_commercial_cancellation/migration.sql');
+// T7-P1: adds PlacementProcess.placement_kind (the regenerated client selects it) +
+// the PermanentPlacement table/enums. This HTTP spec drives placement reads/starts,
+// so it must apply this migration (SEPARATE const — never a 2nd resolve() arg, ENOTDIR).
+const PERMANENT_PLACEMENT_MIGRATION = resolve(__dirname, '../../../../libs/placement/prisma/migrations/20260814120000_t7_permanent_placement/migration.sql');
+// T7-P2: PermanentPlacement.falloff_* columns + PermanentPlacementRemedy table (SEPARATE const).
+const FALLOFF_REMEDY_MIGRATION = resolve(__dirname, '../../../../libs/placement/prisma/migrations/20260815120000_t7_p2_falloff_remedy/migration.sql');
+// T7-P3: SEPARATE const (never a 2nd resolve() arg — that path-joins to ENOTDIR).
+const GUARANTEE_TERMS_MIGRATION = resolve(__dirname, '../../../../libs/placement/prisma/migrations/20260816120000_t7_p3_guarantee_term_versioning/migration.sql');
+// T6-B1 overlap exclusion constraint — dropped+restored around the legacy-corruption
+// defensive proof (the only way to seed a state the constraint now forbids).
+const OVERLAP_CONSTRAINT = 'AssignmentRateVersion_no_window_overlap_excl';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const auth = (scopes: string[], tenant: string): any => ({ sub: '01900000-0000-7000-8000-0000000000aa', tenant_id: tenant, actor_kind: 'user', consumer_type: 'tenant', scopes });
@@ -89,7 +110,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('E1-b PlacementCon
     const url = container.getConnectionUri();
     setup = new PrismaService(url);
     await setup.$connect();
-    for (const migration of [INIT_MIGRATION, OFFER_OUTBOX_MIGRATION, REASON_MIGRATION, REPLACEMENT_MIGRATION, CONTRACT_ASSIGNMENT_MIGRATION, ASSIGNMENT_ENDED_MIGRATION, ASSIGNMENT_GUARD_MIGRATION, ASSIGNMENT_END_REASON_MIGRATION, ASSIGNMENT_RATE_VERSION_MIGRATION]) {
+    for (const migration of [INIT_MIGRATION, OFFER_OUTBOX_MIGRATION, REASON_MIGRATION, REPLACEMENT_MIGRATION, CONTRACT_ASSIGNMENT_MIGRATION, ASSIGNMENT_ENDED_MIGRATION, ASSIGNMENT_GUARD_MIGRATION, ASSIGNMENT_END_REASON_MIGRATION, ASSIGNMENT_RATE_VERSION_MIGRATION, EFFECTIVE_WINDOW_MIGRATION, COMMERCIAL_CANCELLATION_MIGRATION, PERMANENT_PLACEMENT_MIGRATION, FALLOFF_REMEDY_MIGRATION, GUARANTEE_TERMS_MIGRATION]) {
       for (const s of splitDdl(readFileSync(migration, 'utf8'))) {
         if (s.trim()) await setup.$executeRawUnsafe(s.trim());
       }
@@ -435,11 +456,21 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('E1-b PlacementCon
   }
 
   // §9.B — a FUTURE version is ignored; the current (initial) version is returned.
-  it('T5-P2 resolver — a future-effective version is ignored (current returned)', async () => {
+  // T6-B1: an open initial + an open future version would overlap and is now
+  // DB-forbidden, so govern-close the initial at a future boundary and seed the
+  // future version there (adjacent, non-overlapping). The now-read still returns the
+  // still-current initial — and this also exercises the governed effective_to close.
+  it('T5-P2/T6-B1 resolver — a future-effective version is ignored (current returned)', async () => {
     const t = randomUUID();
     const id = await driveToStarted(t);
     const ca = await prisma.contractAssignment.findFirstOrThrow({ where: { tenant_id: t, placement_process_id: id } });
-    await seedVersion(t, ca, new Date(Date.now() + 86_400_000), null); // effective_from in the future
+    const initial = await prisma.assignmentRateVersion.findFirstOrThrow({ where: { tenant_id: t, contract_assignment_id: ca.id } });
+    const boundary = new Date(Date.now() + 86_400_000);
+    await prisma.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe(`SET LOCAL app.assignment_commercial_revision = 'authorized'`);
+      await tx.$executeRawUnsafe(`UPDATE placement."AssignmentRateVersion" SET effective_to = '${boundary.toISOString()}' WHERE id = '${initial.id}'`);
+    });
+    await seedVersion(t, ca, boundary, null); // future version starts at the boundary
     const res = await ctrl.getAssignmentCommercials(commAuth(t), 'r', id, reqSeeAll);
     expect(res.commercials!.pay_rate_amount).toBe('80.00'); // the INITIAL, not the 90.00 future one
     expect(res.commercials!.markup_percent).toBe('50.00');
@@ -457,24 +488,152 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('E1-b PlacementCon
 
   // §6/§8/§9.F — TWO simultaneously-effective versions FAIL CLOSED (server-integrity
   // 500), never silently picking a winner; no financial values leaked, no row mutated,
-  // no outbox event. T5-P2 detects corrupt state; T6 owns prevention.
-  it('T5-P2 ambiguity — two effective versions fail closed (500), no leak, no mutation, no outbox', async () => {
+  // no outbox event. T6-B1 now PREVENTS this overlap at the DB, so the legacy/corrupt
+  // state is injected via a test-container-local, self-restoring DDL window: drop the
+  // exclusion, inject the overlap, assert fail-closed, then delete the injected rows
+  // via the tenant-reset escape and restore the exclusion in finally. No production
+  // bypass exists — the drop/restore lives only in this spec.
+  it('T5-P2/T6-B1 ambiguity — legacy overlapping versions fail closed (500), no leak, no mutation, no outbox', async () => {
     const t = randomUUID();
     const id = await driveToStarted(t);
     const ca = await prisma.contractAssignment.findFirstOrThrow({ where: { tenant_id: t, placement_process_id: id } });
-    await seedVersion(t, ca, new Date(Date.now() - 60_000), null); // second ACTIVE version (effective_to null)
-    const before = await prisma.outboxEvent.count({ where: { tenant_id: t } });
-    const err = await ctrl.getAssignmentCommercials(commAuth(t), 'r', id, reqSeeAll).then(() => null).catch((e) => e);
-    expect(err).toMatchObject({ code: 'INTERNAL_ERROR', statusCode: 500 });
-    // No competing financial values leaked anywhere in the error.
-    const errStr = JSON.stringify({ message: err?.message, context: err?.context });
-    for (const v of ['80.00', '120.00', '90.00', '140.00']) expect(errStr).not.toContain(v);
-    // No mutation: both versions present, both effective_to still null.
+    await prisma.$executeRawUnsafe(`ALTER TABLE placement."AssignmentRateVersion" DROP CONSTRAINT "${OVERLAP_CONSTRAINT}"`);
+    try {
+      await seedVersion(t, ca, new Date(Date.now() - 60_000), null); // second ACTIVE version (effective_to null)
+      const before = await prisma.outboxEvent.count({ where: { tenant_id: t } });
+      const err = await ctrl.getAssignmentCommercials(commAuth(t), 'r', id, reqSeeAll).then(() => null).catch((e) => e);
+      expect(err).toMatchObject({ code: 'INTERNAL_ERROR', statusCode: 500 });
+      // No competing financial values leaked anywhere in the error.
+      const errStr = JSON.stringify({ message: err?.message, context: err?.context });
+      for (const v of ['80.00', '120.00', '90.00', '140.00']) expect(errStr).not.toContain(v);
+      // No mutation: both versions present, both effective_to still null.
+      const rows = await prisma.assignmentRateVersion.findMany({ where: { tenant_id: t, contract_assignment_id: ca.id } });
+      expect(rows).toHaveLength(2);
+      expect(rows.every((r) => r.effective_to === null)).toBe(true);
+      // No outbox event from the read.
+      expect(await prisma.outboxEvent.count({ where: { tenant_id: t } })).toBe(before);
+    } finally {
+      await prisma.$transaction(async (tx) => {
+        await tx.$executeRawUnsafe(`SET LOCAL app.tenant_reset = 'authorized'`);
+        await tx.$executeRawUnsafe(`DELETE FROM placement."AssignmentRateVersion" WHERE tenant_id = '${t}'`);
+      });
+      await prisma.$executeRawUnsafe(
+        `ALTER TABLE placement."AssignmentRateVersion" ADD CONSTRAINT "${OVERLAP_CONSTRAINT}" EXCLUDE USING gist ("tenant_id" public.gist_uuid_ops WITH =, "contract_assignment_id" public.gist_uuid_ops WITH =, tstzrange("effective_from", COALESCE("effective_to", 'infinity'), '[)') WITH &&) WHERE ("cancelled_at" IS NULL)`,
+      );
+    }
+  });
+
+  // ===== Track 6 / T6-B2 — governed commercial revision (functional HTTP) =====
+  const revisionAuth = (t: string) => auth(['assignment:commercials:write'], t);
+  it('T6-B2 — a governed future revision closes the current window and returns the new open version; the series lists both DESC', async () => {
+    const t = randomUUID();
+    const id = await driveToStarted(t);
+    const res = await ctrl.createAssignmentCommercialRevision(revisionAuth(t), 'r', id, {
+      pay_rate_amount: '90.00', bill_rate_amount: '150.00', currency: 'USD', rate_period: 'HOURLY', effective_from: '2030-01-01T00:00:00Z', change_reason: 'rate correction',
+    });
+    expect(res.commercials.pay_rate_amount).toBe('90.00');
+    expect(res.commercials.markup_percent).toBe('66.67'); // (150-90)/90*100
+    expect(res.commercials.effective_to).toBeNull();
+    const series = await ctrl.listAssignmentCommercialRevisions(commAuth(t), 'r', id, reqSeeAll);
+    expect(series.items).toHaveLength(2);
+    expect(series.items[0].effective_to).toBeNull(); // current first (DESC)
+    expect(series.items[1].effective_to).not.toBeNull(); // the closed predecessor
+  });
+
+  it('T6-B2 — a revision at an instant reserved by a cancelled version fails closed 409 duplicate_effective_from', async () => {
+    const t = randomUUID();
+    const id = await driveToStarted(t);
+    const ca = await prisma.contractAssignment.findFirstOrThrow({ where: { tenant_id: t, placement_process_id: id } });
+    await prisma.assignmentRateVersion.create({
+      data: {
+        id: randomUUID(), tenant_id: t, contract_assignment_id: ca.id, requisition_id: ca.requisition_id, talent_record_id: ca.talent_record_id,
+        pay_rate_amount: '80.00', bill_rate_amount: '120.00', currency: 'USD', rate_period: 'HOURLY',
+        effective_from: new Date('2030-01-01T00:00:00Z'), recorded_by: randomUUID(), cancelled_at: new Date('2026-01-01T00:00:00Z'),
+      },
+    });
+    const err = await ctrl
+      .createAssignmentCommercialRevision(revisionAuth(t), 'r', id, {
+        pay_rate_amount: '90.00', bill_rate_amount: '150.00', currency: 'USD', rate_period: 'HOURLY', effective_from: '2030-01-01T00:00:00Z', change_reason: 'x',
+      })
+      .then(() => null)
+      .catch((e) => e);
+    expect(err).toMatchObject({ code: 'ASSIGNMENT_COMMERCIAL_REVISION_CONFLICT', statusCode: 409 });
+    expect(err.context.details.reason).toBe('duplicate_effective_from');
+  });
+
+  it('T6-B2 — the series read is 404 for a not-visible placement (visibility-first)', async () => {
+    const t = randomUUID();
+    const id = await driveToStarted(t);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const reqSeeNone: any = { resolveVisibleRequisitionIds: async () => new Set<string>() };
+    await expect(ctrl.listAssignmentCommercialRevisions(commAuth(t), 'r', id, reqSeeNone)).rejects.toMatchObject({ code: 'NOT_FOUND', statusCode: 404 });
+  });
+
+  // ===== Track 6 / T6-B3 — cancellation + END reconciliation (functional HTTP) =====
+  // Schedule a future revision, then cancel it; the predecessor re-opens, so the
+  // refreshed series is a single open current version (back to the initial actuals).
+  async function scheduleFutureRevision(t: string, id: string): Promise<string> {
+    const created = await ctrl.createAssignmentCommercialRevision(revisionAuth(t), 'r', id, {
+      pay_rate_amount: '90.00', bill_rate_amount: '150.00', currency: 'USD', rate_period: 'HOURLY', effective_from: '2030-01-01T00:00:00Z', change_reason: 'scheduled bump',
+    });
+    return created.commercials.assignment_rate_version_id;
+  }
+
+  it('T6-B3 — cancelling a future revision re-opens the predecessor and returns the single open series', async () => {
+    const t = randomUUID();
+    const id = await driveToStarted(t);
+    const futureId = await scheduleFutureRevision(t, id);
+    const res = await ctrl.cancelAssignmentCommercialRevision(revisionAuth(t), 'r', id, futureId, { cancellation_reason_code: 'SCHEDULE_WITHDRAWN' }, reqSeeAll);
+    expect(res.items).toHaveLength(1);
+    expect(res.items[0].effective_to).toBeNull(); // predecessor re-opened
+    expect(res.items[0].pay_rate_amount).toBe('80.00'); // back to the initial actuals
+  });
+
+  it('T6-B3 — the reserved ASSIGNMENT_ENDED reason is refused on an explicit cancellation (400)', async () => {
+    const t = randomUUID();
+    const id = await driveToStarted(t);
+    const futureId = await scheduleFutureRevision(t, id);
+    await expect(
+      ctrl.cancelAssignmentCommercialRevision(revisionAuth(t), 'r', id, futureId, { cancellation_reason_code: 'ASSIGNMENT_ENDED' }, reqSeeAll),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR', statusCode: 400 });
+  });
+
+  it('T6-B3 — cancelling an unknown revision is 404', async () => {
+    const t = randomUUID();
+    const id = await driveToStarted(t);
+    await expect(
+      ctrl.cancelAssignmentCommercialRevision(revisionAuth(t), 'r', id, randomUUID(), { cancellation_reason_code: 'CLIENT_REQUEST' }, reqSeeAll),
+    ).rejects.toMatchObject({ code: 'NOT_FOUND', statusCode: 404 });
+  });
+
+  it('T6-B3 — cancellation on a not-visible placement is 404 (visibility-first)', async () => {
+    const t = randomUUID();
+    const id = await driveToStarted(t);
+    const futureId = await scheduleFutureRevision(t, id);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const reqSeeNone: any = { resolveVisibleRequisitionIds: async () => new Set<string>() };
+    await expect(
+      ctrl.cancelAssignmentCommercialRevision(revisionAuth(t), 'r', id, futureId, { cancellation_reason_code: 'CLIENT_REQUEST' }, reqSeeNone),
+    ).rejects.toMatchObject({ code: 'NOT_FOUND', statusCode: 404 });
+  });
+
+  it('T6-B3 — ending an assignment reconciles the scheduled future window (assignment:end only, no commercials:write)', async () => {
+    const t = randomUUID();
+    const id = await driveToStarted(t);
+    await scheduleFutureRevision(t, id); // predecessor [start,2030) + successor [2030, ∞)
+    await ctrl.endAssignment(auth(['assignment:end'], t), 'r', id, { end_reason: 'COMPLETED' });
+    const ca = await prisma.contractAssignment.findFirstOrThrow({ where: { tenant_id: t, placement_process_id: id } });
+    expect(ca.lifecycle_state).toBe('ENDED');
+    expect(ca.ended_at).not.toBeNull();
     const rows = await prisma.assignmentRateVersion.findMany({ where: { tenant_id: t, contract_assignment_id: ca.id } });
-    expect(rows).toHaveLength(2);
-    expect(rows.every((r) => r.effective_to === null)).toBe(true);
-    // No outbox event from the read.
-    expect(await prisma.outboxEvent.count({ where: { tenant_id: t } })).toBe(before);
+    const future = rows.find((r) => r.effective_from.toISOString() === new Date('2030-01-01T00:00:00Z').toISOString())!;
+    expect(future.cancellation_reason_code).toBe('ASSIGNMENT_ENDED'); // reserved reason, END-set
+    // No non-cancelled version is effective at/after ended_at.
+    for (const r of rows) {
+      if (r.cancelled_at !== null) continue;
+      expect(r.effective_to).not.toBeNull();
+      expect(r.effective_to!.getTime()).toBeLessThanOrEqual((ca.ended_at as Date).getTime());
+    }
   });
 
   it('matrix: MANAGER set (account_manager/tenant_admin/tenant_owner) CAN terminate with a valid reason (a terminal edge)', async () => {
@@ -786,6 +945,27 @@ describe('E1-b placement matrix — read/create guard boundary (real RolesGuard 
     expect(denial(h, ['placement:read'])).toMatchObject({ code: 'INSUFFICIENT_PERMISSIONS', statusCode: 403 });
     // N — write does NOT imply read.
     expect(denial(h, ['assignment:commercials:write'])).toMatchObject({ code: 'INSUFFICIENT_PERMISSIONS', statusCode: 403 });
+  });
+
+  it('T6-B2: POST .../commercials/revisions requires assignment:commercials:write — WITH it passes; WITHOUT 403; read / placement:* / assignment:update do NOT satisfy it', () => {
+    const h = PlacementController.prototype.createAssignmentCommercialRevision as unknown as (...a: unknown[]) => unknown;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect(guard.canActivate(ctx(h, ['assignment:commercials:write']) as any)).toBe(true);
+    expect(denial(h, [])).toMatchObject({ code: 'INSUFFICIENT_PERMISSIONS', statusCode: 403 });
+    // read does NOT imply write — the dedicated financial WRITE scope is required.
+    expect(denial(h, ['assignment:commercials:read'])).toMatchObject({ code: 'INSUFFICIENT_PERMISSIONS', statusCode: 403 });
+    // placement authority and the dormant assignment:update do NOT substitute (§9 no-reuse).
+    expect(denial(h, ['placement:activate', 'placement:transition', 'placement:terminate'])).toMatchObject({ code: 'INSUFFICIENT_PERMISSIONS', statusCode: 403 });
+    expect(denial(h, ['assignment:update'])).toMatchObject({ code: 'INSUFFICIENT_PERMISSIONS', statusCode: 403 });
+  });
+
+  it('T6-B2: GET .../commercials/revisions requires assignment:commercials:read — WITH it passes; WITHOUT 403; write does NOT imply read', () => {
+    const h = PlacementController.prototype.listAssignmentCommercialRevisions as unknown as (...a: unknown[]) => unknown;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect(guard.canActivate(ctx(h, ['assignment:commercials:read']) as any)).toBe(true);
+    expect(denial(h, [])).toMatchObject({ code: 'INSUFFICIENT_PERMISSIONS', statusCode: 403 });
+    expect(denial(h, ['assignment:commercials:write'])).toMatchObject({ code: 'INSUFFICIENT_PERMISSIONS', statusCode: 403 });
+    expect(denial(h, ['placement:read'])).toMatchObject({ code: 'INSUFFICIENT_PERMISSIONS', statusCode: 403 });
   });
 
   it('a no-placement-grant principal (e.g. super_admin / any role outside the matrix) is denied read AND create', () => {

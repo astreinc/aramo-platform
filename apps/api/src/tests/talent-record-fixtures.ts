@@ -3,9 +3,9 @@ import { resolve } from 'node:path';
 
 import type { Client } from 'pg';
 
-// 4e-engagement-key — shared integration-test fixtures for the TalentRecord
-// substrate. engagement.talent_id now references talent_record.TalentRecord.id
-// (the ATS heart), so every spec that creates an engagement must (a) migrate
+// 4e-selection-key — shared integration-test fixtures for the TalentRecord
+// substrate. selection.talent_id now references talent_record.TalentRecord.id
+// (the ATS heart), so every spec that creates an selection must (a) migrate
 // the talent_record schema and (b) seed a TalentRecord the create validator
 // resolves against. Centralised here so the migration set + seed shape live in
 // ONE place instead of being copy-pasted (and drifting) across ~10 specs.
@@ -44,9 +44,9 @@ export async function applyTalentRecordMigrations(client: Client): Promise<void>
   }
 }
 
-// Seed a TalentRecord the engagement-create Pattern-C validator
+// Seed a TalentRecord the selection-create Pattern-C validator
 // (TalentRecordRepository.findById) resolves against. `id` is the value that
-// goes into engagement.talent_id; tenant-scoped.
+// goes into selection.talent_id; tenant-scoped.
 export async function seedTalentRecord(
   client: Client,
   opts: { id: string; tenant_id: string; first_name?: string; last_name?: string },

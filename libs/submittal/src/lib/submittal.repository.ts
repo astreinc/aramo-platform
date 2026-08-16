@@ -118,8 +118,8 @@ function projectEventView(row: TalentSubmittalEventRow): TalentSubmittalEventVie
 }
 
 // ConfirmSubmittalInput — M4 PR-4 confirm input. event_id added at PR-8b2
-// per Ruling 18 (controller mints UUID; mirrors engagement-side
-// transitionState pattern at libs/engagement/src/lib/engagement
+// per Ruling 18 (controller mints UUID; mirrors selection-side
+// transitionState pattern at libs/selection/src/lib/selection
 // .repository.ts).
 export interface ConfirmSubmittalInput {
   tenant_id: string;
@@ -190,7 +190,7 @@ export class SubmittalRepository {
     private readonly logger: AramoLogger,
     // M5 PR-8b2 §4.7 + Ruling 17 — 5th DI dependency: append-only event
     // log substrate (PR-8b1 shipped the repository; PR-8b2 wires it
-    // into all 5 state-changing write methods). Per engagement-side
+    // into all 5 state-changing write methods). Per selection-side
     // transitionState precedent, the write-path event emission goes
     // through this.prisma.talentSubmittalEvent.create directly inside
     // the $transaction block (atomicity requirement); the injection
@@ -236,8 +236,8 @@ export class SubmittalRepository {
       ...(input.rate_expectation_id !== undefined
         ? { rate_expectation_id: input.rate_expectation_id }
         : {}),
-      ...(input.engagement_event_refs !== undefined
-        ? { engagement_event_refs: input.engagement_event_refs }
+      ...(input.selection_event_refs !== undefined
+        ? { selection_event_refs: input.selection_event_refs }
         : {}),
     });
 
@@ -414,7 +414,7 @@ export class SubmittalRepository {
   //     that re-calling /confirm on a confirmed submittal returns 409
   //     not 422).
   //   - $transaction([update, event.create]) for atomic 2-write per
-  //     engagement-side transitionState precedent.
+  //     selection-side transitionState precedent.
   async confirmSubmittal(
     input: ConfirmSubmittalInput,
   ): Promise<{ submittal: TalentSubmittalRecordView; event: TalentSubmittalEventView }> {
@@ -646,7 +646,7 @@ export class SubmittalRepository {
     void input.attestations;
 
     // Step 8 — atomic 3-write transaction (update + event.create + outbox)
-    // per engagement-side precedent. Per Ruling 12 the transition is
+    // per selection-side precedent. Per Ruling 12 the transition is
     // 'created' -> 'handoff_draft'; per Ruling 6 confirmed_at is NOT
     // touched here (moves to submitToAts). M6 PR-2 §3 adds the in-tx
     // outbox emission; rollback leaves no orphan outbox row (Cat 5 proof).
@@ -706,7 +706,7 @@ export class SubmittalRepository {
   // M5 PR-8b2 §4.7 — markReady. Mainline transition 2:
   // handoff_draft -> ready_for_review. 5-step internal flow per
   // directive §4.7: findByTenantAndId -> canTransition -> $transaction
-  // -> project + return -> log. Mirrors engagement-side transitionState
+  // -> project + return -> log. Mirrors selection-side transitionState
   // shape verbatim.
   async markReady(input: SubmittalMarkReadyInput): Promise<SubmittalMarkReadyResult> {
     const startedAt = Date.now();

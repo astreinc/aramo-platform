@@ -122,11 +122,11 @@ export class EmailVerificationService {
     // Gate 4 — consent (contacting/email). THE RULED DIVERGENCE (DDR §2.1): a
     // verification email is a voluntary enhancement, so it fails CLOSED on an
     // unknown consent state — BOTH `denied` AND `error`/empty-ledger map to 403
-    // VERIFICATION_CONSENT_REQUIRED (the engagement send-gate, by contrast, maps
-    // empty-ledger to 500). `engagement` is the existing operation that derives
+    // VERIFICATION_CONSENT_REQUIRED (the selection send-gate, by contrast, maps
+    // empty-ledger to 500). `selection` is the existing operation that derives
     // the `contacting` scope; TR-3 adds NO consent-vocabulary value (§1).
     const decision = await this.consent.check(
-      { talent_record_id: recordId, operation: 'engagement', channel: 'email' },
+      { talent_record_id: recordId, operation: 'selection', channel: 'email' },
       undefined,
       authContext,
       requestId,

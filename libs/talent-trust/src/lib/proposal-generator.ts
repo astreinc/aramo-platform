@@ -9,7 +9,7 @@ import type { ProposalKind, ProposalTriggerKind } from './vocab.js';
 //
 // Silent unless sure: a subject with fresh verification, no contradiction, and a
 // verified/multi-source contact returns []. Conservative by ruling — v1 proposes
-// only the three trust-side triggers; engagement-aware prioritization is exactly
+// only the three trust-side triggers; selection-aware prioritization is exactly
 // the caseworker-intelligence that waits for its own ADR-0015 amendment.
 
 // The three v1 triggers (DDR §3):
@@ -83,7 +83,7 @@ export function generateProposals(
 
   // VERIFY_CONTACT — thinness is the demand signal (DDR §3): single_source_only
   // AND a never-verified contact slot. One per never-verified slot, basis = the
-  // anchor row id. No ATS-side reads in v1 (engagement-aware prioritization waits
+  // anchor row id. No ATS-side reads in v1 (selection-aware prioritization waits
   // for its amendment).
   if (signals.single_source_only) {
     for (const s of verificationSlots) {

@@ -16,6 +16,7 @@ export interface AramoErrorContext {
 // for backwards compatibility; this constant records the canonical pairing
 // each directive that introduced the code chose.
 export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
+  CONNECTOR_CONFIGURATION_INVALID: 409,
   AUTH_REQUIRED: 401,
   INVALID_TOKEN: 401,
   TENANT_ACCESS_DENIED: 403,
@@ -35,9 +36,9 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   SUBMITTAL_ALREADY_CONFIRMED: 409,
   OVERRIDE_INVALID: 422,
   REVOKE_NOT_ALLOWED: 422,
-  ENGAGEMENT_EVENT_REF_NOT_FOUND: 422,
-  ENGAGEMENT_REFERENCE_NOT_FOUND: 422,
-  ENGAGEMENT_STATE_INVALID: 422,
+  SELECTION_EVENT_REF_NOT_FOUND: 422,
+  SELECTION_REFERENCE_NOT_FOUND: 422,
+  SELECTION_STATE_INVALID: 422,
   AI_PROVIDER_UNAVAILABLE: 502,
   AI_RATE_LIMITED: 429,
   SUBMITTAL_STATE_INVALID: 422,
@@ -125,6 +126,31 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   // requisition already holds this (tenant_id, source_system, external_req_id).
   // HTTP 409 (write-time identity conflict).
   REQUISITION_EXTERNAL_IDENTITY_CONFLICT: 409,
+  // Track 6 / T6-B2 — post-start commercial revision conflict: the requested
+  // effective instant overlaps or duplicates an existing rate-version window for
+  // (tenant, contract_assignment). HTTP 409 (details.reason: window_overlap |
+  // duplicate_effective_from).
+  ASSIGNMENT_COMMERCIAL_REVISION_CONFLICT: 409,
+  // Track 7 / T7-P1 — the PermanentPlacement guarantee family (same order as
+  // ERROR_CODES). not-found (404) / illegal transition (422) / invalid window (422)
+  // / terms required (422) / exposure invalid (422) / already-exists conflict (409).
+  PERMANENT_PLACEMENT_NOT_FOUND: 404,
+  PERMANENT_PLACEMENT_STATE_INVALID: 422,
+  PERMANENT_PLACEMENT_GUARANTEE_WINDOW_INVALID: 422,
+  PERMANENT_PLACEMENT_TERMS_REQUIRED: 422,
+  PERMANENT_PLACEMENT_EXPOSURE_INVALID: 422,
+  PERMANENT_PLACEMENT_ALREADY_EXISTS: 409,
+  // Track 7 / T7-P2 — falloff + remedy family (same order as ERROR_CODES).
+  PERMANENT_PLACEMENT_FALLOFF_WINDOW_INVALID: 422,
+  PERMANENT_PLACEMENT_FALLOFF_REASON_INVALID: 422,
+  PERMANENT_PLACEMENT_REMEDY_INVALID: 422,
+  PERMANENT_PLACEMENT_REMEDY_ALREADY_COMPLETED: 409,
+  // Track 7 / T7-P3 — guarantee-term-versioning family (same order as ERROR_CODES).
+  PERMANENT_PLACEMENT_TERMS_NOT_FOUND: 404,
+  PERMANENT_PLACEMENT_TERMS_WINDOW_INVALID: 422,
+  PERMANENT_PLACEMENT_TERMS_OVERLAP: 409,
+  PERMANENT_PLACEMENT_TERMS_AMBIGUOUS: 500,
+  PERMANENT_PLACEMENT_TERMS_IMMUTABLE: 409,
 };
 
 // Base error class. Thrown anywhere in the app where a structured response

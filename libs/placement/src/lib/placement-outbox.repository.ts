@@ -3,7 +3,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from './prisma/prisma.service.js';
 
 // Track 3 / E1-c — the placement schema's outbox drain surface, consumed by
-// libs/outbox-publisher (house pattern, mirrors EngagementOutboxRepository).
+// libs/outbox-publisher (house pattern, mirrors SelectionOutboxRepository).
 // findUnpublishedEvents returns up to `limit` rows with published_at IS NULL,
 // oldest first; markPublished bulk-stamps published_at (the ONLY column the
 // immutability trigger permits an OutboxEvent UPDATE to change).

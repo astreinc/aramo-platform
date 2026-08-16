@@ -14,7 +14,7 @@
 //   unique (a re-offer after fallthrough is a real workflow).
 //
 //   It does NOT represent: an application · a pipeline card · a matching
-//   outcome · a general engagement · an assignment. Lineage is submittal_id,
+//   outcome · a general selection · an assignment. Lineage is submittal_id,
 //   never pipeline_id; naming is requisition_id, never job_id.
 //
 // PG schema: `placement` per Architecture §7.1 schema-per-module. Cross-schema
@@ -61,10 +61,28 @@ enum PlacementState {
 }
 
 // PlacementEventType — closed-list event-log type. Mirrors the submittal /
-// engagement event-log substrate (one type at spine; richer types land with
+// selection event-log substrate (one type at spine; richer types land with
 // consumers).
 enum PlacementEventType {
   state_transition
+
+  @@schema("placement")
+}
+
+// PlacementKind — Track 7 / T7-P1. The persisted branch-selection fact that
+// governs which post-start aggregate the STARTED handoff materialises: CONTRACT
+// -> ContractAssignment (Track 4, the existing path), PERMANENT ->
+// PermanentPlacement (Track 7). NULLABLE and additive: existing/legacy rows
+// remain NULL and preserve historical CONTRACT behaviour at STARTED
+// (backward-compatibility). A new flow that knows the type persists it
+// explicitly at create; the PERMANENT branch requires an explicit persisted
+// PERMANENT (a NULL cannot be started permanent — fail closed). This is an
+// AGGREGATE birth fact, read at STARTED — never a transient-only transition flag
+// (T7-P1 directive §3.1). It is NOT added to ContractAssignment (§3.1: no
+// permanent discriminator on the contract aggregate).
+enum PlacementKind {
+  CONTRACT
+  PERMANENT
 
   @@schema("placement")
 }
@@ -108,6 +126,15 @@ model PlacementProcess {
   // first-placement transition). Additive migration 20260808120000.
   replaces_placement_process_id String? @db.Uuid
 
+  // Track 7 / T7-P1 — the persisted permanent-vs-contract branch fact (§3.1).
+  // NULLABLE, written once at INSERT; NOT pinned in any immutability trigger (a
+  // nullable column pinned via OLD = NEW is NULL not TRUE and would reject every
+  // first transition — the §4.3 NULL=NULL trap). Read at STARTED to select the
+  // post-start aggregate: PERMANENT -> PermanentPlacement; CONTRACT/NULL ->
+  // ContractAssignment (legacy NULL preserves historical behaviour). Additive
+  // migration 20260814120000.
+  placement_kind PlacementKind?
+
   // Snapshot creation timestamp. NO updated_at (§2).
   created_at DateTime @default(now()) @db.Timestamptz(6)
 
@@ -124,7 +151,7 @@ model PlacementProcess {
 
 // PlacementProcessEvent — append-only, absolutely immutable audit log. No
 // update surface, no delete surface; both enforced by database triggers in the
-// init migration (§3). Mirrors TalentEngagementEvent.
+// init migration (§3). Mirrors TalentSelectionEvent.
 model PlacementProcessEvent {
   // Identity. UUID v7 generated app-side — NO @default (§2).
   id        String @id @db.Uuid
@@ -159,7 +186,7 @@ model PlacementProcessEvent {
 }
 
 // OutboxEvent — the placement schema's own transactional-outbox namespace (E1-c,
-// Approval Record 9-c-2). Mirrors the six-column house shape (consent/engagement/
+// Approval Record 9-c-2). Mirrors the six-column house shape (consent/selection/
 // submittal): aggregate identity lives inside event_payload, NOT in columns.
 // Drained by libs/outbox-publisher (published_at stamped on drain). Append-only:
 // a column-scoped immutability trigger (the E1-c migration) rejects DELETE and any
@@ -268,6 +295,12 @@ model ContractAssignment {
   // normal completion / worker-ended / client-ended structurally.
   end_reason ContractAssignmentEndReason?
 
+  // Track 6 / T6-B3 — the durable assignment-end instant (migration
+  // 20260813130000). Nullable: ACTIVE assignments have none. Set once, at END,
+  // to the single server T_end also used for commercial-window reconciliation
+  // and the assignment.ended event — one clock, no independent timestamps.
+  ended_at DateTime? @db.Timestamptz(6)
+
   created_at DateTime @default(now()) @db.Timestamptz(6)
 
   // Idempotency: at most one assignment per originating start fact.
@@ -328,12 +361,345 @@ model AssignmentRateVersion {
   recorded_by   String  @db.Uuid
   change_reason String?
 
+  // Cancellation representation (Track 6 / T6-B1 §3). Same-row so the overlap
+  // exclusion constraint can drop cancelled rows via a single-table partial
+  // predicate (an index predicate cannot reach through a join). NULL for every
+  // existing and B1-created row: B1 writes NONE of these — the B3 cancellation
+  // operation owns their governed one-shot write. cancellation_reason_code is a
+  // nullable code (NOT a Postgres enum yet — B3 rules the vocabulary). The DB
+  // interval CHECK, the btree_gist overlap EXCLUDE, and the governed effective_to
+  // first-close trigger are migration-only (20260812140000), invisible to
+  // prisma:validate, mirroring the existing append-only trigger + pg_trgm precedent.
+  cancelled_at             DateTime? @db.Timestamptz(6)
+  cancelled_by             String?   @db.Uuid
+  cancellation_reason_code String?
+
   created_at DateTime @default(now()) @db.Timestamptz(6)
 
   // Version-ready idempotency floor: keyed on the effective instant so T6 can add
   // later versions, while a retry of the same atomic start cannot double-insert.
   @@unique([tenant_id, contract_assignment_id, effective_from])
   @@index([tenant_id, contract_assignment_id])
+  @@index([tenant_id, requisition_id])
+  @@schema("placement")
+}
+
+// PermanentPlacementState — Track 7 / T7-P1. The P1 happy-path guarantee
+// lifecycle. Ships EXACTLY the two states the direct-permanent slice reaches:
+// GUARANTEE_ACTIVE (created at the permanent STARTED handoff, inside the
+// contractual guarantee window) and GUARANTEE_SATISFIED (the window completed
+// with no qualifying falloff — terminal). FELL_OFF and the remedy states
+// (REPLACEMENT_DUE / REFUND_DUE / PRORATED_CREDIT_DUE / REMEDY_COMPLETED) are
+// DELIBERATELY ABSENT — they are the T7-P2 slice and land as additive members
+// with their ratified edges (the ContractAssignmentState "ships ACTIVE only"
+// precedent). Enforcement is a typed transition registry (src/lib/lifecycle),
+// NOT a generated DB trigger (T7-P1 directive §3.3); P2 may revisit a DB trigger
+// if the expanded lifecycle warrants it.
+enum PermanentPlacementState {
+  GUARANTEE_ACTIVE
+  GUARANTEE_SATISFIED
+  // Track 7 / T7-P2 — the falloff + remedy lifecycle (additive ALTER TYPE ADD VALUE,
+  // migration 20260815120000). FELL_OFF is atomically traversed into exactly one
+  // *_DUE state inside the falloff transaction (§3.2). REMEDY_COMPLETED is terminal.
+  FELL_OFF
+  REPLACEMENT_DUE
+  REFUND_DUE
+  PRORATED_CREDIT_DUE
+  REMEDY_COMPLETED
+
+  @@schema("placement")
+}
+
+// RemedyPolicy — Track 7. The closed, terms-driven remedy the guarantee snapshot
+// commits to at activation (T7-PRE §8): the single canonical remedy that a
+// qualifying falloff will require. SNAPSHOTTED in P1 (an immutable activation
+// fact) but only EXECUTED in P2 — P1 implements no falloff/remedy transition.
+// Never a Postgres enum guess about priority: exactly one policy is chosen from
+// governed terms, never heuristically among several.
+enum RemedyPolicy {
+  REPLACEMENT
+  REFUND
+  PRORATED_CREDIT
+
+  @@schema("placement")
+}
+
+// PermanentPlacementEventType — closed-list event-log type. Mirrors the
+// PlacementProcessEvent substrate (one type at the spine; richer types land with
+// P2 falloff/remedy consumers).
+enum PermanentPlacementEventType {
+  state_transition
+
+  @@schema("placement")
+}
+
+// PermanentPlacement — Track 7 / T7-P1. The first-class post-start PERMANENT
+// aggregate, parallel to ContractAssignment (T7-PRE §3.1 — NOT a ContractAssignment
+// subtype, PlacementProcess subtype, pipeline row, or reporting projection).
+// Materialised transactionally at the Placement STARTED handoff for a PERMANENT
+// placement_kind, and NOT for CONTRACT/NULL. Carries an IMMUTABLE guarantee
+// snapshot sufficient to determine the guarantee outcome without consulting
+// mutable client defaults (T7-PRE §7). Cross-schema refs are UUID-only, no FK
+// (§7.3), symmetric with ContractAssignment. Additive migration 20260814120000.
+//
+// COMMERCIAL PROVENANCE (§3.2): the direct-permanent path mints NO
+// ContractAssignment and NO AssignmentRateVersion, so guarantee_exposure_amount
+// is a GOVERNED INPUT snapshot fact (explicit amount + currency + provenance),
+// NEVER derived from a rate version and NEVER read cross-schema from the
+// requisition/client-contract. The guarantee-specific proration formula is
+// Track-7-owned (T7-P2); underlying pay/bill/markup/margin remain T5-owned.
+model PermanentPlacement {
+  id String @id @db.Uuid
+
+  tenant_id String @db.Uuid
+
+  // Originating placement. Intra-schema plain scalar (no FK), symmetric with
+  // ContractAssignment.placement_process_id (§7.3 / single-pass tenant-reset).
+  placement_process_id String @db.Uuid
+
+  // Lineage + denormalised read axes, mirroring ContractAssignment (§3b) — the
+  // (tenant, requisition) capacity read needs no cross-row join.
+  submittal_id     String @db.Uuid
+  requisition_id   String @db.Uuid
+  talent_record_id String @db.Uuid
+
+  lifecycle_state PermanentPlacementState
+
+  // Guarantee window (T7-PRE §5). Calendar DATES, not wall-clock instants — the
+  // guarantee is a calendar concept, stable across time zones and DST. Half-open
+  // interval [guarantee_start_date, guarantee_end_date). guarantee_start_date is
+  // the actual permanent employment start represented by the STARTED handoff;
+  // guarantee_end_date = start + guarantee_duration_days (a positive integer,
+  // else the placement fails closed before activation).
+  guarantee_start_date    DateTime @db.Date
+  guarantee_duration_days Int
+  guarantee_end_date      DateTime @db.Date
+
+  // Immutable remedy + commercial-exposure snapshot (§7/§8/§9). remedy_policy is
+  // the single terms-driven remedy a qualifying falloff will require (executed in
+  // P2). guarantee_exposure_amount is the maximum amount subject to refund/credit,
+  // a GOVERNED INPUT (decimal money, never float; scale-2, matching the T5 money
+  // column convention). currency is stored as TEXT (ISO-4217, validated at the
+  // write boundary — the AssignmentRateVersion.currency precedent).
+  remedy_policy               RemedyPolicy
+  guarantee_exposure_amount   Decimal @db.Decimal(12, 2)
+  guarantee_exposure_currency String
+
+  // Terms provenance (§7 "provenance/source of terms"). terms_source is a
+  // governed free-form provenance label (e.g. the origin of the guarantee terms);
+  // recorded_by is the Aramo user (JWT sub) who supplied them — the
+  // AssignmentRateVersion.recorded_by / client-talent-restriction convention.
+  terms_source String
+  recorded_by  String @db.Uuid
+
+  // Track 7 / T7-P2 — write-once qualifying-falloff facts (§5). All NULL until a
+  // governed falloff (GUARANTEE_ACTIVE -> FELL_OFF); then all set together in the
+  // one falloff transaction and NEVER rewritten/cleared. falloff_effective_date is
+  // a calendar DATE in the half-open window [guarantee_start_date, guarantee_end_date).
+  // falloff_reason is a governed code from the closed T7 registry (permanent-falloff-
+  // reasons.ts; TEXT, no enum, no OTHER). Immutability is NULL-safe conditional (the
+  // migration trigger permits the first NULL->value write, forbids any later change) —
+  // NOT pinned via a bare OLD=NEW (the NULL=NULL trap). Additive migration 20260815120000.
+  falloff_effective_date DateTime? @db.Date
+  falloff_reason         String?
+  falloff_recorded_by    String?   @db.Uuid
+  falloff_recorded_at    DateTime? @db.Timestamptz(6)
+
+  // Track 7 / T7-P3 — guarantee-terms provenance snapshot (§7). NULL for every
+  // P1/P2 row (no stored term version applied — legacy explicit path) and never
+  // backfilled. When a resolved PermanentPlacementGuaranteeTermVersion is applied at
+  // activation, these are COPIED once (with the existing guarantee_* payload columns)
+  // and then frozen: NULL-safe write-once immutability in the snapshot trigger (the
+  // falloff-field idiom — never a bare OLD=NEW). guarantee_term_version_id is a plain
+  // intra-schema UUID pointer (no FK — a lineage ref, symmetric with the plain-scalar
+  // convention); source_type is the closed code-owned registry value (MANUAL|IMPORTED).
+  // Additive migration 20260816120000.
+  guarantee_term_version_id        String? @db.Uuid
+  guarantee_terms_source_type      String?
+  guarantee_terms_source_reference String?
+  guarantee_terms_source_version   String?
+
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+
+  // Intra-schema back-reference for the event-log FK (relation-only field).
+  events PermanentPlacementEvent[]
+
+  // Track 7 / T7-P2 — the remedy obligation child (relation-only field). Declared
+  // as a list for Prisma's relation model; the child's @@unique([tenant_id,
+  // permanent_placement_id]) enforces AT MOST ONE (§3.3). The repository queries the
+  // child directly, never via this accessor.
+  remedies PermanentPlacementRemedy[]
+
+  // Idempotency: at most one PermanentPlacement per originating start fact
+  // (§3.2) — the branch-exclusivity + replay floor, mirroring ContractAssignment.
+  @@unique([tenant_id, placement_process_id])
+  // (tenant, requisition): the derived-capacity consuming-count read (§7/§10).
+  @@index([tenant_id, requisition_id])
+  @@index([tenant_id, talent_record_id])
+  @@schema("placement")
+}
+
+// PermanentPlacementEvent — Track 7 / T7-P1. Append-only, immutable audit log of
+// the guarantee lifecycle, mirroring PlacementProcessEvent (§3). No update/delete
+// surface; both enforced by DB triggers in the additive migration. The
+// state_transition payload is { from, to } (from is null for the creation/
+// activation event). NO PII: the payload carries IDs, state, and governed
+// snapshot facts only.
+model PermanentPlacementEvent {
+  id        String @id @db.Uuid
+  tenant_id String @db.Uuid
+
+  // Intra-schema FK to PermanentPlacement (permitted — §3, §7.3).
+  permanent_placement_id String             @db.Uuid
+  permanent_placement    PermanentPlacement @relation(fields: [permanent_placement_id], references: [id])
+
+  event_type    PermanentPlacementEventType
+  event_payload Json
+
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([tenant_id, permanent_placement_id])
+  @@index([permanent_placement_id, created_at])
+  @@schema("placement")
+}
+
+// PermanentPlacementRemedy — Track 7 / T7-P2. The dedicated remedy-obligation child
+// of a PermanentPlacement (directive §3.3 / §9). EXACTLY ONE per PermanentPlacement
+// (@@unique). Created inside the falloff transaction the moment the deterministic
+// remedy-due state is entered. Two immutability regimes on one row (migration
+// 20260815120000):
+//   OBLIGATION facts — immutable forever the instant the row is inserted (remedy_type,
+//   calculated_amount, currency, calc inputs/provenance, falloff_effective_date, due_at,
+//   created_by): a BEFORE UPDATE trigger rejects any change to them.
+//   COMPLETION facts — one-way NULL -> valid-set-once, then frozen (completed_at,
+//   completed_by, completion_reference, replacement_placement_process_id): NULL-safe
+//   conditional immutability.
+// FINANCIAL SEMANTICS (§3.4): this records the OBLIGATION and a governed completion
+// REFERENCE only. Aramo does NOT execute refunds/credits/payments and mints NO
+// payment/ledger/payout object. calculated_amount is the amount OWED under the
+// guarantee, computed by the T7-owned remedy-computation helper — never a money movement.
+model PermanentPlacementRemedy {
+  id        String @id @db.Uuid
+  tenant_id String @db.Uuid
+
+  // Anchor to the owning PermanentPlacement. Intra-schema FK permitted (§7.3). The
+  // unique makes it at-most-one remedy per aggregate — the idempotency floor.
+  permanent_placement_id String             @db.Uuid
+  permanent_placement    PermanentPlacement @relation(fields: [permanent_placement_id], references: [id])
+
+  // Denormalised lineage read axes (tenant-scoped reads without a cross-row join).
+  requisition_id   String @db.Uuid
+  talent_record_id String @db.Uuid
+
+  // The remedy type = the immutable snapshot RemedyPolicy (deterministic — §6).
+  remedy_type RemedyPolicy
+
+  // OBLIGATION amount (immutable). Set for REFUND (= exposure) and PRORATED_CREDIT
+  // (the T7-owned proration); NULL for REPLACEMENT (a non-monetary obligation).
+  // Decimal money, never float, scale-2 (the exposure column convention). currency
+  // present iff calculated_amount is present.
+  calculated_amount Decimal? @db.Decimal(12, 2)
+  currency          String?
+
+  // Calculation inputs / provenance (immutable audit of how the amount was derived):
+  // the exposure + duration snapshots and the clamped remaining_days (proration only).
+  exposure_amount_snapshot Decimal @db.Decimal(12, 2)
+  duration_days_snapshot   Int
+  remaining_days           Int?
+  falloff_effective_date   DateTime @db.Date
+
+  // Obligation provenance (immutable). due_at = the falloff-transaction instant.
+  created_by String   @db.Uuid
+  due_at     DateTime @db.Timestamptz(6)
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+
+  // COMPLETION facts — one-way enrichment, written exactly once (§9). Coherence
+  // (migration CHECK, conditional on completed_at): REPLACEMENT -> replacement id set,
+  // external reference NULL; REFUND/PRORATED_CREDIT -> external reference set,
+  // replacement id NULL. Caller never supplies the amount.
+  completed_at                     DateTime? @db.Timestamptz(6)
+  completed_by                     String?   @db.Uuid
+  completion_reference             String?
+  replacement_placement_process_id String?  @db.Uuid
+
+  @@unique([tenant_id, permanent_placement_id])
+  @@index([tenant_id, requisition_id])
+  @@schema("placement")
+}
+
+// PermanentPlacementGuaranteeTermVersion — Track 7 / T7-P3. The reusable,
+// placement-owned, effective-dated SOURCE of permanent-placement guarantee terms,
+// keyed by (tenant_id, requisition_id) — reusable across the requisition's permanent
+// placements (directive §3.1). NOT keyed by talent or PlacementProcess, and requires
+// NO placement->requisition library dependency (requisition_id is a plain cross-schema
+// UUID axis, never a join). APPEND-ONLY versioned business history (§3.8 — no separate
+// history table): each governed revision inserts a successor and first-closes the
+// predecessor's open window. The IMMUTABLE PermanentPlacement snapshot COPIES the
+// resolved values at activation (§7); there is NO live-read after activation.
+//
+// Effective-dating is CALENDAR DATE, half-open [effective_from, effective_to) (§3.2) —
+// the guarantee-window convention, NOT the AssignmentRateVersion TIMESTAMPTZ instant
+// convention. Overlap for a (tenant, requisition) is forbidden by a btree_gist
+// daterange EXCLUDE (§5); unique(tenant, requisition, effective_from) is the
+// idempotency/replay floor. All payload + provenance fields are immutable after
+// insert; the ONLY governed mutation is effective_to NULL->date once (revision
+// first-close). DELETE forbidden except the exact-value governed tenant-reset GUC
+// escape. The interval CHECK, btree_gist EXCLUDE, append-only + first-close trigger,
+// and reset escape are migration-only (20260816120000), invisible to prisma:validate,
+// mirroring the AssignmentRateVersion precedent. No cancellation columns (P3 defers
+// future-version cancellation, §3.5).
+//
+// COMMERCIAL PROVENANCE (§3.3): guarantee_exposure_amount + currency are GOVERNED T7
+// term data (explicit input), NEVER derived from AssignmentRateVersion and NEVER
+// duplicating deriveCommercialMetrics. source_type is the closed code-owned registry
+// (guarantee-terms-source.ts: MANUAL | IMPORTED; TEXT + DB CHECK — no premature
+// CLIENT_CONTRACT / RATE_CARD, §3.6).
+model PermanentPlacementGuaranteeTermVersion {
+  id String @id @db.Uuid
+
+  tenant_id String @db.Uuid
+
+  // Reusable ownership axis (§3.1). Plain cross-schema UUID scalar (no FK, no join,
+  // no placement->requisition edge). Available BEFORE any PlacementProcess exists, so
+  // terms can be prepared pre-start and resolved deterministically at activation.
+  requisition_id String @db.Uuid
+
+  // Effective-dating (§3.2). CALENDAR DATES, half-open [effective_from, effective_to).
+  // effective_to NULL = the open current tail; first-close (NULL->date, once) is the
+  // sole governed mutation. Resolution compares an as_of calendar date against the
+  // half-open window using the existing T7 UTC calendar-date semantics.
+  effective_from DateTime  @db.Date
+  effective_to   DateTime? @db.Date
+
+  // Reusable guarantee-term payload (§3.3). guarantee_duration_days > 0 (DB CHECK);
+  // guarantee_exposure_amount >= 0 (DB CHECK; Decimal money, never float, scale-2 —
+  // the exposure column convention). currency TEXT (ISO-4217, validated at the write
+  // boundary). remedy_policy is the closed terms-driven RemedyPolicy.
+  guarantee_duration_days   Int
+  remedy_policy             RemedyPolicy
+  guarantee_exposure_amount Decimal @db.Decimal(12, 2)
+  currency                  String
+
+  // Structured provenance (§3.6). source_type is the closed code-owned registry value
+  // (MANUAL | IMPORTED; TEXT + DB CHECK). source_reference / source_version are optional
+  // governed references (e.g. an import batch id + version). recorded_by = the Aramo
+  // user (JWT sub). recorded_at = the governed recording instant (may predate created_at
+  // for an IMPORTED source). supersedes_version_id points at the predecessor this version
+  // first-closed (NULL for an initial version). correlation_id is an optional governed
+  // trace id. NO free-form change note in P3.
+  source_type           String
+  source_reference      String?
+  source_version        String?
+  recorded_by           String   @db.Uuid
+  recorded_at           DateTime @db.Timestamptz(6)
+  supersedes_version_id String?  @db.Uuid
+  correlation_id        String?
+
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+
+  // Idempotency/replay floor keyed on the effective date (§4). The btree_gist daterange
+  // EXCLUDE (migration-only) enforces no-overlap for (tenant, requisition).
+  @@unique([tenant_id, requisition_id, effective_from])
   @@index([tenant_id, requisition_id])
   @@schema("placement")
 }

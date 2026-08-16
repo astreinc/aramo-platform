@@ -51,7 +51,7 @@ const SUBMITTAL_RENAME_MIGRATION_PATH = resolve(
   __dirname,
   '../../prisma/migrations/20260527000000_rename_submittal_state_canonical/migration.sql',
 );
-// T2-P1 — relocate Submittal persistence engagement -> submittal schema.
+// T2-P1 — relocate Submittal persistence selection -> submittal schema.
 const SUBMITTAL_T2P1_MIGRATION_PATH = resolve(
   __dirname,
   '../../prisma/migrations/20260812120000_t2p1_relocate_submittal_to_submittal_schema/migration.sql',

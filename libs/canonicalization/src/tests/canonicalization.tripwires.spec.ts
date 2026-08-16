@@ -196,7 +196,7 @@ describe('T2-2a — Proof 7: R10/R12 boundary', () => {
   it('R10: canonicalize source carries NO match-class output vocabulary (tier/score/rank/match)', () => {
     const sources = readAllSrc();
     // The R10-forbidden output keys (subset of the apps/api
-    // engagement-transition.negative-shape spec's
+    // selection-transition.negative-shape spec's
     // FORBIDDEN_MATCH_CLASS_KEYS list). We assert NONE of these appear
     // anywhere in canonicalization's lib source — neither as field names,
     // event-payload keys, nor identifiers.
@@ -211,7 +211,7 @@ describe('T2-2a — Proof 7: R10/R12 boundary', () => {
       'risk_flags',
       'recruiter_notes',
       'override_id',
-      'internal_engagement_state',
+      'internal_selection_state',
     ];
     const hits: Array<{ file: string; key: string }> = [];
     for (const [file, src] of sources) {

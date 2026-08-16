@@ -11,7 +11,7 @@ import {
 import { Tabs, type TabItem } from '@aramo/fe-foundation';
 
 import { Button, StatusPill, type PillTone } from '../ui';
-import { EngagementsPanel } from '../engagement/EngagementsPanel';
+import { SelectionsPanel } from '../selection/SelectionsPanel';
 import { TasksPanel } from '../task/TasksPanel';
 import { listActivities } from '../activity/activity-api';
 import { timelineErrorMessage } from '../activity/error-messages';
@@ -177,11 +177,11 @@ export function TalentDetailView({ sessionOverride }: TalentDetailViewProps) {
       ),
     });
   }
-  if (scopes.includes('engagement:read')) {
+  if (scopes.includes('selection:read')) {
     tabs.push({
-      id: 'engagements',
-      label: 'Engagements',
-      content: <EngagementsPanel talentId={talent.id} />,
+      id: 'selections',
+      label: 'Selections',
+      content: <SelectionsPanel talentId={talent.id} />,
     });
   }
   if (scopes.includes('task:read')) {

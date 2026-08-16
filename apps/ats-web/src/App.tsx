@@ -1,7 +1,8 @@
-import { RouteGuard, ToastProvider, useSession } from '@aramo/fe-foundation';
+import { ForbiddenState, RouteGuard, ToastProvider, hasScope, useSession } from '@aramo/fe-foundation';
 import { Navigate, Route, Routes } from 'react-router-dom';
 
 import { AdminGate } from './admin/AdminGate';
+import { hasAdminScope } from './admin/admin-access';
 import { AdminSection } from './admin/AdminSection';
 import { CompanyAssignmentsView } from './assignments/CompanyAssignmentsView';
 import { RequisitionAssignmentsView } from './assignments/RequisitionAssignmentsView';
@@ -15,7 +16,7 @@ import { ContactCreateView } from './contacts/ContactCreateView';
 import { ContactDetailView } from './contacts/ContactDetailView';
 import { ContactEditView } from './contacts/ContactEditView';
 import { ContactsListView } from './contacts/ContactsListView';
-import { EngagementDetailView } from './engagement/EngagementDetailView';
+import { SelectionDetailView } from './selection/SelectionDetailView';
 import { IdentityAdvisoriesView } from './identity-advisories/IdentityAdvisoriesView';
 import { PortalDisputesView } from './portal-disputes/PortalDisputesView';
 import { TrustProposalsView } from './trust-proposals/TrustProposalsView';
@@ -29,6 +30,12 @@ import { PlacementDetailView } from './placement/PlacementDetailView';
 import { RequisitionCreateView } from './requisitions/RequisitionCreateView';
 import { RequisitionDetailView } from './requisitions/RequisitionDetailView';
 import { RequisitionsListView } from './requisitions/RequisitionsListView';
+import { AssignmentPipelineView } from './reporting/AssignmentPipelineView';
+import { FallthroughView } from './reporting/FallthroughView';
+import { FillPerformanceView } from './reporting/FillPerformanceView';
+import { GuaranteeExposureView } from './reporting/GuaranteeExposureView';
+import { MarginView } from './reporting/MarginView';
+import { ReportingLanding } from './reporting/ReportingLanding';
 import { SearchView } from './search/SearchView';
 import { SourcingPoolView } from './sourcing/SourcingPoolView';
 import { SettingsView } from './settings/SettingsView';
@@ -114,6 +121,81 @@ export function App() {
                           sessionStateOverride={state}
                         >
                           <MyTasksView />
+                        </RouteGuard>
+                      }
+                    />
+                    {/* T9-B1/B2 — the Reporting area (report:read). The rail
+                        "Reports" entry lands on /reports (index), which links to
+                        each dedicated report page (§13 Reports IA). */}
+                    <Route
+                      path="reports"
+                      element={
+                        <RouteGuard
+                          requireScope="report:read"
+                          sessionStateOverride={state}
+                        >
+                          <ReportingLanding />
+                        </RouteGuard>
+                      }
+                    />
+                    <Route
+                      path="reports/fill-performance"
+                      element={
+                        <RouteGuard
+                          requireScope="report:read"
+                          sessionStateOverride={state}
+                        >
+                          <FillPerformanceView />
+                        </RouteGuard>
+                      }
+                    />
+                    <Route
+                      path="reports/fallthrough"
+                      element={
+                        <RouteGuard
+                          requireScope="report:read"
+                          sessionStateOverride={state}
+                        >
+                          <FallthroughView />
+                        </RouteGuard>
+                      }
+                    />
+                    <Route
+                      path="reports/assignment-pipeline"
+                      element={
+                        <RouteGuard
+                          requireScope="report:read"
+                          sessionStateOverride={state}
+                        >
+                          <AssignmentPipelineView />
+                        </RouteGuard>
+                      }
+                    />
+                    {/* T7-P5 §5.6 — guarantee-exposure report (report:read), within the
+                        existing Reports IA. */}
+                    <Route
+                      path="reports/guarantee-exposure"
+                      element={
+                        <RouteGuard
+                          requireScope="report:read"
+                          sessionStateOverride={state}
+                        >
+                          <GuaranteeExposureView />
+                        </RouteGuard>
+                      }
+                    />
+                    {/* T9-B4 — Margin. The route stays report:read (the reporting
+                        surface); the assignment:commercials:read gate is enforced by
+                        the hidden landing link + the backend 403 + the view's own
+                        scope check (no fetch when gated away). */}
+                    <Route
+                      path="reports/margin"
+                      element={
+                        <RouteGuard
+                          requireScope="report:read"
+                          sessionStateOverride={state}
+                        >
+                          <MarginView />
                         </RouteGuard>
                       }
                     />
@@ -288,13 +370,13 @@ export function App() {
                       }
                     />
                     <Route
-                      path="engagements/:engagementId"
+                      path="selections/:selectionId"
                       element={
                         <RouteGuard
-                          requireScope="engagement:read"
+                          requireScope="selection:read"
                           sessionStateOverride={state}
                         >
-                          <EngagementDetailView />
+                          <SelectionDetailView />
                         </RouteGuard>
                       }
                     />
@@ -384,6 +466,54 @@ export function App() {
                         >
                           <ContactEditView />
                         </RouteGuard>
+                      }
+                    />
+                    {/* T8-P3 reachability (Gate-5 FIX_NOW): the requisition-
+                        ingestion MONITORING surface lives under Settings →
+                        Integrations, but its frontend authority is the LOCKED
+                        P3 scope `requisition:import:read` — NOT the
+                        `tenant:admin:*` family. This isolated route is more
+                        specific than the `admin/*` splat below, so it out-ranks
+                        it for `/admin/settings/integrations`: a recruiter
+                        holding the read scope reaches it WITHOUT any admin
+                        scope, while every OTHER settings section stays inside
+                        the AdminGate subtree (admin-only preserved — no
+                        broadening). RouteGuard renders <ForbiddenState> (never a
+                        login redirect) when the read scope is absent — an admin
+                        WITHOUT the read scope included. The component
+                        (RequisitionIngestionView) self-gates on the SAME scope
+                        (no surface, no fetch), so the route and the panel agree.
+                        Chrome by reachable-IA: an admin keeps the full settings
+                        rail (SettingsShell); a non-admin read-holder gets the
+                        focused section alone, so no admin IA is exposed to a
+                        non-admin. */}
+                    <Route
+                      path="admin/settings/integrations/*"
+                      element={
+                        // T8-CONNECTOR-A: the Integrations page now hosts TWO
+                        // independently-governed siblings — P3 ingestion
+                        // monitoring (`requisition:import:read`) and connector
+                        // connection management (`integration:read`). The route
+                        // is reachable by EITHER scope; each panel self-gates on
+                        // its OWN scope (§38 — a narrower permission must NOT
+                        // become dependent on an unrelated broader gate).
+                        hasScope(state.session, 'requisition:import:read') ||
+                        hasScope(state.session, 'integration:read') ? (
+                          hasAdminScope(state.session) ? (
+                            <Routes>
+                              <Route element={<SettingsShell />}>
+                                <Route
+                                  index
+                                  element={<IntegrationsSection />}
+                                />
+                              </Route>
+                            </Routes>
+                          ) : (
+                            <IntegrationsSection />
+                          )
+                        ) : (
+                          <ForbiddenState scope="integration:read" />
+                        )
                       }
                     />
                     {/* Admin-gated section. AdminGate is the single
@@ -476,10 +606,11 @@ export function App() {
                                 path="settings/fields"
                                 element={<FieldsSection />}
                               />
-                              <Route
-                                path="settings/integrations"
-                                element={<IntegrationsSection />}
-                              />
+                              {/* settings/integrations is NOT hosted here: it is
+                                  the one section governed by
+                                  `requisition:import:read` (P3), served by the
+                                  isolated route above — OUTSIDE this
+                                  `tenant:admin:*` AdminGate subtree. */}
                               <Route
                                 path="settings/billing"
                                 element={<BillingSection />}

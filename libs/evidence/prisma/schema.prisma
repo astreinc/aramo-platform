@@ -18,7 +18,7 @@
 //     capability_summary, match_justification, recruiter_contribution)
 //     → JSONB (§7.4 permits JSONB for "derived snapshots, metadata,
 //     evidence summaries").
-//   - engagement_event_refs (forward reference to TalentEngagementEvent,
+//   - selection_event_refs (forward reference to TalentSelectionEvent,
 //     M5) → JSONB array of UUIDs with empty-array default.
 //   - submittal_record_id (forward reference to TalentSubmittalRecord,
 //     M5) → nullable; non-null enforcement deferred to M5 when the
@@ -59,7 +59,7 @@ datasource db {
 // §2.6 — TalentJobEvidencePackage (first-class immutable snapshot
 // entity). Cross-schema references (`examination_id`,
 // `submittal_record_id`, `parent_package_id`) are UUID-only per §7.3;
-// `engagement_event_refs` is a JSONB array of UUIDs.
+// `selection_event_refs` is a JSONB array of UUIDs.
 //
 // The five nested structured payloads are JSONB per §7.4. Typed view
 // projections in libs/evidence/src/lib/dto/ deserialize them on read.
@@ -83,7 +83,7 @@ model TalentJobEvidencePackage {
   // is the load-bearing analytical-snapshot reference.
   examination_id      String  @db.Uuid
   // submittal_record_id: nullable. References TalentSubmittalRecord
-  // (engagement schema, M5 — entity does not exist on substrate). The
+  // (selection schema, M5 — entity does not exist on substrate). The
   // package may exist before submittal confirmation.
   submittal_record_id String? @db.Uuid
   // parent_package_id: nullable. Links re-submittals for the same
@@ -97,11 +97,10 @@ model TalentJobEvidencePackage {
   match_justification    Json
   recruiter_contribution Json
 
-  // engagement_event_refs: JSONB array of UUIDs. References
-  // TalentEngagementEvent (engagement schema, M5 — entity does not
-  // exist on substrate). Default empty array; populated at builder
-  // time when referenced entities exist.
-  engagement_event_refs  Json   @default("[]")
+  // selection_event_refs: JSONB array of UUIDs. References
+  // TalentSelectionEvent (selection schema). Default empty array;
+  // populated at builder time when referenced entities exist.
+  selection_event_refs   Json   @default("[]")
 
   // Snapshot creation timestamp. No updated_at — entity is immutable
   // per §2.6 (immutable after submittal confirmation; in v1 there is

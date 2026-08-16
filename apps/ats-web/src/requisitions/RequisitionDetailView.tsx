@@ -45,6 +45,7 @@ import {
   type TableColumn,
 } from '../ui';
 
+import { GuaranteeTermsPanel } from './GuaranteeTermsPanel';
 import { AddTalentDialog } from './AddTalentDialog';
 import { CockpitFieldRow, type SaveFieldFn } from './cockpit-fields';
 import { COCKPIT_FIELDS, type CockpitSection } from './field-affordance';
@@ -158,6 +159,9 @@ export function RequisitionDetailView({
   const scopes = useMemo(() => session?.scopes ?? [], [session]);
   const canReadTasks = scopes.includes('task:read');
   const canWriteTasks = scopes.includes('task:write');
+  // T7-P5 §3.1 — the Guarantee Terms tab is gated on the read scope AND applicability (a
+  // PERMANENT-compensation requisition). Exact-string scope, no read issued without it.
+  const canReadPermanentTerms = scopes.includes('placement:permanent:read');
   const canEditHot = scopes.includes('talent:edit');
   const canAddTalent = scopes.includes('pipeline:add');
   const canLogNote = scopes.includes('activity:create');
@@ -400,6 +404,15 @@ export function RequisitionDetailView({
           />
         </div>
       ),
+    });
+  }
+  // T7-P5 §5.5 — the Guarantee Terms tab, only for a PERMANENT-compensation requisition the
+  // actor may read (§3.1). The panel itself re-gates read/mutation on the exact permanent scopes.
+  if (canReadPermanentTerms && reqRecord['compensation_model'] === 'PERMANENT') {
+    tabs.push({
+      id: 'guarantee-terms',
+      label: 'Guarantee Terms',
+      content: <GuaranteeTermsPanel requisitionId={req.id} sessionOverride={session ?? undefined} />,
     });
   }
 

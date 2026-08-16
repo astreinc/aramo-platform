@@ -37,6 +37,43 @@ const EXACT_ALLOWLIST = new Set<string>([
   // DELETE-reject trigger carries the same exact-value escape so governed tenant
   // reset can delete the child (registered in tenant-reset.service.ts).
   'libs/placement/prisma/migrations/20260810130000_t5_assignment_rate_version/migration.sql',
+  // Track 6 / T6-B1 — the effective-window migration CREATE OR REPLACEs the same
+  // ARV mutation trigger, preserving the tenant_reset DELETE escape byte-for-byte
+  // while adding the governed effective_to first-close UPDATE branch.
+  'libs/placement/prisma/migrations/20260812140000_t6_b1_effective_window_substrate/migration.sql',
+  // Track 6 / T6-B1 — the effective-window integration proof exercises the
+  // tenant-reset DELETE escape (§12.3 regression + defensive-corruption cleanup)
+  // via raw SET LOCAL.
+  'libs/placement/src/tests/t6-b1-effective-window.integration.spec.ts',
+  // Track 6 / T6-B1 — the placement-http resolver spec cleans up its injected
+  // legacy-overlap fixture via the tenant-reset escape inside a self-restoring DDL
+  // window (§10 defensive proof).
+  'apps/api/src/tests/placement-http.integration.spec.ts',
+  // Track 6 / T6-B3 — the commercial-cancellation migration CREATE OR REPLACEs the
+  // same ARV mutation trigger AGAIN, preserving the tenant_reset DELETE escape
+  // byte-for-byte while adding the cancellation + future-only re-open branches.
+  'libs/placement/prisma/migrations/20260813130000_t6_b3_commercial_cancellation/migration.sql',
+  // Track 6 / T6-B3 — the cancellation integration proof exercises the tenant-reset
+  // DELETE escape (proving it stays independent of the cancellation capability, §29)
+  // via raw SET LOCAL.
+  'libs/placement/src/tests/t6-b3-commercial-cancellation.integration.spec.ts',
+  // Track 7 / T7-P2 — the falloff+remedy migration CREATE OR REPLACEs the placement
+  // event DELETE-reject trigger and adds the PermanentPlacementRemedy immutability
+  // trigger, both carrying the same exact-value tenant_reset DELETE escape.
+  'libs/placement/prisma/migrations/20260815120000_t7_p2_falloff_remedy/migration.sql',
+  // Track 7 / T7-P2 — the falloff+remedy integration proof exercises the tenant-reset
+  // DELETE escape (remedy-row cleanup) via raw SET LOCAL.
+  'libs/placement/src/tests/t7-p2-falloff-remedy.integration.spec.ts',
+  // Track 7 / T7-P3 — the guarantee-term-versioning migration's append-only trigger carries
+  // the same exact-value tenant_reset DELETE escape on the version table.
+  'libs/placement/prisma/migrations/20260816120000_t7_p3_guarantee_term_versioning/migration.sql',
+  // Track 7 / T7-P3 — the guarantee-term-versioning integration proof exercises the
+  // tenant-reset DELETE escape (governed version-row cleanup) via raw SET LOCAL.
+  'libs/placement/src/tests/t7-p3-guarantee-term-versioning.integration.spec.ts',
+  // T9-B4 — the commercial-margin read integration proof exercises the tenant-reset
+  // DELETE escape (self-restoring DDL window: cleans up the injected corrupt
+  // >1-current-version rows before re-adding the overlap EXCLUDE) via raw SET LOCAL.
+  'libs/placement/src/tests/commercial-margin-read.integration.spec.ts',
 ]);
 
 describe('reset-marker confinement — exact-path default-deny (§2.4)', () => {

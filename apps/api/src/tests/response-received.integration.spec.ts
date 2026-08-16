@@ -28,17 +28,17 @@ import {
 } from './talent-record-fixtures.js';
 import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
 
-// M5 PR-7 §4.12 — POST /v1/engagements/{id}/response HTTP integration.
+// M5 PR-7 §4.12 — POST /v1/selections/{id}/response HTTP integration.
 //
 // Coverage:
 //   - happy: awaiting_response → responded + 2 events + payload conformance.
 //   - cross-event-ref refusal sub-paths (Ruling 4):
 //       (a) null ref ID
-//       (b) cross-engagement ref (within same tenant)
+//       (b) cross-selection ref (within same tenant)
 //       (c) wrong event_type ref (state_transition / response_received)
 //       (d) cross-tenant ref
-//   - ENGAGEMENT_STATE_INVALID 422 (engagement in surfaced state).
-//   - canTransition natural-key dedup (engagement already in responded).
+//   - SELECTION_STATE_INVALID 422 (selection in surfaced state).
+//   - canTransition natural-key dedup (selection already in responded).
 //   - NOT_FOUND 404.
 //   - INSUFFICIENT_PERMISSIONS 403.
 //   - Idempotency-Key replay (same key + same body).
@@ -64,14 +64,10 @@ const MIGRATIONS = [
   M('libs/evidence/prisma/migrations/20260522090000_init_evidence_model/migration.sql'),
   M('libs/submittal/prisma/migrations/20260523120000_init_submittal_model/migration.sql'),
   M('libs/submittal/prisma/migrations/20260523200000_add_submittal_revoke/migration.sql'),
-  M('libs/selection/prisma/migrations/20260525120000_init_engagement_model/migration.sql'),
-  M('libs/selection/prisma/migrations/20260525150000_add_engagement_event_log/migration.sql'),
-  // M6 PR-2 §3 — engagement + submittal OutboxEvent migrations required
+  M('libs/selection/prisma/migrations/20260525120000_init_selection_model/migration.sql'),
+  // M6 PR-2 §3 — selection + submittal OutboxEvent migrations required
   // because state-transition write methods now emit an in-tx outbox row.
-  M('libs/selection/prisma/migrations/20260531000000_add_outbox_event/migration.sql'),
   // Outreach Draft/Preview Amendment v1.1 §3 — the outreach_drafted enum value.
-  M('libs/selection/prisma/migrations/20260609000000_add_outreach_drafted_event_type/migration.sql'),
-  M('libs/selection/prisma/migrations/20260813120000_t2p2_relocate_engagement_to_selection/migration.sql'),
   M('libs/submittal/prisma/migrations/20260531000000_add_outbox_event/migration.sql'),
   M('libs/submittal/prisma/migrations/20260812120000_t2p1_relocate_submittal_to_submittal_schema/migration.sql'),
   M('libs/ai-draft/prisma/migrations/20260525170000_init/migration.sql'),
@@ -112,7 +108,7 @@ function splitDdl(sql: string): string[] {
 }
 
 describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
-  'POST /v1/engagements/{id}/response — HTTP integration (real Postgres 17)',
+  'POST /v1/selections/{id}/response — HTTP integration (real Postgres 17)',
   () => {
     let container: StartedPostgreSqlContainer;
     let app: INestApplication;
@@ -139,7 +135,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Inc-3 PR-3.7 — the global write-freeze interceptor reads identity.Tenant
       // status on every mutation; seed an ACTIVE tenant for each forged tenant_id.
       await ensureWriteFreezeTenant((s) => setup.query(s), TENANT_A);
-      // 4e-engagement-key — TalentRecord substrate (engagement.talent_id).
+      // 4e-selection-key — TalentRecord substrate (selection.talent_id).
       await applyTalentRecordMigrations(setup);
       await seedTalentRecord(setup, { id: TALENT_A, tenant_id: TENANT_A });
       await setup.query(
@@ -203,10 +199,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         consumer_type: 'recruiter',
         actor_kind: 'user',
         tenant_id: TENANT_A,
-        // R7 BE-prereq: engagement endpoints now scope-gated +
+        // R7 BE-prereq: selection endpoints now scope-gated +
         // D4b-composed. requisition:read:all bypasses the D4b
         // visibility check so the happy-path tests proceed.
-        scopes: ['engagement:read', 'engagement:write', 'engagement:outreach', 'requisition:read:all'],
+        scopes: ['selection:read', 'selection:write', 'selection:outreach', 'requisition:read:all'],
       })
         .setProtectedHeader({ alg: ALG })
         .setIssuedAt()
@@ -292,8 +288,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await setup.query('TRUNCATE TABLE consent."IdempotencyKey" CASCADE');
     });
 
-    async function createAndAdvanceToAwaitingResponse(): Promise<{ engagementId: string; outreachEventId: string }> {
-      const createRes = await fetch(`http://127.0.0.1:${port}/v1/engagements`, {
+    async function createAndAdvanceToAwaitingResponse(): Promise<{ selectionId: string; outreachEventId: string }> {
+      const createRes = await fetch(`http://127.0.0.1:${port}/v1/selections`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${recruiterJwt}`,
@@ -303,10 +299,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         body: JSON.stringify({ talent_id: TALENT_A, requisition_id: REQ_A }),
       });
       expect(createRes.status).toBe(201);
-      const createBody = (await createRes.json()) as { engagement: { id: string } };
-      const engagementId = createBody.engagement.id;
+      const createBody = (await createRes.json()) as { selection: { id: string } };
+      const selectionId = createBody.selection.id;
       const transition = async (to_state: string): Promise<void> => {
-        const r = await fetch(`http://127.0.0.1:${port}/v1/engagements/${engagementId}/transitions`, {
+        const r = await fetch(`http://127.0.0.1:${port}/v1/selections/${selectionId}/transitions`, {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${recruiterJwt}`,
@@ -322,7 +318,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Outreach Draft/Preview split: DRAFT then SEND to reach
       // awaiting_response with an outreach_sent event.
       const draftRes = await fetch(
-        `http://127.0.0.1:${port}/v1/engagements/${engagementId}/outreach/draft`,
+        `http://127.0.0.1:${port}/v1/selections/${selectionId}/outreach/draft`,
         {
           method: 'POST',
           headers: {
@@ -336,7 +332,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(draftRes.status).toBe(200);
       const draftBody = (await draftRes.json()) as { draft_event_id: string };
       const outreachRes = await fetch(
-        `http://127.0.0.1:${port}/v1/engagements/${engagementId}/outreach/send`,
+        `http://127.0.0.1:${port}/v1/selections/${selectionId}/outreach/send`,
         {
           method: 'POST',
           headers: {
@@ -351,30 +347,30 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const outreachBody = (await outreachRes.json()) as {
         outreach_event: { id: string };
       };
-      return { engagementId, outreachEventId: outreachBody.outreach_event.id };
+      return { selectionId, outreachEventId: outreachBody.outreach_event.id };
     }
 
-    async function countEvents(engagementId: string): Promise<number> {
+    async function countEvents(selectionId: string): Promise<number> {
       const r = await setup.query<{ count: string }>(
         `SELECT COUNT(*)::text AS count FROM selection."TalentSelectionEvent"
-         WHERE engagement_id = $1::uuid`,
-        [engagementId],
+         WHERE selection_id = $1::uuid`,
+        [selectionId],
       );
       return Number(r.rows[0]?.count ?? 0);
     }
 
-    async function readEngagementState(engagementId: string): Promise<string> {
+    async function readSelectionState(selectionId: string): Promise<string> {
       const r = await setup.query<{ state: string }>(
         `SELECT state::text AS state FROM selection."TalentSelection" WHERE id = $1::uuid`,
-        [engagementId],
+        [selectionId],
       );
       return r.rows[0]?.state ?? '';
     }
 
     it('happy path: 200 + state responded + 2 new events + payload conformance (3 fields)', { timeout: 60_000 }, async () => {
-      const { engagementId, outreachEventId } = await createAndAdvanceToAwaitingResponse();
-      const eventsBefore = await countEvents(engagementId);
-      const res = await fetch(`http://127.0.0.1:${port}/v1/engagements/${engagementId}/response`, {
+      const { selectionId, outreachEventId } = await createAndAdvanceToAwaitingResponse();
+      const eventsBefore = await countEvents(selectionId);
+      const res = await fetch(`http://127.0.0.1:${port}/v1/selections/${selectionId}/response`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${recruiterJwt}`,
@@ -388,10 +384,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       });
       expect(res.status).toBe(200);
       const body = (await res.json()) as {
-        engagement: { state: string };
+        selection: { state: string };
         response_event: { event_type: string; event_payload: Record<string, unknown> };
       };
-      expect(body.engagement.state).toBe('responded');
+      expect(body.selection.state).toBe('responded');
       expect(body.response_event.event_type).toBe('response_received');
       const payload = body.response_event.event_payload;
       expect(payload['response_received_at']).toBe(RESPONSE_RECEIVED_AT);
@@ -400,13 +396,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(Object.keys(payload)).toHaveLength(3);
       // transition_event NOT projected.
       expect((body as Record<string, unknown>)['transition_event']).toBeUndefined();
-      const eventsAfter = await countEvents(engagementId);
+      const eventsAfter = await countEvents(selectionId);
       expect(eventsAfter - eventsBefore).toBe(2);
     });
 
     it('cross-event ref happy: outreach_event_ref_id correctly resolves; no orphan events on success', { timeout: 60_000 }, async () => {
-      const { engagementId, outreachEventId } = await createAndAdvanceToAwaitingResponse();
-      const res = await fetch(`http://127.0.0.1:${port}/v1/engagements/${engagementId}/response`, {
+      const { selectionId, outreachEventId } = await createAndAdvanceToAwaitingResponse();
+      const res = await fetch(`http://127.0.0.1:${port}/v1/selections/${selectionId}/response`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${recruiterJwt}`,
@@ -421,11 +417,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(res.status).toBe(200);
     });
 
-    it('ENGAGEMENT_REFERENCE_NOT_FOUND (null ref): random UUID → 422; state UNCHANGED + 0 events appended', { timeout: 60_000 }, async () => {
-      const { engagementId } = await createAndAdvanceToAwaitingResponse();
-      const stateBefore = await readEngagementState(engagementId);
-      const eventsBefore = await countEvents(engagementId);
-      const res = await fetch(`http://127.0.0.1:${port}/v1/engagements/${engagementId}/response`, {
+    it('SELECTION_REFERENCE_NOT_FOUND (null ref): random UUID → 422; state UNCHANGED + 0 events appended', { timeout: 60_000 }, async () => {
+      const { selectionId } = await createAndAdvanceToAwaitingResponse();
+      const stateBefore = await readSelectionState(selectionId);
+      const eventsBefore = await countEvents(selectionId);
+      const res = await fetch(`http://127.0.0.1:${port}/v1/selections/${selectionId}/response`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${recruiterJwt}`,
@@ -439,18 +435,18 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       });
       expect(res.status).toBe(422);
       const body = (await res.json()) as { error: { code: string; details: Record<string, unknown> } };
-      expect(body.error?.code).toBe('ENGAGEMENT_REFERENCE_NOT_FOUND');
+      expect(body.error?.code).toBe('SELECTION_REFERENCE_NOT_FOUND');
       expect(body.error?.details?.['field']).toBe('outreach_event_ref_id');
-      expect(await readEngagementState(engagementId)).toBe(stateBefore);
-      expect(await countEvents(engagementId)).toBe(eventsBefore);
+      expect(await readSelectionState(selectionId)).toBe(stateBefore);
+      expect(await countEvents(selectionId)).toBe(eventsBefore);
     });
 
-    it('ENGAGEMENT_REFERENCE_NOT_FOUND (cross-engagement ref): E1 outreach_event_id used on E2 → 422; E2 UNCHANGED', { timeout: 90_000 }, async () => {
+    it('SELECTION_REFERENCE_NOT_FOUND (cross-selection ref): E1 outreach_event_id used on E2 → 422; E2 UNCHANGED', { timeout: 90_000 }, async () => {
       const e1 = await createAndAdvanceToAwaitingResponse();
       const e2 = await createAndAdvanceToAwaitingResponse();
-      const stateBefore = await readEngagementState(e2.engagementId);
-      const eventsBefore = await countEvents(e2.engagementId);
-      const res = await fetch(`http://127.0.0.1:${port}/v1/engagements/${e2.engagementId}/response`, {
+      const stateBefore = await readSelectionState(e2.selectionId);
+      const eventsBefore = await countEvents(e2.selectionId);
+      const res = await fetch(`http://127.0.0.1:${port}/v1/selections/${e2.selectionId}/response`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${recruiterJwt}`,
@@ -464,22 +460,22 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       });
       expect(res.status).toBe(422);
       const body = (await res.json()) as { error: { code: string } };
-      expect(body.error?.code).toBe('ENGAGEMENT_REFERENCE_NOT_FOUND');
-      expect(await readEngagementState(e2.engagementId)).toBe(stateBefore);
-      expect(await countEvents(e2.engagementId)).toBe(eventsBefore);
+      expect(body.error?.code).toBe('SELECTION_REFERENCE_NOT_FOUND');
+      expect(await readSelectionState(e2.selectionId)).toBe(stateBefore);
+      expect(await countEvents(e2.selectionId)).toBe(eventsBefore);
     });
 
-    it('ENGAGEMENT_REFERENCE_NOT_FOUND (wrong event_type): use state_transition event id → 422', { timeout: 60_000 }, async () => {
-      const { engagementId } = await createAndAdvanceToAwaitingResponse();
-      // Pick a state_transition event from this engagement's event log.
+    it('SELECTION_REFERENCE_NOT_FOUND (wrong event_type): use state_transition event id → 422', { timeout: 60_000 }, async () => {
+      const { selectionId } = await createAndAdvanceToAwaitingResponse();
+      // Pick a state_transition event from this selection's event log.
       const rows = await setup.query<{ id: string }>(
         `SELECT id::text AS id FROM selection."TalentSelectionEvent"
-         WHERE engagement_id = $1::uuid AND event_type = 'state_transition' LIMIT 1`,
-        [engagementId],
+         WHERE selection_id = $1::uuid AND event_type = 'state_transition' LIMIT 1`,
+        [selectionId],
       );
       const stEventId = rows.rows[0]?.id;
       expect(stEventId).toBeTruthy();
-      const res = await fetch(`http://127.0.0.1:${port}/v1/engagements/${engagementId}/response`, {
+      const res = await fetch(`http://127.0.0.1:${port}/v1/selections/${selectionId}/response`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${recruiterJwt}`,
@@ -493,28 +489,28 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       });
       expect(res.status).toBe(422);
       const body = (await res.json()) as { error: { code: string } };
-      expect(body.error?.code).toBe('ENGAGEMENT_REFERENCE_NOT_FOUND');
+      expect(body.error?.code).toBe('SELECTION_REFERENCE_NOT_FOUND');
     });
 
     it('cross-tenant ref attack: tenant A POST referencing event UUID that exists only in tenant B → 422 (refEvent NOT in caller tenant)', { timeout: 60_000 }, async () => {
-      const { engagementId } = await createAndAdvanceToAwaitingResponse();
+      const { selectionId } = await createAndAdvanceToAwaitingResponse();
       // Manually insert an outreach_sent event under a different tenant.
       const ghostTenant = '22222222-2222-7222-8222-222222222222';
       const ghostEventId = '00000000-0000-7000-8000-bbbb0e000099';
-      const ghostEngagementId = '00000000-0000-7000-8000-bbbb00000099';
+      const ghostSelectionId = '00000000-0000-7000-8000-bbbb00000099';
       await setup.query(
         `INSERT INTO selection."TalentSelection"
            (id, tenant_id, talent_id, requisition_id, examination_id, state, created_at)
          VALUES ($1, $2, $3, $4, NULL, 'awaiting_response'::selection."SelectionState", NOW())`,
-        [ghostEngagementId, ghostTenant, TALENT_A, REQ_A],
+        [ghostSelectionId, ghostTenant, TALENT_A, REQ_A],
       );
       await setup.query(
         `INSERT INTO selection."TalentSelectionEvent"
-           (id, tenant_id, engagement_id, event_type, event_payload, created_at)
+           (id, tenant_id, selection_id, event_type, event_payload, created_at)
          VALUES ($1, $2, $3, 'outreach_sent'::selection."SelectionEventType", $4::jsonb, NOW())`,
-        [ghostEventId, ghostTenant, ghostEngagementId, JSON.stringify({ delivery_channel: 'email' })],
+        [ghostEventId, ghostTenant, ghostSelectionId, JSON.stringify({ delivery_channel: 'email' })],
       );
-      const res = await fetch(`http://127.0.0.1:${port}/v1/engagements/${engagementId}/response`, {
+      const res = await fetch(`http://127.0.0.1:${port}/v1/selections/${selectionId}/response`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${recruiterJwt}`,
@@ -528,11 +524,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       });
       expect(res.status).toBe(422);
       const body = (await res.json()) as { error: { code: string } };
-      expect(body.error?.code).toBe('ENGAGEMENT_REFERENCE_NOT_FOUND');
+      expect(body.error?.code).toBe('SELECTION_REFERENCE_NOT_FOUND');
     });
 
-    it('ENGAGEMENT_STATE_INVALID 422 when engagement in surfaced state', { timeout: 30_000 }, async () => {
-      const createRes = await fetch(`http://127.0.0.1:${port}/v1/engagements`, {
+    it('SELECTION_STATE_INVALID 422 when selection in surfaced state', { timeout: 30_000 }, async () => {
+      const createRes = await fetch(`http://127.0.0.1:${port}/v1/selections`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${recruiterJwt}`,
@@ -541,9 +537,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         },
         body: JSON.stringify({ talent_id: TALENT_A, requisition_id: REQ_A }),
       });
-      const createBody = (await createRes.json()) as { engagement: { id: string } };
-      const id = createBody.engagement.id;
-      const res = await fetch(`http://127.0.0.1:${port}/v1/engagements/${id}/response`, {
+      const createBody = (await createRes.json()) as { selection: { id: string } };
+      const id = createBody.selection.id;
+      const res = await fetch(`http://127.0.0.1:${port}/v1/selections/${id}/response`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${recruiterJwt}`,
@@ -557,16 +553,16 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       });
       expect(res.status).toBe(422);
       const body = (await res.json()) as { error: { code: string } };
-      // Could be either ENGAGEMENT_REFERENCE_NOT_FOUND (lookup ran first
-      // in surfaced state) OR ENGAGEMENT_STATE_INVALID. Per repository
+      // Could be either SELECTION_REFERENCE_NOT_FOUND (lookup ran first
+      // in surfaced state) OR SELECTION_STATE_INVALID. Per repository
       // step ordering, NOT_FOUND-equivalent ref lookup precedes state
       // check, so REFERENCE_NOT_FOUND fires here.
-      expect(['ENGAGEMENT_REFERENCE_NOT_FOUND', 'ENGAGEMENT_STATE_INVALID']).toContain(body.error?.code);
+      expect(['SELECTION_REFERENCE_NOT_FOUND', 'SELECTION_STATE_INVALID']).toContain(body.error?.code);
     });
 
-    it('NOT_FOUND 404 when engagement does not exist', { timeout: 30_000 }, async () => {
+    it('NOT_FOUND 404 when selection does not exist', { timeout: 30_000 }, async () => {
       const res = await fetch(
-        `http://127.0.0.1:${port}/v1/engagements/99999999-9999-7999-8999-999999999777/response`,
+        `http://127.0.0.1:${port}/v1/selections/99999999-9999-7999-8999-999999999777/response`,
         {
           method: 'POST',
           headers: {
@@ -587,7 +583,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
     it('INSUFFICIENT_PERMISSIONS 403 with portal JWT', { timeout: 30_000 }, async () => {
       const res = await fetch(
-        `http://127.0.0.1:${port}/v1/engagements/99999999-9999-7999-8999-999999999666/response`,
+        `http://127.0.0.1:${port}/v1/selections/99999999-9999-7999-8999-999999999666/response`,
         {
           method: 'POST',
           headers: {
@@ -607,13 +603,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     });
 
     it('idempotency replay: same key + same body returns identical response', { timeout: 90_000 }, async () => {
-      const { engagementId, outreachEventId } = await createAndAdvanceToAwaitingResponse();
+      const { selectionId, outreachEventId } = await createAndAdvanceToAwaitingResponse();
       const key = randomUUID();
       const body = JSON.stringify({
         response_received_at: RESPONSE_RECEIVED_AT,
         outreach_event_ref_id: outreachEventId,
       });
-      const first = await fetch(`http://127.0.0.1:${port}/v1/engagements/${engagementId}/response`, {
+      const first = await fetch(`http://127.0.0.1:${port}/v1/selections/${selectionId}/response`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${recruiterJwt}`,
@@ -624,7 +620,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       });
       expect(first.status).toBe(200);
       const firstBody = await first.json();
-      const second = await fetch(`http://127.0.0.1:${port}/v1/engagements/${engagementId}/response`, {
+      const second = await fetch(`http://127.0.0.1:${port}/v1/selections/${selectionId}/response`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${recruiterJwt}`,
@@ -638,10 +634,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(secondBody).toEqual(firstBody);
     });
 
-    it('canTransition natural-key dedup: engagement already in responded → 422 ENGAGEMENT_STATE_INVALID even with fresh key', { timeout: 90_000 }, async () => {
-      const { engagementId, outreachEventId } = await createAndAdvanceToAwaitingResponse();
+    it('canTransition natural-key dedup: selection already in responded → 422 SELECTION_STATE_INVALID even with fresh key', { timeout: 90_000 }, async () => {
+      const { selectionId, outreachEventId } = await createAndAdvanceToAwaitingResponse();
       // First record — advances to responded.
-      const first = await fetch(`http://127.0.0.1:${port}/v1/engagements/${engagementId}/response`, {
+      const first = await fetch(`http://127.0.0.1:${port}/v1/selections/${selectionId}/response`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${recruiterJwt}`,
@@ -656,7 +652,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(first.status).toBe(200);
       // Second record — fresh key, fresh body — repository's canTransition
       // pre-check (after the ref-validation succeeds) refuses with 422.
-      const second = await fetch(`http://127.0.0.1:${port}/v1/engagements/${engagementId}/response`, {
+      const second = await fetch(`http://127.0.0.1:${port}/v1/selections/${selectionId}/response`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${recruiterJwt}`,
@@ -670,7 +666,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       });
       expect(second.status).toBe(422);
       const secondBody = (await second.json()) as { error: { code: string; details: Record<string, unknown> } };
-      expect(secondBody.error?.code).toBe('ENGAGEMENT_STATE_INVALID');
+      expect(secondBody.error?.code).toBe('SELECTION_STATE_INVALID');
       expect(secondBody.error?.details?.['from_state']).toBe('responded');
       expect(secondBody.error?.details?.['to_state']).toBe('responded');
     });

@@ -24,6 +24,14 @@ const OFFER_OUTBOX_MIGRATION_PATH = resolve(__dirname, '../../prisma/migrations/
 const REASON_MIGRATION_PATH = resolve(__dirname, '../../prisma/migrations/20260807120000_placement_fallthrough_reason/migration.sql');
 // E4 — additive replacement-lineage column; the Prisma client now selects it.
 const REPLACEMENT_MIGRATION_PATH = resolve(__dirname, '../../prisma/migrations/20260808120000_placement_replacement_link/migration.sql');
+// T7-P1: adds PlacementProcess.placement_kind — the regenerated client SELECTs it on
+// every read/create here, so this read-path spec must apply it or CI 500s.
+const PERMANENT_PLACEMENT_MIGRATION_PATH = resolve(__dirname, '../../prisma/migrations/20260814120000_t7_permanent_placement/migration.sql');
+// T7-P2: adds PermanentPlacement.falloff_* columns — the regenerated client SELECTs them
+// on every PermanentPlacement read, so this read-path spec must apply it (SEPARATE const).
+const FALLOFF_REMEDY_MIGRATION_PATH = resolve(__dirname, '../../prisma/migrations/20260815120000_t7_p2_falloff_remedy/migration.sql');
+// T7-P3: SEPARATE const (never a 2nd resolve() arg — that path-joins to ENOTDIR).
+const GUARANTEE_TERMS_MIGRATION_PATH = resolve(__dirname, '../../prisma/migrations/20260816120000_t7_p3_guarantee_term_versioning/migration.sql');
 
 // A governed-terminal reason for OFFER_DECLINED that ALLOWS detail (OPTIONAL
 // policy), so a reason-bearing event carries a non-null reason_detail — the
@@ -74,7 +82,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const url = container.getConnectionUri();
       setupClient = new PrismaService(url);
       await setupClient.$connect();
-      for (const path of [INIT_MIGRATION_PATH, OFFER_OUTBOX_MIGRATION_PATH, REASON_MIGRATION_PATH, REPLACEMENT_MIGRATION_PATH]) {
+      for (const path of [INIT_MIGRATION_PATH, OFFER_OUTBOX_MIGRATION_PATH, REASON_MIGRATION_PATH, REPLACEMENT_MIGRATION_PATH, PERMANENT_PLACEMENT_MIGRATION_PATH, FALLOFF_REMEDY_MIGRATION_PATH, GUARANTEE_TERMS_MIGRATION_PATH]) {
         for (const stmt of splitDdl(readFileSync(path, 'utf8'))) {
           const trimmed = stmt.trim();
           if (trimmed.length > 0) await setupClient.$executeRawUnsafe(trimmed);

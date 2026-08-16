@@ -109,6 +109,38 @@ const ASSIGNMENT_RATE_VERSION_MIGRATION_PATH = resolve(
   __dirname,
   '../../prisma/migrations/20260810130000_t5_assignment_rate_version/migration.sql',
 );
+// T6-B1: SEPARATE const (never a 2nd resolve() arg — that path-joins to ENOTDIR).
+const EFFECTIVE_WINDOW_MIGRATION_PATH = resolve(
+  __dirname,
+  '../../prisma/migrations/20260812140000_t6_b1_effective_window_substrate/migration.sql',
+);
+// T6-B3: SEPARATE const (never a 2nd resolve() arg — that path-joins to ENOTDIR).
+// Adds ContractAssignment.ended_at — which the regenerated client SELECTs — so every
+// placement-DB spec reading ContractAssignment must apply this or CI 500s.
+const COMMERCIAL_CANCELLATION_MIGRATION_PATH = resolve(
+  __dirname,
+  '../../prisma/migrations/20260813130000_t6_b3_commercial_cancellation/migration.sql',
+);
+// T7-P1: SEPARATE const (never a 2nd resolve() arg — that path-joins to ENOTDIR).
+// Adds PlacementProcess.placement_kind — which the regenerated client SELECTs — plus
+// the PermanentPlacement table, so every placement-DB spec reading PlacementProcess
+// must apply this or CI 500s.
+const PERMANENT_PLACEMENT_MIGRATION_PATH = resolve(
+  __dirname,
+  '../../prisma/migrations/20260814120000_t7_permanent_placement/migration.sql',
+);
+// T7-P2: SEPARATE const (never a 2nd resolve() arg — the ENOTDIR trap). Adds
+// PermanentPlacement.falloff_* columns (regenerated client SELECTs them) + the
+// PermanentPlacementRemedy table.
+const FALLOFF_REMEDY_MIGRATION_PATH = resolve(
+  __dirname,
+  '../../prisma/migrations/20260815120000_t7_p2_falloff_remedy/migration.sql',
+);
+// T7-P3: SEPARATE const (never a 2nd resolve() arg — that path-joins to ENOTDIR).
+const GUARANTEE_TERMS_MIGRATION_PATH = resolve(
+  __dirname,
+  '../../prisma/migrations/20260816120000_t7_p3_guarantee_term_versioning/migration.sql',
+);
 
 // Known transition path to reach each from-state from the initial
 // OFFER_EXTENDED (the transitions to apply, in order).
@@ -153,7 +185,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       setupClient = new PrismaService(url);
       await setupClient.$connect();
       // Apply the init migration then the additive E1-c and E3 migrations, in order.
-      for (const path of [INIT_MIGRATION_PATH, OFFER_OUTBOX_MIGRATION_PATH, REASON_MIGRATION_PATH, REPLACEMENT_MIGRATION_PATH, CONTRACT_ASSIGNMENT_MIGRATION_PATH, ASSIGNMENT_ENDED_MIGRATION_PATH, ASSIGNMENT_GUARD_MIGRATION_PATH, ASSIGNMENT_END_REASON_MIGRATION_PATH, ASSIGNMENT_RATE_VERSION_MIGRATION_PATH]) {
+      for (const path of [INIT_MIGRATION_PATH, OFFER_OUTBOX_MIGRATION_PATH, REASON_MIGRATION_PATH, REPLACEMENT_MIGRATION_PATH, CONTRACT_ASSIGNMENT_MIGRATION_PATH, ASSIGNMENT_ENDED_MIGRATION_PATH, ASSIGNMENT_GUARD_MIGRATION_PATH, ASSIGNMENT_END_REASON_MIGRATION_PATH, ASSIGNMENT_RATE_VERSION_MIGRATION_PATH, EFFECTIVE_WINDOW_MIGRATION_PATH, COMMERCIAL_CANCELLATION_MIGRATION_PATH, PERMANENT_PLACEMENT_MIGRATION_PATH, FALLOFF_REMEDY_MIGRATION_PATH, GUARANTEE_TERMS_MIGRATION_PATH]) {
         const sql = readFileSync(path, 'utf8');
         for (const stmt of splitDdl(sql)) {
           const trimmed = stmt.trim();

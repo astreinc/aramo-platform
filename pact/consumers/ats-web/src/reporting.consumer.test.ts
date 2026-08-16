@@ -100,6 +100,138 @@ describe('ats-web → reporting', () => {
       });
   });
 
+  it('GET /v1/reports/fill-performance returns fill-rate + time-to-fill metrics', async () => {
+    const FROM = '2020-01-01T00:00:00.000Z';
+    const TO = '2030-01-01T00:00:00.000Z';
+    await provider
+      .addInteraction()
+      .given('an ats-web recruiter and a fully-filled requisition exist')
+      .uponReceiving('a fill-performance read')
+      .withRequest('GET', '/v1/reports/fill-performance', (b) => {
+        b.headers({ Cookie: like(ACCESS_COOKIE) }).query({ from: FROM, to: TO });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          period: { from: like(FROM), to: like(TO) },
+          openings: like(1),
+          filled_openings: like(1),
+          fill_rate: like(100),
+          fully_filled_requisitions: like(1),
+          time_to_fill: { count: like(1), average_days: like(0) },
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(
+          `${mock.url}/v1/reports/fill-performance?from=${encodeURIComponent(FROM)}&to=${encodeURIComponent(TO)}`,
+          { headers: { Cookie: ACCESS_COOKIE } },
+        );
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as { fill_rate: number | null };
+        expect(body.fill_rate).toBe(100);
+      });
+  });
+
+  // T9-B5 / CG-1 — refusal symmetry: a caller WITHOUT report:read → 403.
+  it('GET /v1/reports/fill-performance without report:read → 403', async () => {
+    const FROM = '2020-01-01T00:00:00.000Z';
+    const TO = '2030-01-01T00:00:00.000Z';
+    await provider
+      .addInteraction()
+      .given('an ats-web recruiter and a fully-filled requisition exist')
+      .uponReceiving('a fill-performance read without report:read')
+      .withRequest('GET', '/v1/reports/fill-performance', (b) => {
+        b.headers({ Authorization: 'Bearer eyJfake.noscopes.token' }).query({ from: FROM, to: TO });
+      })
+      .willRespondWith(403, (b) => {
+        b.jsonBody({
+          error: {
+            code: 'INSUFFICIENT_PERMISSIONS',
+            message: like('Required scopes not granted'),
+            request_id: uuid(),
+            details: like({}),
+          },
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(
+          `${mock.url}/v1/reports/fill-performance?from=${encodeURIComponent(FROM)}&to=${encodeURIComponent(TO)}`,
+          { headers: { Authorization: 'Bearer eyJfake.noscopes.token' } },
+        );
+        expect(res.status).toBe(403);
+        const body = (await res.json()) as { error: { code: string } };
+        expect(body.error.code).toBe('INSUFFICIENT_PERMISSIONS');
+      });
+  });
+
+  it('GET /v1/reports/fallthrough returns fallthrough rate + reasons', async () => {
+    const FROM = '2020-01-01T00:00:00.000Z';
+    const TO = '2100-01-01T00:00:00.000Z';
+    await provider
+      .addInteraction()
+      .given('an ats-web recruiter and a fallen-through placement exist')
+      .uponReceiving('a fallthrough read')
+      .withRequest('GET', '/v1/reports/fallthrough', (b) => {
+        b.headers({ Cookie: like(ACCESS_COOKIE) }).query({ from: FROM, to: TO });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          period: { from: like(FROM), to: like(TO) },
+          accepted_attempts: like(1),
+          fallthrough_attempts: like(1),
+          fallthrough_rate: like(100),
+          reasons: like([
+            {
+              reason_code: like('start_date_failed'),
+              reason_label: like('Start date failed'),
+              count: like(1),
+              rate: like(100),
+            },
+          ]),
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(
+          `${mock.url}/v1/reports/fallthrough?from=${encodeURIComponent(FROM)}&to=${encodeURIComponent(TO)}`,
+          { headers: { Cookie: ACCESS_COOKIE } },
+        );
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as { fallthrough_rate: number | null };
+        expect(body.fallthrough_rate).toBe(100);
+      });
+  });
+
+  // T9-B5 / CG-1 — refusal symmetry: a caller WITHOUT report:read → 403.
+  it('GET /v1/reports/fallthrough without report:read → 403', async () => {
+    const FROM = '2020-01-01T00:00:00.000Z';
+    const TO = '2100-01-01T00:00:00.000Z';
+    await provider
+      .addInteraction()
+      .given('an ats-web recruiter and a fallen-through placement exist')
+      .uponReceiving('a fallthrough read without report:read')
+      .withRequest('GET', '/v1/reports/fallthrough', (b) => {
+        b.headers({ Authorization: 'Bearer eyJfake.noscopes.token' }).query({ from: FROM, to: TO });
+      })
+      .willRespondWith(403, (b) => {
+        b.jsonBody({
+          error: {
+            code: 'INSUFFICIENT_PERMISSIONS',
+            message: like('Required scopes not granted'),
+            request_id: uuid(),
+            details: like({}),
+          },
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(
+          `${mock.url}/v1/reports/fallthrough?from=${encodeURIComponent(FROM)}&to=${encodeURIComponent(TO)}`,
+          { headers: { Authorization: 'Bearer eyJfake.noscopes.token' } },
+        );
+        expect(res.status).toBe(403);
+        const body = (await res.json()) as { error: { code: string } };
+        expect(body.error.code).toBe('INSUFFICIENT_PERMISSIONS');
+      });
+  });
+
   it('GET /v1/reports/company-placements returns the placements list', async () => {
     await provider
       .addInteraction()
@@ -112,6 +244,137 @@ describe('ats-web → reporting', () => {
       .executeTest(async (mock) => {
         const res = await fetch(`${mock.url}/v1/reports/company-placements?company_id=${COMPANY_ID}`, { headers: { Cookie: ACCESS_COOKIE } });
         expect(res.status).toBe(200);
+      });
+  });
+
+  it('GET /v1/reports/assignment-pipeline returns the current-snapshot counts', async () => {
+    await provider
+      .addInteraction()
+      .given('an ats-web recruiter and assignment-pipeline placements exist')
+      .uponReceiving('an assignment-pipeline read')
+      .withRequest('GET', '/v1/reports/assignment-pipeline', (b) => {
+        b.headers({ Cookie: like(ACCESS_COOKIE) });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          total_live: like(7),
+          by_state: like([{ state: like('STARTED'), count: like(3) }]),
+          start_date: {
+            overdue: like(0),
+            today: like(0),
+            next_7_days: like(1),
+            later: like(1),
+            unspecified: like(1),
+            timezone_basis: 'UTC',
+          },
+          contract_assignments: { active: like(1), ended: like(1), coverage: 'forward_materialized' },
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/reports/assignment-pipeline`, { headers: { Cookie: ACCESS_COOKIE } });
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as { contract_assignments: { coverage: string } };
+        expect(body.contract_assignments.coverage).toBe('forward_materialized');
+      });
+  });
+
+  // T9-B5 / CG-1 — refusal symmetry: a caller WITHOUT report:read → 403.
+  it('GET /v1/reports/assignment-pipeline without report:read → 403', async () => {
+    await provider
+      .addInteraction()
+      .given('an ats-web recruiter and assignment-pipeline placements exist')
+      .uponReceiving('an assignment-pipeline read without report:read')
+      .withRequest('GET', '/v1/reports/assignment-pipeline', (b) => {
+        b.headers({ Authorization: 'Bearer eyJfake.noscopes.token' });
+      })
+      .willRespondWith(403, (b) => {
+        b.jsonBody({
+          error: {
+            code: 'INSUFFICIENT_PERMISSIONS',
+            message: like('Required scopes not granted'),
+            request_id: uuid(),
+            details: like({}),
+          },
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/reports/assignment-pipeline`, {
+          headers: { Authorization: 'Bearer eyJfake.noscopes.token' },
+        });
+        expect(res.status).toBe(403);
+        const body = (await res.json()) as { error: { code: string } };
+        expect(body.error.code).toBe('INSUFFICIENT_PERMISSIONS');
+      });
+  });
+
+  // T9-B4 — margin current-snapshot aggregate. report:read AND
+  // assignment:commercials:read (the ACCESS_COOKIE recruiter holds both). The
+  // aggregate field is group_margin_percent (NOT the row-level margin_percent
+  // that the global D5 mask strips) per the T9-B4 field-masking amendment.
+  it('GET /v1/reports/margin returns the current-snapshot aggregate by (currency, rate_period)', async () => {
+    await provider
+      .addInteraction()
+      .given('an ats-web recruiter and a commercialized contract assignment exist')
+      .uponReceiving('a margin read')
+      .withRequest('GET', '/v1/reports/margin', (b) => {
+        b.headers({ Cookie: like(ACCESS_COOKIE) });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          eligible_count: like(1),
+          commercialized_count: like(1),
+          missing_commercial_count: like(0),
+          coverage: 'forward_materialized',
+          groups: like([
+            {
+              currency: like('USD'),
+              rate_period: like('HOURLY'),
+              assignment_count: like(1),
+              group_margin_percent: like('20.00'),
+            },
+          ]),
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/reports/margin`, { headers: { Cookie: ACCESS_COOKIE } });
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as {
+          coverage: string;
+          groups: Array<{ group_margin_percent: string | null }>;
+        };
+        expect(body.coverage).toBe('forward_materialized');
+        expect(body.groups[0]?.group_margin_percent).toBe('20.00');
+      });
+  });
+
+  // T9-B4 §15 — an actor WITH reporting access (report:read) but WITHOUT
+  // assignment:commercials:read is rejected 403 by the compound gate (the
+  // reportonly fake token → a report:read-only recruiter JWT provider-side).
+  it('GET /v1/reports/margin without assignment:commercials:read → 403', async () => {
+    await provider
+      .addInteraction()
+      .given('an ats-web recruiter and a commercialized contract assignment exist')
+      .uponReceiving('a margin read without the commercial scope')
+      .withRequest('GET', '/v1/reports/margin', (b) => {
+        b.headers({ Authorization: 'Bearer eyJfake.reportonly.token' });
+      })
+      .willRespondWith(403, (b) => {
+        b.jsonBody({
+          error: {
+            code: 'INSUFFICIENT_PERMISSIONS',
+            message: like('Required scopes not granted'),
+            request_id: uuid(),
+            details: like({}),
+          },
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/reports/margin`, {
+          headers: { Authorization: 'Bearer eyJfake.reportonly.token' },
+        });
+        expect(res.status).toBe(403);
+        const body = (await res.json()) as { error: { code: string } };
+        expect(body.error.code).toBe('INSUFFICIENT_PERMISSIONS');
       });
   });
 });

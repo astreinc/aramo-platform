@@ -7,7 +7,13 @@ import { CompanyModule } from '@aramo/company';
 import { ContactModule } from '@aramo/contact';
 import { EntitlementModule } from '@aramo/entitlement';
 import { PipelineModule } from '@aramo/pipeline';
-import { PlacementCapacityModule } from '@aramo/placement';
+import {
+  PlacementCapacityModule,
+  PlacementEventReadModule,
+  PlacementPipelineReadModule,
+  GuaranteeExposureReadModule,
+  CommercialMarginReadModule,
+} from '@aramo/placement';
 import { RequisitionModule } from '@aramo/requisition';
 import { SavedListModule } from '@aramo/saved-list';
 import { SettingsModule } from '@aramo/settings';
@@ -36,16 +42,16 @@ import { ReportingService } from './reporting.service.js';
 //
 // === Seam-exclusion (structural) ===
 //
-// This module imports ZERO Core / engagement / submittal / examination
+// This module imports ZERO Core / selection / submittal / examination
 // / matching / talent / job_domain modules. The dependency closure
 // here is the proof: A7 reads no Core schema. The integration spec
-// asserts this structurally (by NOT applying any Core/engagement/
+// asserts this structurally (by NOT applying any Core/selection/
 // submittal migration to the test container — the routes still serve
 // every metric, because none touches a Core table).
 //
 // SettingsModule is tenant-CONFIG (the settings schema), NOT Core — the
 // recruiter-metrics route reads the tenant-default KPI goals from it. The
-// Core seam-exclusion is unchanged (no engagement/submittal/examination).
+// Core seam-exclusion is unchanged (no selection/submittal/examination).
 //
 // All 8 entity-module edges are FORWARD (reporting → entity); no
 // entity module imports @aramo/reporting → no cycle.
@@ -62,6 +68,12 @@ import { ReportingService } from './reporting.service.js';
     // Track 4 / T4-B1 — PULL the placement capacity projection (§4). Leaf w.r.t.
     // reporting: placement has NO back-edge (verified zero-outgoing), acyclic.
     PlacementCapacityModule,
+    PlacementEventReadModule,
+    PlacementPipelineReadModule,
+    // T7-P4 — PULL the placement-owned guarantee-exposure aggregate (§3.6). Leaf w.r.t.
+    // reporting; placement has no back-edge (acyclic).
+    GuaranteeExposureReadModule,
+    CommercialMarginReadModule,
     RequisitionModule,
     SavedListModule,
     SettingsModule,

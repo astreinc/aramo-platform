@@ -1,6 +1,7 @@
 import {
   IsDateString,
   IsIn,
+  IsInt,
   IsOptional,
   IsString,
   IsUUID,
@@ -9,7 +10,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { PLACEMENT_STATES } from '@aramo/placement';
+import { PLACEMENT_STATES, PLACEMENT_KINDS, PERMANENT_PLACEMENT_STATES, PERMANENT_FALLOFF_REASON_CODES, REMEDY_POLICIES, USER_CANCELLATION_REASON_CODES } from '@aramo/placement';
 import { RATE_PERIOD_VALUES } from '@aramo/common';
 
 // Track 5 / T5-P1 — a decimal money string (never a float): up to 10 integer
@@ -74,6 +75,49 @@ export class CreatePlacementDto {
   @IsOptional()
   @IsUUID()
   replaces_placement_process_id?: string;
+
+  // Track 7 / T7-P1 — the permanent-vs-contract branch fact, persisted once at
+  // create (§3.1). Optional at the wire: omitted => NULL (legacy/CONTRACT-
+  // compatible at STARTED). An explicit PERMANENT is required to later start a
+  // permanent placement (the guarantee path). Closed set — an unknown value is a
+  // 400 wire failure.
+  @IsOptional()
+  @IsIn(PLACEMENT_KINDS as readonly string[])
+  placement_kind?: string;
+}
+
+// Track 7 / T7-P1 — the governed guarantee terms supplied at the PERMANENT
+// STARTED handoff, a cohesive nested value object (mirroring CommercialTermsDto,
+// NOT loose top-level fields). REQUIRED by the repository for a PERMANENT start,
+// REJECTED for a CONTRACT/NULL start or a non-STARTED target (VALIDATION_ERROR).
+// guarantee_start_date is a calendar date; guarantee_duration_days a positive
+// integer; remedy_policy exactly one closed policy; exposure a decimal money
+// string + ISO-4217 currency; terms_source a governed provenance label. The
+// repository re-validates every rule at the write boundary (fail-closed).
+export class GuaranteeTermsDto {
+  @IsDateString()
+  guarantee_start_date!: string;
+
+  // Positive integer enforced at the repository write boundary
+  // (PERMANENT_PLACEMENT_GUARANTEE_WINDOW_INVALID); the DTO guarantees it is a number.
+  @Type(() => Number)
+  @IsInt()
+  guarantee_duration_days!: number;
+
+  @IsIn(REMEDY_POLICIES as readonly string[])
+  remedy_policy!: string;
+
+  @IsString()
+  @Matches(MONEY_12_2)
+  exposure_amount!: string;
+
+  @IsString()
+  @MaxLength(3)
+  exposure_currency!: string;
+
+  @IsString()
+  @MaxLength(255)
+  terms_source!: string;
 }
 
 // Track 5 / T5-P1 — the actual person-specific commercial terms of the initial
@@ -99,6 +143,58 @@ export class CommercialTermsDto {
 
   @IsIn(RATE_PERIOD_VALUES as readonly string[])
   rate_period!: string;
+}
+
+// Track 6 / T6-B2 — a post-start commercial revision request. The same four
+// commercial fields as the initial terms (money strings + closed currency/rate
+// period sets, re-validated at the repository write boundary), PLUS:
+//   effective_from — OPTIONAL ISO-8601 instant; omitted => the server generates ONE
+//     "now" instant used for BOTH the predecessor close and the successor open (the
+//     clock is never called twice). A supplied instant materially in the past is
+//     refused at the repository (VALIDATION_ERROR); current/future is permitted iff
+//     all interval/overlap invariants hold.
+//   change_reason — REQUIRED (directive §6.2); trimmed non-empty, max 2000 chars,
+//     stored on the successor version. No reason-code enum in B2 (free text).
+// Server-derived / FORBIDDEN on the wire: tenant, assignment/version ids,
+// requisition/talent lineage, recorded_by (JWT sub), cancellation fields,
+// effective_to (the governed close is a server act).
+export class CommercialRevisionDto {
+  @IsString()
+  @Matches(MONEY_12_2)
+  pay_rate_amount!: string;
+
+  @IsString()
+  @Matches(MONEY_12_2)
+  bill_rate_amount!: string;
+
+  @IsString()
+  @MaxLength(3)
+  currency!: string;
+
+  @IsIn(RATE_PERIOD_VALUES as readonly string[])
+  rate_period!: string;
+
+  @IsOptional()
+  @IsDateString()
+  effective_from?: string;
+
+  // Required (no @IsOptional). Trimmed-non-empty is enforced at the repository
+  // write boundary (VALIDATION_ERROR) — the cap here is a cheap wire guard.
+  @IsString()
+  @MaxLength(2000)
+  change_reason!: string;
+}
+
+// Track 6 / T6-B3 — explicit cancellation of a FUTURE open-tail commercial
+// revision. The ONLY wire field is the cancellation reason, constrained to the
+// closed USER-selectable vocabulary (directive §10). The reserved internal
+// ASSIGNMENT_ENDED is deliberately NOT in this set, so a request carrying it is a
+// wire validation failure (400) — the explicit API can never mint the END-only
+// reason. Everything else (tenant, assignment, revision id, cancelled_at,
+// cancelled_by = JWT sub) is server-derived and FORBIDDEN on the wire.
+export class CancelCommercialRevisionDto {
+  @IsIn(USER_CANCELLATION_REASON_CODES as readonly string[])
+  cancellation_reason_code!: string;
 }
 
 // One generic transition route (E1-b §1): the target state is in the body and the
@@ -150,6 +246,16 @@ export class TransitionPlacementDto {
   @ValidateNested()
   @Type(() => CommercialTermsDto)
   commercial_terms?: CommercialTermsDto;
+
+  // Track 7 / T7-P1 — governed guarantee terms for the PERMANENT STARTED path.
+  // Optional at the wire; the repository REQUIRES it for a PERMANENT start
+  // (PERMANENT_PLACEMENT_TERMS_REQUIRED, 422) and REJECTS it for a CONTRACT/NULL
+  // start or a non-STARTED target (VALIDATION_ERROR) — a kind-and-target-dependent
+  // policy, so not expressible by class-validator alone.
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => GuaranteeTermsDto)
+  guarantee_terms?: GuaranteeTermsDto;
 }
 
 // Track 4 / T4-D — ending a ContractAssignment. The ratified end-reason taxonomy
@@ -157,4 +263,42 @@ export class TransitionPlacementDto {
 export class EndAssignmentDto {
   @IsIn(['COMPLETED', 'WORKER_ENDED', 'CLIENT_ENDED'])
   end_reason!: string;
+}
+
+// Track 7 / T7-P1 — one generic governed guarantee-lifecycle transition (directive
+// §14): the target state is in the body and the typed transition registry enforces
+// legality (PERMANENT_PLACEMENT_STATE_INVALID, 422). P1 ships the single legal edge
+// GUARANTEE_ACTIVE -> GUARANTEE_SATISFIED; `to` must be a known permanent-placement
+// state. No named outcome routes.
+export class PermanentPlacementTransitionDto {
+  @IsIn(PERMANENT_PLACEMENT_STATES as readonly string[])
+  to!: string;
+}
+
+// Track 7 / T7-P2 — the governed guarantee-falloff command body (§11). effective_date is
+// an ISO calendar date (the repository validates the half-open window); reason is a code
+// from the closed T7 permanent-falloff registry (exact-match, no OTHER — §3.1). The actor
+// (recorded_by) is the JWT subject, server-derived and FORBIDDEN on the wire.
+export class FalloffDto {
+  @IsDateString()
+  effective_date!: string;
+
+  @IsIn(PERMANENT_FALLOFF_REASON_CODES as readonly string[])
+  reason!: string;
+}
+
+// Track 7 / T7-P2 — the evidence-gated remedy-completion command body (§9 / §11). Exactly
+// one field is supplied depending on the immutable remedy type — REPLACEMENT carries
+// replacement_placement_process_id, REFUND/PRORATED_CREDIT carry external_reference — and
+// the repository enforces the coherence + the governed replacement checks. The caller
+// NEVER supplies the amount; completed_by is the JWT subject, FORBIDDEN on the wire.
+export class RemedyCompletionDto {
+  @IsOptional()
+  @IsUUID()
+  replacement_placement_process_id?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  external_reference?: string;
 }

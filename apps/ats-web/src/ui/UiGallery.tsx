@@ -82,7 +82,7 @@ function Section({ title, children }: { readonly title: string; readonly childre
   );
 }
 
-const ENGAGEMENT_STEPS = [
+const SELECTION_STEPS = [
   'Surfaced',
   'Engaged',
   'Awaiting response',
@@ -272,9 +272,9 @@ export function UiGallery() {
         </div>
 
         <aside>
-          <Section title="Stepper (engagement state)">
+          <Section title="Stepper (selection state)">
             <Card>
-              <Stepper steps={ENGAGEMENT_STEPS} currentIndex={3} />
+              <Stepper steps={SELECTION_STEPS} currentIndex={3} />
             </Card>
           </Section>
 
