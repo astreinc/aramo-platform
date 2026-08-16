@@ -888,6 +888,7 @@
     "ci/scripts/generate-repo-map.ts",
     "ci/scripts/integration-roots.ts",
     "ci/scripts/prepush.ts",
+    "ci/scripts/release-manifest.ts",
     "ci/scripts/run-integration.ts",
     "ci/scripts/tsconfig.json",
     "ci/scripts/verify-aggregate-gate.ts",

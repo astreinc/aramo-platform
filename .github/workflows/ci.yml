@@ -182,6 +182,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Build image (and push on main)
+        id: build
         if: ${{ fromJSON(needs.changes.outputs.docker)[matrix.name] == 'true' }}
         uses: docker/build-push-action@v6
         with:
@@ -199,6 +200,31 @@ jobs:
             ghcr.io/${{ github.repository_owner }}/aramo-${{ matrix.name }}:latest
           cache-from: type=gha,scope=${{ matrix.name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+      # GLH-2-B (GLH-2 Release Integrity, R3/R4) — on the governed release build (push→main,
+      # images pushed), capture the IMMUTABLE digest from the build output and upload one
+      # per-component manifest-input for the release-manifest job to fan in. The digest is the
+      # artifact identity; the tags above are informational aliases only.
+      - name: Capture release-manifest input (main only)
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && fromJSON(needs.changes.outputs.docker)[matrix.name] == 'true' }}
+        run: |
+          mkdir -p manifest-inputs
+          cat > "manifest-inputs/${{ matrix.name }}.json" <<'JSON'
+          {
+            "component": "${{ matrix.name }}",
+            "image": "ghcr.io/${{ github.repository_owner }}/aramo-${{ matrix.name }}",
+            "digest": "${{ steps.build.outputs.digest }}",
+            "revision": "${{ github.sha }}",
+            "tags": ["${{ github.sha }}", "latest"]
+          }
+          JSON
+      - name: Upload release-manifest input (main only)
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && fromJSON(needs.changes.outputs.docker)[matrix.name] == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: manifest-input-${{ matrix.name }}
+          path: manifest-inputs/${{ matrix.name }}.json
+          if-no-files-found: error
+          retention-days: 7
       # Front-door BOOT smoke (D-FRONTDOOR-CUTOVER-1 R3) — nginx leg ONLY, right
       # after its build. Loads the just-built image locally (cache-fast; same gha
       # scope) and boots it the way production does, catching E18/E19 that nginx -t
@@ -213,6 +239,60 @@ jobs:
       - name: No-op (context unchanged on PR)
         if: ${{ fromJSON(needs.changes.outputs.docker)[matrix.name] != 'true' }}
         run: echo "::notice::${{ matrix.name }} image context unchanged on this PR — build skipped (merge queue rebuilds it)."
+
+  # GLH-2-B (GLH-2 Release Integrity, R4) — release-manifest generation-logic gate. Runs the
+  # generator/validator selftest on every event so the fail-closed logic cannot regress.
+  release-manifest-check:
+    name: release-manifest:check
+    runs-on: ubuntu-latest
+    needs: install
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci || npm ci || npm ci # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
+      - run: npm run release-manifest:selftest
+
+  # GLH-2-B (GLH-2 Release Integrity, R2/R3/R4) — on the governed release build (push→main),
+  # fan in the per-component immutable digests, generate + validate ONE release manifest
+  # binding exact source SHA → CI run → all governed artifacts → digests, and store it as CI
+  # evidence. NOT a merge gate (main-only); no deployment (promotion = GLH-2-D).
+  release-manifest:
+    name: release-manifest
+    runs-on: ubuntu-latest
+    needs: [install, docker-build]
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci || npm ci || npm ci # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
+      - name: Download per-component manifest inputs (immutable digests)
+        uses: actions/download-artifact@v4
+        with:
+          pattern: manifest-input-*
+          path: manifest-inputs
+          merge-multiple: true
+      - name: Generate + validate release manifest
+        env:
+          RELEASE_SOURCE_REVISION: ${{ github.sha }}
+          RELEASE_CREATED_AT: ${{ github.event.head_commit.timestamp }}
+        run: |
+          node --import jiti/register ci/scripts/release-manifest.ts \
+            --generate --inputs manifest-inputs --out "release-manifest-${{ github.sha }}.json"
+          node --import jiti/register ci/scripts/release-manifest.ts \
+            --validate "release-manifest-${{ github.sha }}.json"
+      - name: Upload release manifest (CI evidence)
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-manifest-${{ github.sha }}
+          path: release-manifest-${{ github.sha }}.json
+          if-no-files-found: error
+          retention-days: 90
 
   test-unit:
     name: test:unit
@@ -692,6 +772,7 @@ jobs:
       - env-passthrough-check # GLH-1 D — prod env-passthrough parity
       - contract-parity-check # GLH-1-C — governed API route<->OpenAPI parity
       - aggregate-gate-check # GLH-1 A+B — pins the above INTO this needs list
+      - release-manifest-check # GLH-2-B — release-manifest generator/validator logic gate
       - openapi-validate
       - openapi-lint
       - openapi-drift-check

@@ -139,6 +139,9 @@ steps.push(['aggregate-gate:check', () => run('npm run --silent aggregate-gate:c
 // GLH-1-C — governed API route<->OpenAPI parity (ci/config/api-surface-manifest.json). Cheap,
 // config+source only, unconditional.
 steps.push(['contract-parity:check', () => run('npm run --silent contract-parity:check')]);
+// GLH-2-B — release-manifest generator/validator selftest (fail-closed logic). Cheap,
+// config-free, unconditional.
+steps.push(['release-manifest:selftest', () => run('npm run --silent release-manifest:selftest')]);
 // Front-Door PR-2 (Ruling 6) — the nginx conf-semantics wall. Unconditional
 // (refusal-check family): reads the template + compose + webhook constant fresh.
 steps.push([
