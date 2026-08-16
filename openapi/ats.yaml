@@ -3151,6 +3151,44 @@ paths:
       security:
         - BearerAuth: []
 
+  /v1/reports/margin:
+    get:
+      operationId: getMarginReport
+      summary: Margin current-snapshot operational view (T9-B4).
+      description: |
+        Current snapshot (no period) of contract-assignment margin, aggregated
+        by (currency, rate_period). group_margin_percent is the GOVERNED
+        bill-rate-weighted aggregate SUM(bill-pay)/SUM(bill)*100 as a scale-2
+        decimal string (null when the group bill total is zero) — never the
+        arithmetic mean of per-assignment margins. Coverage is FORWARD_MATERIALIZED:
+        eligible_count = commercialized_count + missing_commercial_count. CONTRACT
+        assignments only — PermanentPlacement, ENDED, and future/cancelled-only
+        versions are excluded. Aggregate-only: no per-assignment rows, no
+        talent/person ids, no pay/bill/spread/markup, no version lineage.
+        COMPOUND authorization: report:read AND assignment:commercials:read, plus
+        tenant/site/A3. The finer compensation:view:* scopes are NOT a gate here.
+      parameters:
+        - name: site_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+          description: Optional site narrowing (must match the actor's site claim).
+      responses:
+        '200':
+          description: Current margin aggregate by (currency, rate_period).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MarginReport'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+      security:
+        - BearerAuth: []
+
 components:
   securitySchemes:
     # Duplicated byte-for-byte from openapi/common.yaml per locked invariant
@@ -3297,6 +3335,59 @@ components:
             coverage:
               type: string
               enum: [forward_materialized]
+
+    # T9-B4 — margin current-snapshot operational view (GET /v1/reports/margin).
+    # Aggregate-only by (currency, rate_period); group_margin_percent is the
+    # governed bill-rate-weighted aggregate (scale-2 string or null). NO per-row
+    # commercial fields, NO ids, NO version lineage; additionalProperties:false
+    # closes the contract (§13/§25 data-safety). Field name is group_margin_percent
+    # per Aramo-T9-B4-Margin-Field-Masking-Amendment-v1_0-LOCKED (D5 mask collision).
+    MarginReport:
+      type: object
+      additionalProperties: false
+      required:
+        - eligible_count
+        - commercialized_count
+        - missing_commercial_count
+        - coverage
+        - groups
+      properties:
+        eligible_count:
+          type: integer
+          minimum: 0
+          description: ACTIVE CONTRACT assignments in the visible set (= commercialized + missing).
+        commercialized_count:
+          type: integer
+          minimum: 0
+          description: Eligible assignments with exactly one current non-cancelled commercial version.
+        missing_commercial_count:
+          type: integer
+          minimum: 0
+          description: Eligible assignments with no usable current commercial version (counted, not dropped).
+        coverage:
+          type: string
+          enum: [forward_materialized]
+        groups:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [currency, rate_period, assignment_count, group_margin_percent]
+            properties:
+              currency:
+                type: string
+                description: Grouping key; no cross-currency monetary total is produced (no FX substrate).
+              rate_period:
+                type: string
+                enum: [HOURLY, DAILY, WEEKLY, MONTHLY, ANNUAL]
+              assignment_count:
+                type: integer
+                minimum: 0
+              group_margin_percent:
+                type: [string, 'null']
+                description: |
+                  Bill-rate-weighted aggregate SUM(bill-pay)/SUM(bill)*100 for the group,
+                  scale-2 decimal string; null when the group bill total is zero.
 
     # T9-B2 — fallthrough rate + reasons operational report
     # (GET /v1/reports/fallthrough). Computed-on-read; no persistence. Note:

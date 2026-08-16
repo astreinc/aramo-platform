@@ -33,6 +33,7 @@ import { RequisitionsListView } from './requisitions/RequisitionsListView';
 import { AssignmentPipelineView } from './reporting/AssignmentPipelineView';
 import { FallthroughView } from './reporting/FallthroughView';
 import { FillPerformanceView } from './reporting/FillPerformanceView';
+import { MarginView } from './reporting/MarginView';
 import { ReportingLanding } from './reporting/ReportingLanding';
 import { SearchView } from './search/SearchView';
 import { SourcingPoolView } from './sourcing/SourcingPoolView';
@@ -166,6 +167,21 @@ export function App() {
                           sessionStateOverride={state}
                         >
                           <AssignmentPipelineView />
+                        </RouteGuard>
+                      }
+                    />
+                    {/* T9-B4 — Margin. The route stays report:read (the reporting
+                        surface); the assignment:commercials:read gate is enforced by
+                        the hidden landing link + the backend 403 + the view's own
+                        scope check (no fetch when gated away). */}
+                    <Route
+                      path="reports/margin"
+                      element={
+                        <RouteGuard
+                          requireScope="report:read"
+                          sessionStateOverride={state}
+                        >
+                          <MarginView />
                         </RouteGuard>
                       }
                     />

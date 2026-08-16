@@ -12,6 +12,7 @@ import {
   PlacementEventReadModule,
   PlacementPipelineReadModule,
   GuaranteeExposureReadModule,
+  CommercialMarginReadModule,
 } from '@aramo/placement';
 import { RequisitionModule } from '@aramo/requisition';
 import { SavedListModule } from '@aramo/saved-list';
@@ -72,6 +73,7 @@ import { ReportingService } from './reporting.service.js';
     // T7-P4 — PULL the placement-owned guarantee-exposure aggregate (§3.6). Leaf w.r.t.
     // reporting; placement has no back-edge (acyclic).
     GuaranteeExposureReadModule,
+    CommercialMarginReadModule,
     RequisitionModule,
     SavedListModule,
     SettingsModule,
