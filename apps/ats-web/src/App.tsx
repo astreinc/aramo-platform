@@ -33,6 +33,7 @@ import { RequisitionsListView } from './requisitions/RequisitionsListView';
 import { AssignmentPipelineView } from './reporting/AssignmentPipelineView';
 import { FallthroughView } from './reporting/FallthroughView';
 import { FillPerformanceView } from './reporting/FillPerformanceView';
+import { GuaranteeExposureView } from './reporting/GuaranteeExposureView';
 import { MarginView } from './reporting/MarginView';
 import { ReportingLanding } from './reporting/ReportingLanding';
 import { SearchView } from './search/SearchView';
@@ -167,6 +168,19 @@ export function App() {
                           sessionStateOverride={state}
                         >
                           <AssignmentPipelineView />
+                        </RouteGuard>
+                      }
+                    />
+                    {/* T7-P5 §5.6 — guarantee-exposure report (report:read), within the
+                        existing Reports IA. */}
+                    <Route
+                      path="reports/guarantee-exposure"
+                      element={
+                        <RouteGuard
+                          requireScope="report:read"
+                          sessionStateOverride={state}
+                        >
+                          <GuaranteeExposureView />
                         </RouteGuard>
                       }
                     />
