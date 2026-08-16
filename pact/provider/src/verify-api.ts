@@ -871,6 +871,13 @@ const PLACEMENT_GUARANTEE_TERMS_MIGRATION = resolve(
   ROOT,
   'libs/placement/prisma/migrations/20260816120000_t7_p3_guarantee_term_versioning/migration.sql',
 );
+// Track 7 / T7-PX — Contract-to-Permanent conversion substrate. Applied so the provider schema
+// carries the CONVERTED_TO_PERMANENT enum value + the PermanentPlacementConversionLineage table
+// (SEPARATE const — never a 2nd resolve() arg, ENOTDIR).
+const PLACEMENT_CONVERSION_MIGRATION = resolve(
+  ROOT,
+  'libs/placement/prisma/migrations/20260817120000_t7_px_contract_to_permanent_conversion/migration.sql',
+);
 // Track 4 / T4-B2 §6 — the dedicated stored openings_available DROP. Applied here so
 // the provider schema matches the retired-column reality; the requisition read is
 // derived and does not depend on the physical column.
@@ -3098,6 +3105,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         PLACEMENT_PERMANENT_PLACEMENT_MIGRATION,
         PLACEMENT_FALLOFF_REMEDY_MIGRATION,
         PLACEMENT_GUARANTEE_TERMS_MIGRATION,
+        PLACEMENT_CONVERSION_MIGRATION,
         // T4-B2 §6 — retire the stored openings_available column (derived-only).
         REQUISITION_DROP_OPENINGS_AVAILABLE_MIGRATION,
         // T8-P1 — the external-identity partial-unique index (applied last;
@@ -3341,6 +3349,11 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           'placement:permanent:transition',
           'placement:permanent:terms:write',
           'placement:remedy:resolve',
+          // Track 7 / T7-PX — the conversion route requires the EXACT conjunction
+          // assignment:end AND placement:permanent:transition; assignment:end is added here so
+          // the ats-web convert-to-permanent interactions pass RolesGuard. Additive; inert for
+          // prior interactions.
+          'assignment:end',
           // AUTHZ-D5 field-mask — the AssignmentCommercialView carries the SAME field
           // names (pay_rate_amount / bill_rate_amount / margin_percent / markup_percent)
           // the global CompensationFieldMaskInterceptor masks. A commercials actor that
@@ -3784,6 +3797,43 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       );
     }
 
+    // ===== Track 7 / T7-PX Contract-to-Permanent conversion seed helper + fixtures =====
+    // Fixture UUIDs are byte-identical to pact/consumers/ats-web/src/contract-conversion.consumer.test.ts.
+    const PX_SRC_ID = '00000000-0000-7000-8000-c01200000001';
+    const PX_SRC_NO_ASSIGN = '00000000-0000-7000-8000-c01200000002';
+    const PX_SRC_NO_TERMS = '00000000-0000-7000-8000-c01200000003';
+    const PX_SRC_CONVERTED = '00000000-0000-7000-8000-c01200000004';
+
+    // Seed a STARTED CONTRACT placement with an ACTIVE ContractAssignment + initial ARV, and
+    // (optionally) an effective guarantee-term version for the requisition — i.e. a convertible
+    // source. Uses the shared T7 submittal/requisition/talent/recorder fixtures.
+    async function seedConvertibleContract(
+      c: Client,
+      o: { placementId: string; assignmentId: string; rateVersionId: string; termId?: string },
+    ): Promise<void> {
+      await c.query(
+        `INSERT INTO placement."PlacementProcess"
+           (id, tenant_id, submittal_id, requisition_id, talent_record_id, state, placement_kind, offered_at, created_at)
+         VALUES ($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,'STARTED','CONTRACT'::placement."PlacementKind",'2026-01-01T00:00:00Z','2026-01-01T00:00:00Z')`,
+        [o.placementId, TENANT_ID, T7_SUB, T7_REQ, T7_TAL],
+      );
+      await c.query(
+        `INSERT INTO placement."ContractAssignment"
+           (id, tenant_id, placement_process_id, submittal_id, requisition_id, talent_record_id, started_at, provenance, lifecycle_state, company_id)
+         VALUES ($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,$6::uuid,'2026-01-01T00:00:00Z','FORWARD','ACTIVE',$7::uuid)`,
+        [o.assignmentId, TENANT_ID, o.placementId, T7_SUB, T7_REQ, T7_TAL, T7_REC],
+      );
+      await c.query(
+        `INSERT INTO placement."AssignmentRateVersion"
+           (id, tenant_id, contract_assignment_id, requisition_id, talent_record_id, pay_rate_amount, bill_rate_amount, currency, rate_period, effective_from, effective_to, recorded_by, cancelled_at, change_reason)
+         VALUES ($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,80.00,120.00,'USD','HOURLY','2026-01-01T00:00:00Z',NULL,$6::uuid,NULL,'seed')`,
+        [o.rateVersionId, TENANT_ID, o.assignmentId, T7_REQ, T7_TAL, T7_REC],
+      );
+      if (o.termId !== undefined) {
+        await seedGuaranteeTermVersionRow(c, { id: o.termId, effectiveFrom: '2026-01-01', effectiveTo: null });
+      }
+    }
+
     const stateHandlers: Record<string, () => Promise<void>> = {
       // ===== Track 7 / T7-P5 permanent-placement pacts (ats-web permanent-placement.consumer) =====
       // Deterministic T7 states for the ats-web permanent-placement + guarantee-terms +
@@ -3942,6 +3992,77 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       },
       'an ats-web recruiter and no permanent-placement guarantee exposure data exist': async () => {
         await withClient((c) => resetAllRows(c));
+      },
+
+      // ===== Track 7 / T7-PX contract-to-permanent conversion pacts (ats-web contract-conversion.consumer) =====
+      'an ats-web resolver and a convertible contract placement with effective guarantee terms exist': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedConvertibleContract(c, {
+            placementId: PX_SRC_ID,
+            assignmentId: '00000000-0000-7000-8000-c0120000a001',
+            rateVersionId: '00000000-0000-7000-8000-c0120000d001',
+            termId: '00000000-0000-7000-8000-c0120000e001',
+          });
+        });
+      },
+      'an ats-web resolver and a convertible contract placement without guarantee terms exist': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedConvertibleContract(c, {
+            placementId: PX_SRC_NO_TERMS,
+            assignmentId: '00000000-0000-7000-8000-c0120000a003',
+            rateVersionId: '00000000-0000-7000-8000-c0120000d003',
+          });
+        });
+      },
+      'an ats-web resolver and a placement with no active assignment exist': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          // A STARTED CONTRACT placement with NO ContractAssignment → no ACTIVE assignment to convert.
+          await c.query(
+            `INSERT INTO placement."PlacementProcess"
+               (id, tenant_id, submittal_id, requisition_id, talent_record_id, state, placement_kind, offered_at, created_at)
+             VALUES ($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,'STARTED','CONTRACT'::placement."PlacementKind",'2026-01-01T00:00:00Z','2026-01-01T00:00:00Z')`,
+            [PX_SRC_NO_ASSIGN, TENANT_ID, T7_SUB, T7_REQ, T7_TAL],
+          );
+        });
+      },
+      'an ats-web resolver and an already-converted contract placement exist': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          const assignId = '00000000-0000-7000-8000-c0120000a004';
+          const targetPid = '00000000-0000-7000-8000-c0120000b004';
+          const targetPerm = '00000000-0000-7000-8000-c0120000c004';
+          // Source contract (STARTED) with its assignment already ENDED as CONVERTED_TO_PERMANENT.
+          await seedConvertibleContract(c, {
+            placementId: PX_SRC_CONVERTED,
+            assignmentId: assignId,
+            rateVersionId: '00000000-0000-7000-8000-c0120000d004',
+          });
+          await c.query(
+            `UPDATE placement."ContractAssignment"
+                SET lifecycle_state = 'ENDED', end_reason = 'CONVERTED_TO_PERMANENT', ended_at = '2026-02-01T00:00:00Z'
+              WHERE id = $1::uuid`,
+            [assignId],
+          );
+          // The already-materialised permanent target (new PlacementProcess + PermanentPlacement).
+          await seedPermanentAggregate(c, {
+            placementId: targetPid,
+            permanentId: targetPerm,
+            lifecycleState: 'GUARANTEE_ACTIVE',
+            startDate: '2026-02-01', durationDays: 365, endDate: '2027-02-01',
+            remedyPolicy: 'REPLACEMENT', createdAt: '2026-02-01T00:00:00Z',
+          });
+          // The immutable conversion lineage (the idempotency anchor the replay reads).
+          await c.query(
+            `INSERT INTO placement."PermanentPlacementConversionLineage"
+               (id, tenant_id, source_placement_process_id, source_contract_assignment_id,
+                target_placement_process_id, target_permanent_placement_id, converted_at, converted_by)
+             VALUES ($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,$6::uuid,'2026-02-01T00:00:00Z',$7::uuid)`,
+            ['00000000-0000-7000-8000-c0120000f004', TENANT_ID, PX_SRC_CONVERTED, assignId, targetPid, targetPerm, T7_REC],
+          );
+        });
       },
 
       // ===== T8-CONNECTOR-A connector-management pacts (ats-web integration.consumer) =====

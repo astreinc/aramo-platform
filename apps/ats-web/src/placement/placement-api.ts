@@ -7,6 +7,7 @@ import type {
   CommercialRevisionCancelRequest,
   CommercialRevisionCreateRequest,
   ContractAssignmentEndReason,
+  ConvertToPermanentResponse,
   PlacementAssignmentResponse,
   PlacementEventListResponse,
   PlacementListResponse,
@@ -128,5 +129,19 @@ export async function endPlacementAssignment(
   return apiClient.post<{ ok: true }>(
     `/v1/placements/${encodeURIComponent(id)}/assignment/end`,
     { end_reason: endReason },
+  );
+}
+
+// Track 7 / T7-PX — convert a started contract placement to permanent. ONE POST (no body:
+// the guarantee start date is derived server-side, the terms come from the governed stored
+// version, the end reason is fixed, and the actor is the JWT sub). Gated by the EXACT
+// conjunction assignment:end AND placement:permanent:transition. The response carries the
+// NEW permanent PlacementProcess id — the caller navigates there and re-reads server truth.
+export async function convertAssignmentToPermanent(
+  id: string,
+): Promise<ConvertToPermanentResponse> {
+  return apiClient.post<ConvertToPermanentResponse>(
+    `/v1/placements/${encodeURIComponent(id)}/assignment/convert-to-permanent`,
+    {},
   );
 }

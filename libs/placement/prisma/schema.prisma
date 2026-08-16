@@ -243,6 +243,11 @@ enum ContractAssignmentEndReason {
   COMPLETED
   WORKER_ENDED
   CLIENT_ENDED
+  // Track 7 / T7-PX — the contract assignment ended because the engagement was
+  // CONVERTED to a permanent placement. A genuine domain value (NOT attrition):
+  // it distinguishes a conversion end from COMPLETED/WORKER_ENDED/CLIENT_ENDED so
+  // T9-B3 can exclude it from the ordinary ENDED/attrition count (§13).
+  CONVERTED_TO_PERMANENT
 
   @@schema("placement")
 }
@@ -701,5 +706,44 @@ model PermanentPlacementGuaranteeTermVersion {
   // EXCLUDE (migration-only) enforces no-overlap for (tenant, requisition).
   @@unique([tenant_id, requisition_id, effective_from])
   @@index([tenant_id, requisition_id])
+  @@schema("placement")
+}
+
+// Track 7 / T7-PX — the immutable Contract-to-Permanent conversion lineage record.
+// One append-only row per governed conversion, capturing the deterministic link from
+// the (now-ended, frozen) source contract lineage to the newly-minted permanent
+// lineage, plus tenant, conversion instant, and actor (§4). It is the idempotency
+// anchor: at most one conversion per source ContractAssignment (tenant-safe unique),
+// so a stale retry replays the same target rather than minting a second permanent
+// placement (§11). Plain cross-schema UUID scalars (no FK), mirroring the placement
+// no-FK convention. NOT E4 replaces_placement_process_id (§4 — a distinct lineage).
+model PermanentPlacementConversionLineage {
+  id String @id @db.Uuid
+
+  tenant_id String @db.Uuid
+
+  // Source (contract) side — the originating STARTED contract placement and its
+  // now-ENDED ContractAssignment (end_reason = CONVERTED_TO_PERMANENT).
+  source_placement_process_id   String @db.Uuid
+  source_contract_assignment_id String @db.Uuid
+
+  // Target (permanent) side — the newly-created PERMANENT PlacementProcess and its
+  // GUARANTEE_ACTIVE PermanentPlacement (the permanent lineage anchor).
+  target_placement_process_id   String @db.Uuid
+  target_permanent_placement_id String @db.Uuid
+
+  // T_convert — the single absolute conversion instant captured once in the
+  // transaction (also ContractAssignment.ended_at + the commercial-window close +
+  // the permanent creation timing). converted_by = the acting principal (JWT sub).
+  converted_at DateTime @db.Timestamptz(6)
+  converted_by String   @db.Uuid
+
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+
+  // Idempotency/replay floor: at most one conversion per source ContractAssignment
+  // (and, redundantly, per source placement). A concurrent duplicate collides here.
+  @@unique([tenant_id, source_contract_assignment_id])
+  @@unique([tenant_id, source_placement_process_id])
+  @@index([tenant_id, target_placement_process_id])
   @@schema("placement")
 }

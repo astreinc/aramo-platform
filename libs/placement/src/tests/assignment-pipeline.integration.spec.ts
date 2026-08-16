@@ -33,6 +33,9 @@ const MIGRATIONS = [
   '20260813130000_t6_b3_commercial_cancellation',
   '20260814120000_t7_permanent_placement',
   '20260815120000_t7_p2_falloff_remedy',
+  // T7-PX — the assignment-pipeline read now excludes conversion targets via the
+  // PermanentPlacementConversionLineage table, so this curated set needs the migration.
+  '20260817120000_t7_px_contract_to_permanent_conversion',
 ].map((d) => resolve(__dirname, `../../prisma/migrations/${d}/migration.sql`));
 
 // Fixed snapshot clock so UTC start-date bucketing is deterministic.

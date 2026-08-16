@@ -2497,7 +2497,19 @@
       },
       {
         "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/placement/AssignmentLifecyclePanel.convert.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/ats-web/src/placement/AssignmentLifecyclePanel.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/placement/ConvertToPermanentDialog.spec.tsx",
         "project": "aramo-ats-web",
         "status": "excluded"
       },

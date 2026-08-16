@@ -14,6 +14,7 @@ import {
   type PlacementState,
   type PlacementKind,
   type ContractAssignmentEndReason,
+  type ConvertToPermanentResult,
   type ContractAssignmentView,
   type AssignmentCommercialView,
   type PermanentPlacementView,
@@ -254,6 +255,31 @@ export class PlacementController {
       requestId,
     );
     return { ok: true };
+  }
+
+  // Track 7 / T7-PX — Contract-to-Permanent conversion. ONE command (§10): ends the
+  // ACTIVE ContractAssignment (CONVERTED_TO_PERMANENT) and mints the NEW permanent
+  // PlacementProcess + PermanentPlacement in one atomic placement-domain transaction.
+  // :id is the SOURCE contract PlacementProcess id (house-uniform — the assignment is
+  // addressed through its owning placement). Authority is the EXACT conjunction
+  // assignment:end AND placement:permanent:transition (§9) — both authoritative-tier
+  // (AM/TA/TO), recruiter excluded; @RequireScopes is all-or-nothing superset matching,
+  // no new scope, no wildcard. No body: guarantee_start_date is derived from T_convert,
+  // the guarantee terms come from the governed stored version, the end reason is fixed,
+  // and the actor is the JWT sub. The response carries the NEW permanent PlacementProcess
+  // id so the FE can navigate to it (§10).
+  @Post(':id/assignment/convert-to-permanent')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('assignment:end', 'placement:permanent:transition')
+  async convertToPermanent(
+    @AuthContext() auth: AuthContextType,
+    @RequestId() requestId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<ConvertToPermanentResult> {
+    return this.placements.convertToPermanent(
+      { tenant_id: auth.tenant_id, placement_process_id: id, converted_by: auth.sub },
+      requestId,
+    );
   }
 
   // E1-d / D-3 — item read aligned to the house pattern: actor-visibility

@@ -137,6 +137,20 @@ export const ASSIGNMENT_END_REASON_LABELS: Record<ContractAssignmentEndReason, s
   CLIENT_ENDED: 'Client ended',
 };
 
+// Track 7 / T7-PX — the FULL end-reason DISPLAY vocabulary. CONVERTED_TO_PERMANENT is a
+// genuine domain end reason set ONLY by the conversion command — it is NOT a user-choosable
+// End-dialog option (those stay the three above), but a converted source assignment renders
+// with it, so the display map must cover it. Keyed for read-only rendering only.
+export const ASSIGNMENT_END_REASON_DISPLAY_VALUES = [
+  ...ASSIGNMENT_END_REASON_VALUES,
+  'CONVERTED_TO_PERMANENT',
+] as const;
+export type ContractAssignmentEndReasonDisplay = (typeof ASSIGNMENT_END_REASON_DISPLAY_VALUES)[number];
+export const ASSIGNMENT_END_REASON_DISPLAY_LABELS: Record<ContractAssignmentEndReasonDisplay, string> = {
+  ...ASSIGNMENT_END_REASON_LABELS,
+  CONVERTED_TO_PERMANENT: 'Converted to permanent',
+};
+
 export const ASSIGNMENT_LIFECYCLE_LABELS: Record<ContractAssignmentLifecycleState, string> = {
   ACTIVE: 'Active',
   ENDED: 'Ended',
@@ -159,11 +173,24 @@ export interface ContractAssignmentView {
   readonly started_at: string;
   readonly provenance: ContractAssignmentProvenance;
   readonly lifecycle_state: ContractAssignmentLifecycleState | null;
-  readonly end_reason: ContractAssignmentEndReason | null;
+  // Display vocabulary (4) — includes the conversion end reason a converted source carries.
+  readonly end_reason: ContractAssignmentEndReasonDisplay | null;
 }
 
 export interface PlacementAssignmentResponse {
   readonly assignment: ContractAssignmentView | null;
+}
+
+// Track 7 / T7-PX — the Contract-to-Permanent conversion result. Hand-mirrored from the
+// OpenAPI convertPlacementAssignmentToPermanent 200 shape (ADR-0029: no domain import).
+// The FE navigates to target_placement_process_id — the NEW permanent PlacementProcess —
+// whose PermanentPlacement panel then renders naturally via GET :id/permanent.
+export interface ConvertToPermanentResponse {
+  readonly replayed: boolean;
+  readonly source_placement_process_id: string;
+  readonly source_contract_assignment_id: string;
+  readonly target_placement_process_id: string;
+  readonly target_permanent_placement_id: string;
 }
 
 // Track 5 / T5-P3 — the placement-detail commercial view for commercial-authorized
