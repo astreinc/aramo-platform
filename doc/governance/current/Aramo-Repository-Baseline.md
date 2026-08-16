@@ -74,7 +74,7 @@ Provider **`aramo-auth-service`** verifies **1** (auth-service-consumer, a separ
 | **T5** | Commercial terms / person-specific effective-dated rates | NOT-STARTED / new product (no rate columns on ContractAssignment; `rate_card_id` stub at `libs/requisition/prisma/schema.prisma:264`) | Dependency **root** for T6/T7/T9-margin |
 | **T6** | Assignment revisions / extensions | NOT-STARTED; Planning enum **superseded** by Track 4 binary ACTIVE/ENDED (model shape needs re-derivation) | Builds on T4 + T5 |
 | **T7** | Permanent placement + guarantee | NOT-STARTED (no `PermanentPlacement` model) | T5 |
-| **T8** | VMS ingestion | NOT-STARTED (`source_system` is a bare `String?`; `libs/job-distribution` is outbound, not VMS) | Most parallelizable (ownership boundary) |
+| **T8** | Connector program — provider-neutral integration foundation (formerly scoped "VMS ingestion") | **Connector-A MERGED / CLOSED / NOT DEPLOYED** (PR #628, merge `3aba5ff`); **Connector-B DEFERRED / NOT STARTED** — requires separate activation governance; **first provider NOT SELECTED**; **requisition update/upsert NOT AUTHORIZED** (T8-P2 CREATE-only). Carry-forward record: [`doc/t8-connector-a-closure-and-connector-b-deferment.md`](../../t8-connector-a-closure-and-connector-b-deferment.md) | Most parallelizable (ownership boundary) |
 | **T9** | Reporting / operational analytics | PARTIALLY-BUILT (reporting/export/visibility infra exists; named analytics — fill rate, time-to-fill, fallthrough, margin — absent) | Margin analytics depends on T5 |
 | **T10** | Cross-module UX polish | ONGOING by design (placement nav is the latest increment) | Shared FE client |
 
