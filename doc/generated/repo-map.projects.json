@@ -2497,13 +2497,31 @@
       },
       {
         "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/placement/PermanentPlacementGuaranteePanel.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/ats-web/src/placement/PlacementBoardView.spec.tsx",
         "project": "aramo-ats-web",
         "status": "excluded"
       },
       {
         "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/placement/PlacementDetailView.permanent.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/ats-web/src/placement/PlacementDetailView.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/placement/permanent-lifecycle-dialogs.spec.tsx",
         "project": "aramo-ats-web",
         "status": "excluded"
       },
@@ -2546,6 +2564,12 @@
       {
         "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/ats-web/src/requisition-imports/RequisitionIngestionView.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/requisitions/GuaranteeTermsPanel.spec.tsx",
         "project": "aramo-ats-web",
         "status": "excluded"
       },

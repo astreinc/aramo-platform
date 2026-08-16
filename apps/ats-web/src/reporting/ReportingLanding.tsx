@@ -48,6 +48,11 @@ export function ReportingLanding({
             Assignment Pipeline
           </Link>
         </li>
+        <li>
+          <Link to="/reports/guarantee-exposure" data-testid="reports-link-guarantee-exposure">
+            Guarantee Exposure
+          </Link>
+        </li>
         {canReadMargin ? (
           <li>
             <Link to="/reports/margin" data-testid="reports-link-margin">

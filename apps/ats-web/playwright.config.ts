@@ -46,7 +46,10 @@ export default defineConfig({
     { name: 'setup', testMatch: /auth\.setup\.ts$/ },
     {
       name: 'chromium',
-      testMatch: /surfaces\.spec\.ts$/,
+      // The live surface walk + the T7-P5 permanent-placement surface walk (both reuse the one
+      // authenticated recruiter session). T7 mutation lifecycle is proven in component + Pact,
+      // not the browser (amendment §3/§4) — this project only drives truthfully-reachable reads.
+      testMatch: /(surfaces|t7-permanent-placement)\.spec\.ts$/,
       dependencies: ['setup'],
       use: { ...devices['Desktop Chrome'], storageState: AUTH_STATE },
     },
