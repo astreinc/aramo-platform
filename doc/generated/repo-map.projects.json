@@ -1972,6 +1972,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/reporting/src/tests/margin.integration.spec.ts",
+        "project": "reporting",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/reporting/src/tests/margin.spec.ts",
         "project": "reporting",
         "status": "excluded"
@@ -3301,6 +3307,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/reporting/src/tests/guarantee-exposure.spec.ts",
+        "project": "reporting",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/reporting/src/tests/margin.integration.spec.ts",
         "project": "reporting",
         "status": "excluded"
       },

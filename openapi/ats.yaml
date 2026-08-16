@@ -3142,8 +3142,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AssignmentPipelineReport'
-        '400':
-          $ref: 'common.yaml#/components/responses/BadRequest'
+        # T9-B5 — no reachable 400: the route takes no from/to and runs no
+        # request-body/param validation (identical posture to /v1/reports/margin,
+        # which likewise documents no 400). Site-claim mismatch is a 403, not 400.
         '401':
           $ref: 'common.yaml#/components/responses/Unauthorized'
         '403':
@@ -3449,8 +3450,8 @@ components:
                 maximum: 100
                 description: Percent of fallthrough_attempts represented by this bucket.
 
-    # T9-B1 — fill rate + time-to-fill operational report
-    # (GET /v1/reports/fill-performance). Computed-on-read; no persistence.
+    # T7-P4 — guarantee-exposure summary report
+    # (GET /v1/reports/guarantee-exposure). Computed-on-read; no persistence.
     GuaranteeExposureReport:
       type: object
       additionalProperties: false

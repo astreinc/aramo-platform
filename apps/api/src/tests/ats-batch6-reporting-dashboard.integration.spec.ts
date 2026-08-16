@@ -328,6 +328,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     let marginRecruiterJwt: string; // report:read + commercials, A3-scoped
     let marginWrongSiteJwt: string; // full margin scopes but token.site != requested
     let commercialOnlyJwt: string; // commercials WITHOUT report:read → 403
+    // T9-B5 / AV-1 — a TENANT-WIDE admin: see_all visibility + NULL site claim, so
+    // it may create and query across BOTH sites (site-axis model A1a).
+    let tenantWideAdminJwt: string;
 
     async function signJwt(
       privateKey: SignKey,
@@ -482,6 +485,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         tenant_id: TENANT_ATS,
         site_id: SITE_A,
         scopes: COMMERCIAL_ONLY_SCOPES,
+      });
+      // T9-B5 / AV-1 — tenant-wide admin: NO site_id claim (site-unconfined) +
+      // full margin/report + read:all (see_all) + create scopes.
+      tenantWideAdminJwt = await signJwt(privateKey, {
+        sub: TENANT_ADMIN,
+        tenant_id: TENANT_ATS,
+        scopes: MARGIN_TENANT_ADMIN_SCOPES,
       });
 
       module = await Test.createTestingModule({ imports: [AppModule] }).compile();
@@ -1064,6 +1074,96 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(usdHourly?.group_margin_percent).toBe('25.00');
       // ...but the admin-only CAD group (ftReqUnassigned) is invisible under A3.
       expect(body.groups.some((g) => g.currency === 'CAD')).toBe(false);
+    });
+
+    // -------------------------------------------------------------------------
+    // T9-B5 / AV-1 — explicit site_id narrows fallthrough / assignment-pipeline /
+    // margin even for a tenant-wide (see_all) principal. Every prior TENANT_ATS
+    // datum is on a SITE_A requisition; we add ONE SITE_B requisition with its own
+    // data, so the tenant partitions disjointly (tenant-wide = SITE_A ⊎ SITE_B).
+    // Proves: ?site=SITE_B is EXACT (no SITE_B contamination), ?site=SITE_A
+    // EXCLUDES SITE_B, and no-site (tenant-wide) = SITE_A + SITE_B (additivity).
+    // The actor is tenantWideAdminJwt (see_all + NULL site claim → may query any
+    // site). tenant isolation is unchanged (all queries stay within TENANT_ATS).
+    // -------------------------------------------------------------------------
+    describe('AV-1 explicit-site narrowing for see_all principals', () => {
+      let reqSiteB = '';
+      const marginGet = async (site?: string): Promise<MarginBody> => {
+        const url =
+          `http://127.0.0.1:${port}/v1/reports/margin` +
+          (site === undefined ? '' : `?site_id=${site}`);
+        const res = await fetch(url, { headers: { Authorization: `Bearer ${tenantWideAdminJwt}` } });
+        expect(res.status).toBe(200);
+        return (await res.json()) as MarginBody;
+      };
+      const apGet = async (site?: string) => {
+        const url =
+          `http://127.0.0.1:${port}/v1/reports/assignment-pipeline` +
+          (site === undefined ? '' : `?site_id=${site}`);
+        const res = await fetch(url, { headers: { Authorization: `Bearer ${tenantWideAdminJwt}` } });
+        expect(res.status).toBe(200);
+        return (await res.json()) as { total_live: number; by_state: Array<{ state: string; count: number }> };
+      };
+      const ftGet = async (site?: string) => {
+        const url =
+          `http://127.0.0.1:${port}/v1/reports/fallthrough?from=${encodeURIComponent(FT_FROM)}&to=${encodeURIComponent(FT_TO)}` +
+          (site === undefined ? '' : `&site_id=${site}`);
+        const res = await fetch(url, { headers: { Authorization: `Bearer ${tenantWideAdminJwt}` } });
+        expect(res.status).toBe(200);
+        return (await res.json()) as { accepted_attempts: number; fallthrough_attempts: number };
+      };
+      const started = (b: { by_state: Array<{ state: string; count: number }> }): number =>
+        b.by_state.find((r) => r.state === 'STARTED')?.count ?? 0;
+
+      beforeAll(async () => {
+        const coB = await postJson('/v1/companies', tenantWideAdminJwt, { name: 'Co SiteB', site_id: SITE_B });
+        const r = await postJson('/v1/requisitions', tenantWideAdminJwt, {
+          title: 'SiteB req', company_id: coB.id, site_id: SITE_B,
+        });
+        reqSiteB = r.id;
+        // SITE_B-only data: margin NZD/HOURLY 50% (unique currency), 2 STARTED, 1 fallthrough.
+        await seedCommercialized(reqSiteB, '50.00', '100.00', 'NZD', 'HOURLY');
+        await seedStartedPlacement(reqSiteB, 'ACTIVE');
+        await seedStartedPlacement(reqSiteB);
+        await seedFallthrough(reqSiteB);
+      });
+
+      it('margin: ?site=SITE_B exact (NZD only); ?site=SITE_A excludes NZD; no-site includes it', async () => {
+        const siteB = await marginGet(SITE_B);
+        const nzd = siteB.groups.find((g) => g.currency === 'NZD' && g.rate_period === 'HOURLY');
+        expect(nzd?.group_margin_percent).toBe('50.00'); // (100-50)/100*100
+        expect(siteB.groups.every((g) => g.currency === 'NZD')).toBe(true); // uncontaminated
+        const siteA = await marginGet(SITE_A);
+        expect(siteA.groups.some((g) => g.currency === 'NZD')).toBe(false); // SITE_B excluded
+        const all = await marginGet(undefined);
+        expect(all.groups.some((g) => g.currency === 'NZD')).toBe(true); // tenant-wide includes SITE_B
+      });
+
+      it('assignment-pipeline: SITE_B STARTED exact; no-site = SITE_A + SITE_B (additivity)', async () => {
+        const siteB = await apGet(SITE_B);
+        // SITE_B STARTED = 2 seedStartedPlacement + 1 seedCommercialized (also STARTED) = 3.
+        expect(started(siteB)).toBe(3); // uncontaminated SITE_B
+        const siteA = await apGet(SITE_A);
+        const all = await apGet(undefined);
+        expect(started(all)).toBe(started(siteA) + started(siteB)); // narrowing is a disjoint partition
+      });
+
+      it('fallthrough: SITE_B exact (1 accepted, 1 fell); no-site = SITE_A + SITE_B (additivity)', async () => {
+        const siteB = await ftGet(SITE_B);
+        expect(siteB.accepted_attempts).toBe(1);
+        expect(siteB.fallthrough_attempts).toBe(1);
+        const siteA = await ftGet(SITE_A);
+        const all = await ftGet(undefined);
+        expect(all.accepted_attempts).toBe(siteA.accepted_attempts + siteB.accepted_attempts);
+        expect(all.fallthrough_attempts).toBe(siteA.fallthrough_attempts + siteB.fallthrough_attempts);
+      });
+
+      it('margin compound gate preserved under AV-1: report:read without commercials → 403', async () => {
+        const res = await fetch(`http://127.0.0.1:${port}/v1/reports/margin?site_id=${SITE_B}`, {
+          headers: { Authorization: `Bearer ${recruiterJwt}` },
+        });
+        expect(res.status).toBe(403);
+      });
     });
 
     // -------------------------------------------------------------------------

@@ -2241,6 +2241,7 @@
     "libs/reporting/src/tests/fill-performance.spec.ts",
     "libs/reporting/src/tests/guarantee-exposure.integration.spec.ts",
     "libs/reporting/src/tests/guarantee-exposure.spec.ts",
+    "libs/reporting/src/tests/margin.integration.spec.ts",
     "libs/reporting/src/tests/margin.spec.ts",
     "libs/reporting/src/tests/recruiter-metrics.spec.ts",
     "libs/reporting/tsconfig.json",

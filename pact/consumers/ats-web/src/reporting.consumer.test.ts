@@ -131,6 +131,38 @@ describe('ats-web → reporting', () => {
       });
   });
 
+  // T9-B5 / CG-1 — refusal symmetry: a caller WITHOUT report:read → 403.
+  it('GET /v1/reports/fill-performance without report:read → 403', async () => {
+    const FROM = '2020-01-01T00:00:00.000Z';
+    const TO = '2030-01-01T00:00:00.000Z';
+    await provider
+      .addInteraction()
+      .given('an ats-web recruiter and a fully-filled requisition exist')
+      .uponReceiving('a fill-performance read without report:read')
+      .withRequest('GET', '/v1/reports/fill-performance', (b) => {
+        b.headers({ Authorization: 'Bearer eyJfake.noscopes.token' }).query({ from: FROM, to: TO });
+      })
+      .willRespondWith(403, (b) => {
+        b.jsonBody({
+          error: {
+            code: 'INSUFFICIENT_PERMISSIONS',
+            message: like('Required scopes not granted'),
+            request_id: uuid(),
+            details: like({}),
+          },
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(
+          `${mock.url}/v1/reports/fill-performance?from=${encodeURIComponent(FROM)}&to=${encodeURIComponent(TO)}`,
+          { headers: { Authorization: 'Bearer eyJfake.noscopes.token' } },
+        );
+        expect(res.status).toBe(403);
+        const body = (await res.json()) as { error: { code: string } };
+        expect(body.error.code).toBe('INSUFFICIENT_PERMISSIONS');
+      });
+  });
+
   it('GET /v1/reports/fallthrough returns fallthrough rate + reasons', async () => {
     const FROM = '2020-01-01T00:00:00.000Z';
     const TO = '2100-01-01T00:00:00.000Z';
@@ -165,6 +197,38 @@ describe('ats-web → reporting', () => {
         expect(res.status).toBe(200);
         const body = (await res.json()) as { fallthrough_rate: number | null };
         expect(body.fallthrough_rate).toBe(100);
+      });
+  });
+
+  // T9-B5 / CG-1 — refusal symmetry: a caller WITHOUT report:read → 403.
+  it('GET /v1/reports/fallthrough without report:read → 403', async () => {
+    const FROM = '2020-01-01T00:00:00.000Z';
+    const TO = '2100-01-01T00:00:00.000Z';
+    await provider
+      .addInteraction()
+      .given('an ats-web recruiter and a fallen-through placement exist')
+      .uponReceiving('a fallthrough read without report:read')
+      .withRequest('GET', '/v1/reports/fallthrough', (b) => {
+        b.headers({ Authorization: 'Bearer eyJfake.noscopes.token' }).query({ from: FROM, to: TO });
+      })
+      .willRespondWith(403, (b) => {
+        b.jsonBody({
+          error: {
+            code: 'INSUFFICIENT_PERMISSIONS',
+            message: like('Required scopes not granted'),
+            request_id: uuid(),
+            details: like({}),
+          },
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(
+          `${mock.url}/v1/reports/fallthrough?from=${encodeURIComponent(FROM)}&to=${encodeURIComponent(TO)}`,
+          { headers: { Authorization: 'Bearer eyJfake.noscopes.token' } },
+        );
+        expect(res.status).toBe(403);
+        const body = (await res.json()) as { error: { code: string } };
+        expect(body.error.code).toBe('INSUFFICIENT_PERMISSIONS');
       });
   });
 
@@ -211,6 +275,35 @@ describe('ats-web → reporting', () => {
         expect(res.status).toBe(200);
         const body = (await res.json()) as { contract_assignments: { coverage: string } };
         expect(body.contract_assignments.coverage).toBe('forward_materialized');
+      });
+  });
+
+  // T9-B5 / CG-1 — refusal symmetry: a caller WITHOUT report:read → 403.
+  it('GET /v1/reports/assignment-pipeline without report:read → 403', async () => {
+    await provider
+      .addInteraction()
+      .given('an ats-web recruiter and assignment-pipeline placements exist')
+      .uponReceiving('an assignment-pipeline read without report:read')
+      .withRequest('GET', '/v1/reports/assignment-pipeline', (b) => {
+        b.headers({ Authorization: 'Bearer eyJfake.noscopes.token' });
+      })
+      .willRespondWith(403, (b) => {
+        b.jsonBody({
+          error: {
+            code: 'INSUFFICIENT_PERMISSIONS',
+            message: like('Required scopes not granted'),
+            request_id: uuid(),
+            details: like({}),
+          },
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/reports/assignment-pipeline`, {
+          headers: { Authorization: 'Bearer eyJfake.noscopes.token' },
+        });
+        expect(res.status).toBe(403);
+        const body = (await res.json()) as { error: { code: string } };
+        expect(body.error.code).toBe('INSUFFICIENT_PERMISSIONS');
       });
   });
 

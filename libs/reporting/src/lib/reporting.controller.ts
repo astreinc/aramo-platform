@@ -41,7 +41,8 @@ import { ReportingService } from './reporting.service.js';
 //   @RequireScopes(...)                 // route-level — scope axis
 //   @RequireSiteMatch()                 // route-level — site axis
 //
-// Scope (NOT seeded — gap-and-note per A7 directive §1):
+// Scope (`report:read`, SEEDED to the 8 operational roles in
+// libs/identity/prisma/seed.ts — T9-B5 refresh of the original gap-and-note):
 //   - `report:read` — read-only (recruiter+ AND tenant_admin; the
 //     role-visibility predicate at the service layer governs what
 //     each role sees, NOT a separate `:all` scope here).

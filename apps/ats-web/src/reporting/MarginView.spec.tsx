@@ -101,4 +101,15 @@ describe('MarginView', () => {
     render(<MarginView sessionOverride={WITH_COMMERCIAL} />);
     await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
   });
+
+  // T9-B5 (§6) — the loading (role="status") state while the mount fetch is in flight
+  // (authorized actor only; the gated actor never fetches).
+  it('shows the loading state while the request is in flight', async () => {
+    // never-resolving fetch keeps the view in the loading state.
+    vi.spyOn(globalThis, 'fetch').mockReturnValue(
+      new Promise<Response>(() => undefined) as unknown as Promise<Response>,
+    );
+    render(<MarginView sessionOverride={WITH_COMMERCIAL} />);
+    await waitFor(() => expect(screen.getByRole('status')).toBeInTheDocument());
+  });
 });
