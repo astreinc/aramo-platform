@@ -79,10 +79,21 @@ export class AssignmentPipelineReadRepository {
     const byStateRows = await this.prisma.$queryRawUnsafe<
       Array<{ state: string; count: bigint }>
     >(
+      // Track 7 / T7-PX §13 — a conversion mints a NEW permanent PlacementProcess (STARTED)
+      // for the same engagement as the frozen source contract placement (also STARTED). To
+      // avoid a DUPLICATE assignment-pipeline count, the conversion TARGET is excluded here
+      // (keyed on the conversion lineage — surgical; direct-permanent placements, which are
+      // not conversion targets, are unaffected). The source contract placement remains
+      // counted once.
       `SELECT state::text AS state, count(*)::bigint AS count
          FROM "placement"."PlacementProcess"
         WHERE tenant_id = $1::uuid
           AND state::text = ANY($2::text[])
+          AND id NOT IN (
+            SELECT target_placement_process_id
+              FROM "placement"."PermanentPlacementConversionLineage"
+             WHERE tenant_id = $1::uuid
+          )
           ${hasReq ? 'AND requisition_id = ANY($3::uuid[])' : ''}
         GROUP BY state`,
       ...byStateParams,
@@ -121,10 +132,15 @@ export class AssignmentPipelineReadRepository {
     const caRows = await this.prisma.$queryRawUnsafe<
       Array<{ s: string; count: bigint }>
     >(
+      // Track 7 / T7-PX §13 — a conversion ends the ContractAssignment with the genuine
+      // domain reason CONVERTED_TO_PERMANENT, which MUST NOT be reported as ordinary
+      // ENDED/attrition. Excluded here explicitly keyed on the reason (ACTIVE rows carry a
+      // NULL end_reason, so IS DISTINCT FROM keeps them; ordinary ENDED reasons are kept).
       `SELECT lifecycle_state::text AS s, count(*)::bigint AS count
          FROM "placement"."ContractAssignment"
         WHERE tenant_id = $1::uuid
           AND lifecycle_state::text = ANY(ARRAY['ACTIVE','ENDED'])
+          AND end_reason IS DISTINCT FROM 'CONVERTED_TO_PERMANENT'
           ${hasReq ? 'AND requisition_id = ANY($2::uuid[])' : ''}
         GROUP BY lifecycle_state`,
       ...caParams,

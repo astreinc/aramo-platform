@@ -3,6 +3,7 @@
 // Persistence.
 export { PrismaService } from './lib/prisma/prisma.service.js';
 export { PlacementRepository } from './lib/placement.repository.js';
+export type { ConvertToPermanentResult } from './lib/placement.repository.js';
 export { PlacementProcessEventRepository } from './lib/placement-process-event.repository.js';
 export { PlacementEventReadModule } from './lib/placement-event-read.module.js';
 export { AssignmentPipelineReadRepository } from './lib/assignment-pipeline-read.repository.js';

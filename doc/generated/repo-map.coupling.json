@@ -3819,6 +3819,12 @@
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/pre-start-requirement/marker-confinement.spec.ts",
       "status": "excluded",
+      "to": "libs/placement/prisma/migrations/20260817120000_t7_px_contract_to_permanent_conversion/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/pre-start-requirement/marker-confinement.spec.ts",
+      "status": "excluded",
       "to": "libs/placement/src/tests/commercial-margin-read.integration.spec.ts"
     },
     {
@@ -8089,6 +8095,12 @@
       "from": "apps/ats-web/src/pipeline/types.ts",
       "status": "production",
       "to": "libs/talent-record/src/lib/dto/talent-record.view.ts"
+    },
+    {
+      "excludedBy": "src/**/*.spec.ts",
+      "from": "apps/ats-web/src/placement/assignment-end-reason-drift.spec.ts",
+      "status": "excluded",
+      "to": "libs/placement/prisma/schema.prisma"
     },
     {
       "excludedBy": "src/**/*.spec.ts",
@@ -13708,6 +13720,11 @@
     { "from": "package.json", "status": "unscoped", "to": "scripts/verify-vocabulary.sh" },
     { "from": "package.json", "status": "unscoped", "to": "tools/db-sync-local.sh" },
     {
+      "from": "pact/consumers/ats-web/src/contract-conversion.consumer.test.ts",
+      "status": "unscoped",
+      "to": "apps/ats-web/src/placement/placement-api.ts"
+    },
+    {
       "from": "pact/consumers/ats-web/src/permanent-placement.consumer.test.ts",
       "status": "unscoped",
       "to": "apps/ats-web/src/placement/permanent-placement-api.ts"
@@ -14130,6 +14147,11 @@
     {
       "from": "pact/provider/src/verify-api.ts",
       "status": "unscoped",
+      "to": "libs/placement/prisma/migrations/20260817120000_t7_px_contract_to_permanent_conversion/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
       "to": "libs/policy-store/prisma/migrations/20260730120000_init_policy_store/migration.sql"
     },
     {
@@ -14446,6 +14468,11 @@
       "from": "pact/provider/src/verify-api.ts",
       "status": "unscoped",
       "to": "libs/task/prisma/migrations/20260617120000_task_workspace_fields/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "pact/consumers/ats-web/src/contract-conversion.consumer.test.ts"
     },
     {
       "from": "pact/provider/src/verify-api.ts",
