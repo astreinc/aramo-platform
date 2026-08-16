@@ -1,3 +1,4 @@
+import { hasScope, type Session, useSession } from '@aramo/fe-foundation';
 import { Link } from 'react-router-dom';
 
 // T9-B2 — the Reporting area index (/reports). The single "Reports" rail entry
@@ -5,7 +6,25 @@ import { Link } from 'react-router-dom';
 // top-level rail entry); this page links to each dedicated report page. Each
 // report remains its own route/component — this is a thin index, not a
 // dashboard.
-export function ReportingLanding(): JSX.Element {
+//
+// T9-B4 — the Margin link is the fourth entry, shown ONLY when the actor holds
+// assignment:commercials:read (§14): the reporting surface stays report:read, but
+// the commercial disclosure gate hides the margin entry from actors without it.
+// The backend independently 403s on direct navigation.
+export function ReportingLanding({
+  sessionOverride,
+}: {
+  readonly sessionOverride?: Session;
+} = {}): JSX.Element {
+  const sessionState = useSession();
+  const session: Session | null =
+    sessionOverride ??
+    (sessionState.status === 'authenticated' ? sessionState.session : null);
+  const canReadMargin =
+    session !== null &&
+    Array.isArray(session.scopes) &&
+    hasScope(session, 'assignment:commercials:read');
+
   return (
     <section aria-labelledby="reports-heading">
       <h1 id="reports-heading">Reports</h1>
@@ -29,6 +48,13 @@ export function ReportingLanding(): JSX.Element {
             Assignment Pipeline
           </Link>
         </li>
+        {canReadMargin ? (
+          <li>
+            <Link to="/reports/margin" data-testid="reports-link-margin">
+              Margin
+            </Link>
+          </li>
+        ) : null}
       </ul>
     </section>
   );

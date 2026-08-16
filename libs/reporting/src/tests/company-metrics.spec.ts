@@ -44,6 +44,7 @@ function makeService(opts: {
     stub, // placementEventRepository (T9-B2; unused here)
     stub, // placementPipelineRepository (T9-B3; unused here)
     {} as never, // T7-P4 guaranteeExposureRepository (unused here)
+    stub, // commercialMarginRepository (T9-B4; unused here)
   );
   return { svc, requisitionRepository, pipelineRepository };
 }

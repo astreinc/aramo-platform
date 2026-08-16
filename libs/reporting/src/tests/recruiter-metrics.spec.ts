@@ -46,6 +46,7 @@ function makeService(opts: {
     {} as never, // placementEventRepository (T9-B2; unused here)
     {} as never, // placementPipelineRepository (T9-B3; unused here)
     {} as never, // T7-P4 guaranteeExposureRepository (unused here)
+    {} as never, // commercialMarginRepository (T9-B4; unused here)
   );
   return { svc, requisitionRepository, pipelineRepository, tenantSettingRepository };
 }

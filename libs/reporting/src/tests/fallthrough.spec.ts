@@ -44,6 +44,7 @@ function makeService(cohort: Cohort, visibleReqs?: ReadonlyArray<{ id: string }>
     placementEventRepository as never,
     stub, // placementPipelineRepository (T9-B3; unused here)
     {} as never, // T7-P4 guaranteeExposureRepository (unused here)
+    stub, // commercialMarginRepository (T9-B4; unused here)
   );
   return { svc, placementEventRepository, requisitionRepository };
 }

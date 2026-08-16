@@ -25,6 +25,7 @@ function serviceWithSnapshot(snapshot: GuaranteeExposureSnapshot): ReportingServ
     {} as never, // requisitionRepository (see-all → never called)
     {} as never, {} as never, {} as never, {} as never, {} as never,
     repo,
+    {} as never, // commercialMarginRepository (T9-B4; unused here)
   );
 }
 
