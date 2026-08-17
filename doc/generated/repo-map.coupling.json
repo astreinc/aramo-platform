@@ -10499,6 +10499,11 @@
     {
       "from": "doc/governance/recon/2026-08-09/SEG-07-test-deploy.md",
       "status": "unscoped",
+      "to": "infrastructure-lightsail/ses-mail-alignment.tf"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-07-test-deploy.md",
+      "status": "unscoped",
       "to": "libs/auth-storage/prisma/seed.ts"
     },
     {
