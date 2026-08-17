@@ -5,9 +5,16 @@ import type { Session } from '@aramo/fe-foundation';
 
 import type { ActivityView } from '../activity/types';
 import type { PipelineView } from '../pipeline/types';
+import { BreadcrumbProvider, useBreadcrumbEntity } from '../shell/breadcrumb';
 
 import { TalentDetailView } from './TalentDetailView';
 import type { AttachmentView, TalentRecordView } from './types';
+
+// Probe that renders the current breadcrumb entity (T10-B1/F-006 proof seam).
+function CrumbProbe() {
+  const entity = useBreadcrumbEntity();
+  return <div data-testid="crumb-probe">{entity ?? ''}</div>;
+}
 
 function makeSession(scopes: string[]): Session {
   return {
@@ -155,6 +162,32 @@ function renderAt(path: string, session: Session) {
 describe('TalentDetailView', () => {
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  // ── T10-B1/F-006 — the detail view publishes the talent name (already held
+  //    for its header) as the breadcrumb entity; no new fetch is introduced
+  //    (only the existing talent-records read is mocked). ──
+  it('publishes the talent name as the breadcrumb entity (no new fetch)', async () => {
+    installFetch({ '/v1/talent-records/tal-1': makeTalent() });
+    render(
+      <MemoryRouter initialEntries={['/talent/tal-1']}>
+        <BreadcrumbProvider>
+          <CrumbProbe />
+          <Routes>
+            <Route
+              path="/talent/:talentId"
+              element={<TalentDetailView sessionOverride={makeSession(['talent:read'])} />}
+            />
+          </Routes>
+        </BreadcrumbProvider>
+      </MemoryRouter>,
+    );
+    // Empty until the record resolves…
+    expect(screen.getByTestId('crumb-probe')).toHaveTextContent('');
+    // …then the talent name is published.
+    await waitFor(() =>
+      expect(screen.getByTestId('crumb-probe')).toHaveTextContent('Ada Lovelace'),
+    );
   });
 
   it('renders the Identity tab with the talent name and pool-open framing', async () => {

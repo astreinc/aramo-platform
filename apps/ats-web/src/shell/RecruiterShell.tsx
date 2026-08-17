@@ -92,6 +92,16 @@ const WORK_NAV: readonly NavItem[] = [
     icon: <IconShield />,
     scope: 'identity:resolve',
   },
+  // Portal P3b (T10-B1/F-005) — the tenant dispute-disposition worklist was
+  // live but URL-only. Surfaced here gated on its EXISTING route scope
+  // (identity:resolve, App.tsx); hidden from a principal without it (the
+  // hasScope filter renders nothing → no NavLink, no fetch).
+  {
+    to: '/identity/portal-disputes',
+    label: 'Portal Disputes',
+    icon: <IconShield />,
+    scope: 'identity:resolve',
+  },
   // TR-12 B2 — the caseworker's Trust Proposals queue. Gated on talent:read (the
   // same scope as the route); the per-row ACTs carry their own scopes.
   {
@@ -138,11 +148,42 @@ const SECTION_LABEL: Record<string, string> = {
   contacts: 'Contacts',
   selections: 'Selection',
   identity: 'Identity Advisories',
+  // TR-12 (T10-B1/F-003) — the trust segment was absent, so /trust/proposals
+  // fell through to the 'Aramo' default. It resolves to Trust Proposals now.
+  trust: 'Trust Proposals',
   search: 'Search',
   tasks: 'Tasks',
   reports: 'Reports',
   admin: 'Settings',
 };
+
+// Path-specific section identity (T10-B1). Two routes share the `identity`
+// first segment — Identity Advisories and Portal Disputes — so the
+// first-segment map alone mislabels Portal Disputes (F-004). These ordered
+// prefixes are matched BEFORE the first-segment fallback and also carry the
+// correct section href (the segment has no bare landing route).
+const SECTION_PATH_LABEL: readonly (readonly [string, string])[] = [
+  ['/identity/advisories', 'Identity Advisories'],
+  ['/identity/portal-disputes', 'Portal Disputes'],
+  ['/trust/proposals', 'Trust Proposals'],
+];
+
+interface SectionCrumb {
+  readonly label: string;
+  readonly href: string;
+}
+
+// Resolve the section crumb (label + href) for a pathname: a specific
+// multi-segment route wins over the first-segment map; unknown → 'Aramo'.
+function resolveSection(pathname: string): SectionCrumb {
+  for (const [prefix, label] of SECTION_PATH_LABEL) {
+    if (pathname === prefix || pathname.startsWith(`${prefix}/`)) {
+      return { label, href: prefix };
+    }
+  }
+  const segment = pathname.split('/')[1] ?? '';
+  return { label: SECTION_LABEL[segment] ?? 'Aramo', href: `/${segment}` };
+}
 
 interface RecruiterShellProps {
   readonly session: Session;
@@ -168,9 +209,10 @@ function RecruiterShellInner({
 }: RecruiterShellProps) {
   const location = useLocation();
   const me = useMe();
-  const segment = location.pathname.split('/')[1] ?? '';
   const entity = useBreadcrumbEntity();
-  const section = SECTION_LABEL[segment] ?? 'Aramo';
+  const { label: section, href: sectionHref } = resolveSection(
+    location.pathname,
+  );
 
   // The resolved /me display data (loading-safe — `me` is null until the fetch
   // resolves and stays null on error). Name falls back display_name → email;
@@ -185,7 +227,7 @@ function RecruiterShellInner({
   const railInitials = displayName ? initialsOf(displayName) : '·';
   const crumbs: readonly BreadcrumbItem[] =
     entity !== null
-      ? [{ label: section, href: `/${segment}` }, { label: entity }]
+      ? [{ label: section, href: sectionHref }, { label: entity }]
       : [{ label: section }];
 
   // §5 Auth-Hardening D3: the shared session logout — clears the LOCAL session

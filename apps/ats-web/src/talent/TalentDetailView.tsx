@@ -11,6 +11,7 @@ import {
 import { Tabs, type TabItem } from '@aramo/fe-foundation';
 
 import { Button, StatusPill, type PillTone } from '../ui';
+import { useEntityCrumb } from '../shell/breadcrumb';
 import { SelectionsPanel } from '../selection/SelectionsPanel';
 import { TasksPanel } from '../task/TasksPanel';
 import { listActivities } from '../activity/activity-api';
@@ -83,6 +84,10 @@ export function TalentDetailView({ sessionOverride }: TalentDetailViewProps) {
     (sessionState.status === 'authenticated' ? sessionState.session : null);
 
   const [talent, setTalent] = useState<TalentRecordView | null>(null);
+  // T10-B1/F-006 — publish the talent name (already resolved for the header) as
+  // the breadcrumb entity, so the crumb reads "Talent › <name>"; null while
+  // loading. No new fetch — reuses the record this view already holds.
+  useEntityCrumb(talent !== null ? fullName(talent) : null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 

@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 
 import { Card, CardHead, InlineAlert, PageHeader } from '../ui';
+import { useEntityCrumb } from '../shell/breadcrumb';
 
 import { AssignmentCommercialPanel } from './AssignmentCommercialPanel';
 import { AssignmentLifecyclePanel } from './AssignmentLifecyclePanel';
@@ -104,6 +105,16 @@ export function PlacementDetailView({
       cancelled = true;
     };
   }, [getPlacementFun, listEventsFun, getPermanentFun, placementId, canRead, canReadPermanent, refreshKey]);
+
+  // T10-B1/F-006 — publish the placement's human handle (the client offer
+  // reference the board keys on) as the breadcrumb entity → "Placements ›
+  // <reference>". Reuses the already-loaded PlacementView; null when the
+  // reference is absent or the read is not ready (graceful — no UUID crumb, no
+  // new fetch). No talent-name lookup is added (that would be a new API call —
+  // out of B1 per §4/hard-stop).
+  useEntityCrumb(
+    state.status === 'ready' ? state.placement.client_offer_reference : null,
+  );
 
   // Route visibility follows placement:read (RouteGuard also gates).
   if (!canRead) return null;

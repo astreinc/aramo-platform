@@ -1,5 +1,8 @@
 import { useState, type FormEvent } from 'react';
 
+import { useEntityCrumb } from '../shell/breadcrumb';
+import { PageHeader } from '../ui';
+
 import { getGuaranteeExposure } from './guarantee-exposure-api';
 import type { GuaranteeExposureReport } from './guarantee-exposure-types';
 
@@ -24,6 +27,8 @@ export function GuaranteeExposureView(): JSX.Element {
   const [status, setStatus] = useState<Status>('idle');
   const [error, setError] = useState<string | null>(null);
   const [report, setReport] = useState<GuaranteeExposureReport | null>(null);
+  // T10-B1/F-002 — sub-page identity for the "Reports › Guarantee exposure" crumb.
+  useEntityCrumb('Guarantee exposure');
 
   async function run(e: FormEvent): Promise<void> {
     e.preventDefault();
@@ -52,12 +57,11 @@ export function GuaranteeExposureView(): JSX.Element {
   }
 
   return (
-    <section aria-labelledby="guarantee-exposure-heading">
-      <h1 id="guarantee-exposure-heading">Guarantee exposure</h1>
-      <p>
-        Permanent-placement guarantee exposure for placements that started in the selected period.
-        Monetary values are shown per currency and are never combined across currencies.
-      </p>
+    <section>
+      <PageHeader
+        title="Guarantee exposure"
+        description="Permanent-placement guarantee exposure for placements that started in the selected period. Monetary values are shown per currency and are never combined across currencies."
+      />
       <form onSubmit={run}>
         <label>
           From

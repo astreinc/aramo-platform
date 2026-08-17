@@ -48,6 +48,12 @@ export function AppShell({ rail, topBar, children }: AppShellProps) {
 
   return (
     <div className={`rc-app${collapsed ? ' rc-app--rail-collapsed' : ''}`}>
+      {/* Skip-navigation (T10-B1) — the first focusable element in the shell, so
+          keyboard/SR users bypass the rail and land on the main content. Visually
+          hidden until focused (see .rc-skip-link); targets the <main> below. */}
+      <a className="rc-skip-link" href="#rc-main-content">
+        Skip to main content
+      </a>
       {rail}
       <button
         type="button"
@@ -61,7 +67,13 @@ export function AppShell({ rail, topBar, children }: AppShellProps) {
       </button>
       <div className="rc-main">
         {topBar}
-        <div className="rc-content">{children}</div>
+        {/* Primary landmark (T10-B1) — exactly one <main> per authenticated
+            shell; the skip-link + rail nav target it. tabIndex=-1 makes it a
+            reliable programmatic focus target for the skip-link without adding
+            it to the tab order. */}
+        <main id="rc-main-content" className="rc-content" tabIndex={-1}>
+          {children}
+        </main>
       </div>
     </div>
   );

@@ -127,4 +127,38 @@ describe('AppShell', () => {
       screen.getByRole('link', { name: /Aramo · Recruiter — home/ }),
     ).toHaveAttribute('href', '/');
   });
+
+  // ── T10-B1/F-034 — main landmark (B1-9) ──
+  it('exposes exactly one <main> landmark wrapping the content', () => {
+    render(
+      <AppShell rail={<Rail>{null}</Rail>} topBar={<TopBar>bar</TopBar>}>
+        <p>content</p>
+      </AppShell>,
+    );
+    const mains = screen.getAllByRole('main');
+    expect(mains).toHaveLength(1);
+    expect(mains[0]).toHaveAttribute('id', 'rc-main-content');
+    // The routed content lives inside the landmark.
+    expect(mains[0]).toContainElement(screen.getByText('content'));
+    // Programmatic focus target for the skip-link, not a Tab stop.
+    expect(mains[0]).toHaveAttribute('tabindex', '-1');
+  });
+
+  // ── T10-B1/F-035 — skip navigation (B1-10) ──
+  it('renders a keyboard-reachable skip-link, first in the DOM, targeting the main landmark', () => {
+    const { container } = render(
+      <AppShell rail={<Rail>{null}</Rail>} topBar={<TopBar>bar</TopBar>}>
+        <p>content</p>
+      </AppShell>,
+    );
+    const skip = screen.getByRole('link', { name: /skip to main content/i });
+    // Anchors are keyboard-reachable by default; it points at the landmark id.
+    expect(skip).toHaveAttribute('href', '#rc-main-content');
+    // It is the FIRST focusable element in the shell (ahead of the rail nav),
+    // so a keyboard user hits it before the navigation.
+    const app = container.querySelector('.rc-app');
+    expect(app?.firstElementChild).toBe(skip);
+    // The target it moves focus to is the sole main landmark.
+    expect(screen.getByRole('main')).toHaveAttribute('id', 'rc-main-content');
+  });
 });

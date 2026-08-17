@@ -3,6 +3,8 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { BreadcrumbProvider, useBreadcrumbEntity } from '../shell/breadcrumb';
+
 import { PlacementDetailView } from './PlacementDetailView';
 import {
   getPlacement,
@@ -10,6 +12,12 @@ import {
   listPlacementEvents,
 } from './placement-api';
 import type { ContractAssignmentView, PlacementEventView, PlacementView } from './types';
+
+// Probe rendering the current breadcrumb entity (T10-B1/F-006 proof seam).
+function CrumbProbe() {
+  const entity = useBreadcrumbEntity();
+  return <div data-testid="crumb-probe">{entity ?? ''}</div>;
+}
 
 // T4-E / E1-d composition proofs (CHARACTERIZATION — additive product surface).
 // The detail container is exercised through the real ./placement-api module
@@ -122,6 +130,47 @@ describe('PlacementDetailView — placement product composition', () => {
     expect(screen.getByTestId('placement-state').textContent).toBe('Ready to start');
     // …but the composition wires no transition-write handler → no dead control.
     expect(container.querySelectorAll('.placement-card__action')).toHaveLength(0);
+  });
+
+  // ── T10-B1/F-006 — the placement's human handle (client offer reference,
+  //    already on the loaded PlacementView) is published as the breadcrumb
+  //    entity; no talent-name lookup / new fetch is added. ──
+  it('publishes the client offer reference as the breadcrumb entity', async () => {
+    getPlacementMock.mockResolvedValue(placement({ client_offer_reference: 'REF-100' }));
+    listEventsMock.mockResolvedValue({ items: [] });
+    getAssignmentMock.mockResolvedValue({ assignment: assignment() });
+    render(
+      <MemoryRouter>
+        <ToastProvider>
+          <BreadcrumbProvider>
+            <CrumbProbe />
+            <PlacementDetailView placementIdOverride="p1" sessionOverride={READ} />
+          </BreadcrumbProvider>
+        </ToastProvider>
+      </MemoryRouter>,
+    );
+    await screen.findByTestId('placement-detail');
+    await waitFor(() =>
+      expect(screen.getByTestId('crumb-probe')).toHaveTextContent('REF-100'),
+    );
+  });
+
+  it('publishes no crumb entity when the placement has no client offer reference', async () => {
+    getPlacementMock.mockResolvedValue(placement({ client_offer_reference: null }));
+    listEventsMock.mockResolvedValue({ items: [] });
+    getAssignmentMock.mockResolvedValue({ assignment: assignment() });
+    render(
+      <MemoryRouter>
+        <ToastProvider>
+          <BreadcrumbProvider>
+            <CrumbProbe />
+            <PlacementDetailView placementIdOverride="p1" sessionOverride={READ} />
+          </BreadcrumbProvider>
+        </ToastProvider>
+      </MemoryRouter>,
+    );
+    await screen.findByTestId('placement-detail');
+    expect(screen.getByTestId('crumb-probe')).toHaveTextContent('');
   });
 
   // Proof H — PlacementEventTimeline mounted with the placement's events.

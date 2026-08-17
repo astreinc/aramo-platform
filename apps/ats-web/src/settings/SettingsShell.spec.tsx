@@ -177,4 +177,24 @@ describe('Honest seams — no dead knobs', () => {
       unmount();
     }
   });
+
+  // ── T10-B1/F-010 — Integrations is LIVE (T8-P3 monitoring + T8-CONNECTOR-A);
+  //    the stale "Soon" badge is dropped and nothing implies Connector-B /
+  //    provider selection / production onboarding. ──
+  it('presents Integrations as a live section — no stale "Soon" badge', () => {
+    renderAt('/admin/settings/profile', makeSession(['tenant:admin:settings']));
+    const link = screen.getByTestId('settings-nav-integrations');
+    expect(link).toHaveTextContent('Integrations');
+    expect(link.textContent).not.toContain('Soon');
+    expect(link.textContent).not.toMatch(/Connector-B|provider|onboarding/i);
+  });
+
+  it('marks the Integrations nav item status "live" with no badge in SETTINGS_NAV', () => {
+    const integrations = SETTINGS_NAV.flatMap((g) => g.items).find(
+      (i) => i.key === 'integrations',
+    );
+    expect(integrations).toBeDefined();
+    expect(integrations?.status).toBe('live');
+    expect(integrations?.badge).toBeUndefined();
+  });
 });

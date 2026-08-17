@@ -200,9 +200,12 @@ export const SETTINGS_NAV: readonly NavGroup[] = [
     ],
   },
   {
-    // The mockup's 7th group ("Connect"), omitted from Directive §A's 16-
-    // section enumeration. Added as an honest seam follow-up — there is no
-    // integrations/API-key/webhook substrate today (future milestone).
+    // The mockup's 7th group ("Connect"). LIVE as of T10-B1/F-010: the
+    // Integrations section hosts requisition-ingestion monitoring (T8-P3,
+    // `requisition:import:read`) and connector connection management
+    // (T8-CONNECTOR-A, `integration:read`) — real substrate, so the stale
+    // "Soon" badge is dropped. This does NOT imply Connector-B, provider
+    // selection, or production onboarding (those remain out of scope).
     heading: 'Connect',
     items: [
       {
@@ -211,8 +214,7 @@ export const SETTINGS_NAV: readonly NavGroup[] = [
         icon: <IconPlug />,
         to: '/admin/settings/integrations',
         match: '/admin/settings/integrations',
-        status: 'soon',
-        badge: SOON,
+        status: 'live',
       },
     ],
   },
