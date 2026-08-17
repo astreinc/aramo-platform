@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react';
 
+import { useEntityCrumb } from '../shell/breadcrumb';
+import { PageHeader } from '../ui';
+
 import { getAssignmentPipeline } from './assignment-pipeline-api';
 import type { AssignmentPipelineReport } from './assignment-pipeline-types';
 
@@ -22,6 +25,8 @@ type Status = 'loading' | 'ready' | 'error';
 export function AssignmentPipelineView(): JSX.Element {
   const [status, setStatus] = useState<Status>('loading');
   const [report, setReport] = useState<AssignmentPipelineReport | null>(null);
+  // T10-B1/F-002 — sub-page identity for the "Reports › Assignment Pipeline" crumb.
+  useEntityCrumb('Assignment Pipeline');
 
   useEffect(() => {
     let active = true;
@@ -41,9 +46,11 @@ export function AssignmentPipelineView(): JSX.Element {
   }, []);
 
   return (
-    <section aria-labelledby="ap-heading">
-      <h1 id="ap-heading">Assignment Pipeline</h1>
-      <p>Current snapshot of placements in the assignment pipeline.</p>
+    <section>
+      <PageHeader
+        title="Assignment Pipeline"
+        description="Current snapshot of placements in the assignment pipeline."
+      />
 
       {status === 'loading' ? <p role="status">Loading…</p> : null}
       {status === 'error' ? (

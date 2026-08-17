@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
 import { hasScope, type Session, useSession } from '@aramo/fe-foundation';
 
+import { useEntityCrumb } from '../shell/breadcrumb';
+import { PageHeader } from '../ui';
+
 import { getMargin } from './margin-api';
 import type { MarginReport } from './margin-types';
 
@@ -40,6 +43,10 @@ export function MarginView({
 
   const [status, setStatus] = useState<Status>('idle');
   const [report, setReport] = useState<MarginReport | null>(null);
+  // T10-B1/F-002 — sub-page identity for the "Reports › Margin" crumb. Published
+  // unconditionally (before the gated early-return) so the crumb is correct
+  // whether or not the commercial-read scope is held.
+  useEntityCrumb('Margin');
 
   useEffect(() => {
     // §26 — no fetch when the surface is gated away (missing the commercial scope).
@@ -63,8 +70,8 @@ export function MarginView({
 
   if (!canRead) {
     return (
-      <section aria-labelledby="margin-heading">
-        <h1 id="margin-heading">Margin</h1>
+      <section>
+        <PageHeader title="Margin" />
         <p role="status" data-testid="margin-gated">
           You do not have access to commercial margin.
         </p>
@@ -73,9 +80,11 @@ export function MarginView({
   }
 
   return (
-    <section aria-labelledby="margin-heading">
-      <h1 id="margin-heading">Margin</h1>
-      <p>Current assignment rate margin. Coverage is forward-materialized.</p>
+    <section>
+      <PageHeader
+        title="Margin"
+        description="Current assignment rate margin. Coverage is forward-materialized."
+      />
 
       {status === 'loading' ? <p role="status">Loading…</p> : null}
       {status === 'error' ? (

@@ -1,7 +1,9 @@
 import { apiClient, type Session } from '@aramo/fe-foundation';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+
+import { FillPerformanceView } from '../reporting/FillPerformanceView';
 
 import { RecruiterShell } from './RecruiterShell';
 
@@ -107,6 +109,69 @@ describe('RecruiterShell', () => {
     renderShell(makeSession(['talent:read']), '/talent');
     const crumb = screen.getByRole('navigation', { name: 'Breadcrumb' });
     expect(crumb.textContent).toContain('Talent');
+  });
+
+  // ── T10-B1/F-003 — the trust segment resolves to a real section label
+  //    (previously fell through to the generic "Aramo" default). ──
+  it('resolves the Trust Proposals breadcrumb, not the "Aramo" fallback', () => {
+    renderShell(makeSession(['talent:read']), '/trust/proposals');
+    const crumb = screen.getByRole('navigation', { name: 'Breadcrumb' });
+    expect(crumb.textContent).toContain('Trust Proposals');
+    expect(crumb.textContent).not.toContain('Aramo');
+  });
+
+  // ── T10-B1/F-004 — Portal Disputes must NOT inherit the sibling
+  //    "Identity Advisories" label from the shared `identity` segment. ──
+  it('labels Portal Disputes distinctly from Identity Advisories', () => {
+    renderShell(makeSession(['identity:resolve']), '/identity/portal-disputes');
+    const crumb = screen.getByRole('navigation', { name: 'Breadcrumb' });
+    expect(crumb.textContent).toContain('Portal Disputes');
+    expect(crumb.textContent).not.toContain('Identity Advisories');
+  });
+
+  it('still labels Identity Advisories correctly (no regression)', () => {
+    renderShell(makeSession(['identity:resolve']), '/identity/advisories');
+    const crumb = screen.getByRole('navigation', { name: 'Breadcrumb' });
+    expect(crumb.textContent).toContain('Identity Advisories');
+  });
+
+  // ── T10-B1/F-005 — Portal Disputes discoverable via the rail, gated on its
+  //    EXISTING route scope (identity:resolve); hidden (no NavLink, no fetch)
+  //    without it. ──
+  it('surfaces the Portal Disputes nav item for an identity:resolve principal', () => {
+    renderShell(makeSession(['identity:resolve']));
+    expect(
+      screen.getByRole('link', { name: 'Portal Disputes' }),
+    ).toHaveAttribute('href', '/identity/portal-disputes');
+  });
+
+  it('hides the Portal Disputes nav item from a principal without identity:resolve', () => {
+    renderShell(makeSession(['talent:read']));
+    // Trust Proposals (talent:read) is shown, but Portal Disputes is not — and
+    // because it is not rendered, no NavLink and no fetch originate from it.
+    expect(screen.getByRole('link', { name: 'Trust Proposals' })).toBeInTheDocument();
+    expect(
+      screen.queryByRole('link', { name: 'Portal Disputes' }),
+    ).not.toBeInTheDocument();
+  });
+
+  // ── T10-B1/F-002 — a report page publishes a "Reports › <report>" crumb and
+  //    the section crumb links back to the Reports landing. ──
+  it('gives a report page a return relationship to Reports via the breadcrumb', () => {
+    render(
+      <MemoryRouter initialEntries={['/reports/fill-performance']}>
+        <RecruiterShell session={makeSession(['report:read'])}>
+          <FillPerformanceView />
+        </RecruiterShell>
+      </MemoryRouter>,
+    );
+    const crumb = screen.getByRole('navigation', { name: 'Breadcrumb' });
+    expect(crumb.textContent).toContain('Reports');
+    expect(crumb.textContent).toContain('Fill performance');
+    // The "Reports" section crumb is a link back to the landing.
+    expect(
+      within(crumb).getByRole('link', { name: 'Reports' }),
+    ).toHaveAttribute('href', '/reports');
   });
 
   it('logs out via POST /logout then runs the completion seam', async () => {

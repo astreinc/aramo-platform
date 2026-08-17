@@ -1,5 +1,8 @@
 import { useState, type FormEvent } from 'react';
 
+import { useEntityCrumb } from '../shell/breadcrumb';
+import { PageHeader } from '../ui';
+
 import { getFallthrough } from './fallthrough-api';
 import type { FallthroughReport } from './fallthrough-types';
 
@@ -24,6 +27,8 @@ export function FallthroughView(): JSX.Element {
   const [status, setStatus] = useState<Status>('idle');
   const [error, setError] = useState<string | null>(null);
   const [report, setReport] = useState<FallthroughReport | null>(null);
+  // T10-B1/F-002 — sub-page identity for the "Reports › Fallthrough" crumb.
+  useEntityCrumb('Fallthrough');
 
   async function run(e: FormEvent): Promise<void> {
     e.preventDefault();
@@ -52,12 +57,11 @@ export function FallthroughView(): JSX.Element {
   }
 
   return (
-    <section aria-labelledby="fallthrough-heading">
-      <h1 id="fallthrough-heading">Fallthrough</h1>
-      <p>
-        Rate and reasons for accepted placements that fall through before start,
-        for attempts first accepted in the selected period.
-      </p>
+    <section>
+      <PageHeader
+        title="Fallthrough"
+        description="Rate and reasons for accepted placements that fall through before start, for attempts first accepted in the selected period."
+      />
       <form onSubmit={run}>
         <label>
           From

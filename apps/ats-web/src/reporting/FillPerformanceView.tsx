@@ -1,5 +1,8 @@
 import { useState, type FormEvent } from 'react';
 
+import { useEntityCrumb } from '../shell/breadcrumb';
+import { PageHeader } from '../ui';
+
 import { getFillPerformance } from './fill-performance-api';
 import type { FillPerformanceReport } from './types';
 
@@ -27,6 +30,9 @@ export function FillPerformanceView(): JSX.Element {
   const [status, setStatus] = useState<Status>('idle');
   const [error, setError] = useState<string | null>(null);
   const [report, setReport] = useState<FillPerformanceReport | null>(null);
+  // T10-B1/F-002 — publish the sub-page identity so the breadcrumb reads
+  // "Reports › Fill performance"; the section crumb links back to /reports.
+  useEntityCrumb('Fill performance');
 
   async function run(e: FormEvent): Promise<void> {
     e.preventDefault();
@@ -55,12 +61,11 @@ export function FillPerformanceView(): JSX.Element {
   }
 
   return (
-    <section aria-labelledby="fill-perf-heading">
-      <h1 id="fill-perf-heading">Fill performance</h1>
-      <p>
-        Fill rate and time-to-fill for requisitions created in the selected
-        period.
-      </p>
+    <section>
+      <PageHeader
+        title="Fill performance"
+        description="Fill rate and time-to-fill for requisitions created in the selected period."
+      />
       <form onSubmit={run}>
         <label>
           From

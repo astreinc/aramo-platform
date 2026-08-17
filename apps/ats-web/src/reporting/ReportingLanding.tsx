@@ -1,6 +1,8 @@
 import { hasScope, type Session, useSession } from '@aramo/fe-foundation';
 import { Link } from 'react-router-dom';
 
+import { PageHeader } from '../ui';
+
 // T9-B2 — the Reporting area index (/reports). The single "Reports" rail entry
 // now lands here (§13: evolve the Reports IA without a second ambiguous
 // top-level rail entry); this page links to each dedicated report page. Each
@@ -26,9 +28,8 @@ export function ReportingLanding({
     hasScope(session, 'assignment:commercials:read');
 
   return (
-    <section aria-labelledby="reports-heading">
-      <h1 id="reports-heading">Reports</h1>
-      <p>Operational reporting.</p>
+    <section>
+      <PageHeader title="Reports" description="Operational reporting." />
       <ul data-testid="reports-index">
         <li>
           <Link to="/reports/fill-performance" data-testid="reports-link-fill-performance">
