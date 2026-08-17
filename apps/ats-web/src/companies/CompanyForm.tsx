@@ -547,7 +547,7 @@ export function CompanyForm(props: CompanyFormProps) {
     <form className="company-form" onSubmit={onSubmit}>
       <fieldset className="company-form__basics" disabled={submitting}>
         <legend>Basics</legend>
-        <FormField label="Name">
+        <FormField label="Name" required>
           <input
             type="text"
             value={state.name}
@@ -866,14 +866,9 @@ export function CompanyForm(props: CompanyFormProps) {
         <InlineAlert variant="error">{submitError}</InlineAlert>
       ) : null}
 
+      {/* T10-B3/F-019 — secondary (Cancel) then primary (submit), matching the
+          shared Dialog footer convention; tab order follows DOM order. */}
       <div className="company-form__actions">
-        <Button type="submit" variant="primary" disabled={!canSubmit}>
-          {submitting
-            ? 'Saving…'
-            : props.mode === 'create'
-              ? 'Create company'
-              : 'Save changes'}
-        </Button>
         <Button
           type="button"
           variant="secondary"
@@ -881,6 +876,13 @@ export function CompanyForm(props: CompanyFormProps) {
           disabled={submitting}
         >
           Cancel
+        </Button>
+        <Button type="submit" variant="primary" disabled={!canSubmit}>
+          {submitting
+            ? 'Saving…'
+            : props.mode === 'create'
+              ? 'Create company'
+              : 'Save changes'}
         </Button>
       </div>
     </form>

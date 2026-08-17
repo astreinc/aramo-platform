@@ -235,6 +235,12 @@
   color: var(--c-text);
 }
 
+/* T10-B3/F-020 — required marker: a glyph (not colour alone). */
+.tc-required {
+  color: var(--c-danger);
+  font-weight: var(--fw-medium);
+}
+
 .tc-helper {
   font-size: var(--fs-12);
   color: var(--c-text-muted);

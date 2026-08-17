@@ -35,19 +35,20 @@ export function BulkBar({
         Add to req
       </button>
 
-      <button
-        type="button"
-        onClick={onAssignToMe}
-        disabled={busy || !canAssign}
-        title={
-          canAssign
-            ? 'Set you as owner on the selected talent'
-            : 'Needs talent:edit'
-        }
-      >
-        <Icons.IconUserPlus />
-        Assign to me
-      </button>
+      {/* T10-B3/F-012 — permission-driven: HIDE when the actor lacks the write
+          scope (never a disabled control naming the scope). Disabled only while
+          a submit is in flight. */}
+      {canAssign ? (
+        <button
+          type="button"
+          onClick={onAssignToMe}
+          disabled={busy}
+          title="Set you as owner on the selected talent"
+        >
+          <Icons.IconUserPlus />
+          Assign to me
+        </button>
+      ) : null}
 
       {/* Honest carries — disabled with reason */}
       <button

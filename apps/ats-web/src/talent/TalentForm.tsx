@@ -247,7 +247,7 @@ export function TalentForm(props: TalentFormProps) {
     <form className="talent-form" onSubmit={onSubmit}>
       <fieldset className="talent-form__basics" disabled={submitting}>
         <legend>Identity</legend>
-        <FormField label="First name">
+        <FormField label="First name" required>
           <input
             type="text"
             value={state.first_name}
@@ -256,7 +256,7 @@ export function TalentForm(props: TalentFormProps) {
             required
           />
         </FormField>
-        <FormField label="Last name">
+        <FormField label="Last name" required>
           <input
             type="text"
             value={state.last_name}
@@ -462,14 +462,9 @@ export function TalentForm(props: TalentFormProps) {
         <InlineAlert variant="error">{submitError}</InlineAlert>
       ) : null}
 
+      {/* T10-B3/F-019 — secondary (Cancel) then primary (submit), matching the
+          shared Dialog footer convention; tab order follows DOM order. */}
       <div className="talent-form__actions">
-        <Button type="submit" variant="primary" disabled={!canSubmit}>
-          {submitting
-            ? 'Saving…'
-            : props.mode === 'create'
-              ? 'Create talent'
-              : 'Save changes'}
-        </Button>
         <Button
           type="button"
           variant="secondary"
@@ -477,6 +472,13 @@ export function TalentForm(props: TalentFormProps) {
           disabled={submitting}
         >
           Cancel
+        </Button>
+        <Button type="submit" variant="primary" disabled={!canSubmit}>
+          {submitting
+            ? 'Saving…'
+            : props.mode === 'create'
+              ? 'Create talent'
+              : 'Save changes'}
         </Button>
       </div>
     </form>

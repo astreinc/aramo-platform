@@ -585,19 +585,20 @@ export function ContactsListView({ sessionOverride }: ContactsListViewProps = {}
             {selected.size} <small>selected</small>
           </span>
           <span className="rc-bulkbar__sep" />
-          <button
-            type="button"
-            onClick={assignToMe}
-            disabled={busy || !canAssign}
-            title={
-              canAssign
-                ? 'Set you as owner on the selected contacts'
-                : 'Needs contact:edit'
-            }
-          >
-            <Icons.IconUserPlus />
-            Assign to me
-          </button>
+          {/* T10-B3/F-012 — permission-driven: HIDE when the actor lacks the
+              write scope (never a disabled control naming the scope). Disabled
+              only while a submit is in flight. */}
+          {canAssign ? (
+            <button
+              type="button"
+              onClick={assignToMe}
+              disabled={busy}
+              title="Set you as owner on the selected contacts"
+            >
+              <Icons.IconUserPlus />
+              Assign to me
+            </button>
+          ) : null}
           {/* Honest carries — disabled with reason (saved-list + owner-picker). */}
           <button
             type="button"
