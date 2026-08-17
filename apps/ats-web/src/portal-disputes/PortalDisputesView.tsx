@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ApiError, Button, hasScope, InlineAlert, useSession, type Session } from '@aramo/fe-foundation';
+import { Button, hasScope, InlineAlert, useSession, type Session } from '@aramo/fe-foundation';
 
-import { Card } from '../ui';
+import { Card, safeErrorMessage } from '../ui';
 
 import {
   correctDispute,
@@ -41,7 +41,7 @@ export function PortalDisputesView({ sessionOverride }: { sessionOverride?: Sess
       const res = await getPortalDisputes();
       setDisputes(res.disputes);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Failed to load disputes.');
+      setError(safeErrorMessage(e, 'Failed to load disputes.'));
     }
   }, []);
 
@@ -57,7 +57,7 @@ export function PortalDisputesView({ sessionOverride }: { sessionOverride?: Sess
         await triageDispute(id);
         await load();
       } catch (e) {
-        setError(e instanceof ApiError ? e.message : 'Triage failed.');
+        setError(safeErrorMessage(e, 'Triage failed.'));
       } finally {
         setBusy(false);
       }
@@ -76,7 +76,7 @@ export function PortalDisputesView({ sessionOverride }: { sessionOverride?: Sess
       setNote('');
       await load();
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Disposition failed.');
+      setError(safeErrorMessage(e, 'Disposition failed.'));
     } finally {
       setBusy(false);
     }

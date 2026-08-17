@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 
 import { useEntityCrumb } from '../shell/breadcrumb';
-import { PageHeader } from '../ui';
+import { ErrorState, LoadingState, PageHeader } from '../ui';
 
 import { getGuaranteeExposure } from './guarantee-exposure-api';
 import type { GuaranteeExposureReport } from './guarantee-exposure-types';
@@ -76,8 +76,8 @@ export function GuaranteeExposureView(): JSX.Element {
         </button>
       </form>
 
-      {status === 'loading' ? <p role="status">Loading…</p> : null}
-      {status === 'error' && error !== null ? <p role="alert">{error}</p> : null}
+      {status === 'loading' ? <LoadingState /> : null}
+      {status === 'error' && error !== null ? <ErrorState message={error} /> : null}
 
       {report !== null && status === 'idle' ? (
         report.cohort_count === 0 ? (

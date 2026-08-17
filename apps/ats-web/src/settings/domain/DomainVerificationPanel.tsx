@@ -2,7 +2,7 @@ import { ApiError, useToast } from '@aramo/fe-foundation';
 import { useEffect, useState } from 'react';
 import { IconLock } from '@aramo/fe-foundation';
 
-import { Button, Card, InlineAlert, StatusPill, type PillTone } from '../../ui';
+import { Button, Card, InlineAlert, safeErrorMessage, StatusPill, type PillTone } from '../../ui';
 import { SettingCardHead, SettingHint, SettingRow } from '../components';
 
 import {
@@ -56,9 +56,9 @@ function messageForError(err: unknown): string {
     if (reason === 'no_token_issued') {
       return 'Request verification first to generate a DNS record to publish.';
     }
-    return err.message || 'Something went wrong.';
+    return safeErrorMessage(err, 'Something went wrong.');
   }
-  return err instanceof Error ? err.message : 'Something went wrong.';
+  return safeErrorMessage(err, 'Something went wrong.');
 }
 
 export function DomainVerificationPanel({ fetchFn, requestFn, checkFn }: Props = {}) {

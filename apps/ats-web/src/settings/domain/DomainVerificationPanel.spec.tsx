@@ -111,6 +111,7 @@ describe('DomainVerificationPanel', () => {
 
   it('shows an error state when the status cannot load', async () => {
     renderPanel({ fetchFn: () => Promise.reject(new Error('boom')) });
-    expect(await screen.findByText('boom')).toBeInTheDocument();
+    // T10-B2/F-018 — safe fallback, never the raw thrown message.
+    expect(await screen.findByText('Something went wrong.')).toBeInTheDocument();
   });
 });

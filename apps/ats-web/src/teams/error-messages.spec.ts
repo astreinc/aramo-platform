@@ -25,10 +25,11 @@ describe('messageForCreateTeamError — the duplicate-name template (ruling 6)',
     expect(msg.detail).toMatch(/different name/i);
   });
 
-  it('falls back to the BE message when details.name is missing', () => {
+  it('falls back to SAFE generic copy when details.name is missing (T10-B2/F-018 — never the raw BE message)', () => {
     const err = new ApiError(400, 'bad input', 'VALIDATION_ERROR', {});
     const msg = messageForCreateTeamError(err);
-    expect(msg.title).toBe('bad input');
+    expect(msg.title).toBe('Something went wrong. Please try again.');
+    expect(msg.title).not.toBe('bad input');
   });
 
   it('handles non-ApiError gracefully', () => {

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { IconSliders } from '@aramo/fe-foundation';
 
-import { Card } from '../../ui';
+import { Card, safeErrorMessage } from '../../ui';
 import { CompensationDisplayPicker } from '../CompensationDisplayPicker';
 import { FinancialsToggle } from '../FinancialsToggle';
 import { SettingCardHead, SettingHint, SettingsSection } from '../components';
@@ -41,7 +41,7 @@ export function TenantProfileSection({ fetchFn }: Props = {}) {
         if (cancelled) return;
         setState({
           status: 'error',
-          message: err instanceof Error ? err.message : 'Failed to load defaults.',
+          message: safeErrorMessage(err, 'Failed to load defaults.'),
         });
       });
     return () => {

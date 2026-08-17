@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 
 import { useEntityCrumb } from '../shell/breadcrumb';
-import { PageHeader } from '../ui';
+import { ErrorState, LoadingState, PageHeader } from '../ui';
 
 import { getAssignmentPipeline } from './assignment-pipeline-api';
 import type { AssignmentPipelineReport } from './assignment-pipeline-types';
@@ -25,11 +25,14 @@ type Status = 'loading' | 'ready' | 'error';
 export function AssignmentPipelineView(): JSX.Element {
   const [status, setStatus] = useState<Status>('loading');
   const [report, setReport] = useState<AssignmentPipelineReport | null>(null);
+  // T10-B2/F-017 — retry re-issues this idempotent snapshot read.
+  const [refreshKey, setRefreshKey] = useState(0);
   // T10-B1/F-002 — sub-page identity for the "Reports › Assignment Pipeline" crumb.
   useEntityCrumb('Assignment Pipeline');
 
   useEffect(() => {
     let active = true;
+    setStatus('loading');
     getAssignmentPipeline()
       .then((r) => {
         if (active) {
@@ -43,7 +46,7 @@ export function AssignmentPipelineView(): JSX.Element {
     return () => {
       active = false;
     };
-  }, []);
+  }, [refreshKey]);
 
   return (
     <section>
@@ -52,9 +55,12 @@ export function AssignmentPipelineView(): JSX.Element {
         description="Current snapshot of placements in the assignment pipeline."
       />
 
-      {status === 'loading' ? <p role="status">Loading…</p> : null}
+      {status === 'loading' ? <LoadingState /> : null}
       {status === 'error' ? (
-        <p role="alert">Could not load the assignment pipeline.</p>
+        <ErrorState
+          message="Could not load the assignment pipeline."
+          onRetry={() => setRefreshKey((k) => k + 1)}
+        />
       ) : null}
 
       {status === 'ready' && report !== null ? (

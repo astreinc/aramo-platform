@@ -79,7 +79,10 @@ describe('TenantProfileForm', () => {
 
   it('shows an error state when the profile cannot load', async () => {
     renderForm({ fetchFn: () => Promise.reject(new Error('boom')) });
-    expect(await screen.findByText('boom')).toBeInTheDocument();
+    // T10-B2/F-018 — safe fallback, never the raw thrown message.
+    expect(
+      await screen.findByText('Failed to load the tenant profile.'),
+    ).toBeInTheDocument();
   });
 
   it('renders country as a Combobox; an already-set code initializes to the country name', async () => {

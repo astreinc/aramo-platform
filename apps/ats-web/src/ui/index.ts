@@ -89,6 +89,10 @@ export { ActivityFeed, type ActivityFeedItem } from './ActivityFeed';
 export { ExpandableText } from './ExpandableText';
 export { ReservedSeam } from './ReservedSeam';
 
+// T10-B2 — shared UX-state atoms + the product-safe error fallback.
+export { LoadingState, EmptyState, ErrorState } from './StateViews';
+export { safeErrorMessage } from './errors';
+
 // ── Stage projection (single source: ../pipeline/types) ──
 export {
   stageTone,

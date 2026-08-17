@@ -22,6 +22,8 @@
 
 import { ApiError } from '@aramo/fe-foundation';
 
+import { safeErrorMessage } from '../ui';
+
 // Settings Rebuild D5 — role labels come from the catalog (passed in by the
 // caller, which holds the fetched roles), not a hand-mirror. `labelOf` falls
 // back to the raw key when the catalog is not loaded / lacks the role.
@@ -95,7 +97,7 @@ export function messageForRoleAssignError(
     return { title: 'This user is not part of your tenant.' };
   }
 
-  return { title: err.message };
+  return { title: safeErrorMessage(err, 'Something went wrong. Please try again.') };
 }
 
 export function messageForInviteError(
@@ -138,7 +140,7 @@ export function messageForInviteError(
         'The invite was rolled back. Please try again; contact support if this persists.',
     };
   }
-  return { title: err.message };
+  return { title: safeErrorMessage(err, 'Something went wrong. Please try again.') };
 }
 
 export function messageForDisableError(err: unknown): ErrorMessage {
@@ -155,7 +157,7 @@ export function messageForDisableError(err: unknown): ErrorMessage {
         'The membership was re-enabled and is unchanged. Please try again; contact support if this persists.',
     };
   }
-  return { title: err.message };
+  return { title: safeErrorMessage(err, 'Something went wrong. Please try again.') };
 }
 
 // Invite-S3 — the shared mapper for the state-dependent lifecycle actions
@@ -193,5 +195,5 @@ export function messageForLifecycleActionError(err: unknown): ErrorMessage {
   if (err.status === 404) {
     return { title: 'This user is not part of your tenant.' };
   }
-  return { title: err.message };
+  return { title: safeErrorMessage(err, 'Something went wrong. Please try again.') };
 }

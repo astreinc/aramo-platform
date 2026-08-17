@@ -1,7 +1,7 @@
 import { ApiError, useToast } from '@aramo/fe-foundation';
 import { useState } from 'react';
 
-import { Card, CardHead, FormField, InlineAlert, Switch } from '../ui';
+import { Card, CardHead, FormField, InlineAlert, safeErrorMessage, Switch } from '../ui';
 
 import { setTenantSetting } from './settings-api';
 
@@ -78,7 +78,7 @@ function messageForError(err: unknown): string {
     if (reason === 'invalid_value') {
       return 'That isn’t a valid value.';
     }
-    return err.message;
+    return safeErrorMessage(err, 'Something went wrong. Please try again.');
   }
   return 'Unexpected error. Please try again.';
 }

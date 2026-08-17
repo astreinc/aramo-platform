@@ -81,7 +81,10 @@ describe('AuditLogView', () => {
       throw new Error('boom');
     });
     render(<AuditLogView fetchFn={fetchFn} />);
-    expect(await screen.findByText('boom')).toBeInTheDocument();
+    // T10-B2/F-018 — safe fallback, never the raw thrown message.
+    expect(
+      await screen.findByText('Failed to load the audit log.'),
+    ).toBeInTheDocument();
   });
 
   it('shows an empty state when there are no events', async () => {

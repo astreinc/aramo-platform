@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { IconCompanies, IconContacts, IconRequisitions, IconTalent, IconUpload } from '@aramo/fe-foundation';
 
-import { Button, Card } from '../../ui';
+import { Button, Card, safeErrorMessage } from '../../ui';
 import type { ImportBatchStatus, ImportBatchView, ImportFailureView, ImportTargetEntity } from '../admin-types';
 import { IMPORT_ENTITY_LABEL } from '../admin-types';
 import { SettingCardHead, SettingHint, SettingsSection, StatChip } from '../components';
@@ -62,8 +62,7 @@ export function ImportSection({ fetchImportsFn, fetchFailuresFn }: Props = {}) {
       })
       .catch((err: unknown) => {
         if (cancelled) return;
-        const message =
-          err instanceof Error ? err.message : 'Failed to load import history.';
+        const message = safeErrorMessage(err, 'Failed to load import history.');
         setState({ status: 'error', message });
       });
     return () => {
@@ -155,7 +154,7 @@ function ImportRow({
         .catch((err: unknown) =>
           setFailures({
             status: 'error',
-            message: err instanceof Error ? err.message : 'Failed to load failures.',
+            message: safeErrorMessage(err, 'Failed to load failures.'),
           }),
         );
     }

@@ -10,6 +10,8 @@
 
 import { ApiError } from '@aramo/fe-foundation';
 
+import { safeErrorMessage } from '../ui';
+
 export interface ErrorMessage {
   readonly title: string;
   readonly detail?: string;
@@ -29,7 +31,7 @@ function notFoundCopy(parent: ParentKind): ErrorMessage {
 }
 
 function genericMessage(err: ApiError): ErrorMessage {
-  return { title: err.message };
+  return { title: safeErrorMessage(err, 'Something went wrong. Please try again.') };
 }
 
 // ─── D — Company-assignments ─────────────────────────────────────────

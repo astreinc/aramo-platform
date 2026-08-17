@@ -1,7 +1,7 @@
 import { ApiError, useToast } from '@aramo/fe-foundation';
 import { useState } from 'react';
 
-import { Button, Card, CardHead, InlineAlert, RadioGroup } from '../ui';
+import { Button, Card, CardHead, InlineAlert, RadioGroup, safeErrorMessage } from '../ui';
 
 import { setTenantSetting } from './settings-api';
 import type { CompensationDisplayDefault } from './types';
@@ -87,7 +87,7 @@ function messageForError(err: unknown): string {
     if (reason === 'missing_value' || reason === 'unknown_key') {
       return `Request rejected: ${reason}.`;
     }
-    return err.message;
+    return safeErrorMessage(err, 'Something went wrong. Please try again.');
   }
   return 'Unexpected error. Please try again.';
 }

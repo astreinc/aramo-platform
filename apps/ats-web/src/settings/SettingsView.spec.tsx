@@ -162,9 +162,14 @@ describe('SettingsView', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: /save changes/i }));
 
+    // T10-B2/F-018 — an unmapped backend message ('oops', code INTERNAL) is
+    // never surfaced; the safe generic fallback is shown instead.
     await waitFor(() =>
-      expect(screen.getByText('oops')).toBeInTheDocument(),
+      expect(
+        screen.getByText('Something went wrong. Please try again.'),
+      ).toBeInTheDocument(),
     );
+    expect(screen.queryByText('oops')).toBeNull();
   });
 
   it('toggling the financials switch issues a PUT and surfaces details.reason on failure', async () => {
@@ -205,11 +210,15 @@ describe('SettingsView', () => {
       ),
     );
     fireEvent.click(toggle);
+    // T10-B2/F-018 — the unmapped VALIDATION_ERROR message is not surfaced
+    // raw; the safe generic fallback is shown (the governed `invalid_value`
+    // reason still maps to specific copy — see error-messages tests).
     await waitFor(() =>
       expect(
-        screen.getByText(/cannot disable while grants exist/i),
+        screen.getByText('Something went wrong. Please try again.'),
       ).toBeInTheDocument(),
     );
+    expect(screen.queryByText(/cannot disable while grants exist/i)).toBeNull();
     expect(toggle).toHaveAttribute('data-state', 'checked'); // rolled back
   });
 
@@ -219,8 +228,10 @@ describe('SettingsView', () => {
     );
     renderView(baseView, fetchFn);
 
+    // T10-B2/F-018 — the raw ApiError message ('boom') is never rendered.
     await waitFor(() =>
-      expect(screen.getByText(/boom/i)).toBeInTheDocument(),
+      expect(screen.getByText('Failed to load settings.')).toBeInTheDocument(),
     );
+    expect(screen.queryByText(/boom/i)).toBeNull();
   });
 });

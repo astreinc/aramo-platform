@@ -7,6 +7,7 @@ import {
   DataTable,
   InlineAlert,
   PageHeader,
+  safeErrorMessage,
   StatusPill,
   type TableColumn,
 } from '../ui';
@@ -61,8 +62,7 @@ export function TeamsListView({
     fetchTeamsFun()
       .then((view) => setState({ status: 'ready', teams: view.items }))
       .catch((err: unknown) => {
-        const message =
-          err instanceof Error ? err.message : 'Failed to load teams.';
+        const message = safeErrorMessage(err, 'Failed to load teams.');
         setState({ status: 'error', message });
       });
   };
@@ -76,8 +76,7 @@ export function TeamsListView({
       })
       .catch((err: unknown) => {
         if (cancelled) return;
-        const message =
-          err instanceof Error ? err.message : 'Failed to load teams.';
+        const message = safeErrorMessage(err, 'Failed to load teams.');
         setState({ status: 'error', message });
       });
     void fetchAssignableFun()

@@ -56,9 +56,12 @@ describe('messageForAddTeamClient (E)', () => {
 });
 
 describe('messageForFetchTeamClients (E)', () => {
-  it('handles a generic 500 gracefully (cross-tenant teamId is empty, not 404)', () => {
+  it('handles a generic 500 with SAFE copy (T10-B2/F-018 — never the raw BE message)', () => {
     const err = new ApiError(500, 'boom', 'INTERNAL', {});
-    expect(messageForFetchTeamClients(err).title).toBe('boom');
+    expect(messageForFetchTeamClients(err).title).toBe(
+      'Something went wrong. Please try again.',
+    );
+    expect(messageForFetchTeamClients(err).title).not.toBe('boom');
   });
 });
 

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { hasScope, type Session, useSession } from '@aramo/fe-foundation';
 
 import { useEntityCrumb } from '../shell/breadcrumb';
-import { PageHeader } from '../ui';
+import { ErrorState, LoadingState, PageHeader } from '../ui';
 
 import { getMargin } from './margin-api';
 import type { MarginReport } from './margin-types';
@@ -43,6 +43,8 @@ export function MarginView({
 
   const [status, setStatus] = useState<Status>('idle');
   const [report, setReport] = useState<MarginReport | null>(null);
+  // T10-B2/F-017 — retry re-issues this idempotent margin read.
+  const [refreshKey, setRefreshKey] = useState(0);
   // T10-B1/F-002 — sub-page identity for the "Reports › Margin" crumb. Published
   // unconditionally (before the gated early-return) so the crumb is correct
   // whether or not the commercial-read scope is held.
@@ -66,8 +68,14 @@ export function MarginView({
     return () => {
       active = false;
     };
-  }, [canRead]);
+  }, [canRead, refreshKey]);
 
+  // T10-B2 FIX_NOW-1 — the commercial-margin gate stays SCOPE-SILENT (the
+  // boundary T10-B1 preserved): a legitimately-reached-but-denied actor gets a
+  // safe denial that never names `assignment:commercials:read`. No fetch fired
+  // (the effect returns early above); the Reports landing already hides the
+  // Margin link without this scope. (ForbiddenState discloses the scope, so it
+  // is deliberately NOT used here.)
   if (!canRead) {
     return (
       <section>
@@ -86,9 +94,12 @@ export function MarginView({
         description="Current assignment rate margin. Coverage is forward-materialized."
       />
 
-      {status === 'loading' ? <p role="status">Loading…</p> : null}
+      {status === 'loading' ? <LoadingState /> : null}
       {status === 'error' ? (
-        <p role="alert">Could not load the margin report.</p>
+        <ErrorState
+          message="Could not load the margin report."
+          onRetry={() => setRefreshKey((k) => k + 1)}
+        />
       ) : null}
 
       {status === 'ready' && report !== null ? (
