@@ -74,6 +74,18 @@ variable "dns_record_ttl" {
   default     = 300
 }
 
+# T2-F1-H1 — parallel-box safety switch. When true (the default, so the existing
+# single-box environment is UNCHANGED), this root manages the production A
+# records (app + wildcard) pointing at its own static IP. A parallel NEW box is
+# provisioned with manage_dns=false so its apply creates compute/static-IP/
+# firewall ONLY and NEVER touches the live production Route 53 records — the DNS
+# repoint stays a separate, explicit, Terraform-governed cutover step (C6).
+variable "manage_dns" {
+  description = "If true (default), manage the production A records (app + wildcard) → own static IP. Set false when standing up a parallel box so provisioning performs NO Route 53 create/update/delete; the DNS cutover is a separate governed step."
+  type        = bool
+  default     = true
+}
+
 # --- Optional scoped S3-backup IAM (Directive §D) ---------------------------
 
 variable "create_backup_iam_user" {

@@ -91,6 +91,7 @@ data "aws_route53_zone" "this" {
 }
 
 resource "aws_route53_record" "app" {
+  count   = var.manage_dns ? 1 : 0
   zone_id = data.aws_route53_zone.this.zone_id
   name    = var.app_fqdn
   type    = "A"
@@ -116,6 +117,7 @@ resource "aws_route53_record" "app" {
 # today — DNS is deferred to a future edge directive there — so the wildcard
 # lives only here for go-live #1.)
 resource "aws_route53_record" "wildcard" {
+  count   = var.manage_dns ? 1 : 0
   zone_id = data.aws_route53_zone.this.zone_id
   name    = "*.${var.dns_zone_name}"
   type    = "A"

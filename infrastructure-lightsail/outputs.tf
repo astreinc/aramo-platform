@@ -13,8 +13,8 @@ output "static_ip" {
 }
 
 output "app_fqdn" {
-  description = "The FQDN now resolving to the box (allow for DNS propagation). The Caddy front-door (Directive 1) terminates TLS here via ACME."
-  value       = aws_route53_record.app.fqdn
+  description = "The FQDN now resolving to the box when this root manages DNS (allow for DNS propagation); null when manage_dns=false (a parallel box that does not own the production records)."
+  value       = var.manage_dns ? aws_route53_record.app[0].fqdn : null
 }
 
 output "ssh_command" {
