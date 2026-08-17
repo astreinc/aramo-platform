@@ -1,0 +1,41 @@
+# T2-F1-H1 — example variables for provisioning a PARALLEL fresh production box
+# (the T2 Fresh-Prod replacement strategy). Copy to fresh-prod.tfvars
+# (gitignored) and populate before `terraform apply -var-file=fresh-prod.tfvars`.
+#
+# STATE ISOLATION IS MANDATORY. This box lives in a SEPARATE Terraform
+# workspace so its state can never destroy or repoint the existing production
+# box (default workspace). Before any plan/apply:
+#
+#   terraform workspace new fresh-prod     # once
+#   terraform workspace select fresh-prod  # every session
+#   terraform workspace show               # MUST print: fresh-prod
+#
+# The backend has no workspace_key_prefix, so the default (old prod) state stays
+# at  lightsail/terraform.tfstate  and this box writes to
+#     env:/fresh-prod/lightsail/terraform.tfstate  — physically separate.
+#
+# Two values are REQUIRED (no defaults): ssh_public_key and ssh_source_cidr.
+
+ssh_public_key  = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA... po@laptop"
+ssh_source_cidr = "203.0.113.7/32"
+
+# --- Parallel-box identity — MUST be distinct from the live box --------------
+# Distinct instance name → distinct Lightsail instance AND static IP
+# (aws_lightsail_static_ip.this is named "${instance_name}-ip").
+instance_name = "astre-aramo-prod-2"
+key_pair_name = "astre-aramo-prod-2-key"
+
+# --- The load-bearing safety switch -----------------------------------------
+# false → this apply creates compute + its OWN static IP + firewall ONLY and
+# performs NO Route 53 create/update/delete. Production DNS keeps pointing at the
+# OLD box until the separate, governed DNS cutover (F6). NEVER set true for the
+# parallel box before cutover.
+manage_dns = false
+
+# --- The rest keep the live defaults; override only if needed ----------------
+# aws_region        = "us-east-1"
+# availability_zone = "us-east-1a"
+# bundle_id         = "medium_3_0"
+# blueprint_id      = "ubuntu_24_04"
+# app_fqdn          = "astre.aramo.ai"   # only consulted when manage_dns = true
+# dns_zone_name     = "aramo.ai"

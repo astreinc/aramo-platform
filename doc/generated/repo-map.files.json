@@ -1027,6 +1027,7 @@
     "infrastructure-lightsail/.terraform.lock.hcl",
     "infrastructure-lightsail/README.md",
     "infrastructure-lightsail/backend.tf",
+    "infrastructure-lightsail/fresh-prod.tfvars.example",
     "infrastructure-lightsail/main.tf",
     "infrastructure-lightsail/outputs.tf",
     "infrastructure-lightsail/provider.tf",
