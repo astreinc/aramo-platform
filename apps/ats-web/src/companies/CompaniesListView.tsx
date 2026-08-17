@@ -456,7 +456,7 @@ export function CompaniesListView({ sessionOverride }: CompaniesListViewProps = 
               <table className="rc-table">
                 <thead>
                   <tr>
-                    <th style={{ width: 34 }}>
+                    <th scope="col" style={{ width: 34 }}>
                       <input
                         type="checkbox"
                         aria-label="Select all"

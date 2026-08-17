@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Session } from '@aramo/fe-foundation';
 
@@ -58,6 +58,12 @@ describe('MarginView', () => {
     expect(screen.getByTestId('margin-pct-USD-HOURLY')).toHaveTextContent('25.00%');
     // null margin renders safely as an em dash
     expect(screen.getByTestId('margin-pct-USD-ANNUAL')).toHaveTextContent('—');
+    // T10-B5/F-038 — column-header semantics; F-039 — responsive containment.
+    const table = screen.getByTestId('margin-groups');
+    const headers = within(table).getAllByRole('columnheader');
+    expect(headers).toHaveLength(4);
+    headers.forEach((h) => expect(h).toHaveAttribute('scope', 'col'));
+    expect(table.closest('.rc-tablewrap')).not.toBeNull();
     // coverage wording is visible and truthful
     expect(screen.getByTestId('margin-coverage-note')).toHaveTextContent(
       'Current assignment rate margin — forward-materialized coverage only.',

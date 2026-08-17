@@ -129,13 +129,16 @@ export function MarginView({
           {report.groups.length === 0 ? (
             <p data-testid="margin-empty">No commercialized assignments.</p>
           ) : (
-            <table data-testid="margin-groups">
+            // T10-B5/F-038+F-039 — bare table brought to parity: shared styling
+            // (rc-table) + a responsive overflow container (rc-tablewrap).
+            <div className="rc-tablewrap">
+              <table className="rc-table" data-testid="margin-groups">
               <thead>
                 <tr>
-                  <th>Currency</th>
-                  <th>Rate Period</th>
-                  <th>Assignments</th>
-                  <th>Margin %</th>
+                  <th scope="col">Currency</th>
+                  <th scope="col">Rate Period</th>
+                  <th scope="col">Assignments</th>
+                  <th scope="col">Margin %</th>
                 </tr>
               </thead>
               <tbody>
@@ -157,7 +160,8 @@ export function MarginView({
                   </tr>
                 ))}
               </tbody>
-            </table>
+              </table>
+            </div>
           )}
         </div>
       ) : null}
