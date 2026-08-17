@@ -158,6 +158,27 @@ describe('CompanyForm — CREATE (ruling B: billing_contact_id absent)', () => {
     expect(submit).not.toBeDisabled();
   });
 
+  it('orders actions Cancel→primary and marks Name required (T10-B3/F-019/F-020)', async () => {
+    installFetch();
+    render(
+      <CompanyForm
+        mode="create"
+        onSubmit={vi.fn().mockResolvedValue(undefined)}
+        onCancel={vi.fn()}
+        canSeeCommercial={false}
+      />,
+    );
+    await screen.findByRole('button', { name: /create company/i });
+    // F-019 — secondary (Cancel) precedes the primary submit in DOM/tab order.
+    const actions = document.querySelector('.company-form__actions');
+    const btns = actions ? Array.from(actions.querySelectorAll('button')) : [];
+    expect(btns[0]).toHaveTextContent('Cancel');
+    expect(btns[1]).toHaveTextContent(/create company/i);
+    // F-020 — required communicated via aria-required + a visible glyph.
+    expect(screen.getByLabelText('Name')).toHaveAttribute('aria-required', 'true');
+    expect(screen.getByText('Name').closest('label')?.textContent).toContain('*');
+  });
+
   it('submits POST body with only set fields; omits unset optional strings + billing_contact_id', async () => {
     installFetch();
     const onSubmit = vi.fn().mockResolvedValue(undefined);

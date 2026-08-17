@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 
 import { Icons, StatusPill } from '../../ui';
@@ -37,6 +38,55 @@ export function TaskDrawer({
   onReschedule,
   onEdit,
 }: TaskDrawerProps) {
+  // T10-B3/F-037 — the Tasks drawer is modal (a scrim covers the page), so it
+  // gets the same accessible pattern its sibling drawers already implement:
+  // capture the trigger + move focus in on open (restore on close), Escape to
+  // close, and a Tab focus-trap while open.
+  const asideRef = useRef<HTMLElement>(null);
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const restoreRef = useRef<HTMLElement | null>(null);
+  const open = task !== null;
+
+  useEffect(() => {
+    if (!open) return;
+    restoreRef.current =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+    headingRef.current?.focus();
+    const toRestore = restoreRef.current;
+    return () => toRestore?.focus();
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+        return;
+      }
+      if (e.key !== 'Tab') return;
+      const root = asideRef.current;
+      if (root === null) return;
+      const focusable = root.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      );
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (first === undefined || last === undefined) return;
+      const active = document.activeElement;
+      if (e.shiftKey && active === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && active === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
+
   if (task === null) return null;
   const done = task.status === 'done' || task.status === 'cancelled';
   const href = ownerHref(task.owner_type, task.owner_id);
@@ -44,9 +94,18 @@ export function TaskDrawer({
   return (
     <>
       <div className="rc-scrim rc-scrim--open" onClick={onClose} aria-hidden="true" />
-      <aside className="rc-drawer rc-drawer--open" role="dialog" aria-label="Task detail" data-testid="task-drawer">
+      <aside
+        ref={asideRef}
+        className="rc-drawer rc-drawer--open"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Task detail"
+        data-testid="task-drawer"
+      >
         <div className="rc-drawer__hd">
-          <h3 className="rc-drawer__title">{task.title}</h3>
+          <h3 ref={headingRef} tabIndex={-1} className="rc-drawer__title">
+            {task.title}
+          </h3>
           <button type="button" className="rc-drawer__x" aria-label="Close" onClick={onClose}>
             <Icons.IconX />
           </button>
