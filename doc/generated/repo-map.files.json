@@ -924,6 +924,7 @@
     "deploy/nginx/templates/aramo.conf.template",
     "deploy/seed-prod.sh",
     "deploy/seed-prod.test.sh",
+    "deploy/singlebox-compose.test.sh",
     "deploy/systemd/aramo-pg-backup.service",
     "deploy/systemd/aramo-pg-backup.timer",
     "deploy/systemd/aramo-singlebox.service",
