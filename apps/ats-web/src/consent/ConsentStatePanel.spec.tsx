@@ -90,16 +90,20 @@ describe('ConsentStatePanel', () => {
       ).toBeInTheDocument();
     }
 
-    // Per-scope statuses match the server response verbatim.
+    // T10-B4/F-025 — per-scope statuses render as human labels that preserve the
+    // exact server-resolved meaning (was the raw lowercase enum).
     expect(
       screen.getByTestId('consent-state-status-profile_storage'),
-    ).toHaveTextContent('granted');
+    ).toHaveTextContent('Granted');
     expect(screen.getByTestId('consent-state-status-matching')).toHaveTextContent(
-      'revoked',
+      'Revoked',
     );
     expect(
       screen.getByTestId('consent-state-status-contacting'),
-    ).toHaveTextContent('no_grant');
+    ).toHaveTextContent('No grant');
+    // T10-B4/F-025/F-026 — event timestamps render via the shared instant
+    // formatter, never as a raw ISO string.
+    expect(document.body.innerHTML).not.toContain('2026-04-29T00:00:00Z');
   });
 
   it('renders the neutral anonymized state when is_anonymized:true', async () => {

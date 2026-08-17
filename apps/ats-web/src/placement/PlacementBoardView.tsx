@@ -2,6 +2,7 @@ import { hasScope, type Session, useSession } from '@aramo/fe-foundation';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 
+import { formatInstant } from '../format/date';
 import { Card, DataTable, InlineAlert, PageHeader, type TableColumn } from '../ui';
 
 import { listPlacements } from './placement-api';
@@ -93,7 +94,7 @@ export function PlacementBoardView({ sessionOverride, listPlacementsFn }: Placem
     {
       key: 'offered',
       header: 'Offered',
-      render: (p) => new Date(p.offered_at).toLocaleDateString(),
+      render: (p) => formatInstant(p.offered_at),
     },
   ];
 

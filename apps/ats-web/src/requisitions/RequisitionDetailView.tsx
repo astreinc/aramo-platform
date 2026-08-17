@@ -41,7 +41,6 @@ import {
   Toolbar,
   funnelCounts,
   type ActivityFeedItem,
-  type PillTone,
   type TableColumn,
 } from '../ui';
 
@@ -57,9 +56,9 @@ import {
   updateRequisition,
 } from './requisitions-api';
 import { detailErrorMessage } from './error-messages';
+import { RECRUITING_STATUS_TONE as STATUS_TONE } from './status-tone';
 import {
   RECRUITING_STATUS_LABELS,
-  type RecruitingStatus,
   type RequisitionView,
   type UpdateRequisitionRequest,
 } from './types';
@@ -101,17 +100,6 @@ const SECTION_ORDER: readonly CockpitSection[] = [
   'financial',
 ];
 
-const STATUS_TONE: Record<RecruitingStatus, PillTone> = {
-  lead: 'neutral',
-  draft: 'neutral',
-  pending_approval: 'warn',
-  open: 'ok',
-  on_hold: 'warn',
-  submittals_closed: 'brand',
-  canceled: 'danger',
-  closed: 'neutral',
-  archived: 'neutral',
-};
 
 const SUBMITTED_PLUS: readonly PipelineStatus[] = [
   'submitted',

@@ -2,6 +2,7 @@ import { ApiError, Combobox, type ComboboxItem, useToast } from '@aramo/fe-found
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 
+import { formatInstant } from '../format/date';
 import {
   Button,
   Card,
@@ -197,7 +198,7 @@ export function TeamMembersView({
     {
       key: 'added',
       header: 'Added',
-      render: (m) => new Date(m.added_at).toLocaleDateString(),
+      render: (m) => formatInstant(m.added_at),
     },
     {
       key: 'actions',

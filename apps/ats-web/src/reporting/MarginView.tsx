@@ -150,7 +150,9 @@ export function MarginView({
                     <td
                       data-testid={`margin-pct-${g.currency}-${g.rate_period}`}
                     >
-                      {g.group_margin_percent ?? '—'}
+                      {g.group_margin_percent !== null
+                        ? `${g.group_margin_percent}%`
+                        : '—'}
                     </td>
                   </tr>
                 ))}

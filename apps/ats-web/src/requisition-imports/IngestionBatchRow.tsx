@@ -1,3 +1,5 @@
+import { formatInstant } from '../format/date';
+
 import { IngestionStatusPill } from './IngestionStatusPill';
 import type { ImportBatchView } from './types';
 
@@ -5,12 +7,6 @@ import type { ImportBatchView } from './types';
 // the batch detail. Shows the non-secret source label, canonical status, and
 // aggregate counts only — NO per-record failure drill-down, NO deep-link,
 // NO internal tenant/user identifiers (§7/§9/§11/§12).
-
-function formatDate(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
-}
 
 export function IngestionBatchRow({
   batch,
@@ -21,7 +17,7 @@ export function IngestionBatchRow({
   readonly selected: boolean;
   readonly onSelect: (id: string) => void;
 }) {
-  const date = formatDate(batch.committed_at ?? batch.created_at);
+  const date = formatInstant(batch.committed_at ?? batch.created_at);
   return (
     <button
       type="button"

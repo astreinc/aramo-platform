@@ -26,10 +26,10 @@ import {
   StatusPill,
   Toolbar,
   type FunnelBucketKey,
-  type PillTone,
 } from '../ui';
 
 import { listRequisitions, setRequisitionBookmark } from './requisitions-api';
+import { RECRUITING_STATUS_TONE as STATUS_TONE } from './status-tone';
 import { listErrorMessage } from './error-messages';
 import {
   isClosedStatus,
@@ -76,17 +76,6 @@ import {
 // owner-IS-NULL "Unassigned" filter, "Team" scope, and owner reassignment.
 // The owner cell still DISPLAYS the real unassigned state; it offers no action.
 
-const STATUS_TONE: Record<RecruitingStatus, PillTone> = {
-  lead: 'neutral',
-  draft: 'neutral',
-  pending_approval: 'warn',
-  open: 'ok',
-  on_hold: 'warn',
-  submittals_closed: 'brand',
-  canceled: 'danger',
-  closed: 'neutral',
-  archived: 'neutral',
-};
 
 type FilterMode =
   | 'mine'
@@ -392,11 +381,11 @@ export function RequisitionsListView({
           <span className="rc-toolbar__sep" />
           <select
             className="rc-fsel"
-            aria-label="Filter by client"
+            aria-label="Filter by company"
             value={client}
             onChange={(e) => setClient(e.target.value)}
           >
-            <option value="">All clients</option>
+            <option value="">All companies</option>
             {clientOptions(items, companyNames).map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}

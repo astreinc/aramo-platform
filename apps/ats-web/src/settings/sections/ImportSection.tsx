@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { IconCompanies, IconContacts, IconRequisitions, IconTalent, IconUpload } from '@aramo/fe-foundation';
 
+import { formatInstant } from '../../format/date';
 import { Button, Card, safeErrorMessage } from '../../ui';
 import type { ImportBatchStatus, ImportBatchView, ImportFailureView, ImportTargetEntity } from '../admin-types';
 import { IMPORT_ENTITY_LABEL } from '../admin-types';
@@ -161,7 +162,7 @@ function ImportRow({
   };
 
   const tone = STATUS_TONE[batch.status];
-  const date = formatDate(batch.committed_at ?? batch.created_at);
+  const date = formatInstant(batch.committed_at ?? batch.created_at);
 
   return (
     <li>
@@ -226,14 +227,4 @@ function ImportRow({
       ) : null}
     </li>
   );
-}
-
-function formatDate(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString(undefined, {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  });
 }

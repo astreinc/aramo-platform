@@ -15,6 +15,7 @@
 import { ApiError } from '@aramo/fe-foundation';
 import { useEffect, useState } from 'react';
 
+import { formatInstant } from '../format/date';
 import {
   Button,
   Card,
@@ -53,6 +54,14 @@ const ACTION_TONE: Record<ConsentDecisionAction, PillTone> = {
   expired: 'warn',
 };
 
+// T10-B4/F-025 — human-readable action labels (was raw lowercase enum). Faithful
+// 1:1 to the server event action; preserves the exact legal/domain meaning.
+const CONSENT_ACTION_LABELS: Record<ConsentDecisionAction, string> = {
+  granted: 'Granted',
+  revoked: 'Revoked',
+  expired: 'Expired',
+};
+
 const EVENT_COLUMNS: ReadonlyArray<TableColumn<ConsentHistoryEvent>> = [
   {
     key: 'event_id',
@@ -67,9 +76,15 @@ const EVENT_COLUMNS: ReadonlyArray<TableColumn<ConsentHistoryEvent>> = [
   {
     key: 'action',
     header: 'Action',
-    render: (e) => <StatusPill tone={ACTION_TONE[e.action]}>{e.action}</StatusPill>,
+    render: (e) => (
+      <StatusPill tone={ACTION_TONE[e.action]}>
+        {CONSENT_ACTION_LABELS[e.action]}
+      </StatusPill>
+    ),
   },
-  { key: 'created_at', header: 'Created at', render: (e) => e.created_at },
+  // T10-B4/F-025/F-026 — created_at is an event instant (shared formatter, was
+  // raw ISO); expires_at preserved (ambiguous date/instant — §3 rule C).
+  { key: 'created_at', header: 'Created at', render: (e) => formatInstant(e.created_at) || '—' },
   { key: 'expires_at', header: 'Expires at', render: (e) => e.expires_at ?? '—' },
 ];
 

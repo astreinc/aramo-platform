@@ -110,7 +110,8 @@ describe('NewRequisitionView (New Requisition — mockup parity)', () => {
     fireEvent.change(await screen.findByLabelText('Job title'), {
       target: { value: 'New Role' },
     });
-    fireEvent.click(screen.getByRole('combobox', { name: 'Client' }));
+    // T10-B4/F-042 — the company selector is labelled "Company" (canonical entity).
+    fireEvent.click(screen.getByRole('combobox', { name: 'Company' }));
     fireEvent.click(await screen.findByRole('option', { name: /Acme Corp/i }));
     fireEvent.click(screen.getByRole('button', { name: /^create requisition$/i }));
     // The success screen confirms the create; "Open requisition" then navigates.

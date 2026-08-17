@@ -53,7 +53,9 @@ describe('MarginView', () => {
     expect(screen.getByTestId('margin-commercialized')).toHaveTextContent('2');
     expect(screen.getByTestId('margin-missing')).toHaveTextContent('1');
     // deterministic group order (currency ASC, then HOURLY before ANNUAL)
-    expect(screen.getByTestId('margin-pct-USD-HOURLY')).toHaveTextContent('25.00');
+    // T10-B4/F-031 — the percent is displayed with a % unit (server value, no
+    // frontend recomputation).
+    expect(screen.getByTestId('margin-pct-USD-HOURLY')).toHaveTextContent('25.00%');
     // null margin renders safely as an em dash
     expect(screen.getByTestId('margin-pct-USD-ANNUAL')).toHaveTextContent('—');
     // coverage wording is visible and truthful
