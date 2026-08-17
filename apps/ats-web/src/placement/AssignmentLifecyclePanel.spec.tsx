@@ -3,6 +3,8 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { formatInstant } from '../format/date';
+
 import { AssignmentLifecyclePanel } from './AssignmentLifecyclePanel';
 import { endPlacementAssignment, getPlacementAssignment } from './placement-api';
 import type { ContractAssignmentEndReason, ContractAssignmentView } from './types';
@@ -92,7 +94,9 @@ describe('AssignmentLifecyclePanel — Track 4 assignment lifecycle UI', () => {
 
     const startedAt = screen.getByTestId('assignment-started-at');
     expect(startedAt.getAttribute('datetime')).toBe('2026-08-01T09:30:00.000Z');
-    expect(startedAt.textContent).toBe(new Date('2026-08-01T09:30:00.000Z').toLocaleDateString());
+    // T10-B4/F-026 — started_at is an INSTANT: the shared formatInstant renders
+    // it with the time component (was a bare date-only toLocaleDateString).
+    expect(startedAt.textContent).toBe(formatInstant('2026-08-01T09:30:00.000Z'));
     expect(screen.getByTestId('assignment-provenance').textContent).toBe('Forward');
 
     expect(getMock).toHaveBeenCalledWith('p1');

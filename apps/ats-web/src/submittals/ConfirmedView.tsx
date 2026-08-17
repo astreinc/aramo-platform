@@ -67,7 +67,7 @@ export function ConfirmedView({ submittal }: ConfirmedViewProps) {
             <dd>
               <code>{pkg.talent_id}</code>
             </dd>
-            <dt>Job id</dt>
+            <dt>Requisition id</dt>
             <dd>
               <code>{pkg.job_id}</code>
             </dd>

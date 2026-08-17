@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Button, hasScope, InlineAlert, useSession, type Session } from '@aramo/fe-foundation';
 
+import { formatInstant } from '../format/date';
 import { Card, safeErrorMessage } from '../ui';
 
 import {
@@ -16,10 +17,6 @@ import {
 // TRIAGES a talent dispute (→ the backing evidence goes DISPUTED), then
 // CORRECTS (evidence revoked) or UPHOLDS (evidence stands). PROPOSE/DISPOSE —
 // the human disposes here; corrections flow through the standing trust writers.
-
-function fmtDate(iso: string): string {
-  return new Date(iso).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
-}
 
 const OPEN_STATES = ['OPEN', 'UNDER_REVIEW'];
 
@@ -103,7 +100,7 @@ export function PortalDisputesView({ sessionOverride }: { sessionOverride?: Sess
               <tr key={`${d.dispute_id}:${d.subject_id}`}>
                 <td>{d.item_type}</td>
                 <td>{d.status}</td>
-                <td>{fmtDate(d.arrived_at)}</td>
+                <td>{formatInstant(d.arrived_at)}</td>
                 <td>
                   {canResolve && d.status === 'OPEN' && (
                     <Button variant="secondary" size="sm" onClick={() => void runTriage(d.dispute_id)} disabled={busy}>

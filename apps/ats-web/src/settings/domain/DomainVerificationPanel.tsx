@@ -2,6 +2,7 @@ import { ApiError, useToast } from '@aramo/fe-foundation';
 import { useEffect, useState } from 'react';
 import { IconLock } from '@aramo/fe-foundation';
 
+import { formatInstant } from '../../format/date';
 import { Button, Card, InlineAlert, safeErrorMessage, StatusPill, type PillTone } from '../../ui';
 import { SettingCardHead, SettingHint, SettingRow } from '../components';
 
@@ -156,7 +157,7 @@ export function DomainVerificationPanel({ fetchFn, requestFn, checkFn }: Props =
         {v.status === 'VERIFIED' && v.verified_at !== null ? (
           <SettingRow
             title="Verified"
-            sub={`On ${new Date(v.verified_at).toLocaleString()}`}
+            sub={`On ${formatInstant(v.verified_at)}`}
           />
         ) : null}
 

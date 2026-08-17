@@ -2,6 +2,7 @@ import { hasScope, type Session, useSession } from '@aramo/fe-foundation';
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
+import { formatInstant } from '../format/date';
 import { Button, Card, CardHead, InlineAlert } from '../ui';
 
 import { ConvertToPermanentDialog } from './ConvertToPermanentDialog';
@@ -144,7 +145,7 @@ export function AssignmentLifecyclePanel({
                 <dt>Started</dt>
                 <dd>
                   <time dateTime={assignment.started_at} data-testid="assignment-started-at">
-                    {new Date(assignment.started_at).toLocaleDateString()}
+                    {formatInstant(assignment.started_at)}
                   </time>
                 </dd>
               </div>

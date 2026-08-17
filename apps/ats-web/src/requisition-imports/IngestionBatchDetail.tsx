@@ -51,7 +51,7 @@ export function IngestionBatchDetail({ state }: { readonly state: DetailState })
             <IngestionStatusPill status={state.batch.status} />
           </Field>
           <Field label="Records">{String(state.batch.row_count)}</Field>
-          <Field label="Imported">{String(state.batch.success_count)}</Field>
+          <Field label="Ingested">{String(state.batch.success_count)}</Field>
           <Field label="Failed">{String(state.batch.failure_count)}</Field>
           <Field label="Created">{formatDateTime(state.batch.created_at)}</Field>
           {state.batch.committed_at != null ? (

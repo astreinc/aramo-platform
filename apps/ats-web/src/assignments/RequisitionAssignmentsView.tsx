@@ -2,6 +2,7 @@ import { ApiError, Combobox, type ComboboxItem, useToast } from '@aramo/fe-found
 import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 
+import { formatInstant } from '../format/date';
 import {
   Button,
   Card,
@@ -210,7 +211,7 @@ export function RequisitionAssignmentsView({
     {
       key: 'assigned',
       header: 'Assigned',
-      render: (r) => new Date(r.assigned_at).toLocaleDateString(),
+      render: (r) => formatInstant(r.assigned_at),
     },
     {
       key: 'actions',

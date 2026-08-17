@@ -12,6 +12,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { Tabs, type TabItem } from '@aramo/fe-foundation';
 
+import { formatInstant } from '../format/date';
 import { listActivities, createNote } from '../activity/activity-api';
 import type { ActivityView } from '../activity/types';
 import { getCompanyTeam } from '../companies/companies-api';
@@ -425,7 +426,7 @@ function toFeedItem(a: ActivityView): ActivityFeedItem {
         {a.notes !== null && a.notes !== '' ? ` — ${a.notes}` : ''}
       </span>
     ),
-    when: new Date(a.created_at).toLocaleDateString(),
+    when: formatInstant(a.created_at),
   };
 }
 

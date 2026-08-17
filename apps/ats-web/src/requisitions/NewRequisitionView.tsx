@@ -670,7 +670,7 @@ export function NewRequisitionView({ sessionOverride }: NewRequisitionViewProps)
                     </span>
                   </label>
                   <Combobox
-                    ariaLabel="Client"
+                    ariaLabel="Company"
                     items={companyItems}
                     value={state.company_id === '' ? null : state.company_id}
                     onSelect={(item) => onCompanyChange(item.value)}
@@ -1214,7 +1214,7 @@ export function NewRequisitionView({ sessionOverride }: NewRequisitionViewProps)
             <section className="rc-savebar">
               <ul className="rc-savebar__gates">
                 <GateRow ok={titleValid} label="Job title" />
-                <GateRow ok={companyValid} label="Client" />
+                <GateRow ok={companyValid} label="Company" />
               </ul>
               <button
                 type="button"

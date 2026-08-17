@@ -25,6 +25,7 @@
 import { ApiError } from '@aramo/fe-foundation';
 import { useEffect, useState } from 'react';
 
+import { formatInstant } from '../format/date';
 import {
   Card,
   CardHead,
@@ -59,6 +60,16 @@ const STATUS_TONE: Record<ConsentScopeStatus, PillTone> = {
   no_grant: 'neutral',
 };
 
+// T10-B4/F-025 — human-readable status labels (was raw lowercase enum). Faithful
+// 1:1 to the server-resolved per-scope status; preserves the exact legal/domain
+// meaning (no summarization or aggregation — the panel's faithful-display rule).
+const CONSENT_STATUS_LABELS: Record<ConsentScopeStatus, string> = {
+  granted: 'Granted',
+  revoked: 'Revoked',
+  expired: 'Expired',
+  no_grant: 'No grant',
+};
+
 interface ScopeRow {
   scope: ConsentScope;
   entry: TalentConsentScopeState | undefined;
@@ -79,13 +90,19 @@ const SCOPE_COLUMNS: ReadonlyArray<TableColumn<ScopeRow>> = [
       const status = row.entry ? row.entry.status : 'no_grant';
       return (
         <span data-testid={`consent-state-status-${row.scope}`}>
-          <StatusPill tone={STATUS_TONE[status]}>{status}</StatusPill>
+          <StatusPill tone={STATUS_TONE[status]}>
+            {CONSENT_STATUS_LABELS[status]}
+          </StatusPill>
         </span>
       );
     },
   },
-  { key: 'granted_at', header: 'Granted at', render: (row) => row.entry?.granted_at ?? '—' },
-  { key: 'revoked_at', header: 'Revoked at', render: (row) => row.entry?.revoked_at ?? '—' },
+  // T10-B4/F-025/F-026 — event instants render via the shared instant formatter
+  // (was raw ISO). `expires_at` is left as-is: its date-vs-instant semantics are
+  // ambiguous from the FE contract (§3 rule C — preserve + flag), so it is not
+  // routed through a timezone-sensitive formatter.
+  { key: 'granted_at', header: 'Granted at', render: (row) => formatInstant(row.entry?.granted_at) || '—' },
+  { key: 'revoked_at', header: 'Revoked at', render: (row) => formatInstant(row.entry?.revoked_at) || '—' },
   { key: 'expires_at', header: 'Expires at', render: (row) => row.entry?.expires_at ?? '—' },
 ];
 

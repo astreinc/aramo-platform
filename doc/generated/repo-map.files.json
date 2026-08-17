@@ -511,6 +511,8 @@
     "apps/ats-web/src/requisitions/recruiting-status-drift.spec.ts",
     "apps/ats-web/src/requisitions/req-provenance.tsx",
     "apps/ats-web/src/requisitions/requisitions-api.ts",
+    "apps/ats-web/src/requisitions/status-tone.spec.ts",
+    "apps/ats-web/src/requisitions/status-tone.ts",
     "apps/ats-web/src/requisitions/types.ts",
     "apps/ats-web/src/routes/InvitationAcceptPage.spec.tsx",
     "apps/ats-web/src/routes/InvitationAcceptPage.tsx",
