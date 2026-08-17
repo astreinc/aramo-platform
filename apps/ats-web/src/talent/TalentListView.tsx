@@ -703,7 +703,7 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
               <table className={`rc-table rc-table--${density}`}>
                 <thead>
                   <tr>
-                    <th style={{ width: 34 }}>
+                    <th scope="col" style={{ width: 34 }}>
                       <input
                         type="checkbox"
                         aria-label="Select all"

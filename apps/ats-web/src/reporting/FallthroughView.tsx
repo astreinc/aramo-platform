@@ -112,7 +112,9 @@ export function FallthroughView(): JSX.Element {
             </div>
           </dl>
           {report.reasons.length > 0 ? (
-            <table data-testid="ft-reasons">
+            // T10-B5/F-038+F-039 — shared styling + responsive overflow container.
+            <div className="rc-tablewrap">
+              <table className="rc-table" data-testid="ft-reasons">
               <thead>
                 <tr>
                   <th scope="col">Reason</th>
@@ -129,7 +131,8 @@ export function FallthroughView(): JSX.Element {
                   </tr>
                 ))}
               </tbody>
-            </table>
+              </table>
+            </div>
           ) : (
             <p data-testid="ft-no-reasons">No fallthrough in this period.</p>
           )}
