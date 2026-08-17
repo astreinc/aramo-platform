@@ -1032,6 +1032,7 @@
     "infrastructure-lightsail/main.tf",
     "infrastructure-lightsail/outputs.tf",
     "infrastructure-lightsail/provider.tf",
+    "infrastructure-lightsail/ses-mail-alignment.tf",
     "infrastructure-lightsail/ses-mailer-iam.json",
     "infrastructure-lightsail/terraform.tfvars.example",
     "infrastructure-lightsail/user_data.sh",
