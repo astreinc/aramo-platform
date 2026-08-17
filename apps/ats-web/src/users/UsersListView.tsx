@@ -6,6 +6,7 @@ import {
   Card,
   DataTable,
   InlineAlert,
+  safeErrorMessage,
   StatusPill,
   Tag,
   type TableColumn,
@@ -128,8 +129,7 @@ export function UsersListView({
     fetchUsers()
       .then((view) => setState({ status: 'ready', users: view.items }))
       .catch((err: unknown) => {
-        const message =
-          err instanceof Error ? err.message : 'Failed to load users.';
+        const message = safeErrorMessage(err, 'Failed to load users.');
         setState({ status: 'error', message });
       });
   };
@@ -143,8 +143,7 @@ export function UsersListView({
       })
       .catch((err: unknown) => {
         if (cancelled) return;
-        const message =
-          err instanceof Error ? err.message : 'Failed to load users.';
+        const message = safeErrorMessage(err, 'Failed to load users.');
         setState({ status: 'error', message });
       });
     probe()

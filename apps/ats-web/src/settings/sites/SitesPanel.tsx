@@ -1,7 +1,7 @@
 import { Button, Dialog, InlineAlert, useToast } from '@aramo/fe-foundation';
 import { useEffect, useMemo, useState } from 'react';
 
-import { Card, DataTable, StatusPill, type TableColumn } from '../../ui';
+import { Card, DataTable, safeErrorMessage, StatusPill, type TableColumn } from '../../ui';
 import { SettingCardHead } from '../components';
 
 import { messageForSiteError } from './error-messages';
@@ -59,8 +59,7 @@ export function SitesPanel({
       .catch((err: unknown) =>
         setState({
           status: 'error',
-          message:
-            err instanceof Error ? err.message : 'Failed to load branches.',
+          message: safeErrorMessage(err, 'Failed to load branches.'),
         }),
       );
   };
@@ -75,8 +74,7 @@ export function SitesPanel({
         if (!cancelled) {
           setState({
             status: 'error',
-            message:
-              err instanceof Error ? err.message : 'Failed to load branches.',
+            message: safeErrorMessage(err, 'Failed to load branches.'),
           });
         }
       });

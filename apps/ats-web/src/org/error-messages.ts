@@ -12,6 +12,8 @@
 
 import { ApiError } from '@aramo/fe-foundation';
 
+import { safeErrorMessage } from '../ui';
+
 export interface ErrorMessage {
   readonly title: string;
   readonly detail?: string;
@@ -46,7 +48,7 @@ export function messageForAddEdgeError(err: unknown): ErrorMessage {
 
   // 400 from the controller's body validation (missing fields, etc.).
   if (err.status === 400) {
-    return { title: err.message };
+    return { title: safeErrorMessage(err, 'Something went wrong. Please try again.') };
   }
 
   // 404 — one of the user IDs does not exist in the tenant (the
@@ -57,7 +59,7 @@ export function messageForAddEdgeError(err: unknown): ErrorMessage {
     };
   }
 
-  return { title: err.message };
+  return { title: safeErrorMessage(err, 'Something went wrong. Please try again.') };
 }
 
 export function messageForRemoveEdgeError(err: unknown): ErrorMessage {
@@ -67,5 +69,5 @@ export function messageForRemoveEdgeError(err: unknown): ErrorMessage {
   // A 404 on DELETE is idempotent — the edge is already gone. The
   // caller treats this as success; this mapper is for the rare other
   // error.
-  return { title: err.message };
+  return { title: safeErrorMessage(err, 'Something went wrong. Please try again.') };
 }

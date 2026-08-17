@@ -97,6 +97,9 @@ describe('ImportSection — live read surface', () => {
         fetchImportsFn={() => Promise.reject(new Error('boom'))}
       />,
     );
-    expect(await screen.findByRole('alert')).toHaveTextContent('boom');
+    // T10-B2/F-018 — safe fallback, never the raw thrown message.
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Failed to load import history.',
+    );
   });
 });

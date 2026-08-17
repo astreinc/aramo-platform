@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-import { InlineAlert, PageHeader } from '../ui';
+import { InlineAlert, PageHeader, safeErrorMessage } from '../ui';
 
 import { CompensationDisplayPicker } from './CompensationDisplayPicker';
 import { FinancialsToggle } from './FinancialsToggle';
@@ -37,8 +37,7 @@ export function SettingsView({ fetchFn }: Props = {}) {
       })
       .catch((err: unknown) => {
         if (cancelled) return;
-        const message =
-          err instanceof Error ? err.message : 'Failed to load settings.';
+        const message = safeErrorMessage(err, 'Failed to load settings.');
         setState({ status: 'error', message });
       });
     return () => {

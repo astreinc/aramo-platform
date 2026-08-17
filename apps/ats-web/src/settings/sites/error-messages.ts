@@ -1,5 +1,7 @@
 import { ApiError } from '@aramo/fe-foundation';
 
+import { safeErrorMessage } from '../../ui';
+
 // Settings Rebuild Directive 4 — legible messages for the sites surface.
 //
 // The backend raises 400 VALIDATION_ERROR / 404 NOT_FOUND with a precise
@@ -8,7 +10,7 @@ import { ApiError } from '@aramo/fe-foundation';
 
 export function messageForSiteError(err: unknown): string {
   if (!(err instanceof ApiError)) {
-    return err instanceof Error ? err.message : 'Something went wrong.';
+    return safeErrorMessage(err, 'Something went wrong.');
   }
   const reason =
     typeof err.details?.['reason'] === 'string'
@@ -38,7 +40,7 @@ export function messageForSiteError(err: unknown): string {
     case 'unknown_field':
       return 'That field cannot be edited here.';
     default:
-      return err.message || 'Failed to save the branch.';
+      return safeErrorMessage(err, 'Failed to save the branch.');
   }
 }
 

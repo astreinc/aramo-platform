@@ -82,6 +82,9 @@ describe('RolesMatrixView', () => {
 
   it('surfaces a load error honestly', async () => {
     render(<RolesMatrixView fetchFn={() => Promise.reject(new Error('boom'))} />);
-    expect(await screen.findByText('boom')).toBeInTheDocument();
+    // T10-B2/F-018 — safe fallback, never the raw thrown message.
+    expect(
+      await screen.findByText('Failed to load the roles catalog.'),
+    ).toBeInTheDocument();
   });
 });

@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 
 import { useEntityCrumb } from '../shell/breadcrumb';
-import { PageHeader } from '../ui';
+import { ErrorState, LoadingState, PageHeader } from '../ui';
 
 import { getFillPerformance } from './fill-performance-api';
 import type { FillPerformanceReport } from './types';
@@ -90,9 +90,9 @@ export function FillPerformanceView(): JSX.Element {
         </button>
       </form>
 
-      {status === 'loading' ? <p role="status">Loading…</p> : null}
+      {status === 'loading' ? <LoadingState /> : null}
       {status === 'error' && error !== null ? (
-        <p role="alert">{error}</p>
+        <ErrorState message={error} />
       ) : null}
 
       {report !== null && status === 'idle' ? (

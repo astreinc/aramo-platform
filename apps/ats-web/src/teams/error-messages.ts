@@ -10,6 +10,8 @@
 
 import { ApiError } from '@aramo/fe-foundation';
 
+import { safeErrorMessage } from '../ui';
+
 export interface ErrorMessage {
   readonly title: string;
   readonly detail?: string;
@@ -37,10 +39,10 @@ export function messageForCreateTeamError(err: unknown): ErrorMessage {
   }
 
   if (err.status === 400) {
-    return { title: err.message };
+    return { title: safeErrorMessage(err, 'Something went wrong. Please try again.') };
   }
 
-  return { title: err.message };
+  return { title: safeErrorMessage(err, 'Something went wrong. Please try again.') };
 }
 
 export function messageForAddMemberError(err: unknown): ErrorMessage {
@@ -51,7 +53,7 @@ export function messageForAddMemberError(err: unknown): ErrorMessage {
   if (err.status === 404) {
     return { title: 'This team isn’t in your tenant.' };
   }
-  return { title: err.message };
+  return { title: safeErrorMessage(err, 'Something went wrong. Please try again.') };
 }
 
 export function messageForRemoveMemberError(err: unknown): ErrorMessage {
@@ -60,7 +62,7 @@ export function messageForRemoveMemberError(err: unknown): ErrorMessage {
   }
   // 404 here is idempotent-success at the caller — this mapper is for
   // the rare other error.
-  return { title: err.message };
+  return { title: safeErrorMessage(err, 'Something went wrong. Please try again.') };
 }
 
 export function messageForFetchTeamMembersError(err: unknown): ErrorMessage {
@@ -70,5 +72,5 @@ export function messageForFetchTeamMembersError(err: unknown): ErrorMessage {
   if (err.status === 404) {
     return { title: 'This team isn’t in your tenant.' };
   }
-  return { title: err.message };
+  return { title: safeErrorMessage(err, 'Something went wrong. Please try again.') };
 }

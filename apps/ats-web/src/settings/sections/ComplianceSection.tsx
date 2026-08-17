@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { ApiError, useToast } from '@aramo/fe-foundation';
+import { useToast } from '@aramo/fe-foundation';
 import { IconDownload, IconLock, IconShieldCheck } from '@aramo/fe-foundation';
 
-import { Button, Card } from '../../ui';
+import { Button, Card, safeErrorMessage } from '../../ui';
 import type { ExportEntityType } from '../admin-types';
 import { EXPORT_ENTITIES } from '../admin-types';
 import {
@@ -13,7 +13,7 @@ import {
   SettingsSection,
   StatChip,
 } from '../components';
-import { downloadExport, ExportError } from '../export-api';
+import { downloadExport } from '../export-api';
 
 // Settings Rebuild Directive 1 — Data & compliance.
 //
@@ -32,10 +32,7 @@ export function ComplianceSection() {
       await downloadExport(entity);
       toast.show(`${label} export started`);
     } catch (err: unknown) {
-      const message =
-        err instanceof ExportError || err instanceof ApiError
-          ? err.message
-          : 'Export failed.';
+      const message = safeErrorMessage(err, 'Export failed.');
       toast.show(message);
     } finally {
       setBusy(null);

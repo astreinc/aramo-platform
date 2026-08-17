@@ -140,7 +140,11 @@ describe('OrgHierarchyView (S5c-1)', () => {
       </ToastProvider>,
     );
     await waitFor(() =>
-      expect(screen.getByText('boom')).toBeInTheDocument(),
+      expect(
+        screen.getByText('Failed to load org hierarchy.'),
+      ).toBeInTheDocument(),
     );
+    // T10-B2/F-018 — the raw thrown message never reaches the UI.
+    expect(screen.queryByText('boom')).toBeNull();
   });
 });

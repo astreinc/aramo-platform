@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 
-import { Card, InlineAlert, StatusPill } from '../../ui';
+import { Card, InlineAlert, safeErrorMessage, StatusPill } from '../../ui';
 import { SettingHint } from '../components';
 
 import { fetchRolesCatalog, type RoleCatalogView } from './roles-catalog-api';
@@ -92,7 +92,7 @@ export function RolesMatrixView({ fetchFn }: Props = {}) {
         if (cancelled) return;
         setState({
           status: 'error',
-          message: err instanceof Error ? err.message : 'Failed to load the roles catalog.',
+          message: safeErrorMessage(err, 'Failed to load the roles catalog.'),
         });
       });
     return () => {

@@ -1,7 +1,15 @@
 import { useCallback, useEffect, useState } from 'react';
-import { hasScope, useSession, type Session } from '@aramo/fe-foundation';
+import { hasScope, useSession, useToast, type Session } from '@aramo/fe-foundation';
 
-import { Button, Card } from '../ui';
+import {
+  Button,
+  Card,
+  Dialog,
+  EmptyState,
+  ErrorState,
+  LoadingState,
+  safeErrorMessage,
+} from '../ui';
 import { SettingCardHead } from '../settings/components';
 
 import { IntegrationConnectionStatusPill } from './IntegrationConnectionStatusPill';
@@ -69,8 +77,15 @@ function Panel({
   readonly enableFn: (id: string) => Promise<IntegrationConnectionView>;
   readonly disableFn: (id: string) => Promise<IntegrationConnectionView>;
 }) {
+  const toast = useToast();
   const [refreshKey, setRefreshKey] = useState(0);
   const [list, setList] = useState<ListState>({ status: 'loading' });
+  // The single in-flight mutation's connection id (T10-B2/F-021): its controls
+  // disable and a second mutation is blocked until it settles.
+  const [busyId, setBusyId] = useState<string | null>(null);
+  // The connection queued for a destructive disable confirmation.
+  const [confirmDisable, setConfirmDisable] =
+    useState<IntegrationConnectionView | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -90,15 +105,29 @@ function Panel({
 
   const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
 
-  const act = useCallback(
-    async (fn: (id: string) => Promise<IntegrationConnectionView>, id: string) => {
+  // T10-B2/F-021 — the connector mutation UX standard: single-flight (blocks
+  // duplicate/concurrent submits), safe error surfaced via toast (never a raw
+  // exception), success toast + authoritative server re-read.
+  const runMutation = useCallback(
+    async (
+      fn: (id: string) => Promise<IntegrationConnectionView>,
+      id: string,
+      successMsg: string,
+      failMsg: string,
+    ) => {
+      if (busyId !== null) return;
+      setBusyId(id);
       try {
         await fn(id);
-      } finally {
+        toast.show(successMsg);
         refresh();
+      } catch (err) {
+        toast.show(safeErrorMessage(err, failMsg));
+      } finally {
+        setBusyId(null);
       }
     },
-    [refresh],
+    [busyId, refresh, toast],
   );
 
   return (
@@ -110,19 +139,13 @@ function Panel({
         />
         <div className="rc-card--pad">
           {list.status === 'loading' && (
-            <p className="set-muted" data-testid="integration-loading">
-              Loading connections…
-            </p>
+            <LoadingState label="Loading connections…" />
           )}
           {list.status === 'error' && (
-            <p className="set-muted" role="alert" data-testid="integration-error">
-              {list.message}
-            </p>
+            <ErrorState message={list.message} onRetry={refresh} />
           )}
           {list.status === 'ready' && list.items.length === 0 && (
-            <p className="set-muted" data-testid="integration-empty">
-              No connector connections have been configured yet.
-            </p>
+            <EmptyState message="No connector connections have been configured yet." />
           )}
           {list.status === 'ready' && list.items.length > 0 && (
             <div className="set-rows" role="list" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
@@ -142,20 +165,29 @@ function Panel({
                         <Button
                           variant="secondary"
                           size="sm"
+                          disabled={busyId !== null}
                           data-testid={`integration-enable-${c.id}`}
-                          onClick={() => act(enableFn, c.id)}
+                          onClick={() =>
+                            runMutation(
+                              enableFn,
+                              c.id,
+                              'Connector connection enabled.',
+                              'Could not enable the connection. Try again.',
+                            )
+                          }
                         >
-                          Enable
+                          {busyId === c.id ? 'Working…' : 'Enable'}
                         </Button>
                       )}
                       {canWrite && c.status !== 'disabled' && (
                         <Button
                           variant="secondary"
                           size="sm"
+                          disabled={busyId !== null}
                           data-testid={`integration-disable-${c.id}`}
-                          onClick={() => act(disableFn, c.id)}
+                          onClick={() => setConfirmDisable(c)}
                         >
-                          Disable
+                          {busyId === c.id ? 'Working…' : 'Disable'}
                         </Button>
                       )}
                     </span>
@@ -166,6 +198,52 @@ function Panel({
           )}
         </div>
       </Card>
+
+      {/* T10-B2/F-021 D — destructive disable confirmation via the shared
+          Dialog. Enable is non-destructive (no confirm). Existing scopes are
+          unchanged; no provider selection / onboarding is implied. */}
+      <Dialog
+        open={confirmDisable !== null}
+        onOpenChange={(open) => {
+          if (!open) setConfirmDisable(null);
+        }}
+        title="Disable this connection?"
+        size="sm"
+        footer={
+          <>
+            <Button
+              variant="secondary"
+              onClick={() => setConfirmDisable(null)}
+              data-testid="integration-disable-cancel"
+            >
+              Keep enabled
+            </Button>
+            <Button
+              variant="primary"
+              disabled={busyId !== null}
+              data-testid="integration-disable-confirm"
+              onClick={() => {
+                const target = confirmDisable;
+                setConfirmDisable(null);
+                if (target !== null)
+                  void runMutation(
+                    disableFn,
+                    target.id,
+                    'Connector connection disabled.',
+                    'Could not disable the connection. Try again.',
+                  );
+              }}
+            >
+              Disable
+            </Button>
+          </>
+        }
+      >
+        <p>
+          The connector stops syncing until it is re-enabled. Stored credentials
+          are kept.
+        </p>
+      </Dialog>
     </section>
   );
 }

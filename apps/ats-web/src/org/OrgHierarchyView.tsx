@@ -1,7 +1,7 @@
 import { ApiError, useToast } from '@aramo/fe-foundation';
 import { useEffect, useState } from 'react';
 
-import { Button, Card, InlineAlert, PageHeader } from '../ui';
+import { Button, Card, InlineAlert, PageHeader, safeErrorMessage } from '../ui';
 import {
   fetchAssignableUsers,
   resolveUserNames,
@@ -55,8 +55,7 @@ export function OrgHierarchyView({
     fetchEdges()
       .then((view) => setState({ status: 'ready', edges: view.items }))
       .catch((err: unknown) => {
-        const message =
-          err instanceof Error ? err.message : 'Failed to load org hierarchy.';
+        const message = safeErrorMessage(err, 'Failed to load org hierarchy.');
         setState({ status: 'error', message });
       });
   };
@@ -70,8 +69,7 @@ export function OrgHierarchyView({
       })
       .catch((err: unknown) => {
         if (cancelled) return;
-        const message =
-          err instanceof Error ? err.message : 'Failed to load org hierarchy.';
+        const message = safeErrorMessage(err, 'Failed to load org hierarchy.');
         setState({ status: 'error', message });
       });
     // PICKER source — active roster for the AddEdge selects.
@@ -114,7 +112,7 @@ export function OrgHierarchyView({
         refresh();
         return;
       }
-      toast.show(err instanceof Error ? err.message : 'Failed to remove edge.');
+      toast.show(safeErrorMessage(err, 'Failed to remove edge.'));
     } finally {
       setRemoving(false);
     }

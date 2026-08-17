@@ -32,12 +32,13 @@ describe('messageForAddEdgeError — the self_loop + cycle templates (ruling 4)'
     expect(msg.detail).toMatch(/already a manager up this/i);
   });
 
-  it('falls back to the BE message for an unknown reason', () => {
+  it('falls back to SAFE generic copy for an unknown reason (T10-B2/F-018 — never the raw BE message)', () => {
     const err = new ApiError(400, 'somethingelse', 'VALIDATION_ERROR', {
       reason: 'foo',
     });
     const msg = messageForAddEdgeError(err);
-    expect(msg.title).toBe('somethingelse');
+    expect(msg.title).toBe('Something went wrong. Please try again.');
+    expect(msg.title).not.toBe('somethingelse');
   });
 
   it('maps 404 to a "user doesn’t exist" message (the UUID-fallback path)', () => {

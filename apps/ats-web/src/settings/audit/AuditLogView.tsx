@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { TableColumn } from '@aramo/fe-foundation';
 
-import { Button, DataTable, InlineAlert, StatusPill } from '../../ui';
+import { Button, DataTable, InlineAlert, safeErrorMessage, StatusPill } from '../../ui';
 import { SettingHint } from '../components';
 
 import { fetchAuditEvents } from './audit-api';
@@ -47,7 +47,7 @@ export function AuditLogView({ fetchFn }: Props = {}) {
           setState('idle');
         })
         .catch((err: unknown) => {
-          setError(err instanceof Error ? err.message : 'Failed to load the audit log.');
+          setError(safeErrorMessage(err, 'Failed to load the audit log.'));
           setState('error');
         });
     },

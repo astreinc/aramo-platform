@@ -39,6 +39,32 @@
   margin: 0;
 }
 
+/* T10-B2 — shared UX-state atoms (LoadingState / EmptyState / ErrorState).
+   Presentation only; copy + semantics live in the components. */
+.rc-state {
+  margin: 0;
+}
+.rc-state--loading {
+  padding: 16px 18px;
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+.rc-state--empty {
+  padding: 16px 18px;
+}
+.rc-state--empty .rc-state__title {
+  margin: 0 0 4px;
+  font-weight: 600;
+}
+.rc-state--empty .rc-state__msg {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+.rc-state__action {
+  margin-top: 10px;
+}
+
 .rc-metrics--spaced {
   margin: 20px 0;
 }

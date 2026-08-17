@@ -4,6 +4,7 @@ import { useParams } from 'react-router-dom';
 
 import { getRequisition } from '../requisitions/requisitions-api';
 import { getTalent } from '../talent/talent-api';
+import { safeErrorMessage } from '../ui';
 
 import { AdvanceStep } from './AdvanceStep';
 import { ConfirmStep } from './ConfirmStep';
@@ -130,7 +131,7 @@ export function SubmittalWizard() {
         setLoadState({ kind: 'ready-create', examination: exam });
       } catch (err) {
         if (cancelled) return;
-        const msg = err instanceof Error ? err.message : 'Lookup failed.';
+        const msg = safeErrorMessage(err, 'Lookup failed.');
         setLoadState({
           kind: 'error',
           message: `Could not load submittal state: ${msg}`,

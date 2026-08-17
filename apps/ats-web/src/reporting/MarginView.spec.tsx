@@ -82,14 +82,26 @@ describe('MarginView', () => {
     expect(screen.getByTestId('margin-eligible')).toHaveTextContent('0');
   });
 
-  it('does NOT fetch the margin endpoint and shows a gated notice when the commercial scope is absent', async () => {
+  it('does NOT fetch the margin endpoint and shows a SCOPE-SILENT denial when the commercial scope is absent', async () => {
     // useSession bootstraps its own /auth session fetch unconditionally; the gate
     // is that the MARGIN endpoint is never hit when the scope is absent (§26).
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(() =>
       Promise.resolve(new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } })),
     );
-    render(<MarginView sessionOverride={WITHOUT_COMMERCIAL} />);
+    const { container } = render(
+      <MarginView sessionOverride={WITHOUT_COMMERCIAL} />,
+    );
+    // T10-B2 FIX_NOW-1 — a safe, scope-SILENT denial: the permission identifier
+    // must never be user-visible (the boundary T10-B1 preserved).
     expect(screen.getByTestId('margin-gated')).toBeInTheDocument();
+    expect(
+      screen.getByText('You do not have access to commercial margin.'),
+    ).toBeInTheDocument();
+    expect(container.textContent ?? '').not.toContain(
+      'assignment:commercials:read',
+    );
+    expect(document.body.innerHTML).not.toContain('assignment:commercials:read');
+    // No-fetch preserved: the gated MARGIN read is never issued.
     const marginCalls = fetchSpy.mock.calls.filter((c) =>
       String(c[0]).includes('/v1/reports/margin'),
     );

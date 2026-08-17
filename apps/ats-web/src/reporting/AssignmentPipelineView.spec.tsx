@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { AssignmentPipelineView } from './AssignmentPipelineView';
@@ -74,6 +74,33 @@ describe('AssignmentPipelineView', () => {
     vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('boom'));
     render(<AssignmentPipelineView />);
     await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
+    // T10-B2/F-018 — the raw thrown message never reaches the UI.
+    expect(screen.queryByText(/boom/)).toBeNull();
+  });
+
+  // T10-B2/F-017 — the shared ErrorState offers a retry that re-issues the same
+  // idempotent read; it does not fire without user action.
+  it('offers a retry that re-issues the read', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockRejectedValueOnce(new Error('boom'))
+      .mockResolvedValue(
+        new Response(JSON.stringify(REPORT), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+    render(<AssignmentPipelineView />);
+    await waitFor(() =>
+      expect(screen.getByTestId('error-state')).toBeInTheDocument(),
+    );
+    // Exactly one read so far — retry has NOT fired on its own.
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByTestId('error-retry'));
+    await waitFor(() =>
+      expect(screen.getByTestId('ap-content')).toBeInTheDocument(),
+    );
+    expect(fetchSpy.mock.calls.length).toBeGreaterThan(1);
   });
 
   // T9-B5 (§6) — the loading (role="status") state while the mount fetch is in flight.

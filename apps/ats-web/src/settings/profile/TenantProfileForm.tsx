@@ -2,7 +2,7 @@ import { ApiError, Combobox, useToast, type ComboboxItem } from '@aramo/fe-found
 import { useEffect, useMemo, useState } from 'react';
 import { IconBuilding } from '@aramo/fe-foundation';
 
-import { Button, Card, InlineAlert } from '../../ui';
+import { Button, Card, InlineAlert, safeErrorMessage } from '../../ui';
 import { SettingCardHead, SettingHint } from '../components';
 
 import { ISO_3166_COUNTRIES } from './iso-3166-country';
@@ -121,7 +121,7 @@ export function TenantProfileForm({ fetchFn, saveFn }: Props = {}) {
         if (cancelled) return;
         setState({
           status: 'error',
-          message: err instanceof Error ? err.message : 'Failed to load the tenant profile.',
+          message: safeErrorMessage(err, 'Failed to load the tenant profile.'),
         });
       });
     return () => {
@@ -150,9 +150,7 @@ export function TenantProfileForm({ fetchFn, saveFn }: Props = {}) {
       const message =
         err instanceof ApiError
           ? messageForApiError(err)
-          : err instanceof Error
-            ? err.message
-            : 'Failed to save the tenant profile.';
+          : safeErrorMessage(err, 'Failed to save the tenant profile.');
       setFormError(message);
     } finally {
       setSaving(false);
@@ -247,6 +245,6 @@ function messageForApiError(err: ApiError): string {
     case 'unknown_field':
       return 'That field cannot be edited here.';
     default:
-      return err.message || 'Failed to save the tenant profile.';
+      return safeErrorMessage(err, 'Failed to save the tenant profile.');
   }
 }
