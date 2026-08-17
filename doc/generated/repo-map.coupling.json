@@ -8986,6 +8986,11 @@
     },
     { "from": "deploy/seed-prod.test.sh", "status": "unscoped", "to": "deploy/seed-prod.sh" },
     {
+      "from": "deploy/singlebox-compose.test.sh",
+      "status": "unscoped",
+      "to": "deploy/systemd/singlebox-compose.sh"
+    },
+    {
       "from": "doc/00-ci-deliberate-failure-evidence.md",
       "status": "unscoped",
       "to": "ci/scripts/verify-portal-refusal.ts"
@@ -15338,7 +15343,7 @@
   ],
   "scanScope": {
     "dirs": [".github/workflows", ".husky", "ci/scripts", "deploy", "scripts", "tools"],
-    "files": 58,
+    "files": 59,
     "huskyPresent": false
   },
   "scripts": [
@@ -15645,6 +15650,7 @@
         { "kind": "prose", "path": "deploy/nginx/Dockerfile" },
         { "kind": "prose", "path": "deploy/seed-prod.sh" },
         { "kind": "prose", "path": "deploy/seed-prod.test.sh" },
+        { "kind": "prose", "path": "deploy/singlebox-compose.test.sh" },
         { "kind": "prose", "path": "scripts/verify-vocabulary.sh" },
         { "kind": "prose", "path": "tools/link-e2e-recruiter-sub.ts" },
         { "kind": "prose", "path": "tools/provision-e2e-recruiter.lib.ts" },

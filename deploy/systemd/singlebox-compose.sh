@@ -52,6 +52,21 @@ case "$action" in
     # shellcheck disable=SC1090
     . "$ARAMO_ENV_FILE"
     set +a
+    # T2-F1-H4 — production DB credential preflight (fail-closed). Runs AFTER the
+    # env is sourced and BEFORE `compose up`, so an absent/empty/known-weak
+    # POSTGRES_PASSWORD can never reach PostgreSQL's first-boot cluster
+    # initialization (which bakes the password into the persisted volume,
+    # irreversibly, on first boot). The value is NEVER printed. The rejected set
+    # is the .env.prod.example placeholder plus the compose legacy fallback — not
+    # a general complexity policy.
+    case "${POSTGRES_PASSWORD:-}" in
+      "" | aramo | change_me_in_prod)
+        echo "singlebox-compose: FATAL — POSTGRES_PASSWORD is unset, empty, or a known-weak default." >&2
+        echo "singlebox-compose: refusing to initialize the production DB with a weak credential." >&2
+        echo "singlebox-compose: set a strong POSTGRES_PASSWORD in ${ARAMO_ENV_FILE} and retry." >&2
+        exit 3
+        ;;
+    esac
     compose up -d
     ;;
   down)
