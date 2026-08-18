@@ -13619,6 +13619,7 @@
     { "from": "package.json", "status": "unscoped", "to": "ci/scripts/verify-placement-sql.ts" },
     { "from": "package.json", "status": "unscoped", "to": "ci/scripts/verify-portal-refusal.ts" },
     { "from": "package.json", "status": "unscoped", "to": "ci/scripts/verify-repo-map.ts" },
+    { "from": "package.json", "status": "unscoped", "to": "deploy/jiti-tsconfig-runner.mjs" },
     { "from": "package.json", "status": "unscoped", "to": "doc/00-README.md" },
     { "from": "package.json", "status": "unscoped", "to": "libs/activity/prisma/schema.prisma" },
     { "from": "package.json", "status": "unscoped", "to": "libs/ai-draft/prisma/schema.prisma" },
@@ -15360,7 +15361,7 @@
   ],
   "scanScope": {
     "dirs": [".github/workflows", ".husky", "ci/scripts", "deploy", "scripts", "tools"],
-    "files": 61,
+    "files": 62,
     "huskyPresent": false
   },
   "scripts": [
