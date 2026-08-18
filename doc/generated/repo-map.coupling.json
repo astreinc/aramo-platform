@@ -15593,7 +15593,10 @@
     },
     { "name": "prisma:seed-auth-storage", "references": [] },
     { "name": "prisma:seed-identity", "references": [] },
-    { "name": "prisma:seed-platform-owner", "references": [] },
+    {
+      "name": "prisma:seed-platform-owner",
+      "references": [{ "kind": "npm-run", "path": "deploy/seed-prod.sh" }]
+    },
     {
       "name": "prisma:seed-policy-lifecycle",
       "references": [{ "kind": "npm-run", "path": "deploy/seed-prod.sh" }]
@@ -15712,7 +15715,6 @@
     "prisma:generate-identity",
     "prisma:seed-auth-storage",
     "prisma:seed-identity",
-    "prisma:seed-platform-owner",
     "prisma:validate-auth-storage",
     "prisma:validate-identity",
     "tests:integration"

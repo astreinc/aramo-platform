@@ -124,6 +124,21 @@ run_seed() {
     npm run prisma:seed-astre
 }
 
+# STAGE B2 — bind the first platform super-admin (the admin.aramo.ai operator).
+# Same network/DB/image recipe as run_seed. Idempotent: upserts on stable UUIDs
+# with update:{}, so no duplicate — and a re-run AFTER first federated login
+# leaves the owner's linked Cognito sub untouched (T2-F1-H3). NO password, NO new
+# tenant: binds purush@aramo.ai to the EXISTING 'Aramo Platform' sentinel tenant
+# with the super_admin role.
+run_seed_platform_owner() {
+  docker run --rm \
+    --network "$NETWORK" \
+    -v "$ARAMO_DIR":/repo -w /repo \
+    -e DATABASE_URL="$DBURL" \
+    "$NODE_IMAGE" \
+    npm run prisma:seed-platform-owner
+}
+
 # STAGE C — publish the requisition-lifecycle policy package (ADR-0024 §D2/§D7,
 # PR-4a). Same network/DB/image recipe as run_seed. Idempotent: a no-op if the
 # tenant already has this version. WITHOUT this the app fails closed (no
@@ -156,6 +171,21 @@ run_assert_query() {
     "SELECT count(*) FROM identity.\"Tenant\" WHERE id='${ASTRE_TENANT_ID}' AND allowed_domain='${ASTRE_ALLOWED_DOMAIN}' AND slug='${ASTRE_SLUG}' AND identity_provider='${ASTRE_IDENTITY_PROVIDER}';"
 }
 
+# Read-only DURABLE relationship assertion for the platform owner (T2-F1-H3):
+# exactly ONE user purush@aramo.ai holding the super_admin role in the 'Aramo
+# Platform' sentinel tenant. Deliberately ExternalIdentity-AGNOSTIC — it holds
+# both pre-login (no Cognito sub) and post-login (sub linked), so the seed stays
+# safely re-runnable after go-live. UUIDs are the stable seed constants
+# (SEED_IDS.platform_tenant / SEED_IDS.roles.super_admin).
+run_assert_platform_owner() {
+  docker run --rm \
+    --network "$NETWORK" \
+    -e DATABASE_URL="$DBURL" \
+    "$ASSERT_IMAGE" \
+    psql "${DBURL%%\?*}" -v ON_ERROR_STOP=1 -q -t -A -c \
+    "SELECT count(*) FROM identity.\"User\" u JOIN identity.\"UserTenantMembership\" m ON m.user_id=u.id JOIN identity.\"UserTenantMembershipRole\" mr ON mr.membership_id=m.id WHERE u.email='purush@aramo.ai' AND m.tenant_id='01900000-0000-7000-8000-000000000100' AND mr.role_id='01900000-0000-7000-8000-00000000001d';"
+}
+
 # THE GATE. The seed-presence query returns a single count. Returns 0 iff that
 # count is exactly 1 (the Astre tenant exists with its backfilled domain).
 # Numeric -eq — NOT a substring match — so stray whitespace, empty output, or a
@@ -186,6 +216,9 @@ main() {
   echo "[seed] STAGE B — running the Astre seed (idempotent, on-network)…"
   run_seed
 
+  echo "[seed] STAGE B2 — binding the platform super-admin (idempotent, on-network)…"
+  run_seed_platform_owner
+
   echo "[seed] STAGE C — publishing the requisition-lifecycle policy package (idempotent)…"
   run_seed_policy
 
@@ -201,6 +234,17 @@ main() {
   else
     echo "[seed] FATAL: post-seed assertion failed (expected exactly 1 Astre tenant row)." >&2
     # The on_exit trap prints the "containers NOT recreated" reassurance.
+    exit 1
+  fi
+
+  # GATE 2 (T2-F1-H3): confirm the platform super-admin relationship landed.
+  local powner
+  powner="$(run_assert_platform_owner)"
+  echo "[seed] post-seed assertion: platform super-admin (purush@aramo.ai + super_admin in sentinel) rows = '${powner}'"
+  if assert_passes "$powner"; then
+    echo "[seed] OK — platform owner present with super_admin on the sentinel tenant."
+  else
+    echo "[seed] FATAL: platform-owner assertion failed (expected exactly 1)." >&2
     exit 1
   fi
 }
