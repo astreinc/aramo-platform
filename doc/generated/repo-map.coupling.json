@@ -8948,6 +8948,7 @@
       "status": "unscoped",
       "to": "doc/runbooks/singlebox-ops.md"
     },
+    { "from": "deploy/build-images.test.sh", "status": "unscoped", "to": "deploy/build-images.sh" },
     { "from": "deploy/migrate-prod.sh", "status": "unscoped", "to": "deploy/migrate-prod.test.sh" },
     {
       "from": "deploy/migrate-prod.sh",
@@ -10910,6 +10911,7 @@
       "status": "unscoped",
       "to": "pact/provider/src/verify-api.ts"
     },
+    { "from": "doc/runbooks/RELEASE-box.md", "status": "unscoped", "to": "deploy/build-images.sh" },
     { "from": "doc/runbooks/RELEASE-box.md", "status": "unscoped", "to": "deploy/migrate-prod.sh" },
     { "from": "doc/runbooks/RELEASE-box.md", "status": "unscoped", "to": "deploy/seed-prod.sh" },
     { "from": "doc/runbooks/RELEASE-box.md", "status": "unscoped", "to": "doc/04-risks.md" },
@@ -10932,6 +10934,11 @@
       "from": "doc/runbooks/bootstrap-anthropic-secret.md",
       "status": "unscoped",
       "to": "infrastructure/bootstrap/create-anthropic-secret.sh"
+    },
+    {
+      "from": "doc/runbooks/frontdoor-cutover.md",
+      "status": "unscoped",
+      "to": "deploy/build-images.sh"
     },
     {
       "from": "doc/runbooks/frontdoor-cutover.md",
@@ -15348,7 +15355,7 @@
   ],
   "scanScope": {
     "dirs": [".github/workflows", ".husky", "ci/scripts", "deploy", "scripts", "tools"],
-    "files": 59,
+    "files": 61,
     "huskyPresent": false
   },
   "scripts": [
@@ -15387,6 +15394,8 @@
         { "kind": "prose", "path": "ci/scripts/verify-aggregate-gate.ts" },
         { "kind": "prose", "path": "ci/scripts/verify-env-passthrough.ts" },
         { "kind": "prose", "path": "ci/scripts/verify-placement-sql.ts" },
+        { "kind": "prose", "path": "deploy/build-images.sh" },
+        { "kind": "prose", "path": "deploy/build-images.test.sh" },
         { "kind": "prose", "path": "deploy/migrate-prod.sh" },
         { "kind": "prose", "path": "deploy/nginx/Dockerfile" },
         { "kind": "prose", "path": "deploy/nginx/README.md" },
@@ -15650,6 +15659,7 @@
         { "kind": "prose", "path": "ci/scripts/verify-api-contract-parity.ts" },
         { "kind": "prose", "path": "ci/scripts/verify-error-codes.ts" },
         { "kind": "prose", "path": "ci/scripts/verify-frontdoor-conf.ts" },
+        { "kind": "prose", "path": "deploy/build-images.test.sh" },
         { "kind": "prose", "path": "deploy/migrate-prod.sh" },
         { "kind": "prose", "path": "deploy/migrate-prod.test.sh" },
         { "kind": "prose", "path": "deploy/nginx/Dockerfile" },
