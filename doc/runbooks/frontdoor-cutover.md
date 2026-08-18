@@ -88,10 +88,10 @@ code** (it presently carries the rollback tag's content — api ran on a rollbac
 in the last window); every layer is cached, so this is fast:
 
 ```
-docker build -f apps/api/Dockerfile             -t aramo/api:local             . \
- && docker build -f apps/auth-service/Dockerfile    -t aramo/auth-service:local    . \
- && docker build -f apps/platform-admin/Dockerfile  -t aramo/platform-admin:local  . \
- && docker build -f deploy/nginx/Dockerfile         -t aramo/nginx:local           .
+# T2-F1-H2: governed build guard — validates the authorized SHA against a clean
+# checkout and stamps all four images (--build-arg GIT_REVISION) from the repo root.
+AUTHORIZED_SHA=<exact 40-hex governed release head>
+deploy/build-images.sh "$AUTHORIZED_SHA"
 ```
 
 Verify the command exited 0. **HALT** on any non-zero — do not proceed to recreate.
