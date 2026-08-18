@@ -918,6 +918,7 @@
     "deploy/backup/s3-backup-lifecycle.json",
     "deploy/build-images.sh",
     "deploy/build-images.test.sh",
+    "deploy/jiti-tsconfig-runner.mjs",
     "deploy/migrate-prod.sh",
     "deploy/migrate-prod.test.sh",
     "deploy/nginx/Dockerfile",

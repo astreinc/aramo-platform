@@ -78,6 +78,24 @@ function serverBlocks(template: string): Array<{ tag: string; body: string }> {
   return out;
 }
 
+// Extract the balanced-brace body of the first `location <header> {` in a block.
+function locationBody(blockBody: string, header: string): string | null {
+  const idx = blockBody.indexOf(header);
+  if (idx === -1) return null;
+  const braceStart = blockBody.indexOf('{', idx);
+  if (braceStart === -1) return null;
+  let depth = 0;
+  let k = braceStart;
+  for (; k < blockBody.length; k++) {
+    if (blockBody[k] === '{') depth++;
+    else if (blockBody[k] === '}') {
+      depth--;
+      if (depth === 0) break;
+    }
+  }
+  return blockBody.slice(braceStart, k);
+}
+
 function parseWebhookRoute(constantsSrc: string): string | null {
   const m = constantsSrc.match(
     /INDEED_APPLY_WEBHOOK_ROUTE\s*=\s*'([^']+)'/,
@@ -154,6 +172,29 @@ function checkRepo(): Issue[] {
     for (const h of HEADER_LINES) {
       if (!b.body.includes(h)) {
         issues.push({ where: TEMPLATE, reason: `(d) ${b.tag} block missing header "${h}"` });
+      }
+    }
+  }
+
+  // (j) HF1-A regression — every /auth/ location in the three 443 blocks must
+  // carry the proxy response-header buffer tuning. Without it the auth callback's
+  // large Set-Cookie session JWT overflows nginx's default 4k/8k header buffers
+  // and nginx 502s ("upstream sent too big header") before login completes. This
+  // assertion fails if the buffer directives are removed from any /auth/ block.
+  const AUTH_BUFFERS: Array<[RegExp, string]> = [
+    [/proxy_buffer_size\s+32k\b/, 'proxy_buffer_size 32k'],
+    [/proxy_buffers\s+8\s+32k\b/, 'proxy_buffers 8 32k'],
+    [/proxy_busy_buffers_size\s+64k\b/, 'proxy_busy_buffers_size 64k'],
+  ];
+  for (const b of ssl) {
+    const authLoc = locationBody(b.body, 'location /auth/');
+    if (authLoc === null) {
+      issues.push({ where: TEMPLATE, reason: `(j) ${b.tag} block missing /auth/ location` });
+      continue;
+    }
+    for (const [re, label] of AUTH_BUFFERS) {
+      if (!re.test(authLoc)) {
+        issues.push({ where: TEMPLATE, reason: `(j) ${b.tag} /auth/ location missing "${label}" (HF1-A auth-callback buffer tuning)` });
       }
     }
   }
