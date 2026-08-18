@@ -140,8 +140,11 @@ do NOT run in a foreground where a tool-timeout obscures whether the build finis
 appears to "hang," it is almost certainly grinding (especially `--no-cache`), not stuck — let it
 finish or run it backgrounded and poll, but DO confirm the actual exit status before STEP 6.
 ```
-for each S in SERVICES:
-  docker build --no-cache -f apps/$S/Dockerfile -t aramo/$S:local .
+# T2-F1-H2: the governed build guard resolves the repo root, validates the
+# authorized SHA against a CLEAN checkout, and stamps every image with
+# --build-arg GIT_REVISION (an unstamped governed image crash-loops at api boot).
+AUTHORIZED_SHA=<exact 40-hex governed release head>
+deploy/build-images.sh "$AUTHORIZED_SHA"
 ```
 **GATE:** each exits 0 (zero TS2307 — the `^build` fix is in-tree on any recent SHA). If any fails,
 **STOP** — do NOT recreate. Report the failure.
