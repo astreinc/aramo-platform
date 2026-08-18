@@ -49,6 +49,23 @@ check "non-numeric noise → abort" 1 "FATAL"
 # pass just because it contains a '1' — numeric -eq rejects it.
 check "count=11 (substring trap) → abort" 1 "11"
 
+# --- T2-F1-H3: the platform-owner stage + gate are wired ------------------
+# The platform-owner gate reuses assert_passes (same semantics proven above), so
+# here we assert the new stage/assertion functions exist and main runs Stage B2
+# after the Astre seed and before the policy publish.
+for fn in run_seed_platform_owner run_assert_platform_owner; do
+  if declare -F "$fn" >/dev/null; then
+    echo "  ok    function ${fn} defined"; pass=$((pass + 1))
+  else
+    echo "  FAIL  function ${fn} missing"; fail=$((fail + 1))
+  fi
+done
+if awk '/^  run_seed$/{s=NR} /^  run_seed_platform_owner$/{b2=NR} /^  run_seed_policy$/{c=NR} END{exit !(s>0 && b2>0 && c>0 && s<b2 && b2<c)}' "$DIR/seed-prod.sh"; then
+  echo "  ok    main() order: Astre → platform-owner (B2) → policy"; pass=$((pass + 1))
+else
+  echo "  FAIL  main() Stage B2 ordering (expected run_seed < run_seed_platform_owner < run_seed_policy)"; fail=$((fail + 1))
+fi
+
 echo ""
 echo "assertion parse: ${pass} passed, ${fail} failed"
 [ "$fail" = 0 ]
