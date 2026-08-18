@@ -8973,6 +8973,11 @@
       "status": "unscoped",
       "to": "apps/api/src/webhooks/indeed-apply.constants.ts"
     },
+    {
+      "from": "deploy/nginx/templates/aramo.conf.template",
+      "status": "unscoped",
+      "to": "ci/scripts/verify-frontdoor-conf.ts"
+    },
     { "from": "deploy/seed-prod.sh", "status": "unscoped", "to": "deploy/migrate-prod.sh" },
     { "from": "deploy/seed-prod.sh", "status": "unscoped", "to": "deploy/seed-prod.test.sh" },
     {
