@@ -191,14 +191,23 @@ export function derivePostLoginRedirect(
 }
 
 // Signout return URL (§3d.3): same treatment — VALIDATED host →
-// `${derivedBase}${AUTH_SIGNOUT_PATH ?? '/'}`; else legacy full-URL
+// `${derivedBase}${AUTH_SIGNOUT_PATH ?? '/signed-out'}`; else legacy full-URL
 // AUTH_COGNITO_SIGNOUT_REDIRECT; else null (signout_redirect_missing throw
 // survives). Never the raw host — this is a registered/allowlisted value only.
+//
+// T2-E1-HF3 (ruling HF3-G5-R3): the canonical default is `/signed-out`, NOT
+// `/`. `/` is guarded by the SPA RouteGuard, so a post-logout landing on `/`
+// immediately re-enters authentication (silent Microsoft SSO) and the user
+// perceives that logout failed. `/signed-out` is a PUBLIC, RouteGuard-free
+// landing that performs zero automatic authentication. The AUTH_SIGNOUT_PATH
+// override is preserved for operators; correctness no longer depends on setting
+// it. (DEPLOY PREREQUISITE: every browser origin's `https://<origin>/signed-out`
+// must be in the Cognito app client's Allowed sign-out URLs before deploy.)
 export function deriveSignoutRedirect(
   derivedBase?: string | null,
 ): string | null {
   if (derivedBase !== undefined && derivedBase !== null && derivedBase.length > 0) {
-    const path = process.env['AUTH_SIGNOUT_PATH'] ?? '/';
+    const path = process.env['AUTH_SIGNOUT_PATH'] ?? '/signed-out';
     return `${derivedBase.replace(/\/+$/, '')}${ensureLeadingSlash(path)}`;
   }
   const legacy = process.env['AUTH_COGNITO_SIGNOUT_REDIRECT'];

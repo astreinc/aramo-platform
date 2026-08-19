@@ -152,9 +152,14 @@ describe('derivePostLoginRedirect — PR-3.1 §3d.2', () => {
   });
 });
 
-describe('deriveSignoutRedirect — PR-3.1 §3d.3', () => {
-  it('validated host → derivedBase + AUTH_SIGNOUT_PATH (default /)', () => {
-    expect(deriveSignoutRedirect('https://admin.aramo.ai')).toBe('https://admin.aramo.ai/');
+describe('deriveSignoutRedirect — PR-3.1 §3d.3 / T2-E1-HF3 §3d.3', () => {
+  it('validated host → derivedBase + AUTH_SIGNOUT_PATH (default /signed-out per HF3-G5-R3)', () => {
+    // HF3-G5-R3: the canonical default is /signed-out (a public, RouteGuard-free
+    // landing), NOT the guarded / that re-entered authentication.
+    expect(deriveSignoutRedirect('https://admin.aramo.ai')).toBe(
+      'https://admin.aramo.ai/signed-out',
+    );
+    // The environment override seam is preserved for operators.
     process.env['AUTH_SIGNOUT_PATH'] = '/goodbye';
     expect(deriveSignoutRedirect('https://admin.aramo.ai')).toBe('https://admin.aramo.ai/goodbye');
   });

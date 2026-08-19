@@ -1,4 +1,4 @@
-import { ForbiddenState, RouteGuard, ToastProvider, hasScope, useSession } from '@aramo/fe-foundation';
+import { ForbiddenState, RouteGuard, SignedOut, ToastProvider, hasScope, useSession } from '@aramo/fe-foundation';
 import { Navigate, Route, Routes } from 'react-router-dom';
 
 import { AdminGate } from './admin/AdminGate';
@@ -77,6 +77,12 @@ export function App() {
     <ToastProvider>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        {/* T2-E1-HF3 — the PUBLIC signed-out landing. Top-level, BEFORE the
+            path="/*" catch-all and OUTSIDE RouteGuard (mirrors /login) so it
+            renders session-less and performs NO automatic authentication. This
+            is where the Cognito logout returns the browser (deriveSignoutRedirect
+            → /signed-out); guarded /* would auto-re-login via RouteGuard. */}
+        <Route path="/signed-out" element={<SignedOut />} />
         {/* Invite-S3 (§5) — the PUBLIC invitation-accept page. Top-level,
             BEFORE the path="/*" catch-all and OUTSIDE RouteGuard (mirrors
             /login) so it renders session-less. */}

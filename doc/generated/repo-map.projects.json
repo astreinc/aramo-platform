@@ -344,6 +344,7 @@
       "RouteGuard",
       "SESSION_PATH",
       "Shell",
+      "SignedOut",
       "Switch",
       "Table",
       "Tabs",
@@ -2633,6 +2634,12 @@
       {
         "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/ats-web/src/routes/VerifyEmailConfirmPage.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/routes/signed-out-route.spec.tsx",
         "project": "aramo-ats-web",
         "status": "excluded"
       },

@@ -1,5 +1,5 @@
-import { Navigate, Route, Routes } from 'react-router-dom';
-import { ToastProvider, useSession } from '@aramo/fe-foundation';
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { SignedOut, ToastProvider, useSession } from '@aramo/fe-foundation';
 
 import { LoginPage } from './LoginPage';
 import { PortalShell } from './shell/PortalShell';
@@ -25,6 +25,19 @@ import { RightsView } from './rights/RightsView';
 // and redirects to the SPA — booting authenticated straight into the records.
 export function App() {
   const state = useSession();
+  const location = useLocation();
+
+  // T2-E1-HF3 — the PUBLIC signed-out landing. The shared logout GET reaches
+  // deriveSignoutRedirect and returns the browser to /signed-out; render it
+  // session-less BEFORE any session gate so it is stable on refresh and starts
+  // no authentication. Portal's passwordless login mechanism is unchanged.
+  if (location.pathname === '/signed-out') {
+    return (
+      <ToastProvider>
+        <SignedOut />
+      </ToastProvider>
+    );
+  }
 
   if (state.status === 'loading') {
     return (
