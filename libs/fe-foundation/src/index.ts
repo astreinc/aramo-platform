@@ -47,6 +47,7 @@ export {
   NavLink,
   PageHeader,
   RadioGroup,
+  SignedOut,
   Switch,
   Table,
   Tabs,

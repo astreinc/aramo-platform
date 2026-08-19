@@ -1,5 +1,5 @@
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
-import { RouteGuard, ToastProvider, useSession } from '@aramo/fe-foundation';
+import { RouteGuard, SignedOut, ToastProvider, useSession } from '@aramo/fe-foundation';
 
 import { LoginPage } from './LoginPage';
 import { PlatformShell } from './shell/PlatformShell';
@@ -28,6 +28,18 @@ export function App() {
     return (
       <ToastProvider>
         <LoginPage />
+      </ToastProvider>
+    );
+  }
+
+  // T2-E1-HF3 — the PUBLIC signed-out landing. Same short-circuit-before-guard
+  // pattern as /login: the Cognito logout returns the browser here
+  // (deriveSignoutRedirect → /signed-out); it must render session-less and NOT
+  // re-enter RouteGuard (which would silently re-authenticate via SSO).
+  if (location.pathname === '/signed-out') {
+    return (
+      <ToastProvider>
+        <SignedOut />
       </ToastProvider>
     );
   }
