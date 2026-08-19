@@ -293,12 +293,15 @@
     ],
     "@aramo/entitlement": [
       "CAPABILITY_VALUES",
+      "DEFAULT_TENANT_CAPABILITIES",
       "EntitlementGuard",
       "EntitlementModule",
       "EntitlementRepository",
       "REQUIRED_CAPABILITIES_KEY",
       "RequireCapability",
-      "isCapability"
+      "isCapability",
+      "reconcileTenantEntitlements",
+      "resolveReconcileTarget"
     ],
     "@aramo/events": ["EventsModule"],
     "@aramo/evidence": ["EvidenceModule", "EvidenceRepository", "PrismaService"],

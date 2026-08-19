@@ -12360,6 +12360,11 @@
       "to": "doc/05-conventions.md"
     },
     {
+      "from": "libs/entitlement/prisma/seed-entitlements.ts",
+      "status": "unscoped",
+      "to": "deploy/seed-prod.sh"
+    },
+    {
       "from": "libs/entitlement/project.json",
       "status": "unscoped",
       "to": "libs/entitlement/src/index.ts"
@@ -12368,6 +12373,11 @@
       "from": "libs/entitlement/project.json",
       "status": "unscoped",
       "to": "libs/entitlement/tsconfig.lib.json"
+    },
+    {
+      "from": "libs/entitlement/src/lib/reconcile-entitlements.ts",
+      "status": "production",
+      "to": "libs/entitlement/prisma/seed-entitlements.ts"
     },
     {
       "from": "libs/events/prisma/schema.prisma",
@@ -13648,6 +13658,11 @@
     { "from": "package.json", "status": "unscoped", "to": "libs/consent/prisma/schema.prisma" },
     { "from": "package.json", "status": "unscoped", "to": "libs/contact/prisma/schema.prisma" },
     { "from": "package.json", "status": "unscoped", "to": "libs/entitlement/prisma/schema.prisma" },
+    {
+      "from": "package.json",
+      "status": "unscoped",
+      "to": "libs/entitlement/prisma/seed-entitlements.ts"
+    },
     { "from": "package.json", "status": "unscoped", "to": "libs/events/prisma/schema.prisma" },
     { "from": "package.json", "status": "unscoped", "to": "libs/evidence/prisma/schema.prisma" },
     { "from": "package.json", "status": "unscoped", "to": "libs/examination/prisma/schema.prisma" },
@@ -15607,6 +15622,10 @@
       "references": [{ "kind": "npm-run", "path": "deploy/seed-prod.sh" }]
     },
     { "name": "prisma:seed-auth-storage", "references": [] },
+    {
+      "name": "prisma:seed-entitlements",
+      "references": [{ "kind": "npm-run", "path": "deploy/seed-prod.sh" }]
+    },
     { "name": "prisma:seed-identity", "references": [] },
     {
       "name": "prisma:seed-platform-owner",
