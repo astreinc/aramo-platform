@@ -381,8 +381,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // AUTH_COGNITO_SIGNOUT_REDIRECT env. Still open-redirect-safe — the base
       // comes from the dev allowlist, never the raw Host (PR-3.1 §2). The
       // never-run spec asserted the pre-3.1 env value.
+      // T2-E1-HF3 (HF3-G5-R3): the ruled post-logout landing is the public
+      // /signed-out route, NOT the guarded /. Still host-derived + open-redirect-safe.
       expect(url.searchParams.get('logout_uri')).toMatch(
-        /^http:\/\/127\.0\.0\.1:\d+\/$/,
+        /^http:\/\/127\.0\.0\.1:\d+\/signed-out$/,
       );
     });
 
