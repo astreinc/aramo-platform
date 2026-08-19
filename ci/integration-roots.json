@@ -10,6 +10,7 @@
     "libs/client-talent-restriction",
     "libs/common",
     "libs/consent",
+    "libs/entitlement",
     "libs/evidence",
     "libs/examination",
     "libs/identity",

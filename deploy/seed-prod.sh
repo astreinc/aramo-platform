@@ -159,6 +159,25 @@ run_seed_policy() {
     npm run prisma:seed-policy-lifecycle
 }
 
+# STAGE D — reconcile the tenant entitlement bundle (T2-E1-HF2). Same
+# network/DB/image recipe as run_seed. The generic reconciler REQUIRES an
+# explicit target tenant id via ARAMO_ENTITLEMENT_TENANT_ID and fails closed
+# without it — the Astre id is supplied HERE by this production wrapper, never as
+# an implementation default. Idempotent: it grants only the missing members of
+# the canonical bundle ({core,ats,portal}); a re-run after convergence is a
+# no-op. WITHOUT this a seed-provisioned tenant is PROVISIONED with zero
+# entitlements and EntitlementGuard 403s every @RequireCapability('ats') surface
+# (dashboard, requisitions) even for a correctly-scoped user.
+run_seed_entitlements() {
+  docker run --rm \
+    --network "$NETWORK" \
+    -v "$ARAMO_DIR":/repo -w /repo \
+    -e DATABASE_URL="$DBURL" \
+    -e ARAMO_ENTITLEMENT_TENANT_ID="$ASTRE_TENANT_ID" \
+    "$NODE_IMAGE" \
+    npm run prisma:seed-entitlements
+}
+
 # Read-only assertion query, run via psql in postgres:17 (the node image has no
 # psql). Strips the ?schema= suffix psql rejects (as db-sync-local.sh does).
 # Tables are PascalCase-quoted + schema-qualified (identity."Tenant").
@@ -186,6 +205,19 @@ run_assert_platform_owner() {
     "SELECT count(*) FROM identity.\"User\" u JOIN identity.\"UserTenantMembership\" m ON m.user_id=u.id JOIN identity.\"UserTenantMembershipRole\" mr ON mr.membership_id=m.id WHERE u.email='purush@aramo.ai' AND m.tenant_id='01900000-0000-7000-8000-000000000100' AND mr.role_id='01900000-0000-7000-8000-00000000001d';"
 }
 
+# Read-only entitlement postcondition (T2-E1-HF2): the explicitly-targeted Astre
+# tenant holds the COMPLETE canonical bundle. Counts ONLY the required members
+# {core,ats,portal} (IN-list) so a stray 'sourcing' row can never make an
+# incomplete bundle false-pass, and a missing member fails closed. Expect 3.
+run_assert_entitlements() {
+  docker run --rm \
+    --network "$NETWORK" \
+    -e DATABASE_URL="$DBURL" \
+    "$ASSERT_IMAGE" \
+    psql "${DBURL%%\?*}" -v ON_ERROR_STOP=1 -q -t -A -c \
+    "SELECT count(*) FROM entitlement.\"TenantEntitlement\" WHERE tenant_id='${ASTRE_TENANT_ID}' AND capability IN ('core','ats','portal');"
+}
+
 # THE GATE. The seed-presence query returns a single count. Returns 0 iff that
 # count is exactly 1 (the Astre tenant exists with its backfilled domain).
 # Numeric -eq — NOT a substring match — so stray whitespace, empty output, or a
@@ -195,6 +227,17 @@ assert_passes() {
   count="$(printf '%s' "$1" | tr -d '[:space:]')"
   [ -n "$count" ] || return 1
   [ "$count" -eq 1 ] 2>/dev/null
+}
+
+# Numeric gate variant (T2-E1-HF2): passes iff the count equals EXACTLY the
+# expected N. Same no-false-pass discipline as assert_passes (empty output,
+# non-numeric, or a psql error string can never satisfy it).
+assert_count_eq() {
+  local count expected
+  count="$(printf '%s' "$1" | tr -d '[:space:]')"
+  expected="$2"
+  [ -n "$count" ] || return 1
+  [ "$count" -eq "$expected" ] 2>/dev/null
 }
 
 # --- main -----------------------------------------------------------------
@@ -222,6 +265,9 @@ main() {
   echo "[seed] STAGE C — publishing the requisition-lifecycle policy package (idempotent)…"
   run_seed_policy
 
+  echo "[seed] STAGE D — reconciling the Astre tenant entitlement bundle (idempotent)…"
+  run_seed_entitlements
+
   # GATE: confirm the seed actually landed the Astre tenant + backfilled domain.
   # A silently-failed seed (or a wrong DB) would NOT satisfy this, and the deploy
   # ABORTS (containers are NOT recreated — exit non-zero stops the sequence).
@@ -245,6 +291,20 @@ main() {
     echo "[seed] OK — platform owner present with super_admin on the sentinel tenant."
   else
     echo "[seed] FATAL: platform-owner assertion failed (expected exactly 1)." >&2
+    exit 1
+  fi
+
+  # GATE 3 (T2-E1-HF2): confirm the Astre tenant holds the COMPLETE canonical
+  # entitlement bundle {core,ats,portal}. Counts only the required members, so an
+  # incomplete bundle (or a stray sourcing row) can never false-pass. Without
+  # this the tenant would be capability-denied on every ATS surface.
+  local ent
+  ent="$(run_assert_entitlements)"
+  echo "[seed] post-seed assertion: Astre canonical entitlement rows {core,ats,portal} = '${ent}'"
+  if assert_count_eq "$ent" 3; then
+    echo "[seed] OK — Astre holds the complete canonical entitlement bundle."
+  else
+    echo "[seed] FATAL: entitlement assertion failed (expected exactly 3 canonical capabilities for Astre)." >&2
     exit 1
   fi
 }

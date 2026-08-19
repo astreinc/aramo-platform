@@ -53,7 +53,7 @@ check "count=11 (substring trap) → abort" 1 "11"
 # The platform-owner gate reuses assert_passes (same semantics proven above), so
 # here we assert the new stage/assertion functions exist and main runs Stage B2
 # after the Astre seed and before the policy publish.
-for fn in run_seed_platform_owner run_assert_platform_owner; do
+for fn in run_seed_platform_owner run_assert_platform_owner run_seed_entitlements run_assert_entitlements; do
   if declare -F "$fn" >/dev/null; then
     echo "  ok    function ${fn} defined"; pass=$((pass + 1))
   else
@@ -65,6 +65,27 @@ if awk '/^  run_seed$/{s=NR} /^  run_seed_platform_owner$/{b2=NR} /^  run_seed_p
 else
   echo "  FAIL  main() Stage B2 ordering (expected run_seed < run_seed_platform_owner < run_seed_policy)"; fail=$((fail + 1))
 fi
+
+# --- T2-E1-HF2: the entitlement reconcile stage (D) + gate are wired ---------
+# main() must run STAGE D (run_seed_entitlements) AFTER the policy publish; the
+# postcondition gate uses assert_count_eq (exact-N numeric, no substring pass).
+if awk '/^  run_seed_policy$/{c=NR} /^  run_seed_entitlements$/{d=NR} END{exit !(c>0 && d>0 && c<d)}' "$DIR/seed-prod.sh"; then
+  echo "  ok    main() order: policy (C) → entitlements (D)"; pass=$((pass + 1))
+else
+  echo "  FAIL  main() Stage D ordering (expected run_seed_policy < run_seed_entitlements)"; fail=$((fail + 1))
+fi
+# assert_count_eq gate: passes iff exactly N; empty / non-numeric / off-by-one abort.
+checkN() {
+  local desc="$1" expected="$2" count="$3" n="$4" got
+  if assert_count_eq "$count" "$n"; then got=0; else got=1; fi
+  if [ "$got" = "$expected" ]; then echo "  ok    ${desc}"; pass=$((pass + 1))
+  else echo "  FAIL  ${desc} (expected gate=${expected}, got ${got})"; fail=$((fail + 1)); fi
+}
+checkN "entitlement count=3 (complete bundle) → pass" 0 "3" 3
+checkN "entitlement count=2 (incomplete bundle) → abort" 1 "2" 3
+checkN "entitlement count=0 (no rows) → abort" 1 "0" 3
+checkN "entitlement count='' (empty/psql error) → abort" 1 "" 3
+checkN "entitlement count=33 (substring trap) → abort" 1 "33" 3
 
 echo ""
 echo "assertion parse: ${pass} passed, ${fail} failed"

@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { AramoError } from '@aramo/common';
 import { PLATFORM_TENANT_SENTINEL_ID } from '@aramo/auth';
 import {
+  DEFAULT_TENANT_CAPABILITIES,
   EntitlementRepository,
   type Capability,
   isCapability,
@@ -49,8 +50,6 @@ import { TenantPolicyProvisioningService } from './tenant-policy-provisioning.se
 //     service layer if a controller later exposes PATCH role_keys).
 //   - drift (Cognito has user, identity does not) => recover by writing
 //     identity rows against the existing Cognito sub.
-
-const DEFAULT_CAPABILITIES: readonly Capability[] = ['core', 'ats', 'portal'];
 
 export interface ProvisionResult {
   tenant_id: string;
@@ -100,7 +99,7 @@ export class PlatformInvitationService {
     // 0. Validate capability set (default = core,ats,portal).
     const desired: readonly Capability[] =
       args.capabilities === undefined || args.capabilities.length === 0
-        ? DEFAULT_CAPABILITIES
+        ? DEFAULT_TENANT_CAPABILITIES
         : args.capabilities.filter(isCapability);
 
     // 0a. Pre-check tenant name uniqueness (the service-layer raise still

@@ -33,6 +33,7 @@
     "prisma:seed-platform-owner": "node --import jiti/register libs/identity/prisma/seed-platform-owner.ts",
     "prisma:seed-auth-storage": "node --import jiti/register libs/auth-storage/prisma/seed.ts",
     "prisma:seed-policy-lifecycle": "node deploy/jiti-tsconfig-runner.mjs apps/api/src/policy/seed-lifecycle.ts",
+    "prisma:seed-entitlements": "node deploy/jiti-tsconfig-runner.mjs libs/entitlement/prisma/seed-entitlements.ts",
     "db:sync:local": "bash tools/db-sync-local.sh",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
