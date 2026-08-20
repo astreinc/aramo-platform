@@ -34,12 +34,16 @@ export default defineConfig({
     proxy: {
       '/auth': {
         target: 'http://localhost:3001', // auth-service
-        changeOrigin: true,
+        // changeOrigin:false preserves the 4201 FE-origin Host so the auth-service
+        // derives the registered :4201 callback (PR-3.1 host-derived auth base);
+        // rewriting to :3001 would emit an unregistered callback Cognito rejects.
+        // Dev-proxy only — vite is not used in prod (nginx serves the built FE).
+        changeOrigin: false,
         secure: false,
       },
       '/v1': {
         target: 'http://localhost:3000', // apps/api
-        changeOrigin: true,
+        changeOrigin: false,
         secure: false,
       },
       // Increment-1 §3.2 (Lead-ruled run-config): the platform-admin backend.
