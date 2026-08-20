@@ -192,6 +192,55 @@ describe('NewRequisitionView (New Requisition — mockup parity)', () => {
       screen.getByRole('button', { name: /create & run match/i }),
     ).toBeInTheDocument();
   });
+
+  it('offers a non-AI "Import requisition" action on the intake lane', async () => {
+    mockApi();
+    renderView(['requisition:create']);
+    expect(
+      await screen.findByRole('button', { name: /import requisition/i }),
+    ).toBeInTheDocument();
+  });
+
+  it('imports a pasted requirement WITHOUT AI: parsed fields, "Parsed" chips, no "AI draft", no intake call', async () => {
+    const calls: string[] = [];
+    mockApi((url, method) => {
+      calls.push(`${method} ${url}`);
+      return null;
+    });
+    renderView(['requisition:create']);
+    fireEvent.change(await screen.findByLabelText('Requisition intake'), {
+      target: {
+        value:
+          'Need a Senior Backend Engineer. Contract, Austin, TX or mostly remote. Nice to have gRPC.',
+      },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /import requisition/i }));
+
+    // The SAME manual form opens, prefilled from the parse (no loading spinner,
+    // no network round-trip).
+    expect(await screen.findByDisplayValue('Senior Backend Engineer')).toBeInTheDocument();
+    // Honest provenance: parsed fields carry the "Parsed" chip and NEVER the
+    // "AI draft" chip — client-stated facts are not dressed up as AI-authored.
+    expect(screen.getAllByText('Parsed').length).toBeGreaterThan(0);
+    expect(screen.queryByText('AI draft')).not.toBeInTheDocument();
+    // The stated nice-to-have skill seeded an editable chip.
+    expect(screen.getByText('gRPC')).toBeInTheDocument();
+    // No AI: the AI intake endpoint was never called on this lane.
+    expect(calls.some((c) => c.includes('/v1/requisitions/intake'))).toBe(false);
+  });
+
+  it('flips a parsed field from "Parsed" to "edited" when the recruiter edits it', async () => {
+    mockApi();
+    renderView(['requisition:create']);
+    fireEvent.change(await screen.findByLabelText('Requisition intake'), {
+      target: { value: 'Need a Senior Backend Engineer. Austin, TX.' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /import requisition/i }));
+    const title = await screen.findByLabelText('Job title');
+    expect(screen.getAllByText('Parsed').length).toBeGreaterThan(0);
+    fireEvent.change(title, { target: { value: 'Staff Backend Engineer' } });
+    expect(screen.getByText('edited')).toBeInTheDocument();
+  });
 });
 
 describe('RATE_TYPE_VALUES — hand-mirror of the BE allowlist', () => {

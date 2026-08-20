@@ -54,8 +54,10 @@ import {
   draftRequisitionFromIntake,
 } from './requisitions-api';
 import { createErrorMessage, intakeErrorMessage } from './error-messages';
+import { parseRequisitionIntake } from './parse-intake';
 import {
   ReqProvenanceChip,
+  isPrefilled,
   provenanceAfterEdit,
   type ReqProvenance,
   type ReqProvenanceMap,
@@ -225,6 +227,12 @@ function buildCreateBody(
 
 type Phase = 'intake' | 'loading' | 'form' | 'success';
 
+// How the form was reached: a blank manual form ('none'), the AI draft lane
+// ('ai'), or the deterministic non-AI parse lane ('parsed'). Drives the review
+// banner, JD sizing, additional-fields expansion and the Source rail — the AI
+// lane's rendered strings stay byte-identical to before.
+type DraftSource = 'none' | 'ai' | 'parsed';
+
 interface NewRequisitionViewProps {
   // Test seam (mirrors the RouteGuard / DetailView pattern).
   readonly sessionOverride?: Session;
@@ -248,7 +256,7 @@ export function NewRequisitionView({ sessionOverride }: NewRequisitionViewProps)
   const [provenance, setProvenance] = useState<ReqProvenanceMap>({});
   const [required, setRequired] = useState<string[]>([]);
   const [nice, setNice] = useState<string[]>([]);
-  const [aiUsed, setAiUsed] = useState(false);
+  const [draftSource, setDraftSource] = useState<DraftSource>('none');
   const [sourceText, setSourceText] = useState('');
   const [companyHint, setCompanyHint] = useState<string | null>(null);
   const [contactHint, setContactHint] = useState<string | null>(null);
@@ -379,9 +387,9 @@ export function NewRequisitionView({ sessionOverride }: NewRequisitionViewProps)
     setPhase('loading');
     try {
       const res = await draftRequisitionFromIntake({ intake_text: intakeText });
-      applyDraft(res.fields, res.jd_text, res.required_skills, res.nice_to_have_skills);
+      applyDraft(res.fields, res.jd_text, res.required_skills, res.nice_to_have_skills, 'ai');
       setSourceText(intakeText);
-      setAiUsed(true);
+      setDraftSource('ai');
       setPhase('form');
     } catch (err) {
       // Honest failure — never fabricate a draft. The intake message is
@@ -390,6 +398,30 @@ export function NewRequisitionView({ sessionOverride }: NewRequisitionViewProps)
       setIntakeError(intakeErrorMessage(err));
       setPhase('intake');
     }
+  }
+
+  // ── The deterministic (non-AI) import lane ────────────────────────────────
+  // The recruiter pastes the client's well-defined requirement; we parse it
+  // locally (no AI, no network) and prefill the SAME manual form for review.
+  // We author nothing and alter nothing — the full paste is preserved in the
+  // job description. Fields carry the honest 'parsed' tag, never 'ai'.
+  function onImport(): void {
+    if (intakeText.trim() === '') {
+      setIntakeError('Paste the client requirement first.');
+      return;
+    }
+    setIntakeError(null);
+    const parsed = parseRequisitionIntake(intakeText);
+    applyDraft(
+      parsed.fields,
+      parsed.jd_text,
+      parsed.required_skills,
+      parsed.nice_to_have_skills,
+      'parsed',
+    );
+    setSourceText(intakeText);
+    setDraftSource('parsed');
+    setPhase('form');
   }
 
   function applyDraft(
@@ -414,11 +446,12 @@ export function NewRequisitionView({ sessionOverride }: NewRequisitionViewProps)
     jd: string,
     req: { name: string }[],
     niceList: { name: string }[],
+    source: ReqProvenance = 'ai',
   ): void {
     const next = emptyState();
     const prov: ReqProvenanceMap = {};
     const tag = (key: string): void => {
-      prov[key] = 'ai';
+      prov[key] = source;
     };
     if (fields.title) {
       next.title = fields.title;
@@ -505,7 +538,7 @@ export function NewRequisitionView({ sessionOverride }: NewRequisitionViewProps)
     setProvenance({});
     setRequired([]);
     setNice([]);
-    setAiUsed(false);
+    setDraftSource('none');
     setSourceText('');
     setCompanyHint(null);
     setContactHint(null);
@@ -600,6 +633,7 @@ export function NewRequisitionView({ sessionOverride }: NewRequisitionViewProps)
           error={intakeError}
           onText={setIntakeText}
           onDraft={() => void onDraft()}
+          onImport={onImport}
           onManual={startManual}
         />
       ) : null}
@@ -609,7 +643,7 @@ export function NewRequisitionView({ sessionOverride }: NewRequisitionViewProps)
       {phase === 'form' ? (
         <div className="rc-editgrid">
           <div className="rc-editgrid__main">
-            {aiUsed ? (
+            {draftSource === 'ai' ? (
               <div className="rc-aibanner">
                 <span className="rc-aibanner__ic" aria-hidden="true">
                   <Icons.IconBolt />
@@ -627,6 +661,27 @@ export function NewRequisitionView({ sessionOverride }: NewRequisitionViewProps)
                 >
                   <Icons.IconBolt />
                   Regenerate
+                </button>
+              </div>
+            ) : draftSource === 'parsed' ? (
+              <div className="rc-aibanner rc-aibanner--parsed">
+                <span className="rc-aibanner__ic" aria-hidden="true">
+                  <Icons.IconFile />
+                </span>
+                <span>
+                  <b>Imported from the pasted client requirement.</b> Nothing was
+                  drafted or invented — the full text is kept in the job
+                  description. Review and edit every field, then create; nothing
+                  is created until you do. Pick the matching client.
+                </span>
+                <button
+                  type="button"
+                  className="rc-btn rc-btn--sm"
+                  onClick={onImport}
+                  disabled={submitting}
+                >
+                  <Icons.IconFile />
+                  Re-import
                 </button>
               </div>
             ) : (
@@ -783,7 +838,7 @@ export function NewRequisitionView({ sessionOverride }: NewRequisitionViewProps)
                   </label>
                   <div className="rc-inpgrp">
                     <input
-                      className={`rc-input${provenance['duration_value'] === 'ai' ? ' rc-input--prov' : ''}`}
+                      className={`rc-input${isPrefilled(provenance['duration_value']) ? ' rc-input--prov' : ''}`}
                       type="number"
                       min={0}
                       value={state.duration_value}
@@ -840,7 +895,7 @@ export function NewRequisitionView({ sessionOverride }: NewRequisitionViewProps)
                     </label>
                     <div className="rc-inpgrp">
                       <input
-                        className={`rc-input${provenance['bill_rate_amount'] === 'ai' ? ' rc-input--prov' : ''}`}
+                        className={`rc-input${isPrefilled(provenance['bill_rate_amount']) ? ' rc-input--prov' : ''}`}
                         type="text"
                         inputMode="decimal"
                         value={state.bill_rate_amount}
@@ -873,7 +928,7 @@ export function NewRequisitionView({ sessionOverride }: NewRequisitionViewProps)
                     <ReqProvenanceChip prov={provenance['rate_type']} />
                   </label>
                   <select
-                    className={`rc-input${provenance['rate_type'] === 'ai' ? ' rc-input--prov' : ''}`}
+                    className={`rc-input${isPrefilled(provenance['rate_type']) ? ' rc-input--prov' : ''}`}
                     value={state.rate_type}
                     aria-label="Rate type"
                     disabled={submitting}
@@ -921,8 +976,8 @@ export function NewRequisitionView({ sessionOverride }: NewRequisitionViewProps)
               <div className="rc-fgrid">
                 <div className="rc-ifield rc-ifield--full">
                   <textarea
-                    className={`rc-input rc-jd${provenance['description'] === 'ai' ? ' rc-input--prov' : ''}`}
-                    rows={aiUsed ? 20 : 14}
+                    className={`rc-input rc-jd${isPrefilled(provenance['description']) ? ' rc-input--prov' : ''}`}
+                    rows={draftSource !== 'none' ? 20 : 14}
                     value={state.description}
                     aria-label="Job description"
                     placeholder="Describe the role…"
@@ -1025,7 +1080,7 @@ export function NewRequisitionView({ sessionOverride }: NewRequisitionViewProps)
 
             {/* ── 8. Additional fields (non-mockup real fields, collapsed) ── */}
             <Card>
-              <details className="rc-addl" open={aiUsed}>
+              <details className="rc-addl" open={draftSource !== 'none'}>
                 <summary className="rc-addl__summary">
                   <Icons.IconColumns className="rc-card__hic" />
                   Additional fields
@@ -1163,7 +1218,7 @@ export function NewRequisitionView({ sessionOverride }: NewRequisitionViewProps)
 
           {/* ── Right rail ── */}
           <aside className="rc-editgrid__rail">
-            {aiUsed && sourceText !== '' ? (
+            {draftSource !== 'none' && sourceText !== '' ? (
               <section className="rc-sidecard" aria-label="Source">
                 <h3 className="rc-sidecard__h">
                   <Icons.IconFile />
@@ -1258,12 +1313,14 @@ function IntakeLane({
   error,
   onText,
   onDraft,
+  onImport,
   onManual,
 }: {
   readonly text: string;
   readonly error: string | null;
   readonly onText: (v: string) => void;
   readonly onDraft: () => void;
+  readonly onImport: () => void;
   readonly onManual: () => void;
 }) {
   return (
@@ -1273,14 +1330,16 @@ function IntakeLane({
           title={
             <>
               <Icons.IconBolt className="rc-card__hic" />
-              Draft from an email or a few lines
+              Start from a client email or a few lines
             </>
           }
         />
         <div className="rc-reqintake__body">
           <p className="rc-reqintake__lead">
-            Paste the client’s email, or just a few lines from the hiring
-            manager. Aramo drafts the requisition — you review, edit and save.
+            Paste the client’s email or a few lines from the hiring manager.
+            Draft it with AI, or — if the client already sent a complete
+            requirement — import it as-is. Either way you review, edit and
+            create.
           </p>
           <textarea
             className="rc-input rc-reqintake__ta"
@@ -1296,8 +1355,13 @@ function IntakeLane({
               <Icons.IconBolt />
               Draft with AI
             </button>
+            <button type="button" className="rc-btn" onClick={onImport}>
+              <Icons.IconFile />
+              Import requisition
+            </button>
             <span className="rc-reqintake__hint">
-              AI drafts — you review, edit and save.
+              Import parses a ready requirement into the form — no AI. You review,
+              edit and create.
             </span>
           </div>
         </div>
@@ -1349,7 +1413,7 @@ function Field({
   readonly full?: boolean;
   readonly type?: string;
 }) {
-  const flagged = prov === 'ai';
+  const flagged = isPrefilled(prov);
   return (
     <div className={`rc-ifield${full ? ' rc-ifield--full' : ''}`}>
       <label className="rc-ifield__lb">
@@ -1389,7 +1453,7 @@ function NumberField({
         <ReqProvenanceChip prov={prov} />
       </label>
       <input
-        className={`rc-input${prov === 'ai' ? ' rc-input--prov' : ''}`}
+        className={`rc-input${isPrefilled(prov) ? ' rc-input--prov' : ''}`}
         type="number"
         min={0}
         step={1}
@@ -1461,7 +1525,7 @@ function EnumSelect({
         <ReqProvenanceChip prov={prov} />
       </label>
       <select
-        className={`rc-input${prov === 'ai' ? ' rc-input--prov' : ''}`}
+        className={`rc-input${isPrefilled(prov) ? ' rc-input--prov' : ''}`}
         value={value}
         aria-label={label}
         disabled={disabled}
