@@ -10,17 +10,30 @@ import { Icons } from '../ui';
 // confidence chip — the model returns no per-field confidence, so rendering
 // one would be invented (the same Lead ruling that dropped it for Add-Talent).
 // Fields the recruiter types from scratch (manual lane) carry no chip.
-export type ReqProvenance = 'ai' | 'edited';
+//
+// The deterministic (non-AI) "Import requisition" lane populates fields by
+// parsing the recruiter's pasted client requirement; those fields are tagged
+// 'parsed' — an HONEST, distinct signal that is NEVER the 'ai' label. Labelling
+// client-stated facts as AI-authored would be a false trust signal (Directive
+// REQ-DET-INTAKE-1; ADR-0015 posture). A recruiter edit flips 'parsed' → 'edited'
+// exactly as it does for 'ai'.
+export type ReqProvenance = 'ai' | 'parsed' | 'edited';
 
 export type ReqProvenanceMap = Partial<Record<string, ReqProvenance>>;
 
-// The tag transition on a recruiter edit: 'ai' → 'edited'; 'edited' stays;
-// no chip stays no chip.
+// The tag transition on a recruiter edit: a machine-prefilled tag ('ai' or
+// 'parsed') → 'edited'; 'edited' stays; no chip stays no chip.
 export function provenanceAfterEdit(
   current: ReqProvenance | undefined,
 ): ReqProvenance | undefined {
-  if (current === 'ai') return 'edited';
+  if (current === 'ai' || current === 'parsed') return 'edited';
   return current;
+}
+
+// Machine-prefilled (not yet recruiter-owned) — drives the input highlight for
+// BOTH the AI and the parsed lanes, without conflating their honest chips.
+export function isPrefilled(prov: ReqProvenance | undefined): boolean {
+  return prov === 'ai' || prov === 'parsed';
 }
 
 export function ReqProvenanceChip({ prov }: { readonly prov?: ReqProvenance }) {
@@ -29,6 +42,14 @@ export function ReqProvenanceChip({ prov }: { readonly prov?: ReqProvenance }) {
       <span className="rc-prov rc-prov--ai">
         <Icons.IconBolt />
         AI draft
+      </span>
+    );
+  }
+  if (prov === 'parsed') {
+    return (
+      <span className="rc-prov rc-prov--parsed">
+        <Icons.IconFile />
+        Parsed
       </span>
     );
   }

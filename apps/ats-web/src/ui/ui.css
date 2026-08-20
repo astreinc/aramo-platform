@@ -3256,6 +3256,16 @@ select.rc-input { appearance: none; padding-right: 28px; }
 
 .rc-prov--ai svg { width: 10px; height: 10px; }
 
+/* Parsed (non-AI import) chip + banner — neutral, NEVER the brand/AI tint so a
+   client-stated fact is never dressed up as AI-authored. */
+.rc-prov--parsed { color: var(--muted); background: var(--surface-2); border: 1px solid var(--line-2, var(--line)); }
+
+.rc-prov--parsed svg { width: 10px; height: 10px; }
+
+.rc-aibanner--parsed { background: var(--surface-2); border-left-color: var(--muted); }
+
+.rc-aibanner--parsed .rc-aibanner__ic { color: var(--muted); }
+
 .rc-ifield__hint { font-size: .72rem; color: var(--faint, var(--muted)); margin-top: 4px; }
 
 /* Switch row (label + Switch + caption) */
