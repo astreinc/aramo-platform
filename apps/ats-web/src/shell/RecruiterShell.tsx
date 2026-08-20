@@ -3,7 +3,7 @@ import {
   logout,
   type Session,
 } from '@aramo/fe-foundation';
-import type { ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useLocation } from 'react-router-dom';
 import {
   IconBriefcase,
@@ -19,6 +19,7 @@ import {
 } from '@aramo/fe-foundation';
 
 import { hasAdminScope } from '../admin/admin-access';
+import { getRequisitionCount, getTalentCount } from '../reporting/counts-api';
 import {
   AppShell,
   Breadcrumb,
@@ -236,6 +237,28 @@ function RecruiterShellInner({
   // surface internals (R10/R12).
   const handleLogout = () => logout(onLogoutComplete);
 
+  // P2-A (REQ-PIXEL-PARITY-1-A2) — rail nav count pills. Truthful counts from
+  // the report endpoints (report:read-gated; skipped without the scope).
+  // Requisitions total is A3-scoped; talent is tenant-wide. Degrades silently
+  // (no pill on failure). The Tasks count is P2-C (no substrate yet).
+  const [navCounts, setNavCounts] = useState<Record<string, number>>({});
+  useEffect(() => {
+    if (!hasScope(session, 'report:read')) return;
+    let cancelled = false;
+    void Promise.allSettled([getRequisitionCount(), getTalentCount()]).then(
+      ([req, tal]) => {
+        if (cancelled) return;
+        const next: Record<string, number> = {};
+        if (req.status === 'fulfilled') next['/requisitions'] = req.value;
+        if (tal.status === 'fulfilled') next['/talent'] = tal.value;
+        setNavCounts(next);
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [session]);
+
   const renderNav = (items: readonly NavItem[]) =>
     items
       .filter((item) => item.scope === undefined || hasScope(session, item.scope))
@@ -246,6 +269,7 @@ function RecruiterShellInner({
           end={item.end}
           icon={item.icon}
           label={item.label}
+          count={navCounts[item.to]}
         />
       ));
 

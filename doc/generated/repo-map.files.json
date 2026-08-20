@@ -458,6 +458,7 @@
     "apps/ats-web/src/reporting/ReportingLanding.tsx",
     "apps/ats-web/src/reporting/assignment-pipeline-api.ts",
     "apps/ats-web/src/reporting/assignment-pipeline-types.ts",
+    "apps/ats-web/src/reporting/counts-api.ts",
     "apps/ats-web/src/reporting/fallthrough-api.ts",
     "apps/ats-web/src/reporting/fallthrough-types.ts",
     "apps/ats-web/src/reporting/fill-performance-api.ts",

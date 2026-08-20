@@ -2332,6 +2332,128 @@ button.rc-link-action {
   white-space: nowrap;
 }
 
+/* ── P2-A — inline talent-preview expander (Requisitions.dc.html) ── */
+.rc-rt__row {
+  cursor: pointer;
+}
+
+.rc-rt__row--exp {
+  background: var(--brand-tint);
+}
+
+.rc-texp {
+  background: var(--surface-2);
+  border-top: 1px solid var(--line);
+  padding: 14px 16px 16px 56px;
+}
+
+.rc-texp__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.rc-texp__label {
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+.rc-texp__link {
+  margin-left: auto;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--brand);
+  text-decoration: none;
+}
+
+.rc-texp__link:hover {
+  color: var(--brand-strong);
+}
+
+.rc-texp__empty {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.rc-texp__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+  gap: 10px;
+}
+
+.rc-tcard {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: 11px 13px;
+}
+
+.rc-tcard__body {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.rc-tcard__name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.rc-tcard__new {
+  font-size: 0.6rem;
+  font-weight: 700;
+  color: var(--brand-strong);
+  background: var(--brand-tint);
+  border-radius: 20px;
+  padding: 1px 7px;
+}
+
+.rc-tcard__meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.rc-tcard__next {
+  font-size: 0.72rem;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rc-tcard__stage {
+  flex: none;
+  font-size: 0.68rem;
+  font-weight: 600;
+  border-radius: 20px;
+  padding: 2px 9px;
+  color: var(--muted);
+  background: var(--surface-2);
+}
+
+.rc-tcard__stage--sourced { color: #54606a; background: #eef1f4; }
+.rc-tcard__stage--qualifying { color: var(--info); background: var(--info-tint); }
+.rc-tcard__stage--submitted { color: var(--brand-strong); background: var(--brand-tint); }
+.rc-tcard__stage--interview { color: var(--info); background: var(--info-tint); }
+.rc-tcard__stage--offer { color: var(--warn); background: var(--warn-tint); }
+.rc-tcard__stage--placed { color: var(--ok); background: var(--ok-tint); }
+
 /* requisition table — Requisitions.dc.html column grammar
  * Requisition · Talent · Pipeline · Owner · Updated · Status. A horizontal
  * scroller keeps the columns intact on narrow viewports (mockup parity:
