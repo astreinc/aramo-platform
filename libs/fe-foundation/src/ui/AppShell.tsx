@@ -1,8 +1,14 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from 'react';
 import { Link as RouterLink, NavLink as RouterNavLink } from 'react-router-dom';
 
 import {
-  IconChevronLeft,
   IconChevronRight,
   IconLogo,
   IconSearch,
@@ -26,6 +32,24 @@ interface AppShellProps {
   readonly children: ReactNode;
 }
 
+// REQ-PIXEL-PARITY-1-A1 — expose the rail collapse state to the rail's contents
+// (e.g. an app-level brand) so a consumer can render a ChatGPT-style
+// collapse/expand control INSIDE the rail. The default no-op keeps the context
+// safe outside an AppShell (tests, gallery).
+export interface RailCollapse {
+  readonly collapsed: boolean;
+  readonly toggle: () => void;
+}
+export const RailCollapseContext = createContext<RailCollapse>({
+  collapsed: false,
+  toggle: () => {
+    /* no-op default; the real toggle is supplied by AppShell's provider */
+  },
+});
+export function useRailCollapse(): RailCollapse {
+  return useContext(RailCollapseContext);
+}
+
 export function AppShell({ rail, topBar, children }: AppShellProps) {
   // Collapsible rail (user toggle). Collapsed → a ~64px icon strip so the main
   // content reclaims the width; the choice persists across reloads. The shell
@@ -46,7 +70,26 @@ export function AppShell({ rail, topBar, children }: AppShellProps) {
     }
   }, [collapsed]);
 
+  // REQ-PIXEL-PARITY-1-A1 — ⌘\ / Ctrl-\ toggles the rail (Requisitions.dc.html).
+  // Complements the chevron button and shares the same persisted state.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === '\\') {
+        e.preventDefault();
+        setCollapsed((c) => !c);
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
+
+  const railCollapse = useMemo<RailCollapse>(
+    () => ({ collapsed, toggle: () => setCollapsed((c) => !c) }),
+    [collapsed],
+  );
+
   return (
+    <RailCollapseContext.Provider value={railCollapse}>
     <div className={`rc-app${collapsed ? ' rc-app--rail-collapsed' : ''}`}>
       {/* Skip-navigation (T10-B1) — the first focusable element in the shell, so
           keyboard/SR users bypass the rail and land on the main content. Visually
@@ -63,7 +106,21 @@ export function AppShell({ rail, topBar, children }: AppShellProps) {
         title={collapsed ? 'Expand navigation' : 'Collapse navigation'}
         onClick={() => setCollapsed((c) => !c)}
       >
-        {collapsed ? <IconChevronRight /> : <IconChevronLeft />}
+        {/* REQ-PIXEL-PARITY-1-A1 — the sidebar-panel toggle icon (Claude/ChatGPT
+            style, per Requisitions.dc.html), replacing the chevron. Same glyph in
+            both states; the aria-label conveys the direction. */}
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.7"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <rect x="3" y="4.5" width="18" height="15" rx="2.5" />
+          <line x1="9.5" y1="4.5" x2="9.5" y2="19.5" />
+        </svg>
       </button>
       <div className="rc-main">
         {topBar}
@@ -76,6 +133,7 @@ export function AppShell({ rail, topBar, children }: AppShellProps) {
         </main>
       </div>
     </div>
+    </RailCollapseContext.Provider>
   );
 }
 

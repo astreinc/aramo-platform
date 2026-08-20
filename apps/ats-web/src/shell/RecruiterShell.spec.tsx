@@ -35,11 +35,14 @@ function renderShell(
 afterEach(() => vi.restoreAllMocks());
 
 describe('RecruiterShell', () => {
-  it('renders only the nav items the session is scoped for (+ always-on Search)', () => {
+  it('renders only the nav items the session is scoped for; Search is not a rail item', () => {
     renderShell(makeSession(['requisition:read', 'talent:read']));
     expect(screen.getByRole('link', { name: 'Requisitions' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Talent' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Search' })).toBeInTheDocument();
+    // REQ-PIXEL-PARITY-1 — Search is no longer a rail nav item (it lives in the
+    // top-bar ⌘K search). The /search route is unchanged; only the rail entry
+    // is removed, matching the ratified Requisitions.dc.html rail.
+    expect(screen.queryByRole('link', { name: 'Search' })).not.toBeInTheDocument();
     // Not held → not rendered.
     expect(screen.queryByRole('link', { name: 'My desk' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Companies' })).not.toBeInTheDocument();
@@ -61,13 +64,12 @@ describe('RecruiterShell', () => {
     expect(screen.queryByRole('link', { name: 'Placements' })).not.toBeInTheDocument();
   });
 
-  it('hosts the unified "Aramo" brand in the top bar as a home link (no tier label)', () => {
+  it('hosts the aramo.ai brand as a rail home link (REQ-PIXEL-PARITY-1)', () => {
     renderShell(makeSession(['talent:read']));
-    const brand = screen.getByRole('link', { name: /Aramo — home/ });
+    // Brand moved from the top bar to the rail top, matching Requisitions.dc.html.
+    const brand = screen.getByRole('link', { name: /aramo\.ai — home/ });
     expect(brand).toHaveAttribute('href', '/');
-    // The "· Recruiter" tier label is dropped post-consolidation.
-    expect(brand).not.toHaveTextContent('Recruiter');
-    expect(screen.getByText('Talent Intelligence')).toBeInTheDocument();
+    expect(brand).toHaveTextContent('aramo.ai');
   });
 
   it('shows the admin nav section only to a tenant:admin-scoped principal', () => {
@@ -91,7 +93,7 @@ describe('RecruiterShell', () => {
       ]),
       '/',
     );
-    for (const label of ['My desk', 'Requisitions', 'Talent', 'Companies', 'Search', 'Tasks']) {
+    for (const label of ['My desk', 'Requisitions', 'Talent', 'Companies', 'Tasks']) {
       expect(screen.getByRole('link', { name: label })).toBeInTheDocument();
     }
   });

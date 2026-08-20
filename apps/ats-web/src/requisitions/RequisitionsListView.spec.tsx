@@ -157,28 +157,16 @@ describe('RequisitionsListView', () => {
     ).toHaveAttribute('href', '/requisitions/req-open');
   });
 
-  it('reveals closed + filled requisitions when "Include closed" is toggled on', async () => {
+  it('D1-a: selecting a terminal status in the dropdown reveals those reqs (closed hidden by default)', async () => {
     mockFetch([OPEN, CLOSED, FILLED]);
     renderList();
     await waitFor(() =>
       expect(screen.getByText('Senior Engineer')).toBeInTheDocument(),
     );
-    expect(screen.queryByText('Junior Engineer')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Include closed' }));
-    expect(screen.getByText('Junior Engineer')).toBeInTheDocument();
-    expect(screen.getByText('Architect')).toBeInTheDocument();
-  });
-
-  it('D1-a: selecting a terminal status in the dropdown reveals those reqs even with "Include closed" off', async () => {
-    mockFetch([OPEN, CLOSED, FILLED]);
-    renderList();
-    await waitFor(() =>
-      expect(screen.getByText('Senior Engineer')).toBeInTheDocument(),
-    );
-    // Default view hides the closed req (Include closed is off).
+    // Default view hides the closed req.
     expect(screen.queryByText('Junior Engineer')).not.toBeInTheDocument();
 
-    // Explicitly filter to "closed" via the dropdown — the chip stays OFF.
+    // Explicitly filter to "closed" via the dropdown — it is authoritative.
     fireEvent.change(screen.getByLabelText('Filter by status'), {
       target: { value: 'closed' },
     });
@@ -210,19 +198,7 @@ describe('RequisitionsListView', () => {
     expect(screen.queryByText('Senior Engineer')).not.toBeInTheDocument();
   });
 
-  it('default "My reqs" shows the whole visible payload for a non-read:all principal (server already scoped it)', async () => {
-    mockFetch([OPEN, HOLD]);
-    renderList();
-    await waitFor(() =>
-      expect(screen.getByText('Senior Engineer')).toBeInTheDocument(),
-    );
-    expect(
-      screen.getByRole('button', { name: 'My reqs' }),
-    ).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByText('Mid Engineer')).toBeInTheDocument();
-  });
-
-  it('"My reqs" narrows to owned/recruited rows for a read:all principal', async () => {
+  it('the Owner dropdown narrows to owned/recruited rows (Me) for a read:all principal', async () => {
     const MINE = makeReq('req-mine', 'My Req', 'open', { owner_id: 'u1' });
     const THEIRS = makeReq('req-theirs', 'Their Req', 'open', {
       owner_id: 'u2',
@@ -238,20 +214,15 @@ describe('RequisitionsListView', () => {
         exp: 0,
       },
     });
+    // Default (Owner: Any) shows both.
     await waitFor(() => expect(screen.getByText('My Req')).toBeInTheDocument());
-    expect(screen.queryByText('Their Req')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'All' }));
     expect(screen.getByText('Their Req')).toBeInTheDocument();
-  });
-
-  it('"Needs sourcing" filters to active reqs with an empty pipeline', async () => {
-    mockFetch([OPEN]);
-    renderList();
-    await waitFor(() =>
-      expect(screen.getByText('Senior Engineer')).toBeInTheDocument(),
-    );
-    fireEvent.click(screen.getByRole('button', { name: 'Needs sourcing' }));
-    expect(screen.getByText('Senior Engineer')).toBeInTheDocument();
+    // Owner: Me narrows to owned/recruited rows.
+    fireEvent.change(screen.getByLabelText('Filter by owner'), {
+      target: { value: 'me' },
+    });
+    expect(screen.getByText('My Req')).toBeInTheDocument();
+    expect(screen.queryByText('Their Req')).not.toBeInTheDocument();
   });
 
   it('the scoped search filters by title', async () => {

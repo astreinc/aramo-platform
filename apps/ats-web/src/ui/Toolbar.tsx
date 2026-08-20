@@ -3,12 +3,20 @@ import { IconSearch } from '@aramo/fe-foundation';
 
 interface ToolbarProps {
   readonly children: ReactNode;
+  /** REQ-PIXEL-PARITY-1 — render on the page background ABOVE the list card
+   *  (Requisitions.dc.html) instead of inside a card edge. Opt-in; the default
+   *  keeps the card-edge grammar the other list views use. */
+  readonly float?: boolean;
 }
 
-// A card-edge toolbar row: filter chips on the left, a scoped search on the
-// right (the mockup list grammar).
-export function Toolbar({ children }: ToolbarProps) {
-  return <div className="rc-toolbar">{children}</div>;
+// A toolbar row: filter chips on the left, a scoped search on the right (the
+// mockup list grammar). `float` lifts it out of the card onto the page bg.
+export function Toolbar({ children, float }: ToolbarProps) {
+  return (
+    <div className={`rc-toolbar${float ? ' rc-toolbar--float' : ''}`}>
+      {children}
+    </div>
+  );
 }
 
 interface FilterChipProps {

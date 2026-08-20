@@ -21,7 +21,9 @@ export {
   Breadcrumb,
   CmdKSearch,
   NotificationButton,
+  useRailCollapse,
   type BreadcrumbItem,
+  type RailCollapse,
 } from './AppShell';
 export { UserMenu } from './UserMenu';
 export { Avatar, EntityCell, initialsOf, type AvatarSize } from './Avatar';
