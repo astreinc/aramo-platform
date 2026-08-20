@@ -596,6 +596,7 @@
     "apps/ats-web/src/settings/sites/tree.ts",
     "apps/ats-web/src/settings/sites/types.ts",
     "apps/ats-web/src/settings/types.ts",
+    "apps/ats-web/src/shell/AramoBrand.tsx",
     "apps/ats-web/src/shell/RecruiterShell.spec.tsx",
     "apps/ats-web/src/shell/RecruiterShell.tsx",
     "apps/ats-web/src/shell/breadcrumb.tsx",

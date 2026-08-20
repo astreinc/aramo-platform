@@ -1,5 +1,6 @@
 import {
   Button,
+  Combobox,
   InlineAlert,
   hasScope,
   useSession,
@@ -77,13 +78,11 @@ import {
 // The owner cell still DISPLAYS the real unassigned state; it offers no action.
 
 
-type FilterMode =
-  | 'mine'
-  | 'all'
-  | 'hot'
-  | 'bookmarked'
-  | 'needs_sourcing'
-  | 'aging';
+// REQ-PIXEL-PARITY-1 cleanup — the wired chips reduce to Priority (hot) +
+// Bookmarked; owner/status/location/company move to the prototype dropdowns.
+// 'none' = no secondary chip active (recruiter-assignment scoping is
+// backend-driven; the default list is the server-scoped payload).
+type FilterMode = 'none' | 'hot' | 'bookmarked';
 type SortKey = 'focus' | 'aging' | 'pipeline' | 'new';
 
 // A requisition is "aging" (needs-attention) when it has been open a while
@@ -109,15 +108,17 @@ export function RequisitionsListView({
   const [userNames, setUserNames] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [showClosed, setShowClosed] = useState(false);
-  // Default to "My reqs" — the recruiter-centric lens. NOTE this is a
-  // CLIENT-SIDE narrowing of the already-visibility-scoped payload, not a
-  // server-side owned-query — see the isMine docstring below.
-  const [mode, setMode] = useState<FilterMode>('mine');
+  // No secondary chip active by default — the default list is the server-scoped
+  // payload (recruiter assignment enforced by the BE; the Owner dropdown narrows).
+  const [mode, setMode] = useState<FilterMode>('none');
   const [client, setClient] = useState('');
   const [statusFilter, setStatusFilter] = useState<RecruitingStatus | ''>('');
   const [sort, setSort] = useState<SortKey>('focus');
   const [query, setQuery] = useState('');
+  // REQ-PIXEL-PARITY-1 (hybrid) — prototype Location + Owner dropdowns, additive
+  // to the wired chips. FE-derived from the loaded set (city/state, owner ids).
+  const [locationFilter, setLocationFilter] = useState('');
+  const [ownerFilter, setOwnerFilter] = useState('');
 
   const sessionState = useSession();
   const session: Session | null =
@@ -195,16 +196,6 @@ export function RequisitionsListView({
     );
   };
 
-  // "Aging" and "Needs sourcing" are derived from the already-loaded set —
-  // no new call, no fabricated signal. Aging = open a while with nothing
-  // submitted; Needs sourcing = active req with an empty pipeline.
-  const isAging = (r: RequisitionView): boolean =>
-    !isClosedStatus(r.status) &&
-    daysOpen(r) >= AGING_DAYS &&
-    (pipelineCounts[r.id]?.submitted ?? 0) === 0;
-  const needsSourcing = (r: RequisitionView): boolean =>
-    !isClosedStatus(r.status) && (pipelineCounts[r.id]?.active ?? 0) === 0;
-
   // PR-14 — personal bookmark toggle. Optimistic: flip the local row first,
   // call the server, revert on failure. This is a PERSONAL mark on the
   // CALLER's own state — it never touches is_hot and never affects another
@@ -224,25 +215,25 @@ export function RequisitionsListView({
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     const rows = items.filter((r) => {
-      // D1-a — the default closed-hide is a DEFAULT, not an override. It hides
-      // terminal statuses (full/closed/canceled) from the unfiltered list, but
-      // an explicit status selection below is authoritative: picking Closed /
-      // Full / Canceled in the dropdown must surface those rows even while the
-      // "Include closed" chip is off. So the default only applies when no explicit
-      // status is chosen. (The chip↔dropdown model itself is D1-b.)
-      if (!showClosed && statusFilter === '' && isClosedStatus(r.status)) {
+      // D1-a — the default hides terminal statuses (closed/full/canceled) from
+      // the unfiltered list; an explicit Status selection is authoritative and
+      // surfaces those rows. Selecting a specific status filters to it.
+      if (statusFilter === '' && isClosedStatus(r.status)) {
         return false;
       }
       if (mode === 'hot' && !r.is_hot) return false;
-      // PR-14 — "Bookmarked" narrows to the caller's own bookmarks (the
-      // enriched personal field). Client-side over the already-loaded set,
-      // consistent with the other derived modes.
+      // PR-14 — Bookmarked narrows to the caller's own bookmarks (personal field).
       if (mode === 'bookmarked' && !r.bookmarked) return false;
-      if (mode === 'mine' && !isMine(r)) return false;
-      if (mode === 'aging' && !isAging(r)) return false;
-      if (mode === 'needs_sourcing' && !needsSourcing(r)) return false;
       if (client !== '' && r.company_id !== client) return false;
       if (statusFilter !== '' && r.status !== statusFilter) return false;
+      if (locationFilter !== '' && locationKeyOf(r) !== locationFilter) return false;
+      if (ownerFilter !== '') {
+        const ownerMatch =
+          ownerFilter === 'me'
+            ? isMine(r)
+            : r.recruiter_id === ownerFilter || r.owner_id === ownerFilter;
+        if (!ownerMatch) return false;
+      }
       if (q !== '') {
         const hay = `${r.title} ${companyNames[r.company_id] ?? ''} ${
           r.external_req_id ?? ''
@@ -254,10 +245,11 @@ export function RequisitionsListView({
     return sortRows(rows, sort, pipelineCounts);
   }, [
     items,
-    showClosed,
     mode,
     client,
     statusFilter,
+    locationFilter,
+    ownerFilter,
     query,
     sort,
     myId,
@@ -292,18 +284,34 @@ export function RequisitionsListView({
   return (
     <section>
       <div className="rc-viewhead">
-        <div>
-          <h1 className="rc-h1">Requisitions</h1>
-          <p className="rc-sub">
-            {openCount} open · {onHoldCount} on hold · {closedCount} closed
-          </p>
-        </div>
-        {canCreate ? (
-          <div className="rc-viewhead__actions">
+        <h1 className="rc-h1">Requisitions</h1>
+        <div className="rc-viewhead__actions">
+          {/* REQ-PIXEL-PARITY-1 — prototype "Saved views". No backend yet, so it
+              is DISABLED (honest coming-soon), not a dead-looking live button. */}
+          <Button variant="secondary" disabled title="Saved views — coming soon">
+            Saved views
+          </Button>
+          {canCreate ? (
             <Link to="/requisitions/new">
               <Button variant="primary">New requisition</Button>
             </Link>
-          </div>
+          ) : null}
+        </div>
+      </div>
+
+      {/* Counts (left) + results meta (right) share one row. */}
+      <div className="rc-subrow">
+        <p className="rc-sub">
+          {openCount} open · {onHoldCount} on hold · {closedCount} closed
+        </p>
+        {!loading && filtered.length > 0 ? (
+          <span className="rc-subrow__meta">
+            {readyCount} result{readyCount === 1 ? '' : 's'} · click a row to
+            preview talent
+            {capped ? (
+              <span> · showing your {LIST_CAP} most recent (pagination coming)</span>
+            ) : null}
+          </span>
         ) : null}
       </div>
 
@@ -343,89 +351,100 @@ export function RequisitionsListView({
         </div>
       ) : null}
 
-      <Card flush className="rc-mt-16">
-        <Toolbar>
-          <FilterChip active={mode === 'mine'} onClick={() => setMode('mine')}>
-            My reqs
-          </FilterChip>
-          <FilterChip active={mode === 'all'} onClick={() => setMode('all')}>
-            All
-          </FilterChip>
-          <FilterChip active={mode === 'hot'} onClick={() => setMode('hot')}>
-            Priority
-          </FilterChip>
-          <FilterChip
-            active={mode === 'bookmarked'}
-            onClick={() => setMode('bookmarked')}
-          >
-            Bookmarked
-          </FilterChip>
-          <FilterChip
-            active={mode === 'needs_sourcing'}
-            onClick={() => setMode('needs_sourcing')}
-          >
-            Needs sourcing
-          </FilterChip>
-          <FilterChip active={mode === 'aging'} onClick={() => setMode('aging')}>
-            Aging
-          </FilterChip>
-          {/* Intentional divergence from the mockup: "Include closed" stays an
-              explicit chip (the mockup folds closed into the status dropdown —
-              not worth the churn). */}
-          <FilterChip
-            active={showClosed}
-            onClick={() => setShowClosed((s) => !s)}
-          >
-            Include closed
-          </FilterChip>
-          <span className="rc-toolbar__sep" />
-          <select
-            className="rc-fsel"
-            aria-label="Filter by company"
-            value={client}
-            onChange={(e) => setClient(e.target.value)}
-          >
-            <option value="">All companies</option>
-            {clientOptions(items, companyNames).map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-          <select
-            className="rc-fsel"
-            aria-label="Filter by status"
-            value={statusFilter}
-            onChange={(e) =>
-              setStatusFilter(e.target.value as RecruitingStatus | '')
-            }
-          >
-            <option value="">Any status</option>
-            {SELECTABLE_RECRUITING_STATUS_VALUES.map((s) => (
-              <option key={s} value={s}>
-                {RECRUITING_STATUS_LABELS[s]}
-              </option>
-            ))}
-          </select>
-          <span className="rc-toolbar__grow" />
-          <select
-            className="rc-fsel"
-            aria-label="Sort requisitions"
-            value={sort}
-            onChange={(e) => setSort(e.target.value as SortKey)}
-          >
-            <option value="focus">Sort: Focus</option>
-            <option value="aging">Sort: Aging</option>
-            <option value="pipeline">Sort: Pipeline</option>
-            <option value="new">Sort: Newest</option>
-          </select>
-          <ScopedSearch
-            placeholder="Search requisitions"
-            value={query}
-            onChange={setQuery}
+      <Toolbar float>
+        {/* Search first (prototype). Then the prototype dropdowns, then the two
+            retained wired chips (Priority + Bookmarked), then Sort. */}
+        <ScopedSearch
+          placeholder="Search requisitions"
+          value={query}
+          onChange={setQuery}
+        />
+        <select
+          className="rc-fsel"
+          aria-label="Filter by status"
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value as RecruitingStatus | '')}
+        >
+          <option value="">Any status</option>
+          {SELECTABLE_RECRUITING_STATUS_VALUES.map((s) => (
+            <option key={s} value={s}>
+              {RECRUITING_STATUS_LABELS[s]}
+            </option>
+          ))}
+        </select>
+        {/* Searchable company filter (type to navigate). */}
+        <span className="rc-fcombo">
+          <Combobox
+            ariaLabel="Filter by company"
+            items={[
+              { value: '', label: 'All companies' },
+              ...clientOptions(items, companyNames).map((c) => ({
+                value: c.id,
+                label: c.name,
+              })),
+            ]}
+            value={client === '' ? null : client}
+            onSelect={(item) => setClient(item.value)}
+            placeholder="All companies"
+            testId="company-filter"
           />
-        </Toolbar>
+        </span>
+        <select
+          className="rc-fsel"
+          aria-label="Filter by location"
+          value={locationFilter}
+          onChange={(e) => setLocationFilter(e.target.value)}
+        >
+          <option value="">All locations</option>
+          {locationOptions(items).map((loc) => (
+            <option key={loc} value={loc}>
+              {loc}
+            </option>
+          ))}
+        </select>
+        <select
+          className="rc-fsel"
+          aria-label="Filter by owner"
+          value={ownerFilter}
+          onChange={(e) => setOwnerFilter(e.target.value)}
+        >
+          <option value="">Any owner</option>
+          {myId !== null ? <option value="me">Me</option> : null}
+          {ownerFilterOptions(items, userNames)
+            .filter((o) => o.id !== myId)
+            .map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.name}
+              </option>
+            ))}
+        </select>
+        <FilterChip
+          active={mode === 'hot'}
+          onClick={() => setMode(mode === 'hot' ? 'none' : 'hot')}
+        >
+          Priority
+        </FilterChip>
+        <FilterChip
+          active={mode === 'bookmarked'}
+          onClick={() => setMode(mode === 'bookmarked' ? 'none' : 'bookmarked')}
+        >
+          Bookmarked
+        </FilterChip>
+        <span className="rc-toolbar__grow" />
+        <select
+          className="rc-fsel"
+          aria-label="Sort requisitions"
+          value={sort}
+          onChange={(e) => setSort(e.target.value as SortKey)}
+        >
+          <option value="focus">Sort: Focus</option>
+          <option value="aging">Sort: Aging</option>
+          <option value="pipeline">Sort: Pipeline</option>
+          <option value="new">Sort: Newest</option>
+        </select>
+      </Toolbar>
 
+      <Card flush className="rc-mt-16">
         {loading ? (
           <p className="rc-empty">Loading requisitions…</p>
         ) : filtered.length === 0 ? (
@@ -435,38 +454,29 @@ export function RequisitionsListView({
               : 'No requisitions match these filters.'}
           </p>
         ) : (
-          <>
-            <div className="rc-listmeta">
-              {readyCount} req{readyCount === 1 ? '' : 's'}
-              {capped ? (
-                <span>
-                  · showing your {LIST_CAP} most recent (pagination coming)
-                </span>
-              ) : null}
-            </div>
-            <div className="rc-rt__scroll">
-              <div className="rc-rt">
-                <div className="rc-rt__head" role="row">
-                  <span className="rc-rt__hc">Requisition</span>
-                  <span className="rc-rt__hc">Talent</span>
-                  <span className="rc-rt__hc">Pipeline</span>
-                  <span className="rc-rt__hc">Owner</span>
-                  <span className="rc-rt__hc">Updated</span>
-                  <span className="rc-rt__hc">Status</span>
-                </div>
-                {filtered.map((r) => (
-                  <RequisitionRow
-                    key={r.id}
-                    req={r}
-                    companyName={companyNames[r.company_id]}
-                    funnel={funnels[r.id]}
-                    ownerName={ownerName(r, userNames)}
-                    onToggleBookmark={toggleBookmark}
-                  />
-                ))}
+          <div className="rc-rt__scroll">
+            <div className="rc-rt">
+              <div className="rc-rt__head" role="row">
+                <span className="rc-rt__hc" aria-hidden="true" />
+                <span className="rc-rt__hc">Requisition</span>
+                <span className="rc-rt__hc">Talent</span>
+                <span className="rc-rt__hc">Pipeline</span>
+                <span className="rc-rt__hc">Owner</span>
+                <span className="rc-rt__hc">Updated</span>
+                <span className="rc-rt__hc">Status</span>
               </div>
+              {filtered.map((r) => (
+                <RequisitionRow
+                  key={r.id}
+                  req={r}
+                  companyName={companyNames[r.company_id]}
+                  funnel={funnels[r.id]}
+                  ownerName={ownerName(r, userNames)}
+                  onToggleBookmark={toggleBookmark}
+                />
+              ))}
             </div>
-          </>
+          </div>
         )}
       </Card>
     </section>
@@ -523,6 +533,20 @@ function RequisitionRow({
       className={`rc-rt__row${req.is_hot ? ' rc-rt__row--hot' : ''}`}
       role="row"
     >
+      {/* Leading ★ column — the personal favorite (PR-14), prototype's first
+          column. It re-skins the bookmark to a star and never touches is_hot;
+          the team-wide signal stays the "Priority" pill beside the title. */}
+      <button
+        type="button"
+        className={`rc-rt__star${req.bookmarked ? ' rc-rt__star--on' : ''}`}
+        aria-pressed={req.bookmarked}
+        aria-label={req.bookmarked ? 'Remove bookmark' : 'Bookmark'}
+        title={req.bookmarked ? 'Remove bookmark' : 'Bookmark'}
+        onClick={() => onToggleBookmark(req.id, !req.bookmarked)}
+      >
+        {req.bookmarked ? '★' : '☆'}
+      </button>
+
       {/* Requisition */}
       <div className="rc-rt__req">
         <div className="rc-rt__top">
@@ -534,18 +558,6 @@ function RequisitionRow({
           {req.is_hot ? (
             <span className="rc-rt__hot">Priority</span>
           ) : null}
-          {/* PR-14 — personal bookmark star. NOT the team-wide HOT pill; this
-              never toggles is_hot and is invisible to other users. */}
-          <button
-            type="button"
-            className={`rc-rt__bm${req.bookmarked ? ' rc-rt__bm--on' : ''}`}
-            aria-pressed={req.bookmarked}
-            aria-label={req.bookmarked ? 'Remove bookmark' : 'Bookmark'}
-            title={req.bookmarked ? 'Remove bookmark' : 'Bookmark'}
-            onClick={() => onToggleBookmark(req.id, !req.bookmarked)}
-          >
-            <Icons.IconBookmark aria-hidden="true" />
-          </button>
         </div>
         {idParts.length > 0 ? (
           <div className="rc-rt__sub">
@@ -687,6 +699,39 @@ function clientOptions(
   for (const r of items) {
     const name = names[r.company_id];
     if (name != null && !seen.has(r.company_id)) seen.set(r.company_id, name);
+  }
+  return [...seen.entries()]
+    .map(([id, name]) => ({ id, name }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+// REQ-PIXEL-PARITY-1 (hybrid) — the location filter key: "City, ST" when a
+// physical place is known, else the remote/hybrid arrangement. FE-derived.
+function locationKeyOf(r: RequisitionView): string {
+  const place = [r.city, r.state].filter(Boolean).join(', ');
+  if (place) return place;
+  if (r.work_arrangement === 'remote') return 'Remote';
+  if (r.work_arrangement === 'hybrid') return 'Hybrid';
+  return '';
+}
+
+function locationOptions(items: readonly RequisitionView[]): readonly string[] {
+  const set = new Set<string>();
+  for (const r of items) {
+    const k = locationKeyOf(r);
+    if (k !== '') set.add(k);
+  }
+  return [...set].sort((a, b) => a.localeCompare(b));
+}
+
+function ownerFilterOptions(
+  items: readonly RequisitionView[],
+  names: Record<string, string>,
+): ReadonlyArray<{ id: string; name: string }> {
+  const seen = new Map<string, string>();
+  for (const r of items) {
+    const id = r.recruiter_id ?? r.owner_id;
+    if (id != null && !seen.has(id)) seen.set(id, names[id] ?? '—');
   }
   return [...seen.entries()]
     .map(([id, name]) => ({ id, name }))

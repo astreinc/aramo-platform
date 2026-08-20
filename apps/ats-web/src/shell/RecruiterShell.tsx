@@ -12,7 +12,6 @@ import {
   IconDesk,
   IconLogout,
   IconRequisitions,
-  IconSearch,
   IconShield,
   IconSourcing,
   IconTalent,
@@ -22,7 +21,6 @@ import {
 import { hasAdminScope } from '../admin/admin-access';
 import {
   AppShell,
-  ShellBrand,
   Breadcrumb,
   CmdKSearch,
   NotificationButton,
@@ -36,6 +34,7 @@ import {
   type BreadcrumbItem,
 } from '../ui';
 
+import { AramoBrand } from './AramoBrand';
 import { BreadcrumbProvider, useBreadcrumbEntity } from './breadcrumb';
 import { useMe } from './me-api';
 
@@ -77,9 +76,9 @@ const PRIMARY_NAV: readonly NavItem[] = [
   { to: '/sourcing', label: 'Sourcing', icon: <IconSourcing />, scope: 'talent:source' },
   { to: '/companies', label: 'Companies', icon: <IconCompanies />, scope: 'company:read' },
   { to: '/contacts', label: 'Contacts', icon: <IconContacts />, scope: 'contact:read' },
-  // Search is always-visible (any-of-4 search scopes; the view gates per
-  // section) — mirrors the existing R-NAV ruling.
-  { to: '/search', label: 'Search', icon: <IconSearch /> },
+  // REQ-PIXEL-PARITY-1 §Decision: the rail no longer carries a "Search" entry —
+  // search lives in the top-bar ⌘K (CmdKSearch), matching Requisitions.dc.html.
+  // The /search ROUTE is unchanged; only its rail nav item is removed.
 ];
 
 const WORK_NAV: readonly NavItem[] = [
@@ -270,6 +269,7 @@ function RecruiterShellInner({
         </>
       }
     >
+      <AramoBrand />
       {renderNav(PRIMARY_NAV)}
       <RailNavLabel>Work</RailNavLabel>
       {renderNav(WORK_NAV)}
@@ -284,7 +284,6 @@ function RecruiterShellInner({
 
   const topBar = (
     <TopBar>
-      <ShellBrand brand="Aramo" brandSub="Talent Intelligence" to="/" />
       <Breadcrumb items={crumbs} />
       <CmdKSearch />
       <NotificationButton />

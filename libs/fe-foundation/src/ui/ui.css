@@ -74,7 +74,8 @@
 
 .rc-app {
   display: grid;
-  grid-template-columns: 232px 1fr;
+  /* REQ-PIXEL-PARITY-1-A1 — 236px expanded rail (Requisitions.dc.html). */
+  grid-template-columns: 236px 1fr;
   min-height: 100vh;
   background: var(--canvas);
   color: var(--ink);
@@ -709,7 +710,7 @@
 .rc-rail-toggle {
   position: fixed;
   top: 16px;
-  left: 221px; /* rail width (232) − 11 (half the 22px control) */
+  left: 225px; /* rail width (236) − 11 (half the 22px control) */
   z-index: 6;
   width: 22px;
   height: 22px;

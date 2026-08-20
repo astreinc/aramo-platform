@@ -1329,12 +1329,13 @@ button.rc-link-action {
 }
 
 .rc-chip {
-  font-size: 0.78rem;
-  font-weight: 600;
+  /* REQ-PIXEL-PARITY-1 — prototype filter-pill grammar (Requisitions.dc.html). */
+  font-size: 0.78rem; /* 12.5px */
+  font-weight: 500;
   color: var(--muted);
-  border: 1px solid var(--line-2);
+  border: 1px solid var(--line);
   background: var(--surface);
-  padding: 6px 12px;
+  padding: 5px 11px;
   border-radius: 20px;
   display: flex;
   align-items: center;
@@ -1348,9 +1349,9 @@ button.rc-link-action {
 }
 
 .rc-chip--on {
-  background: var(--brand-tint);
-  color: var(--brand-strong);
-  border-color: transparent;
+  background: var(--brand-tint); /* #E8EDFB */
+  color: var(--brand-strong); /* #011F8D */
+  border-color: #c9d4f2; /* prototype active-pill border */
 }
 
 /* Reserved/coming-soon filter (e.g. the Matches seam) — visible but inert. */
@@ -1361,16 +1362,18 @@ button.rc-link-action {
 }
 
 .rc-scopedsearch {
+  /* REQ-PIXEL-PARITY-1 — prototype in-page search field (white, #E5E9ED, 250px). */
   margin-left: auto;
   display: flex;
   align-items: center;
   gap: 8px;
-  border: 1px solid var(--line-2);
+  background: var(--surface);
+  border: 1px solid var(--line);
   border-radius: var(--r-md);
-  padding: 6px 11px;
+  padding: 7px 11px;
   color: var(--faint);
   font-size: 0.83rem;
-  min-width: 230px;
+  min-width: 250px;
 }
 
 .rc-scopedsearch svg {
@@ -2285,6 +2288,50 @@ button.rc-link-action {
 
 .rc-listmeta b { color: var(--ok); }
 
+/* REQ-PIXEL-PARITY-1 — the requisitions filter row floats on the page bg ABOVE
+   the list card (Requisitions.dc.html), and its result meta is right-aligned. */
+.rc-toolbar--float {
+  padding: 0;
+  border-bottom: 0;
+  margin-top: 4px;
+}
+
+.rc-listmeta--right {
+  justify-content: flex-end;
+  margin: 12px 2px 0;
+}
+
+.rc-fcombo {
+  display: inline-flex;
+  min-width: 190px;
+}
+
+/* Search sits at the FRONT of the float row (prototype), so drop its right-push. */
+.rc-toolbar--float .rc-scopedsearch {
+  margin-left: 0;
+}
+
+/* Counts (left) + results meta (right) share one row under the title. */
+.rc-subrow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 3px 0 4px;
+}
+
+.rc-subrow .rc-sub {
+  margin: 0;
+}
+
+.rc-subrow__meta {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--faint);
+  white-space: nowrap;
+}
+
 /* requisition table — Requisitions.dc.html column grammar
  * Requisition · Talent · Pipeline · Owner · Updated · Status. A horizontal
  * scroller keeps the columns intact on narrow viewports (mockup parity:
@@ -2298,11 +2345,36 @@ button.rc-link-action {
 .rc-rt__row {
   display: grid;
   grid-template-columns:
-    minmax(220px, 1.4fr) minmax(240px, 1.15fr) minmax(130px, 0.8fr)
+    26px minmax(220px, 1.4fr) minmax(240px, 1.15fr) minmax(130px, 0.8fr)
     90px 110px 100px;
   gap: 0 14px;
   align-items: center;
   padding: 12px 16px;
+}
+
+/* REQ-PIXEL-PARITY-1 — leading ★ column (personal favorite, PR-14). The
+   prototype's first column: a text star, dark when set, light grey when not.
+   Distinct from the team-wide "Priority"/hot pill. */
+.rc-rt__star {
+  flex: none;
+  justify-self: center;
+  border: none;
+  background: none;
+  padding: 0;
+  line-height: 1;
+  cursor: pointer;
+  font-size: 15px;
+  color: #c6cdd4;
+}
+
+.rc-rt__star--on {
+  color: var(--ink);
+}
+
+.rc-rt__star:focus-visible {
+  outline: 2px solid var(--brand-accent);
+  outline-offset: 1px;
+  border-radius: 4px;
 }
 
 .rc-rt__head { border-bottom: 1px solid var(--line); }
@@ -2439,7 +2511,7 @@ button.rc-link-action {
    first stat is brand-blue. */
 .rc-stat--lead b { color: var(--brand); }
 
-.rc-stat__l { font-size: 0.66rem; color: var(--muted); }
+.rc-stat__l { font-size: 0.6875rem; color: var(--muted); } /* 11px (prototype) */
 
 /* Pipeline distribution bar (the 6-bucket funnel, segmented) */
 
@@ -3572,4 +3644,154 @@ select.rc-input { appearance: none; padding-right: 28px; }
   color: var(--ink, #1a1a1a);
   font-size: 0.9rem;
   line-height: 1.4;
+}
+
+/* ─────────────── REQ-PIXEL-PARITY-1 · Phase 1 — left-rail parity ───────────────
+   ats-web-only overrides of the fe-foundation rail. The frozen shared lib is
+   NOT edited (git diff under libs/fe-foundation stays empty); these rules win
+   only because app ui.css loads AFTER the fe-foundation barrel. Every value is
+   from the ratified pixel authority Requisitions.dc.html. */
+
+.rc-rail {
+  padding: 14px 12px;
+}
+
+.rc-nav__item {
+  gap: 13px;
+  padding: 10px 12px;
+  border-radius: var(--r-md); /* 9px */
+  border: 1.5px solid transparent;
+  font-size: 0.906rem; /* 14.5px */
+  margin-bottom: 3px;
+}
+
+.rc-nav__item svg {
+  width: 20px;
+  height: 20px;
+}
+
+/* Active page — the prototype's white-outlined translucent chip. The frozen
+   default paints solid var(--brand), which equals the rail bg (#022AC0), so the
+   active item is invisible against the rail. Restore the visible highlight. */
+.rc-nav__item[aria-current='page'] {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: var(--rail-strong);
+  color: var(--rail-strong);
+  font-weight: 700;
+}
+
+.rc-nav__item:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.rc-nav__label {
+  color: var(--rail-label); /* #95A6E5 */
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  opacity: 1;
+  padding: 16px 13px 7px;
+}
+
+/* Rail brand — the app-level "aramo.ai" wordmark + sun/asterisk mark rendered at
+   the rail top (AramoBrand.tsx). Values from Requisitions.dc.html. */
+.rc-railbrand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 2px 4px 16px;
+}
+
+.rc-railbrand__home {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.rc-railbrand__mark {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  flex: none;
+  display: grid;
+  place-items: center;
+}
+
+.rc-railbrand__mark svg {
+  width: 25px;
+  height: 25px;
+}
+
+.rc-railbrand__name {
+  color: var(--rail-strong); /* #fff */
+  font-weight: 600;
+  font-size: 15.5px;
+  letter-spacing: -0.01em;
+}
+
+.rc-railbrand__ai {
+  color: var(--rail-text); /* #D9DFF6 */
+  font-weight: 400;
+}
+
+/* Expanded — the ChatGPT collapse button, top-right of the rail header. */
+.rc-railbrand__collapse {
+  margin-left: auto;
+  flex: none;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--rail-text);
+  border-radius: 7px;
+  padding: 6px;
+  display: grid;
+  place-items: center;
+}
+
+.rc-railbrand__collapse svg {
+  width: 22px;
+  height: 22px;
+}
+
+.rc-railbrand__collapse:hover {
+  background: var(--rail-hover);
+  color: var(--rail-strong);
+}
+
+/* Collapsed — the whole brand is a button: the logo by default, swapping to the
+   panel icon + "Open sidebar" tooltip on hover; clicking expands. */
+.rc-railbrand--collapsed {
+  width: 100%;
+  justify-content: center;
+  border: none;
+  background: none;
+  cursor: pointer;
+  border-radius: 9px;
+  padding: 2px 0 16px;
+}
+
+.rc-railbrand--collapsed .rc-railbrand__mark--panel {
+  display: none;
+  color: var(--rail-strong);
+}
+
+.rc-railbrand--collapsed .rc-railbrand__mark--panel svg {
+  width: 24px;
+  height: 24px;
+}
+
+.rc-railbrand--collapsed:hover .rc-railbrand__mark--logo {
+  display: none;
+}
+
+.rc-railbrand--collapsed:hover .rc-railbrand__mark--panel {
+  display: grid;
+}
+
+/* ats-web owns the collapse control via the rail brand (above), so hide the
+   fe-foundation floating edge-toggle in THIS app only — other apps keep it. */
+.rc-rail-toggle {
+  display: none;
 }

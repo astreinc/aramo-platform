@@ -116,6 +116,29 @@ describe('AppShell', () => {
     expect(window.localStorage.getItem('rc-rail-collapsed')).toBe('1');
   });
 
+  // REQ-PIXEL-PARITY-1-A1 — ⌘\ / Ctrl-\ keyboard shortcut toggles the rail.
+  it('toggles the rail with the ⌘\\ / Ctrl-\\ keyboard shortcut', () => {
+    window.localStorage.removeItem('rc-rail-collapsed');
+    render(
+      <AppShell rail={<Rail>{null}</Rail>} topBar={<TopBar>bar</TopBar>}>
+        <p>content</p>
+      </AppShell>,
+    );
+    expect(
+      screen.getByRole('button', { name: 'Collapse navigation' }),
+    ).toHaveAttribute('aria-expanded', 'true');
+    // ⌘\ collapses…
+    fireEvent.keyDown(document, { key: '\\', metaKey: true });
+    expect(
+      screen.getByRole('button', { name: 'Expand navigation' }),
+    ).toHaveAttribute('aria-expanded', 'false');
+    // …Ctrl-\ expands again.
+    fireEvent.keyDown(document, { key: '\\', ctrlKey: true });
+    expect(
+      screen.getByRole('button', { name: 'Collapse navigation' }),
+    ).toHaveAttribute('aria-expanded', 'true');
+  });
+
   it('ShellBrand renders the logo as a home link', () => {
     render(
       <MemoryRouter>
