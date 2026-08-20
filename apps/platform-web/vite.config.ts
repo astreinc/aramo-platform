@@ -29,7 +29,10 @@ export default defineConfig({
     proxy: {
       '/auth': {
         target: 'http://localhost:3001', // auth-service
-        changeOrigin: true,
+        // changeOrigin:false preserves the 4202 FE-origin Host so the auth-service
+        // derives the registered :4202 callback (PR-3.1 host-derived auth base);
+        // rewriting to :3001 would emit an unregistered callback Cognito rejects.
+        changeOrigin: false,
         secure: false,
       },
       '/platform': {

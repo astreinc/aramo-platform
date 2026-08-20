@@ -23,8 +23,8 @@ export default defineConfig({
     port: 4203,
     host: 'localhost',
     proxy: {
-      '/auth': { target: 'http://localhost:3001', changeOrigin: true, secure: false }, // auth-service
-      '/v1': { target: 'http://localhost:3000', changeOrigin: true, secure: false }, // apps/api (portal reads)
+      '/auth': { target: 'http://localhost:3001', changeOrigin: false, secure: false }, // auth-service (changeOrigin:false preserves the 4203 FE-origin Host so the auth-service derives the registered :4203 callback; PR-3.1 host-derived auth base)
+      '/v1': { target: 'http://localhost:3000', changeOrigin: false, secure: false }, // apps/api (portal reads)
     },
   },
   preview: { port: 4303, host: '127.0.0.1' },
