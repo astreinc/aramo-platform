@@ -10,13 +10,19 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 
 import { listCompanies } from '../companies/companies-api';
-import { listAllPipelines } from '../pipeline/pipeline-api';
+import { getTalentRecord, listAllPipelines } from '../pipeline/pipeline-api';
 import {
+  collapseToCurrentEpisode,
   funnelByRequisition,
   rollupByRequisition,
   type ReqFunnel,
   type ReqPipelineCount,
 } from '../pipeline/rollup';
+import {
+  PIPELINE_NEXT_ACTION,
+  PIPELINE_STATUS_LABELS,
+  type PipelineView,
+} from '../pipeline/types';
 import { resolveUserNames } from '../users/users-api';
 import {
   Avatar,
@@ -26,6 +32,7 @@ import {
   ScopedSearch,
   StatusPill,
   Toolbar,
+  funnelBucket,
   type FunnelBucketKey,
 } from '../ui';
 
@@ -92,6 +99,16 @@ const AGING_DAYS = 21;
 // hits the cap we say so rather than imply completeness.
 const LIST_CAP = 50;
 
+// P2-A — a pipeline entry shows the NEW badge if created within this many days.
+const NEW_PIPELINE_DAYS = 7;
+// Stable empty ref so a req with no pipeline doesn't churn the row each render.
+const EMPTY_ENTRIES: readonly PipelineView[] = [];
+
+function isNewEntry(e: PipelineView): boolean {
+  const t = Date.parse(e.created_at);
+  return !Number.isNaN(t) && Date.now() - t < NEW_PIPELINE_DAYS * 86_400_000;
+}
+
 interface RequisitionsListViewProps {
   readonly sessionOverride?: Session;
 }
@@ -105,6 +122,15 @@ export function RequisitionsListView({
     Record<string, ReqPipelineCount>
   >({});
   const [funnels, setFunnels] = useState<Record<string, ReqFunnel>>({});
+  // P2-A (REQ-PIXEL-PARITY-1-A2) — inline talent-preview expander. Raw
+  // current-episode pipeline rows grouped by requisition; the expanded row; and
+  // a lazily-filled talent-name cache (per-id fetch on expand — truthful, no
+  // batch endpoint yet).
+  const [pipelinesByReq, setPipelinesByReq] = useState<
+    Record<string, readonly PipelineView[]>
+  >({});
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [talentNames, setTalentNames] = useState<Record<string, string>>({});
   const [userNames, setUserNames] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -161,6 +187,12 @@ export function RequisitionsListView({
         // distribution bar render. No N+1.
         setPipelineCounts(rollupByRequisition(pipeRes.value.items));
         setFunnels(funnelByRequisition(pipeRes.value.items));
+        // P2-A — group the current-episode rows by requisition for the expander.
+        const byReq: Record<string, PipelineView[]> = {};
+        for (const p of collapseToCurrentEpisode(pipeRes.value.items)) {
+          (byReq[p.requisition_id] ??= []).push(p);
+        }
+        setPipelinesByReq(byReq);
       }
       // §5 D4c — recruiter/owner names from the directory (incl. departed).
       if (namesRes.status === 'fulfilled') {
@@ -210,6 +242,31 @@ export function RequisitionsListView({
         prev.map((r) => (r.id === id ? { ...r, bookmarked: !next } : r)),
       );
     });
+  };
+
+  // P2-A — toggle the inline talent preview; lazily fetch the missing talent
+  // names (per-id) for the row being opened. Names come from the talent SOR —
+  // no fabricated data; the expander shows only real pipeline rows.
+  const toggleExpand = (reqId: string): void => {
+    setExpandedId((cur) => (cur === reqId ? null : reqId));
+    const missing = (pipelinesByReq[reqId] ?? [])
+      .map((e) => e.talent_record_id)
+      .filter((id) => !(id in talentNames));
+    if (missing.length === 0) return;
+    void Promise.allSettled(missing.map((id) => getTalentRecord(id))).then(
+      (results) => {
+        const add: Record<string, string> = {};
+        for (const r of results) {
+          if (r.status === 'fulfilled') {
+            add[r.value.id] =
+              `${r.value.first_name} ${r.value.last_name}`.trim();
+          }
+        }
+        if (Object.keys(add).length > 0) {
+          setTalentNames((prev) => ({ ...prev, ...add }));
+        }
+      },
+    );
   };
 
   const filtered = useMemo(() => {
@@ -473,6 +530,10 @@ export function RequisitionsListView({
                   funnel={funnels[r.id]}
                   ownerName={ownerName(r, userNames)}
                   onToggleBookmark={toggleBookmark}
+                  expanded={expandedId === r.id}
+                  onToggle={() => toggleExpand(r.id)}
+                  entries={pipelinesByReq[r.id] ?? EMPTY_ENTRIES}
+                  talentNames={talentNames}
                 />
               ))}
             </div>
@@ -489,6 +550,10 @@ interface RequisitionRowProps {
   readonly funnel: ReqFunnel | undefined;
   readonly ownerName: string | null;
   readonly onToggleBookmark: (id: string, next: boolean) => void;
+  readonly expanded: boolean;
+  readonly onToggle: () => void;
+  readonly entries: readonly PipelineView[];
+  readonly talentNames: Record<string, string>;
 }
 
 function RequisitionRow({
@@ -497,6 +562,10 @@ function RequisitionRow({
   funnel,
   ownerName: owner,
   onToggleBookmark,
+  expanded,
+  onToggle,
+  entries,
+  talentNames,
 }: RequisitionRowProps) {
   const detailHref = `/requisitions/${req.id}`;
   const total = funnel?.total ?? 0;
@@ -528,10 +597,15 @@ function RequisitionRow({
   if (loc !== '—') idParts.push(<span key="loc">{loc}</span>);
 
   return (
+    <>
     <article
       id={rowDomId(req.id)}
-      className={`rc-rt__row${req.is_hot ? ' rc-rt__row--hot' : ''}`}
+      className={`rc-rt__row${req.is_hot ? ' rc-rt__row--hot' : ''}${
+        expanded ? ' rc-rt__row--exp' : ''
+      }`}
       role="row"
+      aria-expanded={expanded}
+      onClick={onToggle}
     >
       {/* Leading ★ column — the personal favorite (PR-14), prototype's first
           column. It re-skins the bookmark to a star and never touches is_hot;
@@ -542,7 +616,10 @@ function RequisitionRow({
         aria-pressed={req.bookmarked}
         aria-label={req.bookmarked ? 'Remove bookmark' : 'Bookmark'}
         title={req.bookmarked ? 'Remove bookmark' : 'Bookmark'}
-        onClick={() => onToggleBookmark(req.id, !req.bookmarked)}
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggleBookmark(req.id, !req.bookmarked);
+        }}
       >
         {req.bookmarked ? '★' : '☆'}
       </button>
@@ -550,7 +627,11 @@ function RequisitionRow({
       {/* Requisition */}
       <div className="rc-rt__req">
         <div className="rc-rt__top">
-          <Link to={detailHref} className="rc-rt__title">
+          <Link
+            to={detailHref}
+            className="rc-rt__title"
+            onClick={(e) => e.stopPropagation()}
+          >
             {req.title}
           </Link>
           {/* Team-wide operational priority signal (is_hot). Recruiter-facing
@@ -624,6 +705,54 @@ function RequisitionRow({
         </StatusPill>
       </div>
     </article>
+
+      {/* P2-A — inline talent preview (truthful subset: real pipeline rows;
+          name from the talent SOR; stage from the pipeline status; NEW derived
+          from created_at). No source / next-step (P2-D). */}
+      {expanded ? (
+        <div className="rc-texp">
+          <div className="rc-texp__head">
+            <span className="rc-texp__label">Talent on this requisition</span>
+            <Link to={detailHref} className="rc-texp__link">
+              Open full pipeline →
+            </Link>
+          </div>
+          {entries.length > 0 ? (
+            <div className="rc-texp__grid">
+              {entries.map((e) => {
+                const name = talentNames[e.talent_record_id];
+                const bucket = funnelBucket(e.status);
+                return (
+                  <div key={e.id} className="rc-tcard">
+                    <Avatar name={name ?? '—'} size="sm" />
+                    <div className="rc-tcard__body">
+                      <span className="rc-tcard__name">
+                        {name ?? 'Loading…'}
+                        {isNewEntry(e) ? (
+                          <span className="rc-tcard__new">NEW</span>
+                        ) : null}
+                      </span>
+                      <span className="rc-tcard__meta">
+                        <span
+                          className={`rc-tcard__stage rc-tcard__stage--${bucket}`}
+                        >
+                          {PIPELINE_STATUS_LABELS[e.status]}
+                        </span>
+                        <span className="rc-tcard__next">
+                          {PIPELINE_NEXT_ACTION[e.status]}
+                        </span>
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="rc-texp__empty">No talent in this pipeline yet.</p>
+          )}
+        </div>
+      ) : null}
+    </>
   );
 }
 

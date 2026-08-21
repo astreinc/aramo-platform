@@ -61,6 +61,25 @@ export const PIPELINE_STATUS_LABELS: Record<PipelineStatus, string> = {
   placed: 'Placed',
 };
 
+// REQ-PIXEL-PARITY-1-A2 (P2-A) — the derived "Next Action" per stage. This is
+// UI-ONLY display sugar (what the recruiter does next given the stage) — it is
+// NOT a stored field and NOT analytics data (reporting reads the status count,
+// never this label). Co-located with the labels so a status-enum change updates
+// both.
+export const PIPELINE_NEXT_ACTION: Record<PipelineStatus, string> = {
+  no_status: 'Set status',
+  no_contact: 'Reach out',
+  contacted: 'Await response',
+  talent_responded: 'Confirm fit, rate & availability',
+  qualifying: 'Prepare submittal',
+  submitted: 'Await client feedback',
+  interviewing: 'Manage interview',
+  offered: 'Await offer decision',
+  not_in_consideration: 'Closed — not proceeding',
+  client_declined: 'Closed — client declined',
+  placed: 'Complete',
+};
+
 export interface PipelineView {
   readonly id: string;
   readonly tenant_id: string;

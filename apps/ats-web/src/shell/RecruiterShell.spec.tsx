@@ -301,4 +301,32 @@ describe('RecruiterShell', () => {
     await screen.findByText('Astre Consulting Services Inc');
     expect(screen.queryByText(OFFBOARDING_COPY)).not.toBeInTheDocument();
   });
+
+  // P2-A (REQ-PIXEL-PARITY-1-A2) — rail count pills from the truthful report
+  // endpoints (NOT list length). Tasks has no substrate yet (P2-C).
+  it('renders truthful Requisitions + Talent count pills (report:read)', async () => {
+    vi.spyOn(apiClient, 'get').mockImplementation((async (path: string) => {
+      if (path === '/v1/reports/requisition-rollup') {
+        return { total: 18, by_status: {} };
+      }
+      if (path === '/v1/reports/tenant-counts') return { talent_records: 412 };
+      return ME;
+    }) as typeof apiClient.get);
+    renderShell(makeSession(['requisition:read', 'talent:read', 'report:read']));
+    const reqLink = await screen.findByRole('link', { name: /Requisitions/ });
+    await waitFor(() =>
+      expect(within(reqLink).getByText('18')).toBeInTheDocument(),
+    );
+    expect(
+      within(screen.getByRole('link', { name: /Talent/ })).getByText('412'),
+    ).toBeInTheDocument();
+  });
+
+  it('fetches no counts without report:read (negative control)', async () => {
+    const spy = vi.spyOn(apiClient, 'get').mockResolvedValue(ME);
+    renderShell(makeSession(['requisition:read', 'talent:read']));
+    await screen.findByRole('link', { name: /Requisitions/ });
+    expect(spy).not.toHaveBeenCalledWith('/v1/reports/requisition-rollup');
+    expect(spy).not.toHaveBeenCalledWith('/v1/reports/tenant-counts');
+  });
 });

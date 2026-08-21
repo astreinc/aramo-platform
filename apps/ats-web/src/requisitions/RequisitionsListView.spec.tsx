@@ -239,6 +239,72 @@ describe('RequisitionsListView', () => {
     expect(screen.queryByText('Senior Engineer')).not.toBeInTheDocument();
   });
 
+  // P2-A (REQ-PIXEL-PARITY-1-A2) — inline talent-preview expander (truthful:
+  // real pipeline rows, name from the talent SOR, stage from status, NEW from
+  // created_at). No source/next-step (P2-D).
+  it('opens an inline talent preview on row click (name · stage · NEW) and toggles', async () => {
+    const recent = new Date(Date.now() - 2 * 86_400_000).toISOString();
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = typeof input === 'string' ? input : (input as Request).url;
+      const body = url.includes('/v1/pipelines')
+        ? {
+            items: [
+              {
+                id: 'pl-1',
+                tenant_id: 't',
+                site_id: null,
+                talent_record_id: 'tal-1',
+                requisition_id: 'req-open',
+                status: 'submitted',
+                created_at: recent,
+                updated_at: recent,
+              },
+            ],
+          }
+        : url.includes('/v1/talent-records/tal-1')
+          ? { id: 'tal-1', first_name: 'Sarah', last_name: 'Nolan' }
+          : url.includes('/v1/requisitions')
+            ? { items: [OPEN] }
+            : { items: [] };
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    });
+    renderList();
+    const title = await screen.findByText('Senior Engineer');
+    // Collapsed by default.
+    expect(
+      screen.queryByText('Talent on this requisition'),
+    ).not.toBeInTheDocument();
+    // Click the row (not the title link) → expands with real data.
+    const article = title.closest('article') as Element;
+    fireEvent.click(article);
+    expect(screen.getByText('Talent on this requisition')).toBeInTheDocument();
+    expect(await screen.findByText('Sarah Nolan')).toBeInTheDocument();
+    expect(
+      screen.getByText('Submitted', { selector: '.rc-tcard__stage' }),
+    ).toBeInTheDocument();
+    // Derived Next Action for the 'submitted' stage.
+    expect(screen.getByText('Await client feedback')).toBeInTheDocument();
+    expect(screen.getByText('NEW')).toBeInTheDocument();
+    // Click again collapses.
+    fireEvent.click(article);
+    expect(
+      screen.queryByText('Talent on this requisition'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('the ★ star click does not toggle the preview (stopPropagation)', async () => {
+    mockFetch([OPEN]);
+    renderList();
+    await screen.findByText('Senior Engineer');
+    fireEvent.click(screen.getByRole('button', { name: 'Bookmark' }));
+    expect(
+      screen.queryByText('Talent on this requisition'),
+    ).not.toBeInTheDocument();
+  });
+
   it('renders an empty-state when no requisitions match', async () => {
     mockFetch([CLOSED, FILLED]);
     renderList();
