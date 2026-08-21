@@ -28,6 +28,7 @@ function makeReq(
     is_hot: false,
     openings: 2,
     openings_available: 1,
+    capacity_balance: 1,
     start_date: null,
     city: null,
     state: null,
@@ -389,9 +390,50 @@ describe('RequisitionsListView', () => {
     expect(screen.getByText('In pipeline')).toBeInTheDocument();
     expect(screen.getByText('Submitted')).toBeInTheDocument();
     expect(screen.getByText('Interview')).toBeInTheDocument();
-    // total in pipeline = 4 (every entry) → appears in the stat block AND the
-    // distribution-bar total.
-    expect(screen.getAllByText('4').length).toBeGreaterThanOrEqual(2);
+    // total in pipeline = 4 (every entry) → shown as the stat block "In pipeline"
+    // count. (The distribution bar was replaced by the Capacity cell.)
+    const inPipeline = screen
+      .getByText('In pipeline')
+      .closest('.rc-stat')
+      ?.querySelector('.num');
+    expect(inPipeline?.textContent).toBe('4');
+  });
+
+  it('Capacity cell shows avail/openings + the derived state (Available / Fully consumed / Over capacity)', async () => {
+    const AVAIL = makeReq('req-a', 'Has Capacity', 'open', {
+      openings: 2,
+      openings_available: 1,
+      capacity_balance: 1,
+    });
+    const FULL = makeReq('req-f', 'Fully Consumed', 'open', {
+      openings: 1,
+      openings_available: 0,
+      capacity_balance: 0,
+    });
+    const OVER = makeReq('req-o', 'Over Capacity', 'open', {
+      openings: 2,
+      openings_available: 0,
+      capacity_balance: -1,
+    });
+    mockEndpoints({
+      reqs: [AVAIL, FULL, OVER],
+      companies: [{ id: 'co-1', name: 'Northwind' }],
+    });
+    renderList();
+    await waitFor(() =>
+      expect(screen.getByText('Has Capacity')).toBeInTheDocument(),
+    );
+    // Positive balance → Available; 0 → Fully consumed; negative → Over capacity.
+    expect(screen.getByText('Available')).toBeInTheDocument();
+    expect(screen.getByText('Fully consumed')).toBeInTheDocument();
+    expect(screen.getByText('Over capacity')).toBeInTheDocument();
+    // The full phrasing rides the title tooltip — assert one unambiguous node.
+    expect(
+      screen.getByTitle('2 openings · 0 available · Over capacity'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTitle('1 opening · 0 available · Fully consumed'),
+    ).toBeInTheDocument();
   });
 
   it('R2b: stat counts are cumulative "reached" — a talent past a stage still counts toward it', async () => {

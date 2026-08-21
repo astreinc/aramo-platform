@@ -78,6 +78,7 @@ function baseView(extra: Record<string, unknown> = {}): Record<string, unknown> 
     is_hot: false,
     openings: 2,
     openings_available: 2,
+    capacity_balance: 2,
     start_date: null,
     city: 'NYC',
     state: null,

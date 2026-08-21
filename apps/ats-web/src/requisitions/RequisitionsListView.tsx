@@ -517,7 +517,7 @@ export function RequisitionsListView({
                 <span className="rc-rt__hc" aria-hidden="true" />
                 <span className="rc-rt__hc">Requisition</span>
                 <span className="rc-rt__hc">Talent</span>
-                <span className="rc-rt__hc">Pipeline</span>
+                <span className="rc-rt__hc">Capacity</span>
                 <span className="rc-rt__hc">Owner</span>
                 <span className="rc-rt__hc">Updated</span>
                 <span className="rc-rt__hc">Status</span>
@@ -569,6 +569,19 @@ function RequisitionRow({
 }: RequisitionRowProps) {
   const detailHref = `/requisitions/${req.id}`;
   const total = funnel?.total ?? 0;
+  // Capacity (replaces the pipeline distribution bar per PO ruling + the T4-B2
+  // capacity_balance read-exposure amendment). The signed capacity_balance
+  // distinguishes the three truthful states — the clamped openings_available
+  // alone cannot show over-capacity. Placement-derived.
+  const capState =
+    req.capacity_balance < 0
+      ? { key: 'over', label: 'Over capacity' }
+      : req.capacity_balance === 0
+        ? { key: 'full', label: 'Fully consumed' }
+        : { key: 'avail', label: 'Available' };
+  const capTitle =
+    `${req.openings} opening${req.openings === 1 ? '' : 's'} · ` +
+    `${req.openings_available} available · ${capState.label}`;
   const cellCount = (key: FunnelBucketKey): number =>
     funnel?.cells.find((c) => c.key === key)?.count ?? 0;
   const cellLabel = (key: FunnelBucketKey, fallback: string): string =>
@@ -681,22 +694,19 @@ function RequisitionRow({
         </span>
       </div>
 
-      {/* Pipeline — the 6-bucket funnel, segmented */}
-      <div className="rc-rt__pipe">
-        <span className="rc-distbar" aria-hidden="true">
-          {total > 0
-            ? (funnel?.cells ?? [])
-                .filter((c) => c.count > 0)
-                .map((c) => (
-                  <i
-                    key={c.key}
-                    className={`rc-distseg rc-distseg--${c.key}`}
-                    style={{ width: `${(c.count / total) * 100}%` }}
-                  />
-                ))
-            : null}
+      {/* Capacity — openings vs derived availability (replaces the pipeline
+          distribution bar per PO ruling). Compact "avail / openings" + a state
+          chip; the full phrasing rides the title tooltip. */}
+      <div className="rc-rt__cap" title={capTitle}>
+        <span className="rc-cap__counts">
+          <b className="num">{req.openings_available}</b>
+          <span className="rc-cap__sep">/</span>
+          <b className="num">{req.openings}</b>
+          <span className="rc-cap__unit">avail</span>
         </span>
-        <span className="rc-distbar__n mono">{total}</span>
+        <span className={`rc-cap__state rc-cap__state--${capState.key}`}>
+          {capState.label}
+        </span>
       </div>
 
       {/* Owner */}

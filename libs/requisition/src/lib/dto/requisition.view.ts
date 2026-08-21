@@ -38,6 +38,11 @@ export interface RequisitionView {
   is_hot: boolean;
   openings: number;
   openings_available: number;
+  // Signed capacity balance = openings − active ContractAssignment consumption
+  // (placement-derived). `openings_available` is max(capacity_balance, 0); this
+  // UNclamped value lets a reader distinguish Fully consumed (== 0) from
+  // Over capacity (< 0) — the clamp hides the latter.
+  capacity_balance: number;
   start_date: string | null;
   city: string | null;
   state: string | null;

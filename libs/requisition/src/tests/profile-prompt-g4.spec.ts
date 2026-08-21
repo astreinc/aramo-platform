@@ -44,6 +44,7 @@ function viewWithCommercialData(): RequisitionView {
     is_hot: false,
     openings: 1,
     openings_available: 1,
+    capacity_balance: 1,
     start_date: null,
     city: 'Austin',
     state: 'TX',

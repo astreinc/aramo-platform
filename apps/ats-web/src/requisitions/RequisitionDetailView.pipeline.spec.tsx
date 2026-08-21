@@ -33,6 +33,7 @@ const REQ = {
   is_hot: true,
   openings: 3,
   openings_available: 2,
+  capacity_balance: 2,
   city: 'Austin',
   state: 'TX',
   external_req_id: 'REQ-2041',

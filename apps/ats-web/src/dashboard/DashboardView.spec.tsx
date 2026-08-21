@@ -79,6 +79,7 @@ const REQS = {
       is_hot: true,
       openings: 3,
       openings_available: 2,
+      capacity_balance: 2,
       created_at: '2026-05-30T09:00:00Z',
     },
     {
@@ -90,6 +91,7 @@ const REQS = {
       is_hot: false,
       openings: 1,
       openings_available: 0,
+      capacity_balance: 0,
       created_at: '2026-06-01T09:00:00Z',
     },
   ],

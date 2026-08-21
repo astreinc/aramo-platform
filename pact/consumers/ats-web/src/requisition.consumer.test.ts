@@ -74,6 +74,9 @@ function requisitionView(
     is_hot: opts.isHot === undefined ? like(false) : opts.isHot,
     openings: like(1),
     openings_available: like(1),
+    // Signed capacity balance (placement-derived); the list Capacity cell relies
+    // on the sign to show Available / Fully consumed / Over capacity.
+    capacity_balance: like(1),
     golden_profile_id:
       opts.goldenProfileId === undefined ? null : opts.goldenProfileId,
     created_at: regex(ISO_TIMESTAMP, '2026-05-25T00:00:00Z'),
