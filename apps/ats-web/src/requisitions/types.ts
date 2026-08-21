@@ -93,6 +93,11 @@ export interface RequisitionView {
   readonly is_hot: boolean;
   readonly openings: number;
   readonly openings_available: number;
+  // Signed capacity balance = openings − active placement consumption. Unlike
+  // openings_available (clamped at 0), the sign distinguishes Fully consumed
+  // (== 0) from Over capacity (< 0). Placement-derived; hand-mirrors the backend
+  // RequisitionView (libs/requisition/src/lib/dto/requisition.view.ts).
+  readonly capacity_balance: number;
   readonly start_date: string | null;
   readonly city: string | null;
   readonly state: string | null;

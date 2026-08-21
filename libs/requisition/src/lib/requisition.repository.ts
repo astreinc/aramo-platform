@@ -382,7 +382,11 @@ function decimalToFixed2(value: Prisma.Decimal | null): string | null {
 // value (max(capacity_balance,0) from the placement projection), NOT read from the
 // stored column. projectView stays a pure sync mapper; the async capacity pull is
 // the caller's (projectViewWithCapacity for single rows; the batch path for lists).
-function projectView(row: RequisitionRow, openings_available: number): RequisitionView {
+function projectView(
+  row: RequisitionRow,
+  openings_available: number,
+  capacity_balance: number,
+): RequisitionView {
   // v1.1 §2.2 — derived views computed from the two stored facts.
   // The compute is the single canonical site (projectView is THE
   // row→view mapper for every read path: list, get-by-id, create,
@@ -414,6 +418,9 @@ function projectView(row: RequisitionRow, openings_available: number): Requisiti
     // T4-B2 — the DERIVED available-openings value (caller-supplied), no longer the
     // stored column. The response field survives; its authority is now placement.
     openings_available,
+    // Capacity-visibility — the SIGNED balance (caller-supplied), UNclamped so
+    // Over capacity (< 0) is distinguishable from Fully consumed (== 0).
+    capacity_balance,
     start_date: row.start_date === null ? null : row.start_date.toISOString(),
     city: row.city,
     state: row.state,
@@ -548,12 +555,9 @@ export class RequisitionRepository {
     tenant_id: string,
     row: RequisitionRow,
   ): Promise<RequisitionView> {
-    const { openings_available } = await this.capacity.projectCapacity(
-      tenant_id,
-      row.id,
-      row.openings,
-    );
-    return projectView(row, openings_available);
+    const { openings_available, capacity_balance } =
+      await this.capacity.projectCapacity(tenant_id, row.id, row.openings);
+    return projectView(row, openings_available, capacity_balance);
   }
 
   // T1-c — emit ONE lifecycle event inside the caller's transaction. The event
@@ -1475,13 +1479,13 @@ export class RequisitionRepository {
       args.tenant_id,
       typedRows.map((r) => r.id),
     );
-    const views = typedRows.map((r) =>
-      projectView(
-        r,
-        deriveCapacity({ openings: r.openings, consuming_count: activeByReq.get(r.id) ?? 0 })
-          .openings_available,
-      ),
-    );
+    const views = typedRows.map((r) => {
+      const capacity = deriveCapacity({
+        openings: r.openings,
+        consuming_count: activeByReq.get(r.id) ?? 0,
+      });
+      return projectView(r, capacity.openings_available, capacity.capacity_balance);
+    });
     return this.enrichBookmarked(
       args.tenant_id,
       args.visibility.actor_user_id,

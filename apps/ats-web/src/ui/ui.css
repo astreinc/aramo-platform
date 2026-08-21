@@ -2639,6 +2639,55 @@ button.rc-link-action {
 
 .rc-rt__pipe { display: flex; align-items: center; gap: 9px; }
 
+/* Capacity cell — compact "avail / openings" counts + a derived state chip.
+ * Sits in the former pipeline grid slot; two tight lines fit the ~130px track. */
+.rc-rt__cap {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.rc-cap__counts {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  font-size: 0.82rem;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.rc-cap__counts .num {
+  font-weight: 700;
+}
+
+.rc-cap__sep {
+  color: var(--faint);
+  font-weight: 600;
+}
+
+.rc-cap__unit {
+  font-size: 0.66rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.rc-cap__state {
+  align-self: flex-start;
+  font-size: 0.64rem;
+  font-weight: 600;
+  border-radius: 20px;
+  padding: 1px 8px;
+  white-space: nowrap;
+}
+
+/* Available — positive balance (calm/brand). Fully consumed — neutral.
+ * Over capacity — warn (more consumption than openings). */
+.rc-cap__state--avail { color: var(--ok); background: var(--ok-tint); }
+.rc-cap__state--full { color: #54606a; background: #eef1f4; }
+.rc-cap__state--over { color: var(--warn); background: var(--warn-tint); }
+
 .rc-distbar {
   display: flex;
   height: 5px;
