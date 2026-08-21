@@ -573,6 +573,19 @@ function RequisitionRow({
     funnel?.cells.find((c) => c.key === key)?.count ?? 0;
   const cellLabel = (key: FunnelBucketKey, fallback: string): string =>
     funnel?.cells.find((c) => c.key === key)?.label ?? fallback;
+  // "Reached" (cumulative) count — a talent counts toward Submitted once they
+  // are AT submitted or ANY later bucket (interview/offer/placed), and toward
+  // Interview once at interview or later. Fixes the current-stage bug where the
+  // count reverted to 0 the moment a talent advanced past the stage (a submitted
+  // talent stops being "Submitted" once offered). Matches the rollup's own
+  // cumulative `submitted` semantic. Derives from the already-ordered funnel
+  // cells (funnelCounts emits them in FUNNEL_BUCKETS order) — no duplicated fact.
+  const reachedCount = (from: FunnelBucketKey): number => {
+    const cells = funnel?.cells ?? [];
+    const start = cells.findIndex((c) => c.key === from);
+    if (start < 0) return 0;
+    return cells.slice(start).reduce((sum, c) => sum + c.count, 0);
+  };
 
   // The identity sub-line. PR-15 self-consistency: the INTERNAL number is the
   // primary human-readable id (rendered REQ-{number}, prefix presentation-only,
@@ -659,11 +672,11 @@ function RequisitionRow({
           <span className="rc-stat__l">In pipeline</span>
         </span>
         <span className="rc-stat">
-          <b className="num">{cellCount('submitted')}</b>
+          <b className="num">{reachedCount('submitted')}</b>
           <span className="rc-stat__l">{cellLabel('submitted', 'Submitted')}</span>
         </span>
         <span className="rc-stat">
-          <b className="num">{cellCount('interview')}</b>
+          <b className="num">{reachedCount('interview')}</b>
           <span className="rc-stat__l">{cellLabel('interview', 'Interview')}</span>
         </span>
       </div>
@@ -723,27 +736,34 @@ function RequisitionRow({
                 const name = talentNames[e.talent_record_id];
                 const bucket = funnelBucket(e.status);
                 return (
-                  <div key={e.id} className="rc-tcard">
+                  // Whole card is a link to the talent SOR (Requisitions.dc.html
+                  // parity: avatar · body{name + gray sub-line} · stage pill on
+                  // the RIGHT). Spans (not divs) inside the <a> keep the markup
+                  // valid. Next-action is the gray sub-line; the pipeline source
+                  // prefix ("Referral · …") lands when Source Attribution ships.
+                  <Link
+                    key={e.id}
+                    to={`/talent/${e.talent_record_id}`}
+                    className="rc-tcard"
+                  >
                     <Avatar name={name ?? '—'} size="sm" />
-                    <div className="rc-tcard__body">
+                    <span className="rc-tcard__body">
                       <span className="rc-tcard__name">
                         {name ?? 'Loading…'}
                         {isNewEntry(e) ? (
                           <span className="rc-tcard__new">NEW</span>
                         ) : null}
                       </span>
-                      <span className="rc-tcard__meta">
-                        <span
-                          className={`rc-tcard__stage rc-tcard__stage--${bucket}`}
-                        >
-                          {PIPELINE_STATUS_LABELS[e.status]}
-                        </span>
-                        <span className="rc-tcard__next">
-                          {PIPELINE_NEXT_ACTION[e.status]}
-                        </span>
+                      <span className="rc-tcard__sub">
+                        {PIPELINE_NEXT_ACTION[e.status]}
                       </span>
-                    </div>
-                  </div>
+                    </span>
+                    <span
+                      className={`rc-tcard__stage rc-tcard__stage--${bucket}`}
+                    >
+                      {PIPELINE_STATUS_LABELS[e.status]}
+                    </span>
+                  </Link>
                 );
               })}
             </div>
