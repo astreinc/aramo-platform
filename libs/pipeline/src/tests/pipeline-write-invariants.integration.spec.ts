@@ -150,8 +150,26 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
     async function drive(tenant: string, id: string, path: readonly PipelineStatus[]): Promise<void> {
       for (const to of path) {
+        // L8-B1 R-TIGHTEN — the `→ submitted` hop is no longer an engine
+        // transition; in production the submit-to-ats orchestrator sets it as the
+        // mirror, then the engine continues submitted → interviewing → … . Model
+        // that here so funnel-progression characterizations stay faithful.
+        if (to === 'submitted') {
+          await forceSubmitted(id);
+          continue;
+        }
         await repo.transition({ tenant_id: tenant, id, to_status: to, changed_by_id: randomUUID(), requestId: 'l1' });
       }
+    }
+
+    // L8-B1 R-TIGHTEN — `submitted` is no longer reachable through the engine
+    // (it is the mirror of an authoritative client submittal). Characterizations
+    // that need a pipeline IN `submitted` set it the way the orchestrator's mirror
+    // does — a direct write — rather than driving the refused transition.
+    async function forceSubmitted(id: string): Promise<void> {
+      await prisma.$executeRawUnsafe(
+        `UPDATE pipeline."Pipeline" SET status = 'submitted' WHERE id = '${id}'`,
+      );
     }
 
     // ---- P-dup [E6-updated] — Q-2 one-live-episode guard at the repo layer ----
@@ -268,7 +286,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const p1 = await repo.create({ tenant_id: tenant, input: { talent_record_id: talent, requisition_id: req } });
       await drive(tenant, p1.id, PATH_TO_PLACED);
       const p2 = await repo.create({ tenant_id: tenant, input: { talent_record_id: talent, requisition_id: req } });
-      await drive(tenant, p2.id, ['contacted', 'talent_responded', 'qualifying', 'submitted']);
+      await drive(tenant, p2.id, ['contacted', 'talent_responded', 'qualifying']);
+      await forceSubmitted(p2.id);
 
       // BUSINESS: placements = distinct (talent, req) with placed EXISTS = 1 (not 2).
       expect(await repo.countDistinctPlaced({ tenant_id: tenant, requisition_ids: [req] })).toBe(1);
@@ -297,7 +316,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       const pAdvanced = await repo.create({ tenant_id: tenant, input: { talent_record_id: talent, requisition_id: reqAdvanced } });
       const pBehind = await repo.create({ tenant_id: tenant, input: { talent_record_id: talent, requisition_id: reqBehind } });
-      await drive(tenant, pAdvanced.id, ['contacted', 'talent_responded', 'qualifying', 'submitted']);
+      await drive(tenant, pAdvanced.id, ['contacted', 'talent_responded', 'qualifying']);
+      await forceSubmitted(pAdvanced.id);
       await drive(tenant, pBehind.id, ['contacted', 'talent_responded', 'qualifying']);
 
       const map = await repo.findCurrentStageForTalentIds({
@@ -336,6 +356,29 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(cs).toBeDefined();
       expect(cs!.stage).toBe('qualifying');
       expect(cs!.requisition_id).toBe(reqLow); // lowest requisition_id wins the tie
+    });
+    // ---- P5 [L8-B1 R-TIGHTEN] — bare pipeline `→ submitted` is refused; every
+    // other transition is unchanged. `submitted` is the MIRROR of an authoritative
+    // client submittal (submit-to-ats command), never independently reachable.
+    it('P5 [L8-B1]: qualifying → submitted is refused with PIPELINE_SUBMIT_REQUIRES_SUBMITTAL; other transitions unaffected', async () => {
+      const tenant = randomUUID();
+      const req = await seedRequisition(tenant, 1);
+      const talent = randomUUID();
+      const p = await repo.create({ tenant_id: tenant, input: { talent_record_id: talent, requisition_id: req } });
+      await drive(tenant, p.id, ['contacted', 'talent_responded', 'qualifying']);
+
+      // The bare submit is refused (the mirror is not independently reachable).
+      await expect(
+        repo.transition({ tenant_id: tenant, id: p.id, to_status: 'submitted', changed_by_id: randomUUID(), requestId: 'p5' }),
+      ).rejects.toMatchObject({ code: 'PIPELINE_SUBMIT_REQUIRES_SUBMITTAL' });
+      // The refusal wrote nothing — status is still qualifying.
+      const after = await repo.findById({ tenant_id: tenant, id: p.id });
+      expect(after?.status).toBe('qualifying');
+
+      // NO REGRESSION — a different legal transition still works through the engine.
+      await repo.transition({ tenant_id: tenant, id: p.id, to_status: 'not_in_consideration', changed_by_id: randomUUID(), requestId: 'p5-nr' });
+      const nr = await repo.findById({ tenant_id: tenant, id: p.id });
+      expect(nr?.status).toBe('not_in_consideration');
     });
   },
 );

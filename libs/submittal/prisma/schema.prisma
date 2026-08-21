@@ -124,6 +124,14 @@ model TalentSubmittalRecord {
   // re-reading the evidence package.
   pinned_examination_id String @db.Uuid
 
+  // L8-B1 Amendment A1 (R-LINK) — the stored Submittal→Pipeline episode
+  // association. Nullable cross-schema ref (UUID-only, no FK, §7.3) to
+  // pipeline.Pipeline.id. MANY submittals → ONE pipeline episode (NOT unique).
+  // The authoritative correspondence for the client-submittal command's atomic
+  // pipeline mirror; null ⇒ submit-to-ats returns SUBMITTAL_PIPELINE_LINK_INVALID
+  // (no heuristic, no auto-create).
+  pipeline_id String? @db.Uuid
+
   // Workflow.
   state      SubmittalState @default(created)
   // UUID of the recruiter actor that initiated the create. Derived
@@ -164,6 +172,8 @@ model TalentSubmittalRecord {
   @@index([tenant_id, evidence_package_id])
   @@index([tenant_id, state])
   @@index([tenant_id, pinned_examination_id])
+  // L8-B1 A1 (R-LINK) — resolve submittals for a pipeline episode.
+  @@index([tenant_id, pipeline_id])
 
   // M5 PR-8b1 — back-reference for the TalentSubmittalEvent intra-schema
   // FK. Relation-only field; no column added at the DB layer.

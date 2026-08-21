@@ -151,6 +151,13 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   PERMANENT_PLACEMENT_TERMS_OVERLAP: 409,
   PERMANENT_PLACEMENT_TERMS_AMBIGUOUS: 500,
   PERMANENT_PLACEMENT_TERMS_IMMUTABLE: 409,
+  // Lane L8-B1 SubmittalEligibility gate + Amendment A1 authority-chain refusals.
+  SUBMITTALS_CLOSED: 409,
+  SUBMITTAL_WINDOW_PASSED: 409,
+  SUBMITTAL_LIMIT_REACHED: 409,
+  TALENT_RESTRICTED_AT_CLIENT: 409,
+  PIPELINE_SUBMIT_REQUIRES_SUBMITTAL: 409,
+  SUBMITTAL_PIPELINE_LINK_INVALID: 409,
 };
 
 // Base error class. Thrown anywhere in the app where a structured response

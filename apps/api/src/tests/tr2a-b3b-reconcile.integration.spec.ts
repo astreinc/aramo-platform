@@ -81,6 +81,7 @@ const MIGRATIONS = [
   'libs/examination/prisma/migrations/20260706240000_tr2a_b3b_reconcile_rekey_exemption/migration.sql',
   'libs/submittal/prisma/migrations/20260706240000_tr2a_b3b_reconcile_rekey_exemption/migration.sql',
   'libs/submittal/prisma/migrations/20260812120000_t2p1_relocate_submittal_to_submittal_schema/migration.sql',
+  'libs/submittal/prisma/migrations/20260822130000_l8b1_submittal_pipeline_link/migration.sql',
   'libs/evidence/prisma/migrations/20260706240000_tr2a_b3b_reconcile_rekey_exemption/migration.sql',
 ].map(M);
 

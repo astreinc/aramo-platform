@@ -62,6 +62,7 @@ const MIGRATION_FILES: ReadonlyArray<readonly [string, string]> = [
   ['submittal-rename', '../../../submittal/prisma/migrations/20260527000000_rename_submittal_state_canonical/migration.sql'],
   ['submittal-outbox', '../../../submittal/prisma/migrations/20260531000000_add_outbox_event/migration.sql'],
   ['submittal-t2p1', '../../../submittal/prisma/migrations/20260812120000_t2p1_relocate_submittal_to_submittal_schema/migration.sql'],
+  ['submittal-l8b1-link', '../../../submittal/prisma/migrations/20260822130000_l8b1_submittal_pipeline_link/migration.sql'],
   ['canonicalization-init', '../../../canonicalization/prisma/migrations/20260603160000_init_canonicalization_schema/migration.sql'],
   ['placement-init', '../../../placement/prisma/migrations/20260803180000_init_placement_model/migration.sql'],
   ['placement-offer-outbox', '../../../placement/prisma/migrations/20260805120000_placement_offer_and_outbox/migration.sql'],

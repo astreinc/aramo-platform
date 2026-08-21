@@ -54,6 +54,7 @@ import { TalentRecordModule, ResumeReindexModule } from '@aramo/talent-record';
 import { TalentTrustModule } from '@aramo/talent-trust';
 import { TaskModule } from '@aramo/task';
 
+import { SubmitTalentModule } from './submit-talent/submit-talent.module.js';
 // T1-a — composition-root binding of libs/examination's RequisitionStateReader
 // port to the ATS RequisitionRepository adapter (@Global; the wall-legal seam).
 import { RequisitionStateReaderModule } from './requisition-state/requisition-state-reader.module.js';
@@ -314,6 +315,7 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     // §9.2 / Plan v1.5 §M5 Track A item 6 binding).
     SkillsTaxonomyModule,
     SubmittalModule,
+    SubmitTalentModule,
     // Track 3 / E7 (ADR-0027) — ClientTalentRestriction (record half of the
     // house pattern; scoped routes only, no flat collection).
     ClientTalentRestrictionModule,

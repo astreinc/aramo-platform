@@ -335,6 +335,8 @@ export const SEED_SCOPE_KEYS = [
   // is requisition:import:write only.
   'integration:read',
   'integration:write',
+  // Lane L8-B1 — set the client-submittal eligibility policy on a requisition.
+  'submittal-policy:write',
 ] as const;
 export type SeedScopeKey = (typeof SEED_SCOPE_KEYS)[number];
 

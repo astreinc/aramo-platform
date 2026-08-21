@@ -71,6 +71,7 @@ const MIGRATIONS = [
   // Outreach Draft/Preview Amendment v1.1 §3 — the outreach_drafted enum value.
   M('libs/submittal/prisma/migrations/20260531000000_add_outbox_event/migration.sql'),
   M('libs/submittal/prisma/migrations/20260812120000_t2p1_relocate_submittal_to_submittal_schema/migration.sql'),
+  M('libs/submittal/prisma/migrations/20260822130000_l8b1_submittal_pipeline_link/migration.sql'),
   M('libs/ai-draft/prisma/migrations/20260525170000_init/migration.sql'),
   // PR-A1c §4 — metering schema required (in-tx UsageEvent INSERT).
   M('libs/metering/prisma/migrations/20260601150000_init_metering_model/migration.sql'),

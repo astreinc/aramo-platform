@@ -585,6 +585,23 @@ export const ERROR_CODES = [
   // PERMANENT_PLACEMENT_TERMS_IMMUTABLE (409): a forbidden historical mutation of an
   // append-only guarantee-term version (only a governed effective_to first-close is allowed).
   'PERMANENT_PLACEMENT_TERMS_IMMUTABLE',
+  // Lane L8-B1 — SubmittalEligibility gate refusals (all HTTP 409). The client
+  // submittal window is a business-state gate, not a validation error.
+  // SUBMITTALS_CLOSED (409): the submittal window is CLOSED/PAUSED (manual override, or a client/VMS close).
+  'SUBMITTALS_CLOSED',
+  // SUBMITTAL_WINDOW_PASSED (409): the submittal_deadline has passed.
+  'SUBMITTAL_WINDOW_PASSED',
+  // SUBMITTAL_LIMIT_REACHED (409): the supplier submittal slot limit is exhausted.
+  'SUBMITTAL_LIMIT_REACHED',
+  // TALENT_RESTRICTED_AT_CLIENT (409): an active ClientTalentRestriction bars this Talent at this client.
+  'TALENT_RESTRICTED_AT_CLIENT',
+  // L8-B1 Amendment A1 — Submittal↔Pipeline authority-chain refusals (HTTP 409).
+  // PIPELINE_SUBMIT_REQUIRES_SUBMITTAL (409): a bare pipeline qualifying→submitted is refused;
+  // pipeline `submitted` is a mirror reachable only through the submit-to-ats command.
+  'PIPELINE_SUBMIT_REQUIRES_SUBMITTAL',
+  // SUBMITTAL_PIPELINE_LINK_INVALID (409): the submittal has no valid linked LIVE pipeline
+  // episode to mirror (pipeline_id null, or the linked episode is not live / cannot transition).
+  'SUBMITTAL_PIPELINE_LINK_INVALID',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

@@ -378,14 +378,18 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     }
 
     async function walkToOffered(jwt: string, id: string): Promise<void> {
-      for (const step of [
-        'contacted',
-        'talent_responded',
-        'qualifying',
-        'submitted',
-        'interviewing',
-        'offered',
-      ]) {
+      for (const step of ['contacted', 'talent_responded', 'qualifying']) {
+        const r = await transition(jwt, id, step);
+        expect(r.status, `walkToOffered step ${step}`).toBe(200);
+      }
+      // L8-B1 R-TIGHTEN — `submitted` is no longer reachable through the transition
+      // route (it is the submit-to-ats orchestrator's mirror). Set it directly, as
+      // the orchestrator does, then continue the engine chain to offered.
+      await setupClient.query(
+        `UPDATE pipeline."Pipeline" SET status = 'submitted' WHERE id = $1::uuid`,
+        [id],
+      );
+      for (const step of ['interviewing', 'offered']) {
         const r = await transition(jwt, id, step);
         expect(r.status, `walkToOffered step ${step}`).toBe(200);
       }

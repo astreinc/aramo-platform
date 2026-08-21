@@ -341,6 +341,7 @@ export const SEED_IDS = {
     // moved to dc/dd (mechanical id reconciliation; grants unchanged).
     'integration:read': '01900000-0000-7000-8000-0000000000dc',
     'integration:write': '01900000-0000-7000-8000-0000000000dd',
+    'submittal-policy:write': '01900000-0000-7000-8000-0000000000de',
   },
   // RoleScope ids — one per (role,scope) assignment. Hardcoded sequence
   // 0x30..0x39 (10 assignments: 6 tenant_admin + 4 recruiter; the 3
@@ -2036,6 +2037,34 @@ const INTEGRATION_MANAGEMENT_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (
   return map;
 })();
 
+// Lane L8-B1 — SubmittalEligibility policy MANAGEMENT role-matrix.
+// submittal-policy:write granted to account_manager + tenant_admin +
+// tenant_owner (least-privilege per base R-OQB; recruiter EXCLUDED — editing a
+// requisition does NOT grant authority over client-submittal rules).
+export const SUBMITTAL_POLICY_SEED_BUNDLES: ReadonlyArray<
+  readonly [string, readonly string[]]
+> = [
+  ['account_manager', ['submittal-policy:write']],
+  ['tenant_admin', ['submittal-policy:write']],
+  ['tenant_owner', ['submittal-policy:write']],
+];
+
+// Deterministic RoleScope row ids for the 3 submittal-policy grants. Fresh
+// disjoint range 0xc20+ (append-don't-renumber; integration occupies 0xc10+).
+// DO NOT REORDER without bumping the offset.
+const SUBMITTAL_POLICY_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
+  const map: Record<string, string> = {};
+  let i = 0xc20;
+  for (const [role, scopes] of SUBMITTAL_POLICY_SEED_BUNDLES) {
+    for (const scope of scopes) {
+      map[`${role}:${scope}`] =
+        `01900000-0000-7000-8000-${i.toString(16).padStart(12, '0')}`;
+      i++;
+    }
+  }
+  return map;
+})();
+
 interface IdentityPrismaClient {
   tenant: typeof PrismaClient.prototype.tenant;
   user: typeof PrismaClient.prototype.user;
@@ -2376,6 +2405,7 @@ export async function runIdentitySeed(
   await upsertScope(prisma, SEED_IDS.scopes['requisition:import:write'], 'requisition:import:write', 'Track 8 / T8-P2 — run a canonical requisition import (POST /v1/requisition-imports): validate + map provider-neutral records through the governed createForImport path. GRANTED to account_manager, tenant_admin, tenant_owner only; recruiter excluded (bulk external ingestion is an authoritative-tier act, mirrors assignment:create). NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['integration:read'], 'integration:read', 'Track 8 / T8-CONNECTOR-A — read provider-neutral connector connections (Settings → Integrations): list/status/last-sync/error summary. Connector connection ADMINISTRATION; distinct from requisition:import:read (P3 ingestion monitoring). GRANTED to tenant_admin, tenant_owner only. NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['integration:write'], 'integration:write', 'Track 8 / T8-CONNECTOR-A — administer provider-neutral connector connections (create/configure-credential/enable/disable). Never returns raw secret material. GRANTED to tenant_admin, tenant_owner only; recruiter/account_manager excluded (administrative tier). The connector ServiceAccount does NOT hold this — execution authority is requisition:import:write only. NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['submittal-policy:write'], 'submittal-policy:write', 'Lane L8-B1 — set the client-submittal eligibility policy on a requisition (submittal deadline, supplier slot limit, manual open/pause/close, authority). Least-privilege (base R-OQB): GRANTED to account_manager, tenant_admin, tenant_owner only; recruiter excluded — editing a requisition does NOT grant authority over client-submittal rules. NO scope.created (scope-seed precedent).');
 
   // 7. RoleScope assignments — pre-AUTHZ-1 (88 rows: 13 + 12 + 52 + 11).
   for (const [roleKey, scopeKeys] of Object.entries(ROLE_SCOPE_ASSIGNMENTS)) {
@@ -2889,6 +2919,28 @@ export async function runIdentitySeed(
       const rsId = INTEGRATION_MANAGEMENT_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
       if (rsId === undefined) {
         throw new Error(`T8-CONNECTOR-A Integration-Management-Role-Matrix: Missing generated RoleScope id for ${roleKey}:${scopeKey}`);
+      }
+      const scope_id = scopeIdForKey(scopeKey);
+      await prisma.roleScope.upsert({
+        where: { role_id_scope_id: { role_id, scope_id } },
+        update: {},
+        create: { id: rsId, role_id, scope_id },
+      });
+    }
+  }
+
+  // Lane L8-B1 — submittal-policy management grants (3 rows; range 0xc20+).
+  // submittal-policy:write -> account_manager + tenant_admin + tenant_owner
+  // (recruiter excluded; least-privilege per base R-OQB).
+  for (const [roleKey, scopeKeys] of SUBMITTAL_POLICY_SEED_BUNDLES) {
+    const role_id = roleIdForKey(roleKey);
+    for (const scopeKey of scopeKeys) {
+      const rsId =
+        SUBMITTAL_POLICY_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
+      if (rsId === undefined) {
+        throw new Error(
+          `L8-B1 Submittal-Policy-Role-Matrix: Missing generated RoleScope id for ${roleKey}:${scopeKey}`,
+        );
       }
       const scope_id = scopeIdForKey(scopeKey);
       await prisma.roleScope.upsert({

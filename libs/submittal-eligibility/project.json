@@ -1,0 +1,30 @@
+{
+  "name": "submittal-eligibility",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/submittal-eligibility/src",
+  "projectType": "library",
+  "tags": ["scope:ats"],
+  "targets": {
+    "build": {
+      "executor": "@nx/js:tsc",
+      "outputs": ["{options.outputPath}"],
+      "options": {
+        "outputPath": "dist/libs/submittal-eligibility",
+        "main": "libs/submittal-eligibility/src/index.ts",
+        "tsConfig": "libs/submittal-eligibility/tsconfig.lib.json"
+      }
+    },
+    "lint": {
+      "executor": "@nx/eslint:lint",
+      "options": {
+        "lintFilePatterns": ["libs/submittal-eligibility/**/*.ts"]
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "vitest run --passWithNoTests --root libs/submittal-eligibility"
+      }
+    }
+  }
+}
