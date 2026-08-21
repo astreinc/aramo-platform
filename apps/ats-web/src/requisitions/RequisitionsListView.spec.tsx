@@ -288,6 +288,11 @@ describe('RequisitionsListView', () => {
     // Derived Next Action for the 'submitted' stage.
     expect(screen.getByText('Await client feedback')).toBeInTheDocument();
     expect(screen.getByText('NEW')).toBeInTheDocument();
+    // The whole card is a link straight to the talent SOR (click-to-open).
+    expect(screen.getByText('Sarah Nolan').closest('a')).toHaveAttribute(
+      'href',
+      '/talent/tal-1',
+    );
     // Click again collapses.
     fireEvent.click(article);
     expect(
@@ -387,6 +392,40 @@ describe('RequisitionsListView', () => {
     // total in pipeline = 4 (every entry) → appears in the stat block AND the
     // distribution-bar total.
     expect(screen.getAllByText('4').length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('R2b: stat counts are cumulative "reached" — a talent past a stage still counts toward it', async () => {
+    // Regression: a talent currently at `offered` had already been Submitted and
+    // Interviewed. The stat block must reflect that (Submitted:1, Interview:1) —
+    // the earlier current-stage tally showed 0/0 the moment the talent advanced.
+    const REQ = makeReq('req-c', 'Business Analyst Associate', 'open', {
+      recruiter_id: 'usr-1',
+    });
+    mockEndpoints({
+      reqs: [REQ],
+      companies: [{ id: 'co-1', name: 'Northwind' }],
+      roster: [{ user_id: 'usr-1', display_name: 'Priya Recruiter' }],
+      pipelines: [
+        { id: 'c1', requisition_id: 'req-c', status: 'contacted' }, // sourced — not reached
+        { id: 'c2', requisition_id: 'req-c', status: 'offered' }, // reached submitted + interview
+      ],
+    });
+    renderList();
+    await waitFor(() =>
+      expect(
+        screen.getByText('Business Analyst Associate'),
+      ).toBeInTheDocument(),
+    );
+    const numFor = (label: string): string | null =>
+      screen
+        .getByText(label, { selector: '.rc-stat__l' })
+        .closest('.rc-stat')
+        ?.querySelector('.num')?.textContent ?? null;
+    // Cumulative: the `offered` talent counts toward BOTH earlier stages.
+    expect(numFor('Submitted')).toBe('1');
+    expect(numFor('Interview')).toBe('1');
+    // `contacted` never reached submittal → excluded from both.
+    expect(numFor('In pipeline')).toBe('2');
   });
 
   it('R1: NO Match/Matches affordance on the list surface (reserved seam is detail-only)', async () => {
