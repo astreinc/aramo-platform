@@ -35,6 +35,7 @@
     "libs/skills-taxonomy",
     "libs/sourced-talent",
     "libs/submittal",
+    "libs/submittal-eligibility",
     "libs/talent-evidence",
     "libs/talent-record",
     "libs/talent-trust"

@@ -80,6 +80,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     }
     async function drive(tenant: string, id: string, path: readonly PipelineStatus[]): Promise<void> {
       for (const to of path) {
+        // L8-B1 R-TIGHTEN — `submitted` is the submit-to-ats orchestrator's mirror,
+        // not an engine hop; set it with a direct write (as production does) then
+        // let the engine continue submitted → interviewing → … .
+        if (to === 'submitted') {
+          await prisma.$executeRawUnsafe(`UPDATE pipeline."Pipeline" SET status = 'submitted' WHERE id = '${id}'`);
+          continue;
+        }
         await repo.transition({ tenant_id: tenant, id, to_status: to, changed_by_id: randomUUID(), requestId: 'b2' });
       }
     }

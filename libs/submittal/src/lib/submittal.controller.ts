@@ -753,51 +753,12 @@ export class SubmittalController {
   // M4 confirmed_at column semantic post-rename).
   //
   // 9-step idempotency flow per markReady precedent.
-  @Post(':submittal_id/submit-to-ats')
-  @RequireScopes('submittal:approve')
-  @HttpCode(HttpStatus.OK)
-  async submitToAts(
-    @Param('submittal_id') submittal_id: string,
-    @Body() body: Record<string, unknown>,
-    @Headers('Idempotency-Key') idempotencyKey: string | undefined,
-    @AuthContext() authContext: AuthContextType,
-    @RequestId() requestId: string,
-  ): Promise<SubmitToAtsResponseDto> {
-    this.assertConsumerIsRecruiter(authContext, requestId);
-    const key = this.assertIdempotencyKeyRequired(idempotencyKey, requestId);
-    this.assertSubmittalIdIsUuid(submittal_id, requestId);
-
-    const requestHash = hashCanonicalizedBody(body as unknown);
-    const lookup = await this.idempotencyService.lookup({
-      tenant_id: authContext.tenant_id,
-      key,
-      request_hash: requestHash,
-      requestId,
-    });
-    if (lookup.kind === 'replay') {
-      return lookup.response_body as SubmitToAtsResponseDto;
-    }
-
-    const event_id = randomUUID();
-    const { submittal, event } = await this.submittalRepository.submitToAts({
-      tenant_id: authContext.tenant_id,
-      submittal_id,
-      event_id,
-      requestId,
-    });
-
-    const response: SubmitToAtsResponseDto = { submittal, event };
-
-    await this.idempotencyService.persist({
-      tenant_id: authContext.tenant_id,
-      key,
-      request_hash: requestHash,
-      response_status: HttpStatus.OK,
-      response_body: response,
-    });
-
-    return response;
-  }
+  // L8-B1 Amendment A1 — the submit-to-ats route was RE-POINTED to the
+  // apps/api SubmitTalentController (the "Submit Talent to Client" atomic
+  // command: submitted_to_ats authoritative + pipeline `submitted` mirror in one
+  // transaction). This legacy write path is removed so no parallel path can
+  // create the client-submittal fact. `submitToAts` on the repository remains for
+  // its lib-local integration spec only; it is no longer reachable via any route.
 
   // M5 PR-8b2 §4.5 — POST /v1/submittals/{submittal_id}/confirm-ats.
   //

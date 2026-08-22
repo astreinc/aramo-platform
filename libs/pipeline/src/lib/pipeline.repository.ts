@@ -427,6 +427,24 @@ export class PipelineRepository {
       return projectView(current as PipelineRow);
     }
 
+    // L8-B1 Amendment A1 (R-TIGHTEN) — pipeline `submitted` is the recruiting
+    // MIRROR of an authoritative client submittal (Submittal.submitted_to_ats).
+    // A bare pipeline transition to `submitted` MUST NOT independently create the
+    // business fact; it is reachable ONLY through the submit-to-ats command
+    // (which writes the mirror atomically). Narrow: every OTHER transition is
+    // unchanged.
+    if (args.to_status === 'submitted') {
+      throw new AramoError(
+        'PIPELINE_SUBMIT_REQUIRES_SUBMITTAL',
+        'Pipeline "submitted" is a mirror of a client submittal; use POST /v1/submittals/{id}/submit-to-ats',
+        409,
+        {
+          requestId: args.requestId,
+          details: { pipeline_id: args.id, to_status: args.to_status },
+        },
+      );
+    }
+
     // Step 3 — legality check (the state machine). Illegal → 422.
     if (!canTransition(fromStatus, args.to_status)) {
       this.logger.log({

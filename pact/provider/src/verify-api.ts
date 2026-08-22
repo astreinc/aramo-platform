@@ -368,6 +368,10 @@ const SUBMITTAL_T2P1_MIGRATION = resolve(
   ROOT,
   'libs/submittal/prisma/migrations/20260812120000_t2p1_relocate_submittal_to_submittal_schema/migration.sql',
 );
+const SUBMITTAL_T2P1_L8B1_LINK_MIGRATION = resolve(
+  ROOT,
+  'libs/submittal/prisma/migrations/20260822130000_l8b1_submittal_pipeline_link/migration.sql',
+);
 const EVIDENCE_RECONCILE_REKEY_MIGRATION = resolve(
   ROOT,
   'libs/evidence/prisma/migrations/20260706240000_tr2a_b3b_reconcile_rekey_exemption/migration.sql',
@@ -437,6 +441,17 @@ const PIPELINE_INIT_MIGRATION = resolve(
 const PIPELINE_E6_MIGRATION = resolve(
   ROOT,
   'libs/pipeline/prisma/migrations/20260807100000_e6_pipeline_live_episode_unique/migration.sql',
+);
+// L8-B1 — the submit-to-ats orchestrator touches the submittal_policy schema
+// (RequisitionSubmittalPolicy / SubmittalConsumption / SubmittalPolicyEvent) and
+// reads client_talent_restriction; both schemas must exist in the provider DB.
+const SUBMITTAL_POLICY_INIT_MIGRATION = resolve(
+  ROOT,
+  'libs/submittal-eligibility/prisma/migrations/20260822120000_init_submittal_eligibility_model/migration.sql',
+);
+const CLIENT_TALENT_RESTRICTION_INIT_MIGRATION = resolve(
+  ROOT,
+  'libs/client-talent-restriction/prisma/migrations/20260803163000_init_client_talent_restriction_model/migration.sql',
 );
 // ADR-0024 PR-3 — the ats-web POST /v1/pipelines consumer interaction (201)
 // replays through the policy call, which writes §D17a provenance into
@@ -1004,6 +1019,14 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // yet (substrate-only PR).
       await c.query('TRUNCATE TABLE submittal."TalentSubmittalEvent" CASCADE');
       await c.query('TRUNCATE TABLE submittal."TalentSubmittalRecord" CASCADE');
+      // L8-B1 — the submit-to-ats orchestrator writes the pipeline mirror + the
+      // submittal_policy consumption/provenance; truncate so a prior interaction's
+      // pipeline episode or consumption fact never leaks into the next.
+      await c.query('TRUNCATE TABLE pipeline."PipelineStatusHistory" CASCADE');
+      await c.query('TRUNCATE TABLE pipeline."Pipeline" CASCADE');
+      await c.query('TRUNCATE TABLE submittal_policy."SubmittalConsumption" CASCADE');
+      await c.query('TRUNCATE TABLE submittal_policy."SubmittalPolicyEvent" CASCADE');
+      await c.query('TRUNCATE TABLE submittal_policy."RequisitionSubmittalPolicy" CASCADE');
       await c.query('TRUNCATE TABLE evidence."TalentJobEvidencePackage" CASCADE');
       // M4 PR-5 — override-create state handlers seed an examination and
       // the controller persists override rows at request time. Truncate
@@ -2470,14 +2493,17 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         justification?: string | null;
         fca?: ReadonlyArray<Record<string, unknown>> | null;
         confirmedAt?: string | null;
+        // L8-B1 — pipeline_id must be set AT INSERT (the submittal state-machine
+        // trigger rejects a post-insert UPDATE that does not change state).
+        pipelineId?: string | null;
       },
     ): Promise<void> {
       await c.query(
         `INSERT INTO submittal."TalentSubmittalRecord"
            (id, tenant_id, talent_id, job_id, evidence_package_id,
             pinned_examination_id, state, created_by,
-            justification, failed_criterion_acknowledgments, confirmed_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7::submittal."SubmittalState",$8,$9,$10::jsonb,$11)`,
+            justification, failed_criterion_acknowledgments, confirmed_at, pipeline_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7::submittal."SubmittalState",$8,$9,$10::jsonb,$11,$12)`,
         [
           params.submittalId,
           TENANT_ID,
@@ -2490,6 +2516,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           params.justification ?? null,
           params.fca === undefined || params.fca === null ? null : JSON.stringify(params.fca),
           params.confirmedAt ?? null,
+          params.pipelineId ?? null,
         ],
       );
     }
@@ -2504,6 +2531,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         tier?: 'ENTRUSTABLE' | 'WORTH_CONSIDERING' | 'STRETCH';
         justification?: string | null;
         seedNewer?: boolean;
+        pipelineId?: string | null;
       },
     ): Promise<void> {
       await seedAtsWebExamination(c, {
@@ -2541,6 +2569,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         state: params.state,
         justification: params.justification ?? null,
         confirmedAt,
+        pipelineId: params.pipelineId ?? null,
       });
     }
 
@@ -2963,6 +2992,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         EXAMINATION_RECONCILE_REKEY_MIGRATION,
         SUBMITTAL_RECONCILE_REKEY_MIGRATION,
         SUBMITTAL_T2P1_MIGRATION,
+        SUBMITTAL_T2P1_L8B1_LINK_MIGRATION,
         EVIDENCE_RECONCILE_REKEY_MIGRATION,
         // M5 PR-6 §4.14 — ai-draft schema for outreach-send state
         // handlers. AiDraftService writes audit-event rows even when
@@ -2999,6 +3029,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         ACTIVITY_REDACTION_MIGRATION,
         PIPELINE_INIT_MIGRATION,
         PIPELINE_E6_MIGRATION,
+        SUBMITTAL_POLICY_INIT_MIGRATION,
+        CLIENT_TALENT_RESTRICTION_INIT_MIGRATION,
         POLICY_STORE_INIT_MIGRATION,
         POLICY_DECISION_RECORD_MIGRATION,
         // PC-5a — company + contact desk. Company init CREATEs the schema +
@@ -5360,9 +5392,23 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       'an ats-web recruiter and a ready_for_review submittal exist': async () => {
         await withClient(async (c) => {
           await resetAllRows(c);
+          // L8-B1 (v1.2 + Amendment A2) — submit-to-ats now REQUIRES a linked LIVE
+          // pipeline (R-REFUSAL: pipeline-less submittals are refused). Seed a live
+          // pipeline for the same (tenant, requisition, talent) and associate it AT
+          // INSERT (the submittal state-machine trigger rejects a post-insert
+          // UPDATE), so the governed server can succeed (mirror qualifying ->
+          // submitted).
+          const readyPipelineId = '00000000-0000-7000-8000-5b0000000003';
+          await c.query(
+            `INSERT INTO pipeline."Pipeline"
+               (id, tenant_id, talent_record_id, requisition_id, status)
+             VALUES ($1,$2,$3,$4,'qualifying'::pipeline."PipelineStatus")`,
+            [readyPipelineId, TENANT_ID, PACT_TALENT_ID, ATSW_SUB_JOB_ID],
+          );
           await seedAtsWebSubmittalChain(c, {
             submittalId: ATSW_SUB_READY_ID,
             state: 'ready_for_review',
+            pipelineId: readyPipelineId,
           });
         });
       },

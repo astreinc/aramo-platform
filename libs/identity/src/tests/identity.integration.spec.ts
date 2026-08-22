@@ -284,6 +284,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'selection:write',
         'submittal:approve',
         'submittal:create',
+        'submittal-policy:write',
         'talent:create',
         'talent:delete',
         'talent:edit',
@@ -400,7 +401,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Track7/T7-P2: +3 placement:remedy:resolve grants (account_manager/tenant_admin/tenant_owner) -> 562.
       // Track7/T7-P3: +3 placement:permanent:terms:write grants (account_manager/tenant_admin/tenant_owner) -> 565.
       // Track8/T8-CONNECTOR-A: +4 integration:read/write grants (tenant_admin/tenant_owner ×2) -> 569.
-      expect(roleScopes).toBe(569);
+      // L8-B1: +3 submittal-policy:write grants (account_manager/tenant_admin/tenant_owner) -> 572.
+      expect(roleScopes).toBe(572);
 
       const utmRole = await prisma.userTenantMembershipRole.findUnique({
         where: { id: SEED_IDS.membership_role_admin },
@@ -502,7 +504,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Track 3 / E2: +7 pre_start_requirement (all non-platform). Re-derived
       // actual 96 (prior literal 85 was pre-existingly understated by 4 — F-2).
       // Track 3 / E2 v1.2.2: +1 pre_start_requirement:reopen (non-platform) → 97.
-      expect(tenantScopes.length).toBe(117); // +5 placement +1 placement:replace +2 T7-P1 permanent +1 T7-P2 remedy:resolve +1 T7-P3 permanent:terms:write +4 T4-D assignment +2 T5-P1 commercials +2 T8-P2 requisition:import +2 T8-CONNECTOR-A integration (all non-platform)
+      expect(tenantScopes.length).toBe(118); // +5 placement +1 placement:replace +2 T7-P1 permanent +1 T7-P2 remedy:resolve +1 T7-P3 permanent:terms:write +4 T4-D assignment +2 T5-P1 commercials +2 T8-P2 requisition:import +2 T8-CONNECTOR-A integration +1 L8-B1 submittal-policy:write (all non-platform)
       for (const s of tenantScopes) {
         expect(s.key.startsWith('platform:')).toBe(false);
       }
@@ -795,6 +797,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'selection:outreach',
         'selection:read',
         'selection:write',
+        'submittal-policy:write',
         'submittal:approve',
         'submittal:create',
         'talent:create',
@@ -1049,6 +1052,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'selection:outreach',
         'selection:read',
         'selection:write',
+        'submittal-policy:write',
         'submittal:approve',
         'submittal:create',
         'talent:create',
@@ -1278,6 +1282,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'selection:outreach',
         'selection:read',
         'selection:write',
+        'submittal-policy:write',
         'examination:read',
         'export:read',
         'identity:resolve',
@@ -1382,6 +1387,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'selection:outreach',
         'selection:read',
         'selection:write',
+        'submittal-policy:write',
         'examination:read',
         'import:read',
         'pipeline:add',

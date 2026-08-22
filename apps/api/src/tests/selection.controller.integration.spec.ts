@@ -74,6 +74,7 @@ const SELECTION_INIT = resolve(ROOT, 'libs/selection/prisma/migrations/202605251
 const SUBMITTAL_OUTBOX = resolve(ROOT, 'libs/submittal/prisma/migrations/20260531000000_add_outbox_event/migration.sql');
 // T2-P1 — relocate Submittal persistence to the submittal schema (existence-guarded; safe on this subset).
 const SUBMITTAL_T2P1 = resolve(ROOT, 'libs/submittal/prisma/migrations/20260812120000_t2p1_relocate_submittal_to_submittal_schema/migration.sql');
+const SUBMITTAL_T2P1_L8B1_LINK = resolve(ROOT, 'libs/submittal/prisma/migrations/20260822130000_l8b1_submittal_pipeline_link/migration.sql');
 // PR-A1c §4 — metering schema required (in-tx UsageEvent INSERT).
 const METERING_INIT = resolve(ROOT, 'libs/metering/prisma/migrations/20260601150000_init_metering_model/migration.sql');
 
@@ -149,6 +150,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         SUBMITTAL_REVOKE,
         SUBMITTAL_OUTBOX,
         SUBMITTAL_T2P1,
+        SUBMITTAL_T2P1_L8B1_LINK,
         SELECTION_INIT,
         METERING_INIT,
         resolve(ROOT, 'libs/requisition/prisma/migrations/20260803120000_recruiting_status_supersession/migration.sql'),

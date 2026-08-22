@@ -1,5 +1,5 @@
 {
-  "aliasTotals": { "apps": 2, "libs": 61, "total": 63 },
+  "aliasTotals": { "apps": 2, "libs": 62, "total": 64 },
   "aliases": {
     "@aramo/activity": "libs/activity/src/index.ts",
     "@aramo/ai-draft": "libs/ai-draft/src/index.ts",
@@ -55,6 +55,7 @@
     "@aramo/skills-taxonomy": "libs/skills-taxonomy/src/index.ts",
     "@aramo/sourced-talent": "libs/sourced-talent/src/index.ts",
     "@aramo/submittal": "libs/submittal/src/index.ts",
+    "@aramo/submittal-eligibility": "libs/submittal-eligibility/src/index.ts",
     "@aramo/talent": "libs/talent/src/index.ts",
     "@aramo/talent-evidence": "libs/talent-evidence/src/index.ts",
     "@aramo/talent-extraction": "libs/talent-extraction/src/index.ts",
@@ -817,6 +818,21 @@
       "TalentSubmittalEventRepository",
       "canTransitionSubmittal"
     ],
+    "@aramo/submittal-eligibility": [
+      "PrismaService",
+      "SUBMITTAL_AUTHORITY_VALUES",
+      "SUBMITTAL_ELIGIBILITY_PORT_VERSION",
+      "SUBMITTAL_POLICY_REASON_VALUES",
+      "SUBMITTAL_WINDOW_STATUS_VALUES",
+      "SubmittalEligibilityModule",
+      "SubmittalPolicyRepository",
+      "consumeSlot",
+      "deriveWindowStatus",
+      "evaluateEligibility",
+      "isSubmittalAuthority",
+      "isSubmittalPolicyReason",
+      "isSubmittalWindowStatus"
+    ],
     "@aramo/talent": [],
     "@aramo/talent-evidence": ["PrismaService", "TalentEvidenceModule", "TalentEvidenceRepository"],
     "@aramo/talent-extraction": [
@@ -961,6 +977,12 @@
   "importedBy": {
     "@aramo/activity": [
       { "from": "tools/seed-e2e-data.ts", "project": "(unscoped)", "status": "unscoped" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/submit-talent.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
       { "project": "api", "status": "production" },
       { "project": "pipeline", "status": "production" },
       { "project": "reporting", "status": "production" }
@@ -1167,6 +1189,7 @@
         "status": "excluded"
       },
       { "project": "submittal", "status": "production" },
+      { "project": "submittal-eligibility", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/talent-record/src/tests/search-pr1.spec.ts",
@@ -2108,6 +2131,7 @@
         "status": "excluded"
       },
       { "project": "submittal", "status": "production" },
+      { "project": "submittal-eligibility", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/talent-reconcile/src/tests/no-llm-boundary.spec.ts",
@@ -3198,6 +3222,7 @@
       { "project": "api", "status": "production" }
     ],
     "@aramo/metering": [
+      { "project": "api", "status": "production" },
       { "project": "pipeline", "status": "production" },
       { "project": "selection", "status": "production" },
       { "project": "submittal", "status": "production" }
@@ -3735,6 +3760,15 @@
         "status": "excluded"
       },
       { "project": "outbox-publisher", "status": "production" }
+    ],
+    "@aramo/submittal-eligibility": [
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/submit-talent.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      { "project": "api", "status": "production" }
     ],
     "@aramo/talent": [],
     "@aramo/talent-evidence": [
@@ -4444,6 +4478,13 @@
       "name": "submittal",
       "root": "libs/submittal",
       "sourceRoot": "libs/submittal/src",
+      "tags": ["scope:ats"],
+      "targets": ["build", "lint", "test"]
+    },
+    {
+      "name": "submittal-eligibility",
+      "root": "libs/submittal-eligibility",
+      "sourceRoot": "libs/submittal-eligibility/src",
       "tags": ["scope:ats"],
       "targets": ["build", "lint", "test"]
     },

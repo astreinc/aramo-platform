@@ -256,6 +256,8 @@ export class SubmittalRepository {
       state: 'created',
       created_by: input.created_by,
       justification: input.justification ?? null,
+      // L8-B1 A1 (R-LINK) — associate the submittal with its pipeline episode.
+      pipeline_id: input.pipeline_id ?? null,
     };
     if (input.failed_criterion_acknowledgments !== undefined) {
       dataPayload['failed_criterion_acknowledgments'] = [

@@ -1,0 +1,144 @@
+// Per-module Prisma schema for the `submittal-eligibility` module —
+// Lane L8-B1. Governed by
+// Aramo-Requisition-Submittal-Eligibility-Implementation-Directive-v1_0-LOCKED
+// (canonical: OneDrive Aramo/locked) + the workflow program + Amendment-A1
+// Transition Enforcement Standard (TE-1…TE-9).
+//
+// PG schema: `submittal_policy` (schema-per-module, Architecture v2.0/v2.1
+// §7.1). Cross-schema references are UUID-only, no FK (§7.3):
+//   requisition_id     → requisition.Requisition
+//   talent_record_id   → talent_record.TalentRecord
+//   submittal_id       → submittal.TalentSubmittalRecord
+//   actor_id           → identity.User
+//
+// This lib OWNS the SubmittalEligibility truth (base R-OQA): the policy
+// aggregate (persisted INPUTS only — the effective OPEN/CLOSED/PAUSED status
+// is DERIVED at gate time, base R-OQ3, never stored), the append-only
+// policy-event history, and the atomic-consumption LEDGER (base R-D5 — an
+// idempotency/enforcement floor, NEVER a second mutable lifecycle truth).
+//
+// Requisition remains the referenced demand aggregate, NOT the owner of this
+// truth. `submittals_closed` (RecruitingStatus) is a declared label; this lib
+// is the enforced gate that label was missing.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "./generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["submittal_policy"]
+}
+
+// Who governs the submittal window (base §4). Const + type-guard mirror lives
+// at src/lib/submittal-eligibility-vocab.ts.
+enum SubmittalAuthority {
+  CLIENT_VMS
+  CLIENT_MANUAL
+  ARAMO
+
+  @@schema("submittal_policy")
+}
+
+// The explicit manual override + the effective (derived) status vocabulary.
+// manual_override wins the derivation; absent ⇒ derive from deadline/limit.
+enum SubmittalWindowStatus {
+  OPEN
+  CLOSED
+  PAUSED
+
+  @@schema("submittal_policy")
+}
+
+// Typed provenance reason (base R7 — not a bare string). Closed registry.
+enum SubmittalPolicyReason {
+  SHORTLISTING_STARTED
+  CLIENT_DEADLINE
+  QUOTA_EXHAUSTED
+  MANUAL
+  VMS_SUSPENDED
+  OTHER
+
+  @@schema("submittal_policy")
+}
+
+// RequisitionSubmittalPolicy — the per-requisition policy aggregate. Persisted
+// INPUTS only; the effective SubmittalWindowStatus is DERIVED at gate time
+// (base R-OQ3). Absent row ⇒ default OPEN, no deadline, no limit. This is the
+// row locked with SELECT … FOR UPDATE before a quota decision (§6 Approach A).
+model RequisitionSubmittalPolicy {
+  id             String @id @default(uuid()) @db.Uuid
+  tenant_id      String @db.Uuid
+  requisition_id String @db.Uuid
+
+  // Enforcement input — the client submittal-window close (base R-OQ2).
+  submittal_deadline DateTime? @db.Timestamptz(6)
+  // Informational only in B1 (base R-OQ2) — never an independent gate.
+  shortlisting_deadline DateTime? @db.Timestamptz(6)
+  // Our-tenant/supplier submittal slot cap (base R-OQ6). NULL ⇒ unbounded.
+  submittal_limit Int?
+
+  submittal_authority SubmittalAuthority @default(ARAMO)
+  // Explicit override; NULL ⇒ derive the status from deadline + slots.
+  manual_override SubmittalWindowStatus?
+  submittal_reason SubmittalPolicyReason?
+
+  // TE-3 optimistic concurrency token for policy edits (read-then-write).
+  version Int @default(0)
+
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_at DateTime @updatedAt @db.Timestamptz(6)
+
+  // One policy per requisition (per tenant).
+  @@unique([tenant_id, requisition_id])
+  @@schema("submittal_policy")
+}
+
+// SubmittalConsumption — the atomic-consumption LEDGER (base R-D5). Immutable
+// enforcement/idempotency floor: exactly ONE slot per (tenant, requisition,
+// talent). The unique constraint is the DB-floor that makes a re-submit
+// idempotent and prevents a Talent consuming a slot twice; the serialized
+// count-vs-limit decision (§6) runs against these rows under the policy-row
+// lock. NEVER a mutable lifecycle truth — no update, no delete.
+model SubmittalConsumption {
+  id               String @id @default(uuid()) @db.Uuid
+  tenant_id        String @db.Uuid
+  requisition_id   String @db.Uuid
+  talent_record_id String @db.Uuid
+  // The authoritative Submittal that consumed the slot (base R-D5).
+  submittal_id String @db.Uuid
+
+  consumed_at DateTime @default(now()) @db.Timestamptz(6)
+
+  // Idempotency floor: one consumed slot per talent per requisition.
+  @@unique([tenant_id, requisition_id, talent_record_id])
+  @@index([tenant_id, requisition_id])
+  @@schema("submittal_policy")
+}
+
+// SubmittalPolicyEvent — append-only policy-event history (base R13, TE-4/TE-5).
+// Mirrors the RequisitionLifecycleEventStore record-only pattern: NO update, NO
+// delete. Records every effective status change with authority + typed reason +
+// actor/origin. `previous_status`/`next_status` are the DERIVED effective
+// statuses at the time (stored on the event, not on the aggregate).
+model SubmittalPolicyEvent {
+  id             String @id @default(uuid()) @db.Uuid
+  tenant_id      String @db.Uuid
+  requisition_id String @db.Uuid
+
+  previous_status SubmittalWindowStatus?
+  next_status     SubmittalWindowStatus?
+  authority       SubmittalAuthority
+  reason          SubmittalPolicyReason?
+
+  actor_id String? @db.Uuid
+  // 'ui' | 'vms' | 'system' — origin of the change.
+  origin String
+
+  effective_at DateTime @db.Timestamptz(6)
+  occurred_at  DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([tenant_id, requisition_id, occurred_at])
+  @@schema("submittal_policy")
+}

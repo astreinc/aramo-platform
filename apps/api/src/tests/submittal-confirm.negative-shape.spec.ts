@@ -114,6 +114,10 @@ const SUBMITTAL_T2P1_MIGRATION = resolve(
   ROOT,
   'libs/submittal/prisma/migrations/20260812120000_t2p1_relocate_submittal_to_submittal_schema/migration.sql',
 );
+const SUBMITTAL_T2P1_L8B1_LINK_MIGRATION = resolve(
+  ROOT,
+  'libs/submittal/prisma/migrations/20260822130000_l8b1_submittal_pipeline_link/migration.sql',
+);
 // PR-A1c §4 — metering schema required (in-tx UsageEvent INSERT).
 const METERING_INIT_MIGRATION = resolve(
   ROOT,
@@ -243,6 +247,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         SUBMITTAL_RENAME_MIGRATION,
         SUBMITTAL_OUTBOX_MIGRATION,
         SUBMITTAL_T2P1_MIGRATION,
+        SUBMITTAL_T2P1_L8B1_LINK_MIGRATION,
         METERING_INIT_MIGRATION,
         resolve(ROOT, 'libs/requisition/prisma/migrations/20260803120000_recruiting_status_supersession/migration.sql'),
       ]) {
