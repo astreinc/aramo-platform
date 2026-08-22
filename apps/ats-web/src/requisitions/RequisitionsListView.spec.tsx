@@ -29,6 +29,8 @@ function makeReq(
     openings: 2,
     openings_available: 1,
     capacity_balance: 1,
+    client_submittal_status: null,
+    client_submittal_reason: null,
     start_date: null,
     city: null,
     state: null,
@@ -135,6 +137,33 @@ function renderList(props = {}) {
 
 describe('RequisitionsListView', () => {
   afterEach(() => vi.restoreAllMocks());
+
+  it('L8-B2: Client Status renders the authoritative tri-state (null ⇒ Open, never Unknown); Pipeline is its own column', async () => {
+    mockFetch([
+      makeReq('r-open', 'Open Req', 'open', { client_submittal_status: 'open', client_submittal_reason: null }),
+      makeReq('r-paused', 'Paused Req', 'open', { client_submittal_status: 'paused', client_submittal_reason: 'manual_hold' }),
+      makeReq('r-closed', 'Closed Req', 'open', { client_submittal_status: 'closed', client_submittal_reason: 'limit_reached' }),
+      makeReq('r-null', 'Default Req', 'open', { client_submittal_status: null, client_submittal_reason: null }),
+    ]);
+    renderList();
+    await waitFor(() => expect(screen.getByText('Closed Req')).toBeInTheDocument());
+
+    // Three distinct columns — Pipeline, Capacity, Client Status.
+    expect(screen.getByText('Pipeline')).toBeInTheDocument();
+    expect(screen.getByText('Capacity')).toBeInTheDocument();
+    expect(screen.getByText('Client Status')).toBeInTheDocument();
+
+    // Authoritative chips; a null status renders Open (R-DEFAULT-OPEN), never "Unknown".
+    const has = (c: string) =>
+      Array.from(document.querySelectorAll('.rc-cs')).filter((el) => el.classList.contains(c));
+    expect(has('rc-cs--closed')).toHaveLength(1);
+    expect(has('rc-cs--paused')).toHaveLength(1);
+    expect(has('rc-cs--open')).toHaveLength(2); // explicit open + null-default
+    expect(screen.queryByText('Unknown')).not.toBeInTheDocument();
+
+    // Pipeline column restored as its own cell (one distribution bar per requisition).
+    expect(document.querySelectorAll('.rc-rt__pipe')).toHaveLength(4);
+  });
 
   it('renders only active (non-closed) requisitions by default', async () => {
     mockFetch([OPEN, HOLD, CLOSED, FILLED]);

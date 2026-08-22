@@ -58,7 +58,7 @@ describe('PR-0b-1 — openings_available is not PATCH-writable', () => {
         openings_available: 0,
         capacity_status: 'AVAILABLE',
       }),
-    } as never);
+    } as never, { deriveByRequisitionIds: async () => new Map() } as never);
 
     await repo.update({
       tenant_id: 'tenant-1',

@@ -114,6 +114,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         {} as never, // setPriorityPolicy
         {} as never, // transitionPolicy
         {} as never, // capacity — the rejected path; must never be called
+        { deriveByRequisitionIds: async () => new Map() } as never,
       );
       const pipelineRepository = new PipelineRepository(pipePrisma);
 

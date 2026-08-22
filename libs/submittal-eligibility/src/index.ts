@@ -3,6 +3,15 @@ export { SubmittalEligibilityModule } from './lib/submittal-eligibility.module.j
 export { SubmittalPolicyRepository } from './lib/submittal-policy.repository.js';
 export { PrismaService } from './lib/prisma/prisma.service.js';
 
+// L8-B2 — requisition-grain Client Status reader (DI-injected into libs/requisition,
+// following the CapacityProjectionRepository precedent).
+export { RequisitionSubmittalEligibilityReader } from './lib/requisition-eligibility-reader.js';
+export type {
+  ClientSubmittalStatus,
+  ClientSubmittalReason,
+  RequisitionClientSubmittalView,
+} from './lib/requisition-eligibility-reader.js';
+
 export type {
   SetPolicyInput,
   PolicyRow,

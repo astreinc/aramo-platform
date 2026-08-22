@@ -4,6 +4,7 @@ import { createAramoLogger } from '@aramo/common';
 
 import { PrismaService } from './prisma/prisma.service.js';
 import { SubmittalPolicyRepository } from './submittal-policy.repository.js';
+import { RequisitionSubmittalEligibilityReader } from './requisition-eligibility-reader.js';
 
 // libs/submittal-eligibility module — Lane L8-B1. Owns the SubmittalEligibility
 // truth: the policy aggregate + append-only policy-event history + the neutral
@@ -17,11 +18,16 @@ import { SubmittalPolicyRepository } from './submittal-policy.repository.js';
   providers: [
     PrismaService,
     SubmittalPolicyRepository,
+    RequisitionSubmittalEligibilityReader,
     {
       provide: 'SubmittalPolicyRepositoryLogger',
       useFactory: () => createAramoLogger(SubmittalPolicyRepository.name),
     },
   ],
-  exports: [SubmittalPolicyRepository, PrismaService],
+  exports: [
+    SubmittalPolicyRepository,
+    RequisitionSubmittalEligibilityReader,
+    PrismaService,
+  ],
 })
 export class SubmittalEligibilityModule {}

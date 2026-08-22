@@ -159,7 +159,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         // Track 4 / T4-B2 — 4th ctor arg (capacity projection). The sync path only
         // calls listPublishableForChannelSync, which does NOT touch the capacity
         // projection, so a bare stub is sufficient (repo is cast `as never`).
-        new RequisitionRepository(reqPrisma, {} as never, {} as never, {} as never) as never,
+        new RequisitionRepository(reqPrisma, {} as never, {} as never, {} as never, { deriveByRequisitionIds: async () => new Map() } as never) as never,
         postingStates as never,
         connector as never,
         tokens as never,

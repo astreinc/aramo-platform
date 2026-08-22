@@ -2476,14 +2476,16 @@ button.rc-link-action {
 
 .rc-rt__scroll { overflow-x: auto; }
 
-.rc-rt { min-width: 940px; }
+.rc-rt { min-width: 1190px; }
 
 .rc-rt__head,
 .rc-rt__row {
   display: grid;
+  /* L8-B2 — 9 tracks: star · Requisition · Talent · Pipeline · Capacity ·
+     Client Status · Owner · Updated · Recruiting Status. */
   grid-template-columns:
-    26px minmax(220px, 1.4fr) minmax(240px, 1.15fr) minmax(130px, 0.8fr)
-    90px 110px 100px;
+    26px minmax(220px, 1.4fr) minmax(240px, 1.15fr) minmax(140px, 0.9fr) minmax(130px, 0.8fr)
+    110px 90px 110px 100px;
   gap: 0 14px;
   align-items: center;
   padding: 12px 16px;
@@ -2702,6 +2704,21 @@ button.rc-link-action {
 .rc-cap__state--avail { color: var(--ok); background: var(--ok-tint); }
 .rc-cap__state--full { color: #54606a; background: #eef1f4; }
 .rc-cap__state--over { color: var(--warn); background: var(--warn-tint); }
+
+/* L8-B2 — Client Status chip: may another client submittal be sent right now?
+ * open = accepting (calm/brand), paused = neutral hold, closed = warn. */
+.rc-rt__cs { display: flex; align-items: center; min-width: 0; }
+.rc-cs {
+  align-self: flex-start;
+  font-size: 0.64rem;
+  font-weight: 600;
+  border-radius: 20px;
+  padding: 1px 8px;
+  white-space: nowrap;
+}
+.rc-cs--open { color: var(--ok); background: var(--ok-tint); }
+.rc-cs--paused { color: #54606a; background: #eef1f4; }
+.rc-cs--closed { color: var(--warn); background: var(--warn-tint); }
 
 .rc-distbar {
   display: flex;
