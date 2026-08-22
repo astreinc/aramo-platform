@@ -53,16 +53,16 @@ function contextFor(status: string, resource: string): PolicyContext {
   };
 }
 
-describe('REQUISITION_LIFECYCLE_PACKAGE v5.0.0 — RecruitingStatus-keyed matrix DATA', () => {
-  it('is a structurally valid package (as PolicyStore.publish will require), v5.0.0, named for the retrieval key, default ALLOW', () => {
+describe('REQUISITION_LIFECYCLE_PACKAGE v6.0.0 — RecruitingStatus-keyed matrix DATA', () => {
+  it('is a structurally valid package (as PolicyStore.publish will require), v6.0.0, named for the retrieval key, default ALLOW', () => {
     expect(() => validatePackage(REQUISITION_LIFECYCLE_PACKAGE)).not.toThrow();
     expect(REQUISITION_LIFECYCLE_PACKAGE.name).toBe(REQUISITION_LIFECYCLE_PACKAGE_NAME);
-    // T1-e — new MAJOR: the four governed-transition actions are a new surface.
-    expect(REQUISITION_LIFECYCLE_PACKAGE.version).toBe('5.0.0');
+    // Amendment B — new MAJOR: the three approval-transition actions are a new surface.
+    expect(REQUISITION_LIFECYCLE_PACKAGE.version).toBe('6.0.0');
     expect(REQUISITION_LIFECYCLE_PACKAGE.default_disposition.decision).toBe('ALLOW');
   });
 
-  it('governs the five column resources + the four T1-e transition actions', () => {
+  it('governs the five column resources + the seven transition actions', () => {
     expect([...REQUISITION_LIFECYCLE_PACKAGE.registry.resources].sort()).toEqual([
       'REQUISITION',
       'REQUISITION_DOCUMENT',
@@ -70,9 +70,11 @@ describe('REQUISITION_LIFECYCLE_PACKAGE v5.0.0 — RecruitingStatus-keyed matrix
       'REQUISITION_SUBMITTAL',
       'REQUISITION_TALENT',
     ]);
-    // ADD/CREATE/SET_PRIORITY + T1-e CLOSE/REOPEN/PUT_ON_HOLD/CANCEL.
+    // ADD/CREATE/SET_PRIORITY + T1-e CLOSE/REOPEN/PUT_ON_HOLD/CANCEL +
+    // Amendment-B SUBMIT_FOR_APPROVAL/APPROVE/REJECT.
     expect([...REQUISITION_LIFECYCLE_PACKAGE.registry.actions].sort()).toEqual([
-      'ADD', 'CANCEL', 'CLOSE', 'CREATE', 'PUT_ON_HOLD', 'REOPEN', 'SET_PRIORITY',
+      'ADD', 'APPROVE', 'CANCEL', 'CLOSE', 'CREATE', 'PUT_ON_HOLD', 'REJECT',
+      'REOPEN', 'SET_PRIORITY', 'SUBMIT_FOR_APPROVAL',
     ]);
   });
 
@@ -97,11 +99,12 @@ describe('REQUISITION_LIFECYCLE_PACKAGE v5.0.0 — RecruitingStatus-keyed matrix
     }
   });
 
-  // T1-d subsystem-gate (Q5 ruling): the gated states are unreachable today and
-  // carry an EXPLICIT DENY-everything-except-Note row — a permissive default on
-  // an unreachable state is a future foothold, so we fail closed. Note stays
-  // ALLOW (compliance documentation is never blocked); SET_PRIORITY is DENY.
-  it('the subsystem-gated states (draft / pending_approval / archived) DENY everything except Note', () => {
+  // draft / pending_approval are now reachable (Approval sub-workflow) but
+  // PRE-OPEN, and archived is still subsystem-gated: all three carry an EXPLICIT
+  // DENY-everything-except-Note row — no talent/submittal/document work before a
+  // requisition is open, and a permissive default here would be a foothold, so
+  // we fail closed. Note stays ALLOW; SET_PRIORITY is DENY.
+  it('the pre-open / gated states (draft / pending_approval / archived) DENY everything except Note', () => {
     for (const status of ['draft', 'pending_approval', 'archived']) {
       expect(evaluate(REQUISITION_LIFECYCLE_PACKAGE, contextFor(status, 'REQUISITION_TALENT')).decision, `add·${status}`).toBe('DENY');
       expect(evaluate(REQUISITION_LIFECYCLE_PACKAGE, contextFor(status, 'REQUISITION_SUBMITTAL')).decision, `submit·${status}`).toBe('DENY');
@@ -136,7 +139,7 @@ function transitionContext(status: string, action: string): PolicyContext {
   };
 }
 
-describe('REQUISITION_LIFECYCLE_PACKAGE v5.0.0 — governed transition matrices (T1-e)', () => {
+describe('REQUISITION_LIFECYCLE_PACKAGE v6.0.0 — governed transition matrices (T1-e)', () => {
   for (const [action, row] of Object.entries(EXPECTED_TRANSITIONS)) {
     for (const [status, expected] of Object.entries(row)) {
       it(`transition ${action} from ${status} -> ${expected}`, () => {
@@ -159,6 +162,40 @@ describe('REQUISITION_LIFECYCLE_PACKAGE v5.0.0 — governed transition matrices 
   it('a canceled requisition is terminal — every transition out of it DENIES', () => {
     for (const action of ['CLOSE', 'REOPEN', 'PUT_ON_HOLD', 'CANCEL']) {
       expect(evaluate(REQUISITION_LIFECYCLE_PACKAGE, transitionContext('canceled', action)).decision, `canceled·${action}`).toBe('DENY');
+    }
+  });
+});
+
+// Approval sub-workflow (Amendment B) — the three governed approval actions,
+// keyed on the declared FROM status. Re-declared INDEPENDENTLY. Each fires from
+// exactly ONE from-status; every other from-status DENIES (fail-closed on the
+// permissive default). draft → pending_approval = SUBMIT_FOR_APPROVAL;
+// pending_approval → open = APPROVE; pending_approval → draft = REJECT.
+const EXPECTED_APPROVAL_TRANSITIONS: Readonly<Record<string, Readonly<Record<string, Decision>>>> = {
+  SUBMIT_FOR_APPROVAL: { draft: 'ALLOW', lead: 'DENY', open: 'DENY', on_hold: 'DENY', submittals_closed: 'DENY', closed: 'DENY', canceled: 'DENY', pending_approval: 'DENY', archived: 'DENY' },
+  APPROVE: { pending_approval: 'ALLOW', draft: 'DENY', lead: 'DENY', open: 'DENY', on_hold: 'DENY', submittals_closed: 'DENY', closed: 'DENY', canceled: 'DENY', archived: 'DENY' },
+  REJECT: { pending_approval: 'ALLOW', draft: 'DENY', lead: 'DENY', open: 'DENY', on_hold: 'DENY', submittals_closed: 'DENY', closed: 'DENY', canceled: 'DENY', archived: 'DENY' },
+};
+
+describe('REQUISITION_LIFECYCLE_PACKAGE — governed APPROVAL transitions (Amendment B)', () => {
+  for (const [action, row] of Object.entries(EXPECTED_APPROVAL_TRANSITIONS)) {
+    for (const [status, expected] of Object.entries(row)) {
+      it(`approval ${action} from ${status} -> ${expected}`, () => {
+        const decision = evaluate(REQUISITION_LIFECYCLE_PACKAGE, transitionContext(status, action));
+        expect(decision.decision).toBe(expected);
+      });
+    }
+  }
+
+  it('the approval chain: draft → pending_approval → open, with REJECT back to draft', () => {
+    expect(evaluate(REQUISITION_LIFECYCLE_PACKAGE, transitionContext('draft', 'SUBMIT_FOR_APPROVAL')).decision).toBe('ALLOW');
+    expect(evaluate(REQUISITION_LIFECYCLE_PACKAGE, transitionContext('pending_approval', 'APPROVE')).decision).toBe('ALLOW');
+    expect(evaluate(REQUISITION_LIFECYCLE_PACKAGE, transitionContext('pending_approval', 'REJECT')).decision).toBe('ALLOW');
+  });
+
+  it('APPROVE never fires from any state but pending_approval (fail-closed)', () => {
+    for (const status of ['lead', 'draft', 'open', 'on_hold', 'submittals_closed', 'closed', 'canceled', 'archived']) {
+      expect(evaluate(REQUISITION_LIFECYCLE_PACKAGE, transitionContext(status, 'APPROVE')).decision, `approve·${status}`).toBe('DENY');
     }
   });
 });

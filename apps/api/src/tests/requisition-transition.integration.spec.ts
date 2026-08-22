@@ -29,7 +29,7 @@ import { placementCapacityMigrations } from './support/placement-capacity-migrat
 //   · lead → open succeeds (R5);
 //   · an UNGOVERNED status change (submittals_closed) stays an ordinary edit —
 //     event with a NULL policy_decision_id, no decision record (R8 boundary);
-//   · §D17b — a decision made under v4.0.0 still names it after v5.0.0 publishes.
+//   · §D17b — a decision made under v4.0.0 still names it after v6.0.0 publishes.
 
 type SignKey = CryptoKey | KeyObject;
 const ROOT = resolve(__dirname, '../../../..');
@@ -174,7 +174,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const decisions = await decisionsByCorr(corr, 'CLOSE');
       expect(decisions).toHaveLength(1);
       expect(decisions[0]?.decision).toBe('ALLOW');
-      expect(decisions[0]?.policy_version).toBe('5.0.0');
+      expect(decisions[0]?.policy_version).toBe('6.0.0');
       // §2.2 — the lifecycle event names the very decision the engine recorded.
       expect(events[0]?.policy_decision_id).toBe(decisions[0]?.id);
     });
@@ -205,13 +205,15 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     });
 
     it('§2.3 / R9 — a transition INTO a gated status is refused server-side (422 REQUISITION_STATUS_GATED), no mutation', async () => {
+      // `archived` is the sole remaining gated status (the Approval sub-workflow
+      // un-gated draft + pending_approval; archived stays gated until retention ships).
       const token = await jwt();
       const id = await seedReq('open');
-      const res = await patchStatus(token, id, { status: 'draft', version: 0 });
+      const res = await patchStatus(token, id, { status: 'archived', version: 0 });
       expect(res.status).toBe(422);
       const body = (await res.json()) as { error?: { code?: string; details?: { status?: string } } };
       expect(body.error?.code).toBe('REQUISITION_STATUS_GATED');
-      expect(body.error?.details?.status).toBe('draft');
+      expect(body.error?.details?.status).toBe('archived');
       // Unchanged, and no governed decision was recorded.
       expect((await rowOf(id)).status).toBe('open');
       expect(await eventsOf(id)).toHaveLength(0);
@@ -284,7 +286,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(await decisionCountByCorr(corr)).toBe(0);
     });
 
-    it('§D17b — a transition decision made under v4.0.0 still names it after v5.0.0 is published (re-read from the DB)', async () => {
+    it('§D17b — a transition decision made under v4.0.0 still names it after v6.0.0 is published (re-read from the DB)', async () => {
       const T = '01900000-0000-7000-8000-0000000000d9';
       await ensureWriteFreezeTenant((s) => db.query(s), T);
       await db.query(`INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability) VALUES ($1,'ats') ON CONFLICT DO NOTHING`, [T]);
@@ -297,10 +299,74 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect((await fetch(`${baseUrl()}/v1/requisitions/${id}?site_id=${SITE}`, { method: 'PATCH', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'closed', version: 0 }) })).status).toBe(200);
       const first = (await db.query(`SELECT id, policy_version FROM policy_store."PolicyDecisionRecord" WHERE tenant_id=$1 AND action='CLOSE' ORDER BY occurred_at DESC LIMIT 1`, [T])).rows[0];
       expect(first.policy_version).toBe('4.0.0');
-      // Publish v5.0.0 (later window); the earlier record must STILL name 4.0.0.
+      // Publish v6.0.0 (later window); the earlier record must STILL name 4.0.0.
       await store.publish({ tenant_id: T, definition: REQUISITION_LIFECYCLE_PACKAGE, published_by: SYSTEM, effective_from: new Date('2026-06-01T00:00:00Z') });
       const reread = (await db.query(`SELECT policy_version FROM policy_store."PolicyDecisionRecord" WHERE id=$1`, [first.id])).rows[0];
       expect(reread.policy_version).toBe('4.0.0');
+    });
+
+    // Approval sub-workflow (Amendment B) — the three governed approval edges,
+    // end-to-end through the PATCH route. SUBMIT_FOR_APPROVAL rides the ordinary
+    // edit scope; APPROVE/REJECT require requisition:approve; APPROVE enforces
+    // segregation of duties (approver ≠ the actor who submitted for approval).
+    describe('approval chain: SUBMIT_FOR_APPROVAL / APPROVE / REJECT', () => {
+      const SUBMITTER = 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaad1';
+      const APPROVER = 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaad2';
+      async function jwtAs(sub: string, scopes: string[]): Promise<string> {
+        return new SignJWT({ sub, consumer_type: 'recruiter', actor_kind: 'user', tenant_id: TENANT, site_id: SITE, scopes })
+          .setProtectedHeader({ alg: ALG }).setIssuedAt().setIssuer(ISSUER).setAudience(AUDIENCE).setExpirationTime('1h').sign(signingKey);
+      }
+      // Move a fresh draft requisition into pending_approval as SUBMITTER; returns its id.
+      async function seedPending(): Promise<string> {
+        const id = await seedReq('draft');
+        const res = await patchStatus(await jwtAs(SUBMITTER, ['requisition:edit', 'requisition:read']), id, { status: 'pending_approval', version: 0 });
+        expect(res.status).toBe(200);
+        return id;
+      }
+
+      it('SUBMIT_FOR_APPROVAL: draft → pending_approval under the ordinary edit scope; ALLOW + decision recorded', async () => {
+        const id = await seedReq('draft');
+        const corr = uuid();
+        const res = await patchStatus(await jwtAs(SUBMITTER, ['requisition:edit', 'requisition:read']), id, { status: 'pending_approval', version: 0 }, corr);
+        expect(res.status).toBe(200);
+        expect((await rowOf(id)).status).toBe('pending_approval');
+        const d = await decisionsByCorr(corr, 'SUBMIT_FOR_APPROVAL');
+        expect(d).toHaveLength(1);
+        expect(d[0]?.decision).toBe('ALLOW');
+      });
+
+      it('APPROVE by a DIFFERENT actor holding requisition:approve: pending_approval → open', async () => {
+        const id = await seedPending();
+        const res = await patchStatus(await jwtAs(APPROVER, ['requisition:edit', 'requisition:approve', 'requisition:read']), id, { status: 'open', version: 1 });
+        expect(res.status).toBe(200);
+        expect((await rowOf(id)).status).toBe('open');
+      });
+
+      it('APPROVE by the SUBMITTER themselves → 403 self-approval, NO mutation', async () => {
+        const id = await seedPending();
+        const res = await patchStatus(await jwtAs(SUBMITTER, ['requisition:edit', 'requisition:approve', 'requisition:read']), id, { status: 'open', version: 1 });
+        expect(res.status).toBe(403);
+        const body = (await res.json()) as { error?: { code?: string; details?: { reason?: string } } };
+        expect(body.error?.code).toBe('INSUFFICIENT_PERMISSIONS');
+        expect(body.error?.details?.reason).toBe('requisition_self_approval_forbidden');
+        expect((await rowOf(id)).status).toBe('pending_approval');
+      });
+
+      it('APPROVE WITHOUT requisition:approve → 403 scope missing, NO mutation', async () => {
+        const id = await seedPending();
+        const res = await patchStatus(await jwtAs(APPROVER, ['requisition:edit', 'requisition:read']), id, { status: 'open', version: 1 });
+        expect(res.status).toBe(403);
+        const body = (await res.json()) as { error?: { details?: { reason?: string } } };
+        expect(body.error?.details?.reason).toBe('requisition_approve_scope_missing');
+        expect((await rowOf(id)).status).toBe('pending_approval');
+      });
+
+      it('REJECT with requisition:approve: pending_approval → draft (self-approval NOT guarded on REJECT)', async () => {
+        const id = await seedPending();
+        const res = await patchStatus(await jwtAs(SUBMITTER, ['requisition:edit', 'requisition:approve', 'requisition:read']), id, { status: 'draft', version: 1 });
+        expect(res.status).toBe(200);
+        expect((await rowOf(id)).status).toBe('draft');
+      });
     });
   },
 );

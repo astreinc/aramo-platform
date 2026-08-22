@@ -8,10 +8,12 @@
 // `submittals_closed`; `lead` retained as the functional intake state;
 // on_hold/closed/canceled unchanged.
 //
-// Subsystem-gated: `draft`, `pending_approval`, `archived` exist in the value
-// space but their transitions-in are registered DISABLED until the approval /
-// retention subsystems land (see SELECTABLE_RECRUITING_STATUS_VALUES for the
-// set a recruiter may actually choose today).
+// Subsystem-gated: `archived` exists in the value space but its transition-in is
+// registered DISABLED until the retention subsystem lands (see
+// SELECTABLE_RECRUITING_STATUS_VALUES for the set a recruiter may actually choose
+// today). `draft` + `pending_approval` were un-gated by the Approval sub-workflow
+// (they are now reachable via the governed SUBMIT_FOR_APPROVAL / APPROVE / REJECT
+// edges + ordinary entry into `draft`).
 export const RECRUITING_STATUS_VALUES = [
   'lead',
   'draft',
@@ -28,10 +30,10 @@ export type RecruitingStatus = (typeof RECRUITING_STATUS_VALUES)[number];
 // Subsystem-gated values whose behaviour does not exist yet — a recruiter
 // cannot transition a requisition INTO these (directive §2, PO correction 1).
 // They remain valid enum members so the type is complete and a future
-// subsystem can light them up without a schema change.
+// subsystem can light them up without a schema change. The Approval sub-workflow
+// (Amendment B) un-gated `draft` + `pending_approval`; `archived` stays gated
+// until the retention subsystem ships.
 export const GATED_RECRUITING_STATUS_VALUES = [
-  'draft',
-  'pending_approval',
   'archived',
 ] as const satisfies readonly RecruitingStatus[];
 
