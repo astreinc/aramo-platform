@@ -1,5 +1,4 @@
 import {
-  isGatedRecruitingStatus,
   isRatePeriod,
   RECRUITING_STATUS_VALUES,
   resolveExternalIdentity,
@@ -68,9 +67,24 @@ function isIsoDate(value: string): boolean {
   return !Number.isNaN(t);
 }
 
+// Aramo-INTERNAL lifecycle states an external import must NEVER set directly.
+// draft / pending_approval are the internal approval-chain states — reachable
+// ONLY through the governed SUBMIT_FOR_APPROVAL / APPROVE / REJECT transitions,
+// never via bulk import — and archived is the retention state (subsystem not
+// shipped). Deliberately DECOUPLED from isGatedRecruitingStatus: the Approval
+// sub-workflow un-gated draft/pending_approval for the IN-APP workflow, but they
+// stay non-importable — an external system's status maps only to the operational
+// lifecycle (lead/open/on_hold/submittals_closed/closed/canceled). Behaviour of
+// the import wall is unchanged (T8-P2 §9); the refusal is now its own concern.
+const NON_IMPORTABLE_STATUSES: ReadonlySet<RecruitingStatus> = new Set([
+  'draft',
+  'pending_approval',
+  'archived',
+]);
+
 // Resolve the adapter-supplied NORMALIZED status token into an internal
 // RecruitingStatus (case-insensitive). The connector owns provider→internal
-// normalization; the framework validates the token and enforces the gated wall
+// normalization; the framework validates the token and enforces the import wall
 // the create path does not (§9). Absent → undefined (repository defaults 'open').
 function resolveStatus(
   record: CanonicalRequisitionImportRecord,
@@ -81,10 +95,10 @@ function resolveStatus(
   if (!RECRUITING_STATUS_SET.has(token)) {
     fail('UNSUPPORTED_LIFECYCLE_STATUS', `external_status '${raw}' is not a normalized RecruitingStatus token`, ['external_status']);
   }
-  if (isGatedRecruitingStatus(token as RecruitingStatus)) {
-    // draft | pending_approval | archived — the subsystem has not shipped; an
-    // import must not bypass the gate (createForImport does not refuse status).
-    fail('GATED_STATUS_NOT_IMPORTABLE', `status '${token}' is gated and cannot be imported`, ['external_status']);
+  if (NON_IMPORTABLE_STATUSES.has(token as RecruitingStatus)) {
+    // draft | pending_approval | archived — internal lifecycle states; an import
+    // must not set them (createForImport does not refuse status).
+    fail('GATED_STATUS_NOT_IMPORTABLE', `status '${token}' is an internal lifecycle state and cannot be imported`, ['external_status']);
   }
   return token as RecruitingStatus;
 }

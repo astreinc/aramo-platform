@@ -337,6 +337,9 @@ export const SEED_SCOPE_KEYS = [
   'integration:write',
   // Lane L8-B1 — set the client-submittal eligibility policy on a requisition.
   'submittal-policy:write',
+  // Requisition Approval sub-workflow — decide the pending_approval → open /
+  // → draft (APPROVE / REJECT) governed transitions.
+  'requisition:approve',
 ] as const;
 export type SeedScopeKey = (typeof SEED_SCOPE_KEYS)[number];
 
