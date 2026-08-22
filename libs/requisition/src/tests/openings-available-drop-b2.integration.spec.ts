@@ -42,7 +42,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         {} as never,
         {} as never,
         new CapacityProjectionRepository(placementPrisma),
-      );
+       { deriveByRequisitionIds: async () => new Map() } as never);
     }, 180_000);
 
     afterAll(async () => {

@@ -5,6 +5,7 @@ import { AuthorizationModule } from '@aramo/authorization';
 import { EntitlementModule } from '@aramo/entitlement';
 import { JobDomainModule } from '@aramo/job-domain';
 import { PlacementCapacityModule } from '@aramo/placement';
+import { SubmittalEligibilityModule } from '@aramo/submittal-eligibility';
 import {
   PolicyStore,
   PrismaService as PolicyStorePrismaService,
@@ -47,6 +48,7 @@ import { RequisitionRepository } from './requisition.repository.js';
     // w.r.t. requisition: placement has NO edge back (verified zero-outgoing),
     // so lint:nx-boundaries stays acyclic. Read-only exposure; nothing removed.
     PlacementCapacityModule,
+    SubmittalEligibilityModule,
   ],
   controllers: [RequisitionController],
   providers: [

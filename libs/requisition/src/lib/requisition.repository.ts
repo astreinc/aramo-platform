@@ -10,6 +10,9 @@ import {
 // edge (§4). The stored openings_available column is no longer the reader source
 // (migrated here); it is dropped in the dedicated column-drop migration.
 import { CapacityProjectionRepository, deriveCapacity } from '@aramo/placement';
+// L8-B2 — requisition-grain Client Status reader, hard-imported + DI-injected
+// following the CapacityProjectionRepository precedent (Correction A). Read-only.
+import { RequisitionSubmittalEligibilityReader } from '@aramo/submittal-eligibility';
 
 import { Prisma } from '../../prisma/generated/client/client.js';
 
@@ -421,6 +424,11 @@ function projectView(
     // Capacity-visibility — the SIGNED balance (caller-supplied), UNclamped so
     // Over capacity (< 0) is distinguishable from Fully consumed (== 0).
     capacity_balance,
+    // L8-B2 — default null (⇒ OPEN in the UI, R-DEFAULT-OPEN). The list/detail read
+    // paths enrich these from the SubmittalEligibility reader; a reader miss or error
+    // stays null (fail-soft — never break the read).
+    client_submittal_status: null,
+    client_submittal_reason: null,
     start_date: row.start_date === null ? null : row.start_date.toISOString(),
     city: row.city,
     state: row.state,
@@ -546,6 +554,10 @@ export class RequisitionRepository {
     // column. Trailing param (ctor-ripple contained). PlacementCapacityModule is
     // already imported by RequisitionModule (B1), so injection needs no new wiring.
     private readonly capacity: CapacityProjectionRepository,
+    // L8-B2 — authoritative requisition-grain Client Status reader (SubmittalEligibility
+    // truth). Trailing param (ctor-ripple contained). SubmittalEligibilityModule is
+    // imported by RequisitionModule, so injection needs no further wiring.
+    private readonly clientStatus: RequisitionSubmittalEligibilityReader,
   ) {}
 
   // Track 4 / T4-B2 — project ONE row to a view with the DERIVED openings_available
@@ -557,7 +569,11 @@ export class RequisitionRepository {
   ): Promise<RequisitionView> {
     const { openings_available, capacity_balance } =
       await this.capacity.projectCapacity(tenant_id, row.id, row.openings);
-    return projectView(row, openings_available, capacity_balance);
+    const view = projectView(row, openings_available, capacity_balance);
+    // L8-B2 — every single-row response (get / create / update / import / stamp) carries
+    // authoritative Client Status, consistent with the list. Fail-soft (R-DEFAULT-OPEN).
+    const [enriched] = await this.enrichClientStatus(tenant_id, [view]);
+    return enriched ?? view;
   }
 
   // T1-c — emit ONE lifecycle event inside the caller's transaction. The event
@@ -1486,11 +1502,49 @@ export class RequisitionRepository {
       });
       return projectView(r, capacity.openings_available, capacity.capacity_balance);
     });
+    // L8-B2 — ONE set-oriented Client Status read for the whole page (same rule as
+    // capacity); fail-soft so it can never break the list.
+    const withClientStatus = await this.enrichClientStatus(args.tenant_id, views);
     return this.enrichBookmarked(
       args.tenant_id,
       args.visibility.actor_user_id,
-      views,
+      withClientStatus,
     );
+  }
+
+  /**
+   * L8-B2 — enrich a page of views with authoritative requisition-grain Client Status
+   * (SubmittalEligibility truth). SET-oriented; **fail-soft** per R-DEFAULT-OPEN — a
+   * reader error leaves the fields null (the UI renders null as OPEN, never "Unknown"),
+   * and the list never 500s.
+   */
+  private async enrichClientStatus(
+    tenant_id: string,
+    views: RequisitionView[],
+  ): Promise<RequisitionView[]> {
+    if (views.length === 0) return views;
+    try {
+      const byReq = await this.clientStatus.deriveByRequisitionIds(
+        tenant_id,
+        views.map((v) => v.id),
+        new Date(),
+      );
+      return views.map((v) => {
+        const cs = byReq.get(v.id);
+        return cs === undefined
+          ? v
+          : {
+              ...v,
+              client_submittal_status: cs.status,
+              client_submittal_reason: cs.reason,
+            };
+      });
+    } catch (err) {
+      new Logger(RequisitionRepository.name).warn(
+        `client-status enrichment failed (fail-soft, fields left null): ${(err as Error).message}`,
+      );
+      return views;
+    }
   }
 
   /**
@@ -1517,6 +1571,7 @@ export class RequisitionRepository {
     if (row === null) return null;
     // PR-14 — enrich the personal `bookmarked` flag for the calling user
     // (visibility.actor_user_id).
+    // L8-B2 — detail carries Client Status via projectViewWithCapacity (enriched there).
     const enriched = await this.enrichBookmarked(
       args.tenant_id,
       args.visibility.actor_user_id,

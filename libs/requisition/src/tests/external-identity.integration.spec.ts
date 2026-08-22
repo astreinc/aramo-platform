@@ -83,7 +83,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           deriveCapacity({ openings, consuming_count: 0 }),
         countActiveByRequisitionIds: async () => new Map<string, number>(),
       } as never;
-      repo = new RequisitionRepository(prisma, setPriorityStub, transitionStub, capacityStub);
+      repo = new RequisitionRepository(prisma, setPriorityStub, transitionStub, capacityStub, { deriveByRequisitionIds: async () => new Map() } as never);
     }, 120_000);
 
     afterAll(async () => {

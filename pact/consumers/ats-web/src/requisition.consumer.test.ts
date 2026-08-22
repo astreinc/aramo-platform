@@ -77,6 +77,10 @@ function requisitionView(
     // Signed capacity balance (placement-derived); the list Capacity cell relies
     // on the sign to show Available / Fully consumed / Over capacity.
     capacity_balance: like(1),
+    // L8-B2 — authoritative requisition-grain Client Status (SubmittalEligibility
+    // truth): may another client submittal be sent? `null` status ⇒ OPEN in the UI.
+    client_submittal_status: like('open'),
+    client_submittal_reason: null,
     golden_profile_id:
       opts.goldenProfileId === undefined ? null : opts.goldenProfileId,
     created_at: regex(ISO_TIMESTAMP, '2026-05-25T00:00:00Z'),

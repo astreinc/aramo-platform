@@ -15,6 +15,7 @@
       "@aramo/entitlement": ["../../dist/libs/entitlement/src/index.d.ts"],
       "@aramo/job-domain": ["../../dist/libs/job-domain/src/index.d.ts"],
       "@aramo/placement": ["../../dist/libs/placement/src/index.d.ts"],
+      "@aramo/submittal-eligibility": ["../../dist/libs/submittal-eligibility/src/index.d.ts"],
       "@aramo/policy-engine": ["../../dist/libs/policy-engine/src/index.d.ts"],
       "@aramo/policy-store": ["../../dist/libs/policy-store/src/index.d.ts"]
     }

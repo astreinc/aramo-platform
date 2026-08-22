@@ -517,7 +517,9 @@ export function RequisitionsListView({
                 <span className="rc-rt__hc" aria-hidden="true" />
                 <span className="rc-rt__hc">Requisition</span>
                 <span className="rc-rt__hc">Talent</span>
+                <span className="rc-rt__hc">Pipeline</span>
                 <span className="rc-rt__hc">Capacity</span>
+                <span className="rc-rt__hc">Client Status</span>
                 <span className="rc-rt__hc">Owner</span>
                 <span className="rc-rt__hc">Updated</span>
                 <span className="rc-rt__hc">Status</span>
@@ -582,6 +584,29 @@ function RequisitionRow({
   const capTitle =
     `${req.openings} opening${req.openings === 1 ? '' : 's'} · ` +
     `${req.openings_available} available · ${capState.label}`;
+  // L8-B2 — authoritative Client Status. `null` ⇒ OPEN (R-DEFAULT-OPEN), never Unknown.
+  const csState =
+    req.client_submittal_status === 'closed'
+      ? { key: 'closed', label: 'Closed' }
+      : req.client_submittal_status === 'paused'
+        ? { key: 'paused', label: 'Paused' }
+        : { key: 'open', label: 'Open' };
+  const csReasonText =
+    req.client_submittal_reason === 'deadline_passed'
+      ? 'Deadline passed'
+      : req.client_submittal_reason === 'limit_reached'
+        ? 'Supplier limit reached'
+        : req.client_submittal_reason === 'manual_hold'
+          ? 'Manual/client hold'
+          : req.client_submittal_reason === 'paused'
+            ? 'Paused'
+            : null;
+  const csTitle =
+    csState.key === 'open'
+      ? 'Open — accepting client submittals'
+      : csReasonText
+        ? `${csState.label} — ${csReasonText}`
+        : csState.label;
   const cellCount = (key: FunnelBucketKey): number =>
     funnel?.cells.find((c) => c.key === key)?.count ?? 0;
   const cellLabel = (key: FunnelBucketKey, fallback: string): string =>
@@ -694,9 +719,27 @@ function RequisitionRow({
         </span>
       </div>
 
-      {/* Capacity — openings vs derived availability (replaces the pipeline
-          distribution bar per PO ruling). Compact "avail / openings" + a state
-          chip; the full phrasing rides the title tooltip. */}
+      {/* Pipeline — the 6-bucket funnel, segmented (restored L8-B2 as its OWN
+          column; Client Status is a separate column — three distinct truths). */}
+      <div className="rc-rt__pipe">
+        <span className="rc-distbar" aria-hidden="true">
+          {total > 0
+            ? (funnel?.cells ?? [])
+                .filter((c) => c.count > 0)
+                .map((c) => (
+                  <i
+                    key={c.key}
+                    className={`rc-distseg rc-distseg--${c.key}`}
+                    style={{ width: `${(c.count / total) * 100}%` }}
+                  />
+                ))
+            : null}
+        </span>
+        <span className="rc-distbar__n mono">{total}</span>
+      </div>
+
+      {/* Capacity — openings vs derived availability. Compact "avail / openings" +
+          a state chip; the full phrasing rides the title tooltip. */}
       <div className="rc-rt__cap" title={capTitle}>
         <span className="rc-cap__counts">
           <b className="num">{req.openings_available}</b>
@@ -707,6 +750,12 @@ function RequisitionRow({
         <span className={`rc-cap__state rc-cap__state--${capState.key}`}>
           {capState.label}
         </span>
+      </div>
+
+      {/* Client Status — authoritative SubmittalEligibility: may another client
+          submittal be sent right now? A separate truth from Pipeline and Capacity. */}
+      <div className="rc-rt__cs" title={csTitle}>
+        <span className={`rc-cs rc-cs--${csState.key}`}>{csState.label}</span>
       </div>
 
       {/* Owner */}

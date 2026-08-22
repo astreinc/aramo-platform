@@ -98,6 +98,15 @@ export interface RequisitionView {
   // (== 0) from Over capacity (< 0). Placement-derived; hand-mirrors the backend
   // RequisitionView (libs/requisition/src/lib/dto/requisition.view.ts).
   readonly capacity_balance: number;
+  // L8-B2 — authoritative requisition-grain Client Status (SubmittalEligibility truth):
+  // may another client submittal be sent? `null` ⇒ OPEN (rendered as Open, never Unknown).
+  readonly client_submittal_status: 'open' | 'paused' | 'closed' | null;
+  readonly client_submittal_reason:
+    | 'deadline_passed'
+    | 'limit_reached'
+    | 'manual_hold'
+    | 'paused'
+    | null;
   readonly start_date: string | null;
   readonly city: string | null;
   readonly state: string | null;

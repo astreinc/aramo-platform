@@ -43,6 +43,17 @@ export interface RequisitionView {
   // UNclamped value lets a reader distinguish Fully consumed (== 0) from
   // Over capacity (< 0) — the clamp hides the latter.
   capacity_balance: number;
+  // L8-B2 — authoritative requisition-grain Client Status (SubmittalEligibility truth):
+  // "may another client submittal be sent right now?" It is NOT the pipeline mirror and
+  // NOT a Submittal.state count. `null` ⇒ OPEN posture (R-DEFAULT-OPEN); the UI renders
+  // null as OPEN, never "Unknown". `reason` explains a non-open status.
+  client_submittal_status: 'open' | 'paused' | 'closed' | null;
+  client_submittal_reason:
+    | 'deadline_passed'
+    | 'limit_reached'
+    | 'manual_hold'
+    | 'paused'
+    | null;
   start_date: string | null;
   city: string | null;
   state: string | null;

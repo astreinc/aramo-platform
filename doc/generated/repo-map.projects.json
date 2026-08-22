@@ -820,6 +820,7 @@
     ],
     "@aramo/submittal-eligibility": [
       "PrismaService",
+      "RequisitionSubmittalEligibilityReader",
       "SUBMITTAL_AUTHORITY_VALUES",
       "SUBMITTAL_ELIGIBILITY_PORT_VERSION",
       "SUBMITTAL_POLICY_REASON_VALUES",
@@ -3768,7 +3769,8 @@
         "project": "api",
         "status": "excluded"
       },
-      { "project": "api", "status": "production" }
+      { "project": "api", "status": "production" },
+      { "project": "requisition", "status": "production" }
     ],
     "@aramo/talent": [],
     "@aramo/talent-evidence": [

@@ -84,7 +84,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           deriveCapacity({ openings, consuming_count: 0 }),
         countActiveByRequisitionIds: async () => new Map<string, number>(),
       } as never;
-      const reqRepo = new RequisitionRepository(reqPrisma, setPriorityStub, transitionStub, capacityStub);
+      const reqRepo = new RequisitionRepository(reqPrisma, setPriorityStub, transitionStub, capacityStub, { deriveByRequisitionIds: async () => new Map() } as never);
       // Company/Contact/TalentRecord repos are never reached for a requisition
       // import; pass inert stubs.
       service = new ImportService(
