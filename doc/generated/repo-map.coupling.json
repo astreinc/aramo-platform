@@ -15350,11 +15350,6 @@
       "to": "pact/provider/src/verify-api.ts"
     },
     {
-      "from": "tools/db-sync-local.sh",
-      "status": "unscoped",
-      "to": "doc/runbooks/t2p3b-selection-rebaseline-prod-reconciliation.md"
-    },
-    {
       "from": "tools/link-e2e-recruiter-sub.ts",
       "status": "unscoped",
       "to": "tools/enable-e2e-recruiter.ts"

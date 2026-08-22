@@ -1,0 +1,11 @@
+-- Track-2 Engagement-Residue Forward-Cleanup (R-DROP).
+--
+-- The `engagement` schema was created by init_submittal_model (the submittal domain was
+-- born engagement-schema'd) and its objects were relocated to `submittal` by
+-- t2p1_relocate_submittal_to_submittal_schema (OID-preserving ALTER ... SET SCHEMA),
+-- leaving an EMPTY namespace shell that no prior migration dropped. Remove it forward.
+--
+-- RESTRICT (not CASCADE): fail loudly if anything unexpected still lives in `engagement`.
+-- IF EXISTS: idempotent + safe on any environment (fresh replay, dev, prod) where the
+-- schema is already absent. History is NOT rewritten; this is a forward-only drop.
+DROP SCHEMA IF EXISTS "engagement" RESTRICT;

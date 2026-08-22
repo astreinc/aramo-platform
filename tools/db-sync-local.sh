@@ -43,47 +43,30 @@ mig_list() {
     | awk -F/ '{print $(NF-1)"\t"$0}' | sort | cut -f2
 }
 
-# The tracking table — keyed on the relative migration-dir path (unique).
-q -c "CREATE TABLE IF NOT EXISTS public._local_migrations (name text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now());" >/dev/null
-
+# --status is READ-ONLY (R-STATUS-READONLY): report the ledger count with NO DDL. If the
+# ledger table is absent, report 0 — never CREATE it in status mode, so a read-only recon
+# is safe to run against any environment (including production).
 if [ "$MODE" = "--status" ]; then
-  rec="$(q -c "SELECT count(*) FROM public._local_migrations;")"
+  if [ "$(q -c "SELECT to_regclass('public._local_migrations') IS NOT NULL;")" = "t" ]; then
+    rec="$(q -c "SELECT count(*) FROM public._local_migrations;")"
+  else
+    rec=0
+  fi
   tot="$(mig_list | wc -l | tr -d ' ')"
   echo "db:sync:local status — ${rec}/${tot} migrations recorded as applied"
   exit 0
 fi
 
-# ── T2-P3B pre-GA Selection migration rebaseline guard (fail-closed) ─────────
-# The Selection workflow migration chain was rebaselined pre-GA: the six
-# engagement-first migrations were replaced by a single Selection-native
-# init_selection_model. If a target ledger still records the superseded
-# engagement-era Selection migration paths, applying the rebaselined chain
-# would create a divergent SECOND schema (uncontrolled DDL). Detect that state
-# and FAIL CLOSED — a governed pre-GA ledger reconciliation is required first.
-# READ-ONLY: this guard never mutates the ledger and never repairs the schema.
-if [ -d "libs/selection/prisma/migrations/20260525120000_init_selection_model" ]; then
-  # The three engagement-NAMED Selection migration paths are unambiguous
-  # markers of the superseded engagement-era ledger (production recorded all of
-  # them). Any one present alongside the Selection-native baseline = rebaseline
-  # divergence. (Kept engagement-named only, so this guard carries no Tier-2
-  # vocabulary; the full superseded set is documented in the reconciliation runbook.)
-  stale="$(q -c "SELECT count(*) FROM public._local_migrations WHERE name IN (
-    'libs/selection/prisma/migrations/20260525120000_init_engagement_model/',
-    'libs/selection/prisma/migrations/20260525150000_add_engagement_event_log/',
-    'libs/selection/prisma/migrations/20260813120000_t2p2_relocate_engagement_to_selection/'
-  );")"
-  if [ -n "$stale" ] && [ "$stale" != "0" ]; then
-    echo "db:sync:local: HALT — pre-GA Selection migration rebaseline detected." >&2
-    echo "  The target ledger (public._local_migrations) records ${stale} superseded" >&2
-    echo "  engagement-era Selection migration path(s), but this repository ships the" >&2
-    echo "  Selection-native baseline (20260525120000_init_selection_model)." >&2
-    echo "  Applying now would create a divergent second schema. A governed pre-GA" >&2
-    echo "  ledger reconciliation is REQUIRED before this environment can migrate" >&2
-    echo "  (see doc/runbooks/t2p3b-selection-rebaseline-prod-reconciliation.md)." >&2
-    echo "  This tool will NOT auto-repair production." >&2
-    exit 3
-  fi
-fi
+# apply mode — the tracking table, keyed on the relative migration-dir path (unique).
+q -c "CREATE TABLE IF NOT EXISTS public._local_migrations (name text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now());" >/dev/null
+
+# T2-P3B pre-GA Selection rebaseline guard: RETIRED (Track-2 Engagement-Residue
+# Forward-Cleanup, R-GUARD-RETIRE). Read-only prod recon 2026-08-18 established prod is
+# Selection-native — the ledger records only init_selection_model, zero superseded
+# engagement-era paths, so the guard was 0-armed and its job is complete. The forward
+# `20260823120000_drop_empty_engagement_schema` migration removes the last residual (the
+# empty engagement schema shell). Removing the guard leaves no obsolete engagement-path
+# reference in the tooling.
 
 applied=0; baselined=0; skipped=0
 while IFS= read -r d; do
