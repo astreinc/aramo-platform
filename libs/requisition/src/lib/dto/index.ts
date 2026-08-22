@@ -10,7 +10,7 @@ export {
   TRANSITION_ACTIONS,
   REQUISITION_RESOURCE,
   ACTION_TARGET_STATUS,
-  governingActionForTarget,
+  governingAction,
   type TransitionAction,
 } from './requisition-transitions.js';
 export {

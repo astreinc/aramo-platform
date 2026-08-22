@@ -46,6 +46,7 @@ import {
 
 import { GuaranteeTermsPanel } from './GuaranteeTermsPanel';
 import { AddTalentDialog } from './AddTalentDialog';
+import { approvalAffordancesFor } from './approval-affordance';
 import { CockpitFieldRow, type SaveFieldFn } from './cockpit-fields';
 import { COCKPIT_FIELDS, type CockpitSection } from './field-affordance';
 import { ProfileWorkbenchPanel } from './ProfileWorkbenchPanel';
@@ -466,6 +467,22 @@ export function RequisitionDetailView({
             <Icons.IconPencil />
             Edit
           </button>
+          {/* Approval sub-workflow — the named governed affordances, gated by
+              (current status × scope). Cosmetic: the BE gate is authoritative
+              (a self-approval or a scope-less approve 403s regardless). Each
+              drives the status transition through the same PATCH saveField. */}
+          {approvalAffordancesFor(req.status, scopes).map((aff) => (
+            <button
+              key={aff.action}
+              type="button"
+              className={`rc-hbtn${aff.action === 'APPROVE' ? ' rc-hbtn--primary' : ''}`}
+              onClick={() => {
+                void saveField('status', aff.toStatus);
+              }}
+            >
+              {aff.label}
+            </button>
+          ))}
           {canAddTalent ? (
             <AddTalentDialog
               requisitionId={req.id}

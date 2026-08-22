@@ -24,13 +24,13 @@ export const RECRUITING_STATUS_VALUES = [
 ] as const;
 export type RecruitingStatus = (typeof RECRUITING_STATUS_VALUES)[number];
 
-// Subsystem-gated values (directive §2, PO correction 1): their behaviour does
-// not exist yet, so a recruiter cannot transition INTO them — they are excluded
-// from the selectable set below (no filter chip, no select option). They remain
-// valid members so a future subsystem lights them up without a schema change.
+// Subsystem-gated values: their behaviour does not exist yet, so a recruiter
+// cannot transition INTO them — excluded from the selectable set below (no
+// filter chip, no select option). The Approval sub-workflow un-gated `draft` +
+// `pending_approval` (now selectable, driving the SUBMIT_FOR_APPROVAL / APPROVE
+// / REJECT governed transitions); `archived` stays gated until retention ships.
+// MUST stay 1:1 with the BE GATED_RECRUITING_STATUS_VALUES (drift-guarded).
 export const GATED_RECRUITING_STATUS_VALUES: readonly RecruitingStatus[] = [
-  'draft',
-  'pending_approval',
   'archived',
 ];
 
