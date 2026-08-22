@@ -72,7 +72,7 @@ function contextFor(status: string, resource: string): PolicyContext {
 }
 
 describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
-  'PR-4c RecruitingStatus matrix v5.0.0 — real published package (Postgres 17)',
+  'PR-4c RecruitingStatus matrix v6.0.0 — real published package (Postgres 17)',
   () => {
     let container: StartedPostgreSqlContainer;
     let db: Client;
@@ -114,7 +114,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       storePrisma = new PolicyStorePrismaService(url);
       await storePrisma.$connect();
       store = new PolicyStore(storePrisma);
-      // Publish the REAL RecruitingStatus matrix (v5.0.0, T1-e) for this tenant.
+      // Publish the REAL RecruitingStatus matrix (v6.0.0, T1-e) for this tenant.
       await store.publish({ tenant_id: TENANT, definition: REQUISITION_LIFECYCLE_PACKAGE, published_by: SYSTEM_PUBLISHER });
 
       const kp = await generateKeyPair(ALG);
@@ -140,7 +140,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
     it('EVERY cell (24) evaluates per the matrix against the PUBLISHED + RETRIEVED package', async () => {
       const resolved = await store.getActiveVersion(TENANT, PKG_NAME);
-      expect(resolved?.version).toBe('5.0.0');
+      expect(resolved?.version).toBe('6.0.0');
       for (const [status, row] of Object.entries(EXPECTED)) {
         for (const [resource, expected] of Object.entries(row)) {
           const d = evaluate(resolved!.definition, contextFor(status, resource));

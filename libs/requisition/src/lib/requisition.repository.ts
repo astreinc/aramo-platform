@@ -22,12 +22,13 @@ import { assertCompensationEditScopes } from './compensation-edit-gate.js';
 import { computeDerivedViews } from './compensation-views.js';
 import { assertFinancialEditScopes } from './field-group-edit-gate.js';
 import { assertStatusOnlyEditScope } from './status-edit-gate.js';
+import { assertApprovalAuthorization } from './approval-authorization-gate.js';
 import type { CreateRequisitionRequestDto } from './dto/create-requisition-request.dto.js';
 import type { RatePeriod } from './dto/rate-period.js';
 import type { RequisitionCompensationModel } from './dto/requisition-compensation-model.js';
 import type { RequisitionView } from './dto/requisition.view.js';
 import { isGatedRecruitingStatus, type RecruitingStatus } from './dto/requisition-status.js';
-import { governingActionForTarget } from './dto/requisition-transitions.js';
+import { governingAction } from './dto/requisition-transitions.js';
 import type { UpdateRequisitionRequestDto } from './dto/update-requisition-request.dto.js';
 import type { RecordRequisitionLifecycleEventInput } from './requisition-lifecycle-event.store.js';
 import { PrismaService } from './prisma/prisma.service.js';
@@ -668,9 +669,10 @@ export class RequisitionRepository {
   }
 
   // T1-e (§2.2 / R8) — the governed-transition gate. Called when a PATCH
-  // CHANGES status. Resolves the governing action from the TARGET status
-  // (CLOSE/REOPEN/PUT_ON_HOLD/CANCEL); if the target has no governing action
-  // (submittals_closed / lead — the R8 boundary ruling) the change is an
+  // CHANGES status. Resolves the governing action from the (from, to) EDGE
+  // (Amendment B — APPROVE and REOPEN converge on `open`, disambiguated by the
+  // from-status); if the edge has no governing action (submittals_closed / lead
+  // / ordinary entry into draft — the R8 boundary ruling) the change is an
   // ORDINARY edit and this returns null (no policy, no decision record). For a
   // governed transition it evaluates the declared FROM status: on DENY it
   // records the refusal standalone (§D17a) and throws POLICY_DENIED (reason
@@ -679,14 +681,30 @@ export class RequisitionRepository {
   // into the lifecycle event (§2.2). Mirrors gateSetPriority.
   private async gateTransition(args: {
     tenant_id: string;
+    id: string;
     from_status: RecruitingStatus;
     to_status: RecruitingStatus;
     scopes: readonly string[];
     actor_id: string;
     requestId: string;
   }): Promise<{ provenance: InsertPolicyDecisionRecordInput; decision_id: string } | null> {
-    const action = governingActionForTarget(args.to_status);
+    const action = governingAction(args.from_status, args.to_status);
     if (action === null) return null; // ungoverned ordinary edit (R8 boundary)
+    // Approval sub-workflow (Amendment B, R-RBAC) — per-edge authorization for the
+    // approval-DECISION edges (APPROVE / REJECT), BEFORE the policy engine and any
+    // write. APPROVE resolves the submitter (the actor of the most recent
+    // SUBMIT_FOR_APPROVAL) so segregation of duties can refuse self-approval.
+    const submitterId =
+      action === 'APPROVE'
+        ? await this.latestApprovalSubmitterActor(args.tenant_id, args.id)
+        : null;
+    assertApprovalAuthorization({
+      action,
+      scopes: args.scopes,
+      actorId: args.actor_id,
+      submitterId,
+      requestId: args.requestId,
+    });
     const outcome = await this.transitionPolicy.decide({
       tenant_id: args.tenant_id,
       action,
@@ -710,6 +728,24 @@ export class RequisitionRepository {
       );
     }
     return { provenance: outcome.provenance, decision_id: uuidv7() };
+  }
+
+  // Approval sub-workflow (Amendment B) — the actor who last moved this
+  // requisition INTO pending_approval (the SUBMIT_FOR_APPROVAL). The lifecycle
+  // event history is the record of WHO submitted; the most recent event with
+  // next_status='pending_approval' names the current submitter. Returns null when
+  // no such event exists (defensive — the SoD check then no-ops but the
+  // requisition:approve scope requirement still stands).
+  private async latestApprovalSubmitterActor(
+    tenant_id: string,
+    requisition_id: string,
+  ): Promise<string | null> {
+    const ev = await this.prisma.requisitionLifecycleEvent.findFirst({
+      where: { tenant_id, requisition_id, next_status: 'pending_approval' },
+      orderBy: { occurred_at: 'desc' },
+      select: { actor_id: true },
+    });
+    return ev?.actor_id ?? null;
   }
 
   // T1-e — persist the §D17a transition provenance with a CALLER-CONTROLLED id
@@ -1240,6 +1276,7 @@ export class RequisitionRepository {
     const transitionGate = statusChanges
       ? await this.gateTransition({
           tenant_id: args.tenant_id,
+          id: args.id,
           from_status: existing.status as RecruitingStatus,
           to_status: args.input.status as RecruitingStatus,
           scopes: args.scopes,

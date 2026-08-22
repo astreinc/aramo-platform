@@ -752,7 +752,7 @@
       "assertExternalIdentityCoPresence",
       "canonicalizeSourceSystem",
       "emptyRequisitionProfileView",
-      "governingActionForTarget",
+      "governingAction",
       "isGatedRecruitingStatus",
       "isRatePeriod",
       "isRateType",
@@ -2019,6 +2019,12 @@
       { "project": "reporting", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/requisition/src/tests/approval-authorization-gate.spec.ts",
+        "project": "requisition",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/requisition/src/tests/compensation-edit-gate.spec.ts",
         "project": "requisition",
         "status": "excluded"
@@ -2629,6 +2635,12 @@
       {
         "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/ats-web/src/requisitions/ProfileWorkbenchPanel.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/requisitions/RequisitionDetailView.approval.spec.tsx",
         "project": "aramo-ats-web",
         "status": "excluded"
       },

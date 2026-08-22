@@ -21,12 +21,12 @@ import {
 // and the restrictive 3.0.0) stay in the store with their windows closed;
 // earlier provenance still names the version it was decided under (§D17b).
 //
-// The subsystem-gated states (draft / pending_approval / archived) are
-// unreachable today (no transition path lands a requisition in them until their
-// subsystems ship, T1-e+). They carry an EXPLICIT DENY-everything-except-Note
-// row (Q5 ruling): a permissive default on an unreachable state is a future
-// foothold, so we fail closed. Note stays ALLOW (compliance documentation must
-// never be blocked). SET_PRIORITY is DENY.
+// draft / pending_approval are now REACHABLE (Approval sub-workflow, Amendment B)
+// but PRE-OPEN; archived remains subsystem-gated (unreachable until retention
+// ships). All three carry an EXPLICIT DENY-everything-except-Note row: no
+// talent/submittal/document work before a requisition is open, and a permissive
+// default on these states would be a foothold, so we fail closed. Note stays
+// ALLOW (compliance documentation must never be blocked). SET_PRIORITY is DENY.
 //
 // `submittals_closed` gates on DECLARATION — "the owner declared submittals
 // closed" — NEVER on capacity (§D13). openings_available is not yet truthful; a
@@ -61,7 +61,10 @@ const MATRIX: Readonly<Record<string, Readonly<Record<ColumnKey, Decision>>>> = 
   closed: { add: 'DENY', submit: 'DENY', note: 'ALLOW', document: 'DENY' },
   canceled: { add: 'DENY', submit: 'DENY', note: 'ALLOW', document: 'DENY' },
   lead: { add: 'ALLOW', submit: 'DENY', note: 'ALLOW', document: 'ALLOW' },
-  // Subsystem-gated (Q5) — unreachable today, fail closed on everything but Note.
+  // draft / pending_approval — reachable via the Approval sub-workflow but PRE-OPEN:
+  // no talent/submittal/document work until APPROVED → open. Fail closed on
+  // everything but Note (compliance documentation is never blocked). archived
+  // stays subsystem-gated (unreachable until retention ships), same posture.
   draft: { add: 'DENY', submit: 'DENY', note: 'ALLOW', document: 'DENY' },
   pending_approval: { add: 'DENY', submit: 'DENY', note: 'ALLOW', document: 'DENY' },
   archived: { add: 'DENY', submit: 'DENY', note: 'ALLOW', document: 'DENY' },
@@ -108,7 +111,8 @@ const SET_PRIORITY_MATRIX: Readonly<Record<string, Decision>> = {
   closed: 'DENY',
   canceled: 'DENY',
   lead: 'ALLOW',
-  // Subsystem-gated (Q5) — priority is meaningless on an unreachable state.
+  // Pre-open (draft / pending_approval) + subsystem-gated (archived) — priority
+  // is meaningless before a requisition is live; set it once open.
   draft: 'DENY',
   pending_approval: 'DENY',
   archived: 'DENY',
@@ -141,9 +145,13 @@ const SET_PRIORITY_RULES: PolicyPackage['rules'] = Object.entries(SET_PRIORITY_M
 //   - Terminal FROM-states (closed / canceled) DENY every transition except the
 //     legitimate REOPEN of a `closed` requisition; a `canceled` requisition is
 //     dead (recreate, never reopen).
-//   - Subsystem-gated FROM-states (draft / pending_approval / archived) DENY
-//     every transition (fail closed — a requisition cannot legitimately be in
-//     one today; §2.3 refuses transitions INTO them at the domain boundary).
+//   - The four ORIGINAL transitions DENY from draft / pending_approval (a
+//     pre-open requisition is not closed/reopened/held/canceled — it moves
+//     through the approval chain); archived DENYs all (still subsystem-gated).
+//   - The Approval sub-workflow (Amendment B) adds SUBMIT_FOR_APPROVAL / APPROVE
+//     / REJECT, each firing from exactly one from-status (draft / pending_approval
+//     / pending_approval). APPROVE and REOPEN both land `open`, disambiguated by
+//     the from-status (edge-keyed governingAction).
 //   - `lead → open` is REOPEN = ALLOW (R5 — an ordinary recruiter action).
 const TRANSITION_MATRIX: Readonly<Record<TransitionAction, Readonly<Record<string, Decision>>>> = {
   CLOSE: {
@@ -166,6 +174,25 @@ const TRANSITION_MATRIX: Readonly<Record<TransitionAction, Readonly<Record<strin
     canceled: 'DENY', closed: 'DENY',
     draft: 'DENY', pending_approval: 'DENY', archived: 'DENY',
   },
+  // Approval sub-workflow (Amendment B). Each approval action fires from EXACTLY
+  // ONE from-status; every other from-status DENIES (fail-closed on the ALLOW
+  // default). draft → pending_approval = SUBMIT_FOR_APPROVAL; pending_approval →
+  // open = APPROVE; pending_approval → draft = REJECT.
+  SUBMIT_FOR_APPROVAL: {
+    draft: 'ALLOW',
+    lead: 'DENY', open: 'DENY', on_hold: 'DENY', submittals_closed: 'DENY',
+    closed: 'DENY', canceled: 'DENY', pending_approval: 'DENY', archived: 'DENY',
+  },
+  APPROVE: {
+    pending_approval: 'ALLOW',
+    lead: 'DENY', draft: 'DENY', open: 'DENY', on_hold: 'DENY',
+    submittals_closed: 'DENY', closed: 'DENY', canceled: 'DENY', archived: 'DENY',
+  },
+  REJECT: {
+    pending_approval: 'ALLOW',
+    lead: 'DENY', draft: 'DENY', open: 'DENY', on_hold: 'DENY',
+    submittals_closed: 'DENY', closed: 'DENY', canceled: 'DENY', archived: 'DENY',
+  },
 };
 
 // Serialize the transition matrix into engine rules: one predicate per rule,
@@ -184,10 +211,12 @@ const TRANSITION_RULES: PolicyPackage['rules'] = TRANSITION_ACTIONS.flatMap((act
 
 export const REQUISITION_LIFECYCLE_PACKAGE: PolicyPackage = {
   name: REQUISITION_LIFECYCLE_PACKAGE_NAME,
-  // T1-e — version 5.0.0. New MAJOR: the four governed-transition actions are a
-  // new behavioural surface (§2.2). v4.0.0 stays in the store, window closed;
-  // earlier provenance still names 4.0.0 when re-read from the DB (§D17b).
-  version: '5.0.0',
+  // Approval sub-workflow (Amendment B) — version 6.0.0. New MAJOR: the three
+  // approval-transition actions (SUBMIT_FOR_APPROVAL / APPROVE / REJECT) are a
+  // new behavioural surface. v5.0.0 (the four T1-e transitions) and v4.0.0 stay
+  // in the store, windows closed; earlier provenance still names the version it
+  // was decided under when re-read from the DB (§D17b).
+  version: '6.0.0',
   registry: {
     resources: [
       'REQUISITION_TALENT',
@@ -196,9 +225,10 @@ export const REQUISITION_LIFECYCLE_PACKAGE: PolicyPackage = {
       'REQUISITION_DOCUMENT',
       'REQUISITION',
     ],
-    // T1-e — the four governed-transition actions join ADD/CREATE/SET_PRIORITY.
-    // The engine REJECTS an unregistered action at evaluate time, so they MUST
-    // be registered for the transition gate to resolve.
+    // The seven governed-transition actions (T1-e's four + the Approval
+    // sub-workflow's SUBMIT_FOR_APPROVAL / APPROVE / REJECT) join ADD/CREATE/
+    // SET_PRIORITY. The engine REJECTS an unregistered action at evaluate time,
+    // so they MUST be registered for the transition gate to resolve.
     actions: ['ADD', 'CREATE', 'SET_PRIORITY', ...TRANSITION_ACTIONS],
   },
   // R3 — a package MUST declare its own no-match disposition. ALLOW (permissive

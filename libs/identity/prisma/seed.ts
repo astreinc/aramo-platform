@@ -342,6 +342,8 @@ export const SEED_IDS = {
     'integration:read': '01900000-0000-7000-8000-0000000000dc',
     'integration:write': '01900000-0000-7000-8000-0000000000dd',
     'submittal-policy:write': '01900000-0000-7000-8000-0000000000de',
+    // Requisition Approval sub-workflow — lowest-free suffix 0xdb (df+ free).
+    'requisition:approve': '01900000-0000-7000-8000-0000000000db',
   },
   // RoleScope ids — one per (role,scope) assignment. Hardcoded sequence
   // 0x30..0x39 (10 assignments: 6 tenant_admin + 4 recruiter; the 3
@@ -2065,6 +2067,33 @@ const SUBMITTAL_POLICY_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => 
   return map;
 })();
 
+// Requisition Approval sub-workflow — APPROVE/REJECT authority role-matrix.
+// requisition:approve granted to account_manager + tenant_admin + tenant_owner
+// (the manager tier, mirroring requisition:edit:financials); a recruiter holding
+// requisition:edit CANNOT approve — approval is a segregated-duty authority.
+export const APPROVAL_SEED_BUNDLES: ReadonlyArray<
+  readonly [string, readonly string[]]
+> = [
+  ['account_manager', ['requisition:approve']],
+  ['tenant_admin', ['requisition:approve']],
+  ['tenant_owner', ['requisition:approve']],
+];
+
+// Deterministic RoleScope row ids for the 3 approval grants. Fresh disjoint
+// range 0xc30+ (submittal-policy occupies 0xc20+). DO NOT REORDER.
+const APPROVAL_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
+  const map: Record<string, string> = {};
+  let i = 0xc30;
+  for (const [role, scopes] of APPROVAL_SEED_BUNDLES) {
+    for (const scope of scopes) {
+      map[`${role}:${scope}`] =
+        `01900000-0000-7000-8000-${i.toString(16).padStart(12, '0')}`;
+      i++;
+    }
+  }
+  return map;
+})();
+
 interface IdentityPrismaClient {
   tenant: typeof PrismaClient.prototype.tenant;
   user: typeof PrismaClient.prototype.user;
@@ -2406,6 +2435,7 @@ export async function runIdentitySeed(
   await upsertScope(prisma, SEED_IDS.scopes['integration:read'], 'integration:read', 'Track 8 / T8-CONNECTOR-A — read provider-neutral connector connections (Settings → Integrations): list/status/last-sync/error summary. Connector connection ADMINISTRATION; distinct from requisition:import:read (P3 ingestion monitoring). GRANTED to tenant_admin, tenant_owner only. NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['integration:write'], 'integration:write', 'Track 8 / T8-CONNECTOR-A — administer provider-neutral connector connections (create/configure-credential/enable/disable). Never returns raw secret material. GRANTED to tenant_admin, tenant_owner only; recruiter/account_manager excluded (administrative tier). The connector ServiceAccount does NOT hold this — execution authority is requisition:import:write only. NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['submittal-policy:write'], 'submittal-policy:write', 'Lane L8-B1 — set the client-submittal eligibility policy on a requisition (submittal deadline, supplier slot limit, manual open/pause/close, authority). Least-privilege (base R-OQB): GRANTED to account_manager, tenant_admin, tenant_owner only; recruiter excluded — editing a requisition does NOT grant authority over client-submittal rules. NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['requisition:approve'], 'requisition:approve', 'Requisition Approval sub-workflow — decide a requisition approval: the governed APPROVE (pending_approval -> open) and REJECT (pending_approval -> draft) transitions, enforced IN-SERVICE at the requisition repository (a 403 costs no policy decision + no write). APPROVE additionally enforces segregation of duties (the approver must differ from the recruiter who submitted for approval). GRANTED to account_manager, tenant_admin, tenant_owner only (manager tier, mirrors requisition:edit:financials); recruiter excluded — a recruiter cannot approve. NO scope.created (scope-seed precedent).');
 
   // 7. RoleScope assignments — pre-AUTHZ-1 (88 rows: 13 + 12 + 52 + 11).
   for (const [roleKey, scopeKeys] of Object.entries(ROLE_SCOPE_ASSIGNMENTS)) {
@@ -2940,6 +2970,28 @@ export async function runIdentitySeed(
       if (rsId === undefined) {
         throw new Error(
           `L8-B1 Submittal-Policy-Role-Matrix: Missing generated RoleScope id for ${roleKey}:${scopeKey}`,
+        );
+      }
+      const scope_id = scopeIdForKey(scopeKey);
+      await prisma.roleScope.upsert({
+        where: { role_id_scope_id: { role_id, scope_id } },
+        update: {},
+        create: { id: rsId, role_id, scope_id },
+      });
+    }
+  }
+
+  // Requisition Approval sub-workflow — approval-authority grants (3 rows; range
+  // 0xc30+). requisition:approve -> account_manager + tenant_admin + tenant_owner
+  // (recruiter excluded; approval is a segregated-duty authority).
+  for (const [roleKey, scopeKeys] of APPROVAL_SEED_BUNDLES) {
+    const role_id = roleIdForKey(roleKey);
+    for (const scopeKey of scopeKeys) {
+      const rsId =
+        APPROVAL_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
+      if (rsId === undefined) {
+        throw new Error(
+          `Approval-Role-Matrix: Missing generated RoleScope id for ${roleKey}:${scopeKey}`,
         );
       }
       const scope_id = scopeIdForKey(scopeKey);
