@@ -32,6 +32,10 @@ const MIGRATIONS = [
   '20260812140000_t6_b1_effective_window_substrate',
   '20260813130000_t6_b3_commercial_cancellation',
   '20260814120000_t7_permanent_placement',
+  // Offer Lifecycle — PlacementProcess gained a nullable offer_id column; the
+  // regenerated placement client SELECTs it, so this curated set needs the ADD
+  // COLUMN migration (the read touches PlacementProcess via the client).
+  '20260824130000_placement_offer_id',
 ].map((d) =>
   resolve(__dirname, `../../../placement/prisma/migrations/${d}/migration.sql`),
 );
