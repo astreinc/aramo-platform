@@ -1,0 +1,13 @@
+-- Offer Lifecycle (D6, R-PRECEDENCE) — the placement-create re-point.
+--
+-- Adds the nullable offer_id ref: a PlacementProcess is now created DOWNSTREAM of
+-- the dedicated offer aggregate (offer."Offer"), from an ACCEPTED offer. UUID-only
+-- cross-schema ref, NO FK (Architecture §7.3). NULLABLE + additive: legacy
+-- pre-offer rows remain NULL, and every NEW create requires an ACCEPTED offer
+-- (enforced app-side at PlacementRepository.createPlacement, the same create-time
+-- referential-integrity idiom as replaces_placement_process_id). Written once at
+-- INSERT, and NOT pinned in the enforce_placement_process_lifecycle immutability
+-- trigger (a nullable column pinned via OLD = NEW is NULL not TRUE — the NULL=NULL
+-- trap that would reject every first-placement transition). Backward-compatible:
+-- the old running image reads/writes correctly against the newer schema.
+ALTER TABLE "placement"."PlacementProcess" ADD COLUMN "offer_id" UUID;

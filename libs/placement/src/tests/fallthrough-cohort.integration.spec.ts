@@ -36,6 +36,8 @@ const MIGRATIONS = [
   '20260812140000_t6_b1_effective_window_substrate',
   '20260813130000_t6_b3_commercial_cancellation',
   '20260814120000_t7_permanent_placement',
+  '20260824120000_init_offer_model',
+  '20260824130000_placement_offer_id',
 ].map((d) => resolve(__dirname, `../../prisma/migrations/${d}/migration.sql`));
 
 const FROM = new Date('2026-05-01T00:00:00.000Z');

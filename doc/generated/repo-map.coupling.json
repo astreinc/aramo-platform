@@ -3631,6 +3631,18 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/placement-http.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/placement/prisma/migrations/20260824120000_init_offer_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/placement-http.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/placement/prisma/migrations/20260824130000_placement_offer_id/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/placement-offer-openapi-conformance.spec.ts",
       "status": "excluded",
       "to": "openapi/ats.yaml"
@@ -3682,6 +3694,18 @@
       "from": "apps/api/src/tests/placement-read-http.integration.spec.ts",
       "status": "excluded",
       "to": "libs/placement/prisma/migrations/20260816120000_t7_p3_guarantee_term_versioning/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/placement-read-http.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/placement/prisma/migrations/20260824120000_init_offer_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/placement-read-http.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/placement/prisma/migrations/20260824130000_placement_offer_id/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -8263,6 +8287,17 @@
       "to": "libs/reporting/src/lib/dto/report.view.ts"
     },
     {
+      "excludedBy": "src/**/*.spec.ts",
+      "from": "apps/ats-web/src/offers/offer-state-drift.spec.ts",
+      "status": "excluded",
+      "to": "libs/placement/src/lib/lifecycle/offer-lifecycle.ts"
+    },
+    {
+      "from": "apps/ats-web/src/offers/types.ts",
+      "status": "production",
+      "to": "libs/placement/src/lib/lifecycle/offer-lifecycle.ts"
+    },
+    {
       "from": "apps/ats-web/src/org/types.ts",
       "status": "production",
       "to": "libs/identity/src/lib/management-edge.repository.ts"
@@ -8740,6 +8775,11 @@
     {
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
+      "to": "apps/api/src/offer/offer.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
       "to": "apps/api/src/placement/guarantee-terms.controller.ts"
     },
     {
@@ -9046,6 +9086,11 @@
       "from": "ci/scripts/ci-integration.sh",
       "status": "unscoped",
       "to": "ci/scripts/run-integration.ts"
+    },
+    {
+      "from": "ci/scripts/generate-offer-sql.ts",
+      "status": "unscoped",
+      "to": "libs/placement/prisma/migrations/20260824120000_init_offer_model/migration.sql"
     },
     {
       "from": "ci/scripts/generate-placement-sql.ts",
@@ -13315,6 +13360,16 @@
       "to": "libs/requisition/prisma/migrations/20260602100000_init_requisition_model/migration.sql"
     },
     {
+      "from": "libs/placement/prisma/migrations/20260824120000_init_offer_model/migration.sql",
+      "status": "unscoped",
+      "to": "ci/scripts/generate-offer-sql.ts"
+    },
+    {
+      "from": "libs/placement/prisma/migrations/20260824120000_init_offer_model/migration.sql",
+      "status": "unscoped",
+      "to": "libs/placement/src/lib/lifecycle/offer-lifecycle.ts"
+    },
+    {
       "from": "libs/placement/project.json",
       "status": "unscoped",
       "to": "libs/placement/src/index.ts"
@@ -13325,14 +13380,53 @@
       "to": "libs/placement/tsconfig.lib.json"
     },
     {
+      "from": "libs/placement/src/lib/generator/offer-sql-generator.ts",
+      "status": "production",
+      "to": "ci/scripts/generate-offer-sql.ts"
+    },
+    {
+      "from": "libs/placement/src/lib/generator/offer-sql-generator.ts",
+      "status": "production",
+      "to": "libs/placement/src/lib/lifecycle/offer-lifecycle.ts"
+    },
+    {
       "from": "libs/placement/src/lib/generator/placement-sql-generator.ts",
       "status": "production",
       "to": "ci/scripts/verify-placement-sql.ts"
     },
     {
+      "from": "libs/placement/src/lib/lifecycle/offer-lifecycle.ts",
+      "status": "production",
+      "to": "apps/api/src/policy/offer-lifecycle.package.ts"
+    },
+    {
       "from": "libs/placement/src/lib/reasons/placement-reason-registry.ts",
       "status": "production",
       "to": "scripts/verify-vocabulary.sh"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/placement/src/tests/offer-lifecycle.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/placement/prisma/migrations/20260824120000_init_offer_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/placement/src/tests/offer-repository.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/placement/prisma/migrations/20260824120000_init_offer_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/placement/src/tests/offer-repository.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/policy-store/prisma/migrations/20260730120000_init_policy_store/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/placement/src/tests/offer-repository.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/policy-store/prisma/migrations/20260730160000_add_policy_decision_record/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -13814,6 +13908,7 @@
     { "from": "package.json", "status": "unscoped", "to": "ci/scripts/check-integration-roots.ts" },
     { "from": "package.json", "status": "unscoped", "to": "ci/scripts/check-version-sync.ts" },
     { "from": "package.json", "status": "unscoped", "to": "ci/scripts/compare-spec-to-openapi.ts" },
+    { "from": "package.json", "status": "unscoped", "to": "ci/scripts/generate-offer-sql.ts" },
     { "from": "package.json", "status": "unscoped", "to": "ci/scripts/generate-placement-sql.ts" },
     { "from": "package.json", "status": "unscoped", "to": "ci/scripts/generate-repo-map.ts" },
     { "from": "package.json", "status": "unscoped", "to": "ci/scripts/prepush.ts" },
@@ -13833,6 +13928,7 @@
       "status": "unscoped",
       "to": "ci/scripts/verify-ingestion-refusal.ts"
     },
+    { "from": "package.json", "status": "unscoped", "to": "ci/scripts/verify-offer-sql.ts" },
     { "from": "package.json", "status": "unscoped", "to": "ci/scripts/verify-placement-sql.ts" },
     { "from": "package.json", "status": "unscoped", "to": "ci/scripts/verify-portal-refusal.ts" },
     { "from": "package.json", "status": "unscoped", "to": "ci/scripts/verify-repo-map.ts" },
@@ -14403,6 +14499,16 @@
       "from": "pact/provider/src/verify-api.ts",
       "status": "unscoped",
       "to": "libs/placement/prisma/migrations/20260817120000_t7_px_contract_to_permanent_conversion/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "libs/placement/prisma/migrations/20260824120000_init_offer_model/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "libs/placement/prisma/migrations/20260824130000_placement_offer_id/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",
@@ -15608,7 +15714,7 @@
   ],
   "scanScope": {
     "dirs": [".github/workflows", ".husky", "ci/scripts", "deploy", "scripts", "tools"],
-    "files": 62,
+    "files": 64,
     "huskyPresent": false
   },
   "scripts": [
@@ -15646,6 +15752,7 @@
         { "kind": "prose", "path": "ci/scripts/release-manifest.ts" },
         { "kind": "prose", "path": "ci/scripts/verify-aggregate-gate.ts" },
         { "kind": "prose", "path": "ci/scripts/verify-env-passthrough.ts" },
+        { "kind": "prose", "path": "ci/scripts/verify-offer-sql.ts" },
         { "kind": "prose", "path": "ci/scripts/verify-placement-sql.ts" },
         { "kind": "prose", "path": "deploy/build-images.sh" },
         { "kind": "prose", "path": "deploy/build-images.test.sh" },
@@ -15752,6 +15859,20 @@
       "references": [
         { "kind": "npm-run", "path": ".github/workflows/ci.yml" },
         { "kind": "prose", "path": ".github/workflows/ci.yml" }
+      ]
+    },
+    {
+      "name": "offer:sql:check",
+      "references": [
+        { "kind": "prose", "path": "ci/scripts/generate-offer-sql.ts" },
+        { "kind": "prose", "path": "ci/scripts/verify-offer-sql.ts" }
+      ]
+    },
+    {
+      "name": "offer:sql:generate",
+      "references": [
+        { "kind": "prose", "path": "ci/scripts/generate-offer-sql.ts" },
+        { "kind": "npm-run", "path": "ci/scripts/verify-offer-sql.ts" }
       ]
     },
     {
@@ -15910,6 +16031,7 @@
         { "kind": "prose", "path": "ci/scripts/check-integration-roots.ts" },
         { "kind": "prose", "path": "ci/scripts/check-version-sync.ts" },
         { "kind": "prose", "path": "ci/scripts/frontdoor-boot-smoke.sh" },
+        { "kind": "prose", "path": "ci/scripts/generate-offer-sql.ts" },
         { "kind": "prose", "path": "ci/scripts/generate-placement-sql.ts" },
         { "kind": "prose", "path": "ci/scripts/generate-repo-map.ts" },
         { "kind": "prose", "path": "ci/scripts/integration-roots.ts" },
@@ -15977,6 +16099,7 @@
     }
   ],
   "unreferenced": [
+    "offer:sql:check",
     "prepush",
     "prisma:generate-auth-storage",
     "prisma:generate-identity",

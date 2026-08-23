@@ -26,7 +26,7 @@ const T5_TERMS = { pay_rate_amount: '80.00', bill_rate_amount: '120.00', currenc
 // valid OPTIONAL code for OFFER_DECLINED from the registry (no detail needed), so
 // the proofs stay taxonomy-neutral.
 const DECLINE_REASON = PLACEMENT_REASONS.find(
-  (r) => r.status === 'active' && r.detailPolicy === 'OPTIONAL' && r.allowedTargets.includes('OFFER_DECLINED'),
+  (r) => r.status === 'active' && r.detailPolicy === 'OPTIONAL' && r.allowedTargets.includes('FELL_THROUGH'),
 )!.code;
 
 // Track 3 / E1-b — the guarded PlacementProcess surface at the controller + repo
@@ -72,6 +72,8 @@ const PERMANENT_PLACEMENT_MIGRATION = resolve(__dirname, '../../../../libs/place
 const FALLOFF_REMEDY_MIGRATION = resolve(__dirname, '../../../../libs/placement/prisma/migrations/20260815120000_t7_p2_falloff_remedy/migration.sql');
 // T7-P3: SEPARATE const (never a 2nd resolve() arg — that path-joins to ENOTDIR).
 const GUARANTEE_TERMS_MIGRATION = resolve(__dirname, '../../../../libs/placement/prisma/migrations/20260816120000_t7_p3_guarantee_term_versioning/migration.sql');
+const OFFER_INIT_MIGRATION = resolve(__dirname, '../../../../libs/placement/prisma/migrations/20260824120000_init_offer_model/migration.sql');
+const OFFER_ID_MIGRATION = resolve(__dirname, '../../../../libs/placement/prisma/migrations/20260824130000_placement_offer_id/migration.sql');
 // T6-B1 overlap exclusion constraint — dropped+restored around the legacy-corruption
 // defensive proof (the only way to seed a state the constraint now forbids).
 const OVERLAP_CONSTRAINT = 'AssignmentRateVersion_no_window_overlap_excl';
@@ -110,7 +112,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('E1-b PlacementCon
     const url = container.getConnectionUri();
     setup = new PrismaService(url);
     await setup.$connect();
-    for (const migration of [INIT_MIGRATION, OFFER_OUTBOX_MIGRATION, REASON_MIGRATION, REPLACEMENT_MIGRATION, CONTRACT_ASSIGNMENT_MIGRATION, ASSIGNMENT_ENDED_MIGRATION, ASSIGNMENT_GUARD_MIGRATION, ASSIGNMENT_END_REASON_MIGRATION, ASSIGNMENT_RATE_VERSION_MIGRATION, EFFECTIVE_WINDOW_MIGRATION, COMMERCIAL_CANCELLATION_MIGRATION, PERMANENT_PLACEMENT_MIGRATION, FALLOFF_REMEDY_MIGRATION, GUARANTEE_TERMS_MIGRATION]) {
+    for (const migration of [INIT_MIGRATION, OFFER_OUTBOX_MIGRATION, REASON_MIGRATION, REPLACEMENT_MIGRATION, CONTRACT_ASSIGNMENT_MIGRATION, ASSIGNMENT_ENDED_MIGRATION, ASSIGNMENT_GUARD_MIGRATION, ASSIGNMENT_END_REASON_MIGRATION, ASSIGNMENT_RATE_VERSION_MIGRATION, EFFECTIVE_WINDOW_MIGRATION, COMMERCIAL_CANCELLATION_MIGRATION, PERMANENT_PLACEMENT_MIGRATION, FALLOFF_REMEDY_MIGRATION, GUARANTEE_TERMS_MIGRATION, OFFER_INIT_MIGRATION, OFFER_ID_MIGRATION]) {
       for (const s of splitDdl(readFileSync(migration, 'utf8'))) {
         if (s.trim()) await setup.$executeRawUnsafe(s.trim());
       }
@@ -128,9 +130,24 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('E1-b PlacementCon
 
   const body = () => ({ submittal_id: randomUUID(), requisition_id: randomUUID(), talent_record_id: randomUUID() });
 
+  // Offer Lifecycle (D6) — a placement is created from an ACCEPTED offer. Seed one
+  // (raw, via the placement client's offer model) for the request's tenant and
+  // inject offer_id; the wrapper preserves ctrl.create's (auth, req, body) shape so
+  // guard/E4 refusal tests still hit their earlier checks first (offer unused).
+  async function seedOffer(tenant: string): Promise<string> {
+    const id = randomUUID();
+    await prisma.offer.create({ data: { id, tenant_id: tenant, submittal_id: randomUUID(), requisition_id: randomUUID(), talent_record_id: randomUUID(), state: 'ACCEPTED' } });
+    return id;
+  }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async function ctrlCreate(a: any, req: string, b: Record<string, unknown>) {
+    const offer_id = b['offer_id'] ?? (await seedOffer(a.tenant_id));
+    return ctrl.create(a, req, { ...b, offer_id } as never);
+  }
+
   async function make(tenant: string): Promise<string> {
-    const v = await ctrl.create(auth(['placement:create'], tenant), 'r', body());
-    expect(v.state).toBe('OFFER_EXTENDED');
+    const v = await ctrlCreate(auth(['placement:create'], tenant), 'r', body());
+    expect(v.state).toBe('PRE_START');
     return v.id;
   }
 
@@ -143,34 +160,32 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('E1-b PlacementCon
     const t = randomUUID();
     const id = await make(t);
     // Without the class scope → 403.
-    await expect(ctrl.transition(auth([], t), 'r', id, { to: 'OFFER_ACCEPTED' })).rejects.toMatchObject({
+    await expect(ctrl.transition(auth([], t), 'r', id, { to: 'READY_TO_START' })).rejects.toMatchObject({
       code: 'INSUFFICIENT_PERMISSIONS',
       statusCode: 403,
       context: { details: { authority_class: 'transition', required_scope: 'placement:transition' } },
     });
     // With it → succeeds.
-    const moved = await ctrl.transition(auth(['placement:transition'], t), 'r', id, { to: 'OFFER_ACCEPTED' });
-    expect(moved.state).toBe('OFFER_ACCEPTED');
+    const moved = await ctrl.transition(auth(['placement:transition'], t), 'r', id, { to: 'READY_TO_START' });
+    expect(moved.state).toBe('READY_TO_START');
   });
 
   it('a terminal transition needs placement:terminate (not :transition)', async () => {
     const t = randomUUID();
     const id = await make(t);
     // Holding :transition is NOT enough for a terminal edge.
-    await expect(ctrl.transition(auth(['placement:transition'], t), 'r', id, { to: 'OFFER_DECLINED' })).rejects.toMatchObject({
+    await expect(ctrl.transition(auth(['placement:transition'], t), 'r', id, { to: 'FELL_THROUGH' })).rejects.toMatchObject({
       code: 'INSUFFICIENT_PERMISSIONS',
       context: { details: { authority_class: 'terminate', required_scope: 'placement:terminate' } },
     });
-    const done = await ctrl.transition(auth(['placement:terminate'], t), 'r', id, { to: 'OFFER_DECLINED', reason_code: DECLINE_REASON });
-    expect(done.state).toBe('OFFER_DECLINED');
+    const done = await ctrl.transition(auth(['placement:terminate'], t), 'r', id, { to: 'FELL_THROUGH', reason_code: DECLINE_REASON });
+    expect(done.state).toBe('FELL_THROUGH');
   });
 
   it('the activate edge (READY_TO_START->STARTED) needs placement:activate', async () => {
     const t = randomUUID();
     const id = await make(t);
     const s = auth(['placement:transition', 'placement:activate', 'assignment:commercials:write'], t);
-    await ctrl.transition(s, 'r', id, { to: 'OFFER_ACCEPTED' });
-    await ctrl.transition(s, 'r', id, { to: 'PRE_START' });
     await ctrl.transition(s, 'r', id, { to: 'READY_TO_START' });
     // Without :activate the live edge is refused even holding :transition.
     await expect(ctrl.transition(auth(['placement:transition'], t), 'r', id, { to: 'STARTED' })).rejects.toMatchObject({
@@ -184,7 +199,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('E1-b PlacementCon
   it('T5-P1 — STARTED requires assignment:commercials:write IN CONJUNCTION with placement:activate; placement:* alone does NOT satisfy it', async () => {
     const t = randomUUID();
     const id = await make(t);
-    for (const to of ['OFFER_ACCEPTED', 'PRE_START', 'READY_TO_START'] as const) {
+    for (const to of ['READY_TO_START'] as const) {
       await ctrl.transition(auth(['placement:transition'], t), 'r', id, { to });
     }
     // Holds the edge scope (placement:activate) but NOT commercials:write → refused
@@ -201,9 +216,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('E1-b PlacementCon
   it('an illegal edge is refused by the matrix (PLACEMENT_STATE_INVALID 422) even with the scope', async () => {
     const t = randomUUID();
     const id = await make(t);
-    // OFFER_EXTENDED -> READY_TO_START is not a legal edge; scope class of the
-    // target (transition) is held, so the refusal is the matrix, not authz.
-    await expect(ctrl.transition(auth(['placement:transition'], t), 'r', id, { to: 'READY_TO_START' })).rejects.toMatchObject({
+    // Offer Lifecycle (D6) — born PRE_START; PRE_START -> OFFER_ACCEPTED is not a
+    // legal edge, and OFFER_ACCEPTED is a transition-class target (the scope is
+    // held), so the refusal is the matrix, not authz.
+    await expect(ctrl.transition(auth(['placement:transition'], t), 'r', id, { to: 'OFFER_ACCEPTED' })).rejects.toMatchObject({
       code: 'PLACEMENT_STATE_INVALID',
       statusCode: 422,
     });
@@ -220,7 +236,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('E1-b PlacementCon
   // Date at the controller) and is returned on the response view.
   it('create accepts the offer snapshot and the response carries it back', async () => {
     const t = randomUUID();
-    const v = await ctrl.create(auth(['placement:create'], t), 'r', {
+    const v = await ctrlCreate(auth(['placement:create'], t), 'r', {
       submittal_id: randomUUID(),
       requisition_id: randomUUID(),
       talent_record_id: randomUUID(),
@@ -241,7 +257,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('E1-b PlacementCon
 
   it('create without an offer snapshot defaults offered_at and nulls the optional fields', async () => {
     const t = randomUUID();
-    const v = await ctrl.create(auth(['placement:create'], t), 'r', body());
+    const v = await ctrlCreate(auth(['placement:create'], t), 'r', body());
     expect(v.offered_at).toBeInstanceOf(Date);
     expect(v.proposed_start_date).toBeNull();
     expect(v.client_offer_reference).toBeNull();
@@ -250,7 +266,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('E1-b PlacementCon
   it('an offer_expires_at before offered_at is refused (VALIDATION_ERROR 400)', async () => {
     const t = randomUUID();
     await expect(
-      ctrl.create(auth(['placement:create'], t), 'r', {
+      ctrlCreate(auth(['placement:create'], t), 'r', {
         submittal_id: randomUUID(),
         requisition_id: randomUUID(),
         talent_record_id: randomUUID(),
@@ -277,10 +293,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('E1-b PlacementCon
 
   it('matrix: RECRUITER set drives the ordinary edges to READY_TO_START but is DENIED activate (state/event/outbox unchanged)', async () => {
     const t = randomUUID();
-    const id = await ctrl.create(auth(RECRUITER_PLACEMENT, t), 'r', body()).then((v) => v.id);
+    const id = await ctrlCreate(auth(RECRUITER_PLACEMENT, t), 'r', body()).then((v) => v.id);
     // Ordinary-progression edges are all `transition` class — the recruiter set holds them.
-    await ctrl.transition(auth(RECRUITER_PLACEMENT, t), 'r', id, { to: 'OFFER_ACCEPTED' });
-    await ctrl.transition(auth(RECRUITER_PLACEMENT, t), 'r', id, { to: 'PRE_START' });
     await ctrl.transition(auth(RECRUITER_PLACEMENT, t), 'r', id, { to: 'READY_TO_START' });
     const before = await snapshot(t, id);
     expect(before.state).toBe('READY_TO_START');
@@ -296,10 +310,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('E1-b PlacementCon
 
   it('matrix: RECRUITER set is DENIED a terminal edge (terminate), state/event/outbox unchanged', async () => {
     const t = randomUUID();
-    const id = await ctrl.create(auth(RECRUITER_PLACEMENT, t), 'r', body()).then((v) => v.id);
+    const id = await ctrlCreate(auth(RECRUITER_PLACEMENT, t), 'r', body()).then((v) => v.id);
     const before = await snapshot(t, id);
-    expect(before.state).toBe('OFFER_EXTENDED');
-    await expect(ctrl.transition(auth(RECRUITER_PLACEMENT, t), 'r', id, { to: 'OFFER_DECLINED' })).rejects.toMatchObject({
+    expect(before.state).toBe('PRE_START');
+    await expect(ctrl.transition(auth(RECRUITER_PLACEMENT, t), 'r', id, { to: 'FELL_THROUGH' })).rejects.toMatchObject({
       code: 'INSUFFICIENT_PERMISSIONS',
       statusCode: 403,
       context: { details: { authority_class: 'terminate', required_scope: 'placement:terminate' } },
@@ -309,9 +323,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('E1-b PlacementCon
 
   it('matrix: MANAGER set (account_manager/tenant_admin/tenant_owner) CAN activate the live edge', async () => {
     const t = randomUUID();
-    const id = await ctrl.create(auth(MANAGER_PLACEMENT, t), 'r', body()).then((v) => v.id);
-    await ctrl.transition(auth(MANAGER_PLACEMENT, t), 'r', id, { to: 'OFFER_ACCEPTED' });
-    await ctrl.transition(auth(MANAGER_PLACEMENT, t), 'r', id, { to: 'PRE_START' });
+    const id = await ctrlCreate(auth(MANAGER_PLACEMENT, t), 'r', body()).then((v) => v.id);
     await ctrl.transition(auth(MANAGER_PLACEMENT, t), 'r', id, { to: 'READY_TO_START' });
     const live = await ctrl.transition(auth(MANAGER_PLACEMENT, t), 'r', id, { to: 'STARTED', assignment_company_id: randomUUID(), commercial_terms: T5_TERMS });
     expect(live.state).toBe('STARTED');
@@ -320,9 +332,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('E1-b PlacementCon
   // ---- T4-D assignment:read — the assignment-state read surface ----
 
   async function driveToStarted(t: string, company_id = randomUUID()): Promise<string> {
-    const id = await ctrl.create(auth(MANAGER_PLACEMENT, t), 'r', body()).then((v) => v.id);
-    await ctrl.transition(auth(MANAGER_PLACEMENT, t), 'r', id, { to: 'OFFER_ACCEPTED' });
-    await ctrl.transition(auth(MANAGER_PLACEMENT, t), 'r', id, { to: 'PRE_START' });
+    const id = await ctrlCreate(auth(MANAGER_PLACEMENT, t), 'r', body()).then((v) => v.id);
     await ctrl.transition(auth(MANAGER_PLACEMENT, t), 'r', id, { to: 'READY_TO_START' });
     await ctrl.transition(auth(MANAGER_PLACEMENT, t), 'r', id, { to: 'STARTED', assignment_company_id: company_id, commercial_terms: T5_TERMS });
     return id;
@@ -356,7 +366,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('E1-b PlacementCon
 
   it('assignment:read no-assignment — a placement with no ContractAssignment returns { assignment: null } (coherent absence, not error, not fabricated)', async () => {
     const t = randomUUID();
-    const id = await ctrl.create(auth(RECRUITER_PLACEMENT, t), 'r', body()).then((v) => v.id); // OFFER_EXTENDED, never STARTED
+    const id = await ctrlCreate(auth(RECRUITER_PLACEMENT, t), 'r', body()).then((v) => v.id); // OFFER_EXTENDED, never STARTED
     const res = await ctrl.getAssignment(readAuth(t), 'r', id, reqSeeAll);
     expect(res.assignment).toBeNull();
   });
@@ -411,7 +421,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('E1-b PlacementCon
   // E — coherent absence: a visible placement with no assignment returns null.
   it('T5-P2 coherent absence — visible placement, no assignment → { commercials: null }', async () => {
     const t = randomUUID();
-    const id = await ctrl.create(auth(MANAGER_PLACEMENT, t), 'r', body()).then((v) => v.id);
+    const id = await ctrlCreate(auth(MANAGER_PLACEMENT, t), 'r', body()).then((v) => v.id);
     const res = await ctrl.getAssignmentCommercials(commAuth(t), 'r', id, reqSeeAll);
     expect(res.commercials).toBeNull();
   });
@@ -638,15 +648,15 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('E1-b PlacementCon
 
   it('matrix: MANAGER set (account_manager/tenant_admin/tenant_owner) CAN terminate with a valid reason (a terminal edge)', async () => {
     const t = randomUUID();
-    const id = await ctrl.create(auth(MANAGER_PLACEMENT, t), 'r', body()).then((v) => v.id);
-    const done = await ctrl.transition(auth(MANAGER_PLACEMENT, t), 'r', id, { to: 'OFFER_DECLINED', reason_code: DECLINE_REASON });
-    expect(done.state).toBe('OFFER_DECLINED');
+    const id = await ctrlCreate(auth(MANAGER_PLACEMENT, t), 'r', body()).then((v) => v.id);
+    const done = await ctrl.transition(auth(MANAGER_PLACEMENT, t), 'r', id, { to: 'FELL_THROUGH', reason_code: DECLINE_REASON });
+    expect(done.state).toBe('FELL_THROUGH');
   });
 
   it('matrix: read is tenant-isolated after authorization — a placement:read grant in tenant A does not read tenant B', async () => {
     const tenantA = randomUUID();
     const tenantB = randomUUID();
-    const id = await ctrl.create(auth(MANAGER_PLACEMENT, tenantA), 'r', body()).then((v) => v.id);
+    const id = await ctrlCreate(auth(MANAGER_PLACEMENT, tenantA), 'r', body()).then((v) => v.id);
     // Same authorized scope, different tenant → least-visibility 404 (NOT the row).
     await expect(ctrl.get(auth(['placement:read'], tenantB), 'r', id, reqSeeAll)).rejects.toMatchObject({ code: 'NOT_FOUND', statusCode: 404 });
     // Sanity: within tenant A the read succeeds.
@@ -661,10 +671,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('E1-b PlacementCon
   // state/event/outbox unchanged.
   it('E3: RECRUITER attempting a terminal edge WITH a valid reason is still 403 (authz precedes reason); state/event/outbox unchanged', async () => {
     const t = randomUUID();
-    const id = await ctrl.create(auth(RECRUITER_PLACEMENT, t), 'r', body()).then((v) => v.id);
+    const id = await ctrlCreate(auth(RECRUITER_PLACEMENT, t), 'r', body()).then((v) => v.id);
     const before = await snapshot(t, id);
     await expect(
-      ctrl.transition(auth(RECRUITER_PLACEMENT, t), 'r', id, { to: 'OFFER_DECLINED', reason_code: DECLINE_REASON }),
+      ctrl.transition(auth(RECRUITER_PLACEMENT, t), 'r', id, { to: 'FELL_THROUGH', reason_code: DECLINE_REASON }),
     ).rejects.toMatchObject({
       code: 'INSUFFICIENT_PERMISSIONS',
       statusCode: 403,
@@ -677,10 +687,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('E1-b PlacementCon
   // the reason gate (422), not authorization. Non-vacuous: nothing moved.
   it('E3: an authorized terminal transition with NO reason_code → 422 PLACEMENT_REASON_INVALID (reason_required); nothing moved', async () => {
     const t = randomUUID();
-    const id = await ctrl.create(auth(MANAGER_PLACEMENT, t), 'r', body()).then((v) => v.id);
+    const id = await ctrlCreate(auth(MANAGER_PLACEMENT, t), 'r', body()).then((v) => v.id);
     const before = await snapshot(t, id);
     await expect(
-      ctrl.transition(auth(MANAGER_PLACEMENT, t), 'r', id, { to: 'OFFER_DECLINED' }),
+      ctrl.transition(auth(MANAGER_PLACEMENT, t), 'r', id, { to: 'FELL_THROUGH' }),
     ).rejects.toMatchObject({
       code: 'PLACEMENT_REASON_INVALID',
       statusCode: 422,
@@ -692,10 +702,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('E1-b PlacementCon
   // Reason input on a NON-governed edge is refused (422), even when authorized.
   it('E3: a non-governed transition carrying a reason_code → 422 PLACEMENT_REASON_INVALID (reason_on_non_governed_target)', async () => {
     const t = randomUUID();
-    const id = await ctrl.create(auth(MANAGER_PLACEMENT, t), 'r', body()).then((v) => v.id);
+    const id = await ctrlCreate(auth(MANAGER_PLACEMENT, t), 'r', body()).then((v) => v.id);
     const before = await snapshot(t, id);
     await expect(
-      ctrl.transition(auth(MANAGER_PLACEMENT, t), 'r', id, { to: 'OFFER_ACCEPTED', reason_code: DECLINE_REASON }),
+      ctrl.transition(auth(MANAGER_PLACEMENT, t), 'r', id, { to: 'READY_TO_START', reason_code: DECLINE_REASON }),
     ).rejects.toMatchObject({
       code: 'PLACEMENT_REASON_INVALID',
       statusCode: 422,
@@ -710,10 +720,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('E1-b PlacementCon
   it('E3: a cross-tenant terminal transition attempt (valid reason) is 404 (least-visibility), and the real placement is untouched', async () => {
     const owner = randomUUID();
     const intruder = randomUUID();
-    const id = await ctrl.create(auth(MANAGER_PLACEMENT, owner), 'r', body()).then((v) => v.id);
+    const id = await ctrlCreate(auth(MANAGER_PLACEMENT, owner), 'r', body()).then((v) => v.id);
     const before = await snapshot(owner, id);
     await expect(
-      ctrl.transition(auth(MANAGER_PLACEMENT, intruder), 'r', id, { to: 'OFFER_DECLINED', reason_code: DECLINE_REASON }),
+      ctrl.transition(auth(MANAGER_PLACEMENT, intruder), 'r', id, { to: 'FELL_THROUGH', reason_code: DECLINE_REASON }),
     ).rejects.toMatchObject({ code: 'NOT_FOUND', statusCode: 404 });
     // The owner's placement is untouched.
     expect(await snapshot(owner, id)).toEqual(before);
@@ -723,13 +733,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('E1-b PlacementCon
   // Create a terminal predecessor to replace: create (OFFER_EXTENDED) then
   // terminate into OFFER_DECLINED with a valid governed reason. Returns its id.
   async function makeTerminalPredecessor(tenant: string, requisitionId: string): Promise<string> {
-    const created = await ctrl.create(auth(['placement:create'], tenant), 'r', {
+    const created = await ctrlCreate(auth(['placement:create'], tenant), 'r', {
       submittal_id: randomUUID(),
       requisition_id: requisitionId,
       talent_record_id: randomUUID(),
     });
     await ctrl.transition(auth(['placement:terminate'], tenant), 'r', created.id, {
-      to: 'OFFER_DECLINED',
+      to: 'FELL_THROUGH',
       reason_code: DECLINE_REASON,
     });
     return created.id;
@@ -744,7 +754,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('E1-b PlacementCon
     const predecessor = await makeTerminalPredecessor(t, req);
     const countBefore = await prisma.placementProcess.count({ where: { tenant_id: t } });
     await expect(
-      ctrl.create(auth(['placement:create'], t), 'r', {
+      ctrlCreate(auth(['placement:create'], t), 'r', {
         submittal_id: randomUUID(),
         requisition_id: req,
         talent_record_id: randomUUID(),
@@ -767,13 +777,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('E1-b PlacementCon
     const req = randomUUID();
     const predecessor = await makeTerminalPredecessor(t, req);
     const predBefore = await prisma.placementProcess.findFirst({ where: { tenant_id: t, id: predecessor } });
-    const successor = await ctrl.create(auth(MANAGER_PLACEMENT, t), 'r', {
+    const successor = await ctrlCreate(auth(MANAGER_PLACEMENT, t), 'r', {
       submittal_id: randomUUID(),
       requisition_id: req,
       talent_record_id: randomUUID(),
       replaces_placement_process_id: predecessor,
     });
-    expect(successor.state).toBe('OFFER_EXTENDED');
+    expect(successor.state).toBe('PRE_START');
     // The response projection carries NO replaces field (§2 — request-only).
     expect(successor).not.toHaveProperty('replaces_placement_process_id');
     // The pointer is persisted on the successor row (read at the DB boundary).
@@ -792,14 +802,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('E1-b PlacementCon
   it('E4 / P-valid-1 (T-cyc-1): predecessor NON-terminal → 422 predecessor_not_terminal, nothing inserted', async () => {
     const t = randomUUID();
     const req = randomUUID();
-    const live = await ctrl.create(auth(['placement:create'], t), 'r', {
+    const live = await ctrlCreate(auth(['placement:create'], t), 'r', {
       submittal_id: randomUUID(),
       requisition_id: req,
       talent_record_id: randomUUID(),
     });
     const countBefore = await prisma.placementProcess.count({ where: { tenant_id: t } });
     await expect(
-      ctrl.create(auth(MANAGER_PLACEMENT, t), 'r', {
+      ctrlCreate(auth(MANAGER_PLACEMENT, t), 'r', {
         submittal_id: randomUUID(),
         requisition_id: req,
         talent_record_id: randomUUID(),
@@ -819,7 +829,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('E1-b PlacementCon
   it('E4 / P-valid-2: absent predecessor → 422 predecessor_not_found', async () => {
     const t = randomUUID();
     await expect(
-      ctrl.create(auth(MANAGER_PLACEMENT, t), 'r', {
+      ctrlCreate(auth(MANAGER_PLACEMENT, t), 'r', {
         submittal_id: randomUUID(),
         requisition_id: randomUUID(),
         talent_record_id: randomUUID(),
@@ -838,7 +848,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('E1-b PlacementCon
     const req = randomUUID();
     const pred = await makeTerminalPredecessor(owner, req);
     await expect(
-      ctrl.create(auth(MANAGER_PLACEMENT, intruder), 'r', {
+      ctrlCreate(auth(MANAGER_PLACEMENT, intruder), 'r', {
         submittal_id: randomUUID(),
         requisition_id: req,
         talent_record_id: randomUUID(),
@@ -857,7 +867,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('E1-b PlacementCon
     const reqB = randomUUID();
     const pred = await makeTerminalPredecessor(t, reqA);
     await expect(
-      ctrl.create(auth(MANAGER_PLACEMENT, t), 'r', {
+      ctrlCreate(auth(MANAGER_PLACEMENT, t), 'r', {
         submittal_id: randomUUID(),
         requisition_id: reqB,
         talent_record_id: randomUUID(),

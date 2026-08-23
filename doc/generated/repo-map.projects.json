@@ -601,11 +601,24 @@
       "GuaranteeExposureReadRepository",
       "GuaranteeTermRepository",
       "INITIAL_STATE",
+      "LEGAL_OFFER_TRANSITIONS",
       "LEGAL_TRANSITIONS",
       "LIFECYCLE_POSITIONS",
+      "OFFER_ACCEPTED_STATES",
+      "OFFER_INITIAL_STATE",
+      "OFFER_LIFECYCLE_PACKAGE_NAME",
+      "OFFER_ONE_LIVE_GUARD_INACTIVE",
+      "OFFER_RESOURCE",
+      "OFFER_STATES",
+      "OFFER_STATE_POSITION",
+      "OFFER_TRANSITIONS",
+      "OFFER_TRANSITION_ACTIONS",
+      "OFFER_TRANSITION_TERMINAL",
       "OUTBOX_GUARANTEE_TERMS_APPLIED",
       "OUTBOX_GUARANTEE_TERMS_CREATED",
       "OUTBOX_GUARANTEE_TERMS_REVISED",
+      "OfferRepository",
+      "OfferTransitionPolicyService",
       "PERMANENT_FALLOFF_REASON_CODES",
       "PERMANENT_PLACEMENT_INITIAL_STATE",
       "PERMANENT_PLACEMENT_STATES",
@@ -646,8 +659,10 @@
       "edgeAuthorityClass",
       "generatePlacementMigrationSql",
       "getReason",
+      "governingOfferAction",
       "isGovernedTerminalTarget",
       "isGuaranteeTermsSourceType",
+      "isLegalOfferTransition",
       "isPermanentFalloffReasonCode",
       "isUserCancellationReasonCode",
       "lifecyclePositionOf",
@@ -1916,6 +1931,12 @@
       { "project": "object-storage", "status": "production" },
       { "project": "outbox-publisher", "status": "production" },
       { "project": "pipeline", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/placement/src/tests/offer-repository.integration.spec.ts",
+        "project": "placement",
+        "status": "excluded"
+      },
       { "project": "placement", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
@@ -3298,6 +3319,12 @@
     "@aramo/placement": [
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/offer-lifecycle-package.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/placement-http.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -3413,6 +3440,12 @@
     "@aramo/policy-engine": [
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/offer-lifecycle-package.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/policy-matrix.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -3431,6 +3464,7 @@
         "status": "excluded"
       },
       { "project": "pipeline", "status": "production" },
+      { "project": "placement", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/policy-store/src/tests/decision-inputs.spec.ts",
@@ -3514,6 +3548,13 @@
         "status": "unscoped"
       },
       { "project": "pipeline", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/placement/src/tests/offer-repository.integration.spec.ts",
+        "project": "placement",
+        "status": "excluded"
+      },
+      { "project": "placement", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/tenant-policy-provisioning.integration.spec.ts",

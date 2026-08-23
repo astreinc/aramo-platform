@@ -14,6 +14,11 @@ export type CreatePlacementInput = {
   readonly submittal_id: string;
   readonly requisition_id: string;
   readonly talent_record_id: string;
+  // Offer Lifecycle (D6, R-PRECEDENCE) — the ACCEPTED offer this placement is
+  // created from. REQUIRED in practice: createPlacement rejects a create whose
+  // offer_id is absent or does not reference an ACCEPTED offer in this tenant
+  // (the create-time referential-integrity idiom). Written once at INSERT.
+  readonly offer_id?: string | null;
   // Track 7 / T7-P1 — the branch fact, persisted once at INSERT (§3.1). Optional
   // and nullable: a legacy/kind-agnostic create omits it (NULL), preserving
   // historical CONTRACT behaviour at STARTED. A flow that knows the type persists
@@ -171,6 +176,9 @@ export type PlacementProcessView = {
   readonly requisition_id: string;
   readonly talent_record_id: string;
   readonly state: PlacementState;
+  // Offer Lifecycle (D6) — the ACCEPTED offer this placement was created from
+  // (NULL for legacy pre-offer rows).
+  readonly offer_id: string | null;
   readonly offered_at: Date;
   readonly proposed_start_date: Date | null;
   readonly offer_expires_at: Date | null;

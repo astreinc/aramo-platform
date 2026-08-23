@@ -340,6 +340,10 @@ export const SEED_SCOPE_KEYS = [
   // Requisition Approval sub-workflow — decide the pending_approval → open /
   // → draft (APPROVE / REJECT) governed transitions.
   'requisition:approve',
+  // Offer Lifecycle — the dedicated pre-placement offer aggregate: create a
+  // DRAFT offer, and drive its governed transitions (send/negotiate/accept/…).
+  'offer:create',
+  'offer:transition',
 ] as const;
 export type SeedScopeKey = (typeof SEED_SCOPE_KEYS)[number];
 

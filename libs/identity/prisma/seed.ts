@@ -344,6 +344,9 @@ export const SEED_IDS = {
     'submittal-policy:write': '01900000-0000-7000-8000-0000000000de',
     // Requisition Approval sub-workflow — lowest-free suffix 0xdb (df+ free).
     'requisition:approve': '01900000-0000-7000-8000-0000000000db',
+    // Offer Lifecycle — next-free suffixes 0xdf, 0xe0.
+    'offer:create': '01900000-0000-7000-8000-0000000000df',
+    'offer:transition': '01900000-0000-7000-8000-0000000000e0',
   },
   // RoleScope ids — one per (role,scope) assignment. Hardcoded sequence
   // 0x30..0x39 (10 assignments: 6 tenant_admin + 4 recruiter; the 3
@@ -2094,6 +2097,34 @@ const APPROVAL_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
   return map;
 })();
 
+// Offer Lifecycle — offer aggregate authority role-matrix. offer:create +
+// offer:transition granted to recruiter + account_manager + tenant_admin +
+// tenant_owner (mirrors placement:create / placement:transition — the offer is
+// the pre-placement stage of the same hire-spine tier).
+export const OFFER_SEED_BUNDLES: ReadonlyArray<
+  readonly [string, readonly string[]]
+> = [
+  ['recruiter', ['offer:create', 'offer:transition']],
+  ['account_manager', ['offer:create', 'offer:transition']],
+  ['tenant_admin', ['offer:create', 'offer:transition']],
+  ['tenant_owner', ['offer:create', 'offer:transition']],
+];
+
+// Deterministic RoleScope row ids for the 8 offer grants. Fresh disjoint range
+// 0xc40+ (submittal-policy 0xc20, approval 0xc30). DO NOT REORDER.
+const OFFER_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
+  const map: Record<string, string> = {};
+  let i = 0xc40;
+  for (const [role, scopes] of OFFER_SEED_BUNDLES) {
+    for (const scope of scopes) {
+      map[`${role}:${scope}`] =
+        `01900000-0000-7000-8000-${i.toString(16).padStart(12, '0')}`;
+      i++;
+    }
+  }
+  return map;
+})();
+
 interface IdentityPrismaClient {
   tenant: typeof PrismaClient.prototype.tenant;
   user: typeof PrismaClient.prototype.user;
@@ -2436,6 +2467,8 @@ export async function runIdentitySeed(
   await upsertScope(prisma, SEED_IDS.scopes['integration:write'], 'integration:write', 'Track 8 / T8-CONNECTOR-A — administer provider-neutral connector connections (create/configure-credential/enable/disable). Never returns raw secret material. GRANTED to tenant_admin, tenant_owner only; recruiter/account_manager excluded (administrative tier). The connector ServiceAccount does NOT hold this — execution authority is requisition:import:write only. NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['submittal-policy:write'], 'submittal-policy:write', 'Lane L8-B1 — set the client-submittal eligibility policy on a requisition (submittal deadline, supplier slot limit, manual open/pause/close, authority). Least-privilege (base R-OQB): GRANTED to account_manager, tenant_admin, tenant_owner only; recruiter excluded — editing a requisition does NOT grant authority over client-submittal rules. NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['requisition:approve'], 'requisition:approve', 'Requisition Approval sub-workflow — decide a requisition approval: the governed APPROVE (pending_approval -> open) and REJECT (pending_approval -> draft) transitions, enforced IN-SERVICE at the requisition repository (a 403 costs no policy decision + no write). APPROVE additionally enforces segregation of duties (the approver must differ from the recruiter who submitted for approval). GRANTED to account_manager, tenant_admin, tenant_owner only (manager tier, mirrors requisition:edit:financials); recruiter excluded — a recruiter cannot approve. NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['offer:create'], 'offer:create', 'Offer Lifecycle — create a DRAFT Offer (POST /v1/offers), the dedicated pre-placement offer aggregate. GRANTED to recruiter, account_manager, tenant_admin, tenant_owner (mirrors placement:create — the offer is the pre-placement stage of the same hire-spine tier). NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['offer:transition'], 'offer:transition', 'Offer Lifecycle — drive an Offer governed transition (PATCH /v1/offers/:id): send / negotiate / revise / accept / decline / expire / rescind, along the legal DRAFT->SENT->NEGOTIATION->ACCEPTED/DECLINED/EXPIRED/RESCINDED edges (the DB trigger + ADR-0024 offer-lifecycle policy enforce legality). GRANTED to recruiter, account_manager, tenant_admin, tenant_owner (mirrors placement:transition). NO scope.created (scope-seed precedent).');
 
   // 7. RoleScope assignments — pre-AUTHZ-1 (88 rows: 13 + 12 + 52 + 11).
   for (const [roleKey, scopeKeys] of Object.entries(ROLE_SCOPE_ASSIGNMENTS)) {
@@ -2992,6 +3025,27 @@ export async function runIdentitySeed(
       if (rsId === undefined) {
         throw new Error(
           `Approval-Role-Matrix: Missing generated RoleScope id for ${roleKey}:${scopeKey}`,
+        );
+      }
+      const scope_id = scopeIdForKey(scopeKey);
+      await prisma.roleScope.upsert({
+        where: { role_id_scope_id: { role_id, scope_id } },
+        update: {},
+        create: { id: rsId, role_id, scope_id },
+      });
+    }
+  }
+
+  // Offer Lifecycle — offer authority grants (8 rows; range 0xc40+).
+  // offer:create + offer:transition -> recruiter + account_manager + tenant_admin
+  // + tenant_owner (mirrors the placement:create/transition tier).
+  for (const [roleKey, scopeKeys] of OFFER_SEED_BUNDLES) {
+    const role_id = roleIdForKey(roleKey);
+    for (const scopeKey of scopeKeys) {
+      const rsId = OFFER_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
+      if (rsId === undefined) {
+        throw new Error(
+          `Offer-Role-Matrix: Missing generated RoleScope id for ${roleKey}:${scopeKey}`,
         );
       }
       const scope_id = scopeIdForKey(scopeKey);

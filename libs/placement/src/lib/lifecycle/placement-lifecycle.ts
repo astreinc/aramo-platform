@@ -34,8 +34,13 @@ export const PLACEMENT_STATES = [
 
 export type PlacementState = (typeof PLACEMENT_STATES)[number];
 
-// A placement process exists because an offer was made (§4).
-export const INITIAL_STATE: PlacementState = 'OFFER_EXTENDED';
+// A placement process is created DOWNSTREAM of an ACCEPTED offer (Offer
+// Lifecycle, D6/R-PRECEDENCE) — offer extension/acceptance now lives in the
+// dedicated offer aggregate (offer."Offer"), so the placement is born at
+// PRE_START. The legacy OFFER_* states remain in the machine (non-destructive;
+// their removal is gated on the PROD-box emptiness recon) but are no longer the
+// create-birth state.
+export const INITIAL_STATE: PlacementState = 'PRE_START';
 
 // ---------------------------------------------------------------------------
 // Lifecycle position — a PROPERTY OF THE STATE, encoded as data (§4c).

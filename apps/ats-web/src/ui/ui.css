@@ -3998,3 +3998,10 @@ select.rc-input { appearance: none; padding-right: 28px; }
 .rc-rail-toggle {
   display: none;
 }
+
+/* Offer Lifecycle (D7) — the Offer panel: state chip + governed affordances. */
+.rc-offer { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--border); border-radius: 8px; }
+.rc-offer__head { display: flex; align-items: center; gap: 8px; }
+.rc-offer__label { font-weight: 600; }
+.rc-offer__state { color: var(--brand); font-weight: 600; }
+.rc-offer__actions { display: flex; flex-wrap: wrap; gap: 6px; }

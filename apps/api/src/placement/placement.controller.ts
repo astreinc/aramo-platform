@@ -121,6 +121,9 @@ export class PlacementController {
         submittal_id: body.submittal_id,
         requisition_id: body.requisition_id,
         talent_record_id: body.talent_record_id,
+        // Offer Lifecycle (D6) — the ACCEPTED offer this placement derives from;
+        // the repository refuses a create that is not ACCEPTED (VALIDATION_ERROR).
+        offer_id: body.offer_id,
         // E1-c offer snapshot — the DTO carries ISO strings (IsDateString); the
         // repository I/O type is Date-typed, so convert at the HTTP boundary.
         offered_at: body.offered_at != null ? new Date(body.offered_at) : undefined,

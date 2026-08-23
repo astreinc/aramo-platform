@@ -158,6 +158,8 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   TALENT_RESTRICTED_AT_CLIENT: 409,
   PIPELINE_SUBMIT_REQUIRES_SUBMITTAL: 409,
   SUBMITTAL_PIPELINE_LINK_INVALID: 409,
+  OFFER_ALREADY_LIVE: 409,
+  OFFER_ILLEGAL_TRANSITION: 409,
 };
 
 // Base error class. Thrown anywhere in the app where a structured response

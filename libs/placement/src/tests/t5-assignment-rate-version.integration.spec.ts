@@ -9,6 +9,8 @@ import { PrismaService } from '../lib/prisma/prisma.service.js';
 import { PlacementRepository } from '../lib/placement.repository.js';
 import type { CreatePlacementInput, PlacementState } from '../lib/placement-process.types.js';
 
+import { seedAcceptedOffer } from './support/offer-fixture.js';
+
 // Track 5 / T5-P1 — D-1 proofs for the INITIAL Assignment Rate Version created
 // atomically with the FORWARD STARTED ContractAssignment (Amendment A1 + A2).
 // Non-vacuous: each proof asserts the exact BEFORE (0 rows) and the EXACT AFTER
@@ -30,6 +32,8 @@ const MIGRATIONS = [
   '20260814120000_t7_permanent_placement',
   '20260815120000_t7_p2_falloff_remedy',
   '20260816120000_t7_p3_guarantee_term_versioning',
+  '20260824120000_init_offer_model',
+  '20260824130000_placement_offer_id',
 ].map((d) => resolve(__dirname, `../../prisma/migrations/${d}/migration.sql`));
 
 // Dollar-quote-aware, line-comment-blind statement splitter (the migrations keep
@@ -46,7 +50,9 @@ function splitDdl(sql: string): string[] {
   return out;
 }
 
-const PATH_TO_READY: PlacementState[] = ['OFFER_ACCEPTED', 'PRE_START', 'READY_TO_START'];
+// Offer Lifecycle (D6) — placements are born at PRE_START (downstream of an
+// ACCEPTED offer); the path to READY_TO_START no longer runs through OFFER_*.
+const PATH_TO_READY: PlacementState[] = ['READY_TO_START'];
 const VALID_TERMS = { pay_rate_amount: '80.00', bill_rate_amount: '120.50', currency: 'USD', rate_period: 'HOURLY' } as const;
 
 function baseInput(overrides: Partial<CreatePlacementInput> = {}): CreatePlacementInput {
@@ -89,8 +95,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await container?.stop();
     });
 
+    // Offer Lifecycle (D6) — create from an ACCEPTED offer (the reusable seam).
+    async function createValid(input: CreatePlacementInput, requestId: string) {
+      const offer_id = input.offer_id ?? (await seedAcceptedOffer(prisma, { tenant_id: input.tenant_id }));
+      return repo.createPlacement({ ...input, offer_id }, requestId);
+    }
+
     async function driveToReady(input: CreatePlacementInput): Promise<string> {
-      const created = await repo.createPlacement(input, 'drive');
+      const created = await createValid(input, 'drive');
       let id = created.id;
       for (const to of PATH_TO_READY) {
         const v = await repo.transition({ tenant_id: input.tenant_id, placement_process_id: id, to }, 'drive');
@@ -207,10 +219,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     // silently discarded on another edge (Amendment A2 §2).
     it('commercial_terms on a non-STARTED transition is rejected', async () => {
       const input = baseInput();
-      const created = await repo.createPlacement(input, 'drive');
+      const created = await createValid(input, 'drive');
+      // BLOCKED is a legal non-STARTED edge from the PRE_START birth state; the
+      // point is that commercial_terms are rejected on any non-STARTED transition.
       await expect(
         repo.transition(
-          { tenant_id: input.tenant_id, placement_process_id: created.id, to: 'OFFER_ACCEPTED', commercial_terms: VALID_TERMS, recorded_by: randomUUID() },
+          { tenant_id: input.tenant_id, placement_process_id: created.id, to: 'BLOCKED', commercial_terms: VALID_TERMS, recorded_by: randomUUID() },
           'x',
         ),
       ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });

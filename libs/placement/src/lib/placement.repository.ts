@@ -51,6 +51,7 @@ interface PlacementProcessRow {
   requisition_id: string;
   talent_record_id: string;
   state: PlacementState;
+  offer_id: string | null;
   offered_at: Date;
   proposed_start_date: Date | null;
   offer_expires_at: Date | null;
@@ -69,6 +70,7 @@ function projectView(row: PlacementProcessRow): PlacementProcessView {
     requisition_id: row.requisition_id,
     talent_record_id: row.talent_record_id,
     state: row.state,
+    offer_id: row.offer_id,
     offered_at: row.offered_at,
     proposed_start_date: row.proposed_start_date,
     offer_expires_at: row.offer_expires_at,
@@ -416,6 +418,30 @@ export class PlacementRepository {
       }
     }
 
+    // Offer Lifecycle (D6, R-PRECEDENCE) — the placement is created DOWNSTREAM of
+    // an ACCEPTED offer. offer_id is REQUIRED and must reference an offer in this
+    // tenant in state ACCEPTED (the same create-time referential-integrity idiom
+    // as E4's replaces_placement_process_id; there is no FK, §7.3). A missing
+    // offer_id, or one that does not resolve to an ACCEPTED offer, is refused
+    // before the live-guard-cleared INSERT.
+    const offerId = input.offer_id ?? null;
+    if (offerId === null) {
+      throw new AramoError('VALIDATION_ERROR', 'offer_id is required — a placement is created from an ACCEPTED offer', 400, {
+        requestId,
+        details: { field: 'offer_id', reason: 'offer_id_required' },
+      });
+    }
+    const acceptedOffer = await this.prisma.offer.findFirst({
+      where: { tenant_id: input.tenant_id, id: offerId, state: 'ACCEPTED' },
+      select: { id: true },
+    });
+    if (acceptedOffer === null) {
+      throw new AramoError('VALIDATION_ERROR', 'placement requires the referenced offer to be ACCEPTED', 400, {
+        requestId,
+        details: { field: 'offer_id', reason: 'offer_not_accepted', offer_id: offerId },
+      });
+    }
+
     // Offer snapshot (9-c-1). offered_at defaults to the server time of the offer
     // fact. offer_expires_at, when present, must not precede offered_at.
     const offered_at = input.offered_at ?? new Date();
@@ -438,6 +464,8 @@ export class PlacementRepository {
             requisition_id: input.requisition_id,
             talent_record_id: input.talent_record_id,
             state: INITIAL_STATE,
+            // Offer Lifecycle (D6) — the ACCEPTED offer this placement derives from.
+            offer_id: offerId,
             offered_at,
             proposed_start_date: input.proposed_start_date ?? null,
             offer_expires_at: input.offer_expires_at ?? null,

@@ -2,6 +2,27 @@
 
 // Persistence.
 export { PrismaService } from './lib/prisma/prisma.service.js';
+export { OfferRepository } from './lib/offer.repository.js';
+export type { OfferView, CreateOfferInput, TransitionOfferInput } from './lib/offer.repository.js';
+export { OfferTransitionPolicyService, OFFER_POLICY_STORE } from './lib/policy/offer-transition-policy.service.js';
+export {
+  OFFER_STATES,
+  OFFER_INITIAL_STATE,
+  OFFER_TRANSITIONS,
+  LEGAL_OFFER_TRANSITIONS,
+  OFFER_TRANSITION_TERMINAL,
+  OFFER_ACCEPTED_STATES,
+  OFFER_ONE_LIVE_GUARD_INACTIVE,
+  OFFER_STATE_POSITION,
+  isLegalOfferTransition,
+  OFFER_RESOURCE,
+  OFFER_LIFECYCLE_PACKAGE_NAME,
+  OFFER_TRANSITION_ACTIONS,
+  governingOfferAction,
+  type OfferState,
+  type OfferTransitionAction,
+  type LegalOfferTarget,
+} from './lib/lifecycle/offer-lifecycle.js';
 export { PlacementRepository } from './lib/placement.repository.js';
 export type { ConvertToPermanentResult } from './lib/placement.repository.js';
 export { PlacementProcessEventRepository } from './lib/placement-process-event.repository.js';

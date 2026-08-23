@@ -14,6 +14,8 @@ import {
 } from '../lib/reasons/placement-reason-registry.js';
 import type { CreatePlacementInput } from '../lib/placement-process.types.js';
 
+import { seedAcceptedOffer, seedPlacementAtState } from './support/offer-fixture.js';
+
 // Track 3 / E1-d — the placement READ surface (collection + event/reason) at the
 // repository boundary, against real Postgres 17. These prove the least-visibility
 // and reason-disclosure rulings (D-1/D-2/D-3) at the exact predicates the HTTP
@@ -32,6 +34,9 @@ const PERMANENT_PLACEMENT_MIGRATION_PATH = resolve(__dirname, '../../prisma/migr
 const FALLOFF_REMEDY_MIGRATION_PATH = resolve(__dirname, '../../prisma/migrations/20260815120000_t7_p2_falloff_remedy/migration.sql');
 // T7-P3: SEPARATE const (never a 2nd resolve() arg — that path-joins to ENOTDIR).
 const GUARANTEE_TERMS_MIGRATION_PATH = resolve(__dirname, '../../prisma/migrations/20260816120000_t7_p3_guarantee_term_versioning/migration.sql');
+// Offer Lifecycle (D6) — the offer aggregate + the placement.offer_id column.
+const OFFER_INIT_MIGRATION_PATH = resolve(__dirname, '../../prisma/migrations/20260824120000_init_offer_model/migration.sql');
+const OFFER_ID_MIGRATION_PATH = resolve(__dirname, '../../prisma/migrations/20260824130000_placement_offer_id/migration.sql');
 
 // A governed-terminal reason for OFFER_DECLINED that ALLOWS detail (OPTIONAL
 // policy), so a reason-bearing event carries a non-null reason_detail — the
@@ -82,7 +87,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const url = container.getConnectionUri();
       setupClient = new PrismaService(url);
       await setupClient.$connect();
-      for (const path of [INIT_MIGRATION_PATH, OFFER_OUTBOX_MIGRATION_PATH, REASON_MIGRATION_PATH, REPLACEMENT_MIGRATION_PATH, PERMANENT_PLACEMENT_MIGRATION_PATH, FALLOFF_REMEDY_MIGRATION_PATH, GUARANTEE_TERMS_MIGRATION_PATH]) {
+      for (const path of [INIT_MIGRATION_PATH, OFFER_OUTBOX_MIGRATION_PATH, REASON_MIGRATION_PATH, REPLACEMENT_MIGRATION_PATH, PERMANENT_PLACEMENT_MIGRATION_PATH, FALLOFF_REMEDY_MIGRATION_PATH, GUARANTEE_TERMS_MIGRATION_PATH, OFFER_INIT_MIGRATION_PATH, OFFER_ID_MIGRATION_PATH]) {
         for (const stmt of splitDdl(readFileSync(path, 'utf8'))) {
           const trimmed = stmt.trim();
           if (trimmed.length > 0) await setupClient.$executeRawUnsafe(trimmed);
@@ -100,30 +105,39 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await container?.stop();
     });
 
-    // Create a placement and drive it to OFFER_DECLINED carrying the canonical
-    // reason (code + optional detail). Returns { id, requisition_id }.
+    // Offer Lifecycle (D6) — ordinary read-surface seeds create from an ACCEPTED
+    // offer (born PRE_START); the reusable fixture is the seam.
+    async function createValid(input: CreatePlacementInput, requestId: string) {
+      const offer_id = input.offer_id ?? (await seedAcceptedOffer(prisma, { tenant_id: input.tenant_id }));
+      return repo.createPlacement({ ...input, offer_id }, requestId);
+    }
+
+    // Drive a placement to OFFER_DECLINED carrying the canonical reason. This
+    // reads reason evidence on a LEGACY offer-phase terminal, so the row is seeded
+    // DIRECTLY at OFFER_EXTENDED and declined via the retained legacy edge
+    // (OFFER_EXTENDED -> OFFER_DECLINED) — a new placement no longer births there.
     async function makeDeclinedWithReason(tenant_id: string): Promise<{ id: string; requisition_id: string }> {
-      const input = baseInput({ tenant_id });
-      const created = await repo.createPlacement(input, 'seed');
+      const requisition_id = randomUUID();
+      const id = await seedPlacementAtState(prisma, { tenant_id, state: 'OFFER_EXTENDED', requisition_id });
       await repo.transition(
         {
           tenant_id,
-          placement_process_id: created.id,
+          placement_process_id: id,
           to: 'OFFER_DECLINED',
           reason_code: DECLINE_REASON_OPTIONAL.code,
           reason_detail: REASON_DETAIL_TEXT,
         },
         'seed',
       );
-      return { id: created.id, requisition_id: input.requisition_id };
+      return { id, requisition_id };
     }
 
     // ---- Proof 1 — collection tenant isolation (boundary: the tenant predicate) --
     it('Proof 1 — listForActor is tenant-isolated: another tenant’s placement never enters the result', async () => {
       const tenantA = randomUUID();
       const tenantB = randomUUID();
-      const a = await repo.createPlacement(baseInput({ tenant_id: tenantA }), 'p1');
-      const b = await repo.createPlacement(baseInput({ tenant_id: tenantB }), 'p1');
+      const a = await createValid(baseInput({ tenant_id: tenantA }), 'p1');
+      const b = await createValid(baseInput({ tenant_id: tenantB }), 'p1');
 
       const seenByA = await repo.listForActor({ tenant_id: tenantA, visible_requisition_ids: null });
       const ids = seenByA.map((p) => p.id);
@@ -138,8 +152,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const tenant = randomUUID();
       const visibleReq = randomUUID();
       const hiddenReq = randomUUID();
-      const visible = await repo.createPlacement(baseInput({ tenant_id: tenant, requisition_id: visibleReq }), 'p2');
-      const hidden = await repo.createPlacement(baseInput({ tenant_id: tenant, requisition_id: hiddenReq }), 'p2');
+      const visible = await createValid(baseInput({ tenant_id: tenant, requisition_id: visibleReq }), 'p2');
+      const hidden = await createValid(baseInput({ tenant_id: tenant, requisition_id: hiddenReq }), 'p2');
 
       const visSet = new Set<string>([visibleReq]);
       const listed = await repo.listForActor({ tenant_id: tenant, visible_requisition_ids: visSet });
@@ -188,12 +202,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     it('Proof 6 — an ordinary (non-governed) transition event has NULL reason fields, never fabricated from state', async () => {
       const tenant = randomUUID();
       const input = baseInput({ tenant_id: tenant });
-      const created = await repo.createPlacement(input, 'p6');
+      const created = await createValid(input, 'p6');
       // Ordinary progression edge — no reason evidence exists for it.
-      await repo.transition({ tenant_id: tenant, placement_process_id: created.id, to: 'OFFER_ACCEPTED' }, 'p6');
+      await repo.transition({ tenant_id: tenant, placement_process_id: created.id, to: 'READY_TO_START' }, 'p6');
 
       const timeline = await events.listEvents(tenant, created.id);
-      const ordinary = timeline.find((e) => (e.event_payload as { to?: string })?.to === 'OFFER_ACCEPTED');
+      const ordinary = timeline.find((e) => (e.event_payload as { to?: string })?.to === 'READY_TO_START');
       expect(ordinary).toBeDefined();
       // A null here is legacy/non-governed absence — NEVER a canonical reason
       // reconstructed from the target state.
@@ -207,7 +221,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const tenant = randomUUID();
       // Insert several; equal-timestamp rows are ordered by id asc within a
       // created_at group. Re-reading yields the identical order.
-      for (let i = 0; i < 5; i++) await repo.createPlacement(baseInput({ tenant_id: tenant }), 'ord');
+      for (let i = 0; i < 5; i++) await createValid(baseInput({ tenant_id: tenant }), 'ord');
       const first = (await repo.listForActor({ tenant_id: tenant, visible_requisition_ids: null })).map((p) => p.id);
       const second = (await repo.listForActor({ tenant_id: tenant, visible_requisition_ids: null })).map((p) => p.id);
       expect(second).toEqual(first);

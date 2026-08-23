@@ -39,7 +39,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  schemas  = ["placement"]
+  schemas  = ["placement", "offer"]
 }
 
 // PlacementState — the closed 10-value lifecycle. The TypeScript registry
@@ -114,6 +114,15 @@ model PlacementProcess {
   offer_expires_at       DateTime? @db.Timestamptz(6)
   client_offer_reference String?
   offer_terms_summary    String?
+
+  // Offer Lifecycle (D6, R-PRECEDENCE). The ACCEPTED Offer this placement was
+  // created from — the placement is now DOWNSTREAM of the dedicated offer
+  // aggregate (offer."Offer"). UUID-only cross-schema ref, NO FK (§7.3). NULLABLE
+  // + written once at INSERT; NOT pinned in the immutability trigger (the §4.3
+  // NULL=NULL trap). Nullable for backward-compat with legacy pre-offer rows;
+  // every NEW placement create requires an ACCEPTED offer (create-time check).
+  // Additive migration 20260824130000.
+  offer_id String? @db.Uuid
 
   // Replacement lineage (E4). Nullable self-referential pointer to the terminal
   // predecessor this attempt replaces; null for a first (non-replacement) attempt.
@@ -203,6 +212,106 @@ model OutboxEvent {
 
   @@index([published_at])
   @@schema("placement")
+}
+
+// ===========================================================================
+// OFFER aggregate (Offer Lifecycle slice #2). A DEDICATED pre-placement offer
+// state machine (Option B): an ACCEPTED offer is the precondition for a
+// placement (the placement-create re-point, D6). Owned by libs/placement in its
+// own `offer` schema. The TS registry (src/lib/lifecycle/offer-lifecycle.ts) is
+// the source of truth; the generated migration's enum + trigger mirror it.
+// ===========================================================================
+
+// OfferState — the closed 7-value lifecycle (mirrors OFFER_STATES order).
+enum OfferState {
+  DRAFT
+  SENT
+  NEGOTIATION
+  ACCEPTED
+  DECLINED
+  EXPIRED
+  RESCINDED
+
+  @@schema("offer")
+}
+
+enum OfferEventType {
+  state_transition
+
+  @@schema("offer")
+}
+
+// Offer — the aggregate. NO updated_at (§2 idiom): transition timestamps derive
+// from the append-only OfferEvent log. Term/expiry/reason columns are set at the
+// relevant transition and NOT pinned in the immutability trigger (the NULL=NULL
+// trap — a nullable column pinned via OLD=NEW is NULL, not TRUE).
+model Offer {
+  id String @id @db.Uuid
+
+  tenant_id String @db.Uuid
+
+  // Lineage (the pre-placement point). NOT unique — a new offer may follow a
+  // terminal one for the same submittal (one-live guard permits ≤1 non-terminal).
+  submittal_id String @db.Uuid
+
+  // Denormalised UUID-only cross-schema refs, no FK (§7.3).
+  requisition_id   String @db.Uuid
+  talent_record_id String @db.Uuid
+
+  state OfferState
+
+  // Offer terms snapshot (operational; NOT the commercial source of truth —
+  // rates/margin are Track 5 / slice #4). Nullable, app-surface immutability.
+  proposed_start_date    DateTime? @db.Date
+  offer_expires_at       DateTime? @db.Timestamptz(6)
+  client_offer_reference String?
+  offer_terms_summary    String?
+
+  // Governed terminal evidence (nullable; present on DECLINED). NOT pinned.
+  decline_reason String?
+
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+
+  events OfferEvent[]
+
+  @@index([tenant_id, submittal_id])
+  @@index([tenant_id, requisition_id])
+  @@index([tenant_id, talent_record_id])
+  @@schema("offer")
+}
+
+// OfferEvent — append-only, absolutely immutable audit log (mirrors
+// PlacementProcessEvent). Immutability enforced by DB triggers in the migration.
+model OfferEvent {
+  id        String @id @db.Uuid
+  tenant_id String @db.Uuid
+
+  offer_id String @db.Uuid
+  offer    Offer  @relation(fields: [offer_id], references: [id])
+
+  event_type    OfferEventType
+  event_payload Json
+
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([tenant_id, offer_id])
+  @@index([offer_id, created_at])
+  @@schema("offer")
+}
+
+// The offer schema's own transactional-outbox namespace (offer."OutboxEvent").
+// Distinct Prisma model name (global namespace) mapped to the per-schema table.
+model OfferOutboxEvent {
+  id            String    @id @db.Uuid
+  tenant_id     String    @db.Uuid
+  event_type    String
+  event_payload Json
+  created_at    DateTime  @default(now()) @db.Timestamptz(6)
+  published_at  DateTime? @db.Timestamptz(6)
+
+  @@index([published_at])
+  @@map("OutboxEvent")
+  @@schema("offer")
 }
 
 // ContractAssignmentProvenance — Track 4 / T4-A1. The discriminator that makes
