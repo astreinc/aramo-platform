@@ -40,7 +40,10 @@ describe('PlacementProcess lifecycle registry (§4/§4c/§4d)', () => {
   it('declares exactly the 10 states', () => {
     expect(PLACEMENT_STATES).toHaveLength(10);
     expect(new Set(PLACEMENT_STATES).size).toBe(10);
-    expect(INITIAL_STATE).toBe('OFFER_EXTENDED');
+    // Offer Lifecycle (D6) — placements are now born at PRE_START (downstream of
+    // an ACCEPTED offer). The legacy OFFER_* states/edges remain in the machine
+    // (non-destructive) but are no longer the create-birth state.
+    expect(INITIAL_STATE).toBe('PRE_START');
   });
 
   it('every state declares a lifecycle position (§4c exhaustive)', () => {

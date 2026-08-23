@@ -602,6 +602,16 @@ export const ERROR_CODES = [
   // SUBMITTAL_PIPELINE_LINK_INVALID (409): the submittal has no valid linked LIVE pipeline
   // episode to mirror (pipeline_id null, or the linked episode is not live / cannot transition).
   'SUBMITTAL_PIPELINE_LINK_INVALID',
+  // OFFER_ALREADY_LIVE (409): Offer Lifecycle — create refused because a live
+  // (non-terminal) Offer already exists for (tenant_id, submittal_id). The
+  // one-live invariant: at most one DRAFT/SENT/NEGOTIATION offer per submittal.
+  // Exact-name translation of the offer.enforce_offer_lifecycle BEFORE INSERT
+  // guard (check_violation) — never a generic catch. Mirrors PLACEMENT one-live.
+  'OFFER_ALREADY_LIVE',
+  // OFFER_ILLEGAL_TRANSITION (409): Offer Lifecycle — a PATCH transition refused
+  // because (from,to) is not a legal edge of the offer state machine
+  // (governingOfferAction returned null). The DB lifecycle trigger is the backstop.
+  'OFFER_ILLEGAL_TRANSITION',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

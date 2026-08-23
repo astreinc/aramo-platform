@@ -1,18 +1,27 @@
 {
   "$comment": "GLH-1-C ratified API surface classification (Charter v1.5). Governed=XP,AP,SS,AD,PZ must have OpenAPI parity or a transitionalUndocumented entry; IZ is exempt. NO XD class. Controller-keyed; routeOverrides for mixed-semantic controllers (method+path). transitionalUndocumented is a RATCHET: enumerated existing debt only; a NEW governed-undocumented route not listed FAILS. Enrolment edits require Architect authorization.",
   "version": 1,
-  "governed": ["XP", "AP", "SS", "AD", "PZ"],
-  "exempt": ["IZ"],
+  "governed": [
+    "XP",
+    "AP",
+    "SS",
+    "AD",
+    "PZ"
+  ],
+  "exempt": [
+    "IZ"
+  ],
   "controllers": {
     "apps/api/src/controllers/assignable-users.controller.ts": "AP",
     "apps/api/src/controllers/examine.controller.ts": "AP",
     "apps/api/src/controllers/me.controller.ts": "AP",
-    "apps/api/src/controllers/version.controller.ts": "IZ",
     "apps/api/src/controllers/public-invitation.controller.ts": "PZ",
     "apps/api/src/controllers/public-verification.controller.ts": "PZ",
     "apps/api/src/controllers/tenant-settings.controller.ts": "AP",
-    "apps/api/src/placement/placement.controller.ts": "AP",
+    "apps/api/src/controllers/version.controller.ts": "IZ",
+    "apps/api/src/offer/offer.controller.ts": "AP",
     "apps/api/src/placement/guarantee-terms.controller.ts": "AP",
+    "apps/api/src/placement/placement.controller.ts": "AP",
     "apps/api/src/pre-start-requirement/pre-start-requirement.controller.ts": "AP",
     "apps/api/src/submit-talent/submit-talent.controller.ts": "AP",
     "apps/api/src/talent-identity/advisory-resolution.controller.ts": "AP",
@@ -40,7 +49,6 @@
     "libs/company/src/lib/d4a.controller.ts": "AP",
     "libs/consent/src/lib/consent.controller.ts": "AP",
     "libs/contact/src/lib/contact.controller.ts": "AP",
-    "libs/selection/src/lib/selection.controller.ts": "AP",
     "libs/examination/src/lib/match-list.controller.ts": "AP",
     "libs/examination/src/lib/override.controller.ts": "AP",
     "libs/export/src/lib/export.controller.ts": "AP",
@@ -61,6 +69,7 @@
     "libs/reporting/src/lib/reporting.controller.ts": "AP",
     "libs/requisition/src/lib/requisition.controller.ts": "AP",
     "libs/saved-list/src/lib/saved-list.controller.ts": "AP",
+    "libs/selection/src/lib/selection.controller.ts": "AP",
     "libs/submittal/src/lib/submittal.controller.ts": "AP",
     "libs/talent-record/src/lib/talent-record.controller.ts": "AP",
     "libs/task/src/lib/task.controller.ts": "AP"

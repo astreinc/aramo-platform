@@ -13,6 +13,8 @@ import { computeRemedyObligation } from '../lib/permanent/remedy-computation.js'
 import type { CreatePlacementInput, GuaranteeTermsInput } from '../lib/placement-process.types.js';
 import type { PlacementState, RemedyPolicy } from '../lib/lifecycle/placement-lifecycle.js';
 
+import { seedAcceptedOffer } from './support/offer-fixture.js';
+
 // Track 7 / T7-P2 — falloff + deterministic remedy + evidence completion. Real Postgres 17.
 // The full placement chain PLUS the P1 and P2 additive migrations. Boundary proofs cover
 // the directive §18 matrix (in/out-of-window falloff, deterministic mapping, refund/proration,
@@ -33,10 +35,13 @@ const MIGRATIONS = [
   '20260814120000_t7_permanent_placement',
   '20260815120000_t7_p2_falloff_remedy',
   '20260816120000_t7_p3_guarantee_term_versioning',
+  '20260824120000_init_offer_model',
+  '20260824130000_placement_offer_id',
 ].map((d) => resolve(__dirname, `../../prisma/migrations/${d}/migration.sql`));
 
 const T5_TERMS = { pay_rate_amount: '80.00', bill_rate_amount: '120.00', currency: 'USD', rate_period: 'HOURLY' } as const;
-const PATH_TO_READY: PlacementState[] = ['OFFER_ACCEPTED', 'PRE_START', 'READY_TO_START'];
+// Offer Lifecycle (D6) — born PRE_START (downstream of an ACCEPTED offer).
+const PATH_TO_READY: PlacementState[] = ['READY_TO_START'];
 
 function splitDdl(sql: string): string[] {
   const out: string[] = []; let current = ''; let inDollar = false;
@@ -102,8 +107,20 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await container?.stop();
     });
 
+    // Offer Lifecycle (D6) — create from an ACCEPTED offer (born PRE_START).
+    async function createValid(input: CreatePlacementInput, requestId: string) {
+      const offer_id = input.offer_id ?? (await seedAcceptedOffer(prisma, { tenant_id: input.tenant_id }));
+      return repo.createPlacement({ ...input, offer_id }, requestId);
+    }
+
+    // Offer Lifecycle (D6) — create from an ACCEPTED offer (born PRE_START).
+    async function createValid(input: CreatePlacementInput, requestId: string) {
+      const offer_id = input.offer_id ?? (await seedAcceptedOffer(prisma, { tenant_id: input.tenant_id }));
+      return repo.createPlacement({ ...input, offer_id }, requestId);
+    }
+
     async function driveToReady(input: CreatePlacementInput): Promise<string> {
-      const c = await repo.createPlacement(input, 'd'); let id = c.id;
+      const c = await createValid(input, 'd'); let id = c.id;
       for (const to of PATH_TO_READY) id = (await repo.transition({ tenant_id: input.tenant_id, placement_process_id: id, to }, 'd')).id;
       return id;
     }

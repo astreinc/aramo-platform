@@ -12,6 +12,8 @@ import { deriveCapacity } from '../lib/capacity/capacity-derivation.js';
 import type { CreatePlacementInput } from '../lib/placement-process.types.js';
 import type { PlacementState } from '../lib/lifecycle/placement-lifecycle.js';
 
+import { seedAcceptedOffer } from './support/offer-fixture.js';
+
 // Track 4 / T4-A1 — ContractAssignment authority + persistence + the forward
 // STARTED -> ContractAssignment path. Real Postgres 17. The migration set is the
 // four pre-Track-4 placement migrations PLUS the T4-A1 additive contract
@@ -37,6 +39,10 @@ const MIGRATIONS = [
   '20260814120000_t7_permanent_placement',
   '20260815120000_t7_p2_falloff_remedy',
   '20260816120000_t7_p3_guarantee_term_versioning',
+  // Offer Lifecycle (D6) — the offer aggregate + the placement.offer_id column,
+  // required by createPlacement's ACCEPTED-offer precondition.
+  '20260824120000_init_offer_model',
+  '20260824130000_placement_offer_id',
 ].map((d) => resolve(__dirname, `../../prisma/migrations/${d}/migration.sql`));
 
 // Track 5 / T5-P1 — a FORWARD STARTED transition now materialises the initial
@@ -44,8 +50,10 @@ const MIGRATIONS = [
 // terms + the recording principal. A shared valid fixture for the T4 STARTED paths.
 const T5_TERMS = { pay_rate_amount: '80.00', bill_rate_amount: '120.00', currency: 'USD', rate_period: 'HOURLY' } as const;
 
-// Path from OFFER_EXTENDED to READY_TO_START, then the START edge separately.
-const PATH_TO_READY: PlacementState[] = ['OFFER_ACCEPTED', 'PRE_START', 'READY_TO_START'];
+// Path from the birth state (now PRE_START, Offer Lifecycle D6) to READY_TO_START,
+// then the START edge separately. Offer extension/acceptance now lives in the
+// dedicated offer aggregate — the placement no longer births at OFFER_EXTENDED.
+const PATH_TO_READY: PlacementState[] = ['READY_TO_START'];
 
 function baseInput(overrides: Partial<CreatePlacementInput> = {}): CreatePlacementInput {
   return {
@@ -93,8 +101,17 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await container?.stop();
     });
 
+    // Offer Lifecycle (D6) — a placement is created from an ACCEPTED offer. Seed
+    // one for the input's tenant and thread its id (the reusable seam; no
+    // createPlacement bypass). Guard/E4 refusal tests still hit their earlier
+    // checks first — the seeded offer is simply unused there.
+    async function createValid(input: CreatePlacementInput, requestId: string) {
+      const offer_id = input.offer_id ?? (await seedAcceptedOffer(prisma, { tenant_id: input.tenant_id }));
+      return repo.createPlacement({ ...input, offer_id }, requestId);
+    }
+
     async function driveToReady(input: CreatePlacementInput): Promise<string> {
-      const created = await repo.createPlacement(input, 'drive');
+      const created = await createValid(input, 'drive');
       let id = created.id;
       for (const to of PATH_TO_READY) {
         const v = await repo.transition({ tenant_id: input.tenant_id, placement_process_id: id, to }, 'drive');
@@ -231,7 +248,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // A second attempt on the same (tenant, submittal) while the assignment is
       // ACTIVE is refused — the guard is held.
       await expect(
-        repo.createPlacement(baseInput({ tenant_id, submittal_id }), 'second'),
+        createValid(baseInput({ tenant_id, submittal_id }), 'second'),
       ).rejects.toMatchObject({ code: 'PLACEMENT_ALREADY_LIVE' });
     });
 
@@ -242,8 +259,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // End the assignment (ACTIVE -> ENDED) — releases the one-live guard.
       await repo.endAssignment({ tenant_id, placement_process_id: first, end_reason: 'WORKER_ENDED', ended_by: randomUUID() }, 'end');
       // A later attempt on the same (tenant, submittal) is now PERMITTED.
-      const second = await repo.createPlacement(baseInput({ tenant_id, submittal_id }), 'second');
-      expect(second.state).toBe('OFFER_EXTENDED');
+      const second = await createValid(baseInput({ tenant_id, submittal_id }), 'second');
+      expect(second.state).toBe('PRE_START');
       expect(second.id).not.toBe(first);
     });
 
@@ -259,7 +276,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const input = baseInput({ tenant_id, requisition_id: randomUUID(), replaces_placement_process_id: started });
       // same requisition as the predecessor (E4 checks tenant + requisition)
       const withSameReq = { ...input, requisition_id: (await repo.findById(tenant_id, started))!.requisition_id };
-      await expect(repo.createPlacement(withSameReq, 'e4')).rejects.toMatchObject({
+      await expect(createValid(withSameReq, 'e4')).rejects.toMatchObject({
         code: 'PLACEMENT_REPLACEMENT_INVALID',
         context: { details: { reason: 'predecessor_not_terminal' } },
       });

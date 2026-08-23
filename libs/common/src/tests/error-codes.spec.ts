@@ -174,6 +174,8 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       'TALENT_RESTRICTED_AT_CLIENT',
       'PIPELINE_SUBMIT_REQUIRES_SUBMITTAL',
       'SUBMITTAL_PIPELINE_LINK_INVALID',
+      'OFFER_ALREADY_LIVE',
+      'OFFER_ILLEGAL_TRANSITION',
     ]);
   });
 });

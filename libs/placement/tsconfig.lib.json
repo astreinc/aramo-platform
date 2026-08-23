@@ -8,7 +8,9 @@
     "declaration": true,
     "types": ["node"],
     "paths": {
-      "@aramo/common": ["../../dist/libs/common/src/index.d.ts"]
+      "@aramo/common": ["../../dist/libs/common/src/index.d.ts"],
+      "@aramo/policy-engine": ["../../dist/libs/policy-engine/src/index.d.ts"],
+      "@aramo/policy-store": ["../../dist/libs/policy-store/src/index.d.ts"]
     }
   },
   "include": ["src/**/*.ts"],

@@ -41,6 +41,14 @@ export class CreatePlacementDto {
   @IsUUID()
   talent_record_id!: string;
 
+  // Offer Lifecycle (D6, R-PRECEDENCE) — the ACCEPTED offer this placement is
+  // created from. Required in practice: the repository refuses a create whose
+  // offer_id is absent or does not reference an ACCEPTED offer (VALIDATION_ERROR
+  // 400). Optional at the DTO layer so the repository owns the single refusal.
+  @IsOptional()
+  @IsUUID()
+  offer_id?: string;
+
   // E1-c offer snapshot (9-c-1). All optional at the wire; offered_at defaults to
   // the server time of the offer fact when omitted. offer_expires_at, when present,
   // must not precede offered_at (enforced in the repository, VALIDATION_ERROR 400).

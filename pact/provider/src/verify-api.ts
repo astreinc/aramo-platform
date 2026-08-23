@@ -893,6 +893,17 @@ const PLACEMENT_CONVERSION_MIGRATION = resolve(
   ROOT,
   'libs/placement/prisma/migrations/20260817120000_t7_px_contract_to_permanent_conversion/migration.sql',
 );
+// Offer Lifecycle (D6) — the offer aggregate + the placement.offer_id column.
+// Applied so the regenerated client's offer_id SELECT on PlacementProcess reads
+// resolves (else the provider 500s). SEPARATE consts (never a 2nd resolve() arg).
+const PLACEMENT_OFFER_INIT_MIGRATION = resolve(
+  ROOT,
+  'libs/placement/prisma/migrations/20260824120000_init_offer_model/migration.sql',
+);
+const PLACEMENT_OFFER_ID_MIGRATION = resolve(
+  ROOT,
+  'libs/placement/prisma/migrations/20260824130000_placement_offer_id/migration.sql',
+);
 // Track 4 / T4-B2 §6 — the dedicated stored openings_available DROP. Applied here so
 // the provider schema matches the retired-column reality; the requisition read is
 // derived and does not depend on the physical column.
@@ -3138,6 +3149,9 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         PLACEMENT_FALLOFF_REMEDY_MIGRATION,
         PLACEMENT_GUARANTEE_TERMS_MIGRATION,
         PLACEMENT_CONVERSION_MIGRATION,
+        // Offer Lifecycle (D6) — offer aggregate + placement.offer_id (client SELECTs it).
+        PLACEMENT_OFFER_INIT_MIGRATION,
+        PLACEMENT_OFFER_ID_MIGRATION,
         // T4-B2 §6 — retire the stored openings_available column (derived-only).
         REQUISITION_DROP_OPENINGS_AVAILABLE_MIGRATION,
         // T8-P1 — the external-identity partial-unique index (applied last;

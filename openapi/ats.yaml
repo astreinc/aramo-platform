@@ -8,6 +8,105 @@ info:
     Match-List Summary-only rule (API Contracts L586-588). Future ATS PRs
     populate additional operations per API Contracts v1.0 Phase 2.
 paths:
+  /v1/offers:
+    post:
+      operationId: createOffer
+      summary: Create a DRAFT Offer (Offer Lifecycle slice #2).
+      description: |
+        Creates a DRAFT Offer for a submittal — the dedicated pre-placement offer
+        aggregate. Requires the `ats` capability and the `offer:create` scope. At
+        most one live (non-terminal) offer per (tenant, submittal); a second is
+        refused 409 OFFER_ALREADY_LIVE.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOfferRequest'
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Offer'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '409':
+          description: A live offer already exists for this submittal.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+      security:
+        - BearerAuth: []
+  /v1/offers/{id}:
+    get:
+      operationId: getOffer
+      summary: Read an Offer by id.
+      description: Requires the `ats` capability and the `offer:create` scope.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Offer'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+    patch:
+      operationId: transitionOffer
+      summary: Drive a governed Offer transition.
+      description: |
+        Transitions the Offer along a legal edge (DRAFT->SENT->NEGOTIATION->
+        ACCEPTED/DECLINED/EXPIRED/RESCINDED). The (from,to) edge determines the
+        action; the ADR-0024 offer-lifecycle policy (fail-closed) and the DB
+        lifecycle trigger enforce legality. Requires the `ats` capability and the
+        `offer:transition` scope. Refusals: 403 POLICY_DENIED, 409
+        OFFER_ILLEGAL_TRANSITION.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransitionOfferRequest'
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Offer'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '409':
+          description: Illegal transition edge.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+      security:
+        - BearerAuth: []
   /v1/submittals:
     post:
       operationId: createSubmittal
@@ -3285,6 +3384,46 @@ components:
         secret — the shared signing secret is provisioned out-of-band and never documented.
 
   schemas:
+    Offer:
+      type: object
+      additionalProperties: false
+      required: [id, tenant_id, submittal_id, requisition_id, talent_record_id, state, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        tenant_id: { type: string, format: uuid }
+        submittal_id: { type: string, format: uuid }
+        requisition_id: { type: string, format: uuid }
+        talent_record_id: { type: string, format: uuid }
+        state: { type: string, enum: [DRAFT, SENT, NEGOTIATION, ACCEPTED, DECLINED, EXPIRED, RESCINDED] }
+        proposed_start_date: { type: [string, 'null'], format: date }
+        offer_expires_at: { type: [string, 'null'], format: date-time }
+        client_offer_reference: { type: [string, 'null'] }
+        offer_terms_summary: { type: [string, 'null'] }
+        decline_reason: { type: [string, 'null'] }
+        created_at: { type: string, format: date-time }
+    CreateOfferRequest:
+      type: object
+      additionalProperties: false
+      required: [submittal_id, requisition_id, talent_record_id]
+      properties:
+        submittal_id: { type: string, format: uuid }
+        requisition_id: { type: string, format: uuid }
+        talent_record_id: { type: string, format: uuid }
+        proposed_start_date: { type: [string, 'null'], format: date }
+        offer_expires_at: { type: [string, 'null'], format: date-time }
+        client_offer_reference: { type: [string, 'null'] }
+        offer_terms_summary: { type: [string, 'null'] }
+    TransitionOfferRequest:
+      type: object
+      additionalProperties: false
+      required: [to_state]
+      properties:
+        to_state: { type: string, enum: [SENT, NEGOTIATION, ACCEPTED, DECLINED, EXPIRED, RESCINDED, DRAFT] }
+        proposed_start_date: { type: [string, 'null'], format: date }
+        offer_expires_at: { type: [string, 'null'], format: date-time }
+        client_offer_reference: { type: [string, 'null'] }
+        offer_terms_summary: { type: [string, 'null'] }
+        decline_reason: { type: [string, 'null'] }
     # T8-CONNECTOR-A — provider-neutral connector connection views/requests. NO
     # schema exposes secret_ref, an AWS identifier, or credential material.
     IntegrationConnectionView:
@@ -3859,7 +3998,7 @@ components:
     PlacementProcess:
       type: object
       additionalProperties: false
-      required: [id, tenant_id, submittal_id, requisition_id, talent_record_id, state, offered_at, proposed_start_date, offer_expires_at, client_offer_reference, offer_terms_summary, placement_kind, created_at]
+      required: [id, tenant_id, submittal_id, requisition_id, talent_record_id, offer_id, state, offered_at, proposed_start_date, offer_expires_at, client_offer_reference, offer_terms_summary, placement_kind, created_at]
       properties:
         id:
           type: string
@@ -3876,6 +4015,10 @@ components:
         talent_record_id:
           type: string
           format: uuid
+        offer_id:
+          type: [string, 'null']
+          format: uuid
+          description: Offer Lifecycle (D6) — the ACCEPTED offer this placement was created from; null for legacy pre-offer rows.
         placement_kind:
           type: [string, 'null']
           enum: [CONTRACT, PERMANENT, null]
