@@ -3386,6 +3386,7 @@ components:
   schemas:
     Offer:
       type: object
+      additionalProperties: false
       required: [id, tenant_id, submittal_id, requisition_id, talent_record_id, state, created_at]
       properties:
         id: { type: string, format: uuid }
@@ -3402,6 +3403,7 @@ components:
         created_at: { type: string, format: date-time }
     CreateOfferRequest:
       type: object
+      additionalProperties: false
       required: [submittal_id, requisition_id, talent_record_id]
       properties:
         submittal_id: { type: string, format: uuid }
@@ -3413,6 +3415,7 @@ components:
         offer_terms_summary: { type: [string, 'null'] }
     TransitionOfferRequest:
       type: object
+      additionalProperties: false
       required: [to_state]
       properties:
         to_state: { type: string, enum: [SENT, NEGOTIATION, ACCEPTED, DECLINED, EXPIRED, RESCINDED, DRAFT] }
