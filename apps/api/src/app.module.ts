@@ -99,6 +99,8 @@ import { PublicInvitationController } from './controllers/public-invitation.cont
 import { CompensationFieldMaskInterceptor } from './interceptors/compensation-field-mask.interceptor.js';
 import { TalentRecordEnrichmentInterceptor } from './talent-enrichment/talent-record-enrichment.interceptor.js';
 import { TalentRecordEnrichmentService } from './talent-enrichment/talent-record-enrichment.service.js';
+import { PipelineTalentEnrichmentInterceptor } from './pipeline-enrichment/pipeline-talent-enrichment.interceptor.js';
+import { PipelineTalentEnrichmentService } from './pipeline-enrichment/pipeline-talent-enrichment.service.js';
 import { TalentPresetInterceptor } from './talent-enrichment/talent-preset.interceptor.js';
 import { TalentPresetResolverService } from './talent-enrichment/talent-preset-resolver.service.js';
 // Settings S4 — live AUDIT_FINANCIALS_GATE adapter (reads via
@@ -574,6 +576,16 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     {
       provide: APP_INTERCEPTOR,
       useClass: TalentRecordEnrichmentInterceptor,
+    },
+    // Requisition-expander enrichment (LOCKED Aramo-Requisition-Expander-Talent-
+    // Rate-Columns v1.0). Composer injects talent-record + consent batch reads;
+    // interceptor (global, route-guarded to GET /v1/pipelines) attaches the five
+    // talent fields, gated by talent:read (existence) + do_not_contact (contact).
+    // Registered after JwtAuthGuard so req.authContext (scopes) is set.
+    PipelineTalentEnrichmentService,
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: PipelineTalentEnrichmentInterceptor,
     },
     // TR-2a-1 — the write-time anchor hook. Global APP_INTERCEPTOR route-guarded
     // to the talent-record WRITE routes (POST /v1/talent-records, PATCH :id);

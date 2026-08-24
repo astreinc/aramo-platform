@@ -2215,6 +2215,12 @@
     "@aramo/consent": [
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/pipeline-talent-enrichment.service.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/src1-e2e-closure.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -3302,6 +3308,12 @@
       { "from": "tools/seed-e2e-data.ts", "project": "(unscoped)", "status": "unscoped" },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/pipeline-talent-enrichment.service.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/requisition-lifecycle-package.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -3886,6 +3898,12 @@
     "@aramo/talent-reconcile": [{ "project": "api", "status": "production" }],
     "@aramo/talent-record": [
       { "from": "tools/seed-e2e-data.ts", "project": "(unscoped)", "status": "unscoped" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/pipeline-talent-enrichment.service.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/src1-e2e-closure.integration.spec.ts",
