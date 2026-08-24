@@ -67,3 +67,10 @@ apps/ats-web/playwright-report/
 # Uncommitted recon/report scratch (non-product)
 scratch/
 
+
+# Prod deploy recovery artifacts written into the box checkout by RELEASE-box.md
+# STEP 2 (pre-migration backup) / rollback. Untracked-but-expected per the runbook
+# PRE-FLIGHT gate; gitignored so build-images.sh clean-tree guard (git status --porcelain)
+# agrees and does not HARD-STOP the build.
+pre-migration-backup-*.sql
+*.ROLLBACK
