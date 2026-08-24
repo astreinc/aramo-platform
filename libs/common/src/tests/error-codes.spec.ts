@@ -149,6 +149,8 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       'PIPELINE_RECONCILE_LIVE_CONFLICT',
       'REQUISITION_EXTERNAL_IDENTITY_CONFLICT',
       'ASSIGNMENT_COMMERCIAL_REVISION_CONFLICT',
+      // Slice #3 — Assignment-Extension forward-only refusal (422).
+      'ASSIGNMENT_EXTENSION_NOT_FORWARD',
       // Track 7 / T7-P1 — the PermanentPlacement guarantee family (appended in order).
       'PERMANENT_PLACEMENT_NOT_FOUND',
       'PERMANENT_PLACEMENT_STATE_INVALID',

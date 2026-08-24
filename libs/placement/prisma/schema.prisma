@@ -415,6 +415,14 @@ model ContractAssignment {
   // and the assignment.ended event — one clock, no independent timestamps.
   ended_at DateTime? @db.Timestamptz(6)
 
+  // Slice #3 (LOCKED Aramo-Assignment-Extension v1.0, R-INITIAL-END) -- the
+  // assignment-OWNED planned end (distinct from ended_at=actual, started_at=actual
+  // start). Nullable at DB for backfill compatibility (absence, not a canonical
+  // value) but REQUIRED at the app layer on new-assignment create. Extend moves it
+  // strictly forward; Ending Soon derives from it. Independent of the Requisition
+  // after create (the requisition may only PREFILL it).
+  expected_end_at DateTime? @db.Timestamptz(6)
+
   created_at DateTime @default(now()) @db.Timestamptz(6)
 
   // Idempotency: at most one assignment per originating start fact.
@@ -422,6 +430,58 @@ model ContractAssignment {
   @@index([tenant_id, requisition_id])
   @@index([tenant_id, submittal_id])
   @@index([tenant_id, talent_record_id])
+  @@schema("placement")
+}
+
+// Slice #3 (LOCKED Aramo-Assignment-Extension v1.0, R-HORIZON) -- the append-only,
+// DB-immutable history of assignment expected-end changes. ContractAssignment.
+// expected_end_at is the CURRENT operational truth; this table is the HISTORICAL
+// truth (one row per governed extend). previous is null only when the horizon is
+// first established on a backfilled assignment; new is always present + strictly
+// greater. Provenance seam (R-PROVENANCE): MANUAL today, VMS/API/SYSTEM later.
+model AssignmentExtension {
+  id String @id @db.Uuid
+
+  tenant_id     String @db.Uuid
+  assignment_id String @db.Uuid
+
+  previous_expected_end_at DateTime? @db.Timestamptz(6)
+  new_expected_end_at      DateTime  @db.Timestamptz(6)
+
+  reason  AssignmentExtensionReason
+  comment String?
+
+  actor_id String @db.Uuid
+
+  source             AssignmentExtensionSource
+  external_reference String?
+
+  occurred_at DateTime @db.Timestamptz(6)
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([tenant_id, assignment_id, occurred_at])
+  @@schema("placement")
+}
+
+// v1 extend reasons (R-EXTEND-COMMAND). DATA_CORRECTION is DEFERRED to a future
+// distinct Edit/Correct operation -- a correction is not a genuine extension.
+enum AssignmentExtensionReason {
+  CLIENT_REQUEST
+  PROJECT_EXTENSION
+  RENEWAL
+  SCOPE_CONTINUATION
+
+  @@schema("placement")
+}
+
+// Provenance of an extension (R-PROVENANCE, T8 provider-neutral). No
+// Fieldglass/Beeline-specific column ever lands on the aggregate.
+enum AssignmentExtensionSource {
+  MANUAL
+  VMS
+  API
+  SYSTEM
+
   @@schema("placement")
 }
 

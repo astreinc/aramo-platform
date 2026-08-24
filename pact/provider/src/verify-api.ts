@@ -829,6 +829,7 @@ const PLACEMENT_REPLACEMENT_MIGRATION = resolve(
 const PLACEMENT_CONTRACT_ASSIGNMENT_MIGRATION = resolve(
   ROOT,
   'libs/placement/prisma/migrations/20260809120000_placement_contract_assignment/migration.sql',
+  'libs/placement/prisma/migrations/20260825120000_assignment_extension_horizon/migration.sql',
 );
 const PLACEMENT_ASSIGNMENT_ENDED_MIGRATION = resolve(
   ROOT,

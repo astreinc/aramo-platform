@@ -88,6 +88,7 @@ const REPLACEMENT_MIGRATION_PATH = resolve(
 const CONTRACT_ASSIGNMENT_MIGRATION_PATH = resolve(
   __dirname,
   '../../prisma/migrations/20260809120000_placement_contract_assignment/migration.sql',
+  '../../prisma/migrations/20260825120000_assignment_extension_horizon/migration.sql',
 );
 // Track 4 / T4-C — ENDED lifecycle value + the assignment-aware one-live guard.
 // The create() pre-check now queries lifecycle_state='ENDED', and the guard trigger

@@ -4,6 +4,7 @@ import { AramoError, isIso4217Currency, isRatePeriod } from '@aramo/common';
 
 import { PrismaService } from './prisma/prisma.service.js';
 import { deriveCommercialMetrics } from './commercial/commercial-metrics.js';
+import { isAssignmentEndingSoon } from './assignment-ending-soon.js';
 import {
   canTransition,
   DUPLICATE_GUARD_INACTIVE,
@@ -33,6 +34,8 @@ import {
 } from './permanent/guarantee-term.repository.js';
 import type {
   AssignmentCommercialView,
+  AssignmentExtensionReason,
+  AssignmentExtensionSource,
   CommercialTermsInput,
   ContractAssignmentEndReason,
   ContractAssignmentView,
@@ -87,6 +90,9 @@ const OUTBOX_CREATED = 'placement.process.created';
 const OUTBOX_STATE_CHANGED = 'placement.process.state_changed';
 // Track 4 / T4-D — the ContractAssignment ending domain event.
 const OUTBOX_ASSIGNMENT_ENDED = 'placement.assignment.ended';
+// Slice #3 (Assignment-Extension, R-EXTEND-TXN) — the extend domain event. Identity
+// + the window that moved; no commercial figures (house pattern).
+const OUTBOX_ASSIGNMENT_EXTENDED = 'placement.assignment.extended';
 // Track 5 / T5-P1 — the initial Assignment Rate Version creation domain event.
 // Identity/provenance ONLY (Amendment A2 §8): NEVER pay/bill/spread/margin/markup/
 // currency/rate_period. It announces that commercial state exists; the figures are
@@ -808,6 +814,11 @@ export class PlacementRepository {
               company_id: ctx?.company_id ?? null,
               site_id: ctx?.site_id ?? null,
               company_department_id: ctx?.company_department_id ?? null,
+              // Slice #3 (R-INITIAL-END) — the assignment-owned planned end,
+              // captured at the STARTED handoff. Nullable in the repo primitive
+              // (backfill-safe); the HTTP operation enforces presence.
+              expected_end_at:
+                ctx?.expected_end_at != null ? new Date(ctx.expected_end_at) : null,
             },
           });
           // Track 5 / T5-P1 — the INITIAL Assignment Rate Version, created in the
@@ -1007,6 +1018,147 @@ export class PlacementRepository {
           },
         },
       });
+    });
+  }
+
+  // Slice #3 (LOCKED Aramo-Assignment-Extension v1.0) — govern an ACTIVE assignment's
+  // planned end strictly FORWARD, with NO lifecycle transition (R-EXTENSION-NOT-STATE).
+  // One atomic tx (R-EXTEND-TXN): lock the assignment, validate forward-only, append the
+  // immutable AssignmentExtension history row, update the current expected_end_at, and
+  // emit placement.assignment.extended. Capacity-neutral (the assignment stays ACTIVE, so
+  // the derived consuming-count is unchanged). Returns the fresh assignment view.
+  async extendAssignment(
+    input: {
+      tenant_id: string;
+      placement_process_id: string;
+      new_expected_end_at: string; // ISO-8601 instant
+      reason: AssignmentExtensionReason;
+      comment?: string | null;
+      actor_id: string;
+      source?: AssignmentExtensionSource;
+      external_reference?: string | null;
+    },
+    requestId: string,
+  ): Promise<ContractAssignmentView> {
+    const newEnd = new Date(input.new_expected_end_at);
+    if (Number.isNaN(newEnd.getTime())) {
+      throw new AramoError('VALIDATION_ERROR', 'new_expected_end_at is not a valid instant', 400, {
+        requestId,
+        details: { field: 'new_expected_end_at' },
+      });
+    }
+    const source = input.source ?? 'MANUAL';
+    return this.prisma.$transaction(async (tx) => {
+      // Serialize against end / commercial revision / a concurrent extend on the SAME
+      // assignment (the same per-assignment row lock the END primitive takes).
+      await tx.$executeRawUnsafe(
+        `SELECT "id" FROM "placement"."ContractAssignment"
+          WHERE "tenant_id" = $1::uuid AND "placement_process_id" = $2::uuid
+          FOR UPDATE`,
+        input.tenant_id,
+        input.placement_process_id,
+      );
+      const existing = (await tx.contractAssignment.findFirst({
+        where: {
+          tenant_id: input.tenant_id,
+          placement_process_id: input.placement_process_id,
+          lifecycle_state: 'ACTIVE',
+        },
+        select: {
+          id: true,
+          submittal_id: true,
+          requisition_id: true,
+          talent_record_id: true,
+          started_at: true,
+          provenance: true,
+          expected_end_at: true,
+        },
+      })) as {
+        id: string;
+        submittal_id: string;
+        requisition_id: string;
+        talent_record_id: string;
+        started_at: Date;
+        provenance: 'FORWARD' | 'BACKFILLED';
+        expected_end_at: Date | null;
+      } | null;
+      if (existing === null) {
+        // Only an ACTIVE assignment can be extended — never ENDED (no lifecycle bloat).
+        throw new AramoError('NOT_FOUND', 'No active ContractAssignment to extend', 404, {
+          requestId,
+          details: { placement_process_id: input.placement_process_id, reason: 'active_assignment_not_found' },
+        });
+      }
+      // Forward-only (R-EXTEND-TXN): the new horizon must be in the future AND strictly
+      // beyond the current one (or beyond the actual start when none is set yet). A
+      // backward / equal / past target is a refusal, not an extension.
+      const tExtend = new Date();
+      const floor = existing.expected_end_at ?? existing.started_at;
+      if (newEnd.getTime() <= tExtend.getTime()) {
+        throw new AramoError('ASSIGNMENT_EXTENSION_NOT_FORWARD', 'new_expected_end_at must be in the future', 422, {
+          requestId,
+          details: { placement_process_id: input.placement_process_id, reason: 'not_future' },
+        });
+      }
+      if (newEnd.getTime() <= floor.getTime()) {
+        throw new AramoError('ASSIGNMENT_EXTENSION_NOT_FORWARD', 'new_expected_end_at must be strictly after the current expected end', 422, {
+          requestId,
+          details: { placement_process_id: input.placement_process_id, reason: 'not_forward' },
+        });
+      }
+      await tx.assignmentExtension.create({
+        data: {
+          id: uuidv7(),
+          tenant_id: input.tenant_id,
+          assignment_id: existing.id,
+          previous_expected_end_at: existing.expected_end_at,
+          new_expected_end_at: newEnd,
+          reason: input.reason,
+          comment: input.comment ?? null,
+          actor_id: input.actor_id,
+          source,
+          external_reference: input.external_reference ?? null,
+          occurred_at: tExtend,
+        },
+      });
+      await tx.contractAssignment.update({
+        where: { id: existing.id },
+        data: { expected_end_at: newEnd },
+      });
+      await tx.outboxEvent.create({
+        data: {
+          id: uuidv7(),
+          tenant_id: input.tenant_id,
+          event_type: OUTBOX_ASSIGNMENT_EXTENDED,
+          event_payload: {
+            assignment_id: existing.id,
+            placement_process_id: input.placement_process_id,
+            tenant_id: input.tenant_id,
+            submittal_id: existing.submittal_id,
+            requisition_id: existing.requisition_id,
+            talent_record_id: existing.talent_record_id,
+            previous_expected_end_at: existing.expected_end_at?.toISOString() ?? null,
+            new_expected_end_at: newEnd.toISOString(),
+            reason: input.reason,
+            source,
+            occurred_at: tExtend.toISOString(),
+          },
+        },
+      });
+      // The fresh view — ending_soon re-derived from the new horizon.
+      return {
+        id: existing.id,
+        placement_process_id: input.placement_process_id,
+        submittal_id: existing.submittal_id,
+        requisition_id: existing.requisition_id,
+        talent_record_id: existing.talent_record_id,
+        started_at: existing.started_at,
+        provenance: existing.provenance,
+        lifecycle_state: 'ACTIVE',
+        end_reason: null,
+        expected_end_at: newEnd,
+        ending_soon: isAssignmentEndingSoon({ lifecycle_state: 'ACTIVE', expected_end_at: newEnd }),
+      };
     });
   }
 
@@ -1333,7 +1485,7 @@ export class PlacementRepository {
     tenant_id: string,
     placement_process_id: string,
   ): Promise<ContractAssignmentView | null> {
-    const row = (await this.prisma.contractAssignment.findFirst({
+    const row = await this.prisma.contractAssignment.findFirst({
       where: { tenant_id, placement_process_id },
       select: {
         id: true,
@@ -1345,9 +1497,18 @@ export class PlacementRepository {
         provenance: true,
         lifecycle_state: true,
         end_reason: true,
+        expected_end_at: true,
       },
-    })) as ContractAssignmentView | null;
-    return row;
+    });
+    if (row === null) return null;
+    // Slice #3 (R-ENDING-SOON) — DERIVE ending_soon on read; never stored.
+    return {
+      ...(row as Omit<ContractAssignmentView, 'ending_soon'>),
+      ending_soon: isAssignmentEndingSoon({
+        lifecycle_state: row.lifecycle_state,
+        expected_end_at: row.expected_end_at,
+      }),
+    };
   }
 
   // Track 6 / T6-B1 — the canonical point-in-time commercial projection of the

@@ -310,6 +310,7 @@ export const SEED_SCOPE_KEYS = [
   'assignment:create',
   'assignment:update',
   'assignment:end',
+  'assignment:extend',
   // Track 5 / T5-P1 — assignment commercial-terms (Assignment Rate Version)
   // authority. Dedicated financial permissions (Amendment A2 DEC-4): NEVER
   // satisfied by placement:*, requisition-financials, or the generic

@@ -245,6 +245,14 @@ export class TransitionPlacementDto {
   @IsUUID()
   assignment_department_id?: string;
 
+  // Slice #3 (Assignment-Extension, R-INITIAL-END) — the assignment-owned planned
+  // end captured at the forward STARTED handoff (ISO-8601). REQUIRED for STARTED
+  // (enforced in the controller — a target-dependent policy class-validator can't
+  // express alone); the requisition term prefills it FE-side. Ignored otherwise.
+  @IsOptional()
+  @IsDateString()
+  assignment_expected_end_at?: string;
+
   // Track 5 / T5-P1 — actual commercial terms for the FORWARD STARTED path.
   // Optional at the wire; the repository REQUIRES it for a transition to STARTED
   // (PLACEMENT_START_COMMERCIAL_TERMS_REQUIRED, 422) and REJECTS it for any other
@@ -271,6 +279,23 @@ export class TransitionPlacementDto {
 export class EndAssignmentDto {
   @IsIn(['COMPLETED', 'WORKER_ENDED', 'CLIENT_ENDED'])
   end_reason!: string;
+}
+
+// Slice #3 — extend an ACTIVE ContractAssignment's planned end (a GOVERNED command,
+// never a bare date PATCH). new_expected_end_at must be strictly forward (enforced in
+// the repository → ASSIGNMENT_EXTENSION_NOT_FORWARD 422). reason is the closed v1 set
+// (DATA_CORRECTION deferred to a future Edit/Correct operation).
+export class ExtendAssignmentDto {
+  @IsDateString()
+  new_expected_end_at!: string;
+
+  @IsIn(['CLIENT_REQUEST', 'PROJECT_EXTENSION', 'RENEWAL', 'SCOPE_CONTINUATION'])
+  reason!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  comment?: string;
 }
 
 // Track 7 / T7-P1 — one generic governed guarantee-lifecycle transition (directive

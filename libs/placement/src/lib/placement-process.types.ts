@@ -87,6 +87,12 @@ export type AssignmentContext = {
   readonly company_id: string;
   readonly site_id?: string | null;
   readonly company_department_id?: string | null;
+  // Slice #3 (Assignment-Extension, R-INITIAL-END) — the assignment-owned planned
+  // end captured at the STARTED handoff (ISO-8601 instant). Optional in the repo
+  // primitive (stored nullable — backfill-safe); REQUIRED at the HTTP business
+  // operation (the controller enforces presence for a forward STARTED). The
+  // requisition term MAY prefill it; once stored it is assignment-owned.
+  readonly expected_end_at?: string | null;
 };
 
 // Track 7 / T7-P1 — the governed guarantee terms snapshot supplied at the PERMANENT
@@ -123,6 +129,17 @@ export type CommercialTermsInput = {
 // employer/client ended. Distinguishes the three business categories structurally.
 export type ContractAssignmentEndReason = 'COMPLETED' | 'WORKER_ENDED' | 'CLIENT_ENDED';
 
+// Slice #3 (Assignment-Extension) — v1 extend reasons (R-EXTEND-COMMAND) and the
+// provenance seam (R-PROVENANCE). Hand-typed unions (decoupled from the generated
+// client path). DATA_CORRECTION is intentionally absent — a future Edit/Correct
+// operation, not an extension.
+export type AssignmentExtensionReason =
+  | 'CLIENT_REQUEST'
+  | 'PROJECT_EXTENSION'
+  | 'RENEWAL'
+  | 'SCOPE_CONTINUATION';
+export type AssignmentExtensionSource = 'MANUAL' | 'VMS' | 'API' | 'SYSTEM';
+
 // Track 4 / T4-D (assignment:read) — the authoritative assignment-state read view.
 // ASSIGNMENT STATE ONLY: existence + lifecycle_state + end_reason + started_at +
 // provenance + identity links. Deliberately NO capacity (capacity remains the
@@ -141,6 +158,13 @@ export type ContractAssignmentView = {
   readonly lifecycle_state: 'ACTIVE' | 'ENDED' | null;
   // Present iff ENDED; the authoritative discriminator, never collapsed.
   readonly end_reason: ContractAssignmentEndReason | null;
+  // Slice #3 (Assignment-Extension) — the assignment-OWNED planned end (distinct
+  // from started_at=actual-start, ended_at=actual-end). Null on a backfilled/
+  // horizon-absent assignment. Extend moves it strictly forward.
+  readonly expected_end_at: Date | null;
+  // DERIVED (R-ENDING-SOON) — ACTIVE + expected_end_at within the horizon. Never a
+  // stored state/column; computed on read via isAssignmentEndingSoon.
+  readonly ending_soon: boolean;
 };
 
 // Track 5 / T5-P2 — the tenant-scoped, assignment:commercials:read-gated projection

@@ -131,6 +131,8 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   // (tenant, contract_assignment). HTTP 409 (details.reason: window_overlap |
   // duplicate_effective_from).
   ASSIGNMENT_COMMERCIAL_REVISION_CONFLICT: 409,
+  // Slice #3 — Assignment-Extension forward-only refusal (business rule, 422).
+  ASSIGNMENT_EXTENSION_NOT_FORWARD: 422,
   // Track 7 / T7-P1 — the PermanentPlacement guarantee family (same order as
   // ERROR_CODES). not-found (404) / illegal transition (422) / invalid window (422)
   // / terms required (422) / exposure invalid (422) / already-exists conflict (409).

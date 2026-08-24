@@ -60,12 +60,12 @@ const CATALOG_ROLE_COUNT = 14;
 // was added to SEED_IDS.scopes after this constant was last reconciled — F-2, not
 // reconciled here). +23 pre_start_requirement RoleScope rows.
 // Track 3 / E2 v1.2.2: +1 pre_start_requirement:reopen (zero-grant) → 101.
-const CATALOG_SCOPE_COUNT = 125; // +5 Track3/E1-b placement; +1 Track3/E4 placement:replace; +4 Track4/T4-D assignment; +2 Track5/T5-P1 assignment:commercials; +2 Track8/T8-P2 requisition:import; +2 Track7/T7-P1 placement:permanent; +1 Track7/T7-P2 placement:remedy:resolve; +1 Track7/T7-P3 placement:permanent:terms:write; +2 Track8/T8-CONNECTOR-A integration; +1 L8-B1 submittal-policy:write; +1 Approval requisition:approve
+const CATALOG_SCOPE_COUNT = 126; // +1 Slice#3 assignment:extend; +5 Track3/E1-b placement; +1 Track3/E4 placement:replace; +4 Track4/T4-D assignment; +2 Track5/T5-P1 assignment:commercials; +2 Track8/T8-P2 requisition:import; +2 Track7/T7-P1 placement:permanent; +1 Track7/T7-P2 placement:remedy:resolve; +1 Track7/T7-P3 placement:permanent:terms:write; +2 Track8/T8-CONNECTOR-A integration; +1 L8-B1 submittal-policy:write; +1 Approval requisition:approve
 // Re-derived actual 505 (prior literal 478 was pre-existingly understated by 4;
 // actual pre-change 482 + 23 pre_start_requirement grants = 505 — F-2).
 // v1.2.2 reopen adds ZERO RoleScope rows (§13c-1) — UNCHANGED at 505.
 // Track 4 / T4-D: +13 assignment role-matrix grants (read×4 + create/update/end×3) → 526→539.
-const CATALOG_ROLE_SCOPE_COUNT = 583; // +18 Track3/E1-b placement matrix; +3 Track3/E4 placement:replace; +13 Track4/T4-D assignment matrix; +6 Track5/T5-P1 assignment:commercials matrix; +7 Track8/T8-P2 requisition:import matrix; +7 Track7/T7-P1 placement:permanent matrix; +3 Track7/T7-P2 placement:remedy:resolve matrix; +3 Track7/T7-P3 placement:permanent:terms:write matrix; +4 Track8/T8-CONNECTOR-A integration matrix; +3 L8-B1 submittal-policy:write (AM + tenant_admin + tenant_owner); +3 Approval requisition:approve (AM + tenant_admin + tenant_owner)
+const CATALOG_ROLE_SCOPE_COUNT = 586; // +3 Slice#3 assignment:extend (AM + tenant_admin + tenant_owner); +18 Track3/E1-b placement matrix; +3 Track3/E4 placement:replace; +13 Track4/T4-D assignment matrix; +6 Track5/T5-P1 assignment:commercials matrix; +7 Track8/T8-P2 requisition:import matrix; +7 Track7/T7-P1 placement:permanent matrix; +3 Track7/T7-P2 placement:remedy:resolve matrix; +3 Track7/T7-P3 placement:permanent:terms:write matrix; +4 Track8/T8-CONNECTOR-A integration matrix; +3 L8-B1 submittal-policy:write (AM + tenant_admin + tenant_owner); +3 Approval requisition:approve (AM + tenant_admin + tenant_owner)
 
 // Naive DDL splitter — mirrors identity.integration.spec.ts.
 function splitDdl(sql: string): string[] {

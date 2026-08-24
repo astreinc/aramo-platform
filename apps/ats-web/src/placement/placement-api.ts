@@ -7,7 +7,9 @@ import type {
   CommercialRevisionCancelRequest,
   CommercialRevisionCreateRequest,
   ContractAssignmentEndReason,
+  ContractAssignmentView,
   ConvertToPermanentResponse,
+  ExtendAssignmentRequest,
   PlacementAssignmentResponse,
   PlacementEventListResponse,
   PlacementListResponse,
@@ -129,6 +131,18 @@ export async function endPlacementAssignment(
   return apiClient.post<{ ok: true }>(
     `/v1/placements/${encodeURIComponent(id)}/assignment/end`,
     { end_reason: endReason },
+  );
+}
+
+// Slice #3 — extend an ACTIVE assignment's planned end forward (assignment:extend).
+// Returns the fresh assignment view (expected_end_at updated, ending_soon re-derived).
+export async function extendPlacementAssignment(
+  id: string,
+  body: ExtendAssignmentRequest,
+): Promise<ContractAssignmentView> {
+  return apiClient.post<ContractAssignmentView>(
+    `/v1/placements/${encodeURIComponent(id)}/assignment/extend`,
+    body,
   );
 }
 
