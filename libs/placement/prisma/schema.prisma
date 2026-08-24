@@ -558,6 +558,157 @@ model AssignmentRateVersion {
   @@schema("placement")
 }
 
+// Requisition Workflow slice #4 — Commercial Approval (LOCKED
+// Aramo-Commercial-Approval-Directive-v1_0). The governance layer IN FRONT OF the
+// createCommercialRevision apply path. THE GOVERNING INVARIANT: a proposal is
+// INTENT, an approval is AUTHORITY, an AssignmentRateVersion is APPLIED FINANCIAL
+// TRUTH. This enum is the CommercialRevisionProposal state machine; its order
+// mirrors the registry (commercial-approval-lifecycle.ts) and the migration's
+// per-edge guard. APPROVED (authority granted) and APPLIED (materialised) are
+// deliberately DISTINCT so an apply-time window conflict leaves the proposal
+// recoverable (R-APPLY-RECONCILIATION).
+enum CommercialProposalState {
+  DRAFT
+  PENDING_REVIEW
+  PENDING_CLIENT_APPROVAL
+  APPROVED
+  APPLIED
+  REJECTED
+  WITHDRAWN
+
+  @@schema("placement")
+}
+
+enum CommercialProposalEventType {
+  state_transition
+
+  @@schema("placement")
+}
+
+// Client-approval provenance (R-CLIENT-APPROVAL-EVIDENCE). Client approval is a
+// BUSINESS FACT WITH PROVENANCE, not a manual checkbox: MANUAL is only the first
+// producer; VMS / API / CLIENT_PORTAL populate the SAME evidence model later
+// (T8 connector seam). No Fieldglass/Beeline-specific column ever lands here.
+enum CommercialApprovalSource {
+  MANUAL
+  EMAIL
+  VMS
+  CLIENT_PORTAL
+  API
+
+  @@schema("placement")
+}
+
+// CommercialRevisionProposal — slice #4. The aggregate that answers "what
+// commercial terms is someone ASKING to put into force" (distinct from
+// AssignmentRateVersion = "what terms ARE in force"). It NEVER writes an
+// AssignmentRateVersion until APPLIED (R-PROPOSAL-AGGREGATE) — pending terms are
+// never added to the effective-window / GiST substrate. On APPLIED it reuses
+// createCommercialRevision (R-APPLY). Nullable evidence columns (margin review /
+// client approval / rejection / applied) are set ONCE at their transition and are
+// app-surface immutable — they are NEVER pinned in the DB transition trigger (the
+// NULL=NULL trap: a nullable column pinned via OLD=NEW is NULL, not TRUE). Only
+// the guaranteed-non-null identity + proposed-terms columns are pinned. Derived
+// margin is NOT stored (deriveCommercialMetrics, computed on read). No FK on the
+// UUID refs (§7.3, single-pass tenant-reset symmetry).
+model CommercialRevisionProposal {
+  id String @id @db.Uuid
+
+  tenant_id String @db.Uuid
+
+  // Target assignment. contract_assignment_id anchors the one-live guard + the
+  // reference version; placement_process_id is what createCommercialRevision keys
+  // on at APPLY (that primitive resolves the assignment by placement_process_id).
+  contract_assignment_id String @db.Uuid
+  placement_process_id   String @db.Uuid
+
+  // Denormalised read/lineage axes (mirror AssignmentRateVersion).
+  requisition_id   String @db.Uuid
+  talent_record_id String @db.Uuid
+
+  // The open version this proposal references as CURRENT at creation (the
+  // "reference/current" version). Set at create; used only for the margin
+  // comparison display — the authoritative predecessor is re-resolved under lock
+  // at APPLY by createCommercialRevision.
+  reference_rate_version_id String @db.Uuid
+
+  // Proposed ACTUAL terms (INTENT). Decimal money, never float. currency +
+  // rate_period validated against the libs/common closed sets at the write
+  // boundary. One currency governs both pay and bill (A1-9). These are immutable
+  // after create (pinned in the transition trigger — all non-null).
+  proposed_pay_rate_amount  Decimal @db.Decimal(12, 2)
+  proposed_bill_rate_amount Decimal @db.Decimal(12, 2)
+  proposed_currency         String
+  proposed_rate_period      String
+
+  // Optional requested effective instant for the applied revision (nullable = at
+  // APPLY, createCommercialRevision defaults to now). Nullable → NOT pinned.
+  proposed_effective_from DateTime? @db.Timestamptz(6)
+
+  reason String
+
+  state CommercialProposalState
+
+  // Proposer (INTENT author) — JWT sub. The SoD anchor: an authority actor
+  // (margin/client approve, reject, apply) MUST NOT equal requested_by (R-SOD,
+  // fail-closed at the app boundary — never an irreversible DB CHECK).
+  requested_by String @db.Uuid
+
+  // Margin-review evidence (set at MARGIN_APPROVE). Nullable → app-immutable.
+  review_decided_by String?   @db.Uuid
+  review_decided_at DateTime? @db.Timestamptz(6)
+  review_note       String?
+
+  // Client-approval EVIDENCE with provenance (set at CLIENT_APPROVE). Internal
+  // approval ("Astre will do this business") is distinct from client approval
+  // ("the buyer accepts"); this records the latter as a fact with provenance.
+  client_approved_at         DateTime?                 @db.Timestamptz(6)
+  client_approval_recorded_by String?                  @db.Uuid
+  client_reference           String?
+  client_approval_source     CommercialApprovalSource?
+  client_approval_note       String?
+
+  // Rejection evidence (set at REJECT). Nullable → app-immutable.
+  rejected_by     String?   @db.Uuid
+  rejected_at     DateTime? @db.Timestamptz(6)
+  rejection_reason String?
+
+  // Applied evidence (set at APPLY). The materialised AssignmentRateVersion id +
+  // the instant of application — distinct facts from APPROVED (R-APPLY).
+  applied_rate_version_id String?   @db.Uuid
+  applied_by              String?   @db.Uuid
+  applied_at              DateTime? @db.Timestamptz(6)
+
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+
+  events CommercialRevisionProposalEvent[]
+
+  @@index([tenant_id, contract_assignment_id])
+  @@index([tenant_id, placement_process_id])
+  @@index([tenant_id, requisition_id])
+  @@schema("placement")
+}
+
+// CommercialRevisionProposalEvent — the append-only, absolutely immutable audit
+// log of proposal transitions (mirrors OfferEvent). Immutability enforced by the
+// migration trigger (UPDATE never; DELETE only under the tenant-reset escape).
+model CommercialRevisionProposalEvent {
+  id        String @id @db.Uuid
+  tenant_id String @db.Uuid
+
+  proposal_id String                     @db.Uuid
+  proposal    CommercialRevisionProposal @relation(fields: [proposal_id], references: [id])
+
+  event_type    CommercialProposalEventType
+  event_payload Json
+
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([tenant_id, proposal_id])
+  @@index([proposal_id, created_at])
+  @@schema("placement")
+}
+
 // PermanentPlacementState — Track 7 / T7-P1. The P1 happy-path guarantee
 // lifecycle. Ships EXACTLY the two states the direct-permanent slice reaches:
 // GUARANTEE_ACTIVE (created at the permanent STARTED handoff, inside the

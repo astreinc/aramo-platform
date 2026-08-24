@@ -182,6 +182,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'activity:create',
         'activity:read',
         'activity:redact',
+        'assignment:commercials:approve',
         'assignment:commercials:read',
         'assignment:commercials:write',
         'assignment:create',
@@ -406,7 +407,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Track7/T7-P3: +3 placement:permanent:terms:write grants (account_manager/tenant_admin/tenant_owner) -> 565.
       // Track8/T8-CONNECTOR-A: +4 integration:read/write grants (tenant_admin/tenant_owner ×2) -> 569.
       // L8-B1: +3 submittal-policy:write grants -> 572; +3 requisition:approve grants (account_manager/tenant_admin/tenant_owner) -> 575.
-      expect(roleScopes).toBe(586);
+      expect(roleScopes).toBe(589);
 
       const utmRole = await prisma.userTenantMembershipRole.findUnique({
         where: { id: SEED_IDS.membership_role_admin },
@@ -508,7 +509,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Track 3 / E2: +7 pre_start_requirement (all non-platform). Re-derived
       // actual 96 (prior literal 85 was pre-existingly understated by 4 — F-2).
       // Track 3 / E2 v1.2.2: +1 pre_start_requirement:reopen (non-platform) → 97.
-      expect(tenantScopes.length).toBe(122); // +1 Slice#3 assignment:extend +5 placement +1 placement:replace +2 T7-P1 permanent +1 T7-P2 remedy:resolve +1 T7-P3 permanent:terms:write +4 T4-D assignment +2 T5-P1 commercials +2 T8-P2 requisition:import +2 T8-CONNECTOR-A integration +1 L8-B1 submittal-policy:write +1 Approval requisition:approve (all non-platform)
+      expect(tenantScopes.length).toBe(123); // +1 Slice#3 assignment:extend +5 placement +1 placement:replace +2 T7-P1 permanent +1 T7-P2 remedy:resolve +1 T7-P3 permanent:terms:write +4 T4-D assignment +2 T5-P1 commercials +2 T8-P2 requisition:import +2 T8-CONNECTOR-A integration +1 L8-B1 submittal-policy:write +1 Approval requisition:approve (all non-platform)
       for (const s of tenantScopes) {
         expect(s.key.startsWith('platform:')).toBe(false);
       }
@@ -717,6 +718,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'activity:create',
         'activity:read',
         'activity:redact',
+        'assignment:commercials:approve',
         'assignment:commercials:read',
         'assignment:commercials:write',
         'assignment:create',
@@ -976,6 +978,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'activity:create',
         'activity:read',
         'activity:redact',
+        'assignment:commercials:approve',
         'assignment:commercials:read',
         'assignment:commercials:write',
         'assignment:create',
@@ -1254,6 +1257,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'activity:create',
         'activity:read',
         'activity:redact',
+        'assignment:commercials:approve',
         'assignment:commercials:read',
         'assignment:commercials:write',
         'assignment:create',
@@ -1373,6 +1377,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'offer:transition',
         'activity:create',
         'activity:read',
+        'assignment:commercials:approve',
         'assignment:commercials:read',
         'assignment:commercials:write',
         'assignment:create',

@@ -23,6 +23,37 @@ export {
   type OfferTransitionAction,
   type LegalOfferTarget,
 } from './lib/lifecycle/offer-lifecycle.js';
+// Slice #4 — Commercial Approval (CommercialRevisionProposal governance layer).
+export {
+  CommercialApprovalPolicyService,
+  COMMERCIAL_APPROVAL_POLICY_STORE,
+  COMMERCIAL_APPROVAL_NO_POLICY_PUBLISHED_REASON,
+} from './lib/policy/commercial-approval-policy.service.js';
+export type {
+  CommercialApprovalPolicyInput,
+  CommercialApprovalPolicyOutcome,
+  CommercialApprovalDisposition,
+} from './lib/policy/commercial-approval-policy.service.js';
+export {
+  COMMERCIAL_PROPOSAL_STATES,
+  COMMERCIAL_PROPOSAL_INITIAL_STATE,
+  COMMERCIAL_PROPOSAL_TRANSITIONS,
+  LEGAL_COMMERCIAL_PROPOSAL_TRANSITIONS,
+  COMMERCIAL_PROPOSAL_TERMINAL_STATES,
+  COMMERCIAL_PROPOSAL_ONE_LIVE_INACTIVE,
+  COMMERCIAL_PROPOSAL_STATE_POSITION,
+  isLegalCommercialProposalTransition,
+  COMMERCIAL_APPROVAL_RESOURCE,
+  COMMERCIAL_APPROVAL_LIFECYCLE_PACKAGE_NAME,
+  COMMERCIAL_APPROVAL_ACTIONS,
+  COMMERCIAL_APPROVAL_AUTHORITY_ACTIONS,
+  COMMERCIAL_APPROVAL_SOURCES,
+  isCommercialApprovalAuthorityAction,
+  governingCommercialProposalAction,
+  type CommercialProposalState,
+  type CommercialApprovalAction,
+  type CommercialApprovalSource,
+} from './lib/lifecycle/commercial-approval-lifecycle.js';
 export { PlacementRepository } from './lib/placement.repository.js';
 export {
   DEFAULT_ASSIGNMENT_ENDING_SOON_DAYS,
@@ -186,6 +217,9 @@ export type {
   AssignmentExtensionReason,
   AssignmentExtensionSource,
   AssignmentCommercialView,
+  CommercialProposalView,
+  CommercialMarginComparison,
+  CommercialMarginSide,
   PermanentPlacementView,
   PermanentPlacementTransitionPayload,
   PermanentPlacementRemedyView,

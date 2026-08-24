@@ -10,7 +10,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { PLACEMENT_STATES, PLACEMENT_KINDS, PERMANENT_PLACEMENT_STATES, PERMANENT_FALLOFF_REASON_CODES, REMEDY_POLICIES, USER_CANCELLATION_REASON_CODES } from '@aramo/placement';
+import { PLACEMENT_STATES, PLACEMENT_KINDS, PERMANENT_PLACEMENT_STATES, PERMANENT_FALLOFF_REASON_CODES, REMEDY_POLICIES, USER_CANCELLATION_REASON_CODES, COMMERCIAL_APPROVAL_SOURCES } from '@aramo/placement';
 import { RATE_PERIOD_VALUES } from '@aramo/common';
 
 // Track 5 / T5-P1 — a decimal money string (never a float): up to 10 integer
@@ -203,6 +203,69 @@ export class CommercialRevisionDto {
 export class CancelCommercialRevisionDto {
   @IsIn(USER_CANCELLATION_REASON_CODES as readonly string[])
   cancellation_reason_code!: string;
+}
+
+// Slice #4 — Commercial Approval. Propose the next commercial revision (INTENT).
+// Mirrors CommercialRevisionDto but is NOT applied: it creates a DRAFT
+// CommercialRevisionProposal, never an AssignmentRateVersion (the governing
+// invariant). `reason` is required (trimmed-non-empty enforced at the repo).
+export class CommercialProposalDto {
+  @IsString()
+  @Matches(MONEY_12_2)
+  pay_rate_amount!: string;
+
+  @IsString()
+  @Matches(MONEY_12_2)
+  bill_rate_amount!: string;
+
+  @IsString()
+  @MaxLength(3)
+  currency!: string;
+
+  @IsIn(RATE_PERIOD_VALUES as readonly string[])
+  rate_period!: string;
+
+  @IsOptional()
+  @IsDateString()
+  effective_from?: string;
+
+  @IsString()
+  @MaxLength(2000)
+  reason!: string;
+}
+
+// Proposer lifecycle transitions (scope:write, no policy, no SoD): submit a DRAFT
+// for review, or withdraw an open proposal. An illegal edge is a domain refusal
+// (COMMERCIAL_PROPOSAL_STATE_INVALID, 422) resolved at the repository.
+const COMMERCIAL_PROPOSAL_PROPOSER_ACTIONS = ['submit', 'withdraw'] as const;
+export class CommercialProposalTransitionDto {
+  @IsIn(COMMERCIAL_PROPOSAL_PROPOSER_ACTIONS as readonly string[])
+  action!: string;
+}
+
+// Authority decision (scope:approve + SoD + ADR-0024): margin-approve /
+// client-approve / apply / reject a proposal. `note` is a free-text audit note
+// (review note / rejection reason / client-approval note by action). Client
+// approval captures provenance-bearing evidence: client_reference + source
+// (MANUAL by default; VMS / API / CLIENT_PORTAL populate the same model later).
+const COMMERCIAL_PROPOSAL_AUTHORITY_ACTIONS = ['margin_approve', 'client_approve', 'apply', 'reject'] as const;
+export class CommercialProposalDecisionDto {
+  @IsIn(COMMERCIAL_PROPOSAL_AUTHORITY_ACTIONS as readonly string[])
+  action!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  note?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  client_reference?: string;
+
+  @IsOptional()
+  @IsIn(COMMERCIAL_APPROVAL_SOURCES as readonly string[])
+  client_approval_source?: string;
 }
 
 // One generic transition route (E1-b §1): the target state is in the body and the

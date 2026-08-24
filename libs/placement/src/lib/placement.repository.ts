@@ -1,6 +1,9 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { v7 as uuidv7 } from 'uuid';
+import { insertPolicyDecisionRecordInTx } from '@aramo/policy-store';
 import { AramoError, isIso4217Currency, isRatePeriod } from '@aramo/common';
+
+import { Prisma } from '../../prisma/generated/client/client.js';
 
 import { PrismaService } from './prisma/prisma.service.js';
 import { deriveCommercialMetrics } from './commercial/commercial-metrics.js';
@@ -22,6 +25,13 @@ import {
   ASSIGNMENT_ENDED_CANCELLATION_REASON,
   isUserCancellationReasonCode,
 } from './reasons/commercial-cancellation-reasons.js';
+import {
+  governingCommercialProposalAction,
+  isCommercialApprovalAuthorityAction,
+  COMMERCIAL_PROPOSAL_INITIAL_STATE,
+  type CommercialApprovalAction,
+} from './lifecycle/commercial-approval-lifecycle.js';
+import { CommercialApprovalPolicyService } from './policy/commercial-approval-policy.service.js';
 import { validateGuaranteeTerms, parseCalendarDate } from './permanent/guarantee-validation.js';
 import {
   OUTBOX_PERMANENT_PLACEMENT_CREATED,
@@ -36,6 +46,9 @@ import type {
   AssignmentCommercialView,
   AssignmentExtensionReason,
   AssignmentExtensionSource,
+  CommercialMarginComparison,
+  CommercialMarginSide,
+  CommercialProposalView,
   CommercialTermsInput,
   ContractAssignmentEndReason,
   ContractAssignmentView,
@@ -237,6 +250,32 @@ function isWindowOverlapViolation(err: unknown): boolean {
 function isDuplicateEffectiveFromViolation(err: unknown): boolean {
   return constraintText(err).includes('AssignmentRateVersion_tenant_assignment_effective_key');
 }
+// Slice #4 — the CommercialRevisionProposal one-live partial-unique. Matched by
+// index NAME across the Prisma-7 shapes (constraintText gathers driverAdapterError
+// too — the raw partial-index P2002 does NOT populate meta.target). NEVER a
+// generic P2002 catch (the OFFER_ALREADY_LIVE contract at the proposal layer).
+function isProposalOneLiveViolation(err: unknown): boolean {
+  return constraintText(err).includes('CommercialRevisionProposal_one_live_idx');
+}
+// Slice #4 — one margin side (current OR proposed) via the canonical
+// deriveCommercialMetrics (never a reimplementation, never stored).
+function sideOf(
+  pay: Prisma.Decimal,
+  bill: Prisma.Decimal,
+  currency: string,
+  ratePeriod: string,
+): CommercialMarginSide {
+  const m = deriveCommercialMetrics(pay, bill);
+  return {
+    pay_rate_amount: pay.toFixed(2),
+    bill_rate_amount: bill.toFixed(2),
+    currency,
+    rate_period: ratePeriod,
+    spread_amount: m.spread_amount,
+    margin_percent: m.margin_percent,
+    markup_percent: m.markup_percent,
+  };
+}
 
 // PlacementRepository — create + governed transition + event persistence for
 // the PlacementProcess spine (Track 3 / E1-a §9).
@@ -369,7 +408,14 @@ async function resolvePermanentActivation(
 
 @Injectable()
 export class PlacementRepository {
-  constructor(private readonly prisma: PrismaService) {}
+  // The Commercial Approval policy gate (R-POLICY) is OPTIONAL at construction so
+  // the 13 `new PlacementRepository(prisma)` proof sites that never touch proposals
+  // are unaffected. Production wires it via placement.module. A proposal AUTHORITY
+  // transition reached without it throws (fail-closed — never a silent ALLOW).
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional() private readonly commercialApprovalPolicy?: CommercialApprovalPolicyService,
+  ) {}
 
   // Create a new PlacementProcess. An offer was made, so the initial state is
   // OFFER_EXTENDED (§4). Rejects a second LIVE attempt for the same
@@ -1751,6 +1797,417 @@ export class PlacementRepository {
         throw err;
       }
     });
+  }
+
+  // ==========================================================================
+  // Requisition Workflow slice #4 — Commercial Approval (LOCKED
+  // Aramo-Commercial-Approval-Directive-v1_0). The CommercialRevisionProposal
+  // governance layer IN FRONT OF createCommercialRevision. THE GOVERNING
+  // INVARIANT: proposal = INTENT, approval = AUTHORITY, AssignmentRateVersion =
+  // APPLIED FINANCIAL TRUTH. Propose/submit/withdraw are proposer scope:write;
+  // margin-approve/client-approve/apply/reject are commercials:approve authority
+  // acts gated by SoD (actor != requested_by) + ADR-0024 (fail-closed). APPLY
+  // reuses createCommercialRevision (R-APPLY) and, on its 409, leaves the proposal
+  // APPROVED (R-APPLY-RECONCILIATION).
+  // ==========================================================================
+
+  // Propose (INTENT). Creates a DRAFT proposal for the assignment's next
+  // commercial revision WITHOUT writing any AssignmentRateVersion. Requires an
+  // ACTIVE assignment with an open predecessor version (the reference/current).
+  async createCommercialRevisionProposal(
+    input: {
+      tenant_id: string;
+      placement_process_id: string;
+      pay_rate_amount: string;
+      bill_rate_amount: string;
+      currency: string;
+      rate_period: string;
+      effective_from?: string | null;
+      reason: string;
+      requested_by: string;
+    },
+    requestId: string,
+  ): Promise<CommercialProposalView> {
+    if (!isIso4217Currency(input.currency)) {
+      throw new AramoError('VALIDATION_ERROR', 'currency must be a valid ISO-4217 code', 400, { requestId, details: { field: 'currency' } });
+    }
+    if (!isRatePeriod(input.rate_period)) {
+      throw new AramoError('VALIDATION_ERROR', 'rate_period must be a supported value', 400, { requestId, details: { field: 'rate_period' } });
+    }
+    if (!MONEY_12_2.test(input.pay_rate_amount) || !MONEY_12_2.test(input.bill_rate_amount)) {
+      throw new AramoError('VALIDATION_ERROR', 'pay/bill must be a non-negative Decimal(12,2) money string', 400, { requestId, details: { field: 'amount' } });
+    }
+    const reason = input.reason.trim();
+    if (reason.length === 0) {
+      throw new AramoError('VALIDATION_ERROR', 'reason is required', 400, { requestId, details: { field: 'reason' } });
+    }
+    let effectiveFrom: Date | null = null;
+    if (input.effective_from != null) {
+      const parsed = new Date(input.effective_from);
+      if (Number.isNaN(parsed.getTime())) {
+        throw new AramoError('VALIDATION_ERROR', 'effective_from must be a valid ISO-8601 instant', 400, { requestId, details: { field: 'effective_from' } });
+      }
+      // Strict not-past / not-before-current is re-checked at APPLY by
+      // createCommercialRevision under lock — the proposal only captures intent.
+      effectiveFrom = parsed;
+    }
+
+    // Resolve the ACTIVE assignment + its open reference version (no write yet).
+    const assignment = await this.prisma.contractAssignment.findFirst({
+      where: { tenant_id: input.tenant_id, placement_process_id: input.placement_process_id },
+    });
+    if (assignment === null) {
+      throw new AramoError('NOT_FOUND', 'No ContractAssignment for placement', 404, { requestId, details: { placement_process_id: input.placement_process_id, reason: 'assignment_not_found' } });
+    }
+    if (assignment.lifecycle_state !== 'ACTIVE') {
+      throw new AramoError('NOT_FOUND', 'No active ContractAssignment to propose against', 404, { requestId, details: { placement_process_id: input.placement_process_id, reason: 'active_assignment_not_found' } });
+    }
+    const reference = await this.prisma.assignmentRateVersion.findFirst({
+      where: { tenant_id: input.tenant_id, contract_assignment_id: assignment.id, cancelled_at: null, effective_to: null },
+    });
+    if (reference === null) {
+      throw new AramoError('NOT_FOUND', 'No open commercial version to revise', 404, { requestId, details: { placement_process_id: input.placement_process_id, reason: 'open_commercial_version_not_found' } });
+    }
+
+    const proposalId = uuidv7();
+    try {
+      const row = await this.prisma.$transaction(async (tx) => {
+        const created = await tx.commercialRevisionProposal.create({
+          data: {
+            id: proposalId,
+            tenant_id: input.tenant_id,
+            contract_assignment_id: assignment.id,
+            placement_process_id: input.placement_process_id,
+            requisition_id: assignment.requisition_id,
+            talent_record_id: assignment.talent_record_id,
+            reference_rate_version_id: reference.id,
+            proposed_pay_rate_amount: input.pay_rate_amount,
+            proposed_bill_rate_amount: input.bill_rate_amount,
+            proposed_currency: input.currency,
+            proposed_rate_period: input.rate_period,
+            proposed_effective_from: effectiveFrom,
+            reason,
+            state: COMMERCIAL_PROPOSAL_INITIAL_STATE,
+            requested_by: input.requested_by,
+          },
+        });
+        await tx.commercialRevisionProposalEvent.create({
+          data: {
+            id: uuidv7(),
+            tenant_id: input.tenant_id,
+            proposal_id: proposalId,
+            event_type: 'state_transition',
+            event_payload: { previous_state: null, next_state: COMMERCIAL_PROPOSAL_INITIAL_STATE, action: 'PROPOSE', actor_id: input.requested_by },
+          },
+        });
+        return created;
+      });
+      return this.toProposalView(row, reference);
+    } catch (err) {
+      if (isProposalOneLiveViolation(err)) {
+        throw new AramoError('COMMERCIAL_PROPOSAL_ALREADY_LIVE', 'A live commercial proposal already exists for this assignment', 409, {
+          requestId, details: { contract_assignment_id: assignment.id },
+        });
+      }
+      throw err;
+    }
+  }
+
+  // Proposer transitions (SUBMIT / WITHDRAW) — scope:write, NO policy, NO SoD.
+  async transitionCommercialRevisionProposal(
+    input: {
+      tenant_id: string;
+      placement_process_id: string;
+      proposal_id: string;
+      action: 'submit' | 'withdraw';
+      actor_id: string;
+    },
+    requestId: string,
+  ): Promise<CommercialProposalView> {
+    const proposal = await this.loadProposal(input.tenant_id, input.placement_process_id, input.proposal_id, requestId);
+    const to = input.action === 'submit' ? 'PENDING_REVIEW' : 'WITHDRAWN';
+    const action = governingCommercialProposalAction(proposal.state as never, to);
+    if (action === null || action !== (input.action === 'submit' ? 'SUBMIT' : 'WITHDRAW')) {
+      throw this.proposalStateInvalid(proposal.state, to, requestId);
+    }
+    const row = await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.commercialRevisionProposal.update({ where: { id: proposal.id }, data: { state: to } });
+      await tx.commercialRevisionProposalEvent.create({
+        data: {
+          id: uuidv7(), tenant_id: input.tenant_id, proposal_id: proposal.id,
+          event_type: 'state_transition',
+          event_payload: { previous_state: proposal.state, next_state: to, action, actor_id: input.actor_id },
+        },
+      });
+      return updated;
+    });
+    return this.toProposalView(row);
+  }
+
+  // Authority transitions (MARGIN_APPROVE / CLIENT_APPROVE / APPLY / REJECT) —
+  // commercials:approve + SoD (actor != requested_by) + ADR-0024 fail-closed.
+  async decideCommercialRevisionProposal(
+    input: {
+      tenant_id: string;
+      placement_process_id: string;
+      proposal_id: string;
+      action: 'margin_approve' | 'client_approve' | 'apply' | 'reject';
+      actor_id: string;
+      scopes: readonly string[];
+      note?: string | null;
+      client_reference?: string | null;
+      client_approval_source?: string | null;
+    },
+    requestId: string,
+  ): Promise<CommercialProposalView> {
+    const proposal = await this.loadProposal(input.tenant_id, input.placement_process_id, input.proposal_id, requestId);
+    const to =
+      input.action === 'margin_approve' ? 'PENDING_CLIENT_APPROVAL'
+      : input.action === 'client_approve' ? 'APPROVED'
+      : input.action === 'apply' ? 'APPLIED'
+      : 'REJECTED';
+    const action = governingCommercialProposalAction(proposal.state as never, to);
+    const expected: CommercialApprovalAction =
+      input.action === 'margin_approve' ? 'MARGIN_APPROVE'
+      : input.action === 'client_approve' ? 'CLIENT_APPROVE'
+      : input.action === 'apply' ? 'APPLY'
+      : 'REJECT';
+    if (action === null || action !== expected || !isCommercialApprovalAuthorityAction(action)) {
+      throw this.proposalStateInvalid(proposal.state, to, requestId);
+    }
+
+    // Segregation of duties (R-SOD) — fail-closed at the application boundary.
+    if (input.actor_id === proposal.requested_by) {
+      throw new AramoError('COMMERCIAL_PROPOSAL_SELF_APPROVAL', 'The proposer may not exercise commercial authority over their own proposal', 403, {
+        requestId, details: { proposal_id: proposal.id, action: expected },
+      });
+    }
+
+    // ADR-0024 fail-closed policy at the approval boundary (R-POLICY). Evaluate
+    // BEFORE any write; a DENY persists the decision record and refuses.
+    const policy = this.requireCommercialApprovalPolicy(requestId);
+    const outcome = await policy.decide({
+      tenant_id: input.tenant_id,
+      action,
+      from_state: proposal.state,
+      scopes: input.scopes,
+      actor_id: input.actor_id,
+      origin: 'ui',
+      correlation_id: requestId,
+    });
+    if (outcome.disposition === 'DENY') {
+      await this.prisma.$transaction((tx) => insertPolicyDecisionRecordInTx(tx, outcome.provenance));
+      throw new AramoError('POLICY_DENIED', 'The commercial approval policy denied this transition', 403, {
+        requestId, details: { reason_code: outcome.reason_code },
+      });
+    }
+
+    // APPLY (R-APPLY) — reuse createCommercialRevision (its OWN tx: lock,
+    // predecessor close, successor append, GiST/duplicate guard, marker, outbox,
+    // 409). On its ASSIGNMENT_COMMERCIAL_REVISION_CONFLICT the proposal stays
+    // APPROVED (R-APPLY-RECONCILIATION) — the 409 propagates, no state change.
+    if (input.action === 'apply') {
+      const applied = await this.createCommercialRevision(
+        {
+          tenant_id: input.tenant_id,
+          placement_process_id: proposal.placement_process_id,
+          pay_rate_amount: proposal.proposed_pay_rate_amount.toFixed(2),
+          bill_rate_amount: proposal.proposed_bill_rate_amount.toFixed(2),
+          currency: proposal.proposed_currency,
+          rate_period: proposal.proposed_rate_period,
+          effective_from: proposal.proposed_effective_from ? proposal.proposed_effective_from.toISOString() : null,
+          change_reason: proposal.reason,
+          recorded_by: input.actor_id,
+        },
+        requestId,
+      );
+      const appliedAt = new Date();
+      const row = await this.prisma.$transaction(async (tx) => {
+        const updated = await tx.commercialRevisionProposal.update({
+          where: { id: proposal.id },
+          data: { state: 'APPLIED', applied_rate_version_id: applied.assignment_rate_version_id, applied_by: input.actor_id, applied_at: appliedAt },
+        });
+        await tx.commercialRevisionProposalEvent.create({
+          data: {
+            id: uuidv7(), tenant_id: input.tenant_id, proposal_id: proposal.id,
+            event_type: 'state_transition',
+            event_payload: { previous_state: proposal.state, next_state: 'APPLIED', action, actor_id: input.actor_id, assignment_rate_version_id: applied.assignment_rate_version_id },
+          },
+        });
+        await insertPolicyDecisionRecordInTx(tx, outcome.provenance);
+        return updated;
+      });
+      return this.toProposalView(row);
+    }
+
+    // MARGIN_APPROVE / CLIENT_APPROVE / REJECT — record the transition + its
+    // evidence + the policy decision atomically.
+    const now = new Date();
+    const data: Record<string, unknown> = { state: to };
+    if (input.action === 'margin_approve') {
+      data['review_decided_by'] = input.actor_id;
+      data['review_decided_at'] = now;
+      data['review_note'] = input.note ?? null;
+    } else if (input.action === 'client_approve') {
+      data['client_approved_at'] = now;
+      data['client_approval_recorded_by'] = input.actor_id;
+      data['client_reference'] = input.client_reference ?? null;
+      data['client_approval_source'] = (input.client_approval_source ?? 'MANUAL');
+      data['client_approval_note'] = input.note ?? null;
+    } else {
+      data['rejected_by'] = input.actor_id;
+      data['rejected_at'] = now;
+      data['rejection_reason'] = input.note ?? null;
+    }
+    const row = await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.commercialRevisionProposal.update({ where: { id: proposal.id }, data });
+      await tx.commercialRevisionProposalEvent.create({
+        data: {
+          id: uuidv7(), tenant_id: input.tenant_id, proposal_id: proposal.id,
+          event_type: 'state_transition',
+          event_payload: { previous_state: proposal.state, next_state: to, action, actor_id: input.actor_id },
+        },
+      });
+      await insertPolicyDecisionRecordInTx(tx, outcome.provenance);
+      return updated;
+    });
+    return this.toProposalView(row);
+  }
+
+  // List all proposals for an assignment (newest first), each with the derived
+  // margin comparison. commercials:read boundary.
+  async findCommercialRevisionProposals(
+    tenant_id: string,
+    placement_process_id: string,
+    requestId: string,
+  ): Promise<CommercialProposalView[]> {
+    const assignment = await this.prisma.contractAssignment.findFirst({
+      where: { tenant_id, placement_process_id },
+    });
+    if (assignment === null) {
+      throw new AramoError('NOT_FOUND', 'No ContractAssignment for placement', 404, { requestId, details: { placement_process_id, reason: 'assignment_not_found' } });
+    }
+    const rows = await this.prisma.commercialRevisionProposal.findMany({
+      where: { tenant_id, contract_assignment_id: assignment.id },
+      orderBy: { created_at: 'desc' },
+    });
+    return Promise.all(rows.map((r) => this.toProposalView(r)));
+  }
+
+  async findCommercialRevisionProposalById(
+    tenant_id: string,
+    placement_process_id: string,
+    proposal_id: string,
+    requestId: string,
+  ): Promise<CommercialProposalView | null> {
+    const row = await this.prisma.commercialRevisionProposal.findFirst({
+      where: { tenant_id, placement_process_id, id: proposal_id },
+    });
+    if (row === null) return null;
+    return this.toProposalView(row);
+  }
+
+  private requireCommercialApprovalPolicy(requestId: string): CommercialApprovalPolicyService {
+    if (this.commercialApprovalPolicy === undefined) {
+      // Fail-closed: an authority transition can never proceed without the gate.
+      throw new AramoError('POLICY_DENIED', 'Commercial approval policy gate is not configured', 403, {
+        requestId, details: { reason_code: 'POLICY_GATE_UNCONFIGURED' },
+      });
+    }
+    return this.commercialApprovalPolicy;
+  }
+
+  private async loadProposal(
+    tenant_id: string,
+    placement_process_id: string,
+    proposal_id: string,
+    requestId: string,
+  ) {
+    const row = await this.prisma.commercialRevisionProposal.findFirst({
+      where: { tenant_id, placement_process_id, id: proposal_id },
+    });
+    if (row === null) {
+      throw new AramoError('NOT_FOUND', 'Commercial proposal not found in tenant', 404, { requestId, details: { proposal_id } });
+    }
+    return row;
+  }
+
+  private proposalStateInvalid(from: string, to: string, requestId: string): AramoError {
+    return new AramoError('COMMERCIAL_PROPOSAL_STATE_INVALID', `Commercial proposal transition ${from} -> ${to} is not a legal edge`, 422, {
+      requestId, details: { from, to },
+    });
+  }
+
+  // Build the read projection. The `current` side derives from the reference
+  // version captured at propose time (the terms the proposer was comparing
+  // against); `proposed` from the stored intent; deltas are proposed minus
+  // current, all Prisma.Decimal (never float).
+  private async toProposalView(
+    row: {
+      id: string; contract_assignment_id: string; placement_process_id: string;
+      requisition_id: string; talent_record_id: string; state: string;
+      reference_rate_version_id: string;
+      proposed_pay_rate_amount: Prisma.Decimal; proposed_bill_rate_amount: Prisma.Decimal;
+      proposed_currency: string; proposed_rate_period: string;
+      proposed_effective_from: Date | null; reason: string; requested_by: string;
+      review_decided_by: string | null; review_decided_at: Date | null; review_note: string | null;
+      client_approved_at: Date | null; client_approval_recorded_by: string | null;
+      client_reference: string | null; client_approval_source: string | null; client_approval_note: string | null;
+      rejected_by: string | null; rejected_at: Date | null; rejection_reason: string | null;
+      applied_rate_version_id: string | null; applied_by: string | null; applied_at: Date | null;
+      tenant_id: string; created_at: Date;
+    },
+    reference?: { pay_rate_amount: Prisma.Decimal; bill_rate_amount: Prisma.Decimal; currency: string; rate_period: string },
+  ): Promise<CommercialProposalView> {
+    const ref = reference ?? (await this.prisma.assignmentRateVersion.findFirst({
+      where: { tenant_id: row.tenant_id, id: row.reference_rate_version_id },
+      select: { pay_rate_amount: true, bill_rate_amount: true, currency: true, rate_period: true },
+    })) ?? { pay_rate_amount: row.proposed_pay_rate_amount, bill_rate_amount: row.proposed_bill_rate_amount, currency: row.proposed_currency, rate_period: row.proposed_rate_period };
+
+    const current = sideOf(ref.pay_rate_amount, ref.bill_rate_amount, ref.currency, ref.rate_period);
+    const proposed = sideOf(row.proposed_pay_rate_amount, row.proposed_bill_rate_amount, row.proposed_currency, row.proposed_rate_period);
+    const margin: CommercialMarginComparison = {
+      current,
+      proposed,
+      pay_rate_delta: row.proposed_pay_rate_amount.minus(ref.pay_rate_amount).toFixed(2),
+      bill_rate_delta: row.proposed_bill_rate_amount.minus(ref.bill_rate_amount).toFixed(2),
+      margin_point_delta:
+        proposed.margin_percent === null || current.margin_percent === null
+          ? null
+          : new Prisma.Decimal(proposed.margin_percent).minus(current.margin_percent).toFixed(2),
+    };
+
+    return {
+      id: row.id,
+      contract_assignment_id: row.contract_assignment_id,
+      placement_process_id: row.placement_process_id,
+      requisition_id: row.requisition_id,
+      talent_record_id: row.talent_record_id,
+      state: row.state,
+      proposed_pay_rate_amount: row.proposed_pay_rate_amount.toFixed(2),
+      proposed_bill_rate_amount: row.proposed_bill_rate_amount.toFixed(2),
+      proposed_currency: row.proposed_currency,
+      proposed_rate_period: row.proposed_rate_period,
+      proposed_effective_from: row.proposed_effective_from,
+      reason: row.reason,
+      requested_by: row.requested_by,
+      margin,
+      review_decided_by: row.review_decided_by,
+      review_decided_at: row.review_decided_at,
+      review_note: row.review_note,
+      client_approved_at: row.client_approved_at,
+      client_approval_recorded_by: row.client_approval_recorded_by,
+      client_reference: row.client_reference,
+      client_approval_source: row.client_approval_source,
+      client_approval_note: row.client_approval_note,
+      rejected_by: row.rejected_by,
+      rejected_at: row.rejected_at,
+      rejection_reason: row.rejection_reason,
+      applied_rate_version_id: row.applied_rate_version_id,
+      applied_by: row.applied_by,
+      applied_at: row.applied_at,
+      created_at: row.created_at,
+    };
   }
 
   // Track 6 / T6-B3 — explicit governed cancellation of a FUTURE open-tail

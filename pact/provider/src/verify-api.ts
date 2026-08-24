@@ -836,6 +836,12 @@ const PLACEMENT_ASSIGNMENT_EXTENSION_MIGRATION = resolve(
   ROOT,
   'libs/placement/prisma/migrations/20260825120000_assignment_extension_horizon/migration.sql',
 );
+// Slice #4 — Commercial Approval: CommercialRevisionProposal aggregate + event log.
+// A SEPARATE const + apply-list entry (single-path resolve — never a 2nd resolve() arg → ENOTDIR).
+const PLACEMENT_COMMERCIAL_PROPOSAL_MIGRATION = resolve(
+  ROOT,
+  'libs/placement/prisma/migrations/20260826120000_commercial_revision_proposal/migration.sql',
+);
 const PLACEMENT_ASSIGNMENT_ENDED_MIGRATION = resolve(
   ROOT,
   'libs/placement/prisma/migrations/20260810100000_placement_assignment_ended_value/migration.sql',
@@ -1091,6 +1097,10 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // so the PlacementProcess CASCADE does not clear them. TRUNCATE bypasses the
       // AssignmentRateVersion append-only DELETE-reject trigger (a table-level op).
       await c.query('TRUNCATE TABLE placement."AssignmentRateVersion", placement."ContractAssignment" CASCADE');
+      // Slice #4 — Commercial Approval: the CommercialRevisionProposal aggregate is
+      // UUID-linked to the assignment (no FK), so the CASCADE above does not clear it.
+      // TRUNCATE (CASCADE reaches its event-log child) bypasses the append-only trigger.
+      await c.query('TRUNCATE TABLE placement."CommercialRevisionProposal" CASCADE');
       // Track 7 / T7-P5 — the permanent-placement aggregate + its children are
       // UUID-linked to PlacementProcess (NO FK), so the CASCADE above does not
       // clear them. PermanentPlacementRemedy + PermanentPlacementEvent FK to
@@ -3147,6 +3157,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         // consumption authority the requisition read now counts).
         PLACEMENT_CONTRACT_ASSIGNMENT_MIGRATION,
         PLACEMENT_ASSIGNMENT_EXTENSION_MIGRATION,
+        PLACEMENT_COMMERCIAL_PROPOSAL_MIGRATION,
         PLACEMENT_ASSIGNMENT_ENDED_MIGRATION,
         PLACEMENT_ASSIGNMENT_GUARD_MIGRATION,
         PLACEMENT_ASSIGNMENT_END_REASON_MIGRATION,

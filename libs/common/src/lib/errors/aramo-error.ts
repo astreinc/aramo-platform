@@ -162,6 +162,11 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   SUBMITTAL_PIPELINE_LINK_INVALID: 409,
   OFFER_ALREADY_LIVE: 409,
   OFFER_ILLEGAL_TRANSITION: 409,
+  // Slice #4 — Commercial Approval (appended LAST). Illegal proposal transition
+  // (422) / segregation-of-duties self-approval (403) / one-live conflict (409).
+  COMMERCIAL_PROPOSAL_STATE_INVALID: 422,
+  COMMERCIAL_PROPOSAL_SELF_APPROVAL: 403,
+  COMMERCIAL_PROPOSAL_ALREADY_LIVE: 409,
 };
 
 // Base error class. Thrown anywhere in the app where a structured response

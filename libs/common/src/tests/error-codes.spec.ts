@@ -178,6 +178,9 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       'SUBMITTAL_PIPELINE_LINK_INVALID',
       'OFFER_ALREADY_LIVE',
       'OFFER_ILLEGAL_TRANSITION',
+      'COMMERCIAL_PROPOSAL_STATE_INVALID',
+      'COMMERCIAL_PROPOSAL_SELF_APPROVAL',
+      'COMMERCIAL_PROPOSAL_ALREADY_LIVE',
     ]);
   });
 });

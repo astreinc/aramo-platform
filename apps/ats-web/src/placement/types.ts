@@ -321,3 +321,157 @@ export const COMMERCIAL_CANCELLATION_REASON_LABELS: Record<
 export interface CommercialRevisionCancelRequest {
   readonly cancellation_reason_code: CommercialCancellationReasonCode;
 }
+
+// ── Slice #4 — Commercial Approval (CommercialRevisionProposal) ──
+// Hand-mirrored from the BE CommercialProposalView contract (ADR-0029: no @aramo/placement
+// import). A proposal is INTENT, an approval is AUTHORITY, an AssignmentRateVersion is
+// APPLIED TRUTH. The proposal advances through a review → client-approval → apply lifecycle;
+// the client renders server state verbatim and never re-derives the state or the margin.
+
+export const COMMERCIAL_PROPOSAL_STATE_VALUES = [
+  'DRAFT',
+  'PENDING_REVIEW',
+  'PENDING_CLIENT_APPROVAL',
+  'APPROVED',
+  'APPLIED',
+  'REJECTED',
+  'WITHDRAWN',
+] as const;
+export type CommercialProposalState = (typeof COMMERCIAL_PROPOSAL_STATE_VALUES)[number];
+
+export const COMMERCIAL_PROPOSAL_STATE_LABELS: Record<CommercialProposalState, string> = {
+  DRAFT: 'Draft',
+  PENDING_REVIEW: 'Pending margin review',
+  PENDING_CLIENT_APPROVAL: 'Pending client approval',
+  APPROVED: 'Approved',
+  APPLIED: 'Applied',
+  REJECTED: 'Rejected',
+  WITHDRAWN: 'Withdrawn',
+};
+
+// The terminal states carry no governed affordance (read-only from here).
+export const COMMERCIAL_PROPOSAL_TERMINAL_STATES: readonly CommercialProposalState[] = [
+  'APPLIED',
+  'REJECTED',
+  'WITHDRAWN',
+];
+
+// The evidentiary source for a recorded client approval (closed set, mirrors the BE).
+export const CLIENT_APPROVAL_SOURCE_VALUES = [
+  'MANUAL',
+  'EMAIL',
+  'VMS',
+  'CLIENT_PORTAL',
+  'API',
+] as const;
+export type ClientApprovalSource = (typeof CLIENT_APPROVAL_SOURCE_VALUES)[number];
+
+export const CLIENT_APPROVAL_SOURCE_LABELS: Record<ClientApprovalSource, string> = {
+  MANUAL: 'Manual',
+  EMAIL: 'Email',
+  VMS: 'VMS',
+  CLIENT_PORTAL: 'Client portal',
+  API: 'API',
+};
+
+// One side (current or proposed) of the margin comparison. Money/percent are decimal
+// STRINGS the BE derives verbatim (never recomputed on the client); margin/markup percent
+// are null on a zero denominator.
+export interface CommercialMarginSide {
+  readonly pay_rate_amount: string;
+  readonly bill_rate_amount: string;
+  readonly currency: string;
+  readonly rate_period: string;
+  readonly spread_amount: string;
+  readonly margin_percent: string | null;
+  readonly markup_percent: string | null;
+}
+
+// The BE-derived current → proposed → delta comparison carried on every proposal view.
+export interface CommercialMarginComparison {
+  readonly current: CommercialMarginSide;
+  readonly proposed: CommercialMarginSide;
+  readonly pay_rate_delta: string;
+  readonly bill_rate_delta: string;
+  readonly margin_point_delta: string | null;
+}
+
+// The full CommercialProposalView. Nullable evidentiary fields are populated as the
+// proposal advances (review → client approval → apply / reject). requested_by is the
+// proposer's user id — the client compares it to session.sub for segregation-of-duties.
+export interface CommercialProposalView {
+  readonly id: string;
+  readonly contract_assignment_id: string;
+  readonly placement_process_id: string;
+  readonly requisition_id: string;
+  readonly talent_record_id: string;
+  readonly state: CommercialProposalState;
+  readonly proposed_pay_rate_amount: string;
+  readonly proposed_bill_rate_amount: string;
+  readonly proposed_currency: string;
+  readonly proposed_rate_period: string;
+  readonly proposed_effective_from: string | null;
+  readonly reason: string;
+  readonly requested_by: string;
+  readonly margin: CommercialMarginComparison;
+  readonly review_decided_by: string | null;
+  readonly review_decided_at: string | null;
+  readonly review_note: string | null;
+  readonly client_approved_at: string | null;
+  readonly client_approval_recorded_by: string | null;
+  readonly client_reference: string | null;
+  readonly client_approval_source: string | null;
+  readonly client_approval_note: string | null;
+  readonly rejected_by: string | null;
+  readonly rejected_at: string | null;
+  readonly rejection_reason: string | null;
+  readonly applied_rate_version_id: string | null;
+  readonly applied_by: string | null;
+  readonly applied_at: string | null;
+  readonly created_at: string;
+}
+
+// Response envelopes (mirror the BE): detail is nullable (a real absence), list is { items },
+// propose/transition/decision each return { proposal } (never null on success).
+export interface CommercialProposalResponse {
+  readonly proposal: CommercialProposalView | null;
+}
+export interface CommercialProposalListResponse {
+  readonly items: readonly CommercialProposalView[];
+}
+export interface CommercialProposalMutationResponse {
+  readonly proposal: CommercialProposalView;
+}
+
+// POST .../proposals body — propose a commercial revision. effective_from is OPTIONAL
+// (the server supplies the authoritative instant when absent); reason is required.
+export interface ProposeCommercialRevisionRequest {
+  readonly pay_rate_amount: string;
+  readonly bill_rate_amount: string;
+  readonly currency: string;
+  readonly rate_period: string;
+  readonly effective_from?: string;
+  readonly reason: string;
+}
+
+// PATCH .../proposals/{id} body — the PROPOSER transition (submit for review / withdraw).
+export type CommercialProposalTransitionAction = 'submit' | 'withdraw';
+export interface CommercialProposalTransitionRequest {
+  readonly action: CommercialProposalTransitionAction;
+}
+
+// POST .../proposals/{id}/decision body — the AUTHORITY decision. margin_approve advances
+// review; client_approve records the client's approval (with evidence); apply materialises
+// the rate version; reject terminates. Segregation of duties (actor ≠ proposer) is enforced
+// on the BE and mirrored in the UI (the affordance is HIDDEN for the proposer).
+export type CommercialProposalDecisionAction =
+  | 'margin_approve'
+  | 'client_approve'
+  | 'apply'
+  | 'reject';
+export interface CommercialProposalDecisionRequest {
+  readonly action: CommercialProposalDecisionAction;
+  readonly note?: string;
+  readonly client_reference?: string;
+  readonly client_approval_source?: ClientApprovalSource;
+}

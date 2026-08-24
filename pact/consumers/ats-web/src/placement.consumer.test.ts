@@ -288,6 +288,100 @@ describe('ats-web → POST /v1/placements/:id/assignment/commercials/revisions',
   });
 });
 
+// Slice #4 — Commercial Approval. The core proposal path: propose the next
+// commercial revision (INTENT). The provider actually creates the proposal
+// against the seeded ACTIVE assignment + open version, so this verifies the new
+// route, the documented CommercialProposalView shape (incl. the derived margin
+// comparison), the migration-backed provider startup, and the writer scope.
+const PROPOSAL_REQUEST = {
+  pay_rate_amount: '90.00',
+  bill_rate_amount: '150.00',
+  currency: 'USD',
+  rate_period: 'HOURLY',
+  reason: 'rate uplift',
+};
+
+function marginSide(pay: string, bill: string, spread: string, margin: string, markup: string) {
+  return {
+    pay_rate_amount: like(pay),
+    bill_rate_amount: like(bill),
+    currency: like('USD'),
+    rate_period: like('HOURLY'),
+    spread_amount: like(spread),
+    margin_percent: like(margin),
+    markup_percent: like(markup),
+  };
+}
+
+// A fresh DRAFT proposal: all per-transition evidence is null; ids are
+// server-generated (format-matched); the margin comparison is derived on read.
+function commercialProposalView() {
+  return {
+    id: uuid('00000000-0000-7000-8000-c0a000000001'),
+    contract_assignment_id: uuid('00000000-0000-7000-8000-ca0000000001'),
+    placement_process_id: uuid(PLACEMENT_ID),
+    requisition_id: uuid(REQ_ID),
+    talent_record_id: uuid(TALENT_ID_P),
+    state: like('DRAFT'),
+    proposed_pay_rate_amount: like('90.00'),
+    proposed_bill_rate_amount: like('150.00'),
+    proposed_currency: like('USD'),
+    proposed_rate_period: like('HOURLY'),
+    proposed_effective_from: null,
+    reason: like('rate uplift'),
+    requested_by: uuid('00000000-0000-7000-8000-4ec000000001'),
+    margin: {
+      current: marginSide('80.00', '120.00', '40.00', '33.33', '50.00'),
+      proposed: marginSide('90.00', '150.00', '60.00', '40.00', '66.67'),
+      pay_rate_delta: like('10.00'),
+      bill_rate_delta: like('30.00'),
+      margin_point_delta: like('6.67'),
+    },
+    review_decided_by: null,
+    review_decided_at: null,
+    review_note: null,
+    client_approved_at: null,
+    client_approval_recorded_by: null,
+    client_reference: null,
+    client_approval_source: null,
+    client_approval_note: null,
+    rejected_by: null,
+    rejected_at: null,
+    rejection_reason: null,
+    applied_rate_version_id: null,
+    applied_by: null,
+    applied_at: null,
+    created_at: regex(ISO_TIMESTAMP, '2026-08-01T00:00:00Z'),
+  };
+}
+
+describe('ats-web → POST /v1/placements/:id/assignment/commercials/proposals', () => {
+  it('returns 201 with the DRAFT proposal and its derived margin comparison', async () => {
+    await provider
+      .addInteraction()
+      .given('an ats-web writer and an active assignment with an open commercial version exist')
+      .uponReceiving('a commercial revision proposal')
+      .withRequest('POST', `/v1/placements/${PLACEMENT_ID}/assignment/commercials/proposals`, (b) => {
+        b.headers({ Cookie: like(ACCESS_COOKIE) });
+        b.jsonBody(PROPOSAL_REQUEST);
+      })
+      .willRespondWith(201, (b) => {
+        b.jsonBody({ proposal: commercialProposalView() });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/placements/${PLACEMENT_ID}/assignment/commercials/proposals`, {
+          method: 'POST',
+          headers: { Cookie: ACCESS_COOKIE, 'Content-Type': 'application/json' },
+          body: JSON.stringify(PROPOSAL_REQUEST),
+        });
+        expect(res.status).toBe(201);
+        const body = (await res.json()) as { proposal: { state: string; margin: { margin_point_delta: string } } };
+        expect(body.proposal.state).toBe('DRAFT');
+        expect(body.proposal.margin.margin_point_delta).toBe('6.67');
+      });
+  });
+});
+
 describe('ats-web → GET /v1/placements/:id/assignment/commercials/revisions', () => {
   it('returns 200 with a single current version', async () => {
     await provider
