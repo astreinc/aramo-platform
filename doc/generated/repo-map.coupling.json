@@ -3903,6 +3903,12 @@
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/pre-start-requirement/marker-confinement.spec.ts",
       "status": "excluded",
+      "to": "libs/placement/prisma/migrations/20260825120000_assignment_extension_horizon/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/pre-start-requirement/marker-confinement.spec.ts",
+      "status": "excluded",
       "to": "libs/placement/src/tests/commercial-margin-read.integration.spec.ts"
     },
     {
