@@ -191,6 +191,22 @@ const TALENT_RECORD_SUPERSESSION = resolve(
   ROOT,
   'libs/talent-record/prisma/migrations/20260706210000_tr2a_b3a_talent_record_supersession/migration.sql',
 );
+// Requisition-expander enrichment (LOCKED Aramo-Requisition-Expander-Talent-
+// Rate-Columns v1.0) — the GET /v1/pipelines enrichment composer reads
+// consent."TalentConsentEvent" (scope='contacting') to gate contact-channel
+// (email/phone) disclosure. HARNESS-REQUIRED: absent these two migrations, the
+// composer's consent read 500s (relation consent."TalentConsentEvent" does not
+// exist) for any talent:read-bearing caller. Registration is provable — both
+// files exist under libs/consent/prisma/migrations. `rekey` renames the row key
+// talent_id -> talent_record_id (the shape the composer queries by).
+const CONSENT_INIT = resolve(
+  ROOT,
+  'libs/consent/prisma/migrations/20260429164414_initial_consent_schema/migration.sql',
+);
+const CONSENT_REKEY_TO_TALENT_RECORD = resolve(
+  ROOT,
+  'libs/consent/prisma/migrations/20260630170000_rekey_consent_to_talent_record/migration.sql',
+);
 
 // Submittal & selection migrations carry the submittal schema (the A5b
 // boundary asserts no submittal row is touched). We don't load them —
@@ -221,6 +237,8 @@ const MIGRATIONS = [
   POLICY_STORE_INIT,
   POLICY_DECISION_RECORD,
   resolve(ROOT, 'libs/requisition/prisma/migrations/20260803120000_recruiting_status_supersession/migration.sql'),
+  CONSENT_INIT,
+  CONSENT_REKEY_TO_TALENT_RECORD,
 ];
 
 const ISSUER = 'Aramo Core Auth';
@@ -258,6 +276,40 @@ const TALENT_RECORD_ID = '11111111-1111-7111-8111-1111111111aa';
 const REQUISITION_ID = '22222222-2222-7222-8222-2222222222bb';
 const COMPANY_ID = 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa';
 
+// Requisition-expander enrichment token scopes. pipeline:read gates the LIST
+// route; requisition:read:all makes resolveVisibleRequisitionIds → null (see-
+// all) so the seeded rows come back; talent:read is the R-LAYERING EXISTENCE
+// gate for the five enrichment fields. The no-talent variant keeps identical
+// visibility but omits talent:read — proving the existence gate nulls the
+// fields regardless of consent.
+const ENRICH_SCOPES_WITH_TALENT = [
+  'pipeline:read',
+  'talent:read',
+  'requisition:read:all',
+];
+const ENRICH_SCOPES_NO_TALENT = ['pipeline:read', 'requisition:read:all'];
+
+// Enrichment fixtures — kept distinct from the state-machine ids above so the
+// two suites never contend on the (talent_record_id, requisition_id) unique.
+const ENRICH_TALENT_CONTACTABLE = '55555555-5555-7555-8555-555555555501';
+const ENRICH_TALENT_DNC = '55555555-5555-7555-8555-555555555502';
+const ENRICH_TALENT_CROSS_TENANT = '55555555-5555-7555-8555-555555555503';
+const ENRICH_PIPE_CONTACTABLE = '66666666-6666-7666-8666-666666666601';
+const ENRICH_PIPE_DNC = '66666666-6666-7666-8666-666666666602';
+const ENRICH_PIPE_CROSS_TENANT = '66666666-6666-7666-8666-666666666603';
+
+// Shape of a GET /v1/pipelines list item, narrowed to the enrichment fields
+// under test (the five are optional on PipelineView — absent/null when the
+// existence gate or a missing record applies).
+type PipelineViewLike = {
+  talent_record_id: string;
+  email?: string | null;
+  phone?: string | null;
+  location?: string | null;
+  work_auth?: string | null;
+  desired_rate?: string | null;
+};
+
 describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
   'PR-A5a ATS Batch 4a — pipeline state machine + activity proofs (real Postgres 17)',
   () => {
@@ -273,6 +325,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     let recruiterJwt_Ats_WrongSite: string;
     let unscopedJwt_Ats_SiteA: string;
     let tenantAdminJwt_Ats_SiteA: string;
+    let enrichJwt_WithTalent: string;
+    let enrichJwt_NoTalent: string;
 
     async function signJwt(
       privateKey: SignKey,
@@ -352,6 +406,86 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         [requisitionId, TENANT_ATS],
       );
       return r.rows[0]!.openings_available;
+    }
+
+    // Requisition-expander enrichment fixtures. Two live TalentRecords in
+    // TENANT_ATS carry full contact fields; one CONTACTABLE (contacting grant),
+    // one with NO consent event (default-deny → do_not_contact). A third
+    // TalentRecord lives in TENANT_NOT_ATS to prove cross-tenant contact fields
+    // never leak. Three pipelines (all TENANT_ATS, on the seeded requisition,
+    // visible via requisition:read:all) reference the three talents. Rows are
+    // seeded by direct SQL so no metering/policy side effects perturb the
+    // state-machine counters asserted elsewhere in this suite.
+    async function seedEnrichmentFixtures(): Promise<void> {
+      await setupClient.query(
+        `INSERT INTO talent_record."TalentRecord"
+           (id, tenant_id, first_name, last_name, email1, phone_cell,
+            city, state, work_authorization, desired_pay)
+         VALUES
+           ($1::uuid, $2::uuid, 'Dana', 'Rivera', 'dana.rivera@example.com',
+            '+1-512-555-0101', 'Austin', 'TX', 'us_citizen', '$85/hr'),
+           ($3::uuid, $2::uuid, 'Priya', 'Nair', 'priya.nair@example.com',
+            '+1-206-555-0102', 'Seattle', 'WA', 'green_card', '$92/hr')
+         ON CONFLICT (id) DO NOTHING`,
+        [ENRICH_TALENT_CONTACTABLE, TENANT_ATS, ENRICH_TALENT_DNC],
+      );
+      await setupClient.query(
+        `INSERT INTO talent_record."TalentRecord"
+           (id, tenant_id, first_name, last_name, email1, phone_cell,
+            city, state, work_authorization, desired_pay)
+         VALUES
+           ($1::uuid, $2::uuid, 'Other', 'Tenant', 'do-not-leak@example.com',
+            '+1-000-555-0000', 'Elsewhere', 'ZZ', 'us_citizen', '$999/hr')
+         ON CONFLICT (id) DO NOTHING`,
+        [ENRICH_TALENT_CROSS_TENANT, TENANT_NOT_ATS],
+      );
+      // Contacting GRANT for the contactable talent → 'contactable'
+      // (expires_at NULL ⇒ not expiring). The DNC talent gets no event.
+      await setupClient.query(
+        `INSERT INTO consent."TalentConsentEvent"
+           (id, talent_record_id, tenant_id, scope, action, captured_method,
+            consent_version, occurred_at, expires_at)
+         VALUES
+           (gen_random_uuid(), $1::uuid, $2::uuid, 'contacting', 'granted',
+            'web', 'v1', NOW(), NULL)`,
+        [ENRICH_TALENT_CONTACTABLE, TENANT_ATS],
+      );
+      await setupClient.query(
+        `INSERT INTO pipeline."Pipeline"
+           (id, tenant_id, site_id, talent_record_id, requisition_id, status)
+         VALUES
+           ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, 'contacted'),
+           ($6::uuid, $2::uuid, $3::uuid, $7::uuid, $5::uuid, 'contacted'),
+           ($8::uuid, $2::uuid, $3::uuid, $9::uuid, $5::uuid, 'contacted')
+         ON CONFLICT (id) DO NOTHING`,
+        [
+          ENRICH_PIPE_CONTACTABLE,
+          TENANT_ATS,
+          SITE_A,
+          ENRICH_TALENT_CONTACTABLE,
+          REQUISITION_ID,
+          ENRICH_PIPE_DNC,
+          ENRICH_TALENT_DNC,
+          ENRICH_PIPE_CROSS_TENANT,
+          ENRICH_TALENT_CROSS_TENANT,
+        ],
+      );
+    }
+
+    // Narrowed GET /v1/pipelines list (by talent_record_id) — deterministic:
+    // returns exactly the fixture's pipeline row regardless of other suites'
+    // residue. Passes through the real enrichment interceptor.
+    async function listPipelinesForTalent(
+      jwt: string,
+      talentId: string,
+    ): Promise<PipelineViewLike[]> {
+      const res = await fetch(
+        `http://127.0.0.1:${port}/v1/pipelines?site_id=${SITE_A}&talent_record_id=${talentId}`,
+        { method: 'GET', headers: { Authorization: `Bearer ${jwt}` } },
+      );
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { items: PipelineViewLike[] };
+      return body.items;
     }
 
     async function createPipeline(jwt: string): Promise<{
@@ -451,6 +585,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // were retired with the two deleted §5 over-capacity tests.
       await seedRequisitionWithOpenings(REQUISITION_ID, 3);
 
+      // Requisition-expander enrichment fixtures (talent records + consent +
+      // pipelines). Seeded once; the E-section reads them through GET.
+      await seedEnrichmentFixtures();
+
       const kp = await generateKeyPair(ALG);
       const publicPem = await exportSPKI(kp.publicKey as never);
       const privateKey: SignKey = kp.privateKey as SignKey;
@@ -493,6 +631,18 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         tenant_id: TENANT_ATS,
         site_id: SITE_A,
         scopes: TENANT_ADMIN_SCOPES,
+      });
+      enrichJwt_WithTalent = await signJwt(privateKey, {
+        sub: RECRUITER,
+        tenant_id: TENANT_ATS,
+        site_id: SITE_A,
+        scopes: ENRICH_SCOPES_WITH_TALENT,
+      });
+      enrichJwt_NoTalent = await signJwt(privateKey, {
+        sub: RECRUITER,
+        tenant_id: TENANT_ATS,
+        site_id: SITE_A,
+        scopes: ENRICH_SCOPES_NO_TALENT,
       });
 
       module = await Test.createTestingModule({ imports: [AppModule] }).compile();
@@ -842,6 +992,89 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'pipeline',
         'requisition',
       ]);
+    });
+
+    // -------------------------------------------------------------------------
+    // E) Requisition-expander talent enrichment on GET /v1/pipelines
+    //    (LOCKED Aramo-Requisition-Expander-Talent-Rate-Columns v1.0).
+    //    R-LAYERING proven end-to-end through the REAL enrichment interceptor:
+    //      1. authz (talent:read) gates field EXISTENCE;
+    //      2. consent (contacting) gates CONTACT-CHANNEL (email/phone) ONLY —
+    //         never location / work_auth / desired_rate;
+    //      3. cross-tenant contact fields never leak (tenant-scoped read).
+    //    The composer lives in apps/api (the only layer that may read both
+    //    talent-record and consent); libs/pipeline stays single-schema.
+    // -------------------------------------------------------------------------
+
+    it('E1 — talent:read + contacting grant: all five enrichment fields present with real values', async () => {
+      const items = await listPipelinesForTalent(
+        enrichJwt_WithTalent,
+        ENRICH_TALENT_CONTACTABLE,
+      );
+      const row = items.find(
+        (i) => i.talent_record_id === ENRICH_TALENT_CONTACTABLE,
+      );
+      expect(row, 'contactable pipeline row present in list').toBeDefined();
+      // authz present + consent contactable ⇒ every field disclosed.
+      expect(row!.email).toBe('dana.rivera@example.com');
+      expect(row!.phone).toBe('+1-512-555-0101');
+      expect(row!.location).toBe('Austin, TX');
+      expect(row!.work_auth).toBe('us_citizen');
+      expect(row!.desired_rate).toBe('$85/hr');
+    });
+
+    it('E2 — talent:read + do_not_contact: email/phone SUPPRESSED, location/work_auth/desired_rate REMAIN', async () => {
+      const items = await listPipelinesForTalent(
+        enrichJwt_WithTalent,
+        ENRICH_TALENT_DNC,
+      );
+      const row = items.find((i) => i.talent_record_id === ENRICH_TALENT_DNC);
+      expect(row, 'do_not_contact pipeline row present').toBeDefined();
+      // Gate 2 — default-deny (no contacting grant) suppresses the two
+      // contact CHANNELS only.
+      expect(row!.email).toBeNull();
+      expect(row!.phone).toBeNull();
+      // Non-contact attributes are NEVER consent-gated — they survive.
+      expect(row!.location).toBe('Seattle, WA');
+      expect(row!.work_auth).toBe('green_card');
+      expect(row!.desired_rate).toBe('$92/hr');
+    });
+
+    it('E3 — NO talent:read: existence gate nulls ALL five fields even for a contactable talent', async () => {
+      const items = await listPipelinesForTalent(
+        enrichJwt_NoTalent,
+        ENRICH_TALENT_CONTACTABLE,
+      );
+      const row = items.find(
+        (i) => i.talent_record_id === ENRICH_TALENT_CONTACTABLE,
+      );
+      expect(row, 'contactable pipeline row present').toBeDefined();
+      // Gate 1 — authz gates EXISTENCE: same row that E1 fully enriched now
+      // carries five nulls purely because talent:read is absent.
+      expect(row!.email).toBeNull();
+      expect(row!.phone).toBeNull();
+      expect(row!.location).toBeNull();
+      expect(row!.work_auth).toBeNull();
+      expect(row!.desired_rate).toBeNull();
+    });
+
+    it('E4 — talent:read: cross-tenant TalentRecord contact fields NEVER leak (tenant isolation)', async () => {
+      const items = await listPipelinesForTalent(
+        enrichJwt_WithTalent,
+        ENRICH_TALENT_CROSS_TENANT,
+      );
+      const row = items.find(
+        (i) => i.talent_record_id === ENRICH_TALENT_CROSS_TENANT,
+      );
+      // The pipeline row is in TENANT_ATS; the referenced TalentRecord lives in
+      // TENANT_NOT_ATS. findContactByIds filters by tenant_id ⇒ no row found ⇒
+      // no enrichment. The other tenant's contact fields are never surfaced.
+      expect(row, 'cross-tenant pipeline row present in ATS list').toBeDefined();
+      expect(row!.email).toBeNull();
+      expect(row!.phone).toBeNull();
+      expect(row!.location).toBeNull();
+      expect(row!.work_auth).toBeNull();
+      expect(row!.desired_rate).toBeNull();
     });
   },
 );

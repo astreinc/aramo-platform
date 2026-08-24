@@ -89,6 +89,15 @@ export interface PipelineView {
   readonly status: PipelineStatus;
   readonly created_at: string;
   readonly updated_at: string;
+  // Requisition-expander enrichment (LOCKED Aramo-Requisition-Expander-Talent-
+  // Rate-Columns v1.0) — composed by apps/api on the GET /v1/pipelines list only.
+  // Optional: absent on non-enriched reads; null when suppressed (email/phone via
+  // do_not_contact) or absent. authz (talent:read) gates existence.
+  readonly email?: string | null;
+  readonly phone?: string | null;
+  readonly location?: string | null;
+  readonly work_auth?: string | null;
+  readonly desired_rate?: string | null;
 }
 
 export interface PipelineListResponse {

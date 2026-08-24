@@ -36,6 +36,7 @@ import {
   type FunnelBucketKey,
 } from '../ui';
 
+import { TalentDetailPanel } from './TalentDetailPanel';
 import { listRequisitions, setRequisitionBookmark } from './requisitions-api';
 import { RECRUITING_STATUS_TONE as STATUS_TONE } from './status-tone';
 import { listErrorMessage } from './error-messages';
@@ -130,6 +131,8 @@ export function RequisitionsListView({
     Record<string, readonly PipelineView[]>
   >({});
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  // The talent slide-in panel opened from a talent card in an expanded row.
+  const [selectedTalent, setSelectedTalent] = useState<OpenTalentPayload | null>(null);
   const [talentNames, setTalentNames] = useState<Record<string, string>>({});
   const [userNames, setUserNames] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
@@ -338,6 +341,19 @@ export function RequisitionsListView({
   const readyCount = filtered.length;
   const capped = items.length >= LIST_CAP;
 
+  // A governed pipeline transition from the panel updates the entry in place so
+  // the talent card's stage pill reflects the new stage immediately.
+  const handleTransitioned = (updated: PipelineView): void => {
+    setPipelinesByReq((prev) => {
+      const list = prev[updated.requisition_id] ?? [];
+      return {
+        ...prev,
+        [updated.requisition_id]: list.map((x) => (x.id === updated.id ? updated : x)),
+      };
+    });
+    setSelectedTalent((sel) => (sel ? { ...sel, entry: updated } : sel));
+  };
+
   return (
     <section>
       <div className="rc-viewhead">
@@ -536,15 +552,36 @@ export function RequisitionsListView({
                   onToggle={() => toggleExpand(r.id)}
                   entries={pipelinesByReq[r.id] ?? EMPTY_ENTRIES}
                   talentNames={talentNames}
+                  onOpenTalent={setSelectedTalent}
                 />
               ))}
             </div>
           </div>
         )}
       </Card>
+      {selectedTalent ? (
+        <TalentDetailPanel
+          entry={selectedTalent.entry}
+          talentName={selectedTalent.talentName}
+          isNew={selectedTalent.isNew}
+          reqTitle={selectedTalent.reqTitle}
+          reqCode={selectedTalent.reqCode}
+          onClose={() => setSelectedTalent(null)}
+          onTransitioned={handleTransitioned}
+        />
+      ) : null}
     </section>
   );
 }
+
+// Payload the talent card hands up to open the slide-in panel.
+type OpenTalentPayload = {
+  readonly entry: PipelineView;
+  readonly talentName: string | undefined;
+  readonly isNew: boolean;
+  readonly reqTitle: string;
+  readonly reqCode: string;
+};
 
 interface RequisitionRowProps {
   readonly req: RequisitionView;
@@ -556,6 +593,7 @@ interface RequisitionRowProps {
   readonly onToggle: () => void;
   readonly entries: readonly PipelineView[];
   readonly talentNames: Record<string, string>;
+  readonly onOpenTalent: (payload: OpenTalentPayload) => void;
 }
 
 function RequisitionRow({
@@ -568,6 +606,7 @@ function RequisitionRow({
   onToggle,
   entries,
   talentNames,
+  onOpenTalent,
 }: RequisitionRowProps) {
   const detailHref = `/requisitions/${req.id}`;
   const total = funnel?.total ?? 0;
@@ -790,41 +829,74 @@ function RequisitionRow({
             </Link>
           </div>
           {entries.length > 0 ? (
-            <div className="rc-texp__grid">
-              {entries.map((e) => {
-                const name = talentNames[e.talent_record_id];
-                const bucket = funnelBucket(e.status);
-                return (
-                  // Whole card is a link to the talent SOR (Requisitions.dc.html
-                  // parity: avatar · body{name + gray sub-line} · stage pill on
-                  // the RIGHT). Spans (not divs) inside the <a> keep the markup
-                  // valid. Next-action is the gray sub-line; the pipeline source
-                  // prefix ("Referral · …") lands when Source Attribution ships.
-                  <Link
-                    key={e.id}
-                    to={`/talent/${e.talent_record_id}`}
-                    className="rc-tcard"
-                  >
-                    <Avatar name={name ?? '—'} size="sm" />
-                    <span className="rc-tcard__body">
-                      <span className="rc-tcard__name">
-                        {name ?? 'Loading…'}
-                        {isNewEntry(e) ? (
-                          <span className="rc-tcard__new">NEW</span>
-                        ) : null}
+            // Talent LIST. Real columns — name (SOR), stage, and the talent
+            // contact/stated fields composed onto PipelineView by apps/api
+            // (Aramo-Requisition-Expander-Talent-Rate-Columns): email/phone/
+            // location/work-auth (talent:read; email+phone suppressed on
+            // do_not_contact) + desired_rate (talent-stated). Never fabricated —
+            // a genuinely absent value renders —. Each row opens the detail panel.
+            <div className="rc-texp__scroll">
+              <div className="rc-texp__table" role="table">
+                <div className="rc-texp__thead" role="row">
+                  <span className="rc-texp__thc">Talent</span>
+                  <span className="rc-texp__thc">Stage</span>
+                  <span className="rc-texp__thc">Email</span>
+                  <span className="rc-texp__thc">Phone</span>
+                  <span className="rc-texp__thc">Location</span>
+                  <span className="rc-texp__thc">Work auth</span>
+                  <span className="rc-texp__thc">Next step</span>
+                  <span className="rc-texp__thc rc-texp__thc--r">Desired rate</span>
+                </div>
+                {entries.map((e) => {
+                  const name = talentNames[e.talent_record_id];
+                  const bucket = funnelBucket(e.status);
+                  return (
+                    <button
+                      key={e.id}
+                      type="button"
+                      className="rc-texp__row"
+                      onClick={() =>
+                        onOpenTalent({
+                          entry: e,
+                          talentName: name,
+                          isNew: isNewEntry(e),
+                          reqTitle: req.title,
+                          reqCode: `REQ-${req.requisition_number}`,
+                        })
+                      }
+                    >
+                      <span className="rc-texp__talent">
+                        <Avatar name={name ?? '—'} size="sm" />
+                        <span className="rc-texp__name">
+                          {name ?? 'Loading…'}
+                          {isNewEntry(e) ? (
+                            <span className="rc-tcard__new">NEW</span>
+                          ) : null}
+                        </span>
                       </span>
-                      <span className="rc-tcard__sub">
+                      <span>
+                        <span
+                          className={`rc-tcard__stage rc-tcard__stage--${bucket}`}
+                        >
+                          {PIPELINE_STATUS_LABELS[e.status]}
+                        </span>
+                      </span>
+                      <span className="rc-texp__cell rc-texp__cell--email">
+                        {e.email || '—'}
+                      </span>
+                      <span className="rc-texp__cell mono">{e.phone || '—'}</span>
+                      <span className="rc-texp__cell">{e.location || '—'}</span>
+                      <span className="rc-texp__cell">{e.work_auth || '—'}</span>
+                      <span className="rc-texp__next">
                         {PIPELINE_NEXT_ACTION[e.status]}
                       </span>
-                    </span>
-                    <span
-                      className={`rc-tcard__stage rc-tcard__stage--${bucket}`}
-                    >
-                      {PIPELINE_STATUS_LABELS[e.status]}
-                    </span>
-                  </Link>
-                );
-              })}
+                      <span className="rc-texp__cell rc-texp__cell--r mono">
+                        {e.desired_rate || '—'}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           ) : (
             <p className="rc-texp__empty">No talent in this pipeline yet.</p>

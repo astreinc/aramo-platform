@@ -1,6 +1,7 @@
 export { TalentRecordModule } from './lib/talent-record.module.js';
 export { TalentRecordController } from './lib/talent-record.controller.js';
 export { TalentRecordRepository } from './lib/talent-record.repository.js';
+export type { TalentContactFields } from './lib/talent-record.repository.js';
 export {
   TalentRecordReconcileRepository,
   type EnrichmentPatch,

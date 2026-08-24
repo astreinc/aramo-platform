@@ -73,15 +73,37 @@ describe('ats-web → GET /v1/pipelines', () => {
         b.headers({ Cookie: like(ACCESS_COOKIE) });
       })
       .willRespondWith(200, (b) => {
-        b.jsonBody({ items: [pipelineView(PIPE_ID)] });
+        // Requisition-expander enrichment (LOCKED Aramo-Requisition-Expander-
+        // Talent-Rate-Columns v1.0). apps/api composes these five fields onto
+        // the LIST read only (never create/transition). The verifying recruiter
+        // token holds talent:read (existence gate open) and the state seeds a
+        // contacting-granted talent, so all five are disclosed non-null here —
+        // verifying the enrichment through the REAL provider surface.
+        b.jsonBody({
+          items: [
+            {
+              ...pipelineView(PIPE_ID),
+              email: like('dana.rivera@example.com'),
+              phone: like('+1-512-555-0101'),
+              location: like('Austin, TX'),
+              work_auth: like('us_citizen'),
+              desired_rate: like('$85/hr'),
+            },
+          ],
+        });
       })
       .executeTest(async (mock) => {
         const res = await fetch(`${mock.url}/v1/pipelines`, {
           headers: { Cookie: ACCESS_COOKIE },
         });
         expect(res.status).toBe(200);
-        const body = (await res.json()) as { items: unknown[] };
+        const body = (await res.json()) as {
+          items: Array<Record<string, unknown>>;
+        };
         expect(body.items.length).toBeGreaterThan(0);
+        // The enrichment fields are present on the list item.
+        expect(body.items[0]).toHaveProperty('email');
+        expect(body.items[0]).toHaveProperty('desired_rate');
       });
   });
 });

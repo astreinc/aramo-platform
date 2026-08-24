@@ -318,11 +318,17 @@ describe('RequisitionsListView', () => {
     // Derived Next Action for the 'submitted' stage.
     expect(screen.getByText('Await client feedback')).toBeInTheDocument();
     expect(screen.getByText('NEW')).toBeInTheDocument();
-    // The whole card is a link straight to the talent SOR (click-to-open).
-    expect(screen.getByText('Sarah Nolan').closest('a')).toHaveAttribute(
-      'href',
-      '/talent/tal-1',
-    );
+    // The talent card is a button that opens the slide-in detail panel.
+    const talentCard = screen
+      .getByText('Sarah Nolan')
+      .closest('button') as HTMLButtonElement;
+    fireEvent.click(talentCard);
+    expect(
+      screen.getByRole('dialog', { name: /talent detail/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Workflow status')).toBeInTheDocument();
+    // Close the panel before asserting the expander collapse.
+    fireEvent.click(screen.getByLabelText('Close'));
     // Click again collapses.
     fireEvent.click(article);
     expect(

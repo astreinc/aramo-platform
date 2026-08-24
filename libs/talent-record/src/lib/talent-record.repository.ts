@@ -118,6 +118,19 @@ interface TalentRecordRow {
   updated_at: Date;
 }
 
+// The minimal talent contact/stated fields the requisition-expander enrichment
+// projects onto PipelineView via the apps/api composition. RAW values — the
+// talent:read gate + consent (do_not_contact) suppression are applied downstream
+// in apps/api, never here (Segment-4 consent-free constraint).
+export interface TalentContactFields {
+  readonly email: string | null;
+  readonly phone: string | null;
+  readonly city: string | null;
+  readonly state: string | null;
+  readonly work_authorization: string | null;
+  readonly desired_pay: string | null;
+}
+
 function projectView(row: TalentRecordRow): TalentRecordView {
   return {
     id: row.id,
@@ -600,6 +613,43 @@ export class TalentRecordRepository {
       next_cursor,
       facets,
     };
+  }
+
+  // Requisition-expander enrichment (LOCKED Aramo-Requisition-Expander-Talent-
+  // Rate-Columns v1.0) — BATCH contact/stated-field read over an id set, for the
+  // apps/api pipeline-list composition. Live-only (superseded rows never surface,
+  // matching list/search). Returns RAW stated fields incl. contact PII; apps/api
+  // applies talent:read + consent (do_not_contact suppression) — this lib stays
+  // consent-free (Segment-4 constraint). Set-based, never N+1.
+  async findContactByIds(
+    tenant_id: string,
+    ids: readonly string[],
+  ): Promise<Map<string, TalentContactFields>> {
+    const out = new Map<string, TalentContactFields>();
+    if (ids.length === 0) return out;
+    const rows = await this.prisma.talentRecord.findMany({
+      where: { tenant_id, record_status: 'live', id: { in: [...new Set(ids)] } },
+      select: {
+        id: true,
+        email1: true,
+        phone_cell: true,
+        city: true,
+        state: true,
+        work_authorization: true,
+        desired_pay: true,
+      },
+    });
+    for (const r of rows) {
+      out.set(r.id, {
+        email: r.email1 ?? null,
+        phone: r.phone_cell ?? null,
+        city: r.city ?? null,
+        state: r.state ?? null,
+        work_authorization: (r.work_authorization as string | null) ?? null,
+        desired_pay: r.desired_pay ?? null,
+      });
+    }
+    return out;
   }
 
   // Full filtered key set (no pagination) — apps/api's cross-schema path runs

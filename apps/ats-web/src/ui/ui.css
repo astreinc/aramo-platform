@@ -4005,3 +4005,74 @@ select.rc-input { appearance: none; padding-right: 28px; }
 .rc-offer__label { font-weight: 600; }
 .rc-offer__state { color: var(--brand); font-weight: 600; }
 .rc-offer__actions { display: flex; flex-wrap: wrap; gap: 6px; }
+
+/* REQ talent slide-in detail panel (rc-cdp) — fixed right drawer over the
+   Requisitions list. Tokens: --brand-strong #022AC0, --border #E5E9ED,
+   --muted, brand wash #E8EDFB, primary hover #3355E0. */
+.rc-cdp__backdrop { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.28); z-index: 40; }
+.rc-cdp {
+  position: fixed; top: 0; right: 0; bottom: 0; width: 420px; max-width: 100vw;
+  background: #fff; z-index: 41; display: flex; flex-direction: column;
+  border-left: 1px solid var(--border, #E5E9ED); box-shadow: -8px 0 28px rgba(2, 42, 192, 0.10);
+}
+.rc-cdp__hd { display: flex; align-items: center; gap: 12px; padding: 18px 20px; border-bottom: 1px solid var(--border, #E5E9ED); }
+.rc-cdp__id { flex: 1; min-width: 0; }
+.rc-cdp__name { font-weight: 600; font-size: 16px; display: flex; align-items: center; gap: 8px; }
+.rc-cdp__new { font-size: 10px; font-weight: 700; color: var(--brand-strong, #022AC0); background: #E8EDFB; border-radius: 6px; padding: 1px 6px; letter-spacing: 0.04em; }
+.rc-cdp__role { font-size: 13px; color: var(--muted, #5C6770); margin-top: 2px; }
+.rc-cdp__x { border: 0; background: transparent; font-size: 18px; color: var(--muted, #93A0A8); cursor: pointer; line-height: 1; padding: 4px; }
+.rc-cdp__x:hover { color: var(--brand-strong, #022AC0); }
+.rc-cdp__body { flex: 1; overflow-y: auto; padding: 8px 20px 20px; }
+.rc-cdp__sec { padding: 14px 0; border-bottom: 1px solid var(--border, #E5E9ED); }
+.rc-cdp__seclabel { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted, #93A0A8); margin-bottom: 10px; }
+.rc-cdp__steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.rc-cdp__step { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; border: 1px solid transparent; border-radius: 10px; padding: 10px 12px; background: transparent; font: inherit; color: inherit; }
+.rc-cdp__step--click { cursor: pointer; }
+.rc-cdp__step--click:hover { background: #F5F7FB; }
+.rc-cdp__step:disabled { cursor: default; }
+.rc-cdp__step--current { border-color: var(--brand-strong, #022AC0); background: #F5F7FB; }
+.rc-cdp__dot { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--border, #E5E9ED); display: inline-flex; align-items: center; justify-content: center; font-size: 11px; color: #fff; flex: none; }
+.rc-cdp__step--done .rc-cdp__dot { background: #16A34A; border-color: #16A34A; }
+.rc-cdp__step--current .rc-cdp__dot { border-color: var(--brand-strong, #022AC0); background: var(--brand-strong, #022AC0); }
+.rc-cdp__steplabel { flex: 1; font-size: 14px; font-weight: 500; }
+.rc-cdp__chip { font-size: 10px; font-weight: 700; letter-spacing: 0.05em; color: var(--brand-strong, #022AC0); border: 1px solid var(--brand-strong, #022AC0); border-radius: 6px; padding: 1px 6px; }
+.rc-cdp__note { font-size: 12px; color: var(--muted, #93A0A8); margin: 10px 0 0; }
+.rc-cdp__err { font-size: 12px; color: #B42318; margin: 8px 0 0; }
+.rc-cdp__grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 16px; }
+.rc-cdp__fieldl { font-size: 11px; color: var(--muted, #93A0A8); margin-bottom: 2px; }
+.rc-cdp__fieldv { font-size: 14px; color: #1F2937; }
+.rc-cdp__rates { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.rc-cdp__rate { border: 1px solid var(--border, #E5E9ED); border-radius: 10px; padding: 12px; }
+.rc-cdp__rate--agreed { background: #E8EDFB; border-color: #E8EDFB; }
+.rc-cdp__ratelabel { font-size: 11px; color: var(--muted, #5C6770); margin-bottom: 6px; }
+.rc-cdp__rateval { font-size: 16px; font-weight: 600; }
+.rc-cdp__next { margin-top: 14px; border: 1px dashed var(--border, #C7D0DA); border-radius: 10px; padding: 12px 14px; font-size: 13px; color: #1F2937; }
+.rc-cdp__nextl { display: block; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted, #93A0A8); margin-bottom: 4px; }
+.rc-cdp__ft { display: flex; gap: 10px; padding: 16px 20px; border-top: 1px solid var(--border, #E5E9ED); }
+.rc-cdp__btn { flex: 1; text-align: center; border-radius: 10px; padding: 11px 14px; font-size: 14px; font-weight: 600; text-decoration: none; border: 1px solid var(--border, #E5E9ED); }
+.rc-cdp__btn--sec { color: #1F2937; background: #fff; }
+.rc-cdp__btn--sec:hover { background: #F5F7FB; }
+.rc-cdp__btn--pri { color: #fff; background: #022AC0; border-color: #022AC0; }
+.rc-cdp__btn--pri:hover { background: #3355E0; border-color: #3355E0; }
+
+/* Talent card is now a button (opens the slide-in panel) — reset button chrome
+   to inherit the rc-tcard anchor styling. */
+.rc-tcard--btn { font: inherit; text-align: left; width: 100%; cursor: pointer; }
+
+/* Expanded-row talent LIST (replaces the rc-texp card grid). Truthful columns:
+   Talent · Stage · Next step. Each row is a button that opens the detail panel. */
+.rc-texp__scroll { overflow-x: auto; border: 1px solid var(--border, #E5E9ED); border-radius: 10px; background: #fff; }
+.rc-texp__table { min-width: 1080px; }
+.rc-texp__thead,
+.rc-texp__row { display: grid; grid-template-columns: minmax(150px, 1.2fr) 110px minmax(160px, 1.3fr) 122px minmax(110px, 0.9fr) 116px minmax(140px, 1.1fr) 96px; gap: 0 12px; align-items: center; padding: 8px 14px; }
+.rc-texp__thead { border-bottom: 1px solid #EDF0F3; }
+.rc-texp__thc { font-size: 10px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted, #93A0A8); }
+.rc-texp__thc--r { text-align: right; }
+.rc-texp__cell { font-size: 12px; color: var(--muted, #5C6770); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rc-texp__cell--email { color: var(--brand-strong, #022AC0); }
+.rc-texp__cell--r { text-align: right; font-weight: 500; color: #1B2730; }
+.rc-texp__row { width: 100%; text-align: left; border: 0; border-top: 1px solid #F2F4F6; background: #fff; cursor: pointer; font: inherit; color: inherit; }
+.rc-texp__row:hover { background: #E8EDFB55; }
+.rc-texp__talent { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.rc-texp__name { font-weight: 600; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 6px; }
+.rc-texp__next { font-size: 12px; color: var(--muted, #5C6770); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

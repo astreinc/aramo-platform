@@ -633,6 +633,18 @@
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/ats-batch4a-pipeline-activity.integration.spec.ts",
       "status": "excluded",
+      "to": "libs/consent/prisma/migrations/20260429164414_initial_consent_schema/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/ats-batch4a-pipeline-activity.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/consent/prisma/migrations/20260630170000_rekey_consent_to_talent_record/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/ats-batch4a-pipeline-activity.integration.spec.ts",
+      "status": "excluded",
       "to": "libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql"
     },
     {

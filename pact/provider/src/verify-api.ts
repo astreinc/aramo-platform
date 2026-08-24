@@ -5848,6 +5848,31 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
             talentRecordId: ATSW_PIPE_TALENT_ID,
             requisitionId: ATSW_PIPE_REQ_ID,
           });
+          // Requisition-expander enrichment (LOCKED Aramo-Requisition-Expander-
+          // Talent-Rate-Columns v1.0): seed the pipeline's talent with full
+          // contact fields + a contacting GRANT so the LIST read composes the
+          // five enrichment fields non-null (talent:read is on the verifying
+          // recruiter token; requisition:read:all makes the row visible).
+          await c.query(
+            `INSERT INTO talent_record."TalentRecord"
+               (id, tenant_id, first_name, last_name, tenant_status,
+                source_channel, email1, phone_cell, city, state,
+                work_authorization, desired_pay, created_at, updated_at)
+             VALUES ($1::uuid, $2::uuid, 'Dana', 'Rivera', 'active',
+                'self_signup', 'dana.rivera@example.com', '+1-512-555-0101',
+                'Austin', 'TX', 'us_citizen', '$85/hr', NOW(), NOW())
+             ON CONFLICT (id) DO NOTHING`,
+            [ATSW_PIPE_TALENT_ID, TENANT_ID],
+          );
+          await c.query(
+            `INSERT INTO consent."TalentConsentEvent"
+               (id, talent_record_id, tenant_id, scope, action,
+                captured_by_actor_id, captured_method, consent_version,
+                occurred_at, expires_at, created_at)
+             VALUES (gen_random_uuid(), $1::uuid, $2::uuid, 'contacting',
+                'granted', NULL, 'recruiter_capture', 'v1', NOW(), NULL, NOW())`,
+            [ATSW_PIPE_TALENT_ID, TENANT_ID],
+          );
         });
       },
 
