@@ -83,7 +83,7 @@
     "cookie-parser": "~1.4.7",
     "disposable-email-domains-js": "^1.25.0",
     "free-email-domains": "^1.9.47",
-    "jose": "~6.2.3",
+    "jose": "~6.2.9",
     "mammoth": "~1.12.0",
     "pdf-parse": "~1.1.1",
     "pg": "~8.20.0",
