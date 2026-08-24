@@ -1,9 +1,10 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
 import { AramoError, RequestId } from '@aramo/common';
 import { RequireScopes, RolesGuard } from '@aramo/authorization';
 import { EntitlementGuard, RequireCapability } from '@aramo/entitlement';
 import { OfferRepository, type OfferView } from '@aramo/placement';
+import type { Request } from 'express';
 
 import { CreateOfferDto, TransitionOfferDto } from './dto/offer.dto.js';
 
@@ -41,6 +42,35 @@ export class OfferController {
       actor_id: auth.sub,
       correlation_id: requestId,
     });
+  }
+
+  // D7 (LOCKED Aramo-Offer-D7-OfferPanel-Wiring v1.0, R-DISCOVERY) — the offer
+  // LIST/filter surface the recruiter UI uses to discover an offer from a
+  // pipeline row's (requisition_id, talent_record_id) [or submittal_id]. Read
+  // rides `offer:create` (no separate offer:read scope this slice — matches the
+  // :id read). Visibility-scoped via resolveVisibleRequisitionIds (no offer
+  // leaks outside the actor's visible requisitions).
+  @Get()
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('offer:create')
+  async list(
+    @Query('submittal_id') submittalId: string | undefined,
+    @Query('requisition_id') requisitionId: string | undefined,
+    @Query('talent_record_id') talentRecordId: string | undefined,
+    @AuthContext() auth: AuthContextType,
+    @Req() req: Request,
+  ): Promise<{ items: OfferView[] }> {
+    const visibleReqIds = await req.resolveVisibleRequisitionIds!();
+    const items = await this.offers.list({
+      tenant_id: auth.tenant_id,
+      ...(submittalId === undefined ? {} : { submittal_id: submittalId }),
+      ...(requisitionId === undefined ? {} : { requisition_id: requisitionId }),
+      ...(talentRecordId === undefined
+        ? {}
+        : { talent_record_id: talentRecordId }),
+      visible_requisition_ids: visibleReqIds,
+    });
+    return { items };
   }
 
   @Get(':id')

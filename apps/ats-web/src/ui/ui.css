@@ -4005,6 +4005,10 @@ select.rc-input { appearance: none; padding-right: 28px; }
 .rc-offer__label { font-weight: 600; }
 .rc-offer__state { color: var(--brand); font-weight: 600; }
 .rc-offer__actions { display: flex; flex-wrap: wrap; gap: 6px; }
+/* D7 — OfferPanelContainer wrapper (fetch/create states around the panel). */
+.rc-offerwrap { display: grid; gap: 8px; }
+.rc-offer--loading { color: var(--muted); font-size: 13px; }
+.rc-offer__err { font-size: 12px; color: var(--danger, #B42318); margin: 4px 0 0; }
 
 /* REQ talent slide-in detail panel (rc-cdp) — fixed right drawer over the
    Requisitions list. Tokens: --brand-strong #022AC0, --border #E5E9ED,

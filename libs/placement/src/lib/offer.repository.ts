@@ -92,6 +92,53 @@ export class OfferRepository {
     return row === null ? null : toView(row);
   }
 
+  // D7 (LOCKED Aramo-Offer-D7-OfferPanel-Wiring v1.0, R-DISCOVERY) — the offer
+  // LIST/filter read for the recruiter surface. Set-based; visibility-scoped:
+  // only offers whose requisition_id is in the actor's visible-requisition set
+  // (`null` ⇒ see_all_requisition ⇒ unrestricted). The three filters
+  // (submittal / requisition / talent) are optional and AND-ed. Recruiters
+  // reach it by (requisition_id, talent_record_id) — the one-live DB trigger
+  // guarantees ≤1 NON-terminal offer per (tenant, submittal), so the container
+  // can pick the current offer deterministically.
+  async list(input: {
+    tenant_id: string;
+    submittal_id?: string;
+    requisition_id?: string;
+    talent_record_id?: string;
+    visible_requisition_ids: ReadonlySet<string> | null;
+    limit?: number;
+  }): Promise<OfferView[]> {
+    const limit = Math.min(input.limit ?? 50, 200);
+    const where: Record<string, unknown> = { tenant_id: input.tenant_id };
+    if (input.visible_requisition_ids !== null) {
+      where['requisition_id'] = {
+        in: Array.from(input.visible_requisition_ids),
+      };
+    }
+    if (input.requisition_id !== undefined) {
+      // narrow to one requisition; AND with the visibility set.
+      if (
+        input.visible_requisition_ids !== null &&
+        !input.visible_requisition_ids.has(input.requisition_id)
+      ) {
+        return [];
+      }
+      where['requisition_id'] = input.requisition_id;
+    }
+    if (input.submittal_id !== undefined) {
+      where['submittal_id'] = input.submittal_id;
+    }
+    if (input.talent_record_id !== undefined) {
+      where['talent_record_id'] = input.talent_record_id;
+    }
+    const rows = (await this.prisma.offer.findMany({
+      where,
+      orderBy: { created_at: 'desc' },
+      take: limit,
+    })) as OfferRow[];
+    return rows.map(toView);
+  }
+
   async create(input: CreateOfferInput): Promise<OfferView> {
     const id = uuidv7();
     try {

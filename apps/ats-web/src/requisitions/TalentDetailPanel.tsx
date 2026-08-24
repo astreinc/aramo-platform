@@ -9,6 +9,7 @@ import {
   type PipelineStatus,
   type PipelineView,
 } from '../pipeline/types';
+import { OfferPanelContainer } from '../offers/OfferPanelContainer';
 
 // REQ talent slide-in detail panel. Opens from a talent card in a requisition's
 // expanded row. The workflow stepper is a COSMETIC affordance over the governed
@@ -38,6 +39,7 @@ export interface TalentDetailPanelProps {
   readonly isNew: boolean;
   readonly reqTitle: string;
   readonly reqCode: string; // e.g. "REQ-2041"
+  readonly scopes: readonly string[];
   readonly onClose: () => void;
   readonly onTransitioned: (updated: PipelineView) => void;
 }
@@ -48,6 +50,7 @@ export function TalentDetailPanel({
   isNew,
   reqTitle,
   reqCode,
+  scopes,
   onClose,
   onTransitioned,
 }: TalentDetailPanelProps): JSX.Element {
@@ -156,6 +159,15 @@ export function TalentDetailPanel({
             </ol>
             {err ? <p className="rc-cdp__err">{err}</p> : null}
             <p className="rc-cdp__note">Every change is logged to the audit trail.</p>
+          </section>
+
+          <section className="rc-cdp__sec">
+            <div className="rc-cdp__seclabel">Offer decision</div>
+            <OfferPanelContainer
+              requisitionId={entry.requisition_id}
+              talentRecordId={entry.talent_record_id}
+              scopes={scopes}
+            />
           </section>
 
           <section className="rc-cdp__sec">

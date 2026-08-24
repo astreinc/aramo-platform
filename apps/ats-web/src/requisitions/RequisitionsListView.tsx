@@ -566,6 +566,7 @@ export function RequisitionsListView({
           isNew={selectedTalent.isNew}
           reqTitle={selectedTalent.reqTitle}
           reqCode={selectedTalent.reqCode}
+          scopes={session?.scopes ?? []}
           onClose={() => setSelectedTalent(null)}
           onTransitioned={handleTransitioned}
         />

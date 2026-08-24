@@ -130,5 +130,56 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(err?.code).toBe('OFFER_ALREADY_LIVE');
       expect(err?.statusCode).toBe(409);
     });
+
+    // D7 (LOCKED Aramo-Offer-D7-OfferPanel-Wiring v1.0, R-DISCOVERY) — the LIST
+    // read the recruiter surface uses to discover an offer. Proves the filter
+    // (submittal/requisition/talent), the visibility-set scoping, and — the
+    // security invariant — cross-tenant isolation.
+    describe('list() — D7 discovery + visibility', () => {
+      const reqA = uuid();
+      const reqB = uuid();
+      const talentA = uuid();
+      const FOREIGN = '01900000-0000-7000-8000-0000000000ff';
+      let idA: string;
+      let idB: string;
+
+      beforeAll(async () => {
+        idA = (await repo.create({ tenant_id: TENANT, submittal_id: uuid(), requisition_id: reqA, talent_record_id: talentA, actor_id: ACTOR, correlation_id: uuid() })).id;
+        idB = (await repo.create({ tenant_id: TENANT, submittal_id: uuid(), requisition_id: reqB, talent_record_id: uuid(), actor_id: ACTOR, correlation_id: uuid() })).id;
+        // A FOREIGN-tenant offer on the SAME requisition + talent — must NEVER
+        // surface in TENANT's list (tenant_id is the hard isolation boundary).
+        await repo.create({ tenant_id: FOREIGN, submittal_id: uuid(), requisition_id: reqA, talent_record_id: talentA, actor_id: ACTOR, correlation_id: uuid() });
+      });
+
+      it('filters by (requisition_id, talent_record_id); foreign tenant excluded', async () => {
+        const byPair = await repo.list({ tenant_id: TENANT, requisition_id: reqA, talent_record_id: talentA, visible_requisition_ids: null });
+        expect(byPair.map((o) => o.id)).toEqual([idA]);
+      });
+
+      it('filters by submittal_id', async () => {
+        const sub = uuid();
+        const o = await repo.create({ tenant_id: TENANT, submittal_id: sub, requisition_id: uuid(), talent_record_id: uuid(), actor_id: ACTOR, correlation_id: uuid() });
+        const bySub = await repo.list({ tenant_id: TENANT, submittal_id: sub, visible_requisition_ids: null });
+        expect(bySub.map((x) => x.id)).toEqual([o.id]);
+      });
+
+      it('visibility set restricts to visible requisitions; empty set ⇒ none', async () => {
+        const onlyA = (await repo.list({ tenant_id: TENANT, visible_requisition_ids: new Set([reqA]) })).map((o) => o.id);
+        expect(onlyA).toContain(idA);
+        expect(onlyA).not.toContain(idB);
+        const none = await repo.list({ tenant_id: TENANT, visible_requisition_ids: new Set() });
+        expect(none).toEqual([]);
+      });
+
+      it('explicit requisition_id outside the visible set ⇒ empty (AND semantics)', async () => {
+        const res = await repo.list({ tenant_id: TENANT, requisition_id: reqA, visible_requisition_ids: new Set([reqB]) });
+        expect(res).toEqual([]);
+      });
+
+      it('cross-tenant: a foreign-tenant offer on the same requisition never leaks', async () => {
+        const inTenant = await repo.list({ tenant_id: TENANT, requisition_id: reqA, visible_requisition_ids: null });
+        expect(inTenant.map((o) => o.id)).toEqual([idA]);
+      });
+    });
   },
 );

@@ -1765,6 +1765,11 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     const ATSW_PIPE_REQ_ID = '00000000-0000-7000-8000-4e9100000001';
     const ATSW_PIPE_FULL_REQ_ID = '00000000-0000-7000-8000-4e9100000002';
     const ATSW_PIPE_HISTORY_ID = '00000000-0000-7000-8000-415700000001';
+    // D7 — Offer Lifecycle discovery pact fixtures (offer.consumer.test.ts).
+    const ATSW_OFFER_ID = '00000000-0000-7000-8000-0ffe00000001';
+    const ATSW_OFFER_SUBMITTAL_ID = '00000000-0000-7000-8000-05b000000001';
+    const ATSW_OFFER_REQ_ID = '00000000-0000-7000-8000-4e9200000001';
+    const ATSW_OFFER_TALENT_ID = '00000000-0000-7000-8000-7a1e00000002';
     const ATSW_ACTIVITY_ID = '00000000-0000-7000-8000-ac7100000001';
 
     // COMPOSABLE (PC-5c+): seed a pipeline row. status defaults 'no_contact'
@@ -3284,6 +3289,10 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           'talent:read',
           'talent:create',
           'talent:edit',
+          // D7 — Offer Lifecycle. offer:create gates create + read (list/get);
+          // offer:transition gates PATCH. Additive; inert for prior interactions.
+          'offer:create',
+          'offer:transition',
           // PC-5a — Gate-2a desk (company + contact + D4a) RolesGuard
           // @RequireScopes. company:read:all additionally short-circuits the
           // VisibilityInterceptor resolver to zero reads on the company/
@@ -5840,6 +5849,30 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // -- a seeded pipeline at the create-state no_contact (list; the happy
       // transition no_contact->contacted; the illegal transition
       // no_contact->placed [INVALID_PIPELINE_TRANSITION 422]).
+      // D7 (LOCKED Aramo-Offer-D7-OfferPanel-Wiring v1.0) — seed a DRAFT offer
+      // for the (requisition, talent) the GET /v1/offers list pact filters on.
+      // resetAllRows does not touch offer."Offer"; the fixed id + ON CONFLICT
+      // keeps re-runs idempotent. requisition:read:all on the verifying token ⇒
+      // visibility sees it (no requisition row needed).
+      'an ats-web recruiter and an offer exist': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await c.query(
+            `INSERT INTO offer."Offer"
+               (id, tenant_id, submittal_id, requisition_id, talent_record_id, state)
+             VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, 'DRAFT')
+             ON CONFLICT (id) DO NOTHING`,
+            [
+              ATSW_OFFER_ID,
+              TENANT_ID,
+              ATSW_OFFER_SUBMITTAL_ID,
+              ATSW_OFFER_REQ_ID,
+              ATSW_OFFER_TALENT_ID,
+            ],
+          );
+        });
+      },
+
       'an ats-web recruiter and a pipeline exist': async () => {
         await withClient(async (c) => {
           await resetAllRows(c);
