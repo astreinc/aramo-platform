@@ -78,6 +78,9 @@ const EXACT_ALLOWLIST = new Set<string>([
   // PermanentPlacementConversionLineage append-only trigger carries the same exact-value
   // tenant_reset DELETE escape (the AssignmentRateVersion / remedy precedent).
   'libs/placement/prisma/migrations/20260817120000_t7_px_contract_to_permanent_conversion/migration.sql',
+  // Slice #3 — the AssignmentExtension append-only trigger carries the same
+  // exact-value tenant_reset DELETE escape (the AssignmentRateVersion precedent).
+  'libs/placement/prisma/migrations/20260825120000_assignment_extension_horizon/migration.sql',
 ]);
 
 describe('reset-marker confinement — exact-path default-deny (§2.4)', () => {
