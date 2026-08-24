@@ -1964,9 +1964,15 @@ export const ASSIGNMENT_SEED_BUNDLES: ReadonlyArray<
   readonly [string, readonly string[]]
 > = [
   ['recruiter', ['assignment:read']],
-  ['account_manager', ['assignment:read', 'assignment:create', 'assignment:update', 'assignment:end', 'assignment:extend', 'assignment:commercials:read', 'assignment:commercials:write']],
-  ['tenant_admin', ['assignment:read', 'assignment:create', 'assignment:update', 'assignment:end', 'assignment:extend', 'assignment:commercials:read', 'assignment:commercials:write']],
-  ['tenant_owner', ['assignment:read', 'assignment:create', 'assignment:update', 'assignment:end', 'assignment:extend', 'assignment:commercials:read', 'assignment:commercials:write']],
+  ['account_manager', ['assignment:read', 'assignment:create', 'assignment:update', 'assignment:end', 'assignment:commercials:read', 'assignment:commercials:write']],
+  ['tenant_admin', ['assignment:read', 'assignment:create', 'assignment:update', 'assignment:end', 'assignment:commercials:read', 'assignment:commercials:write']],
+  ['tenant_owner', ['assignment:read', 'assignment:create', 'assignment:update', 'assignment:end', 'assignment:commercials:read', 'assignment:commercials:write']],
+  // Slice #3 — assignment:extend appended LAST (append-don't-renumber): the positional
+  // 0xb00+ id generator gives these fresh trailing ids WITHOUT shifting the existing
+  // 0xb00..0xb12 grants, so a prod re-seed collides with nothing.
+  ['account_manager', ['assignment:extend']],
+  ['tenant_admin', ['assignment:extend']],
+  ['tenant_owner', ['assignment:extend']],
 ];
 
 // Deterministic RoleScope row ids for the 19 assignment grants (13 Track-4 +
