@@ -14,6 +14,7 @@ import {
   type PlacementState,
   type PlacementKind,
   type ContractAssignmentEndReason,
+  type AssignmentExtensionReason,
   type ConvertToPermanentResult,
   type ContractAssignmentView,
   type AssignmentCommercialView,
@@ -27,6 +28,7 @@ import {
   CommercialRevisionDto,
   CreatePlacementDto,
   EndAssignmentDto,
+  ExtendAssignmentDto,
   FalloffDto,
   PermanentPlacementTransitionDto,
   RemedyCompletionDto,
@@ -201,12 +203,25 @@ export class PlacementController {
     // transaction. INTERIM: caller-supplied; T4-D hardens this to a server-side
     // derive from the requisition (the authoritative source), so the controller
     // never trusts the wire for the org snapshot.
+    // Slice #3 (R-INITIAL-END) — a forward STARTED must capture the assignment-owned
+    // planned end (required at the business operation; the requisition term prefills
+    // it FE-side). The DB column stays nullable only for backfill, never for a new
+    // forward create. A target-dependent policy, so enforced here (not the validator).
+    if (body.to === 'STARTED' && body.assignment_expected_end_at == null) {
+      throw new AramoError(
+        'PLACEMENT_START_CONTEXT_REQUIRED',
+        'a forward STARTED requires assignment_expected_end_at (the assignment planned end)',
+        422,
+        { requestId, details: { reason: 'expected_end_at_required' } },
+      );
+    }
     const assignment_context =
       body.to === 'STARTED' && body.assignment_company_id != null
         ? {
             company_id: body.assignment_company_id,
             site_id: body.assignment_site_id ?? null,
             company_department_id: body.assignment_department_id ?? null,
+            expected_end_at: body.assignment_expected_end_at ?? null,
           }
         : null;
     return this.placements.transition(
@@ -258,6 +273,35 @@ export class PlacementController {
       requestId,
     );
     return { ok: true };
+  }
+
+  // Slice #3 (LOCKED Aramo-Assignment-Extension v1.0) — extend an ACTIVE assignment's
+  // planned end strictly forward. NO lifecycle transition (R-EXTENSION-NOT-STATE),
+  // capacity-neutral. Authority is assignment:extend — SEPARATE from assignment:end
+  // (extend and terminate are opposite powers). :id is the owning placement (house-
+  // uniform — the assignment is addressed through its placement). Returns the fresh
+  // assignment view (expected_end_at updated, ending_soon re-derived).
+  @Post(':id/assignment/extend')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('assignment:extend')
+  async extendAssignment(
+    @AuthContext() auth: AuthContextType,
+    @RequestId() requestId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: ExtendAssignmentDto,
+  ): Promise<ContractAssignmentView> {
+    return this.placements.extendAssignment(
+      {
+        tenant_id: auth.tenant_id,
+        placement_process_id: id,
+        new_expected_end_at: body.new_expected_end_at,
+        reason: body.reason as AssignmentExtensionReason,
+        comment: body.comment ?? null,
+        actor_id: auth.sub,
+        source: 'MANUAL',
+      },
+      requestId,
+    );
   }
 
   // Track 7 / T7-PX — Contract-to-Permanent conversion. ONE command (§10): ends the

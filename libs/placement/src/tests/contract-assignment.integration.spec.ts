@@ -30,6 +30,7 @@ const MIGRATIONS = [
   '20260807120000_placement_fallthrough_reason',
   '20260808120000_placement_replacement_link',
   '20260809120000_placement_contract_assignment',
+  '20260825120000_assignment_extension_horizon',
   '20260810100000_placement_assignment_ended_value',
   '20260810110000_placement_assignment_aware_guard',
   '20260810120000_placement_assignment_end_reason',
@@ -332,6 +333,108 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(payload.placement_process_id).toBe(id);
       expect(payload.requisition_id).toBe(req);
       expect(payload.end_reason).toBe('COMPLETED');
+    });
+
+    // Slice #3 (LOCKED Aramo-Assignment-Extension v1.0) — extend the planned end
+    // forward, derive ending_soon, stay capacity-neutral, with NO lifecycle flip.
+    describe('Slice #3 — Assignment Extension / Ending Soon', () => {
+      const DAY = 24 * 60 * 60 * 1000;
+      const iso = (ms: number): string => new Date(Date.now() + ms).toISOString();
+      const norm = (s: string): string => new Date(s).toISOString();
+
+      it('first extend sets the horizon (previous null), appends history, updates the view, emits the event', async () => {
+        const tenant_id = randomUUID();
+        const id = await startPlacement(tenant_id, randomUUID());
+        // PRECONDITION (non-vacuity): no horizon, no extension event yet.
+        const before = await repo.findAssignmentByPlacement(tenant_id, id);
+        expect(before!.expected_end_at).toBeNull();
+        expect(before!.ending_soon).toBe(false);
+        expect(
+          await prisma.outboxEvent.findMany({ where: { tenant_id, event_type: 'placement.assignment.extended' } }),
+        ).toHaveLength(0);
+
+        const newEnd = iso(20 * DAY);
+        const view = await repo.extendAssignment(
+          { tenant_id, placement_process_id: id, new_expected_end_at: newEnd, reason: 'CLIENT_REQUEST', actor_id: randomUUID() },
+          'extend',
+        );
+        expect(view.lifecycle_state).toBe('ACTIVE'); // NO state flip (R-EXTENSION-NOT-STATE)
+        expect(norm(view.expected_end_at!)).toBe(norm(newEnd));
+        expect(view.ending_soon).toBe(true); // 20d within the 30d horizon
+
+        const ext = await prisma.assignmentExtension.findMany({ where: { tenant_id } });
+        expect(ext).toHaveLength(1);
+        expect(ext[0].previous_expected_end_at).toBeNull();
+        expect(norm(ext[0].new_expected_end_at.toISOString())).toBe(norm(newEnd));
+        expect(ext[0].reason).toBe('CLIENT_REQUEST');
+        expect(ext[0].source).toBe('MANUAL');
+
+        const events = await prisma.outboxEvent.findMany({ where: { tenant_id, event_type: 'placement.assignment.extended' } });
+        expect(events).toHaveLength(1);
+        expect((events[0].event_payload as Record<string, unknown>).placement_process_id).toBe(id);
+      });
+
+      it('forward-only: reject a new end that is not strictly forward (equal / earlier / past)', async () => {
+        const tenant_id = randomUUID();
+        const id = await startPlacement(tenant_id, randomUUID());
+        await repo.extendAssignment({ tenant_id, placement_process_id: id, new_expected_end_at: iso(30 * DAY), reason: 'RENEWAL', actor_id: randomUUID() }, 'x');
+        // read back the EXACT stored horizon so the "equal" case is truly equal.
+        const stored = (await repo.findAssignmentByPlacement(tenant_id, id))!.expected_end_at!;
+        for (const bad of [stored, iso(10 * DAY), iso(-5 * DAY)]) {
+          let err: { code?: string; statusCode?: number } | undefined;
+          try {
+            await repo.extendAssignment({ tenant_id, placement_process_id: id, new_expected_end_at: bad, reason: 'RENEWAL', actor_id: randomUUID() }, 'x');
+          } catch (e) { err = e as { code?: string; statusCode?: number }; }
+          expect(err?.code).toBe('ASSIGNMENT_EXTENSION_NOT_FORWARD');
+          expect(err?.statusCode).toBe(422);
+        }
+        // The refusals appended NO history (only the one successful extend).
+        expect(await prisma.assignmentExtension.findMany({ where: { tenant_id } })).toHaveLength(1);
+      });
+
+      it('an ENDED assignment cannot be extended (only ACTIVE)', async () => {
+        const tenant_id = randomUUID();
+        const id = await startPlacement(tenant_id, randomUUID());
+        await repo.endAssignment({ tenant_id, placement_process_id: id, end_reason: 'COMPLETED', ended_by: randomUUID() }, 'end');
+        let err: { code?: string } | undefined;
+        try {
+          await repo.extendAssignment({ tenant_id, placement_process_id: id, new_expected_end_at: iso(40 * DAY), reason: 'RENEWAL', actor_id: randomUUID() }, 'x');
+        } catch (e) { err = e as { code?: string }; }
+        expect(err?.code).toBe('NOT_FOUND');
+      });
+
+      it('CAPACITY-NEUTRAL: extending an ACTIVE assignment does not change the derived consuming count', async () => {
+        const tenant_id = randomUUID();
+        const requisition_id = randomUUID();
+        const input = baseInput({ tenant_id, requisition_id });
+        const id = await driveToReady(input);
+        await repo.transition({ tenant_id, placement_process_id: id, to: 'STARTED', assignment_context: { company_id: randomUUID() }, commercial_terms: T5_TERMS, recorded_by: randomUUID() }, 'start');
+        const countBefore = await capacity.countActiveByRequisition(tenant_id, requisition_id);
+        await repo.extendAssignment({ tenant_id, placement_process_id: id, new_expected_end_at: iso(45 * DAY), reason: 'PROJECT_EXTENSION', actor_id: randomUUID() }, 'x');
+        const countAfter = await capacity.countActiveByRequisition(tenant_id, requisition_id);
+        expect(countAfter).toBe(countBefore); // ACTIVE stays ACTIVE — capacity input untouched
+      });
+
+      it('cross-tenant: a foreign tenant cannot extend the assignment (NOT_FOUND, no leak)', async () => {
+        const tenant_id = randomUUID();
+        const id = await startPlacement(tenant_id, randomUUID());
+        let err: { code?: string } | undefined;
+        try {
+          await repo.extendAssignment({ tenant_id: randomUUID(), placement_process_id: id, new_expected_end_at: iso(40 * DAY), reason: 'RENEWAL', actor_id: randomUUID() }, 'x');
+        } catch (e) { err = e as { code?: string }; }
+        expect(err?.code).toBe('NOT_FOUND');
+        // The real tenant's assignment is untouched by the foreign attempt.
+        expect((await repo.findAssignmentByPlacement(tenant_id, id))!.expected_end_at).toBeNull();
+      });
+
+      it('ending_soon derivation: within 30d true, beyond 30d false (never stored)', async () => {
+        const tenant_id = randomUUID();
+        const id = await startPlacement(tenant_id, randomUUID());
+        await repo.extendAssignment({ tenant_id, placement_process_id: id, new_expected_end_at: iso(10 * DAY), reason: 'CLIENT_REQUEST', actor_id: randomUUID() }, 'x');
+        expect((await repo.findAssignmentByPlacement(tenant_id, id))!.ending_soon).toBe(true);
+        await repo.extendAssignment({ tenant_id, placement_process_id: id, new_expected_end_at: iso(60 * DAY), reason: 'RENEWAL', actor_id: randomUUID() }, 'x');
+        expect((await repo.findAssignmentByPlacement(tenant_id, id))!.ending_soon).toBe(false);
+      });
     });
   },
 );

@@ -6,7 +6,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { formatInstant } from '../format/date';
 
 import { AssignmentLifecyclePanel } from './AssignmentLifecyclePanel';
-import { endPlacementAssignment, getPlacementAssignment } from './placement-api';
+import {
+  endPlacementAssignment,
+  extendPlacementAssignment,
+  getPlacementAssignment,
+} from './placement-api';
 import type { ContractAssignmentEndReason, ContractAssignmentView } from './types';
 
 // T4-E proofs. These are CHARACTERIZATION of new additive UI behavior (the
@@ -20,10 +24,14 @@ import type { ContractAssignmentEndReason, ContractAssignmentView } from './type
 vi.mock('./placement-api', () => ({
   getPlacementAssignment: vi.fn(),
   endPlacementAssignment: vi.fn(),
+  extendPlacementAssignment: vi.fn(),
 }));
 
 const getMock = vi.mocked(getPlacementAssignment);
 const endMock = vi.mocked(endPlacementAssignment);
+const extendMock = vi.mocked(extendPlacementAssignment);
+
+const READ_EXTEND = makeSession(['assignment:read', 'assignment:extend']);
 
 function makeSession(scopes: string[]): Session {
   return { sub: 'u1', consumer_type: 'recruiter', tenant_id: 't1', scopes, iat: 0, exp: 0 };
@@ -52,6 +60,8 @@ function assignment(overrides: Partial<ContractAssignmentView> = {}): ContractAs
     provenance: 'FORWARD',
     lifecycle_state: 'ACTIVE',
     end_reason: null,
+    expected_end_at: null,
+    ending_soon: false,
     ...overrides,
   };
 }
@@ -254,5 +264,66 @@ describe('AssignmentLifecyclePanel — Track 4 assignment lifecycle UI', () => {
     const panel = await screen.findByTestId('assignment-lifecycle-panel');
     expect(within(panel).queryByText(/capacity|opening|reserved|balance/i)).toBeNull();
     expect(panel.textContent ?? '').not.toMatch(/capacity|opening|reserved|balance/i);
+  });
+});
+
+// Slice #3 (Assignment-Extension) — the Extend affordance + ending-soon badge +
+// expected-end row are additive UI over the same panel. Extend authority is
+// DISTINCT from end (assignment:extend, not assignment:end).
+describe('AssignmentLifecyclePanel — Slice #3 extend + ending-soon', () => {
+  it('shows the expected-end date + Ending soon badge when the view derives ending_soon', async () => {
+    getMock.mockResolvedValue({
+      assignment: assignment({ expected_end_at: '2026-09-30T00:00:00.000Z', ending_soon: true }),
+    });
+    renderPanel(READ);
+    expect(await screen.findByTestId('assignment-ending-soon')).toBeTruthy();
+    const exp = screen.getByTestId('assignment-expected-end');
+    expect(exp.textContent).toContain(formatInstant('2026-09-30T00:00:00.000Z'));
+  });
+
+  it('no Ending soon badge when the view is not ending soon', async () => {
+    getMock.mockResolvedValue({ assignment: assignment({ ending_soon: false }) });
+    renderPanel(READ);
+    await screen.findByTestId('assignment-lifecycle-panel');
+    expect(screen.queryByTestId('assignment-ending-soon')).toBeNull();
+  });
+
+  it('shows the Extend control for an ACTIVE assignment WITH assignment:extend', async () => {
+    getMock.mockResolvedValue({ assignment: assignment() });
+    renderPanel(READ_EXTEND);
+    expect(await screen.findByTestId('assignment-extend-action')).toBeTruthy();
+  });
+
+  it('hides the Extend control without assignment:extend (distinct from end)', async () => {
+    getMock.mockResolvedValue({ assignment: assignment() });
+    renderPanel(READ_END); // has end, NOT extend
+    await screen.findByTestId('assignment-lifecycle-panel');
+    expect(screen.queryByTestId('assignment-extend-action')).toBeNull();
+  });
+
+  it('hides the Extend control on an ENDED assignment (only ACTIVE extends)', async () => {
+    getMock.mockResolvedValue({ assignment: ended('COMPLETED') });
+    renderPanel(READ_EXTEND);
+    await screen.findByTestId('assignment-lifecycle-panel');
+    expect(screen.queryByTestId('assignment-extend-action')).toBeNull();
+  });
+
+  it('extend flow: pick a new end + confirm → calls the extend API + re-reads', async () => {
+    getMock.mockResolvedValue({ assignment: assignment({ expected_end_at: '2026-09-30T00:00:00.000Z' }) });
+    extendMock.mockResolvedValue(assignment({ expected_end_at: '2026-12-31T00:00:00.000Z' }));
+    renderPanel(READ_EXTEND);
+    fireEvent.click(await screen.findByTestId('assignment-extend-action'));
+    fireEvent.change(await screen.findByTestId('assignment-extend-date'), {
+      target: { value: '2026-12-31' },
+    });
+    fireEvent.click(screen.getByTestId('assignment-extend-confirm'));
+    await waitFor(() =>
+      expect(extendMock).toHaveBeenCalledWith('p1', {
+        new_expected_end_at: '2026-12-31',
+        reason: 'CLIENT_REQUEST',
+      }),
+    );
+    // Re-reads authoritative truth (getMock called again after the extend).
+    await waitFor(() => expect(getMock.mock.calls.length).toBeGreaterThan(1));
   });
 });

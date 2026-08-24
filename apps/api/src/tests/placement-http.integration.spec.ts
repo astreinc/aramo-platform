@@ -74,6 +74,9 @@ const FALLOFF_REMEDY_MIGRATION = resolve(__dirname, '../../../../libs/placement/
 const GUARANTEE_TERMS_MIGRATION = resolve(__dirname, '../../../../libs/placement/prisma/migrations/20260816120000_t7_p3_guarantee_term_versioning/migration.sql');
 const OFFER_INIT_MIGRATION = resolve(__dirname, '../../../../libs/placement/prisma/migrations/20260824120000_init_offer_model/migration.sql');
 const OFFER_ID_MIGRATION = resolve(__dirname, '../../../../libs/placement/prisma/migrations/20260824130000_placement_offer_id/migration.sql');
+// Slice #3 — Assignment Extension: expected_end_at + AssignmentExtension. A SEPARATE
+// const + apply-list entry (single-path resolve — never a 2nd resolve() arg → ENOTDIR).
+const ASSIGNMENT_EXTENSION_MIGRATION = resolve(__dirname, '../../../../libs/placement/prisma/migrations/20260825120000_assignment_extension_horizon/migration.sql');
 // T6-B1 overlap exclusion constraint — dropped+restored around the legacy-corruption
 // defensive proof (the only way to seed a state the constraint now forbids).
 const OVERLAP_CONSTRAINT = 'AssignmentRateVersion_no_window_overlap_excl';
@@ -112,7 +115,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('E1-b PlacementCon
     const url = container.getConnectionUri();
     setup = new PrismaService(url);
     await setup.$connect();
-    for (const migration of [INIT_MIGRATION, OFFER_OUTBOX_MIGRATION, REASON_MIGRATION, REPLACEMENT_MIGRATION, CONTRACT_ASSIGNMENT_MIGRATION, ASSIGNMENT_ENDED_MIGRATION, ASSIGNMENT_GUARD_MIGRATION, ASSIGNMENT_END_REASON_MIGRATION, ASSIGNMENT_RATE_VERSION_MIGRATION, EFFECTIVE_WINDOW_MIGRATION, COMMERCIAL_CANCELLATION_MIGRATION, PERMANENT_PLACEMENT_MIGRATION, FALLOFF_REMEDY_MIGRATION, GUARANTEE_TERMS_MIGRATION, OFFER_INIT_MIGRATION, OFFER_ID_MIGRATION]) {
+    for (const migration of [INIT_MIGRATION, OFFER_OUTBOX_MIGRATION, REASON_MIGRATION, REPLACEMENT_MIGRATION, CONTRACT_ASSIGNMENT_MIGRATION, ASSIGNMENT_ENDED_MIGRATION, ASSIGNMENT_GUARD_MIGRATION, ASSIGNMENT_END_REASON_MIGRATION, ASSIGNMENT_RATE_VERSION_MIGRATION, EFFECTIVE_WINDOW_MIGRATION, COMMERCIAL_CANCELLATION_MIGRATION, PERMANENT_PLACEMENT_MIGRATION, FALLOFF_REMEDY_MIGRATION, GUARANTEE_TERMS_MIGRATION, OFFER_INIT_MIGRATION, OFFER_ID_MIGRATION, ASSIGNMENT_EXTENSION_MIGRATION]) {
       for (const s of splitDdl(readFileSync(migration, 'utf8'))) {
         if (s.trim()) await setup.$executeRawUnsafe(s.trim());
       }
@@ -192,7 +195,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('E1-b PlacementCon
       code: 'INSUFFICIENT_PERMISSIONS',
       context: { details: { authority_class: 'activate', required_scope: 'placement:activate' } },
     });
-    const live = await ctrl.transition(s, 'r', id, { to: 'STARTED', assignment_company_id: randomUUID(), commercial_terms: T5_TERMS });
+    const live = await ctrl.transition(s, 'r', id, { to: 'STARTED', assignment_company_id: randomUUID(), assignment_expected_end_at: '2027-06-30T00:00:00.000Z', commercial_terms: T5_TERMS });
     expect(live.state).toBe('STARTED');
   });
 
@@ -205,7 +208,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('E1-b PlacementCon
     // Holds the edge scope (placement:activate) but NOT commercials:write → refused
     // by the commercial conjunction, before any state change.
     await expect(
-      ctrl.transition(auth(['placement:transition', 'placement:activate'], t), 'r', id, { to: 'STARTED', assignment_company_id: randomUUID(), commercial_terms: T5_TERMS }),
+      ctrl.transition(auth(['placement:transition', 'placement:activate'], t), 'r', id, { to: 'STARTED', assignment_company_id: randomUUID(), assignment_expected_end_at: '2027-06-30T00:00:00.000Z', commercial_terms: T5_TERMS }),
     ).rejects.toMatchObject({
       code: 'INSUFFICIENT_PERMISSIONS',
       statusCode: 403,
@@ -325,7 +328,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('E1-b PlacementCon
     const t = randomUUID();
     const id = await ctrlCreate(auth(MANAGER_PLACEMENT, t), 'r', body()).then((v) => v.id);
     await ctrl.transition(auth(MANAGER_PLACEMENT, t), 'r', id, { to: 'READY_TO_START' });
-    const live = await ctrl.transition(auth(MANAGER_PLACEMENT, t), 'r', id, { to: 'STARTED', assignment_company_id: randomUUID(), commercial_terms: T5_TERMS });
+    const live = await ctrl.transition(auth(MANAGER_PLACEMENT, t), 'r', id, { to: 'STARTED', assignment_company_id: randomUUID(), assignment_expected_end_at: '2027-06-30T00:00:00.000Z', commercial_terms: T5_TERMS });
     expect(live.state).toBe('STARTED');
   });
 
@@ -334,7 +337,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('E1-b PlacementCon
   async function driveToStarted(t: string, company_id = randomUUID()): Promise<string> {
     const id = await ctrlCreate(auth(MANAGER_PLACEMENT, t), 'r', body()).then((v) => v.id);
     await ctrl.transition(auth(MANAGER_PLACEMENT, t), 'r', id, { to: 'READY_TO_START' });
-    await ctrl.transition(auth(MANAGER_PLACEMENT, t), 'r', id, { to: 'STARTED', assignment_company_id: company_id, commercial_terms: T5_TERMS });
+    await ctrl.transition(auth(MANAGER_PLACEMENT, t), 'r', id, { to: 'STARTED', assignment_company_id: company_id, assignment_expected_end_at: '2027-06-30T00:00:00.000Z', commercial_terms: T5_TERMS });
     return id;
   }
   const readAuth = (t: string) => auth(['assignment:read'], t);

@@ -327,6 +327,9 @@ export const SEED_IDS = {
     'assignment:create': '01900000-0000-7000-8000-0000000000d0',
     'assignment:update': '01900000-0000-7000-8000-0000000000d1',
     'assignment:end': '01900000-0000-7000-8000-0000000000d2',
+    // Slice #3 — Assignment Extension: prolong the planned end. SEPARATE authority
+    // from assignment:end (opposite powers). AM + admins only.
+    'assignment:extend': '01900000-0000-7000-8000-0000000000e1',
     // Track 5 / T5-P1 — assignment commercial-terms authority family.
     'assignment:commercials:read': '01900000-0000-7000-8000-0000000000d3',
     'assignment:commercials:write': '01900000-0000-7000-8000-0000000000d4',
@@ -1961,9 +1964,9 @@ export const ASSIGNMENT_SEED_BUNDLES: ReadonlyArray<
   readonly [string, readonly string[]]
 > = [
   ['recruiter', ['assignment:read']],
-  ['account_manager', ['assignment:read', 'assignment:create', 'assignment:update', 'assignment:end', 'assignment:commercials:read', 'assignment:commercials:write']],
-  ['tenant_admin', ['assignment:read', 'assignment:create', 'assignment:update', 'assignment:end', 'assignment:commercials:read', 'assignment:commercials:write']],
-  ['tenant_owner', ['assignment:read', 'assignment:create', 'assignment:update', 'assignment:end', 'assignment:commercials:read', 'assignment:commercials:write']],
+  ['account_manager', ['assignment:read', 'assignment:create', 'assignment:update', 'assignment:end', 'assignment:extend', 'assignment:commercials:read', 'assignment:commercials:write']],
+  ['tenant_admin', ['assignment:read', 'assignment:create', 'assignment:update', 'assignment:end', 'assignment:extend', 'assignment:commercials:read', 'assignment:commercials:write']],
+  ['tenant_owner', ['assignment:read', 'assignment:create', 'assignment:update', 'assignment:end', 'assignment:extend', 'assignment:commercials:read', 'assignment:commercials:write']],
 ];
 
 // Deterministic RoleScope row ids for the 19 assignment grants (13 Track-4 +
@@ -2456,6 +2459,7 @@ export async function runIdentitySeed(
   await upsertScope(prisma, SEED_IDS.scopes['assignment:create'], 'assignment:create', 'Track 4 / T4-D — create an authoritative ContractAssignment (post-start commitment; the forward STARTED path and, gated separately, T4-A2 backfill). GRANTED to account_manager, tenant_admin, tenant_owner only; recruiter excluded (authoritative-tier act). NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['assignment:update'], 'assignment:update', 'Track 4 / T4-D — update an authoritative ContractAssignment. GRANTED to account_manager, tenant_admin, tenant_owner only; recruiter excluded. NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['assignment:end'], 'assignment:end', 'Track 4 / T4-D — end a ContractAssignment (ACTIVE->ENDED, with the ratified end reason: normal completion / worker-ended / client-ended). GRANTED to account_manager, tenant_admin, tenant_owner only; recruiter excluded. NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['assignment:extend'], 'assignment:extend', 'Slice #3 — extend an ACTIVE ContractAssignment planned end (expected_end_at moves strictly forward; NO lifecycle transition). SEPARATE authority from assignment:end (extend and terminate are opposite powers, granted independently). GRANTED to account_manager, tenant_admin, tenant_owner only; recruiter excluded. NO scope.created (scope-seed precedent).');
   // Track 5 / T5-P1 — assignment commercial-terms authority family. Dedicated
   // financial permissions (Amendment A2 DEC-4): NEVER satisfied by placement:*,
   // requisition-financials, or generic assignment:create/update. NO scope.created (scope-seed precedent).

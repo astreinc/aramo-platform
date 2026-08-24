@@ -2835,6 +2835,65 @@ paths:
       security:
         - BearerAuth: []
 
+  /v1/placements/{id}/assignment/extend:
+    post:
+      operationId: extendPlacementAssignment
+      summary: Extend the ContractAssignment planned end (Assignment-Extension slice #3).
+      description: |
+        Moves an ACTIVE assignment's `expected_end_at` STRICTLY FORWARD, with NO lifecycle
+        transition (ACTIVE stays ACTIVE — extension is an event, never a state) and no
+        capacity effect (capacity derives from the ACTIVE count). Gated by the DEDICATED
+        `assignment:extend` authority (capability `ats`) — SEPARATE from `assignment:end`;
+        `placement:*` / `assignment:end` / `assignment:update` do NOT satisfy it. The
+        repository appends an immutable AssignmentExtension history row, updates
+        `expected_end_at`, and emits `placement.assignment.extended` atomically. Refusals:
+        404 (no active assignment / not visible / cross-tenant); 422
+        ASSIGNMENT_EXTENSION_NOT_FORWARD (new end not in the future, or not strictly after
+        the current end).
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [new_expected_end_at, reason]
+              properties:
+                new_expected_end_at:
+                  type: string
+                  format: date-time
+                reason:
+                  type: string
+                  enum: [CLIENT_REQUEST, PROJECT_EXTENSION, RENEWAL, SCOPE_CONTINUATION]
+                comment:
+                  type: string
+                  maxLength: 2000
+      responses:
+        '200':
+          description: Assignment extended — the fresh assignment view.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContractAssignmentView'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '422':
+          description: The new planned end is not strictly forward.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+      security:
+        - BearerAuth: []
   /v1/placements/{id}/assignment/convert-to-permanent:
     post:
       operationId: convertPlacementAssignmentToPermanent
@@ -4167,7 +4226,7 @@ components:
     ContractAssignmentView:
       type: object
       additionalProperties: false
-      required: [id, placement_process_id, submittal_id, requisition_id, talent_record_id, started_at, provenance, lifecycle_state, end_reason]
+      required: [id, placement_process_id, submittal_id, requisition_id, talent_record_id, started_at, provenance, lifecycle_state, end_reason, expected_end_at, ending_soon]
       properties:
         id:
           type: string
@@ -4198,6 +4257,15 @@ components:
           # Present iff ENDED; the authoritative discriminator, never collapsed.
           type: [string, 'null']
           enum: [COMPLETED, WORKER_ENDED, CLIENT_ENDED, null]
+        expected_end_at:
+          # Slice #3 — the assignment-OWNED planned end (distinct from started_at
+          # actual-start and end_reason/ENDED). Null on a backfilled/unset horizon.
+          type: [string, 'null']
+          format: date-time
+        ending_soon:
+          # DERIVED (R-ENDING-SOON) — ACTIVE AND expected_end_at within the fixed 30d
+          # horizon. Never a stored state/column; computed on read.
+          type: boolean
     PlacementAssignmentResponse:
       type: object
       additionalProperties: false

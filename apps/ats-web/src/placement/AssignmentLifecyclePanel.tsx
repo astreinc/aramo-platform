@@ -7,6 +7,7 @@ import { Button, Card, CardHead, InlineAlert } from '../ui';
 
 import { ConvertToPermanentDialog } from './ConvertToPermanentDialog';
 import { EndAssignmentDialog } from './EndAssignmentDialog';
+import { ExtendAssignmentDialog } from './ExtendAssignmentDialog';
 import { getPlacementAssignment } from './placement-api';
 import {
   ASSIGNMENT_END_REASON_DISPLAY_LABELS,
@@ -43,6 +44,11 @@ export interface AssignmentLifecyclePanelProps {
     id: string,
     endReason: ContractAssignmentEndReason,
   ) => Promise<{ ok: true }>;
+  // Slice #3 — injectable extend seam (mirrors the end/get seams for tests).
+  readonly extendAssignmentFn?: (
+    id: string,
+    body: import('./types').ExtendAssignmentRequest,
+  ) => Promise<ContractAssignmentView>;
   // Track 7 / T7-PX — injectable conversion seams (mirror the end/get seams for tests).
   readonly convertToPermanentFn?: (id: string) => Promise<ConvertToPermanentResponse>;
   readonly effectiveTermsFn?: (requisitionId: string) => Promise<import('../requisitions/guarantee-terms-types').GuaranteeTermVersionView>;
@@ -62,6 +68,7 @@ export function AssignmentLifecyclePanel({
   sessionOverride,
   getAssignmentFn,
   endAssignmentFn,
+  extendAssignmentFn,
   convertToPermanentFn,
   effectiveTermsFn,
 }: AssignmentLifecyclePanelProps) {
@@ -73,6 +80,8 @@ export function AssignmentLifecyclePanel({
   const scoped = session !== null && Array.isArray(session.scopes);
   const canRead = scoped && hasScope(session, 'assignment:read');
   const canEnd = scoped && hasScope(session, 'assignment:end');
+  // Slice #3 — extend is a DISTINCT authority from end (opposite powers).
+  const canExtend = scoped && hasScope(session, 'assignment:extend');
   // Track 7 / T7-PX §9 — conversion needs the EXACT conjunction assignment:end AND
   // placement:permanent:transition (both authoritative-tier; exact-string match, no wildcard).
   const canConvert = scoped && hasScope(session, 'assignment:end') && hasScope(session, 'placement:permanent:transition');
@@ -82,6 +91,7 @@ export function AssignmentLifecyclePanel({
   const [state, setState] = useState<LoadState>({ status: 'loading' });
   const [refreshKey, setRefreshKey] = useState(0);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [extendOpen, setExtendOpen] = useState(false);
   const [convertOpen, setConvertOpen] = useState(false);
   const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
 
@@ -108,6 +118,7 @@ export function AssignmentLifecyclePanel({
   const assignment = state.status === 'ready' ? state.assignment : null;
   const isActive = assignment?.lifecycle_state === 'ACTIVE';
   const showEndControl = isActive && canEnd;
+  const showExtendControl = isActive && canExtend;
   const showConvertControl = isActive && canConvert;
 
   return (
@@ -139,6 +150,12 @@ export function AssignmentLifecyclePanel({
                   data-lifecycle-state={assignment.lifecycle_state ?? ''}
                 >
                   {lifecycleLabel(assignment.lifecycle_state)}
+                  {assignment.ending_soon && (
+                    <span className="rc-pill" data-testid="assignment-ending-soon">
+                      {' '}
+                      Ending soon
+                    </span>
+                  )}
                 </dd>
               </div>
               <div className="rc-defrow">
@@ -147,6 +164,18 @@ export function AssignmentLifecyclePanel({
                   <time dateTime={assignment.started_at} data-testid="assignment-started-at">
                     {formatInstant(assignment.started_at)}
                   </time>
+                </dd>
+              </div>
+              <div className="rc-defrow">
+                <dt>Expected end</dt>
+                <dd data-testid="assignment-expected-end">
+                  {assignment.expected_end_at !== null ? (
+                    <time dateTime={assignment.expected_end_at}>
+                      {formatInstant(assignment.expected_end_at)}
+                    </time>
+                  ) : (
+                    '—'
+                  )}
                 </dd>
               </div>
               <div className="rc-defrow">
@@ -167,8 +196,17 @@ export function AssignmentLifecyclePanel({
                 </div>
               )}
             </dl>
-            {(showEndControl || showConvertControl) && (
+            {(showEndControl || showExtendControl || showConvertControl) && (
               <div className="rc-formfoot">
+                {showExtendControl && (
+                  <Button
+                    variant="secondary"
+                    onClick={() => setExtendOpen(true)}
+                    data-testid="assignment-extend-action"
+                  >
+                    Extend assignment
+                  </Button>
+                )}
                 {showEndControl && (
                   <Button
                     variant="secondary"
@@ -198,6 +236,16 @@ export function AssignmentLifecyclePanel({
           endAssignmentFn={endAssignmentFn}
           onClose={() => setDialogOpen(false)}
           onEnded={refresh}
+        />
+      )}
+      {showExtendControl && (
+        <ExtendAssignmentDialog
+          open={extendOpen}
+          placementId={placementId}
+          currentExpectedEnd={assignment?.expected_end_at ?? null}
+          extendAssignmentFn={extendAssignmentFn}
+          onClose={() => setExtendOpen(false)}
+          onExtended={refresh}
         />
       )}
       {showConvertControl && assignment !== null && (

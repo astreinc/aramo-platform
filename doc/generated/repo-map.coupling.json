@@ -3655,6 +3655,12 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/placement-http.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/placement/prisma/migrations/20260825120000_assignment_extension_horizon/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/placement-offer-openapi-conformance.spec.ts",
       "status": "excluded",
       "to": "openapi/ats.yaml"
@@ -3892,6 +3898,12 @@
       "from": "apps/api/src/tests/pre-start-requirement/marker-confinement.spec.ts",
       "status": "excluded",
       "to": "libs/placement/prisma/migrations/20260817120000_t7_px_contract_to_permanent_conversion/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/pre-start-requirement/marker-confinement.spec.ts",
+      "status": "excluded",
+      "to": "libs/placement/prisma/migrations/20260825120000_assignment_extension_horizon/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -14526,6 +14538,11 @@
       "from": "pact/provider/src/verify-api.ts",
       "status": "unscoped",
       "to": "libs/placement/prisma/migrations/20260824130000_placement_offer_id/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "libs/placement/prisma/migrations/20260825120000_assignment_extension_horizon/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",

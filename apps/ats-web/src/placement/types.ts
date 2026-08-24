@@ -175,6 +175,38 @@ export interface ContractAssignmentView {
   readonly lifecycle_state: ContractAssignmentLifecycleState | null;
   // Display vocabulary (4) — includes the conversion end reason a converted source carries.
   readonly end_reason: ContractAssignmentEndReasonDisplay | null;
+  // Slice #3 (Assignment-Extension) — the assignment-owned PLANNED end (distinct
+  // from started_at=actual-start, end_reason/ENDED=actual-end). Null when unset.
+  readonly expected_end_at: string | null;
+  // DERIVED on the BE (never stored) — ACTIVE + expected_end_at within the horizon.
+  readonly ending_soon: boolean;
+}
+
+// Slice #3 — the v1 extend reasons (mirrors the BE closed set). DATA_CORRECTION is
+// deferred (a future Edit/Correct operation, not an extension).
+export const ASSIGNMENT_EXTENSION_REASON_VALUES = [
+  'CLIENT_REQUEST',
+  'PROJECT_EXTENSION',
+  'RENEWAL',
+  'SCOPE_CONTINUATION',
+] as const;
+export type AssignmentExtensionReason =
+  (typeof ASSIGNMENT_EXTENSION_REASON_VALUES)[number];
+export const ASSIGNMENT_EXTENSION_REASON_LABELS: Record<
+  AssignmentExtensionReason,
+  string
+> = {
+  CLIENT_REQUEST: 'Client requested extension',
+  PROJECT_EXTENSION: 'Project extended',
+  RENEWAL: 'Renewal',
+  SCOPE_CONTINUATION: 'Scope continuation',
+};
+
+// POST /v1/placements/{id}/assignment/extend body (a governed command).
+export interface ExtendAssignmentRequest {
+  readonly new_expected_end_at: string;
+  readonly reason: AssignmentExtensionReason;
+  readonly comment?: string;
 }
 
 export interface PlacementAssignmentResponse {

@@ -28,6 +28,7 @@ const MIGRATIONS = [
   '20260807120000_placement_fallthrough_reason',
   '20260808120000_placement_replacement_link',
   '20260809120000_placement_contract_assignment',
+  '20260825120000_assignment_extension_horizon',
   '20260810100000_placement_assignment_ended_value',
   '20260810110000_placement_assignment_aware_guard',
   '20260810120000_placement_assignment_end_reason',

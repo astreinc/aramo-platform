@@ -24,6 +24,10 @@ export {
   type LegalOfferTarget,
 } from './lib/lifecycle/offer-lifecycle.js';
 export { PlacementRepository } from './lib/placement.repository.js';
+export {
+  DEFAULT_ASSIGNMENT_ENDING_SOON_DAYS,
+  isAssignmentEndingSoon,
+} from './lib/assignment-ending-soon.js';
 export type { ConvertToPermanentResult } from './lib/placement.repository.js';
 export { PlacementProcessEventRepository } from './lib/placement-process-event.repository.js';
 export { PlacementEventReadModule } from './lib/placement-event-read.module.js';
@@ -179,6 +183,8 @@ export type {
   StateTransitionPayload,
   ContractAssignmentEndReason,
   ContractAssignmentView,
+  AssignmentExtensionReason,
+  AssignmentExtensionSource,
   AssignmentCommercialView,
   PermanentPlacementView,
   PermanentPlacementTransitionPayload,

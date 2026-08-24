@@ -830,6 +830,12 @@ const PLACEMENT_CONTRACT_ASSIGNMENT_MIGRATION = resolve(
   ROOT,
   'libs/placement/prisma/migrations/20260809120000_placement_contract_assignment/migration.sql',
 );
+// Slice #3 — expected_end_at + AssignmentExtension. A SEPARATE const + apply-list
+// entry (single-path resolve — never a 2nd resolve() arg → ENOTDIR).
+const PLACEMENT_ASSIGNMENT_EXTENSION_MIGRATION = resolve(
+  ROOT,
+  'libs/placement/prisma/migrations/20260825120000_assignment_extension_horizon/migration.sql',
+);
 const PLACEMENT_ASSIGNMENT_ENDED_MIGRATION = resolve(
   ROOT,
   'libs/placement/prisma/migrations/20260810100000_placement_assignment_ended_value/migration.sql',
@@ -3140,6 +3146,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         // Track 4 — ContractAssignment + lifecycle (the T4-B2 derived-capacity
         // consumption authority the requisition read now counts).
         PLACEMENT_CONTRACT_ASSIGNMENT_MIGRATION,
+        PLACEMENT_ASSIGNMENT_EXTENSION_MIGRATION,
         PLACEMENT_ASSIGNMENT_ENDED_MIGRATION,
         PLACEMENT_ASSIGNMENT_GUARD_MIGRATION,
         PLACEMENT_ASSIGNMENT_END_REASON_MIGRATION,
