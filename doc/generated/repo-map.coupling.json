@@ -8310,6 +8310,11 @@
       "to": "libs/placement/src/lib/lifecycle/offer-lifecycle.ts"
     },
     {
+      "from": "apps/ats-web/src/offers/types.ts",
+      "status": "production",
+      "to": "libs/placement/src/lib/offer.repository.ts"
+    },
+    {
       "from": "apps/ats-web/src/org/types.ts",
       "status": "production",
       "to": "libs/identity/src/lib/management-edge.repository.ts"

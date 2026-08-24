@@ -9,6 +9,52 @@ info:
     populate additional operations per API Contracts v1.0 Phase 2.
 paths:
   /v1/offers:
+    get:
+      operationId: listOffers
+      summary: List/filter Offers (Offer Lifecycle D7 — recruiter discovery).
+      description: |
+        Lists Offers for the tenant, filtered by any of `submittal_id`,
+        `requisition_id`, `talent_record_id` (AND-ed). Visibility-scoped: only
+        offers whose requisition is visible to the actor are returned. Requires
+        the `ats` capability and the `offer:create` scope (read rides create-
+        authority; no separate `offer:read` scope this slice).
+      parameters:
+        - name: submittal_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: requisition_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: talent_record_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Offer'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+      security:
+        - BearerAuth: []
     post:
       operationId: createOffer
       summary: Create a DRAFT Offer (Offer Lifecycle slice #2).

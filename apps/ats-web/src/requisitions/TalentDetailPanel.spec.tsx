@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { transitionPipeline } from '../pipeline/pipeline-api';
 import type { PipelineView } from '../pipeline/types';
+import { listOffers } from '../offers/offers-api';
 
 import { TalentDetailPanel } from './TalentDetailPanel';
 
@@ -19,6 +20,19 @@ vi.mock('../pipeline/pipeline-api', () => ({
     created_at: '2026-08-01T00:00:00Z',
     updated_at: '2026-08-01T00:00:00Z',
   })),
+}));
+
+// D7 — the mounted OfferPanelContainer fetches offers on render (only when the
+// caller holds offer:create). Default mock returns an empty list; the wiring
+// test overrides it per-case.
+vi.mock('../offers/offers-api', () => ({
+  listOffers: vi.fn(async () => ({ items: [] })),
+  createOffer: vi.fn(),
+  transitionOffer: vi.fn(),
+  readOffer: vi.fn(),
+}));
+vi.mock('../submittals/submittals-api', () => ({
+  findSubmittalForTalentJob: vi.fn(async () => ({ submittal: null })),
 }));
 
 const ENTRY: PipelineView = {
@@ -43,6 +57,7 @@ function renderPanel(over: Partial<Parameters<typeof TalentDetailPanel>[0]> = {}
         isNew
         reqTitle="Senior Rust Engineer"
         reqCode="REQ-2041"
+        scopes={[]}
         onClose={onClose}
         onTransitioned={onTransitioned}
         {...over}
@@ -100,5 +115,46 @@ describe('TalentDetailPanel', () => {
     renderPanel();
     expect(screen.getByText('Agreed pay rate')).toBeTruthy();
     expect(screen.getAllByText('—').length).toBeGreaterThan(0);
+  });
+
+  // D7 — the Offer panel is mounted and wired: with offer scopes, the container
+  // fetches the offer and OfferPanel renders its state + a governed affordance.
+  it('mounts the Offer panel — with offer scopes, a live SENT offer surfaces Accept', async () => {
+    vi.mocked(listOffers).mockResolvedValueOnce({
+      items: [
+        {
+          id: 'o1',
+          tenant_id: 'T',
+          submittal_id: 's1',
+          requisition_id: 'r1',
+          talent_record_id: 't1',
+          state: 'SENT',
+          proposed_start_date: null,
+          offer_expires_at: null,
+          client_offer_reference: null,
+          offer_terms_summary: null,
+          decline_reason: null,
+          created_at: '2026-08-01T00:00:00Z',
+        },
+      ],
+    });
+    renderPanel({ scopes: ['offer:create', 'offer:transition'] });
+    // The list read is keyed on (requisition_id, talent_record_id).
+    await waitFor(() =>
+      expect(listOffers).toHaveBeenCalledWith({
+        requisitionId: 'r1',
+        talentRecordId: 't1',
+      }),
+    );
+    // State label + a legal SENT affordance render.
+    expect(await screen.findByText('Sent')).toBeTruthy();
+    expect(screen.getByText('Accept')).toBeTruthy();
+  });
+
+  // D7 — no offer:create ⇒ the container is inert (renders nothing, issues no read).
+  it('does not mount the Offer surface without offer scopes (existence gate)', () => {
+    renderPanel(); // scopes: []
+    expect(listOffers).not.toHaveBeenCalled();
+    expect(screen.queryByText('Accept')).toBeNull();
   });
 });
