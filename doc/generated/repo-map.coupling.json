@@ -3661,6 +3661,12 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/placement-http.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/placement/prisma/migrations/20260826120000_commercial_revision_proposal/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/placement-offer-openapi-conformance.spec.ts",
       "status": "excluded",
       "to": "openapi/ats.yaml"
@@ -3904,6 +3910,12 @@
       "from": "apps/api/src/tests/pre-start-requirement/marker-confinement.spec.ts",
       "status": "excluded",
       "to": "libs/placement/prisma/migrations/20260825120000_assignment_extension_horizon/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/pre-start-requirement/marker-confinement.spec.ts",
+      "status": "excluded",
+      "to": "libs/placement/prisma/migrations/20260826120000_commercial_revision_proposal/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -13399,6 +13411,11 @@
       "to": "libs/placement/src/lib/lifecycle/offer-lifecycle.ts"
     },
     {
+      "from": "libs/placement/prisma/migrations/20260826120000_commercial_revision_proposal/migration.sql",
+      "status": "unscoped",
+      "to": "libs/placement/src/lib/lifecycle/commercial-approval-lifecycle.ts"
+    },
+    {
       "from": "libs/placement/project.json",
       "status": "unscoped",
       "to": "libs/placement/src/index.ts"
@@ -13424,6 +13441,11 @@
       "to": "ci/scripts/verify-placement-sql.ts"
     },
     {
+      "from": "libs/placement/src/lib/lifecycle/commercial-approval-lifecycle.ts",
+      "status": "production",
+      "to": "apps/api/src/policy/commercial-approval-lifecycle.package.ts"
+    },
+    {
       "from": "libs/placement/src/lib/lifecycle/offer-lifecycle.ts",
       "status": "production",
       "to": "apps/api/src/policy/offer-lifecycle.package.ts"
@@ -13432,6 +13454,18 @@
       "from": "libs/placement/src/lib/reasons/placement-reason-registry.ts",
       "status": "production",
       "to": "scripts/verify-vocabulary.sh"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/placement/src/tests/commercial-approval.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/policy-store/prisma/migrations/20260730120000_init_policy_store/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/placement/src/tests/commercial-approval.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/policy-store/prisma/migrations/20260730160000_add_policy_decision_record/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -14543,6 +14577,11 @@
       "from": "pact/provider/src/verify-api.ts",
       "status": "unscoped",
       "to": "libs/placement/prisma/migrations/20260825120000_assignment_extension_horizon/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "libs/placement/prisma/migrations/20260826120000_commercial_revision_proposal/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",

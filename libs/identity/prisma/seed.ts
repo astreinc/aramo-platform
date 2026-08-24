@@ -333,6 +333,11 @@ export const SEED_IDS = {
     // Track 5 / T5-P1 — assignment commercial-terms authority family.
     'assignment:commercials:read': '01900000-0000-7000-8000-0000000000d3',
     'assignment:commercials:write': '01900000-0000-7000-8000-0000000000d4',
+    // Slice #4 — Commercial Approval: exercise commercial AUTHORITY over a
+    // proposed revision (margin-approve / client-approve / apply / reject).
+    // SEPARATE from commercials:write (propose != approve; SoD). Fresh out-of-
+    // family id e2 (append-don't-renumber; e1 = extend, d3/d4 = read/write).
+    'assignment:commercials:approve': '01900000-0000-7000-8000-0000000000e2',
     // Track 8 / T8-P2 — canonical requisition ingestion scope family (d5/d6;
     // d3/d4 consumed by T5-P1 assignment:commercials during R-SYNC).
     'requisition:import:read': '01900000-0000-7000-8000-0000000000d5',
@@ -1973,6 +1978,13 @@ export const ASSIGNMENT_SEED_BUNDLES: ReadonlyArray<
   ['account_manager', ['assignment:extend']],
   ['tenant_admin', ['assignment:extend']],
   ['tenant_owner', ['assignment:extend']],
+  // Slice #4 — assignment:commercials:approve appended LAST (append-don't-renumber):
+  // the positional 0xb00+ id generator gives these fresh trailing ids (0xb16..0xb18)
+  // WITHOUT shifting the existing 0xb00..0xb15 grants, so a prod re-seed collides
+  // with nothing (the #683 assignment:extend precedent).
+  ['account_manager', ['assignment:commercials:approve']],
+  ['tenant_admin', ['assignment:commercials:approve']],
+  ['tenant_owner', ['assignment:commercials:approve']],
 ];
 
 // Deterministic RoleScope row ids for the 19 assignment grants (13 Track-4 +
@@ -2471,6 +2483,7 @@ export async function runIdentitySeed(
   // requisition-financials, or generic assignment:create/update. NO scope.created (scope-seed precedent).
   await upsertScope(prisma, SEED_IDS.scopes['assignment:commercials:read'], 'assignment:commercials:read', 'Track 5 / T5-P1 — read the actual commercial terms (Assignment Rate Version: pay/bill/currency/period and derived margin) of a ContractAssignment. Independent financial-disclosure gate (least visibility: assignment:read does NOT grant it). GRANTED to account_manager, tenant_admin, tenant_owner only; recruiter excluded (financial data). NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['assignment:commercials:write'], 'assignment:commercials:write', 'Track 5 / T5-P1 — record the initial actual commercial terms of a ContractAssignment. The SECOND leg of the FORWARD STARTED conjunction (required IN CONJUNCTION with placement:activate, never alone; placement:* and requisition-financials never substitute). GRANTED to account_manager, tenant_admin, tenant_owner only; recruiter excluded. NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['assignment:commercials:approve'], 'assignment:commercials:approve', 'Slice #4 — Commercial Approval: exercise commercial AUTHORITY over a proposed revision (margin-approve / client-approve / apply / reject a CommercialRevisionProposal). SEPARATE authority from assignment:commercials:write (propose != approve): a proposer must not self-approve the economics of their own proposal (segregation of duties). GRANTED to account_manager, tenant_admin, tenant_owner only; recruiter excluded. NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['requisition:import:read'], 'requisition:import:read', 'Track 8 / T8-P2 — read the canonical requisition-import batch history + per-record failures (GET /v1/requisition-imports, GET /v1/requisition-imports/:id). Provider-neutral external-system requisition ingestion; distinct from the generic CSV import:* family. GRANTED to recruiter, account_manager, tenant_admin, tenant_owner (mirrors assignment:read). NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['requisition:import:write'], 'requisition:import:write', 'Track 8 / T8-P2 — run a canonical requisition import (POST /v1/requisition-imports): validate + map provider-neutral records through the governed createForImport path. GRANTED to account_manager, tenant_admin, tenant_owner only; recruiter excluded (bulk external ingestion is an authoritative-tier act, mirrors assignment:create). NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['integration:read'], 'integration:read', 'Track 8 / T8-CONNECTOR-A — read provider-neutral connector connections (Settings → Integrations): list/status/last-sync/error summary. Connector connection ADMINISTRATION; distinct from requisition:import:read (P3 ingestion monitoring). GRANTED to tenant_admin, tenant_owner only. NO scope.created (scope-seed precedent).');

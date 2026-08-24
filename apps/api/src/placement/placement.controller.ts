@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import type { Request } from 'express';
 import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
 import { AramoError, RequestId } from '@aramo/common';
@@ -18,6 +18,7 @@ import {
   type ConvertToPermanentResult,
   type ContractAssignmentView,
   type AssignmentCommercialView,
+  type CommercialProposalView,
   type PermanentPlacementView,
   type PermanentPlacementState,
   type GuaranteeTermsInput,
@@ -25,6 +26,9 @@ import {
 
 import {
   CancelCommercialRevisionDto,
+  CommercialProposalDecisionDto,
+  CommercialProposalDto,
+  CommercialProposalTransitionDto,
   CommercialRevisionDto,
   CreatePlacementDto,
   EndAssignmentDto,
@@ -694,5 +698,160 @@ export class PlacementController {
     }
     const items = await this.placements.listAssignmentCommercialRevisions(auth.tenant_id, id);
     return { items };
+  }
+
+  // ==========================================================================
+  // Slice #4 — Commercial Approval (LOCKED Aramo-Commercial-Approval-Directive-
+  // v1_0). The CommercialRevisionProposal governance surface IN FRONT OF the
+  // revision write. Propose/submit/withdraw are proposer scope:write; margin-
+  // approve / client-approve / apply / reject are commercials:approve authority
+  // acts (SoD + ADR-0024 fail-closed). APPLY reuses createCommercialRevision.
+  // ==========================================================================
+
+  // Propose the next commercial revision (INTENT). Creates a DRAFT proposal, NEVER
+  // an AssignmentRateVersion. Same write scope as a revision; absent / not-ACTIVE /
+  // no-open-version → 404; a live proposal already present → 409
+  // (COMMERCIAL_PROPOSAL_ALREADY_LIVE). requested_by is the JWT subject.
+  @Post(':id/assignment/commercials/proposals')
+  @HttpCode(HttpStatus.CREATED)
+  @RequireScopes('assignment:commercials:write')
+  async createCommercialProposal(
+    @AuthContext() auth: AuthContextType,
+    @RequestId() requestId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: CommercialProposalDto,
+  ): Promise<{ proposal: CommercialProposalView }> {
+    const proposal = await this.placements.createCommercialRevisionProposal(
+      {
+        tenant_id: auth.tenant_id,
+        placement_process_id: id,
+        pay_rate_amount: body.pay_rate_amount,
+        bill_rate_amount: body.bill_rate_amount,
+        currency: body.currency,
+        rate_period: body.rate_period,
+        effective_from: body.effective_from ?? null,
+        reason: body.reason,
+        requested_by: auth.sub,
+      },
+      requestId,
+    );
+    return { proposal };
+  }
+
+  // List the assignment's proposals (newest first), each with the derived margin
+  // comparison. Financial read scope + least-visibility (findByIdForActor → 404,
+  // never 403, when absent / cross-tenant / not visible).
+  @Get(':id/assignment/commercials/proposals')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('assignment:commercials:read')
+  @RequireSiteMatch()
+  async listCommercialProposals(
+    @AuthContext() auth: AuthContextType,
+    @RequestId() requestId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: Request,
+  ): Promise<{ items: CommercialProposalView[] }> {
+    await this.assertPlacementVisible(auth.tenant_id, id, req, requestId);
+    const items = await this.placements.findCommercialRevisionProposals(auth.tenant_id, id, requestId);
+    return { items };
+  }
+
+  // Read a single proposal (with the derived margin comparison). Coherent absence
+  // returns { proposal: null } after the visibility gate.
+  @Get(':id/assignment/commercials/proposals/:proposalId')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('assignment:commercials:read')
+  @RequireSiteMatch()
+  async getCommercialProposal(
+    @AuthContext() auth: AuthContextType,
+    @RequestId() requestId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('proposalId', ParseUUIDPipe) proposalId: string,
+    @Req() req: Request,
+  ): Promise<{ proposal: CommercialProposalView | null }> {
+    await this.assertPlacementVisible(auth.tenant_id, id, req, requestId);
+    const proposal = await this.placements.findCommercialRevisionProposalById(auth.tenant_id, id, proposalId, requestId);
+    return { proposal };
+  }
+
+  // Proposer lifecycle transition (SUBMIT / WITHDRAW) — scope:write, NO authority.
+  // An illegal edge → 422 (COMMERCIAL_PROPOSAL_STATE_INVALID).
+  @Patch(':id/assignment/commercials/proposals/:proposalId')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('assignment:commercials:write')
+  async transitionCommercialProposal(
+    @AuthContext() auth: AuthContextType,
+    @RequestId() requestId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('proposalId', ParseUUIDPipe) proposalId: string,
+    @Body() body: CommercialProposalTransitionDto,
+    @Req() req: Request,
+  ): Promise<{ proposal: CommercialProposalView }> {
+    await this.assertPlacementVisible(auth.tenant_id, id, req, requestId);
+    const proposal = await this.placements.transitionCommercialRevisionProposal(
+      {
+        tenant_id: auth.tenant_id,
+        placement_process_id: id,
+        proposal_id: proposalId,
+        action: body.action as 'submit' | 'withdraw',
+        actor_id: auth.sub,
+      },
+      requestId,
+    );
+    return { proposal };
+  }
+
+  // Authority decision (MARGIN_APPROVE / CLIENT_APPROVE / APPLY / REJECT) —
+  // commercials:approve + SoD (actor != requested_by → 403
+  // COMMERCIAL_PROPOSAL_SELF_APPROVAL) + ADR-0024 fail-closed (no published
+  // package → 403 POLICY_DENIED). APPLY reuses createCommercialRevision; its
+  // window conflict (409) leaves the proposal APPROVED (reconciliation).
+  @Post(':id/assignment/commercials/proposals/:proposalId/decision')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('assignment:commercials:approve')
+  async decideCommercialProposal(
+    @AuthContext() auth: AuthContextType,
+    @RequestId() requestId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('proposalId', ParseUUIDPipe) proposalId: string,
+    @Body() body: CommercialProposalDecisionDto,
+    @Req() req: Request,
+  ): Promise<{ proposal: CommercialProposalView }> {
+    await this.assertPlacementVisible(auth.tenant_id, id, req, requestId);
+    const proposal = await this.placements.decideCommercialRevisionProposal(
+      {
+        tenant_id: auth.tenant_id,
+        placement_process_id: id,
+        proposal_id: proposalId,
+        action: body.action as 'margin_approve' | 'client_approve' | 'apply' | 'reject',
+        actor_id: auth.sub,
+        scopes: auth.scopes ?? [],
+        note: body.note ?? null,
+        client_reference: body.client_reference ?? null,
+        client_approval_source: body.client_approval_source ?? null,
+      },
+      requestId,
+    );
+    return { proposal };
+  }
+
+  // Least-visibility gate shared by the proposal reads + governed transitions:
+  // load the placement through findByIdForActor and 404 (never 403) when absent,
+  // cross-tenant, or not visible — so a financial scope cannot probe a hidden
+  // assignment.
+  private async assertPlacementVisible(
+    tenant_id: string,
+    id: string,
+    req: Request,
+    requestId: string,
+  ): Promise<void> {
+    const visibleReqIds = await req.resolveVisibleRequisitionIds!();
+    const placement = await this.placements.findByIdForActor({ tenant_id, id, visible_requisition_ids: visibleReqIds });
+    if (placement === null) {
+      throw new AramoError('NOT_FOUND', 'PlacementProcess not found in tenant (or not visible to actor)', 404, {
+        requestId,
+        details: { placement_process_id: id, reason: 'placement_process_not_found' },
+      });
+    }
   }
 }

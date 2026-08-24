@@ -4,6 +4,11 @@ import type {
   AssignmentCommercialCreatedResponse,
   AssignmentCommercialResponse,
   AssignmentCommercialSeriesResponse,
+  CommercialProposalDecisionRequest,
+  CommercialProposalListResponse,
+  CommercialProposalMutationResponse,
+  CommercialProposalResponse,
+  CommercialProposalTransitionAction,
   CommercialRevisionCancelRequest,
   CommercialRevisionCreateRequest,
   ContractAssignmentEndReason,
@@ -14,6 +19,7 @@ import type {
   PlacementEventListResponse,
   PlacementListResponse,
   PlacementView,
+  ProposeCommercialRevisionRequest,
 } from './types';
 
 // E1-d — the ats-web placement read client (the first real consumer of the
@@ -142,6 +148,74 @@ export async function extendPlacementAssignment(
 ): Promise<ContractAssignmentView> {
   return apiClient.post<ContractAssignmentView>(
     `/v1/placements/${encodeURIComponent(id)}/assignment/extend`,
+    body,
+  );
+}
+
+// ── Slice #4 — Commercial Approval (CommercialRevisionProposal) ──
+// The proposal governs a commercial rate change through review → client-approval → apply.
+// All routes hang off the placement anchor .../assignment/commercials/proposals. Read is
+// assignment:commercials:read; propose/transition is assignment:commercials:write; the
+// decision is assignment:commercials:approve. recorded actors are the JWT subject, never
+// the wire; the client renders returned state verbatim and re-reads server truth.
+
+// POST .../proposals — propose a commercial revision (assignment:commercials:write). 409
+// COMMERCIAL_PROPOSAL_ALREADY_LIVE when a live proposal already exists. Returns { proposal }.
+export async function proposeCommercialRevision(
+  id: string,
+  body: ProposeCommercialRevisionRequest,
+): Promise<CommercialProposalMutationResponse> {
+  return apiClient.post<CommercialProposalMutationResponse>(
+    `/v1/placements/${encodeURIComponent(id)}/assignment/commercials/proposals`,
+    body,
+  );
+}
+
+// GET .../proposals — the proposal list (assignment:commercials:read). { items }.
+export async function listCommercialProposals(
+  id: string,
+): Promise<CommercialProposalListResponse> {
+  return apiClient.get<CommercialProposalListResponse>(
+    `/v1/placements/${encodeURIComponent(id)}/assignment/commercials/proposals`,
+  );
+}
+
+// GET .../proposals/{proposalId} — a single proposal (assignment:commercials:read). A real
+// absence returns { proposal: null }.
+export async function getCommercialProposal(
+  id: string,
+  proposalId: string,
+): Promise<CommercialProposalResponse> {
+  return apiClient.get<CommercialProposalResponse>(
+    `/v1/placements/${encodeURIComponent(id)}/assignment/commercials/proposals/${encodeURIComponent(proposalId)}`,
+  );
+}
+
+// PATCH .../proposals/{proposalId} — the PROPOSER transition (submit / withdraw,
+// assignment:commercials:write). 422 COMMERCIAL_PROPOSAL_STATE_INVALID on an illegal edge.
+export async function transitionCommercialProposal(
+  id: string,
+  proposalId: string,
+  action: CommercialProposalTransitionAction,
+): Promise<CommercialProposalMutationResponse> {
+  return apiClient.patch<CommercialProposalMutationResponse>(
+    `/v1/placements/${encodeURIComponent(id)}/assignment/commercials/proposals/${encodeURIComponent(proposalId)}`,
+    { action },
+  );
+}
+
+// POST .../proposals/{proposalId}/decision — the AUTHORITY decision (margin_approve /
+// client_approve / apply / reject, assignment:commercials:approve). 403 SELF_APPROVAL when
+// the actor is the proposer (segregation of duties); 403 POLICY_DENIED; 409
+// ASSIGNMENT_COMMERCIAL_REVISION_CONFLICT on apply-time window conflict (proposal stays
+// APPROVED); 422 COMMERCIAL_PROPOSAL_STATE_INVALID on an illegal edge.
+export async function decideCommercialProposal(
+  id: string,
+  proposalId: string,
+  body: CommercialProposalDecisionRequest,
+): Promise<CommercialProposalMutationResponse> {
+  return apiClient.post<CommercialProposalMutationResponse>(
+    `/v1/placements/${encodeURIComponent(id)}/assignment/commercials/proposals/${encodeURIComponent(proposalId)}/decision`,
     body,
   );
 }

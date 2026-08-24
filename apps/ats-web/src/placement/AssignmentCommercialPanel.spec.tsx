@@ -10,6 +10,7 @@ import {
   getPlacementAssignment,
   getPlacementAssignmentCommercials,
   listAssignmentCommercialRevisions,
+  listCommercialProposals,
 } from './placement-api';
 import type { AssignmentCommercialView, ContractAssignmentView } from './types';
 
@@ -25,6 +26,11 @@ vi.mock('./placement-api', () => ({
   listAssignmentCommercialRevisions: vi.fn(),
   createAssignmentCommercialRevision: vi.fn(),
   cancelAssignmentCommercialRevision: vi.fn(),
+  // Slice #4 — the CommercialProposalSection (rendered by the panel) reads proposals.
+  listCommercialProposals: vi.fn(),
+  proposeCommercialRevision: vi.fn(),
+  transitionCommercialProposal: vi.fn(),
+  decideCommercialProposal: vi.fn(),
 }));
 
 const getAssignment = vi.mocked(getPlacementAssignment);
@@ -122,6 +128,7 @@ beforeEach(() => {
   listRevisions.mockReset().mockResolvedValue({ items: [commercials()] });
   createRevision.mockReset().mockResolvedValue({ commercials: commercials() });
   cancelRevision.mockReset().mockResolvedValue({ items: [commercials()] });
+  vi.mocked(listCommercialProposals).mockReset().mockResolvedValue({ items: [] });
 });
 
 afterEach(() => {

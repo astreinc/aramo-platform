@@ -319,6 +319,10 @@ export const SEED_SCOPE_KEYS = [
   // disclosure (least visibility — assignment:read does NOT grant it).
   'assignment:commercials:read',
   'assignment:commercials:write',
+  // Slice #4 — Commercial Approval: exercise commercial AUTHORITY over a proposed
+  // revision (margin-approve / client-approve / apply / reject). SEPARATE from
+  // commercials:write (propose != approve; segregation of duties).
+  'assignment:commercials:approve',
   // Track 8 / T8-P2 — provider-neutral canonical requisition ingestion (VMS
   // Integration). Distinct from the generic CSV `import:*` family: this governs
   // the external-system requisition ingestion surface (/v1/requisition-imports).

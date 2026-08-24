@@ -613,6 +613,29 @@ export const ERROR_CODES = [
   // because (from,to) is not a legal edge of the offer state machine
   // (governingOfferAction returned null). The DB lifecycle trigger is the backstop.
   'OFFER_ILLEGAL_TRANSITION',
+  // Slice #4 (Commercial Approval). Appended LAST — the ordered-parity surfaces
+  // read positionally, so never renumber. COMMERCIAL_PROPOSAL_STATE_INVALID (422):
+  // a CommercialRevisionProposal transition refused because (from,to) is not a
+  // legal edge of the proposal state machine (governingCommercialProposalAction
+  // returned null), or the addressed proposal is already terminal. The DB
+  // transition trigger is the backstop. Mirrors OFFER_ILLEGAL_TRANSITION /
+  // PERMANENT_PLACEMENT_STATE_INVALID at the commercial-proposal layer.
+  'COMMERCIAL_PROPOSAL_STATE_INVALID',
+  // COMMERCIAL_PROPOSAL_SELF_APPROVAL (403): a governed authority transition
+  // (margin-approve / client-approve / apply / reject) refused because the actor
+  // equals requested_by. Segregation-of-duties (R-SOD): the proposer may not
+  // exercise commercial authority over their own proposal. Fail-closed at the
+  // application boundary — a future LOCKED policy may authorize per-tenant
+  // self-approval. Never a DB-constraint translation.
+  'COMMERCIAL_PROPOSAL_SELF_APPROVAL',
+  // COMMERCIAL_PROPOSAL_ALREADY_LIVE (409): propose refused because a live
+  // (non-terminal) CommercialRevisionProposal already exists for (tenant_id,
+  // contract_assignment_id). The one-live invariant: at most one non-terminal
+  // proposal per assignment. Exact-name translation of the
+  // CommercialRevisionProposal_one_live_idx partial-unique violation — never a
+  // generic P2002/23505 catch (the raw partial index surfaces at
+  // meta.driverAdapterError, not meta.target). Mirrors OFFER_ALREADY_LIVE.
+  'COMMERCIAL_PROPOSAL_ALREADY_LIVE',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

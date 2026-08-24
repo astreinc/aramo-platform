@@ -2660,6 +2660,258 @@ paths:
       security:
         - BearerAuth: []
 
+  # Slice #4 — Commercial Approval. The CommercialRevisionProposal governance
+  # surface IN FRONT OF the revision write (proposal = INTENT, approval =
+  # AUTHORITY, AssignmentRateVersion = APPLIED FINANCIAL TRUTH).
+  /v1/placements/{id}/assignment/commercials/proposals:
+    post:
+      operationId: createCommercialProposal
+      summary: Propose the next commercial revision (Slice #4 Commercial Approval).
+      description: |
+        Creates a DRAFT `CommercialRevisionProposal` capturing the PROPOSED commercial
+        terms (INTENT). It NEVER writes an AssignmentRateVersion — the applied truth is
+        untouched until the proposal reaches APPLIED. Permitted only while the
+        ContractAssignment is ACTIVE and has an open current version to revise.
+
+        Guarded by `assignment:commercials:write` (propose is a proposer act; approval is
+        a SEPARATE authority — `assignment:commercials:approve`). `requested_by` is the
+        authenticated subject. Absent / not-ACTIVE / no-open-version → 404. A live
+        (non-terminal) proposal already present for the assignment → 409
+        `COMMERCIAL_PROPOSAL_ALREADY_LIVE` (one-live invariant).
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommercialProposalRequest'
+      responses:
+        '201':
+          description: Created — the DRAFT proposal with its derived margin comparison.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommercialProposalResponse'
+        '400':
+          description: Validation error (malformed money / currency / rate_period / effective_from / reason).
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '403':
+          description: Insufficient permissions or tenant not entitled.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '409':
+          description: A live commercial proposal already exists for this assignment (COMMERCIAL_PROPOSAL_ALREADY_LIVE).
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+      security:
+        - BearerAuth: []
+    get:
+      operationId: listCommercialProposals
+      summary: List the assignment's commercial proposals (Slice #4 Commercial Approval).
+      description: |
+        Returns the assignment's `CommercialRevisionProposal` rows (newest first), each
+        with the derived current-vs-proposed margin comparison (computed on read, never
+        stored). Guarded by `assignment:commercials:read` (financial scope, least
+        visibility). The placement is first loaded under the actor-visibility predicate;
+        a not-found / not-visible / cross-tenant placement returns 404 (never 403).
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommercialProposalListResponse'
+        '403':
+          description: Insufficient permissions or tenant not entitled.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+
+  /v1/placements/{id}/assignment/commercials/proposals/{proposalId}:
+    get:
+      operationId: getCommercialProposal
+      summary: Read one commercial proposal (Slice #4 Commercial Approval).
+      description: |
+        Returns a single `CommercialRevisionProposal` with its derived margin comparison.
+        A coherent absence (visible placement, unknown proposal) returns
+        `{ "proposal": null }`. Guarded by `assignment:commercials:read`; least visibility
+        as the list.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: proposalId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK — the proposal, or null when unknown.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommercialProposalNullableResponse'
+        '403':
+          description: Insufficient permissions or tenant not entitled.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+    patch:
+      operationId: transitionCommercialProposal
+      summary: Proposer lifecycle transition — submit / withdraw (Slice #4 Commercial Approval).
+      description: |
+        Advances a proposal along a PROPOSER edge: `submit` (DRAFT → PENDING_REVIEW) or
+        `withdraw` (any open state → WITHDRAWN). Guarded by `assignment:commercials:write`
+        (no approval authority, no segregation-of-duties). An illegal edge is refused 422
+        `COMMERCIAL_PROPOSAL_STATE_INVALID`. The placement is loaded under the
+        actor-visibility predicate (404, never 403).
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: proposalId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommercialProposalTransitionRequest'
+      responses:
+        '200':
+          description: OK — the updated proposal.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommercialProposalResponse'
+        '403':
+          description: Insufficient permissions or tenant not entitled.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '422':
+          description: Illegal proposal transition (COMMERCIAL_PROPOSAL_STATE_INVALID).
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+      security:
+        - BearerAuth: []
+
+  /v1/placements/{id}/assignment/commercials/proposals/{proposalId}/decision:
+    post:
+      operationId: decideCommercialProposal
+      summary: Exercise commercial authority — margin-approve / client-approve / apply / reject (Slice #4).
+      description: |
+        Applies an AUTHORITY decision to a proposal: `margin_approve` (PENDING_REVIEW →
+        PENDING_CLIENT_APPROVAL), `client_approve` (→ APPROVED, capturing provenance-bearing
+        client-approval evidence), `apply` (APPROVED → APPLIED, reusing the governed
+        createCommercialRevision to materialise the AssignmentRateVersion), or `reject`
+        (→ REJECTED).
+
+        Guarded by the SEPARATE authority scope `assignment:commercials:approve`. Enforces
+        segregation of duties (fail-closed): the actor may NOT equal the proposer → 403
+        `COMMERCIAL_PROPOSAL_SELF_APPROVAL`. Governed by an ADR-0024 fail-closed policy — no
+        published package → 403 `POLICY_DENIED`. On `apply`, a window conflict from
+        createCommercialRevision is 409 `ASSIGNMENT_COMMERCIAL_REVISION_CONFLICT` and leaves
+        the proposal APPROVED (reconciliation). An illegal edge → 422
+        `COMMERCIAL_PROPOSAL_STATE_INVALID`.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: proposalId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommercialProposalDecisionRequest'
+      responses:
+        '200':
+          description: OK — the updated proposal.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommercialProposalResponse'
+        '403':
+          description: Insufficient permissions, segregation-of-duties self-approval, or fail-closed policy denial.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '409':
+          description: Apply-time commercial window conflict (ASSIGNMENT_COMMERCIAL_REVISION_CONFLICT); the proposal remains APPROVED.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '422':
+          description: Illegal proposal transition (COMMERCIAL_PROPOSAL_STATE_INVALID).
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+      security:
+        - BearerAuth: []
+
   # Track 8 / T8-P2 — provider-neutral canonical requisition ingestion.
   /v1/requisition-imports:
     get:
@@ -4683,6 +4935,241 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/AssignmentCommercialView'
+    # Slice #4 — Commercial Approval. Propose the next revision (INTENT). Mirrors
+    # CommercialRevisionRequest but is NOT applied; `reason` replaces change_reason.
+    CommercialProposalRequest:
+      type: object
+      additionalProperties: false
+      required: [pay_rate_amount, bill_rate_amount, currency, rate_period, reason]
+      properties:
+        pay_rate_amount:
+          type: string
+          description: Decimal(12,2) money string (never a float).
+        bill_rate_amount:
+          type: string
+          description: Decimal(12,2) money string (never a float).
+        currency:
+          type: string
+          description: An active ISO-4217 currency code (uppercase).
+        rate_period:
+          type: string
+          enum: [HOURLY, DAILY, WEEKLY, MONTHLY, ANNUAL]
+        effective_from:
+          type: string
+          format: date-time
+          description: Optional ISO-8601 instant for the applied revision; re-validated at APPLY under lock.
+        reason:
+          type: string
+          maxLength: 2000
+          description: Required free-text reason for the proposed change.
+    # Proposer lifecycle transition — submit / withdraw (scope:write, no authority).
+    CommercialProposalTransitionRequest:
+      type: object
+      additionalProperties: false
+      required: [action]
+      properties:
+        action:
+          type: string
+          enum: [submit, withdraw]
+          description: submit (DRAFT -> PENDING_REVIEW) or withdraw (open -> WITHDRAWN).
+    # Authority decision — margin-approve / client-approve / apply / reject
+    # (scope:approve + SoD + ADR-0024). Evidence fields are action-specific.
+    CommercialProposalDecisionRequest:
+      type: object
+      additionalProperties: false
+      required: [action]
+      properties:
+        action:
+          type: string
+          enum: [margin_approve, client_approve, apply, reject]
+        note:
+          type: string
+          maxLength: 2000
+          description: Free-text audit note (review note / rejection reason / client-approval note by action).
+        client_reference:
+          type: string
+          maxLength: 200
+          description: Client-approval external reference (client_approve only).
+        client_approval_source:
+          type: string
+          enum: [MANUAL, EMAIL, VMS, CLIENT_PORTAL, API]
+          description: Provenance of the client approval (client_approve only; MANUAL when omitted).
+    # One margin side (current OR proposed), derived on read via deriveCommercialMetrics.
+    CommercialMarginSide:
+      type: object
+      additionalProperties: false
+      required: [pay_rate_amount, bill_rate_amount, currency, rate_period, spread_amount, margin_percent, markup_percent]
+      properties:
+        pay_rate_amount:
+          type: string
+        bill_rate_amount:
+          type: string
+        currency:
+          type: string
+        rate_period:
+          type: string
+        spread_amount:
+          type: string
+        margin_percent:
+          type: [string, 'null']
+          description: Scale-2 percent; null when bill = 0.
+        markup_percent:
+          type: [string, 'null']
+          description: Scale-2 percent; null when pay = 0.
+    # The current-vs-proposed margin comparison (delta = proposed minus current).
+    CommercialMarginComparison:
+      type: object
+      additionalProperties: false
+      required: [current, proposed, pay_rate_delta, bill_rate_delta, margin_point_delta]
+      properties:
+        current:
+          $ref: '#/components/schemas/CommercialMarginSide'
+        proposed:
+          $ref: '#/components/schemas/CommercialMarginSide'
+        pay_rate_delta:
+          type: string
+        bill_rate_delta:
+          type: string
+        margin_point_delta:
+          type: [string, 'null']
+          description: Proposed minus current margin points; null when either side's margin is null.
+    # The CommercialRevisionProposal read projection.
+    CommercialProposalView:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - contract_assignment_id
+        - placement_process_id
+        - requisition_id
+        - talent_record_id
+        - state
+        - proposed_pay_rate_amount
+        - proposed_bill_rate_amount
+        - proposed_currency
+        - proposed_rate_period
+        - proposed_effective_from
+        - reason
+        - requested_by
+        - margin
+        - review_decided_by
+        - review_decided_at
+        - review_note
+        - client_approved_at
+        - client_approval_recorded_by
+        - client_reference
+        - client_approval_source
+        - client_approval_note
+        - rejected_by
+        - rejected_at
+        - rejection_reason
+        - applied_rate_version_id
+        - applied_by
+        - applied_at
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        contract_assignment_id:
+          type: string
+          format: uuid
+        placement_process_id:
+          type: string
+          format: uuid
+        requisition_id:
+          type: string
+          format: uuid
+        talent_record_id:
+          type: string
+          format: uuid
+        state:
+          type: string
+          enum: [DRAFT, PENDING_REVIEW, PENDING_CLIENT_APPROVAL, APPROVED, APPLIED, REJECTED, WITHDRAWN]
+        proposed_pay_rate_amount:
+          type: string
+        proposed_bill_rate_amount:
+          type: string
+        proposed_currency:
+          type: string
+        proposed_rate_period:
+          type: string
+        proposed_effective_from:
+          type: [string, 'null']
+          format: date-time
+        reason:
+          type: string
+        requested_by:
+          type: string
+          format: uuid
+        margin:
+          $ref: '#/components/schemas/CommercialMarginComparison'
+        review_decided_by:
+          type: [string, 'null']
+          format: uuid
+        review_decided_at:
+          type: [string, 'null']
+          format: date-time
+        review_note:
+          type: [string, 'null']
+        client_approved_at:
+          type: [string, 'null']
+          format: date-time
+        client_approval_recorded_by:
+          type: [string, 'null']
+          format: uuid
+        client_reference:
+          type: [string, 'null']
+        client_approval_source:
+          type: [string, 'null']
+          enum: [MANUAL, EMAIL, VMS, CLIENT_PORTAL, API, null]
+        client_approval_note:
+          type: [string, 'null']
+        rejected_by:
+          type: [string, 'null']
+          format: uuid
+        rejected_at:
+          type: [string, 'null']
+          format: date-time
+        rejection_reason:
+          type: [string, 'null']
+        applied_rate_version_id:
+          type: [string, 'null']
+          format: uuid
+        applied_by:
+          type: [string, 'null']
+          format: uuid
+        applied_at:
+          type: [string, 'null']
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+    CommercialProposalResponse:
+      type: object
+      additionalProperties: false
+      required: [proposal]
+      properties:
+        proposal:
+          $ref: '#/components/schemas/CommercialProposalView'
+    CommercialProposalNullableResponse:
+      type: object
+      additionalProperties: false
+      required: [proposal]
+      properties:
+        proposal:
+          oneOf:
+            - $ref: '#/components/schemas/CommercialProposalView'
+            - type: 'null'
+    CommercialProposalListResponse:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CommercialProposalView'
     # M3 PR-8 §4.4 — match-list response envelope. The endpoint emits
     # TalentJobExaminationSummary items only (Full is NOT referenced from
     # this endpoint — see directive §4.4). additionalProperties: false plus

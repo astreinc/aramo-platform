@@ -591,7 +591,21 @@
       "ASSIGNMENT_ENDED_CANCELLATION_REASON",
       "AssignmentPipelineReadRepository",
       "CAPACITY_STATUSES",
+      "COMMERCIAL_APPROVAL_ACTIONS",
+      "COMMERCIAL_APPROVAL_AUTHORITY_ACTIONS",
+      "COMMERCIAL_APPROVAL_LIFECYCLE_PACKAGE_NAME",
+      "COMMERCIAL_APPROVAL_NO_POLICY_PUBLISHED_REASON",
+      "COMMERCIAL_APPROVAL_POLICY_STORE",
+      "COMMERCIAL_APPROVAL_RESOURCE",
+      "COMMERCIAL_APPROVAL_SOURCES",
+      "COMMERCIAL_PROPOSAL_INITIAL_STATE",
+      "COMMERCIAL_PROPOSAL_ONE_LIVE_INACTIVE",
+      "COMMERCIAL_PROPOSAL_STATES",
+      "COMMERCIAL_PROPOSAL_STATE_POSITION",
+      "COMMERCIAL_PROPOSAL_TERMINAL_STATES",
+      "COMMERCIAL_PROPOSAL_TRANSITIONS",
       "CapacityProjectionRepository",
+      "CommercialApprovalPolicyService",
       "CommercialMarginReadModule",
       "CommercialMarginReadRepository",
       "DEFAULT_ASSIGNMENT_ENDING_SOON_DAYS",
@@ -602,6 +616,7 @@
       "GuaranteeExposureReadRepository",
       "GuaranteeTermRepository",
       "INITIAL_STATE",
+      "LEGAL_COMMERCIAL_PROPOSAL_TRANSITIONS",
       "LEGAL_OFFER_TRANSITIONS",
       "LEGAL_TRANSITIONS",
       "LIFECYCLE_POSITIONS",
@@ -661,10 +676,13 @@
       "edgeAuthorityClass",
       "generatePlacementMigrationSql",
       "getReason",
+      "governingCommercialProposalAction",
       "governingOfferAction",
       "isAssignmentEndingSoon",
+      "isCommercialApprovalAuthorityAction",
       "isGovernedTerminalTarget",
       "isGuaranteeTermsSourceType",
+      "isLegalCommercialProposalTransition",
       "isLegalOfferTransition",
       "isPermanentFalloffReasonCode",
       "isUserCancellationReasonCode",
@@ -1936,6 +1954,12 @@
       { "project": "pipeline", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/placement/src/tests/commercial-approval.integration.spec.ts",
+        "project": "placement",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/placement/src/tests/offer-repository.integration.spec.ts",
         "project": "placement",
         "status": "excluded"
@@ -2574,6 +2598,12 @@
       },
       {
         "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/placement/CommercialProposalSection.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/ats-web/src/placement/ConvertToPermanentDialog.spec.tsx",
         "project": "aramo-ats-web",
         "status": "excluded"
@@ -2617,6 +2647,12 @@
       {
         "excludedBy": "src/**/*.spec.ts",
         "from": "apps/ats-web/src/placement/placement-commercial-api.spec.ts",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.ts",
+        "from": "apps/ats-web/src/placement/placement-commercial-proposal-api.spec.ts",
         "project": "aramo-ats-web",
         "status": "excluded"
       },
@@ -3563,6 +3599,12 @@
         "status": "unscoped"
       },
       { "project": "pipeline", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/placement/src/tests/commercial-approval.integration.spec.ts",
+        "project": "placement",
+        "status": "excluded"
+      },
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/placement/src/tests/offer-repository.integration.spec.ts",

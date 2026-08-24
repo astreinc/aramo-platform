@@ -193,6 +193,65 @@ export type AssignmentCommercialView = {
   readonly created_at: Date;
 };
 
+// Slice #4 — Commercial Approval. The current-vs-proposed margin comparison shown
+// to the reviewer (R-MARGIN-REVIEW). Derived on read via deriveCommercialMetrics
+// (NEVER stored). `current` reflects the reference version captured at propose
+// time (the terms the proposer was comparing against); `delta` is proposed minus
+// current. margin_point_delta is null when either side's margin is null (bill=0).
+export type CommercialMarginSide = {
+  readonly pay_rate_amount: string;
+  readonly bill_rate_amount: string;
+  readonly currency: string;
+  readonly rate_period: string;
+  readonly spread_amount: string;
+  readonly margin_percent: string | null;
+  readonly markup_percent: string | null;
+};
+
+export type CommercialMarginComparison = {
+  readonly current: CommercialMarginSide;
+  readonly proposed: CommercialMarginSide;
+  readonly pay_rate_delta: string;
+  readonly bill_rate_delta: string;
+  readonly margin_point_delta: string | null;
+};
+
+// Slice #4 — the CommercialRevisionProposal read projection. Carries the proposed
+// terms (INTENT), the derived margin comparison, and the per-transition evidence
+// (margin review / client approval / rejection / applied). state uses the registry
+// string union; source the client-approval provenance enum.
+export type CommercialProposalView = {
+  readonly id: string;
+  readonly contract_assignment_id: string;
+  readonly placement_process_id: string;
+  readonly requisition_id: string;
+  readonly talent_record_id: string;
+  readonly state: string;
+  readonly proposed_pay_rate_amount: string;
+  readonly proposed_bill_rate_amount: string;
+  readonly proposed_currency: string;
+  readonly proposed_rate_period: string;
+  readonly proposed_effective_from: Date | null;
+  readonly reason: string;
+  readonly requested_by: string;
+  readonly margin: CommercialMarginComparison;
+  readonly review_decided_by: string | null;
+  readonly review_decided_at: Date | null;
+  readonly review_note: string | null;
+  readonly client_approved_at: Date | null;
+  readonly client_approval_recorded_by: string | null;
+  readonly client_reference: string | null;
+  readonly client_approval_source: string | null;
+  readonly client_approval_note: string | null;
+  readonly rejected_by: string | null;
+  readonly rejected_at: Date | null;
+  readonly rejection_reason: string | null;
+  readonly applied_rate_version_id: string | null;
+  readonly applied_by: string | null;
+  readonly applied_at: Date | null;
+  readonly created_at: Date;
+};
+
 export type PlacementProcessView = {
   readonly id: string;
   readonly tenant_id: string;

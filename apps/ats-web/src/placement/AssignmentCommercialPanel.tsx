@@ -6,6 +6,7 @@ import { Button, Card, CardHead, InlineAlert } from '../ui';
 import { CommercialCancelRevisionDialog } from './CommercialCancelRevisionDialog';
 import { CommercialCurrentTermsCard } from './CommercialCurrentTermsCard';
 import { CommercialEndedState } from './CommercialEndedState';
+import { CommercialProposalSection } from './CommercialProposalSection';
 import { CommercialRevisionFormDialog } from './CommercialRevisionFormDialog';
 import { CommercialRevisionTimeline } from './CommercialRevisionTimeline';
 import {
@@ -177,6 +178,16 @@ export function AssignmentCommercialPanel({
                 New commercial revision
               </Button>
             </div>
+          )}
+          {/* Slice #4 — Commercial Approval. Read-scope actors see proposals; the governed
+              propose/decision affordances are gated inside the section by scope × SoD. */}
+          {session !== null && (
+            <CommercialProposalSection
+              placementId={placementId}
+              session={session}
+              currentCommercials={commercials}
+              onServerChange={refresh}
+            />
           )}
         </>
       )}

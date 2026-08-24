@@ -15,6 +15,6 @@ describe('Company-Fields v1.1 — company:read_commercial catalog parity', () =>
   });
 
   it('SEED_SCOPE_KEYS is 126 (107 + 4 Track4/T4-D assignment + 1 Slice#3 assignment:extend + 2 Track5/T5-P1 assignment:commercials + 2 Track8/T8-P2 requisition:import + 2 Track7/T7-P1 placement:permanent + 1 Track7/T7-P2 placement:remedy:resolve + 1 Track7/T7-P3 placement:permanent:terms:write + 2 Track8/T8-CONNECTOR-A integration)', () => {
-    expect(SEED_SCOPE_KEYS).toHaveLength(126);
+    expect(SEED_SCOPE_KEYS).toHaveLength(127);
   });
 });
