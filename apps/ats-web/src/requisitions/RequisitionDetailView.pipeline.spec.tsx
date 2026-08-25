@@ -1,5 +1,5 @@
 import { ToastProvider, type Session } from '@aramo/fe-foundation';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -15,7 +15,9 @@ const SESSION: Session = {
   sub: 'u1',
   consumer_type: 'recruiter',
   tenant_id: 't',
-  scopes: ['requisition:read'],
+  // pipeline:read → the Talent tab is available and is the scope-driven default,
+  // so the funnel/talent-table content renders on first paint (as before).
+  scopes: ['requisition:read', 'pipeline:read'],
   iat: 0,
   exp: 0,
 };
@@ -118,10 +120,9 @@ describe('RequisitionDetailView — header / meta / pipeline (2D)', () => {
     expect(
       screen.getByText('Priority', { selector: '.rc-pill' }),
     ).toBeInTheDocument();
-    // Deliberate boundary: the talent-table "Hot" COLUMN HEADER is a DIFFERENT
-    // signal (per-talent, on a person) and keeps its own wording — NOT renamed.
-    expect(screen.getByText('Hot')).toBeInTheDocument();
-    expect(screen.getByText('Open')).toBeInTheDocument();
+    // The RecruitingStatus header pill. (The Client-status snapshot card also
+    // reads "Open" for a null client_submittal_status, so scope to the pill.)
+    expect(screen.getByText('Open', { selector: '.rc-pill' })).toBeInTheDocument();
     await waitFor(() =>
       expect(
         screen.getByRole('link', { name: 'Northwind Robotics' }),
@@ -130,51 +131,47 @@ describe('RequisitionDetailView — header / meta / pipeline (2D)', () => {
     expect(screen.getByText(/REQ-2041/)).toBeInTheDocument();
   });
 
-  it('renders the meta strip (Type / Location / Openings / Opened); no masked Max rate', async () => {
+  it('NO MetaStrip (prototype removal); header line 2 carries location + type; Capacity is a snapshot card', async () => {
     mockApi();
     mountDetail();
     await screen.findByRole('heading', { name: /Senior Rust Engineer/ });
-    expect(screen.getByText('Type')).toBeInTheDocument();
-    expect(screen.getByText('C2H')).toBeInTheDocument();
-    expect(screen.getByText('Austin, TX')).toBeInTheDocument();
-    expect(screen.getByText('1 of 3')).toBeInTheDocument();
-    // Comp masked-by-absence → no Max rate cell.
+    // The old MetaStrip is gone — its labels no longer render.
     expect(screen.queryByText('Max rate')).toBeNull();
+    expect(screen.queryByText('Opened')).toBeNull();
+    expect(screen.queryByText('1 of 3')).toBeNull();
+    // The data moved to the header line 2 (as " · {value}" clauses).
+    expect(screen.getByText(/Austin, TX/)).toBeInTheDocument();
+    expect(screen.getByText(/· C2H/)).toBeInTheDocument();
+    // Capacity is a derived snapshot card (never a status).
+    expect(screen.getByText('Capacity')).toBeInTheDocument();
+    expect(screen.getByText('1/3 filled')).toBeInTheDocument();
   });
 
-  it('parity: Recruiter meta cell + Rate(stated)/Owner columns + Remote suffix + pipeline toolbar', async () => {
+  it('header owner (recruiter) resolved via the roster + work-arrangement suffix in meta', async () => {
     mockApi();
     mountDetail();
     await screen.findByRole('heading', { name: /Senior Rust Engineer/ });
-    // Recruiter name resolved via the roster (gap #8).
+    // Owner = recruiter_id ?? owner_id, resolved via the roster (gap #8) — now
+    // in the header, not a meta cell.
     await waitFor(() => expect(screen.getByText('Priya Recruiter')).toBeInTheDocument());
-    // Stated rate (freetext, gap #3) + owner name in the talent table.
-    expect(screen.getByText('$74/hr')).toBeInTheDocument();
-    expect(screen.getAllByText('Tom Owner').length).toBeGreaterThan(0);
     // Location carries the work-arrangement suffix (work_arrangement=remote).
     expect(screen.getByText('· Remote ok')).toBeInTheDocument();
-    // The pipeline toolbar.
-    expect(screen.getByRole('button', { name: 'All stages' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Active only' })).toBeInTheDocument();
   });
 
-  it('parity: Hot toggle column reflects is_hot — read-only (disabled) without talent:edit', async () => {
+  it('Option A: HOT triage moved OFF the grid INTO the side panel; read-only (disabled) without talent:edit', async () => {
     mockApi();
     mountDetail();
     await screen.findByRole('heading', { name: /Senior Rust Engineer/ });
-    await waitFor(() =>
-      expect(screen.getByRole('link', { name: 'Marcus Adeyemi' })).toBeInTheDocument(),
-    );
-    // tal-1 is_hot=true → pressed; tal-2 is_hot=false → not pressed.
+    // No inline hot toggle on the journey grid.
+    expect(screen.queryByRole('button', { name: /is marked hot|Mark .* as hot/ })).toBeNull();
+    // Open the talent row → the side panel owns the HOT toggle.
+    fireEvent.click(await screen.findByRole('button', { name: /Marcus Adeyemi/ }));
     const marcusHot = await screen.findByRole('button', {
       name: /Marcus Adeyemi is marked hot/,
     });
     expect(marcusHot).toHaveAttribute('aria-pressed', 'true');
-    const sofiaHot = screen.getByRole('button', { name: /Mark Sofia Ramos as hot/ });
-    expect(sofiaHot).toHaveAttribute('aria-pressed', 'false');
-    // No talent:edit scope → the toggles are read-only (disabled).
+    // No talent:edit scope → the panel toggle is read-only (disabled).
     expect(marcusHot).toBeDisabled();
-    expect(sofiaHot).toBeDisabled();
   });
 
   it('parity: Attachments tab present with count', async () => {
@@ -187,32 +184,36 @@ describe('RequisitionDetailView — header / meta / pipeline (2D)', () => {
     ).toBeInTheDocument();
   });
 
-  it('Pipeline tab: funnel ribbon counts + talent table with stage pills + talent links', async () => {
+  it('Talent tab is the journey GRID: TALENT|PIPELINE|CLIENT|OFFER|PRE-START|ASSIGNMENT headers + status pills; talent opens the panel', async () => {
     mockApi();
     mountDetail();
     await screen.findByRole('heading', { name: /Senior Rust Engineer/ });
-    // Funnel buckets present (the funnel "Submitted" label + the row's stage
-    // pill both read "Submitted", so assert at least one).
-    expect(screen.getAllByText('Submitted').length).toBeGreaterThan(0);
-    expect(screen.getByText('Interview')).toBeInTheDocument();
-    // Talent rows resolved + linked.
-    await waitFor(() =>
-      expect(
-        screen.getByRole('link', { name: 'Marcus Adeyemi' }),
-      ).toHaveAttribute('href', '/talent/tal-1'),
-    );
-    expect(screen.getByRole('link', { name: 'Sofia Ramos' })).toBeInTheDocument();
-    // Stage pill for the interviewing row.
+    // Grid header columns.
+    const grid = screen.getByRole('table', { name: 'Talent journey' });
+    for (const h of ['Talent', 'Pipeline', 'Client', 'Offer', 'Pre-start', 'Assignment']) {
+      expect(within(grid).getByText(h)).toBeInTheDocument();
+    }
+    // Pipeline cell = status pill (human label + tone); no funnel ribbon.
     expect(screen.getByText('Interviewing')).toBeInTheDocument();
+    expect(screen.getByText('Submitted')).toBeInTheDocument();
+    // Talent cell is a button (opens the side panel), not a router link.
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /Marcus Adeyemi/ })).toBeInTheDocument(),
+    );
+    expect(screen.getByRole('button', { name: /Sofia Ramos/ })).toBeInTheDocument();
+    // Drill-through: clicking the talent opens the owning side panel.
+    fireEvent.click(screen.getByRole('button', { name: /Marcus Adeyemi/ }));
+    expect(await screen.findByText('Workflow status')).toBeInTheDocument();
   });
 
-  it('right column has an at-a-glance card and the R10 reserved Match-insight seam (no scores)', async () => {
+  it('no leftover old-styled surfaces: no funnel ribbon / at-a-glance card / reserved seam / inline MoveToMenu', async () => {
     mockApi();
     mountDetail();
     await screen.findByRole('heading', { name: /Senior Rust Engineer/ });
-    expect(screen.getByText('This req at a glance')).toBeInTheDocument();
-    const seam = screen.getByRole('region', { name: 'Match insight' });
-    expect(seam.textContent).toContain('no scores');
+    expect(screen.queryByText('This req at a glance')).toBeNull();
+    expect(screen.queryByRole('region', { name: 'Match insight' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'All stages' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Move' })).toBeNull();
   });
 
   it('editable Hot (talent:edit): clicking the toggle PATCHes /v1/talent-records/:id is_hot', async () => {
@@ -246,7 +247,7 @@ describe('RequisitionDetailView — header / meta / pipeline (2D)', () => {
 
     const editorSession: Session = {
       ...SESSION,
-      scopes: ['requisition:read', 'talent:edit'],
+      scopes: ['requisition:read', 'pipeline:read', 'talent:edit'],
     };
     render(
       <ToastProvider>
@@ -263,7 +264,8 @@ describe('RequisitionDetailView — header / meta / pipeline (2D)', () => {
       </ToastProvider>,
     );
     await screen.findByRole('heading', { name: /Senior Rust Engineer/ });
-    // Sofia is not hot → clicking marks her hot via PATCH talent-records/tal-2.
+    // Option A — the move IS the panel: open Sofia's row, then toggle HOT there.
+    fireEvent.click(await screen.findByRole('button', { name: /Sofia Ramos/ }));
     const sofiaHot = await screen.findByRole('button', {
       name: /Mark Sofia Ramos as hot/,
     });
