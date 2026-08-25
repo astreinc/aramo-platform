@@ -354,6 +354,30 @@ export function RequisitionsListView({
     setSelectedTalent((sel) => (sel ? { ...sel, entry: updated } : sel));
   };
 
+  // A successful inline talent-field save in the side panel reports an
+  // enrichment-shaped patch; reflect it in the read-only extender (every row for
+  // that talent, across requisitions) + the open panel's entry — no refetch, so
+  // the just-entered value is visible immediately. The extender stays read-only.
+  const handleTalentFieldSaved = (
+    talentRecordId: string,
+    patch: Partial<PipelineView>,
+  ): void => {
+    setPipelinesByReq((prev) => {
+      const next: Record<string, readonly PipelineView[]> = {};
+      for (const [reqId, list] of Object.entries(prev)) {
+        next[reqId] = list.map((x) =>
+          x.talent_record_id === talentRecordId ? { ...x, ...patch } : x,
+        );
+      }
+      return next;
+    });
+    setSelectedTalent((sel) =>
+      sel && sel.entry.talent_record_id === talentRecordId
+        ? { ...sel, entry: { ...sel.entry, ...patch } }
+        : sel,
+    );
+  };
+
   return (
     <section>
       <div className="rc-viewhead">
@@ -569,6 +593,7 @@ export function RequisitionsListView({
           scopes={session?.scopes ?? []}
           onClose={() => setSelectedTalent(null)}
           onTransitioned={handleTransitioned}
+          onTalentFieldSaved={handleTalentFieldSaved}
         />
       ) : null}
     </section>

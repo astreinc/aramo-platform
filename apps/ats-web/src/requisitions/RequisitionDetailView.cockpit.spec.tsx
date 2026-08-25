@@ -36,11 +36,12 @@ vi.mock('./ProfileWorkbenchPanel', () => ({
   ProfileWorkbenchPanel: () => <div data-testid="profile-panel" />,
 }));
 
-// The cockpit (inline-edit sections + workbench) lives in the Details tab
-// (Pipeline is the default). Open it before asserting on cockpit fields.
+// The cockpit (inline-edit sections + workbench) lives in the Overview tab
+// (the scope-driven default for a requisition:read/edit actor with no pipeline/
+// commercial/assignment scopes). Select it explicitly before asserting.
 async function openDetails() {
   await screen.findByRole('heading', { name: /Senior Engineer/ });
-  fireEvent.click(screen.getByRole('tab', { name: 'Details' }));
+  fireEvent.click(screen.getByRole('tab', { name: 'Overview' }));
 }
 
 function render(ui: ReactElement) {
