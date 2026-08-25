@@ -9,6 +9,7 @@
     ".editorconfig",
     ".env.example",
     ".env.prod.example",
+    ".githooks/pre-push",
     ".github/CODEOWNERS",
     ".github/dependabot.yml",
     ".github/npm-audit-allowlist.json",

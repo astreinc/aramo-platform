@@ -1,0 +1,18 @@
+#!/usr/bin/env sh
+# Pre-push wall — repo-map staleness must be caught locally, not in CI.
+#
+# The three doc/generated/repo-map.*.json files are a generated SET: any new/
+# removed tracked file (or changed cross-lib coupling) drifts them, and the CI
+# `repo-map:check` wall then fails the PR. This hook mirrors that wall so a stale
+# map blocks the push at its source. Wired via core.hooksPath=.githooks (set by
+# the package.json `prepare` script — no husky dependency).
+#
+# Fast (seconds); check-only (never mutates the tree). On failure: regenerate and
+# commit the set, then push again.
+if ! npm run --silent repo-map:check; then
+  echo "" >&2
+  echo "✗ pre-push blocked: repo-map is stale." >&2
+  echo "  Fix: npm run repo-map:generate && git add doc/generated/repo-map.*.json" >&2
+  echo "       then commit and push again." >&2
+  exit 1
+fi
