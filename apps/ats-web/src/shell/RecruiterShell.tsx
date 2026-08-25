@@ -4,7 +4,6 @@ import {
   type Session,
 } from '@aramo/fe-foundation';
 import { useEffect, useState, type ReactNode } from 'react';
-import { useLocation } from 'react-router-dom';
 import {
   IconBriefcase,
   IconCompanies,
@@ -22,7 +21,6 @@ import { hasAdminScope } from '../admin/admin-access';
 import { getRequisitionCount, getTalentCount } from '../reporting/counts-api';
 import {
   AppShell,
-  Breadcrumb,
   CmdKSearch,
   NotificationButton,
   Rail,
@@ -32,11 +30,17 @@ import {
   TopBar,
   UserMenu,
   initialsOf,
-  type BreadcrumbItem,
 } from '../ui';
 
 import { AramoBrand } from './AramoBrand';
-import { BreadcrumbProvider, useBreadcrumbEntity } from './breadcrumb';
+// BreadcrumbProvider is retained so routed detail views may still publish their
+// entity title via useEntityCrumb (that publication is covered by their specs);
+// the app shell no longer RENDERS a route/section title in the TopBar — the
+// authoritative page title is each page's own H1/PageHeader, and the left rail
+// already communicates the active module (enterprise "one H1" ruling). The
+// TopBar keeps only global utilities: ⌘K search, notifications, tenant/user
+// context, and account controls.
+import { BreadcrumbProvider } from './breadcrumb';
 import { useMe } from './me-api';
 
 // The tenant-profile route — the existing destination for the user menu's
@@ -135,56 +139,6 @@ const ADMIN_NAV: readonly NavItem[] = [
   { to: '/admin', label: 'Settings', icon: <IconShield /> },
 ];
 
-// First-path-segment → section label, for the breadcrumb. Entity-level crumbs
-// (e.g. "Requisitions › Senior Rust Engineer") need the detail view to publish
-// its title — carried; 2A renders the section crumb.
-const SECTION_LABEL: Record<string, string> = {
-  '': 'My desk',
-  requisitions: 'Requisitions',
-  placements: 'Placements',
-  talent: 'Talent',
-  sourcing: 'Sourcing',
-  companies: 'Companies',
-  contacts: 'Contacts',
-  selections: 'Selection',
-  identity: 'Identity Advisories',
-  // TR-12 (T10-B1/F-003) — the trust segment was absent, so /trust/proposals
-  // fell through to the 'Aramo' default. It resolves to Trust Proposals now.
-  trust: 'Trust Proposals',
-  search: 'Search',
-  tasks: 'Tasks',
-  reports: 'Reports',
-  admin: 'Settings',
-};
-
-// Path-specific section identity (T10-B1). Two routes share the `identity`
-// first segment — Identity Advisories and Portal Disputes — so the
-// first-segment map alone mislabels Portal Disputes (F-004). These ordered
-// prefixes are matched BEFORE the first-segment fallback and also carry the
-// correct section href (the segment has no bare landing route).
-const SECTION_PATH_LABEL: readonly (readonly [string, string])[] = [
-  ['/identity/advisories', 'Identity Advisories'],
-  ['/identity/portal-disputes', 'Portal Disputes'],
-  ['/trust/proposals', 'Trust Proposals'],
-];
-
-interface SectionCrumb {
-  readonly label: string;
-  readonly href: string;
-}
-
-// Resolve the section crumb (label + href) for a pathname: a specific
-// multi-segment route wins over the first-segment map; unknown → 'Aramo'.
-function resolveSection(pathname: string): SectionCrumb {
-  for (const [prefix, label] of SECTION_PATH_LABEL) {
-    if (pathname === prefix || pathname.startsWith(`${prefix}/`)) {
-      return { label, href: prefix };
-    }
-  }
-  const segment = pathname.split('/')[1] ?? '';
-  return { label: SECTION_LABEL[segment] ?? 'Aramo', href: `/${segment}` };
-}
-
 interface RecruiterShellProps {
   readonly session: Session;
   readonly children: ReactNode;
@@ -207,12 +161,7 @@ function RecruiterShellInner({
   children,
   onLogoutComplete,
 }: RecruiterShellProps) {
-  const location = useLocation();
   const me = useMe();
-  const entity = useBreadcrumbEntity();
-  const { label: section, href: sectionHref } = resolveSection(
-    location.pathname,
-  );
 
   // The resolved /me display data (loading-safe — `me` is null until the fetch
   // resolves and stays null on error). Name falls back display_name → email;
@@ -225,10 +174,6 @@ function RecruiterShellInner({
   // flight so the chrome (avatar slot + logout) never collapses.
   const railName = displayName ?? '—';
   const railInitials = displayName ? initialsOf(displayName) : '·';
-  const crumbs: readonly BreadcrumbItem[] =
-    entity !== null
-      ? [{ label: section, href: sectionHref }, { label: entity }]
-      : [{ label: section }];
 
   // §5 Auth-Hardening D3: the shared session logout — clears the LOCAL session
   // (POST /logout) then navigates to the Cognito hosted-UI /logout to terminate
@@ -308,7 +253,6 @@ function RecruiterShellInner({
 
   const topBar = (
     <TopBar>
-      <Breadcrumb items={crumbs} />
       <CmdKSearch />
       <NotificationButton />
       {/* Org-context label (M365 pattern) — the tenant display_name as plain
