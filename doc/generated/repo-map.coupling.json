@@ -16028,6 +16028,7 @@
         { "kind": "prose", "path": "ci/scripts/verify-portal-refusal.ts" }
       ]
     },
+    { "name": "prepare", "references": [] },
     {
       "name": "prepush",
       "references": [
@@ -16088,6 +16089,7 @@
       "references": [
         { "kind": "npm-run", "path": ".github/workflows/ci.yml" },
         { "kind": "prose", "path": ".github/workflows/ci.yml" },
+        { "kind": "npm-run", "path": "ci/scripts/prepush.ts" },
         { "kind": "prose", "path": "ci/scripts/prepush.ts" },
         { "kind": "prose", "path": "ci/scripts/verify-repo-map.ts" },
         { "kind": "prose", "path": "scripts/verify-vocabulary.sh" }
@@ -16178,6 +16180,7 @@
   ],
   "unreferenced": [
     "offer:sql:check",
+    "prepare",
     "prepush",
     "prisma:generate-auth-storage",
     "prisma:generate-identity",

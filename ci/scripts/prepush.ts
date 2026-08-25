@@ -131,6 +131,11 @@ steps.push(['integration-roots:check', () => run('npm run --silent tests:integra
 // regenerate and byte-compare against the committed file (generate-and-compare
 // idiom, like repo-map:check / error-codes:check).
 steps.push(['placement:sql:check', () => run('npm run --silent placement:sql:check')]);
+// repo-map is a generated SET (doc/generated/repo-map.*.json) — new/removed
+// tracked files or changed cross-lib coupling drift it. Same generate-and-compare
+// idiom as placement:sql:check; mirrors the CI repo-map:check wall + the
+// .githooks/pre-push hook so staleness is caught before CI, unconditionally.
+steps.push(['repo-map:check', () => run('npm run --silent repo-map:check')]);
 // GLH-1 (ATS Go-Live Hardening Charter v1.5) — CI-integrity walls. Config-only, cheap,
 // unconditional. env:passthrough-check = prod compose/env parity; aggregate-gate:check =
 // deployment-gate.needs membership (build/verify-vocabulary/GLH walls stay required).

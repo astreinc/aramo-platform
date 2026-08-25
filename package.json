@@ -57,7 +57,8 @@
     "release-manifest:selftest": "node --import jiti/register ci/scripts/release-manifest.ts --selftest",
     "identity-index:privacy-wall": "vitest run --root libs/identity-index privacy-wall && vitest run --root libs/platform-trust privacy-wall",
     "verify:vocabulary": "bash scripts/verify-vocabulary.sh",
-    "prepush": "node --import jiti/register ci/scripts/prepush.ts"
+    "prepush": "node --import jiti/register ci/scripts/prepush.ts",
+    "prepare": "git config core.hooksPath .githooks || true"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "~0.102.0",
