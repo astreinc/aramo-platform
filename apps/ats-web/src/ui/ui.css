@@ -359,27 +359,35 @@ button.rc-link-action {
   flex-wrap: wrap;
 }
 
+/* Header — prototype parity (Requisition Detail.dc.html): H1 19px/700/-.02em;
+ * line 2 (co) 12.5px #5C6770 links #022AC0; line 3 (sub) 11.5px #93A0A8. The
+ * MetaStrip + its rc-meta* rules are DELETED (not in the prototype). */
 .rc-dhead__title {
-  font-size: 1.6rem;
+  font-size: 19px;
   font-weight: 700;
   letter-spacing: -0.02em;
   display: flex;
   align-items: center;
   gap: 10px;
+  flex-wrap: wrap;
   margin: 0;
 }
 
+.rc-dhead__crumb {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #5c6770;
+  margin-bottom: 4px;
+}
+
 .rc-dhead__co {
-  margin-top: 5px;
-  color: var(--muted);
-  font-size: 0.95rem;
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  margin-top: 3px;
+  color: #5c6770;
+  font-size: 12.5px;
 }
 
 .rc-dhead__co a {
-  color: var(--brand-strong);
+  color: #022ac0;
   font-weight: 600;
   text-decoration: none;
 }
@@ -388,54 +396,17 @@ button.rc-link-action {
   text-decoration: underline;
 }
 
+.rc-dhead__co .mono {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  color: #93a0a8;
+}
+
 .rc-dhead__actions {
   margin-left: auto;
   display: flex;
-  gap: 9px;
+  gap: 8px;
   align-items: center;
-}
-
-.rc-meta {
-  display: flex;
   flex-wrap: wrap;
-  margin-top: 20px;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--r-lg);
-  overflow: hidden;
-  box-shadow: var(--elev);
-}
-
-.rc-meta__cell {
-  padding: 13px 18px;
-  border-right: 1px solid var(--line);
-  min-width: 118px;
-}
-
-.rc-meta__cell:last-child {
-  border-right: 0;
-}
-
-.rc-meta__k {
-  font-size: 0.68rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--faint);
-  font-weight: 600;
-  margin-bottom: 3px;
-}
-
-.rc-meta__v {
-  font-size: 0.95rem;
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.rc-meta__v small {
-  font-weight: 400;
-  color: var(--muted);
 }
 
 .rc-work {
@@ -4080,3 +4051,128 @@ select.rc-input { appearance: none; padding-right: 28px; }
 .rc-texp__talent { display: flex; align-items: center; gap: 9px; min-width: 0; }
 .rc-texp__name { font-weight: 600; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 6px; }
 .rc-texp__next { font-size: 12px; color: var(--muted, #5C6770); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * Requisition WORKSPACE (detail) — Confident Blue prototype parity.
+ * Consumes the existing token layer (theme.css) so palette/type stay 1:1 with
+ * the shell (--brand #022AC0 · --ink · --muted · --line · --ok/--warn/--hot).
+ * No raw prototype hex is duplicated here. Exact-token class exclusivity:
+ * every selector below is a NEW rc-* token (rc-dhead__sub / rc-snap* / rc-attn*
+ * / rc-ws-tabs / rc-tj*) — no existing token is redefined.
+ * ══════════════════════════════════════════════════════════════════════════ */
+
+/* Header third line — aging + version. Values numerically match the prototype
+ * (11.5px / #93A0A8 / margin-top 8px). Approver clause stays OMITTED (no field). */
+.rc-dhead__sub { margin-top: 8px; font-size: 11.5px; color: #93a0a8; }
+.rc-dhead__sub .mono { font-family: 'IBM Plex Mono', ui-monospace, monospace; }
+
+/* Snapshot strip — repeat(auto-fit,minmax(126px,1fr)); gap 9px. */
+.rc-snap {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(126px, 1fr));
+  gap: 9px; margin: 16px 0 14px;
+}
+.rc-snapcard {
+  display: flex; flex-direction: column; align-items: flex-start;
+  text-align: left; padding: 10px 12px; background: #fff;
+  border: 1px solid #e5e9ed; border-radius: 11px;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+button.rc-snapcard { cursor: pointer; font: inherit; }
+button.rc-snapcard:hover {
+  border-color: #022ac0; box-shadow: 0 2px 10px rgba(20, 35, 48, 0.07);
+}
+.rc-snapcard__k {
+  display: flex; align-items: center; gap: 5px;
+  font-size: 9.5px; letter-spacing: 0.07em; text-transform: uppercase;
+  font-weight: 600; color: #93a0a8; margin-bottom: 3px;
+}
+.rc-snapcard__v { font-size: 13.5px; font-weight: 700; color: #1b2730; }
+.rc-snapcard__sub { font-size: 10.5px; color: #93a0a8; margin-top: 1px; }
+.rc-snapcard--warn { border-color: #e8c4b4; }
+.rc-snapcard--warn .rc-snapcard__k,
+.rc-snapcard--warn .rc-snapcard__v { color: #c0410c; }
+
+/* Needs-attention card — left brand rule; dot + what/detail + age + drill link. */
+.rc-attn {
+  margin: 0 0 16px; padding: 13px 16px; background: #fff;
+  border: 1px solid #e5e9ed; border-left: 3px solid #022ac0; border-radius: 11px;
+}
+.rc-attn__h { display: flex; align-items: center; gap: 8px; margin: 0 0 9px; }
+.rc-attn__h b { font-size: 12px; font-weight: 700; color: #1b2730; }
+.rc-attn__h small { font-size: 11px; color: #93a0a8; font-weight: 400; }
+.rc-attn__row {
+  display: flex; align-items: center; gap: 10px; padding: 7px 0;
+  border-top: 1px solid #f2f4f6; font-size: 12.5px;
+}
+.rc-attn__row:first-of-type { border-top: 0; }
+.rc-attn__dot { flex: none; width: 7px; height: 7px; border-radius: 50%; }
+.rc-attn__dot--blue { background: #022ac0; }
+.rc-attn__dot--red { background: #c0410c; }
+.rc-attn__dot--amber { background: #946011; }
+.rc-attn__body { flex: 1; min-width: 0; }
+.rc-attn__body b { font-weight: 700; color: #1b2730; }
+.rc-attn__detail { color: #5c6770; }
+.rc-attn__age {
+  flex: none; font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 11px; color: #93a0a8;
+}
+.rc-attn__link {
+  flex: none; padding: 2px 4px; border: none; background: transparent;
+  cursor: pointer; font-size: 12px; font-weight: 600; color: #022ac0;
+}
+.rc-attn__link:hover { color: #3355e0; }
+
+/* Underline tabs — scoped to the workspace; the global Tabs primitive is
+ * untouched (the wrapper class raises specificity over theme.css). */
+.rc-ws-tabs .tabs__list {
+  gap: 2px; border-bottom: 1px solid #e5e9ed; overflow-x: auto; margin-bottom: 16px;
+}
+.rc-ws-tabs .tabs__tab {
+  border: 0; border-bottom: 2px solid transparent; border-radius: 0;
+  background: none; color: #5c6770; font-weight: 600; font-size: 13px; padding: 9px 13px;
+  white-space: nowrap;
+}
+.rc-ws-tabs .tabs__tab:hover { color: #022ac0; }
+.rc-ws-tabs .tabs__tab[data-selected="true"] { color: #022ac0; border-bottom-color: #022ac0; }
+
+/* Overview — Demand + Client summary cards (prototype Overview tab). */
+.rc-ov { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 330px), 1fr)); gap: 14px; margin-top: 16px; }
+.rc-ov__card { background: #fff; border: 1px solid #e5e9ed; border-radius: 13px; padding: 16px 18px; }
+.rc-ov__h { font-size: 11px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: #93a0a8; margin-bottom: 12px; }
+.rc-ov__grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 16px; font-size: 13px; }
+.rc-ov__k { font-size: 10.5px; color: #93a0a8; }
+.rc-ov__v { font-weight: 600; color: #1b2730; }
+.rc-ov__v--ok { color: #1f7a4d; }
+
+/* Talent-journey GRID (Option A). Outer card + sticky-width inner; header row +
+ * data rows share the exact prototype grid template. Avatar #E8EDFB/#011F8D. */
+.rc-tj { margin-top: 16px; background: #fff; border: 1px solid #e5e9ed; border-radius: 13px; overflow-x: auto; }
+.rc-tj__inner { min-width: 900px; }
+.rc-tj__head { display: flex; align-items: center; gap: 10px; padding: 12px 18px; border-bottom: 1px solid #e5e9ed; }
+.rc-tj__title { font-size: 13px; font-weight: 700; color: #1b2730; }
+.rc-tj__sub { font-size: 11.5px; color: #93a0a8; }
+.rc-tj__full { margin-left: auto; font-size: 12.5px; font-weight: 600; color: #022ac0; white-space: nowrap; text-decoration: none; }
+.rc-tj__full:hover { text-decoration: underline; }
+.rc-tj__row {
+  display: grid;
+  grid-template-columns: minmax(150px, 1.1fr) 105px 110px 115px 115px 115px;
+  gap: 0 12px; align-items: center; padding: 9px 18px; border-top: 1px solid #f2f4f6;
+}
+.rc-tj__row:not(.rc-tj__row--head):hover { background: #e8edfb55; }
+.rc-tj__row--head { padding: 8px 18px; border-top: 0; border-bottom: 1px solid #edf0f3; }
+.rc-tj__ch { font-size: 10px; letter-spacing: 0.07em; text-transform: uppercase; font-weight: 600; color: #93a0a8; }
+.rc-tj__talent { display: flex; align-items: center; gap: 9px; min-width: 0; background: none; border: 0; padding: 0; cursor: pointer; text-align: left; }
+.rc-tj__avatar {
+  flex: none; width: 26px; height: 26px; border-radius: 50%;
+  display: grid; place-items: center; background: #e8edfb; color: #011f8d;
+  font-size: 10px; font-weight: 600;
+}
+.rc-tj__name { display: inline-flex; align-items: center; gap: 5px; min-width: 0; font-size: 12.5px; font-weight: 600; color: #1b2730; }
+.rc-tj__talent:hover .rc-tj__name { color: #022ac0; }
+.rc-tj__flame { display: inline-flex; color: #c0410c; }
+.rc-tj__flame svg { width: 12px; height: 12px; }
+.rc-tj__cell { background: none; border: 0; padding: 0; text-align: left; font-size: 11.5px; color: #1b2730; }
+button.rc-tj__cell { cursor: pointer; }
+button.rc-tj__cell:hover { color: #022ac0; text-decoration: underline; }
+.rc-tj__exp { display: block; font-size: 10.5px; color: #93a0a8; }
+.rc-tj__empty { color: #93a0a8; }

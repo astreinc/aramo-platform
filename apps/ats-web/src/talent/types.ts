@@ -251,6 +251,10 @@ export interface UpdateTalentRecordRequest {
   readonly notes?: string | null;
   readonly web_site?: string | null;
   readonly best_time_to_call?: string | null;
+  // Talent-stated categorical field (stated-fields amendment §4). Present in the
+  // BE UpdateTalentRecordRequestDto; mirrored here so the panel's inline Work-
+  // authorization select can PATCH it. Nullable → clears to "not stated".
+  readonly work_authorization?: WorkAuthorization | null;
   readonly owner_id?: string | null;
 }
 
