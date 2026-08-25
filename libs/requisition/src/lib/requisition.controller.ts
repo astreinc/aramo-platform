@@ -29,7 +29,10 @@ import {
   validateRateType,
 } from './compensation-validation.js';
 import type { AssignRequisitionRequestDto } from './dto/assign-requisition-request.dto.js';
-import type { CreateRequisitionRequestDto } from './dto/create-requisition-request.dto.js';
+// L1-A — imported as a VALUE (decorated class) so the global ValidationPipe
+// enforces @IsIn(status) + rejects unknown props at the controller boundary.
+import { CreateRequisitionRequestDto } from './dto/create-requisition-request.dto.js';
+import { resolveCreateModeFromActorKind } from './establishment-authorization-gate.js';
 import type {
   IntakeDraftRequestDto,
   IntakeDraftResponseDto,
@@ -202,6 +205,10 @@ export class RequisitionController {
       entered_by_id: authContext.sub,
       input: body,
       scopes: authContext.scopes,
+      // L1-A — the create() path resolves MANUAL (actor_kind:'user') vs SYSTEM
+      // (actor_kind:'system'). INTEGRATION is the createForImport() path only,
+      // never derived from a human-triggered create's consumer_type.
+      creation_mode: resolveCreateModeFromActorKind(authContext.actor_kind),
       requestId,
     });
   }

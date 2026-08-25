@@ -24,6 +24,7 @@ import { AppModule } from '../app.module.js';
 import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
 import { publishLifecyclePackage } from './publish-lifecycle-package.js';
 import { placementCapacityMigrations } from './support/placement-capacity-migrations.js';
+import { establishOpenRequisition } from './support/establish-open-requisition.js';
 
 // PR-A8-4 Gate 5 — ATS-domain CSV export integration spec.
 //
@@ -504,16 +505,20 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       });
       talentRecordSpecialId = talentSpecial.id;
 
-      const reqA = await postJson('/v1/requisitions', tenantAdminJwt, {
-        title: 'Assigned to Recruiter A',
-        company_id: companyA.id,
-        site_id: SITE_A,
+      // L1-A — these export fixtures need OPEN requisitions (a pipeline is
+      // added to each below). A human HTTP create now lands 'draft'; use the
+      // sanctioned SYSTEM establishment path (setup-only; the export SUBJECT +
+      // assertions are unchanged).
+      const reqA = await establishOpenRequisition(app, {
+        tenant_id: TENANT_ATS,
+        entered_by_id: TENANT_ADMIN,
+        input: { title: 'Assigned to Recruiter A', company_id: companyA.id, site_id: SITE_A },
       });
       reqAssignedToA = reqA.id;
-      const reqB = await postJson('/v1/requisitions', tenantAdminJwt, {
-        title: 'Assigned to Recruiter B',
-        company_id: companyA.id,
-        site_id: SITE_A,
+      const reqB = await establishOpenRequisition(app, {
+        tenant_id: TENANT_ATS,
+        entered_by_id: TENANT_ADMIN,
+        input: { title: 'Assigned to Recruiter B', company_id: companyA.id, site_id: SITE_A },
       });
       reqAssignedToB = reqB.id;
 

@@ -636,6 +636,19 @@ export const ERROR_CODES = [
   // generic P2002/23505 catch (the raw partial index surfaces at
   // meta.driverAdapterError, not meta.target). Mirrors OFFER_ALREADY_LIVE.
   'COMMERCIAL_PROPOSAL_ALREADY_LIVE',
+  // Requisition Lane 1-A (Create-Governance). Appended LAST — the ordered-parity
+  // surfaces read positionally, so never renumber. REQUISITION_INITIAL_STATE_FORBIDDEN
+  // (403): the initial-state authority gate refused a requisition establishment.
+  // details.reason discriminates: `establishment_authority_required` (the creation
+  // mode's authority scope is absent — MANUAL requesting non-draft without
+  // requisition:create:establish, SYSTEM without it, or INTEGRATION without
+  // requisition:import:write) | `initial_state_not_allowed_for_mode` (authority
+  // present but the requested status is outside the mode's allowed set — e.g.
+  // pending_approval/archived in any mode, or draft in INTEGRATION). Enum-invalid
+  // status stays VALIDATION_ERROR (400) via the DTO @IsIn. Distinct from the
+  // scope-axis INSUFFICIENT_PERMISSIONS: this is a create-time state-authority
+  // refusal at the requisition establishment boundary.
+  'REQUISITION_INITIAL_STATE_FORBIDDEN',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

@@ -66,12 +66,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const a = app.getHttpServer().address();
       return `http://127.0.0.1:${typeof a === 'object' && a !== null ? a.port : 0}`;
     }
-    async function postReq(token: string, status: string, isHot: boolean): Promise<Response> {
-      return fetch(`${baseUrl()}/v1/requisitions?site_id=${SITE}`, {
-        method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: `req-${status}`, company_id: uuid(), status, site_id: SITE, is_hot: isHot }),
-      });
-    }
     async function seedReq(status: string, isHot = false): Promise<string> {
       const id = uuid();
       // Allocate requisition_number from the same per-tenant sequence the app
@@ -134,17 +128,36 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       for (const [k, v] of Object.entries(savedEnv)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
     }, 60_000);
 
-    it('is_hot=true is ALLOWED on active/on_hold/full/lead (201), DENIED on closed/canceled (403 POLICY_DENIED, no row-level priority set)', async () => {
-      const token = await jwt();
+    it('is_hot=true is ALLOWED on active/on_hold/full/lead, DENIED on closed/canceled (POLICY_DENIED, no row-level priority set)', async () => {
+      // L1-A — under create-governance the HTTP create route caps a human at
+      // draft/open, so the SET_PRIORITY-on-create ALLOW/DENY matrix (which spans
+      // operational statuses) is exercised at the repository floor via the
+      // INTEGRATION establishment path (creation_mode INTEGRATION +
+      // requisition:import:write). This is the SAME code the controller calls —
+      // create() runs gateSetPriority with enforce=true, so the SET_PRIORITY
+      // subject (ALLOW/DENY + provenance) is fully preserved; only the transport
+      // moves off the now-capped HTTP route.
+      const repo = app.get(RequisitionRepository, { strict: false });
+      const SCOPES = ['requisition:create', 'requisition:import:write', 'requisition:edit', 'requisition:read', 'requisition:read:all'];
       for (const status of ALLOW_STATES) {
-        expect((await postReq(token, status, true)).status, `set-true ${status}`).toBe(201);
+        const view = await repo.create({
+          tenant_id: TENANT, entered_by_id: ACTOR,
+          input: { title: `req-${status}`, company_id: uuid(), status, is_hot: true } as never,
+          scopes: SCOPES, creation_mode: 'INTEGRATION', requestId: uuid(),
+        });
+        expect(view.is_hot, `set-true ${status}`).toBe(true);
       }
       for (const status of DENY_STATES) {
-        const res = await postReq(token, status, true);
-        expect(res.status, `set-true ${status}`).toBe(403);
-        expect(((await res.json()) as { error?: { code?: string } }).error?.code).toBe('POLICY_DENIED');
+        await expect(
+          repo.create({
+            tenant_id: TENANT, entered_by_id: ACTOR,
+            input: { title: `req-${status}`, company_id: uuid(), status, is_hot: true } as never,
+            scopes: SCOPES, creation_mode: 'INTEGRATION', requestId: uuid(),
+          }),
+          `set-true ${status}`,
+        ).rejects.toMatchObject({ code: 'POLICY_DENIED' });
       }
-      // provenance recorded for every governed decision (ALLOW + DENY), naming v3.0.0.
+      // provenance recorded for every governed decision (ALLOW + DENY), naming v6.0.0.
       const recs = await setPriorityRecords();
       expect(recs.length).toBeGreaterThanOrEqual(6);
       expect(recs.every((r) => r.policy_version === '6.0.0')).toBe(true);
@@ -169,7 +182,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const view = await repo.createForImport({
         tenant_id: TENANT, entered_by_id: ACTOR, import_batch_id: uuid(),
         input: { title: 'imported-closed', company_id: uuid(), status: 'closed', is_hot: true } as never,
-        scopes: ['requisition:create'], requestId: uuid(),
+        // L1-A — INTEGRATION establishment authority = existing requisition:import:write.
+        scopes: ['requisition:create', 'requisition:import:write'], requestId: uuid(),
       });
       expect(view.is_hot).toBe(true); // proceeded despite the terminal state (exempt)
       expect((await setPriorityRecords()).length).toBe(before + 1); // exemption is visible
@@ -187,9 +201,15 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await ensureWriteFreezeTenant((s) => db.query(s), T);
       await db.query(`INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability) VALUES ($1,'ats') ON CONFLICT DO NOTHING`, [T]);
       await store.publish({ tenant_id: T, definition: { ...REQUISITION_LIFECYCLE_PACKAGE, version: '1.0.0' }, published_by: SYSTEM, effective_from: new Date('2026-01-01T00:00:00Z') });
-      const token = await new SignJWT({ sub: ACTOR, consumer_type: 'recruiter', actor_kind: 'user', tenant_id: T, site_id: SITE, scopes: ['requisition:create'] })
-        .setProtectedHeader({ alg: ALG }).setIssuedAt().setIssuer(ISSUER).setAudience(AUDIENCE).setExpirationTime('1h').sign(signingKey);
-      expect((await fetch(`${baseUrl()}/v1/requisitions?site_id=${SITE}`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ title: 'x', company_id: uuid(), status: 'open', site_id: SITE, is_hot: true }) })).status).toBe(201);
+      // L1-A — establish the is_hot 'open' req via the INTEGRATION floor path
+      // (import:write), the same create() that records the SET_PRIORITY decision.
+      const repo = app.get(RequisitionRepository, { strict: false });
+      const view = await repo.create({
+        tenant_id: T, entered_by_id: ACTOR,
+        input: { title: 'x', company_id: uuid(), status: 'open', is_hot: true } as never,
+        scopes: ['requisition:create', 'requisition:import:write'], creation_mode: 'INTEGRATION', requestId: uuid(),
+      });
+      expect(view.is_hot).toBe(true);
       const first = (await db.query(`SELECT id, policy_version FROM policy_store."PolicyDecisionRecord" WHERE tenant_id=$1 AND action='SET_PRIORITY' ORDER BY occurred_at DESC LIMIT 1`, [T])).rows[0];
       expect(first.policy_version).toBe('1.0.0');
       await store.publish({ tenant_id: T, definition: { ...REQUISITION_LIFECYCLE_PACKAGE, version: '2.0.0' }, published_by: SYSTEM, effective_from: new Date('2026-06-01T00:00:00Z') });

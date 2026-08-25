@@ -181,6 +181,9 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       'COMMERCIAL_PROPOSAL_STATE_INVALID',
       'COMMERCIAL_PROPOSAL_SELF_APPROVAL',
       'COMMERCIAL_PROPOSAL_ALREADY_LIVE',
+      // Requisition Lane 1-A — 1 initial-state authority gate refusal (403;
+      // details.reason: establishment_authority_required | initial_state_not_allowed_for_mode).
+      'REQUISITION_INITIAL_STATE_FORBIDDEN',
     ]);
   });
 });

@@ -23,6 +23,10 @@ import { computeDerivedViews } from './compensation-views.js';
 import { assertFinancialEditScopes } from './field-group-edit-gate.js';
 import { assertStatusOnlyEditScope } from './status-edit-gate.js';
 import { assertApprovalAuthorization } from './approval-authorization-gate.js';
+import {
+  assertEstablishmentAuthorization,
+  type CreationMode,
+} from './establishment-authorization-gate.js';
 import type { CreateRequisitionRequestDto } from './dto/create-requisition-request.dto.js';
 import type { RatePeriod } from './dto/rate-period.js';
 import type { RequisitionCompensationModel } from './dto/requisition-compensation-model.js';
@@ -536,6 +540,12 @@ export interface PublishableRequisitionRow {
 const LIFECYCLE_REASON_CREATED = 'REQUISITION_CREATED';
 const LIFECYCLE_REASON_IMPORTED = 'REQUISITION_IMPORTED';
 const LIFECYCLE_REASON_STATUS_CHANGED = 'STATUS_CHANGED';
+// L1-A (Directive §6) — a governed non-draft establishment (MANUAL-ESTABLISH
+// or SYSTEM) is recorded with a distinct free-text reason_code so the audit
+// trail distinguishes an ordinary manual draft (REQUISITION_CREATED) from a
+// deliberate initial-state establishment. No schema change (reason_code is
+// free text). Integration imports keep REQUISITION_IMPORTED.
+const LIFECYCLE_REASON_ESTABLISHED = 'REQUISITION_ESTABLISHED';
 
 @Injectable()
 export class RequisitionRepository {
@@ -808,9 +818,26 @@ export class RequisitionRepository {
     // floor). The caller (controller / import service) MUST thread the
     // AuthContext.scopes through; the gate rejects 403 BEFORE any DB write.
     scopes: readonly string[];
+    // L1-A — the resolved creation mode (MANUAL | SYSTEM for create(); the
+    // controller derives it from actor_kind). Defaults to MANUAL as the safe
+    // fallback for direct callers that do not thread it (real callers pass
+    // explicitly). INTEGRATION is the createForImport() path.
+    creation_mode?: CreationMode;
     requestId: string;
   }): Promise<RequisitionView> {
     const { tenant_id, entered_by_id, input } = args;
+    // L1-A — the initial-state authority gate at the repository floor
+    // (Directive §2). Resolves the mode-derived default and validates
+    // (mode × requested_status × scopes); throws
+    // REQUISITION_INITIAL_STATE_FORBIDDEN (403) BEFORE the data build and any
+    // write. There is NO `input.status ?? 'open'` past this point.
+    const creationMode: CreationMode = args.creation_mode ?? 'MANUAL';
+    const establishedStatus = assertEstablishmentAuthorization({
+      mode: creationMode,
+      requestedStatus: input.status,
+      scopes: args.scopes,
+      requestId: args.requestId,
+    });
     // D-AUTHZ-COMP-WRITE-1 — the WRITE-side floor. Rejects 403
     // INSUFFICIENT_PERMISSIONS if the caller writes a compensation
     // field-group without the matching compensation:edit:* scope. The
@@ -845,7 +872,9 @@ export class RequisitionRepository {
       company_id: input.company_id,
       contact_id: input.contact_id ?? null,
       company_department_id: input.company_department_id ?? null,
-      status: input.status ?? 'open',
+      // L1-A — the gate-resolved initial state (mode default applied,
+      // authority validated). Replaces the removed `input.status ?? 'open'`.
+      status: establishedStatus,
       type: input.type ?? null,
       duration: input.duration ?? null,
       description: input.description ?? null,
@@ -868,7 +897,7 @@ export class RequisitionRepository {
     // row + its provenance commit atomically.
     const setPriorityProvenance = await this.gateSetPriority({
       tenant_id,
-      status: input.status ?? 'open',
+      status: establishedStatus,
       scopes: args.scopes,
       actor_id: entered_by_id,
       requestId: args.requestId,
@@ -893,7 +922,13 @@ export class RequisitionRepository {
         next_status: (created as RequisitionRow).status,
         actor_id: entered_by_id,
         origin: 'ui',
-        reason_code: LIFECYCLE_REASON_CREATED,
+        // L1-A (Directive §6) — an ordinary manual draft is REQUISITION_CREATED;
+        // a governed non-draft establishment (MANUAL-ESTABLISH / SYSTEM) is
+        // REQUISITION_ESTABLISHED. Keyed on the gate-resolved status.
+        reason_code:
+          establishedStatus === 'draft'
+            ? LIFECYCLE_REASON_CREATED
+            : LIFECYCLE_REASON_ESTABLISHED,
         policy_decision_id: null, // T1-e supplies one.
         correlation_id: args.requestId,
       });
@@ -929,6 +964,17 @@ export class RequisitionRepository {
     requestId: string;
   }): Promise<RequisitionView> {
     const { tenant_id, entered_by_id, import_batch_id, input } = args;
+    // L1-A — the createForImport() path IS the INTEGRATION mode (Directive
+    // v1.1 item 3). The establishment gate closes the generic-CSV hole at the
+    // repository floor: authority = the EXISTING requisition:import:write
+    // (re-asserted here, not only at the route), and the state matrix refuses
+    // draft/pending_approval/archived. Runs BEFORE any write.
+    const establishedStatus = assertEstablishmentAuthorization({
+      mode: 'INTEGRATION',
+      requestedStatus: input.status,
+      scopes: args.scopes,
+      requestId: args.requestId,
+    });
     assertCompensationEditScopes({
       input,
       scopes: args.scopes,
@@ -955,7 +1001,9 @@ export class RequisitionRepository {
       company_id: input.company_id,
       contact_id: input.contact_id ?? null,
       company_department_id: input.company_department_id ?? null,
-      status: input.status ?? 'open',
+      // L1-A — the gate-resolved INTEGRATION initial state (default open
+      // preserved). Replaces the removed `input.status ?? 'open'`.
+      status: establishedStatus,
       type: input.type ?? null,
       duration: input.duration ?? null,
       description: input.description ?? null,
@@ -982,7 +1030,7 @@ export class RequisitionRepository {
     // exemption is visible, not invisible) and the row proceeds regardless.
     const setPriorityProvenance = await this.gateSetPriority({
       tenant_id,
-      status: input.status ?? 'open',
+      status: establishedStatus,
       scopes: args.scopes,
       actor_id: entered_by_id,
       requestId: args.requestId,

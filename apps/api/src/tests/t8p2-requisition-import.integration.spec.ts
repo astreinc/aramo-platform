@@ -37,7 +37,15 @@ import type { RunRequisitionImportRequestDto } from '@aramo/import';
 const ROOT = resolve(__dirname, '../../../..');
 // compensation:edit:bill is required to import a requisition-level bill rate
 // (boundary I — the import honors the existing gated-field semantics).
-const EDIT_SCOPES = ['requisition:edit', 'compensation:edit:bill'] as const;
+// L1-A — the INTEGRATION (createForImport) establishment authority is the
+// EXISTING requisition:import:write (Directive v1.1 D-A1-GRANT (a)). The
+// canonical import route is @RequireScopes('requisition:import:write'); the
+// service is exercised directly here, so the scope is supplied explicitly.
+const EDIT_SCOPES = [
+  'requisition:edit',
+  'compensation:edit:bill',
+  'requisition:import:write',
+] as const;
 const REQUEST_ID = '00000000-0000-4000-8000-0000000000t8';
 
 function migrationsFor(lib: string): string[] {
