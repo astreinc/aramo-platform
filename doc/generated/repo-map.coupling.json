@@ -8434,6 +8434,11 @@
       "to": "libs/placement/src/lib/reasons/commercial-cancellation-reasons.ts"
     },
     {
+      "from": "apps/ats-web/src/pre-start/types.ts",
+      "status": "production",
+      "to": "apps/api/src/pre-start-requirement/pre-start-requirement.controller.ts"
+    },
+    {
       "from": "apps/ats-web/src/requisitions/compensation-visibility.ts",
       "status": "production",
       "to": "libs/field-masking/src/lib/compensation-field-map.ts"
