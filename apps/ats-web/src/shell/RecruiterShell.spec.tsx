@@ -3,7 +3,6 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { FillPerformanceView } from '../reporting/FillPerformanceView';
 
 import { RecruiterShell } from './RecruiterShell';
 
@@ -107,34 +106,22 @@ describe('RecruiterShell', () => {
     expect(screen.getByRole('link', { name: 'Talent' })).not.toHaveAttribute('aria-current');
   });
 
-  it('renders a section breadcrumb for the current route', () => {
+  // Enterprise "one clear H1" ruling: the app shell no longer renders a
+  // route/section title in the TopBar (it duplicated each page's own
+  // H1/PageHeader, and the left rail already marks the active module). The
+  // TopBar retains only global utilities (⌘K search, notifications, tenant/user
+  // context, account controls). The per-view entity publication (useEntityCrumb)
+  // is retained and covered by the detail-view specs; it simply no longer
+  // renders in the shell.
+  it('does not render a duplicated route/page title in the app shell', () => {
     renderShell(makeSession(['talent:read']), '/talent');
-    const crumb = screen.getByRole('navigation', { name: 'Breadcrumb' });
-    expect(crumb.textContent).toContain('Talent');
-  });
-
-  // ── T10-B1/F-003 — the trust segment resolves to a real section label
-  //    (previously fell through to the generic "Aramo" default). ──
-  it('resolves the Trust Proposals breadcrumb, not the "Aramo" fallback', () => {
-    renderShell(makeSession(['talent:read']), '/trust/proposals');
-    const crumb = screen.getByRole('navigation', { name: 'Breadcrumb' });
-    expect(crumb.textContent).toContain('Trust Proposals');
-    expect(crumb.textContent).not.toContain('Aramo');
-  });
-
-  // ── T10-B1/F-004 — Portal Disputes must NOT inherit the sibling
-  //    "Identity Advisories" label from the shared `identity` segment. ──
-  it('labels Portal Disputes distinctly from Identity Advisories', () => {
-    renderShell(makeSession(['identity:resolve']), '/identity/portal-disputes');
-    const crumb = screen.getByRole('navigation', { name: 'Breadcrumb' });
-    expect(crumb.textContent).toContain('Portal Disputes');
-    expect(crumb.textContent).not.toContain('Identity Advisories');
-  });
-
-  it('still labels Identity Advisories correctly (no regression)', () => {
-    renderShell(makeSession(['identity:resolve']), '/identity/advisories');
-    const crumb = screen.getByRole('navigation', { name: 'Breadcrumb' });
-    expect(crumb.textContent).toContain('Identity Advisories');
+    expect(
+      screen.queryByRole('navigation', { name: 'Breadcrumb' }),
+    ).not.toBeInTheDocument();
+    // The primary rail nav (active-module indicator) still communicates location.
+    expect(
+      screen.getByRole('navigation', { name: 'Primary' }),
+    ).toBeInTheDocument();
   });
 
   // ── T10-B1/F-005 — Portal Disputes discoverable via the rail, gated on its
@@ -157,24 +144,6 @@ describe('RecruiterShell', () => {
     ).not.toBeInTheDocument();
   });
 
-  // ── T10-B1/F-002 — a report page publishes a "Reports › <report>" crumb and
-  //    the section crumb links back to the Reports landing. ──
-  it('gives a report page a return relationship to Reports via the breadcrumb', () => {
-    render(
-      <MemoryRouter initialEntries={['/reports/fill-performance']}>
-        <RecruiterShell session={makeSession(['report:read'])}>
-          <FillPerformanceView />
-        </RecruiterShell>
-      </MemoryRouter>,
-    );
-    const crumb = screen.getByRole('navigation', { name: 'Breadcrumb' });
-    expect(crumb.textContent).toContain('Reports');
-    expect(crumb.textContent).toContain('Fill performance');
-    // The "Reports" section crumb is a link back to the landing.
-    expect(
-      within(crumb).getByRole('link', { name: 'Reports' }),
-    ).toHaveAttribute('href', '/reports');
-  });
 
   it('logs out via POST /logout then runs the completion seam', async () => {
     const post = vi.spyOn(apiClient, 'post').mockResolvedValue(undefined);
