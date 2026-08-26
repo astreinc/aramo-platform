@@ -174,6 +174,9 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   COMMUNICATION_INTERACTION_NOT_FOUND: 404,
   COMMUNICATION_USER_NOT_MAPPED: 404,
   COMMUNICATION_PROVIDER_NOT_CONFIGURED: 409,
+  // Requisition Lane 1-C — the D6 submit gate: a client submittal against a
+  // non-open (or absent) requisition is refused (409, details.status).
+  REQUISITION_NOT_OPEN: 409,
 };
 
 // Base error class. Thrown anywhere in the app where a structured response

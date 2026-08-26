@@ -187,6 +187,10 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       'COMMUNICATION_INTERACTION_NOT_FOUND',
       'COMMUNICATION_USER_NOT_MAPPED',
       'COMMUNICATION_PROVIDER_NOT_CONFIGURED',
+      // Requisition Lane 1-C — 1 submit-gate refusal: a client submittal against
+      // a non-open (or absent) requisition (409; details.status carries the
+      // current RecruitingStatus, null when the requisition is absent).
+      'REQUISITION_NOT_OPEN',
     ]);
   });
 });

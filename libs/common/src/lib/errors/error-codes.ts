@@ -661,6 +661,20 @@ export const ERROR_CODES = [
   'COMMUNICATION_INTERACTION_NOT_FOUND',
   'COMMUNICATION_USER_NOT_MAPPED',
   'COMMUNICATION_PROVIDER_NOT_CONFIGURED',
+  // Requisition Lane 1-C (Submittal-Status-Enforcement). Appended LAST — the
+  // ordered-parity surfaces read positionally, so never renumber.
+  // REQUISITION_NOT_OPEN (409): a client-submittal command was refused because
+  // the target requisition's RecruitingStatus is not `open` (draft /
+  // pending_approval / on_hold / submittals_closed / closed / canceled /
+  // archived), OR the requisition row is absent. This is the D6 submit gate —
+  // the THIRD gate alongside SubmittalEligibility + Talent-restriction, read
+  // in-tx at the submit boundary. ONE stable code for every non-open state
+  // (never a per-state code); details.status carries the current status (null
+  // when the requisition is absent). Distinct from REQUISITION_STATUS_GATED
+  // (the write-path gated-status refusal, a different axis) and from
+  // SUBMITTALS_CLOSED (the eligibility-window refusal). 409 (Conflict): the
+  // request is well-formed but conflicts with the requisition's current state.
+  'REQUISITION_NOT_OPEN',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];
