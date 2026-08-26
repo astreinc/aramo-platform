@@ -232,6 +232,45 @@ export class CommunicationsRepository {
     return rows.map((r) => r.interaction_id);
   }
 
+  // COMM-B7 — the Talent communication timeline read. Interactions linked to the
+  // talent via a `subject` CommunicationAssociation (Communications associations
+  // ONLY — no Requisition/Activity join), tenant-scoped, ordered (created_at DESC,
+  // id DESC) for keyset stability. Fetches `limit + 1` so the caller can derive
+  // the next cursor. An optional cursor pages strictly after (older than) the
+  // (created_at, id) it carries.
+  async listInteractionsForTalentKeyset(
+    tenantId: string,
+    talentId: string,
+    limit: number,
+    cursor?: { created_at: Date; interaction_id: string },
+  ): Promise<InteractionRow[]> {
+    const keyset =
+      cursor === undefined
+        ? {}
+        : {
+            OR: [
+              { created_at: { lt: cursor.created_at } },
+              { created_at: cursor.created_at, id: { lt: cursor.interaction_id } },
+            ],
+          };
+    return (await this.prisma.communicationInteraction.findMany({
+      where: {
+        tenant_id: tenantId,
+        associations: {
+          some: {
+            tenant_id: tenantId,
+            subject_type: 'talent_record' satisfies CommunicationSubjectType,
+            subject_id: talentId,
+            relation_type: 'subject' satisfies CommunicationRelationType,
+          },
+        },
+        ...keyset,
+      },
+      orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+      take: limit + 1,
+    })) as InteractionRow[];
+  }
+
   // ---- CommunicationDisposition ----
 
   async recordDisposition(args: {
@@ -256,12 +295,25 @@ export class CommunicationsRepository {
   async listDispositions(
     tenantId: string,
     interactionId: string,
-  ): Promise<Array<{ id: string; disposition: CommunicationDispositionOutcome; notes: string | null }>> {
+  ): Promise<
+    Array<{
+      id: string;
+      disposition: CommunicationDispositionOutcome;
+      notes: string | null;
+      dispositioned_at: Date;
+    }>
+  > {
     return (await this.prisma.communicationDisposition.findMany({
       where: { tenant_id: tenantId, interaction_id: interactionId },
-      select: { id: true, disposition: true, notes: true },
-      orderBy: { dispositioned_at: 'desc' },
-    })) as Array<{ id: string; disposition: CommunicationDispositionOutcome; notes: string | null }>;
+      select: { id: true, disposition: true, notes: true, dispositioned_at: true },
+      // COMM-B7 — (dispositioned_at DESC, id DESC) for stable history ordering.
+      orderBy: [{ dispositioned_at: 'desc' }, { id: 'desc' }],
+    })) as Array<{
+      id: string;
+      disposition: CommunicationDispositionOutcome;
+      notes: string | null;
+      dispositioned_at: Date;
+    }>;
   }
 
   // ---- CommunicationProviderEvent (idempotent inbox) ----

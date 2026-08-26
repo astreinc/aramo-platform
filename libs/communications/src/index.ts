@@ -98,3 +98,11 @@ export {
   REQUISITION_EXISTENCE_PORT,
   type RequisitionExistencePort,
 } from './lib/ports/requisition-existence.port.js';
+
+// COMM-B7 — Talent communication timeline keyset cursor.
+export {
+  encodeTimelineCursor,
+  decodeTimelineCursor,
+  CommunicationCursorDecodeError,
+  type TimelineCursorPayload,
+} from './lib/util/timeline-cursor.js';
