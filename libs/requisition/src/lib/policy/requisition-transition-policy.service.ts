@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { evaluate, type Origin, type PolicyContext } from '@aramo/policy-engine';
 import {
   PolicyStore,
@@ -10,6 +10,18 @@ import {
   REQUISITION_RESOURCE,
   type TransitionAction,
 } from '../dto/requisition-transitions.js';
+
+// L1-F2 — the DEDICATED DI token under which RequisitionModule provides the
+// requisition PolicyStore. Two independent module-local PolicyStore singletons
+// register at composition-root birth (pipeline's add-talent gate + requisition's
+// transition/set-priority gates); a bare `PolicyStore` class-token provider would
+// join the class-token instance list and shift what `app.get(PolicyStore,
+// { strict: false })` resolves — the add-talent republish/version-pinning
+// invariant reads through that lookup. Providing + @Inject-ing this string token
+// keeps the requisition gates fully functional while leaving the shared
+// class-token resolution deterministic (pipeline's add-talent store wins). String
+// token: immune to dist/dual-package identity drift. Mirrors OFFER_POLICY_STORE.
+export const REQUISITION_POLICY_STORE = 'REQUISITION_POLICY_STORE';
 
 // Track 1 T1-e (§2.2 / §D14) — the REQUISITION governed-transition policy call.
 // One of the four transition actions (CLOSE / REOPEN / PUT_ON_HOLD / CANCEL) is
@@ -53,7 +65,7 @@ export interface TransitionPolicyOutcome {
 
 @Injectable()
 export class RequisitionTransitionPolicyService {
-  constructor(private readonly policyStore: PolicyStore) {}
+  constructor(@Inject(REQUISITION_POLICY_STORE) private readonly policyStore: PolicyStore) {}
 
   async decide(input: TransitionPolicyInput): Promise<TransitionPolicyOutcome> {
     const capabilities: Record<string, boolean> = {};

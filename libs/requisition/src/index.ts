@@ -9,7 +9,15 @@ export { PrismaService as RequisitionPrismaService } from './lib/prisma/prisma.s
 // T1-e — the governed-transition policy gate (a RequisitionRepository ctor dep).
 // Exported so integration specs that construct the repository directly can wire
 // a REAL instance (backed by @aramo/policy-store's PolicyStore).
-export { RequisitionTransitionPolicyService } from './lib/policy/requisition-transition-policy.service.js';
+export {
+  RequisitionTransitionPolicyService,
+  // L1-F2 — the dedicated DI token for the requisition PolicyStore (never the
+  // bare class token). Exported so composition roots / wiring specs can assert it.
+  REQUISITION_POLICY_STORE,
+} from './lib/policy/requisition-transition-policy.service.js';
+// L1-F2 — the sibling SET_PRIORITY gate; exported so the token-wiring proof can
+// assert it too resolves the dedicated REQUISITION_POLICY_STORE instance.
+export { SetPriorityPolicyService } from './lib/policy/set-priority-policy.service.js';
 
 // ADR-0024 §D17c — append-only lifecycle mutation history (write API only;
 // PR-5 wires the consumer).

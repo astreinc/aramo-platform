@@ -827,6 +827,7 @@
       "RequisitionRepository",
       "RequisitionTransitionPolicyService",
       "SELECTABLE_RECRUITING_STATUS_VALUES",
+      "SetPriorityPolicyService",
       "TRANSITION_ACTIONS",
       "assertExternalIdentityCoPresence",
       "canonicalizeSourceSystem",
@@ -3796,6 +3797,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/l1b-write-visibility.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/policy-retrieval.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },

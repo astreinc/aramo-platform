@@ -595,6 +595,14 @@ const REQUISITION_USER_STATE_MIGRATION = resolve(
   ROOT,
   'libs/requisition/prisma/migrations/20260802160000_add_user_requisition_state/migration.sql',
 );
+// L1-F1 — DB-layer append-only enforcement (reject-UPDATE/DELETE triggers + the
+// governed tenant-reset escape) on RequisitionLifecycleEvent. Trigger-only, no
+// column, so provider verification is behaviorally unchanged; applied after the
+// lifecycle-event table CREATE above.
+const REQUISITION_LIFECYCLE_APPEND_ONLY_MIGRATION = resolve(
+  ROOT,
+  'libs/requisition/prisma/migrations/20260827120000_requisition_lifecycle_event_append_only/migration.sql',
+);
 // PC-5d — ats-web Gate-2a desk (task + attachment, the final increment). task
 // init CREATEs the schema + Task + the TaskStatus enum ('open','done'); the
 // workspace-fields migration ALTERs the enum (+in_progress/waiting/cancelled)
@@ -3107,6 +3115,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         REQUISITION_NUMBER_MIGRATION,
         REQUISITION_LIFECYCLE_NULLABLE_MIGRATION,
         REQUISITION_USER_STATE_MIGRATION,
+        REQUISITION_LIFECYCLE_APPEND_ONLY_MIGRATION,
         // PC-5d — task + attachment (final desk increment). task init +
         // workspace-fields (enum extension + source column); attachment init.
         // All self-contained (CREATE SCHEMA in init), no FK.
