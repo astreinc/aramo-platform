@@ -1,10 +1,15 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { evaluate, type Origin, type PolicyContext } from '@aramo/policy-engine';
 import {
   PolicyStore,
   snapshotPolicyInputs,
   type InsertPolicyDecisionRecordInput,
 } from '@aramo/policy-store';
+
+// L1-F2 — resolve the requisition PolicyStore by the DEDICATED token (defined by
+// the sibling transition gate), NOT the bare class token. See the token's own
+// doc comment for why the bare class token is unsafe.
+import { REQUISITION_POLICY_STORE } from './requisition-transition-policy.service.js';
 
 // ADR-0024 PR-7 — the REQUISITION · SET_PRIORITY policy call. Governs WHEN the
 // is_hot flag may be ASSERTED (set true), keyed on the requisition's declared
@@ -44,7 +49,7 @@ export interface SetPriorityPolicyOutcome {
 
 @Injectable()
 export class SetPriorityPolicyService {
-  constructor(private readonly policyStore: PolicyStore) {}
+  constructor(@Inject(REQUISITION_POLICY_STORE) private readonly policyStore: PolicyStore) {}
 
   async decide(input: SetPriorityPolicyInput): Promise<SetPriorityPolicyOutcome> {
     const capabilities: Record<string, boolean> = {};

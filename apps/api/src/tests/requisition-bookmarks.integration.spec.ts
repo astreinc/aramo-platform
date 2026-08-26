@@ -72,6 +72,10 @@ const MIGRATIONS = [
   // status to 'open', which the old RequisitionStatus enum does not have, so a
   // POST /requisitions 500s without it.
   mig('20260803120000_recruiting_status_supersession'),
+  // L1-F1 — DB-layer append-only enforcement on RequisitionLifecycleEvent
+  // (reject-UPDATE/DELETE triggers + governed tenant-reset escape). Trigger-only,
+  // applied after the lifecycle-event table CREATE above.
+  mig('20260827120000_requisition_lifecycle_event_append_only'),
   // Track 4 T4-B2 — requisition read DERIVES openings_available from the
   // placement-owned ACTIVE ContractAssignment population; placement schema required.
   ...placementCapacityMigrations(ROOT),

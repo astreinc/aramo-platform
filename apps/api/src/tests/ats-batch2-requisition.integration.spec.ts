@@ -124,6 +124,14 @@ const REQUISITION_USER_STATE_MIGRATION = resolve(
   ROOT,
   'libs/requisition/prisma/migrations/20260802160000_add_user_requisition_state/migration.sql',
 );
+// L1-F1 — DB-layer append-only enforcement (reject-UPDATE/DELETE triggers + the
+// governed tenant-reset escape) on RequisitionLifecycleEvent. Trigger-only, no
+// column, so the regenerated client is unaffected; ordering-only requirement is
+// that it follow the lifecycle-event table CREATE above.
+const REQUISITION_LIFECYCLE_APPEND_ONLY_MIGRATION = resolve(
+  ROOT,
+  'libs/requisition/prisma/migrations/20260827120000_requisition_lifecycle_event_append_only/migration.sql',
+);
 // PR-A1 Requisition-Gating Rework — DROPs the legacy rate_max/salary columns.
 // Must apply AFTER the init migration that created them (and after the comp
 // fields migration) so the column-existence proof below reflects the drop.
@@ -229,7 +237,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       setupClient = new Client({ connectionString: url });
       await setupClient.connect();
 
-      for (const p of [ENTITLEMENT_INIT, REQUISITION_INIT, REQUISITION_IMPORT_BACK_REF, REQUISITION_COMPENSATION_FIELDS, REQUISITION_JOB_MODULE_FIELDS, REQUISITION_DROP_LEGACY_COMP, REQUISITION_RATE_TYPE_SUBK, REQUISITION_PUBLISH_SURFACE_MIGRATION, REQUISITION_LIFECYCLE_EVENT_MIGRATION, REQUISITION_VERSION_MIGRATION, REQUISITION_ONSITE_DAYS_MIGRATION, REQUISITION_NUMBER_MIGRATION, REQUISITION_LIFECYCLE_NULLABLE_MIGRATION, REQUISITION_USER_STATE_MIGRATION, resolve(ROOT, 'libs/requisition/prisma/migrations/20260803120000_recruiting_status_supersession/migration.sql')]) {
+      for (const p of [ENTITLEMENT_INIT, REQUISITION_INIT, REQUISITION_IMPORT_BACK_REF, REQUISITION_COMPENSATION_FIELDS, REQUISITION_JOB_MODULE_FIELDS, REQUISITION_DROP_LEGACY_COMP, REQUISITION_RATE_TYPE_SUBK, REQUISITION_PUBLISH_SURFACE_MIGRATION, REQUISITION_LIFECYCLE_EVENT_MIGRATION, REQUISITION_VERSION_MIGRATION, REQUISITION_ONSITE_DAYS_MIGRATION, REQUISITION_NUMBER_MIGRATION, REQUISITION_LIFECYCLE_NULLABLE_MIGRATION, REQUISITION_USER_STATE_MIGRATION, REQUISITION_LIFECYCLE_APPEND_ONLY_MIGRATION, resolve(ROOT, 'libs/requisition/prisma/migrations/20260803120000_recruiting_status_supersession/migration.sql')]) {
         await setupClient.query(readFileSync(p, 'utf8'));
       }
 

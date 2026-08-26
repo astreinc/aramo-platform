@@ -56,6 +56,8 @@ const REQ_MIGRATIONS = [
   '20260803120000_recruiting_status_supersession',
   '20260811120000_t4b2_drop_openings_available',
   '20260812130000_t8p1_requisition_external_identity_unique',
+  // L1-F1 — RequisitionLifecycleEvent append-only triggers + reset escape.
+  '20260827120000_requisition_lifecycle_event_append_only',
 ].map((d) =>
   resolve(__dirname, `../../../requisition/prisma/migrations/${d}/migration.sql`),
 );

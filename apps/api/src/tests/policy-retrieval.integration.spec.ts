@@ -8,6 +8,11 @@ import { Client } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { exportSPKI, generateKeyPair, SignJWT, type CryptoKey, type KeyObject } from 'jose';
 import { PolicyStore } from '@aramo/policy-store';
+import {
+  REQUISITION_POLICY_STORE,
+  RequisitionTransitionPolicyService,
+  SetPriorityPolicyService,
+} from '@aramo/requisition';
 
 import { AppModule } from '../app.module.js';
 import { REQUISITION_LIFECYCLE_PACKAGE } from '../policy/requisition-lifecycle.package.js';
@@ -170,6 +175,28 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // value): it must STILL name v1. Stored immutability is the claim.
       const firstReReadAfterV2 = await recordById(first.id);
       expect(firstReReadAfterV2.policy_version).toBe('1.0.0');
+    });
+
+    // L1-F2 — the requisition policy gates resolve a DEDICATED string token, not
+    // the bare `PolicyStore` class token. This is the wiring proof that both
+    // consumers receive the REQUISITION_POLICY_STORE provider AND that the bare
+    // class-token lookup the version-pinning test above reads through is NO LONGER
+    // the requisition instance (deterministically pipeline's add-talent store).
+    it('L1-F2 — both requisition policy gates @Inject the DEDICATED REQUISITION_POLICY_STORE, not the bare class token', () => {
+      const dedicated = app.get(REQUISITION_POLICY_STORE, { strict: false });
+      expect(dedicated).toBeInstanceOf(PolicyStore);
+
+      const transition = app.get(RequisitionTransitionPolicyService, { strict: false });
+      const setPriority = app.get(SetPriorityPolicyService, { strict: false });
+      // Each consumer received the dedicated-token instance (the @Inject binding).
+      expect((transition as unknown as { policyStore: PolicyStore }).policyStore).toBe(dedicated);
+      expect((setPriority as unknown as { policyStore: PolicyStore }).policyStore).toBe(dedicated);
+
+      // The bare class token (what the §D17b republish test resolves through)
+      // is a DIFFERENT instance — requisition no longer competes for it, so the
+      // non-strict lookup deterministically yields pipeline's add-talent store.
+      const bare = app.get(PolicyStore, { strict: false });
+      expect(bare).not.toBe(dedicated);
     });
   },
 );

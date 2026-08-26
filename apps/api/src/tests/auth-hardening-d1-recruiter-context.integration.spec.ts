@@ -211,6 +211,14 @@ const REQUISITION_USER_STATE_MIGRATION = resolve(
   ROOT,
   'libs/requisition/prisma/migrations/20260802160000_add_user_requisition_state/migration.sql',
 );
+// L1-F1 — DB-layer append-only enforcement (reject-UPDATE/DELETE triggers + the
+// governed tenant-reset escape) on RequisitionLifecycleEvent. Trigger-only, no
+// column, so the regenerated client is unaffected; ordering-only requirement is
+// that it follow the lifecycle-event table CREATE above.
+const REQUISITION_LIFECYCLE_APPEND_ONLY_MIGRATION = resolve(
+  ROOT,
+  'libs/requisition/prisma/migrations/20260827120000_requisition_lifecycle_event_append_only/migration.sql',
+);
 const TASK_INIT = resolve(
   ROOT,
   'libs/task/prisma/migrations/20260609140000_init_task_model/migration.sql',
@@ -566,6 +574,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         REQUISITION_PUBLISH_SURFACE_MIGRATION,
         REQUISITION_LIFECYCLE_EVENT_MIGRATION, REQUISITION_VERSION_MIGRATION, REQUISITION_ONSITE_DAYS_MIGRATION, REQUISITION_NUMBER_MIGRATION,
         REQUISITION_LIFECYCLE_NULLABLE_MIGRATION, REQUISITION_USER_STATE_MIGRATION,
+        REQUISITION_LIFECYCLE_APPEND_ONLY_MIGRATION,
         TASK_INIT,
         TASK_WORKSPACE_FIELDS,
         resolve(ROOT, 'libs/requisition/prisma/migrations/20260803120000_recruiting_status_supersession/migration.sql'),
