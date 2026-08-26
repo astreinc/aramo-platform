@@ -84,6 +84,10 @@ function requisitionView(
     // truth): may another client submittal be sent? `null` status ⇒ OPEN in the UI.
     client_submittal_status: like('open'),
     client_submittal_reason: null,
+    // L1-E — the SoD projection field. null unless the row is in pending_approval
+    // AND read via GET /:id (the detail path); every interaction here reads an
+    // `open`/`draft` example, so the provider returns null (exact-match).
+    pending_approval_submitter_id: null,
     golden_profile_id:
       opts.goldenProfileId === undefined ? null : opts.goldenProfileId,
     created_at: regex(ISO_TIMESTAMP, '2026-05-25T00:00:00Z'),

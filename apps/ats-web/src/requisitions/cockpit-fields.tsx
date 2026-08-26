@@ -19,7 +19,7 @@ import {
   canEditBucket,
   type CockpitFieldDescriptor,
 } from './field-affordance';
-import { RATE_PERIOD_VALUES, SELECTABLE_RECRUITING_STATUS_VALUES } from './types';
+import { RATE_PERIOD_VALUES } from './types';
 
 // PR-A2 P1 — the cockpit FIELD ROW renderer. Given a field descriptor + the
 // requisition payload + the actor's scopes, renders the right inline editor
@@ -40,7 +40,8 @@ const BOOLEAN_OPTIONS: Options = [
 ];
 
 const FIELD_OPTIONS: Readonly<Record<string, Options>> = {
-  status: SELECTABLE_RECRUITING_STATUS_VALUES.map((v) => ({ value: v, label: v })),
+  // L1-E — `status` is no longer a cockpit select mutator (status changes flow
+  // through the named lifecycle actions); its option set is gone from here.
   job_type: vocab(JOB_TYPE_VALUES),
   role_family: vocab(ROLE_FAMILY_VALUES),
   seniority_level: vocab(SENIORITY_LEVEL_VALUES),
@@ -95,8 +96,9 @@ export function CockpitFieldRow({
   if (field.kind === 'select') {
     const options = FIELD_OPTIONS[field.key] ?? [];
     const value = raw === null || raw === undefined ? null : String(raw);
-    // status is required (no empty option); other selects allow clear.
-    const allowEmpty = field.key !== 'status';
+    // L1-E — every remaining cockpit select is clearable (status, the only
+    // required-non-empty select, is no longer a cockpit field).
+    const allowEmpty = true;
     return (
       <InlineSelectField
         label={field.label}

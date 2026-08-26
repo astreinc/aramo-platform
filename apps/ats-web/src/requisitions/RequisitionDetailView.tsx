@@ -1,4 +1,4 @@
-import { InlineAlert, useSession, type Session } from '@aramo/fe-foundation';
+import { InlineAlert, useSession, useToast, type Session } from '@aramo/fe-foundation';
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { Tabs, type TabItem } from '@aramo/fe-foundation';
@@ -45,7 +45,12 @@ import {
 import { GuaranteeTermsPanel } from './GuaranteeTermsPanel';
 import { TalentDetailPanel } from './TalentDetailPanel';
 import { AddTalentDialog } from './AddTalentDialog';
-import { approvalAffordancesFor } from './approval-affordance';
+import {
+  CLOSE_SUBMITTALS_HELPER,
+  SELF_APPROVAL_SOD_LINE,
+  lifecycleActionsFor,
+  type LifecycleAction,
+} from './approval-affordance';
 import { CockpitFieldRow, type SaveFieldFn } from './cockpit-fields';
 import { COCKPIT_FIELDS, type CockpitSection } from './field-affordance';
 import { ProfileWorkbenchPanel } from './ProfileWorkbenchPanel';
@@ -55,7 +60,7 @@ import {
   setRequisitionBookmark,
   updateRequisition,
 } from './requisitions-api';
-import { detailErrorMessage } from './error-messages';
+import { detailErrorMessage, lifecycleActionErrorMessage } from './error-messages';
 import { RECRUITING_STATUS_TONE as STATUS_TONE } from './status-tone';
 import {
   RECRUITING_STATUS_LABELS,
@@ -191,6 +196,7 @@ export function RequisitionDetailView({
   const [tab, setTab] = useState<TabId | null>(null);
 
   const sessionState = useSession();
+  const toast = useToast();
   const session: Session | null =
     sessionOverride ??
     (sessionState.status === 'authenticated' ? sessionState.session : null);
@@ -341,6 +347,20 @@ export function RequisitionDetailView({
         : { [key]: value }
     ) as unknown as UpdateRequisitionRequest;
     setReq(await updateRequisition(req.id, body));
+  };
+
+  // L1-E — run a named lifecycle action. AWAITED + catching (replaces the prior
+  // fire-and-forget `void saveField`): a governed transition is a status-changing
+  // PATCH the BE may refuse (409/422/403 self-approval/scope/POLICY_DENIED); the
+  // typed refusal is surfaced honestly via the toast, never swallowed, never an
+  // unhandled rejection. On success saveField refreshes `req` (new version), so
+  // the affordance set recomputes for the next transition.
+  const runLifecycleAction = async (aff: LifecycleAction): Promise<void> => {
+    try {
+      await saveField('status', aff.toStatus);
+    } catch (err) {
+      toast.show(lifecycleActionErrorMessage(err));
+    }
   };
 
   // Row-level is_hot triage. Optimistic toggle on the talents map with
@@ -622,25 +642,39 @@ export function RequisitionDetailView({
             <Icons.IconPencil />
             Edit
           </button>
-          {/* Approval sub-workflow — the named governed affordances, gated by
-              (current status × scope). Cosmetic: the BE gate is authoritative
-              (a self-approval or a scope-less approve 403s regardless). Each
-              drives the status transition through the same PATCH saveField. The
-              two-axis PATCH authority (requisition:edit OR requisition:edit:status
-              for status; requisition:approve for APPROVE/REJECT) lives in
-              approvalAffordancesFor — reused verbatim, no generic canEdit. */}
-          {approvalAffordancesFor(req.status, scopes).map((aff) => (
+          {/* L1-E — the named LIFECYCLE ACTIONS, gated by (current status × scope
+              × submitter-context). Status is DISPLAYED as the pill above; the user
+              changes the lifecycle ONLY through these named actions mirroring the
+              authoritative transition matrix — never by editing a status enum.
+              Cosmetic: the BE policy engine + in-service SoD gate are
+              authoritative (an illegal/scope-less/self-approve action is refused
+              regardless of what renders). Each drives a status-changing PATCH via
+              the AWAITED runLifecycleAction, which surfaces typed refusals. */}
+          {lifecycleActionsFor(req.status, scopes, {
+            submitterId: req.pending_approval_submitter_id,
+            actorId: session?.sub ?? null,
+          }).map((aff) => (
             <button
               key={aff.action}
               type="button"
               className={`rc-hbtn${aff.action === 'APPROVE' ? ' rc-hbtn--primary' : ''}`}
+              title={aff.action === 'CLOSE_SUBMITTALS' ? CLOSE_SUBMITTALS_HELPER : undefined}
               onClick={() => {
-                void saveField('status', aff.toStatus);
+                void runLifecycleAction(aff);
               }}
             >
               {aff.label}
             </button>
           ))}
+          {/* SoD — the submitter of a pending_approval requisition (holding the
+              approve scope) sees the reason their own Approve is suppressed; Reject
+              stays available above. A DIFFERENT approver sees the Approve button. */}
+          {req.status === 'pending_approval' &&
+          scopes.includes('requisition:approve') &&
+          req.pending_approval_submitter_id !== null &&
+          req.pending_approval_submitter_id === (session?.sub ?? null) ? (
+            <span className="rc-hbtn-sod">{SELF_APPROVAL_SOD_LINE}</span>
+          ) : null}
           {canAddTalent ? (
             <AddTalentDialog
               requisitionId={req.id}

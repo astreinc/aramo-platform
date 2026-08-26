@@ -148,4 +148,15 @@ export interface RequisitionView {
   // (create / update / admin / import) return false — those responses are
   // not the bookmark-state read surface.
   bookmarked: boolean;
+
+  // ---- L1-E (Lifecycle UX) — the SoD projection field (additive, UN-gated) ----
+  // The actor who last moved this requisition INTO pending_approval (the most
+  // recent SUBMIT_FOR_APPROVAL). A control identifier — an actor UUID on the
+  // same footing as recruiter_id / owner_id / entered_by_id, NEVER masked. It
+  // exists so the DETAIL read surface can COSMETICALLY suppress the submitter's
+  // own Approve affordance (segregation of duties); the authoritative SoD gate
+  // stays in-service (approval-authorization-gate.ts). null unless the current
+  // status is pending_approval, and ENRICHED only on the single-row DETAIL read
+  // (findByIdForActor / GET /v1/requisitions/:id) — the list path leaves it null.
+  pending_approval_submitter_id: string | null;
 }

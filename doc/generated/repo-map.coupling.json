@@ -8707,6 +8707,11 @@
       "to": "apps/api/src/pre-start-requirement/pre-start-requirement.controller.ts"
     },
     {
+      "from": "apps/ats-web/src/requisitions/approval-affordance.ts",
+      "status": "production",
+      "to": "apps/api/src/policy/requisition-lifecycle.package.ts"
+    },
+    {
       "from": "apps/ats-web/src/requisitions/compensation-visibility.ts",
       "status": "production",
       "to": "libs/field-masking/src/lib/compensation-field-map.ts"
@@ -8742,6 +8747,18 @@
       "from": "apps/ats-web/src/requisitions/iso-4217-currency.ts",
       "status": "production",
       "to": "libs/requisition/src/lib/dto/iso-4217-currency.ts"
+    },
+    {
+      "excludedBy": "src/**/*.spec.ts",
+      "from": "apps/ats-web/src/requisitions/lifecycle-action-drift.spec.ts",
+      "status": "excluded",
+      "to": "apps/api/src/policy/requisition-lifecycle.package.ts"
+    },
+    {
+      "excludedBy": "src/**/*.spec.ts",
+      "from": "apps/ats-web/src/requisitions/lifecycle-action-drift.spec.ts",
+      "status": "excluded",
+      "to": "libs/requisition/src/lib/dto/requisition-transitions.ts"
     },
     {
       "excludedBy": "src/**/*.spec.ts",

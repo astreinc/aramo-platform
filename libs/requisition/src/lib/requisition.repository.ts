@@ -511,6 +511,12 @@ function projectView(
     // per calling user. projectView has no actor context, so it cannot
     // resolve this on its own.
     bookmarked: false,
+    // L1-E — the SoD projection field. null by default here (projectView is a
+    // pure sync mapper with no actor/tenant context, and NO new query); the
+    // single-row DETAIL read (findByIdForActor) enriches it from the lifecycle
+    // event history when the current status is pending_approval. The list path
+    // leaves it null.
+    pending_approval_submitter_id: null,
   };
 }
 
@@ -1861,7 +1867,23 @@ export class RequisitionRepository {
       args.visibility.actor_user_id,
       [await this.projectViewWithCapacity(args.tenant_id, row as RequisitionRow)],
     );
-    return enriched[0] ?? null;
+    const view = enriched[0] ?? null;
+    // L1-E — enrich the SoD projection field on the DETAIL read ONLY (this is the
+    // sole path serving GET /v1/requisitions/:id). When the requisition is in
+    // pending_approval, resolve the actor of the most recent SUBMIT_FOR_APPROVAL
+    // via the EXISTING latestApprovalSubmitterActor lookup (no new query); every
+    // other status (and the list path) leaves the field null. Cosmetic only — the
+    // authoritative SoD gate stays in-service at gateTransition.
+    if (view !== null && view.status === 'pending_approval') {
+      return {
+        ...view,
+        pending_approval_submitter_id: await this.latestApprovalSubmitterActor(
+          args.tenant_id,
+          args.id,
+        ),
+      };
+    }
+    return view;
   }
 
   // -------------------------------------------------------------------------
