@@ -32,9 +32,17 @@ import type { RatePeriod } from './dto/rate-period.js';
 import type { RequisitionCompensationModel } from './dto/requisition-compensation-model.js';
 import type { RequisitionView } from './dto/requisition.view.js';
 import { isGatedRecruitingStatus, type RecruitingStatus } from './dto/requisition-status.js';
-import { governingAction } from './dto/requisition-transitions.js';
+import { ACTION_TARGET_STATUS, governingAction } from './dto/requisition-transitions.js';
 import type { UpdateRequisitionRequestDto } from './dto/update-requisition-request.dto.js';
-import type { RecordRequisitionLifecycleEventInput } from './requisition-lifecycle-event.store.js';
+import {
+  isExternalLifecycleAction,
+  type ExternalLifecycleCommandResult,
+  type ExternalLifecycleTransitionCommand,
+} from './dto/external-lifecycle-command.js';
+import type {
+  RecordRequisitionLifecycleEventInput,
+  RequisitionLifecycleOrigin,
+} from './requisition-lifecycle-event.store.js';
 import { PrismaService } from './prisma/prisma.service.js';
 import {
   assertExternalIdentityCoPresence,
@@ -546,6 +554,10 @@ const LIFECYCLE_REASON_STATUS_CHANGED = 'STATUS_CHANGED';
 // deliberate initial-state establishment. No schema change (reason_code is
 // free text). Integration imports keep REQUISITION_IMPORTED.
 const LIFECYCLE_REASON_ESTABLISHED = 'REQUISITION_ESTABLISHED';
+// L1-D1 (ADR-0030) — a governed transition invoked by an AUTHORITATIVE external
+// lifecycle event (client/VMS), traversing the same gate -> CAS -> event
+// pipeline as a human transition but stamped origin='integration'.
+const LIFECYCLE_REASON_EXTERNAL = 'REQUISITION_EXTERNAL_TRANSITION';
 
 @Injectable()
 export class RequisitionRepository {
@@ -597,10 +609,14 @@ export class RequisitionRepository {
   private async recordLifecycleEventInTx(
     tx: Prisma.TransactionClient,
     input: RecordRequisitionLifecycleEventInput,
-  ): Promise<void> {
+  ): Promise<string> {
+    // L1-D1 — the generated event id is RETURNED so the external-lifecycle seam
+    // can link structured external provenance to the exact emitted event
+    // (existing callers ignore the return; behaviour is unchanged).
+    const id = uuidv7();
     await tx.requisitionLifecycleEvent.create({
       data: {
-        id: uuidv7(),
+        id,
         tenant_id: input.tenant_id,
         requisition_id: input.requisition_id,
         previous_status: input.previous_status,
@@ -612,6 +628,7 @@ export class RequisitionRepository {
         correlation_id: input.correlation_id,
       },
     });
+    return id;
   }
 
   // PR-15 — allocate the next per-tenant requisition_number INSIDE the create
@@ -696,6 +713,12 @@ export class RequisitionRepository {
     to_status: RecruitingStatus;
     scopes: readonly string[];
     actor_id: string;
+    // L1-D1 (ADR-0030) — the initiating surface, PARAMETERIZED (was a hardcoded
+    // 'ui'). Human PATCH passes 'ui'; the governed external-lifecycle seam passes
+    // 'integration'. Threaded into the policy decide() so the §D17a decision
+    // record + the lifecycle event carry the HONEST origin. Same pipeline, not a
+    // fork.
+    origin: RequisitionLifecycleOrigin;
     requestId: string;
   }): Promise<{ provenance: InsertPolicyDecisionRecordInput; decision_id: string } | null> {
     const action = governingAction(args.from_status, args.to_status);
@@ -721,7 +744,7 @@ export class RequisitionRepository {
       from_status: args.from_status,
       scopes: args.scopes,
       actor_id: args.actor_id,
-      origin: 'ui',
+      origin: args.origin,
       correlation_id: args.requestId,
     });
     if (outcome.disposition === 'DENY') {
@@ -1345,6 +1368,9 @@ export class RequisitionRepository {
           to_status: args.input.status as RecruitingStatus,
           scopes: args.scopes,
           actor_id: args.actor_id,
+          // Human PATCH — the surface is 'ui' (unchanged behaviour; the origin
+          // is now explicit at the call site rather than hardcoded in the gate).
+          origin: 'ui',
           requestId: args.requestId,
         })
       : null;
@@ -1408,6 +1434,144 @@ export class RequisitionRepository {
             return updated;
           });
     return this.projectViewWithCapacity(args.tenant_id, row as RequisitionRow);
+  }
+
+  // L1-D1 (ADR-0030) — THE GOVERNED EXTERNAL-LIFECYCLE COMMAND SEAM.
+  //
+  // An authoritative external lifecycle event (client/VMS) invokes a mapped
+  // Aramo lifecycle ACTION here — NEVER a target status, NEVER a direct write.
+  // The command traverses the SAME machinery a human PATCH transition does:
+  // gateTransition (ADR-0024 policy + the legal transition matrix) -> casUpdate
+  // (CAS/version) -> the atomic lifecycle event, all in ONE transaction — but
+  // stamped honest origin='integration'. This REUSES, never bypasses, the gate /
+  // CAS / audit. The direct-write path (provider status -> Requisition.status)
+  // stays FORBIDDEN — there is no other status-writing entry point for an
+  // external event.
+  //
+  // Anything that cannot safely proceed (unsupported action, illegal-from-state,
+  // policy DENY incl. fail-closed no-package, CAS conflict, not-found) returns a
+  // GOVERNED REFUSAL with a bounded reason and NO partial write; the apps/api
+  // reconciler routes it to the reconciliation queue.
+  //
+  // AUTHORITY (ADR-0030 seam #2): the seam is scoped to origin='integration'
+  // (rejects any other surface). The connector service-account binding — that
+  // ONLY the connector actor reaches this seam, never a human with
+  // requisition:edit — is composed at the apps/api reconciler (the sole caller;
+  // no HTTP route wires this method). Transition rules key on the declared
+  // status, never on a capability, so the seam runs with EMPTY scopes — the
+  // connector holds NO requisition:edit.
+  async executeExternalLifecycleCommand(
+    cmd: ExternalLifecycleTransitionCommand,
+  ): Promise<ExternalLifecycleCommandResult> {
+    // Honest-origin invariant — this seam serves integration-origin commands
+    // ONLY. A non-integration origin is a programming error (the reconciler
+    // always passes 'integration'); refuse loudly rather than stamp a dishonest
+    // origin. VALIDATION_ERROR is an existing registered code (no new code).
+    if (cmd.origin !== 'integration') {
+      throw new AramoError(
+        'VALIDATION_ERROR',
+        'The external-lifecycle command seam accepts origin=integration only',
+        400,
+        {
+          requestId: cmd.external_provenance.external_event_id,
+          details: { reason: 'external_lifecycle_origin_invalid' },
+        },
+      );
+    }
+    const current = await this.findStatusById({
+      tenant_id: cmd.tenant_id,
+      id: cmd.requisition_id,
+    });
+    if (current === null) {
+      return { outcome: 'REFUSED', reason: 'REQUISITION_NOT_FOUND', current_status: null };
+    }
+    // External authority governs OPERATIONAL transitions only (CLOSE / REOPEN /
+    // PUT_ON_HOLD / CANCEL); the human approval sub-workflow (SUBMIT_FOR_APPROVAL
+    // / APPROVE / REJECT) is NEVER reachable from an external event.
+    if (!isExternalLifecycleAction(cmd.action)) {
+      return { outcome: 'REFUSED', reason: 'ILLEGAL_FROM_STATE', current_status: current };
+    }
+    const target = ACTION_TARGET_STATUS[cmd.action];
+    // The edge must exist AND resolve to the commanded action from the CURRENT
+    // status. A mismatch/absence (e.g. the mapped action cannot fire from here)
+    // is an illegal-from-state command -> reconciliation, NO mutation. (Policy
+    // DENY on a legal edge is handled by the gate below; this guards ambiguity
+    // BEFORE the gate so a wrong action can never be silently substituted.)
+    if (governingAction(current, target) !== cmd.action) {
+      return { outcome: 'REFUSED', reason: 'ILLEGAL_FROM_STATE', current_status: current };
+    }
+    const correlationId = cmd.external_provenance.external_event_id;
+    // Reuse the EXISTING gate (policy + legal matrix), origin='integration'. On
+    // DENY (incl. fail-closed NO_POLICY_PUBLISHED) gateTransition records the
+    // refusal standalone and throws POLICY_DENIED — caught here and routed to
+    // reconciliation (never a bypass).
+    let gate: { provenance: InsertPolicyDecisionRecordInput; decision_id: string } | null = null;
+    try {
+      gate = await this.gateTransition({
+        tenant_id: cmd.tenant_id,
+        id: cmd.requisition_id,
+        from_status: current,
+        to_status: target,
+        scopes: [],
+        actor_id: cmd.actor_id,
+        origin: 'integration',
+        requestId: correlationId,
+      });
+    } catch (err) {
+      if (err instanceof AramoError && err.code === 'POLICY_DENIED') {
+        return { outcome: 'REFUSED', reason: 'POLICY_DENIED', current_status: current };
+      }
+      throw err;
+    }
+    // An operational action on a legal edge is never ungoverned, so gate is
+    // non-null here; the guard is defensive (an ungoverned edge -> reconciliation).
+    if (gate === null) {
+      return { outcome: 'REFUSED', reason: 'ILLEGAL_FROM_STATE', current_status: current };
+    }
+    const allowed = gate;
+    // ALLOW — casUpdate + the transition provenance + the atomic lifecycle event
+    // in ONE tx, exactly as the human path (update()). A stale expected_version
+    // fails the CAS (count 0 -> REQUISITION_VERSION_CONFLICT), aborting the whole
+    // tx before ANY write -> reconciliation, NO lost update.
+    try {
+      const eventId = await this.prisma.$transaction(async (tx) => {
+        await this.casUpdate(tx, {
+          tenant_id: cmd.tenant_id,
+          id: cmd.requisition_id,
+          expectedVersion: cmd.expected_version,
+          data: { status: target },
+          requestId: correlationId,
+        });
+        await this.insertTransitionDecisionRecordInTx(
+          tx,
+          allowed.decision_id,
+          allowed.provenance,
+        );
+        return this.recordLifecycleEventInTx(tx, {
+          tenant_id: cmd.tenant_id,
+          requisition_id: cmd.requisition_id,
+          previous_status: current,
+          next_status: target,
+          actor_id: cmd.actor_id,
+          origin: 'integration', // R-INVARIANT — honest origin, never 'ui'.
+          reason_code: LIFECYCLE_REASON_EXTERNAL,
+          policy_decision_id: allowed.decision_id,
+          correlation_id: correlationId,
+        });
+      });
+      return {
+        outcome: 'EXECUTED',
+        previous_status: current,
+        next_status: target,
+        lifecycle_event_id: eventId,
+        policy_decision_id: allowed.decision_id,
+      };
+    } catch (err) {
+      if (err instanceof AramoError && err.code === 'REQUISITION_VERSION_CONFLICT') {
+        return { outcome: 'REFUSED', reason: 'CAS_CONFLICT', current_status: current };
+      }
+      throw err;
+    }
   }
 
   // Track 1 T1-b (ruling R1) — the optimistic-concurrency compare-and-swap.

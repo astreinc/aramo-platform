@@ -39,3 +39,14 @@ export type { CreateRequisitionRequestDto } from './create-requisition-request.d
 export type { UpdateRequisitionRequestDto } from './update-requisition-request.dto.js';
 export type { RequisitionAssignmentView } from './requisition-assignment.view.js';
 export type { AssignRequisitionRequestDto } from './assign-requisition-request.dto.js';
+// L1-D1 (ADR-0030) — the governed external-lifecycle command contract.
+export {
+  EXTERNAL_LIFECYCLE_ACTIONS,
+  isExternalLifecycleAction,
+  type ExternalLifecycleTransitionCommand,
+  type ExternalLifecycleProvenanceInput,
+  type ExternalLifecycleCommandResult,
+  type ExternalLifecycleExecuted,
+  type ExternalLifecycleRefused,
+  type ExternalLifecycleRefusalReason,
+} from './external-lifecycle-command.js';

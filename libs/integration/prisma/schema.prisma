@@ -120,11 +120,156 @@ model IntegrationConnection {
   // Intra-schema relation to the delivery idempotency ledger.
   deliveries ConnectorDelivery[]
 
+  // L1-D1 (ADR-0030) — intra-schema relations to the external-lifecycle-authority
+  // substrate (per-connection governed mapping contract, reconciliation queue,
+  // structured external-transition provenance).
+  lifecycle_mappings    RequisitionLifecycleMapping[]
+  reconciliations       RequisitionExternalReconciliation[]
+  transition_provenance RequisitionExternalTransitionProvenance[]
+
   // Indexes — every query path leads with tenant_id. NO unique(tenant_id,
   // provider_key) (ruling #2): connection.id is the identity.
   @@index([tenant_id])
   @@index([tenant_id, provider_key])
   @@index([tenant_id, status])
+
+  @@schema("integration")
+}
+
+// RequisitionLifecycleAuthorityMode — L1-D1 (ADR-0030 §4). The per-connection
+// authority posture (repository-convention lowercase; equivalent to the ADR's
+// EXTERNAL_AUTHORITY / DUAL_CONTROL):
+//   - external_authority → a mapped external lifecycle event INVOKES the
+//     governed Requisition command (Astre DEFAULT);
+//   - dual_control       → a mapped external event RECORDS intent / a pending
+//     reconciliation row; it does NOT auto-complete the governed transition.
+enum RequisitionLifecycleAuthorityMode {
+  external_authority
+  dual_control
+
+  @@schema("integration")
+}
+
+// RequisitionLifecycleMapping — L1-D1 (ADR-0030 seam #3). The per-CONNECTION
+// governed mapping contract: it translates a provider lifecycle STATE token into
+// a mapped Aramo lifecycle ACTION (never a target status), carrying the mapping
+// version + the per-connection authority mode. Keyed on connection_id (the
+// connection IS the account identity — IntegrationConnection has no
+// unique(tenant, provider) by design). This does NOT overload
+// IntegrationConnection.status (operational-only) — the authority mode lives here.
+model RequisitionLifecycleMapping {
+  id            String @id @default(uuid()) @db.Uuid
+  tenant_id     String @db.Uuid
+  connection_id String @db.Uuid
+
+  // The provider lifecycle state token (raw / normalized), opaque to Aramo —
+  // supplied by the connection's mapping author. NEVER a credential.
+  provider_state String
+
+  // The mapped Aramo lifecycle ACTION token (@aramo/requisition TransitionAction:
+  // CLOSE | REOPEN | PUT_ON_HOLD | CANCEL). Stored as a bounded String, NOT an
+  // enum — the action vocabulary is owned by the requisition domain, and a
+  // cross-schema enum would couple the two schemas.
+  mapped_action String
+
+  // The version of the mapping contract this row belongs to (bumped when a
+  // connection's mapping is re-authored; carried into provenance for audit).
+  mapping_version Int @default(1)
+
+  // The per-connection authority posture (external_authority default).
+  authority_mode RequisitionLifecycleAuthorityMode @default(external_authority)
+
+  created_at DateTime @default(now()) @db.Timestamptz
+  updated_at DateTime @default(now()) @updatedAt @db.Timestamptz
+
+  connection IntegrationConnection @relation(fields: [connection_id], references: [id], onDelete: Cascade)
+
+  // One mapped action per (connection, provider_state) — a connection maps each
+  // provider state exactly once.
+  @@unique([tenant_id, connection_id, provider_state])
+  @@index([tenant_id, connection_id])
+
+  @@schema("integration")
+}
+
+// RequisitionExternalReconciliation — L1-D1 (ADR-0030 seam #4). A record-then-
+// resolve queue (mirrors talent_record.TalentRecordReconcileContradiction).
+// D1 WRITES pending rows — dual_control intent + governed refusals (unmappable /
+// illegal-from-state / policy DENY / CAS conflict / not-found). The WORKER that
+// drains and executes them is D2. Idempotent on the external event id.
+model RequisitionExternalReconciliation {
+  id            String @id @default(uuid()) @db.Uuid
+  tenant_id     String @db.Uuid
+  connection_id String @db.Uuid
+
+  // The external event's identity + payload facts (opaque provider tokens).
+  external_event_id String
+  external_req_id   String?
+  provider_key      String
+
+  raw_provider_status String
+  normalized_status   String?
+
+  // The mapped action, when a mapping existed (null for an unmappable state).
+  mapped_action String?
+
+  // The Aramo requisition's status at the moment of the refusal/intent (null
+  // only when the requisition was not found).
+  current_aramo_status String?
+
+  // The bounded reason token (UNMAPPABLE_PROVIDER_STATE | DUAL_CONTROL_PENDING |
+  // ILLEGAL_FROM_STATE | POLICY_DENIED | CAS_CONFLICT | REQUISITION_NOT_FOUND).
+  failure_reason String
+
+  // Record-then-resolve lifecycle. D1 only ever writes 'pending'; the D2 worker
+  // transitions to 'resolved'.
+  status String @default("pending")
+
+  created_at  DateTime  @default(now()) @db.Timestamptz
+  resolved_at DateTime? @db.Timestamptz
+
+  connection IntegrationConnection @relation(fields: [connection_id], references: [id], onDelete: Cascade)
+
+  // Idempotent — a redelivered external event resolves to the same pending row.
+  @@unique([tenant_id, connection_id, external_event_id])
+  @@index([tenant_id, status])
+
+  @@schema("integration")
+}
+
+// RequisitionExternalTransitionProvenance — L1-D1 (ADR-0030 seam #5). Structured
+// provenance linking a GOVERNED external transition to the external event that
+// caused it. Written only on EXECUTED transitions. Immutable (append-only, no
+// status column) — distinct from the mutable reconciliation queue, so it is NOT
+// combined with it. The lifecycle_event_id + policy_decision_id are cross-schema
+// UUID references (Architecture §7.3 — UUID-only, NO FK), mirroring the
+// RequisitionLifecycleEvent.policy_decision_id precedent.
+model RequisitionExternalTransitionProvenance {
+  id            String @id @default(uuid()) @db.Uuid
+  tenant_id     String @db.Uuid
+  connection_id String @db.Uuid
+
+  external_event_id String
+  external_event_at DateTime @db.Timestamptz
+
+  raw_provider_status String
+  normalized_status   String
+
+  mapping_version Int
+  mapped_action   String
+
+  // Cross-schema UUID ref to requisition.RequisitionLifecycleEvent.id (no FK).
+  lifecycle_event_id String @db.Uuid
+  // Cross-schema UUID ref to policy_store.PolicyDecisionRecord.id (no FK).
+  policy_decision_id String? @db.Uuid
+
+  created_at DateTime @default(now()) @db.Timestamptz
+
+  connection IntegrationConnection @relation(fields: [connection_id], references: [id], onDelete: Cascade)
+
+  // One provenance record per external event (idempotent under redelivery).
+  @@unique([tenant_id, connection_id, external_event_id])
+  @@index([tenant_id, lifecycle_event_id])
 
   @@schema("integration")
 }

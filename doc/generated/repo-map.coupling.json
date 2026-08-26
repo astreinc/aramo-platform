@@ -3216,6 +3216,12 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/l1d1-external-lifecycle-authority.integration.spec.ts",
+      "status": "excluded",
+      "to": "apps/api/src/requisition-integration/external-lifecycle-reconciler.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/match-list.negative-shape.spec.ts",
       "status": "excluded",
       "to": "libs/consent/prisma/migrations/20260429164414_initial_consent_schema/migration.sql"

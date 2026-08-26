@@ -48,6 +48,15 @@ export {
   type IntakeDraftRequestDto,
   type IntakeDraftResponseDto,
   type IntakeExtractedFields,
+  // L1-D1 (ADR-0030) — governed external-lifecycle command contract.
+  EXTERNAL_LIFECYCLE_ACTIONS,
+  isExternalLifecycleAction,
+  type ExternalLifecycleTransitionCommand,
+  type ExternalLifecycleProvenanceInput,
+  type ExternalLifecycleCommandResult,
+  type ExternalLifecycleExecuted,
+  type ExternalLifecycleRefused,
+  type ExternalLifecycleRefusalReason,
 } from './lib/dto/index.js';
 // T8-P1 external-identity canonicalization + validation — reused by the T8-P2
 // import framework (@aramo/import) to produce a canonical requisition DTO.
