@@ -84,7 +84,11 @@ export type CockpitSection =
 export const COCKPIT_FIELDS: readonly CockpitFieldDescriptor[] = [
   // --- Identity / core (OPEN) ---
   { key: 'title', label: 'Title', bucket: 'OPEN', kind: 'text', section: 'identity' },
-  { key: 'status', label: 'Status', bucket: 'STATUS', kind: 'select', section: 'identity' },
+  // L1-E — `status` is NO LONGER a mutable cockpit field: status is DISPLAYED as
+  // state (the detail-header pill) and the lifecycle changes ONLY through the
+  // named actions in approval-affordance.ts, never by editing a status enum. The
+  // STATUS bucket + its edit-scope disjunction survive (they authorise those named
+  // actions), but no cockpit select mutates status directly.
   // Recruiter-facing label is "Priority" (team-wide operational signal); the
   // is_hot key, permission and CSS are unchanged — label text only.
   { key: 'is_hot', label: 'Priority', bucket: 'OPEN', kind: 'switch', section: 'identity' },

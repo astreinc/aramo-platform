@@ -569,6 +569,7 @@
     "apps/ats-web/src/requisitions/guarantee-terms-error-messages.ts",
     "apps/ats-web/src/requisitions/guarantee-terms-types.ts",
     "apps/ats-web/src/requisitions/iso-4217-currency.ts",
+    "apps/ats-web/src/requisitions/lifecycle-action-drift.spec.ts",
     "apps/ats-web/src/requisitions/parse-intake.spec.ts",
     "apps/ats-web/src/requisitions/parse-intake.ts",
     "apps/ats-web/src/requisitions/recruiting-status-drift.spec.ts",

@@ -108,6 +108,7 @@ function baseView(extra: Record<string, unknown> = {}): Record<string, unknown> 
     external_req_id: null,
     imported_at: null,
     golden_profile_id: null,
+    pending_approval_submitter_id: null,
     ...extra,
   };
 }
@@ -232,6 +233,20 @@ describe('RequisitionDetailView cockpit — per-field affordance', () => {
       '12.00',
     );
     expect(screen.queryByRole('button', { name: /edit margin$/i })).toBeNull();
+  });
+});
+
+describe('RequisitionDetailView — status is DISPLAYED, not an editable cockpit select (L1-E)', () => {
+  it('the header shows the status label read-only; there is NO cockpit status select', async () => {
+    installFetch(() => ({ status: 200, body: baseView({ status: 'open' }) }));
+    mount(makeSession(['requisition:read', 'requisition:edit']));
+    // Status is displayed as state in the header pill (the h1 carries the label).
+    const heading = await screen.findByRole('heading', { name: /Senior Engineer/ });
+    expect(heading.textContent).toContain('Open');
+    // ...but it is no longer a mutable cockpit field (no select row, no editor).
+    await openDetails();
+    expect(screen.queryByTestId('cockpit-field-status')).toBeNull();
+    expect(screen.queryByRole('button', { name: /edit status/i })).toBeNull();
   });
 });
 

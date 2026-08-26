@@ -109,6 +109,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         body: JSON.stringify(body),
       });
     }
+    async function getReq(token: string, id: string): Promise<Response> {
+      return fetch(`${baseUrl()}/v1/requisitions/${id}?site_id=${SITE}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+    }
     async function rowOf(id: string): Promise<{ status: string; version: number }> {
       return (await db.query(`SELECT status, version FROM requisition."Requisition" WHERE id=$1`, [id])).rows[0];
     }
@@ -374,6 +379,29 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         const res = await patchStatus(await jwtAs(SUBMITTER, ['requisition:edit', 'requisition:approve', 'requisition:read']), id, { status: 'draft', version: 1 });
         expect(res.status).toBe(200);
         expect((await rowOf(id)).status).toBe('draft');
+      });
+
+      it('L1-E — GET /:id carries pending_approval_submitter_id = the SUBMIT_FOR_APPROVAL actor while pending_approval; null once APPROVED → open', async () => {
+        const id = await seedPending(); // SUBMITTER moved draft → pending_approval
+        const submitterToken = await jwtAs(SUBMITTER, ['requisition:read']);
+        const approverToken = await jwtAs(APPROVER, ['requisition:edit', 'requisition:approve', 'requisition:read']);
+
+        // While pending_approval, the DETAIL read names the SUBMITTER (non-vacuous:
+        // the BEFORE value is exactly the submitting actor, not merely non-null).
+        const g1 = await getReq(submitterToken, id);
+        expect(g1.status).toBe(200);
+        const v1 = (await g1.json()) as { status: string; pending_approval_submitter_id: string | null };
+        expect(v1.status).toBe('pending_approval');
+        expect(v1.pending_approval_submitter_id).toBe(SUBMITTER);
+
+        // APPROVE by a DIFFERENT actor → open; the field is null once out of
+        // pending_approval (EXACT after-value, one-way).
+        expect((await patchStatus(approverToken, id, { status: 'open', version: 1 })).status).toBe(200);
+        const g2 = await getReq(submitterToken, id);
+        expect(g2.status).toBe(200);
+        const v2 = (await g2.json()) as { status: string; pending_approval_submitter_id: string | null };
+        expect(v2.status).toBe('open');
+        expect(v2.pending_approval_submitter_id).toBeNull();
       });
     });
   },
