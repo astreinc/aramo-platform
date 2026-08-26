@@ -9,6 +9,7 @@
     "libs/canonicalization",
     "libs/client-talent-restriction",
     "libs/common",
+    "libs/communications",
     "libs/consent",
     "libs/entitlement",
     "libs/evidence",

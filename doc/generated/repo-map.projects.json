@@ -1,5 +1,5 @@
 {
-  "aliasTotals": { "apps": 2, "libs": 62, "total": 64 },
+  "aliasTotals": { "apps": 2, "libs": 63, "total": 65 },
   "aliases": {
     "@aramo/activity": "libs/activity/src/index.ts",
     "@aramo/ai-draft": "libs/ai-draft/src/index.ts",
@@ -16,6 +16,7 @@
     "@aramo/client-talent-restriction": "libs/client-talent-restriction/src/index.ts",
     "@aramo/cold-ingest-extraction": "libs/cold-ingest-extraction/src/index.ts",
     "@aramo/common": "libs/common/src/index.ts",
+    "@aramo/communications": "libs/communications/src/index.ts",
     "@aramo/company": "libs/company/src/index.ts",
     "@aramo/consent": "libs/consent/src/index.ts",
     "@aramo/contact": "libs/contact/src/index.ts",
@@ -242,6 +243,30 @@
       "resolveAuthStorageMigrations",
       "resolveIdentityMigrations",
       "resolveReleaseRevision"
+    ],
+    "@aramo/communications": [
+      "CALL_STATE_TRANSITIONS",
+      "COMMUNICATION_CHANNELS",
+      "COMMUNICATION_DIRECTIONS",
+      "COMMUNICATION_DISPOSITION_OUTCOMES",
+      "COMMUNICATION_INTERACTION_STATES",
+      "COMMUNICATION_PROVIDER_EVENT_STATUSES",
+      "COMMUNICATION_PROVIDER_IDENTITY_STATUSES",
+      "COMMUNICATION_RELATION_TYPES",
+      "COMMUNICATION_SUBJECT_TYPES",
+      "CommunicationInteractionNotFoundError",
+      "CommunicationInvalidStateError",
+      "CommunicationsModule",
+      "CommunicationsPrismaService",
+      "CommunicationsRepository",
+      "CommunicationsService",
+      "FAKE_VOICE_PROVIDER_KEY",
+      "FakeVoiceProvider",
+      "TERMINAL_CALL_STATES",
+      "VoiceProviderRegistry",
+      "assertTransition",
+      "canTransition",
+      "isTerminalCallState"
     ],
     "@aramo/company": [
       "CompanyController",
@@ -2222,6 +2247,7 @@
       },
       { "project": "task", "status": "production" }
     ],
+    "@aramo/communications": [],
     "@aramo/company": [
       { "from": "tools/seed-e2e-data.ts", "project": "(unscoped)", "status": "unscoped" },
       {
@@ -4326,6 +4352,13 @@
       "root": "libs/common",
       "sourceRoot": "libs/common/src",
       "tags": ["scope:shared"],
+      "targets": ["build", "lint", "test"]
+    },
+    {
+      "name": "communications",
+      "root": "libs/communications",
+      "sourceRoot": "libs/communications/src",
+      "tags": ["scope:ats"],
       "targets": ["build", "lint", "test"]
     },
     {

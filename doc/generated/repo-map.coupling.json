@@ -12507,6 +12507,26 @@
       "to": "openapi/common.yaml"
     },
     {
+      "from": "libs/communications/prisma/schema.prisma",
+      "status": "unscoped",
+      "to": "doc/05-conventions.md"
+    },
+    {
+      "from": "libs/communications/project.json",
+      "status": "unscoped",
+      "to": "libs/communications/src/index.ts"
+    },
+    {
+      "from": "libs/communications/project.json",
+      "status": "unscoped",
+      "to": "libs/communications/tsconfig.lib.json"
+    },
+    {
+      "from": "libs/communications/src/lib/domain/communication-enums.ts",
+      "status": "production",
+      "to": "libs/communications/prisma/schema.prisma"
+    },
+    {
       "from": "libs/company/prisma/schema.prisma",
       "status": "unscoped",
       "to": "doc/05-conventions.md"
@@ -14036,6 +14056,11 @@
       "to": "libs/client-talent-restriction/prisma/schema.prisma"
     },
     { "from": "package.json", "status": "unscoped", "to": "libs/common/prisma/schema.prisma" },
+    {
+      "from": "package.json",
+      "status": "unscoped",
+      "to": "libs/communications/prisma/schema.prisma"
+    },
     { "from": "package.json", "status": "unscoped", "to": "libs/company/prisma/schema.prisma" },
     { "from": "package.json", "status": "unscoped", "to": "libs/consent/prisma/schema.prisma" },
     { "from": "package.json", "status": "unscoped", "to": "libs/contact/prisma/schema.prisma" },
@@ -15595,6 +15620,11 @@
       "to": "libs/cold-ingest-extraction/src/index.ts"
     },
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/common/src/index.ts" },
+    {
+      "from": "tsconfig.base.json",
+      "status": "unscoped",
+      "to": "libs/communications/src/index.ts"
+    },
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/company/src/index.ts" },
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/consent/src/index.ts" },
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/contact/src/index.ts" },
@@ -15727,6 +15757,7 @@
       "to": "libs/cold-ingest-extraction/src/index.ts"
     },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/common/src/index.ts" },
+    { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/communications/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/company/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/consent/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/contact/src/index.ts" },
