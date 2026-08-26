@@ -54,6 +54,7 @@ export type {
   IntegrationConnectionView,
   ProviderHealth,
   VoiceCallRequest,
+  VoiceCallerIdentity,
   VoiceCallLaunch,
   NormalizedVoiceEvent,
   ProviderCallReference,
@@ -69,7 +70,9 @@ export {
 export {
   ZoomPhoneAdapter,
   ZOOM_PHONE_PROVIDER_KEY,
+  ZOOM_EMBED_LAUNCH_MODE,
   ZoomAdapterDeferredError,
+  ZoomInitiateCallError,
 } from './lib/provider/zoom/zoom-phone.adapter.js';
 export {
   encodeZoomCredential,
@@ -77,3 +80,9 @@ export {
   ZoomCredentialDecodeError,
   type ZoomCredentialBundle,
 } from './lib/provider/zoom/zoom-credential.js';
+
+// COMM-B5 — comms-owned requisition existence read-port (bound at apps/api).
+export {
+  REQUISITION_EXISTENCE_PORT,
+  type RequisitionExistencePort,
+} from './lib/ports/requisition-existence.port.js';

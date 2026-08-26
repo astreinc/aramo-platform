@@ -178,6 +178,9 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   // non-open (or absent) requisition is refused (409, details.status).
   REQUISITION_NOT_OPEN: 409,
   COMMUNICATION_PROVIDER_USER_ALREADY_MAPPED: 409,
+  // COMM-B5 — call initiation refusals.
+  COMMUNICATION_CALL_CONSENT_DENIED: 403,
+  COMMUNICATION_CALL_NOT_INITIABLE: 422,
 };
 
 // Base error class. Thrown anywhere in the app where a structured response

@@ -36,6 +36,7 @@ describe('FakeVoiceProvider normalization', () => {
       direction: 'outbound',
       from_address: '+15715550100',
       to_address: '+17035550111',
+      caller: { provider_user_id: 'fake-user-1' },
     });
     expect(launch.launch_mode).toBe('fake_embed');
     expect(launch.provider_call_id).toMatch(/^fake-call-/);

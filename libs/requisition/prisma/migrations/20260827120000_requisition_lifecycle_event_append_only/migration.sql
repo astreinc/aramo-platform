@@ -22,7 +22,7 @@ CREATE OR REPLACE FUNCTION requisition.reject_requisition_lifecycle_event_update
 RETURNS TRIGGER AS $$
 BEGIN
   RAISE EXCEPTION
-    'RequisitionLifecycleEvent is append-only (ADR-0024 D17c) -- UPDATE is not permitted'
+    'RequisitionLifecycleEvent is append-only (ADR-0024 D17c): UPDATE is not permitted'
     USING ERRCODE = 'check_violation';
 END;
 $$ LANGUAGE plpgsql;
@@ -42,7 +42,7 @@ BEGIN
     RETURN OLD;
   END IF;
   RAISE EXCEPTION
-    'RequisitionLifecycleEvent is append-only (ADR-0024 D17c) -- DELETE is not permitted'
+    'RequisitionLifecycleEvent is append-only (ADR-0024 D17c): DELETE is not permitted'
     USING ERRCODE = 'check_violation';
 END;
 $$ LANGUAGE plpgsql;

@@ -192,6 +192,16 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       // current RecruitingStatus, null when the requisition is absent).
       'REQUISITION_NOT_OPEN',
       'COMMUNICATION_PROVIDER_USER_ALREADY_MAPPED',
+      // COMM-B5 — call initiation. CALL_CONSENT_DENIED (403) is the STABLE
+      // client-facing refusal for a non-allowed contacting-consent decision
+      // (both an explicit denial and a fail-closed system failure surface as
+      // this code; the denied-vs-failure distinction is retained in audit/logs
+      // only). CALL_NOT_INITIABLE (422) covers business/precondition failures
+      // that are not provider-not-configured or user-not-mapped (e.g. no dialable
+      // number on file, an un-normalizable destination, a provider launch that
+      // fails before ringing).
+      'COMMUNICATION_CALL_CONSENT_DENIED',
+      'COMMUNICATION_CALL_NOT_INITIABLE',
     ]);
   });
 });
