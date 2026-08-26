@@ -3260,6 +3260,57 @@ paths:
         '503':
           description: Webhook dark — signing secret not provisioned.
 
+  /v1/webhooks/communications/zoom:
+    post:
+      operationId: zoomCommunicationsWebhook
+      summary: Inbound Zoom Phone webhook (external provider, HMAC-authenticated).
+      description: |
+        External provider (Zoom) inbound webhook — surface class XP (COMM-B6). There is
+        NO Aramo session and therefore NO bearer token; the SOLE authority is the
+        `x-zm-signature` HMAC-SHA256 over `v0:{x-zm-request-timestamp}:{raw body}`, with a
+        freshness window on the timestamp. Ships DARK by construction: until the signing
+        secret reference resolves the endpoint refuses all traffic with 503. Tenant is
+        resolved ONLY after signature verification, from the SIGNED account identity mapped
+        to an IntegrationConnection. The webhook UPDATES a known outbound interaction; it
+        never creates one, and unknown/unmatched/unsupported events are durably accounted
+        for in the provider-event inbox without mutating any communication record. Every
+        outcome is a bare status (external machine ingress, not the Aramo client error
+        contract); the 204 is uniform across processed/unmatched/unknown-account to avoid
+        any existence oracle. The raw body is preserved by a route-scoped raw parser (the
+        exact signed bytes); the request body is an opaque Zoom-defined JSON document.
+      security:
+        - ZoomHmacSignature: []
+      requestBody:
+        required: true
+        description: The raw Zoom webhook JSON payload (opaque; the signed bytes).
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: endpoint.url_validation challenge response.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [plainToken, encryptedToken]
+                properties:
+                  plainToken:
+                    type: string
+                  encryptedToken:
+                    type: string
+        '204':
+          description: Accepted (processed, duplicate, unsupported, unmatched, or unknown account).
+        '400':
+          description: Malformed body after a valid signature.
+        '401':
+          description: Missing, invalid, or stale x-zm-signature HMAC.
+        '503':
+          description: Webhook dark — signing secret reference not resolvable.
+
   /v1/reports/fill-performance:
     get:
       operationId: getFillPerformanceReport
@@ -3939,6 +3990,19 @@ components:
       description: |
         HMAC signature over the exact raw request body, computed and sent by Indeed. Not a
         secret — the shared signing secret is provisioned out-of-band and never documented.
+
+    # COMM-B6 — the Zoom Phone webhook (XP) authenticates by HMAC-SHA256 signature over
+    # `v0:{x-zm-request-timestamp}:{raw body}`, not a bearer token. This header carries the
+    # COMPUTED signature only; the app-level signing secret is resolved from an opaque
+    # reference (ZOOM_WEBHOOK_SECRET_REF) through Secrets Manager and never appears here.
+    ZoomHmacSignature:
+      type: apiKey
+      in: header
+      name: x-zm-signature
+      description: |
+        HMAC-SHA256 signature (format `v0=<hex>`) over `v0:{timestamp}:{raw body}`, computed
+        and sent by Zoom. Not a secret — the signing secret is resolved server-side from an
+        opaque reference and never documented. Paired with the `x-zm-request-timestamp` header.
 
   schemas:
     CommunicationCapabilities:

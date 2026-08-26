@@ -96,6 +96,20 @@ export class IntegrationConnectionService {
   }
 
   /**
+   * COMM-B6 — resolve a USABLE connection by the SIGNED provider account identity
+   * (tenant-agnostic; the account id selects the tenant AFTER webhook signature
+   * verification). Returns the secret-free view (carries tenant_id + id). Null =
+   * no usable connection for that account → caller accepts + no-ops (no oracle).
+   */
+  async findConnectionByProviderAccountId(
+    providerKey: string,
+    providerAccountId: string,
+  ): Promise<IntegrationConnectionView | null> {
+    const row = await this.repo.findByProviderAccountId(providerKey, providerAccountId);
+    return row === null ? null : toConnectionView(row);
+  }
+
+  /**
    * WRITE-ONLY credential set (directive §7/§34). The client supplies a raw
    * credential value ONCE; the server generates the opaque secret_ref, derives
    * the tenant-namespaced SM id, and stores the value in Secrets Manager. The

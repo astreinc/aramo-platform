@@ -193,6 +193,11 @@ services:
       # the container, so the fix is inert (the D-AUTH-PLATFORM-HOSTS-1 defect
       # class). api-only. UNSET → the webhook refuses all traffic (503, dark).
       - ARAMO_INDEED_APPLY_WEBHOOK_SECRET
+      # COMM-B6 — Zoom Phone webhook signing-secret REFERENCE (not the raw secret):
+      # an opaque Secrets Manager id resolved server-side, memory-only. Bare-name
+      # passthrough (api-only). UNSET/unresolvable → the webhook refuses all traffic
+      # (503, dark by construction).
+      - ZOOM_WEBHOOK_SECRET_REF
       # SRC-2 PR-3 (R7) — Indeed Job Sync partner OAuth credentials + connector
       # config. Bare-name passthroughs (the D-AUTH-PLATFORM-HOSTS-1 defect class).
       # api-only. UNSET client id/secret → the freshness sweep is fail-closed

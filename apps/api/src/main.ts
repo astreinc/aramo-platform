@@ -13,6 +13,10 @@ import {
   INDEED_APPLY_MAX_BODY_BYTES,
   INDEED_APPLY_WEBHOOK_ROUTE,
 } from './webhooks/indeed-apply.constants.js';
+import {
+  ZOOM_WEBHOOK_MAX_BODY_BYTES,
+  ZOOM_WEBHOOK_ROUTE,
+} from './communications/zoom-webhook.constants.js';
 
 async function bootstrap(): Promise<void> {
   const port = process.env['PORT'] ?? 3000;
@@ -40,6 +44,13 @@ async function bootstrap(): Promise<void> {
   app.use(
     INDEED_APPLY_WEBHOOK_ROUTE,
     express.raw({ type: () => true, limit: INDEED_APPLY_MAX_BODY_BYTES }),
+  );
+  // COMM-B6 — route-scoped RAW body for the Zoom Phone webhook ONLY: the
+  // x-zm-signature HMAC-SHA256 covers `v0:{timestamp}:{raw body}`, so the exact
+  // signed bytes must survive to the verifier (never the re-serialized JSON).
+  app.use(
+    ZOOM_WEBHOOK_ROUTE,
+    express.raw({ type: () => true, limit: ZOOM_WEBHOOK_MAX_BODY_BYTES }),
   );
   // Restore Nest's default global parsers for every other route (behaviour-
   // preserving — Nest uses express json+urlencoded under the hood).
