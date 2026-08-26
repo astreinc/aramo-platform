@@ -2259,7 +2259,7 @@
       },
       { "project": "task", "status": "production" }
     ],
-    "@aramo/communications": [],
+    "@aramo/communications": [{ "project": "api", "status": "production" }],
     "@aramo/company": [
       { "from": "tools/seed-e2e-data.ts", "project": "(unscoped)", "status": "unscoped" },
       {
@@ -3267,6 +3267,12 @@
       { "project": "cold-ingest-extraction", "status": "production" }
     ],
     "@aramo/integration": [
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/communications-authz.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/connector-integration-authz.integration.spec.ts",
