@@ -80,6 +80,11 @@ import { ExternalRequisitionIdentityRepository } from './lifecycle/external-requ
     IntegrationConnectionService,
     ConnectorExecutionService,
     ConnectorAdapterRegistry,
+    // COMM-B6 — the Secrets Manager READ port, so the composition root can bind a
+    // Zoom webhook secret resolver (a secret-resolver, the port's sanctioned
+    // consumer category). The secret id is derived server-side from config env,
+    // never from client input.
+    SECRETS_MANAGER_PORT,
     // L1-D1 — exported so the apps/api reconciler can compose them.
     RequisitionLifecycleMappingRepository,
     RequisitionExternalReconciliationRepository,

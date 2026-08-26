@@ -81,8 +81,10 @@ describe('ZoomPhoneAdapter', () => {
     ).rejects.toBeInstanceOf(ZoomInitiateCallError);
   });
 
-  it('still defers normalizeWebhook to B6 rather than inventing semantics', async () => {
-    await expect(adapter.normalizeWebhook({})).rejects.toBeInstanceOf(ZoomAdapterDeferredError);
+  it('COMM-B6: normalizeWebhook no longer defers — it maps or rejects unsupported', async () => {
+    // Deep mapping behaviour is covered in zoom-webhook-normalize.spec.ts; here we
+    // only prove it is no longer a blanket B6 deferral.
+    await expect(adapter.normalizeWebhook({})).rejects.not.toBeInstanceOf(ZoomAdapterDeferredError);
   });
 });
 

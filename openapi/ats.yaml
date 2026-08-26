@@ -3260,6 +3260,57 @@ paths:
         '503':
           description: Webhook dark — signing secret not provisioned.
 
+  /v1/webhooks/communications/zoom:
+    post:
+      operationId: zoomCommunicationsWebhook
+      summary: Inbound Zoom Phone webhook (external provider, HMAC-authenticated).
+      description: |
+        External provider (Zoom) inbound webhook — surface class XP (COMM-B6). There is
+        NO Aramo session and therefore NO bearer token; the SOLE authority is the
+        `x-zm-signature` HMAC-SHA256 over `v0:{x-zm-request-timestamp}:{raw body}`, with a
+        freshness window on the timestamp. Ships DARK by construction: until the signing
+        secret reference resolves the endpoint refuses all traffic with 503. Tenant is
+        resolved ONLY after signature verification, from the SIGNED account identity mapped
+        to an IntegrationConnection. The webhook UPDATES a known outbound interaction; it
+        never creates one, and unknown/unmatched/unsupported events are durably accounted
+        for in the provider-event inbox without mutating any communication record. Every
+        outcome is a bare status (external machine ingress, not the Aramo client error
+        contract); the 204 is uniform across processed/unmatched/unknown-account to avoid
+        any existence oracle. The raw body is preserved by a route-scoped raw parser (the
+        exact signed bytes); the request body is an opaque Zoom-defined JSON document.
+      security:
+        - ZoomHmacSignature: []
+      requestBody:
+        required: true
+        description: The raw Zoom webhook JSON payload (opaque; the signed bytes).
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: endpoint.url_validation challenge response.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [plainToken, encryptedToken]
+                properties:
+                  plainToken:
+                    type: string
+                  encryptedToken:
+                    type: string
+        '204':
+          description: Accepted (processed, duplicate, unsupported, unmatched, or unknown account).
+        '400':
+          description: Malformed body after a valid signature.
+        '401':
+          description: Missing, invalid, or stale x-zm-signature HMAC.
+        '503':
+          description: Webhook dark — signing secret reference not resolvable.
+
   /v1/reports/fill-performance:
     get:
       operationId: getFillPerformanceReport
@@ -3640,6 +3691,98 @@ paths:
           $ref: 'common.yaml#/components/responses/NotFound'
       security:
         - BearerAuth: []
+  /v1/communications/interactions/{interactionId}/disposition:
+    post:
+      operationId: recordCommunicationDisposition
+      summary: Record a disposition (append-only) on a communication interaction.
+      description: |
+        Record a post-call disposition on an interaction (COMM-B7). Requires the
+        `ats` capability and `communication:disposition:write`. When `notes` is
+        present and non-blank the caller MUST additionally hold
+        `communication:notes:write` (else 403). Append-only history (no
+        upsert/replace). State-agnostic — a disposition may be recorded against
+        any existing interaction. `do_not_contact` is a RECORDED OUTCOME ONLY and
+        never mutates consent or any suppression flag in V1. 404
+        COMMUNICATION_INTERACTION_NOT_FOUND when the interaction is absent or
+        cross-tenant (tenant-safe, no disclosure).
+      parameters:
+        - name: interactionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RecordCommunicationDispositionRequest'
+      responses:
+        '201':
+          description: Disposition recorded.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [id]
+                properties:
+                  id: { type: string, format: uuid }
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+  /v1/talents/{talentId}/communications:
+    get:
+      operationId: getTalentCommunicationTimeline
+      summary: The Talent communication timeline (keyset-paginated).
+      description: |
+        A talent's communication interactions (COMM-B7), newest first
+        (created_at DESC, id DESC), each carrying its disposition history
+        (dispositioned_at DESC, id DESC). Requires the `ats` capability and
+        `communication:read`. Reads DIRECT from communications associations — no
+        Activity projection, no provider raw payload. Keyset-paginated. An unknown
+        talent, or one with no communications, is a 200 empty page — NEVER a 404.
+      parameters:
+        - name: talentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+          description: Page size (1..200, default 50).
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Opaque keyset cursor from a prior page's next_cursor.
+      responses:
+        '200':
+          description: OK (possibly empty).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TalentCommunicationTimelineResponse'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+      security:
+        - BearerAuth: []
   /v1/integrations:
     get:
       operationId: listIntegrationConnections
@@ -3940,6 +4083,19 @@ components:
         HMAC signature over the exact raw request body, computed and sent by Indeed. Not a
         secret — the shared signing secret is provisioned out-of-band and never documented.
 
+    # COMM-B6 — the Zoom Phone webhook (XP) authenticates by HMAC-SHA256 signature over
+    # `v0:{x-zm-request-timestamp}:{raw body}`, not a bearer token. This header carries the
+    # COMPUTED signature only; the app-level signing secret is resolved from an opaque
+    # reference (ZOOM_WEBHOOK_SECRET_REF) through Secrets Manager and never appears here.
+    ZoomHmacSignature:
+      type: apiKey
+      in: header
+      name: x-zm-signature
+      description: |
+        HMAC-SHA256 signature (format `v0=<hex>`) over `v0:{timestamp}:{raw body}`, computed
+        and sent by Zoom. Not a secret — the signing secret is resolved server-side from an
+        opaque reference and never documented. Paired with the `x-zm-request-timestamp` header.
+
   schemas:
     CommunicationCapabilities:
       type: object
@@ -4101,6 +4257,124 @@ components:
         updated_at:
           type: string
           format: date-time
+    RecordCommunicationDispositionRequest:
+      type: object
+      additionalProperties: false
+      description: Record a disposition (COMM-B7). notes requires communication:notes:write.
+      required:
+        - disposition
+      properties:
+        disposition:
+          type: string
+          enum:
+            - connected
+            - left_voicemail
+            - no_answer
+            - busy
+            - wrong_number
+            - interested
+            - not_interested
+            - callback_requested
+            - follow_up_required
+            - do_not_contact
+        notes:
+          type: [string, 'null']
+          maxLength: 4000
+    CommunicationDisposition:
+      type: object
+      additionalProperties: false
+      description: A recorded disposition (append-only history entry), COMM-B7.
+      required:
+        - id
+        - disposition
+        - notes
+        - dispositioned_at
+      properties:
+        id: { type: string, format: uuid }
+        disposition:
+          type: string
+          enum:
+            - connected
+            - left_voicemail
+            - no_answer
+            - busy
+            - wrong_number
+            - interested
+            - not_interested
+            - callback_requested
+            - follow_up_required
+            - do_not_contact
+        notes:
+          type: [string, 'null']
+        dispositioned_at:
+          type: string
+          format: date-time
+    TalentCommunicationTimelineItem:
+      type: object
+      additionalProperties: false
+      description: A communication interaction plus its disposition history (COMM-B7).
+      required:
+        - id
+        - channel
+        - direction
+        - status
+        - integration_connection_id
+        - from_address
+        - to_address
+        - created_at
+        - updated_at
+        - dispositions
+      properties:
+        id: { type: string, format: uuid }
+        channel:
+          type: string
+          enum: [voice, sms, email]
+        direction:
+          type: string
+          enum: [outbound, inbound]
+        status:
+          type: string
+          enum: [created, initiated, ringing, connected, completed, failed, missed, rejected]
+        integration_connection_id: { type: string, format: uuid }
+        from_address: { type: string }
+        to_address: { type: string }
+        started_at:
+          type: [string, 'null']
+          format: date-time
+        ringing_at:
+          type: [string, 'null']
+          format: date-time
+        connected_at:
+          type: [string, 'null']
+          format: date-time
+        ended_at:
+          type: [string, 'null']
+          format: date-time
+        duration_seconds:
+          type: [integer, 'null']
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        dispositions:
+          type: array
+          items:
+            $ref: '#/components/schemas/CommunicationDisposition'
+    TalentCommunicationTimelineResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+        - next_cursor
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/TalentCommunicationTimelineItem'
+        next_cursor:
+          type: [string, 'null']
     Offer:
       type: object
       additionalProperties: false

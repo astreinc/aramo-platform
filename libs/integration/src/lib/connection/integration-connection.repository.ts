@@ -89,6 +89,28 @@ export class IntegrationConnectionRepository implements ConnectionSecretLoaderPo
     return row === null ? null : toRow(row);
   }
 
+  // COMM-B6 — resolve a USABLE connection by (provider_key, provider_account_id)
+  // WITHOUT a tenant filter: an inbound provider webhook is not tenant-scoped, so
+  // after cryptographic authenticity is established the tenant is derived from the
+  // SIGNED account identity mapped to a connection. The account id is expected to
+  // identify a single connection; if more than one usable connection shares it the
+  // most-recently-updated wins (deterministic), and the caller may treat an
+  // ambiguous/absent result as "no trusted tenant" (accept + no-op, no oracle).
+  async findByProviderAccountId(
+    providerKey: string,
+    providerAccountId: string,
+  ): Promise<IntegrationConnectionRow | null> {
+    const row = (await this.prisma.integrationConnection.findFirst({
+      where: {
+        provider_key: providerKey,
+        provider_account_id: providerAccountId,
+        status: { in: ['configured', 'active'] },
+      },
+      orderBy: { updated_at: 'desc' },
+    })) as ConnectionDbRow | null;
+    return row === null ? null : toRow(row);
+  }
+
   async listForTenant(tenantId: string): Promise<IntegrationConnectionRow[]> {
     const rows = (await this.prisma.integrationConnection.findMany({
       where: { tenant_id: tenantId },

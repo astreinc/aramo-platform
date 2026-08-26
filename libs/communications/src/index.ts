@@ -73,7 +73,19 @@ export {
   ZOOM_EMBED_LAUNCH_MODE,
   ZoomAdapterDeferredError,
   ZoomInitiateCallError,
+  ZoomUnsupportedWebhookEventError,
 } from './lib/provider/zoom/zoom-phone.adapter.js';
+// COMM-B6 — Zoom webhook signature + envelope (composition-root ingress helpers).
+export {
+  verifyZoomWebhookSignature,
+  computeZoomUrlValidationResponse,
+  type ZoomSignatureInput,
+  type ZoomSignatureResult,
+} from './lib/provider/zoom/zoom-webhook-signature.js';
+export {
+  parseZoomWebhookEnvelope,
+  type ZoomWebhookEnvelope,
+} from './lib/provider/zoom/zoom-webhook-envelope.js';
 export {
   encodeZoomCredential,
   decodeZoomCredential,
@@ -86,3 +98,11 @@ export {
   REQUISITION_EXISTENCE_PORT,
   type RequisitionExistencePort,
 } from './lib/ports/requisition-existence.port.js';
+
+// COMM-B7 — Talent communication timeline keyset cursor.
+export {
+  encodeTimelineCursor,
+  decodeTimelineCursor,
+  CommunicationCursorDecodeError,
+  type TimelineCursorPayload,
+} from './lib/util/timeline-cursor.js';

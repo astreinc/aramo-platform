@@ -7,7 +7,8 @@ import { EntitlementGuard, RequireCapability } from '@aramo/entitlement';
 
 import { CommunicationsApiService } from './communications-api.service.js';
 import { CommunicationCallService } from './communication-call.service.js';
-import { InitiateCommunicationCallDto, UpsertProviderIdentityDto } from './dto/communications.dto.js';
+import { CommunicationTimelineService } from './communication-timeline.service.js';
+import { InitiateCommunicationCallDto, RecordDispositionDto, UpsertProviderIdentityDto } from './dto/communications.dto.js';
 import type {
   CommunicationCapabilitiesDto,
   CommunicationInteractionViewDto,
@@ -33,6 +34,7 @@ export class CommunicationsController {
     private readonly comms: CommunicationsApiService,
     private readonly calls: CommunicationCallService,
     private readonly idempotency: IdempotencyService,
+    private readonly timeline: CommunicationTimelineService,
   ) {}
 
   // COMM-B5 — initiate an outbound voice call. communication:voice:call scope
@@ -152,5 +154,20 @@ export class CommunicationsController {
       );
     }
     return view;
+  }
+
+  // COMM-B7 — record a disposition (append-only history) on an interaction.
+  // Gated communication:disposition:write; when notes is non-blank the service
+  // ALSO requires communication:notes:write. State-agnostic; tenant-safe 404.
+  @Post('interactions/:interactionId/disposition')
+  @HttpCode(HttpStatus.CREATED)
+  @RequireScopes('communication:disposition:write')
+  async recordDisposition(
+    @Param('interactionId', ParseUUIDPipe) interactionId: string,
+    @Body() dto: RecordDispositionDto,
+    @AuthContext() auth: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<{ id: string }> {
+    return this.timeline.recordDisposition(auth, interactionId, dto, requestId);
   }
 }

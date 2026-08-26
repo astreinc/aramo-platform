@@ -1,13 +1,25 @@
 import { IsBoolean, IsIn, IsOptional, IsString, IsUUID, MaxLength, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
+import { COMMUNICATION_DISPOSITION_OUTCOMES } from '@aramo/communications';
 import type {
   CommunicationChannel,
   CommunicationDirection,
+  CommunicationDispositionOutcome,
   CommunicationInteractionStatus,
   CommunicationProviderIdentityStatus,
 } from '@aramo/communications';
 
 const PROVIDER_IDENTITY_STATUSES = ['active', 'unmapped', 'disabled', 'reauth_required'] as const;
+
+// COMM-B7 — record a call disposition on an interaction. `disposition` is
+// required (one of the 10 locked outcomes); `notes` optional. When `notes` is
+// present and non-blank the route additionally requires communication:notes:write
+// (enforced in-handler). do_not_contact is a recorded outcome ONLY — it never
+// mutates consent / any suppression flag in V1.
+export class RecordDispositionDto {
+  @IsIn(COMMUNICATION_DISPOSITION_OUTCOMES) disposition!: CommunicationDispositionOutcome;
+  @IsOptional() @IsString() @MaxLength(4000) notes?: string | null;
+}
 
 // COMM-B5 — call-initiation request body for POST /v1/communications/calls.
 // The server resolves the destination from the Talent record's phone_slot; an
@@ -92,4 +104,23 @@ export interface CommunicationInteractionViewDto {
   duration_seconds: number | null;
   created_at: string;
   updated_at: string;
+}
+
+// COMM-B7 — a recorded disposition (append-only history entry).
+export interface CommunicationDispositionDto {
+  id: string;
+  disposition: CommunicationDispositionOutcome;
+  notes: string | null;
+  dispositioned_at: string;
+}
+
+// COMM-B7 — a Talent communication timeline entry: the provider-neutral
+// interaction view + its disposition history (dispositioned_at DESC, id DESC).
+export interface TalentCommunicationTimelineItemDto extends CommunicationInteractionViewDto {
+  dispositions: CommunicationDispositionDto[];
+}
+
+export interface TalentCommunicationTimelineResponseDto {
+  items: TalentCommunicationTimelineItemDto[];
+  next_cursor: string | null;
 }

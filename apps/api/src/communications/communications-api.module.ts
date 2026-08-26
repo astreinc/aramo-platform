@@ -14,9 +14,14 @@ import { RequisitionModule } from '@aramo/requisition';
 import { TalentRecordModule } from '@aramo/talent-record';
 
 import { CommunicationsController } from './communications.controller.js';
+import { TalentCommunicationsController } from './talent-communications.controller.js';
 import { CommunicationsApiService } from './communications-api.service.js';
 import { CommunicationCallService } from './communication-call.service.js';
+import { CommunicationTimelineService } from './communication-timeline.service.js';
 import { RequisitionExistenceAdapter } from './requisition-existence.adapter.js';
+import { ZoomWebhookController } from './zoom-webhook.controller.js';
+import { ZoomWebhookService } from './zoom-webhook.service.js';
+import { ZoomWebhookSecretResolver } from './zoom-webhook-secret.resolver.js';
 
 // COMM-B2/B3 (Aramo-COMM-V1) — apps/api composition root for the /v1/communications
 // surface. Imports the domain CommunicationsModule (repository + empty
@@ -47,10 +52,16 @@ const ZOOM_VOICE_PROVIDER_REGISTRAR = Symbol('ZOOM_VOICE_PROVIDER_REGISTRAR');
     TalentRecordModule,
     RequisitionModule,
   ],
-  controllers: [CommunicationsController],
+  controllers: [CommunicationsController, ZoomWebhookController, TalentCommunicationsController],
   providers: [
     CommunicationsApiService,
     CommunicationCallService,
+    // COMM-B7 — disposition write + Talent communication timeline read.
+    CommunicationTimelineService,
+    // COMM-B6 — Zoom webhook ingress (HMAC-verified, un-JWT'd; wired here at the
+    // composition root alongside the connection/inbox/consent reads it needs).
+    ZoomWebhookService,
+    ZoomWebhookSecretResolver,
     // Bind the comms-owned requisition existence port to its apps/api reader.
     RequisitionExistenceAdapter,
     { provide: REQUISITION_EXISTENCE_PORT, useExisting: RequisitionExistenceAdapter },

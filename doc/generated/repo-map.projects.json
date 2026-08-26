@@ -256,6 +256,7 @@
       "COMMUNICATION_PROVIDER_IDENTITY_STATUSES",
       "COMMUNICATION_RELATION_TYPES",
       "COMMUNICATION_SUBJECT_TYPES",
+      "CommunicationCursorDecodeError",
       "CommunicationInteractionNotFoundError",
       "CommunicationInvalidStateError",
       "CommunicationsModule",
@@ -273,11 +274,17 @@
       "ZoomCredentialDecodeError",
       "ZoomInitiateCallError",
       "ZoomPhoneAdapter",
+      "ZoomUnsupportedWebhookEventError",
       "assertTransition",
       "canTransition",
+      "computeZoomUrlValidationResponse",
+      "decodeTimelineCursor",
       "decodeZoomCredential",
+      "encodeTimelineCursor",
       "encodeZoomCredential",
-      "isTerminalCallState"
+      "isTerminalCallState",
+      "parseZoomWebhookEnvelope",
+      "verifyZoomWebhookSignature"
     ],
     "@aramo/company": [
       "CompanyController",
@@ -3298,6 +3305,18 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/comm-b5-call-initiation.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/comm-b6-zoom-webhook.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/comm-b7-disposition-timeline.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
