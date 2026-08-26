@@ -20,6 +20,12 @@ import { ImportServiceHandoff } from './handoff/import-service.handoff.js';
 import { REQUISITION_IMPORT_HANDOFF } from './handoff/requisition-import-handoff.port.js';
 import { DELIVERY_LEDGER } from './execution/delivery-ledger.port.js';
 import { ConnectorAuditLog } from './observability/connector-audit.js';
+// L1-D1 (ADR-0030) — external-lifecycle-authority substrate repositories.
+import {
+  RequisitionLifecycleMappingRepository,
+  RequisitionExternalReconciliationRepository,
+  RequisitionExternalTransitionProvenanceRepository,
+} from './lifecycle/requisition-lifecycle-authority.repository.js';
 
 // IntegrationModule — T8-CONNECTOR-A provider-neutral connector foundation.
 //
@@ -46,6 +52,12 @@ import { ConnectorAuditLog } from './observability/connector-audit.js';
     ConnectorExecutionOrchestrator,
     IntegrationConnectionService,
     ConnectorExecutionService,
+    // L1-D1 (ADR-0030) — external-lifecycle-authority substrate. Pure data-access
+    // seams; the governed transition runs through @aramo/requisition, composed by
+    // the apps/api reconciler (no requisition write here — HARD PROHIBITION).
+    RequisitionLifecycleMappingRepository,
+    RequisitionExternalReconciliationRepository,
+    RequisitionExternalTransitionProvenanceRepository,
     // Port → impl bindings (bound once; no duplicate instances).
     { provide: CONNECTION_SECRET_LOADER, useExisting: IntegrationConnectionRepository },
     { provide: DELIVERY_LEDGER, useExisting: ConnectorDeliveryRepository },
@@ -57,6 +69,10 @@ import { ConnectorAuditLog } from './observability/connector-audit.js';
     IntegrationConnectionService,
     ConnectorExecutionService,
     ConnectorAdapterRegistry,
+    // L1-D1 — exported so the apps/api reconciler can compose them.
+    RequisitionLifecycleMappingRepository,
+    RequisitionExternalReconciliationRepository,
+    RequisitionExternalTransitionProvenanceRepository,
   ],
 })
 export class IntegrationModule {}

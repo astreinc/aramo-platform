@@ -517,6 +517,9 @@
       "IntegrationModule",
       "IntegrationPrismaService",
       "REDACTED",
+      "RequisitionExternalReconciliationRepository",
+      "RequisitionExternalTransitionProvenanceRepository",
+      "RequisitionLifecycleMappingRepository",
       "SECRETS_MANAGER_PORT",
       "SECRETS_MANAGER_WRITER",
       "assertConnectorSecretRefBinding",
@@ -820,6 +823,7 @@
       "canonicalizeSourceSystem",
       "emptyRequisitionProfileView",
       "governingAction",
+      "isExternalLifecycleAction",
       "isGatedRecruitingStatus",
       "isRatePeriod",
       "isRateType",
@@ -3285,6 +3289,12 @@
         "project": "api",
         "status": "excluded"
       },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/l1d1-external-lifecycle-authority.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
       { "project": "api", "status": "production" },
       {
         "from": "pact/provider/src/verify-api.ts",
@@ -3612,6 +3622,12 @@
       { "project": "requisition", "status": "production" }
     ],
     "@aramo/policy-store": [
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/l1d1-external-lifecycle-authority.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/policy-cache-ttl.integration.spec.ts",
