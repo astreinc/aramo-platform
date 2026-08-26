@@ -13,7 +13,10 @@ import {
 
 import { PrismaService } from './prisma/prisma.service.js';
 import { SetPriorityPolicyService } from './policy/set-priority-policy.service.js';
-import { RequisitionTransitionPolicyService } from './policy/requisition-transition-policy.service.js';
+import {
+  RequisitionTransitionPolicyService,
+  REQUISITION_POLICY_STORE,
+} from './policy/requisition-transition-policy.service.js';
 import { RequisitionAssignmentRepository } from './requisition-assignment.repository.js';
 import { RequisitionController } from './requisition.controller.js';
 import { RequisitionIntakeService } from './requisition-intake.service.js';
@@ -57,7 +60,12 @@ import { RequisitionRepository } from './requisition.repository.js';
     // policy-store PrismaService is its OWN generated client (lazy DATABASE_URL),
     // distinct from the requisition client above.
     PolicyStorePrismaService,
-    PolicyStore,
+    // L1-F2 — provide the requisition PolicyStore under a DEDICATED string token,
+    // NOT the bare `PolicyStore` class token. A third bare class-token PolicyStore
+    // (alongside pipeline's add-talent + this one) shifts what
+    // `app.get(PolicyStore, { strict: false })` resolves and breaks the add-talent
+    // version-pinning invariant. Both requisition policy gates @Inject this token.
+    { provide: REQUISITION_POLICY_STORE, useClass: PolicyStore },
     SetPriorityPolicyService,
     // T1-e — the governed-transition policy gate (§2.2), wired at the same
     // repository floor as SET_PRIORITY. Shares the PolicyStore provider above.
