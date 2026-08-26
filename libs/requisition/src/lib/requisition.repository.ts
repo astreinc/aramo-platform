@@ -835,6 +835,24 @@ export class RequisitionRepository {
     return row === null ? null : (row.status as RecruitingStatus);
   }
 
+  // CB-D2-A1 (ADR-0030) — the external-identity establishment READ. Given the
+  // ImportBatch a connector delivery produced, return each created requisition's
+  // (id, external_req_id) so the apps/api establishment handoff can record the
+  // connection-scoped ExternalRequisitionIdentity. Rows with no external_req_id
+  // (non-provenanced) are skipped by the caller. Read-only — this NEVER mutates a
+  // requisition (the connector HARD PROHIBITION is preserved). Also serves the
+  // deterministic historical backfill (import_batch_id → ConnectorDelivery → conn).
+  async findExternalIdentitiesByImportBatch(args: {
+    tenant_id: string;
+    import_batch_id: string;
+  }): Promise<Array<{ requisition_id: string; external_req_id: string | null }>> {
+    const rows = await this.prisma.requisition.findMany({
+      where: { tenant_id: args.tenant_id, import_batch_id: args.import_batch_id },
+      select: { id: true, external_req_id: true },
+    });
+    return rows.map((r) => ({ requisition_id: r.id, external_req_id: r.external_req_id }));
+  }
+
   // -------------------------------------------------------------------------
   // Write path
   // -------------------------------------------------------------------------

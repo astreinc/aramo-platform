@@ -183,4 +183,35 @@ export class IntegrationConnectionRepository implements ConnectionSecretLoaderPo
       },
     });
   }
+
+  /**
+   * CB-D2-A1 (R-DURABILITY) — advance the connection's opaque polling cursor.
+   * Called ONLY after a lifecycle fetch is fully processed (persist-then-process):
+   * the cursor is the "since last download" watermark, never advanced ahead of
+   * durable ingress. Tenant-scoped; returns the row count updated (0 → miss).
+   */
+  async advanceCursor(tenantId: string, id: string, cursor: string | null): Promise<number> {
+    const res = await this.prisma.integrationConnection.updateMany({
+      where: { tenant_id: tenantId, id },
+      data: { cursor, version: { increment: 1 } },
+    });
+    return res.count;
+  }
+
+  /**
+   * CB-D2-A1 (R-PRODUCER) — the ACTIVE connections a lifecycle poll should sweep
+   * (all tenants; the scheduled producer is tenant-agnostic). Only `active`
+   * connections are polled; the caller resolves a LifecycleSourceAdapter per
+   * provider_key and skips any with no registered source.
+   */
+  async listActiveForLifecyclePoll(): Promise<
+    Array<{ id: string; tenant_id: string; provider_key: string; cursor: string | null }>
+  > {
+    const rows = (await this.prisma.integrationConnection.findMany({
+      where: { status: 'active' },
+      select: { id: true, tenant_id: true, provider_key: true, cursor: true },
+      orderBy: { updated_at: 'asc' },
+    })) as Array<{ id: string; tenant_id: string; provider_key: string; cursor: string | null }>;
+    return rows;
+  }
 }
