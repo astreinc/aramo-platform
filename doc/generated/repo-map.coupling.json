@@ -8469,6 +8469,11 @@
       "to": "libs/requisition/src/lib/dto/requisition-assignment.view.ts"
     },
     {
+      "from": "apps/ats-web/src/communications/types.ts",
+      "status": "production",
+      "to": "openapi/ats.yaml"
+    },
+    {
       "from": "apps/ats-web/src/companies/companies-api.ts",
       "status": "production",
       "to": "libs/identity/prisma/seed.ts"

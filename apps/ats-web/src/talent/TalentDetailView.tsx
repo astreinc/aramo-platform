@@ -12,6 +12,7 @@ import { Tabs, type TabItem } from '@aramo/fe-foundation';
 
 import { Button, StatusPill, type PillTone } from '../ui';
 import { useEntityCrumb } from '../shell/breadcrumb';
+import { CallButton } from '../communications/CallButton';
 import { SelectionsPanel } from '../selection/SelectionsPanel';
 import { TasksPanel } from '../task/TasksPanel';
 import { listActivities } from '../activity/activity-api';
@@ -223,6 +224,9 @@ export function TalentDetailView({ sessionOverride }: TalentDetailViewProps) {
           </>
         ) : null}
       </p>
+      <div className="talent-detail__actions">
+        <CallButton talent={talent} session={session} />
+      </div>
       <Tabs items={tabs} ariaLabel="Talent details" />
     </section>
   );

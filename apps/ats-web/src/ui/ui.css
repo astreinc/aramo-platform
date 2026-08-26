@@ -4176,3 +4176,45 @@ button.rc-tj__cell { cursor: pointer; }
 button.rc-tj__cell:hover { color: #022ac0; text-decoration: underline; }
 .rc-tj__exp { display: block; font-size: 10.5px; color: #93a0a8; }
 .rc-tj__empty { color: #93a0a8; }
+
+/* ─────────────── COMM-V1 recruiter Call affordance (COMM-B4) ─────────────── */
+
+.talent-detail__actions { display: flex; gap: 8px; margin: 6px 0 2px; }
+
+.rc-comm-call {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 14px; border-radius: 8px; border: 1px solid #022ac0;
+  background: #022ac0; color: #fff; font-size: 12.5px; font-weight: 600; cursor: pointer;
+}
+.rc-comm-call:hover:not(:disabled) { background: #011f8d; border-color: #011f8d; }
+.rc-comm-call:disabled { background: #eef1f4; border-color: #dce1e6; color: #93a0a8; cursor: not-allowed; }
+
+.rc-comm-drawer {
+  position: fixed; top: 0; right: 0; bottom: 0; width: 380px; max-width: 92vw;
+  background: #fff; border-left: 1px solid #e5e9ed; box-shadow: -8px 0 24px #1b273014;
+  display: flex; flex-direction: column; gap: 14px; padding: 18px; overflow-y: auto; z-index: 40;
+}
+.rc-comm-drawer__hd { display: flex; align-items: center; gap: 10px; }
+.rc-comm-drawer__title { font-size: 15px; font-weight: 700; color: #1b2730; margin: 0; }
+.rc-comm-drawer__close {
+  margin-left: auto; background: none; border: 0; font-size: 20px; line-height: 1;
+  color: #93a0a8; cursor: pointer; padding: 2px 6px;
+}
+.rc-comm-drawer__close:hover { color: #1b2730; }
+.rc-comm-drawer__section { border: 1px solid #eef1f4; border-radius: 10px; padding: 12px 14px; margin: 0; }
+.rc-comm-drawer__subhd { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: #93a0a8; margin: 0 0 6px; }
+.rc-comm-drawer__radio { display: block; font-size: 12.5px; color: #1b2730; padding: 3px 0; cursor: pointer; }
+.rc-comm-drawer__empty { font-size: 12.5px; color: #93a0a8; margin: 0; }
+.rc-comm-drawer__caller { font-size: 13px; font-weight: 600; color: #1b2730; margin: 0; }
+.rc-comm-drawer__muted { font-size: 12px; color: #93a0a8; margin: 0; }
+.rc-comm-drawer__ft { margin-top: auto; display: flex; flex-direction: column; gap: 6px; }
+.rc-comm-drawer__call {
+  padding: 8px 14px; border-radius: 8px; border: 1px solid #dce1e6;
+  background: #eef1f4; color: #93a0a8; font-size: 12.5px; font-weight: 600; cursor: not-allowed;
+}
+.rc-comm-drawer__note { font-size: 11px; color: #93a0a8; margin: 0; }
+
+.rc-comm-embed {
+  border: 1px dashed #dce1e6; border-radius: 10px; padding: 16px; text-align: center; background: #f7f9fb;
+}
+.rc-comm-embed__placeholder { font-size: 12px; color: #93a0a8; margin: 0; }
