@@ -6,14 +6,17 @@
 //
 // The machine is EXACTLY the locked directive diagram (no invented edges):
 //
-//   created -> initiated -> ringing -+-> failed
-//                                    +-> missed
-//                                    +-> rejected
-//                                    +-> connected -> completed
+//   created -+-> initiated -> ringing -+-> failed
+//            |                          +-> missed
+//            +-> failed  (COMM-B5)      +-> rejected
+//                                       +-> connected -> completed
 //
-// `canceled`/`busy` and any additional edge are DEFERRED to COMM-B6 (admitted
-// only if provider recon confirms distinct semantics). Adding an edge here is a
-// directive divergence to report, never a silent absorption.
+// COMM-B5 ratified EXACTLY ONE additional edge — `created -> failed` — so a
+// provider launch that fails BEFORE ringing has an auditable terminal outcome
+// (a row stranded in `created` would be semantically wrong). `initiated->failed`,
+// `connected->failed`, `canceled`, and `busy` remain DEFERRED to COMM-B6
+// (admitted only if provider recon confirms distinct semantics). Adding any
+// FURTHER edge here is a directive divergence to report, never a silent absorption.
 
 import { CommunicationInvalidStateError } from './errors.js';
 import type { CommunicationInteractionStatus } from './communication-enums.js';
@@ -22,7 +25,7 @@ import type { CommunicationInteractionStatus } from './communication-enums.js';
 export const CALL_STATE_TRANSITIONS: Readonly<
   Record<CommunicationInteractionStatus, ReadonlyArray<CommunicationInteractionStatus>>
 > = Object.freeze({
-  created: ['initiated'],
+  created: ['initiated', 'failed'],
   initiated: ['ringing'],
   ringing: ['connected', 'failed', 'missed', 'rejected'],
   connected: ['completed'],

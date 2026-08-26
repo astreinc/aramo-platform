@@ -1,17 +1,21 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Put, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Headers, HttpCode, HttpStatus, Param, ParseUUIDPipe, Post, Put, UseGuards } from '@nestjs/common';
 import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
-import { AramoError, RequestId } from '@aramo/common';
+import { AramoError, hashCanonicalizedBody, RequestId } from '@aramo/common';
 import { RequireScopes, RolesGuard } from '@aramo/authorization';
+import { IdempotencyService } from '@aramo/consent';
 import { EntitlementGuard, RequireCapability } from '@aramo/entitlement';
 
 import { CommunicationsApiService } from './communications-api.service.js';
-import { UpsertProviderIdentityDto } from './dto/communications.dto.js';
+import { CommunicationCallService } from './communication-call.service.js';
+import { InitiateCommunicationCallDto, UpsertProviderIdentityDto } from './dto/communications.dto.js';
 import type {
   CommunicationCapabilitiesDto,
   CommunicationInteractionViewDto,
   CommunicationProviderIdentityDto,
   CommunicationProviderIdentityListDto,
 } from './dto/communications.dto.js';
+
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // COMM-B2 (Aramo-COMM-V1) — the read/authorization contract skeleton for the
 // Communications/Voice surface. THREE read routes only; call initiation
@@ -25,7 +29,63 @@ import type {
 @UseGuards(JwtAuthGuard, EntitlementGuard, RolesGuard)
 @RequireCapability('ats')
 export class CommunicationsController {
-  constructor(private readonly comms: CommunicationsApiService) {}
+  constructor(
+    private readonly comms: CommunicationsApiService,
+    private readonly calls: CommunicationCallService,
+    private readonly idempotency: IdempotencyService,
+  ) {}
+
+  // COMM-B5 — initiate an outbound voice call. communication:voice:call scope
+  // (least-visibility) + a required Idempotency-Key (call initiation has an
+  // external side effect and must not dial twice on retry). The fail-closed
+  // contacting-consent gate + the locked execution order live in the service;
+  // the controller owns the platform idempotency replay/conflict envelope.
+  @Post('calls')
+  @HttpCode(HttpStatus.CREATED)
+  @RequireScopes('communication:voice:call')
+  async initiateCall(
+    @Body() dto: InitiateCommunicationCallDto,
+    @Headers('Idempotency-Key') idempotencyKey: string | undefined,
+    @AuthContext() auth: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<CommunicationInteractionViewDto> {
+    const key = this.assertIdempotencyKeyRequired(idempotencyKey, requestId);
+    const requestHash = hashCanonicalizedBody(dto as unknown);
+    const lookup = await this.idempotency.lookup({
+      tenant_id: auth.tenant_id,
+      key,
+      request_hash: requestHash,
+      requestId,
+    });
+    if (lookup.kind === 'replay') {
+      return lookup.response_body as CommunicationInteractionViewDto;
+    }
+    const view = await this.calls.initiate(auth, dto, requestId);
+    await this.idempotency.persist({
+      tenant_id: auth.tenant_id,
+      key,
+      request_hash: requestHash,
+      response_status: HttpStatus.CREATED,
+      response_body: view,
+    });
+    return view;
+  }
+
+  private assertIdempotencyKeyRequired(idempotencyKey: string | undefined, requestId: string): string {
+    if (idempotencyKey === undefined || idempotencyKey.length === 0) {
+      throw new AramoError('VALIDATION_ERROR', 'Idempotency-Key header is required', 400, {
+        requestId,
+        details: { missing_field: 'Idempotency-Key' },
+      });
+    }
+    if (!UUID_REGEX.test(idempotencyKey)) {
+      throw new AramoError('VALIDATION_ERROR', 'Idempotency-Key must be a UUID', 400, {
+        requestId,
+        details: { invalid_field: 'Idempotency-Key' },
+      });
+    }
+    return idempotencyKey;
+  }
 
   @Get('capabilities')
   @HttpCode(HttpStatus.OK)

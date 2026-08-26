@@ -216,6 +216,7 @@
       "CrossSchemaConsistencyModule",
       "CrossSchemaConsistencyProcessor",
       "CrossSchemaConsistencyRepository",
+      "E164NormalizationError",
       "ERROR_CODES",
       "IDENTITY_ADMISSION_POLICIES",
       "IDENTITY_MIGRATIONS",
@@ -240,6 +241,7 @@
       "makeMockLogger",
       "normalizeEmail",
       "normalizePhone",
+      "normalizeToE164",
       "resolveAuthStorageMigrations",
       "resolveIdentityMigrations",
       "resolveReleaseRevision"
@@ -262,11 +264,14 @@
       "CommunicationsService",
       "FAKE_VOICE_PROVIDER_KEY",
       "FakeVoiceProvider",
+      "REQUISITION_EXISTENCE_PORT",
       "TERMINAL_CALL_STATES",
       "VoiceProviderRegistry",
+      "ZOOM_EMBED_LAUNCH_MODE",
       "ZOOM_PHONE_PROVIDER_KEY",
       "ZoomAdapterDeferredError",
       "ZoomCredentialDecodeError",
+      "ZoomInitiateCallError",
       "ZoomPhoneAdapter",
       "assertTransition",
       "canTransition",
@@ -3289,6 +3294,12 @@
       { "project": "cold-ingest-extraction", "status": "production" }
     ],
     "@aramo/integration": [
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/comm-b5-call-initiation.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/communications-authz.integration.spec.ts",

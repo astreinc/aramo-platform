@@ -678,6 +678,15 @@ export const ERROR_CODES = [
   // COMM-B3 — provider-identity mapping conflict: the target provider user is
   // already mapped to a different recruiter on this connection (409).
   'COMMUNICATION_PROVIDER_USER_ALREADY_MAPPED',
+  // COMM-B5 — call initiation. CALL_CONSENT_DENIED (403): the stable refusal for
+  // a non-allowed contacting-consent decision (an explicit denial AND a
+  // fail-closed system failure both surface as this; the distinction is retained
+  // in audit only, never leaked to the caller). CALL_NOT_INITIABLE (422):
+  // business/precondition failures that are not provider-not-configured or
+  // user-not-mapped (no dialable number, un-normalizable destination, or a
+  // provider launch that fails before ringing).
+  'COMMUNICATION_CALL_CONSENT_DENIED',
+  'COMMUNICATION_CALL_NOT_INITIABLE',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];
