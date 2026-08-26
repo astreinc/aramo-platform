@@ -170,6 +170,10 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   // Requisition Lane 1-A — the initial-state authority gate refusal (403):
   // establishment_authority_required | initial_state_not_allowed_for_mode.
   REQUISITION_INITIAL_STATE_FORBIDDEN: 403,
+  // COMM-V1 (COMM-B2) — Communications/Voice read skeleton.
+  COMMUNICATION_INTERACTION_NOT_FOUND: 404,
+  COMMUNICATION_USER_NOT_MAPPED: 404,
+  COMMUNICATION_PROVIDER_NOT_CONFIGURED: 409,
 };
 
 // Base error class. Thrown anywhere in the app where a structured response

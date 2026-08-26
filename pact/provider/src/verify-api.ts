@@ -250,6 +250,10 @@ const ENTITLEMENT_INIT_MIGRATION = resolve(
   ROOT,
   'libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql',
 );
+const COMMUNICATIONS_INIT_MIGRATION = resolve(
+  ROOT,
+  'libs/communications/prisma/migrations/20260825120000_init_communications/migration.sql',
+);
 // PR-A1c §4 sweep — metering schema applied because every selection +
 // submittal state-transition write method (the methods the pact provider
 // formerly exercised through the retired thin-consumer pacts) now emits
@@ -3035,6 +3039,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         // requires the tenant to be entitled before RolesGuard runs.
         ENTITLEMENT_INIT_MIGRATION,
         INTEGRATION_INIT_MIGRATION,
+        COMMUNICATIONS_INIT_MIGRATION,
         // PR-A1c §4 — metering schema (in-tx UsageEvent INSERT in every
         // selection + submittal state-transition write method).
         METERING_INIT_MIGRATION,
@@ -3352,6 +3357,12 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           // Integrations). Additive; inert for prior interactions.
           'integration:read',
           'integration:write',
+          // COMM-B2 — Communications/Voice read skeleton (communication:read gates
+          // the /v1/communications reads). Additive; inert for prior interactions.
+          'communication:read',
+          'communication:voice:call',
+          'communication:disposition:write',
+          'communication:notes:write',
           // PC-5c — pipeline state machine + activity RolesGuard
           // @RequireScopes. pipeline:change-status gates the transition
           // endpoint (the state machine); pipeline:remove omitted (DELETE is
@@ -4170,6 +4181,34 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
             `INSERT INTO integration."IntegrationConnection" (id, tenant_id, provider_key, status, version, created_at, updated_at)
              VALUES ($1::uuid,$2::uuid,'acme_vms','disconnected',0,now(),now())`,
             ['dddddddd-dddd-7ddd-8ddd-dddddddddddd', TENANT_ID],
+          );
+        });
+      },
+      // ===== COMM-B2 communications read pacts (ats-web communications.consumer) =====
+      // Fixture UUIDs mirror pact/consumers/ats-web/src/communications.consumer.test.ts.
+      'a tenant entitled to ats with a caller holding communication:read': async () => {
+        // capabilities reads from the composition-registered FakeVoiceProvider — no DB seed.
+        return;
+      },
+      'a tenant entitled to ats with a caller holding communication:read and one communication interaction': async () => {
+        await withClient(async (c) => {
+          await c.query(`DELETE FROM communications."CommunicationInteraction" WHERE tenant_id = $1::uuid`, [TENANT_ID]);
+          await c.query(
+            `INSERT INTO communications."CommunicationInteraction"
+               (id, tenant_id, channel, direction, status, integration_connection_id, from_address, to_address)
+             VALUES ($1::uuid,$2::uuid,'voice','outbound','created',$3::uuid,'+15715550100','+17035550111')`,
+            ['eeeeeeee-eeee-7eee-8eee-eeeeeeeeeeee', TENANT_ID, 'cccccccc-cccc-7ccc-8ccc-cccccccccccc'],
+          );
+        });
+      },
+      'a tenant entitled to ats with a caller holding communication:read and a mapped provider identity': async () => {
+        await withClient(async (c) => {
+          await c.query(`DELETE FROM communications."CommunicationProviderIdentity" WHERE tenant_id = $1::uuid`, [TENANT_ID]);
+          await c.query(
+            `INSERT INTO communications."CommunicationProviderIdentity"
+               (id, tenant_id, integration_connection_id, recruiter_id, provider_user_id, voice_enabled, sms_enabled, status)
+             VALUES (gen_random_uuid(),$1::uuid,$2::uuid,$3::uuid,'pv-user-1',true,false,'active')`,
+            [TENANT_ID, 'cccccccc-cccc-7ccc-8ccc-cccccccccccc', RECRUITER_ID],
           );
         });
       },
