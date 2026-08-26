@@ -1,0 +1,291 @@
+// Per-module Prisma schema for the `communications` module — COMM-V1
+// (Aramo Communications / Voice, provider-neutral domain substrate, COMM-B1).
+//
+// Per Architecture v2.0/v2.1 Schema-per-Module and doc/05-conventions.md
+// "Database Conventions". Cross-schema references are UUID-only WITHOUT FK
+// constraints. Intra-schema references (interaction_id) DO carry FK.
+//
+// SCOPE (Aramo-COMM-V1-Communications-Voice-Directive-v1_0-LOCKED, COMM-B1):
+//   - CommunicationInteraction is the CANONICAL calling record / system of
+//     record (R-COMM-ACTIVITY). Aramo identity is CommunicationInteraction.id;
+//     provider identifiers are CORRELATION METADATA only (R-COMM-ZOOM-IDENTITY).
+//   - NO raw provider credentials and NO raw provider payload are ever stored
+//     (R-COMM-CONNECTION / R-COMM-RAW-PAYLOAD). The provider-event inbox holds
+//     normalized facts + an optional opaque payload_reference, never a blob.
+//   - NO provider vocabulary is frozen here — the domain is provider-neutral;
+//     any Zoom terminology stays confined to the (later) Zoom adapter.
+//   - integration_connection_id references integration.IntegrationConnection by
+//     UUID only (the canonical provider-connection substrate, R-COMM-CONNECTION).
+//
+// Cross-schema logical references (UUID-only, no FK):
+//   - tenant_id                  -> identity.Tenant
+//   - integration_connection_id  -> integration.IntegrationConnection
+//   - initiated_by_id / recruiter_id / dispositioned_by_id -> identity.User
+//   - CommunicationAssociation.subject_id -> talent_record.TalentRecord |
+//                                            requisition.Requisition |
+//                                            pipeline.Pipeline (by subject_type)
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "./generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["communications"]
+}
+
+// CommunicationChannel — the medium of an interaction. The enum carries the
+// future SMS/email channels by design; COMM-V1 executes `voice` only.
+enum CommunicationChannel {
+  voice
+  sms
+  email
+
+  @@schema("communications")
+}
+
+// CommunicationDirection — outbound is the COMM-V1 target; inbound carried for
+// forward design (inbound matching is a deferred seam).
+enum CommunicationDirection {
+  outbound
+  inbound
+
+  @@schema("communications")
+}
+
+// CommunicationInteractionStatus — the canonical call state machine (directive
+// domain-substrate section). Zoom terminology normalizes INTO these; it never
+// escapes the provider adapter. Legal transitions are enforced in the domain
+// layer (call-state-machine.ts), NOT the database.
+//   created -> initiated -> ringing -> { failed | missed | rejected }
+//                                    -> connected -> completed
+// `canceled` / `busy` are DEFERRED (admitted only if COMM-B6 Zoom recon
+// confirms distinct provider semantics) — not part of the B1 locked set.
+enum CommunicationInteractionStatus {
+  created
+  initiated
+  ringing
+  connected
+  completed
+  failed
+  missed
+  rejected
+
+  @@schema("communications")
+}
+
+// CommunicationSubjectType — the polymorphic association subjects supported at
+// COMM-V1 (directive). subject_id is a UUID-only cross-schema reference.
+enum CommunicationSubjectType {
+  talent_record
+  requisition
+  pipeline
+
+  @@schema("communications")
+}
+
+// CommunicationRelationType — how an interaction relates to a subject. `subject`
+// = the party contacted (the Talent); `regarding` = optional context (e.g. a
+// requisition). Requisition context is OPTIONAL (R-COMM-REQ-OPTIONAL).
+enum CommunicationRelationType {
+  subject
+  regarding
+
+  @@schema("communications")
+}
+
+// CommunicationDispositionOutcome — the LOCKED v1 disposition vocabulary
+// (directive). Telecom + recruiting outcomes; implementation MUST NOT invent
+// values. `do_not_contact` is a RECORDED outcome ONLY — it does NOT auto-mutate
+// consent in V1 (that routes through a governed workflow, deferred).
+enum CommunicationDispositionOutcome {
+  connected
+  left_voicemail
+  no_answer
+  busy
+  wrong_number
+  interested
+  not_interested
+  callback_requested
+  follow_up_required
+  do_not_contact
+
+  @@schema("communications")
+}
+
+// CommunicationProviderEventStatus — the durable idempotent inbox disposition
+// (directive R-COMM-WEBHOOK).
+enum CommunicationProviderEventStatus {
+  received
+  processing
+  processed
+  failed
+  ignored
+
+  @@schema("communications")
+}
+
+// CommunicationProviderIdentityStatus — recruiter<->provider mapping lifecycle.
+enum CommunicationProviderIdentityStatus {
+  active
+  unmapped
+  disabled
+  reauth_required
+
+  @@schema("communications")
+}
+
+// CommunicationInteraction — the CANONICAL calling record (system of record).
+// Provider correlation identifiers are nullable metadata; the Aramo identity is
+// `id`. No raw credential or raw provider payload is stored here.
+model CommunicationInteraction {
+  id        String @id @default(uuid()) @db.Uuid
+  tenant_id String @db.Uuid
+  site_id   String? @db.Uuid
+
+  channel   CommunicationChannel
+  direction CommunicationDirection
+  status    CommunicationInteractionStatus @default(created)
+
+  // UUID-only reference to integration.IntegrationConnection (no FK).
+  integration_connection_id String @db.Uuid
+
+  // Provider correlation metadata ONLY — never Aramo identity. Current Zoom
+  // call-element model (R-COMM-ZOOM-IDENTITY); all nullable.
+  provider_interaction_id     String?
+  provider_call_id            String?
+  provider_call_history_uuid  String?
+  provider_call_element_id    String?
+
+  // identity.User (UUID-only, no FK) — the recruiter who initiated the call.
+  initiated_by_id String? @db.Uuid
+
+  from_address String
+  to_address   String
+
+  started_at   DateTime? @db.Timestamptz
+  ringing_at   DateTime? @db.Timestamptz
+  connected_at DateTime? @db.Timestamptz
+  ended_at     DateTime? @db.Timestamptz
+
+  duration_seconds Int?
+
+  created_at DateTime @default(now()) @db.Timestamptz
+  updated_at DateTime @default(now()) @updatedAt @db.Timestamptz
+
+  associations  CommunicationAssociation[]
+  dispositions  CommunicationDisposition[]
+  provider_events CommunicationProviderEvent[]
+
+  @@index([tenant_id, status])
+  @@index([tenant_id, integration_connection_id, provider_call_element_id], map: "CommInteraction_conn_call_element_idx")
+  @@index([tenant_id, integration_connection_id, provider_call_history_uuid], map: "CommInteraction_conn_call_history_idx")
+  @@index([tenant_id, integration_connection_id, provider_call_id], map: "CommInteraction_conn_call_id_idx")
+  @@schema("communications")
+}
+
+// CommunicationAssociation — polymorphic link from an interaction to a subject
+// (talent_record | requisition | pipeline) by UUID. Lets one call appear on
+// both Talent and Requisition timelines without cross-schema coupling
+// (R-COMM-REQ-BOUNDARY).
+model CommunicationAssociation {
+  id             String @id @default(uuid()) @db.Uuid
+  tenant_id      String @db.Uuid
+  interaction_id String @db.Uuid
+
+  subject_type  CommunicationSubjectType
+  subject_id    String @db.Uuid
+  relation_type CommunicationRelationType
+
+  created_at DateTime @default(now()) @db.Timestamptz
+
+  interaction CommunicationInteraction @relation(fields: [interaction_id], references: [id], onDelete: Cascade)
+
+  @@unique([interaction_id, subject_type, subject_id, relation_type])
+  @@index([tenant_id, subject_type, subject_id])
+  @@index([tenant_id, interaction_id])
+  @@schema("communications")
+}
+
+// CommunicationDisposition — the recruiter-recorded outcome of an interaction,
+// separate from the telecom call state. Append-friendly (history retained).
+model CommunicationDisposition {
+  id             String @id @default(uuid()) @db.Uuid
+  tenant_id      String @db.Uuid
+  interaction_id String @db.Uuid
+
+  disposition CommunicationDispositionOutcome
+  notes       String?
+
+  dispositioned_by_id String   @db.Uuid
+  dispositioned_at    DateTime @default(now()) @db.Timestamptz
+
+  interaction CommunicationInteraction @relation(fields: [interaction_id], references: [id], onDelete: Cascade)
+
+  @@index([tenant_id, interaction_id])
+  @@schema("communications")
+}
+
+// CommunicationProviderEvent — the durable, idempotent provider-event inbox
+// (R-COMM-WEBHOOK). UNIQUE(tenant_id, integration_connection_id,
+// provider_event_key) makes redelivery a no-op. Holds normalized facts +
+// optional opaque payload_reference; NEVER a raw payload blob (R-COMM-RAW-PAYLOAD).
+model CommunicationProviderEvent {
+  id                        String @id @default(uuid()) @db.Uuid
+  tenant_id                 String @db.Uuid
+  integration_connection_id String @db.Uuid
+
+  provider_event_key String
+  event_type         String
+
+  interaction_id String? @db.Uuid
+
+  status      CommunicationProviderEventStatus @default(received)
+  received_at DateTime @default(now()) @db.Timestamptz
+  processed_at DateTime? @db.Timestamptz
+
+  attempt_count Int @default(0)
+  error_code    String?
+
+  // Opaque reference (e.g. an object-storage handle) — NOT a payload blob.
+  payload_reference String?
+
+  interaction CommunicationInteraction? @relation(fields: [interaction_id], references: [id], onDelete: SetNull)
+
+  @@unique([tenant_id, integration_connection_id, provider_event_key])
+  @@index([tenant_id, integration_connection_id, status])
+  @@index([tenant_id, interaction_id])
+  @@schema("communications")
+}
+
+// CommunicationProviderIdentity — the recruiter<->provider mapping. The
+// IntegrationConnection is account-level; this maps an Aramo recruiter to their
+// provider user/extension. recruiter_id -> identity.User (UUID-only, no FK).
+model CommunicationProviderIdentity {
+  id                        String @id @default(uuid()) @db.Uuid
+  tenant_id                 String @db.Uuid
+  integration_connection_id String @db.Uuid
+  recruiter_id              String @db.Uuid
+
+  provider_user_id      String
+  provider_extension_id String?
+
+  display_phone_number String?
+  extension            String?
+
+  voice_enabled Boolean @default(false)
+  sms_enabled   Boolean @default(false)
+
+  status CommunicationProviderIdentityStatus @default(unmapped)
+
+  last_verified_at DateTime? @db.Timestamptz
+
+  created_at DateTime @default(now()) @db.Timestamptz
+  updated_at DateTime @default(now()) @updatedAt @db.Timestamptz
+
+  @@unique([integration_connection_id, recruiter_id])
+  @@unique([integration_connection_id, provider_user_id])
+  @@index([tenant_id, recruiter_id])
+  @@schema("communications")
+}
