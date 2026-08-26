@@ -11,6 +11,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { RequisitionPrismaService, RequisitionRepository } from '@aramo/requisition';
 import { deriveCapacity } from '@aramo/placement';
 
+import { SEE_ALL_VISIBILITY } from './support/see-all-visibility.js';
+
 // PR-15 — internal requisition_number: per-tenant monotonic allocator (starts at
 // 1000), assigned at create in the same transaction, immutable, never reused;
 // plus the deterministic per-tenant backfill. Real Postgres. Lives in apps/api
@@ -112,7 +114,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await create(tenant); // 1001
       const top = await create(tenant); // 1002
       expect(top.requisition_number).toBe(1002);
-      await repo.delete({ tenant_id: tenant, id: top.id, requestId: uuidv7() });
+      await repo.delete({ tenant_id: tenant, id: top.id, visibility: SEE_ALL_VISIBILITY, requestId: uuidv7() });
       const next = await create(tenant);
       expect(next.requisition_number).toBe(1003); // NOT 1002 — the gap stays
     });
@@ -122,6 +124,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const r = await create(tenant);
       const before = r.requisition_number;
       const updated = await repo.update({
+        visibility: SEE_ALL_VISIBILITY,
         tenant_id: tenant,
         id: r.id,
         input: { title: 'Renamed' } as never,
@@ -132,6 +135,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(updated.requisition_number).toBe(before);
       // The field is not on the Update DTO, so a body carrying it cannot set it.
       const forced = await repo.update({
+        visibility: SEE_ALL_VISIBILITY,
         tenant_id: tenant,
         id: r.id,
         input: { requisition_number: 9999 } as never,

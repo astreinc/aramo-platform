@@ -1635,6 +1635,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/support/see-all-visibility.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/tenant-write-freeze.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -2086,6 +2092,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/requisition/src/tests/financial-edit-gate.spec.ts",
+        "project": "requisition",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/requisition/src/tests/openings-available-write-demote.spec.ts",
         "project": "requisition",
         "status": "excluded"
       },
@@ -3691,6 +3703,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/job-distribution-sync.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/l1b-write-visibility.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },

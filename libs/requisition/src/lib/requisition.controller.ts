@@ -261,15 +261,23 @@ export class RequisitionController {
     @Param('id') id: string,
     @Body() body: UpdateRequisitionRequestDto,
     @RequestId() requestId: string,
+    @Req() req: Request,
   ): Promise<RequisitionView> {
     validateCompensationInput(body, requestId);
     validateRateType(body, requestId);
+    // L1-B — write-visibility parity (recon D2). Resolve the SAME already-lazily-
+    // memoized visibility context the read paths use (get/list/setBookmark/profile)
+    // and thread it into the repo so the existence read conceals an out-of-visibility
+    // requisition as a 404 — the mutation-specific scope/field gates still fire AHEAD
+    // of it (concealment ordering: a row-independent 403 leaks no existence).
+    const visibility = await req.resolveVisibility!();
     return this.requisitionRepository.update({
       tenant_id: authContext.tenant_id,
       id,
       input: body,
       scopes: authContext.scopes,
       actor_id: authContext.sub,
+      visibility,
       requestId,
     });
   }
@@ -282,10 +290,15 @@ export class RequisitionController {
     @AuthContext() authContext: AuthContextType,
     @Param('id') id: string,
     @RequestId() requestId: string,
+    @Req() req: Request,
   ): Promise<void> {
+    // L1-B — same write-visibility fold as update(): an invisible requisition
+    // collapses to the existing 404 inside delete()'s existence read.
+    const visibility = await req.resolveVisibility!();
     await this.requisitionRepository.delete({
       tenant_id: authContext.tenant_id,
       id,
+      visibility,
       requestId,
     });
   }

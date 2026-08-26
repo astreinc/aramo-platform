@@ -14,6 +14,8 @@ import {
 } from '@aramo/requisition';
 import { deriveCapacity } from '@aramo/placement';
 
+import { SEE_ALL_VISIBILITY } from './support/see-all-visibility.js';
+
 // Track 1 T1-b — optimistic concurrency on requisition.Requisition, exercised
 // against real Postgres 17. Lives in apps/api because libs/requisition is NOT
 // an integration ROOT; apps/api is, and re-exports the repository.
@@ -129,6 +131,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       // Move the row forward once with the correct version (0 → 1).
       await repo.update({
+        visibility: SEE_ALL_VISIBILITY,
         tenant_id: TENANT_A,
         id,
         input: { title: 'First', version: 0 },
@@ -144,6 +147,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // moved it to 1. Must be refused with the registered code.
       await expect(
         repo.update({
+          visibility: SEE_ALL_VISIBILITY,
           tenant_id: TENANT_A,
           id,
           input: { title: 'Stale write', version: 0 },
@@ -164,6 +168,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const id = await seedRequisition('Original');
 
       await repo.update({
+        visibility: SEE_ALL_VISIBILITY,
         tenant_id: TENANT_A,
         id,
         input: { title: 'Retitled', version: 0 },
@@ -181,6 +186,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const id = await seedRequisition('Original');
 
       await repo.update({
+        visibility: SEE_ALL_VISIBILITY,
         tenant_id: TENANT_A,
         id,
         input: { title: 'Unguarded update' }, // no version field at all
@@ -199,6 +205,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       // No status field in the input — only city (a non-status field).
       await repo.update({
+        visibility: SEE_ALL_VISIBILITY,
         tenant_id: TENANT_A,
         id,
         input: { city: 'Austin', version: 0 },

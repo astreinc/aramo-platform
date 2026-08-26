@@ -3013,6 +3013,192 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/l1b-write-visibility.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/company/prisma/migrations/20260601160000_init_company_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/l1b-write-visibility.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/company/prisma/migrations/20260603140100_add_import_batch_id_to_company/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/l1b-write-visibility.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/company/prisma/migrations/20260604000000_add_authz_assignment_ownership/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/l1b-write-visibility.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/company/prisma/migrations/20260611000000_add_company_field_expansion/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/l1b-write-visibility.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/company/prisma/migrations/20260611120000_add_company_address_place_ref/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/l1b-write-visibility.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/company/prisma/migrations/20260616000000_add_company_off_limits/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/l1b-write-visibility.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/l1b-write-visibility.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20260512000000_init_identity_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/l1b-write-visibility.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20260601000000_add_site_axis/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/l1b-write-visibility.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20260604000000_add_authz_team_models/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/l1b-write-visibility.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20260619000000_add_tenant_profile/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/l1b-write-visibility.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20260620000000_add_site_hierarchy/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/l1b-write-visibility.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20260624000000_add_invitation_and_invite_status/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/l1b-write-visibility.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20260625000000_add_tenant_allowed_domain/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/l1b-write-visibility.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20260626000000_add_tenant_domain_verification/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/l1b-write-visibility.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20260626120000_add_tenant_slug/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/l1b-write-visibility.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20260627000000_add_tenant_identity_provider/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/l1b-write-visibility.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20260709130000_add_tenant_lifecycle_status/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/l1b-write-visibility.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/requisition/prisma/migrations/20260602100000_init_requisition_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/l1b-write-visibility.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/requisition/prisma/migrations/20260603140100_add_import_batch_id_to_requisition/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/l1b-write-visibility.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/requisition/prisma/migrations/20260605123400_add_compensation_fields_to_requisition/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/l1b-write-visibility.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/requisition/prisma/migrations/20260611220000_job_module_requisition_fields/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/l1b-write-visibility.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/requisition/prisma/migrations/20260618120000_add_rate_type_subk_runmatch/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/l1b-write-visibility.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/requisition/prisma/migrations/20260721000000_add_publish_surface/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/l1b-write-visibility.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/requisition/prisma/migrations/20260731120000_add_requisition_lifecycle_event/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/l1b-write-visibility.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/requisition/prisma/migrations/20260801120000_add_version_to_requisition/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/l1b-write-visibility.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/requisition/prisma/migrations/20260802120000_lifecycle_previous_status_nullable/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/l1b-write-visibility.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/requisition/prisma/migrations/20260802140000_add_onsite_days_to_requisition/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/l1b-write-visibility.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/requisition/prisma/migrations/20260802160000_add_user_requisition_state/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/l1b-write-visibility.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/requisition/prisma/migrations/20260802180000_add_requisition_number/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/l1b-write-visibility.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/requisition/prisma/migrations/20260803120000_recruiting_status_supersession/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/match-list.negative-shape.spec.ts",
       "status": "excluded",
       "to": "libs/consent/prisma/migrations/20260429164414_initial_consent_schema/migration.sql"
