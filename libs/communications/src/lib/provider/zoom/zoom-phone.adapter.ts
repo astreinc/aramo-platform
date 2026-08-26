@@ -1,3 +1,4 @@
+import type { CommunicationInteractionStatus } from '../../domain/communication-enums.js';
 import type {
   IntegrationConnectionView,
   NormalizedVoiceEvent,
@@ -7,6 +8,8 @@ import type {
   VoiceCapabilities,
   VoiceProvider,
 } from '../voice-provider.port.js';
+
+import type { ZoomWebhookEnvelope } from './zoom-webhook-envelope.js';
 
 // COMM-B3 — Zoom Phone provider adapter. Vendor code lives under provider/zoom/,
 // confined behind the communications-owned VoiceProvider port (R-COMM-PROVIDER-PORT)
@@ -39,6 +42,29 @@ export class ZoomInitiateCallError extends Error {
 
 /** The B4 Smart-Embed launch mode: the client dialer completes the PSTN leg. */
 export const ZOOM_EMBED_LAUNCH_MODE = 'zoom_embed';
+
+/** Raised for a Zoom event type B6 does not map into the governed state machine. */
+export class ZoomUnsupportedWebhookEventError extends Error {
+  readonly eventType: string;
+  constructor(eventType: string) {
+    super(`ZoomPhoneAdapter.normalizeWebhook: unsupported event type "${eventType}"`);
+    this.name = 'ZoomUnsupportedWebhookEventError';
+    this.eventType = eventType;
+  }
+}
+
+// COMM-B6 — the UNAMBIGUOUS subset of Zoom Phone events that map into the
+// CURRENTLY governed 8-state machine (the outbound spine). No speculative enum
+// expansion: busy/canceled + extra failure edges are B8/live-Zoom rulings. An
+// event outside this table is signalled unsupported (recorded + ignored by the
+// consumer) rather than forced into an illegal transition. The state machine's
+// own guard rejects any mapped-but-illegal transition (e.g. an end event for a
+// call that never connected) — the consumer records that, no mutation.
+const ZOOM_EVENT_TO_STATUS: Readonly<Record<string, CommunicationInteractionStatus>> = Object.freeze({
+  'phone.callee_ringing': 'ringing',
+  'phone.callee_answered': 'connected',
+  'phone.call_ended': 'completed',
+});
 
 export class ZoomPhoneAdapter implements VoiceProvider {
   providerKey(): string {
@@ -91,8 +117,44 @@ export class ZoomPhoneAdapter implements VoiceProvider {
     return { launch_mode: ZOOM_EMBED_LAUNCH_MODE };
   }
 
-  async normalizeWebhook(_event: unknown): Promise<NormalizedVoiceEvent> {
-    void _event;
-    throw new ZoomAdapterDeferredError('normalizeWebhook', 'B6');
+  /**
+   * COMM-B6 — normalize a parsed Zoom webhook envelope into the canonical
+   * NormalizedVoiceEvent. Owns the provider→canonical MAPPING (the domain names
+   * no vendor). Throws ZoomUnsupportedWebhookEventError for an event type this
+   * slice does not map — the consumer records-and-ignores it, never forcing an
+   * illegal state transition. Accepts the already-parsed envelope (the raw-body
+   * parse + signature verification happen at the composition root before this).
+   */
+  async normalizeWebhook(event: unknown): Promise<NormalizedVoiceEvent> {
+    const envelope = asEnvelope(event);
+    if (envelope === null) {
+      throw new ZoomUnsupportedWebhookEventError('<unparseable>');
+    }
+    const target = ZOOM_EVENT_TO_STATUS[envelope.event];
+    if (target === undefined) {
+      throw new ZoomUnsupportedWebhookEventError(envelope.event);
+    }
+    return {
+      provider_event_key: envelope.provider_event_key,
+      event_type: envelope.event,
+      target_status: target,
+      ...(envelope.object.call_id === null ? {} : { provider_call_id: envelope.object.call_id }),
+      ...(envelope.object.call_history_uuid === null
+        ? {}
+        : { provider_call_history_uuid: envelope.object.call_history_uuid }),
+      ...(envelope.object.call_element_id === null
+        ? {}
+        : { provider_call_element_id: envelope.object.call_element_id }),
+      ...(envelope.event_ts === null ? {} : { occurred_at: new Date(envelope.event_ts) }),
+    };
   }
+}
+
+/** Narrow an already-parsed ZoomWebhookEnvelope (the port types it `unknown`). */
+function asEnvelope(event: unknown): ZoomWebhookEnvelope | null {
+  if (typeof event !== 'object' || event === null) return null;
+  const e = event as Partial<ZoomWebhookEnvelope>;
+  if (typeof e.event !== 'string' || typeof e.provider_event_key !== 'string') return null;
+  if (typeof e.object !== 'object' || e.object === null) return null;
+  return e as ZoomWebhookEnvelope;
 }

@@ -105,6 +105,73 @@ export class CommunicationsRepository {
     })) as InteractionRow | null;
   }
 
+  // COMM-B6 — tenant+connection-scoped webhook correlation. Tries the provider
+  // ids in the LOCKED priority order (call_element_id → call_history_uuid →
+  // call_id) and returns the first match, or null (unmatched → the caller records
+  // the event and performs NO interaction mutation; it NEVER creates a row).
+  async findInteractionByProviderCorrelation(
+    tenantId: string,
+    connectionId: string,
+    ids: {
+      call_element_id?: string | null;
+      call_history_uuid?: string | null;
+      call_id?: string | null;
+    },
+  ): Promise<InteractionRow | null> {
+    if (ids.call_element_id != null && ids.call_element_id.length > 0) {
+      const byElement = await this.findInteractionByProviderCallElement(
+        tenantId,
+        connectionId,
+        ids.call_element_id,
+      );
+      if (byElement !== null) return byElement;
+    }
+    if (ids.call_history_uuid != null && ids.call_history_uuid.length > 0) {
+      const byHistory = (await this.prisma.communicationInteraction.findFirst({
+        where: {
+          tenant_id: tenantId,
+          integration_connection_id: connectionId,
+          provider_call_history_uuid: ids.call_history_uuid,
+        },
+      })) as InteractionRow | null;
+      if (byHistory !== null) return byHistory;
+    }
+    if (ids.call_id != null && ids.call_id.length > 0) {
+      const byCallId = (await this.prisma.communicationInteraction.findFirst({
+        where: {
+          tenant_id: tenantId,
+          integration_connection_id: connectionId,
+          provider_call_id: ids.call_id,
+        },
+      })) as InteractionRow | null;
+      if (byCallId !== null) return byCallId;
+    }
+    return null;
+  }
+
+  // COMM-B6 — record the terminal disposition of an inbox event after processing
+  // (processed | ignored | failed). Stamps processed_at, bumps attempt_count, and
+  // optionally links the correlated interaction / an error code. No raw payload.
+  async markProviderEventProcessed(
+    id: string,
+    patch: {
+      status: 'processed' | 'ignored' | 'failed';
+      interaction_id?: string | null;
+      error_code?: string | null;
+    },
+  ): Promise<void> {
+    await this.prisma.communicationProviderEvent.update({
+      where: { id },
+      data: {
+        status: patch.status,
+        processed_at: new Date(),
+        attempt_count: { increment: 1 },
+        ...(patch.interaction_id === undefined ? {} : { interaction_id: patch.interaction_id }),
+        ...(patch.error_code === undefined ? {} : { error_code: patch.error_code }),
+      },
+    });
+  }
+
   /** Tenant-scoped status write. Returns rows updated (0 -> tenant-safe miss). */
   async updateInteractionStatus(
     tenantId: string,

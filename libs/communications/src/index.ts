@@ -73,7 +73,19 @@ export {
   ZOOM_EMBED_LAUNCH_MODE,
   ZoomAdapterDeferredError,
   ZoomInitiateCallError,
+  ZoomUnsupportedWebhookEventError,
 } from './lib/provider/zoom/zoom-phone.adapter.js';
+// COMM-B6 — Zoom webhook signature + envelope (composition-root ingress helpers).
+export {
+  verifyZoomWebhookSignature,
+  computeZoomUrlValidationResponse,
+  type ZoomSignatureInput,
+  type ZoomSignatureResult,
+} from './lib/provider/zoom/zoom-webhook-signature.js';
+export {
+  parseZoomWebhookEnvelope,
+  type ZoomWebhookEnvelope,
+} from './lib/provider/zoom/zoom-webhook-envelope.js';
 export {
   encodeZoomCredential,
   decodeZoomCredential,

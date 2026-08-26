@@ -273,11 +273,15 @@
       "ZoomCredentialDecodeError",
       "ZoomInitiateCallError",
       "ZoomPhoneAdapter",
+      "ZoomUnsupportedWebhookEventError",
       "assertTransition",
       "canTransition",
+      "computeZoomUrlValidationResponse",
       "decodeZoomCredential",
       "encodeZoomCredential",
-      "isTerminalCallState"
+      "isTerminalCallState",
+      "parseZoomWebhookEnvelope",
+      "verifyZoomWebhookSignature"
     ],
     "@aramo/company": [
       "CompanyController",
@@ -3297,6 +3301,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/comm-b5-call-initiation.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/comm-b6-zoom-webhook.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
