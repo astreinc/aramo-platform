@@ -164,6 +164,30 @@ export class SubmitTalentToClientService {
       const requisition_id = submittal.job_id;
       const talent_record_id = submittal.talent_id;
 
+      // 3b — L1-C (Rule 1) SUBMIT gate: a new client submittal is allowed only
+      // when the requisition's RecruitingStatus is `open`. Read in-tx via the
+      // same raw-SQL route isRestrictedAtClient uses (no CIP RequisitionStateReader
+      // injection — that would cross the wrong nx edge), so all three gates stay
+      // atomic. The row absent OR status !== 'open' refuses with REQUISITION_NOT_OPEN
+      // (409) — no free pass for a missing requisition. details.status carries the
+      // current status (null when absent). This gate only READS status; it never
+      // writes it (Rule 3 / H4 one-way).
+      const reqStatusRows = await tx.$queryRawUnsafe<Array<{ status: string }>>(
+        `SELECT "status" FROM "requisition"."Requisition"
+          WHERE "id" = $1::uuid AND "tenant_id" = $2::uuid`,
+        requisition_id,
+        tenant_id,
+      );
+      const requisition_status = reqStatusRows[0]?.status;
+      if (requisition_status !== 'open') {
+        throw err(
+          'REQUISITION_NOT_OPEN',
+          'The requisition must be open before Talent can be submitted to the client',
+          409,
+          { submittal_id, requisition_id, status: requisition_status ?? null },
+        );
+      }
+
       // 4 — eligibility gate (deadline / manual override / client restriction). The
       // slot LIMIT is enforced authoritatively by consumeSlot under the policy lock.
       const inputs = await this.readPolicyInputs(tx, tenant_id, requisition_id);
