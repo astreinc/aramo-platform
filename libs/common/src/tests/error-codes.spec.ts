@@ -184,6 +184,9 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       // Requisition Lane 1-A — 1 initial-state authority gate refusal (403;
       // details.reason: establishment_authority_required | initial_state_not_allowed_for_mode).
       'REQUISITION_INITIAL_STATE_FORBIDDEN',
+      'COMMUNICATION_INTERACTION_NOT_FOUND',
+      'COMMUNICATION_USER_NOT_MAPPED',
+      'COMMUNICATION_PROVIDER_NOT_CONFIGURED',
       // Requisition Lane 1-C — 1 submit-gate refusal: a client submittal against
       // a non-open (or absent) requisition (409; details.status carries the
       // current RecruitingStatus, null when the requisition is absent).

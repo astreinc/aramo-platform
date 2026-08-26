@@ -649,6 +649,18 @@ export const ERROR_CODES = [
   // scope-axis INSUFFICIENT_PERMISSIONS: this is a create-time state-authority
   // refusal at the requisition establishment boundary.
   'REQUISITION_INITIAL_STATE_FORBIDDEN',
+  // COMM-V1 (COMM-B2) — Communications/Voice read-skeleton error codes. Appended
+  // LAST (never renumber). COMMUNICATION_INTERACTION_NOT_FOUND (404): a tenant-safe
+  // miss on GET /v1/communications/interactions/{id}. COMMUNICATION_USER_NOT_MAPPED
+  // (404): the caller has no provider-identity mapping on GET
+  // /v1/communications/me/provider-identity. COMMUNICATION_PROVIDER_NOT_CONFIGURED
+  // (409): the tenant has no active communications provider connection (GET
+  // capabilities). Call-execution codes (CONTACT_NOT_ALLOWED / CALL_FAILED /
+  // PHONE_NOT_AVAILABLE / INVALID_STATE / PROVIDER_UNAVAILABLE) land with their
+  // routes in later slices (B5+).
+  'COMMUNICATION_INTERACTION_NOT_FOUND',
+  'COMMUNICATION_USER_NOT_MAPPED',
+  'COMMUNICATION_PROVIDER_NOT_CONFIGURED',
   // Requisition Lane 1-C (Submittal-Status-Enforcement). Appended LAST — the
   // ordered-parity surfaces read positionally, so never renumber.
   // REQUISITION_NOT_OPEN (409): a client-submittal command was refused because

@@ -91,6 +91,11 @@
     { "from": "apps/api/project.json", "status": "unscoped", "to": "apps/api/src/main.ts" },
     { "from": "apps/api/project.json", "status": "unscoped", "to": "apps/api/tsconfig.app.json" },
     {
+      "from": "apps/api/src/communications/dto/communications.dto.ts",
+      "status": "production",
+      "to": "openapi/ats.yaml"
+    },
+    {
       "from": "apps/api/src/controllers/me.controller.ts",
       "status": "production",
       "to": "openapi/auth.yaml"
@@ -2356,6 +2361,18 @@
       "from": "apps/api/src/tests/commercial-revision-marker-confinement.spec.ts",
       "status": "excluded",
       "to": "libs/placement/src/tests/t6-b3-commercial-cancellation.integration.spec.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/communications-authz.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/communications/prisma/migrations/20260825120000_init_communications/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/communications-authz.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -8984,6 +9001,11 @@
     {
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
+      "to": "apps/api/src/communications/communications.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
       "to": "apps/api/src/controllers/assignable-users.controller.ts"
     },
     {
@@ -12805,6 +12827,12 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "libs/consent/src/tests/consent-check-operation-parity.spec.ts",
+      "status": "excluded",
+      "to": "openapi/common.yaml"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "libs/consent/src/tests/consent-portal-actor.integration.spec.ts",
       "status": "excluded",
       "to": "libs/consent/prisma/migrations/20260429164414_initial_consent_schema/migration.sql"
@@ -14489,6 +14517,11 @@
     {
       "from": "pact/provider/src/verify-api.ts",
       "status": "unscoped",
+      "to": "libs/communications/prisma/migrations/20260825120000_init_communications/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
       "to": "libs/company/prisma/migrations/20260601160000_init_company_model/migration.sql"
     },
     {
@@ -15145,6 +15178,11 @@
       "from": "pact/provider/src/verify-api.ts",
       "status": "unscoped",
       "to": "libs/task/prisma/migrations/20260617120000_task_workspace_fields/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "pact/consumers/ats-web/src/communications.consumer.test.ts"
     },
     {
       "from": "pact/provider/src/verify-api.ts",

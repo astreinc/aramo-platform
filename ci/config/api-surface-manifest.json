@@ -20,6 +20,7 @@
     "apps/api/src/controllers/tenant-settings.controller.ts": "AP",
     "apps/api/src/controllers/version.controller.ts": "IZ",
     "apps/api/src/offer/offer.controller.ts": "AP",
+    "apps/api/src/communications/communications.controller.ts": "AP",
     "apps/api/src/placement/guarantee-terms.controller.ts": "AP",
     "apps/api/src/placement/placement.controller.ts": "AP",
     "apps/api/src/pre-start-requirement/pre-start-requirement.controller.ts": "AP",

@@ -824,17 +824,21 @@ components:
     ConsentCheckOperation:
       type: string
       description: |
-        Closed enum of operations checkable via /consent/check. 7 values
-        derived from Group 2 §2.7 Enforcement Points table. Each operation
+        Closed enum of operations checkable via /consent/check. 8 values
+        derived from Group 2 §2.7 Enforcement Points table + COMM-B2
+        `communication` (Aramo-COMM-V1 R-COMM-CONSENT-OP). Each operation
         maps to exactly one required scope (Decision C, locked):
-          ingestion    → profile_storage
-          matching     → matching
-          examination  → matching
-          selection   → contacting
-          packaging    → contacting
-          submittal    → contacting
-          cross_tenant → cross_tenant_visibility
-        Adding a value requires Architect approval per
+          ingestion     → profile_storage
+          matching      → matching
+          examination   → matching
+          selection     → contacting
+          packaging     → contacting
+          submittal     → contacting
+          cross_tenant  → cross_tenant_visibility
+          communication → contacting
+        `communication` is the voice/communication contactability gate
+        (operation=communication + channel=phone); it reuses the existing
+        `contacting` machinery. Adding a value requires Architect approval per
         doc/02-claude-code-discipline.md Rule 4.
       enum:
         - ingestion
@@ -844,6 +848,7 @@ components:
         - packaging
         - submittal
         - cross_tenant
+        - communication
 
     ConsentScopeStatus:
       type: string
@@ -1692,6 +1697,9 @@ components:
         - COMMERCIAL_PROPOSAL_SELF_APPROVAL
         - COMMERCIAL_PROPOSAL_ALREADY_LIVE
         - REQUISITION_INITIAL_STATE_FORBIDDEN
+        - COMMUNICATION_INTERACTION_NOT_FOUND
+        - COMMUNICATION_USER_NOT_MAPPED
+        - COMMUNICATION_PROVIDER_NOT_CONFIGURED
         - REQUISITION_NOT_OPEN
 
     ErrorObject:

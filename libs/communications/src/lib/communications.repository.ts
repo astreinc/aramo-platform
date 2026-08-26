@@ -294,4 +294,41 @@ export class CommunicationsRepository {
       select: { id: true, provider_user_id: true, status: true },
     })) as { id: string; provider_user_id: string; status: CommunicationProviderIdentityStatus } | null;
   }
+
+  /**
+   * Connection-agnostic provider-identity lookup for a recruiter (tenant-safe).
+   * The connection is account-level; until a connection is bound (COMM-B3) the
+   * `me/provider-identity` read resolves the recruiter mapping by (tenant,
+   * recruiter) alone. Returns the most-recently-updated mapping, or null.
+   */
+  async findProviderIdentityByRecruiter(
+    tenantId: string,
+    recruiterId: string,
+  ): Promise<ProviderIdentityView | null> {
+    return (await this.prisma.communicationProviderIdentity.findFirst({
+      where: { tenant_id: tenantId, recruiter_id: recruiterId },
+      orderBy: { updated_at: 'desc' },
+      select: {
+        recruiter_id: true,
+        provider_user_id: true,
+        provider_extension_id: true,
+        display_phone_number: true,
+        extension: true,
+        voice_enabled: true,
+        sms_enabled: true,
+        status: true,
+      },
+    })) as ProviderIdentityView | null;
+  }
+}
+
+export interface ProviderIdentityView {
+  recruiter_id: string;
+  provider_user_id: string;
+  provider_extension_id: string | null;
+  display_phone_number: string | null;
+  extension: string | null;
+  voice_enabled: boolean;
+  sms_enabled: boolean;
+  status: CommunicationProviderIdentityStatus;
 }

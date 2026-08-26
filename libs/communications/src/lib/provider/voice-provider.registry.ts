@@ -21,4 +21,9 @@ export class VoiceProviderRegistry {
   has(providerKey: string): boolean {
     return this.providers.has(providerKey);
   }
+
+  /** All registered providers (registration order). Empty until an adapter registers. */
+  list(): VoiceProvider[] {
+    return [...this.providers.values()];
+  }
 }

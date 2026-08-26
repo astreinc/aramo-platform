@@ -357,6 +357,16 @@ export const SEED_SCOPE_KEYS = [
   // test/seed helpers. The INTEGRATION import path does NOT use this — it
   // reuses the existing requisition:import:write.
   'requisition:create:establish',
+  // COMM-B2 (Aramo-COMM-V1 R-COMM-SCOPES) — operational Communications/Voice
+  // scopes. Frontline recruiting work (NOT admin-tier like integration:*):
+  // GRANTED to recruiter, account_manager, tenant_admin, tenant_owner
+  // (R-COMM-ROLES). `communication:read` gates the read skeleton shipped in B2;
+  // voice:call / disposition:write / notes:write are granted now but their
+  // routes land in later slices (B5/B7).
+  'communication:read',
+  'communication:voice:call',
+  'communication:disposition:write',
+  'communication:notes:write',
 ] as const;
 export type SeedScopeKey = (typeof SEED_SCOPE_KEYS)[number];
 

@@ -3440,6 +3440,77 @@ paths:
   # an AWS identifier, or credential material; credential set is a dedicated
   # write-only endpoint. Provider-neutral: no provider name/transport/OAuth/
   # webhook/SFTP/polling/run-now.
+  /v1/communications/capabilities:
+    get:
+      operationId: getCommunicationCapabilities
+      summary: Read the tenant's communications provider capabilities.
+      description: |
+        Provider-neutral capability descriptor for the tenant's communications
+        provider (COMM-V1). Requires the `ats` capability and the
+        `communication:read` scope. 409 COMMUNICATION_PROVIDER_NOT_CONFIGURED
+        when no communications provider is configured.
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommunicationCapabilities'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '409':
+          $ref: 'common.yaml#/components/responses/Conflict'
+      security:
+        - BearerAuth: []
+  /v1/communications/me/provider-identity:
+    get:
+      operationId: getMyCommunicationProviderIdentity
+      summary: Read the calling recruiter's communications provider identity.
+      description: |
+        The caller's own provider-identity mapping (COMM-V1). Requires the `ats`
+        capability and the `communication:read` scope. 404
+        COMMUNICATION_USER_NOT_MAPPED when the caller has no mapping.
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommunicationProviderIdentity'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+  /v1/communications/interactions/{interactionId}:
+    get:
+      operationId: getCommunicationInteraction
+      summary: Read a communication interaction by id.
+      description: |
+        A single communication interaction (the canonical calling record),
+        tenant-scoped. Requires the `ats` capability and the `communication:read`
+        scope. 404 COMMUNICATION_INTERACTION_NOT_FOUND when absent or cross-tenant.
+      parameters:
+        - name: interactionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommunicationInteractionView'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
   /v1/integrations:
     get:
       operationId: listIntegrationConnections
@@ -3741,6 +3812,104 @@ components:
         secret — the shared signing secret is provisioned out-of-band and never documented.
 
   schemas:
+    CommunicationCapabilities:
+      type: object
+      additionalProperties: false
+      description: Provider-neutral capability descriptor for a communications provider (COMM-V1).
+      required: [provider_key, capabilities]
+      properties:
+        provider_key:
+          type: string
+          description: The normalized provider key (e.g. zoom_phone).
+        capabilities:
+          type: object
+          additionalProperties: false
+          required: [voice]
+          properties:
+            voice:
+              type: object
+              additionalProperties: false
+              required: [outbound, inbound, embedded]
+              properties:
+                outbound: { type: boolean }
+                inbound: { type: boolean }
+                embedded: { type: boolean }
+            sms:
+              type: object
+              additionalProperties: false
+              required: [outbound, inbound]
+              properties:
+                outbound: { type: boolean }
+                inbound: { type: boolean }
+            recording: { type: boolean }
+            transcript: { type: boolean }
+    CommunicationProviderIdentity:
+      type: object
+      additionalProperties: false
+      description: A recruiter's communications provider-identity mapping (COMM-V1). No secret material.
+      required: [recruiter_id, provider_user_id, voice_enabled, sms_enabled, status]
+      properties:
+        recruiter_id: { type: string, format: uuid }
+        provider_user_id: { type: string }
+        provider_extension_id:
+          type: [string, 'null']
+        display_phone_number:
+          type: [string, 'null']
+        extension:
+          type: [string, 'null']
+        voice_enabled: { type: boolean }
+        sms_enabled: { type: boolean }
+        status:
+          type: string
+          enum: [active, unmapped, disabled, reauth_required]
+    CommunicationInteractionView:
+      type: object
+      additionalProperties: false
+      description: A communication interaction (the canonical calling record), tenant-scoped (COMM-V1).
+      required:
+        - id
+        - channel
+        - direction
+        - status
+        - integration_connection_id
+        - from_address
+        - to_address
+        - created_at
+        - updated_at
+      properties:
+        id: { type: string, format: uuid }
+        channel:
+          type: string
+          enum: [voice, sms, email]
+        direction:
+          type: string
+          enum: [outbound, inbound]
+        status:
+          type: string
+          enum: [created, initiated, ringing, connected, completed, failed, missed, rejected]
+        integration_connection_id: { type: string, format: uuid }
+        from_address: { type: string }
+        to_address: { type: string }
+        started_at:
+          type: [string, 'null']
+          format: date-time
+        ringing_at:
+          type: [string, 'null']
+          format: date-time
+        connected_at:
+          type: [string, 'null']
+          format: date-time
+        ended_at:
+          type: [string, 'null']
+          format: date-time
+        duration_seconds:
+          type: [integer, 'null']
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
     Offer:
       type: object
       additionalProperties: false
