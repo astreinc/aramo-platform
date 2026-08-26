@@ -1568,6 +1568,14 @@ button.rc-link-action {
 
 .rc-hbtn--primary:hover { background: var(--brand-strong); }
 
+/* L1-E — segregation-of-duties note beside the lifecycle actions: the submitter
+   of a pending_approval requisition sees why their own Approve is suppressed.
+   Muted, non-interactive, sits inline with the header action buttons. */
+.rc-hbtn-sod {
+  display: inline-flex; align-items: center; max-width: 22rem;
+  font-size: .8rem; line-height: 1.3; color: var(--ink-2, var(--ink)); opacity: .8;
+}
+
 /* header dropdown (Columns / Sort) */
 
 .rc-hmenu { position: relative; }

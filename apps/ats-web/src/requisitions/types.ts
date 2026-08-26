@@ -182,6 +182,14 @@ export interface RequisitionView {
   // Distinct from is_hot (team-wide HOT pill); the star must never toggle
   // is_hot. Never reflects another user's state.
   readonly bookmarked: boolean;
+
+  // --- L1-E (Lifecycle UX) — the SoD projection field (additive, UN-gated).
+  // Hand-mirrored from libs/requisition/src/lib/dto/requisition.view.ts. The
+  // actor (UUID) who last submitted this requisition for approval; null unless
+  // status is pending_approval, and only populated on the DETAIL (GET /:id) read.
+  // Used purely to suppress the submitter's own Approve affordance (SoD is
+  // authoritative on the BE). ---
+  readonly pending_approval_submitter_id: string | null;
 }
 
 // Hand-mirrored from libs/requisition/src/lib/dto/rate-type.ts (RATE_TYPE_
