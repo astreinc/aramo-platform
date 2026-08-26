@@ -1093,6 +1093,11 @@ export class RequisitionRepository {
     scopes: readonly string[];
     // PR-7 — the acting principal, for the SET_PRIORITY §D17a provenance.
     actor_id: string;
+    // L1-B — the resolved read-side visibility context. Folded into the
+    // existence read below so an out-of-visibility requisition collapses to the
+    // existing 404 (visibility parity with the GET/LIST paths — the SAME
+    // buildVisibilityWhere predicate; NOT a new write-only ruleset).
+    visibility: VisibilityContextShape;
     requestId: string;
   }): Promise<RequisitionView> {
     // PR-A1 Requisition-Gating Rework — the status-only edit gate fires
@@ -1126,8 +1131,19 @@ export class RequisitionRepository {
       scopes: args.scopes,
       requestId: args.requestId,
     });
+    // L1-B — the existence read is now visibility-scoped: a null row (genuinely
+    // nonexistent OR present-but-invisible to the actor) hits the SAME existing
+    // 404. buildVisibilityWhere is the read side's authoritative predicate
+    // (see_all short-circuit + the D4b client-axis OR the A3 direct-assignment
+    // arm), so update() and GET answer one question: "Can this actor address
+    // this Requisition?" The scope/field gates above stay AHEAD (concealment
+    // ordering — a row-independent 403 leaks no existence-in-tenant).
     const existing = await this.prisma.requisition.findFirst({
-      where: { tenant_id: args.tenant_id, id: args.id },
+      where: {
+        tenant_id: args.tenant_id,
+        id: args.id,
+        ...buildVisibilityWhere(args.visibility),
+      },
       // PR-17 — work_arrangement is read so the onsite-frequency rule can key
       // off the EFFECTIVE arrangement (existing value when the PATCH omits it).
       // T8-P1 — source_system/external_req_id needed for the co-presence check
@@ -1490,10 +1506,20 @@ export class RequisitionRepository {
   async delete(args: {
     tenant_id: string;
     id: string;
+    // L1-B — the resolved read-side visibility context (same as update()).
+    visibility: VisibilityContextShape;
     requestId: string;
   }): Promise<void> {
+    // L1-B — visibility-scoped existence read: an out-of-visibility requisition
+    // is indistinguishable from a nonexistent one (both -> the existing 404),
+    // reusing buildVisibilityWhere (no write-only ruleset). deleteByImportBatch
+    // (system/import path, no HTTP route) is deliberately NOT visibility-gated.
     const existing = await this.prisma.requisition.findFirst({
-      where: { tenant_id: args.tenant_id, id: args.id },
+      where: {
+        tenant_id: args.tenant_id,
+        id: args.id,
+        ...buildVisibilityWhere(args.visibility),
+      },
       select: { id: true },
     });
     if (existing === null) {

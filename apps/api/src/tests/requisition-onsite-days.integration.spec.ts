@@ -11,6 +11,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { RequisitionPrismaService, RequisitionRepository } from '@aramo/requisition';
 import { deriveCapacity } from '@aramo/placement';
 
+import { SEE_ALL_VISIBILITY } from './support/see-all-visibility.js';
+
 // PR-17 — hybrid onsite frequency, server-side floor + the work_arrangement
 // coupling, against real Postgres. onsite_days_per_week is meaningful ONLY when
 // work_arrangement = 'hybrid' and only in 1-4; the repository enforces it (the
@@ -80,6 +82,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     }
     function update(id: string, input: Record<string, unknown>) {
       return repo.update({
+        visibility: SEE_ALL_VISIBILITY,
         tenant_id: TENANT,
         id,
         input: input as never,
