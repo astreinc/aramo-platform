@@ -349,6 +349,14 @@ export const SEED_SCOPE_KEYS = [
   // DRAFT offer, and drive its governed transitions (send/negotiate/accept/…).
   'offer:create',
   'offer:transition',
+  // Requisition Lane 1-A (Create-Governance) — the functional create qualifier
+  // that unlocks the governed establishment mode (MANUAL-ESTABLISH + SYSTEM).
+  // CATALOG-ONLY in v1: granted to NO human tenant role (recruiter/RM/DM/AM
+  // never receive it, so no human bypasses draft->approval via the manual
+  // path); held programmatically by system/bootstrap identities + passed by
+  // test/seed helpers. The INTEGRATION import path does NOT use this — it
+  // reuses the existing requisition:import:write.
+  'requisition:create:establish',
 ] as const;
 export type SeedScopeKey = (typeof SEED_SCOPE_KEYS)[number];
 

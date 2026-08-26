@@ -2104,6 +2104,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/requisition/src/tests/establishment-authorization-gate.spec.ts",
+        "project": "requisition",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/requisition/src/tests/financial-edit-gate.spec.ts",
         "project": "requisition",
         "status": "excluded"
@@ -3747,6 +3753,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/requisition-onsite-days.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/support/establish-open-requisition.ts",
         "project": "api",
         "status": "excluded"
       },

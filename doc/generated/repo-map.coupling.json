@@ -5881,6 +5881,12 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/support/establish-open-requisition.ts",
+      "status": "excluded",
+      "to": "tools/seed-e2e-data.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/talent-record-fixtures.ts",
       "status": "excluded",
       "to": "libs/talent-record/prisma/migrations/20260602120000_init_talent_record_model/migration.sql"
@@ -13668,6 +13674,11 @@
       "from": "libs/requisition/src/lib/compensation-edit-gate.ts",
       "status": "production",
       "to": "libs/identity/src/lib/dto/scope.dto.ts"
+    },
+    {
+      "from": "libs/requisition/src/lib/dto/create-requisition-request.dto.ts",
+      "status": "production",
+      "to": "apps/api/src/main.ts"
     },
     {
       "from": "libs/requisition/src/lib/dto/requisition-transitions.ts",
