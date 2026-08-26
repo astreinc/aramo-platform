@@ -272,6 +272,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'requisition:approve',
         'requisition:assign',
         'requisition:create',
+        'requisition:create:establish',
         'requisition:delete',
         'requisition:edit',
         'requisition:edit:financials',
@@ -509,7 +510,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Track 3 / E2: +7 pre_start_requirement (all non-platform). Re-derived
       // actual 96 (prior literal 85 was pre-existingly understated by 4 — F-2).
       // Track 3 / E2 v1.2.2: +1 pre_start_requirement:reopen (non-platform) → 97.
-      expect(tenantScopes.length).toBe(123); // +1 Slice#3 assignment:extend +5 placement +1 placement:replace +2 T7-P1 permanent +1 T7-P2 remedy:resolve +1 T7-P3 permanent:terms:write +4 T4-D assignment +2 T5-P1 commercials +2 T8-P2 requisition:import +2 T8-CONNECTOR-A integration +1 L8-B1 submittal-policy:write +1 Approval requisition:approve (all non-platform)
+      expect(tenantScopes.length).toBe(124); // +1 Slice#3 assignment:extend +5 placement +1 placement:replace +2 T7-P1 permanent +1 T7-P2 remedy:resolve +1 T7-P3 permanent:terms:write +4 T4-D assignment +2 T5-P1 commercials +2 T8-P2 requisition:import +2 T8-CONNECTOR-A integration +1 L8-B1 submittal-policy:write +1 Approval requisition:approve +1 L1-A requisition:create:establish (CATALOG-ONLY, no grant; all non-platform)
       for (const s of tenantScopes) {
         expect(s.key.startsWith('platform:')).toBe(false);
       }
@@ -550,6 +551,35 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         for (const rs of r.role_scopes) {
           expect(rs.scope.key.startsWith('platform:')).toBe(false);
         }
+      }
+    });
+
+    // Requisition Lane 1-A — proof 6c (grant-withheld). requisition:create:establish
+    // exists in the seeded catalog (128) but is granted to NO role at all — it is
+    // CATALOG-ONLY in v1 (held programmatically by system/bootstrap + test
+    // helpers). No human tenant role (recruiter / recruiting_manager /
+    // delivery_manager / account_manager) can establish a non-draft requisition
+    // via the manual create path.
+    it('L1-A — requisition:create:establish is catalog-present but granted to ZERO roles', async () => {
+      const establish = await prisma.scope.findUnique({
+        where: { key: 'requisition:create:establish' },
+        include: { role_scopes: { include: { role: true } } },
+      });
+      // Catalog membership: the scope EXISTS (net-new this slice).
+      expect(establish).not.toBeNull();
+      // Grant-withheld: ZERO RoleScope rows reference it — no role, human or
+      // otherwise, holds it in the seed.
+      expect(establish!.role_scopes).toEqual([]);
+      const grantedRoles = establish!.role_scopes.map((rs) => rs.role.key);
+      for (const human of [
+        'recruiter',
+        'recruiting_manager',
+        'delivery_manager',
+        'account_manager',
+        'tenant_admin',
+        'tenant_owner',
+      ]) {
+        expect(grantedRoles).not.toContain(human);
       }
     });
 

@@ -24,6 +24,7 @@ import { AppModule } from '../app.module.js';
 import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
 import { publishLifecyclePackage } from './publish-lifecycle-package.js';
 import { placementCapacityMigrations } from './support/placement-capacity-migrations.js';
+import { establishOpenRequisition } from './support/establish-open-requisition.js';
 
 // PR-A7 Gate 5 — ATS-INTERNAL reporting + dashboard integration spec.
 //
@@ -534,15 +535,19 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         site_id: SITE_A,
       });
 
-      const reqAssigned = await postJson('/v1/requisitions', tenantAdminJwt, {
-        title: 'Assigned to recruiter',
-        company_id: companyA.id,
-        site_id: SITE_A,
+      // L1-A — these reporting fixtures need OPEN requisitions (add-talent runs
+      // against reqAssigned below). A human HTTP create now lands 'draft'; use
+      // the sanctioned SYSTEM establishment path (setup-only; the reporting
+      // SUBJECT + assertions are unchanged).
+      const reqAssigned = await establishOpenRequisition(app, {
+        tenant_id: TENANT_ATS,
+        entered_by_id: TENANT_ADMIN,
+        input: { title: 'Assigned to recruiter', company_id: companyA.id, site_id: SITE_A },
       });
-      const reqUnassigned = await postJson('/v1/requisitions', tenantAdminJwt, {
-        title: 'Unassigned to recruiter',
-        company_id: companyA.id,
-        site_id: SITE_A,
+      const reqUnassigned = await establishOpenRequisition(app, {
+        tenant_id: TENANT_ATS,
+        entered_by_id: TENANT_ADMIN,
+        input: { title: 'Unassigned to recruiter', company_id: companyA.id, site_id: SITE_A },
       });
       ftReqAssigned = reqAssigned.id;
       ftReqUnassigned = reqUnassigned.id;

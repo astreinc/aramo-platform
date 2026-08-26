@@ -167,6 +167,9 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   COMMERCIAL_PROPOSAL_STATE_INVALID: 422,
   COMMERCIAL_PROPOSAL_SELF_APPROVAL: 403,
   COMMERCIAL_PROPOSAL_ALREADY_LIVE: 409,
+  // Requisition Lane 1-A — the initial-state authority gate refusal (403):
+  // establishment_authority_required | initial_state_not_allowed_for_mode.
+  REQUISITION_INITIAL_STATE_FORBIDDEN: 403,
 };
 
 // Base error class. Thrown anywhere in the app where a structured response

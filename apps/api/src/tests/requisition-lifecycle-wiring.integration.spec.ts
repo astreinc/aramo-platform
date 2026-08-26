@@ -105,6 +105,17 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await container?.stop();
     }, 60_000);
 
+    // L1-A — these lifecycle-wiring proofs need requisitions established in
+    // arbitrary OPERATIONAL statuses (lead/on_hold/closed/…) to drive the
+    // governed transition machinery. Under create-governance only the
+    // INTEGRATION path (createForImport / create() with creation_mode
+    // INTEGRATION + requisition:import:write) may establish those states; a
+    // MANUAL create is capped at { draft }. So the helper establishes via
+    // INTEGRATION mode (default open preserved). The MANUAL-default behaviour
+    // (→ draft) is asserted on its own below.
+    const IMPORT_WRITE = 'requisition:import:write';
+    const ESTABLISH = 'requisition:create:establish';
+
     async function createReq(
       status?: 'open' | 'on_hold' | 'submittals_closed' | 'closed' | 'canceled' | 'lead',
       requestId: string = uuidv7(),
@@ -117,10 +128,91 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           company_id: COMPANY,
           ...(status === undefined ? {} : { status }),
         } as never,
-        scopes: [],
+        scopes: [IMPORT_WRITE],
+        creation_mode: 'INTEGRATION',
         requestId,
       });
     }
+
+    // L1-A proof 1 — a MANUAL create with no status now establishes DRAFT (the
+    // repository formerly defaulted `input.status ?? 'open'`). Non-vacuous: the
+    // prior default was 'open'; the new one is exactly 'draft'.
+    it('L1-A P1: MANUAL create (no status) establishes draft, NOT the former open default', async () => {
+      const requestId = uuidv7();
+      const view = await repo.create({
+        tenant_id: TENANT_A,
+        entered_by_id: ACTOR_1,
+        input: { title: 'Manual Draft', company_id: COMPANY } as never,
+        scopes: [], // ordinary manual — no establish
+        creation_mode: 'MANUAL',
+        requestId,
+      });
+      expect(view.status).toBe('draft');
+      expect(view.status).not.toBe('open');
+      const events = await store.listByRequisition(TENANT_A, view.id);
+      expect(events).toHaveLength(1);
+      expect(events[0]?.previous_status).toBeNull(); // R1
+      expect(events[0]?.next_status).toBe('draft'); // was 'open' before L1-A
+      expect(events[0]?.origin).toBe('ui');
+      expect(events[0]?.actor_id).toBe(ACTOR_1);
+      // L1-A proof 9 — a manual draft is REQUISITION_CREATED.
+      expect(events[0]?.reason_code).toBe('REQUISITION_CREATED');
+      expect(events[0]?.policy_decision_id).toBeNull(); // T1-e supplies one
+      expect(events[0]?.correlation_id).toBe(requestId);
+    });
+
+    // L1-A proof 9 (SYSTEM establishment) — a SYSTEM non-draft establishment is
+    // REQUISITION_ESTABLISHED (distinct from the manual-draft REQUISITION_CREATED).
+    it('L1-A P9: SYSTEM establishment of open is REQUISITION_ESTABLISHED; MANUAL draft is REQUISITION_CREATED', async () => {
+      const sys = await repo.create({
+        tenant_id: TENANT_A,
+        entered_by_id: ACTOR_1,
+        input: { title: 'System Established', company_id: COMPANY, status: 'open' } as never,
+        scopes: [ESTABLISH],
+        creation_mode: 'SYSTEM',
+        requestId: uuidv7(),
+      });
+      expect(sys.status).toBe('open');
+      const sysEvents = await store.listByRequisition(TENANT_A, sys.id);
+      expect(sysEvents[0]?.reason_code).toBe('REQUISITION_ESTABLISHED');
+    });
+
+    // L1-A proof 2 / 6b — a MANUAL create requesting a non-draft state WITHOUT
+    // requisition:create:establish is refused 403 at the repository floor,
+    // BEFORE any row is written.
+    it('L1-A P2/P6b: MANUAL create requesting open without create:establish → 403 (no row)', async () => {
+      await expect(
+        repo.create({
+          tenant_id: TENANT_A,
+          entered_by_id: ACTOR_1,
+          input: { title: 'Forbidden Open', company_id: COMPANY, status: 'open' } as never,
+          scopes: ['requisition:create', 'requisition:edit'],
+          creation_mode: 'MANUAL',
+          requestId: uuidv7(),
+        }),
+      ).rejects.toMatchObject({
+        code: 'REQUISITION_INITIAL_STATE_FORBIDDEN',
+        statusCode: 403,
+      });
+    });
+
+    // L1-A proof 6a — the INTEGRATION (createForImport) floor re-asserts
+    // requisition:import:write; absent it, the import is refused 403.
+    it('L1-A P6a: createForImport WITHOUT requisition:import:write → 403', async () => {
+      await expect(
+        repo.createForImport({
+          tenant_id: TENANT_A,
+          entered_by_id: ACTOR_1,
+          import_batch_id: uuidv7(),
+          input: { title: 'No Authority', company_id: COMPANY, status: 'open' } as never,
+          scopes: [], // no import:write
+          requestId: uuidv7(),
+        }),
+      ).rejects.toMatchObject({
+        code: 'REQUISITION_INITIAL_STATE_FORBIDDEN',
+        statusCode: 403,
+      });
+    });
 
     it('create → ONE event, previous_status NULL, next_status the created status (R1)', async () => {
       const requestId = uuidv7();
@@ -129,8 +221,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const events = await store.listByRequisition(TENANT_A, view.id);
       expect(events).toHaveLength(1);
       expect(events[0]?.previous_status).toBeNull(); // R1
-      expect(events[0]?.next_status).toBe('open'); // default created status
-      expect(events[0]?.origin).toBe('ui');
+      expect(events[0]?.next_status).toBe('open'); // INTEGRATION default preserved
       expect(events[0]?.actor_id).toBe(ACTOR_1);
       expect(events[0]?.policy_decision_id).toBeNull(); // T1-e supplies one
       expect(events[0]?.correlation_id).toBe(requestId);
@@ -198,20 +289,22 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(after).toBe(before); // no new event
     });
 
-    it('createForImport → ONE event, origin=integration (R4), previous_status NULL', async () => {
+    it('createForImport → ONE event, origin=integration (R4), previous_status NULL [L1-A P4: import:write establishes open]', async () => {
       const view = await repo.createForImport({
         tenant_id: TENANT_A,
         entered_by_id: ACTOR_1,
         import_batch_id: uuidv7(),
         input: { title: 'Imported role', company_id: COMPANY, status: 'open' } as never,
-        scopes: [],
+        scopes: [IMPORT_WRITE], // L1-A — INTEGRATION authority = existing import:write
         requestId: uuidv7(),
       });
       const events = await store.listByRequisition(TENANT_A, view.id);
       expect(events).toHaveLength(1);
       expect(events[0]?.origin).toBe('integration'); // R4
       expect(events[0]?.previous_status).toBeNull(); // still a create
-      expect(events[0]?.next_status).toBe('open');
+      expect(events[0]?.next_status).toBe('open'); // L1-A P4 — preserved
+      // L1-A P9 — an integration establishment is REQUISITION_IMPORTED.
+      expect(events[0]?.reason_code).toBe('REQUISITION_IMPORTED');
     });
 
     it('delete → ZERO new events, and PRIOR events for that requisition SURVIVE (R5)', async () => {
@@ -246,7 +339,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         entered_by_id: ACTOR_1,
         import_batch_id: batch,
         input: { title: 'Batch role', company_id: COMPANY, status: 'open' } as never,
-        scopes: [],
+        scopes: [IMPORT_WRITE],
         requestId: uuidv7(),
       });
       expect(await store.listByRequisition(TENANT_A, view.id)).toHaveLength(1);

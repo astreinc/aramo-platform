@@ -133,15 +133,22 @@ async function main(): Promise<void> {
         return created;
       },
       createRequisition: async ({ tenantId, enteredById, recruiterUserId, spec, companyId, contactId }) =>
+        // L1-A — the e2e seed establishes OPEN requisitions via the SYSTEM
+        // establishment path: creation_mode SYSTEM + the (bootstrap-held)
+        // requisition:create:establish scope, with an explicit status:'open'.
+        // A bare MANUAL create would now land 'draft' (R-DEFAULT); the seed
+        // needs live/open demand fixtures, so it uses the governed SYSTEM mode.
         requireId(await requisition.create({
           tenant_id: tenantId,
           entered_by_id: enteredById,
-          scopes: [],
+          scopes: ['requisition:create:establish'],
+          creation_mode: 'SYSTEM',
           requestId: randomUUID(),
           input: {
             title: spec.title,
             company_id: companyId,
             contact_id: contactId,
+            status: 'open',
             type: spec.type,
             city: spec.city,
             state: spec.state,

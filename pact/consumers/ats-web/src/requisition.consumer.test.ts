@@ -59,7 +59,7 @@ const REQ_ASSIGNMENT_ID = '00000000-0000-7000-8000-a55160000002';
 // row; the 13 comp + 7 financial keys are stripped for this actor).
 function requisitionView(
   id: string | undefined,
-  opts: { title?: string; isHot?: boolean; goldenProfileId?: unknown } = {},
+  opts: { title?: string; isHot?: boolean; goldenProfileId?: unknown; status?: string } = {},
 ) {
   return {
     id: id === undefined ? uuid() : uuid(id),
@@ -67,7 +67,10 @@ function requisitionView(
     site_id: null,
     title: like(opts.title ?? 'Senior Engineer'),
     company_id: uuid(REQ_COMPANY_ID),
-    status: like('open'),
+    // L1-A — a bare manual create now establishes 'draft' (R-DEFAULT); list/detail
+    // reads of existing requisitions keep the 'open' example. like() matches on
+    // type, so the value is illustrative — kept honest to the create default.
+    status: like(opts.status ?? 'open'),
     // T1-e (§2.1) — the concurrency token the client reads then supplies on a
     // status-changing PATCH (read-then-write).
     version: like(0),
@@ -167,7 +170,8 @@ describe('ats-web → POST /v1/requisitions', () => {
         );
       })
       .willRespondWith(201, (b) => {
-        b.jsonBody(requisitionView(undefined, { title: 'Staff Engineer' }));
+        // L1-A — a manual create (no status) now establishes 'draft'.
+        b.jsonBody(requisitionView(undefined, { title: 'Staff Engineer', status: 'draft' }));
       })
       .executeTest(async (mock) => {
         const res = await fetch(`${mock.url}/v1/requisitions`, {

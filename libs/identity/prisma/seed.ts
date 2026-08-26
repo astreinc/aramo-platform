@@ -355,6 +355,11 @@ export const SEED_IDS = {
     // Offer Lifecycle — next-free suffixes 0xdf, 0xe0.
     'offer:create': '01900000-0000-7000-8000-0000000000df',
     'offer:transition': '01900000-0000-7000-8000-0000000000e0',
+    // Requisition Lane 1-A (Create-Governance) — next-free suffix 0xe3
+    // (0xdd/0xde/0xe1/0xe2 are already taken by integration:write /
+    // submittal-policy:write / assignment:extend / assignment:commercials:approve;
+    // highest previously used was 0xe2). CATALOG-ONLY — NO RoleScope grant.
+    'requisition:create:establish': '01900000-0000-7000-8000-0000000000e3',
   },
   // RoleScope ids — one per (role,scope) assignment. Hardcoded sequence
   // 0x30..0x39 (10 assignments: 6 tenant_admin + 4 recruiter; the 3
@@ -2492,6 +2497,7 @@ export async function runIdentitySeed(
   await upsertScope(prisma, SEED_IDS.scopes['requisition:approve'], 'requisition:approve', 'Requisition Approval sub-workflow — decide a requisition approval: the governed APPROVE (pending_approval -> open) and REJECT (pending_approval -> draft) transitions, enforced IN-SERVICE at the requisition repository (a 403 costs no policy decision + no write). APPROVE additionally enforces segregation of duties (the approver must differ from the recruiter who submitted for approval). GRANTED to account_manager, tenant_admin, tenant_owner only (manager tier, mirrors requisition:edit:financials); recruiter excluded — a recruiter cannot approve. NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['offer:create'], 'offer:create', 'Offer Lifecycle — create a DRAFT Offer (POST /v1/offers), the dedicated pre-placement offer aggregate. GRANTED to recruiter, account_manager, tenant_admin, tenant_owner (mirrors placement:create — the offer is the pre-placement stage of the same hire-spine tier). NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['offer:transition'], 'offer:transition', 'Offer Lifecycle — drive an Offer governed transition (PATCH /v1/offers/:id): send / negotiate / revise / accept / decline / expire / rescind, along the legal DRAFT->SENT->NEGOTIATION->ACCEPTED/DECLINED/EXPIRED/RESCINDED edges (the DB trigger + ADR-0024 offer-lifecycle policy enforce legality). GRANTED to recruiter, account_manager, tenant_admin, tenant_owner (mirrors placement:transition). NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['requisition:create:establish'], 'requisition:create:establish', 'Requisition Lane 1-A (Create-Governance) — the functional create qualifier that unlocks the governed initial-state establishment mode (MANUAL-ESTABLISH + SYSTEM). Grants authority to ENTER the governed establishment mode; never permits arbitrary statuses (the establishment-authorization gate still bounds { draft, open }). CATALOG-ONLY in v1: GRANTED to NO human tenant role (recruiter / recruiting_manager / delivery_manager / account_manager never receive it, so no human bypasses draft->approval via the manual create path); held programmatically by system/bootstrap establishment identities + passed by bootstrap/test helpers only. The INTEGRATION import path does NOT use this scope — it reuses the existing requisition:import:write. NO scope.created (scope-seed precedent); NO RoleScope grant.');
 
   // 7. RoleScope assignments — pre-AUTHZ-1 (88 rows: 13 + 12 + 52 + 11).
   for (const [roleKey, scopeKeys] of Object.entries(ROLE_SCOPE_ASSIGNMENTS)) {

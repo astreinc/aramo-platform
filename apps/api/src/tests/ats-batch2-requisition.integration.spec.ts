@@ -24,6 +24,7 @@ import { AppModule } from '../app.module.js';
 import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
 import { publishLifecyclePackage } from './publish-lifecycle-package.js';
 import { placementCapacityMigrations } from './support/placement-capacity-migrations.js';
+import { establishOpenRequisition } from './support/establish-open-requisition.js';
 
 // PR-A3 Gate 5 — ATS Batch 2 (requisition + assignment-visibility) integration spec.
 //
@@ -839,25 +840,18 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     });
 
     it('STATUS-ONLY: status-only actor PATCH {status} → 200; persisted status updated', async () => {
-      const createRes = await fetch(
-        `http://127.0.0.1:${port}/v1/requisitions?site_id=${SITE_A}`,
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${tenantAdminJwt_Ats_SiteA}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            title: 'PR-A1 status-only PATCH target',
-            company_id: COMPANY_ID,
-            site_id: SITE_A,
-          }),
-        },
-      );
-      const reqId = ((await createRes.json()) as { id: string }).id;
+      // L1-A — the SUBJECT is the status-only PATCH gate, not create. Under
+      // create-governance a human HTTP create lands 'draft' and open→closed
+      // would be unreachable; re-establish the fixture OPEN via the sanctioned
+      // SYSTEM path so the status PATCH exercises the intended open→closed edge.
+      const req = await establishOpenRequisition(app, {
+        tenant_id: TENANT_ATS,
+        entered_by_id: TENANT_ADMIN,
+        input: { title: 'PR-A1 status-only PATCH target', company_id: COMPANY_ID, site_id: SITE_A },
+      });
 
       const patchRes = await fetch(
-        `http://127.0.0.1:${port}/v1/requisitions/${reqId}?site_id=${SITE_A}`,
+        `http://127.0.0.1:${port}/v1/requisitions/${req.id}?site_id=${SITE_A}`,
         {
           method: 'PATCH',
           headers: {
@@ -909,25 +903,16 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     });
 
     it('STATUS-ONLY: full editor (tenant_admin) PATCH {status} → 200 (unaffected by the status gate)', async () => {
-      const createRes = await fetch(
-        `http://127.0.0.1:${port}/v1/requisitions?site_id=${SITE_A}`,
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${tenantAdminJwt_Ats_SiteA}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            title: 'PR-A1 full-editor status target',
-            company_id: COMPANY_ID,
-            site_id: SITE_A,
-          }),
-        },
-      );
-      const reqId = ((await createRes.json()) as { id: string }).id;
+      // L1-A — status-change SUBJECT: establish the fixture OPEN (sanctioned
+      // SYSTEM path) so the tenant_admin PATCH exercises open→on_hold.
+      const req = await establishOpenRequisition(app, {
+        tenant_id: TENANT_ATS,
+        entered_by_id: TENANT_ADMIN,
+        input: { title: 'PR-A1 full-editor status target', company_id: COMPANY_ID, site_id: SITE_A },
+      });
 
       const patchRes = await fetch(
-        `http://127.0.0.1:${port}/v1/requisitions/${reqId}?site_id=${SITE_A}`,
+        `http://127.0.0.1:${port}/v1/requisitions/${req.id}?site_id=${SITE_A}`,
         {
           method: 'PATCH',
           headers: {
