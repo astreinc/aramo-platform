@@ -29,6 +29,17 @@ export class ZoomAdapterDeferredError extends Error {
   }
 }
 
+/** Raised when a launch cannot be formed (e.g. no resolved caller identity). */
+export class ZoomInitiateCallError extends Error {
+  constructor(detail: string) {
+    super(`ZoomPhoneAdapter.initiateCall could not launch: ${detail}`);
+    this.name = 'ZoomInitiateCallError';
+  }
+}
+
+/** The B4 Smart-Embed launch mode: the client dialer completes the PSTN leg. */
+export const ZOOM_EMBED_LAUNCH_MODE = 'zoom_embed';
+
 export class ZoomPhoneAdapter implements VoiceProvider {
   providerKey(): string {
     return ZOOM_PHONE_PROVIDER_KEY;
@@ -61,9 +72,23 @@ export class ZoomPhoneAdapter implements VoiceProvider {
     return { healthy: true };
   }
 
-  async initiateCall(_input: VoiceCallRequest): Promise<VoiceCallLaunch> {
-    void _input;
-    throw new ZoomAdapterDeferredError('initiateCall', 'B5');
+  /**
+   * COMM-B5 — form the outbound-call LAUNCH from provider-neutral inputs. The
+   * server-side seam hands the B4 Smart Embed a launch descriptor; the actual
+   * PSTN dial happens in the browser dialer, and a live external Zoom API
+   * round-trip (with real credentials + a domain allowlist) is B8. This method
+   * is a PURE function of its input — it never reads Communications persistence
+   * to discover the recruiter mapping (that is resolved by the service and passed
+   * in as `caller`). It refuses to launch without a resolved caller identity.
+   */
+  async initiateCall(input: VoiceCallRequest): Promise<VoiceCallLaunch> {
+    if (input.caller.provider_user_id.trim().length === 0) {
+      throw new ZoomInitiateCallError('no resolved caller provider identity');
+    }
+    if (input.to_address.trim().length === 0) {
+      throw new ZoomInitiateCallError('no destination address');
+    }
+    return { launch_mode: ZOOM_EMBED_LAUNCH_MODE };
   }
 
   async normalizeWebhook(_event: unknown): Promise<NormalizedVoiceEvent> {

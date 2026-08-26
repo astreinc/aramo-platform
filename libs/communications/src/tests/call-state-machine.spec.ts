@@ -19,6 +19,10 @@ import {
 
 const LEGAL: ReadonlyArray<[CommunicationInteractionStatus, CommunicationInteractionStatus]> = [
   ['created', 'initiated'],
+  // COMM-B5 — the ONLY edge added in B5: an auditable terminal outcome when
+  // provider launch fails before ringing. `initiated->failed`/`connected->failed`
+  // and `busy`/`canceled` remain B6 recon items and are NOT added here.
+  ['created', 'failed'],
   ['initiated', 'ringing'],
   ['ringing', 'connected'],
   ['ringing', 'failed'],
@@ -70,6 +74,15 @@ describe('canonical call state machine', () => {
     }
     expect(isTerminalCallState('created')).toBe(false);
     expect(isTerminalCallState('ringing')).toBe(false);
+  });
+
+  it('COMM-B5: created->failed is legal, but no OTHER ->failed edge is added', () => {
+    expect(canTransition('created', 'failed')).toBe(true);
+    // The B5 edge is narrow: launch failure BEFORE ringing only.
+    expect(canTransition('initiated', 'failed')).toBe(false);
+    expect(canTransition('connected', 'failed')).toBe(false);
+    // created's successors are now exactly {initiated, failed} — nothing else.
+    expect([...CALL_STATE_TRANSITIONS.created].sort()).toEqual(['failed', 'initiated']);
   });
 
   it('does NOT admit canceled/busy in B1 (deferred to B6)', () => {

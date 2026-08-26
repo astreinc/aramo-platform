@@ -32,6 +32,19 @@ export interface ProviderHealth {
   readonly detail?: string;
 }
 
+/**
+ * Provider-neutral caller (recruiter) identity. COMM-B5: the service/composition
+ * root resolves the recruiter's provider-identity mapping and passes it in HERE —
+ * the adapter NEVER reaches back into Communications persistence to discover the
+ * mapping (R-COMM-PROVIDER-PORT). Names stay provider-neutral; vendor translation
+ * is confined to the concrete adapter.
+ */
+export interface VoiceCallerIdentity {
+  readonly provider_user_id: string;
+  readonly provider_extension_id?: string | null;
+  readonly extension?: string | null;
+}
+
 /** Input to initiate an outbound call (provider-neutral). */
 export interface VoiceCallRequest {
   readonly tenant_id: string;
@@ -41,6 +54,8 @@ export interface VoiceCallRequest {
   readonly from_address: string;
   readonly to_address: string;
   readonly initiated_by_id?: string;
+  /** The resolved caller identity (COMM-B5). Adapters must not discover it themselves. */
+  readonly caller: VoiceCallerIdentity;
 }
 
 /** Result of a launch — a launch mode + optional provider correlation ids. */

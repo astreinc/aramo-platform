@@ -3541,6 +3541,77 @@ paths:
           $ref: 'common.yaml#/components/responses/Conflict'
       security:
         - BearerAuth: []
+  /v1/communications/calls:
+    post:
+      operationId: initiateCommunicationCall
+      summary: Initiate an outbound voice call from a Talent record.
+      description: |
+        Initiate an outbound voice call to a Talent's phone number. Requires the
+        `ats` capability and the `communication:voice:call` scope.
+
+        The server resolves the destination number from the Talent record's
+        selected `phone_slot` (an arbitrary client-supplied number is NOT
+        accepted) and normalizes it to E.164; an un-normalizable number is
+        refused. A fail-closed contacting-consent gate runs BEFORE any provider
+        side effect. On success the interaction is created and transitioned to
+        `initiated`; a provider launch that fails before ringing is recorded as
+        `failed`.
+
+        Refusals:
+          - 400 VALIDATION_ERROR — body/path invariants, or a missing/malformed
+            Idempotency-Key.
+          - 403 COMMUNICATION_CALL_CONSENT_DENIED — the contacting-consent
+            decision was not allowed (denial or fail-closed system failure; the
+            distinction is retained in audit only).
+          - 404 NOT_FOUND — the Talent record is absent or cross-tenant.
+          - 404 COMMUNICATION_USER_NOT_MAPPED — the calling recruiter has no
+            provider-identity mapping.
+          - 409 COMMUNICATION_PROVIDER_NOT_CONFIGURED — no usable provider
+            connection for the tenant.
+          - 409 IDEMPOTENCY_KEY_CONFLICT — same Idempotency-Key, different body.
+          - 422 COMMUNICATION_CALL_NOT_INITIABLE — no dialable number on file for
+            the slot, an un-normalizable destination, an unknown `regarding`
+            requisition, or a provider launch that failed before ringing.
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: |
+            UUID idempotency key. Same key + same body returns the prior
+            response; same key + different body returns 409
+            IDEMPOTENCY_KEY_CONFLICT. Missing or non-UUID returns 400
+            VALIDATION_ERROR. Required because call initiation has an external
+            side effect and must not dial twice on retry.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InitiateCommunicationCallRequest'
+      responses:
+        '201':
+          description: Call interaction created and transitioned to `initiated`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommunicationInteractionView'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '409':
+          $ref: 'common.yaml#/components/responses/Conflict'
+        '422':
+          $ref: 'common.yaml#/components/responses/UnprocessableEntity'
+      security:
+        - BearerAuth: []
   /v1/communications/interactions/{interactionId}:
     get:
       operationId: getCommunicationInteraction
@@ -3951,6 +4022,37 @@ components:
         status:
           type: string
           enum: [active, unmapped, disabled, reauth_required]
+    InitiateCommunicationCallRequest:
+      type: object
+      additionalProperties: false
+      description: |
+        Request to initiate an outbound voice call (COMM-B5). The server resolves
+        the destination from the Talent record's `phone_slot`; an arbitrary
+        destination number is NOT accepted. `regarding` is optional context and
+        carries only the requisition identifier.
+      required:
+        - talent_id
+        - phone_slot
+      properties:
+        talent_id:
+          type: string
+          format: uuid
+          description: The Talent record to call.
+        phone_slot:
+          type: string
+          enum: [cell, work, home]
+          description: Which of the Talent record's phone numbers to dial.
+        regarding:
+          oneOf:
+            - type: 'null'
+            - type: object
+              additionalProperties: false
+              required: [requisition_id]
+              properties:
+                requisition_id:
+                  type: string
+                  format: uuid
+          description: Optional requisition context; omitted or null for a Talent-only call.
     CommunicationInteractionView:
       type: object
       additionalProperties: false

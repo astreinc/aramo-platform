@@ -513,6 +513,21 @@ export class TalentRecordRepository {
     return row === null ? null : projectDetailView(row as TalentRecordRow);
   }
 
+  // COMM-B5 — narrow, tenant-safe read of ONLY the dialable phone slots for
+  // outbound call initiation. Deliberately selects the three phone columns (not
+  // the full PII record) so the caller resolves a destination without loading
+  // the record. null = the record is absent or cross-tenant; a present record
+  // with a null slot = no dialable number on file for that slot.
+  async findDialablePhonesForTenant(args: {
+    tenant_id: string;
+    id: string;
+  }): Promise<{ phone_cell: string | null; phone_work: string | null; phone_home: string | null } | null> {
+    return this.prisma.talentRecord.findFirst({
+      where: { tenant_id: args.tenant_id, id: args.id },
+      select: { phone_cell: true, phone_work: true, phone_home: true },
+    });
+  }
+
   async list(args: {
     tenant_id: string;
     site_id?: string;

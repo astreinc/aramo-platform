@@ -1,12 +1,22 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '@aramo/auth';
 import { AuthorizationModule } from '@aramo/authorization';
-import { CommunicationsModule, VoiceProviderRegistry, ZoomPhoneAdapter } from '@aramo/communications';
+import {
+  CommunicationsModule,
+  REQUISITION_EXISTENCE_PORT,
+  VoiceProviderRegistry,
+  ZoomPhoneAdapter,
+} from '@aramo/communications';
+import { ConsentModule } from '@aramo/consent';
 import { EntitlementModule } from '@aramo/entitlement';
 import { IntegrationModule } from '@aramo/integration';
+import { RequisitionModule } from '@aramo/requisition';
+import { TalentRecordModule } from '@aramo/talent-record';
 
 import { CommunicationsController } from './communications.controller.js';
 import { CommunicationsApiService } from './communications-api.service.js';
+import { CommunicationCallService } from './communication-call.service.js';
+import { RequisitionExistenceAdapter } from './requisition-existence.adapter.js';
 
 // COMM-B2/B3 (Aramo-COMM-V1) — apps/api composition root for the /v1/communications
 // surface. Imports the domain CommunicationsModule (repository + empty
@@ -29,10 +39,21 @@ const ZOOM_VOICE_PROVIDER_REGISTRAR = Symbol('ZOOM_VOICE_PROVIDER_REGISTRAR');
     EntitlementModule,
     CommunicationsModule,
     IntegrationModule,
+    // COMM-B5 composition-root reads: consent gate + platform idempotency
+    // (ConsentModule), Talent phone-slot resolution (TalentRecordModule), and
+    // the requisition existence check behind the comms-owned port
+    // (RequisitionModule). All are apps/api imports — NO libs/communications edge.
+    ConsentModule,
+    TalentRecordModule,
+    RequisitionModule,
   ],
   controllers: [CommunicationsController],
   providers: [
     CommunicationsApiService,
+    CommunicationCallService,
+    // Bind the comms-owned requisition existence port to its apps/api reader.
+    RequisitionExistenceAdapter,
+    { provide: REQUISITION_EXISTENCE_PORT, useExisting: RequisitionExistenceAdapter },
     {
       provide: ZOOM_VOICE_PROVIDER_REGISTRAR,
       useFactory: (registry: VoiceProviderRegistry): true => {

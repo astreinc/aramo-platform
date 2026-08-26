@@ -1,4 +1,5 @@
-import { IsBoolean, IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsBoolean, IsIn, IsOptional, IsString, IsUUID, MaxLength, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
 import type {
   CommunicationChannel,
   CommunicationDirection,
@@ -7,6 +8,26 @@ import type {
 } from '@aramo/communications';
 
 const PROVIDER_IDENTITY_STATUSES = ['active', 'unmapped', 'disabled', 'reauth_required'] as const;
+
+// COMM-B5 — call-initiation request body for POST /v1/communications/calls.
+// The server resolves the destination from the Talent record's phone_slot; an
+// arbitrary client-supplied destination number is NOT accepted (R-COMM-PHONE).
+const CALL_PHONE_SLOTS = ['cell', 'work', 'home'] as const;
+export type CallPhoneSlot = (typeof CALL_PHONE_SLOTS)[number];
+
+export class InitiateCallRegardingDto {
+  @IsUUID() requisition_id!: string;
+}
+
+export class InitiateCommunicationCallDto {
+  @IsUUID() talent_id!: string;
+  @IsIn(CALL_PHONE_SLOTS) phone_slot!: CallPhoneSlot;
+  // Optional requisition context; omitted/null for a Talent-only call.
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => InitiateCallRegardingDto)
+  regarding?: InitiateCallRegardingDto | null;
+}
 
 // COMM-B3 — admin upsert body for PUT /v1/communications/provider-identities/{recruiterId}.
 // Authorized by integration:write (part of configuring the tenant's provider
