@@ -1,7 +1,21 @@
+import type { VisibilityContextShape } from '@aramo/common';
 import { describe, expect, it } from 'vitest';
 
 import type { UpdateRequisitionRequestDto } from '../lib/dto/update-requisition-request.dto.js';
 import { RequisitionRepository } from '../lib/requisition.repository.js';
+
+// L1-B — update() now takes a REQUIRED visibility context. This spec's subject
+// is the openings_available write-demote (not visibility); a see-all context
+// (see_all_requisition:true -> buildVisibilityWhere collapses to {}) preserves
+// the pre-L1-B behaviour it asserts. The fake Prisma below ignores the where
+// clause, so the folded predicate is inert here.
+const SEE_ALL_VISIBILITY: VisibilityContextShape = {
+  tenant_id: '00000000-0000-0000-0000-000000000000',
+  actor_user_id: '00000000-0000-0000-0000-000000000000',
+  see_all_company: true,
+  see_all_requisition: true,
+  visible_client_ids: null,
+};
 
 // PR-0b-1 regression. openings_available is an availability counter mutated
 // ONLY by pipeline placement transitions; it was wrongly an ungated write
@@ -69,6 +83,7 @@ describe('PR-0b-1 — openings_available is not PATCH-writable', () => {
       } as unknown as UpdateRequisitionRequestDto,
       scopes: ['requisition:edit'],
       actor_id: 'actor-1',
+      visibility: SEE_ALL_VISIBILITY,
       requestId: 'test-req',
     });
 

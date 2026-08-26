@@ -17,6 +17,7 @@ import {
 import { PolicyStore, PrismaService as PolicyStorePrismaService } from '@aramo/policy-store';
 import { deriveCapacity } from '@aramo/placement';
 
+import { SEE_ALL_VISIBILITY } from './support/see-all-visibility.js';
 import { publishLifecyclePackage } from './publish-lifecycle-package.js';
 
 // Track 1 T1-c — the lifecycle-event WIRING against real Postgres. PR-0c shipped
@@ -239,6 +240,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const created = await createReq(); // event 1: null → active
       const requestId = uuidv7();
       await repo.update({
+        visibility: SEE_ALL_VISIBILITY,
         tenant_id: TENANT_A,
         id: created.id,
         input: { status: 'on_hold', version: 0 } as never,
@@ -263,6 +265,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const created = await createReq();
       const before = (await store.listByRequisition(TENANT_A, created.id)).length;
       await repo.update({
+        visibility: SEE_ALL_VISIBILITY,
         tenant_id: TENANT_A,
         id: created.id,
         input: { title: 'Renamed role' } as never,
@@ -278,6 +281,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const created = await createReq(); // status active
       const before = (await store.listByRequisition(TENANT_A, created.id)).length;
       await repo.update({
+        visibility: SEE_ALL_VISIBILITY,
         tenant_id: TENANT_A,
         id: created.id,
         input: { status: 'open' } as never, // same value
@@ -310,6 +314,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     it('delete → ZERO new events, and PRIOR events for that requisition SURVIVE (R5)', async () => {
       const created = await createReq(); // event 1
       await repo.update({
+        visibility: SEE_ALL_VISIBILITY,
         tenant_id: TENANT_A,
         id: created.id,
         input: { status: 'closed', version: 0 } as never,
@@ -320,7 +325,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const before = await store.listByRequisition(TENANT_A, created.id);
       expect(before).toHaveLength(2);
 
-      await repo.delete({ tenant_id: TENANT_A, id: created.id, requestId: uuidv7() });
+      await repo.delete({ tenant_id: TENANT_A, id: created.id, visibility: SEE_ALL_VISIBILITY, requestId: uuidv7() });
 
       // The requisition is gone…
       expect(
@@ -355,6 +360,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const created = await createReq(undefined, r1);
       const r2 = uuidv7();
       await repo.update({
+        visibility: SEE_ALL_VISIBILITY,
         tenant_id: TENANT_A,
         id: created.id,
         input: { status: 'on_hold', version: 0 } as never,
@@ -375,6 +381,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     it('previous_status is NULL ONLY on create — no update path yields a null previous_status', async () => {
       const created = await createReq(); // event 1: null → active
       await repo.update({
+        visibility: SEE_ALL_VISIBILITY,
         tenant_id: TENANT_A,
         id: created.id,
         input: { status: 'on_hold', version: 0 } as never,
@@ -383,6 +390,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         requestId: uuidv7(),
       }); // event 2: active → on_hold
       await repo.update({
+        visibility: SEE_ALL_VISIBILITY,
         tenant_id: TENANT_A,
         id: created.id,
         input: { status: 'closed', version: 1 } as never, // version bumped by event 2
@@ -412,6 +420,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // fail-closed transaction must roll the status change back.
       await expect(
         repo.update({
+          visibility: SEE_ALL_VISIBILITY,
           tenant_id: TENANT_A,
           id: created.id,
           input: { status: 'closed', version: 0 } as never,
@@ -469,6 +478,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       let caught: unknown;
       try {
         await repo.update({
+          visibility: SEE_ALL_VISIBILITY,
           tenant_id: TENANT_A,
           id: created.id,
           input: { status: 'closed', version: 99 } as never, // 99 !== current (0)

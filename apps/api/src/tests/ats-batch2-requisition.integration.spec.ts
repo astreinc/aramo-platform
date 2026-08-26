@@ -850,6 +850,24 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         input: { title: 'PR-A1 status-only PATCH target', company_id: COMPANY_ID, site_id: SITE_A },
       });
 
+      // L1-B — the PATCH path is now write-visibility-scoped (parity with the
+      // read side). The status-only actor holds NO requisition:read:all (this
+      // spec's visibility model deliberately keys off its absence), so it must
+      // reach the req through a visibility arm. Assign it directly (the A3
+      // direct-assignment OR-arm) — the honest "this recruiter is working this
+      // req" path — rather than granting read:all (which would break the model).
+      await fetch(
+        `http://127.0.0.1:${port}/v1/requisitions/${req.id}/assignments?site_id=${SITE_A}`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${tenantAdminJwt_Ats_SiteA}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ user_id: STATUS_ONLY_ACTOR }),
+        },
+      );
+
       const patchRes = await fetch(
         `http://127.0.0.1:${port}/v1/requisitions/${req.id}?site_id=${SITE_A}`,
         {

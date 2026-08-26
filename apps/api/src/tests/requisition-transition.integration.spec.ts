@@ -292,7 +292,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await db.query(`INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability) VALUES ($1,'ats') ON CONFLICT DO NOTHING`, [T]);
       // Publish a v4.0.0 window first, make a CLOSE decision under it.
       await store.publish({ tenant_id: T, definition: { ...REQUISITION_LIFECYCLE_PACKAGE, version: '4.0.0' }, published_by: SYSTEM, effective_from: new Date('2026-01-01T00:00:00Z') });
-      const token = await new SignJWT({ sub: ACTOR, consumer_type: 'recruiter', actor_kind: 'user', tenant_id: T, site_id: SITE, scopes: ['requisition:edit'] })
+      // L1-B — write-visibility parity: this DB-inserted req has no assignment,
+      // so the actor needs read:all (see-all) to reach the transition gate.
+      const token = await new SignJWT({ sub: ACTOR, consumer_type: 'recruiter', actor_kind: 'user', tenant_id: T, site_id: SITE, scopes: ['requisition:edit', 'requisition:read:all'] })
         .setProtectedHeader({ alg: ALG }).setIssuedAt().setIssuer(ISSUER).setAudience(AUDIENCE).setExpirationTime('1h').sign(signingKey);
       const id = uuid();
       await db.query(`INSERT INTO requisition."Requisition" (id, tenant_id, site_id, title, company_id, status, requisition_number) VALUES ($1,$2,$3,'r',$4,'open',(SELECT COALESCE(MAX(rn.requisition_number),999)+1 FROM requisition."Requisition" rn WHERE rn.tenant_id=$2))`, [id, T, SITE, uuid()]);
@@ -312,8 +314,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     describe('approval chain: SUBMIT_FOR_APPROVAL / APPROVE / REJECT', () => {
       const SUBMITTER = 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaad1';
       const APPROVER = 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaad2';
+      // L1-B — the PATCH path is now write-visibility-scoped. These reqs are
+      // DB-inserted with no assignment, so the SoD/approve-governance actors
+      // need a visibility arm to REACH the transition gate (else an invisible
+      // req 404s BEFORE the 403/200 these tests assert). read:all -> see-all is
+      // orthogonal to the edit/approve scopes under test and matches this
+      // file's default jwt() (which already carries requisition:read:all).
       async function jwtAs(sub: string, scopes: string[]): Promise<string> {
-        return new SignJWT({ sub, consumer_type: 'recruiter', actor_kind: 'user', tenant_id: TENANT, site_id: SITE, scopes })
+        return new SignJWT({ sub, consumer_type: 'recruiter', actor_kind: 'user', tenant_id: TENANT, site_id: SITE, scopes: [...scopes, 'requisition:read:all'] })
           .setProtectedHeader({ alg: ALG }).setIssuedAt().setIssuer(ISSUER).setAudience(AUDIENCE).setExpirationTime('1h').sign(signingKey);
       }
       // Move a fresh draft requisition into pending_approval as SUBMITTER; returns its id.
