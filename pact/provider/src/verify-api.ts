@@ -4221,6 +4221,45 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           );
         });
       },
+      // ===== COMM-B7 disposition + timeline pacts (ats-web communications.consumer) =====
+      'a tenant entitled to ats with a caller holding communication:read and a talent with one dispositioned communication interaction':
+        async () => {
+          await withClient(async (c) => {
+            await c.query(`DELETE FROM communications."CommunicationDisposition" WHERE tenant_id = $1::uuid`, [TENANT_ID]);
+            await c.query(`DELETE FROM communications."CommunicationAssociation" WHERE tenant_id = $1::uuid`, [TENANT_ID]);
+            await c.query(`DELETE FROM communications."CommunicationInteraction" WHERE tenant_id = $1::uuid`, [TENANT_ID]);
+            await c.query(
+              `INSERT INTO communications."CommunicationInteraction"
+                 (id, tenant_id, channel, direction, status, integration_connection_id, from_address, to_address)
+               VALUES ($1::uuid,$2::uuid,'voice','outbound','completed',$3::uuid,'+15715550100','+17035550111')`,
+              ['eeeeeeee-eeee-7eee-8eee-eeeeeeeeeeee', TENANT_ID, 'cccccccc-cccc-7ccc-8ccc-cccccccccccc'],
+            );
+            await c.query(
+              `INSERT INTO communications."CommunicationAssociation"
+                 (id, tenant_id, interaction_id, subject_type, subject_id, relation_type)
+               VALUES (gen_random_uuid(),$1::uuid,$2::uuid,'talent_record',$3::uuid,'subject')`,
+              [TENANT_ID, 'eeeeeeee-eeee-7eee-8eee-eeeeeeeeeeee', 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa'],
+            );
+            await c.query(
+              `INSERT INTO communications."CommunicationDisposition"
+                 (id, tenant_id, interaction_id, disposition, notes, dispositioned_by_id)
+               VALUES ($1::uuid,$2::uuid,$3::uuid,'connected',null,$4::uuid)`,
+              ['dddddddd-dddd-7ddd-8ddd-dddddddddddd', TENANT_ID, 'eeeeeeee-eeee-7eee-8eee-eeeeeeeeeeee', RECRUITER_ID],
+            );
+          });
+        },
+      'a tenant entitled to ats with a caller holding communication:disposition:write and one communication interaction':
+        async () => {
+          await withClient(async (c) => {
+            await c.query(`DELETE FROM communications."CommunicationInteraction" WHERE tenant_id = $1::uuid`, [TENANT_ID]);
+            await c.query(
+              `INSERT INTO communications."CommunicationInteraction"
+                 (id, tenant_id, channel, direction, status, integration_connection_id, from_address, to_address)
+               VALUES ($1::uuid,$2::uuid,'voice','outbound','created',$3::uuid,'+15715550100','+17035550111')`,
+              ['eeeeeeee-eeee-7eee-8eee-eeeeeeeeeeee', TENANT_ID, 'cccccccc-cccc-7ccc-8ccc-cccccccccccc'],
+            );
+          });
+        },
       // ===== COMM-B3 Zoom-binding pacts (ats-web communications.consumer) =====
       // A USABLE (configured) zoom_phone IntegrationConnection for TENANT_ID;
       // capabilities resolves it -> the composition-registered ZoomPhoneAdapter.

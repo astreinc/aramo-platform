@@ -14,8 +14,10 @@ import { RequisitionModule } from '@aramo/requisition';
 import { TalentRecordModule } from '@aramo/talent-record';
 
 import { CommunicationsController } from './communications.controller.js';
+import { TalentCommunicationsController } from './talent-communications.controller.js';
 import { CommunicationsApiService } from './communications-api.service.js';
 import { CommunicationCallService } from './communication-call.service.js';
+import { CommunicationTimelineService } from './communication-timeline.service.js';
 import { RequisitionExistenceAdapter } from './requisition-existence.adapter.js';
 import { ZoomWebhookController } from './zoom-webhook.controller.js';
 import { ZoomWebhookService } from './zoom-webhook.service.js';
@@ -50,10 +52,12 @@ const ZOOM_VOICE_PROVIDER_REGISTRAR = Symbol('ZOOM_VOICE_PROVIDER_REGISTRAR');
     TalentRecordModule,
     RequisitionModule,
   ],
-  controllers: [CommunicationsController, ZoomWebhookController],
+  controllers: [CommunicationsController, ZoomWebhookController, TalentCommunicationsController],
   providers: [
     CommunicationsApiService,
     CommunicationCallService,
+    // COMM-B7 — disposition write + Talent communication timeline read.
+    CommunicationTimelineService,
     // COMM-B6 — Zoom webhook ingress (HMAC-verified, un-JWT'd; wired here at the
     // composition root alongside the connection/inbox/consent reads it needs).
     ZoomWebhookService,

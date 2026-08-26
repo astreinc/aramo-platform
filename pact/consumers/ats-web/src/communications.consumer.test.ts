@@ -15,12 +15,17 @@ import {
 //   - GET /v1/communications/capabilities (provider-neutral descriptor),
 //   - GET /v1/communications/me/provider-identity (secret-free mapping),
 //   - GET /v1/communications/interactions/{id} (the canonical calling record).
-// Call initiation (B5) and disposition/timeline (B7) are NOT part of this pact.
+// COMM-B7 adds the post-call surface (the FE consumer lands later, but the
+// contract is pinned NOW to prevent drift):
+//   - GET /v1/talents/{talentId}/communications (the timeline),
+//   - POST /v1/communications/interactions/{id}/disposition.
+// Call initiation (B5) is provider→us only and not consumer-driven here.
 
 const provider = makeAtsWebProvider();
 
 const INTERACTION_ID = 'eeeeeeee-eeee-7eee-8eee-eeeeeeeeeeee';
 const CONNECTION_ID = 'cccccccc-cccc-7ccc-8ccc-cccccccccccc';
+const TALENT_ID = 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa';
 
 describe('ats-web → GET /v1/communications/capabilities', () => {
   it('returns 200 with a provider-neutral capability descriptor', async () => {
@@ -191,6 +196,79 @@ describe('ats-web → PUT /v1/communications/provider-identities/{recruiterId} (
           body: JSON.stringify({ provider_user_id: 'pv-user-2', voice_enabled: true }),
         });
         expect(res.status).toBe(200);
+      });
+  });
+});
+
+describe('ats-web → GET /v1/talents/{talentId}/communications (COMM-B7 timeline)', () => {
+  it('returns 200 with a keyset page of interactions + disposition history', async () => {
+    await provider
+      .addInteraction()
+      .given('a tenant entitled to ats with a caller holding communication:read and a talent with one dispositioned communication interaction')
+      .uponReceiving('an ats-web talent communication timeline read')
+      .withRequest('GET', `/v1/talents/${TALENT_ID}/communications`, (b) => {
+        b.headers({ Cookie: like(ACCESS_COOKIE) });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          items: eachLike({
+            id: uuid(INTERACTION_ID),
+            channel: like('voice'),
+            direction: like('outbound'),
+            status: like('completed'),
+            integration_connection_id: uuid(CONNECTION_ID),
+            from_address: like('+15715550100'),
+            to_address: like('+17035550111'),
+            started_at: null,
+            ringing_at: null,
+            connected_at: null,
+            ended_at: null,
+            duration_seconds: null,
+            created_at: regex(ISO_TIMESTAMP, '2026-08-25T00:00:01Z'),
+            updated_at: regex(ISO_TIMESTAMP, '2026-08-25T00:00:01Z'),
+            dispositions: eachLike({
+              id: uuid('dddddddd-dddd-7ddd-8ddd-dddddddddddd'),
+              disposition: like('connected'),
+              notes: null,
+              dispositioned_at: regex(ISO_TIMESTAMP, '2026-08-25T00:00:02Z'),
+            }),
+          }),
+          next_cursor: null,
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/talents/${TALENT_ID}/communications`, {
+          headers: { Cookie: ACCESS_COOKIE },
+        });
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as { items: Array<{ dispositions: unknown[] }>; next_cursor: string | null };
+        expect(Array.isArray(body.items)).toBe(true);
+        expect(Array.isArray(body.items[0]?.dispositions)).toBe(true);
+      });
+  });
+});
+
+describe('ats-web → POST /v1/communications/interactions/{id}/disposition (COMM-B7)', () => {
+  it('returns 201 with the recorded disposition id', async () => {
+    await provider
+      .addInteraction()
+      .given('a tenant entitled to ats with a caller holding communication:disposition:write and one communication interaction')
+      .uponReceiving('an ats-web disposition record')
+      .withRequest('POST', `/v1/communications/interactions/${INTERACTION_ID}/disposition`, (b) => {
+        b.headers({ Cookie: like(ACCESS_COOKIE), 'Content-Type': 'application/json' }).jsonBody({
+          disposition: 'no_answer',
+        });
+      })
+      .willRespondWith(201, (b) => {
+        b.jsonBody({ id: uuid('dddddddd-dddd-7ddd-8ddd-dddddddddddd') });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/communications/interactions/${INTERACTION_ID}/disposition`, {
+          method: 'POST',
+          headers: { Cookie: ACCESS_COOKIE, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ disposition: 'no_answer' }),
+        });
+        expect(res.status).toBe(201);
       });
   });
 });
