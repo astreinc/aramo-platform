@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   ACCESS_COOKIE,
   ISO_TIMESTAMP,
+  eachLike,
   like,
   makeAtsWebProvider,
   regex,
@@ -25,18 +26,18 @@ describe('ats-web → GET /v1/communications/capabilities', () => {
   it('returns 200 with a provider-neutral capability descriptor', async () => {
     await provider
       .addInteraction()
-      .given('a tenant entitled to ats with a caller holding communication:read')
+      .given('a tenant entitled to ats with a configured zoom_phone provider connection')
       .uponReceiving('an ats-web communications capabilities read')
       .withRequest('GET', '/v1/communications/capabilities', (b) => {
         b.headers({ Cookie: like(ACCESS_COOKIE) });
       })
       .willRespondWith(200, (b) => {
         b.jsonBody({
-          provider_key: like('fake_voice'),
+          provider_key: like('zoom_phone'),
           capabilities: {
             voice: {
               outbound: like(true),
-              inbound: like(false),
+              inbound: like(true),
               embedded: like(true),
             },
           },
@@ -120,6 +121,76 @@ describe('ats-web → GET /v1/communications/interactions/{id}', () => {
         const body = (await res.json()) as { id: string; channel: string };
         expect(body.id).toBe(INTERACTION_ID);
         expect(body.channel).toBe('voice');
+      });
+  });
+});
+
+describe('ats-web → GET /v1/communications/provider-identities (admin)', () => {
+  it('returns 200 with the tenant provider-identity mappings', async () => {
+    await provider
+      .addInteraction()
+      .given('a tenant entitled to ats with a configured zoom_phone connection and a provider-identity mapping')
+      .uponReceiving('an ats-web provider-identity admin list read')
+      .withRequest('GET', '/v1/communications/provider-identities', (b) => {
+        b.headers({ Cookie: like(ACCESS_COOKIE) });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          items: eachLike({
+            recruiter_id: uuid('00000000-0000-7000-8000-000000000001'),
+            provider_user_id: like('pv-user-1'),
+            provider_extension_id: null,
+            display_phone_number: null,
+            extension: null,
+            voice_enabled: like(true),
+            sms_enabled: like(false),
+            status: like('active'),
+          }),
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/communications/provider-identities`, {
+          headers: { Cookie: ACCESS_COOKIE },
+        });
+        expect(res.status).toBe(200);
+        const raw = await res.text();
+        expect(raw).not.toMatch(/secret|token|credential/i);
+      });
+  });
+});
+
+describe('ats-web → PUT /v1/communications/provider-identities/{recruiterId} (admin)', () => {
+  it('returns 200 with the upserted mapping', async () => {
+    const recruiterId = '00000000-0000-7000-8000-000000000002';
+    await provider
+      .addInteraction()
+      .given('a tenant entitled to ats with a configured zoom_phone connection')
+      .uponReceiving('an ats-web provider-identity admin upsert')
+      .withRequest('PUT', `/v1/communications/provider-identities/${recruiterId}`, (b) => {
+        b.headers({ Cookie: like(ACCESS_COOKIE), 'Content-Type': 'application/json' }).jsonBody({
+          provider_user_id: 'pv-user-2',
+          voice_enabled: true,
+        });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          recruiter_id: uuid(recruiterId),
+          provider_user_id: like('pv-user-2'),
+          provider_extension_id: null,
+          display_phone_number: null,
+          extension: null,
+          voice_enabled: like(true),
+          sms_enabled: like(false),
+          status: like('active'),
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/communications/provider-identities/${recruiterId}`, {
+          method: 'PUT',
+          headers: { Cookie: ACCESS_COOKIE, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ provider_user_id: 'pv-user-2', voice_enabled: true }),
+        });
+        expect(res.status).toBe(200);
       });
   });
 });

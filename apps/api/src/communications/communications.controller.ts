@@ -1,14 +1,16 @@
-import { Controller, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Put, UseGuards } from '@nestjs/common';
 import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
 import { AramoError, RequestId } from '@aramo/common';
 import { RequireScopes, RolesGuard } from '@aramo/authorization';
 import { EntitlementGuard, RequireCapability } from '@aramo/entitlement';
 
 import { CommunicationsApiService } from './communications-api.service.js';
+import { UpsertProviderIdentityDto } from './dto/communications.dto.js';
 import type {
   CommunicationCapabilitiesDto,
   CommunicationInteractionViewDto,
   CommunicationProviderIdentityDto,
+  CommunicationProviderIdentityListDto,
 } from './dto/communications.dto.js';
 
 // COMM-B2 (Aramo-COMM-V1) — the read/authorization contract skeleton for the
@@ -43,6 +45,33 @@ export class CommunicationsController {
     @RequestId() requestId: string,
   ): Promise<CommunicationProviderIdentityDto> {
     return this.comms.getMyProviderIdentity(auth.tenant_id, auth.sub, requestId);
+  }
+
+  // COMM-B3 — provider-identity mapping ADMIN. Authorized by integration:*
+  // (configuring the tenant's provider integration), NOT communication:*: mapping
+  // a recruiter to a Zoom user is an administrative provider-configuration act.
+  // The recruiter's OWN read (me/provider-identity, above) stays communication:read.
+  @Get('provider-identities')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('integration:read')
+  async listProviderIdentities(
+    @AuthContext() auth: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<CommunicationProviderIdentityListDto> {
+    const items = await this.comms.listProviderIdentities(auth.tenant_id, requestId);
+    return { items };
+  }
+
+  @Put('provider-identities/:recruiterId')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('integration:write')
+  async upsertProviderIdentity(
+    @Param('recruiterId', ParseUUIDPipe) recruiterId: string,
+    @Body() dto: UpsertProviderIdentityDto,
+    @AuthContext() auth: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<CommunicationProviderIdentityDto> {
+    return this.comms.upsertProviderIdentity(auth.tenant_id, recruiterId, dto, requestId);
   }
 
   @Get('interactions/:interactionId')

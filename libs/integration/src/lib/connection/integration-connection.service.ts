@@ -82,6 +82,20 @@ export class IntegrationConnectionService {
   }
 
   /**
+   * COMM-B3 — resolve the tenant's USABLE (configured|active) connection for a
+   * provider_key, or null. Provider-neutral: the caller supplies the key. Used
+   * by the composition root to bind a communications provider to its connection
+   * without duplicating provider-selection logic in apps/api.
+   */
+  async findConnectionByProviderKey(
+    tenantId: string,
+    providerKey: string,
+  ): Promise<IntegrationConnectionView | null> {
+    const row = await this.repo.findByProviderKeyForTenant(tenantId, providerKey);
+    return row === null ? null : toConnectionView(row);
+  }
+
+  /**
    * WRITE-ONLY credential set (directive §7/§34). The client supplies a raw
    * credential value ONCE; the server generates the opaque secret_ref, derives
    * the tenant-namespaced SM id, and stores the value in Secrets Manager. The
