@@ -3814,6 +3814,7 @@ components:
   schemas:
     CommunicationCapabilities:
       type: object
+      additionalProperties: false
       description: Provider-neutral capability descriptor for a communications provider (COMM-V1).
       required: [provider_key, capabilities]
       properties:
@@ -3822,10 +3823,12 @@ components:
           description: The normalized provider key (e.g. zoom_phone).
         capabilities:
           type: object
+          additionalProperties: false
           required: [voice]
           properties:
             voice:
               type: object
+              additionalProperties: false
               required: [outbound, inbound, embedded]
               properties:
                 outbound: { type: boolean }
@@ -3833,6 +3836,7 @@ components:
                 embedded: { type: boolean }
             sms:
               type: object
+              additionalProperties: false
               required: [outbound, inbound]
               properties:
                 outbound: { type: boolean }
@@ -3841,6 +3845,7 @@ components:
             transcript: { type: boolean }
     CommunicationProviderIdentity:
       type: object
+      additionalProperties: false
       description: A recruiter's communications provider-identity mapping (COMM-V1). No secret material.
       required: [recruiter_id, provider_user_id, voice_enabled, sms_enabled, status]
       properties:
@@ -3859,6 +3864,7 @@ components:
           enum: [active, unmapped, disabled, reauth_required]
     CommunicationInteractionView:
       type: object
+      additionalProperties: false
       description: A communication interaction (the canonical calling record), tenant-scoped (COMM-V1).
       required:
         - id
