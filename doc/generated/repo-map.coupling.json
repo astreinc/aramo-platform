@@ -5445,6 +5445,12 @@
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/submit-talent.integration.spec.ts",
       "status": "excluded",
+      "to": "libs/requisition/prisma/migrations/20260803120000_recruiting_status_supersession/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/submit-talent.integration.spec.ts",
+      "status": "excluded",
       "to": "libs/submittal-eligibility/prisma/migrations/20260822120000_init_submittal_eligibility_model/migration.sql"
     },
     {

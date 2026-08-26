@@ -50,6 +50,13 @@ const mig = (p: string): string => resolve(ROOT, p);
 const MIGRATIONS = [
   'libs/metering/prisma/migrations/20260601150000_init_metering_model/migration.sql',
   'libs/requisition/prisma/migrations/20260602100000_init_requisition_model/migration.sql',
+  // L1-C — the D6 submit gate reads requisition.status against the CANONICAL
+  // RecruitingStatus enum ('open' / 'draft' / 'submittals_closed' / …). The init
+  // migration above ships the superseded RequisitionStatus enum (active/full/…),
+  // so the T1-d supersession migration is applied here to give the fixtures the
+  // real lifecycle values. It is authored to run atop the requisition init alone
+  // (its RequisitionLifecycleEvent alters are IF EXISTS) — see its header.
+  'libs/requisition/prisma/migrations/20260803120000_recruiting_status_supersession/migration.sql',
   'libs/activity/prisma/migrations/20260602140000_init_activity_model/migration.sql',
   'libs/pipeline/prisma/migrations/20260602150000_init_pipeline_model/migration.sql',
   'libs/pipeline/prisma/migrations/20260807100000_e6_pipeline_live_episode_unique/migration.sql',
@@ -113,6 +120,17 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         [id, t, talent, job, randomUUID(), randomUUID(), state, randomUUID(), pipelineId],
       );
     }
+    // L1-C — seed the requisition the submit gate now reads. A raw-SQL insert
+    // (the spec runs against curated migrations, NOT the Nest app, so it cannot
+    // use establishOpenRequisition). status defaults to 'open' — the only value
+    // the gate admits — so the pre-L1-C fixtures pass the new gate unchanged.
+    async function seedRequisition(t: string, req: string, status = 'open'): Promise<void> {
+      await sql.query(
+        `INSERT INTO requisition."Requisition" (id,tenant_id,title,company_id,status)
+         VALUES ($1,$2,'L1-C fixture',$3,$4::requisition."RecruitingStatus")`,
+        [req, t, randomUUID(), status],
+      );
+    }
     async function seedPolicy(t: string, req: string, limit: number | null): Promise<void> {
       await sql.query(
         `INSERT INTO submittal_policy."RequisitionSubmittalPolicy"
@@ -127,6 +145,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       one(`SELECT state::text || '|' || (confirmed_at IS NOT NULL)::text AS c FROM submittal."TalentSubmittalRecord" WHERE id=$1`, [id]);
     const pipelineStatus = (id: string) =>
       one(`SELECT status::text AS c FROM pipeline."Pipeline" WHERE id=$1`, [id]);
+    const requisitionStatus = (id: string) =>
+      one(`SELECT status::text AS c FROM requisition."Requisition" WHERE id=$1`, [id]);
     const count = (table: string, where: string, v: unknown[]) =>
       one(`SELECT count(*)::text AS c FROM ${table} WHERE ${where}`, v);
 
@@ -134,6 +154,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     it('P1 happy path: submitted_to_ats is AUTHORITATIVE and pipeline submitted is the MIRROR', async () => {
       const t = randomUUID(), talent = randomUUID(), req = randomUUID();
       const pipe = randomUUID(), sub = randomUUID();
+      await seedRequisition(t, req, 'open'); // L1-C proof 6 — open requisition → the submit SUCCEEDS.
       await seedPipeline(t, pipe, talent, req);
       await seedSubmittal(t, sub, talent, req, pipe);
 
@@ -165,6 +186,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const t = randomUUID(), req = randomUUID();
       const tA = randomUUID(), tB = randomUUID();
       const pA = randomUUID(), pB = randomUUID(), sA = randomUUID(), sB = randomUUID();
+      await seedRequisition(t, req, 'open'); // L1-C — the gate admits open; the limit=1 race is unchanged.
       await seedPolicy(t, req, 1);
       await seedPipeline(t, pA, tA, req);
       await seedPipeline(t, pB, tB, req);
@@ -191,6 +213,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     it('P3 forced failure after submitted_to_ats, before mirror completes → ZERO durable writes across all schemas', async () => {
       const t = randomUUID(), talent = randomUUID(), req = randomUUID();
       const pipe = randomUUID(), sub = randomUUID();
+      await seedRequisition(t, req, 'open'); // L1-C — the gate admits open; the forced-failure atomicity proof is unchanged.
       await seedPipeline(t, pipe, talent, req);
       await seedSubmittal(t, sub, talent, req, pipe);
 
@@ -214,6 +237,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     // ---- P4: invalid link (null + identity mismatch) ----------------------------
     it('P4a null pipeline_id → SUBMITTAL_PIPELINE_LINK_INVALID, no writes', async () => {
       const t = randomUUID(), talent = randomUUID(), req = randomUUID(), sub = randomUUID();
+      await seedRequisition(t, req, 'open'); // L1-C — the null-link refusal fires at step 3, BEFORE the gate; seeded for consistency.
       await seedSubmittal(t, sub, talent, req, null);
       await expect(
         svc.submitToClient({ tenant_id: t, submittal_id: sub, event_id: randomUUID(), actor_id: randomUUID(), requestId: 'p4a' }),
@@ -226,6 +250,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const t = randomUUID(), talent = randomUUID();
       const reqSub = randomUUID(), reqPipe = randomUUID(); // pipeline points at a DIFFERENT requisition
       const pipe = randomUUID(), sub = randomUUID();
+      await seedRequisition(t, reqSub, 'open'); // L1-C — the identity-mismatch refusal fires at step 3, BEFORE the gate; seeded for consistency.
       await seedPipeline(t, pipe, talent, reqPipe);
       await seedSubmittal(t, sub, talent, reqSub, pipe);
       await expect(
@@ -239,6 +264,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     it('P6 idempotent repeat: second submit refused, slot consumed exactly once', async () => {
       const t = randomUUID(), talent = randomUUID(), req = randomUUID();
       const pipe = randomUUID(), sub = randomUUID();
+      await seedRequisition(t, req, 'open'); // L1-C — the gate admits open; the idempotent-repeat refusal (step 2) is unchanged.
       await seedPipeline(t, pipe, talent, req);
       await seedSubmittal(t, sub, talent, req, pipe);
 
@@ -249,6 +275,51 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       ).rejects.toMatchObject({ code: 'SUBMITTAL_STATE_INVALID' });
       // Consumed exactly once — no double consumption.
       expect(await count('submittal_policy."SubmittalConsumption"', 'requisition_id=$1', [req])).toBe('1');
+    });
+
+    // ---- L1-C: the D6 SUBMIT gate — RecruitingStatus must be `open` -----------
+    // Proofs 1-5: a client submittal against any NON-open requisition is refused
+    // with REQUISITION_NOT_OPEN (409, details.status = the current status). The
+    // pipeline link + submittal are valid, so the refusal is the status gate (3b),
+    // not the link (3) or eligibility (4) gate — and NOTHING is mutated.
+    for (const status of ['draft', 'on_hold', 'closed', 'canceled', 'submittals_closed'] as const) {
+      it(`L1-C Rule 1: submit vs \`${status}\` requisition → REQUISITION_NOT_OPEN 409 (details.status=${status}), no writes`, async () => {
+        const t = randomUUID(), talent = randomUUID(), req = randomUUID();
+        const pipe = randomUUID(), sub = randomUUID();
+        await seedRequisition(t, req, status);
+        await seedPipeline(t, pipe, talent, req);
+        await seedSubmittal(t, sub, talent, req, pipe);
+
+        await expect(
+          svc.submitToClient({ tenant_id: t, submittal_id: sub, event_id: randomUUID(), actor_id: randomUUID(), requestId: `l1c-${status}` }),
+        ).rejects.toMatchObject({ code: 'REQUISITION_NOT_OPEN', statusCode: 409, context: { details: { status } } });
+
+        // No mutation anywhere: submittal + pipeline untouched, nothing consumed.
+        expect(await submittalState(sub)).toBe('ready_for_review|false');
+        expect(await pipelineStatus(pipe)).toBe('qualifying');
+        expect(await count('submittal_policy."SubmittalConsumption"', 'requisition_id=$1', [req])).toBe('0');
+      });
+    }
+
+    // Proof 7 (Rule 3, NON-VACUOUS): the submit gate only READS RecruitingStatus,
+    // it never WRITES it. A refused submit leaves Requisition.status exactly as it
+    // was — asserted BEFORE and AFTER against the concrete `submittals_closed`.
+    it('L1-C Rule 3 (non-vacuous): a refused submit does NOT mutate Requisition.status (BEFORE=submittals_closed, AFTER=submittals_closed)', async () => {
+      const t = randomUUID(), talent = randomUUID(), req = randomUUID();
+      const pipe = randomUUID(), sub = randomUUID();
+      await seedRequisition(t, req, 'submittals_closed');
+      await seedPipeline(t, pipe, talent, req);
+      await seedSubmittal(t, sub, talent, req, pipe);
+
+      // BEFORE — the requisition is submittals_closed.
+      expect(await requisitionStatus(req)).toBe('submittals_closed');
+
+      await expect(
+        svc.submitToClient({ tenant_id: t, submittal_id: sub, event_id: randomUUID(), actor_id: randomUUID(), requestId: 'l1c-rule3' }),
+      ).rejects.toMatchObject({ code: 'REQUISITION_NOT_OPEN' });
+
+      // AFTER — unchanged. The gate is one-way (read-only); it wrote nothing.
+      expect(await requisitionStatus(req)).toBe('submittals_closed');
     });
   },
 );

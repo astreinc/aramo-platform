@@ -1642,13 +1642,22 @@ export class RequisitionRepository {
       );
       return views.map((v) => {
         const cs = byReq.get(v.id);
-        return cs === undefined
-          ? v
-          : {
-              ...v,
-              client_submittal_status: cs.status,
-              client_submittal_reason: cs.reason,
-            };
+        const merged =
+          cs === undefined
+            ? v
+            : {
+                ...v,
+                client_submittal_status: cs.status,
+                client_submittal_reason: cs.reason,
+              };
+        // L1-C (D-C1 DISPLAY) — `submittals_closed` is the one RecruitingStatus that
+        // forces the DISPLAYED client status closed, overriding the eligibility-derived
+        // value. ONLY this status: draft/pending_approval/on_hold/closed/canceled/
+        // archived all leave client_submittal_status eligibility-derived (the SUBMIT
+        // boundary and the DISPLAYED status are intentionally different rules).
+        return merged.status === 'submittals_closed'
+          ? { ...merged, client_submittal_status: 'closed' as const }
+          : merged;
       });
     } catch (err) {
       new Logger(RequisitionRepository.name).warn(

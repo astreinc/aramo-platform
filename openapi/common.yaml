@@ -1692,6 +1692,7 @@ components:
         - COMMERCIAL_PROPOSAL_SELF_APPROVAL
         - COMMERCIAL_PROPOSAL_ALREADY_LIVE
         - REQUISITION_INITIAL_STATE_FORBIDDEN
+        - REQUISITION_NOT_OPEN
 
     ErrorObject:
       type: object

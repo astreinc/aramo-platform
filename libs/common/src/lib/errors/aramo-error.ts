@@ -170,6 +170,9 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   // Requisition Lane 1-A — the initial-state authority gate refusal (403):
   // establishment_authority_required | initial_state_not_allowed_for_mode.
   REQUISITION_INITIAL_STATE_FORBIDDEN: 403,
+  // Requisition Lane 1-C — the D6 submit gate: a client submittal against a
+  // non-open (or absent) requisition is refused (409, details.status).
+  REQUISITION_NOT_OPEN: 409,
 };
 
 // Base error class. Thrown anywhere in the app where a structured response

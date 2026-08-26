@@ -2427,6 +2427,7 @@
     "libs/requisition/src/tests/approval-authorization-gate.spec.ts",
     "libs/requisition/src/tests/capacity-agreement-b2.integration.spec.ts",
     "libs/requisition/src/tests/capacity-projection-edge.integration.spec.ts",
+    "libs/requisition/src/tests/client-status-display-override.spec.ts",
     "libs/requisition/src/tests/compensation-edit-gate.spec.ts",
     "libs/requisition/src/tests/compensation-validation.spec.ts",
     "libs/requisition/src/tests/compensation-views.spec.ts",
