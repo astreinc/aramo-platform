@@ -8,6 +8,7 @@ export {
   CommunicationsRepository,
   type InteractionRow,
   type InteractionStatusPatch,
+  type ProviderIdentityView,
 } from './lib/communications.repository.js';
 export { PrismaService as CommunicationsPrismaService } from './lib/prisma/prisma.service.js';
 

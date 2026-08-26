@@ -360,6 +360,11 @@ export const SEED_IDS = {
     // submittal-policy:write / assignment:extend / assignment:commercials:approve;
     // highest previously used was 0xe2). CATALOG-ONLY — NO RoleScope grant.
     'requisition:create:establish': '01900000-0000-7000-8000-0000000000e3',
+    // COMM-B2 (Aramo-COMM-V1) — operational Communications/Voice scopes.
+    'communication:read': '01900000-0000-7000-8000-0000000000e4',
+    'communication:voice:call': '01900000-0000-7000-8000-0000000000e5',
+    'communication:disposition:write': '01900000-0000-7000-8000-0000000000e6',
+    'communication:notes:write': '01900000-0000-7000-8000-0000000000e7',
   },
   // RoleScope ids — one per (role,scope) assignment. Hardcoded sequence
   // 0x30..0x39 (10 assignments: 6 tenant_admin + 4 recruiter; the 3
@@ -2151,6 +2156,35 @@ const OFFER_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
   return map;
 })();
 
+// COMM-B2 (Aramo-COMM-V1 R-COMM-ROLES) — operational Communications/Voice grants.
+// The four communication:* scopes are frontline recruiting work, so ALL FOUR are
+// granted to recruiter + account_manager + tenant_admin + tenant_owner (unlike the
+// admin-tier integration:* which excludes recruiter). tenant_admin/tenant_owner
+// ALSO retain integration:read/write (granted separately above) — not re-granted here.
+export const COMMUNICATION_SEED_BUNDLES: ReadonlyArray<
+  readonly [string, readonly string[]]
+> = [
+  ['recruiter', ['communication:read', 'communication:voice:call', 'communication:disposition:write', 'communication:notes:write']],
+  ['account_manager', ['communication:read', 'communication:voice:call', 'communication:disposition:write', 'communication:notes:write']],
+  ['tenant_admin', ['communication:read', 'communication:voice:call', 'communication:disposition:write', 'communication:notes:write']],
+  ['tenant_owner', ['communication:read', 'communication:voice:call', 'communication:disposition:write', 'communication:notes:write']],
+];
+
+// Deterministic RoleScope row ids for the 16 communication grants. Fresh disjoint
+// range 0xc50+ (offer occupies 0xc40..0xc47). DO NOT REORDER without bumping the offset.
+const COMMUNICATION_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
+  const map: Record<string, string> = {};
+  let i = 0xc50;
+  for (const [role, scopes] of COMMUNICATION_SEED_BUNDLES) {
+    for (const scope of scopes) {
+      map[`${role}:${scope}`] =
+        `01900000-0000-7000-8000-${i.toString(16).padStart(12, '0')}`;
+      i++;
+    }
+  }
+  return map;
+})();
+
 interface IdentityPrismaClient {
   tenant: typeof PrismaClient.prototype.tenant;
   user: typeof PrismaClient.prototype.user;
@@ -2494,6 +2528,10 @@ export async function runIdentitySeed(
   await upsertScope(prisma, SEED_IDS.scopes['integration:read'], 'integration:read', 'Track 8 / T8-CONNECTOR-A — read provider-neutral connector connections (Settings → Integrations): list/status/last-sync/error summary. Connector connection ADMINISTRATION; distinct from requisition:import:read (P3 ingestion monitoring). GRANTED to tenant_admin, tenant_owner only. NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['integration:write'], 'integration:write', 'Track 8 / T8-CONNECTOR-A — administer provider-neutral connector connections (create/configure-credential/enable/disable). Never returns raw secret material. GRANTED to tenant_admin, tenant_owner only; recruiter/account_manager excluded (administrative tier). The connector ServiceAccount does NOT hold this — execution authority is requisition:import:write only. NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['submittal-policy:write'], 'submittal-policy:write', 'Lane L8-B1 — set the client-submittal eligibility policy on a requisition (submittal deadline, supplier slot limit, manual open/pause/close, authority). Least-privilege (base R-OQB): GRANTED to account_manager, tenant_admin, tenant_owner only; recruiter excluded — editing a requisition does NOT grant authority over client-submittal rules. NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['communication:read'], 'communication:read', 'COMM-V1 (COMM-B2) — read Communications/Voice surface: provider capabilities, the caller own provider-identity mapping, and a communication interaction by id. Frontline recruiting read (NOT admin-tier). GRANTED to recruiter, account_manager, tenant_admin, tenant_owner. NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['communication:voice:call'], 'communication:voice:call', 'COMM-V1 — initiate an outbound voice call from a Talent record (POST /v1/communications/calls; route lands in COMM-B5). Server-side contacting-consent gate precedes any provider execution. GRANTED to recruiter, account_manager, tenant_admin, tenant_owner. NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['communication:disposition:write'], 'communication:disposition:write', 'COMM-V1 — record the recruiting disposition of a communication interaction (route lands in COMM-B7). GRANTED to recruiter, account_manager, tenant_admin, tenant_owner. NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['communication:notes:write'], 'communication:notes:write', 'COMM-V1 — write recruiter notes on a communication interaction (route lands in COMM-B7). GRANTED to recruiter, account_manager, tenant_admin, tenant_owner. NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['requisition:approve'], 'requisition:approve', 'Requisition Approval sub-workflow — decide a requisition approval: the governed APPROVE (pending_approval -> open) and REJECT (pending_approval -> draft) transitions, enforced IN-SERVICE at the requisition repository (a 403 costs no policy decision + no write). APPROVE additionally enforces segregation of duties (the approver must differ from the recruiter who submitted for approval). GRANTED to account_manager, tenant_admin, tenant_owner only (manager tier, mirrors requisition:edit:financials); recruiter excluded — a recruiter cannot approve. NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['offer:create'], 'offer:create', 'Offer Lifecycle — create a DRAFT Offer (POST /v1/offers), the dedicated pre-placement offer aggregate. GRANTED to recruiter, account_manager, tenant_admin, tenant_owner (mirrors placement:create — the offer is the pre-placement stage of the same hire-spine tier). NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['offer:transition'], 'offer:transition', 'Offer Lifecycle — drive an Offer governed transition (PATCH /v1/offers/:id): send / negotiate / revise / accept / decline / expire / rescind, along the legal DRAFT->SENT->NEGOTIATION->ACCEPTED/DECLINED/EXPIRED/RESCINDED edges (the DB trigger + ADR-0024 offer-lifecycle policy enforce legality). GRANTED to recruiter, account_manager, tenant_admin, tenant_owner (mirrors placement:transition). NO scope.created (scope-seed precedent).');
@@ -3075,6 +3113,27 @@ export async function runIdentitySeed(
       if (rsId === undefined) {
         throw new Error(
           `Offer-Role-Matrix: Missing generated RoleScope id for ${roleKey}:${scopeKey}`,
+        );
+      }
+      const scope_id = scopeIdForKey(scopeKey);
+      await prisma.roleScope.upsert({
+        where: { role_id_scope_id: { role_id, scope_id } },
+        update: {},
+        create: { id: rsId, role_id, scope_id },
+      });
+    }
+  }
+
+  // COMM-B2 (Aramo-COMM-V1 R-COMM-ROLES) — Communications/Voice grants (16 rows;
+  // range 0xc50+). The four communication:* scopes -> recruiter + account_manager
+  // + tenant_admin + tenant_owner (frontline recruiting work; NOT admin-tier).
+  for (const [roleKey, scopeKeys] of COMMUNICATION_SEED_BUNDLES) {
+    const role_id = roleIdForKey(roleKey);
+    for (const scopeKey of scopeKeys) {
+      const rsId = COMMUNICATION_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
+      if (rsId === undefined) {
+        throw new Error(
+          `Communication-Role-Matrix: Missing generated RoleScope id for ${roleKey}:${scopeKey}`,
         );
       }
       const scope_id = scopeIdForKey(scopeKey);

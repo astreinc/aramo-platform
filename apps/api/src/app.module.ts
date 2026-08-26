@@ -61,6 +61,7 @@ import { RequisitionStateReaderModule } from './requisition-state/requisition-st
 import { PreStartRequirementModule } from './pre-start-requirement/pre-start-requirement.module.js';
 import { PlacementModule } from './placement/placement.module.js';
 import { OfferModule } from './offer/offer.module.js';
+import { CommunicationsApiModule } from './communications/communications-api.module.js';
 import { ConnectorExecutionModule } from './connector/connector-execution.module.js';
 import { TenantCognitoAdapter } from './cognito/tenant-cognito.adapter.js';
 import { TenantWriteFreezeInterceptor } from './tenant-write-freeze/tenant-write-freeze.interceptor.js';
@@ -339,6 +340,7 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     PlacementModule,
     // Offer Lifecycle (slice #2) — the dedicated pre-placement /v1/offers surface.
     OfferModule,
+    CommunicationsApiModule,
     // T2-2a — canonicalization orchestrator (NEW leaf lib). Lead-authored
     // per Aramo-T2-2a-Canonicalization-Orchestration-Directive-v1_0-LOCKED.md.
     // Service-only at T2-2a (no controller). Imported here BEFORE
