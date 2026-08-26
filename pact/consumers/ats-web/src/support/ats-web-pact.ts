@@ -9,8 +9,8 @@ import { PactV4, MatchersV3 } from '@pact-foundation/pact';
 // view/shape builders and constants stay in their own domain file.
 
 export { MatchersV3 };
-const { like, uuid, regex } = MatchersV3;
-export { like, uuid, regex };
+const { like, uuid, regex, eachLike } = MatchersV3;
+export { like, uuid, regex, eachLike };
 
 // Shared constants — mirror the provider fixtures in
 // pact/provider/src/verify-api.ts (recruiter JWT tenant + PACT talent + the

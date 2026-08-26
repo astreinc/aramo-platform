@@ -264,8 +264,14 @@
       "FakeVoiceProvider",
       "TERMINAL_CALL_STATES",
       "VoiceProviderRegistry",
+      "ZOOM_PHONE_PROVIDER_KEY",
+      "ZoomAdapterDeferredError",
+      "ZoomCredentialDecodeError",
+      "ZoomPhoneAdapter",
       "assertTransition",
       "canTransition",
+      "decodeZoomCredential",
+      "encodeZoomCredential",
       "isTerminalCallState"
     ],
     "@aramo/company": [

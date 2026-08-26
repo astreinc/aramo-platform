@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { AramoError } from '@aramo/common';
 import { CommunicationsRepository, VoiceProviderRegistry } from '@aramo/communications';
+import { IntegrationConnectionService } from '@aramo/integration';
 
 import type {
   CommunicationCapabilitiesDto,
@@ -8,28 +9,40 @@ import type {
   CommunicationProviderIdentityDto,
 } from './dto/communications.dto.js';
 
-// COMM-B2 — apps/api orchestration for the Communications/Voice read skeleton.
+// COMM-B2/B3 — apps/api orchestration for the Communications/Voice read surface.
 // Lives at the composition root (NOT libs/communications) so no
-// communications→consent/identity nx edge is created; the B5 call orchestration
-// will invoke ConsentService.check here too. Reads are tenant-safe: a cross-tenant
-// id is a NOT-FOUND, never an info leak.
+// communications→consent/integration/identity nx edge is created; the tenant→
+// provider-connection resolution is a composition-root read into @aramo/integration.
+// Reads are tenant-safe: a cross-tenant id is a NOT-FOUND, never an info leak.
+//
+// COMM-V1 canonical provider key (locked). Kept here (composition root), NOT in
+// the neutral communications domain.
+const ZOOM_PHONE_PROVIDER_KEY = 'zoom_phone';
+
 @Injectable()
 export class CommunicationsApiService {
   constructor(
     private readonly repo: CommunicationsRepository,
     private readonly providers: VoiceProviderRegistry,
+    private readonly connections: IntegrationConnectionService,
   ) {}
 
   /**
-   * Provider-neutral capability descriptor. B2 resolves the single configured
-   * provider from the registry (the fake in composition/tests); COMM-B3 replaces
-   * this with per-tenant IntegrationConnection resolution. No provider is
-   * configured -> COMMUNICATION_PROVIDER_NOT_CONFIGURED (409).
+   * COMM-B3 — per-tenant capability descriptor. Resolves the tenant's USABLE
+   * (configured|active) `zoom_phone` IntegrationConnection, then the registered
+   * adapter for that connection's provider_key, and returns THAT adapter's
+   * capabilities. NEVER falls back to a default/fake provider. No usable
+   * connection (or no registered adapter) -> COMMUNICATION_PROVIDER_NOT_CONFIGURED
+   * (409).
    */
   async getCapabilities(tenantId: string, requestId: string): Promise<CommunicationCapabilitiesDto> {
-    void tenantId; // per-tenant connection resolution lands in COMM-B3
-    const provider = this.providers.list()[0];
-    if (provider === undefined) {
+    const connection = await this.connections.findConnectionByProviderKey(
+      tenantId,
+      ZOOM_PHONE_PROVIDER_KEY,
+    );
+    const provider =
+      connection === null ? null : this.providers.resolve(connection.provider_key);
+    if (provider === null) {
       throw new AramoError(
         'COMMUNICATION_PROVIDER_NOT_CONFIGURED',
         'No communications provider is configured for this tenant',
@@ -70,6 +83,81 @@ export class CommunicationsApiService {
     return row;
   }
 
+  /**
+   * COMM-B3 — admin list of the tenant's provider-identity mappings (on the
+   * tenant's zoom_phone connection). Authorized by integration:read. No usable
+   * connection -> COMMUNICATION_PROVIDER_NOT_CONFIGURED (409).
+   */
+  async listProviderIdentities(
+    tenantId: string,
+    requestId: string,
+  ): Promise<CommunicationProviderIdentityDto[]> {
+    const connection = await this.requireProviderConnection(tenantId, requestId);
+    return this.repo.listProviderIdentitiesForConnection(tenantId, connection.id);
+  }
+
+  /**
+   * COMM-B3 — admin UPSERT a recruiter's provider-identity mapping on the tenant's
+   * zoom_phone connection (intentional bind/rebind). Authorized by integration:write.
+   * No usable connection -> 409 COMMUNICATION_PROVIDER_NOT_CONFIGURED. A provider
+   * user already claimed by a different recruiter -> 409
+   * COMMUNICATION_PROVIDER_USER_ALREADY_MAPPED.
+   */
+  async upsertProviderIdentity(
+    tenantId: string,
+    recruiterId: string,
+    body: {
+      provider_user_id: string;
+      provider_extension_id?: string | null;
+      display_phone_number?: string | null;
+      extension?: string | null;
+      voice_enabled?: boolean;
+      sms_enabled?: boolean;
+      status?: CommunicationProviderIdentityDto['status'];
+    },
+    requestId: string,
+  ): Promise<CommunicationProviderIdentityDto> {
+    const connection = await this.requireProviderConnection(tenantId, requestId);
+    try {
+      return await this.repo.upsertProviderIdentity({
+        tenant_id: tenantId,
+        integration_connection_id: connection.id,
+        recruiter_id: recruiterId,
+        ...body,
+      });
+    } catch (err) {
+      if (isProviderUserUniqueViolation(err)) {
+        throw new AramoError(
+          'COMMUNICATION_PROVIDER_USER_ALREADY_MAPPED',
+          'That provider user is already mapped to a different recruiter on this connection',
+          409,
+          { requestId, details: { provider_user_id: body.provider_user_id } },
+        );
+      }
+      throw err;
+    }
+  }
+
+  /** Resolve the tenant's usable zoom_phone connection or 409 PROVIDER_NOT_CONFIGURED. */
+  private async requireProviderConnection(
+    tenantId: string,
+    requestId: string,
+  ): Promise<{ id: string; provider_key: string }> {
+    const connection = await this.connections.findConnectionByProviderKey(
+      tenantId,
+      ZOOM_PHONE_PROVIDER_KEY,
+    );
+    if (connection === null) {
+      throw new AramoError(
+        'COMMUNICATION_PROVIDER_NOT_CONFIGURED',
+        'No communications provider is configured for this tenant',
+        409,
+        { requestId },
+      );
+    }
+    return connection;
+  }
+
   /** A communication interaction by id, tenant-scoped. Null when absent/cross-tenant. */
   async getInteraction(
     tenantId: string,
@@ -94,4 +182,23 @@ export class CommunicationsApiService {
       updated_at: row.updated_at.toISOString(),
     };
   }
+}
+
+/**
+ * True iff `err` is a Prisma unique-constraint violation (P2002). On the mapping
+ * upsert the (integration_connection_id, recruiter_id) unique is the upsert TARGET
+ * (matched → update), so the only unique that can still fire is
+ * (integration_connection_id, provider_user_id). Handles both the standard
+ * P2002 code and the Prisma-7/PrismaPg driver-adapter shape (raw violation at
+ * driverAdapterError.cause.originalMessage).
+ */
+function isProviderUserUniqueViolation(err: unknown): boolean {
+  if (typeof err !== 'object' || err === null) return false;
+  const e = err as {
+    code?: string;
+    meta?: { driverAdapterError?: { cause?: { originalMessage?: string } } };
+  };
+  if (e.code === 'P2002') return true;
+  const raw = e.meta?.driverAdapterError?.cause?.originalMessage ?? '';
+  return raw.includes('provider_user_id');
 }

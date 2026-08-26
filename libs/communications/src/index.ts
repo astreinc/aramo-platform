@@ -64,3 +64,16 @@ export {
   FAKE_VOICE_PROVIDER_KEY,
   type FakeProviderEvent,
 } from './lib/provider/fake/fake-voice-provider.js';
+
+// Zoom Phone adapter (COMM-B3 connection binding; live calls deferred B5/B6/B8).
+export {
+  ZoomPhoneAdapter,
+  ZOOM_PHONE_PROVIDER_KEY,
+  ZoomAdapterDeferredError,
+} from './lib/provider/zoom/zoom-phone.adapter.js';
+export {
+  encodeZoomCredential,
+  decodeZoomCredential,
+  ZoomCredentialDecodeError,
+  type ZoomCredentialBundle,
+} from './lib/provider/zoom/zoom-credential.js';

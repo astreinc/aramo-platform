@@ -191,6 +191,7 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       // a non-open (or absent) requisition (409; details.status carries the
       // current RecruitingStatus, null when the requisition is absent).
       'REQUISITION_NOT_OPEN',
+      'COMMUNICATION_PROVIDER_USER_ALREADY_MAPPED',
     ]);
   });
 });

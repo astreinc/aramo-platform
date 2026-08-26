@@ -67,6 +67,28 @@ export class IntegrationConnectionRepository implements ConnectionSecretLoaderPo
     return row === null ? null : toRow(row);
   }
 
+  /**
+   * COMM-B3 — resolve the tenant's USABLE connection for a provider_key
+   * (tenant-safe; provider-neutral — the caller supplies the key, the substrate
+   * knows no vendor). Only a `configured` or `active` connection is returned
+   * (a `disconnected`/`disabled`/`degraded` one is not usable); most-recently-
+   * updated wins when several exist (no unique(tenant, provider_key) by design).
+   */
+  async findByProviderKeyForTenant(
+    tenantId: string,
+    providerKey: string,
+  ): Promise<IntegrationConnectionRow | null> {
+    const row = (await this.prisma.integrationConnection.findFirst({
+      where: {
+        tenant_id: tenantId,
+        provider_key: providerKey,
+        status: { in: ['configured', 'active'] },
+      },
+      orderBy: { updated_at: 'desc' },
+    })) as ConnectionDbRow | null;
+    return row === null ? null : toRow(row);
+  }
+
   async listForTenant(tenantId: string): Promise<IntegrationConnectionRow[]> {
     const rows = (await this.prisma.integrationConnection.findMany({
       where: { tenant_id: tenantId },

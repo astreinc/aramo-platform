@@ -675,6 +675,9 @@ export const ERROR_CODES = [
   // SUBMITTALS_CLOSED (the eligibility-window refusal). 409 (Conflict): the
   // request is well-formed but conflicts with the requisition's current state.
   'REQUISITION_NOT_OPEN',
+  // COMM-B3 — provider-identity mapping conflict: the target provider user is
+  // already mapped to a different recruiter on this connection (409).
+  'COMMUNICATION_PROVIDER_USER_ALREADY_MAPPED',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

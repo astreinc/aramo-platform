@@ -136,5 +136,30 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(sm.requested).toEqual([]);
       delete process.env['ARAMO_ENV'];
     });
+
+    // COMM-B3 — tenant-scoped, provider-neutral connection resolution by
+    // provider_key (the caller supplies the key; the substrate knows no vendor).
+    // Returns only a USABLE (configured|active) connection; a disconnected-only
+    // one is NOT resolvable, and cross-tenant is tenant-safe null.
+    it('findByProviderKeyForTenant resolves the configured connection, tenant-safely', async () => {
+      const zoom = await connections.create({ tenant_id: TENANT_A, provider_key: 'zoom_phone' });
+      await connections.setSecretRef(TENANT_A, zoom.id, 'connector:v1:x'); // -> status configured
+      await connections.create({ tenant_id: TENANT_A, provider_key: 'acme_vms' }); // decoy provider
+
+      const found = await connections.findByProviderKeyForTenant(TENANT_A, 'zoom_phone');
+      expect(found?.id).toBe(zoom.id);
+      expect(found?.provider_key).toBe('zoom_phone');
+
+      // cross-tenant is tenant-safe null
+      expect(await connections.findByProviderKeyForTenant(TENANT_B, 'zoom_phone')).toBeNull();
+      // a provider with no connection is null
+      expect(await connections.findByProviderKeyForTenant(TENANT_A, 'ringcentral')).toBeNull();
+    });
+
+    it('findByProviderKeyForTenant ignores a disconnected-only connection (not usable)', async () => {
+      // create WITHOUT a credential -> stays 'disconnected'
+      await connections.create({ tenant_id: TENANT_A, provider_key: 'teams_phone' });
+      expect(await connections.findByProviderKeyForTenant(TENANT_A, 'teams_phone')).toBeNull();
+    });
   },
 );

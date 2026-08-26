@@ -320,6 +320,86 @@ export class CommunicationsRepository {
       },
     })) as ProviderIdentityView | null;
   }
+
+  /**
+   * COMM-B3 — admin list of the provider-identity mappings on a connection
+   * (tenant-safe). Used by GET /v1/communications/provider-identities.
+   */
+  async listProviderIdentitiesForConnection(
+    tenantId: string,
+    connectionId: string,
+  ): Promise<ProviderIdentityView[]> {
+    return (await this.prisma.communicationProviderIdentity.findMany({
+      where: { tenant_id: tenantId, integration_connection_id: connectionId },
+      orderBy: { updated_at: 'desc' },
+      select: {
+        recruiter_id: true,
+        provider_user_id: true,
+        provider_extension_id: true,
+        display_phone_number: true,
+        extension: true,
+        voice_enabled: true,
+        sms_enabled: true,
+        status: true,
+      },
+    })) as ProviderIdentityView[];
+  }
+
+  /**
+   * COMM-B3 — UPSERT a recruiter's provider-identity mapping on a connection
+   * (intentional admin bind/rebind). Keyed on the @@unique(integration_connection_id,
+   * recruiter_id); re-mapping a recruiter to a different provider user updates in
+   * place. The @@unique(integration_connection_id, provider_user_id) still guards
+   * against two recruiters claiming the same provider user (surfaces as a Prisma
+   * P2002 the caller maps to COMMUNICATION_PROVIDER_USER_ALREADY_MAPPED).
+   */
+  async upsertProviderIdentity(args: {
+    tenant_id: string;
+    integration_connection_id: string;
+    recruiter_id: string;
+    provider_user_id: string;
+    provider_extension_id?: string | null;
+    display_phone_number?: string | null;
+    extension?: string | null;
+    voice_enabled?: boolean;
+    sms_enabled?: boolean;
+    status?: CommunicationProviderIdentityStatus;
+  }): Promise<ProviderIdentityView> {
+    const common = {
+      provider_user_id: args.provider_user_id,
+      provider_extension_id: args.provider_extension_id ?? null,
+      display_phone_number: args.display_phone_number ?? null,
+      extension: args.extension ?? null,
+      voice_enabled: args.voice_enabled ?? false,
+      sms_enabled: args.sms_enabled ?? false,
+      status: args.status ?? 'active',
+    };
+    return (await this.prisma.communicationProviderIdentity.upsert({
+      where: {
+        integration_connection_id_recruiter_id: {
+          integration_connection_id: args.integration_connection_id,
+          recruiter_id: args.recruiter_id,
+        },
+      },
+      create: {
+        tenant_id: args.tenant_id,
+        integration_connection_id: args.integration_connection_id,
+        recruiter_id: args.recruiter_id,
+        ...common,
+      },
+      update: common,
+      select: {
+        recruiter_id: true,
+        provider_user_id: true,
+        provider_extension_id: true,
+        display_phone_number: true,
+        extension: true,
+        voice_enabled: true,
+        sms_enabled: true,
+        status: true,
+      },
+    })) as ProviderIdentityView;
+  }
 }
 
 export interface ProviderIdentityView {
