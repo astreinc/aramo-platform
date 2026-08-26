@@ -661,6 +661,9 @@ export const ERROR_CODES = [
   'COMMUNICATION_INTERACTION_NOT_FOUND',
   'COMMUNICATION_USER_NOT_MAPPED',
   'COMMUNICATION_PROVIDER_NOT_CONFIGURED',
+  // COMM-B3 — provider-identity mapping conflict: the target provider user is
+  // already mapped to a different recruiter on this connection (409).
+  'COMMUNICATION_PROVIDER_USER_ALREADY_MAPPED',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

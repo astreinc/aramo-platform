@@ -174,6 +174,7 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   COMMUNICATION_INTERACTION_NOT_FOUND: 404,
   COMMUNICATION_USER_NOT_MAPPED: 404,
   COMMUNICATION_PROVIDER_NOT_CONFIGURED: 409,
+  COMMUNICATION_PROVIDER_USER_ALREADY_MAPPED: 409,
 };
 
 // Base error class. Thrown anywhere in the app where a structured response

@@ -29,18 +29,22 @@ const ALG = 'RS256';
 
 const ENTITLEMENT_INIT = resolve(ROOT, 'libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql');
 const COMMUNICATIONS_INIT = resolve(ROOT, 'libs/communications/prisma/migrations/20260825120000_init_communications/migration.sql');
-const MIGRATIONS = [ENTITLEMENT_INIT, COMMUNICATIONS_INIT];
+const INTEGRATION_INIT = resolve(ROOT, 'libs/integration/prisma/migrations/20260814170000_init_integration_connection/migration.sql');
+const MIGRATIONS = [ENTITLEMENT_INIT, COMMUNICATIONS_INIT, INTEGRATION_INIT];
 
 const TENANT_A = '01900000-0000-7000-8000-0000000000a1';
 const TENANT_B = '01900000-0000-7000-8000-0000000000b2';
 const RECRUITER_MAPPED = '00000000-0000-7000-8000-000000000aa1';
 const RECRUITER_UNMAPPED = '00000000-0000-7000-8000-000000000aa2';
+const RECRUITER_TO_BIND = '00000000-0000-7000-8000-000000000aa4';
 const CONNECTION = '01900000-0000-7000-8000-0000000000c1';
 const INTERACTION_A = '01900000-0000-7000-8000-0000000000d1';
 
 // The RolesGuard reads scopes from the JWT; pass them directly.
 const READ_SCOPES = ['communication:read'];
 const NO_COMM_SCOPES = ['requisition:import:read'];
+// Admin (provider-connection configuration) scopes for the mapping-admin routes.
+const ADMIN_SCOPES = ['integration:read', 'integration:write'];
 
 class FakeSecretsWriter implements SecretsManagerWriterPort {
   async putSecretValue(): Promise<void> {
@@ -62,6 +66,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     let unmappedJwt: string;
     let noScopeJwt: string;
     let tenantBJwt: string;
+    let adminJwt: string;
 
     function auth(jwt: string): RequestInit {
       return { headers: { Authorization: `Bearer ${jwt}`, 'Content-Type': 'application/json' } };
@@ -100,6 +105,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           [t],
         );
       }
+      // COMM-B3 — tenant A has a USABLE (configured) zoom_phone provider connection
+      // (id = CONNECTION); tenant B intentionally has NONE (capabilities → 409).
+      await db.query(
+        `INSERT INTO integration."IntegrationConnection"
+           (id, tenant_id, provider_key, status, secret_ref, provider_account_id, version, created_at, updated_at)
+         VALUES ($1::uuid, $2::uuid, 'zoom_phone', 'configured', 'connector:v1:seed', 'zoom-acct-1', 0, now(), now())`,
+        [CONNECTION, TENANT_A],
+      );
       // Seed one interaction (tenant A) and one provider-identity mapping (tenant A, RECRUITER_MAPPED).
       await db.query(
         `INSERT INTO communications."CommunicationInteraction"
@@ -133,6 +146,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       unmappedJwt = await signJwt(key, { sub: RECRUITER_UNMAPPED, tenant_id: TENANT_A, scopes: READ_SCOPES });
       noScopeJwt = await signJwt(key, { sub: RECRUITER_MAPPED, tenant_id: TENANT_A, scopes: NO_COMM_SCOPES });
       tenantBJwt = await signJwt(key, { sub: RECRUITER_MAPPED, tenant_id: TENANT_B, scopes: READ_SCOPES });
+      adminJwt = await signJwt(key, { sub: RECRUITER_MAPPED, tenant_id: TENANT_A, scopes: ADMIN_SCOPES });
 
       module = await Test.createTestingModule({ imports: [AppModule] })
         .overrideProvider(SECRETS_MANAGER_WRITER)
@@ -163,12 +177,74 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(res.status).toBe(403);
     });
 
-    it('capabilities: ALLOWED with communication:read → 200 provider-neutral descriptor', async () => {
+    it('capabilities: with a bound zoom_phone connection → 200 the bound adapter descriptor', async () => {
       const res = await fetch(url('/v1/communications/capabilities'), auth(mappedJwt));
       expect(res.status).toBe(200);
       const body = (await res.json()) as { provider_key: string; capabilities: { voice: { outbound: boolean } } };
-      expect(body.provider_key).toBe('fake_voice');
+      // COMM-B3: resolves the tenant's zoom_phone connection → ZoomPhoneAdapter.
+      // NEVER a default/fake fallback.
+      expect(body.provider_key).toBe('zoom_phone');
       expect(body.capabilities.voice.outbound).toBe(true);
+    });
+
+    it('capabilities: tenant with NO provider connection → 409 COMMUNICATION_PROVIDER_NOT_CONFIGURED', async () => {
+      const res = await fetch(url('/v1/communications/capabilities'), auth(tenantBJwt));
+      expect(res.status).toBe(409);
+      const err = (await res.json()) as { error?: { code?: string } };
+      expect(err.error?.code).toBe('COMMUNICATION_PROVIDER_NOT_CONFIGURED');
+    });
+
+    it('provider-identities (admin list): DENIED without integration:read (403)', async () => {
+      const res = await fetch(url('/v1/communications/provider-identities'), auth(mappedJwt));
+      expect(res.status).toBe(403); // communication:read is not integration:read
+    });
+
+    it('provider-identities (admin list): integration:read → 200 with the tenant mappings', async () => {
+      const res = await fetch(url('/v1/communications/provider-identities'), auth(adminJwt));
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { items: Array<{ recruiter_id: string; provider_user_id: string }> };
+      expect(body.items.some((m) => m.recruiter_id === RECRUITER_MAPPED && m.provider_user_id === 'pv-user-1')).toBe(true);
+    });
+
+    it('provider-identities (admin upsert): DENIED without integration:write (403)', async () => {
+      const res = await fetch(url(`/v1/communications/provider-identities/${RECRUITER_TO_BIND}`), {
+        method: 'PUT',
+        ...auth(mappedJwt),
+        body: JSON.stringify({ provider_user_id: 'pv-user-2' }),
+      });
+      expect(res.status).toBe(403);
+    });
+
+    it('provider-identities (admin upsert): integration:write binds a recruiter → 200', async () => {
+      const res = await fetch(url(`/v1/communications/provider-identities/${RECRUITER_TO_BIND}`), {
+        method: 'PUT',
+        ...auth(adminJwt),
+        body: JSON.stringify({ provider_user_id: 'pv-user-2', voice_enabled: true }),
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { recruiter_id: string; provider_user_id: string; status: string };
+      expect(body.recruiter_id).toBe(RECRUITER_TO_BIND);
+      expect(body.provider_user_id).toBe('pv-user-2');
+      // re-map (rebind) is an intentional update, not a duplicate error
+      const again = await fetch(url(`/v1/communications/provider-identities/${RECRUITER_TO_BIND}`), {
+        method: 'PUT',
+        ...auth(adminJwt),
+        body: JSON.stringify({ provider_user_id: 'pv-user-2b' }),
+      });
+      expect(again.status).toBe(200);
+    });
+
+    it('provider-identities (admin upsert): claiming another recruiter\'s provider user → 409 ALREADY_MAPPED', async () => {
+      // pv-user-1 is already mapped to RECRUITER_MAPPED; mapping it to a third recruiter conflicts.
+      const third = '00000000-0000-7000-8000-000000000aa3';
+      const res = await fetch(url(`/v1/communications/provider-identities/${third}`), {
+        method: 'PUT',
+        ...auth(adminJwt),
+        body: JSON.stringify({ provider_user_id: 'pv-user-1' }),
+      });
+      expect(res.status).toBe(409);
+      const err = (await res.json()) as { error?: { code?: string } };
+      expect(err.error?.code).toBe('COMMUNICATION_PROVIDER_USER_ALREADY_MAPPED');
     });
 
     it('me/provider-identity: mapped recruiter → 200 with provider_user_id (no secret)', async () => {

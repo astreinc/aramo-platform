@@ -187,6 +187,7 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       'COMMUNICATION_INTERACTION_NOT_FOUND',
       'COMMUNICATION_USER_NOT_MAPPED',
       'COMMUNICATION_PROVIDER_NOT_CONFIGURED',
+      'COMMUNICATION_PROVIDER_USER_ALREADY_MAPPED',
     ]);
   });
 });

@@ -4212,6 +4212,49 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           );
         });
       },
+      // ===== COMM-B3 Zoom-binding pacts (ats-web communications.consumer) =====
+      // A USABLE (configured) zoom_phone IntegrationConnection for TENANT_ID;
+      // capabilities resolves it -> the composition-registered ZoomPhoneAdapter.
+      'a tenant entitled to ats with a configured zoom_phone provider connection': async () => {
+        await withClient(async (c) => {
+          await c.query(`DELETE FROM integration."IntegrationConnection" WHERE tenant_id = $1::uuid`, [TENANT_ID]);
+          await c.query(
+            `INSERT INTO integration."IntegrationConnection"
+               (id, tenant_id, provider_key, status, secret_ref, provider_account_id, version, created_at, updated_at)
+             VALUES ($1::uuid,$2::uuid,'zoom_phone','configured','connector:v1:pact','zoom-acct-pact',0,now(),now())`,
+            ['cccccccc-cccc-7ccc-8ccc-cccccccccccc', TENANT_ID],
+          );
+        });
+      },
+      'a tenant entitled to ats with a configured zoom_phone connection': async () => {
+        await withClient(async (c) => {
+          await c.query(`DELETE FROM integration."IntegrationConnection" WHERE tenant_id = $1::uuid`, [TENANT_ID]);
+          await c.query(
+            `INSERT INTO integration."IntegrationConnection"
+               (id, tenant_id, provider_key, status, secret_ref, provider_account_id, version, created_at, updated_at)
+             VALUES ($1::uuid,$2::uuid,'zoom_phone','configured','connector:v1:pact','zoom-acct-pact',0,now(),now())`,
+            ['cccccccc-cccc-7ccc-8ccc-cccccccccccc', TENANT_ID],
+          );
+        });
+      },
+      'a tenant entitled to ats with a configured zoom_phone connection and a provider-identity mapping': async () => {
+        await withClient(async (c) => {
+          await c.query(`DELETE FROM integration."IntegrationConnection" WHERE tenant_id = $1::uuid`, [TENANT_ID]);
+          await c.query(
+            `INSERT INTO integration."IntegrationConnection"
+               (id, tenant_id, provider_key, status, secret_ref, provider_account_id, version, created_at, updated_at)
+             VALUES ($1::uuid,$2::uuid,'zoom_phone','configured','connector:v1:pact','zoom-acct-pact',0,now(),now())`,
+            ['cccccccc-cccc-7ccc-8ccc-cccccccccccc', TENANT_ID],
+          );
+          await c.query(`DELETE FROM communications."CommunicationProviderIdentity" WHERE tenant_id = $1::uuid`, [TENANT_ID]);
+          await c.query(
+            `INSERT INTO communications."CommunicationProviderIdentity"
+               (id, tenant_id, integration_connection_id, recruiter_id, provider_user_id, voice_enabled, sms_enabled, status)
+             VALUES (gen_random_uuid(),$1::uuid,$2::uuid,$3::uuid,'pv-user-1',true,false,'active')`,
+            [TENANT_ID, 'cccccccc-cccc-7ccc-8ccc-cccccccccccc', RECRUITER_ID],
+          );
+        });
+      },
       // ===== E1-d placement read pacts (ats-web placement.consumer) =====
       // Fixture UUIDs mirror pact/consumers/ats-web/src/placement.consumer.test.ts.
       // The placement is seeded under TENANT_ID (the JWT tenant); requisition:
