@@ -20,6 +20,16 @@ export {
   CONNECTOR_SERVICE_ACCOUNT_ID,
   CONNECTOR_EXECUTION_SCOPES,
 } from './lib/domain/connector-actor.js';
+// L1-D1 (ADR-0030) — External Lifecycle Authority substrate repositories + types.
+export {
+  RequisitionLifecycleMappingRepository,
+  RequisitionExternalReconciliationRepository,
+  RequisitionExternalTransitionProvenanceRepository,
+  type RequisitionLifecycleAuthorityMode,
+  type RequisitionLifecycleMappingResolved,
+  type RecordReconciliationInput,
+  type RecordProvenanceInput,
+} from './lib/lifecycle/requisition-lifecycle-authority.repository.js';
 export {
   CONNECTION_STATUSES,
   type ConnectionStatus,
