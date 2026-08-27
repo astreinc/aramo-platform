@@ -207,6 +207,8 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       // 409 conflict (protects webhook-correlation integrity; convergent fills +
       // same-value re-attach are no-ops, never a conflict).
       'COMMUNICATION_PROVIDER_REFERENCE_CONFLICT',
+      // Lane 2 / L2-A — pipeline transition optimistic-concurrency conflict (409).
+      'PIPELINE_TRANSITION_CONFLICT',
     ]);
   });
 });

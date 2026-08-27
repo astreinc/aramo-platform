@@ -266,8 +266,13 @@ export class SubmitTalentToClientService {
       await recordUsage(tx, { tenant_id, event_type: 'submittal.state_transition' });
 
       // 7 — pipeline MIRROR: submitted + history + activity + usage.
+      // Lane 2 / L2-A — the mirror is a second Pipeline.status writer, so it
+      // MUST bump the optimistic-concurrency version too; otherwise a recruiter
+      // holding the pre-mirror version could transition on a stale status and
+      // the CAS would wrongly pass. version = version + 1 keeps expected_version
+      // sound across the mirror write.
       await tx.$executeRawUnsafe(
-        `UPDATE "pipeline"."Pipeline" SET "status" = 'submitted'
+        `UPDATE "pipeline"."Pipeline" SET "status" = 'submitted', "version" = "version" + 1
           WHERE "id" = $1::uuid AND "tenant_id" = $2::uuid`,
         pipeline.id,
         tenant_id,

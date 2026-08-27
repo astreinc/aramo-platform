@@ -24,6 +24,8 @@ const MIGRATIONS = [
   '../../../../libs/metering/prisma/migrations/20260601150000_init_metering_model/migration.sql',
   '../../prisma/migrations/20260602150000_init_pipeline_model/migration.sql',
   '../../prisma/migrations/20260807100000_e6_pipeline_live_episode_unique/migration.sql',
+  // L2-A — additive `version` column (optimistic-concurrency).
+  '../../prisma/migrations/20260827120000_l2a_pipeline_version_column/migration.sql',
 ].map((p) => resolve(__dirname, p));
 
 const PATH_TO_OFFERED: readonly PipelineStatus[] = [
@@ -78,6 +80,26 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       );
       return Number(rows[0]!.openings_available);
     }
+    // L2-A — transition now requires expected_version + the actor's visible set.
+    // Read version immediately before each transition; see-all visibility (null).
+    async function casTransition(
+      tenant: string,
+      id: string,
+      to: PipelineStatus,
+      requestId: string,
+    ) {
+      const cur = await repo.findById({ tenant_id: tenant, id });
+      return repo.transition({
+        tenant_id: tenant,
+        id,
+        to_status: to,
+        changed_by_id: randomUUID(),
+        requestId,
+        expected_version: cur!.version,
+        visible_requisition_ids: null,
+      });
+    }
+
     async function drive(tenant: string, id: string, path: readonly PipelineStatus[]): Promise<void> {
       for (const to of path) {
         // L8-B1 R-TIGHTEN — `submitted` is the submit-to-ats orchestrator's mirror,
@@ -87,7 +109,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           await prisma.$executeRawUnsafe(`UPDATE pipeline."Pipeline" SET status = 'submitted' WHERE id = '${id}'`);
           continue;
         }
-        await repo.transition({ tenant_id: tenant, id, to_status: to, changed_by_id: randomUUID(), requestId: 'b2' });
+        await casTransition(tenant, id, to, 'b2');
       }
     }
 
@@ -99,7 +121,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await drive(tenant, p.id, PATH_TO_OFFERED);
       const before = await openingsAvailable(req);
       expect(before).toBe(3);
-      await repo.transition({ tenant_id: tenant, id: p.id, to_status: 'placed', changed_by_id: randomUUID(), requestId: 'b2' });
+      await casTransition(tenant, p.id, 'placed', 'b2');
       // POST-B2: capacity is owned by ContractAssignment, not pipeline. Unchanged.
       expect(await openingsAvailable(req)).toBe(3);
     });
@@ -112,7 +134,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await drive(tenant, p.id, PATH_TO_OFFERED);
       // Pre-B2 this threw 409 and rolled back. Post-B2 it succeeds; capacity untouched.
       await expect(
-        repo.transition({ tenant_id: tenant, id: p.id, to_status: 'placed', changed_by_id: randomUUID(), requestId: 'b2' }),
+        casTransition(tenant, p.id, 'placed', 'b2'),
       ).resolves.toBeDefined();
       expect(await openingsAvailable(req)).toBe(0);
     });
@@ -123,9 +145,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const talent = randomUUID();
       const p = await repo.create({ tenant_id: tenant, input: { talent_record_id: talent, requisition_id: req } });
       await drive(tenant, p.id, PATH_TO_OFFERED);
-      await repo.transition({ tenant_id: tenant, id: p.id, to_status: 'placed', changed_by_id: randomUUID(), requestId: 'b2' });
+      await casTransition(tenant, p.id, 'placed', 'b2');
       const before = await openingsAvailable(req);
-      await repo.delete({ tenant_id: tenant, id: p.id, requestId: 'b2' });
+      await repo.delete({ tenant_id: tenant, id: p.id, requestId: 'b2', visible_requisition_ids: null });
       // POST-B2: delete removes the pipeline fact only; it never restores capacity.
       expect(await openingsAvailable(req)).toBe(before);
     });

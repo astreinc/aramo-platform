@@ -127,6 +127,7 @@ interface PipelineRow {
   status: PipelineStatus;
   created_at: Date;
   updated_at: Date;
+  version: number;
 }
 
 interface PipelineStatusHistoryRow {
@@ -150,6 +151,7 @@ function projectView(row: PipelineRow): PipelineView {
     status: row.status,
     created_at: row.created_at.toISOString(),
     updated_at: row.updated_at.toISOString(),
+    version: row.version,
   };
 }
 
@@ -359,18 +361,26 @@ export class PipelineRepository {
     tenant_id: string;
     id: string;
     requestId: string;
+    // Lane 2 / L2-A — AUTHZ-D4b write-visibility parity. A pipeline on a
+    // requisition outside the actor's visible set is CONCEALED as 404.
+    visible_requisition_ids: ReadonlySet<string> | null;
   }): Promise<void> {
-    // Existence check only. Track 4 / T4-B2 §7 — the delete-restore branch is gone
-    // (pipeline no longer owns capacity), so the row's status/req/talent are no
-    // longer needed to decide a capacity restore.
+    // Existence + visibility check. Track 4 / T4-B2 §7 — the delete-restore branch
+    // is gone (pipeline no longer owns capacity); requisition_id is now read ONLY
+    // for the L2-A visibility concealment, not for a capacity restore.
     const existing = await this.prisma.pipeline.findFirst({
       where: { tenant_id: args.tenant_id, id: args.id },
-      select: { id: true },
+      select: { id: true, requisition_id: true },
     });
-    if (existing === null) {
+    // Concealment: missing OR not-visible both surface as the SAME 404.
+    if (
+      existing === null ||
+      (args.visible_requisition_ids !== null &&
+        !args.visible_requisition_ids.has(existing.requisition_id as string))
+    ) {
       throw new AramoError(
         'NOT_FOUND',
-        'Pipeline not found in tenant',
+        'Pipeline not found in tenant (or not visible to actor)',
         404,
         { requestId: args.requestId, details: { id: args.id } },
       );
@@ -400,16 +410,60 @@ export class PipelineRepository {
     changed_by_id: string;
     note?: string;
     requestId: string;
+    // Lane 2 / L2-A — optimistic-concurrency token the caller last read.
+    expected_version: number;
+    // Lane 2 / L2-A — AUTHZ-D4b write-visibility parity. The actor's visible
+    // requisition set (null ⇒ see-all-requisition). A pipeline on a requisition
+    // outside this set is CONCEALED as 404 — identical to a missing row — so a
+    // caller can neither read nor mutate a row they cannot see.
+    visible_requisition_ids: ReadonlySet<string> | null;
   }): Promise<PipelineView> {
     const current = await this.prisma.pipeline.findFirst({
       where: { tenant_id: args.tenant_id, id: args.id },
     });
-    if (current === null) {
+    // Concealment: missing row, OR a row whose requisition is not visible to the
+    // actor, both surface as the SAME 404 — existence is never leaked (Lane 1
+    // write-visibility invariant, extended to the transition write path).
+    if (
+      current === null ||
+      (args.visible_requisition_ids !== null &&
+        !args.visible_requisition_ids.has((current as PipelineRow).requisition_id))
+    ) {
       throw new AramoError(
         'NOT_FOUND',
-        'Pipeline not found in tenant',
+        'Pipeline not found in tenant (or not visible to actor)',
         404,
         { requestId: args.requestId, details: { id: args.id } },
+      );
+    }
+
+    // Optimistic-concurrency compare-and-swap (Lane 2 / L2-A). A stale
+    // expected_version means a concurrent transition already advanced the row;
+    // refuse before any write so last-write-wins cannot silently clobber. The
+    // check precedes the no-op / legality checks because a stale version means
+    // the caller's view of `status` (which drove `to_status`) is itself stale.
+    const currentVersion = (current as PipelineRow).version;
+    if (args.expected_version !== currentVersion) {
+      this.logger.log({
+        event: 'pipeline_transition_conflict',
+        tenant_id: args.tenant_id,
+        pipeline_id: args.id,
+        code: 'PIPELINE_TRANSITION_CONFLICT',
+        expected_version: args.expected_version,
+        current_version: currentVersion,
+      });
+      throw new AramoError(
+        'PIPELINE_TRANSITION_CONFLICT',
+        'Pipeline was modified concurrently; refresh and retry',
+        409,
+        {
+          requestId: args.requestId,
+          details: {
+            pipeline_id: args.id,
+            current_status: (current as PipelineRow).status,
+            current_version: currentVersion,
+          },
+        },
       );
     }
 
@@ -492,10 +546,12 @@ export class PipelineRepository {
 
     const { updatedRow, historyRow } = await this.prisma.$transaction(
       async (tx) => {
-        // 4a — UPDATE Pipeline.status
+        // 4a — UPDATE Pipeline.status (+ bump the optimistic-concurrency version
+        // in the SAME tx; L2-A). The CAS was validated above; the increment
+        // commits atomically with the status/history/activity/metering writes.
         const updated = await tx.pipeline.update({
           where: { id: args.id },
-          data: { status: args.to_status },
+          data: { status: args.to_status, version: { increment: 1 } },
         });
         // 4b — INSERT PipelineStatusHistory
         const history = await tx.pipelineStatusHistory.create({
@@ -995,7 +1051,30 @@ export class PipelineRepository {
   async listHistory(args: {
     tenant_id: string;
     pipeline_id: string;
+    requestId: string;
+    // Lane 2 / L2-A — AUTHZ-D4b read-visibility parity. History of a pipeline on
+    // a requisition outside the actor's visible set is CONCEALED as 404 (a
+    // history read must not leak a row the actor cannot see).
+    visible_requisition_ids: ReadonlySet<string> | null;
   }): Promise<PipelineStatusHistoryView[]> {
+    // Concealment gate: resolve the parent pipeline's visibility BEFORE returning
+    // any history. Missing OR not-visible both surface as the SAME 404.
+    const parent = await this.prisma.pipeline.findFirst({
+      where: { tenant_id: args.tenant_id, id: args.pipeline_id },
+      select: { id: true, requisition_id: true },
+    });
+    if (
+      parent === null ||
+      (args.visible_requisition_ids !== null &&
+        !args.visible_requisition_ids.has(parent.requisition_id as string))
+    ) {
+      throw new AramoError(
+        'NOT_FOUND',
+        'Pipeline not found in tenant (or not visible to actor)',
+        404,
+        { requestId: args.requestId, details: { id: args.pipeline_id } },
+      );
+    }
     const rows = await this.prisma.pipelineStatusHistory.findMany({
       where: {
         tenant_id: args.tenant_id,

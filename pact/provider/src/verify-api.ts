@@ -446,6 +446,11 @@ const PIPELINE_E6_MIGRATION = resolve(
   ROOT,
   'libs/pipeline/prisma/migrations/20260807100000_e6_pipeline_live_episode_unique/migration.sql',
 );
+// L2-A — additive `version` column. SEPARATE const + apply-list entry.
+const PIPELINE_VERSION_MIGRATION = resolve(
+  ROOT,
+  'libs/pipeline/prisma/migrations/20260827120000_l2a_pipeline_version_column/migration.sql',
+);
 // L8-B1 — the submit-to-ats orchestrator touches the submittal_policy schema
 // (RequisitionSubmittalPolicy / SubmittalConsumption / SubmittalPolicyEvent) and
 // reads client_talent_restriction; both schemas must exist in the provider DB.
@@ -3074,6 +3079,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         ACTIVITY_REDACTION_MIGRATION,
         PIPELINE_INIT_MIGRATION,
         PIPELINE_E6_MIGRATION,
+        PIPELINE_VERSION_MIGRATION,
         SUBMITTAL_POLICY_INIT_MIGRATION,
         CLIENT_TALENT_RESTRICTION_INIT_MIGRATION,
         POLICY_STORE_INIT_MIGRATION,

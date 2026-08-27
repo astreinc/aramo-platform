@@ -60,6 +60,7 @@ const MIGRATIONS = [
   'libs/activity/prisma/migrations/20260602140000_init_activity_model/migration.sql',
   'libs/pipeline/prisma/migrations/20260602150000_init_pipeline_model/migration.sql',
   'libs/pipeline/prisma/migrations/20260807100000_e6_pipeline_live_episode_unique/migration.sql',
+  'libs/pipeline/prisma/migrations/20260827120000_l2a_pipeline_version_column/migration.sql',
   'libs/submittal/prisma/migrations/20260523120000_init_submittal_model/migration.sql',
   'libs/submittal/prisma/migrations/20260523200000_add_submittal_revoke/migration.sql',
   'libs/submittal/prisma/migrations/20260526140602_add_submittal_event_log/migration.sql',
