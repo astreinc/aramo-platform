@@ -524,8 +524,15 @@
       "ConnectionServiceError",
       "ConnectorAdapterRegistry",
       "ConnectorExecutionService",
+      "ConnectorSecretResolutionError",
+      "ConnectorSecretResolver",
       "ConnectorTransientError",
       "ExternalRequisitionIdentityRepository",
+      "FIELDGLASS_PROVIDER_KEY",
+      "FieldglassConfigError",
+      "FieldglassCredentialDecodeError",
+      "FieldglassCredentialUnavailableError",
+      "FieldglassLifecycleSource",
       "IntegrationConnectionRepository",
       "IntegrationConnectionService",
       "IntegrationController",
@@ -542,9 +549,12 @@
       "SECRETS_MANAGER_WRITER",
       "assertConnectorSecretRefBinding",
       "buildConnectorSecretRef",
+      "decodeFieldglassCredential",
       "deriveConnectorSecretManagerId",
+      "encodeFieldglassCredential",
       "observationKeyFor",
       "parseConnectorSecretRef",
+      "parseStaffingOrderDelta",
       "redactForLog",
       "redactString"
     ],
@@ -3317,6 +3327,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/cb-d2-fg-fieldglass-lifecycle.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/comm-b5-call-initiation.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -3693,6 +3709,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/cb-d2-a1-lifecycle-ingress.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/cb-d2-fg-fieldglass-lifecycle.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
