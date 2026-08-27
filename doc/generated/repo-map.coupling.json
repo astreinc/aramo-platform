@@ -9692,6 +9692,7 @@
       "status": "unscoped",
       "to": "ci/scripts/verify-frontdoor-conf.ts"
     },
+    { "from": "deploy/seed-prod.sh", "status": "unscoped", "to": "deploy/build-images.sh" },
     { "from": "deploy/seed-prod.sh", "status": "unscoped", "to": "deploy/migrate-prod.sh" },
     { "from": "deploy/seed-prod.sh", "status": "unscoped", "to": "deploy/seed-prod.test.sh" },
     {
@@ -16556,10 +16557,7 @@
       "name": "prisma:seed-platform-owner",
       "references": [{ "kind": "npm-run", "path": "deploy/seed-prod.sh" }]
     },
-    {
-      "name": "prisma:seed-policy-lifecycle",
-      "references": [{ "kind": "npm-run", "path": "deploy/seed-prod.sh" }]
-    },
+    { "name": "prisma:seed-policy-lifecycle", "references": [] },
     {
       "name": "prisma:validate",
       "references": [
@@ -16679,6 +16677,7 @@
     "prisma:generate-identity",
     "prisma:seed-auth-storage",
     "prisma:seed-identity",
+    "prisma:seed-policy-lifecycle",
     "prisma:validate-auth-storage",
     "prisma:validate-identity",
     "tests:integration"

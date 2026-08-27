@@ -1,4 +1,4 @@
-# Aramo — Box Deploy Runbook v2.2
+# Aramo — Box Deploy Runbook v2.3
 
 **Status:** Canonical operational runbook — v2.2
 **Scope:** Planned-window deploys to the single prod box (`/opt/aramo`), build-on-box model
@@ -10,6 +10,18 @@ window.
 *[v2.1 INVERSION, per PO ruling: the repo-tracked file is now the source of truth — matching the six
 sibling runbooks already in `doc/runbooks/`. OneDrive is the mirror. This reverses v2.0's
 declaration.]*
+
+**Changelog v2.2 → v2.3**
+- **BUILD precedes SEED (ordering change).** STAGE C (the requisition-lifecycle
+  policy-package publish) now runs the **COMPILED** seed from the built api image,
+  not host-jiti — jiti 2.6.1 cannot transform the seed's transitive
+  `@aramo/requisition` NestJS + class-validator graph (legacy
+  `experimentalDecorators`; the L1-A `CreateRequisitionRequestDto` first exposed
+  it). `deploy/seed-prod.sh`'s STAGE C guard fails closed if the api image is
+  absent. **So for any RUN_SEED=yes release the order is STEP 3 (migrate) → STEP 5
+  (build) → STEP 4 (seed) → STEP 6 (recreate).** (Migrate still first; recreate
+  still last — E22 intact. STAGE A/B/B2/D remain host-jiti; only STAGE C moved to
+  the compiled image.)
 
 **Changelog v2.1 → v2.2**
 - **E22 guardrail (HARD STOPS):** any window that rebuilds/recreates an application container is a
@@ -123,6 +135,10 @@ bash deploy/migrate-prod.sh
 recreate on a half-migrated DB.
 
 ### STEP 4 — SEED (only if RUN_SEED=yes)
+> ⚠ **ORDER (v2.3):** STAGE C runs the policy seed from the **built api image**, so
+> **STEP 5 (BUILD) MUST complete before this step.** Run order for a RUN_SEED=yes
+> release: STEP 3 (migrate) → **STEP 5 (build)** → **STEP 4 (seed)** → STEP 6
+> (recreate). If the api image is absent, STAGE C fails closed with a clear message.
 ```
 bash deploy/seed-prod.sh
 ```

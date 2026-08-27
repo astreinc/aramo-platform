@@ -63,6 +63,15 @@ NETWORK="${ARAMO_SEED_NETWORK:-${COMPOSE_PROJECT}_default}"
 NODE_IMAGE="${ARAMO_SEED_NODE_IMAGE:-node:22-bookworm}"
 # psql lives in postgres:17 (not the node image) — used only for the assertion.
 ASSERT_IMAGE="${ARAMO_SEED_ASSERT_IMAGE:-postgres:17}"
+# The built api image (deploy/build-images.sh -> aramo/api:local). STAGE C runs
+# the COMPILED policy-lifecycle seed from this image instead of host-jiti (see
+# run_seed_policy): the policy seed's import graph pulls the @aramo/requisition
+# NestJS + class-validator surface, which jiti 2.6.1 cannot transform (the repo
+# uses legacy experimentalDecorators; jiti defaults to modern decorators). The
+# api image compiles that graph correctly via tsc. THEREFORE build-images.sh MUST
+# precede this script for any release (BUILD before SEED) — the STAGE C guard
+# fails closed if the image is absent.
+API_IMAGE="${ARAMO_API_IMAGE:-aramo/api:local}"
 
 # The Astre tenant identity the seed provisions (seed-astre.ts:33 / :50). The
 # post-seed assertion confirms this exact row exists with the backfilled domain,
@@ -151,12 +160,22 @@ run_seed_platform_owner() {
 # from creation. NO NEW TENANT MAY BE PROVISIONED until PR-4a-2 wires the
 # lifecycle-package publish into the tenant-provisioning path.
 run_seed_policy() {
+  # Runs the COMPILED seed from the built api image (NOT host-jiti). jiti 2.6.1
+  # cannot transform this seed's transitive @aramo/requisition Nest/class-validator
+  # graph (legacy experimentalDecorators); the api image compiled it via tsc and
+  # resolves @aramo/* through its materialised dist/libs symlinks. Fails closed if
+  # the api image is absent — build-images.sh MUST run before this script.
+  if ! docker image inspect "$API_IMAGE" >/dev/null 2>&1; then
+    echo "[seed] FATAL STAGE C: api image '$API_IMAGE' not found. The policy-lifecycle" >&2
+    echo "       seed runs from the COMPILED image (not jiti) — run deploy/build-images.sh" >&2
+    echo "       BEFORE deploy/seed-prod.sh (BUILD precedes SEED for policy-bearing releases)." >&2
+    return 1
+  fi
   docker run --rm \
     --network "$NETWORK" \
-    -v "$ARAMO_DIR":/repo -w /repo \
     -e DATABASE_URL="$DBURL" \
-    "$NODE_IMAGE" \
-    npm run prisma:seed-policy-lifecycle
+    "$API_IMAGE" \
+    node dist/apps/api/src/policy/seed-lifecycle.js
 }
 
 # STAGE D — reconcile the tenant entitlement bundle (T2-E1-HF2). Same
