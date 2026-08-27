@@ -19,6 +19,10 @@ import {
   LIFECYCLE_POLL_QUEUE_NAME,
   LIFECYCLE_POLL_INTERVAL_MS,
 } from '../requisition-integration/lifecycle-poll.queue.constants.js';
+import {
+  RECONCILIATION_DRAIN_QUEUE_NAME,
+  RECONCILIATION_DRAIN_INTERVAL_MS,
+} from '../requisition-integration/reconciliation-drain.queue.constants.js';
 
 // Application bootstrap registration for the repeating Aramo BullMQ jobs
 // (Architecture v2.1 §9.2 / Plan v1.5 §M5 Track A item 6; doc/01 §13 anchor).
@@ -32,6 +36,8 @@ import {
 // CB-D2-A1 — the lifecycle-poll 300s tick is the 13th repeat-scheduled queue
 // (of 18 distinct BullMQ queues total: +lifecycle-poll here, +connector-execution
 // which is enqueue-driven, not repeat-scheduled).
+// CB-D2-R — the reconciliation-drain 300s tick is the 14th repeat-scheduled queue
+// (of 19 distinct BullMQ queues total: +reconciliation-drain here).
 //
 // Idempotent jobId on each `queue.add` prevents duplicate scheduling
 // across pod restarts: BullMQ deduplicates repeat jobs by jobId.
@@ -162,6 +168,19 @@ const SCHEDULES = [
     job_name: 'tick',
     job_id: 'lifecycle-poll-300s',
     repeat: { every: LIFECYCLE_POLL_INTERVAL_MS },
+  },
+  // CB-D2-R (ADR-0030) — the reconciliation-drain sweep. Every 300s: claim a
+  // batch of due pending RequisitionExternalReconciliation rows (the rows A1 + FG
+  // only WRITE today) and drain each through the governed path — re-resolve
+  // identity + mapping → executeExternalLifecycleCommand → resolve, or park after
+  // bounded attempts. Registered here so pending rows are actually drained; the
+  // worker itself is silent without Redis (CI / local dev). The 14th
+  // repeat-scheduled queue.
+  {
+    queue_name: RECONCILIATION_DRAIN_QUEUE_NAME,
+    job_name: 'tick',
+    job_id: 'reconciliation-drain-300s',
+    repeat: { every: RECONCILIATION_DRAIN_INTERVAL_MS },
   },
 ] as const;
 

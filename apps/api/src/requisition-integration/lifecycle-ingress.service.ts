@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import {
   ExternalRequisitionIdentityRepository,
   LifecycleObservationLedgerRepository,
+  RECONCILIATION_FAILURE_REASON,
   RequisitionExternalReconciliationRepository,
   observationKeyFor,
   type LifecycleChange,
@@ -99,7 +100,13 @@ export class LifecycleIngressService {
       change.external_req_id,
     );
     if (requisitionId === null) {
-      return this.reconcile(params, ledgerId, observationKey, 'REQUISITION_NOT_FOUND', null);
+      return this.reconcile(
+        params,
+        ledgerId,
+        observationKey,
+        RECONCILIATION_FAILURE_REASON.REQUISITION_NOT_FOUND,
+        null,
+      );
     }
 
     // 3. ORDERING (R-ORDER). Only ACCEPTED (executed) prior observations count.
@@ -118,7 +125,13 @@ export class LifecycleIngressService {
         change.provider_sequence <= last.provider_sequence
       ) {
         // STRONG/BOUNDED: a provider-authoritative sequence proves this is stale.
-        return this.reconcile(params, ledgerId, observationKey, 'ORDERING_STALE', requisitionId);
+        return this.reconcile(
+          params,
+          ledgerId,
+          observationKey,
+          RECONCILIATION_FAILURE_REASON.ORDERING_STALE,
+          requisitionId,
+        );
       }
       if (!strong) {
         // WEAK/UNKNOWN: no authoritative order. An input that appears EARLIER than
@@ -130,7 +143,7 @@ export class LifecycleIngressService {
             params,
             ledgerId,
             observationKey,
-            'ORDERING_AMBIGUOUS',
+            RECONCILIATION_FAILURE_REASON.ORDERING_AMBIGUOUS,
             requisitionId,
           );
         }

@@ -835,6 +835,24 @@ export class RequisitionRepository {
     return row === null ? null : (row.status as RecruitingStatus);
   }
 
+  // CB-D2-R (ADR-0030) — READ-ONLY status + version accessor for the external
+  // reconciliation drain worker's optimistic re-attempt. The worker reloads the
+  // CURRENT (status, version) and threads version as expected_version into the
+  // GOVERNED command seam, so a concurrent edit between the reload and the CAS
+  // surfaces as CAS_CONFLICT (reschedule/park) rather than a lost update. This is
+  // Aramo's OWN version guard (optimistic concurrency), NOT provider ordering —
+  // CAS SEPARATION is preserved. NEVER mutates a requisition.
+  async findStatusAndVersionById(args: {
+    tenant_id: string;
+    id: string;
+  }): Promise<{ status: RecruitingStatus; version: number } | null> {
+    const row = await this.prisma.requisition.findFirst({
+      where: { tenant_id: args.tenant_id, id: args.id },
+      select: { status: true, version: true },
+    });
+    return row === null ? null : { status: row.status as RecruitingStatus, version: row.version };
+  }
+
   // CB-D2-A1 (ADR-0030) — the external-identity establishment READ. Given the
   // ImportBatch a connector delivery produced, return each created requisition's
   // (id, external_req_id) so the apps/api establishment handoff can record the

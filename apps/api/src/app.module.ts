@@ -65,6 +65,7 @@ import { CommunicationsApiModule } from './communications/communications-api.mod
 import { ConnectorExecutionModule } from './connector/connector-execution.module.js';
 import { RequisitionIntegrationModule } from './requisition-integration/requisition-integration.module.js';
 import { LifecyclePollModule } from './requisition-integration/lifecycle-poll.module.js';
+import { ReconciliationDrainModule } from './requisition-integration/reconciliation-drain.module.js';
 import { TenantCognitoAdapter } from './cognito/tenant-cognito.adapter.js';
 import { TenantWriteFreezeInterceptor } from './tenant-write-freeze/tenant-write-freeze.interceptor.js';
 import { TalentAnchorInterceptor } from './talent-anchor/talent-anchor.interceptor.js';
@@ -322,6 +323,10 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     // CB-D2-A1 (ADR-0030) — the provider-neutral lifecycle-poll worker (scheduled
     // tick → fetch → raw-persist → ingress → cursor-advance; Redis-gated).
     LifecyclePollModule,
+    // CB-D2-R (ADR-0030) — the reconciliation-drain worker (scheduled tick →
+    // claim due pending rows → re-run the governed path / resolve / park;
+    // Redis-gated). Drains the rows A1 + FG only WRITE today.
+    ReconciliationDrainModule,
     // M5 PR-11 §4.5/§4.6 — SkillsTaxonomyModule registers the
     // skill-canonicalization queue + no-op processor (Architecture v2.1
     // §9.2 / Plan v1.5 §M5 Track A item 6 binding).

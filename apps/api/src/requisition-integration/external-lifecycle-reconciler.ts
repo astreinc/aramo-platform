@@ -8,6 +8,7 @@ import {
 } from '@aramo/requisition';
 import {
   CONNECTOR_SERVICE_ACCOUNT_ID,
+  RECONCILIATION_FAILURE_REASON,
   RequisitionLifecycleMappingRepository,
   RequisitionExternalReconciliationRepository,
   RequisitionExternalTransitionProvenanceRepository,
@@ -88,7 +89,7 @@ export class ExternalLifecycleReconciler {
     );
     if (mapping === null) {
       return this.reconcile(input, {
-        failure_reason: 'UNMAPPABLE_PROVIDER_STATE',
+        failure_reason: RECONCILIATION_FAILURE_REASON.UNMAPPABLE_PROVIDER_STATE,
         normalized_status: normalized,
         mapped_action: null,
         current_aramo_status: currentStatus,
@@ -101,7 +102,7 @@ export class ExternalLifecycleReconciler {
     const action = mapping.mapped_action as TransitionAction;
     if (!TRANSITION_ACTIONS.includes(action) || !isExternalLifecycleAction(action)) {
       return this.reconcile(input, {
-        failure_reason: 'ILLEGAL_FROM_STATE',
+        failure_reason: RECONCILIATION_FAILURE_REASON.ILLEGAL_FROM_STATE,
         normalized_status: normalized,
         mapped_action: mapping.mapped_action,
         current_aramo_status: currentStatus,
@@ -111,7 +112,7 @@ export class ExternalLifecycleReconciler {
     // 3) Authority mode. dual_control RECORDS intent and does NOT execute.
     if (mapping.authority_mode === 'dual_control') {
       return this.reconcile(input, {
-        failure_reason: 'DUAL_CONTROL_PENDING',
+        failure_reason: RECONCILIATION_FAILURE_REASON.DUAL_CONTROL_PENDING,
         normalized_status: normalized,
         mapped_action: action,
         current_aramo_status: currentStatus,
