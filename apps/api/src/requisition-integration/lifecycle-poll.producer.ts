@@ -1,5 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import {
+  ConnectorSecretResolver,
+  ConnectorSecretResolutionError,
   IntegrationConnectionRepository,
   LifecycleSourceAdapterRegistry,
   type LifecycleFetchResult,
@@ -26,6 +28,7 @@ export class LifecyclePollProducer {
     private readonly connections: IntegrationConnectionRepository,
     private readonly sources: LifecycleSourceAdapterRegistry,
     private readonly ingress: LifecycleIngressService,
+    private readonly secrets: ConnectorSecretResolver,
   ) {}
 
   /** Sweep every ACTIVE connection that has a registered lifecycle source. */
@@ -61,18 +64,45 @@ export class LifecyclePollProducer {
     tenant_id: string;
     provider_key: string;
     cursor: string | null;
+    config?: Record<string, unknown> | null;
   }): Promise<LifecycleFetchResult | null> {
     const adapter = this.sources.resolve(conn.provider_key);
     if (adapter === null) return null;
+
+    // R-CREDENTIAL — the PRODUCER resolves the tenant-bound secret and injects an
+    // EPHEMERAL credential string; the adapter never touches Secrets Manager /
+    // secret_ref. A connection with NO configured secret resolves to a null
+    // credential (CONNECTOR_SECRET_UNAVAILABLE) — the producer does NOT gate the
+    // poll on credential presence (that is provider policy): it passes null and a
+    // provider adapter that requires a credential fails closed itself, while a
+    // credential-less fake source (A1) simply ignores it. Any OTHER resolution
+    // failure (isolation / infra) propagates to pollAllActive's per-connection
+    // guard, which degrades that ONE connection without aborting the sweep.
+    let credential: string | null;
+    try {
+      credential = await this.secrets.resolveForExecution({
+        tenant_id: conn.tenant_id,
+        connection_id: conn.id,
+      });
+    } catch (err) {
+      if (
+        err instanceof ConnectorSecretResolutionError &&
+        err.code === 'CONNECTOR_SECRET_UNAVAILABLE'
+      ) {
+        credential = null;
+      } else {
+        throw err;
+      }
+    }
 
     const result = await adapter.fetchLifecycleChanges({
       tenant_id: conn.tenant_id,
       connection_id: conn.id,
       provider_key: conn.provider_key,
       cursor: conn.cursor,
-      // A1 is provider-neutral: credential resolution is a real-adapter concern
-      // (later slice). The fake source ignores it.
-      credential: null,
+      credential,
+      // The connection's NON-SECRET config (endpoint/base URL, connector name, …).
+      config: conn.config ?? null,
     });
 
     for (const change of result.changes) {

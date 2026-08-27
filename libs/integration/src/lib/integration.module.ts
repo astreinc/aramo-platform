@@ -85,6 +85,9 @@ import { ExternalRequisitionIdentityRepository } from './lifecycle/external-requ
     // consumer category). The secret id is derived server-side from config env,
     // never from client input.
     SECRETS_MANAGER_PORT,
+    // CB-D2-FG (R-CREDENTIAL) — exported so the apps/api lifecycle-poll producer
+    // can resolve + inject the tenant-bound ephemeral credential per connection.
+    ConnectorSecretResolver,
     // L1-D1 — exported so the apps/api reconciler can compose them.
     RequisitionLifecycleMappingRepository,
     RequisitionExternalReconciliationRepository,

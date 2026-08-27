@@ -67,12 +67,20 @@ export type LifecycleChange =
 
 // The tenant-bound execution context handed to a lifecycle source (mirrors
 // ConnectorExecutionContext; the credential is resolved server-side, ephemeral).
+//
+// CB-D2-FG — the context also carries the connection's NON-SECRET `config`
+// (IntegrationConnection.config: environment/base URL, connector name, …). A1
+// left this off the port because its fake source needed no config; the first real
+// provider adapter (Fieldglass) reads its non-secret endpoint config from here,
+// while every SECRET stays in the opaque `credential` bundle. `null` when the
+// connection has no config (a credential-less/config-less fake ignores it).
 export interface LifecycleFetchContext {
   readonly tenant_id: string;
   readonly connection_id: string;
   readonly provider_key: string;
   readonly cursor: string | null;
   readonly credential: string | null;
+  readonly config: Record<string, unknown> | null;
 }
 
 // The result of ONE lifecycle fetch: a durable delivery + its changes + an
