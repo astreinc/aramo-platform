@@ -29,7 +29,21 @@ export {
   type RequisitionLifecycleMappingResolved,
   type RecordReconciliationInput,
   type RecordProvenanceInput,
+  type ClaimedReconciliationRow,
 } from './lib/lifecycle/requisition-lifecycle-authority.repository.js';
+// CB-D2-R (ADR-0030, R-TAXONOMY) — the ONE authoritative reconciliation vocabulary.
+export {
+  RECONCILIATION_FAILURE_REASON,
+  RECONCILIATION_FAILURE_REASONS,
+  RECONCILIATION_DISPOSITION,
+  RECONCILIATION_STATUS,
+  classifyReconciliation,
+  isReconciliationFailureReason,
+  type ReconciliationFailureReason,
+  type ReconciliationClass,
+  type ReconciliationDisposition,
+  type ReconciliationStatus,
+} from './lib/lifecycle/reconciliation-failure-reason.js';
 export {
   CONNECTION_STATUSES,
   type ConnectionStatus,

@@ -223,13 +223,28 @@ model RequisitionExternalReconciliation {
   // only when the requisition was not found).
   current_aramo_status String?
 
-  // The bounded reason token (UNMAPPABLE_PROVIDER_STATE | DUAL_CONTROL_PENDING |
-  // ILLEGAL_FROM_STATE | POLICY_DENIED | CAS_CONFLICT | REQUISITION_NOT_FOUND).
+  // The bounded ENTRY-CAUSE token — why the row entered reconciliation. The full
+  // authoritative set (8 tokens) lives in ReconciliationFailureReason
+  // (reconciliation-failure-reason.ts); the ingress adds the two ORDERING tokens
+  // beyond the six listed here: UNMAPPABLE_PROVIDER_STATE | DUAL_CONTROL_PENDING |
+  // ILLEGAL_FROM_STATE | POLICY_DENIED | CAS_CONFLICT | REQUISITION_NOT_FOUND |
+  // ORDERING_STALE | ORDERING_AMBIGUOUS. NEVER repurposed as worker state.
   failure_reason String
 
-  // Record-then-resolve lifecycle. D1 only ever writes 'pending'; the D2 worker
-  // transitions to 'resolved'.
+  // Record-then-resolve lifecycle. D1 only ever writes 'pending'; the CB-D2-R
+  // worker transitions it to 'resolved' or (terminal intervention) 'parked'. A
+  // bare String (no CHECK enum) — the token set is owned by the worker taxonomy.
   status String @default("pending")
+
+  // CB-D2-R (ADR-0030) — worker DRAIN state (ADD-not-rename; all nullable/defaulted).
+  // failure_reason above stays the entry cause; resolution_reason records what the
+  // worker DECIDED. attempts is the bounded poison counter; locked_until/locked_by
+  // is the concurrency-safe claim lease; next_attempt_at is the backoff watermark.
+  attempts          Int       @default(0)
+  locked_until      DateTime? @db.Timestamptz
+  locked_by         String?
+  next_attempt_at   DateTime? @db.Timestamptz
+  resolution_reason String?
 
   created_at  DateTime  @default(now()) @db.Timestamptz
   resolved_at DateTime? @db.Timestamptz

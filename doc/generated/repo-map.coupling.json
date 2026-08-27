@@ -2346,6 +2346,24 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/cb-d2-r-reconciliation-drain.integration.spec.ts",
+      "status": "excluded",
+      "to": "apps/api/src/requisition-integration/external-lifecycle-reconciler.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/cb-d2-r-reconciliation-drain.integration.spec.ts",
+      "status": "excluded",
+      "to": "apps/api/src/requisition-integration/lifecycle-ingress.service.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/cb-d2-r-reconciliation-drain.integration.spec.ts",
+      "status": "excluded",
+      "to": "apps/api/src/requisition-integration/reconciliation-drain.service.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/comm-b5-call-initiation.integration.spec.ts",
       "status": "excluded",
       "to": "libs/communications/prisma/migrations/20260825120000_init_communications/migration.sql"

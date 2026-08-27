@@ -541,6 +541,10 @@
       "LIFECYCLE_ORDERING_CONFIDENCES",
       "LifecycleObservationLedgerRepository",
       "LifecycleSourceAdapterRegistry",
+      "RECONCILIATION_DISPOSITION",
+      "RECONCILIATION_FAILURE_REASON",
+      "RECONCILIATION_FAILURE_REASONS",
+      "RECONCILIATION_STATUS",
       "REDACTED",
       "RequisitionExternalReconciliationRepository",
       "RequisitionExternalTransitionProvenanceRepository",
@@ -549,9 +553,11 @@
       "SECRETS_MANAGER_WRITER",
       "assertConnectorSecretRefBinding",
       "buildConnectorSecretRef",
+      "classifyReconciliation",
       "decodeFieldglassCredential",
       "deriveConnectorSecretManagerId",
       "encodeFieldglassCredential",
+      "isReconciliationFailureReason",
       "observationKeyFor",
       "parseConnectorSecretRef",
       "parseStaffingOrderDelta",
@@ -3333,6 +3339,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/cb-d2-r-reconciliation-drain.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/comm-b5-call-initiation.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -3720,6 +3732,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/cb-d2-r-reconciliation-drain.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/l1d1-external-lifecycle-authority.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -3850,6 +3868,12 @@
     "@aramo/requisition": [
       { "from": "tools/enable-e2e-recruiter.ts", "project": "(unscoped)", "status": "unscoped" },
       { "from": "tools/seed-e2e-data.ts", "project": "(unscoped)", "status": "unscoped" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/cb-d2-r-reconciliation-drain.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/job-distribution-sync.integration.spec.ts",
