@@ -3737,6 +3737,58 @@ paths:
           $ref: 'common.yaml#/components/responses/NotFound'
       security:
         - BearerAuth: []
+  /v1/communications/interactions/{interactionId}/provider-reference:
+    post:
+      operationId: attachCommunicationProviderReference
+      summary: Attach the provider correlation id captured post-dial (COMM-B8).
+      description: |
+        After the embedded Zoom call surface yields a real provider identifier,
+        the client attaches it to the already-created interaction — closing the
+        dial-time correlation gap so an inbound webhook can match. Requires the
+        `ats` capability and `communication:voice:call` (the same recruiter action
+        as the call). At least one of the three canonical correlation ids must be
+        present (else 400 VALIDATION_ERROR). It NEVER changes interaction state,
+        lifecycle timestamps, disposition, or associations. Tenant+owner-safe: the
+        interaction must belong to the tenant AND have been initiated by the
+        caller, else 404 COMMUNICATION_INTERACTION_NOT_FOUND (no disclosure).
+        CONVERGENT-or-conflict: filling a null field or re-attaching the same value
+        succeeds; attempting to REPLACE a populated field with a different value is
+        refused 409 COMMUNICATION_PROVIDER_REFERENCE_CONFLICT (correlation
+        integrity). No external side effect — no Idempotency-Key.
+      parameters:
+        - name: interactionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AttachProviderReferenceRequest'
+      responses:
+        '200':
+          description: Provider reference attached (or convergent no-op).
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [id]
+                properties:
+                  id: { type: string, format: uuid }
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '409':
+          $ref: 'common.yaml#/components/responses/Conflict'
+      security:
+        - BearerAuth: []
   /v1/talents/{talentId}/communications:
     get:
       operationId: getTalentCommunicationTimeline
@@ -4257,6 +4309,24 @@ components:
         updated_at:
           type: string
           format: date-time
+    AttachProviderReferenceRequest:
+      type: object
+      additionalProperties: false
+      description: |
+        Provider correlation ids captured post-dial (COMM-B8). All optional but AT
+        LEAST ONE must be present. B8 live validation determines which id the real
+        Smart Embed supplies; the webhook keeps its strongest-first correlation
+        order (element → history → call_id).
+      properties:
+        provider_call_element_id:
+          type: string
+          maxLength: 255
+        provider_call_history_uuid:
+          type: string
+          maxLength: 255
+        provider_call_id:
+          type: string
+          maxLength: 255
     RecordCommunicationDispositionRequest:
       type: object
       additionalProperties: false

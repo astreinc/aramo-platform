@@ -44,6 +44,7 @@ export {
 export {
   CommunicationInvalidStateError,
   CommunicationInteractionNotFoundError,
+  CommunicationProviderReferenceConflictError,
 } from './lib/domain/errors.js';
 
 // Provider port + registry + fake (provider-neutral foundation).

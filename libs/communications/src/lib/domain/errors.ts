@@ -32,3 +32,19 @@ export class CommunicationInteractionNotFoundError extends Error {
     this.interaction_id = interactionId;
   }
 }
+
+/**
+ * COMM-B8 — raised when a provider-reference attach would REPLACE an
+ * already-populated correlation field with a DIFFERENT value. Convergent fills
+ * (null → value) and same-value re-attach are no-ops; only a conflicting
+ * overwrite is refused (webhook-correlation integrity).
+ */
+export class CommunicationProviderReferenceConflictError extends Error {
+  readonly field: string;
+
+  constructor(field: string) {
+    super(`provider reference conflict on ${field}`);
+    this.name = 'CommunicationProviderReferenceConflictError';
+    this.field = field;
+  }
+}

@@ -1,7 +1,10 @@
 import { Injectable } from '@nestjs/common';
 
 import { assertTransition } from './domain/call-state-machine.js';
-import { CommunicationInteractionNotFoundError } from './domain/errors.js';
+import {
+  CommunicationInteractionNotFoundError,
+  CommunicationProviderReferenceConflictError,
+} from './domain/errors.js';
 import {
   CommunicationsRepository,
   type InteractionRow,
@@ -123,5 +126,61 @@ export class CommunicationsService {
       throw new CommunicationInteractionNotFoundError(args.interaction_id);
     }
     return this.repo.recordDisposition(args);
+  }
+
+  /**
+   * COMM-B8 — attach a provider correlation id to an already-created interaction
+   * (the embed→provider-id capture that closes the dial-time correlation gap).
+   * Tenant+owner-safe: the interaction must belong to `tenantId` AND have been
+   * initiated by `recruiterId`, else a tenant-safe NOT FOUND (no disclosure of a
+   * peer's interaction). CONVERGENT-or-conflict per field: null → value fills;
+   * value === same is a no-op; value → different is REFUSED
+   * (CommunicationProviderReferenceConflictError) to protect webhook correlation.
+   * Writes ONLY the provider_call_* fields + updated_at — never status, lifecycle
+   * timestamps, disposition, duration, or associations.
+   */
+  async attachProviderReference(
+    tenantId: string,
+    recruiterId: string,
+    interactionId: string,
+    refs: {
+      provider_call_element_id?: string;
+      provider_call_history_uuid?: string;
+      provider_call_id?: string;
+    },
+  ): Promise<{ id: string }> {
+    const owned = await this.repo.findInteractionForTenant(tenantId, interactionId);
+    // Tenant-safe AND owner-safe: a peer recruiter's interaction is NOT FOUND.
+    if (owned === null || owned.initiated_by_id !== recruiterId) {
+      throw new CommunicationInteractionNotFoundError(interactionId);
+    }
+
+    const fields = [
+      'provider_call_element_id',
+      'provider_call_history_uuid',
+      'provider_call_id',
+    ] as const;
+    const patch: {
+      provider_call_element_id?: string;
+      provider_call_history_uuid?: string;
+      provider_call_id?: string;
+    } = {};
+    for (const field of fields) {
+      const provided = refs[field];
+      if (provided === undefined || provided.length === 0) continue;
+      const current = owned[field];
+      if (current === null) {
+        patch[field] = provided; // fill
+      } else if (current !== provided) {
+        // Refuse the WHOLE write on any conflicting field (atomic).
+        throw new CommunicationProviderReferenceConflictError(field);
+      }
+      // current === provided → convergent no-op
+    }
+
+    if (Object.keys(patch).length > 0) {
+      await this.repo.setProviderReference(tenantId, interactionId, patch);
+    }
+    return { id: interactionId };
   }
 }
