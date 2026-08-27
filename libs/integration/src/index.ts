@@ -35,6 +35,38 @@ export {
   type ConnectionStatus,
   type IntegrationConnectionView,
 } from './lib/domain/integration-connection.js';
+// CB-D2-A1 (ADR-0030) — provider-neutral lifecycle-ingress substrate.
+export {
+  LifecycleSourceAdapterRegistry,
+} from './lib/lifecycle/lifecycle-source-adapter.registry.js';
+export type {
+  LifecycleSourceAdapter,
+  LifecycleFetchContext,
+  LifecycleFetchResult,
+  LifecycleDelivery,
+  LifecycleChange,
+  ExternalRequisitionLifecycleObservation,
+  ExternalRequisitionLifecycleEvent,
+  LifecycleOrderingConfidence,
+} from './lib/lifecycle/lifecycle-source-adapter.port.js';
+export {
+  LIFECYCLE_ORDERING_CONFIDENCES,
+  observationKeyFor,
+} from './lib/lifecycle/lifecycle-source-adapter.port.js';
+export {
+  LifecycleObservationLedgerRepository,
+  type LifecycleObservationRow,
+  type LifecycleObservationReservation,
+  type LastAcceptedObservation,
+  type ReserveObservationArgs,
+} from './lib/lifecycle/lifecycle-observation-ledger.repository.js';
+export {
+  ExternalRequisitionIdentityRepository,
+  type RecordIdentityInput,
+} from './lib/lifecycle/external-requisition-identity.repository.js';
+// CB-D2-A1 — the connection reader/writer the apps/api poll producer composes
+// (active lifecycle-capable connections + the cursor WRITE path).
+export { IntegrationConnectionRepository } from './lib/connection/integration-connection.repository.js';
 export { redactForLog, redactString, REDACTED } from './lib/observability/redact.js';
 // Ports (for composition-root overrides / Connector-B).
 export { SECRETS_MANAGER_WRITER, type SecretsManagerWriterPort } from './lib/secrets/secrets-manager-writer.port.js';

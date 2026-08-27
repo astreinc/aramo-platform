@@ -10310,6 +10310,16 @@
       "to": "doc/03-refusal-layer.md"
     },
     {
+      "from": "doc/adr/0030-external-lifecycle-authority.md",
+      "status": "unscoped",
+      "to": "libs/integration/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/adr/0030-external-lifecycle-authority.md",
+      "status": "unscoped",
+      "to": "libs/integration/src/lib/domain/connector-actor.ts"
+    },
+    {
       "from": "doc/adr/Aramo-ADR-0007-Talent-RTBF-Anonymization-v1_0-LOCKED.md",
       "status": "unscoped",
       "to": "doc/runbooks/talent-rtbf-erasure.md"

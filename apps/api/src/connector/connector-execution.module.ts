@@ -3,6 +3,8 @@ import { BullModule } from '@nestjs/bullmq';
 import { CommonModule, createAramoLogger, RedisConnectionConfig } from '@aramo/common';
 import { IntegrationModule } from '@aramo/integration';
 
+import { RequisitionIntegrationModule } from '../requisition-integration/requisition-integration.module.js';
+
 import { ConnectorExecutionProcessor } from './connector-execution.processor.js';
 import {
   CONNECTOR_EXECUTION_JOB_OPTIONS,
@@ -19,6 +21,8 @@ import {
   imports: [
     CommonModule,
     IntegrationModule,
+    // CB-D2-A1 — the post-establishment identity handoff the processor invokes.
+    RequisitionIntegrationModule,
     BullModule.forRootAsync({
       extraOptions: { manualRegistration: true },
       useFactory: (cfg: RedisConnectionConfig) => {
