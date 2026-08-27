@@ -64,6 +64,30 @@ export {
   ExternalRequisitionIdentityRepository,
   type RecordIdentityInput,
 } from './lib/lifecycle/external-requisition-identity.repository.js';
+// CB-D2-FG (ADR-0030) — the FIRST real provider lifecycle source (SAP Fieldglass)
+// + its credential codec. Lives under provider/fieldglass/ (excluded from the
+// provider-neutrality scan); registered at the apps/api composition root.
+export {
+  FieldglassLifecycleSource,
+  FIELDGLASS_PROVIDER_KEY,
+  FieldglassCredentialUnavailableError,
+  FieldglassConfigError,
+  parseStaffingOrderDelta,
+} from './lib/lifecycle/provider/fieldglass/fieldglass-lifecycle.source.js';
+export {
+  encodeFieldglassCredential,
+  decodeFieldglassCredential,
+  FieldglassCredentialDecodeError,
+  type FieldglassCredentialBundle,
+} from './lib/lifecycle/provider/fieldglass/fieldglass-credential.js';
+// CB-D2-FG (R-CREDENTIAL) — the tenant-bound connector secret resolver + its typed
+// failure, so the apps/api lifecycle-poll producer can resolve + inject the
+// ephemeral credential per connection before invoking a provider adapter.
+export {
+  ConnectorSecretResolver,
+  ConnectorSecretResolutionError,
+  type ConnectorSecretErrorCode,
+} from './lib/secrets/connector-secret-resolver.js';
 // CB-D2-A1 — the connection reader/writer the apps/api poll producer composes
 // (active lifecycle-capable connections + the cursor WRITE path).
 export { IntegrationConnectionRepository } from './lib/connection/integration-connection.repository.js';

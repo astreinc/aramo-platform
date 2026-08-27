@@ -1,6 +1,10 @@
 import { Module } from '@nestjs/common';
 import { RequisitionModule } from '@aramo/requisition';
-import { IntegrationModule } from '@aramo/integration';
+import {
+  FieldglassLifecycleSource,
+  IntegrationModule,
+  LifecycleSourceAdapterRegistry,
+} from '@aramo/integration';
 
 import { ExternalLifecycleReconciler } from './external-lifecycle-reconciler.js';
 import { LifecycleIngressService } from './lifecycle-ingress.service.js';
@@ -35,4 +39,14 @@ import { RequisitionIdentityEstablishmentService } from './requisition-identity-
     RequisitionIdentityEstablishmentService,
   ],
 })
-export class RequisitionIntegrationModule {}
+export class RequisitionIntegrationModule {
+  // CB-D2-FG (seam #4) — register the FIRST real provider lifecycle source at the
+  // composition root. The neutral LifecycleSourceAdapterRegistry ships EMPTY (A1);
+  // Connector-B binds concrete provider adapters here, where the poll producer and
+  // the registry meet, keeping libs/integration's registry vendor-free. The FG
+  // source is dependency-free (it receives credential + config via the fetch
+  // context), so it is constructed directly.
+  constructor(private readonly sources: LifecycleSourceAdapterRegistry) {
+    this.sources.register(new FieldglassLifecycleSource());
+  }
+}

@@ -227,13 +227,30 @@ export class IntegrationConnectionRepository implements ConnectionSecretLoaderPo
    * provider_key and skips any with no registered source.
    */
   async listActiveForLifecyclePoll(): Promise<
-    Array<{ id: string; tenant_id: string; provider_key: string; cursor: string | null }>
+    Array<{
+      id: string;
+      tenant_id: string;
+      provider_key: string;
+      cursor: string | null;
+      config: Record<string, unknown> | null;
+    }>
   > {
     const rows = (await this.prisma.integrationConnection.findMany({
       where: { status: 'active' },
-      select: { id: true, tenant_id: true, provider_key: true, cursor: true },
+      // CB-D2-FG — the NON-SECRET config travels to the provider adapter (base URL,
+      // connector name, …); the SECRET stays in Secrets Manager (secret_ref).
+      select: { id: true, tenant_id: true, provider_key: true, cursor: true, config: true },
       orderBy: { updated_at: 'asc' },
-    })) as Array<{ id: string; tenant_id: string; provider_key: string; cursor: string | null }>;
-    return rows;
+    })) as Array<{
+      id: string;
+      tenant_id: string;
+      provider_key: string;
+      cursor: string | null;
+      config: unknown;
+    }>;
+    return rows.map((r) => ({
+      ...r,
+      config: (r.config ?? null) as Record<string, unknown> | null,
+    }));
   }
 }
