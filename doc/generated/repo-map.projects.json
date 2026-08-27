@@ -259,6 +259,7 @@
       "CommunicationCursorDecodeError",
       "CommunicationInteractionNotFoundError",
       "CommunicationInvalidStateError",
+      "CommunicationProviderReferenceConflictError",
       "CommunicationsModule",
       "CommunicationsPrismaService",
       "CommunicationsRepository",
@@ -3329,6 +3330,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/comm-b7-disposition-timeline.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/comm-b8-provider-reference.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },

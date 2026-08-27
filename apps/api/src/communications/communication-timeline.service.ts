@@ -4,6 +4,7 @@ import { AramoError } from '@aramo/common';
 import {
   CommunicationCursorDecodeError,
   CommunicationInteractionNotFoundError,
+  CommunicationProviderReferenceConflictError,
   CommunicationsRepository,
   CommunicationsService,
   decodeTimelineCursor,
@@ -12,6 +13,7 @@ import {
 
 import { toInteractionView } from './interaction-view.js';
 import type {
+  AttachProviderReferenceDto,
   RecordDispositionDto,
   TalentCommunicationTimelineResponseDto,
 } from './dto/communications.dto.js';
@@ -72,6 +74,60 @@ export class CommunicationTimelineService {
           'Communication interaction not found in tenant',
           404,
           { requestId, details: { interaction_id: interactionId } },
+        );
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * COMM-B8 — attach a provider correlation id captured post-dial (embed→
+   * provider-id) to an already-created interaction, closing the dial-time
+   * correlation gap so a real inbound webhook can match. At least one canonical
+   * id must be present (else 400 VALIDATION_ERROR). Tenant+owner-safe (404 on a
+   * missing/cross-tenant/peer interaction); convergent-or-conflict (409 on a
+   * differing overwrite). No external side effect → no Idempotency-Key.
+   */
+  async attachProviderReference(
+    auth: AuthContextType,
+    interactionId: string,
+    dto: AttachProviderReferenceDto,
+    requestId: string,
+  ): Promise<{ id: string }> {
+    const refs = {
+      ...(nonBlank(dto.provider_call_element_id)
+        ? { provider_call_element_id: dto.provider_call_element_id }
+        : {}),
+      ...(nonBlank(dto.provider_call_history_uuid)
+        ? { provider_call_history_uuid: dto.provider_call_history_uuid }
+        : {}),
+      ...(nonBlank(dto.provider_call_id) ? { provider_call_id: dto.provider_call_id } : {}),
+    };
+    if (Object.keys(refs).length === 0) {
+      throw new AramoError(
+        'VALIDATION_ERROR',
+        'at least one provider correlation id is required',
+        400,
+        { requestId, details: { missing_field: 'provider_call_*' } },
+      );
+    }
+    try {
+      return await this.comms.attachProviderReference(auth.tenant_id, auth.sub, interactionId, refs);
+    } catch (err) {
+      if (err instanceof CommunicationInteractionNotFoundError) {
+        throw new AramoError(
+          'COMMUNICATION_INTERACTION_NOT_FOUND',
+          'Communication interaction not found in tenant',
+          404,
+          { requestId, details: { interaction_id: interactionId } },
+        );
+      }
+      if (err instanceof CommunicationProviderReferenceConflictError) {
+        throw new AramoError(
+          'COMMUNICATION_PROVIDER_REFERENCE_CONFLICT',
+          'a different provider reference is already attached to this interaction',
+          409,
+          { requestId, details: { field: err.field } },
         );
       }
       throw err;
@@ -150,4 +206,8 @@ export class CommunicationTimelineService {
       throw err;
     }
   }
+}
+
+function nonBlank(v: string | undefined): v is string {
+  return typeof v === 'string' && v.trim().length > 0;
 }

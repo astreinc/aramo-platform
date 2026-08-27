@@ -202,6 +202,11 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       // fails before ringing).
       'COMMUNICATION_CALL_CONSENT_DENIED',
       'COMMUNICATION_CALL_NOT_INITIABLE',
+      // COMM-B8 — provider-reference capture: attaching a provider correlation id
+      // that would REPLACE an already-populated field with a different value is a
+      // 409 conflict (protects webhook-correlation integrity; convergent fills +
+      // same-value re-attach are no-ops, never a conflict).
+      'COMMUNICATION_PROVIDER_REFERENCE_CONFLICT',
     ]);
   });
 });

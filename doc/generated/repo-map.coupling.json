@@ -2418,6 +2418,24 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/comm-b8-provider-reference.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/communications/prisma/migrations/20260825120000_init_communications/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/comm-b8-provider-reference.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/comm-b8-provider-reference.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/integration/prisma/migrations/20260814170000_init_integration_connection/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/commercial-cancellation-marker-confinement.spec.ts",
       "status": "excluded",
       "to": "libs/placement/prisma/migrations/20260813130000_t6_b3_commercial_cancellation/migration.sql"

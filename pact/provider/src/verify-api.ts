@@ -4221,6 +4221,19 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           );
         });
       },
+      // ===== COMM-B8 provider-reference capture pact (ats-web communications.consumer) =====
+      'a tenant entitled to ats with a caller holding communication:voice:call and an interaction they initiated':
+        async () => {
+          await withClient(async (c) => {
+            await c.query(`DELETE FROM communications."CommunicationInteraction" WHERE tenant_id = $1::uuid`, [TENANT_ID]);
+            await c.query(
+              `INSERT INTO communications."CommunicationInteraction"
+                 (id, tenant_id, channel, direction, status, integration_connection_id, from_address, to_address, initiated_by_id)
+               VALUES ($1::uuid,$2::uuid,'voice','outbound','initiated',$3::uuid,'+15715550100','+17035550111',$4::uuid)`,
+              ['eeeeeeee-eeee-7eee-8eee-eeeeeeeeeeee', TENANT_ID, 'cccccccc-cccc-7ccc-8ccc-cccccccccccc', RECRUITER_ID],
+            );
+          });
+        },
       // ===== COMM-B7 disposition + timeline pacts (ats-web communications.consumer) =====
       'a tenant entitled to ats with a caller holding communication:read and a talent with one dispositioned communication interaction':
         async () => {

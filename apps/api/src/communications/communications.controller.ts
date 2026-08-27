@@ -8,7 +8,7 @@ import { EntitlementGuard, RequireCapability } from '@aramo/entitlement';
 import { CommunicationsApiService } from './communications-api.service.js';
 import { CommunicationCallService } from './communication-call.service.js';
 import { CommunicationTimelineService } from './communication-timeline.service.js';
-import { InitiateCommunicationCallDto, RecordDispositionDto, UpsertProviderIdentityDto } from './dto/communications.dto.js';
+import { AttachProviderReferenceDto, InitiateCommunicationCallDto, RecordDispositionDto, UpsertProviderIdentityDto } from './dto/communications.dto.js';
 import type {
   CommunicationCapabilitiesDto,
   CommunicationInteractionViewDto,
@@ -169,5 +169,21 @@ export class CommunicationsController {
     @RequestId() requestId: string,
   ): Promise<{ id: string }> {
     return this.timeline.recordDisposition(auth, interactionId, dto, requestId);
+  }
+
+  // COMM-B8 — attach the provider correlation id captured post-dial (embed→
+  // provider-id), closing the dial-time gap so a real webhook can correlate.
+  // communication:voice:call (the same recruiter action as the call); tenant+
+  // owner-safe 404; convergent-or-conflict 409; no external side effect.
+  @Post('interactions/:interactionId/provider-reference')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('communication:voice:call')
+  async attachProviderReference(
+    @Param('interactionId', ParseUUIDPipe) interactionId: string,
+    @Body() dto: AttachProviderReferenceDto,
+    @AuthContext() auth: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<{ id: string }> {
+    return this.timeline.attachProviderReference(auth, interactionId, dto, requestId);
   }
 }

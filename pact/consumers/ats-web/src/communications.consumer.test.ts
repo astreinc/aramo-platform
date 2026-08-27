@@ -248,6 +248,33 @@ describe('ats-web → GET /v1/talents/{talentId}/communications (COMM-B7 timelin
   });
 });
 
+describe('ats-web → POST /v1/communications/interactions/{id}/provider-reference (COMM-B8)', () => {
+  it('returns 200 with the interaction id when a provider correlation id is attached', async () => {
+    await provider
+      .addInteraction()
+      .given('a tenant entitled to ats with a caller holding communication:voice:call and an interaction they initiated')
+      .uponReceiving('an ats-web provider-reference capture')
+      .withRequest('POST', `/v1/communications/interactions/${INTERACTION_ID}/provider-reference`, (b) => {
+        b.headers({ Cookie: like(ACCESS_COOKIE), 'Content-Type': 'application/json' }).jsonBody({
+          provider_call_element_id: 'elem-capture-1',
+        });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({ id: uuid(INTERACTION_ID) });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/communications/interactions/${INTERACTION_ID}/provider-reference`, {
+          method: 'POST',
+          headers: { Cookie: ACCESS_COOKIE, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ provider_call_element_id: 'elem-capture-1' }),
+        });
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as { id: string };
+        expect(body.id).toBe(INTERACTION_ID);
+      });
+  });
+});
+
 describe('ats-web → POST /v1/communications/interactions/{id}/disposition (COMM-B7)', () => {
   it('returns 201 with the recorded disposition id', async () => {
     await provider
