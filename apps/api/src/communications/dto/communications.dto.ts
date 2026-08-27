@@ -21,6 +21,17 @@ export class RecordDispositionDto {
   @IsOptional() @IsString() @MaxLength(4000) notes?: string | null;
 }
 
+// COMM-B8 — attach a provider correlation id to an already-created interaction
+// (embed→provider-id capture). Tolerant: all three canonical fields optional; at
+// least one must be present (enforced in-handler → 400 VALIDATION_ERROR). B8 live
+// validation determines which id the real Smart Embed supplies; the webhook keeps
+// its strongest-first correlation order.
+export class AttachProviderReferenceDto {
+  @IsOptional() @IsString() @MaxLength(255) provider_call_element_id?: string;
+  @IsOptional() @IsString() @MaxLength(255) provider_call_history_uuid?: string;
+  @IsOptional() @IsString() @MaxLength(255) provider_call_id?: string;
+}
+
 // COMM-B5 — call-initiation request body for POST /v1/communications/calls.
 // The server resolves the destination from the Talent record's phone_slot; an
 // arbitrary client-supplied destination number is NOT accepted (R-COMM-PHONE).

@@ -196,6 +196,32 @@ export class CommunicationsRepository {
     return res.count;
   }
 
+  // COMM-B8 — set ONLY the provided provider correlation field(s) + updated_at,
+  // tenant-scoped. NEVER touches status / lifecycle timestamps / disposition /
+  // associations (the convergent conflict decision is the service's; this is the
+  // pure write of already-decided fills). Returns rows updated.
+  async setProviderReference(
+    tenantId: string,
+    id: string,
+    fields: {
+      provider_call_element_id?: string;
+      provider_call_history_uuid?: string;
+      provider_call_id?: string;
+    },
+  ): Promise<number> {
+    const data: Record<string, unknown> = { updated_at: new Date() };
+    if (fields.provider_call_element_id !== undefined)
+      data['provider_call_element_id'] = fields.provider_call_element_id;
+    if (fields.provider_call_history_uuid !== undefined)
+      data['provider_call_history_uuid'] = fields.provider_call_history_uuid;
+    if (fields.provider_call_id !== undefined) data['provider_call_id'] = fields.provider_call_id;
+    const res = await this.prisma.communicationInteraction.updateMany({
+      where: { tenant_id: tenantId, id },
+      data: data as never,
+    });
+    return res.count;
+  }
+
   // ---- CommunicationAssociation ----
 
   async addAssociation(args: {

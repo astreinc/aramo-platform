@@ -687,6 +687,11 @@ export const ERROR_CODES = [
   // provider launch that fails before ringing).
   'COMMUNICATION_CALL_CONSENT_DENIED',
   'COMMUNICATION_CALL_NOT_INITIABLE',
+  // COMM-B8 — provider-reference capture conflict (409): attaching a correlation
+  // id that would REPLACE an already-populated provider_call_* field with a
+  // DIFFERENT value is refused (webhook-correlation integrity). Convergent fills
+  // (null → value) and same-value re-attach are no-ops, never a conflict.
+  'COMMUNICATION_PROVIDER_REFERENCE_CONFLICT',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];
