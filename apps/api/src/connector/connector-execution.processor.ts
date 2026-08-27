@@ -4,6 +4,8 @@ import type { Job } from 'bullmq';
 import { type AramoLogger, RedisConnectionConfig } from '@aramo/common';
 import { ConnectorExecutionService } from '@aramo/integration';
 
+import { RequisitionIdentityEstablishmentService } from '../requisition-integration/requisition-identity-establishment.service.js';
+
 import { CONNECTOR_EXECUTION_QUEUE_NAME } from './connector-execution.queue.constants.js';
 
 // T8-CONNECTOR-A — the connector-execution worker (apps/api composition root).
@@ -33,6 +35,8 @@ export class ConnectorExecutionProcessor
     private readonly redisConfig: RedisConnectionConfig,
     @Inject('ConnectorExecutionProcessorLogger')
     private readonly logger: AramoLogger,
+    // CB-D2-A1 (ADR-0030, R-IDENTITY) — the idempotent post-establishment handoff.
+    private readonly identityEstablishment: RequisitionIdentityEstablishmentService,
   ) {
     super();
   }
@@ -43,11 +47,27 @@ export class ConnectorExecutionProcessor
       connection_id: string;
       requestId?: string;
     };
-    await this.service.runDelivery({
+    const outcome = await this.service.runDelivery({
       tenant_id: data.tenant_id,
       connection_id: data.connection_id,
       requestId: data.requestId ?? job.id ?? 'connector-job',
     });
+
+    // CB-D2-A1 — record the connection-scoped external requisition identity on
+    // successful establishment. Both PROCESSED and ALREADY_PROCESSED carry the
+    // import_batch_id, so a replay re-establishes idempotently. A write failure is
+    // SURFACED (thrown → BullMQ retries → the delivery short-circuits
+    // ALREADY_PROCESSED → establishment replays), never silent.
+    if (
+      (outcome.outcome === 'PROCESSED' || outcome.outcome === 'ALREADY_PROCESSED') &&
+      outcome.import_batch_id !== null
+    ) {
+      await this.identityEstablishment.establishForImportBatch({
+        tenant_id: data.tenant_id,
+        connection_id: data.connection_id,
+        import_batch_id: outcome.import_batch_id,
+      });
+    }
   }
 
   onApplicationBootstrap(): void {

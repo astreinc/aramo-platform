@@ -15,6 +15,10 @@ import { CONSISTENCY_QUEUE_NAME } from '../talent-identity/consistency.queue.con
 import { RECOMPUTE_SWEEP_QUEUE_NAME } from '../talent-identity/recompute-sweep.queue.constants.js';
 import { IDENTITY_INDEX_LIFECYCLE_QUEUE_NAME } from '../talent-identity/identity-lifecycle-sweep.queue.constants.js';
 import { JOB_DISTRIBUTION_SYNC_QUEUE_NAME } from '../job-distribution/job-distribution-sync.queue.constants.js';
+import {
+  LIFECYCLE_POLL_QUEUE_NAME,
+  LIFECYCLE_POLL_INTERVAL_MS,
+} from '../requisition-integration/lifecycle-poll.queue.constants.js';
 
 // Application bootstrap registration for the repeating Aramo BullMQ jobs
 // (Architecture v2.1 §9.2 / Plan v1.5 §M5 Track A item 6; doc/01 §13 anchor).
@@ -25,6 +29,9 @@ import { JOB_DISTRIBUTION_SYNC_QUEUE_NAME } from '../job-distribution/job-distri
 // distinct BullMQ queues total (the other 4 — match, talent-reconcile,
 // contradiction-detection, canonicalization-trigger — are enqueue/event-driven,
 // not repeat-scheduled). The job-distribution-sync 300s tick is the 12th.
+// CB-D2-A1 — the lifecycle-poll 300s tick is the 13th repeat-scheduled queue
+// (of 18 distinct BullMQ queues total: +lifecycle-poll here, +connector-execution
+// which is enqueue-driven, not repeat-scheduled).
 //
 // Idempotent jobId on each `queue.add` prevents duplicate scheduling
 // across pod restarts: BullMQ deduplicates repeat jobs by jobId.
@@ -143,6 +150,18 @@ const SCHEDULES = [
     job_name: 'tick',
     job_id: 'job-distribution-sync-300s',
     repeat: { every: 300_000 },
+  },
+  // CB-D2-A1 (ADR-0030, R-PRODUCER) — the lifecycle-poll sweep. Every 300s: per
+  // ACTIVE lifecycle-capable connection, fetch → raw-persist → ingress each
+  // observation/event through the L1-D1 governed seam → advance the cursor only
+  // after success. Registered here so an enabled connection is actually swept; the
+  // worker itself is silent without Redis (CI / local dev). Provider-neutral in
+  // A1 — the registry ships empty until a real lifecycle source is registered.
+  {
+    queue_name: LIFECYCLE_POLL_QUEUE_NAME,
+    job_name: 'tick',
+    job_id: 'lifecycle-poll-300s',
+    repeat: { every: LIFECYCLE_POLL_INTERVAL_MS },
   },
 ] as const;
 

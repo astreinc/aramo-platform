@@ -127,6 +127,12 @@ model IntegrationConnection {
   reconciliations       RequisitionExternalReconciliation[]
   transition_provenance RequisitionExternalTransitionProvenance[]
 
+  // CB-D2-A1 (ADR-0030) — intra-schema relations to the provider-neutral
+  // lifecycle-ingress substrate: the observation/event idempotency ledger and
+  // the connection-scoped external-requisition identity mapping.
+  lifecycle_observations LifecycleObservationLedger[]
+  external_identities    ExternalRequisitionIdentity[]
+
   // Indexes — every query path leads with tenant_id. NO unique(tenant_id,
   // provider_key) (ruling #2): connection.id is the identity.
   @@index([tenant_id])
@@ -318,6 +324,126 @@ model ConnectorDelivery {
   @@unique([tenant_id, connection_id, delivery_key])
   @@index([tenant_id, connection_id, status])
   @@index([tenant_id, import_batch_id])
+
+  @@schema("integration")
+}
+
+// LifecycleObservationLedger — CB-D2-A1 (ADR-0030) — the provider-NEUTRAL
+// lifecycle-ingress idempotency + ordering ledger. Distinct from ConnectorDelivery
+// (which is import-bound — markProcessed requires import_batch_id): a lifecycle
+// observation/event NEVER produces an ImportBatch, it drives a governed
+// Requisition COMMAND through the L1-D1 seam. ONE row per durable observation
+// identity (A0-R5):
+//   - observation (Fieldglass-pull): observation_key derived per (delivery,
+//     external_req_id); provider_event_at/provider_sequence NULL; confidence
+//     'unknown'; observed_at is the Aramo observation time (NEVER a provider
+//     event timestamp);
+//   - event (Workday-if-gated-in): observation_key = the provider external_event_id;
+//     provider_event_at + optional provider_sequence set; confidence
+//     'strong'/'bounded'/'weak'.
+// Idempotency: the UNIQUE (tenant_id, connection_id, observation_key) makes the
+// row the authority — reprocessing the SAME stored observation returns ONE
+// outcome; a NEW delivery re-observing the same requisition at the same status
+// gets a NEW observation_key and is NOT permanently collapsed. R-ORDER staleness
+// is evaluated over the prior PROCESSED rows for (tenant, connection,
+// external_req_id) — provider ordering is ⊥ Requisition.version (CAS separation),
+// so provider_sequence is NEVER mapped onto expected_version.
+model LifecycleObservationLedger {
+  id            String @id @default(uuid()) @db.Uuid
+  tenant_id     String @db.Uuid
+  connection_id String @db.Uuid
+
+  // The external requisition identifier (opaque provider token) this observation
+  // is about — the ordering grain (tenant, connection, external_req_id).
+  external_req_id String
+
+  // The durable per-observation idempotency identity (A0-R5). NEVER a credential.
+  observation_key String
+
+  // The RAW provider lifecycle state token (normalized downstream). NEVER a
+  // provider payload beyond the state token.
+  raw_provider_status String
+  normalized_status   String?
+
+  // R-ORDER (A0-R4) — the ordering-confidence class of THIS observation/event.
+  // Bounded lowercase token (strong | bounded | weak | unknown); stored TEXT (not
+  // an enum) to stay provider-neutral and match the repository-convention.
+  ordering_confidence String
+
+  // Provider monotonic sequence, only where a provider proves one (STRONG/BOUNDED).
+  // NULL for a state observation (UNKNOWN). NEVER fabricated from Aramo time.
+  provider_sequence BigInt?
+
+  // The provider's event timestamp — set ONLY for an event; NULL for a state
+  // observation (an observation has no provider event timestamp — A0-R5).
+  provider_event_at DateTime? @db.Timestamptz
+
+  // The Aramo observation time (when the ingress captured the state). This is
+  // NEVER labelled a provider event timestamp.
+  observed_at DateTime @db.Timestamptz
+
+  // Record-then-process disposition: pending → processed (governed command ran,
+  // whatever its outcome) | reconciled (routed to the reconciliation queue) |
+  // duplicate (a same-key redelivery observed no-op). Bounded TEXT.
+  status String @default("pending")
+
+  // The governed-command outcome token, for audit (EXECUTED | RECONCILED:<reason>).
+  outcome String?
+
+  // Bounded, non-secret classification detail. NEVER a provider payload.
+  detail_code String?
+
+  created_at   DateTime  @default(now()) @db.Timestamptz
+  processed_at DateTime? @db.Timestamptz
+
+  connection IntegrationConnection @relation(fields: [connection_id], references: [id], onDelete: Cascade)
+
+  // Idempotency authority: a redelivered observation collides here.
+  @@unique([tenant_id, connection_id, observation_key])
+  // R-ORDER staleness query grain.
+  @@index([tenant_id, connection_id, external_req_id])
+  @@index([tenant_id, status])
+
+  @@schema("integration")
+}
+
+// ExternalRequisitionIdentity — CB-D2-A1 (ADR-0030, R-IDENTITY LOCK) — the
+// integration-owned, CONNECTION-SCOPED external→internal requisition mapping.
+// Lifecycle ingress resolves an external requisition by (tenant_id, connection_id,
+// external_req_id) → requisition_id — NEVER by connection.provider_key →
+// Requisition.source_system (separate vocabularies; multiple connections per
+// provider per tenant are supported). The row is ESTABLISHED when a connector
+// import successfully establishes the Requisition (T8-P2), not guessed on first
+// event. The T8-P1 (tenant, source_system, external_req_id) Requisition unique is
+// PRESERVED untouched as Requisition provenance/history — this table is a SEPARATE
+// runtime resolution index. requisition_id is a CROSS-SCHEMA reference
+// (integration → requisition), UUID-only, NO FK (the policy_decision_id precedent).
+model ExternalRequisitionIdentity {
+  id            String @id @default(uuid()) @db.Uuid
+  tenant_id     String @db.Uuid
+  connection_id String @db.Uuid
+
+  // The external requisition identifier (opaque provider token, case-preserved).
+  external_req_id String
+
+  // Cross-schema UUID ref to requisition.Requisition.id (no FK — Architecture 7.3).
+  requisition_id String @db.Uuid
+
+  // The connection's normalized provider key (denormalized for audit/read).
+  provider_key String
+
+  created_at DateTime @default(now()) @db.Timestamptz
+
+  connection IntegrationConnection @relation(fields: [connection_id], references: [id], onDelete: Cascade)
+
+  // One identity per (connection, external_req_id) — connection-scoped resolution.
+  @@unique([tenant_id, connection_id, external_req_id])
+  // One identity per (connection, requisition) — cardinality confirmed: a
+  // requisition is established by exactly one connector import (one connection),
+  // and the T8-P1 partial-unique makes (source_system, external_req_id) → one
+  // requisition, so (connection, external_req_id) → one requisition holds.
+  @@unique([tenant_id, connection_id, requisition_id])
+  @@index([tenant_id, requisition_id])
 
   @@schema("integration")
 }

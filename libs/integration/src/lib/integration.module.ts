@@ -26,6 +26,10 @@ import {
   RequisitionExternalReconciliationRepository,
   RequisitionExternalTransitionProvenanceRepository,
 } from './lifecycle/requisition-lifecycle-authority.repository.js';
+// CB-D2-A1 (ADR-0030) — provider-neutral lifecycle-ingress substrate.
+import { LifecycleSourceAdapterRegistry } from './lifecycle/lifecycle-source-adapter.registry.js';
+import { LifecycleObservationLedgerRepository } from './lifecycle/lifecycle-observation-ledger.repository.js';
+import { ExternalRequisitionIdentityRepository } from './lifecycle/external-requisition-identity.repository.js';
 
 // IntegrationModule — T8-CONNECTOR-A provider-neutral connector foundation.
 //
@@ -58,6 +62,13 @@ import {
     RequisitionLifecycleMappingRepository,
     RequisitionExternalReconciliationRepository,
     RequisitionExternalTransitionProvenanceRepository,
+    // CB-D2-A1 (ADR-0030) — provider-neutral lifecycle-ingress substrate. The
+    // registry ships EMPTY (Connector-B registers concrete lifecycle sources; A1
+    // proves it with a fake). The repos are pure data-access seams — no
+    // requisition write here (HARD PROHIBITION).
+    LifecycleSourceAdapterRegistry,
+    LifecycleObservationLedgerRepository,
+    ExternalRequisitionIdentityRepository,
     // Port → impl bindings (bound once; no duplicate instances).
     { provide: CONNECTION_SECRET_LOADER, useExisting: IntegrationConnectionRepository },
     { provide: DELIVERY_LEDGER, useExisting: ConnectorDeliveryRepository },
@@ -78,6 +89,11 @@ import {
     RequisitionLifecycleMappingRepository,
     RequisitionExternalReconciliationRepository,
     RequisitionExternalTransitionProvenanceRepository,
+    // CB-D2-A1 — exported so the apps/api ingress/establishment/producer compose them.
+    LifecycleSourceAdapterRegistry,
+    LifecycleObservationLedgerRepository,
+    ExternalRequisitionIdentityRepository,
+    IntegrationConnectionRepository,
   ],
 })
 export class IntegrationModule {}
