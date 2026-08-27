@@ -89,6 +89,9 @@ export interface PipelineView {
   readonly status: PipelineStatus;
   readonly created_at: string;
   readonly updated_at: string;
+  // L2-A — optimistic-concurrency token. Echo it back as `expected_version` on
+  // the next transition; a stale value is refused with PIPELINE_TRANSITION_CONFLICT.
+  readonly version: number;
   // Requisition-expander enrichment (LOCKED Aramo-Requisition-Expander-Talent-
   // Rate-Columns v1.0) — composed by apps/api on the GET /v1/pipelines list only.
   // Optional: absent on non-enriched reads; null when suppressed (email/phone via
@@ -125,6 +128,9 @@ export interface PipelineHistoryResponse {
 export interface TransitionPipelineRequest {
   readonly to_status: PipelineStatus;
   readonly note?: string;
+  // L2-A — the version the caller last read (optimistic concurrency). A stale
+  // value is refused with PIPELINE_TRANSITION_CONFLICT (409, refresh and retry).
+  readonly expected_version: number;
 }
 
 // Minimal talent summary for the kanban card. Hand-mirrored from

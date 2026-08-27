@@ -183,6 +183,8 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   COMMUNICATION_CALL_NOT_INITIABLE: 422,
   // COMM-B8 — provider-reference capture conflict.
   COMMUNICATION_PROVIDER_REFERENCE_CONFLICT: 409,
+  // Lane 2 / L2-A — optimistic-concurrency conflict on a pipeline transition.
+  PIPELINE_TRANSITION_CONFLICT: 409,
 };
 
 // Base error class. Thrown anywhere in the app where a structured response

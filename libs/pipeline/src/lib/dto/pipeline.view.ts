@@ -9,6 +9,10 @@ export interface PipelineView {
   status: PipelineStatus;
   created_at: string;
   updated_at: string;
+  // Optimistic-concurrency token (Lane 2 / L2-A). The client echoes this back
+  // as `expected_version` on the next transition; a stale value is refused with
+  // PIPELINE_TRANSITION_CONFLICT (409).
+  version: number;
   // Requisition-expander enrichment (LOCKED Aramo-Requisition-Expander-Talent-
   // Rate-Columns v1.0). Present ONLY on the enriched GET /v1/pipelines list read
   // (composed in apps/api, never stored/projected by this lib). R-LAYERING:

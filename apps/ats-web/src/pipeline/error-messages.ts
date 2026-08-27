@@ -8,6 +8,11 @@ export function transitionErrorMessage(error: unknown): string {
     if (error.code === 'INVALID_PIPELINE_TRANSITION') {
       return 'That status change is not allowed from the current state.';
     }
+    // L2-A — optimistic-concurrency conflict: someone else advanced this
+    // pipeline since it was loaded. Prompt a refresh-and-retry.
+    if (error.code === 'PIPELINE_TRANSITION_CONFLICT') {
+      return 'This pipeline was just updated by someone else. Refresh and try again.';
+    }
     if (error.code === 'REQUISITION_NO_OPENINGS') {
       return 'This requisition has no openings remaining. The transition to Placed was rejected.';
     }

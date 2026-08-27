@@ -65,6 +65,7 @@ const REQ_MIGRATIONS = [
 const PIPELINE_MIGRATIONS = [
   '20260602150000_init_pipeline_model',
   '20260807100000_e6_pipeline_live_episode_unique',
+  '20260827120000_l2a_pipeline_version_column',
 ].map((d) =>
   resolve(__dirname, `../../../pipeline/prisma/migrations/${d}/migration.sql`),
 );

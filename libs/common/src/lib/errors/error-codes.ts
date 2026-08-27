@@ -692,6 +692,12 @@ export const ERROR_CODES = [
   // DIFFERENT value is refused (webhook-correlation integrity). Convergent fills
   // (null → value) and same-value re-attach are no-ops, never a conflict.
   'COMMUNICATION_PROVIDER_REFERENCE_CONFLICT',
+  // Lane 2 / L2-A — pipeline transition optimistic-concurrency conflict (409):
+  // the caller's expected_version does not match the row's current version — a
+  // concurrent transition already advanced it. Last-write-wins is closed: the
+  // stale transition writes NO history/activity/metering row. details carry
+  // current_status + current_version so the caller can refresh and retry.
+  'PIPELINE_TRANSITION_CONFLICT',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

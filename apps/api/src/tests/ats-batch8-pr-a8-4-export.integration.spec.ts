@@ -122,6 +122,11 @@ const PIPELINE_E6 = resolve(
   ROOT,
   'libs/pipeline/prisma/migrations/20260807100000_e6_pipeline_live_episode_unique/migration.sql',
 );
+// L2-A — additive `version` column. SEPARATE const + apply-list entry.
+const PIPELINE_VERSION = resolve(
+  ROOT,
+  'libs/pipeline/prisma/migrations/20260827120000_l2a_pipeline_version_column/migration.sql',
+);
 // ADR-0024 PR-3 — POST /v1/pipelines writes §D17a provenance into
 // policy_store."PolicyDecisionRecord" in the create transaction.
 const POLICY_STORE_INIT = resolve(
@@ -393,6 +398,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         TALENT_RECORD_SUPERSESSION,
         PIPELINE_INIT,
         PIPELINE_E6,
+        PIPELINE_VERSION,
         POLICY_STORE_INIT,
         POLICY_DECISION_RECORD,
         METERING_INIT,
