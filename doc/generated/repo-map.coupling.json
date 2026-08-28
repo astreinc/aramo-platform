@@ -4454,7 +4454,19 @@
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/pre-start-requirement/marker-confinement.spec.ts",
       "status": "excluded",
+      "to": "libs/pipeline/prisma/migrations/20260828150000_l2c_pipeline_disposition/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/pre-start-requirement/marker-confinement.spec.ts",
+      "status": "excluded",
       "to": "libs/pipeline/src/tests/pipeline-l2b-durable-episode.integration.spec.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/pre-start-requirement/marker-confinement.spec.ts",
+      "status": "excluded",
+      "to": "libs/pipeline/src/tests/pipeline-l2c-recruiter-lifecycle.integration.spec.ts"
     },
     {
       "excludedBy": "src/tests/**/*",
