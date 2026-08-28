@@ -13,6 +13,7 @@ import { PrismaService as CanonicalizationPrismaService } from '@aramo/canonical
 import { PrismaService as ConsentPrismaService, OutboxPublisherRepository } from '@aramo/consent';
 import { PrismaService as SelectionPrismaService } from '@aramo/selection';
 import { PrismaService as PlacementPrismaService } from '@aramo/placement';
+import { PipelinePrismaService } from '@aramo/pipeline';
 import { PrismaService as SubmittalPrismaService } from '@aramo/submittal';
 
 import { OutboxPublisherModule } from '../lib/outbox-publisher.module.js';
@@ -68,6 +69,11 @@ const MIGRATION_FILES: ReadonlyArray<readonly [string, string]> = [
   ['placement-offer-outbox', '../../../placement/prisma/migrations/20260805120000_placement_offer_and_outbox/migration.sql'],
   ['placement-reason', '../../../placement/prisma/migrations/20260807120000_placement_fallthrough_reason/migration.sql'],
   ['placement-replacement', '../../../placement/prisma/migrations/20260808120000_placement_replacement_link/migration.sql'],
+  // Lane 2 / L2-B — the pipeline schema is the 6th drained namespace; its
+  // OutboxEvent table must exist or the pipeline drain fails the tick. init
+  // creates the `pipeline` schema; the L2-B migration adds pipeline.OutboxEvent.
+  ['pipeline-init', '../../../pipeline/prisma/migrations/20260602150000_init_pipeline_model/migration.sql'],
+  ['pipeline-outbox', '../../../pipeline/prisma/migrations/20260828120000_l2b_pipeline_outbox_event/migration.sql'],
 ];
 
 const TENANT_A = '11111111-1111-7111-8111-111111111111';
@@ -100,6 +106,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     let submittalPrisma: SubmittalPrismaService;
     let canonicalizationPrisma: CanonicalizationPrismaService;
     let placementPrisma: PlacementPrismaService;
+    let pipelinePrisma: PipelinePrismaService;
     let moduleRef: TestingModule;
     let publisherQueue: Queue;
     let savedRedisUrl: string | undefined;
@@ -140,12 +147,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       submittalPrisma = new SubmittalPrismaService(pgUrl);
       canonicalizationPrisma = new CanonicalizationPrismaService(pgUrl);
       placementPrisma = new PlacementPrismaService(pgUrl);
+      pipelinePrisma = new PipelinePrismaService(pgUrl);
       await Promise.all([
         consentPrisma.$connect(),
         selectionPrisma.$connect(),
         submittalPrisma.$connect(),
         canonicalizationPrisma.$connect(),
         placementPrisma.$connect(),
+        pipelinePrisma.$connect(),
       ]);
 
       savedRedisUrl = process.env['REDIS_URL'];
@@ -166,6 +175,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         .useValue(canonicalizationPrisma)
         .overrideProvider(PlacementPrismaService)
         .useValue(placementPrisma)
+        .overrideProvider(PipelinePrismaService)
+        .useValue(pipelinePrisma)
         .compile();
 
       const app = moduleRef.createNestApplication();
@@ -198,6 +209,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         submittalPrisma?.$disconnect(),
         canonicalizationPrisma?.$disconnect(),
         placementPrisma?.$disconnect(),
+        pipelinePrisma?.$disconnect(),
       ]);
       await Promise.all([redisContainer?.stop(), pgContainer?.stop()]);
     }, 60_000);
@@ -207,7 +219,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     // R10-clean payload assertion on the talent.canonicalized event
     // (no tier / score / rank / match — only talent_id + tenant_id +
     // resolution_method + payload_id, per T2-2a's emission shape).
-    it('drains consent + selection + submittal + canonicalization OutboxEvent rows; preserves pre-published rows', async () => {
+    it('drains consent + selection + submittal + canonicalization + placement + pipeline OutboxEvent rows; preserves pre-published rows', async () => {
       const preExistingPublishedAt = new Date('2025-01-01T00:00:00Z');
 
       // Seed 2 unpublished rows per schema (8 total).
@@ -261,12 +273,21 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
             event_payload: { placement_process_id: uuidv7(), idx: i } as never,
           },
         });
+        // L2-B — the 6th drained namespace.
+        await pipelinePrisma.outboxEvent.create({
+          data: {
+            id: uuidv7(),
+            tenant_id: TENANT_A,
+            event_type: 'pipeline.state_transition',
+            event_payload: { pipeline_id: uuidv7(), idx: i } as never,
+          },
+        });
       }
 
       // Seed 1 already-published row per schema (4 total) to prove the
       // publisher does NOT re-stamp them.
       const prePublished: Record<
-        'consent' | 'selection' | 'submittal' | 'canonicalization' | 'placement',
+        'consent' | 'selection' | 'submittal' | 'canonicalization' | 'placement' | 'pipeline',
         string
       > = {
         consent: uuidv7(),
@@ -274,6 +295,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         submittal: uuidv7(),
         canonicalization: uuidv7(),
         placement: uuidv7(),
+        pipeline: uuidv7(),
       };
       await consentPrisma.outboxEvent.create({
         data: {
@@ -325,6 +347,15 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           published_at: preExistingPublishedAt,
         },
       });
+      await pipelinePrisma.outboxEvent.create({
+        data: {
+          id: prePublished.pipeline,
+          tenant_id: TENANT_A,
+          event_type: 'pipeline.state_transition',
+          event_payload: { pipeline_id: uuidv7(), idx: 'pre' } as never,
+          published_at: preExistingPublishedAt,
+        },
+      });
 
       await publisherQueue.add('tick', {});
 
@@ -349,6 +380,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         submittalPublished,
         canonicalizationPublished,
         placementPublished,
+        pipelinePublished,
       ] = await Promise.all([
         consentPrisma.outboxEvent.findMany({
           where: { tenant_id: TENANT_A, published_at: { not: null } },
@@ -365,6 +397,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         placementPrisma.outboxEvent.findMany({
           where: { tenant_id: TENANT_A, published_at: { not: null } },
         }),
+        pipelinePrisma.outboxEvent.findMany({
+          where: { tenant_id: TENANT_A, published_at: { not: null } },
+        }),
       ]);
       expect(consentPublished).toHaveLength(3);
       expect(selectionPublished).toHaveLength(3);
@@ -372,6 +407,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(canonicalizationPublished).toHaveLength(3);
       // E1-c — the placement drain published its 2 unpublished rows (+1 pre).
       expect(placementPublished).toHaveLength(3);
+      // L2-B — the pipeline drain published its 2 unpublished rows (+1 pre).
+      expect(pipelinePublished).toHaveLength(3);
 
       // T2-2b — R10-clean payload assertion on the drained
       // talent.canonicalized events: the published rows carry only
@@ -403,7 +440,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Assert: pre-existing published_at values are preserved on all 4
       // pre-published rows.
       for (const [schema, id] of Object.entries(prePublished) as ReadonlyArray<
-        ['consent' | 'selection' | 'submittal' | 'canonicalization' | 'placement', string]
+        ['consent' | 'selection' | 'submittal' | 'canonicalization' | 'placement' | 'pipeline', string]
       >) {
         const client =
           schema === 'consent'
@@ -414,7 +451,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
                 ? submittalPrisma
                 : schema === 'canonicalization'
                   ? canonicalizationPrisma
-                  : placementPrisma;
+                  : schema === 'placement'
+                    ? placementPrisma
+                    : pipelinePrisma;
         const row = await client.outboxEvent.findUnique({ where: { id } });
         expect(row?.published_at?.getTime(), `pre-published ${schema} row`).toBe(
           preExistingPublishedAt.getTime(),

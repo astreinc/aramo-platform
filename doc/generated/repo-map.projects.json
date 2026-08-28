@@ -3565,6 +3565,12 @@
       },
       { "project": "api", "status": "production" },
       { "project": "export", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/outbox-publisher/src/tests/outbox-publisher.integration.spec.ts",
+        "project": "outbox-publisher",
+        "status": "excluded"
+      },
       { "project": "outbox-publisher", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
