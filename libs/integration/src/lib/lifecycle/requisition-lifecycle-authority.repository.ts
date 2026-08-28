@@ -18,79 +18,126 @@ import {
 /** The per-connection authority posture (ADR-0030 §4). */
 export type RequisitionLifecycleAuthorityMode = 'external_authority' | 'dual_control';
 
-/** A resolved mapping-contract entry for one provider state on one connection. */
+/** A resolved mapping entry from the connection's ACTIVE mapping set for one
+ * provider state. L1-D3-A: carries the authored `disposition` (EXECUTE_ACTION |
+ * IGNORE); `mapped_action` is null for IGNORE. `mapping_version` is the ACTIVE
+ * set's version, carried into provenance for audit. */
 export interface RequisitionLifecycleMappingResolved {
-  readonly mapped_action: string;
+  readonly disposition: string;
+  readonly mapped_action: string | null;
   readonly mapping_version: number;
   readonly authority_mode: RequisitionLifecycleAuthorityMode;
 }
 
+interface ActiveSetRef {
+  id: string;
+  version: number;
+}
+
 interface MappingRow {
-  mapped_action: string;
-  mapping_version: number;
+  disposition: string;
+  mapped_action: string | null;
   authority_mode: RequisitionLifecycleAuthorityMode;
 }
 
+// The nil actor stamped on a seed/compatibility-synthesized active set (marks it
+// migration-/seed-born, distinct from a human author).
+const MAPPING_SEED_SYSTEM_ACTOR = '00000000-0000-0000-0000-000000000000';
+
 // RequisitionLifecycleMappingRepository — the governed mapping contract (seam #3).
+// L1-D3-A: runtime resolution reads the connection's ACTIVE mapping SET.
 @Injectable()
 export class RequisitionLifecycleMappingRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  /** Resolve the mapped action + version + authority mode for a provider state. */
+  /** Resolve the mapping for a provider state from the connection's ACTIVE mapping
+   * set. No active set OR no row for the state → null (unmappable). */
   async findByConnectionState(
     tenantId: string,
     connectionId: string,
     providerState: string,
   ): Promise<RequisitionLifecycleMappingResolved | null> {
+    const activeSet = (await this.prisma.requisitionLifecycleMappingSet.findFirst({
+      where: { tenant_id: tenantId, connection_id: connectionId, status: 'active' },
+      select: { id: true, version: true },
+    })) as ActiveSetRef | null;
+    if (activeSet === null) return null;
+
     const row = (await this.prisma.requisitionLifecycleMapping.findUnique({
       where: {
-        tenant_id_connection_id_provider_state: {
-          tenant_id: tenantId,
-          connection_id: connectionId,
+        mapping_set_id_provider_state: {
+          mapping_set_id: activeSet.id,
           provider_state: providerState,
         },
       },
-      select: { mapped_action: true, mapping_version: true, authority_mode: true },
+      select: { disposition: true, mapped_action: true, authority_mode: true },
     })) as MappingRow | null;
     return row === null
       ? null
       : {
+          disposition: row.disposition,
           mapped_action: row.mapped_action,
-          mapping_version: row.mapping_version,
+          mapping_version: activeSet.version,
           authority_mode: row.authority_mode,
         };
   }
 
-  /** Author (idempotent) one connection-state mapping. Admin/test seeding. */
+  /** Seed a runtime-resolvable mapping (admin/TEST fast-path). L1-D3-A: ensures an
+   * ACTIVE version-1 set for the connection and upserts the row into it (keyed on
+   * mapping_set_id + provider_state). The GOVERNED draft→validate→activate flow
+   * lives in RequisitionLifecycleMappingAdminService — this is the direct seed the
+   * integration specs use (defaults disposition EXECUTE_ACTION; IGNORE nulls the
+   * action, honoring the R4 CHECK). */
   async upsertMapping(args: {
     tenant_id: string;
     connection_id: string;
     provider_state: string;
-    mapped_action: string;
+    mapped_action?: string | null;
     mapping_version?: number;
     authority_mode?: RequisitionLifecycleAuthorityMode;
+    disposition?: string;
   }): Promise<void> {
-    const mappingVersion = args.mapping_version ?? 1;
     const authorityMode = args.authority_mode ?? 'external_authority';
-    await this.prisma.requisitionLifecycleMapping.upsert({
-      where: {
-        tenant_id_connection_id_provider_state: {
+    const disposition = args.disposition ?? 'EXECUTE_ACTION';
+    const mappedAction = disposition === 'IGNORE' ? null : args.mapped_action ?? null;
+
+    let active = (await this.prisma.requisitionLifecycleMappingSet.findFirst({
+      where: { tenant_id: args.tenant_id, connection_id: args.connection_id, status: 'active' },
+      select: { id: true, version: true },
+    })) as ActiveSetRef | null;
+    if (active === null) {
+      active = (await this.prisma.requisitionLifecycleMappingSet.create({
+        data: {
           tenant_id: args.tenant_id,
           connection_id: args.connection_id,
+          version: args.mapping_version ?? 1,
+          status: 'active',
+          created_by: MAPPING_SEED_SYSTEM_ACTOR,
+        },
+        select: { id: true, version: true },
+      })) as ActiveSetRef;
+    }
+
+    await this.prisma.requisitionLifecycleMapping.upsert({
+      where: {
+        mapping_set_id_provider_state: {
+          mapping_set_id: active.id,
           provider_state: args.provider_state,
         },
       },
       create: {
         tenant_id: args.tenant_id,
         connection_id: args.connection_id,
+        mapping_set_id: active.id,
         provider_state: args.provider_state,
-        mapped_action: args.mapped_action,
-        mapping_version: mappingVersion,
+        disposition,
+        mapped_action: mappedAction,
+        mapping_version: active.version,
         authority_mode: authorityMode,
       },
       update: {
-        mapped_action: args.mapped_action,
-        mapping_version: mappingVersion,
+        disposition,
+        mapped_action: mappedAction,
         authority_mode: authorityMode,
       },
     });

@@ -246,6 +246,21 @@ const INTEGRATION_INIT_MIGRATION = resolve(
   ROOT,
   'libs/integration/prisma/migrations/20260814170000_init_integration_connection/migration.sql',
 );
+// L1-D3-A — external-lifecycle-authority schema (creates RequisitionLifecycleMapping
+// + the RequisitionLifecycleAuthorityMode enum) and the versioned mapping-set
+// substrate (creates RequisitionLifecycleMappingSet, adds disposition /
+// mapping_set_id + the R4 CHECK). Registered here (the curated init list does NOT
+// auto-pick-up) so a mapping-admin consumer interaction can read/activate mapping
+// sets. Applied AFTER the connection init (the mapping FKs the connection) and IN
+// ORDER (the mapping-set migration ALTERs the table the authority migration creates).
+const INTEGRATION_LIFECYCLE_AUTHORITY_MIGRATION = resolve(
+  ROOT,
+  'libs/integration/prisma/migrations/20260826120000_external_lifecycle_authority/migration.sql',
+);
+const INTEGRATION_MAPPING_SET_MIGRATION = resolve(
+  ROOT,
+  'libs/integration/prisma/migrations/20260827150000_l1d3a_mapping_set_versioning/migration.sql',
+);
 const ENTITLEMENT_INIT_MIGRATION = resolve(
   ROOT,
   'libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql',
@@ -3047,6 +3062,9 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         // requires the tenant to be entitled before RolesGuard runs.
         ENTITLEMENT_INIT_MIGRATION,
         INTEGRATION_INIT_MIGRATION,
+        // L1-D3-A — lifecycle-authority + versioned mapping-set schema (in order).
+        INTEGRATION_LIFECYCLE_AUTHORITY_MIGRATION,
+        INTEGRATION_MAPPING_SET_MIGRATION,
         COMMUNICATIONS_INIT_MIGRATION,
         // PR-A1c §4 — metering schema (in-tx UsageEvent INSERT in every
         // selection + submittal state-transition write method).
@@ -4167,6 +4185,34 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
             `INSERT INTO integration."IntegrationConnection" (id, tenant_id, provider_key, status, secret_ref, version, created_at, updated_at)
              VALUES ($1::uuid,$2::uuid,'acme_vms','configured',$3,0,now(),now())`,
             ['dddddddd-dddd-7ddd-8ddd-dddddddddddd', TENANT_ID, `connector:v1:${TENANT_ID}:dddddddd-dddd-7ddd-8ddd-dddddddddddd`],
+          );
+        });
+      },
+      // L1-D3-A — a connection with an ACTIVE versioned lifecycle mapping set, so
+      // GET .../requisition-lifecycle-mappings/active returns 200.
+      'a tenant entitled to ats with a caller holding integration:read and a connection with an active lifecycle mapping set': async () => {
+        await withClient(async (c) => {
+          const conn = 'dddddddd-dddd-7ddd-8ddd-dddddddddddd';
+          const setId = 'eeeeeeee-eeee-7eee-8eee-eeeeeeeeeeee';
+          await c.query(`DELETE FROM integration."RequisitionLifecycleMapping" WHERE tenant_id = $1::uuid`, [TENANT_ID]);
+          await c.query(`DELETE FROM integration."RequisitionLifecycleMappingSet" WHERE tenant_id = $1::uuid`, [TENANT_ID]);
+          await c.query(`DELETE FROM integration."IntegrationConnection" WHERE tenant_id = $1::uuid`, [TENANT_ID]);
+          await c.query(
+            `INSERT INTO integration."IntegrationConnection" (id, tenant_id, provider_key, status, version, created_at, updated_at)
+             VALUES ($1::uuid,$2::uuid,'acme_vms','active',0,now(),now())`,
+            [conn, TENANT_ID],
+          );
+          await c.query(
+            `INSERT INTO integration."RequisitionLifecycleMappingSet"
+               (id, tenant_id, connection_id, version, status, created_by, activated_at, activated_by, created_at)
+             VALUES ($1::uuid,$2::uuid,$3::uuid,1,'active',$2::uuid,now(),$2::uuid,now())`,
+            [setId, TENANT_ID, conn],
+          );
+          await c.query(
+            `INSERT INTO integration."RequisitionLifecycleMapping"
+               (id, tenant_id, connection_id, mapping_set_id, provider_state, disposition, mapped_action, mapping_version, authority_mode, created_at, updated_at)
+             VALUES (gen_random_uuid(),$1::uuid,$2::uuid,$3::uuid,'halted','EXECUTE_ACTION','PUT_ON_HOLD',1,'external_authority',now(),now())`,
+            [TENANT_ID, conn, setId],
           );
         });
       },

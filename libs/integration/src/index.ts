@@ -78,6 +78,39 @@ export {
   ExternalRequisitionIdentityRepository,
   type RecordIdentityInput,
 } from './lib/lifecycle/external-requisition-identity.repository.js';
+// L1-D3-A (R1) — VMS Lifecycle Mapping Administration: versioned mapping-set
+// service + domain vocabulary. The admin allowlist is this lib's OWN bounded
+// vocabulary (no @aramo/requisition runtime edge); an apps/api test asserts it
+// === EXTERNAL_LIFECYCLE_ACTIONS. normalizeProviderState is the SINGLE key
+// normalizer the reconciler also imports.
+export {
+  RequisitionLifecycleMappingAdminService,
+  MappingAdminServiceError,
+  MAPPING_ADMIN_AUDIT_EVENTS,
+  type MappingAdminServiceErrorCode,
+} from './lib/lifecycle/mapping-admin/requisition-lifecycle-mapping-admin.service.js';
+export { RequisitionLifecycleMappingAdminController } from './lib/lifecycle/mapping-admin/requisition-lifecycle-mapping-admin.controller.js';
+export {
+  RequisitionLifecycleMappingAdminRepository,
+  ActiveSetConflictError,
+} from './lib/lifecycle/mapping-admin/requisition-lifecycle-mapping-admin.repository.js';
+export {
+  MAPPING_SET_STATUS,
+  MAPPING_DISPOSITION,
+  MAPPING_ADMIN_ALLOWED_ACTIONS,
+  MAPPING_ADMIN_AUTHORITY_MODE,
+  isMappingAdminAllowedAction,
+  normalizeProviderState,
+  type MappingSetStatus,
+  type MappingDisposition,
+  type MappingAdminAllowedAction,
+  type DraftMappingRowInput,
+  type MappingRowView,
+  type MappingSetSummaryView,
+  type MappingSetDetailView,
+  type MappingValidationIssue,
+  type MappingValidationCode,
+} from './lib/lifecycle/mapping-admin/mapping-admin.domain.js';
 // CB-D2-FG (ADR-0030) — the FIRST real provider lifecycle source (SAP Fieldglass)
 // + its credential codec. Lives under provider/fieldglass/ (excluded from the
 // provider-neutrality scan); registered at the apps/api composition root.
