@@ -516,6 +516,7 @@
       "deriveSourceClass"
     ],
     "@aramo/integration": [
+      "ActiveSetConflictError",
       "CONNECTION_STATUSES",
       "CONNECTOR_EXECUTION_SCOPES",
       "CONNECTOR_QUEUE_ATTEMPTS",
@@ -541,6 +542,12 @@
       "LIFECYCLE_ORDERING_CONFIDENCES",
       "LifecycleObservationLedgerRepository",
       "LifecycleSourceAdapterRegistry",
+      "MAPPING_ADMIN_ALLOWED_ACTIONS",
+      "MAPPING_ADMIN_AUDIT_EVENTS",
+      "MAPPING_ADMIN_AUTHORITY_MODE",
+      "MAPPING_DISPOSITION",
+      "MAPPING_SET_STATUS",
+      "MappingAdminServiceError",
       "RECONCILIATION_DISPOSITION",
       "RECONCILIATION_FAILURE_REASON",
       "RECONCILIATION_FAILURE_REASONS",
@@ -548,6 +555,9 @@
       "REDACTED",
       "RequisitionExternalReconciliationRepository",
       "RequisitionExternalTransitionProvenanceRepository",
+      "RequisitionLifecycleMappingAdminController",
+      "RequisitionLifecycleMappingAdminRepository",
+      "RequisitionLifecycleMappingAdminService",
       "RequisitionLifecycleMappingRepository",
       "SECRETS_MANAGER_PORT",
       "SECRETS_MANAGER_WRITER",
@@ -557,7 +567,9 @@
       "decodeFieldglassCredential",
       "deriveConnectorSecretManagerId",
       "encodeFieldglassCredential",
+      "isMappingAdminAllowedAction",
       "isReconciliationFailureReason",
+      "normalizeProviderState",
       "observationKeyFor",
       "parseConnectorSecretRef",
       "parseStaffingOrderDelta",
@@ -3390,6 +3402,18 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/l1d3a-mapping-admin.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/l1d3a-mapping-allowlist-drift.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/support/fake-lifecycle-source.ts",
         "project": "api",
         "status": "excluded"
@@ -3748,6 +3772,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/l1d3a-mapping-admin.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/policy-cache-ttl.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -3887,6 +3917,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/l1b-write-visibility.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/l1d3a-mapping-allowlist-drift.spec.ts",
         "project": "api",
         "status": "excluded"
       },

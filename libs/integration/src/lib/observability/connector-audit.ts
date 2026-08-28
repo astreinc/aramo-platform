@@ -21,6 +21,11 @@ export const CONNECTOR_AUDIT_EVENTS = {
   EXECUTION_FAILED: 'connector.execution.failed',
   DELIVERY_ALREADY_PROCESSED: 'connector.delivery.already_processed',
   UNSUPPORTED_UPDATE_DETECTED: 'connector.delivery.unsupported_update',
+  // L1-D3-A (R1) — mapping-set administration audit (DoD #18). Structured-log
+  // discriminators only (no new persisted type). Secret-free by construction.
+  LIFECYCLE_MAPPING_DRAFT_CREATED: 'connector.lifecycle_mapping.draft_created',
+  LIFECYCLE_MAPPING_DRAFT_UPDATED: 'connector.lifecycle_mapping.draft_updated',
+  LIFECYCLE_MAPPING_ACTIVATED: 'connector.lifecycle_mapping.activated',
 } as const;
 
 export type ConnectorAuditEvent =

@@ -171,3 +171,50 @@ describe('ats-web → POST /v1/integrations/:id/enable (refusal)', () => {
       });
   });
 });
+
+// L1-D3-A — VMS lifecycle mapping administration. Pins the active mapping-set
+// READ shape (Settings → Integrations → Connection → Lifecycle Mapping). The row
+// carries a disposition + a mapped action (or null for IGNORE) + authority_mode.
+describe('ats-web → GET /v1/integrations/:id/requisition-lifecycle-mappings/active', () => {
+  it("returns 200 with the connection's active lifecycle mapping set", async () => {
+    await provider
+      .addInteraction()
+      .given('a tenant entitled to ats with a caller holding integration:read and a connection with an active lifecycle mapping set')
+      .uponReceiving('an ats-web active lifecycle mapping set read')
+      .withRequest('GET', `/v1/integrations/${CONNECTION_ID}/requisition-lifecycle-mappings/active`, (b) => {
+        b.headers({ Cookie: like(ACCESS_COOKIE) });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          id: uuid('eeeeeeee-eeee-7eee-8eee-eeeeeeeeeeee'),
+          connection_id: uuid(CONNECTION_ID),
+          version: like(1),
+          status: like('active'),
+          created_at: regex(ISO_TIMESTAMP, '2026-08-27T00:00:01Z'),
+          created_by: uuid(TENANT_ID),
+          activated_at: regex(ISO_TIMESTAMP, '2026-08-27T00:00:01Z'),
+          activated_by: uuid(TENANT_ID),
+          supersedes_set_id: null,
+          mappings: [
+            {
+              id: uuid('cccccccc-cccc-7ccc-8ccc-cccccccccccc'),
+              provider_state: like('halted'),
+              disposition: like('EXECUTE_ACTION'),
+              mapped_action: like('PUT_ON_HOLD'),
+              authority_mode: like('external_authority'),
+            },
+          ],
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(
+          `${mock.url}/v1/integrations/${CONNECTION_ID}/requisition-lifecycle-mappings/active`,
+          { headers: { Cookie: ACCESS_COOKIE } },
+        );
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as { status?: string; mappings?: unknown[] };
+        expect(body.status).toBe('active');
+        expect(Array.isArray(body.mappings)).toBe(true);
+      });
+  });
+});

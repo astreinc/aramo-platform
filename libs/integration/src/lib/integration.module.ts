@@ -30,6 +30,10 @@ import {
 import { LifecycleSourceAdapterRegistry } from './lifecycle/lifecycle-source-adapter.registry.js';
 import { LifecycleObservationLedgerRepository } from './lifecycle/lifecycle-observation-ledger.repository.js';
 import { ExternalRequisitionIdentityRepository } from './lifecycle/external-requisition-identity.repository.js';
+// L1-D3-A (R1) — versioned mapping-set ADMINISTRATION (tenant-facing CRUD/activate).
+import { RequisitionLifecycleMappingAdminRepository } from './lifecycle/mapping-admin/requisition-lifecycle-mapping-admin.repository.js';
+import { RequisitionLifecycleMappingAdminService } from './lifecycle/mapping-admin/requisition-lifecycle-mapping-admin.service.js';
+import { RequisitionLifecycleMappingAdminController } from './lifecycle/mapping-admin/requisition-lifecycle-mapping-admin.controller.js';
 
 // IntegrationModule — T8-CONNECTOR-A provider-neutral connector foundation.
 //
@@ -43,7 +47,7 @@ import { ExternalRequisitionIdentityRepository } from './lifecycle/external-requ
 // the registry ships EMPTY (Connector-B registers concrete adapters).
 @Module({
   imports: [AuthModule, AuthorizationModule, EntitlementModule, ImportModule],
-  controllers: [IntegrationController],
+  controllers: [IntegrationController, RequisitionLifecycleMappingAdminController],
   providers: [
     PrismaService,
     ConnectorAuditLog,
@@ -69,6 +73,11 @@ import { ExternalRequisitionIdentityRepository } from './lifecycle/external-requ
     LifecycleSourceAdapterRegistry,
     LifecycleObservationLedgerRepository,
     ExternalRequisitionIdentityRepository,
+    // L1-D3-A (R1) — mapping-set administration (data-access + application service).
+    // Pure config administration; no requisition write. The runtime reconciler
+    // consumes the ACTIVE set separately (apps/api composition).
+    RequisitionLifecycleMappingAdminRepository,
+    RequisitionLifecycleMappingAdminService,
     // Port → impl bindings (bound once; no duplicate instances).
     { provide: CONNECTION_SECRET_LOADER, useExisting: IntegrationConnectionRepository },
     { provide: DELIVERY_LEDGER, useExisting: ConnectorDeliveryRepository },
@@ -97,6 +106,10 @@ import { ExternalRequisitionIdentityRepository } from './lifecycle/external-requ
     LifecycleObservationLedgerRepository,
     ExternalRequisitionIdentityRepository,
     IntegrationConnectionRepository,
+    // L1-D3-A — exported so apps/api can compose the admin service (drift test,
+    // future composition) and so lib-local specs can resolve it.
+    RequisitionLifecycleMappingAdminService,
+    RequisitionLifecycleMappingAdminRepository,
   ],
 })
 export class IntegrationModule {}
