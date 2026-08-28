@@ -483,6 +483,19 @@ const PIPELINE_OUTBOX_MIGRATION = resolve(
   ROOT,
   'libs/pipeline/prisma/migrations/20260828120000_l2b_pipeline_outbox_event/migration.sql',
 );
+// L2-C — SEPARATE consts + apply-list entries (never extra resolve() args — ENOTDIR).
+const PIPELINE_L2C_ENUM_MIGRATION = resolve(
+  ROOT,
+  'libs/pipeline/prisma/migrations/20260828130000_l2c_pipeline_qualified_completed_enum/migration.sql',
+);
+const PIPELINE_L2C_LIVE_EPISODE_RECREATE_MIGRATION = resolve(
+  ROOT,
+  'libs/pipeline/prisma/migrations/20260828140000_l2c_pipeline_live_episode_recreate/migration.sql',
+);
+const PIPELINE_L2C_DISPOSITION_MIGRATION = resolve(
+  ROOT,
+  'libs/pipeline/prisma/migrations/20260828150000_l2c_pipeline_disposition/migration.sql',
+);
 // L8-B1 — the submit-to-ats orchestrator touches the submittal_policy schema
 // (RequisitionSubmittalPolicy / SubmittalConsumption / SubmittalPolicyEvent) and
 // reads client_talent_restriction; both schemas must exist in the provider DB.
@@ -3118,6 +3131,9 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         PIPELINE_HISTORY_APPEND_ONLY_MIGRATION,
         PIPELINE_ENDED_AT_MIGRATION,
         PIPELINE_OUTBOX_MIGRATION,
+        PIPELINE_L2C_ENUM_MIGRATION,
+        PIPELINE_L2C_LIVE_EPISODE_RECREATE_MIGRATION,
+        PIPELINE_L2C_DISPOSITION_MIGRATION,
         SUBMITTAL_POLICY_INIT_MIGRATION,
         CLIENT_TALENT_RESTRICTION_INIT_MIGRATION,
         POLICY_STORE_INIT_MIGRATION,

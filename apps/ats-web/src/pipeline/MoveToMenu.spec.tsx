@@ -41,6 +41,25 @@ describe('MoveToMenu', () => {
     expect(screen.getByText('Final')).toBeInTheDocument();
   });
 
+  it('never offers "Completed" as a recruiter move target from qualified (§5 system-only)', () => {
+    render(<MoveToMenu from="qualified" onSubmit={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Move to…' }));
+
+    const menu = screen.getByRole('menu');
+    // The system-only success terminal is absent from the recruiter menu…
+    expect(
+      within(menu).queryByRole('menuitem', {
+        name: PIPELINE_STATUS_LABELS.completed,
+      }),
+    ).not.toBeInTheDocument();
+    // …while the legal recruiter moves are still offered.
+    expect(
+      within(menu).getByRole('menuitem', {
+        name: PIPELINE_STATUS_LABELS.submitted,
+      }),
+    ).toBeInTheDocument();
+  });
+
   it('submits the selected target via onSubmit when confirmed', async () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     render(<MoveToMenu from="contacted" onSubmit={onSubmit} />);

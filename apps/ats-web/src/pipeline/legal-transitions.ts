@@ -17,7 +17,18 @@ export const LEGAL_TRANSITIONS: Record<
   no_contact: ['contacted', 'talent_responded', 'not_in_consideration'],
   contacted: ['talent_responded', 'no_contact', 'not_in_consideration'],
   talent_responded: ['qualifying', 'contacted', 'not_in_consideration'],
-  qualifying: ['submitted', 'talent_responded', 'not_in_consideration'],
+  // L2-C — forward edge is now `qualified` (the QUALIFY milestone); the legacy
+  // `qualifying → submitted` edge is KEPT for compat.
+  qualifying: [
+    'qualified',
+    'submitted',
+    'talent_responded',
+    'not_in_consideration',
+  ],
+  // L2-C — the recruiter rests the episode at `qualified` before submitting.
+  // `qualified → completed` is legal ONLY so the system COMPLETE precondition
+  // validates; it is NEVER offered as a recruiter "Move to…" option (§5).
+  qualified: ['submitted', 'qualifying', 'not_in_consideration', 'completed'],
   submitted: [
     'interviewing',
     'qualifying',
@@ -39,13 +50,35 @@ export const LEGAL_TRANSITIONS: Record<
   not_in_consideration: [],
   client_declined: [],
   placed: [],
+  // L2-C — the canonical SUCCESSFUL terminal (system-only COMPLETE, SB-3).
+  completed: [],
 };
 
-// legalNextStates — the UI affordance helper. Returns the set of
-// statuses the recruiter is permitted to choose from `from`. The
-// "Move to…" Popover renders ONLY these as options.
+// L2-C (§5) — statuses a recruiter can NEVER select as a move target, even
+// though the legal-transition matrix lists them (they are reached only by a
+// system command). `completed` is legal from `qualified` ONLY so the system
+// COMPLETE precondition validates; it must not appear in the "Move to…" menu.
+// This filter is FE-affordance only — it does NOT alter LEGAL_TRANSITIONS, so
+// the BE↔FE matrix drift guard (legal-transitions-drift.spec.ts) is unaffected.
+export const SYSTEM_ONLY_TARGET_STATUSES: readonly PipelineStatus[] = [
+  'completed',
+];
+
+// legalNextStates — the raw matrix row (BE mirror). Not the menu source; use
+// recruiterNextStates for the affordance so system-only targets are excluded.
 export function legalNextStates(
   from: PipelineStatus,
 ): readonly PipelineStatus[] {
   return LEGAL_TRANSITIONS[from];
+}
+
+// recruiterNextStates — the UI affordance helper. Returns the legal targets a
+// recruiter is permitted to CHOOSE from `from`: the matrix row minus the
+// system-only targets. The "Move to…" Popover renders ONLY these.
+export function recruiterNextStates(
+  from: PipelineStatus,
+): readonly PipelineStatus[] {
+  return LEGAL_TRANSITIONS[from].filter(
+    (to) => !SYSTEM_ONLY_TARGET_STATUSES.includes(to),
+  );
 }

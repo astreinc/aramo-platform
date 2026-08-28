@@ -67,6 +67,7 @@ export const SEED_SCOPE_KEYS = [
   // pipeline domain (4)
   'pipeline:add',               // recruiter+
   'pipeline:change-status',     // recruiter+
+  'pipeline:complete',          // CATALOG_ONLY_ZERO_GRANT — L2-C SB-3 system-only COMPLETE capability; NO human role grant (held by system/downstream identities only)
   // calendar domain (3)
   'calendar:event-create',      // recruiter+
   'calendar:event-edit',        // recruiter+ (own events)

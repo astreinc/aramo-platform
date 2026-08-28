@@ -102,6 +102,13 @@ const EXACT_ALLOWLIST = new Set<string>([
   // (talent, requisition) fixtures through the governed escape via raw SET LOCAL
   // (DELETE /v1/pipelines is withdrawn; the API can no longer purge).
   'apps/api/src/tests/ats-batch4a-pipeline-activity.integration.spec.ts',
+  // Lane 2 / L2-C — the PipelineDisposition immutability trigger migration DEFINES
+  // the same exact-value tenant_reset DELETE escape (D-5), so a governed tenant
+  // reset can cascade-delete a disposition when its Pipeline is purged.
+  'libs/pipeline/prisma/migrations/20260828150000_l2c_pipeline_disposition/migration.sql',
+  // Lane 2 / L2-C — the recruiter-lifecycle proof EXERCISES the escape (AC-13:
+  // DELETE permitted only under the exact authorized GUC) via raw set_config.
+  'libs/pipeline/src/tests/pipeline-l2c-recruiter-lifecycle.integration.spec.ts',
 ]);
 
 describe('reset-marker confinement — exact-path default-deny (§2.4)', () => {

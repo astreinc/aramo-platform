@@ -62,12 +62,16 @@ export const PIPELINE_STATUS_VALUES = [
   'contacted',
   'talent_responded',
   'qualifying',
+  // L2-C (D-6) — affirmative recruiter milestone: "suitable for THIS requisition".
+  'qualified',
   'submitted',
   'interviewing',
   'offered',
   'not_in_consideration',
   'client_declined',
   'placed',
+  // L2-C (D-2A) — the canonical SUCCESSFUL terminal (system-only COMPLETE; SB-3).
+  'completed',
 ] as const;
 
 export type PipelineStatus = (typeof PIPELINE_STATUS_VALUES)[number];
@@ -89,6 +93,8 @@ export const ACTIVE_FLOW_STAGES: readonly PipelineStatus[] = [
   'contacted',
   'talent_responded',
   'qualifying',
+  // L2-C — `qualified` rests between `qualifying` and `submitted` (ordinal shift intended).
+  'qualified',
   'submitted',
   'interviewing',
   'offered',
@@ -137,9 +143,18 @@ const LEGAL_TRANSITIONS: Record<PipelineStatus, readonly PipelineStatus[]> = {
     'not_in_consideration',
   ],
 
-  // Recruiter qualifying the talent. Forward to submitted (recruiter
-  // submits to client); back to talent_responded; or rejection.
-  qualifying: ['submitted', 'talent_responded', 'not_in_consideration'],
+  // Recruiter qualifying the talent. Forward to `qualified` (QUALIFY — the
+  // affirmative milestone); the legacy `qualifying → submitted` edge is KEPT
+  // for compat; back to talent_responded; or rejection.
+  qualifying: ['qualified', 'submitted', 'talent_responded', 'not_in_consideration'],
+
+  // L2-C (D-2/D-6) — the recruiter rests the episode at `qualified` before
+  // submitting. `qualified → submitted` is LOAD-BEARING (the submittal mirror
+  // calls canTransitionPipeline(pipeline.status,'submitted')). Back-correction
+  // to `qualifying`; rejection to not_in_consideration. `qualified → completed`
+  // is legal ONLY so the system COMPLETE command's precondition validates — it
+  // is NEVER offered as a recruiter action (§5).
+  qualified: ['submitted', 'qualifying', 'not_in_consideration', 'completed'],
 
   // Submitted to client. Forward to interviewing (client schedules);
   // back to qualifying (client returned for more info); rejection
@@ -170,32 +185,54 @@ const LEGAL_TRANSITIONS: Record<PipelineStatus, readonly PipelineStatus[]> = {
     'client_declined',
   ],
 
-  // Terminal states — no outgoing transitions. Re-entry is via Pipeline
-  // delete + re-create (the @@unique constraint blocks duplicate live
-  // rows, but a hard delete clears the row entirely).
+  // Terminal states — no outgoing transitions. Re-entry rides the E6 live-slot
+  // release: a terminal episode frees the (tenant, talent, req) slot, and
+  // create() admits a fresh episode (L2-B withdrew the hard delete).
   not_in_consideration: [],
   client_declined: [],
   placed: [],
+  // L2-C — the canonical SUCCESSFUL terminal (system-only COMPLETE, SB-3).
+  completed: [],
 };
 
-// TERMINAL_STATUSES — the live/terminal partition, DERIVED from the transition
-// map (a terminal state is one with NO legal outgoing transition). This is the
-// SEMANTIC SOURCE OF TRUTH for the partition; it is not a second hand-authored
-// list. The E6 migration duplicates this set as a LITERAL SQL predicate on the
-// `Pipeline_live_episode_key` partial unique index (a migration cannot import
-// this module), and the B-index-parity drift test holds the two equal — any
-// change to the partition here fails CI until a new migration updates the DB
-// invariant (directive E6 §3). `no_status` is NOT terminal (it has forward
-// edges), matching the migration predicate's live set.
+// L2-C (SB-2) — EXPLICIT partition registries. After L2-C the empty-edge
+// derivation cannot distinguish the CANONICAL successful terminal (`completed`)
+// from the LEGACY terminals (`placed`/`client_declined`, kept for history per the
+// §4 tri-state) — all have empty legal edges. So the partition is now three
+// hand-authored registries, NOT a `LEGAL_TRANSITIONS.length === 0` derivation.
+export const CANONICAL_TERMINAL_STATUSES: readonly PipelineStatus[] = [
+  'not_in_consideration',
+  'completed',
+];
+export const LEGACY_TERMINAL_STATUSES: readonly PipelineStatus[] = [
+  'placed',
+  'client_declined',
+];
+// The live-slot exclusion set = CANONICAL ∪ LEGACY. A status occupies the single
+// live-episode slot iff it is NOT in this set. The E6 index-recreate migration
+// duplicates this set as a literal SQL `NOT IN (...)` predicate (a migration
+// cannot import this module); the B-index-parity drift guard holds the two equal
+// (SB-2 — pivoted FROM TERMINAL_STATUSES to this exclusion set).
+export const LIVE_EPISODE_EXCLUSION_STATUSES: readonly PipelineStatus[] = [
+  ...CANONICAL_TERMINAL_STATUSES,
+  ...LEGACY_TERMINAL_STATUSES,
+];
+
+// TERMINAL_STATUSES — "all terminals" (empty legal edges). After L2-C this equals
+// LIVE_EPISODE_EXCLUSION_STATUSES (all four exclusion members have no outgoing
+// edge), but the live-slot partition is now driven by the explicit exclusion
+// registry above, not by this derivation (SB-2). Retained for callers that mean
+// "has no outgoing transition".
 export const TERMINAL_STATUSES: readonly PipelineStatus[] = PIPELINE_STATUS_VALUES.filter(
   (s) => LEGAL_TRANSITIONS[s].length === 0,
 );
 
-// isLive — a status occupies the single live-episode slot (Q-2) iff it is not
-// terminal. Mirrors the migration's WHERE predicate; both derive from the same
-// partition.
+// isLive — a status occupies the single live-episode slot (Q-2) iff it is NOT in
+// the explicit exclusion set (SB-1: historical submitted/interviewing/offered stay
+// live-compatible; the four exclusion members are the terminal partition for the
+// live slot).
 export function isLiveStatus(status: PipelineStatus): boolean {
-  return LEGAL_TRANSITIONS[status].length !== 0;
+  return !(LIVE_EPISODE_EXCLUSION_STATUSES as readonly string[]).includes(status);
 }
 
 /**
@@ -222,3 +259,29 @@ export function canTransition(
 export function legalNextStates(from: PipelineStatus): readonly PipelineStatus[] {
   return LEGAL_TRANSITIONS[from];
 }
+
+// Lane 2 / L2-C (SB-8) — the recruiter named-action surface. Each business action
+// maps to exactly ONE to_status; the from-state legality is enforced by
+// canTransition (an action illegal from the current status →
+// INVALID_PIPELINE_TRANSITION, 422). COMPLETE is deliberately NOT here — it is the
+// system-only command (§5), rejected on the recruiter /actions surface.
+export const RECRUITER_ACTION_TO_STATUS = {
+  CONTACT: 'contacted',
+  MARK_RESPONDED: 'talent_responded',
+  START_QUALIFICATION: 'qualifying',
+  QUALIFY: 'qualified',
+  DISPOSITION: 'not_in_consideration',
+} as const satisfies Record<string, PipelineStatus>;
+export type RecruiterPipelineAction = keyof typeof RECRUITER_ACTION_TO_STATUS;
+
+export function isRecruiterPipelineAction(v: unknown): v is RecruiterPipelineAction {
+  return (
+    typeof v === 'string' &&
+    Object.prototype.hasOwnProperty.call(RECRUITER_ACTION_TO_STATUS, v)
+  );
+}
+
+// The system-only action name — a body carrying this on the recruiter /actions
+// surface is a 422 VALIDATION_ERROR (§5); `completed` is reached only via the
+// internal COMPLETE command (pipeline:complete capability).
+export const SYSTEM_COMPLETE_ACTION = 'COMPLETE' as const;

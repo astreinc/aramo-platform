@@ -2,7 +2,7 @@ import * as RadixPopover from '@radix-ui/react-popover';
 import { useState } from 'react';
 import { Button, FormField, InlineAlert } from '@aramo/fe-foundation';
 
-import { legalNextStates } from './legal-transitions';
+import { recruiterNextStates } from './legal-transitions';
 import {
   PIPELINE_STATUS_LABELS,
   type PipelineStatus,
@@ -28,7 +28,7 @@ export function MoveToMenu({ from, disabled, onSubmit }: MoveToMenuProps) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const targets = legalNextStates(from);
+  const targets = recruiterNextStates(from);
 
   const close = () => {
     setOpen(false);

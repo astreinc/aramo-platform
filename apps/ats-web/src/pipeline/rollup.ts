@@ -20,10 +20,15 @@ const TERMINAL = new Set<PipelineStatus>(CLOSED_STATUSES);
 const SUBMITTED_PLUS = new Set(['submitted', 'interview', 'offer', 'placed']);
 
 // E6 Q-4 — the live/terminal partition for the current-episode collapse. Matches
-// the server's `Pipeline_live_episode_key` predicate (the three true terminals);
-// `no_status` counts as non-terminal here so the collapse agrees with the server.
+// the server's `Pipeline_live_episode_key` predicate — L2-C recreated that partial
+// index as `status NOT IN ('not_in_consideration','completed','placed',
+// 'client_declined')` (the four-member exclusion set = CANONICAL ∪ LEGACY
+// terminals). `no_status` counts as non-terminal here so the collapse agrees with
+// the server. `completed` (the canonical success terminal) MUST be listed so a
+// completed episode does not wrongly win as "live" over a legacy terminal.
 const COLLAPSE_TERMINAL = new Set<PipelineStatus>([
   'placed',
+  'completed',
   'not_in_consideration',
   'client_declined',
 ]);

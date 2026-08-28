@@ -54,6 +54,9 @@ const MIGRATIONS = [
   '../../prisma/migrations/20260828100000_l2b_pipeline_history_append_only/migration.sql',
   '../../prisma/migrations/20260828110000_l2b_pipeline_ended_at_nullable_status_from/migration.sql',
   '../../prisma/migrations/20260828120000_l2b_pipeline_outbox_event/migration.sql',
+  '../../prisma/migrations/20260828130000_l2c_pipeline_qualified_completed_enum/migration.sql',
+  '../../prisma/migrations/20260828140000_l2c_pipeline_live_episode_recreate/migration.sql',
+  '../../prisma/migrations/20260828150000_l2c_pipeline_disposition/migration.sql',
 ].map((p) => resolve(__dirname, p));
 
 // The legal edge chain no_contact -> ... -> placed (offered is the only source

@@ -184,6 +184,10 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   COMMUNICATION_PROVIDER_REFERENCE_CONFLICT: 409,
   // Lane 2 / L2-A — optimistic-concurrency conflict on a pipeline transition.
   PIPELINE_TRANSITION_CONFLICT: 409,
+  // Lane 2 / L2-C — recruiter/disposition/complete refusals.
+  PIPELINE_ALREADY_DISPOSITIONED: 409,
+  PIPELINE_DISPOSITION_REASON_INVALID: 422,
+  PIPELINE_COMPLETE_SYSTEM_ONLY: 403,
 };
 
 // Base error class. Thrown anywhere in the app where a structured response

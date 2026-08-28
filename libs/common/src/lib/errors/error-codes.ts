@@ -688,6 +688,20 @@ export const ERROR_CODES = [
   // stale transition writes NO history/activity/metering row. details carry
   // current_status + current_version so the caller can refresh and retry.
   'PIPELINE_TRANSITION_CONFLICT',
+  // Lane 2 / L2-C (D-5) — a second PipelineDisposition on one pipeline_id is
+  // refused. HTTP 409. The exact-name translation of the UNIQUE(pipeline_id)
+  // violation (driver-adapter shape, not meta.target) — never a generic
+  // P2002/23505. Mirrors the PIPELINE_EPISODE_ALREADY_LIVE discipline.
+  'PIPELINE_ALREADY_DISPOSITIONED',
+  // Lane 2 / L2-C (D-5) — a disposition whose authority class / reason is invalid:
+  // a recruiter DISPOSITION carrying a DOWNSTREAM_OUTCOME reason, or a
+  // DOWNSTREAM_OUTCOME reason missing source_provenance. HTTP 422 (well-formed but
+  // domain-invalid; mirrors OVERRIDE_INVALID).
+  'PIPELINE_DISPOSITION_REASON_INVALID',
+  // Lane 2 / L2-C (SB-3) — the system-only COMPLETE command was reached by a caller
+  // lacking the pipeline:complete capability. HTTP 403. `completed` is a system
+  // consequence of a downstream event carrying lineage, never a recruiter action.
+  'PIPELINE_COMPLETE_SYSTEM_ONLY',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

@@ -142,6 +142,21 @@ const PIPELINE_OUTBOX = resolve(
   ROOT,
   'libs/pipeline/prisma/migrations/20260828120000_l2b_pipeline_outbox_event/migration.sql',
 );
+// L2-C — SEPARATE consts + apply-list entries (never extra resolve() args — ENOTDIR).
+// enum-add commits first (own dir) so the index-recreate can USE the 'completed'
+// literal; disposition table last.
+const PIPELINE_L2C_ENUM = resolve(
+  ROOT,
+  'libs/pipeline/prisma/migrations/20260828130000_l2c_pipeline_qualified_completed_enum/migration.sql',
+);
+const PIPELINE_L2C_LIVE_EPISODE_RECREATE = resolve(
+  ROOT,
+  'libs/pipeline/prisma/migrations/20260828140000_l2c_pipeline_live_episode_recreate/migration.sql',
+);
+const PIPELINE_L2C_DISPOSITION = resolve(
+  ROOT,
+  'libs/pipeline/prisma/migrations/20260828150000_l2c_pipeline_disposition/migration.sql',
+);
 // L2-B — the consent-schema IdempotencyKey table (backing the required
 // Idempotency-Key on POST /v1/pipelines) is ALREADY applied below via the
 // consent initial-schema migration (added for the TalentConsentEvent contact
@@ -260,6 +275,9 @@ const MIGRATIONS = [
   PIPELINE_HISTORY_APPEND_ONLY,
   PIPELINE_ENDED_AT,
   PIPELINE_OUTBOX,
+  PIPELINE_L2C_ENUM,
+  PIPELINE_L2C_LIVE_EPISODE_RECREATE,
+  PIPELINE_L2C_DISPOSITION,
   POLICY_STORE_INIT,
   POLICY_DECISION_RECORD,
   resolve(ROOT, 'libs/requisition/prisma/migrations/20260803120000_recruiting_status_supersession/migration.sql'),

@@ -301,6 +301,10 @@
       "path": "/v1/pipelines/*/transition"
     },
     {
+      "method": "POST",
+      "path": "/v1/pipelines/*/actions"
+    },
+    {
       "method": "DELETE",
       "path": "/v1/pipelines/*"
     },
