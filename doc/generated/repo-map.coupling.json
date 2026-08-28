@@ -9810,6 +9810,26 @@
     },
     { "from": "ci/scripts/verify-ats-refusal.ts", "status": "unscoped", "to": "openapi/ats.yaml" },
     {
+      "from": "ci/scripts/verify-dead-error-codes.ts",
+      "status": "unscoped",
+      "to": "libs/common/src/lib/errors/aramo-error.ts"
+    },
+    {
+      "from": "ci/scripts/verify-dead-error-codes.ts",
+      "status": "unscoped",
+      "to": "libs/common/src/lib/errors/error-codes.ts"
+    },
+    {
+      "from": "ci/scripts/verify-dead-error-codes.ts",
+      "status": "unscoped",
+      "to": "libs/common/src/tests/error-codes.spec.ts"
+    },
+    {
+      "from": "ci/scripts/verify-dead-error-codes.ts",
+      "status": "unscoped",
+      "to": "openapi/common.yaml"
+    },
+    {
       "from": "ci/scripts/verify-error-codes.ts",
       "status": "unscoped",
       "to": "libs/common/src/lib/errors/error-codes.ts"
@@ -9833,6 +9853,11 @@
       "from": "ci/scripts/verify-ingestion-refusal.ts",
       "status": "unscoped",
       "to": "openapi/ingestion.yaml"
+    },
+    {
+      "from": "ci/scripts/verify-orphan-scopes.ts",
+      "status": "unscoped",
+      "to": "libs/identity/src/lib/dto/scope.dto.ts"
     },
     {
       "from": "ci/scripts/verify-portal-refusal.ts",
@@ -12997,6 +13022,11 @@
     {
       "from": "libs/common/src/lib/errors/error-codes.ts",
       "status": "production",
+      "to": "doc/governance/history/Aramo-Architecture-Change-History.md"
+    },
+    {
+      "from": "libs/common/src/lib/errors/error-codes.ts",
+      "status": "production",
       "to": "openapi/common.yaml"
     },
     {
@@ -14015,7 +14045,7 @@
     {
       "from": "libs/pipeline/src/lib/pipeline.repository.ts",
       "status": "production",
-      "to": "libs/pipeline/src/lib/pipeline-state.ts"
+      "to": "doc/governance/history/Aramo-Architecture-Change-History.md"
     },
     {
       "from": "libs/pipeline/src/lib/policy/override-reason-codes.ts",
@@ -14707,6 +14737,7 @@
       "to": "ci/scripts/verify-api-contract-parity.ts"
     },
     { "from": "package.json", "status": "unscoped", "to": "ci/scripts/verify-ats-refusal.ts" },
+    { "from": "package.json", "status": "unscoped", "to": "ci/scripts/verify-dead-error-codes.ts" },
     { "from": "package.json", "status": "unscoped", "to": "ci/scripts/verify-env-passthrough.ts" },
     { "from": "package.json", "status": "unscoped", "to": "ci/scripts/verify-error-codes.ts" },
     {
@@ -14715,6 +14746,7 @@
       "to": "ci/scripts/verify-ingestion-refusal.ts"
     },
     { "from": "package.json", "status": "unscoped", "to": "ci/scripts/verify-offer-sql.ts" },
+    { "from": "package.json", "status": "unscoped", "to": "ci/scripts/verify-orphan-scopes.ts" },
     { "from": "package.json", "status": "unscoped", "to": "ci/scripts/verify-placement-sql.ts" },
     { "from": "package.json", "status": "unscoped", "to": "ci/scripts/verify-portal-refusal.ts" },
     { "from": "package.json", "status": "unscoped", "to": "ci/scripts/verify-repo-map.ts" },
@@ -16566,7 +16598,7 @@
   ],
   "scanScope": {
     "dirs": [".github/workflows", ".husky", "ci/scripts", "deploy", "scripts", "tools"],
-    "files": 64,
+    "files": 66,
     "huskyPresent": false
   },
   "scripts": [
@@ -16605,6 +16637,7 @@
         { "kind": "prose", "path": "ci/scripts/verify-aggregate-gate.ts" },
         { "kind": "prose", "path": "ci/scripts/verify-env-passthrough.ts" },
         { "kind": "prose", "path": "ci/scripts/verify-offer-sql.ts" },
+        { "kind": "prose", "path": "ci/scripts/verify-orphan-scopes.ts" },
         { "kind": "prose", "path": "ci/scripts/verify-placement-sql.ts" },
         { "kind": "prose", "path": "deploy/build-images.sh" },
         { "kind": "prose", "path": "deploy/build-images.test.sh" },
@@ -16640,6 +16673,18 @@
         { "kind": "prose", "path": "tools/db-sync-local.sh" },
         { "kind": "npm-run", "path": "tools/local-run-link.sh" }
       ]
+    },
+    {
+      "name": "dead-error-codes:check",
+      "references": [
+        { "kind": "npm-run", "path": ".github/workflows/ci.yml" },
+        { "kind": "prose", "path": ".github/workflows/ci.yml" },
+        { "kind": "prose", "path": "ci/scripts/verify-dead-error-codes.ts" }
+      ]
+    },
+    {
+      "name": "dead-error-codes:self-test",
+      "references": [{ "kind": "npm-run", "path": ".github/workflows/ci.yml" }]
     },
     {
       "name": "env:passthrough-check",
@@ -16755,6 +16800,18 @@
         { "kind": "npm-run", "path": "ci/scripts/prepush.ts" },
         { "kind": "prose", "path": "ci/scripts/prepush.ts" }
       ]
+    },
+    {
+      "name": "orphan-scopes:check",
+      "references": [
+        { "kind": "npm-run", "path": ".github/workflows/ci.yml" },
+        { "kind": "prose", "path": ".github/workflows/ci.yml" },
+        { "kind": "prose", "path": "ci/scripts/verify-orphan-scopes.ts" }
+      ]
+    },
+    {
+      "name": "orphan-scopes:self-test",
+      "references": [{ "kind": "npm-run", "path": ".github/workflows/ci.yml" }]
     },
     {
       "name": "pact:consumer",

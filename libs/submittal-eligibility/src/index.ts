@@ -1,6 +1,5 @@
 // Public barrel — libs/submittal-eligibility (Lane L8-B1).
 export { SubmittalEligibilityModule } from './lib/submittal-eligibility.module.js';
-export { SubmittalPolicyRepository } from './lib/submittal-policy.repository.js';
 export { PrismaService } from './lib/prisma/prisma.service.js';
 
 // L8-B2 — requisition-grain Client Status reader (DI-injected into libs/requisition,
@@ -11,11 +10,6 @@ export type {
   ClientSubmittalReason,
   RequisitionClientSubmittalView,
 } from './lib/requisition-eligibility-reader.js';
-
-export type {
-  SetPolicyInput,
-  PolicyRow,
-} from './lib/submittal-policy.repository.js';
 
 // The neutral, versioned eligibility PORT (pure decision logic + types).
 export {

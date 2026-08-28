@@ -37,8 +37,7 @@ import { ActivityRepository } from './activity.repository.js';
 // === Scope gating (HK-IDENT-SCOPES — proper scopes seeded) ===
 // The seeded catalog includes `activity:read` (back_office+) and now
 // `activity:create` (recruiter+). The POST route keys on the proper
-// `activity:create` scope, replacing the A5a `pipeline:add-activity`
-// borrow.
+// `activity:create` scope (superseding an earlier pipeline-scope borrow).
 @Controller('v1/activities')
 @UseGuards(JwtAuthGuard, EntitlementGuard, RolesGuard)
 @RequireCapability('ats')

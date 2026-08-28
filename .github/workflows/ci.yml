@@ -466,6 +466,43 @@ jobs:
       - run: npm ci || npm ci || npm ci # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
       - run: npm run error-codes:check
 
+  # HYG-3 — orphan-scope guard. Every seeded scope must be literally enforced OR
+  # machine-classified (DYNAMICALLY_ENFORCED / SERVICE_ENFORCED / ACTIVE_RESERVED /
+  # COMPATIBILITY_RESERVED / EXIT_HYG / CATALOG_ONLY_ZERO_GRANT) with a reason.
+  # The self-test runs FIRST — it proves the guard fails on an injected unexplained
+  # orphan and passes on a classified one, so a green check means the invariant is
+  # actually protected, not merely that the script ran.
+  orphan-scopes-check:
+    name: orphan-scopes:check
+    runs-on: ubuntu-latest
+    needs: install
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci || npm ci || npm ci # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
+      - run: npm run orphan-scopes:self-test
+      - run: npm run orphan-scopes:check
+
+  # HYG-3 — dead-error-code guard. Every registered error code must be emitted
+  # somewhere reachable OR machine-classified COMPATIBILITY_RESERVED with a reason.
+  # Self-test runs first (proves the invariant is protected).
+  dead-error-codes-check:
+    name: dead-error-codes:check
+    runs-on: ubuntu-latest
+    needs: install
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci || npm ci || npm ci # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
+      - run: npm run dead-error-codes:self-test
+      - run: npm run dead-error-codes:check
+
   # PR-B (Dev Execution Model v1.4 §12) — default-deny integration-root coverage
   # guard. Proves ci/integration-roots.json covers every integration-bearing
   # project and that no runner embeds a divergent root list. Cheap + static, so
@@ -782,6 +819,8 @@ jobs:
       - frontdoor-conf-check
       - version-sync-check
       - error-codes-check
+      - orphan-scopes-check
+      - dead-error-codes-check
       - integration-roots-check
       - repo-map-check
       - identity-index-privacy-wall

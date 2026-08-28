@@ -1515,12 +1515,6 @@ components:
         ObjectStorageService boundary. Distinct from INTERNAL_ERROR
         so the recruiter UI can render an actionable "try again"
         instead of a generic 500.
-        PRESIGNED_URL_EXPIRED (HTTP 410) — a presigned URL was used
-        after expires_at. 410 (Gone) matches the bearer-token
-        semantics: the URL itself is the credential, and it is no
-        longer valid. The canonical PII-floor refusal at the URL-
-        bearer-token boundary; surfaced when downstream code or
-        audit re-presents a stored URL past its TTL.
         AUTHZ-2 adds three codes for the platform tier + invitation
         flow (apps/platform-admin; the audit's absent capability).
         TENANT_ALREADY_EXISTS (HTTP 409) — tenant-provisioning refusal
@@ -1626,7 +1620,6 @@ components:
         - IMPORT_REVERT_WINDOW_EXPIRED
         - CANONICALIZATION_PAYLOAD_NOT_FOUND
         - OBJECT_STORAGE_UPLOAD_FAILED
-        - PRESIGNED_URL_EXPIRED
         - TENANT_ALREADY_EXISTS
         - COGNITO_PROVISION_FAILED
         - INVITATION_ALREADY_EXISTS

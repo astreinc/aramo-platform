@@ -293,7 +293,6 @@ const RECRUITER_BUNDLE = [
   'examination:read',
   'import:read',
   'pipeline:add',
-  'pipeline:add-activity',
   'pipeline:change-status',
   'pipeline:read',
   'report:read',

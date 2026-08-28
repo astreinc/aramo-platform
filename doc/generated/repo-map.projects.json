@@ -947,7 +947,6 @@
       "SUBMITTAL_POLICY_REASON_VALUES",
       "SUBMITTAL_WINDOW_STATUS_VALUES",
       "SubmittalEligibilityModule",
-      "SubmittalPolicyRepository",
       "consumeSlot",
       "deriveWindowStatus",
       "evaluateEligibility",
@@ -2289,7 +2288,6 @@
         "status": "excluded"
       },
       { "project": "submittal", "status": "production" },
-      { "project": "submittal-eligibility", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/talent-reconcile/src/tests/no-llm-boundary.spec.ts",
