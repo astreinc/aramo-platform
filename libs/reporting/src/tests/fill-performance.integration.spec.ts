@@ -66,6 +66,10 @@ const PIPELINE_MIGRATIONS = [
   '20260602150000_init_pipeline_model',
   '20260807100000_e6_pipeline_live_episode_unique',
   '20260827120000_l2a_pipeline_version_column',
+  // L2-B — append-only history trigger; nullable status_from + ended_at/ended_by_id; pipeline OutboxEvent.
+  '20260828100000_l2b_pipeline_history_append_only',
+  '20260828110000_l2b_pipeline_ended_at_nullable_status_from',
+  '20260828120000_l2b_pipeline_outbox_event',
 ].map((d) =>
   resolve(__dirname, `../../../pipeline/prisma/migrations/${d}/migration.sql`),
 );

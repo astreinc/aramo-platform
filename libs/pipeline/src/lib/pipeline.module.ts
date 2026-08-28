@@ -4,6 +4,7 @@ import { AuthModule } from '@aramo/auth';
 import { AuthorizationModule } from '@aramo/authorization';
 import { EntitlementModule } from '@aramo/entitlement';
 import { RequisitionModule } from '@aramo/requisition';
+import { ConsentModule } from '@aramo/consent';
 import { PolicyStore, PrismaService as PolicyStorePrismaService } from '@aramo/policy-store';
 
 import { PrismaService } from './prisma/prisma.service.js';
@@ -29,8 +30,20 @@ import { AddTalentPolicyService } from './policy/add-talent-policy.service.js';
 // No back-edge: ActivityModule does NOT import PipelineModule
 // (lint:nx-boundaries `import-x/no-cycle` enforces this; the
 // pipeline → activity edge is intentionally one-way).
+// L2-B — the ConsentModule edge provides IdempotencyService (the shared
+// idempotency-key table lives in the consent schema; libs/selection +
+// libs/submittal already consume it the same way). POST /v1/pipelines is now
+// idempotency-gated, so pipeline gains a one-way edge to consent. No back-edge:
+// ConsentModule does NOT import PipelineModule.
 @Module({
-  imports: [AuthModule, AuthorizationModule, EntitlementModule, ActivityModule, RequisitionModule],
+  imports: [
+    AuthModule,
+    AuthorizationModule,
+    EntitlementModule,
+    ActivityModule,
+    RequisitionModule,
+    ConsentModule,
+  ],
   controllers: [PipelineController],
   providers: [
     PrismaService,

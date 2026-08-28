@@ -62,7 +62,8 @@ describe('SourcingController.addToPipeline — policy gate', () => {
     expect(decide).toHaveBeenCalledTimes(1);
     const call = promoteAndAddToPipeline.mock.calls[0]!;
     expect(call[1]).toBe('req-1'); // requisition_id
-    expect(call[2]).toEqual({ provenance: PROVENANCE });
+    // L2-B — the controller now also threads the birth-history actor (authContext.sub).
+    expect(call[2]).toEqual({ provenance: PROVENANCE, created_by_id: 'actor-1' });
     expect((call[2] as { provenance: unknown }).provenance).toBe(PROVENANCE); // same object
     expect(recordDecision).not.toHaveBeenCalled();
   });

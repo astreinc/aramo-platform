@@ -105,6 +105,15 @@ model Pipeline {
   // (it changes talent_record_id, never status, and does not contend on this field).
   version Int @default(0)
 
+  // Episode terminal timestamp (Lane 2 / L2-B, SB-0). Written EXACTLY ONCE, on the
+  // live -> terminal transition (the `isLiveStatus` flip), so it auto-tracks the
+  // L2-C partition without a rewrite. NULL while the episode is live and for legacy
+  // terminal rows (no backfill — legacy terminals are understood as ended without
+  // rewriting them). Write-once by the frozen-terminal invariant (terminal statuses
+  // have no outgoing edge), so it needs no immutability trigger.
+  ended_at    DateTime? @db.Timestamptz
+  ended_by_id String?   @db.Uuid
+
   // Intra-schema relation to the status-history audit.
   history PipelineStatusHistory[]
 
@@ -143,8 +152,11 @@ model PipelineStatusHistory {
   pipeline_id String   @db.Uuid
   pipeline    Pipeline @relation(fields: [pipeline_id], references: [id], onDelete: Cascade)
 
-  // The transition.
-  status_from PipelineStatus
+  // The transition. `status_from` is NULLABLE (Lane 2 / L2-B): the birth row
+  // (NULL -> no_contact) written by create() has no prior state. The append-only
+  // UPDATE trigger is WHOLESALE (never a per-column OLD=NEW), so the nullable
+  // column does not trip the `NULL = NULL is not TRUE` trap.
+  status_from PipelineStatus?
   status_to   PipelineStatus
 
   // Provenance.
@@ -154,6 +166,27 @@ model PipelineStatusHistory {
 
   // Indexes — the dominant "history for pipeline X" lookup.
   @@index([tenant_id, pipeline_id, changed_at])
+
+  @@schema("pipeline")
+}
+
+// OutboxEvent — the pipeline domain's canonical event stream (Lane 2 / L2-B).
+// Plain per-module outbox, mirroring libs/submittal (NOT the trigger-bearing
+// placement variant): aggregate identity lives inside `event_payload`, there is
+// no append-only trigger, and it is NOT swept by tenant-reset (consistent with the
+// submittal/consent precedent). Emitted in-tx by create() (`pipeline.created`) and
+// transition() (`pipeline.state_transition`); drained by libs/outbox-publisher as
+// the 6th namespace, which stamps `published_at`.
+model OutboxEvent {
+  id            String    @id @default(uuid()) @db.Uuid
+  tenant_id     String    @db.Uuid
+  event_type    String
+  event_payload Json      @db.JsonB
+  created_at    DateTime  @default(now()) @db.Timestamptz
+  published_at  DateTime? @db.Timestamptz
+
+  // The drain scans unpublished events oldest-first.
+  @@index([published_at, created_at])
 
   @@schema("pipeline")
 }

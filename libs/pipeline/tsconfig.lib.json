@@ -12,6 +12,7 @@
       "@aramo/auth": ["../../dist/libs/auth/src/index.d.ts"],
       "@aramo/authorization": ["../../dist/libs/authorization/src/index.d.ts"],
       "@aramo/common": ["../../dist/libs/common/src/index.d.ts"],
+      "@aramo/consent": ["../../dist/libs/consent/src/index.d.ts"],
       "@aramo/entitlement": ["../../dist/libs/entitlement/src/index.d.ts"],
       "@aramo/metering": ["../../dist/libs/metering/src/index.d.ts"],
       "@aramo/policy-engine": ["../../dist/libs/policy-engine/src/index.d.ts"],

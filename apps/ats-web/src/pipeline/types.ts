@@ -111,7 +111,8 @@ export interface PipelineStatusHistoryView {
   readonly id: string;
   readonly tenant_id: string;
   readonly pipeline_id: string;
-  readonly status_from: PipelineStatus;
+  // L2-B — nullable for the birth history row (create() writes NULL -> no_contact).
+  readonly status_from: PipelineStatus | null;
   readonly status_to: PipelineStatus;
   readonly changed_by_id: string | null;
   readonly changed_at: string;

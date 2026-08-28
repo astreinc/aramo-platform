@@ -657,6 +657,8 @@
       "PIPELINE_STATUS_VALUES",
       "PipelineController",
       "PipelineModule",
+      "PipelineOutboxModule",
+      "PipelineOutboxRepository",
       "PipelinePrismaService",
       "PipelineRepository",
       "REQUISITION_LIFECYCLE_PACKAGE_NAME",
@@ -2375,6 +2377,7 @@
         "status": "excluded"
       },
       { "project": "outbox-publisher", "status": "production" },
+      { "project": "pipeline", "status": "production" },
       { "project": "portal", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
@@ -3562,6 +3565,13 @@
       },
       { "project": "api", "status": "production" },
       { "project": "export", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/outbox-publisher/src/tests/outbox-publisher.integration.spec.ts",
+        "project": "outbox-publisher",
+        "status": "excluded"
+      },
+      { "project": "outbox-publisher", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/reporting/src/tests/fill-performance.integration.spec.ts",

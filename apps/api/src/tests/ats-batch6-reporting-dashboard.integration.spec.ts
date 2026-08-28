@@ -115,6 +115,25 @@ const PIPELINE_VERSION = resolve(
   ROOT,
   'libs/pipeline/prisma/migrations/20260827120000_l2a_pipeline_version_column/migration.sql',
 );
+// L2-B — SEPARATE consts + apply-list entries (never extra resolve() args — ENOTDIR).
+const PIPELINE_HISTORY_APPEND_ONLY = resolve(
+  ROOT,
+  'libs/pipeline/prisma/migrations/20260828100000_l2b_pipeline_history_append_only/migration.sql',
+);
+const PIPELINE_ENDED_AT = resolve(
+  ROOT,
+  'libs/pipeline/prisma/migrations/20260828110000_l2b_pipeline_ended_at_nullable_status_from/migration.sql',
+);
+const PIPELINE_OUTBOX = resolve(
+  ROOT,
+  'libs/pipeline/prisma/migrations/20260828120000_l2b_pipeline_outbox_event/migration.sql',
+);
+// L2-B — the consent-schema IdempotencyKey table backs the required
+// Idempotency-Key on POST /v1/pipelines. Self-contained (no cross-schema FK).
+const CONSENT_IDEMPOTENCY = resolve(
+  ROOT,
+  'libs/consent/prisma/migrations/20260429164414_initial_consent_schema/migration.sql',
+);
 // ADR-0024 PR-3 — POST /v1/pipelines now writes §D17a provenance into
 // policy_store."PolicyDecisionRecord" in the create transaction, so this
 // spec's DB needs the policy_store schema + table (init creates the schema).
@@ -401,6 +420,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         PIPELINE_INIT,
         PIPELINE_E6,
         PIPELINE_VERSION,
+        PIPELINE_HISTORY_APPEND_ONLY,
+        PIPELINE_ENDED_AT,
+        PIPELINE_OUTBOX,
+        CONSENT_IDEMPOTENCY,
         POLICY_STORE_INIT,
         POLICY_DECISION_RECORD,
         CALENDAR_INIT,
@@ -614,6 +637,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           headers: {
             Authorization: `Bearer ${jwt}`,
             'Content-Type': 'application/json',
+            // L2-B — POST /v1/pipelines requires a UUID Idempotency-Key; harmless
+            // on the other POST endpoints this generic helper serves.
+            'Idempotency-Key': globalThis.crypto.randomUUID(),
           },
           body: JSON.stringify(body),
         },

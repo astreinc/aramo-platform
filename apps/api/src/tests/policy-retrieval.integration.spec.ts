@@ -44,6 +44,8 @@ const MIGRATIONS = [
   ...migrationsFor('requisition'),
   ...migrationsFor('pipeline'),
   ...migrationsFor('policy-store'),
+  // L2-B — the consent-schema IdempotencyKey table backs the required Idempotency-Key on create.
+  resolve(ROOT, 'libs/consent/prisma/migrations/20260429164414_initial_consent_schema/migration.sql'),
 ];
 
 let uuidCounter = 0;
@@ -81,7 +83,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     async function postAdd(tenant: string, requisitionId: string): Promise<Response> {
       return fetch(`${baseUrl()}/v1/pipelines?site_id=${SITE}`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${await signJwt(tenant)}`, 'Content-Type': 'application/json' },
+        // L2-B — POST /v1/pipelines now requires a UUID Idempotency-Key.
+        headers: { Authorization: `Bearer ${await signJwt(tenant)}`, 'Content-Type': 'application/json', 'Idempotency-Key': uuid() },
         body: JSON.stringify({ talent_record_id: uuid(), requisition_id: requisitionId, site_id: SITE }),
       });
     }

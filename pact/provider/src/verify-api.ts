@@ -466,6 +466,23 @@ const PIPELINE_VERSION_MIGRATION = resolve(
   ROOT,
   'libs/pipeline/prisma/migrations/20260827120000_l2a_pipeline_version_column/migration.sql',
 );
+// L2-B — append-only status-history trigger. SEPARATE const + apply-list entry
+// (ENOTDIR trap: never a 2nd resolve() arg).
+const PIPELINE_HISTORY_APPEND_ONLY_MIGRATION = resolve(
+  ROOT,
+  'libs/pipeline/prisma/migrations/20260828100000_l2b_pipeline_history_append_only/migration.sql',
+);
+// L2-B — nullable status_from + ended_at/ended_by_id columns (the durable
+// episode-close substrate). SEPARATE const + apply-list entry.
+const PIPELINE_ENDED_AT_MIGRATION = resolve(
+  ROOT,
+  'libs/pipeline/prisma/migrations/20260828110000_l2b_pipeline_ended_at_nullable_status_from/migration.sql',
+);
+// L2-B — pipeline OutboxEvent table. SEPARATE const + apply-list entry.
+const PIPELINE_OUTBOX_MIGRATION = resolve(
+  ROOT,
+  'libs/pipeline/prisma/migrations/20260828120000_l2b_pipeline_outbox_event/migration.sql',
+);
 // L8-B1 — the submit-to-ats orchestrator touches the submittal_policy schema
 // (RequisitionSubmittalPolicy / SubmittalConsumption / SubmittalPolicyEvent) and
 // reads client_talent_restriction; both schemas must exist in the provider DB.
@@ -3098,6 +3115,9 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         PIPELINE_INIT_MIGRATION,
         PIPELINE_E6_MIGRATION,
         PIPELINE_VERSION_MIGRATION,
+        PIPELINE_HISTORY_APPEND_ONLY_MIGRATION,
+        PIPELINE_ENDED_AT_MIGRATION,
+        PIPELINE_OUTBOX_MIGRATION,
         SUBMITTAL_POLICY_INIT_MIGRATION,
         CLIENT_TALENT_RESTRICTION_INIT_MIGRATION,
         POLICY_STORE_INIT_MIGRATION,

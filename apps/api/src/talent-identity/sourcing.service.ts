@@ -204,7 +204,11 @@ export class SourcingService {
     // The service does not inspect it, does not know about capabilities,
     // decisions or the engine; it only threads it into the pipeline write so
     // the provenance commits INSIDE the same mutation transaction.
-    opts?: { requestId?: string; provenance?: InsertPolicyDecisionRecordInput },
+    opts?: {
+      requestId?: string;
+      provenance?: InsertPolicyDecisionRecordInput;
+      created_by_id?: string;
+    },
   ): Promise<SourcingResult> {
     const outcome = await this.promotion.promoteSubject(subjectRef, opts);
     if (!isPromoted(outcome)) return { status: outcome.status };
@@ -217,6 +221,7 @@ export class SourcingService {
         input: { talent_record_id, requisition_id: requisitionId },
         ...(opts?.requestId === undefined ? {} : { requestId: opts.requestId }),
         ...(opts?.provenance === undefined ? {} : { provenance: opts.provenance }),
+        ...(opts?.created_by_id === undefined ? {} : { created_by_id: opts.created_by_id }),
       });
       pipeline_id = pipeline.id;
     } catch (err) {

@@ -40,6 +40,10 @@ const MIGRATIONS = [
   '../../prisma/migrations/20260602150000_init_pipeline_model/migration.sql',
   '../../prisma/migrations/20260807100000_e6_pipeline_live_episode_unique/migration.sql',
   '../../prisma/migrations/20260827120000_l2a_pipeline_version_column/migration.sql',
+  // L2-B — append-only history trigger; nullable status_from + ended_at/ended_by_id cols; pipeline OutboxEvent table.
+  '../../prisma/migrations/20260828100000_l2b_pipeline_history_append_only/migration.sql',
+  '../../prisma/migrations/20260828110000_l2b_pipeline_ended_at_nullable_status_from/migration.sql',
+  '../../prisma/migrations/20260828120000_l2b_pipeline_outbox_event/migration.sql',
 ].map((p) => resolve(__dirname, p));
 
 // Dollar-quote- AND line-comment-aware DDL splitter (an older activity migration
@@ -135,7 +139,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         visible_requisition_ids: null,
       });
       expect(first.version).toBe(1); // EXACT after
-      expect(await historyCount(created.id)).toBe(1);
+      // Two history rows now: the L2-B birth row + this committed transition.
+      expect(await historyCount(created.id)).toBe(2);
 
       // The second transition presents the STALE version 0 (it should be 1 now).
       await expect(
@@ -154,11 +159,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         context: { details: { current_status: 'contacted', current_version: 1 } },
       });
 
-      // The losing write committed NOTHING: still contacted, still version 1, still one history row.
+      // The losing write committed NOTHING: still contacted, still version 1,
+      // still just the two rows (birth + the one committed transition).
       const after = await repo.findById({ tenant_id: tenant, id: created.id });
       expect(after?.status).toBe('contacted');
       expect(after?.version).toBe(1);
-      expect(await historyCount(created.id)).toBe(1);
+      expect(await historyCount(created.id)).toBe(2);
     });
 
     // ---- CAS-2 — version increments by exactly 1 per committed transition ----
@@ -208,11 +214,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         }),
       ).rejects.toMatchObject({ code: 'NOT_FOUND', statusCode: 404 });
 
-      // Unmutated: still no_contact, version 0, no history.
+      // Unmutated: still no_contact, version 0, and no NEW history — only the
+      // L2-B birth row (NULL -> no_contact) written by create() is present; the
+      // concealed transition added nothing.
       const after = await repo.findById({ tenant_id: tenant, id: created.id });
       expect(after?.status).toBe('no_contact');
       expect(after?.version).toBe(0);
-      expect(await historyCount(created.id)).toBe(0);
+      expect(await historyCount(created.id)).toBe(1);
 
       // Control: see-all (null) transitions successfully — the row IS mutable when visible.
       const ok = await repo.transition({
@@ -227,25 +235,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(ok.status).toBe('contacted');
     });
 
-    // ---- VIS-2 — delete on a non-visible pipeline is concealed as 404, does not delete ----
-    it('VISIBILITY: a delete on a pipeline outside the visible set conceals as 404 and does not delete', async () => {
-      const tenant = randomUUID();
-      const req = randomUUID();
-      const created = await repo.create({
-        tenant_id: tenant,
-        input: { talent_record_id: randomUUID(), requisition_id: req },
-      });
-      const excludes = new Set<string>([randomUUID()]);
-
-      await expect(
-        repo.delete({ tenant_id: tenant, id: created.id, requestId: 'vis-2', visible_requisition_ids: excludes }),
-      ).rejects.toMatchObject({ code: 'NOT_FOUND', statusCode: 404 });
-      expect(await repo.findById({ tenant_id: tenant, id: created.id })).not.toBeNull();
-
-      // Control: see-all delete removes it.
-      await repo.delete({ tenant_id: tenant, id: created.id, requestId: 'vis-2-ok', visible_requisition_ids: null });
-      expect(await repo.findById({ tenant_id: tenant, id: created.id })).toBeNull();
-    });
+    // ---- VIS-2 — L2-B RETIRES the delete-visibility case ----
+    // PipelineRepository.delete no longer exists (L2-B: the episode is durable /
+    // append-only — there is no destructive delete write path to conceal). The
+    // write-visibility parity invariant is fully carried by VIS-1 above (a
+    // transition on a pipeline outside the visible set conceals as 404 and does
+    // not mutate); the transition path is now the ONLY mutating write, so no
+    // separate delete case remains to prove.
 
     // ---- VIS-3 — listHistory of a non-visible pipeline is concealed as 404 ----
     it('VISIBILITY: listHistory of a pipeline outside the visible set conceals as 404', async () => {
@@ -275,15 +271,18 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         }),
       ).rejects.toMatchObject({ code: 'NOT_FOUND', statusCode: 404 });
 
-      // Control: see-all returns the one seeded history row.
+      // Control: see-all returns BOTH history rows — the L2-B birth row
+      // (NULL -> no_contact) and the seeded transition (no_contact -> contacted).
       const rows = await repo.listHistory({
         tenant_id: tenant,
         pipeline_id: created.id,
         requestId: 'vis-3-ok',
         visible_requisition_ids: null,
       });
-      expect(rows).toHaveLength(1);
-      expect(rows[0]!.status_to).toBe('contacted');
+      expect(rows).toHaveLength(2);
+      const birth = rows.find((r) => r.status_from === null)!;
+      expect(birth.status_to).toBe('no_contact');
+      expect(rows.map((r) => r.status_to)).toContain('contacted');
     });
   },
 );

@@ -14,7 +14,8 @@
       "@aramo/consent": ["../../dist/libs/consent/src/index.d.ts"],
       "@aramo/selection": ["../../dist/libs/selection/src/index.d.ts"],
       "@aramo/placement": ["../../dist/libs/placement/src/index.d.ts"],
-      "@aramo/submittal": ["../../dist/libs/submittal/src/index.d.ts"]
+      "@aramo/submittal": ["../../dist/libs/submittal/src/index.d.ts"],
+      "@aramo/pipeline": ["../../dist/libs/pipeline/src/index.d.ts"]
     }
   },
   "include": ["src/**/*.ts"],

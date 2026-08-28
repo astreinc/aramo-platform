@@ -91,6 +91,17 @@ const EXACT_ALLOWLIST = new Set<string>([
   // L1-F1 — the append-only integration proof exercises the tenant-reset DELETE
   // escape (governed lifecycle-event-row cleanup) via raw SET LOCAL.
   'apps/api/src/tests/requisition-lifecycle-append-only.integration.spec.ts',
+  // Lane 2 / L2-B — the PipelineStatusHistory append-only trigger migration
+  // DEFINES the same exact-value tenant_reset DELETE escape (the L1-F1 / placement
+  // precedent) so governed tenant reset can cascade-delete the history rows.
+  'libs/pipeline/prisma/migrations/20260828100000_l2b_pipeline_history_append_only/migration.sql',
+  // Lane 2 / L2-B — the durable-episode substrate integration proof EXERCISES the
+  // escape (AC-3: DELETE permitted only under the exact authorized GUC) via raw SET LOCAL.
+  'libs/pipeline/src/tests/pipeline-l2b-durable-episode.integration.spec.ts',
+  // Lane 2 / L2-B — the ATS Batch 4a pipeline proof cleans up its reused
+  // (talent, requisition) fixtures through the governed escape via raw SET LOCAL
+  // (DELETE /v1/pipelines is withdrawn; the API can no longer purge).
+  'apps/api/src/tests/ats-batch4a-pipeline-activity.integration.spec.ts',
 ]);
 
 describe('reset-marker confinement — exact-path default-deny (§2.4)', () => {

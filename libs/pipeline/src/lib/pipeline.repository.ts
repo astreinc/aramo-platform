@@ -14,6 +14,7 @@ import {
   canTransition,
   ACTIVE_FLOW_STAGES,
   activeStageOrdinal,
+  isLiveStatus,
   TERMINAL_STATUSES,
   type PipelineStatus,
 } from './pipeline-state.js';
@@ -134,7 +135,7 @@ interface PipelineStatusHistoryRow {
   id: string;
   tenant_id: string;
   pipeline_id: string;
-  status_from: PipelineStatus;
+  status_from: PipelineStatus | null;
   status_to: PipelineStatus;
   changed_by_id: string | null;
   changed_at: Date;
@@ -276,6 +277,8 @@ export class PipelineRepository {
     // provenance write fails, the pipeline row is rolled back and the command
     // fails closed. Omitted on the still-ungated sourcing path (PR-3b).
     provenance?: InsertPolicyDecisionRecordInput;
+    // Lane 2 / L2-B — the actor recorded on the birth history row (NULL -> no_contact).
+    created_by_id?: string;
   }): Promise<PipelineView> {
     // Initial state hard-coded to `no_contact` per directive §2 /
     // state-machine proof initial-state invariant. Body cannot override.
@@ -305,6 +308,30 @@ export class PipelineRepository {
             talent_record_id: args.input.talent_record_id,
             requisition_id: args.input.requisition_id,
             status: 'no_contact',
+          },
+        });
+        // Lane 2 / L2-B — the birth history row (NULL -> no_contact) so the
+        // append-only audit is complete from the episode's first instant.
+        await tx.pipelineStatusHistory.create({
+          data: {
+            tenant_id: args.tenant_id,
+            pipeline_id: created.id,
+            status_from: null,
+            status_to: 'no_contact',
+            changed_by_id: args.created_by_id ?? null,
+          },
+        });
+        // Lane 2 / L2-B — the canonical creation event, emitted in-tx (a rolled-back
+        // create leaves NO orphan outbox row). Drained by libs/outbox-publisher.
+        await tx.outboxEvent.create({
+          data: {
+            tenant_id: args.tenant_id,
+            event_type: 'pipeline.created',
+            event_payload: {
+              pipeline_id: created.id,
+              talent_record_id: args.input.talent_record_id,
+              requisition_id: args.input.requisition_id,
+            },
           },
         });
         if (args.provenance !== undefined) {
@@ -357,47 +384,14 @@ export class PipelineRepository {
     await insertPolicyDecisionRecordInTx(this.prisma, provenance);
   }
 
-  async delete(args: {
-    tenant_id: string;
-    id: string;
-    requestId: string;
-    // Lane 2 / L2-A — AUTHZ-D4b write-visibility parity. A pipeline on a
-    // requisition outside the actor's visible set is CONCEALED as 404.
-    visible_requisition_ids: ReadonlySet<string> | null;
-  }): Promise<void> {
-    // Existence + visibility check. Track 4 / T4-B2 §7 — the delete-restore branch
-    // is gone (pipeline no longer owns capacity); requisition_id is now read ONLY
-    // for the L2-A visibility concealment, not for a capacity restore.
-    const existing = await this.prisma.pipeline.findFirst({
-      where: { tenant_id: args.tenant_id, id: args.id },
-      select: { id: true, requisition_id: true },
-    });
-    // Concealment: missing OR not-visible both surface as the SAME 404.
-    if (
-      existing === null ||
-      (args.visible_requisition_ids !== null &&
-        !args.visible_requisition_ids.has(existing.requisition_id as string))
-    ) {
-      throw new AramoError(
-        'NOT_FOUND',
-        'Pipeline not found in tenant (or not visible to actor)',
-        404,
-        { requestId: args.requestId, details: { id: args.id } },
-      );
-    }
-    // Intra-schema FK on PipelineStatusHistory uses ON DELETE CASCADE,
-    // so history rows fall away with the parent (matches the
-    // RequisitionAssignment precedent at A3).
-    // Track 4 / T4-B2 §7 — PIPELINE CAPACITY AUTHORITY REMOVED. The former
-    // delete-restore (openings_available += 1 on the last-placed TRUE->FALSE edge)
-    // is GONE — the inverse of the removed decrement. A delete removes the
-    // recruiting fact ONLY and never restores requisition capacity, so `placed`
-    // and non-`placed` deletes are now identical. Capacity is released
-    // authoritatively by ENDING the owning ContractAssignment (placement-owned).
-    // Intra-schema PipelineStatusHistory falls away via ON DELETE CASCADE.
-    // Proven by pipeline-capacity-authority-removed-b2.integration.spec.ts.
-    await this.prisma.pipeline.delete({ where: { id: args.id } });
-  }
+  // Lane 2 / L2-B — the ordinary hard DELETE is WITHDRAWN. Re-entry never
+  // depended on it: a terminal episode releases the live slot (E6 partial index)
+  // and create() admits a fresh episode. A durable recruiting audit must not be
+  // casually destructible, and the DB-layer append-only trigger on
+  // PipelineStatusHistory now rejects the cascade delete outside a governed
+  // tenant-reset. Legal/privacy erasure remains the tenant-reset service's
+  // authorized-GUC purge path (the exact-value reset escape, set only by that
+  // service, then a raw purge).
 
   // -------------------------------------------------------------------------
   // Write path — THE state-machine transition (directive §3)
@@ -544,6 +538,14 @@ export class PipelineRepository {
       `pipeline ${fromStatus} -> ${args.to_status}` +
       (noteForActivity === null ? '' : `: ${noteForActivity}`);
 
+    // Lane 2 / L2-B — episode terminal timestamp on the live -> terminal flip.
+    // Derived from isLiveStatus so it AUTO-TRACKS the L2-C partition; captured ONCE
+    // so `ended_at` and the outbox event carry the same transition instant.
+    const enteringTerminal =
+      isLiveStatus(fromStatus) && !isLiveStatus(args.to_status);
+    const eventInstant = new Date();
+    const talent_record_id = (current as PipelineRow).talent_record_id;
+
     const { updatedRow, historyRow } = await this.prisma.$transaction(
       async (tx) => {
         // 4a — UPDATE Pipeline.status (+ bump the optimistic-concurrency version
@@ -551,7 +553,16 @@ export class PipelineRepository {
         // commits atomically with the status/history/activity/metering writes.
         const updated = await tx.pipeline.update({
           where: { id: args.id },
-          data: { status: args.to_status, version: { increment: 1 } },
+          data: {
+            status: args.to_status,
+            version: { increment: 1 },
+            // L2-B — write the terminal timestamp exactly once, on the live ->
+            // terminal flip. Terminal rows have no outgoing edge, so this is
+            // structurally write-once (no immutability trigger needed).
+            ...(enteringTerminal
+              ? { ended_at: eventInstant, ended_by_id: args.changed_by_id }
+              : {}),
+          },
         });
         // 4b — INSERT PipelineStatusHistory
         const history = await tx.pipelineStatusHistory.create({
@@ -579,6 +590,22 @@ export class PipelineRepository {
         await recordUsage(tx, {
           tenant_id,
           event_type: 'pipeline.state_transition',
+        });
+        // 4e — INSERT pipeline."OutboxEvent" (Lane 2 / L2-B) in the SAME tx, so a
+        // rolled-back transition leaves NO orphan event. Drained by outbox-publisher.
+        await tx.outboxEvent.create({
+          data: {
+            tenant_id,
+            event_type: 'pipeline.state_transition',
+            event_payload: {
+              pipeline_id: args.id,
+              talent_record_id,
+              requisition_id,
+              from_status: fromStatus,
+              to_status: args.to_status,
+              version: updated.version,
+            },
+          },
         });
         // Track 4 / T4-B2 §7 — PIPELINE CAPACITY AUTHORITY REMOVED. The former
         // `placed`-edge decrement of requisition.openings_available (the E6 boolean
