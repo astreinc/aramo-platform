@@ -529,5 +529,56 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(last.event_type).toBe('pipeline.state_transition');
       expect((last.event_payload as { to_status: string }).to_status).toBe('completed');
     });
+
+    // -----------------------------------------------------------------------
+    // AC-13 — D-5 IMMUTABILITY. A committed PipelineDisposition is immutable at
+    //          the DB layer: ordinary UPDATE and DELETE are both rejected
+    //          (check_violation), mirroring the L2-B PipelineStatusHistory
+    //          append-only precedent. The governed tenant-reset escape (exact-value
+    //          app.tenant_reset='authorized') is the ONLY path that may DELETE.
+    // -----------------------------------------------------------------------
+    it('AC-13: a committed disposition rejects ordinary UPDATE and DELETE; tenant-reset escape may DELETE', async () => {
+      const tenant = randomUUID();
+      const actor = randomUUID();
+      const { id } = await walkToQualified(tenant, actor);
+      // Commit a real disposition (RECRUITER close) — the row now exists.
+      await repo.applyAction({
+        tenant_id: tenant,
+        id,
+        action: 'DISPOSITION',
+        expected_version: await currentVersion(tenant, id),
+        changed_by_id: actor,
+        requestId: 'ac13',
+        visible_requisition_ids: null,
+        authority_class: 'RECRUITER',
+        reason: 'not_a_fit',
+      });
+      const dispo = (await dispositionRows(id))[0]!;
+
+      // Ordinary UPDATE is rejected WHOLESALE (no escape on UPDATE).
+      await expect(
+        prisma.$executeRawUnsafe(
+          `UPDATE pipeline."PipelineDisposition" SET reason = 'skills_mismatch' WHERE id = '${dispo.id}'`,
+        ),
+      ).rejects.toThrow();
+      // Ordinary DELETE is rejected (no tenant-reset GUC on this connection).
+      await expect(
+        prisma.$executeRawUnsafe(
+          `DELETE FROM pipeline."PipelineDisposition" WHERE id = '${dispo.id}'`,
+        ),
+      ).rejects.toThrow();
+
+      // The row is unchanged after both refusals (reason still the committed value).
+      const stillThere = (await dispositionRows(id))[0]!;
+      expect(stillThere.reason).toBe('not_a_fit');
+
+      // The governed tenant-reset escape (exact-value) is the ONLY path that deletes.
+      // Run in one tx: SET LOCAL the exact authorized value, then DELETE succeeds.
+      await prisma.$executeRawUnsafe(
+        `DO $do$ BEGIN PERFORM set_config('app.tenant_reset', 'authorized', true); ` +
+          `DELETE FROM pipeline."PipelineDisposition" WHERE id = '${dispo.id}'; END $do$;`,
+      );
+      expect(await dispositionRows(id)).toHaveLength(0);
+    });
   },
 );
