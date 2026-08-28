@@ -63,12 +63,14 @@ enum PipelineStatus {
   contacted
   talent_responded
   qualifying
+  qualified // L2-C (D-6) — affirmative recruiter milestone
   submitted
   interviewing
   offered
   not_in_consideration
   client_declined
   placed
+  completed // L2-C (D-2A) — canonical successful terminal (system-only COMPLETE)
 
   @@schema("pipeline")
 }
@@ -116,6 +118,8 @@ model Pipeline {
 
   // Intra-schema relation to the status-history audit.
   history PipelineStatusHistory[]
+  // Lane 2 / L2-C — the at-most-one immutable disposition (terminal reason).
+  disposition PipelineDisposition?
 
   // Live-scoped uniqueness (Track 3 E6): at most one LIVE episode per
   // (tenant, talent, req) triple. A recruiter cannot open a second LIVE
@@ -167,6 +171,39 @@ model PipelineStatusHistory {
   // Indexes — the dominant "history for pipeline X" lookup.
   @@index([tenant_id, pipeline_id, changed_at])
 
+  @@schema("pipeline")
+}
+
+// Lane 2 / L2-C (D-5) — the four LOCKED authority classes for a disposition.
+enum PipelineDispositionAuthority {
+  RECRUITER
+  TALENT
+  ENGAGEMENT
+  DOWNSTREAM_OUTCOME
+
+  @@schema("pipeline")
+}
+
+// Lane 2 / L2-C (D-5) — the immutable, authority-partitioned terminal reason.
+// ONE per pipeline_id (UNIQUE — a second write is exact-name translated to
+// PIPELINE_ALREADY_DISPOSITIONED, 409). Written inside the terminal-transition
+// tx: DISPOSITION → not_in_consideration (RECRUITER/TALENT/ENGAGEMENT), COMPLETE
+// → completed (DOWNSTREAM_OUTCOME + source_provenance).
+model PipelineDisposition {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenant_id   String   @db.Uuid
+  pipeline_id String   @unique @db.Uuid
+  pipeline    Pipeline @relation(fields: [pipeline_id], references: [id], onDelete: Cascade)
+
+  authority_class PipelineDispositionAuthority
+  reason          String
+  // Owning-aggregate UUID lineage; REQUIRED when authority_class = DOWNSTREAM_OUTCOME.
+  source_provenance String?  @db.Uuid
+  note              String?
+  created_at        DateTime @default(now()) @db.Timestamptz
+  created_by_id     String?  @db.Uuid
+
+  @@index([tenant_id, pipeline_id])
   @@schema("pipeline")
 }
 

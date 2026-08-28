@@ -208,6 +208,11 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       'COMMUNICATION_PROVIDER_REFERENCE_CONFLICT',
       // Lane 2 / L2-A — pipeline transition optimistic-concurrency conflict (409).
       'PIPELINE_TRANSITION_CONFLICT',
+      // Lane 2 / L2-C — disposition uniqueness (409), disposition authority/reason
+      // invalid (422), and system-only COMPLETE (403).
+      'PIPELINE_ALREADY_DISPOSITIONED',
+      'PIPELINE_DISPOSITION_REASON_INVALID',
+      'PIPELINE_COMPLETE_SYSTEM_ONLY',
     ]);
   });
 });

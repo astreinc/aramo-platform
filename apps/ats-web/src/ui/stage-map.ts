@@ -32,12 +32,14 @@ const STAGE_TONE: Record<PipelineStatus, StageTone> = {
   contacted: 'neutral',
   talent_responded: 'info',
   qualifying: 'info',
+  qualified: 'info', // L2-C — affirmative milestone, still an active "Qualifying" tone
   submitted: 'brand',
   interviewing: 'info', // "Interview" bucket
   offered: 'warn', // "Offer" bucket
   not_in_consideration: 'danger',
   client_declined: 'danger',
   placed: 'ok',
+  completed: 'ok', // L2-C — canonical success terminal, same success tone as placed
 };
 
 export function stageTone(status: PipelineStatus): StageTone {
@@ -67,12 +69,14 @@ const STATUS_TO_BUCKET: Record<PipelineStatus, FunnelBucketKey> = {
   contacted: 'sourced',
   talent_responded: 'qualifying',
   qualifying: 'qualifying',
+  qualified: 'qualifying', // L2-C — affirmative milestone folds into the Qualifying funnel cell
   submitted: 'submitted',
   interviewing: 'interview',
   offered: 'offer',
   not_in_consideration: 'sourced', // terminal-reject: counted out of the active funnel
   client_declined: 'submitted',
   placed: 'placed',
+  completed: 'placed', // L2-C — canonical success terminal folds into the Placed funnel cell
 };
 
 export function funnelBucket(status: PipelineStatus): FunnelBucketKey {

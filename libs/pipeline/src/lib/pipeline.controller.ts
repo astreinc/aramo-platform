@@ -26,6 +26,11 @@ import type { CreatePipelineRequestDto } from './dto/create-pipeline-request.dto
 import type { PipelineStatusHistoryView } from './dto/pipeline-status-history.view.js';
 import type { PipelineView } from './dto/pipeline.view.js';
 import type { TransitionPipelineRequestDto } from './dto/transition-pipeline-request.dto.js';
+import type { PipelineActionRequestDto } from './dto/pipeline-action-request.dto.js';
+import {
+  isRecruiterPipelineAction,
+  SYSTEM_COMPLETE_ACTION,
+} from './pipeline-state.js';
 import { PipelineRepository } from './pipeline.repository.js';
 import { AddTalentPolicyService } from './policy/add-talent-policy.service.js';
 import { resolveAddTalentOutcome } from './policy/override-resolution.js';
@@ -294,6 +299,62 @@ export class PipelineController {
       requestId,
       expected_version: body.expected_version,
       visible_requisition_ids: visibleReqIds,
+    });
+  }
+
+  // Lane 2 / L2-C (SB-8) — the recruiter named-action surface. Reuses
+  // `pipeline:change-status` (NO new recruiter scope, Rule H). NOT idempotency-gated
+  // (PO ruling): CAS on expected_version is the duplicate-effect control.
+  @Post(':id/actions')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('pipeline:change-status')
+  @RequireSiteMatch()
+  async applyAction(
+    @AuthContext() authContext: AuthContextType,
+    @Param('id') id: string,
+    @Body() body: PipelineActionRequestDto,
+    @RequestId() requestId: string,
+    @Req() req: Request,
+  ): Promise<PipelineView> {
+    if (typeof body.expected_version !== 'number') {
+      throw new AramoError(
+        'VALIDATION_ERROR',
+        'expected_version is required for a pipeline action',
+        422,
+        { requestId, details: { field: 'expected_version' } },
+      );
+    }
+    // §5 — COMPLETE is the SYSTEM-only command; a recruiter /actions body carrying
+    // it is a 422 (never reaches the internal COMPLETE command).
+    if (body.action === SYSTEM_COMPLETE_ACTION) {
+      throw new AramoError(
+        'VALIDATION_ERROR',
+        'COMPLETE is a system-only command, not a recruiter action',
+        422,
+        { requestId, details: { field: 'action', value: SYSTEM_COMPLETE_ACTION } },
+      );
+    }
+    if (!isRecruiterPipelineAction(body.action)) {
+      throw new AramoError(
+        'VALIDATION_ERROR',
+        'Unrecognised pipeline action',
+        422,
+        { requestId, details: { field: 'action', value: body.action } },
+      );
+    }
+    // Write-visibility parity: an action on a non-visible pipeline conceals as 404.
+    const visibleReqIds = await req.resolveVisibleRequisitionIds!();
+    return this.pipelineRepository.applyAction({
+      tenant_id: authContext.tenant_id,
+      id,
+      action: body.action,
+      expected_version: body.expected_version,
+      changed_by_id: authContext.sub,
+      requestId,
+      visible_requisition_ids: visibleReqIds,
+      ...(body.reason === undefined ? {} : { reason: body.reason }),
+      ...(body.note === undefined ? {} : { note: body.note }),
+      ...(body.authority_class === undefined ? {} : { authority_class: body.authority_class }),
     });
   }
 

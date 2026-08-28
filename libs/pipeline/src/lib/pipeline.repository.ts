@@ -16,8 +16,15 @@ import {
   activeStageOrdinal,
   isLiveStatus,
   TERMINAL_STATUSES,
+  RECRUITER_ACTION_TO_STATUS,
   type PipelineStatus,
+  type RecruiterPipelineAction,
 } from './pipeline-state.js';
+import {
+  isRecruiterDispositionAuthority,
+  isValidDispositionReason,
+  type PipelineDispositionAuthority,
+} from './pipeline-disposition.js';
 import { PrismaService } from './prisma/prisma.service.js';
 
 // §4.1 race-floor identification — a concurrent insert that lost the race on the
@@ -35,6 +42,42 @@ function isLiveEpisodeIndexViolation(err: unknown): boolean {
     (Array.isArray(target) && target.some((t) => typeof t === 'string' && t.includes(named)));
   const inMessage = typeof e.message === 'string' && e.message.includes(named);
   return inTarget || inMessage;
+}
+
+// Lane 2 / L2-C — the exact-name translation of a second PipelineDisposition on
+// one pipeline_id. Matches the raw-partial-index shape too: Prisma-7/PrismaPg
+// surfaces the constraint at meta.driverAdapterError.cause.originalMessage, NOT
+// meta.target (feedback_prisma7_p2002_driver_adapter_shape) — check both.
+function isDispositionUniqueViolation(err: unknown): boolean {
+  if (typeof err !== 'object' || err === null) return false;
+  const e = err as {
+    code?: unknown;
+    meta?: {
+      target?: unknown;
+      driverAdapterError?: { cause?: { originalMessage?: unknown } };
+    };
+    message?: unknown;
+  };
+  if (e.code !== 'P2002') return false;
+  const named = 'PipelineDisposition_pipeline_id_key';
+  const target = e.meta?.target;
+  const original = e.meta?.driverAdapterError?.cause?.originalMessage;
+  return (
+    (typeof target === 'string' && target.includes(named)) ||
+    (Array.isArray(target) && target.some((t) => typeof t === 'string' && t.includes(named))) ||
+    (typeof original === 'string' && original.includes(named)) ||
+    (typeof e.message === 'string' && e.message.includes(named))
+  );
+}
+
+// Lane 2 / L2-C — an immutable disposition written in the SAME tx as a terminal
+// transition (DISPOSITION / COMPLETE). Authority + reason are validated at the
+// command boundary (applyAction / complete) before this reaches the write.
+export interface DispositionWriteInput {
+  authority_class: PipelineDispositionAuthority;
+  reason: string;
+  source_provenance?: string | null;
+  note?: string | null;
 }
 
 // Segment 3 — the current-stage read-model shape (most-advanced ACTIVE
@@ -371,6 +414,11 @@ export class PipelineRepository {
     // outside this set is CONCEALED as 404 — identical to a missing row — so a
     // caller can neither read nor mutate a row they cannot see.
     visible_requisition_ids: ReadonlySet<string> | null;
+    // Lane 2 / L2-C — an optional immutable disposition written in the SAME tx as
+    // a TERMINAL transition (DISPOSITION → not_in_consideration; COMPLETE →
+    // completed). A second disposition on the pipeline_id is exact-name translated
+    // to PIPELINE_ALREADY_DISPOSITIONED (409). Callers validate authority/reason.
+    disposition?: DispositionWriteInput;
   }): Promise<PipelineView> {
     const current = await this.prisma.pipeline.findFirst({
       where: { tenant_id: args.tenant_id, id: args.id },
@@ -567,18 +615,40 @@ export class PipelineRepository {
             },
           },
         });
-        // Track 4 / T4-B2 §7 — PIPELINE CAPACITY AUTHORITY REMOVED. The former
-        // `placed`-edge decrement of requisition.openings_available (the E6 boolean
-        // EXISTS(placed) ±1 mechanism, and its REQUISITION_NO_OPENINGS 409 over-
-        // capacity guard) is GONE. Capacity truth is now DERIVED from the ACTIVE
-        // ContractAssignment population (placement-owned); a pipeline `placed`
-        // transition is a recruiting fact and MUST NOT independently mutate
-        // requisition capacity. Over-capacity is a representable derived state
-        // (signed capacity_balance < 0), not a pipeline-time hard gate. Proven by
-        // pipeline-capacity-authority-removed-b2.integration.spec.ts.
+        // 4f — Lane 2 / L2-C — the immutable disposition, in the SAME tx as the
+        // terminal transition (atomic — a rolled-back transition leaves no
+        // disposition). Only written when the caller supplies one (DISPOSITION /
+        // COMPLETE, both terminal). A second disposition on this pipeline_id trips
+        // the UNIQUE index and is translated to PIPELINE_ALREADY_DISPOSITIONED
+        // outside the tx.
+        if (args.disposition !== undefined) {
+          await tx.pipelineDisposition.create({
+            data: {
+              tenant_id,
+              pipeline_id: args.id,
+              authority_class: args.disposition.authority_class,
+              reason: args.disposition.reason,
+              source_provenance: args.disposition.source_provenance ?? null,
+              note: args.disposition.note ?? null,
+              created_by_id: args.changed_by_id,
+            },
+          });
+        }
         return { updatedRow: updated, historyRow: history };
       },
-    );
+    ).catch((err: unknown) => {
+      // Exact-name translation of the one-disposition-per-pipeline violation —
+      // never a generic P2002/23505 leak (mirrors PIPELINE_EPISODE_ALREADY_LIVE).
+      if (isDispositionUniqueViolation(err)) {
+        throw new AramoError(
+          'PIPELINE_ALREADY_DISPOSITIONED',
+          'This pipeline episode already has a disposition',
+          409,
+          { requestId: args.requestId, details: { pipeline_id: args.id } },
+        );
+      }
+      throw err;
+    });
 
     this.logger.log({
       event: 'pipeline_transitioned',
@@ -592,6 +662,124 @@ export class PipelineRepository {
       // mutates requisition capacity (that authority moved to ContractAssignment).
     });
     return projectView(updatedRow as PipelineRow);
+  }
+
+  // Lane 2 / L2-C (SB-8) — the recruiter named-command surface. A thin translation
+  // over transition(): map action → to_status, and for DISPOSITION require + validate
+  // a RECRUITER/TALENT/ENGAGEMENT reason, written in the terminal tx. CAS on
+  // expected_version + the atomic $transaction are transition()'s.
+  async applyAction(args: {
+    tenant_id: string;
+    id: string;
+    action: RecruiterPipelineAction;
+    expected_version: number;
+    changed_by_id: string;
+    requestId: string;
+    visible_requisition_ids: ReadonlySet<string> | null;
+    reason?: string;
+    note?: string;
+    authority_class?: PipelineDispositionAuthority;
+  }): Promise<PipelineView> {
+    const to_status = RECRUITER_ACTION_TO_STATUS[args.action];
+
+    let disposition: DispositionWriteInput | undefined;
+    if (args.action === 'DISPOSITION') {
+      const authority = args.authority_class;
+      const reason = args.reason;
+      // A recruiter DISPOSITION MUST carry a RECRUITER/TALENT/ENGAGEMENT reason —
+      // never DOWNSTREAM_OUTCOME (system-owned + lineage-bearing).
+      if (
+        authority === undefined ||
+        reason === undefined ||
+        !isRecruiterDispositionAuthority(authority) ||
+        !isValidDispositionReason(authority, reason)
+      ) {
+        throw new AramoError(
+          'PIPELINE_DISPOSITION_REASON_INVALID',
+          'A recruiter disposition requires a valid RECRUITER/TALENT/ENGAGEMENT authority + reason',
+          422,
+          {
+            requestId: args.requestId,
+            details: { authority_class: authority ?? null, reason: reason ?? null },
+          },
+        );
+      }
+      disposition = {
+        authority_class: authority,
+        reason,
+        ...(args.note === undefined ? {} : { note: args.note }),
+      };
+    }
+
+    return this.transition({
+      tenant_id: args.tenant_id,
+      id: args.id,
+      to_status,
+      changed_by_id: args.changed_by_id,
+      ...(args.note === undefined ? {} : { note: args.note }),
+      requestId: args.requestId,
+      expected_version: args.expected_version,
+      visible_requisition_ids: args.visible_requisition_ids,
+      ...(disposition === undefined ? {} : { disposition }),
+    });
+  }
+
+  // Lane 2 / L2-C (SB-3) — the SYSTEM-ONLY COMPLETE command (qualified → completed).
+  // Guarded by the pipeline:complete capability (a caller lacking it → 403
+  // PIPELINE_COMPLETE_SYSTEM_ONLY). Writes a DOWNSTREAM_OUTCOME disposition carrying
+  // source_provenance (owning-aggregate UUID lineage). The `qualified → completed`
+  // legality (canTransition) enforces "only an active qualified episode may be
+  // completed". NO Placement trigger is wired here (SB-3 — L2-G wires that).
+  async complete(args: {
+    tenant_id: string;
+    id: string;
+    expected_version: number;
+    changed_by_id: string;
+    requestId: string;
+    visible_requisition_ids: ReadonlySet<string> | null;
+    scopes: readonly string[];
+    source_provenance: string;
+    reason: string;
+    note?: string;
+  }): Promise<PipelineView> {
+    if (!args.scopes.includes('pipeline:complete')) {
+      throw new AramoError(
+        'PIPELINE_COMPLETE_SYSTEM_ONLY',
+        'COMPLETE is a system-only command (requires the pipeline:complete capability)',
+        403,
+        { requestId: args.requestId, details: { pipeline_id: args.id } },
+      );
+    }
+    if (
+      !args.source_provenance ||
+      !isValidDispositionReason('DOWNSTREAM_OUTCOME', args.reason)
+    ) {
+      throw new AramoError(
+        'PIPELINE_DISPOSITION_REASON_INVALID',
+        'COMPLETE requires source_provenance and a valid DOWNSTREAM_OUTCOME reason',
+        422,
+        {
+          requestId: args.requestId,
+          details: { pipeline_id: args.id, reason: args.reason },
+        },
+      );
+    }
+    return this.transition({
+      tenant_id: args.tenant_id,
+      id: args.id,
+      to_status: 'completed',
+      changed_by_id: args.changed_by_id,
+      ...(args.note === undefined ? {} : { note: args.note }),
+      requestId: args.requestId,
+      expected_version: args.expected_version,
+      visible_requisition_ids: args.visible_requisition_ids,
+      disposition: {
+        authority_class: 'DOWNSTREAM_OUTCOME',
+        reason: args.reason,
+        source_provenance: args.source_provenance,
+        ...(args.note === undefined ? {} : { note: args.note }),
+      },
+    });
   }
 
   // -------------------------------------------------------------------------

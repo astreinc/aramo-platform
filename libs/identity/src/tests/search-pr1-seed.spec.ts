@@ -38,7 +38,7 @@ describe('Search PR-1 — scope catalog parity', () => {
     // Track 7 / T7-P3 appended 1 placement:permanent:terms:write (118->119).
     // Track 8 / T8-CONNECTOR-A appended 2 integration:read/write (119->121).
     // L1-A (Create-Governance) appended 1 requisition:create:establish (127->128).
-    expect(SEED_SCOPE_KEYS).toHaveLength(129); // HYG-1: 132 − 3 dead orphan scopes
+    expect(SEED_SCOPE_KEYS).toHaveLength(130); // HYG-1: 132 − 3 dead orphan scopes
   });
 
   it('D3b — activity:redact is in the catalog exactly once', () => {

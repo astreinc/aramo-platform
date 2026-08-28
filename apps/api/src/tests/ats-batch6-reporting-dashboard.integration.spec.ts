@@ -128,6 +128,19 @@ const PIPELINE_OUTBOX = resolve(
   ROOT,
   'libs/pipeline/prisma/migrations/20260828120000_l2b_pipeline_outbox_event/migration.sql',
 );
+// L2-C — SEPARATE consts + apply-list entries (never extra resolve() args — ENOTDIR).
+const PIPELINE_L2C_ENUM = resolve(
+  ROOT,
+  'libs/pipeline/prisma/migrations/20260828130000_l2c_pipeline_qualified_completed_enum/migration.sql',
+);
+const PIPELINE_L2C_LIVE_EPISODE_RECREATE = resolve(
+  ROOT,
+  'libs/pipeline/prisma/migrations/20260828140000_l2c_pipeline_live_episode_recreate/migration.sql',
+);
+const PIPELINE_L2C_DISPOSITION = resolve(
+  ROOT,
+  'libs/pipeline/prisma/migrations/20260828150000_l2c_pipeline_disposition/migration.sql',
+);
 // L2-B — the consent-schema IdempotencyKey table backs the required
 // Idempotency-Key on POST /v1/pipelines. Self-contained (no cross-schema FK).
 const CONSENT_IDEMPOTENCY = resolve(
@@ -423,6 +436,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         PIPELINE_HISTORY_APPEND_ONLY,
         PIPELINE_ENDED_AT,
         PIPELINE_OUTBOX,
+        PIPELINE_L2C_ENUM,
+        PIPELINE_L2C_LIVE_EPISODE_RECREATE,
+        PIPELINE_L2C_DISPOSITION,
         CONSENT_IDEMPOTENCY,
         POLICY_STORE_INIT,
         POLICY_DECISION_RECORD,

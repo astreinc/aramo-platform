@@ -12,12 +12,16 @@ export const PIPELINE_STATUS_VALUES = [
   'contacted',
   'talent_responded',
   'qualifying',
+  // L2-C (D-6) — affirmative recruiter milestone ("suitable for THIS requisition").
+  'qualified',
   'submitted',
   'interviewing',
   'offered',
   'not_in_consideration',
   'client_declined',
   'placed',
+  // L2-C (D-2A) — the canonical SUCCESSFUL terminal (system-only COMPLETE; SB-3).
+  'completed',
 ] as const;
 export type PipelineStatus = (typeof PIPELINE_STATUS_VALUES)[number];
 
@@ -30,6 +34,9 @@ export const ACTIVE_FLOW_COLUMNS: readonly PipelineStatus[] = [
   'contacted',
   'talent_responded',
   'qualifying',
+  // L2-C — `qualified` rests between `qualifying` and `submitted` (mirrors
+  // ACTIVE_FLOW_STAGES; the recruiter's affirmative milestone column).
+  'qualified',
   'submitted',
   'interviewing',
   'offered',
@@ -37,6 +44,8 @@ export const ACTIVE_FLOW_COLUMNS: readonly PipelineStatus[] = [
 
 export const CLOSED_STATUSES: readonly PipelineStatus[] = [
   'placed',
+  // L2-C — the canonical SUCCESSFUL terminal (folds into the Closed area).
+  'completed',
   'not_in_consideration',
   'client_declined',
 ];
@@ -53,12 +62,14 @@ export const PIPELINE_STATUS_LABELS: Record<PipelineStatus, string> = {
   contacted: 'Contacted',
   talent_responded: 'Talent responded',
   qualifying: 'Qualifying',
+  qualified: 'Qualified',
   submitted: 'Submitted',
   interviewing: 'Interviewing',
   offered: 'Offered',
   not_in_consideration: 'Not in consideration',
   client_declined: 'Client declined',
   placed: 'Placed',
+  completed: 'Completed',
 };
 
 // REQ-PIXEL-PARITY-1-A2 (P2-A) — the derived "Next Action" per stage. This is
@@ -71,13 +82,17 @@ export const PIPELINE_NEXT_ACTION: Record<PipelineStatus, string> = {
   no_contact: 'Reach out',
   contacted: 'Await response',
   talent_responded: 'Confirm fit, rate & availability',
-  qualifying: 'Prepare submittal',
+  qualifying: 'Confirm qualified',
+  qualified: 'Prepare submittal',
   submitted: 'Await client feedback',
   interviewing: 'Manage interview',
   offered: 'Await offer decision',
   not_in_consideration: 'Closed — not proceeding',
   client_declined: 'Closed — client declined',
-  placed: 'Complete',
+  // L2-C — `placed` is the LEGACY success terminal; `completed` is the canonical
+  // one (reached only via the system COMPLETE command, never a recruiter action).
+  placed: 'Closed — placed (legacy)',
+  completed: 'Closed — completed',
 };
 
 export interface PipelineView {
@@ -121,6 +136,30 @@ export interface PipelineStatusHistoryView {
 
 export interface PipelineHistoryResponse {
   readonly items: readonly PipelineStatusHistoryView[];
+}
+
+// L2-C — the recruiter named-action surface (POST /v1/pipelines/{id}/actions).
+// Hand-mirrored from libs/pipeline/src/lib/pipeline-state.ts
+// (RECRUITER_ACTION_TO_STATUS) + dto/pipeline-action-request.dto.ts. COMPLETE is
+// deliberately EXCLUDED — it is the system-only command (a recruiter body carrying
+// it is a 422); the FE never offers it (see recruiterNextStates in ./legal-transitions).
+export type RecruiterPipelineAction =
+  | 'CONTACT'
+  | 'MARK_RESPONDED'
+  | 'START_QUALIFICATION'
+  | 'QUALIFY'
+  | 'DISPOSITION';
+
+// POST body for the named-action surface. `authority_class` + `reason` are
+// REQUIRED only for DISPOSITION (a valid RECRUITER/TALENT/ENGAGEMENT pair —
+// mismatch is 422 PIPELINE_DISPOSITION_REASON_INVALID). `expected_version` is the
+// same optimistic-concurrency token the transition surface uses.
+export interface PipelineActionRequest {
+  readonly action: RecruiterPipelineAction;
+  readonly expected_version: number;
+  readonly reason?: string;
+  readonly note?: string;
+  readonly authority_class?: 'RECRUITER' | 'TALENT' | 'ENGAGEMENT';
 }
 
 // POST body for transition. `note` rides the transition transaction and

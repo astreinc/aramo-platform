@@ -30,18 +30,27 @@ const EXPECTED_LEGAL: Record<PipelineStatus, readonly PipelineStatus[]> = {
   no_contact: ['contacted', 'talent_responded', 'not_in_consideration'],
   contacted: ['talent_responded', 'no_contact', 'not_in_consideration'],
   talent_responded: ['qualifying', 'contacted', 'not_in_consideration'],
-  qualifying: ['submitted', 'talent_responded', 'not_in_consideration'],
+  // L2-C — the affirmative forward edge is now `qualified` (QUALIFY); the legacy
+  // `qualifying -> submitted` edge is KEPT for compat.
+  qualifying: ['qualified', 'submitted', 'talent_responded', 'not_in_consideration'],
+  // L2-C — the recruiter rests at `qualified`; `qualified -> completed` is legal
+  // ONLY so the system COMPLETE precondition validates (never a recruiter action).
+  qualified: ['submitted', 'qualifying', 'not_in_consideration', 'completed'],
   submitted: ['interviewing', 'qualifying', 'not_in_consideration', 'client_declined'],
   interviewing: ['offered', 'submitted', 'not_in_consideration', 'client_declined'],
   offered: ['placed', 'interviewing', 'not_in_consideration', 'client_declined'],
   not_in_consideration: [],
   client_declined: [],
   placed: [],
+  // L2-C — the canonical SUCCESSFUL terminal (system-only COMPLETE, SB-3).
+  completed: [],
 };
 
 describe('PIPELINE_STATUS_VALUES — closed-list tuple', () => {
-  it('contains 11 values', () => {
-    expect(PIPELINE_STATUS_VALUES).toHaveLength(11);
+  it('contains 13 values', () => {
+    // L2-C added `qualified` (affirmative milestone) and `completed` (canonical
+    // success terminal) to the original 11-state OpenCATS-aligned funnel.
+    expect(PIPELINE_STATUS_VALUES).toHaveLength(13);
   });
 
   it('uses R12 vocabulary: talent_responded is present, the forbidden anti-token (per R12 rename of the OpenCATS label) is absent', () => {
@@ -94,6 +103,16 @@ describe('canTransition — legal forward + backward + exit edges', () => {
     expect(canTransition('offered', 'placed')).toBe(true);
   });
 
+  it('L2-C: accepts the qualified milestone edges (qualify + submit + system-complete)', () => {
+    expect(canTransition('qualifying', 'qualified')).toBe(true); // QUALIFY
+    expect(canTransition('qualified', 'submitted')).toBe(true); // load-bearing (submittal mirror)
+    expect(canTransition('qualified', 'qualifying')).toBe(true); // back-correction
+    expect(canTransition('qualified', 'completed')).toBe(true); // system COMPLETE precondition
+    // `completed` is legal ONLY from `qualified` — never a jump target.
+    expect(canTransition('offered', 'completed')).toBe(false);
+    expect(canTransition('submitted', 'completed')).toBe(false);
+  });
+
   it('accepts one-step-backward correction edges', () => {
     expect(canTransition('contacted', 'no_contact')).toBe(true);
     expect(canTransition('talent_responded', 'contacted')).toBe(true);
@@ -111,7 +130,7 @@ describe('canTransition — legal forward + backward + exit edges', () => {
 });
 
 describe('canTransition — terminal states have no outgoing edges', () => {
-  it.each(['not_in_consideration', 'client_declined', 'placed'] as const)(
+  it.each(['not_in_consideration', 'client_declined', 'placed', 'completed'] as const)(
     'rejects every transition out of %s except no-op',
     (terminal) => {
       for (const to of ALL_STATES) {

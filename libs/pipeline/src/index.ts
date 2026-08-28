@@ -15,13 +15,32 @@ export {
   canTransition,
   legalNextStates,
   type PipelineStatus,
+  // Lane 2 / L2-C — the explicit partition registries + the recruiter action surface.
+  CANONICAL_TERMINAL_STATUSES,
+  LEGACY_TERMINAL_STATUSES,
+  LIVE_EPISODE_EXCLUSION_STATUSES,
+  RECRUITER_ACTION_TO_STATUS,
+  isRecruiterPipelineAction,
+  SYSTEM_COMPLETE_ACTION,
+  type RecruiterPipelineAction,
 } from './lib/pipeline-state.js';
+// Lane 2 / L2-C — the PipelineDisposition domain (authority classes + reason taxonomy).
+export {
+  PIPELINE_DISPOSITION_AUTHORITY_VALUES,
+  PIPELINE_DISPOSITION_REASONS,
+  RECRUITER_DISPOSITION_AUTHORITIES,
+  isPipelineDispositionAuthority,
+  isValidDispositionReason,
+  isRecruiterDispositionAuthority,
+  type PipelineDispositionAuthority,
+} from './lib/pipeline-disposition.js';
 
 export {
   type PipelineView,
   type PipelineStatusHistoryView,
   type CreatePipelineRequestDto,
   type TransitionPipelineRequestDto,
+  type PipelineActionRequestDto,
 } from './lib/dto/index.js';
 
 // ADR-0024 PR-3b — the REQUISITION_TALENT · ADD policy call, now consumed by a

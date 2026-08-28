@@ -128,9 +128,11 @@ export const SEED_IDS = {
     'contact:create': '01900000-0000-7000-8000-000000000072',
     'contact:edit': '01900000-0000-7000-8000-000000000073',
     'contact:delete': '01900000-0000-7000-8000-000000000074',
-    // pipeline (4)
+    // pipeline (3) — add, change-status, complete (0x77/0x78 = the HYG-removed
+    // add-activity/remove; 0x78 reused for the L2-C pipeline:complete slot)
     'pipeline:add': '01900000-0000-7000-8000-000000000075',
     'pipeline:change-status': '01900000-0000-7000-8000-000000000076',
+    'pipeline:complete': '01900000-0000-7000-8000-000000000078',
     // calendar (3)
     'calendar:event-create': '01900000-0000-7000-8000-000000000079',
     'calendar:event-edit': '01900000-0000-7000-8000-00000000007a',
@@ -2333,6 +2335,7 @@ export async function runIdentitySeed(
   await upsertScope(prisma, SEED_IDS.scopes['contact:delete'], 'contact:delete', 'Delete a contact record (tenant_admin only — Ruling 1)');
   await upsertScope(prisma, SEED_IDS.scopes['pipeline:add'], 'pipeline:add', 'Add a talent to a pipeline');
   await upsertScope(prisma, SEED_IDS.scopes['pipeline:change-status'], 'pipeline:change-status', 'Change a pipeline entry status');
+  await upsertScope(prisma, SEED_IDS.scopes['pipeline:complete'], 'pipeline:complete', 'Lane 2 / L2-C (SB-3) — the SYSTEM-ONLY capability to COMPLETE a pipeline episode (qualified → completed, a DOWNSTREAM_OUTCOME disposition carrying lineage). CATALOG-ONLY: GRANTED to NO human tenant role (recruiter/account_manager/tenant_admin/tenant_owner never receive it, mirroring requisition:create:establish); held programmatically by system/downstream identities only (L2-G wires the Placement STARTED → COMPLETE trigger). NO scope.created (scope-seed precedent); NO RoleScope grant.');
   await upsertScope(prisma, SEED_IDS.scopes['calendar:event-create'], 'calendar:event-create', 'Create a calendar event');
   await upsertScope(prisma, SEED_IDS.scopes['calendar:event-edit'], 'calendar:event-edit', 'Edit a calendar event (own events)');
   await upsertScope(prisma, SEED_IDS.scopes['calendar:event-delete'], 'calendar:event-delete', 'Delete a calendar event (tenant_admin only — Ruling 1)');

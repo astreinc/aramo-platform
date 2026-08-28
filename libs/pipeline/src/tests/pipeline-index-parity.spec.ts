@@ -3,33 +3,38 @@ import { resolve } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-import { TERMINAL_STATUSES } from '../lib/pipeline-state.js';
+import { LIVE_EPISODE_EXCLUSION_STATUSES } from '../lib/pipeline-state.js';
 
-// ==== B-index-parity [E6 §3] — registry <-> SQL drift guard ====
+// ==== B-index-parity [L2-C SB-2] — registry <-> SQL drift guard (pivoted) ====
 //
-// The E6 migration's live-scoped partial unique (`Pipeline_live_episode_key`)
-// carries the terminal set as a LITERAL PostgreSQL enum list, because a
-// migration is immutable SQL and cannot import the TypeScript status registry.
-// The registry (pipeline-state.ts) remains the SEMANTIC SOURCE OF TRUTH; the
-// migration is an intentionally duplicated enforcement surface, held honest by
-// THIS drift test.
+// The live-scoped partial unique (`Pipeline_live_episode_key`) carries the
+// live-slot EXCLUSION set as a LITERAL PostgreSQL enum list, because a migration
+// is immutable SQL and cannot import the TypeScript status registry.
 //
-// A future status-registry change that alters the live/terminal partition
-// (e.g. adding a terminal state, or making an existing state terminal) MUST FAIL
-// this proof until a new migration updates the database invariant. This is a
-// pure unit test (no Postgres): it parses the migration file and compares to the
-// registry-derived TERMINAL_STATUSES.
-const E6_MIGRATION = resolve(
+// L2-C SB-2 PIVOT: the partition is now the explicit `LIVE_EPISODE_EXCLUSION_STATUSES`
+// registry — the CANONICAL successful terminal `completed` + `not_in_consideration`,
+// plus the LEGACY terminals `placed` + `client_declined` kept for history (§4
+// tri-state). The prior `TERMINAL_STATUSES` (empty-edge) derivation cannot
+// distinguish canonical from legacy terminals, so this guard pivots to the
+// exclusion set and parses the L2-C INDEX-RECREATE migration (the E6 predicate is
+// superseded). A partition change that omits `completed` OR drops a legacy member
+// fails this proof until a new migration updates the DB invariant.
+//
+// Pure unit test (no Postgres): it parses the migration file and compares to the
+// registry-derived exclusion set.
+const INDEX_RECREATE_MIGRATION = resolve(
   __dirname,
-  '../../prisma/migrations/20260807100000_e6_pipeline_live_episode_unique/migration.sql',
+  '../../prisma/migrations/20260828140000_l2c_pipeline_live_episode_recreate/migration.sql',
 );
 
-// Extract the terminal set encoded by the `Pipeline_live_episode_key` CREATE's
-// `WHERE status NOT IN ('a','b','c')` predicate.
-function parsePartialIndexTerminals(sql: string): string[] {
+// Extract the exclusion set encoded by the `Pipeline_live_episode_key` CREATE's
+// `WHERE status NOT IN ('a','b','c','d')` predicate. (The migration DROPs then
+// CREATEs; only the CREATE carries a NOT IN, so slicing from the first mention and
+// matching the first NOT IN finds the recreate predicate.)
+function parsePartialIndexExclusions(sql: string): string[] {
   const createStart = sql.indexOf('Pipeline_live_episode_key');
   if (createStart < 0) {
-    throw new Error('Pipeline_live_episode_key CREATE not found in the E6 migration');
+    throw new Error('Pipeline_live_episode_key not found in the index-recreate migration');
   }
   const create = sql.slice(createStart);
   const m = /NOT\s+IN\s*\(([^)]*)\)/i.exec(create);
@@ -43,13 +48,21 @@ function parsePartialIndexTerminals(sql: string): string[] {
     .sort();
 }
 
-describe('B-index-parity [E6]: migration live-scoped predicate == registry terminal set', () => {
-  it('the partial-index NOT IN list equals the registry-derived TERMINAL_STATUSES', () => {
-    const parsed = parsePartialIndexTerminals(readFileSync(E6_MIGRATION, 'utf8'));
-    const registry = [...TERMINAL_STATUSES].sort();
+describe('B-index-parity [L2-C]: index-recreate predicate == LIVE_EPISODE_EXCLUSION_STATUSES', () => {
+  it('the partial-index NOT IN list equals the 4-member exclusion set (incl. the canonical `completed`)', () => {
+    const parsed = parsePartialIndexExclusions(readFileSync(INDEX_RECREATE_MIGRATION, 'utf8'));
+    const registry = [...LIVE_EPISODE_EXCLUSION_STATUSES].sort();
 
-    // Non-vacuity: both sides are the real three terminal statuses, not empty.
-    expect(registry).toEqual(['client_declined', 'not_in_consideration', 'placed']);
+    // Non-vacuity: the REAL 4-member exclusion set — the two canonical terminals
+    // (`completed`, `not_in_consideration`) + the two legacy terminals kept for
+    // history (`placed`, `client_declined`). Omitting `completed` (which JOINS the
+    // exclusion set) or dropping a legacy member (SB-1: no restamping) fails here.
+    expect(registry).toEqual([
+      'client_declined',
+      'completed',
+      'not_in_consideration',
+      'placed',
+    ]);
     expect(parsed).toEqual(registry);
   });
 });

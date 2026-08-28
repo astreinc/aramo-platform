@@ -1,6 +1,7 @@
 import { apiClient } from '@aramo/fe-foundation';
 
 import type {
+  PipelineActionRequest,
   PipelineHistoryResponse,
   PipelineListResponse,
   PipelineView,
@@ -77,6 +78,22 @@ export async function transitionPipeline(
 ): Promise<PipelineView> {
   return apiClient.post<PipelineView>(
     `/v1/pipelines/${pipelineId}/transition`,
+    body,
+  );
+}
+
+// L2-C — the recruiter named-action surface (POST /v1/pipelines/{id}/actions,
+// pipeline:change-status). A thin echo of transitionPipeline for the named
+// commands (CONTACT / MARK_RESPONDED / START_QUALIFICATION / QUALIFY /
+// DISPOSITION); the server maps the action to its to_status and, for DISPOSITION,
+// writes the authority-partitioned reason in the terminal transaction. COMPLETE is
+// NOT reachable here (system-only — a body carrying it is refused 422).
+export async function applyPipelineAction(
+  pipelineId: string,
+  body: PipelineActionRequest,
+): Promise<PipelineView> {
+  return apiClient.post<PipelineView>(
+    `/v1/pipelines/${pipelineId}/actions`,
     body,
   );
 }

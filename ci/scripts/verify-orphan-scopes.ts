@@ -90,6 +90,7 @@ export const CLASSIFICATIONS: Record<string, Classification> = {
   'pre_start_requirement:read_restricted_evidence': { cls: 'SERVICE_ENFORCED', reason: 'pre-start-requirement.controller.ts:131 scopes.includes(READ_RESTRICTED_EVIDENCE_SCOPE)' },
   // --- CATALOG_ONLY_ZERO_GRANT (seeded, granted to no role by design) ---
   'requisition:create:establish': { cls: 'CATALOG_ONLY_ZERO_GRANT', reason: 'L1-A functional create qualifier; NO RoleScope grant — held programmatically by system/bootstrap identities only (seed.ts:2496)' },
+  'pipeline:complete': { cls: 'CATALOG_ONLY_ZERO_GRANT', reason: 'L2-C SB-3 system-only COMPLETE capability; NO RoleScope grant — held by system/downstream identities only (L2-G wires the Placement STARTED trigger). Enforced by pipeline.repository complete() scopes.includes(pipeline:complete)' },
   // --- ACTIVE_RESERVED (portal JWT contract; surfaced by this guard beyond the original 8) ---
   'portal:profile:edit': { cls: 'ACTIVE_RESERVED', reason: 'member of PORTAL_SESSION_SCOPES (portal JWT contract, session-orchestrator.service.ts:42); write-sibling of the enforced portal:profile:read, reserved for the portal profile-edit surface not yet built' },
 };
