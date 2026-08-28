@@ -27,8 +27,14 @@ describe('ConnectorAuditLog', () => {
     expect(emitted).toContain('[REDACTED]');
   });
 
-  it('exposes exactly the 10 governed connector event names (no new persisted audit TYPE)', () => {
-    expect(Object.values(CONNECTOR_AUDIT_EVENTS)).toHaveLength(10);
-    expect(new Set(Object.values(CONNECTOR_AUDIT_EVENTS)).size).toBe(10);
+  it('exposes exactly the 13 governed connector event names (no new persisted audit TYPE)', () => {
+    // 10 T8-CONNECTOR-A + 3 L1-D3-A mapping-admin discriminators
+    // (draft_created / draft_updated / activated). Still structured-log ONLY —
+    // no new PERSISTED audit type is introduced.
+    expect(Object.values(CONNECTOR_AUDIT_EVENTS)).toHaveLength(13);
+    expect(new Set(Object.values(CONNECTOR_AUDIT_EVENTS)).size).toBe(13);
+    expect(CONNECTOR_AUDIT_EVENTS.LIFECYCLE_MAPPING_ACTIVATED).toBe(
+      'connector.lifecycle_mapping.activated',
+    );
   });
 });

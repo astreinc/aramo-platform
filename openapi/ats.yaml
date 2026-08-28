@@ -4059,6 +4059,7 @@ paths:
           $ref: 'common.yaml#/components/responses/NotFound'
       security:
         - BearerAuth: []
+  /v1/integrations/{connectionId}/requisition-lifecycle-mappings/versions:
     post:
       operationId: createLifecycleMappingDraft
       summary: Create a new DRAFT mapping set version (L1-D3-A).
@@ -4120,6 +4121,7 @@ paths:
     get:
       operationId: getLifecycleMappingSetVersion
       summary: Get a specific mapping set version (L1-D3-A).
+      description: Returns the mapping set at the given version (draft / active / historical) with its rows. Guarded by `integration:read`. A cross-tenant / absent connection or version returns 404 (never 403).
       parameters:
         - { name: connectionId, in: path, required: true, schema: { type: string, format: uuid } }
         - { name: version, in: path, required: true, schema: { type: integer, minimum: 1 } }
