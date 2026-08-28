@@ -55,6 +55,8 @@ function migrationsFor(lib: string): string[] {
 const MIGRATIONS = [
   ...migrationsFor('entitlement'), ...migrationsFor('requisition'), ...migrationsFor('pipeline'),
   ...migrationsFor('policy-store'), ...migrationsFor('talent-trust'), ...migrationsFor('talent-record'),
+  // L2-B — the consent-schema IdempotencyKey table backs the required Idempotency-Key on create.
+  resolve(ROOT, 'libs/consent/prisma/migrations/20260429164414_initial_consent_schema/migration.sql'),
 ];
 
 let uuidCounter = 0;
@@ -96,7 +98,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       return `http://127.0.0.1:${typeof a === 'object' && a !== null ? a.port : 0}`;
     }
     async function postPipeline(jwt: string, reqId: string, overrideReason?: string): Promise<Response> {
-      return fetch(`${baseUrl()}/v1/pipelines?site_id=${SITE}`, { method: 'POST', headers: { Authorization: `Bearer ${jwt}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ talent_record_id: uuid(), requisition_id: reqId, site_id: SITE, ...(overrideReason === undefined ? {} : { override_reason_code: overrideReason }) }) });
+      return fetch(`${baseUrl()}/v1/pipelines?site_id=${SITE}`, { method: 'POST', headers: { Authorization: `Bearer ${jwt}`, 'Content-Type': 'application/json', 'Idempotency-Key': uuid() }, body: JSON.stringify({ talent_record_id: uuid(), requisition_id: reqId, site_id: SITE, ...(overrideReason === undefined ? {} : { override_reason_code: overrideReason }) }) });
     }
     async function postSourcing(jwt: string, reqId: string, overrideReason?: string): Promise<Response> {
       return fetch(`${baseUrl()}/v1/sourcing/pipeline`, { method: 'POST', headers: { Authorization: `Bearer ${jwt}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ ref_type: 'SOURCED_TALENT', ref_id: uuid(), requisition_id: reqId, ...(overrideReason === undefined ? {} : { override_reason_code: overrideReason }) }) });

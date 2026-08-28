@@ -50,6 +50,10 @@ const MIGRATIONS = [
   '../../prisma/migrations/20260807100000_e6_pipeline_live_episode_unique/migration.sql',
   // L2-A — additive `version` column (optimistic-concurrency).
   '../../prisma/migrations/20260827120000_l2a_pipeline_version_column/migration.sql',
+  // L2-B — append-only history trigger; nullable status_from + ended_at/ended_by_id cols; pipeline OutboxEvent table.
+  '../../prisma/migrations/20260828100000_l2b_pipeline_history_append_only/migration.sql',
+  '../../prisma/migrations/20260828110000_l2b_pipeline_ended_at_nullable_status_from/migration.sql',
+  '../../prisma/migrations/20260828120000_l2b_pipeline_outbox_event/migration.sql',
 ].map((p) => resolve(__dirname, p));
 
 // The legal edge chain no_contact -> ... -> placed (offered is the only source

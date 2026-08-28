@@ -49,9 +49,15 @@ const MIGRATIONS = [
   // Track 3 E6 — total unique -> live-scoped partial unique.
   'libs/pipeline/prisma/migrations/20260807100000_e6_pipeline_live_episode_unique/migration.sql',
   'libs/pipeline/prisma/migrations/20260827120000_l2a_pipeline_version_column/migration.sql',
+  // L2-B — append-only history trigger; nullable status_from + ended_at/ended_by_id; pipeline OutboxEvent.
+  'libs/pipeline/prisma/migrations/20260828100000_l2b_pipeline_history_append_only/migration.sql',
+  'libs/pipeline/prisma/migrations/20260828110000_l2b_pipeline_ended_at_nullable_status_from/migration.sql',
+  'libs/pipeline/prisma/migrations/20260828120000_l2b_pipeline_outbox_event/migration.sql',
   // ADR-0024 PR-3 — the create transaction writes here.
   'libs/policy-store/prisma/migrations/20260730120000_init_policy_store/migration.sql',
   'libs/policy-store/prisma/migrations/20260730160000_add_policy_decision_record/migration.sql',
+  // L2-B — the consent-schema IdempotencyKey table backs the required Idempotency-Key on create.
+  'libs/consent/prisma/migrations/20260429164414_initial_consent_schema/migration.sql',
 ].map(M);
 
 // PR-4a — the package is RETRIEVED from policy-store, not overridden via a DI
@@ -123,7 +129,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     async function postAdd(app: INestApplication, jwt: string, requisitionId: string): Promise<Response> {
       return fetch(`${baseUrl(app)}/v1/pipelines?site_id=${SITE}`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${jwt}`, 'Content-Type': 'application/json' },
+        // L2-B — POST /v1/pipelines now requires a UUID Idempotency-Key.
+        headers: { Authorization: `Bearer ${jwt}`, 'Content-Type': 'application/json', 'Idempotency-Key': uuid() },
         body: JSON.stringify({ talent_record_id: uuid(), requisition_id: requisitionId, site_id: SITE }),
       });
     }
@@ -133,7 +140,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     async function postAddTalent(app: INestApplication, jwt: string, requisitionId: string, talentId: string): Promise<Response> {
       return fetch(`${baseUrl(app)}/v1/pipelines?site_id=${SITE}`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${jwt}`, 'Content-Type': 'application/json' },
+        // L2-B — POST /v1/pipelines now requires a UUID Idempotency-Key. A fresh key
+        // per call keeps the two same-triple POSTs distinct operations (so the second
+        // still hits the E6 live-episode 409, not an idempotent replay).
+        headers: { Authorization: `Bearer ${jwt}`, 'Content-Type': 'application/json', 'Idempotency-Key': uuid() },
         body: JSON.stringify({ talent_record_id: talentId, requisition_id: requisitionId, site_id: SITE }),
       });
     }

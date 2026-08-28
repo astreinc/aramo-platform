@@ -7,6 +7,7 @@ import { OutboxPublisherRepository } from '@aramo/consent';
 import { SelectionOutboxRepository } from '@aramo/selection';
 import { SubmittalOutboxRepository } from '@aramo/submittal';
 import { PlacementOutboxRepository } from '@aramo/placement';
+import { PipelineOutboxRepository } from '@aramo/pipeline';
 
 import {
   OUTBOX_PUBLISHER_BATCH_SIZE,
@@ -84,6 +85,7 @@ export class OutboxPublisherProcessor
     private readonly submittalOutbox: SubmittalOutboxRepository,
     private readonly canonicalizationOutbox: CanonicalizationOutboxRepository,
     private readonly placementOutbox: PlacementOutboxRepository,
+    private readonly pipelineOutbox: PipelineOutboxRepository,
     private readonly registrar: BullRegistrar,
     private readonly redisConfig: RedisConnectionConfig,
     @Inject('OutboxPublisherProcessorLogger')
@@ -127,6 +129,13 @@ export class OutboxPublisherProcessor
       batchSize,
       job,
     );
+    // Lane 2 / L2-B — the pipeline schema is the 6th drained namespace.
+    const pipelineCount = await this.drainSchema(
+      'pipeline',
+      this.pipelineOutbox,
+      batchSize,
+      job,
+    );
 
     this.logger.log({
       event: 'outbox_publisher_tick_completed',
@@ -137,13 +146,19 @@ export class OutboxPublisherProcessor
       submittal_published_count: submittalCount,
       canonicalization_published_count: canonicalizationCount,
       placement_published_count: placementCount,
+      pipeline_published_count: pipelineCount,
       total_published_count:
-        consentCount + selectionCount + submittalCount + canonicalizationCount + placementCount,
+        consentCount +
+        selectionCount +
+        submittalCount +
+        canonicalizationCount +
+        placementCount +
+        pipelineCount,
     });
   }
 
   private async drainSchema(
-    schemaName: 'consent' | 'selection' | 'submittal' | 'canonicalization' | 'placement',
+    schemaName: 'consent' | 'selection' | 'submittal' | 'canonicalization' | 'placement' | 'pipeline',
     repo: OutboxRepositoryShape,
     batchSize: number,
     job: Job<OutboxPublisherTickInput>,

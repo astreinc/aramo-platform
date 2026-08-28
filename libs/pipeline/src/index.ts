@@ -5,6 +5,9 @@ export {
   type CurrentStage,
 } from './lib/pipeline.repository.js';
 export { PrismaService as PipelinePrismaService } from './lib/prisma/prisma.service.js';
+// Lane 2 / L2-B — the pipeline outbox drain surface, consumed by libs/outbox-publisher.
+export { PipelineOutboxRepository } from './lib/pipeline-outbox.repository.js';
+export { PipelineOutboxModule } from './lib/pipeline-outbox.module.js';
 
 export {
   PIPELINE_STATUS_VALUES,

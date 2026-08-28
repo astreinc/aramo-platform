@@ -44,10 +44,18 @@ export async function addTalentToPipeline(
   talentRecordId: string,
   requisitionId: string,
 ): Promise<PipelineView> {
-  return apiClient.post<PipelineView>('/v1/pipelines', {
-    talent_record_id: talentRecordId,
-    requisition_id: requisitionId,
-  });
+  // L2-B — POST /v1/pipelines now requires a UUID Idempotency-Key. This is a
+  // one-shot action, so a per-call key is sufficient (mirrors the submittals /
+  // selection create surfaces); a retry with a fresh key is a fresh command,
+  // and a genuine duplicate live episode is refused server-side (409).
+  return apiClient.post<PipelineView>(
+    '/v1/pipelines',
+    {
+      talent_record_id: talentRecordId,
+      requisition_id: requisitionId,
+    },
+    { headers: { 'Idempotency-Key': crypto.randomUUID() } },
+  );
 }
 
 export async function getPipelineHistory(

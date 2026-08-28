@@ -1,8 +1,8 @@
 import {
   Body,
   Controller,
-  Delete,
   Get,
+  Headers,
   HttpCode,
   HttpStatus,
   Param,
@@ -12,7 +12,8 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import type { Request } from 'express';
-import { AramoError, RequestId } from '@aramo/common';
+import { AramoError, RequestId, hashCanonicalizedBody } from '@aramo/common';
+import { IdempotencyService } from '@aramo/consent';
 import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
 import {
   RequireScopes,
@@ -47,6 +48,13 @@ import { resolveAddTalentOutcome } from './policy/override-resolution.js';
 //
 // Read routes (list/get/history) now key on the proper `pipeline:read`
 // scope, replacing the A5a `pipeline:add` superset expedient.
+// L2-B — the Idempotency-Key header must be a v4-shaped UUID (mirrors
+// libs/selection SelectionController.assertIdempotencyKeyRequired). A
+// missing or malformed key is a client contract error (400 VALIDATION_ERROR),
+// distinct from a downstream mutation conflict.
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 @Controller('v1/pipelines')
 @UseGuards(JwtAuthGuard, EntitlementGuard, RolesGuard)
 @RequireCapability('ats')
@@ -54,6 +62,7 @@ export class PipelineController {
   constructor(
     private readonly pipelineRepository: PipelineRepository,
     private readonly addTalentPolicy: AddTalentPolicyService,
+    private readonly idempotencyService: IdempotencyService,
   ) {}
 
   @Get()
@@ -134,7 +143,26 @@ export class PipelineController {
     @AuthContext() authContext: AuthContextType,
     @Body() body: CreatePipelineRequestDto,
     @RequestId() requestId: string,
+    @Headers('Idempotency-Key') idempotencyKey: string | undefined,
   ): Promise<PipelineView> {
+    // L2-B — the create command is idempotency-gated (mirrors libs/selection
+    // SelectionController.create). A required v4-shaped Idempotency-Key is the
+    // client's replay token: an identical retry (same key + same canonical
+    // body) returns the FIRST committed response verbatim rather than birthing
+    // a second episode. The lookup runs BEFORE the policy call + mutation so a
+    // replay short-circuits the whole command.
+    const key = this.assertIdempotencyKeyRequired(idempotencyKey, requestId);
+    const requestHash = hashCanonicalizedBody(body as unknown);
+    const replay = await this.idempotencyService.lookup({
+      tenant_id: authContext.tenant_id,
+      key,
+      request_hash: requestHash,
+      requestId,
+    });
+    if (replay.kind === 'replay') {
+      return replay.response_body as PipelineView;
+    }
+
     // ADR-0024 §D10 — the policy call runs AFTER authorization (the guard chain
     // above) and BEFORE the write. It is placed at the CONTROLLER, never the
     // repository: a repository-level call would also gate repointTalentRecordRefs
@@ -192,12 +220,47 @@ export class PipelineController {
     // ALLOW or OVERRIDE — the pipeline row and its provenance record (for an
     // OVERRIDE, provenance carries the reason_code + satisfying capability)
     // commit atomically.
-    return this.pipelineRepository.create({
+    const created = await this.pipelineRepository.create({
       tenant_id: authContext.tenant_id,
       input: body,
       requestId,
       provenance: resolution.provenance,
+      created_by_id: authContext.sub,
     });
+
+    // L2-B — persist the idempotency record AFTER the mutation commits so a
+    // failed create leaves no cached response (IdempotencyService contract).
+    await this.idempotencyService.persist({
+      tenant_id: authContext.tenant_id,
+      key,
+      request_hash: requestHash,
+      response_status: HttpStatus.CREATED,
+      response_body: created,
+    });
+
+    return created;
+  }
+
+  // L2-B — the Idempotency-Key contract for POST /v1/pipelines. A missing or
+  // non-UUID header is a client error (400 VALIDATION_ERROR), never a silent
+  // pass-through (mirrors libs/selection SelectionController).
+  private assertIdempotencyKeyRequired(
+    idempotencyKey: string | undefined,
+    requestId: string,
+  ): string {
+    if (
+      idempotencyKey === undefined ||
+      idempotencyKey === '' ||
+      !UUID_REGEX.test(idempotencyKey)
+    ) {
+      throw new AramoError(
+        'VALIDATION_ERROR',
+        'A valid Idempotency-Key header (UUID) is required',
+        400,
+        { requestId, details: { header: 'Idempotency-Key' } },
+      );
+    }
+    return idempotencyKey;
   }
 
   @Post(':id/transition')
@@ -236,23 +299,11 @@ export class PipelineController {
     });
   }
 
-  @Delete(':id')
-  @HttpCode(HttpStatus.NO_CONTENT)
-  @RequireScopes('pipeline:remove')
-  @RequireSiteMatch()
-  async delete(
-    @AuthContext() authContext: AuthContextType,
-    @Param('id') id: string,
-    @RequestId() requestId: string,
-    @Req() req: Request,
-  ): Promise<void> {
-    // L2-A — write-visibility parity: deleting a non-visible pipeline conceals as 404.
-    const visibleReqIds = await req.resolveVisibleRequisitionIds!();
-    await this.pipelineRepository.delete({
-      tenant_id: authContext.tenant_id,
-      id,
-      requestId,
-      visible_requisition_ids: visibleReqIds,
-    });
-  }
+  // Lane 2 / L2-B — DELETE /v1/pipelines/:id is WITHDRAWN. A durable recruiting
+  // audit must not be casually destructible: the DB-layer append-only trigger on
+  // PipelineStatusHistory rejects the cascade delete outside a governed
+  // tenant-reset, and re-entry uses a fresh episode (a terminal episode already
+  // releases the live slot). Legal/privacy erasure remains the tenant-reset
+  // service's authorized-GUC purge path (its exact-value reset escape, set only
+  // by that service).
 }

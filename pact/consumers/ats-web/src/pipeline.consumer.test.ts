@@ -28,9 +28,11 @@ import {
 //     no available openings -> REQUISITION_NO_OPENINGS 409 (the consumer sends
 //     a LEGAL transition but cannot predict server-side capacity).
 //
-// idempotency: 0-by-substrate (no Idempotency-Key on any pipeline endpoint).
-// EXCLUDE-R2 (no ats-web call site): GET /v1/pipelines/:id, DELETE
-//   /v1/pipelines/:id.
+// idempotency: L2-B — POST /v1/pipelines now REQUIRES a UUID Idempotency-Key
+//   (the create interaction sends one); the transition + read endpoints remain
+//   0-by-substrate.
+// EXCLUDE-R2 (no ats-web call site): GET /v1/pipelines/:id. DELETE
+//   /v1/pipelines/:id is WITHDRAWN (L2-B — the episode is durable).
 //
 // Provider guard chain: @RequireCapability('ats') + @RequireScopes
 // (pipeline:read/add/change-status) + @RequireSiteMatch(). The visibility
@@ -155,14 +157,18 @@ describe('ats-web → GET /v1/pipelines/:id/history', () => {
 describe('ats-web → POST /v1/pipelines', () => {
   it('returns 201 with the created pipeline at no_contact', async () => {
     const BODY = { talent_record_id: PIPE_TALENT_ID, requisition_id: PIPE_REQ_ID };
+    // L2-B — a UUID Idempotency-Key is now required on create.
+    const IDEMPOTENCY_KEY = '00000000-0000-7000-8000-71be000000ff';
     await provider
       .addInteraction()
       .given('an ats-web recruiter can create pipelines')
       .uponReceiving('a pipeline create')
       .withRequest('POST', '/v1/pipelines', (b) => {
-        b.headers({ Cookie: like(ACCESS_COOKIE), 'Content-Type': 'application/json' }).jsonBody(
-          BODY,
-        );
+        b.headers({
+          Cookie: like(ACCESS_COOKIE),
+          'Content-Type': 'application/json',
+          'Idempotency-Key': like(IDEMPOTENCY_KEY),
+        }).jsonBody(BODY);
       })
       .willRespondWith(201, (b) => {
         b.jsonBody(pipelineView(undefined, { status: 'no_contact' }));
@@ -170,7 +176,11 @@ describe('ats-web → POST /v1/pipelines', () => {
       .executeTest(async (mock) => {
         const res = await fetch(`${mock.url}/v1/pipelines`, {
           method: 'POST',
-          headers: { Cookie: ACCESS_COOKIE, 'Content-Type': 'application/json' },
+          headers: {
+            Cookie: ACCESS_COOKIE,
+            'Content-Type': 'application/json',
+            'Idempotency-Key': IDEMPOTENCY_KEY,
+          },
           body: JSON.stringify(BODY),
         });
         expect(res.status).toBe(201);

@@ -157,6 +157,10 @@ export class SourcingController {
     // write's tx (for an OVERRIDE it carries the reason_code + capability).
     const result = await this.sourcing.promoteAndAddToPipeline(subjectRef, dto.requisition_id, {
       provenance: resolution.provenance,
+      // L2-B — the birth-history actor for this command boundary is the
+      // sourcing caller; thread it so the episode's first history row records
+      // who added the talent (parity with PipelineController.create).
+      created_by_id: authContext.sub,
     });
     // Track-wide invariant: a mutation never commits without its provenance
     // (create() commits it in-tx); provenance MAY exist without a mutation.

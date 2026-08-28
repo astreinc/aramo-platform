@@ -26,6 +26,10 @@ const MIGRATIONS = [
   '../../prisma/migrations/20260807100000_e6_pipeline_live_episode_unique/migration.sql',
   // L2-A — additive `version` column (optimistic-concurrency).
   '../../prisma/migrations/20260827120000_l2a_pipeline_version_column/migration.sql',
+  // L2-B — append-only history trigger; nullable status_from + ended_at/ended_by_id cols; pipeline OutboxEvent table.
+  '../../prisma/migrations/20260828100000_l2b_pipeline_history_append_only/migration.sql',
+  '../../prisma/migrations/20260828110000_l2b_pipeline_ended_at_nullable_status_from/migration.sql',
+  '../../prisma/migrations/20260828120000_l2b_pipeline_outbox_event/migration.sql',
 ].map((p) => resolve(__dirname, p));
 
 const PATH_TO_OFFERED: readonly PipelineStatus[] = [
@@ -139,18 +143,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(await openingsAvailable(req)).toBe(0);
     });
 
-    it('delete of a placed pipeline does NOT restore requisition.openings_available (no inverse writer)', async () => {
-      const tenant = randomUUID();
-      const req = await seedRequisition(tenant, 3, 3);
-      const talent = randomUUID();
-      const p = await repo.create({ tenant_id: tenant, input: { talent_record_id: talent, requisition_id: req } });
-      await drive(tenant, p.id, PATH_TO_OFFERED);
-      await casTransition(tenant, p.id, 'placed', 'b2');
-      const before = await openingsAvailable(req);
-      await repo.delete({ tenant_id: tenant, id: p.id, requestId: 'b2', visible_requisition_ids: null });
-      // POST-B2: delete removes the pipeline fact only; it never restores capacity.
-      expect(await openingsAvailable(req)).toBe(before);
-    });
+    // L2-B — the former "delete of a placed pipeline does NOT restore capacity"
+    // test is retired: PipelineRepository.delete no longer exists (L2-B makes
+    // the episode durable / append-only — withdrawal is a terminal transition,
+    // never a destructive row delete). The B2 capacity invariant it guarded —
+    // capacity is owned by ContractAssignment, pipeline has no inverse capacity
+    // writer — is already proven by the two transition-to-`placed` tests above
+    // (openings unchanged on placement; over-capacity representable).
   },
 );
 

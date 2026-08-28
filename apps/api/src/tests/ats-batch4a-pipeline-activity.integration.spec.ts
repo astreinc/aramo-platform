@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { AddressInfo } from 'node:net';
+import { randomUUID } from 'node:crypto';
 
 import {
   PostgreSqlContainer,
@@ -130,6 +131,23 @@ const PIPELINE_VERSION = resolve(
   ROOT,
   'libs/pipeline/prisma/migrations/20260827120000_l2a_pipeline_version_column/migration.sql',
 );
+// L2-B — SEPARATE consts + apply-list entries (never extra resolve() args — ENOTDIR).
+const PIPELINE_HISTORY_APPEND_ONLY = resolve(
+  ROOT,
+  'libs/pipeline/prisma/migrations/20260828100000_l2b_pipeline_history_append_only/migration.sql',
+);
+const PIPELINE_ENDED_AT = resolve(
+  ROOT,
+  'libs/pipeline/prisma/migrations/20260828110000_l2b_pipeline_ended_at_nullable_status_from/migration.sql',
+);
+const PIPELINE_OUTBOX = resolve(
+  ROOT,
+  'libs/pipeline/prisma/migrations/20260828120000_l2b_pipeline_outbox_event/migration.sql',
+);
+// L2-B — the consent-schema IdempotencyKey table (backing the required
+// Idempotency-Key on POST /v1/pipelines) is ALREADY applied below via the
+// consent initial-schema migration (added for the TalentConsentEvent contact
+// gating); no separate entry is needed here.
 // ADR-0024 PR-3 — POST /v1/pipelines writes §D17a provenance into
 // policy_store."PolicyDecisionRecord" in the create transaction (init creates
 // the schema).
@@ -241,6 +259,9 @@ const MIGRATIONS = [
   PIPELINE_INIT,
   PIPELINE_E6,
   PIPELINE_VERSION,
+  PIPELINE_HISTORY_APPEND_ONLY,
+  PIPELINE_ENDED_AT,
+  PIPELINE_OUTBOX,
   POLICY_STORE_INIT,
   POLICY_DECISION_RECORD,
   resolve(ROOT, 'libs/requisition/prisma/migrations/20260803120000_recruiting_status_supersession/migration.sql'),
@@ -512,6 +533,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           headers: {
             Authorization: `Bearer ${jwt}`,
             'Content-Type': 'application/json',
+            // L2-B — POST /v1/pipelines now requires a UUID Idempotency-Key.
+            'Idempotency-Key': randomUUID(),
           },
           body: JSON.stringify({
             talent_record_id: TALENT_RECORD_ID,
@@ -522,6 +545,60 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       );
       const body = (await res.json()) as { id: string; status: string };
       return body;
+    }
+
+    // L2-B AC-8 — a POST /v1/pipelines with an explicitly-controlled
+    // Idempotency-Key header (or none) + a caller-chosen talent, so the
+    // idempotency contract can be exercised directly.
+    async function postPipeline(
+      jwt: string,
+      key: string | undefined,
+      talentId: string,
+    ): Promise<Response> {
+      return fetch(`http://127.0.0.1:${port}/v1/pipelines?site_id=${SITE_A}`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${jwt}`,
+          'Content-Type': 'application/json',
+          ...(key === undefined ? {} : { 'Idempotency-Key': key }),
+        },
+        body: JSON.stringify({
+          talent_record_id: talentId,
+          requisition_id: REQUISITION_ID,
+          site_id: SITE_A,
+        }),
+      });
+    }
+
+    async function pipelineRowCount(talentId: string): Promise<number> {
+      const r = await setupClient.query<{ n: string }>(
+        `SELECT count(*)::int AS n FROM pipeline."Pipeline" ` +
+          `WHERE talent_record_id = $1 AND requisition_id = $2`,
+        [talentId, REQUISITION_ID],
+      );
+      return Number(r.rows[0]!.n);
+    }
+
+    // L2-B — DELETE /v1/pipelines/:id is withdrawn (the episode is durable), so
+    // tests can no longer purge the reused (talent_record_id, requisition_id)
+    // row via the API. Cleanup now goes through the SAME governed escape the
+    // tenant-reset service uses: `SET LOCAL app.tenant_reset='authorized'` in-tx
+    // makes the append-only history DELETE trigger's exact-value escape fire, so
+    // the cascade purge (Pipeline → PipelineStatusHistory) succeeds. Without the
+    // GUC the cascade would raise check_violation (AC-2/AC-3).
+    async function cleanupPipeline(id: string): Promise<void> {
+      await setupClient.query('BEGIN');
+      try {
+        await setupClient.query("SET LOCAL app.tenant_reset = 'authorized'");
+        await setupClient.query(
+          'DELETE FROM pipeline."Pipeline" WHERE id = $1',
+          [id],
+        );
+        await setupClient.query('COMMIT');
+      } catch (err) {
+        await setupClient.query('ROLLBACK');
+        throw err;
+      }
     }
 
     async function walkToOffered(jwt: string, id: string): Promise<void> {
@@ -734,8 +811,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(body.error?.code).toBe('INSUFFICIENT_PERMISSIONS');
     });
 
-    it('A2-reuse / recruiter-remove divergence: recruiter DELETE /v1/pipelines/:id → 403', async () => {
+    it('L2-B AC-4: DELETE /v1/pipelines/:id is withdrawn — route-level 404 for every actor', async () => {
       const created = await createPipeline(recruiterJwt_Ats_SiteA);
+      // The ordinary hard-DELETE route is withdrawn (durable episode). It is
+      // gone for EVERY actor — there is no scope that restores it — so the
+      // request resolves to a route-level 404, never a 403 scope refusal.
       const res = await fetch(
         `http://127.0.0.1:${port}/v1/pipelines/${created.id}?site_id=${SITE_A}`,
         {
@@ -743,19 +823,75 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           headers: { Authorization: `Bearer ${recruiterJwt_Ats_SiteA}` },
         },
       );
-      expect(res.status).toBe(403);
-      const body = (await res.json()) as { error: { code: string } };
-      expect(body.error?.code).toBe('INSUFFICIENT_PERMISSIONS');
+      expect(res.status).toBe(404);
 
-      // Clean up via tenant_admin so subsequent tests can re-create the
-      // (talent_record_id, requisition_id) unique row.
-      await fetch(
+      // A tenant_admin (who formerly held pipeline:remove → 204) also can no
+      // longer destroy the episode or its audit via the API.
+      const adminRes = await fetch(
         `http://127.0.0.1:${port}/v1/pipelines/${created.id}?site_id=${SITE_A}`,
         {
           method: 'DELETE',
           headers: { Authorization: `Bearer ${tenantAdminJwt_Ats_SiteA}` },
         },
       );
+      expect(adminRes.status).toBe(404);
+
+      // The episode is still present (nothing destroyed it). Free the reused
+      // (talent_record_id, requisition_id) slot via the governed escape.
+      expect(await readStatus(created.id)).toBe('no_contact');
+      await cleanupPipeline(created.id);
+    });
+
+    it('L2-B AC-8: Idempotency-Key required; replay returns the stored response (no dup, no 409); a new key after terminal makes a new episode', async () => {
+      const talentId = randomUUID();
+
+      // A create with NO Idempotency-Key is a client contract error (400).
+      const noKey = await postPipeline(
+        recruiterJwt_Ats_SiteA,
+        undefined,
+        talentId,
+      );
+      expect(noKey.status).toBe(400);
+      expect(await pipelineRowCount(talentId)).toBe(0);
+
+      // First create with a UUID key → 201, one row.
+      const key = randomUUID();
+      const first = await postPipeline(recruiterJwt_Ats_SiteA, key, talentId);
+      expect(first.status).toBe(201);
+      const firstBody = (await first.json()) as { id: string };
+      expect(await pipelineRowCount(talentId)).toBe(1);
+
+      // Replay — SAME key + SAME body → the STORED response (same id), a 201
+      // replay, NOT a 409 uniqueness refusal, and NO second row.
+      const replay = await postPipeline(recruiterJwt_Ats_SiteA, key, talentId);
+      expect(replay.status).toBe(201);
+      const replayBody = (await replay.json()) as { id: string };
+      expect(replayBody.id).toBe(firstBody.id);
+      expect(await pipelineRowCount(talentId)).toBe(1);
+
+      // Idempotency protects the OPERATION, not the (talent, req) pair: once the
+      // first episode reaches a terminal status (live slot released), a create
+      // with a genuinely NEW key mints a NEW historical episode.
+      const term = await transition(
+        recruiterJwt_Ats_SiteA,
+        firstBody.id,
+        'not_in_consideration',
+      );
+      expect(term.status).toBe(200);
+
+      const secondKey = randomUUID();
+      const second = await postPipeline(
+        recruiterJwt_Ats_SiteA,
+        secondKey,
+        talentId,
+      );
+      expect(second.status).toBe(201);
+      const secondBody = (await second.json()) as { id: string };
+      expect(secondBody.id).not.toBe(firstBody.id);
+      expect(await pipelineRowCount(talentId)).toBe(2);
+
+      await cleanupPipeline(firstBody.id);
+      await cleanupPipeline(secondBody.id);
     });
 
     // -------------------------------------------------------------------------
@@ -769,17 +905,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // initial — no_status is never reached by this entry point.
       const rowStatus = await readStatus(created.id);
       expect(rowStatus).toBe('no_contact');
-      // No history written at create (no transition has fired).
-      expect(await countHistoryRows(created.id)).toBe(0);
+      // L2-B — create() now writes exactly one birth history row (NULL -> no_contact);
+      // no transition has fired, so activity stays 0.
+      expect(await countHistoryRows(created.id)).toBe(1);
       expect(await countActivityRows(created.id)).toBe(0);
       // Cleanup.
-      await fetch(
-        `http://127.0.0.1:${port}/v1/pipelines/${created.id}?site_id=${SITE_A}`,
-        {
-          method: 'DELETE',
-          headers: { Authorization: `Bearer ${tenantAdminJwt_Ats_SiteA}` },
-        },
-      );
+      await cleanupPipeline(created.id);
     });
 
     it('Legal transition (no_contact -> contacted): atomic 4-write commits — status + history + activity + metering', async () => {
@@ -796,9 +927,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const body = r.body as { status: string };
       expect(body.status).toBe('contacted');
 
-      // Atomic 4-write structural check.
+      // Atomic 4-write structural check. History is 2: the L2-B birth row +
+      // this transition row.
       expect(await readStatus(created.id)).toBe('contacted');
-      expect(await countHistoryRows(created.id)).toBe(1);
+      expect(await countHistoryRows(created.id)).toBe(2);
       expect(await countActivityRows(created.id)).toBe(1);
       expect(await countUsageEvents()).toBe(usageBefore + 1);
 
@@ -810,13 +942,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const r12Forbidden = ['cand', 'idate'].join('');
       expect(JSON.stringify(body)).not.toContain(r12Forbidden);
 
-      await fetch(
-        `http://127.0.0.1:${port}/v1/pipelines/${created.id}?site_id=${SITE_A}`,
-        {
-          method: 'DELETE',
-          headers: { Authorization: `Bearer ${tenantAdminJwt_Ats_SiteA}` },
-        },
-      );
+      await cleanupPipeline(created.id);
     });
 
     it('Illegal transition (no_contact -> placed): rejected with INVALID_PIPELINE_TRANSITION; NO writes anywhere', async () => {
@@ -837,13 +963,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(await countActivityRows(created.id)).toBe(activityBefore);
       expect(await countUsageEvents()).toBe(usageBefore);
 
-      await fetch(
-        `http://127.0.0.1:${port}/v1/pipelines/${created.id}?site_id=${SITE_A}`,
-        {
-          method: 'DELETE',
-          headers: { Authorization: `Bearer ${tenantAdminJwt_Ats_SiteA}` },
-        },
-      );
+      await cleanupPipeline(created.id);
     });
 
     it('No-op transition (same status): no history, no activity, no metering event', async () => {
@@ -857,21 +977,16 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       );
       expect(r.status).toBe(200);
 
+      // L2-B — only the birth history row exists; the no-op wrote nothing more.
       expect(await readStatus(created.id)).toBe('no_contact');
-      expect(await countHistoryRows(created.id)).toBe(0);
+      expect(await countHistoryRows(created.id)).toBe(1);
       expect(await countActivityRows(created.id)).toBe(0);
       expect(await countUsageEvents()).toBe(usageBefore);
 
-      await fetch(
-        `http://127.0.0.1:${port}/v1/pipelines/${created.id}?site_id=${SITE_A}`,
-        {
-          method: 'DELETE',
-          headers: { Authorization: `Bearer ${tenantAdminJwt_Ats_SiteA}` },
-        },
-      );
+      await cleanupPipeline(created.id);
     });
 
-    it('Placed transition (T4-B2): atomic 4-write — status + history + activity + metering; requisition.openings_available UNTOUCHED and delete does NOT restore', async () => {
+    it('Placed transition (T4-B2): atomic 4-write — status + history + activity + metering; requisition.openings_available UNTOUCHED and purge does NOT restore', async () => {
       // T4-B2 §7 retires the PR-A5b-1 capacity coupling: the placed
       // transition is once again a FOUR-write tx (status + history +
       // activity + metering) and does NOT mutate requisition capacity.
@@ -912,18 +1027,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const openingsAfterPlace = await readOpeningsAvailable(REQUISITION_ID);
       expect(openingsAfterPlace).toBe(openingsBefore);
 
-      // T4-B2: delete of a placed pipeline does NOT restore any slot —
-      // the delete-restore (+1) writer was DELETED. openings_available
-      // stays exactly where it was.
-      await fetch(
-        `http://127.0.0.1:${port}/v1/pipelines/${created.id}?site_id=${SITE_A}`,
-        {
-          method: 'DELETE',
-          headers: { Authorization: `Bearer ${tenantAdminJwt_Ats_SiteA}` },
-        },
-      );
-      const openingsAfterDelete = await readOpeningsAvailable(REQUISITION_ID);
-      expect(openingsAfterDelete).toBe(openingsBefore);
+      // T4-B2 + L2-B: purging a placed pipeline does NOT restore any slot —
+      // the delete-restore (+1) writer was DELETED, and L2-B withdrew the API
+      // DELETE entirely (cleanup is the governed tenant-reset escape now).
+      // openings_available stays exactly where it was.
+      await cleanupPipeline(created.id);
+      const openingsAfterPurge = await readOpeningsAvailable(REQUISITION_ID);
+      expect(openingsAfterPurge).toBe(openingsBefore);
 
       // The other Core boundaries still hold: submittal."TalentSubmittal
       // Record" table is not even loaded into this test container — any
@@ -967,13 +1077,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(illegal.status).toBe(422);
       expect(await countUsageEvents()).toBe(usageMid);
 
-      await fetch(
-        `http://127.0.0.1:${port}/v1/pipelines/${created.id}?site_id=${SITE_A}`,
-        {
-          method: 'DELETE',
-          headers: { Authorization: `Bearer ${tenantAdminJwt_Ats_SiteA}` },
-        },
-      );
+      await cleanupPipeline(created.id);
     });
 
     // -------------------------------------------------------------------------
