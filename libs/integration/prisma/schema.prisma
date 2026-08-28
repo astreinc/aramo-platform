@@ -127,6 +127,10 @@ model IntegrationConnection {
   reconciliations       RequisitionExternalReconciliation[]
   transition_provenance RequisitionExternalTransitionProvenance[]
 
+  // L1-D3-A (R1) — intra-schema relation to the versioned mapping SETS that own
+  // the per-state mapping rows (draft / active / historical).
+  lifecycle_mapping_sets RequisitionLifecycleMappingSet[]
+
   // CB-D2-A1 (ADR-0030) — intra-schema relations to the provider-neutral
   // lifecycle-ingress substrate: the observation/event idempotency ledger and
   // the connection-scoped external-requisition identity mapping.
@@ -168,31 +172,90 @@ model RequisitionLifecycleMapping {
   tenant_id     String @db.Uuid
   connection_id String @db.Uuid
 
+  // L1-D3-A (R1) — the owning versioned mapping SET. A row's lifecycle (draft /
+  // active / historical) is its set's; runtime resolves only the ACTIVE set.
+  mapping_set_id String @db.Uuid
+
   // The provider lifecycle state token (raw / normalized), opaque to Aramo —
   // supplied by the connection's mapping author. NEVER a credential.
   provider_state String
 
+  // L1-D3-A (R3) — the authored disposition: 'EXECUTE_ACTION' (invoke the mapped
+  // governed command) or 'IGNORE' (deliberate no-op — this provider state carries
+  // no Lane-1 lifecycle authority). Bounded String; the DB CHECK (R4) pins the
+  // legal (disposition, mapped_action) pairs.
+  disposition String
+
   // The mapped Aramo lifecycle ACTION token (@aramo/requisition TransitionAction:
   // CLOSE | REOPEN | PUT_ON_HOLD | CANCEL). Stored as a bounded String, NOT an
   // enum — the action vocabulary is owned by the requisition domain, and a
-  // cross-schema enum would couple the two schemas.
-  mapped_action String
+  // cross-schema enum would couple the two schemas. L1-D3-A (R4): NULL iff
+  // disposition = 'IGNORE'; one of the four external actions iff 'EXECUTE_ACTION'.
+  mapped_action String?
 
-  // The version of the mapping contract this row belongs to (bumped when a
-  // connection's mapping is re-authored; carried into provenance for audit).
+  // DEPRECATED (L1-D3-A) — the version now lives on the owning mapping SET
+  // (RequisitionLifecycleMappingSet.version). Retained (ADD-not-rename) and set to
+  // the owning set's version at author time for provenance back-compatibility.
   mapping_version Int @default(1)
 
-  // The per-connection authority posture (external_authority default).
+  // The per-connection authority posture (external_authority default). L1-D3-A
+  // (R5): only 'external_authority' is authorable via the admin API; existing
+  // 'dual_control' rows are preserved and read honestly, never newly authored.
   authority_mode RequisitionLifecycleAuthorityMode @default(external_authority)
 
   created_at DateTime @default(now()) @db.Timestamptz
   updated_at DateTime @default(now()) @updatedAt @db.Timestamptz
 
-  connection IntegrationConnection @relation(fields: [connection_id], references: [id], onDelete: Cascade)
+  connection  IntegrationConnection          @relation(fields: [connection_id], references: [id], onDelete: Cascade)
+  mapping_set RequisitionLifecycleMappingSet @relation(fields: [mapping_set_id], references: [id], onDelete: Cascade)
 
-  // One mapped action per (connection, provider_state) — a connection maps each
-  // provider state exactly once.
-  @@unique([tenant_id, connection_id, provider_state])
+  // L1-D3-A (R1) — one mapped row per (set, provider_state). The SAME
+  // (connection, provider_state) legitimately recurs across versions (historical /
+  // active / draft), so the legacy unique(tenant, connection, provider_state) is
+  // REPLACED by set membership.
+  @@unique([mapping_set_id, provider_state])
+  @@index([tenant_id, connection_id])
+  @@index([mapping_set_id])
+
+  @@schema("integration")
+}
+
+// RequisitionLifecycleMappingSet — L1-D3-A (R1). The versioned mapping SET that
+// owns a connection's per-state mapping rows. Exactly ONE 'active' set per
+// (tenant, connection) — enforced by a PARTIAL UNIQUE INDEX on (tenant_id,
+// connection_id) WHERE status = 'active' (a CONCRETE predicate, never a nullable
+// equality, so it avoids the NULL = NULL immutability trap). A new draft is
+// authored at version = max(version)+1; activation atomically demotes the prior
+// active set to 'historical' and promotes the draft. Active/historical sets are
+// immutable (draft-only mutation, enforced at the service boundary + proven). The
+// partial unique index is migration-SQL-only (Prisma @@unique carries no WHERE).
+model RequisitionLifecycleMappingSet {
+  id            String @id @default(uuid()) @db.Uuid
+  tenant_id     String @db.Uuid
+  connection_id String @db.Uuid
+
+  // Monotonic per-connection version (UNIQUE(connection_id, version)).
+  version Int
+
+  // Lifecycle: 'draft' (mutable) | 'active' (exactly one per connection) |
+  // 'historical'. Bounded String (mirrors the reconciliation-status convention);
+  // the one-active guarantee is the partial unique index, NOT a trigger.
+  status String @default("draft")
+
+  created_at DateTime @default(now()) @db.Timestamptz
+  created_by String   @db.Uuid
+
+  // Stamped on activation (null while draft / never-activated).
+  activated_at DateTime? @db.Timestamptz
+  activated_by String?   @db.Uuid
+
+  // The set this one superseded on activation (audit chain; null for v1).
+  supersedes_set_id String? @db.Uuid
+
+  connection IntegrationConnection         @relation(fields: [connection_id], references: [id], onDelete: Cascade)
+  mappings   RequisitionLifecycleMapping[]
+
+  @@unique([connection_id, version])
   @@index([tenant_id, connection_id])
 
   @@schema("integration")

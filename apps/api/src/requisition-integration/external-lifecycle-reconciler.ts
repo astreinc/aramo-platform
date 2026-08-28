@@ -8,10 +8,12 @@ import {
 } from '@aramo/requisition';
 import {
   CONNECTOR_SERVICE_ACCOUNT_ID,
+  MAPPING_DISPOSITION,
   RECONCILIATION_FAILURE_REASON,
   RequisitionLifecycleMappingRepository,
   RequisitionExternalReconciliationRepository,
   RequisitionExternalTransitionProvenanceRepository,
+  normalizeProviderState,
 } from '@aramo/integration';
 
 import type { ExternalLifecycleEventInput } from './external-lifecycle-event.input.js';
@@ -48,7 +50,10 @@ export type ExternalLifecycleReconcilerResult =
       readonly lifecycle_event_id: string;
       readonly policy_decision_id: string;
     }
-  | { readonly outcome: 'RECONCILED'; readonly reason: string };
+  | { readonly outcome: 'RECONCILED'; readonly reason: string }
+  // L1-D3-A (R3) — the active mapping deliberately IGNOREs this provider state:
+  // an audited no-op (no mutation, no reconciliation row).
+  | { readonly outcome: 'IGNORED'; readonly provider_state: string };
 
 @Injectable()
 export class ExternalLifecycleReconciler {
@@ -65,23 +70,20 @@ export class ExternalLifecycleReconciler {
     private readonly provenance: RequisitionExternalTransitionProvenanceRepository,
   ) {}
 
-  // D1 normalization is deliberately trivial (trim + lowercase). Real provider
-  // normalization / ordering / watermarking is D2 — R-INGRESS bans building the
-  // provider adapter runtime here.
-  private normalize(raw: string): string {
-    return raw.trim().toLowerCase();
-  }
-
   async ingest(
     input: ExternalLifecycleEventInput,
   ): Promise<ExternalLifecycleReconcilerResult> {
-    const normalized = this.normalize(input.raw_provider_status);
+    // The SINGLE shared provider-state key normalizer (@aramo/integration) — the
+    // mapping AUTHOR path and the drain use the same function, so an authored
+    // 'Halted' matches an observed 'Halted'. (Was a private trim+lowercase.)
+    const normalized = normalizeProviderState(input.raw_provider_status);
     const currentStatus = await this.requisitions.findStatusById({
       tenant_id: input.tenant_id,
       id: input.requisition_id,
     });
 
-    // 1) Mapping-contract lookup (per connection). No entry -> unmappable.
+    // 1) Mapping lookup via the connection's ACTIVE mapping set (L1-D3-A). No
+    //    active set / no row for the state -> unmappable.
     const mapping = await this.mappings.findByConnectionState(
       input.tenant_id,
       input.connection_id,
@@ -96,9 +98,27 @@ export class ExternalLifecycleReconciler {
       });
     }
 
-    // 2) The mapped action must be a known OPERATIONAL lifecycle action. A
-    //    mapping that names an unknown token or a human approval action is an
-    //    illegal external command -> reconciliation.
+    // 2) L1-D3-A (R3) — IGNORE disposition: the tenant deliberately asserts this
+    //    provider state carries NO Lane-1 lifecycle authority. Audited no-op —
+    //    NO governed command, NO reconciliation row, NO mutation.
+    if (mapping.disposition === MAPPING_DISPOSITION.IGNORE) {
+      this.logger.debug(
+        `external lifecycle event IGNORED by active mapping (state=${normalized})`,
+      );
+      return { outcome: 'IGNORED', provider_state: normalized };
+    }
+
+    // 3) EXECUTE_ACTION — the mapped action must be a known OPERATIONAL lifecycle
+    //    action. A mapping with no action (defensive) or an unknown / human
+    //    approval action is an illegal external command -> reconciliation.
+    if (mapping.mapped_action === null) {
+      return this.reconcile(input, {
+        failure_reason: RECONCILIATION_FAILURE_REASON.ILLEGAL_FROM_STATE,
+        normalized_status: normalized,
+        mapped_action: null,
+        current_aramo_status: currentStatus,
+      });
+    }
     const action = mapping.mapped_action as TransitionAction;
     if (!TRANSITION_ACTIONS.includes(action) || !isExternalLifecycleAction(action)) {
       return this.reconcile(input, {
@@ -109,7 +129,7 @@ export class ExternalLifecycleReconciler {
       });
     }
 
-    // 3) Authority mode. dual_control RECORDS intent and does NOT execute.
+    // 4) Authority mode. dual_control RECORDS intent and does NOT execute.
     if (mapping.authority_mode === 'dual_control') {
       return this.reconcile(input, {
         failure_reason: RECONCILIATION_FAILURE_REASON.DUAL_CONTROL_PENDING,
@@ -119,7 +139,7 @@ export class ExternalLifecycleReconciler {
       });
     }
 
-    // 4) external_authority — invoke the GOVERNED command seam as the connector
+    // 5) external_authority — invoke the GOVERNED command seam as the connector
     //    service account. This is the ONLY status-writing path.
     const command: ExternalLifecycleTransitionCommand = {
       tenant_id: input.tenant_id,
@@ -143,8 +163,10 @@ export class ExternalLifecycleReconciler {
     const result = await this.requisitions.executeExternalLifecycleCommand(command);
 
     if (result.outcome === 'EXECUTED') {
-      // 5) Structured external provenance links the governed transition to its
-      //    external event (immutable record).
+      // 6) Structured external provenance links the governed transition to its
+      //    external event (immutable record). mapping_version is the ACTIVE
+      //    mapping set's version (L1-D3-A — provenance identifies the exact
+      //    configuration that caused the transition).
       await this.provenance.record({
         tenant_id: input.tenant_id,
         connection_id: input.connection_id,

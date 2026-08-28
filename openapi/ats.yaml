@@ -4039,6 +4039,197 @@ paths:
             application/json:
               schema:
                 $ref: 'common.yaml#/components/schemas/ErrorResponse'
+  /v1/integrations/{connectionId}/requisition-lifecycle-mappings:
+    get:
+      operationId: listLifecycleMappingSets
+      summary: List a connection's versioned lifecycle mapping sets (L1-D3-A).
+      description: Returns the connection's mapping sets (draft / active / historical), newest version first. Guarded by `integration:read`. A cross-tenant / absent connection returns 404 (never 403).
+      parameters:
+        - { name: connectionId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LifecycleMappingSetListResponse'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+  /v1/integrations/{connectionId}/requisition-lifecycle-mappings/versions:
+    post:
+      operationId: createLifecycleMappingDraft
+      summary: Create a new DRAFT mapping set version (L1-D3-A).
+      description: Creates a draft at version max+1 with the supplied rows. EXECUTE_ACTION rows carry one of the four external actions (REOPEN, PUT_ON_HOLD, CLOSE, CANCEL); IGNORE rows carry no action. Guarded by `integration:write`.
+      parameters:
+        - { name: connectionId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LifecycleMappingRowsRequest'
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LifecycleMappingSetDetail'
+        '400':
+          description: Validation error (unknown field, illegal disposition/action pairing).
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '422':
+          description: Mapping rows failed validation — code MAPPING_SET_INVALID.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+      security:
+        - BearerAuth: []
+  /v1/integrations/{connectionId}/requisition-lifecycle-mappings/active:
+    get:
+      operationId: getActiveLifecycleMappingSet
+      summary: Get the connection's ACTIVE mapping set (L1-D3-A).
+      description: Returns the single active mapping set the runtime resolves against. Guarded by `integration:read`. 404 when no active set exists or the connection is invisible.
+      parameters:
+        - { name: connectionId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LifecycleMappingSetDetail'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+  /v1/integrations/{connectionId}/requisition-lifecycle-mappings/versions/{version}:
+    get:
+      operationId: getLifecycleMappingSetVersion
+      summary: Get a specific mapping set version (L1-D3-A).
+      description: Returns the mapping set at the given version (draft / active / historical) with its rows. Guarded by `integration:read`. A cross-tenant / absent connection or version returns 404 (never 403).
+      parameters:
+        - { name: connectionId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: version, in: path, required: true, schema: { type: integer, minimum: 1 } }
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LifecycleMappingSetDetail'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+    put:
+      operationId: replaceLifecycleMappingDraft
+      summary: Replace the rows of a DRAFT mapping set (L1-D3-A).
+      description: Replaces all rows of a draft. Editing an active/historical version is rejected (409, code CONNECTOR_CONFIGURATION_INVALID) — those versions are immutable. Guarded by `integration:write`.
+      parameters:
+        - { name: connectionId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: version, in: path, required: true, schema: { type: integer, minimum: 1 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LifecycleMappingRowsRequest'
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LifecycleMappingSetDetail'
+        '400':
+          description: Validation error.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '409':
+          description: The version is active/historical and immutable — code CONNECTOR_CONFIGURATION_INVALID.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+      security:
+        - BearerAuth: []
+  /v1/integrations/{connectionId}/requisition-lifecycle-mappings/versions/{version}/validate:
+    post:
+      operationId: validateLifecycleMappingSet
+      summary: Validate a mapping set version (L1-D3-A).
+      description: Returns enumerable validation issues (empty ⇒ activatable). Guarded by `integration:read`.
+      parameters:
+        - { name: connectionId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: version, in: path, required: true, schema: { type: integer, minimum: 1 } }
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LifecycleMappingValidationResponse'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+  /v1/integrations/{connectionId}/requisition-lifecycle-mappings/versions/{version}/activate:
+    post:
+      operationId: activateLifecycleMappingSet
+      summary: Atomically activate a DRAFT mapping set version (L1-D3-A).
+      description: Validates then atomically promotes the draft to active, demoting the prior active version to historical. Exactly one active set exists per connection. Guarded by `integration:write`.
+      parameters:
+        - { name: connectionId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: version, in: path, required: true, schema: { type: integer, minimum: 1 } }
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LifecycleMappingSetDetail'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '409':
+          description: The version is not a draft, or a concurrent activation won — code CONNECTOR_CONFIGURATION_INVALID.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '422':
+          description: The set failed validation — code MAPPING_SET_INVALID.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+      security:
+        - BearerAuth: []
   /v1/reports/assignment-pipeline:
     get:
       operationId: getAssignmentPipelineReport
@@ -4533,6 +4724,97 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/IntegrationConnectionView'
+    LifecycleMappingRow:
+      type: object
+      additionalProperties: false
+      required: [id, provider_state, disposition, mapped_action, authority_mode]
+      properties:
+        id: { type: string, format: uuid }
+        provider_state: { type: string }
+        disposition: { type: string, enum: [EXECUTE_ACTION, IGNORE] }
+        mapped_action:
+          type: [string, 'null']
+          enum: [REOPEN, PUT_ON_HOLD, CLOSE, CANCEL, null]
+          description: One of the four external actions for EXECUTE_ACTION; null for IGNORE.
+        authority_mode: { type: string, enum: [external_authority, dual_control] }
+    LifecycleMappingSetSummary:
+      type: object
+      additionalProperties: false
+      required: [id, connection_id, version, status, created_at, created_by, activated_at, activated_by, supersedes_set_id]
+      properties:
+        id: { type: string, format: uuid }
+        connection_id: { type: string, format: uuid }
+        version: { type: integer, minimum: 1 }
+        status: { type: string, enum: [draft, active, historical] }
+        created_at: { type: string, format: date-time }
+        created_by: { type: string, format: uuid }
+        activated_at: { type: [string, 'null'], format: date-time }
+        activated_by: { type: [string, 'null'], format: uuid }
+        supersedes_set_id: { type: [string, 'null'], format: uuid }
+    LifecycleMappingSetDetail:
+      type: object
+      additionalProperties: false
+      required: [id, connection_id, version, status, created_at, created_by, activated_at, activated_by, supersedes_set_id, mappings]
+      properties:
+        id: { type: string, format: uuid }
+        connection_id: { type: string, format: uuid }
+        version: { type: integer, minimum: 1 }
+        status: { type: string, enum: [draft, active, historical] }
+        created_at: { type: string, format: date-time }
+        created_by: { type: string, format: uuid }
+        activated_at: { type: [string, 'null'], format: date-time }
+        activated_by: { type: [string, 'null'], format: uuid }
+        supersedes_set_id: { type: [string, 'null'], format: uuid }
+        mappings:
+          type: array
+          items:
+            $ref: '#/components/schemas/LifecycleMappingRow'
+    LifecycleMappingSetListResponse:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/LifecycleMappingSetSummary'
+    LifecycleMappingRowInput:
+      type: object
+      additionalProperties: false
+      required: [provider_state, disposition]
+      properties:
+        provider_state: { type: string }
+        disposition: { type: string, enum: [EXECUTE_ACTION, IGNORE] }
+        mapped_action:
+          type: [string, 'null']
+          enum: [REOPEN, PUT_ON_HOLD, CLOSE, CANCEL, null]
+          description: Required (one of the four) for EXECUTE_ACTION; MUST be omitted/null for IGNORE.
+    LifecycleMappingRowsRequest:
+      type: object
+      additionalProperties: false
+      required: [rows]
+      properties:
+        rows:
+          type: array
+          items:
+            $ref: '#/components/schemas/LifecycleMappingRowInput'
+    LifecycleMappingValidationIssue:
+      type: object
+      additionalProperties: false
+      required: [code, provider_state, detail]
+      properties:
+        code: { type: string }
+        provider_state: { type: string }
+        detail: { type: string }
+    LifecycleMappingValidationResponse:
+      type: object
+      additionalProperties: false
+      required: [issues]
+      properties:
+        issues:
+          type: array
+          items:
+            $ref: '#/components/schemas/LifecycleMappingValidationIssue'
     CreateIntegrationConnectionRequest:
       type: object
       additionalProperties: false

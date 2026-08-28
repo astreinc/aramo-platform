@@ -46,6 +46,9 @@ export interface LifecycleIngressParams {
 export type LifecycleIngressOutcome =
   | { readonly outcome: 'EXECUTED'; readonly next_status: string }
   | { readonly outcome: 'RECONCILED'; readonly reason: string }
+  // L1-D3-A (R3) — the active mapping deliberately IGNOREs this provider state:
+  // recognized + no-op, NOT a reconciliation. The ledger is marked processed.
+  | { readonly outcome: 'IGNORED' }
   | { readonly outcome: 'DUPLICATE' };
 
 @Injectable()
@@ -173,6 +176,13 @@ export class LifecycleIngressService {
       // ACCEPTED — this observation becomes the ordering high-water mark.
       await this.ledger.markProcessed(ledgerId, 'EXECUTED');
       return { outcome: 'EXECUTED', next_status: result.next_status };
+    }
+    if (result.outcome === 'IGNORED') {
+      // L1-D3-A (R3) — the active mapping IGNOREs this provider state: recognized
+      // and deliberately no-op. Mark the ledger processed (NOT reconciled — there
+      // is no reconciliation row, and it is not a governed refusal).
+      await this.ledger.markProcessed(ledgerId, 'IGNORED');
+      return { outcome: 'IGNORED' };
     }
     // A governed refusal (the reconciler already wrote the reconciliation row).
     // Mark the ledger reconciled (NOT accepted) so it never counts as ordering

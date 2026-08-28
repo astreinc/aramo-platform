@@ -9503,6 +9503,11 @@
     {
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
+      "to": "libs/integration/src/lib/lifecycle/mapping-admin/requisition-lifecycle-mapping-admin.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
       "to": "libs/pipeline/src/lib/pipeline.controller.ts"
     },
     {
@@ -13622,6 +13627,11 @@
       "to": "libs/ingestion/prisma/schema.prisma"
     },
     {
+      "from": "libs/integration/prisma/migrations/20260827150000_l1d3a_mapping_set_versioning/migration.sql",
+      "status": "unscoped",
+      "to": "pact/provider/src/verify-api.ts"
+    },
+    {
       "from": "libs/integration/prisma/schema.prisma",
       "status": "unscoped",
       "to": "doc/05-conventions.md"
@@ -14999,6 +15009,16 @@
       "from": "pact/provider/src/verify-api.ts",
       "status": "unscoped",
       "to": "libs/integration/prisma/migrations/20260814170000_init_integration_connection/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "libs/integration/prisma/migrations/20260826120000_external_lifecycle_authority/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "libs/integration/prisma/migrations/20260827150000_l1d3a_mapping_set_versioning/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",

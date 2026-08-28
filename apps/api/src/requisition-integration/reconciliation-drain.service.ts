@@ -9,6 +9,7 @@ import {
 } from '@aramo/requisition';
 import {
   CONNECTOR_SERVICE_ACCOUNT_ID,
+  MAPPING_DISPOSITION,
   RECONCILIATION_DISPOSITION,
   classifyReconciliation,
   isReconciliationFailureReason,
@@ -16,6 +17,7 @@ import {
   RequisitionExternalReconciliationRepository,
   RequisitionExternalTransitionProvenanceRepository,
   RequisitionLifecycleMappingRepository,
+  normalizeProviderState,
   type ClaimedReconciliationRow,
   type ReconciliationDisposition,
 } from '@aramo/integration';
@@ -86,12 +88,6 @@ export class RequisitionReconciliationDrainService {
   // The connector service account — the ONLY principal this worker acts as when
   // invoking the governed command seam (never a human, never requisition:edit).
   private readonly connectorPrincipalId = CONNECTOR_SERVICE_ACCOUNT_ID;
-
-  // Provider-state normalization — trim + lowercase, IDENTICAL to the reconciler,
-  // so the mapping re-lookup keys on the same normalized token.
-  private normalize(raw: string): string {
-    return raw.trim().toLowerCase();
-  }
 
   /**
    * Claim + drain a bounded batch. Exposed for the integration spec (the
@@ -267,7 +263,7 @@ export class RequisitionReconciliationDrainService {
 
     // 2) Re-resolve mapping on the normalized provider state. Still unmappable ->
     //    bounded re-attempt (poison at the cap).
-    const normalized = row.normalized_status ?? this.normalize(row.raw_provider_status);
+    const normalized = row.normalized_status ?? normalizeProviderState(row.raw_provider_status);
     const mapping = await this.mappings.findByConnectionState(
       row.tenant_id,
       row.connection_id,
@@ -275,6 +271,21 @@ export class RequisitionReconciliationDrainService {
     );
     if (mapping === null) {
       return this.parkOrBumpLogged(row, ctx, RECONCILIATION_DISPOSITION.PARKED_POISON, base);
+    }
+    // L1-D3-A (R3) — the ACTIVE mapping now IGNOREs this provider state (or carries
+    // no action): the queued external intent is superseded. Resolve as a no-op
+    // (NEVER execute an ignored state), NO mutation.
+    if (mapping.disposition === MAPPING_DISPOSITION.IGNORE || mapping.mapped_action === null) {
+      await this.reconciliations.markResolved(
+        row.id,
+        RECONCILIATION_DISPOSITION.RESOLVED_SUPERSEDED,
+      );
+      this.logger.log({
+        event: 'reconciliation_drain_resolved',
+        disposition: RECONCILIATION_DISPOSITION.RESOLVED_SUPERSEDED,
+        ...base,
+      });
+      return 'superseded';
     }
     const action = mapping.mapped_action as TransitionAction;
     if (!TRANSITION_ACTIONS.includes(action) || !isExternalLifecycleAction(action)) {
