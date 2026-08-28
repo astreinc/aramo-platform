@@ -239,10 +239,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'offer:transition',
         'org:manage',
         'pipeline:add',
-        'pipeline:add-activity',
         'pipeline:change-status',
         'pipeline:read',
-        'pipeline:remove',
         'placement:activate',
         'placement:create',
         'placement:permanent:read',
@@ -294,7 +292,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'selection:write',
         'submittal:approve',
         'submittal:create',
-        'submittal-policy:write',
         'talent:create',
         'talent:delete',
         'talent:edit',
@@ -412,7 +409,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Track7/T7-P3: +3 placement:permanent:terms:write grants (account_manager/tenant_admin/tenant_owner) -> 565.
       // Track8/T8-CONNECTOR-A: +4 integration:read/write grants (tenant_admin/tenant_owner ×2) -> 569.
       // L8-B1: +3 submittal-policy:write grants -> 572; +3 requisition:approve grants (account_manager/tenant_admin/tenant_owner) -> 575.
-      expect(roleScopes).toBe(605);
+      expect(roleScopes).toBe(593); // HYG-1: 605 − 12 removed grants (pipeline:remove ×2, pipeline:add-activity ×7, submittal-policy:write ×3)
 
       const utmRole = await prisma.userTenantMembershipRole.findUnique({
         where: { id: SEED_IDS.membership_role_admin },
@@ -458,7 +455,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // added after D-AUTHZ-COMP-WRITE-1 contribute zero audit rows; the
       // count correctly stays 82. (This assertion was never reached before
       // — the stale scope-catalog list above aborted test 10 first.)
-      expect(auditRows.length).toBe(84);
+      expect(auditRows.length).toBe(82); // HYG-1: 84 − 2 scope.created audit events (pipeline:remove, pipeline:add-activity; submittal-policy:write never emitted one)
       // Every audit event uses actor_type 'system' and actor_id = SA id.
       for (const row of auditRows) {
         expect(row.actor_type).toBe('system');
@@ -514,7 +511,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Track 3 / E2: +7 pre_start_requirement (all non-platform). Re-derived
       // actual 96 (prior literal 85 was pre-existingly understated by 4 — F-2).
       // Track 3 / E2 v1.2.2: +1 pre_start_requirement:reopen (non-platform) → 97.
-      expect(tenantScopes.length).toBe(128); // +1 Slice#3 assignment:extend +5 placement +1 placement:replace +2 T7-P1 permanent +1 T7-P2 remedy:resolve +1 T7-P3 permanent:terms:write +4 T4-D assignment +2 T5-P1 commercials +2 T8-P2 requisition:import +2 T8-CONNECTOR-A integration +1 L8-B1 submittal-policy:write +1 Approval requisition:approve +1 L1-A requisition:create:establish (CATALOG-ONLY, no grant; all non-platform)
+      expect(tenantScopes.length).toBe(125); // HYG-1: 128 − 3 removed tenant scopes (pipeline:remove, pipeline:add-activity, submittal-policy:write)
       for (const s of tenantScopes) {
         expect(s.key.startsWith('platform:')).toBe(false);
       }
@@ -809,10 +806,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'offer:transition',
         'org:manage',
         'pipeline:add',
-        'pipeline:add-activity',
         'pipeline:change-status',
         'pipeline:read',
-        'pipeline:remove',
         'placement:activate',
         'placement:create',
         'placement:permanent:read',
@@ -845,7 +840,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'selection:outreach',
         'selection:read',
         'selection:write',
-        'submittal-policy:write',
         'submittal:approve',
         'submittal:create',
         'talent:create',
@@ -1073,10 +1067,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'offer:transition',
         'org:manage',
         'pipeline:add',
-        'pipeline:add-activity',
         'pipeline:change-status',
         'pipeline:read',
-        'pipeline:remove',
         'placement:activate',
         'placement:create',
         'placement:permanent:read',
@@ -1109,7 +1101,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'selection:outreach',
         'selection:read',
         'selection:write',
-        'submittal-policy:write',
         'submittal:approve',
         'submittal:create',
         'talent:create',
@@ -1174,7 +1165,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'examination:read',
         'import:read',
         'pipeline:add',
-        'pipeline:add-activity',
         'pipeline:change-status',
         'pipeline:read',
         'placement:create',
@@ -1210,7 +1200,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'contact:delete',
         'requisition:delete',
         'calendar:event-delete',
-        'pipeline:remove',
         'requisition:read:all',
         'requisition:assign',
         'tenant:admin:user-manage',
@@ -1351,7 +1340,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'selection:outreach',
         'selection:read',
         'selection:write',
-        'submittal-policy:write',
         'examination:read',
         'export:read',
         'identity:resolve',
@@ -1364,10 +1352,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'offer:transition',
         'org:manage',
         'pipeline:add',
-        'pipeline:add-activity',
         'pipeline:change-status',
         'pipeline:read',
-        'pipeline:remove',
         'placement:activate',
         'placement:create',
         'placement:permanent:read',
@@ -1467,11 +1453,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'selection:outreach',
         'selection:read',
         'selection:write',
-        'submittal-policy:write',
         'examination:read',
         'import:read',
         'pipeline:add',
-        'pipeline:add-activity',
         'pipeline:change-status',
         'pipeline:read',
         'placement:activate',
@@ -1529,7 +1513,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'contact:search',
         'identity:resolve',
         'pipeline:add',
-        'pipeline:add-activity',
         'pipeline:change-status',
         'pipeline:read',
         'pre_start_requirement:act',
@@ -1615,7 +1598,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'import:read',
         'org:manage',
         'pipeline:add',
-        'pipeline:add-activity',
         'pipeline:change-status',
         'pipeline:read',
         'pre_start_requirement:act',
@@ -1716,7 +1698,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'examination:read',
         'import:read',
         'pipeline:add',
-        'pipeline:add-activity',
         'pipeline:change-status',
         'pipeline:read',
         'pre_start_requirement:act',

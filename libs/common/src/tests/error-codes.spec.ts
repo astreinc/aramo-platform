@@ -75,7 +75,6 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       'IMPORT_REVERT_WINDOW_EXPIRED',
       'CANONICALIZATION_PAYLOAD_NOT_FOUND',
       'OBJECT_STORAGE_UPLOAD_FAILED',
-      'PRESIGNED_URL_EXPIRED',
       // AUTHZ-2 — 3 platform-tier codes.
       'TENANT_ALREADY_EXISTS',
       'COGNITO_PROVISION_FAILED',

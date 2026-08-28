@@ -70,8 +70,6 @@ import { publishLifecyclePackage } from './publish-lifecycle-package.js';
 //   - entitlement axis  — tenant without `ats` capability → 403
 //   - authorization axis — token without `pipeline:*` scopes → 403
 //   - site axis         — token site != requested site → 403
-//   - recruiter-remove divergence — recruiter DELETE → 403 (only
-//     tenant_admin holds `pipeline:remove`).
 //
 // And the metering-in-transaction proof (directive §4 item 3):
 //   - A successful transition writes exactly one new UsageEvent.
@@ -281,17 +279,13 @@ const SITE_B = '44444444-4444-7444-8444-4444444444bb';
 const RECRUITER = '00000000-0000-7000-8000-000000000bb1';
 const TENANT_ADMIN = '00000000-0000-7000-8000-000000000aa1';
 
-// Recruiter scopes — full recruiter+ pipeline+activity set minus
-// `pipeline:remove` (the tenant_admin-only destructive scope).
-// HK-IDENT-SCOPES seeds `pipeline:read` + `activity:create` as proper
-// scopes (recruiter+); read routes / activity POST key on them
-// instead of the prior `pipeline:add` / `pipeline:add-activity`
-// superset expedients.
+// Recruiter scopes — the recruiter+ pipeline + activity set. HK-IDENT-SCOPES
+// seeds `pipeline:read` + `activity:create` as proper scopes (recruiter+);
+// read routes / activity POST key on them.
 const RECRUITER_SCOPES = [
   'pipeline:read',
   'pipeline:add',
   'pipeline:change-status',
-  'pipeline:add-activity',
   'activity:read',
   'activity:create',
   // L2-A — write-visibility parity now conceals transition/delete/history on a
@@ -301,10 +295,10 @@ const RECRUITER_SCOPES = [
   // pipeline-l2a-integrity + authz-d4b, not here.
   'requisition:read:all',
 ];
-const TENANT_ADMIN_SCOPES = [
-  ...RECRUITER_SCOPES,
-  'pipeline:remove',
-];
+// HYG-1: tenant_admin's former distinguishing `pipeline:remove` scope was retired
+// (dead orphan — the DELETE route was withdrawn at L2-B). For this state-machine
+// spec the admin token needs no extra scope beyond the recruiter set.
+const TENANT_ADMIN_SCOPES = [...RECRUITER_SCOPES];
 
 const TALENT_RECORD_ID = '11111111-1111-7111-8111-1111111111aa';
 const REQUISITION_ID = '22222222-2222-7222-8222-2222222222bb';
@@ -825,8 +819,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       );
       expect(res.status).toBe(404);
 
-      // A tenant_admin (who formerly held pipeline:remove → 204) also can no
-      // longer destroy the episode or its audit via the API.
+      // A tenant_admin also cannot destroy the episode or its audit via the API —
+      // the DELETE route is withdrawn (L2-B), so every actor gets a route-level 404.
       const adminRes = await fetch(
         `http://127.0.0.1:${port}/v1/pipelines/${created.id}?site_id=${SITE_A}`,
         {

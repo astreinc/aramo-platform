@@ -131,8 +131,6 @@ export const SEED_IDS = {
     // pipeline (4)
     'pipeline:add': '01900000-0000-7000-8000-000000000075',
     'pipeline:change-status': '01900000-0000-7000-8000-000000000076',
-    'pipeline:add-activity': '01900000-0000-7000-8000-000000000077',
-    'pipeline:remove': '01900000-0000-7000-8000-000000000078',
     // calendar (3)
     'calendar:event-create': '01900000-0000-7000-8000-000000000079',
     'calendar:event-edit': '01900000-0000-7000-8000-00000000007a',
@@ -349,16 +347,15 @@ export const SEED_IDS = {
     // moved to dc/dd (mechanical id reconciliation; grants unchanged).
     'integration:read': '01900000-0000-7000-8000-0000000000dc',
     'integration:write': '01900000-0000-7000-8000-0000000000dd',
-    'submittal-policy:write': '01900000-0000-7000-8000-0000000000de',
     // Requisition Approval sub-workflow — lowest-free suffix 0xdb (df+ free).
     'requisition:approve': '01900000-0000-7000-8000-0000000000db',
     // Offer Lifecycle — next-free suffixes 0xdf, 0xe0.
     'offer:create': '01900000-0000-7000-8000-0000000000df',
     'offer:transition': '01900000-0000-7000-8000-0000000000e0',
     // Requisition Lane 1-A (Create-Governance) — next-free suffix 0xe3
-    // (0xdd/0xde/0xe1/0xe2 are already taken by integration:write /
-    // submittal-policy:write / assignment:extend / assignment:commercials:approve;
-    // highest previously used was 0xe2). CATALOG-ONLY — NO RoleScope grant.
+    // (0xdd/0xe1/0xe2 are taken by integration:write / assignment:extend /
+    // assignment:commercials:approve; 0xde freed by the HYG-1 submittal-policy:write
+    // removal; highest previously used was 0xe2). CATALOG-ONLY — NO RoleScope grant.
     'requisition:create:establish': '01900000-0000-7000-8000-0000000000e3',
     // COMM-B2 (Aramo-COMM-V1) — operational Communications/Voice scopes.
     'communication:read': '01900000-0000-7000-8000-0000000000e4',
@@ -415,8 +412,6 @@ export const SEED_IDS = {
     tenant_admin_contact_delete: '01900000-0000-7000-8000-000000000118',
     tenant_admin_pipeline_add: '01900000-0000-7000-8000-000000000119',
     tenant_admin_pipeline_change_status: '01900000-0000-7000-8000-00000000011a',
-    tenant_admin_pipeline_add_activity: '01900000-0000-7000-8000-00000000011b',
-    tenant_admin_pipeline_remove: '01900000-0000-7000-8000-00000000011c',
     tenant_admin_calendar_event_create: '01900000-0000-7000-8000-00000000011d',
     tenant_admin_calendar_event_edit: '01900000-0000-7000-8000-00000000011e',
     tenant_admin_calendar_event_delete: '01900000-0000-7000-8000-00000000011f',
@@ -427,7 +422,7 @@ export const SEED_IDS = {
     tenant_admin_requisition_delete: '01900000-0000-7000-8000-000000000124',
     tenant_admin_tenant_admin_user_manage: '01900000-0000-7000-8000-000000000125',
     tenant_admin_tenant_admin_settings: '01900000-0000-7000-8000-000000000126',
-    // recruiter gets 19 (Ruling 1: NO :delete, NO :read:all, NO pipeline:remove).
+    // recruiter gets 18 (Ruling 1: NO :delete, NO :read:all).
     recruiter_talent_read: '01900000-0000-7000-8000-000000000127',
     recruiter_talent_create: '01900000-0000-7000-8000-000000000128',
     recruiter_talent_edit: '01900000-0000-7000-8000-000000000129',
@@ -440,7 +435,6 @@ export const SEED_IDS = {
     recruiter_contact_edit: '01900000-0000-7000-8000-000000000130',
     recruiter_pipeline_add: '01900000-0000-7000-8000-000000000131',
     recruiter_pipeline_change_status: '01900000-0000-7000-8000-000000000132',
-    recruiter_pipeline_add_activity: '01900000-0000-7000-8000-000000000133',
     recruiter_calendar_event_create: '01900000-0000-7000-8000-000000000134',
     recruiter_calendar_event_edit: '01900000-0000-7000-8000-000000000135',
     recruiter_activity_read: '01900000-0000-7000-8000-000000000136',
@@ -522,8 +516,6 @@ export const SEED_IDS = {
     scope_contact_delete_created: '01900000-0000-7000-8000-000000000213',
     scope_pipeline_add_created: '01900000-0000-7000-8000-000000000214',
     scope_pipeline_change_status_created: '01900000-0000-7000-8000-000000000215',
-    scope_pipeline_add_activity_created: '01900000-0000-7000-8000-000000000216',
-    scope_pipeline_remove_created: '01900000-0000-7000-8000-000000000217',
     scope_calendar_event_create_created: '01900000-0000-7000-8000-000000000218',
     scope_calendar_event_edit_created: '01900000-0000-7000-8000-000000000219',
     scope_calendar_event_delete_created: '01900000-0000-7000-8000-00000000021a',
@@ -629,11 +621,11 @@ export const ROLE_SCOPE_ASSIGNMENTS = {
     'submittal:create',
     'submittal:approve',
     // PR-A1a-2 — full ATS catalog (27 scopes). tenant_admin gets the
-    // complete set incl. all :delete + pipeline:remove + tenant:admin:*.
+    // complete set incl. all :delete + tenant:admin:*.
     'talent:read', 'talent:create', 'talent:edit', 'talent:delete', 'talent:search',
     'company:read', 'company:create', 'company:edit', 'company:delete',
     'contact:read', 'contact:create', 'contact:edit', 'contact:delete',
-    'pipeline:add', 'pipeline:change-status', 'pipeline:add-activity', 'pipeline:remove',
+    'pipeline:add', 'pipeline:change-status',
     'calendar:event-create', 'calendar:event-edit', 'calendar:event-delete',
     'activity:read', 'examination:read',
     'requisition:create', 'requisition:edit', 'requisition:delete',
@@ -660,15 +652,15 @@ export const ROLE_SCOPE_ASSIGNMENTS = {
     'submittal:create',
     'submittal:approve',
     // PR-A1a-2 Ruling 1 uniform divergence — recruiter gets the full
-    // operational workflow but NO destructive (`*:delete`,
-    // `pipeline:remove`) and NO see-all (`*:read:all`). Recruiter keeps
+    // operational workflow but NO destructive (`*:delete`) and NO
+    // see-all (`*:read:all`). Recruiter keeps
     // all :create/:edit + talent:search + pipeline:add/change-status/
     // add-activity + calendar:event-create/edit + activity:read +
     // examination:read + assigned reads.
     'talent:read', 'talent:create', 'talent:edit', 'talent:search',
     'company:read', 'company:create', 'company:edit',
     'contact:read', 'contact:create', 'contact:edit',
-    'pipeline:add', 'pipeline:change-status', 'pipeline:add-activity',
+    'pipeline:add', 'pipeline:change-status',
     'calendar:event-create', 'calendar:event-edit',
     'activity:read', 'examination:read',
     // PR-A1 Requisition-Gating Rework — recruiter is now READ-ONLY on
@@ -756,8 +748,6 @@ const ROLE_SCOPE_ROW_IDS: Record<string, string> = {
   'tenant_admin:contact:delete': SEED_IDS.role_scopes.tenant_admin_contact_delete,
   'tenant_admin:pipeline:add': SEED_IDS.role_scopes.tenant_admin_pipeline_add,
   'tenant_admin:pipeline:change-status': SEED_IDS.role_scopes.tenant_admin_pipeline_change_status,
-  'tenant_admin:pipeline:add-activity': SEED_IDS.role_scopes.tenant_admin_pipeline_add_activity,
-  'tenant_admin:pipeline:remove': SEED_IDS.role_scopes.tenant_admin_pipeline_remove,
   'tenant_admin:calendar:event-create': SEED_IDS.role_scopes.tenant_admin_calendar_event_create,
   'tenant_admin:calendar:event-edit': SEED_IDS.role_scopes.tenant_admin_calendar_event_edit,
   'tenant_admin:calendar:event-delete': SEED_IDS.role_scopes.tenant_admin_calendar_event_delete,
@@ -768,7 +758,7 @@ const ROLE_SCOPE_ROW_IDS: Record<string, string> = {
   'tenant_admin:requisition:delete': SEED_IDS.role_scopes.tenant_admin_requisition_delete,
   'tenant_admin:tenant:admin:user-manage': SEED_IDS.role_scopes.tenant_admin_tenant_admin_user_manage,
   'tenant_admin:tenant:admin:settings': SEED_IDS.role_scopes.tenant_admin_tenant_admin_settings,
-  // recruiter: 19 (NO :delete, NO :read:all, NO pipeline:remove)
+  // recruiter: 18 (NO :delete, NO :read:all)
   'recruiter:talent:read': SEED_IDS.role_scopes.recruiter_talent_read,
   'recruiter:talent:create': SEED_IDS.role_scopes.recruiter_talent_create,
   'recruiter:talent:edit': SEED_IDS.role_scopes.recruiter_talent_edit,
@@ -781,7 +771,6 @@ const ROLE_SCOPE_ROW_IDS: Record<string, string> = {
   'recruiter:contact:edit': SEED_IDS.role_scopes.recruiter_contact_edit,
   'recruiter:pipeline:add': SEED_IDS.role_scopes.recruiter_pipeline_add,
   'recruiter:pipeline:change-status': SEED_IDS.role_scopes.recruiter_pipeline_change_status,
-  'recruiter:pipeline:add-activity': SEED_IDS.role_scopes.recruiter_pipeline_add_activity,
   'recruiter:calendar:event-create': SEED_IDS.role_scopes.recruiter_calendar_event_create,
   'recruiter:calendar:event-edit': SEED_IDS.role_scopes.recruiter_calendar_event_edit,
   'recruiter:activity:read': SEED_IDS.role_scopes.recruiter_activity_read,
@@ -866,7 +855,7 @@ export const AUTHZ1_BUNDLES: ReadonlyArray<readonly [string, readonly string[]]>
     'talent:read', 'talent:create', 'talent:edit', 'talent:delete', 'talent:search',
     'company:read', 'company:create', 'company:edit', 'company:delete',
     'contact:read', 'contact:create', 'contact:edit', 'contact:delete',
-    'pipeline:add', 'pipeline:change-status', 'pipeline:add-activity', 'pipeline:remove',
+    'pipeline:add', 'pipeline:change-status',
     'calendar:event-create', 'calendar:event-edit', 'calendar:event-delete',
     'activity:read', 'examination:read',
     'requisition:create', 'requisition:edit', 'requisition:delete',
@@ -890,7 +879,7 @@ export const AUTHZ1_BUNDLES: ReadonlyArray<readonly [string, readonly string[]]>
     'talent:read', 'talent:create', 'talent:edit', 'talent:search',
     'company:read', 'company:create', 'company:edit',
     'contact:read', 'contact:create', 'contact:edit',
-    'pipeline:add', 'pipeline:change-status', 'pipeline:add-activity',
+    'pipeline:add', 'pipeline:change-status',
     'calendar:event-create', 'calendar:event-edit',
     'activity:read', 'examination:read',
     'requisition:create', 'requisition:edit',
@@ -907,7 +896,7 @@ export const AUTHZ1_BUNDLES: ReadonlyArray<readonly [string, readonly string[]]>
     'talent:read', 'talent:create', 'talent:search', 'talent:source',
     'company:read', 'contact:read', 'contact:create',
     'requisition:read',
-    'pipeline:read', 'pipeline:add', 'pipeline:change-status', 'pipeline:add-activity',
+    'pipeline:read', 'pipeline:add', 'pipeline:change-status',
     'activity:read', 'activity:create',
   ]],
   // finance — 6 scopes (offer approval; compensation visibility is D5).
@@ -952,7 +941,7 @@ export const AUTHZ1_BUNDLES: ReadonlyArray<readonly [string, readonly string[]]>
     'talent:read', 'talent:create', 'talent:edit', 'talent:search',
     'company:read', 'company:create', 'company:edit',
     'contact:read', 'contact:create', 'contact:edit',
-    'pipeline:add', 'pipeline:change-status', 'pipeline:add-activity',
+    'pipeline:add', 'pipeline:change-status',
     'calendar:event-create', 'calendar:event-edit',
     'activity:read', 'examination:read',
     'requisition:create', 'requisition:edit',
@@ -981,7 +970,7 @@ export const AUTHZ1_BUNDLES: ReadonlyArray<readonly [string, readonly string[]]>
     'talent:read', 'talent:create', 'talent:edit', 'talent:search',
     'company:read', 'company:create', 'company:edit',
     'contact:read', 'contact:create', 'contact:edit',
-    'pipeline:add', 'pipeline:change-status', 'pipeline:add-activity',
+    'pipeline:add', 'pipeline:change-status',
     'calendar:event-create', 'calendar:event-edit',
     'activity:read', 'examination:read',
     'requisition:create', 'requisition:edit',
@@ -2073,34 +2062,6 @@ const INTEGRATION_MANAGEMENT_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (
   return map;
 })();
 
-// Lane L8-B1 — SubmittalEligibility policy MANAGEMENT role-matrix.
-// submittal-policy:write granted to account_manager + tenant_admin +
-// tenant_owner (least-privilege per base R-OQB; recruiter EXCLUDED — editing a
-// requisition does NOT grant authority over client-submittal rules).
-export const SUBMITTAL_POLICY_SEED_BUNDLES: ReadonlyArray<
-  readonly [string, readonly string[]]
-> = [
-  ['account_manager', ['submittal-policy:write']],
-  ['tenant_admin', ['submittal-policy:write']],
-  ['tenant_owner', ['submittal-policy:write']],
-];
-
-// Deterministic RoleScope row ids for the 3 submittal-policy grants. Fresh
-// disjoint range 0xc20+ (append-don't-renumber; integration occupies 0xc10+).
-// DO NOT REORDER without bumping the offset.
-const SUBMITTAL_POLICY_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
-  const map: Record<string, string> = {};
-  let i = 0xc20;
-  for (const [role, scopes] of SUBMITTAL_POLICY_SEED_BUNDLES) {
-    for (const scope of scopes) {
-      map[`${role}:${scope}`] =
-        `01900000-0000-7000-8000-${i.toString(16).padStart(12, '0')}`;
-      i++;
-    }
-  }
-  return map;
-})();
-
 // Requisition Approval sub-workflow — APPROVE/REJECT authority role-matrix.
 // requisition:approve granted to account_manager + tenant_admin + tenant_owner
 // (the manager tier, mirroring requisition:edit:financials); a recruiter holding
@@ -2372,8 +2333,6 @@ export async function runIdentitySeed(
   await upsertScope(prisma, SEED_IDS.scopes['contact:delete'], 'contact:delete', 'Delete a contact record (tenant_admin only — Ruling 1)');
   await upsertScope(prisma, SEED_IDS.scopes['pipeline:add'], 'pipeline:add', 'Add a talent to a pipeline');
   await upsertScope(prisma, SEED_IDS.scopes['pipeline:change-status'], 'pipeline:change-status', 'Change a pipeline entry status');
-  await upsertScope(prisma, SEED_IDS.scopes['pipeline:add-activity'], 'pipeline:add-activity', 'Add an activity to a pipeline entry');
-  await upsertScope(prisma, SEED_IDS.scopes['pipeline:remove'], 'pipeline:remove', 'Remove a talent from a pipeline (tenant_admin only — Ruling 1 destructive)');
   await upsertScope(prisma, SEED_IDS.scopes['calendar:event-create'], 'calendar:event-create', 'Create a calendar event');
   await upsertScope(prisma, SEED_IDS.scopes['calendar:event-edit'], 'calendar:event-edit', 'Edit a calendar event (own events)');
   await upsertScope(prisma, SEED_IDS.scopes['calendar:event-delete'], 'calendar:event-delete', 'Delete a calendar event (tenant_admin only — Ruling 1)');
@@ -2527,7 +2486,6 @@ export async function runIdentitySeed(
   await upsertScope(prisma, SEED_IDS.scopes['requisition:import:write'], 'requisition:import:write', 'Track 8 / T8-P2 — run a canonical requisition import (POST /v1/requisition-imports): validate + map provider-neutral records through the governed createForImport path. GRANTED to account_manager, tenant_admin, tenant_owner only; recruiter excluded (bulk external ingestion is an authoritative-tier act, mirrors assignment:create). NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['integration:read'], 'integration:read', 'Track 8 / T8-CONNECTOR-A — read provider-neutral connector connections (Settings → Integrations): list/status/last-sync/error summary. Connector connection ADMINISTRATION; distinct from requisition:import:read (P3 ingestion monitoring). GRANTED to tenant_admin, tenant_owner only. NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['integration:write'], 'integration:write', 'Track 8 / T8-CONNECTOR-A — administer provider-neutral connector connections (create/configure-credential/enable/disable). Never returns raw secret material. GRANTED to tenant_admin, tenant_owner only; recruiter/account_manager excluded (administrative tier). The connector ServiceAccount does NOT hold this — execution authority is requisition:import:write only. NO scope.created (scope-seed precedent).');
-  await upsertScope(prisma, SEED_IDS.scopes['submittal-policy:write'], 'submittal-policy:write', 'Lane L8-B1 — set the client-submittal eligibility policy on a requisition (submittal deadline, supplier slot limit, manual open/pause/close, authority). Least-privilege (base R-OQB): GRANTED to account_manager, tenant_admin, tenant_owner only; recruiter excluded — editing a requisition does NOT grant authority over client-submittal rules. NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['communication:read'], 'communication:read', 'COMM-V1 (COMM-B2) — read Communications/Voice surface: provider capabilities, the caller own provider-identity mapping, and a communication interaction by id. Frontline recruiting read (NOT admin-tier). GRANTED to recruiter, account_manager, tenant_admin, tenant_owner. NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['communication:voice:call'], 'communication:voice:call', 'COMM-V1 — initiate an outbound voice call from a Talent record (POST /v1/communications/calls; route lands in COMM-B5). Server-side contacting-consent gate precedes any provider execution. GRANTED to recruiter, account_manager, tenant_admin, tenant_owner. NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['communication:disposition:write'], 'communication:disposition:write', 'COMM-V1 — record the recruiting disposition of a communication interaction (route lands in COMM-B7). GRANTED to recruiter, account_manager, tenant_admin, tenant_owner. NO scope.created (scope-seed precedent).');
@@ -3059,28 +3017,6 @@ export async function runIdentitySeed(
     }
   }
 
-  // Lane L8-B1 — submittal-policy management grants (3 rows; range 0xc20+).
-  // submittal-policy:write -> account_manager + tenant_admin + tenant_owner
-  // (recruiter excluded; least-privilege per base R-OQB).
-  for (const [roleKey, scopeKeys] of SUBMITTAL_POLICY_SEED_BUNDLES) {
-    const role_id = roleIdForKey(roleKey);
-    for (const scopeKey of scopeKeys) {
-      const rsId =
-        SUBMITTAL_POLICY_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
-      if (rsId === undefined) {
-        throw new Error(
-          `L8-B1 Submittal-Policy-Role-Matrix: Missing generated RoleScope id for ${roleKey}:${scopeKey}`,
-        );
-      }
-      const scope_id = scopeIdForKey(scopeKey);
-      await prisma.roleScope.upsert({
-        where: { role_id_scope_id: { role_id, scope_id } },
-        update: {},
-        create: { id: rsId, role_id, scope_id },
-      });
-    }
-  }
-
   // Requisition Approval sub-workflow — approval-authority grants (3 rows; range
   // 0xc30+). requisition:approve -> account_manager + tenant_admin + tenant_owner
   // (recruiter excluded; approval is a segregated-duty authority).
@@ -3483,8 +3419,6 @@ export async function runIdentitySeed(
     { audit_id: SEED_IDS.audit_events.scope_contact_delete_created, key: 'contact:delete' },
     { audit_id: SEED_IDS.audit_events.scope_pipeline_add_created, key: 'pipeline:add' },
     { audit_id: SEED_IDS.audit_events.scope_pipeline_change_status_created, key: 'pipeline:change-status' },
-    { audit_id: SEED_IDS.audit_events.scope_pipeline_add_activity_created, key: 'pipeline:add-activity' },
-    { audit_id: SEED_IDS.audit_events.scope_pipeline_remove_created, key: 'pipeline:remove' },
     { audit_id: SEED_IDS.audit_events.scope_calendar_event_create_created, key: 'calendar:event-create' },
     { audit_id: SEED_IDS.audit_events.scope_calendar_event_edit_created, key: 'calendar:event-edit' },
     { audit_id: SEED_IDS.audit_events.scope_calendar_event_delete_created, key: 'calendar:event-delete' },

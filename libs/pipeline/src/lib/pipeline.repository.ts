@@ -45,79 +45,39 @@ export interface CurrentStage {
   readonly requisition_id: string;
 }
 
-// PipelineRepository — write + read surface for Pipeline + the ENFORCED
-// state machine transition (PR-A5a Gate 5; PR-A5b-1 extends the placement
-// path with the openings_available decrement + over-capacity guard).
+// PipelineRepository — the write + read surface for Pipeline + the ENFORCED
+// state-machine transition (the pipeline-state.ts application-layer matrix).
 //
-// === The transition method (PR-A5a directive §3 + PR-A5b-1 §2-3) ===
+// === transition(...) — current flow ===
+//   1. Read the current Pipeline.status (tenant-scoped, visibility-concealed).
+//   2. CAS on expected_version (L2-A): a stale version →
+//      PIPELINE_TRANSITION_CONFLICT (409), no write.
+//   3. No-op guard: to === current → return without a DB write (no history,
+//      no Activity, no metering event — a no-op is a real "same state").
+//   4. Legality check: canTransition(current, to) per pipeline-state.ts →
+//      illegal = INVALID_PIPELINE_TRANSITION (422), no write.
+//   5. Atomic interactive $transaction (Ruling 6 — all-or-none):
+//        a. UPDATE Pipeline.status + version increment; on the live→terminal
+//           flip (isLiveStatus(from) && !isLiveStatus(to)) also set
+//           ended_at/ended_by_id (L2-B, structurally write-once).
+//        b. INSERT PipelineStatusHistory (from / to / changed_by / note).
+//        c. INSERT activity."Activity" (insertActivityInTx — cross-schema
+//           $executeRaw composed into the same tx).
+//        d. recordUsage(tx, { event_type: 'pipeline.state_transition' }) — metering.
+//        e. INSERT pipeline."OutboxEvent" ('pipeline.state_transition', L2-B),
+//           drained by libs/outbox-publisher.
+//   6. Return the updated PipelineView (the controller projects it).
 //
-// The five-step internal flow of `transition(...)`:
-//   1. Read the current Pipeline.status from the DB (tenant-scoped).
-//   2. No-op guard: `to_status === current` → return without DB write.
-//      No PipelineStatusHistory row, no Activity row, no metering event.
-//      (Directive §2 / Ruling 1: a no-op is a real "same state" semantic;
-//      we do NOT pad history with self-loops.)
-//   3. Legality check: `canTransition(current, to)` per the application-
-//      layer state machine (libs/pipeline/src/lib/pipeline-state.ts).
-//      Illegal → throw INVALID_PIPELINE_TRANSITION (422). No write.
-//   4. Atomic interactive `$transaction(async tx => ...)` — same-tx
-//      atomicity (Ruling 6) across:
-//        a. UPDATE Pipeline.status
-//        b. INSERT PipelineStatusHistory (from / to / changed_by / note)
-//        c. INSERT activity."Activity" (type=pipeline_status_change)
-//           via insertActivityInTx — cross-schema $executeRaw composed
-//           into the same tx (the recordUsage pattern, second application).
-//        d. recordUsage(tx, { event_type: 'pipeline.state_transition' })
-//           — the first ATS-domain metered event (Ruling 4; the A1c
-//           transactional guarantee, extended to pipeline).
-//        e. (PR-A5b-1, ONLY when to === 'placed') cross-schema UPDATE
-//           requisition."Requisition" SET openings_available =
-//           openings_available - 1 WHERE id = <pipeline.requisition_id>
-//           AND tenant_id = <tenant> AND openings_available > 0. The
-//           `openings_available > 0` predicate is the OPTIMISTIC over-
-//           capacity guard: if the slot is gone (row count == 0), throw
-//           REQUISITION_NO_OPENINGS (409) — the throw rolls back the
-//           entire interactive tx, so (a)-(d) revert with (e). The Lead-
-//           reviewed ruling (refuse the placement rather than silently
-//           floor to 0 or allow a negative) is enforced here.
-//      All writes commit together, or none does. The integration spec
-//      asserts this structurally.
-//   5. Return the updated PipelineView (the controller projects it).
+// create(): inserts the Pipeline row + the birth PipelineStatusHistory row
+// (null → no_contact) + a 'pipeline.created' outbox event, all in one tx (L2-B).
 //
-// === Why interactive form (vs A5a's array form) ===
-//
-// A5a used the array-form `$transaction([...])` because every leg was a
-// stateless PrismaPromise. A5b-1's over-capacity guard needs to inspect
-// the row count returned by the decrement UPDATE and throw conditionally
-// — the array form cannot do that mid-array. The interactive form
-// preserves the SAME-tx atomicity (per the existing recordUsage / insert
-// ActivityInTx contract — they both accept any object with $executeRaw,
-// which the interactive `tx` parameter satisfies) while allowing the
-// conditional throw. Non-placement transitions traverse the same code
-// path; the decrement leg is gated on `to === 'placed'`.
-//
-// === PR-A5b boundary (PR-A5b-1 scope, A5b-2 deferred) ===
-//
-// A5b-1 writes ONLY requisition.Requisition.openings_available; NO Core
-// table (talent.*, examination.*, submittal.*, job_domain.*) is read or
-// written. The TalentRecord link is A5b-2 (a separate, later PR). The
-// integration spec asserts this structurally: pre/post-placement,
-// talent + examination + submittal + job_domain row counts are bit-
-// identical; the only delta is requisition.openings_available - 1.
-//
-// === Delete-restore (PR-A5b-1 §4) ===
-//
-// Pipeline `placed` is a terminal state (no outgoing transitions per the
-// pipeline-state map). Re-entry of a placement on a re-opened requisition
-// is delete+recreate. So deleting a `placed`-status pipeline must restore
-// the slot it consumed — `delete()` reads the existing row's status
-// first; if `placed`, the delete + cross-schema +1 restore commit in a
-// single interactive tx. Deleting a non-placed pipeline is the A5a
-// behavior verbatim (it never decremented; nothing to restore). The
-// restore is unbounded (no upper-bound cap against `openings`): the
-// symmetric inverse of the decrement, on the assumption that
-// `openings_available` was at most `openings - 1` immediately after the
-// placement that decremented.
+// Capacity is NOT owned here: a `placed` transition does NOT mutate requisition
+// capacity — capacity is DERIVED from the active ContractAssignment population
+// (T4-B2 §7; placement-owned). There is NO public hard delete: the episode is
+// durable and closes through terminal lifecycle semantics (L2-B). The retired
+// PR-A5b-1 openings_available decrement/over-capacity-409/delete-restore and the
+// withdrawn public DELETE are recorded in
+// doc/governance/history/Aramo-Architecture-Change-History.md — not narrated here.
 
 interface PipelineRow {
   id: string;

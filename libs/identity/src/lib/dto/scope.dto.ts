@@ -26,12 +26,12 @@
 // route) stays a separate carry — own follow-on PR.
 export const SEED_SCOPE_KEYS = [
   // Existing pre-A1a catalog
-  'consent:read',
-  'consent:write',
+  'consent:read', // EXIT_HYG (HYG-1) — live internal ConsentController surface; keep-or-gate is a Consent/Portal-lane ruling. See Dead-Residue Ledger.
+  'consent:write', // EXIT_HYG (HYG-1) — same; owning-lane ruling required.
   'consent:decision-log:read',
-  'auth:session:read',
-  'identity:user:read',
-  'identity:tenant:read',
+  'auth:session:read', // ACTIVE_RESERVED — baseline session-established marker; gate role superseded by consumer_type gating, retained pending the F31 scope-registry design.
+  'identity:user:read', // ACTIVE_RESERVED — Lead-ratified auditor/compliance bundle; read surface deferred to the Reporting/Audit DDR (no live handler yet).
+  'identity:tenant:read', // ACTIVE_RESERVED — same auditor/compliance bundle; read surface deferred.
   // PR-A1a ATS subset (3)
   'requisition:read',           // assigned-to-me (default recruiter); see :all below
   'requisition:read:all',       // see-all (tenant_admin only — Aramo divergence from OpenCATS coarse EDIT/DELETE tier)
@@ -67,15 +67,13 @@ export const SEED_SCOPE_KEYS = [
   // pipeline domain (4)
   'pipeline:add',               // recruiter+
   'pipeline:change-status',     // recruiter+
-  'pipeline:add-activity',      // recruiter+
-  'pipeline:remove',            // tenant_admin only (Ruling 1 destructive: removing a candidate from a pipeline)
   // calendar domain (3)
   'calendar:event-create',      // recruiter+
   'calendar:event-edit',        // recruiter+ (own events)
   'calendar:event-delete',      // tenant_admin only
   // activity + examination + requisition (5)
   'activity:read',              // back_office+
-  'examination:read',           // back_office+ (read-only Core output)
+  'examination:read',           // ACTIVE_RESERVED — examination-read gate reserved by the OpenAPI contract (x-required-scope on 5 routes); no live handler yet. back_office+ (read-only Core output).
   'requisition:create',         // recruiter+
   'requisition:edit',           // recruiter+
   'requisition:delete',         // tenant_admin only
@@ -307,8 +305,8 @@ export const SEED_SCOPE_KEYS = [
   // placement:activate/terminate). recruiter does operational placement work, NOT
   // authoritative post-start assignment mutation.
   'assignment:read',
-  'assignment:create',
-  'assignment:update',
+  'assignment:create', // ACTIVE_RESERVED — authority class ratified (Track4/T4-D) for deferred ContractAssignment creation; no live handler yet.
+  'assignment:update', // ACTIVE_RESERVED — same ratified T4-D authority; dormant, cited as the reserved verb in live placement code.
   'assignment:end',
   'assignment:extend',
   // Track 5 / T5-P1 — assignment commercial-terms (Assignment Rate Version)
@@ -340,8 +338,6 @@ export const SEED_SCOPE_KEYS = [
   // is requisition:import:write only.
   'integration:read',
   'integration:write',
-  // Lane L8-B1 — set the client-submittal eligibility policy on a requisition.
-  'submittal-policy:write',
   // Requisition Approval sub-workflow — decide the pending_approval → open /
   // → draft (APPROVE / REJECT) governed transitions.
   'requisition:approve',

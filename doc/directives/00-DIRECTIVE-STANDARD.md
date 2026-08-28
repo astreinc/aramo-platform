@@ -127,3 +127,21 @@ Pointers to Part 2, plus mechanical items. The rule text has one home; nothing h
 **Lead/Architect** reviews against Part 2 and rules. It reads the directive from `doc/directives/` directly — no relay, no summary. It does not author from partial grounding.
 
 **PO** ratifies by merging, and decides what is worth building at all. Neither other lane can see runway, users, or opportunity cost.
+
+---
+
+## Part 5 — Removed-surface hygiene (mandatory; Architect ruling 2026-08-28)
+
+Any slice that **retires, withdraws, or supersedes a product surface** (a route, scope, error code, DTO, contract, capability, or behaviour) MUST run a `REMOVED_SURFACE_SWEEP` before Gate-5. "Removal" means **zero live / product-contract residue** — historical evidence may remain ONLY in explicitly historical artifacts (migrations, ADRs, closure records, `doc/governance/history/*`), never in production code describing obsolete behaviour as current.
+
+**The sweep** searches every layer for the retired surface: controller/route · repository/service method · DTO/request type · scope catalog + seed + role grants · FE API client + affordance + capability check · OpenAPI spec · Pact/contracts · error codes/messages · integration/E2E/unit tests · fixtures/personas · exports/imports · comments/TODOs/docstrings claiming the obsolete behaviour is current · dead constants · CI scripts/allowlists · architecture docs. Every hit is classified into exactly one of:
+
+- `ACTIVE_REQUIRED` — still legitimately used (incl. dynamic/service-level enforcement, not just literal guards).
+- `HISTORICAL_REQUIRED` — legitimate history in a historical artifact — KEEP.
+- `ACTIVE_RESERVED` — deliberate forward-reservation tied to a named authority; KEEP with an explicit current-state rationale + machine-detectable classification (see the HYG-3 guards).
+- `EXIT_HYG / OWNING_LANE` — a live-surface question the hygiene slice must NOT resolve; hand it to the owning lane with owner + reason. Does NOT count against closure.
+- `REMOVE_NOW` — live/product-contract residue.
+
+**Gate-5 acceptance:** `REMOVE_NOW` MUST be **EMPTY**. Any non-empty `REMOVE_NOW` HALTs — do not silently carry residue forward. A hygiene removal may only retire already-unreachable or explicitly-superseded substrate; anything currently callable or contractually reserved **exits the hygiene slice back to its owning lane** (no stealth feature modification). The Gate-5 report carries a **working-feature attestation**: the diff changes no reachable business operation, no enforced-route authorization decision, no API behaviour, and no provider/consumer contract behaviour — only dead catalog/code residue (evidenced by green Pact/OpenAPI/integration).
+
+Recurrence is prevented by CI: `orphan-scopes:check` (every seeded scope literally-enforced or machine-classified) and `dead-error-codes:check` (every code emitted or machine-classified reserved), each with a negative self-test.

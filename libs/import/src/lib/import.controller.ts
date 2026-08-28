@@ -67,9 +67,8 @@ import { MappingSuggestionService } from './mapping/mapping-suggestion.service.j
 //     prevents. The "natural reverter" instinct from Gate 5 does NOT
 //     outweigh it: a recruiter may *request* a revert, but the bulk-
 //     destructive act requires tenant_admin authority. The
-//     `import:delete` tiering matches `requisition:delete` /
-//     `pipeline:remove` / every entity `:delete` in the existing
-//     catalog.
+//     `import:delete` tiering matches `requisition:delete` and the
+//     other destructive `:delete` scopes in the catalog.
 @Controller('v1/imports')
 @UseGuards(JwtAuthGuard, EntitlementGuard, RolesGuard)
 @RequireCapability('ats')

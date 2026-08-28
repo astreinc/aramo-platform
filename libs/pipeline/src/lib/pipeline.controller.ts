@@ -39,12 +39,10 @@ import { resolveAddTalentOutcome } from './policy/override-resolution.js';
 //   @RequireSiteMatch()                 // route-level — site axis
 //
 // === Scope gating (HK-IDENT-SCOPES — proper scopes seeded) ===
-// Seeded catalog (recruiter+ unless noted):
+// Seeded catalog (recruiter+):
 //   - pipeline:read (HK-IDENT-SCOPES)
 //   - pipeline:add
 //   - pipeline:change-status   ← THE transition scope
-//   - pipeline:add-activity
-//   - pipeline:remove (tenant_admin only)
 //
 // Read routes (list/get/history) now key on the proper `pipeline:read`
 // scope, replacing the A5a `pipeline:add` superset expedient.
