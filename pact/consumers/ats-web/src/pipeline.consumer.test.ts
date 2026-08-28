@@ -57,6 +57,8 @@ function pipelineView(
     status: opts.status ?? like('no_contact'),
     created_at: regex(ISO_TIMESTAMP, '2026-05-25T00:00:00Z'),
     updated_at: regex(ISO_TIMESTAMP, '2026-05-25T00:00:00Z'),
+    // L2-A — optimistic-concurrency token echoed back on the next transition.
+    version: like(0),
   };
 }
 
@@ -183,7 +185,7 @@ describe('ats-web → POST /v1/pipelines', () => {
 // ======================================================================
 describe('ats-web → POST /v1/pipelines/:id/transition', () => {
   it('returns 200 for a legal transition (no_contact -> contacted)', async () => {
-    const BODY = { to_status: 'contacted' };
+    const BODY = { to_status: 'contacted', expected_version: 0 };
     await provider
       .addInteraction()
       .given('an ats-web recruiter and a pipeline exist')
@@ -210,7 +212,7 @@ describe('ats-web → POST /v1/pipelines/:id/transition', () => {
 
   // illegal-state — no_contact -> placed is not in LEGAL_TRANSITIONS.
   it('returns 422 INVALID_PIPELINE_TRANSITION for an illegal transition', async () => {
-    const BODY = { to_status: 'placed' };
+    const BODY = { to_status: 'placed', expected_version: 0 };
     await provider
       .addInteraction()
       .given('an ats-web recruiter and a pipeline exist')

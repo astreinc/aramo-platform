@@ -177,7 +177,10 @@ export function TalentDetailPanel({
     setBusy(bucket);
     setErr(null);
     try {
-      const updated = await transitionPipeline(entry.id, { to_status: target });
+      const updated = await transitionPipeline(entry.id, {
+        to_status: target,
+        expected_version: entry.version,
+      });
       onTransitioned(updated);
     } catch {
       setErr('Could not move the talent — the backend rejected this transition.');

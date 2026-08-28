@@ -48,6 +48,8 @@ const MIGRATIONS = [
   '../../prisma/migrations/20260602150000_init_pipeline_model/migration.sql',
   // E6 — swaps the total unique for the live-scoped partial unique.
   '../../prisma/migrations/20260807100000_e6_pipeline_live_episode_unique/migration.sql',
+  // L2-A — additive `version` column (optimistic-concurrency).
+  '../../prisma/migrations/20260827120000_l2a_pipeline_version_column/migration.sql',
 ].map((p) => resolve(__dirname, p));
 
 // The legal edge chain no_contact -> ... -> placed (offered is the only source
@@ -148,6 +150,29 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       return Number(rows[0]!.n);
     }
 
+    // L2-A — the repo transition now requires expected_version (optimistic
+    // concurrency) + the actor's visible requisition set. These characterizations
+    // read the current version immediately before each transition and use see-all
+    // visibility (null). The CAS/visibility behaviours themselves are proven by
+    // the dedicated L2-A integrity spec, not here.
+    async function casTransition(
+      tenant: string,
+      id: string,
+      to: PipelineStatus,
+      requestId: string,
+    ) {
+      const cur = await repo.findById({ tenant_id: tenant, id });
+      return repo.transition({
+        tenant_id: tenant,
+        id,
+        to_status: to,
+        changed_by_id: randomUUID(),
+        requestId,
+        expected_version: cur!.version,
+        visible_requisition_ids: null,
+      });
+    }
+
     async function drive(tenant: string, id: string, path: readonly PipelineStatus[]): Promise<void> {
       for (const to of path) {
         // L8-B1 R-TIGHTEN — the `→ submitted` hop is no longer an engine
@@ -158,7 +183,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           await forceSubmitted(id);
           continue;
         }
-        await repo.transition({ tenant_id: tenant, id, to_status: to, changed_by_id: randomUUID(), requestId: 'l1' });
+        await casTransition(tenant, id, to, 'l1');
       }
     }
 
@@ -218,13 +243,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const talent = randomUUID();
 
       const p1 = await repo.create({ tenant_id: tenant, input: { talent_record_id: talent, requisition_id: req } });
-      await repo.transition({ tenant_id: tenant, id: p1.id, to_status: 'not_in_consideration', changed_by_id: randomUUID(), requestId: 'b-drop' });
+      await casTransition(tenant, p1.id, 'not_in_consideration', 'b-drop');
       // p1 is terminal — under E6's live-scoped index it no longer occupies the live slot.
 
       // Second episode for the SAME triple. RED today (total unique rejects);
       // GREEN after E6 (admitted, then driven terminal so both are historical).
       const p2 = await repo.create({ tenant_id: tenant, input: { talent_record_id: talent, requisition_id: req } });
-      await repo.transition({ tenant_id: tenant, id: p2.id, to_status: 'not_in_consideration', changed_by_id: randomUUID(), requestId: 'b-drop' });
+      await casTransition(tenant, p2.id, 'not_in_consideration', 'b-drop');
 
       expect(await pipelineRowCount(tenant, talent, req)).toBe(2); // both historical episodes coexist
     });
@@ -369,14 +394,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       // The bare submit is refused (the mirror is not independently reachable).
       await expect(
-        repo.transition({ tenant_id: tenant, id: p.id, to_status: 'submitted', changed_by_id: randomUUID(), requestId: 'p5' }),
+        casTransition(tenant, p.id, 'submitted', 'p5'),
       ).rejects.toMatchObject({ code: 'PIPELINE_SUBMIT_REQUIRES_SUBMITTAL' });
       // The refusal wrote nothing — status is still qualifying.
       const after = await repo.findById({ tenant_id: tenant, id: p.id });
       expect(after?.status).toBe('qualifying');
 
       // NO REGRESSION — a different legal transition still works through the engine.
-      await repo.transition({ tenant_id: tenant, id: p.id, to_status: 'not_in_consideration', changed_by_id: randomUUID(), requestId: 'p5-nr' });
+      await casTransition(tenant, p.id, 'not_in_consideration', 'p5-nr');
       const nr = await repo.findById({ tenant_id: tenant, id: p.id });
       expect(nr?.status).toBe('not_in_consideration');
     });

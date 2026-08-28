@@ -112,10 +112,16 @@ export class PipelineController {
   async listHistory(
     @AuthContext() authContext: AuthContextType,
     @Param('id') id: string,
+    @RequestId() requestId: string,
+    @Req() req: Request,
   ): Promise<{ items: PipelineStatusHistoryView[] }> {
+    // L2-A — read-visibility parity: history of a non-visible pipeline conceals as 404.
+    const visibleReqIds = await req.resolveVisibleRequisitionIds!();
     const items = await this.pipelineRepository.listHistory({
       tenant_id: authContext.tenant_id,
       pipeline_id: id,
+      requestId,
+      visible_requisition_ids: visibleReqIds,
     });
     return { items };
   }
@@ -203,7 +209,21 @@ export class PipelineController {
     @Param('id') id: string,
     @Body() body: TransitionPipelineRequestDto,
     @RequestId() requestId: string,
+    @Req() req: Request,
   ): Promise<PipelineView> {
+    // L2-A — expected_version is REQUIRED; a missing/non-numeric value is
+    // rejected here (422), never silently treated as 0.
+    if (typeof body.expected_version !== 'number') {
+      throw new AramoError(
+        'VALIDATION_ERROR',
+        'expected_version is required for a pipeline transition',
+        422,
+        { requestId, details: { field: 'expected_version' } },
+      );
+    }
+    // L2-A — write-visibility parity: a transition on a non-visible pipeline
+    // conceals as 404 (same as the read paths).
+    const visibleReqIds = await req.resolveVisibleRequisitionIds!();
     return this.pipelineRepository.transition({
       tenant_id: authContext.tenant_id,
       id,
@@ -211,6 +231,8 @@ export class PipelineController {
       changed_by_id: authContext.sub,
       ...(body.note === undefined ? {} : { note: body.note }),
       requestId,
+      expected_version: body.expected_version,
+      visible_requisition_ids: visibleReqIds,
     });
   }
 
@@ -222,11 +244,15 @@ export class PipelineController {
     @AuthContext() authContext: AuthContextType,
     @Param('id') id: string,
     @RequestId() requestId: string,
+    @Req() req: Request,
   ): Promise<void> {
+    // L2-A — write-visibility parity: deleting a non-visible pipeline conceals as 404.
+    const visibleReqIds = await req.resolveVisibleRequisitionIds!();
     await this.pipelineRepository.delete({
       tenant_id: authContext.tenant_id,
       id,
       requestId,
+      visible_requisition_ids: visibleReqIds,
     });
   }
 }

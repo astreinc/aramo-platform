@@ -96,6 +96,15 @@ model Pipeline {
   created_at DateTime @default(now()) @db.Timestamptz
   updated_at DateTime @default(now()) @updatedAt @db.Timestamptz
 
+  // Optimistic-concurrency version (Lane 2 / L2-A). Monotonic per committed
+  // status transition. The transition path requires a matching expected_version
+  // (compare-and-swap); a stale value is refused with PIPELINE_TRANSITION_CONFLICT
+  // (409) and writes nothing. Bumped by BOTH status writers: the transition tx
+  // (repository) and the submit-to-ats mirror (apps/api/submit-talent), so a
+  // subsequent expected_version stays sound. NOT bumped by the reconcile repoint
+  // (it changes talent_record_id, never status, and does not contend on this field).
+  version Int @default(0)
+
   // Intra-schema relation to the status-history audit.
   history PipelineStatusHistory[]
 

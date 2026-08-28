@@ -124,6 +124,12 @@ const PIPELINE_E6 = resolve(
   ROOT,
   'libs/pipeline/prisma/migrations/20260807100000_e6_pipeline_live_episode_unique/migration.sql',
 );
+// L2-A — additive `version` column (optimistic-concurrency). SEPARATE const +
+// apply-list entry (never a 2nd resolve() arg — that ENOTDIRs).
+const PIPELINE_VERSION = resolve(
+  ROOT,
+  'libs/pipeline/prisma/migrations/20260827120000_l2a_pipeline_version_column/migration.sql',
+);
 // ADR-0024 PR-3 — POST /v1/pipelines writes §D17a provenance into
 // policy_store."PolicyDecisionRecord" in the create transaction (init creates
 // the schema).
@@ -234,6 +240,7 @@ const MIGRATIONS = [
   ACTIVITY_INIT,
   PIPELINE_INIT,
   PIPELINE_E6,
+  PIPELINE_VERSION,
   POLICY_STORE_INIT,
   POLICY_DECISION_RECORD,
   resolve(ROOT, 'libs/requisition/prisma/migrations/20260803120000_recruiting_status_supersession/migration.sql'),
@@ -266,6 +273,12 @@ const RECRUITER_SCOPES = [
   'pipeline:add-activity',
   'activity:read',
   'activity:create',
+  // L2-A — write-visibility parity now conceals transition/delete/history on a
+  // requisition outside the actor's visible set (404). This state-machine spec
+  // seeds no requisition graph, so it grants see-all (requisition:read:all →
+  // resolveVisibleRequisitionIds = null); visibility itself is proven by
+  // pipeline-l2a-integrity + authz-d4b, not here.
+  'requisition:read:all',
 ];
 const TENANT_ADMIN_SCOPES = [
   ...RECRUITER_SCOPES,
@@ -535,6 +548,16 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       to_status: string,
       note?: string,
     ): Promise<{ status: number; body: unknown }> {
+      // L2-A — the transition endpoint now requires expected_version (optimistic
+      // concurrency). Read the row's current version directly via SQL — this is
+      // auth-independent, so the guard-axis (403) tests still exercise the guard
+      // rather than this read, and the missing-expected_version 422 is proven in
+      // the dedicated L2-A integrity spec.
+      const vr = await setupClient.query<{ version: number }>(
+        `SELECT version FROM pipeline."Pipeline" WHERE id = $1::uuid`,
+        [id],
+      );
+      const expected_version = vr.rows[0]?.version ?? 0;
       const res = await fetch(
         `http://127.0.0.1:${port}/v1/pipelines/${id}/transition?site_id=${SITE_A}`,
         {
@@ -545,6 +568,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           },
           body: JSON.stringify({
             to_status,
+            expected_version,
             ...(note === undefined ? {} : { note }),
           }),
         },

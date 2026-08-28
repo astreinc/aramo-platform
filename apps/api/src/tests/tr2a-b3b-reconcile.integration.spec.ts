@@ -61,6 +61,7 @@ const MIGRATIONS = [
   'libs/pipeline/prisma/migrations/20260602150000_init_pipeline_model/migration.sql',
   // Track 3 E6 — total unique -> live-scoped partial unique (preserve-all reconcile).
   'libs/pipeline/prisma/migrations/20260807100000_e6_pipeline_live_episode_unique/migration.sql',
+  'libs/pipeline/prisma/migrations/20260827120000_l2a_pipeline_version_column/migration.sql',
   'libs/selection/prisma/migrations/20260525120000_init_selection_model/migration.sql',
   'libs/submittal/prisma/migrations/20260523120000_init_submittal_model/migration.sql',
   // + revoke columns + canonical 5-state rename (the current submittal trigger fn
