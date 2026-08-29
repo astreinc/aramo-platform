@@ -69,6 +69,7 @@ const MIGRATIONS = [
   'libs/pipeline/prisma/migrations/20260828130000_l2c_pipeline_qualified_completed_enum/migration.sql',
   'libs/pipeline/prisma/migrations/20260828140000_l2c_pipeline_live_episode_recreate/migration.sql',
   'libs/pipeline/prisma/migrations/20260828150000_l2c_pipeline_disposition/migration.sql',
+  'libs/pipeline/prisma/migrations/20260828160000_l2d_pipeline_entry_provenance/migration.sql',
   'libs/selection/prisma/migrations/20260525120000_init_selection_model/migration.sql',
   'libs/submittal/prisma/migrations/20260523120000_init_submittal_model/migration.sql',
   // + revoke columns + canonical 5-state rename (the current submittal trigger fn

@@ -117,9 +117,12 @@ model Pipeline {
   ended_by_id String?   @db.Uuid
 
   // Intra-schema relation to the status-history audit.
-  history PipelineStatusHistory[]
+  history          PipelineStatusHistory[]
   // Lane 2 / L2-C — the at-most-one immutable disposition (terminal reason).
-  disposition PipelineDisposition?
+  disposition      PipelineDisposition?
+  // Lane 2 / L2-D — the at-most-one immutable entry-provenance (source-of-hire),
+  // written atomically at episode birth.
+  entry_provenance PipelineEntryProvenance?
 
   // Live-scoped uniqueness (Track 3 E6): at most one LIVE episode per
   // (tenant, talent, req) triple. A recruiter cannot open a second LIVE
@@ -135,7 +138,6 @@ model Pipeline {
   @@index([tenant_id, talent_record_id])
   @@index([tenant_id, status])
   @@index([tenant_id, site_id])
-
   @@schema("pipeline")
 }
 
@@ -170,7 +172,6 @@ model PipelineStatusHistory {
 
   // Indexes — the dominant "history for pipeline X" lookup.
   @@index([tenant_id, pipeline_id, changed_at])
-
   @@schema("pipeline")
 }
 
@@ -195,15 +196,86 @@ model PipelineDisposition {
   pipeline_id String   @unique @db.Uuid
   pipeline    Pipeline @relation(fields: [pipeline_id], references: [id], onDelete: Cascade)
 
-  authority_class PipelineDispositionAuthority
-  reason          String
+  authority_class   PipelineDispositionAuthority
+  reason            String
   // Owning-aggregate UUID lineage; REQUIRED when authority_class = DOWNSTREAM_OUTCOME.
-  source_provenance String?  @db.Uuid
+  source_provenance String?                      @db.Uuid
   note              String?
-  created_at        DateTime @default(now()) @db.Timestamptz
-  created_by_id     String?  @db.Uuid
+  created_at        DateTime                     @default(now()) @db.Timestamptz
+  created_by_id     String?                      @db.Uuid
 
   @@index([tenant_id, pipeline_id])
+  @@schema("pipeline")
+}
+
+// Lane 2 / L2-D (GP-1/EXT-1) — the closed classification of where an episode
+// came from. ADD-not-frozen-vendor: origin CLASS is a bounded enum; the specific
+// provider/system is the free-form `source_system` string (IntegrationConnection
+// discipline). Live provider→origin mapping (EXTERNAL_ATS/VMS/JOB_BOARD/...) is
+// provisioned here but wired only by L2-I through the reconcile→command boundary.
+enum PipelineEntryOriginType {
+  MANUAL_RECRUITER
+  ARAMO_SOURCING
+  INBOUND_APPLICATION
+  INTERNAL_REDISCOVERY
+  REFERRAL
+  EXTERNAL_ATS
+  VMS
+  JOB_BOARD
+  CAREER_SITE
+  TALENT_PORTAL
+  IMPORT
+  SYSTEM_RECONCILIATION
+
+  @@schema("pipeline")
+}
+
+// Lane 2 / L2-D (D-5-analogue on the ENTRY side) — the immutable source-of-hire
+// contract, ONE row per episode-entry (`@@unique([pipeline_id])`). Written inside
+// create()'s $transaction after tx.pipeline.create, and by the reconcile reversal
+// re-create; derived from the SAME validated provenance input that enriches the
+// `pipeline.created` event (v1.1 event-enrichment ruling). `PipelineEntryProvenance`
+// is the AUTHORITATIVE durable record; `pipeline.created` is an immutable projection
+// of it, never a second authority. DB-immutable (UPDATE/DELETE rejected except the
+// governed tenant-reset escape), mirroring PipelineDisposition.
+model PipelineEntryProvenance {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenant_id   String   @db.Uuid
+  pipeline_id String   @unique @db.Uuid
+  pipeline    Pipeline @relation(fields: [pipeline_id], references: [id], onDelete: Cascade)
+
+  // Origin CLASS (NOT NULL — the guarantee no episode is born un-classified).
+  origin_type PipelineEntryOriginType
+
+  // Normalized lowercase provider/system key (IntegrationConnection.provider_key
+  // discipline — extensible, never a frozen vendor enum). NULL for purely-internal.
+  source_system        String?
+  // Logical UUID reference to integration.IntegrationConnection (Architecture §7.3 —
+  // UUID-only, NO FK, NO import; ADR-0029 wall). NULL for non-connector origins.
+  source_connection_id String? @db.Uuid
+
+  // External lineage; external_event_id is the dedupe handle a future L2-I reconcile keys on.
+  external_object_type String?
+  external_object_id   String?
+  external_event_id    String?
+
+  // Initiator kind — validated at the WRITE boundary against libs/auth ACTOR_KINDS
+  // (system|service_account|user); NOT re-declared as a DB enum (Rule D — libs/auth
+  // owns that fact).
+  initiated_by_kind String
+  // Initiating principal / agent id (AuthContext.sub); NULL only for an
+  // unattributable system origin.
+  initiated_by_id   String? @db.Uuid
+
+  observed_at DateTime? @db.Timestamptz
+  ingested_at DateTime  @default(now()) @db.Timestamptz
+
+  // Bounded, non-secret; NO credentials, NO Talent PII beyond references (GP-1).
+  metadata Json? @db.JsonB
+
+  @@index([tenant_id, origin_type])
+  @@index([tenant_id, source_connection_id])
+  @@index([tenant_id, external_event_id])
   @@schema("pipeline")
 }
 
@@ -224,6 +296,5 @@ model OutboxEvent {
 
   // The drain scans unpublished events oldest-first.
   @@index([published_at, created_at])
-
   @@schema("pipeline")
 }

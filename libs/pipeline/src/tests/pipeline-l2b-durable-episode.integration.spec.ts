@@ -37,6 +37,7 @@ const MIGRATIONS = [
   '../../prisma/migrations/20260828130000_l2c_pipeline_qualified_completed_enum/migration.sql',
   '../../prisma/migrations/20260828140000_l2c_pipeline_live_episode_recreate/migration.sql',
   '../../prisma/migrations/20260828150000_l2c_pipeline_disposition/migration.sql',
+  '../../prisma/migrations/20260828160000_l2d_pipeline_entry_provenance/migration.sql',
 ].map((p) => resolve(__dirname, p));
 
 // Dollar-quote- AND line-comment-aware DDL splitter — the L2-B append-only
@@ -121,7 +122,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const talent = randomUUID();
       const created = await repo.create({
         tenant_id: tenant,
-        input: { talent_record_id: talent, requisition_id: req },
+        input: { talent_record_id: talent, requisition_id: req }, entry_provenance: { origin_type: 'MANUAL_RECRUITER', initiated_by_kind: 'user' },
         created_by_id: actor,
       });
       return { req, talent, created };
@@ -154,7 +155,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       const created = await repo.create({
         tenant_id: tenant,
-        input: { talent_record_id: talent, requisition_id: req },
+        input: { talent_record_id: talent, requisition_id: req }, entry_provenance: { origin_type: 'MANUAL_RECRUITER', initiated_by_kind: 'user' },
         created_by_id: actor,
       });
 
@@ -169,7 +170,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // birth row, with a NULL actor — the row is unconditional, the actor is not.
       const anon = await repo.create({
         tenant_id: tenant,
-        input: { talent_record_id: randomUUID(), requisition_id: req },
+        input: { talent_record_id: randomUUID(), requisition_id: req }, entry_provenance: { origin_type: 'MANUAL_RECRUITER', initiated_by_kind: 'user' },
       });
       const anonRows = await historyRows(anon.id);
       expect(anonRows).toHaveLength(1);

@@ -161,6 +161,8 @@ export class SourcingController {
       // sourcing caller; thread it so the episode's first history row records
       // who added the talent (parity with PipelineController.create).
       created_by_id: authContext.sub,
+      // L2-D — the initiating actor kind for the ARAMO_SOURCING entry-provenance.
+      initiated_by_kind: authContext.actor_kind,
     });
     // Track-wide invariant: a mutation never commits without its provenance
     // (create() commits it in-tx); provenance MAY exist without a mutation.

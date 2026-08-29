@@ -33,6 +33,7 @@ const MIGRATIONS = [
   '../../prisma/migrations/20260828130000_l2c_pipeline_qualified_completed_enum/migration.sql',
   '../../prisma/migrations/20260828140000_l2c_pipeline_live_episode_recreate/migration.sql',
   '../../prisma/migrations/20260828150000_l2c_pipeline_disposition/migration.sql',
+  '../../prisma/migrations/20260828160000_l2d_pipeline_entry_provenance/migration.sql',
 ].map((p) => resolve(__dirname, p));
 
 const PATH_TO_OFFERED: readonly PipelineStatus[] = [
@@ -124,7 +125,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const tenant = randomUUID();
       const req = await seedRequisition(tenant, 3, 3);
       const talent = randomUUID();
-      const p = await repo.create({ tenant_id: tenant, input: { talent_record_id: talent, requisition_id: req } });
+      const p = await repo.create({ tenant_id: tenant, input: { talent_record_id: talent, requisition_id: req }, entry_provenance: { origin_type: 'MANUAL_RECRUITER', initiated_by_kind: 'user' } });
       await drive(tenant, p.id, PATH_TO_OFFERED);
       const before = await openingsAvailable(req);
       expect(before).toBe(3);
@@ -137,7 +138,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const tenant = randomUUID();
       const req = await seedRequisition(tenant, 1, 0); // legacy "no openings" state
       const talent = randomUUID();
-      const p = await repo.create({ tenant_id: tenant, input: { talent_record_id: talent, requisition_id: req } });
+      const p = await repo.create({ tenant_id: tenant, input: { talent_record_id: talent, requisition_id: req }, entry_provenance: { origin_type: 'MANUAL_RECRUITER', initiated_by_kind: 'user' } });
       await drive(tenant, p.id, PATH_TO_OFFERED);
       // Pre-B2 this threw 409 and rolled back. Post-B2 it succeeds; capacity untouched.
       await expect(

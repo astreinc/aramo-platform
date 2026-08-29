@@ -43,6 +43,7 @@ const MIGRATIONS = [
   '../../prisma/migrations/20260828130000_l2c_pipeline_qualified_completed_enum/migration.sql',
   '../../prisma/migrations/20260828140000_l2c_pipeline_live_episode_recreate/migration.sql',
   '../../prisma/migrations/20260828150000_l2c_pipeline_disposition/migration.sql',
+  '../../prisma/migrations/20260828160000_l2d_pipeline_entry_provenance/migration.sql',
 ].map((p) => resolve(__dirname, p));
 
 // Dollar-quote- AND line-comment-aware DDL splitter (same as the L2-B spec — the
@@ -134,7 +135,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const talent = randomUUID();
       const created = await repo.create({
         tenant_id: tenant,
-        input: { talent_record_id: talent, requisition_id: req },
+        input: { talent_record_id: talent, requisition_id: req }, entry_provenance: { origin_type: 'MANUAL_RECRUITER', initiated_by_kind: 'user' },
         created_by_id: actor,
       });
       for (const action of [
@@ -425,7 +426,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const req = await seedRequisition(tenant);
       const created = await repo.create({
         tenant_id: tenant,
-        input: { talent_record_id: randomUUID(), requisition_id: req },
+        input: { talent_record_id: randomUUID(), requisition_id: req }, entry_provenance: { origin_type: 'MANUAL_RECRUITER', initiated_by_kind: 'user' },
         created_by_id: actor,
       });
       await repo.applyAction({
@@ -468,7 +469,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await expect(
         repo.create({
           tenant_id: tenant,
-          input: { talent_record_id: talent, requisition_id: req },
+          input: { talent_record_id: talent, requisition_id: req }, entry_provenance: { origin_type: 'MANUAL_RECRUITER', initiated_by_kind: 'user' },
           created_by_id: actor,
         }),
       ).rejects.toMatchObject({ code: 'PIPELINE_EPISODE_ALREADY_LIVE' });
@@ -489,7 +490,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // AFTER: the slot is freed — a fresh episode on the same key now admits.
       const reentry = await repo.create({
         tenant_id: tenant,
-        input: { talent_record_id: talent, requisition_id: req },
+        input: { talent_record_id: talent, requisition_id: req }, entry_provenance: { origin_type: 'MANUAL_RECRUITER', initiated_by_kind: 'user' },
         created_by_id: actor,
       });
       expect(reentry.status).toBe('no_contact');

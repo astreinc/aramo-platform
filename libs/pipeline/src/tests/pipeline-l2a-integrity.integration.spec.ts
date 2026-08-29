@@ -47,6 +47,7 @@ const MIGRATIONS = [
   '../../prisma/migrations/20260828130000_l2c_pipeline_qualified_completed_enum/migration.sql',
   '../../prisma/migrations/20260828140000_l2c_pipeline_live_episode_recreate/migration.sql',
   '../../prisma/migrations/20260828150000_l2c_pipeline_disposition/migration.sql',
+  '../../prisma/migrations/20260828160000_l2d_pipeline_entry_provenance/migration.sql',
 ].map((p) => resolve(__dirname, p));
 
 // Dollar-quote- AND line-comment-aware DDL splitter (an older activity migration
@@ -127,7 +128,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const req = randomUUID();
       const created = await repo.create({
         tenant_id: tenant,
-        input: { talent_record_id: randomUUID(), requisition_id: req },
+        input: { talent_record_id: randomUUID(), requisition_id: req }, entry_provenance: { origin_type: 'MANUAL_RECRUITER', initiated_by_kind: 'user' },
       });
       expect(created.version).toBe(0); // BEFORE — fresh episode at version 0
 
@@ -175,7 +176,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const tenant = randomUUID();
       const created = await repo.create({
         tenant_id: tenant,
-        input: { talent_record_id: randomUUID(), requisition_id: randomUUID() },
+        input: { talent_record_id: randomUUID(), requisition_id: randomUUID() }, entry_provenance: { origin_type: 'MANUAL_RECRUITER', initiated_by_kind: 'user' },
       });
       let v = created.version; // 0
       for (const to of ['contacted', 'talent_responded', 'qualifying'] as const) {
@@ -200,7 +201,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const req = randomUUID();
       const created = await repo.create({
         tenant_id: tenant,
-        input: { talent_record_id: randomUUID(), requisition_id: req },
+        input: { talent_record_id: randomUUID(), requisition_id: req }, entry_provenance: { origin_type: 'MANUAL_RECRUITER', initiated_by_kind: 'user' },
       });
       // Visible set that EXCLUDES this pipeline's requisition.
       const excludes = new Set<string>([randomUUID()]);
@@ -252,7 +253,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const req = randomUUID();
       const created = await repo.create({
         tenant_id: tenant,
-        input: { talent_record_id: randomUUID(), requisition_id: req },
+        input: { talent_record_id: randomUUID(), requisition_id: req }, entry_provenance: { origin_type: 'MANUAL_RECRUITER', initiated_by_kind: 'user' },
       });
       await repo.transition({
         tenant_id: tenant,

@@ -57,6 +57,7 @@ const MIGRATIONS = [
   '../../prisma/migrations/20260828130000_l2c_pipeline_qualified_completed_enum/migration.sql',
   '../../prisma/migrations/20260828140000_l2c_pipeline_live_episode_recreate/migration.sql',
   '../../prisma/migrations/20260828150000_l2c_pipeline_disposition/migration.sql',
+  '../../prisma/migrations/20260828160000_l2d_pipeline_entry_provenance/migration.sql',
 ].map((p) => resolve(__dirname, p));
 
 // The legal edge chain no_contact -> ... -> placed (offered is the only source
@@ -219,13 +220,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const req = await seedRequisition(tenant, 1);
       const talent = randomUUID();
 
-      const first = await repo.create({ tenant_id: tenant, input: { talent_record_id: talent, requisition_id: req } });
+      const first = await repo.create({ tenant_id: tenant, input: { talent_record_id: talent, requisition_id: req }, entry_provenance: { origin_type: 'MANUAL_RECRUITER', initiated_by_kind: 'user' } });
       expect(first.status).toBe('no_contact'); // first episode is LIVE — it holds the slot
 
       // Second create for the SAME triple while the first is live — refused by
       // the application guard with the exact one-live code.
       await expect(
-        repo.create({ tenant_id: tenant, input: { talent_record_id: talent, requisition_id: req } }),
+        repo.create({ tenant_id: tenant, input: { talent_record_id: talent, requisition_id: req }, entry_provenance: { origin_type: 'MANUAL_RECRUITER', initiated_by_kind: 'user' } }),
       ).rejects.toMatchObject({ code: 'PIPELINE_EPISODE_ALREADY_LIVE' });
 
       // Exactly one live row persists.
@@ -249,13 +250,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const req = await seedRequisition(tenant, 5);
       const talent = randomUUID();
 
-      const p1 = await repo.create({ tenant_id: tenant, input: { talent_record_id: talent, requisition_id: req } });
+      const p1 = await repo.create({ tenant_id: tenant, input: { talent_record_id: talent, requisition_id: req }, entry_provenance: { origin_type: 'MANUAL_RECRUITER', initiated_by_kind: 'user' } });
       await casTransition(tenant, p1.id, 'not_in_consideration', 'b-drop');
       // p1 is terminal — under E6's live-scoped index it no longer occupies the live slot.
 
       // Second episode for the SAME triple. RED today (total unique rejects);
       // GREEN after E6 (admitted, then driven terminal so both are historical).
-      const p2 = await repo.create({ tenant_id: tenant, input: { talent_record_id: talent, requisition_id: req } });
+      const p2 = await repo.create({ tenant_id: tenant, input: { talent_record_id: talent, requisition_id: req }, entry_provenance: { origin_type: 'MANUAL_RECRUITER', initiated_by_kind: 'user' } });
       await casTransition(tenant, p2.id, 'not_in_consideration', 'b-drop');
 
       expect(await pipelineRowCount(tenant, talent, req)).toBe(2); // both historical episodes coexist
@@ -274,7 +275,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const req = await seedRequisition(tenant, 5);
       const talent = randomUUID();
 
-      await repo.create({ tenant_id: tenant, input: { talent_record_id: talent, requisition_id: req } }); // no_contact (live)
+      await repo.create({ tenant_id: tenant, input: { talent_record_id: talent, requisition_id: req }, entry_provenance: { origin_type: 'MANUAL_RECRUITER', initiated_by_kind: 'user' } }); // no_contact (live)
 
       let err: unknown;
       try {
@@ -315,9 +316,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const talent = randomUUID();
 
       // Episode 1 → placed (terminal). Episode 2 → a fresh live episode at submitted.
-      const p1 = await repo.create({ tenant_id: tenant, input: { talent_record_id: talent, requisition_id: req } });
+      const p1 = await repo.create({ tenant_id: tenant, input: { talent_record_id: talent, requisition_id: req }, entry_provenance: { origin_type: 'MANUAL_RECRUITER', initiated_by_kind: 'user' } });
       await drive(tenant, p1.id, PATH_TO_PLACED);
-      const p2 = await repo.create({ tenant_id: tenant, input: { talent_record_id: talent, requisition_id: req } });
+      const p2 = await repo.create({ tenant_id: tenant, input: { talent_record_id: talent, requisition_id: req }, entry_provenance: { origin_type: 'MANUAL_RECRUITER', initiated_by_kind: 'user' } });
       await drive(tenant, p2.id, ['contacted', 'talent_responded', 'qualifying']);
       await forceSubmitted(p2.id);
 
@@ -346,8 +347,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const reqAdvanced = await seedRequisition(tenant, 5);
       const reqBehind = await seedRequisition(tenant, 5);
 
-      const pAdvanced = await repo.create({ tenant_id: tenant, input: { talent_record_id: talent, requisition_id: reqAdvanced } });
-      const pBehind = await repo.create({ tenant_id: tenant, input: { talent_record_id: talent, requisition_id: reqBehind } });
+      const pAdvanced = await repo.create({ tenant_id: tenant, input: { talent_record_id: talent, requisition_id: reqAdvanced }, entry_provenance: { origin_type: 'MANUAL_RECRUITER', initiated_by_kind: 'user' } });
+      const pBehind = await repo.create({ tenant_id: tenant, input: { talent_record_id: talent, requisition_id: reqBehind }, entry_provenance: { origin_type: 'MANUAL_RECRUITER', initiated_by_kind: 'user' } });
       await drive(tenant, pAdvanced.id, ['contacted', 'talent_responded', 'qualifying']);
       await forceSubmitted(pAdvanced.id);
       await drive(tenant, pBehind.id, ['contacted', 'talent_responded', 'qualifying']);
@@ -373,8 +374,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           `VALUES ('${reqLow}', '${tenant}', 'L1 low', '${randomUUID()}', 5, 5), ` +
           `('${reqHigh}', '${tenant}', 'L1 high', '${randomUUID()}', 5, 5)`,
       );
-      const pLow = await repo.create({ tenant_id: tenant, input: { talent_record_id: talent, requisition_id: reqLow } });
-      const pHigh = await repo.create({ tenant_id: tenant, input: { talent_record_id: talent, requisition_id: reqHigh } });
+      const pLow = await repo.create({ tenant_id: tenant, input: { talent_record_id: talent, requisition_id: reqLow }, entry_provenance: { origin_type: 'MANUAL_RECRUITER', initiated_by_kind: 'user' } });
+      const pHigh = await repo.create({ tenant_id: tenant, input: { talent_record_id: talent, requisition_id: reqHigh }, entry_provenance: { origin_type: 'MANUAL_RECRUITER', initiated_by_kind: 'user' } });
       const toQualifying: readonly PipelineStatus[] = ['contacted', 'talent_responded', 'qualifying'];
       await drive(tenant, pLow.id, toQualifying);
       await drive(tenant, pHigh.id, toQualifying);
@@ -396,7 +397,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const tenant = randomUUID();
       const req = await seedRequisition(tenant, 1);
       const talent = randomUUID();
-      const p = await repo.create({ tenant_id: tenant, input: { talent_record_id: talent, requisition_id: req } });
+      const p = await repo.create({ tenant_id: tenant, input: { talent_record_id: talent, requisition_id: req }, entry_provenance: { origin_type: 'MANUAL_RECRUITER', initiated_by_kind: 'user' } });
       await drive(tenant, p.id, ['contacted', 'talent_responded', 'qualifying']);
 
       // The bare submit is refused (the mirror is not independently reachable).

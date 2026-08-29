@@ -73,6 +73,7 @@ const PIPELINE_MIGRATIONS = [
   '20260828130000_l2c_pipeline_qualified_completed_enum',
   '20260828140000_l2c_pipeline_live_episode_recreate',
   '20260828150000_l2c_pipeline_disposition',
+  '20260828160000_l2d_pipeline_entry_provenance',
 ].map((d) =>
   resolve(__dirname, `../../../pipeline/prisma/migrations/${d}/migration.sql`),
 );
