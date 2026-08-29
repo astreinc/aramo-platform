@@ -652,6 +652,7 @@
       "OutboxPublisherProcessor"
     ],
     "@aramo/pipeline": [
+      "ACTIVE_FLOW_STAGES",
       "AddTalentPolicyService",
       "LEGACY_TERMINAL_STATUSES",
       "LIVE_EPISODE_EXCLUSION_STATUSES",
@@ -865,7 +866,8 @@
       "DashboardController",
       "ReportingController",
       "ReportingModule",
-      "ReportingService"
+      "ReportingService",
+      "SUBMITTED_HISTORY_PORT"
     ],
     "@aramo/requisition": [
       "ACTION_TARGET_STATUS",
@@ -1113,12 +1115,6 @@
   "importedBy": {
     "@aramo/activity": [
       { "from": "tools/seed-e2e-data.ts", "project": "(unscoped)", "status": "unscoped" },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/api/src/tests/submit-talent.integration.spec.ts",
-        "project": "api",
-        "status": "excluded"
-      },
       { "project": "api", "status": "production" },
       { "project": "pipeline", "status": "production" },
       { "project": "reporting", "status": "production" }
@@ -2299,6 +2295,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/submittal/src/tests/talent-submittal-event.repository.spec.ts",
+        "project": "submittal",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/submittal/src/tests/talent-submittal-first-submitted.integration.spec.ts",
         "project": "submittal",
         "status": "excluded"
       },
@@ -3521,6 +3523,12 @@
       { "project": "api", "status": "production" }
     ],
     "@aramo/metering": [
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/submit-talent.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
       { "project": "api", "status": "production" },
       { "project": "pipeline", "status": "production" },
       { "project": "selection", "status": "production" },

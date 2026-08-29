@@ -17,27 +17,24 @@ export const LEGAL_TRANSITIONS: Record<
   no_contact: ['contacted', 'talent_responded', 'not_in_consideration'],
   contacted: ['talent_responded', 'no_contact', 'not_in_consideration'],
   talent_responded: ['qualifying', 'contacted', 'not_in_consideration'],
-  // L2-C — forward edge is now `qualified` (the QUALIFY milestone); the legacy
-  // `qualifying → submitted` edge is KEPT for compat.
-  qualifying: [
-    'qualified',
-    'submitted',
-    'talent_responded',
-    'not_in_consideration',
-  ],
-  // L2-C — the recruiter rests the episode at `qualified` before submitting.
-  // `qualified → completed` is legal ONLY so the system COMPLETE precondition
-  // validates; it is NEVER offered as a recruiter "Move to…" option (§5).
-  qualified: ['submitted', 'qualifying', 'not_in_consideration', 'completed'],
+  // L2-C — forward edge is `qualified` (the QUALIFY milestone). L2-E (SB-5) —
+  // `submitted` is no longer a Pipeline transition target (client submit-to-ats is
+  // Submittal-owned); the legacy `qualifying → submitted` edge is removed.
+  qualifying: ['qualified', 'talent_responded', 'not_in_consideration'],
+  // L2-C — the recruiter rests the episode at `qualified`. `qualified → completed`
+  // is legal ONLY so the system COMPLETE precondition validates; NEVER a recruiter
+  // "Move to…" option (§5). L2-E — `qualified → submitted` removed.
+  qualified: ['qualifying', 'not_in_consideration', 'completed'],
   submitted: [
     'interviewing',
     'qualifying',
     'not_in_consideration',
     'client_declined',
   ],
+  // L2-E (SB-5) — the legacy `interviewing → submitted` back-edge removed with the
+  // other `submitted` targets.
   interviewing: [
     'offered',
-    'submitted',
     'not_in_consideration',
     'client_declined',
   ],

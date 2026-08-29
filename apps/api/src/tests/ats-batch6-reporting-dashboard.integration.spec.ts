@@ -294,16 +294,23 @@ const TALENT_RECORD_SUPERSESSION = resolve(
   'libs/talent-record/prisma/migrations/20260706210000_tr2a_b3a_talent_record_supersession/migration.sql',
 );
 
-// === CORE / SELECTION / SUBMITTAL MIGRATIONS — DELIBERATELY OMITTED ===
+// === SEAM-EXCLUSION — the L2-E-re-expressed proof (Q3) ===
 //
-// This spec applies ONLY the 8 ATS-side schemas + entitlement +
-// metering. The selection / submittal / examination / matching /
-// talent / job_domain schemas are NOT created in the test container.
-// If ReportingService or any controller it depends on were to issue a
-// query against any of those schemas, the route would 500 with
-// `relation "selection.Selection" does not exist` (or similar). The
-// fact that every metric route returns 200 is the seam-exclusion
-// proof: A7 reads no Core schema.
+// This spec applies the 8 ATS-side schemas + entitlement + metering +
+// (Lane 2 / L2-E) the SUBMITTAL schema. L2-E made the reporting submitted
+// reads event-sourced from submittal.TalentSubmittalEvent via the
+// reporting-owned port + apps/api adapter, so the REAL composition
+// legitimately depends on submittal DATA — the old "submittal schema
+// absent" proof is retired (a complete DB is a stronger proof).
+//
+// The seam is now TWO facts: (1) STRUCTURAL — libs/reporting imports NO
+// @aramo/submittal / repository / prisma client (proven by the dedicated
+// architecture guard + lint:nx-boundaries; the port implementation lives at
+// the apps/api composition root). (2) RUNTIME — selection / examination /
+// matching / talent / job_domain schemas are STILL NOT created here; if
+// ReportingService touched any of them a route would 500 with
+// `relation "selection.Selection" does not exist`, and the submitted metric
+// sources from the event history, never PipelineStatusHistory.
 
 const ISSUER = 'Aramo Core Auth';
 const AUDIENCE = 'aramo-ats-batch6-reporting-dashboard-spec';
@@ -456,6 +463,19 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         // Track 4 T4-B2 — requisition read DERIVES openings_available from the
         // placement-owned ACTIVE ContractAssignment population; placement schema required.
         ...placementCapacityMigrations(ROOT),
+        // Lane 2 / L2-E (SB-5 / Q3) — the reporting submitted reads are now event-sourced
+        // from the authoritative Submittal event history via the reporting-owned port +
+        // apps/api adapter, so the REAL composition legitimately needs the submittal
+        // schema present. This RETIRES the old schema-omission seam proof (a complete DB
+        // is a stronger proof than an artificially incomplete one): the seam is now that
+        // libs/reporting imports NO @aramo/submittal (structural guard) while the runtime
+        // metric sources from the event history, not PipelineStatusHistory.
+        resolve(ROOT, 'libs/submittal/prisma/migrations/20260523120000_init_submittal_model/migration.sql'),
+        resolve(ROOT, 'libs/submittal/prisma/migrations/20260523200000_add_submittal_revoke/migration.sql'),
+        resolve(ROOT, 'libs/submittal/prisma/migrations/20260526140602_add_submittal_event_log/migration.sql'),
+        resolve(ROOT, 'libs/submittal/prisma/migrations/20260527000000_rename_submittal_state_canonical/migration.sql'),
+        resolve(ROOT, 'libs/submittal/prisma/migrations/20260812120000_t2p1_relocate_submittal_to_submittal_schema/migration.sql'),
+        resolve(ROOT, 'libs/submittal/prisma/migrations/20260822130000_l8b1_submittal_pipeline_link/migration.sql'),
       ]) {
         await setupClient.query(readFileSync(p, 'utf8'));
       }
@@ -1382,7 +1402,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     // D) THE SEAM-EXCLUSION — structural proof.
     // -------------------------------------------------------------------------
 
-    it('Seam-exclusion: GET /v1/dashboard returns 200 even though selection/submittal/examination/talent/job_domain schemas are NOT applied to the container', async () => {
+    it('Seam-exclusion (L2-E): GET /v1/dashboard returns 200; selection/examination/matching/talent/job_domain schemas are NOT applied (submittal IS, for the reporting-owned port adapter)', async () => {
       const res = await fetch(
         `http://127.0.0.1:${port}/v1/dashboard?site_id=${SITE_A}`,
         {
@@ -1390,8 +1410,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           headers: { Authorization: `Bearer ${tenantAdminJwt}` },
         },
       );
-      // If the reporting service touched any Core schema, this would
-      // 500 with `relation "selection.X" does not exist`.
+      // L2-E (Q3) — the submitted reads reach submittal.TalentSubmittalEvent through
+      // the reporting-owned port + apps/api adapter (submittal schema applied). If the
+      // reporting service touched any OTHER Core schema (selection/examination/matching/
+      // talent/job_domain — deliberately NOT applied), this would 500 with
+      // `relation "selection.X" does not exist`. The structural guard proves
+      // libs/reporting imports no @aramo/submittal.
       expect(res.status).toBe(200);
       const body = (await res.json()) as {
         tenant_counts: { companies: number };
@@ -1413,7 +1437,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(Array.isArray(body.recent_activity)).toBe(true);
     });
 
-    it('Seam-exclusion: every individual /v1/reports/* route returns 200 without any Core schema applied', async () => {
+    it('Seam-exclusion (L2-E): every individual /v1/reports/* route returns 200 with no selection/examination/matching/talent/job_domain schema applied', async () => {
       for (const path of [
         '/v1/reports/tenant-counts',
         '/v1/reports/requisition-rollup',

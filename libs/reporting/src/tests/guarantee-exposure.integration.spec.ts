@@ -79,6 +79,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         {} as never, {} as never, {} as never, {} as never, {} as never, // 8-12
         repo, // 13 guaranteeExposureRepository
         {} as never, // 14 commercialMarginRepository (T9-B4; unused here)
+        { findFirstSubmittedByGrain: async () => [] } as never, // L2-E submitted-history port
       );
     }, 180_000);
 

@@ -148,13 +148,6 @@ export interface SubmittalMarkReadyInput {
   requestId: string;
 }
 
-export interface SubmittalSubmitToAtsInput {
-  tenant_id: string;
-  submittal_id: string;
-  event_id: string;
-  requestId: string;
-}
-
 export interface SubmittalConfirmAtsInput {
   tenant_id: string;
   submittal_id: string;
@@ -165,11 +158,6 @@ export interface SubmittalConfirmAtsInput {
 // M5 PR-8b2 §4.7 — 3 new repository-layer result shapes (each carries
 // the updated submittal projection + the freshly appended event view).
 export interface SubmittalMarkReadyResult {
-  submittal: TalentSubmittalRecordView;
-  event: TalentSubmittalEventView;
-}
-
-export interface SubmittalSubmitToAtsResult {
   submittal: TalentSubmittalRecordView;
   event: TalentSubmittalEventView;
 }
@@ -801,111 +789,6 @@ export class SubmittalRepository {
     const eventView = projectEventView(eventRow as TalentSubmittalEventRow);
     this.logger.log({
       event: 'submittal_marked_ready',
-      tenant_id: submittalView.tenant_id,
-      submittal_id: submittalView.id,
-      submittal_event_id: eventView.id,
-      from_state: submittal.state,
-      to_state: submittalView.state,
-      latency_ms: Date.now() - startedAt,
-    });
-    return { submittal: submittalView, event: eventView };
-  }
-
-  // M5 PR-8b2 §4.7 — submitToAts. Mainline transition 3:
-  // ready_for_review -> submitted_to_ats. Per Ruling 6 this transition
-  // populates confirmed_at (NULL -> non-NULL); preserves M4 confirmed_at
-  // column semantic post-rename.
-  async submitToAts(input: SubmittalSubmitToAtsInput): Promise<SubmittalSubmitToAtsResult> {
-    const startedAt = Date.now();
-    this.logger.log({
-      event: 'submittal_submit_to_ats_started',
-      tenant_id: input.tenant_id,
-      submittal_id: input.submittal_id,
-    });
-
-    const submittal = await this.findById({
-      tenant_id: input.tenant_id,
-      id: input.submittal_id,
-    });
-    if (submittal === null) {
-      throw new AramoError(
-        'NOT_FOUND',
-        'TalentSubmittalRecord not found',
-        404,
-        {
-          requestId: input.requestId,
-          details: { submittal_id: input.submittal_id },
-        },
-      );
-    }
-
-    if (!canTransition(submittal.state, 'submitted_to_ats')) {
-      this.logger.log({
-        event: 'submittal_submit_to_ats_refused',
-        tenant_id: input.tenant_id,
-        submittal_id: input.submittal_id,
-        code: 'SUBMITTAL_STATE_INVALID',
-        from_state: submittal.state,
-        to_state: 'submitted_to_ats',
-      });
-      throw new AramoError(
-        'SUBMITTAL_STATE_INVALID',
-        `Illegal submittal state transition: ${submittal.state} -> submitted_to_ats`,
-        422,
-        {
-          requestId: input.requestId,
-          details: {
-            submittal_id: input.submittal_id,
-            from_state: submittal.state,
-            to_state: 'submitted_to_ats',
-          },
-        },
-      );
-    }
-
-    // M6 PR-2 §3 — atomic 3-write (update + event.create + outbox).
-    const [updatedRow, eventRow] = await this.prisma.$transaction([
-      this.prisma.talentSubmittalRecord.update({
-        where: { id: input.submittal_id, tenant_id: input.tenant_id },
-        data: { state: 'submitted_to_ats', confirmed_at: new Date() },
-      }),
-      this.prisma.talentSubmittalEvent.create({
-        data: {
-          id: input.event_id,
-          tenant_id: input.tenant_id,
-          submittal_id: input.submittal_id,
-          event_type: 'state_transition',
-          event_payload: {
-            from_state: submittal.state,
-            to_state: 'submitted_to_ats',
-          } as never,
-        },
-      }),
-      this.prisma.outboxEvent.create({
-        data: {
-          id: uuidv7(),
-          tenant_id: input.tenant_id,
-          event_type: 'submittal.state_transition',
-          event_payload: {
-            submittal_id: input.submittal_id,
-            tenant_id: input.tenant_id,
-            from_state: submittal.state,
-            to_state: 'submitted_to_ats',
-            transition_event_id: input.event_id,
-          } as never,
-        },
-      }),
-      // PR-A1c — in-tx metered usage event (Ruling 6 same-transaction).
-      recordUsage(this.prisma, {
-        tenant_id: input.tenant_id,
-        event_type: 'submittal.state_transition',
-      }),
-    ]);
-
-    const submittalView = projectView(updatedRow as TalentSubmittalRecordRow);
-    const eventView = projectEventView(eventRow as TalentSubmittalEventRow);
-    this.logger.log({
-      event: 'submittal_submitted_to_ats',
       tenant_id: submittalView.tenant_id,
       submittal_id: submittalView.id,
       submittal_event_id: eventView.id,

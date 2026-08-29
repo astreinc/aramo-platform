@@ -118,6 +118,7 @@ describe('Segment 4c — preset + My-team resolution → id_allowlist → narrow
       {} as never,
       {} as never,
       {} as never,
+      { findFirstSubmittedByGrain: async () => [] } as never, // L2-E submittal-events
     );
     const interceptor = new TalentPresetInterceptor(resolver);
     const req = makeReq({ preset: 'in_touch_6mo' });
@@ -133,15 +134,21 @@ describe('Segment 4c — preset + My-team resolution → id_allowlist → narrow
     expect(since.getTime()).toBeLessThan(Date.now());
   });
 
-  it('Submitted·this week → pipeline accessor (since ~7d) → allowlist narrows', async () => {
-    const pipeline = {
-      findTalentIdsSubmittedSince: vi.fn().mockResolvedValue(['t2']),
+  it('Submitted·this week → Submittal-event accessor (since ~7d) → allowlist narrows', async () => {
+    // Lane 2 / L2-E (SB-5) — the preset is event-sourced from the authoritative
+    // Submittal history (the retired Pipeline mirror is gone): distinct talents whose
+    // first submitted_to_ats transition is within the week window.
+    const submittalEvents = {
+      findFirstSubmittedByGrain: vi.fn().mockResolvedValue([
+        { talent_id: 't2', requisition_id: 'r1', pipeline_id: 'p2', first_submitted_at: new Date() },
+      ]),
     };
     const resolver = new TalentPresetResolverService(
-      {} as never,
-      pipeline as never,
-      {} as never,
-      {} as never,
+      {} as never, // activity
+      {} as never, // pipeline (no longer read by this preset)
+      {} as never, // task
+      {} as never, // team
+      submittalEvents as never,
     );
     const req = makeReq({ preset: 'submitted_this_week' });
     await runInterceptor(new TalentPresetInterceptor(resolver), req);
@@ -150,7 +157,7 @@ describe('Segment 4c — preset + My-team resolution → id_allowlist → narrow
     const items = await listPaged(controllerWith(fakeRepo()), req);
     expect(items.map((i) => i.id)).toEqual(['t2']);
 
-    const since = pipeline.findTalentIdsSubmittedSince.mock.calls[0]![0].since as Date;
+    const since = submittalEvents.findFirstSubmittedByGrain.mock.calls[0]![0].since as Date;
     const days = (Date.now() - since.getTime()) / 86_400_000;
     expect(days).toBeGreaterThan(6.9);
     expect(days).toBeLessThan(7.1);
@@ -167,6 +174,7 @@ describe('Segment 4c — preset + My-team resolution → id_allowlist → narrow
       {} as never,
       task as never,
       {} as never,
+      { findFirstSubmittedByGrain: async () => [] } as never, // L2-E submittal-events
     );
     const req = makeReq({ preset: 'needs_follow_up' });
     await runInterceptor(new TalentPresetInterceptor(resolver), req);
@@ -196,6 +204,7 @@ describe('Segment 4c — preset + My-team resolution → id_allowlist → narrow
       {} as never,
       {} as never,
       team as never,
+      { findFirstSubmittedByGrain: async () => [] } as never, // L2-E submittal-events
     );
     const req = makeReq({ scope: 'my_team' });
     await runInterceptor(new TalentPresetInterceptor(resolver), req);
@@ -216,6 +225,7 @@ describe('Segment 4c — preset + My-team resolution → id_allowlist → narrow
       {} as never,
       {} as never,
       {} as never,
+      { findFirstSubmittedByGrain: async () => [] } as never, // L2-E submittal-events
     );
     const req = makeReq({});
     await runInterceptor(new TalentPresetInterceptor(resolver), req);

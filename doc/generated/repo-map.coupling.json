@@ -1340,6 +1340,42 @@
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/ats-batch6-reporting-dashboard.integration.spec.ts",
       "status": "excluded",
+      "to": "libs/submittal/prisma/migrations/20260523120000_init_submittal_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/ats-batch6-reporting-dashboard.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/submittal/prisma/migrations/20260523200000_add_submittal_revoke/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/ats-batch6-reporting-dashboard.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/submittal/prisma/migrations/20260526140602_add_submittal_event_log/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/ats-batch6-reporting-dashboard.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/submittal/prisma/migrations/20260527000000_rename_submittal_state_canonical/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/ats-batch6-reporting-dashboard.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/submittal/prisma/migrations/20260812120000_t2p1_relocate_submittal_to_submittal_schema/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/ats-batch6-reporting-dashboard.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/submittal/prisma/migrations/20260822130000_l8b1_submittal_pipeline_link/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/ats-batch6-reporting-dashboard.integration.spec.ts",
+      "status": "excluded",
       "to": "libs/talent-record/prisma/migrations/20260602120000_init_talent_record_model/migration.sql"
     },
     {

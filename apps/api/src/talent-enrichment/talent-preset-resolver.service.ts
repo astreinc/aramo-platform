@@ -3,6 +3,7 @@ import { ActivityRepository } from '@aramo/activity';
 import { PipelineRepository } from '@aramo/pipeline';
 import { TaskRepository } from '@aramo/task';
 import { TeamRepository } from '@aramo/identity';
+import { TalentSubmittalEventRepository } from '@aramo/submittal';
 
 // Segment 4c — Views presets + "My team" scope RESOLVER. Lives in apps/api (the
 // only layer permitted to read activity / pipeline / tasks / teams together);
@@ -48,6 +49,10 @@ export class TalentPresetResolverService {
     private readonly pipeline: PipelineRepository,
     private readonly task: TaskRepository,
     private readonly team: TeamRepository,
+    // Lane 2 / L2-E (SB-5) — the authoritative Submittal event history. apps/api is
+    // the composition layer permitted to read @aramo/submittal directly (no port
+    // needed here; the reporting seam is the only place a port is required).
+    private readonly submittalEvents: TalentSubmittalEventRepository,
   ) {}
 
   // Resolve a cross-schema preset to its talent-id allowlist (possibly empty —
@@ -68,11 +73,15 @@ export class TalentPresetResolverService {
       }
       case 'submitted_this_week': {
         const since = new Date(ctx.now.getTime() - 7 * 86_400_000);
-        return this.pipeline.findTalentIdsSubmittedSince({
+        // Lane 2 / L2-E (SB-5) — event-sourced from the authoritative Submittal
+        // history (the retired Pipeline mirror is gone): distinct talents whose FIRST
+        // submitted_to_ats transition is within the week window. DURABLE across the
+        // submittal's later confirmed/revoked states (reproducing the mirror).
+        const grains = await this.submittalEvents.findFirstSubmittedByGrain({
           tenant_id: ctx.tenant_id,
           since,
-          limit: guard,
         });
+        return [...new Set(grains.map((g) => g.talent_id))].slice(0, guard);
       }
       case 'needs_follow_up': {
         // open tasks ASSIGNED to me (not created by me) due today or earlier.

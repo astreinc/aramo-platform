@@ -1,10 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { v7 as uuidv7 } from 'uuid';
 import { AramoError, type AramoLogger } from '@aramo/common';
-import { insertActivityInTx } from '@aramo/activity';
 import { recordUsage } from '@aramo/metering';
 import { canTransitionSubmittal } from '@aramo/submittal';
-import { canTransition as canTransitionPipeline } from '@aramo/pipeline';
 import {
   consumeSlot,
   evaluateEligibility,
@@ -20,12 +18,13 @@ import {
 // `canTransition*` state machines, activity/metering/consumption via the
 // imported connection-agnostic helpers. Nothing re-encodes a business rule.
 //
-// Order (§6 + §7 Amendment A1): read+lock submittal → submittal state machine →
-// resolve pipeline via `submittal.pipeline_id` (tenant+req+talent identity match
-// + LIVE + canTransition, else SUBMITTAL_PIPELINE_LINK_INVALID) → eligibility →
+// Order (§6 + §7 Amendment A1; Lane 2 / L2-E): read+lock submittal → submittal
+// state machine → resolve pipeline via `submittal.pipeline_id` (tenant+req+talent
+// identity match + LIVE, else SUBMITTAL_PIPELINE_LINK_INVALID) → eligibility →
 // serialized consumeSlot → `submitted_to_ats` (authoritative) + event + outbox +
-// usage → pipeline `submitted` MIRROR + history + activity + usage → policy
-// provenance → commit. Any failure rolls back EVERYTHING.
+// usage → policy provenance → commit. Any failure rolls back EVERYTHING. L2-E (SB-5)
+// retired the Pipeline `submitted` mirror: this command no longer writes Pipeline —
+// the episode stays LIVE and readers derive the submitted signal from the event.
 
 // LIVE = the E6 live-episode predicate (mirror of the partial-unique WHERE).
 const NON_LIVE_PIPELINE_STATUSES = new Set([
@@ -48,7 +47,6 @@ export interface SubmitTalentToClientResult {
   readonly submittal_id: string;
   readonly pipeline_id: string;
   readonly state: 'submitted_to_ats';
-  readonly pipeline_status: 'submitted';
 }
 
 interface SubmittalRow {
@@ -157,9 +155,10 @@ export class SubmitTalentToClientService {
       if (pipeline.requisition_id !== submittal.job_id) throw linkInvalid('requisition_mismatch');
       if (pipeline.talent_record_id !== submittal.talent_id) throw linkInvalid('talent_mismatch');
       if (NON_LIVE_PIPELINE_STATUSES.has(pipeline.status)) throw linkInvalid('not_live');
-      if (!canTransitionPipeline(pipeline.status as never, 'submitted')) {
-        throw linkInvalid('illegal_transition');
-      }
+      // Lane 2 / L2-E (SB-5) — the mirror precondition (canTransition→'submitted') is
+      // removed with the mirror: submit-to-ats no longer transitions Pipeline, so
+      // there is no target-legality to check. The live-episode link validation above
+      // (tenant/req/talent identity + not-terminal) is the submit-time guard.
 
       const requisition_id = submittal.job_id;
       const talent_record_id = submittal.talent_id;
@@ -265,39 +264,11 @@ export class SubmitTalentToClientService {
       );
       await recordUsage(tx, { tenant_id, event_type: 'submittal.state_transition' });
 
-      // 7 — pipeline MIRROR: submitted + history + activity + usage.
-      // Lane 2 / L2-A — the mirror is a second Pipeline.status writer, so it
-      // MUST bump the optimistic-concurrency version too; otherwise a recruiter
-      // holding the pre-mirror version could transition on a stale status and
-      // the CAS would wrongly pass. version = version + 1 keeps expected_version
-      // sound across the mirror write.
-      await tx.$executeRawUnsafe(
-        `UPDATE "pipeline"."Pipeline" SET "status" = 'submitted', "version" = "version" + 1
-          WHERE "id" = $1::uuid AND "tenant_id" = $2::uuid`,
-        pipeline.id,
-        tenant_id,
-      );
-      await tx.$executeRawUnsafe(
-        `INSERT INTO "pipeline"."PipelineStatusHistory"
-           ("id","tenant_id","pipeline_id","status_from","status_to","changed_by_id","changed_at","note")
-         VALUES ($1::uuid,$2::uuid,$3::uuid,$4::"pipeline"."PipelineStatus",'submitted',$5::uuid,NOW(),$6)`,
-        uuidv7(),
-        tenant_id,
-        pipeline.id,
-        pipeline.status,
-        input.actor_id,
-        input.note ?? null,
-      );
-      await insertActivityInTx(tx, {
-        tenant_id,
-        ...(pipeline.site_id === null ? {} : { site_id: pipeline.site_id }),
-        type: 'pipeline_status_change',
-        subject_type: 'pipeline',
-        subject_id: pipeline.id,
-        notes: `pipeline ${pipeline.status} -> submitted (client submittal ${submittal_id})`,
-        created_by_id: input.actor_id,
-      });
-      await recordUsage(tx, { tenant_id, event_type: 'pipeline.state_transition' });
+      // Lane 2 / L2-E (SB-5 / D-4) — submit-to-ats does NOT write Pipeline. The
+      // authoritative fact is `Submittal.submitted_to_ats` + its immutable
+      // state_transition event (written above); the retired Pipeline `submitted`
+      // mirror is gone. The episode stays LIVE (D-2) at its recruiter stage; the
+      // submitted signal is derived from the Submittal event history by all readers.
 
       // 8 — policy provenance (append-only).
       await tx.$executeRawUnsafe(
@@ -322,7 +293,6 @@ export class SubmitTalentToClientService {
         submittal_id,
         pipeline_id: pipeline.id,
         state: 'submitted_to_ats',
-        pipeline_status: 'submitted',
       };
     });
   }

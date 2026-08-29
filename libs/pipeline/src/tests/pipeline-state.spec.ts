@@ -30,14 +30,15 @@ const EXPECTED_LEGAL: Record<PipelineStatus, readonly PipelineStatus[]> = {
   no_contact: ['contacted', 'talent_responded', 'not_in_consideration'],
   contacted: ['talent_responded', 'no_contact', 'not_in_consideration'],
   talent_responded: ['qualifying', 'contacted', 'not_in_consideration'],
-  // L2-C — the affirmative forward edge is now `qualified` (QUALIFY); the legacy
-  // `qualifying -> submitted` edge is KEPT for compat.
-  qualifying: ['qualified', 'submitted', 'talent_responded', 'not_in_consideration'],
-  // L2-C — the recruiter rests at `qualified`; `qualified -> completed` is legal
-  // ONLY so the system COMPLETE precondition validates (never a recruiter action).
-  qualified: ['submitted', 'qualifying', 'not_in_consideration', 'completed'],
+  // L2-C forward edge is `qualified`. L2-E (SB-5) — `submitted` is no longer a
+  // Pipeline transition target (client submit-to-ats is Submittal-owned); removed
+  // from qualifying / qualified / interviewing.
+  qualifying: ['qualified', 'talent_responded', 'not_in_consideration'],
+  qualified: ['qualifying', 'not_in_consideration', 'completed'],
+  // `submitted` as a SOURCE keeps its legacy edges (historical rows) — unreachable
+  // as a target but its outgoing edges remain for legacy episodes.
   submitted: ['interviewing', 'qualifying', 'not_in_consideration', 'client_declined'],
-  interviewing: ['offered', 'submitted', 'not_in_consideration', 'client_declined'],
+  interviewing: ['offered', 'not_in_consideration', 'client_declined'],
   offered: ['placed', 'interviewing', 'not_in_consideration', 'client_declined'],
   not_in_consideration: [],
   client_declined: [],
@@ -93,32 +94,35 @@ describe('canTransition — legal forward + backward + exit edges', () => {
     }
   });
 
-  it('accepts the canonical forward chain (no_contact -> placed)', () => {
+  it('accepts the recruiter forward chain (no_contact -> qualified); submitted is Submittal-owned', () => {
     expect(canTransition('no_contact', 'contacted')).toBe(true);
     expect(canTransition('contacted', 'talent_responded')).toBe(true);
     expect(canTransition('talent_responded', 'qualifying')).toBe(true);
-    expect(canTransition('qualifying', 'submitted')).toBe(true);
+    expect(canTransition('qualifying', 'qualified')).toBe(true);
+    // L2-E — qualified is the recruiter's terminal active stage; submit-to-ats is
+    // Submittal-owned, so `qualified -> submitted` is no longer legal.
+    // Legacy source edges remain for historical episodes:
     expect(canTransition('submitted', 'interviewing')).toBe(true);
     expect(canTransition('interviewing', 'offered')).toBe(true);
     expect(canTransition('offered', 'placed')).toBe(true);
   });
 
-  it('L2-C: accepts the qualified milestone edges (qualify + submit + system-complete)', () => {
+  it('L2-E: submitted is NOT a transition target from any state (Q1 — mirror retired)', () => {
+    expect(canTransition('qualifying', 'submitted')).toBe(false);
+    expect(canTransition('qualified', 'submitted')).toBe(false);
+    expect(canTransition('interviewing', 'submitted')).toBe(false);
+    // The qualified milestone edges that remain:
     expect(canTransition('qualifying', 'qualified')).toBe(true); // QUALIFY
-    expect(canTransition('qualified', 'submitted')).toBe(true); // load-bearing (submittal mirror)
     expect(canTransition('qualified', 'qualifying')).toBe(true); // back-correction
     expect(canTransition('qualified', 'completed')).toBe(true); // system COMPLETE precondition
-    // `completed` is legal ONLY from `qualified` — never a jump target.
     expect(canTransition('offered', 'completed')).toBe(false);
-    expect(canTransition('submitted', 'completed')).toBe(false);
   });
 
   it('accepts one-step-backward correction edges', () => {
     expect(canTransition('contacted', 'no_contact')).toBe(true);
     expect(canTransition('talent_responded', 'contacted')).toBe(true);
     expect(canTransition('qualifying', 'talent_responded')).toBe(true);
-    expect(canTransition('submitted', 'qualifying')).toBe(true);
-    expect(canTransition('interviewing', 'submitted')).toBe(true);
+    expect(canTransition('submitted', 'qualifying')).toBe(true); // submitted-as-source (legacy)
     expect(canTransition('offered', 'interviewing')).toBe(true);
   });
 

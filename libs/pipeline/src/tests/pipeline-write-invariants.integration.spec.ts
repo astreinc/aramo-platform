@@ -390,20 +390,23 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(cs!.stage).toBe('qualifying');
       expect(cs!.requisition_id).toBe(reqLow); // lowest requisition_id wins the tie
     });
-    // ---- P5 [L8-B1 R-TIGHTEN] — bare pipeline `→ submitted` is refused; every
-    // other transition is unchanged. `submitted` is the MIRROR of an authoritative
-    // client submittal (submit-to-ats command), never independently reachable.
-    it('P5 [L8-B1]: qualifying → submitted is refused with PIPELINE_SUBMIT_REQUIRES_SUBMITTAL; other transitions unaffected', async () => {
+    // ---- P5 [L2-E SB-5] — a bare pipeline `→ submitted` is refused as an ILLEGAL
+    // TRANSITION (422). `submitted` is no longer a Pipeline transition target at all
+    // (client submit-to-ats is Submittal-owned); the former special-case
+    // PIPELINE_SUBMIT_REQUIRES_SUBMITTAL (409) guard is removed, so it falls through
+    // to the ordinary state-machine legality check like any other illegal target.
+    it('P5 [L2-E]: qualifying → submitted is refused with INVALID_PIPELINE_TRANSITION (422); other transitions unaffected', async () => {
       const tenant = randomUUID();
       const req = await seedRequisition(tenant, 1);
       const talent = randomUUID();
       const p = await repo.create({ tenant_id: tenant, input: { talent_record_id: talent, requisition_id: req }, entry_provenance: { origin_type: 'MANUAL_RECRUITER', initiated_by_kind: 'user' } });
       await drive(tenant, p.id, ['contacted', 'talent_responded', 'qualifying']);
 
-      // The bare submit is refused (the mirror is not independently reachable).
+      // The bare submit is refused — `submitted` is not a legal target (not the old
+      // 409 mirror guard; the honest state-machine 422).
       await expect(
         casTransition(tenant, p.id, 'submitted', 'p5'),
-      ).rejects.toMatchObject({ code: 'PIPELINE_SUBMIT_REQUIRES_SUBMITTAL' });
+      ).rejects.toMatchObject({ code: 'INVALID_PIPELINE_TRANSITION' });
       // The refusal wrote nothing — status is still qualifying.
       const after = await repo.findById({ tenant_id: tenant, id: p.id });
       expect(after?.status).toBe('qualifying');

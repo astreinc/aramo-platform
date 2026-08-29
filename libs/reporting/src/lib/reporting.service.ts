@@ -1,10 +1,10 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ActivityRepository } from '@aramo/activity';
 import { CalendarRepository } from '@aramo/calendar';
 import type { VisibilityContextShape } from '@aramo/common';
 import { CompanyRepository } from '@aramo/company';
 import { ContactRepository } from '@aramo/contact';
-import { PipelineRepository } from '@aramo/pipeline';
+import { PipelineRepository, type PipelineStatus } from '@aramo/pipeline';
 import {
   CapacityProjectionRepository,
   type CapacityProjection,
@@ -22,6 +22,18 @@ import {
 } from '@aramo/settings';
 import { TalentRecordRepository } from '@aramo/talent-record';
 
+// Lane 2 / L2-E (SB-5) — the reporting-owned submitted-history port + overlay. The
+// IMPLEMENTATION is a @aramo/submittal-backed adapter wired at the apps/api
+// composition root; libs/reporting imports NEITHER @aramo/submittal NOR its schema
+// (seam-exclusion preserved — see the structural guard spec).
+import {
+  SUBMITTED_HISTORY_PORT,
+  type SubmittedHistoryPort,
+} from './ports/submitted-history.port.js';
+import {
+  applySubmittedOverlayToBuckets,
+  submittedBandOverlayByRequisition,
+} from './ports/submitted-overlay.js';
 import type {
   AssignmentPipelineReportView,
   CompanyMetricsView,
@@ -49,14 +61,18 @@ import type {
 //   company / contact / requisition / pipeline / activity / calendar
 //   / saved_list / talent_record.
 //
-// It NEVER reads (and is structurally incapable of reading) any Core /
-// engagement / submittal / examination / matching / talent / job_domain
-// schema:
-//   - The DI inputs are exactly the 8 ATS-domain repositories. There is
+// It imports NO Core / engagement / submittal / examination / matching /
+// talent / job_domain domain, repository, or prisma client:
+//   - The repository DI inputs are the 8 ATS-domain repositories. There is
 //     no @aramo/selection / @aramo/submittal / @aramo/examination /
-//     @aramo/talent / @aramo/job-domain import in this lib (enforced
-//     by tsconfig.lib.json paths + lint:nx-boundaries + the A7
-//     integration spec's seam-exclusion structural assertion).
+//     @aramo/talent / @aramo/job-domain import in this lib (enforced by
+//     tsconfig.lib.json paths + lint:nx-boundaries + the structural
+//     seam-exclusion spec seam-exclusion-structural.spec.ts).
+//   - Lane 2 / L2-E (SB-5 / Q3): the submitted reporting reads DEPEND on
+//     Submittal event DATA, but via a reporting-OWNED SubmittedHistoryPort
+//     (injected) whose @aramo/submittal-backed adapter is wired at the
+//     apps/api composition root — reporting owns the semantic, never the
+//     submittal implementation. Dependency-on-data YES; direct-import NO.
 //   - The dashboard's "placement" metric is the ATS-internal
 //     placed-pipeline view (the A5b-1 terminal state), NOT a
 //     submittal-confirmed-placement (which would require crossing the
@@ -248,6 +264,11 @@ export class ReportingService {
     // PULLED via the reporting→placement edge (§19). Trailing param (ctor-ripple
     // contained). Provided by CommercialMarginReadModule.
     private readonly commercialMarginRepository: CommercialMarginReadRepository,
+    // Lane 2 / L2-E (SB-5) — the submitted-history port (reporting-owned interface;
+    // @aramo/submittal-backed adapter injected at the apps/api composition root).
+    // Trailing param (ctor-ripple contained).
+    @Inject(SUBMITTED_HISTORY_PORT)
+    private readonly submittedHistory: SubmittedHistoryPort,
   ) {}
 
   // Track 4 / T4-B1 (CASE A access) — single-requisition derived capacity, PULLED
@@ -332,12 +353,46 @@ export class ReportingService {
     // E6 Q-4 — by_status collapses each (talent, req) to its CURRENT episode; total
     // is the distinct-triple count (sum of the collapsed buckets), NOT a raw row
     // count, so a re-entered talent is counted once.
-    const by_status = await this.pipelineRepository.countByStatus({
+    const raw = await this.pipelineRepository.countByStatus({
       tenant_id: actor.tenant_id,
       ...(visibleReqIds === undefined ? {} : { requisition_ids: visibleReqIds }),
     });
+    // Lane 2 / L2-E (SB-5) — submitted overlay: reproduce the retired Pipeline mirror
+    // from the authoritative Submittal event history. Each submitted grain whose
+    // current episode has not advanced past submitted is re-bucketed into `submitted`
+    // (moved out of its raw stage — no double count). Parity: with the mirror still
+    // writing the grain's current status IS `submitted`, so the overlay is a no-op;
+    // post-removal it rests at qualifying and is moved here — identical buckets.
+    const by_status = await this.overlaySubmitted(actor.tenant_id, raw, visibleReqIds);
     const total = by_status.reduce((sum, r) => sum + r.count, 0);
     return { total, by_status };
+  }
+
+  // Lane 2 / L2-E (SB-5) — the shared snapshot overlay: fetch the submitted grains
+  // (event-sourced, tenant-scoped, optionally restricted to the visible requisitions)
+  // + their current episode status, then re-bucket per submitted-overlay semantics.
+  private async overlaySubmitted(
+    tenant_id: string,
+    raw: Array<{ status: PipelineStatus; count: number }>,
+    requisition_ids: readonly string[] | undefined,
+  ): Promise<Array<{ status: PipelineStatus; count: number }>> {
+    const grains = await this.submittedHistory.findFirstSubmittedByGrain({
+      tenant_id,
+      ...(requisition_ids === undefined ? {} : { requisition_ids }),
+    });
+    if (grains.length === 0) return raw;
+    const currentByGrain = await this.pipelineRepository.findCurrentStatusByGrains({
+      tenant_id,
+      grains: grains.map((g) => ({
+        talent_record_id: g.talent_id,
+        requisition_id: g.requisition_id,
+      })),
+    });
+    return applySubmittedOverlayToBuckets(
+      raw,
+      grains.map((g) => ({ talent_id: g.talent_id, requisition_id: g.requisition_id })),
+      currentByGrain,
+    ) as Array<{ status: PipelineStatus; count: number }>;
   }
 
   async getPlacementCount(
@@ -735,7 +790,7 @@ export class ReportingService {
     const reqIds = inScope.map((r) => r.id);
     // E6 Q-4 — dedupe by (talent, req). Placements use EXISTS(placed) (a placement
     // is a fact); the submitted band uses CURRENT-episode (who is in it now).
-    const [placedByReq, submittedByReq] = await Promise.all([
+    const [placedByReq, submittedByReq, submittedGrains] = await Promise.all([
       this.pipelineRepository.countDistinctByRequisition({
         tenant_id: actor.tenant_id,
         requisition_ids: reqIds,
@@ -748,7 +803,39 @@ export class ReportingService {
         statuses: ['submitted', 'interviewing', 'offered'],
         mode: 'current',
       }),
+      this.submittedHistory.findFirstSubmittedByGrain({
+        tenant_id: actor.tenant_id,
+        requisition_ids: reqIds,
+      }),
     ]);
+    // Lane 2 / L2-E (SB-5) — submitted-band overlay: add each event-sourced submitted
+    // grain whose current episode is PRE-submitted (not already counted in the raw
+    // band). Parity: mirror-present grains have current-status `submitted` and are
+    // already in the raw band → no-op; a grain already advanced to interviewing/offered
+    // is counted by the raw band → not double-added.
+    const bandAdds =
+      submittedGrains.length === 0
+        ? new Map<string, number>()
+        : submittedBandOverlayByRequisition(
+            submittedGrains.map((g) => ({
+              talent_id: g.talent_id,
+              requisition_id: g.requisition_id,
+            })),
+            await this.pipelineRepository.findCurrentStatusByGrains({
+              tenant_id: actor.tenant_id,
+              grains: submittedGrains.map((g) => ({
+                talent_record_id: g.talent_id,
+                requisition_id: g.requisition_id,
+              })),
+            }),
+          );
+    const submittedByReqOverlaid = new Map<string, number>();
+    for (const { requisition_id, count } of submittedByReq) {
+      submittedByReqOverlaid.set(requisition_id, count);
+    }
+    for (const [req, add] of bandAdds) {
+      submittedByReqOverlaid.set(req, (submittedByReqOverlaid.get(req) ?? 0) + add);
+    }
     const foldByCompany = (
       rows: ReadonlyArray<{ requisition_id: string; count: number }>,
     ): Map<string, number> => {
@@ -760,7 +847,12 @@ export class ReportingService {
       return m;
     };
     const placedPer = foldByCompany(placedByReq);
-    const submittedPer = foldByCompany(submittedByReq);
+    const submittedPer = foldByCompany(
+      [...submittedByReqOverlaid.entries()].map(([requisition_id, count]) => ({
+        requisition_id,
+        count,
+      })),
+    );
 
     // Emit a row for EVERY requested company (zeros when it has no visible reqs).
     return wanted.map((company_id) => {
@@ -877,18 +969,37 @@ export class ReportingService {
       pipelines.map((p) => [p.id, p.created_at]),
     );
 
-    // One windowed history read covering the longest series we render.
+    const since = addMonthsUTC(now, -SERIES_MONTHS);
+    // interviewing/placed remain Pipeline history reads (Q2 — their ownership retires
+    // in L2-F/L2-G). One windowed read covers both.
     const transitions = await this.pipelineRepository.listTransitionsInto({
       tenant_id: actor.tenant_id,
       pipeline_ids: pipelines.map((p) => p.id),
-      statuses_to: ['submitted', 'interviewing', 'placed'],
-      since: addMonthsUTC(now, -SERIES_MONTHS),
+      statuses_to: ['interviewing', 'placed'],
+      since,
     });
-    const submitted = transitions.filter((t) => t.status_to === 'submitted');
     const interviewing = transitions.filter(
       (t) => t.status_to === 'interviewing',
     );
     const placed = transitions.filter((t) => t.status_to === 'placed');
+    // Lane 2 / L2-E (SB-5) — `submitted` is event-sourced from the authoritative
+    // Submittal history, timestamp-preserving: changed_at = the grain's
+    // first_submitted_at (the immutable transition instant, written in the SAME
+    // submit-to-ats tx as the retired mirror's history row, so now() is identical →
+    // exact-millisecond parity for avg_time_to_submit). pipeline_id carries the
+    // episode for the created_at join. Grains whose linked episode is outside the
+    // visible set are dropped (no created_at to subtract).
+    const submittedGrains = await this.submittedHistory.findFirstSubmittedByGrain({
+      tenant_id: actor.tenant_id,
+      requisition_ids: reqIds,
+      since,
+    });
+    const submitted: TransitionRow[] = submittedGrains
+      .filter((g) => g.pipeline_id !== null && createdById.has(g.pipeline_id))
+      .map((g) => ({
+        pipeline_id: g.pipeline_id as string,
+        changed_at: g.first_submitted_at,
+      }));
 
     return [
       {
@@ -945,10 +1056,18 @@ export class ReportingService {
             ? {}
             : { requisition_ids: visibleReqIds }),
         })
-        .then((by_status) => ({
-          total: by_status.reduce((sum, r) => sum + r.count, 0),
-          by_status,
-        })),
+        // Lane 2 / L2-E (SB-5) — same submitted overlay as getPipelineRollup.
+        .then(async (raw) => {
+          const by_status = await this.overlaySubmitted(
+            actor.tenant_id,
+            raw,
+            visibleReqIds,
+          );
+          return {
+            total: by_status.reduce((sum, r) => sum + r.count, 0),
+            by_status,
+          };
+        }),
       // E6 Q-4 — distinct (talent, req) with a placed episode EXISTS.
       this.pipelineRepository
         .countDistinctPlaced({

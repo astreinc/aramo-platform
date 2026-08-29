@@ -144,17 +144,18 @@ const LEGAL_TRANSITIONS: Record<PipelineStatus, readonly PipelineStatus[]> = {
   ],
 
   // Recruiter qualifying the talent. Forward to `qualified` (QUALIFY — the
-  // affirmative milestone); the legacy `qualifying → submitted` edge is KEPT
-  // for compat; back to talent_responded; or rejection.
-  qualifying: ['qualified', 'submitted', 'talent_responded', 'not_in_consideration'],
+  // affirmative milestone); back to talent_responded; or rejection. Lane 2 / L2-E
+  // (SB-5 / Q1) — `submitted` is no longer a Pipeline transition target: client
+  // submit-to-ats is Submittal-owned (submitted_to_ats), never a Pipeline write.
+  qualifying: ['qualified', 'talent_responded', 'not_in_consideration'],
 
-  // L2-C (D-2/D-6) — the recruiter rests the episode at `qualified` before
-  // submitting. `qualified → submitted` is LOAD-BEARING (the submittal mirror
-  // calls canTransitionPipeline(pipeline.status,'submitted')). Back-correction
-  // to `qualifying`; rejection to not_in_consideration. `qualified → completed`
-  // is legal ONLY so the system COMPLETE command's precondition validates — it
-  // is NEVER offered as a recruiter action (§5).
-  qualified: ['submitted', 'qualifying', 'not_in_consideration', 'completed'],
+  // The recruiter rests the episode at `qualified`. Back-correction to `qualifying`;
+  // rejection to not_in_consideration. `qualified → completed` is legal ONLY so the
+  // system COMPLETE command's precondition validates — it is NEVER offered as a
+  // recruiter action (§5). Lane 2 / L2-E (SB-5 / Q1) — `qualified → submitted` is
+  // removed: after L2-E a new episode rests at `qualified` while the downstream
+  // Submittal / Client-Selection / Placement aggregates advance independently.
+  qualified: ['qualifying', 'not_in_consideration', 'completed'],
 
   // Submitted to client. Forward to interviewing (client schedules);
   // back to qualifying (client returned for more info); rejection
@@ -167,11 +168,12 @@ const LEGAL_TRANSITIONS: Record<PipelineStatus, readonly PipelineStatus[]> = {
     'client_declined',
   ],
 
-  // Client interviewing. Forward to offered; back to submitted
-  // (additional rounds before offer); rejection paths as above.
+  // Client interviewing. Forward to offered; rejection paths as above. Lane 2 /
+  // L2-E (SB-5 / Q1) — the legacy `interviewing → submitted` back-edge is removed
+  // with the other `submitted` targets (`submitted` is no longer a write target;
+  // legacy episodes already at these states keep their historical rows).
   interviewing: [
     'offered',
-    'submitted',
     'not_in_consideration',
     'client_declined',
   ],

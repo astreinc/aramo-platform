@@ -1,8 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import { ActivityRepository } from '@aramo/activity';
 import { ConsentRepository, type ConsentSummary } from '@aramo/consent';
-import { PipelineRepository } from '@aramo/pipeline';
+import {
+  PipelineRepository,
+  activeStageOrdinal,
+  type CurrentStage,
+} from '@aramo/pipeline';
 import { TalentRecordRepository } from '@aramo/talent-record';
+import { TalentSubmittalEventRepository } from '@aramo/submittal';
 import type {
   CrossFacets,
   TalentRecordView,
@@ -34,7 +39,31 @@ export class TalentRecordEnrichmentService {
     private readonly consent: ConsentRepository,
     private readonly pipeline: PipelineRepository,
     private readonly talent: TalentRecordRepository,
+    // Lane 2 / L2-E (SB-5) — the authoritative Submittal event history for the
+    // current_stage submitted overlay. apps/api reads @aramo/submittal directly.
+    private readonly submittalEvents: TalentSubmittalEventRepository,
   ) {}
+
+  // Lane 2 / L2-E (SB-5) — the current_stage submitted overlay (R5). A talent is
+  // effectively `submitted` iff it has a submitted grain AND its raw most-advanced
+  // ACTIVE stage is pre-submitted (ordinal < submitted). A raw stage at/after
+  // submitted (submitted/interviewing/offered) or a null raw (terminal-only) wins —
+  // reproducing the retired mirror, which only overwrote a live pre-submitted status
+  // and was never shown for terminal episodes. Parity: with the mirror present the
+  // raw stage IS `submitted`, so this is a no-op.
+  private overlayCurrentStage(
+    raw: CurrentStage | null,
+    submittedRequisitionId: string | undefined,
+  ): CurrentStage | null {
+    if (submittedRequisitionId === undefined) return raw;
+    if (raw === null) return raw; // terminal-only / no active episode — raw wins
+    const submittedOrd = activeStageOrdinal('submitted');
+    const rawOrd = activeStageOrdinal(raw.stage);
+    if (rawOrd >= 0 && rawOrd < submittedOrd) {
+      return { stage: 'submitted', requisition_id: submittedRequisitionId };
+    }
+    return raw; // already submitted or advanced past it — raw wins
+  }
 
   async enrich(
     items: readonly TalentRecordView[],
@@ -47,7 +76,7 @@ export class TalentRecordEnrichmentService {
 
     const ids = items.map((i) => i.id);
 
-    const [lastActivity, stages, consent] = await Promise.all([
+    const [lastActivity, stages, consent, submittedGrains] = await Promise.all([
       this.activity.findLastActivityForTalentIds({
         tenant_id: ctx.tenant_id,
         talent_record_ids: ids,
@@ -63,12 +92,33 @@ export class TalentRecordEnrichmentService {
         tenant_id: ctx.tenant_id,
         talent_record_ids: ids,
       }),
+      // Lane 2 / L2-E (SB-5) — submitted grains for these talents, scoped to the
+      // visible requisitions, for the current_stage overlay.
+      this.submittalEvents.findFirstSubmittedByGrain({
+        tenant_id: ctx.tenant_id,
+        talent_ids: ids,
+        ...(ctx.visible_requisition_ids === null
+          ? {}
+          : { requisition_ids: [...ctx.visible_requisition_ids] }),
+      }),
     ]);
+
+    // Per-talent submitted requisition (first grain — the requisition_id the overlay
+    // surfaces when submitted wins over a pre-submitted raw stage).
+    const submittedByTalent = new Map<string, string>();
+    for (const g of submittedGrains) {
+      if (!submittedByTalent.has(g.talent_id)) {
+        submittedByTalent.set(g.talent_id, g.requisition_id);
+      }
+    }
 
     return items.map((i) => ({
       ...i,
       last_activity_at: lastActivity.get(i.id) ?? null,
-      current_stage: stages.get(i.id) ?? null,
+      current_stage: this.overlayCurrentStage(
+        stages.get(i.id) ?? null,
+        submittedByTalent.get(i.id),
+      ),
       // Keyed by TalentRecord.id; no contacting grant ⇒ do_not_contact (only a
       // positive grant is contactable).
       consent_summary: consent.get(i.id) ?? 'do_not_contact',
@@ -108,7 +158,7 @@ export class TalentRecordEnrichmentService {
 
     const ids = keys.map((k) => k.id);
 
-    const [lastActivity, stages, consent] = await Promise.all([
+    const [lastActivity, stages, consent, submittedGrains] = await Promise.all([
       this.activity.findLastActivityForTalentIds({
         tenant_id: ctx.tenant_id,
         talent_record_ids: ids,
@@ -125,7 +175,24 @@ export class TalentRecordEnrichmentService {
             talent_record_ids: ids,
           })
         : Promise.resolve(new Map<string, ConsentSummary>()),
+      // Lane 2 / L2-E (SB-5) — submitted grains for the stage-facet overlay, so the
+      // facet distribution agrees with the per-row current_stage overlay in enrich().
+      ids.length > 0
+        ? this.submittalEvents.findFirstSubmittedByGrain({
+            tenant_id: ctx.tenant_id,
+            talent_ids: ids,
+            ...(ctx.visible_requisition_ids === null
+              ? {}
+              : { requisition_ids: [...ctx.visible_requisition_ids] }),
+          })
+        : Promise.resolve([] as const),
     ]);
+    const submittedByTalent = new Map<string, string>();
+    for (const g of submittedGrains) {
+      if (!submittedByTalent.has(g.talent_id)) {
+        submittedByTalent.set(g.talent_id, g.requisition_id);
+      }
+    }
 
     // recency — cumulative tiers mirroring the FE: today ⊆ 7d ⊆ 30d. `stale`
     // = no activity in ≥90d OR never. The 31–89d band is deliberately in no
@@ -157,9 +224,16 @@ export class TalentRecordEnrichmentService {
     }
 
     // stage — current active stage label; 'none' when not in any active flow.
+    // Lane 2 / L2-E (SB-5) — apply the submitted overlay so the facet agrees with
+    // the per-row current_stage (a submitted grain at a pre-submitted raw stage
+    // counts as `submitted`).
     const stageCounts = new Map<string, number>();
     for (const id of ids) {
-      const value = stages.get(id)?.stage ?? 'none';
+      const value =
+        this.overlayCurrentStage(
+          stages.get(id) ?? null,
+          submittedByTalent.get(id),
+        )?.stage ?? 'none';
       stageCounts.set(value, (stageCounts.get(value) ?? 0) + 1);
     }
 
