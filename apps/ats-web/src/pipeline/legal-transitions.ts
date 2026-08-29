@@ -25,25 +25,13 @@ export const LEGAL_TRANSITIONS: Record<
   // is legal ONLY so the system COMPLETE precondition validates; NEVER a recruiter
   // "Move to…" option (§5). L2-E — `qualified → submitted` removed.
   qualified: ['qualifying', 'not_in_consideration', 'completed'],
-  submitted: [
-    'interviewing',
-    'qualifying',
-    'not_in_consideration',
-    'client_declined',
-  ],
-  // L2-E (SB-5) — the legacy `interviewing → submitted` back-edge removed with the
-  // other `submitted` targets.
-  interviewing: [
-    'offered',
-    'not_in_consideration',
-    'client_declined',
-  ],
-  offered: [
-    'placed',
-    'interviewing',
-    'not_in_consideration',
-    'client_declined',
-  ],
+  // L2-F3 — `interviewing` + `client_declined` are RETIRED as Pipeline transition
+  // targets (the interview + client-decline truths are owned by ClientSelectionProcess/
+  // InterviewSession, Lane2-DDR §4). Enum values kept; source keys keep their still-valid
+  // outgoing edges for legacy rows. Mirrors libs/pipeline/src/lib/pipeline-state.ts.
+  submitted: ['qualifying', 'not_in_consideration'],
+  interviewing: ['offered', 'not_in_consideration'],
+  offered: ['placed', 'not_in_consideration'],
   not_in_consideration: [],
   client_declined: [],
   placed: [],

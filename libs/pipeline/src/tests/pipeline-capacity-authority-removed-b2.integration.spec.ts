@@ -111,10 +111,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     async function drive(tenant: string, id: string, path: readonly PipelineStatus[]): Promise<void> {
       for (const to of path) {
         // L8-B1 R-TIGHTEN — `submitted` is the submit-to-ats orchestrator's mirror,
-        // not an engine hop; set it with a direct write (as production does) then
-        // let the engine continue submitted → interviewing → … .
-        if (to === 'submitted') {
-          await prisma.$executeRawUnsafe(`UPDATE pipeline."Pipeline" SET status = 'submitted' WHERE id = '${id}'`);
+        // not an engine hop. L2-F3 — `interviewing` is likewise legacy-only (the
+        // interview truth is owned by InterviewSession; no engine edge reaches it).
+        // Both are set with a direct write (as legacy rows exist), then the KEPT
+        // source edges (interviewing → offered → placed) carry the walk forward.
+        if (to === 'submitted' || to === 'interviewing') {
+          await prisma.$executeRawUnsafe(`UPDATE pipeline."Pipeline" SET status = '${to}' WHERE id = '${id}'`);
           continue;
         }
         await casTransition(tenant, id, to, 'b2');

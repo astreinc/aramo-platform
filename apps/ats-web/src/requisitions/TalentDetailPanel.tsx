@@ -40,7 +40,13 @@ const WORK_AUTH_OPTIONS = WORK_AUTHORIZATION_VALUES.map((v) => ({
 // "offer", preserving the offer→placement governance.
 
 // The status a click on each funnel bucket transitions TO (the bucket's canonical
-// forward status). Legality is still gated by legalNextStates.
+// forward status). Legality is gated by legalNextStates, so a bucket whose target is
+// not a legal next state renders DISABLED. L2-F3 — `interviewing` is RETIRED as a
+// Pipeline transition target (interview truth is owned by InterviewSession), so the
+// `interview` bucket is now DISPLAY-ONLY: `legalNextStates` never yields `interviewing`,
+// so the bucket button is always disabled (no forward write) — it renders only to place
+// legacy `interviewing` rows on the funnel. The mapping is retained so the bucket keeps
+// its canonical position; it is inert as a write.
 const BUCKET_TARGET: Record<FunnelBucketKey, PipelineStatus> = {
   sourced: 'contacted',
   qualifying: 'qualifying',

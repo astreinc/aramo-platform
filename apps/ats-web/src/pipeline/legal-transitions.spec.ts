@@ -63,3 +63,25 @@ describe('recruiterNextStates (§5 — system-only target exclusion)', () => {
     );
   });
 });
+
+describe('L2-F3 — interviewing/client_declined retired as transition targets (FE mirror)', () => {
+  it('the "Move to…" affordance no longer offers interviewing or client_declined', () => {
+    // Retired targets are absent from every source row's forward set.
+    expect(recruiterNextStates('submitted')).not.toContain('interviewing');
+    expect(recruiterNextStates('submitted')).not.toContain('client_declined');
+    expect(recruiterNextStates('offered')).not.toContain('interviewing');
+    expect(recruiterNextStates('offered')).not.toContain('client_declined');
+    expect(recruiterNextStates('interviewing')).not.toContain('client_declined');
+  });
+
+  it('KEPT source edges remain (retirement is scoped to the target)', () => {
+    // A legacy `interviewing` row still advances to offered / drops to not_in_consideration.
+    expect(legalNextStates('interviewing')).toContain('offered');
+    expect(legalNextStates('interviewing')).toContain('not_in_consideration');
+    // `submitted` keeps its non-retired edges.
+    expect(legalNextStates('submitted')).toContain('qualifying');
+    expect(legalNextStates('submitted')).toContain('not_in_consideration');
+    // `client_declined` stays a terminal display state (enum value kept).
+    expect(legalNextStates('client_declined')).toEqual([]);
+  });
+});

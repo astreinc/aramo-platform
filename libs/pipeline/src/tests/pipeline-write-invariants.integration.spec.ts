@@ -183,12 +183,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
     async function drive(tenant: string, id: string, path: readonly PipelineStatus[]): Promise<void> {
       for (const to of path) {
-        // L8-B1 R-TIGHTEN — the `→ submitted` hop is no longer an engine
-        // transition; in production the submit-to-ats orchestrator sets it as the
-        // mirror, then the engine continues submitted → interviewing → … . Model
-        // that here so funnel-progression characterizations stay faithful.
-        if (to === 'submitted') {
-          await forceSubmitted(id);
+        // L8-B1 R-TIGHTEN — the `→ submitted` hop is no longer an engine transition
+        // (submit-to-ats orchestrator sets the mirror). L2-F3 — `→ interviewing` is
+        // likewise no longer an engine edge (the interview truth is owned by
+        // InterviewSession); a legacy row is force-set, then the KEPT source edges
+        // (interviewing → offered → placed) carry the walk. Model that here so
+        // funnel-progression characterizations stay faithful.
+        if (to === 'submitted' || to === 'interviewing') {
+          await prisma.$executeRawUnsafe(`UPDATE pipeline."Pipeline" SET status = '${to}' WHERE id = '${id}'`);
           continue;
         }
         await casTransition(tenant, id, to, 'l1');

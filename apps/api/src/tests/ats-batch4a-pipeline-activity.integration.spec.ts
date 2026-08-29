@@ -625,13 +625,15 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         expect(r.status, `walkToOffered step ${step}`).toBe(200);
       }
       // L8-B1 R-TIGHTEN — `submitted` is no longer reachable through the transition
-      // route (it is the submit-to-ats orchestrator's mirror). Set it directly, as
-      // the orchestrator does, then continue the engine chain to offered.
+      // route (submit-to-ats orchestrator's mirror). L2-F3 — `interviewing` is likewise
+      // legacy-only (the interview truth is owned by InterviewSession; no engine edge
+      // reaches it). Set both directly, then continue via the KEPT source edge
+      // interviewing → offered.
       await setupClient.query(
-        `UPDATE pipeline."Pipeline" SET status = 'submitted' WHERE id = $1::uuid`,
+        `UPDATE pipeline."Pipeline" SET status = 'interviewing' WHERE id = $1::uuid`,
         [id],
       );
-      for (const step of ['interviewing', 'offered']) {
+      for (const step of ['offered']) {
         const r = await transition(jwt, id, step);
         expect(r.status, `walkToOffered step ${step}`).toBe(200);
       }

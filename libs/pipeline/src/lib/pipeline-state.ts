@@ -157,35 +157,25 @@ const LEGAL_TRANSITIONS: Record<PipelineStatus, readonly PipelineStatus[]> = {
   // Submittal / Client-Selection / Placement aggregates advance independently.
   qualified: ['qualifying', 'not_in_consideration', 'completed'],
 
-  // Submitted to client. Forward to interviewing (client schedules);
-  // back to qualifying (client returned for more info); rejection
-  // paths split: not_in_consideration (recruiter-side drop) or
-  // client_declined (client-side drop).
-  submitted: [
-    'interviewing',
-    'qualifying',
-    'not_in_consideration',
-    'client_declined',
-  ],
+  // Submitted to client. Back to qualifying (client returned for more info);
+  // recruiter-side drop to not_in_consideration. Lane 2 / L2-F3 — `interviewing`
+  // and `client_declined` are RETIRED as Pipeline transition targets (the interview
+  // + client-decline truths are owned by ClientSelectionProcess/InterviewSession,
+  // Lane2-DDR §4). Enum values are kept for history; legacy rows already at those
+  // states keep their historical rows + their still-valid outgoing edges.
+  submitted: ['qualifying', 'not_in_consideration'],
 
-  // Client interviewing. Forward to offered; rejection paths as above. Lane 2 /
-  // L2-E (SB-5 / Q1) — the legacy `interviewing → submitted` back-edge is removed
-  // with the other `submitted` targets (`submitted` is no longer a write target;
-  // legacy episodes already at these states keep their historical rows).
-  interviewing: [
-    'offered',
-    'not_in_consideration',
-    'client_declined',
-  ],
+  // Client interviewing (LEGACY source key — no new episode reaches `interviewing`;
+  // the interview truth is owned by InterviewSession). A legacy row still exits
+  // forward to offered or drops to not_in_consideration. Lane 2 / L2-F3 —
+  // `client_declined` is retired as a target here too (client-decline is owner-owned).
+  interviewing: ['offered', 'not_in_consideration'],
 
-  // Client offered. Forward to placed (terminal); back to interviewing
-  // (offer pulled or further rounds); rejection paths split.
-  offered: [
-    'placed',
-    'interviewing',
-    'not_in_consideration',
-    'client_declined',
-  ],
+  // Client offered. Forward to placed (terminal); recruiter/no-consideration drop.
+  // Lane 2 / L2-F3 — the `offered → interviewing` back-edge and `offered →
+  // client_declined` are retired (owner-owned); a legacy offered row still advances
+  // to placed or drops to not_in_consideration.
+  offered: ['placed', 'not_in_consideration'],
 
   // Terminal states — no outgoing transitions. Re-entry rides the E6 live-slot
   // release: a terminal episode frees the (tenant, talent, req) slot, and

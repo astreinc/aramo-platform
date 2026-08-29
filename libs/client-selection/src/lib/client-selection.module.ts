@@ -7,6 +7,7 @@ import { EntitlementModule } from '@aramo/entitlement';
 import { PrismaService } from './prisma/prisma.service.js';
 import { ClientSelectionProcessRepository } from './client-selection.repository.js';
 import { InterviewSessionRepository } from './interview-session.repository.js';
+import { JourneyProjectionRepository } from './journey-projection.repository.js';
 import { ClientSelectionController } from './client-selection.controller.js';
 
 // Lane 2 / L2-F (F1 + F2) — the Client-Selection owner module. Import set
@@ -22,6 +23,7 @@ import { ClientSelectionController } from './client-selection.controller.js';
     PrismaService,
     ClientSelectionProcessRepository,
     InterviewSessionRepository,
+    JourneyProjectionRepository,
   ],
   // PrismaService is exported so the apps/api create-from-submittal orchestration can
   // bind it (useExisting) as its raw cross-schema read connection — the same singleton
@@ -30,6 +32,7 @@ import { ClientSelectionController } from './client-selection.controller.js';
   exports: [
     ClientSelectionProcessRepository,
     InterviewSessionRepository,
+    JourneyProjectionRepository,
     PrismaService,
   ],
 })
