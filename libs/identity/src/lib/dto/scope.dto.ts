@@ -93,6 +93,9 @@ export const SEED_SCOPE_KEYS = [
   // the apps/api create-from-submittal orchestration). GRANTED to the ATS delivery matrix
   // (recruiter, account_manager, tenant_admin, tenant_owner) — mirrors placement:create.
   'client-selection:create',     // recruiter+ (create-from-submittal orchestration)
+  // Lane 2 / L2-F (F2) — InterviewSession child (enforced in ClientSelectionController).
+  'client-selection:interview:schedule',   // recruiter+ (idempotency-gated schedule)
+  'client-selection:interview:transition', // recruiter+ (session CAS transition)
   'client-selection:read',       // recruiter+
   'client-selection:transition', // recruiter+
   'activity:create',            // recruiter+

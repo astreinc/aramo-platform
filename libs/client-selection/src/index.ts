@@ -23,3 +23,21 @@ export type {
   TransitionClientSelectionRequestDto,
   CreateClientSelectionRequestDto,
 } from './lib/dto/client-selection-request.dto.js';
+
+// Lane 2 / L2-F (F2) — the InterviewSession child aggregate.
+export { InterviewSessionRepository } from './lib/interview-session.repository.js';
+export {
+  INTERVIEW_SESSION_STATE_VALUES,
+  INTERVIEW_SESSION_INITIAL_STATE,
+  INTERVIEW_SESSION_TERMINAL_STATES,
+  isInterviewSessionState,
+  isTerminalInterviewSessionState,
+  canTransitionInterviewSession,
+  legalNextInterviewSessionStates,
+  type InterviewSessionState,
+} from './lib/interview-session-state.js';
+export type { InterviewSessionView } from './lib/dto/interview-session.view.js';
+export type {
+  ScheduleInterviewRequestDto,
+  TransitionInterviewSessionRequestDto,
+} from './lib/dto/interview-session-request.dto.js';

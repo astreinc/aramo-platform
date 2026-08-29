@@ -156,6 +156,9 @@ export const SEED_IDS = {
     'client-selection:create': '01900000-0000-7000-8000-0000000000f3',
     'client-selection:read': '01900000-0000-7000-8000-0000000000f1',
     'client-selection:transition': '01900000-0000-7000-8000-0000000000f2',
+    // Lane 2 / L2-F (F2) — InterviewSession child scopes.
+    'client-selection:interview:schedule': '01900000-0000-7000-8000-0000000000f4',
+    'client-selection:interview:transition': '01900000-0000-7000-8000-0000000000f5',
     'activity:create': '01900000-0000-7000-8000-000000000088',
     // AUTHZ-2 — 3 platform-namespace scopes (Lead ruling 5; the minimum set).
     // Bound only to the super_admin platform role; no tenant role holds any
@@ -2184,6 +2187,34 @@ const CLIENT_SELECTION_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => 
   return map;
 })();
 
+// Lane 2 / L2-F (F2) — the InterviewSession role matrix. The two interview:* scopes
+// (schedule/transition) are frontline ATS delivery work, granted to the SAME four roles
+// as the F1 client-selection scopes (recruiter/account_manager/tenant_admin/tenant_owner).
+// 2 scopes × 4 roles = 8 grants. super_admin + all others ZERO (fail-closed).
+export const CLIENT_SELECTION_INTERVIEW_SEED_BUNDLES: ReadonlyArray<
+  readonly [string, readonly string[]]
+> = [
+  ['recruiter', ['client-selection:interview:schedule', 'client-selection:interview:transition']],
+  ['account_manager', ['client-selection:interview:schedule', 'client-selection:interview:transition']],
+  ['tenant_admin', ['client-selection:interview:schedule', 'client-selection:interview:transition']],
+  ['tenant_owner', ['client-selection:interview:schedule', 'client-selection:interview:transition']],
+];
+
+// Deterministic RoleScope row ids for the 8 interview grants. Fresh disjoint range
+// 0x100c+ (append-don't-renumber; the F1 client-selection family occupies 0x1000..0x100b).
+const CLIENT_SELECTION_INTERVIEW_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
+  const map: Record<string, string> = {};
+  let i = 0x100c;
+  for (const [role, scopes] of CLIENT_SELECTION_INTERVIEW_SEED_BUNDLES) {
+    for (const scope of scopes) {
+      map[`${role}:${scope}`] =
+        `01900000-0000-7000-8000-${i.toString(16).padStart(12, '0')}`;
+      i++;
+    }
+  }
+  return map;
+})();
+
 interface IdentityPrismaClient {
   tenant: typeof PrismaClient.prototype.tenant;
   user: typeof PrismaClient.prototype.user;
@@ -2396,6 +2427,9 @@ export async function runIdentitySeed(
   await upsertScope(prisma, SEED_IDS.scopes['client-selection:create'], 'client-selection:create', 'Lane 2 / L2-F (F1) — create a ClientSelectionProcess from a Submittal (POST /v1/client-selection, apps/api create-from-submittal orchestration). GRANTED to recruiter, account_manager, tenant_admin, tenant_owner (the ATS delivery matrix; mirrors placement:create). NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['client-selection:read'], 'client-selection:read', 'Lane 2 / L2-F (F1) — read a ClientSelectionProcess (GET /v1/client-selection/:id). GRANTED to recruiter, account_manager, tenant_admin, tenant_owner. NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['client-selection:transition'], 'client-selection:transition', 'Lane 2 / L2-F (F1) — drive a ClientSelectionProcess state transition (POST /v1/client-selection/:id/transition, CAS-guarded). GRANTED to recruiter, account_manager, tenant_admin, tenant_owner. NO scope.created (scope-seed precedent).');
+  // Lane 2 / L2-F (F2) — InterviewSession child scopes.
+  await upsertScope(prisma, SEED_IDS.scopes['client-selection:interview:schedule'], 'client-selection:interview:schedule', 'Lane 2 / L2-F (F2) — schedule an InterviewSession under a ClientSelectionProcess (POST /v1/client-selection/:id/interviews, idempotency-gated). GRANTED to recruiter, account_manager, tenant_admin, tenant_owner. NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['client-selection:interview:transition'], 'client-selection:interview:transition', 'Lane 2 / L2-F (F2) — drive an InterviewSession state transition (POST /v1/client-selection/interview-sessions/:id/transition, CAS-guarded). GRANTED to recruiter, account_manager, tenant_admin, tenant_owner. NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['activity:create'], 'activity:create', 'Create a manual activity entry');
   // AUTHZ-2 — 3 platform-namespace scopes (Lead ruling 5; separate from
   // the 47 tenant scopes above).
@@ -3134,6 +3168,26 @@ export async function runIdentitySeed(
       if (rsId === undefined) {
         throw new Error(
           `ClientSelection-Role-Matrix: Missing generated RoleScope id for ${roleKey}:${scopeKey}`,
+        );
+      }
+      const scope_id = scopeIdForKey(scopeKey);
+      await prisma.roleScope.upsert({
+        where: { role_id_scope_id: { role_id, scope_id } },
+        update: {},
+        create: { id: rsId, role_id, scope_id },
+      });
+    }
+  }
+
+  // Lane 2 / L2-F (F2) — InterviewSession grants (8 rows; range 0x100c+). The two
+  // interview:* scopes -> the same four ATS delivery roles as F1.
+  for (const [roleKey, scopeKeys] of CLIENT_SELECTION_INTERVIEW_SEED_BUNDLES) {
+    const role_id = roleIdForKey(roleKey);
+    for (const scopeKey of scopeKeys) {
+      const rsId = CLIENT_SELECTION_INTERVIEW_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
+      if (rsId === undefined) {
+        throw new Error(
+          `ClientSelection-Interview-Role-Matrix: Missing generated RoleScope id for ${roleKey}:${scopeKey}`,
         );
       }
       const scope_id = scopeIdForKey(scopeKey);
