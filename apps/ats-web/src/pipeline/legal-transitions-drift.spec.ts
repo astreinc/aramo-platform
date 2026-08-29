@@ -93,7 +93,8 @@ describe('legal-transitions drift smoke spec', () => {
     const beKeys = Object.keys(beMatrix).sort();
     const feKeys = Object.keys(LEGAL_TRANSITIONS).sort();
     expect(feKeys).toEqual(beKeys);
-    // Spot check: all 11 statuses appear as keys in both.
+    // Spot check: all 13 statuses appear as keys in both (L2-C added qualified +
+    // completed to the original 11-state funnel).
     expect(beKeys.length).toBe(PIPELINE_STATUS_VALUES.length);
     // Structural matrix equality (set-of-targets per key).
     expect(normalize(LEGAL_TRANSITIONS)).toEqual(normalize(beMatrix));

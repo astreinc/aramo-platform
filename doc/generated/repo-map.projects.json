@@ -194,6 +194,7 @@
       "INTERVIEW_SESSION_STATE_VALUES",
       "INTERVIEW_SESSION_TERMINAL_STATES",
       "InterviewSessionRepository",
+      "JourneyProjectionRepository",
       "canTransitionClientSelection",
       "canTransitionInterviewSession",
       "isClientSelectionState",

@@ -41,3 +41,10 @@ export type {
   ScheduleInterviewRequestDto,
   TransitionInterviewSessionRequestDto,
 } from './lib/dto/interview-session-request.dto.js';
+
+// Lane 2 / L2-F (F3) — the owner-sourced journey-stage projection (consumed by L2-H).
+export { JourneyProjectionRepository } from './lib/journey-projection.repository.js';
+export type {
+  JourneyStageView,
+  JourneyStageKind,
+} from './lib/dto/journey-stage.view.js';

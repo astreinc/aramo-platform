@@ -35,11 +35,12 @@ const EXPECTED_LEGAL: Record<PipelineStatus, readonly PipelineStatus[]> = {
   // from qualifying / qualified / interviewing.
   qualifying: ['qualified', 'talent_responded', 'not_in_consideration'],
   qualified: ['qualifying', 'not_in_consideration', 'completed'],
-  // `submitted` as a SOURCE keeps its legacy edges (historical rows) — unreachable
-  // as a target but its outgoing edges remain for legacy episodes.
-  submitted: ['interviewing', 'qualifying', 'not_in_consideration', 'client_declined'],
-  interviewing: ['offered', 'not_in_consideration', 'client_declined'],
-  offered: ['placed', 'interviewing', 'not_in_consideration', 'client_declined'],
+  // L2-F3 — `interviewing` + `client_declined` are RETIRED as Pipeline transition
+  // targets (owned by ClientSelectionProcess/InterviewSession, Lane2-DDR §4). Enum
+  // values kept; source keys kept with their still-valid outgoing edges.
+  submitted: ['qualifying', 'not_in_consideration'],
+  interviewing: ['offered', 'not_in_consideration'],
+  offered: ['placed', 'not_in_consideration'],
   not_in_consideration: [],
   client_declined: [],
   placed: [],
@@ -101,10 +102,32 @@ describe('canTransition — legal forward + backward + exit edges', () => {
     expect(canTransition('qualifying', 'qualified')).toBe(true);
     // L2-E — qualified is the recruiter's terminal active stage; submit-to-ats is
     // Submittal-owned, so `qualified -> submitted` is no longer legal.
-    // Legacy source edges remain for historical episodes:
-    expect(canTransition('submitted', 'interviewing')).toBe(true);
+    // L2-F3 — `submitted -> interviewing` is now RETIRED (interview is owner-owned);
+    // the KEPT source edge `interviewing -> offered` remains legal for legacy rows.
+    expect(canTransition('submitted', 'interviewing')).toBe(false);
     expect(canTransition('interviewing', 'offered')).toBe(true);
     expect(canTransition('offered', 'placed')).toBe(true);
+  });
+
+  // L2-F3 — the R9 edge-set is retired: each of the 5 edges was LEGAL before this
+  // slice (see git history / the pre-F3 EXPECTED_LEGAL) and is ILLEGAL now. The enum
+  // values remain (history), and each retired-target's SOURCE key keeps its remaining
+  // edges (proved by the kept-edge assertions below).
+  it('L2-F3: interviewing + client_declined are RETIRED as transition targets (5 edges)', () => {
+    // Retired target-edges (BEFORE: legal; AFTER: illegal).
+    expect(canTransition('submitted', 'interviewing')).toBe(false);
+    expect(canTransition('submitted', 'client_declined')).toBe(false);
+    expect(canTransition('interviewing', 'client_declined')).toBe(false);
+    expect(canTransition('offered', 'interviewing')).toBe(false);
+    expect(canTransition('offered', 'client_declined')).toBe(false);
+    // KEPT source edges (retirement is scoped to the target, not the source key).
+    expect(canTransition('submitted', 'qualifying')).toBe(true);
+    expect(canTransition('interviewing', 'offered')).toBe(true);
+    expect(canTransition('interviewing', 'not_in_consideration')).toBe(true);
+    expect(canTransition('offered', 'placed')).toBe(true);
+    // Enum values retained (no drop).
+    expect(isPipelineStatus('interviewing')).toBe(true);
+    expect(isPipelineStatus('client_declined')).toBe(true);
   });
 
   it('L2-E: submitted is NOT a transition target from any state (Q1 — mirror retired)', () => {
@@ -123,7 +146,8 @@ describe('canTransition — legal forward + backward + exit edges', () => {
     expect(canTransition('talent_responded', 'contacted')).toBe(true);
     expect(canTransition('qualifying', 'talent_responded')).toBe(true);
     expect(canTransition('submitted', 'qualifying')).toBe(true); // submitted-as-source (legacy)
-    expect(canTransition('offered', 'interviewing')).toBe(true);
+    // L2-F3 — the `offered -> interviewing` back-edge is retired (interview owner-owned).
+    expect(canTransition('offered', 'interviewing')).toBe(false);
   });
 
   it('treats no-op (from === to) as legal — the repo intercepts separately', () => {

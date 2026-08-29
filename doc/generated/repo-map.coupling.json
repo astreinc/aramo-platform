@@ -9230,6 +9230,11 @@
       "to": "libs/pipeline/src/lib/pipeline-state.ts"
     },
     {
+      "from": "apps/ats-web/src/pipeline/legal-transitions.ts",
+      "status": "production",
+      "to": "libs/pipeline/src/lib/pipeline-state.ts"
+    },
+    {
       "from": "apps/ats-web/src/pipeline/pipeline-api.ts",
       "status": "production",
       "to": "libs/pipeline/src/lib/pipeline.controller.ts"
