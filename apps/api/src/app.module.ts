@@ -35,6 +35,7 @@ import { ObjectStorageModule } from '@aramo/object-storage';
 import { SourcedTalentModule } from '@aramo/sourced-talent';
 import { OutboxPublisherModule } from '@aramo/outbox-publisher';
 import { PipelineModule } from '@aramo/pipeline';
+import { ClientSelectionModule } from '@aramo/client-selection';
 import { PortalModule } from '@aramo/portal';
 import { ReportingModule } from '@aramo/reporting';
 import { RequisitionModule } from '@aramo/requisition';
@@ -56,6 +57,7 @@ import { TaskModule } from '@aramo/task';
 
 import { SubmittedHistoryModule } from './reporting-adapters/submitted-history.module.js';
 import { SubmitTalentModule } from './submit-talent/submit-talent.module.js';
+import { ClientSelectionOrchestrationModule } from './client-selection/client-selection-orchestration.module.js';
 // T1-a — composition-root binding of libs/examination's RequisitionStateReader
 // port to the ATS RequisitionRepository adapter (@Global; the wall-legal seam).
 import { RequisitionStateReaderModule } from './requisition-state/requisition-state-reader.module.js';
@@ -251,6 +253,9 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     // is A5b.
     ActivityModule,
     PipelineModule,
+    // Lane 2 / L2-F (F1) — the Client-Selection owner (the interview/client-decline
+    // truth Pipeline faked; retires Pipeline ownership in F3).
+    ClientSelectionModule,
     // PR-A6 Gate 5+6 (combined) — ATS finishers batch 5: calendar +
     // saved-list. Both are pattern-reuse leaves with NO new design
     // decision (the combined-mode guardrail held — no fork surfaced):
@@ -338,6 +343,7 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     SkillsTaxonomyModule,
     SubmittalModule,
     SubmitTalentModule,
+    ClientSelectionOrchestrationModule,
     // Track 3 / E7 (ADR-0027) — ClientTalentRestriction (record half of the
     // house pattern; scoped routes only, no flat collection).
     ClientTalentRestrictionModule,

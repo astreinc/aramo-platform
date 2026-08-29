@@ -8,6 +8,7 @@ import { SelectionOutboxRepository } from '@aramo/selection';
 import { SubmittalOutboxRepository } from '@aramo/submittal';
 import { PlacementOutboxRepository } from '@aramo/placement';
 import { PipelineOutboxRepository } from '@aramo/pipeline';
+import { ClientSelectionOutboxRepository } from '@aramo/client-selection';
 
 import {
   OUTBOX_PUBLISHER_BATCH_SIZE,
@@ -86,6 +87,8 @@ export class OutboxPublisherProcessor
     private readonly canonicalizationOutbox: CanonicalizationOutboxRepository,
     private readonly placementOutbox: PlacementOutboxRepository,
     private readonly pipelineOutbox: PipelineOutboxRepository,
+    // Lane 2 / L2-F (F1) — the 7th drained namespace.
+    private readonly clientSelectionOutbox: ClientSelectionOutboxRepository,
     private readonly registrar: BullRegistrar,
     private readonly redisConfig: RedisConnectionConfig,
     @Inject('OutboxPublisherProcessorLogger')
@@ -136,6 +139,13 @@ export class OutboxPublisherProcessor
       batchSize,
       job,
     );
+    // Lane 2 / L2-F (F1) — the client_selection schema is the 7th drained namespace.
+    const clientSelectionCount = await this.drainSchema(
+      'client-selection',
+      this.clientSelectionOutbox,
+      batchSize,
+      job,
+    );
 
     this.logger.log({
       event: 'outbox_publisher_tick_completed',
@@ -147,18 +157,20 @@ export class OutboxPublisherProcessor
       canonicalization_published_count: canonicalizationCount,
       placement_published_count: placementCount,
       pipeline_published_count: pipelineCount,
+      client_selection_published_count: clientSelectionCount,
       total_published_count:
         consentCount +
         selectionCount +
         submittalCount +
         canonicalizationCount +
         placementCount +
-        pipelineCount,
+        pipelineCount +
+        clientSelectionCount,
     });
   }
 
   private async drainSchema(
-    schemaName: 'consent' | 'selection' | 'submittal' | 'canonicalization' | 'placement' | 'pipeline',
+    schemaName: 'consent' | 'selection' | 'submittal' | 'canonicalization' | 'placement' | 'pipeline' | 'client-selection',
     repo: OutboxRepositoryShape,
     batchSize: number,
     job: Job<OutboxPublisherTickInput>,

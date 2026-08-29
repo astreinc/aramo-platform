@@ -11,6 +11,7 @@ import { SelectionModule } from '@aramo/selection';
 import { SubmittalModule } from '@aramo/submittal';
 import { PlacementOutboxModule } from '@aramo/placement';
 import { PipelineOutboxModule } from '@aramo/pipeline';
+import { ClientSelectionOutboxModule } from '@aramo/client-selection';
 
 import { OutboxPublisherProcessor } from './outbox-publisher.processor.js';
 import { OUTBOX_PUBLISHER_QUEUE_NAME } from './outbox-publisher.queue.constants.js';
@@ -55,6 +56,7 @@ import { OUTBOX_PUBLISHER_QUEUE_NAME } from './outbox-publisher.queue.constants.
     CanonicalizationModule,
     PlacementOutboxModule,
     PipelineOutboxModule,
+    ClientSelectionOutboxModule,
     BullModule.forRootAsync({
       extraOptions: { manualRegistration: true },
       useFactory: (cfg: RedisConnectionConfig) => {

@@ -14,6 +14,7 @@ import { PrismaService as ConsentPrismaService, OutboxPublisherRepository } from
 import { PrismaService as SelectionPrismaService } from '@aramo/selection';
 import { PrismaService as PlacementPrismaService } from '@aramo/placement';
 import { PipelinePrismaService } from '@aramo/pipeline';
+import { ClientSelectionPrismaService } from '@aramo/client-selection';
 import { PrismaService as SubmittalPrismaService } from '@aramo/submittal';
 
 import { OutboxPublisherModule } from '../lib/outbox-publisher.module.js';
@@ -74,6 +75,11 @@ const MIGRATION_FILES: ReadonlyArray<readonly [string, string]> = [
   // creates the `pipeline` schema; the L2-B migration adds pipeline.OutboxEvent.
   ['pipeline-init', '../../../pipeline/prisma/migrations/20260602150000_init_pipeline_model/migration.sql'],
   ['pipeline-outbox', '../../../pipeline/prisma/migrations/20260828120000_l2b_pipeline_outbox_event/migration.sql'],
+  // Lane 2 / L2-F (F1) — the client_selection schema is the 7th drained namespace;
+  // its OutboxEvent table must exist or the client-selection drain fails the tick.
+  // The single init migration creates the `client_selection` schema + the
+  // ClientSelectionProcess / ClientSelectionEvent / OutboxEvent tables.
+  ['client-selection-init', '../../../client-selection/prisma/migrations/20260829120000_l2f_init_client_selection/migration.sql'],
 ];
 
 const TENANT_A = '11111111-1111-7111-8111-111111111111';
@@ -107,6 +113,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     let canonicalizationPrisma: CanonicalizationPrismaService;
     let placementPrisma: PlacementPrismaService;
     let pipelinePrisma: PipelinePrismaService;
+    let clientSelectionPrisma: ClientSelectionPrismaService;
     let moduleRef: TestingModule;
     let publisherQueue: Queue;
     let savedRedisUrl: string | undefined;
@@ -148,6 +155,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       canonicalizationPrisma = new CanonicalizationPrismaService(pgUrl);
       placementPrisma = new PlacementPrismaService(pgUrl);
       pipelinePrisma = new PipelinePrismaService(pgUrl);
+      clientSelectionPrisma = new ClientSelectionPrismaService(pgUrl);
       await Promise.all([
         consentPrisma.$connect(),
         selectionPrisma.$connect(),
@@ -155,6 +163,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         canonicalizationPrisma.$connect(),
         placementPrisma.$connect(),
         pipelinePrisma.$connect(),
+        clientSelectionPrisma.$connect(),
       ]);
 
       savedRedisUrl = process.env['REDIS_URL'];
@@ -177,6 +186,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         .useValue(placementPrisma)
         .overrideProvider(PipelinePrismaService)
         .useValue(pipelinePrisma)
+        .overrideProvider(ClientSelectionPrismaService)
+        .useValue(clientSelectionPrisma)
         .compile();
 
       const app = moduleRef.createNestApplication();
@@ -210,6 +221,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         canonicalizationPrisma?.$disconnect(),
         placementPrisma?.$disconnect(),
         pipelinePrisma?.$disconnect(),
+        clientSelectionPrisma?.$disconnect(),
       ]);
       await Promise.all([redisContainer?.stop(), pgContainer?.stop()]);
     }, 60_000);
@@ -219,10 +231,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     // R10-clean payload assertion on the talent.canonicalized event
     // (no tier / score / rank / match — only talent_id + tenant_id +
     // resolution_method + payload_id, per T2-2a's emission shape).
-    it('drains consent + selection + submittal + canonicalization + placement + pipeline OutboxEvent rows; preserves pre-published rows', async () => {
+    it('drains consent + selection + submittal + canonicalization + placement + pipeline + client-selection OutboxEvent rows; preserves pre-published rows', async () => {
       const preExistingPublishedAt = new Date('2025-01-01T00:00:00Z');
 
-      // Seed 2 unpublished rows per schema (8 total).
+      // Seed 2 unpublished rows per schema (14 total across the 7 namespaces).
       for (let i = 0; i < 2; i++) {
         await consentPrisma.outboxEvent.create({
           data: {
@@ -282,12 +294,21 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
             event_payload: { pipeline_id: uuidv7(), idx: i } as never,
           },
         });
+        // L2-F — the 7th drained namespace.
+        await clientSelectionPrisma.outboxEvent.create({
+          data: {
+            id: uuidv7(),
+            tenant_id: TENANT_A,
+            event_type: 'client_selection.state_transition',
+            event_payload: { client_selection_process_id: uuidv7(), idx: i } as never,
+          },
+        });
       }
 
       // Seed 1 already-published row per schema (4 total) to prove the
       // publisher does NOT re-stamp them.
       const prePublished: Record<
-        'consent' | 'selection' | 'submittal' | 'canonicalization' | 'placement' | 'pipeline',
+        'consent' | 'selection' | 'submittal' | 'canonicalization' | 'placement' | 'pipeline' | 'client-selection',
         string
       > = {
         consent: uuidv7(),
@@ -296,6 +317,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         canonicalization: uuidv7(),
         placement: uuidv7(),
         pipeline: uuidv7(),
+        'client-selection': uuidv7(),
       };
       await consentPrisma.outboxEvent.create({
         data: {
@@ -356,6 +378,15 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           published_at: preExistingPublishedAt,
         },
       });
+      await clientSelectionPrisma.outboxEvent.create({
+        data: {
+          id: prePublished['client-selection'],
+          tenant_id: TENANT_A,
+          event_type: 'client_selection.state_transition',
+          event_payload: { client_selection_process_id: uuidv7(), idx: 'pre' } as never,
+          published_at: preExistingPublishedAt,
+        },
+      });
 
       await publisherQueue.add('tick', {});
 
@@ -381,6 +412,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         canonicalizationPublished,
         placementPublished,
         pipelinePublished,
+        clientSelectionPublished,
       ] = await Promise.all([
         consentPrisma.outboxEvent.findMany({
           where: { tenant_id: TENANT_A, published_at: { not: null } },
@@ -400,6 +432,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         pipelinePrisma.outboxEvent.findMany({
           where: { tenant_id: TENANT_A, published_at: { not: null } },
         }),
+        clientSelectionPrisma.outboxEvent.findMany({
+          where: { tenant_id: TENANT_A, published_at: { not: null } },
+        }),
       ]);
       expect(consentPublished).toHaveLength(3);
       expect(selectionPublished).toHaveLength(3);
@@ -409,6 +444,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(placementPublished).toHaveLength(3);
       // L2-B — the pipeline drain published its 2 unpublished rows (+1 pre).
       expect(pipelinePublished).toHaveLength(3);
+      // L2-F — the client-selection drain published its 2 unpublished rows (+1 pre).
+      expect(clientSelectionPublished).toHaveLength(3);
 
       // T2-2b — R10-clean payload assertion on the drained
       // talent.canonicalized events: the published rows carry only
@@ -440,7 +477,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Assert: pre-existing published_at values are preserved on all 4
       // pre-published rows.
       for (const [schema, id] of Object.entries(prePublished) as ReadonlyArray<
-        ['consent' | 'selection' | 'submittal' | 'canonicalization' | 'placement' | 'pipeline', string]
+        ['consent' | 'selection' | 'submittal' | 'canonicalization' | 'placement' | 'pipeline' | 'client-selection', string]
       >) {
         const client =
           schema === 'consent'
@@ -453,7 +490,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
                   ? canonicalizationPrisma
                   : schema === 'placement'
                     ? placementPrisma
-                    : pipelinePrisma;
+                    : schema === 'pipeline'
+                      ? pipelinePrisma
+                      : clientSelectionPrisma;
         const row = await client.outboxEvent.findUnique({ where: { id } });
         expect(row?.published_at?.getTime(), `pre-published ${schema} row`).toBe(
           preExistingPublishedAt.getTime(),

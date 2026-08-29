@@ -1,5 +1,5 @@
 {
-  "aliasTotals": { "apps": 2, "libs": 63, "total": 65 },
+  "aliasTotals": { "apps": 2, "libs": 64, "total": 66 },
   "aliases": {
     "@aramo/activity": "libs/activity/src/index.ts",
     "@aramo/ai-draft": "libs/ai-draft/src/index.ts",
@@ -13,6 +13,7 @@
     "@aramo/authorization": "libs/authorization/src/index.ts",
     "@aramo/calendar": "libs/calendar/src/index.ts",
     "@aramo/canonicalization": "libs/canonicalization/src/index.ts",
+    "@aramo/client-selection": "libs/client-selection/src/index.ts",
     "@aramo/client-talent-restriction": "libs/client-talent-restriction/src/index.ts",
     "@aramo/cold-ingest-extraction": "libs/cold-ingest-extraction/src/index.ts",
     "@aramo/common": "libs/common/src/index.ts",
@@ -178,6 +179,21 @@
       "CanonicalizationService",
       "CanonicalizationTriggerProcessor",
       "PrismaService"
+    ],
+    "@aramo/client-selection": [
+      "CLIENT_SELECTION_INITIAL_STATE",
+      "CLIENT_SELECTION_STATE_VALUES",
+      "CLIENT_SELECTION_TERMINAL_STATES",
+      "ClientSelectionController",
+      "ClientSelectionModule",
+      "ClientSelectionOutboxModule",
+      "ClientSelectionOutboxRepository",
+      "ClientSelectionPrismaService",
+      "ClientSelectionProcessRepository",
+      "canTransitionClientSelection",
+      "isClientSelectionState",
+      "isTerminalClientSelectionState",
+      "legalNextClientSelectionStates"
     ],
     "@aramo/client-talent-restriction": [
       "ASSERTED_BY_TYPE_VALUES",
@@ -1188,6 +1204,7 @@
       },
       { "project": "authorization", "status": "production" },
       { "project": "calendar", "status": "production" },
+      { "project": "client-selection", "status": "production" },
       { "project": "client-talent-restriction", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
@@ -1568,6 +1585,7 @@
         "status": "excluded"
       },
       { "project": "calendar", "status": "production" },
+      { "project": "client-selection", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/company/src/tests/address-lookup.controller.spec.ts",
@@ -1636,6 +1654,22 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/src2-extraction-repair.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      { "project": "api", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/outbox-publisher/src/tests/outbox-publisher.integration.spec.ts",
+        "project": "outbox-publisher",
+        "status": "excluded"
+      },
+      { "project": "outbox-publisher", "status": "production" }
+    ],
+    "@aramo/client-selection": [
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/client-selection-create-from-submittal.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -1825,6 +1859,7 @@
         "status": "excluded"
       },
       { "project": "canonicalization", "status": "production" },
+      { "project": "client-selection", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/client-talent-restriction/src/tests/client-talent-restriction.repository.integration.spec.ts",
@@ -2429,6 +2464,7 @@
       { "project": "api", "status": "production" },
       { "project": "attachment", "status": "production" },
       { "project": "calendar", "status": "production" },
+      { "project": "client-selection", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/company/src/tests/address-lookup.controller.spec.ts",
@@ -4569,6 +4605,13 @@
       "name": "canonicalization",
       "root": "libs/canonicalization",
       "sourceRoot": "libs/canonicalization/src",
+      "tags": ["scope:ats"],
+      "targets": ["build", "lint", "test"]
+    },
+    {
+      "name": "client-selection",
+      "root": "libs/client-selection",
+      "sourceRoot": "libs/client-selection/src",
       "tags": ["scope:ats"],
       "targets": ["build", "lint", "test"]
     },

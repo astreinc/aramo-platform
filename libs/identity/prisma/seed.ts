@@ -152,6 +152,10 @@ export const SEED_IDS = {
     'attachment:create': '01900000-0000-7000-8000-000000000085',
     'attachment:delete': '01900000-0000-7000-8000-000000000086',
     'pipeline:read': '01900000-0000-7000-8000-000000000087',
+    // Lane 2 / L2-F (F1) — Client-Selection owner scopes.
+    'client-selection:create': '01900000-0000-7000-8000-0000000000f3',
+    'client-selection:read': '01900000-0000-7000-8000-0000000000f1',
+    'client-selection:transition': '01900000-0000-7000-8000-0000000000f2',
     'activity:create': '01900000-0000-7000-8000-000000000088',
     // AUTHZ-2 — 3 platform-namespace scopes (Lead ruling 5; the minimum set).
     // Bound only to the super_admin platform role; no tenant role holds any
@@ -2148,6 +2152,38 @@ const COMMUNICATION_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
   return map;
 })();
 
+// Lane 2 / L2-F (F1) — the ClientSelectionProcess role matrix. The three
+// client-selection:* scopes (create/read/transition) are frontline ATS delivery
+// work, so ALL THREE are granted to recruiter + account_manager + tenant_admin +
+// tenant_owner — mirrors placement:create/read/transition (the operational tier).
+// There is no higher activate/terminate/replace tier at F1, so every grant-receiving
+// role gets the full three. super_admin and every other role receive ZERO (fail-closed;
+// no prose-hierarchy inheritance). 12 grants.
+export const CLIENT_SELECTION_SEED_BUNDLES: ReadonlyArray<
+  readonly [string, readonly string[]]
+> = [
+  ['recruiter', ['client-selection:create', 'client-selection:read', 'client-selection:transition']],
+  ['account_manager', ['client-selection:create', 'client-selection:read', 'client-selection:transition']],
+  ['tenant_admin', ['client-selection:create', 'client-selection:read', 'client-selection:transition']],
+  ['tenant_owner', ['client-selection:create', 'client-selection:read', 'client-selection:transition']],
+];
+
+// Deterministic RoleScope row ids for the 12 client-selection grants. Fresh disjoint
+// range 0x1000+ (append-don't-renumber; the highest prior family, permanent-terms,
+// occupies 0xf00..0xf08). DO NOT REORDER without bumping the offset.
+const CLIENT_SELECTION_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
+  const map: Record<string, string> = {};
+  let i = 0x1000;
+  for (const [role, scopes] of CLIENT_SELECTION_SEED_BUNDLES) {
+    for (const scope of scopes) {
+      map[`${role}:${scope}`] =
+        `01900000-0000-7000-8000-${i.toString(16).padStart(12, '0')}`;
+      i++;
+    }
+  }
+  return map;
+})();
+
 interface IdentityPrismaClient {
   tenant: typeof PrismaClient.prototype.tenant;
   user: typeof PrismaClient.prototype.user;
@@ -2356,6 +2392,10 @@ export async function runIdentitySeed(
   await upsertScope(prisma, SEED_IDS.scopes['attachment:create'], 'attachment:create', 'Attach a file to an owner');
   await upsertScope(prisma, SEED_IDS.scopes['attachment:delete'], 'attachment:delete', 'Detach a file from its owner (recruiter+ via bounded Ruling 1 carve-out — junction/link delete, not entity destruction)');
   await upsertScope(prisma, SEED_IDS.scopes['pipeline:read'], 'pipeline:read', 'Read pipelines / pipeline history');
+  // Lane 2 / L2-F (F1) — Client-Selection owner scopes.
+  await upsertScope(prisma, SEED_IDS.scopes['client-selection:create'], 'client-selection:create', 'Lane 2 / L2-F (F1) — create a ClientSelectionProcess from a Submittal (POST /v1/client-selection, apps/api create-from-submittal orchestration). GRANTED to recruiter, account_manager, tenant_admin, tenant_owner (the ATS delivery matrix; mirrors placement:create). NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['client-selection:read'], 'client-selection:read', 'Lane 2 / L2-F (F1) — read a ClientSelectionProcess (GET /v1/client-selection/:id). GRANTED to recruiter, account_manager, tenant_admin, tenant_owner. NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['client-selection:transition'], 'client-selection:transition', 'Lane 2 / L2-F (F1) — drive a ClientSelectionProcess state transition (POST /v1/client-selection/:id/transition, CAS-guarded). GRANTED to recruiter, account_manager, tenant_admin, tenant_owner. NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['activity:create'], 'activity:create', 'Create a manual activity entry');
   // AUTHZ-2 — 3 platform-namespace scopes (Lead ruling 5; separate from
   // the 47 tenant scopes above).
@@ -3073,6 +3113,27 @@ export async function runIdentitySeed(
       if (rsId === undefined) {
         throw new Error(
           `Communication-Role-Matrix: Missing generated RoleScope id for ${roleKey}:${scopeKey}`,
+        );
+      }
+      const scope_id = scopeIdForKey(scopeKey);
+      await prisma.roleScope.upsert({
+        where: { role_id_scope_id: { role_id, scope_id } },
+        update: {},
+        create: { id: rsId, role_id, scope_id },
+      });
+    }
+  }
+
+  // Lane 2 / L2-F (F1) — ClientSelectionProcess grants (12 rows; range 0x1000+).
+  // The three client-selection:* scopes -> recruiter + account_manager + tenant_admin
+  // + tenant_owner (frontline ATS delivery work; mirrors placement:create/read/transition).
+  for (const [roleKey, scopeKeys] of CLIENT_SELECTION_SEED_BUNDLES) {
+    const role_id = roleIdForKey(roleKey);
+    for (const scopeKey of scopeKeys) {
+      const rsId = CLIENT_SELECTION_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
+      if (rsId === undefined) {
+        throw new Error(
+          `ClientSelection-Role-Matrix: Missing generated RoleScope id for ${roleKey}:${scopeKey}`,
         );
       }
       const scope_id = scopeIdForKey(scopeKey);

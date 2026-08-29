@@ -117,6 +117,16 @@ const EXACT_ALLOWLIST = new Set<string>([
   // Lane 2 / L2-D — the entry-provenance proof EXERCISES the escape (AC-IMMUT:
   // DELETE permitted only under the exact authorized GUC) via raw set_config.
   'libs/pipeline/src/tests/pipeline-l2d-entry-provenance.integration.spec.ts',
+  // Lane 2 / L2-F (F1) — the ClientSelectionEvent append-only immutability trigger
+  // migration DEFINES the same exact-value tenant_reset DELETE escape (the client-
+  // selection event log is immutable; a governed tenant reset cascade-deletes its rows).
+  'libs/client-selection/prisma/migrations/20260829120000_l2f_init_client_selection/migration.sql',
+  // Lane 2 / L2-F (F1) — the owner proof EXERCISES the escape (immutability AC:
+  // DELETE permitted only under the exact authorized GUC) via raw set_config.
+  'libs/client-selection/src/tests/client-selection-process.integration.spec.ts',
+  // Lane 2 / L2-F (F1) — the create-from-submittal orchestration proof uses the escape
+  // to reset the client_selection append-only event log between cases.
+  'apps/api/src/tests/client-selection-create-from-submittal.integration.spec.ts',
 ]);
 
 describe('reset-marker confinement — exact-path default-deny (§2.4)', () => {
