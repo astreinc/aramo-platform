@@ -36,6 +36,7 @@
       "@aramo/calendar": ["libs/calendar/src/index.ts"],
       "@aramo/portal-identity": ["libs/portal-identity/src/index.ts"],
       "@aramo/canonicalization": ["libs/canonicalization/src/index.ts"],
+      "@aramo/client-selection": ["libs/client-selection/src/index.ts"],
       "@aramo/cold-ingest-extraction": ["libs/cold-ingest-extraction/src/index.ts"],
       "@aramo/common": ["libs/common/src/index.ts"],
       "@aramo/communications": ["libs/communications/src/index.ts"],

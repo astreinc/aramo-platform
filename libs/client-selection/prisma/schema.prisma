@@ -1,0 +1,104 @@
+// Per-module Prisma schema for the `client_selection` module (Lane 2 / L2-F, F1).
+//
+// The Client-Selection / Interview OWNER: the aggregate that holds the client's
+// review-and-decision lifecycle over a submitted talent — the truth Pipeline
+// `interviewing`/`client_declined` faked (Lane2-DDR §0/§2 D-3, §3 SB-6). Linked to
+// the Submittal aggregate by UUID only (Architecture §7.3, NO FK; both scope:ats,
+// same cluster). Denormalized lineage keys (requisition_id/talent_id/site_id) are
+// captured write-once at create for the 404-visibility predicate + journey keys.
+//
+// Single-lib multi-model (the pipeline precedent): parent ClientSelectionProcess +
+// child InterviewSession (F2) + one append-only ClientSelectionEvent log + a
+// per-module OutboxEvent, all under @@schema("client_selection").
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "./generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["client_selection"]
+}
+
+// The client's review-and-decision lifecycle over one submitted talent.
+//   CLIENT_REVIEW → INTERVIEW → {SELECTED | DECLINED | WITHDRAWN}
+//   CLIENT_REVIEW → {SELECTED | DECLINED | WITHDRAWN}   (skip interview)
+// SELECTED / DECLINED / WITHDRAWN are terminal.
+enum ClientSelectionState {
+  CLIENT_REVIEW
+  INTERVIEW
+  SELECTED
+  DECLINED
+  WITHDRAWN
+
+  @@schema("client_selection")
+}
+
+model ClientSelectionProcess {
+  id        String @id @default(uuid()) @db.Uuid
+  tenant_id String @db.Uuid
+  // Derived write-once from the linked Pipeline via Submittal.pipeline_id (the
+  // episode's site; TalentSubmittalRecord carries no site). NULL ⇒ tenant-wide.
+  site_id String? @db.Uuid
+
+  // Cross-schema logical references (UUID-only, no FK — §7.3).
+  // The Submittal lineage this process owns the client-decision for. ONE process
+  // per Submittal (governed existence/lineage check at create; no FK).
+  submittal_id String @unique @db.Uuid
+  // Denormalized at create from TalentSubmittalRecord: job_id (visibility scope) +
+  // talent_id (journey key). The Submittal remains authoritative; these are immutable.
+  requisition_id String @db.Uuid
+  talent_id      String @db.Uuid
+
+  state ClientSelectionState @default(CLIENT_REVIEW)
+
+  // Optimistic-concurrency version (charter: optimistic concurrency). Bumped once
+  // per committed transition; a stale expected_version → CLIENT_SELECTION_TRANSITION_CONFLICT.
+  version Int @default(0)
+
+  created_at    DateTime @default(now()) @db.Timestamptz
+  updated_at    DateTime @default(now()) @updatedAt @db.Timestamptz
+  created_by_id String?  @db.Uuid
+
+  @@index([tenant_id, requisition_id])
+  @@index([tenant_id, submittal_id])
+  @@index([tenant_id, talent_id])
+  @@schema("client_selection")
+}
+
+// Append-only event log covering BOTH aggregates (process now; InterviewSession in
+// F2 via subject_type='session'). Immutable at the DB layer (BEFORE UPDATE/DELETE
+// triggers; DELETE only under the governed tenant-reset escape). Aggregate identity
+// lives in (subject_type, subject_id) + event_payload — mirrors the submittal
+// event-log + outbox precedent.
+model ClientSelectionEvent {
+  id         String @id @db.Uuid
+  tenant_id  String @db.Uuid
+  // 'process' | 'session' (F2). The subject_id is the ClientSelectionProcess.id or
+  // InterviewSession.id — no FK (append-only log survives aggregate deletes under reset).
+  subject_type String
+  subject_id   String @db.Uuid
+
+  event_type    String
+  event_payload Json     @db.JsonB
+  created_at    DateTime @default(now()) @db.Timestamptz
+
+  @@index([tenant_id, subject_type, subject_id, created_at])
+  @@schema("client_selection")
+}
+
+// Per-module outbox (Architecture §7.6; the 7th drain namespace, submittal
+// precedent). Aggregate identity lives in event_payload; drained by
+// libs/outbox-publisher which stamps published_at.
+model OutboxEvent {
+  id            String    @id @db.Uuid
+  tenant_id     String    @db.Uuid
+  event_type    String
+  event_payload Json      @db.JsonB
+  created_at    DateTime  @default(now()) @db.Timestamptz
+  published_at  DateTime? @db.Timestamptz
+
+  @@index([published_at, created_at])
+  @@schema("client_selection")
+}

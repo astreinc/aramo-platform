@@ -47,6 +47,8 @@
     "libs/auth-core/src/lib/portal-auth.controller.ts": "SS",
     "libs/calendar/src/lib/calendar.controller.ts": "AP",
     "libs/client-talent-restriction/src/lib/client-talent-restriction.controller.ts": "AP",
+    "libs/client-selection/src/lib/client-selection.controller.ts": "AP",
+    "apps/api/src/client-selection/client-selection-orchestration.controller.ts": "AP",
     "libs/company/src/lib/address-lookup.controller.ts": "AP",
     "libs/company/src/lib/company.controller.ts": "AP",
     "libs/company/src/lib/d4a.controller.ts": "AP",
@@ -295,6 +297,18 @@
     {
       "method": "GET",
       "path": "/v1/pipelines/*/history"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/client-selection"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/client-selection/*"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/client-selection/*/transition"
     },
     {
       "method": "POST",

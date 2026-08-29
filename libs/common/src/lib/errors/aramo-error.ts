@@ -188,6 +188,10 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   PIPELINE_ALREADY_DISPOSITIONED: 409,
   PIPELINE_DISPOSITION_REASON_INVALID: 422,
   PIPELINE_COMPLETE_SYSTEM_ONLY: 403,
+  // Lane 2 / L2-F (F1) — Client-Selection owner refusals.
+  CLIENT_SELECTION_SUBMITTAL_INVALID: 409,
+  CLIENT_SELECTION_TRANSITION_CONFLICT: 409,
+  INVALID_CLIENT_SELECTION_TRANSITION: 422,
 };
 
 // Base error class. Thrown anywhere in the app where a structured response

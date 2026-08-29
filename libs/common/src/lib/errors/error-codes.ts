@@ -702,6 +702,10 @@ export const ERROR_CODES = [
   // lacking the pipeline:complete capability. HTTP 403. `completed` is a system
   // consequence of a downstream event carrying lineage, never a recruiter action.
   'PIPELINE_COMPLETE_SYSTEM_ONLY',
+  // Lane 2 / L2-F (F1) — the Client-Selection owner.
+  'CLIENT_SELECTION_SUBMITTAL_INVALID', // the referenced Submittal is not valid for a new client-selection process — non-existent / cross-tenant, OR already owns a process (409)
+  'CLIENT_SELECTION_TRANSITION_CONFLICT', // stale expected_version CAS conflict (409)
+  'INVALID_CLIENT_SELECTION_TRANSITION', // illegal state-machine transition (422)
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

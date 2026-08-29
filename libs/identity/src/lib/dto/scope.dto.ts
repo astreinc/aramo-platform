@@ -89,6 +89,12 @@ export const SEED_SCOPE_KEYS = [
   'attachment:create',          // recruiter+
   'attachment:delete',          // recruiter+ (Ruling 1 carve-out — junction/link delete)
   'pipeline:read',              // recruiter+
+  // Lane 2 / L2-F (F1) — the Client-Selection owner (enforced in ClientSelectionController +
+  // the apps/api create-from-submittal orchestration). GRANTED to the ATS delivery matrix
+  // (recruiter, account_manager, tenant_admin, tenant_owner) — mirrors placement:create.
+  'client-selection:create',     // recruiter+ (create-from-submittal orchestration)
+  'client-selection:read',       // recruiter+
+  'client-selection:transition', // recruiter+
   'activity:create',            // recruiter+
   // AUTHZ-D4a — 4 team-model mechanism + see-all scopes (DDR Amendment v1.1
   // §4/§6; Lead Gate-5 ruling 2 narrows company:read:all to TA+TO only to
