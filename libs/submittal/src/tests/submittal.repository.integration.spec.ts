@@ -65,7 +65,7 @@ const SUBMITTAL_REVOKE_MIGRATION_PATH = resolve(
 // M5 PR-8b1 — TalentSubmittalEvent event-log substrate (enum + table +
 // intra-schema FK + absolute-immutability trigger). Required for the
 // PR-8b2 appendEvent wiring in createSubmittal/confirmSubmittal/
-// markReady/submitToAts/confirmAts/revokeSubmittal flows. Applied
+// markReady/confirmAts/revokeSubmittal flows. Applied
 // AFTER the submittal init + revoke migrations so the intra-schema FK
 // on TalentSubmittalRecord resolves.
 const SUBMITTAL_EVENT_LOG_MIGRATION_PATH = resolve(
@@ -83,7 +83,7 @@ const SUBMITTAL_RENAME_MIGRATION_PATH = resolve(
   '../../prisma/migrations/20260527000000_rename_submittal_state_canonical/migration.sql',
 );
 // M6 PR-2 §3 — submittal OutboxEvent. Required because the confirm /
-// markReady / submitToAts / confirmAts / revokeSubmittal write methods
+// markReady / confirmAts / revokeSubmittal write methods
 // now emit an in-tx outbox row inside the same $transaction array as
 // the state transition. Applied LAST in the submittal sequence because
 // it CREATEs the new `submittal` PG namespace alongside its OutboxEvent
@@ -102,7 +102,7 @@ const SUBMITTAL_T2P1_MIGRATION_PATH_L8B1_LINK = resolve(
   '../../prisma/migrations/20260822130000_l8b1_submittal_pipeline_link/migration.sql',
 );
 // PR-A1c §4 — metering schema required because every metered submittal
-// transition (confirm / markReady / submitToAts / confirmAts /
+// transition (confirm / markReady / confirmAts /
 // revokeSubmittal) now emits a UsageEvent INSERT inside the existing
 // $transaction array (Ruling 6 same-transaction guarantee).
 const METERING_INIT_MIGRATION_PATH = resolve(

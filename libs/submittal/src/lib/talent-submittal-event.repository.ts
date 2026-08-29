@@ -52,6 +52,20 @@ interface TalentSubmittalEventRow {
   created_at: Date;
 }
 
+// Lane 2 / L2-E (SB-5 / D-4) — the authoritative submitted-transition-history
+// grain. The FIRST canonical `state_transition → submitted_to_ats` event per
+// (talent, requisition) grain, carrying the linked pipeline_id (for time-to-submit
+// joins) and the transition instant. DURABLE: keyed on the immutable EVENT, not the
+// mutable record.state, so it survives the record's later confirmed/revoked
+// transitions — reproducing the retired Pipeline mirror (which never un-set the
+// status). requisition_id = the record's job_id.
+export interface SubmittedGrainRow {
+  talent_id: string;
+  requisition_id: string;
+  pipeline_id: string | null;
+  first_submitted_at: Date;
+}
+
 function projectView(row: TalentSubmittalEventRow): TalentSubmittalEventView {
   return {
     id: row.id,
@@ -173,5 +187,76 @@ export class TalentSubmittalEventRepository {
       latency_ms: Date.now() - startedAt,
     });
     return view;
+  }
+
+  // Lane 2 / L2-E (SB-5) — the authoritative submitted-history read the L2-E
+  // repoints consume (reporting via a reporting-owned port; apps/api enrichment
+  // directly). Bulk-oriented: ONE tenant-scoped query returns the first
+  // submitted_to_ats transition per (talent, requisition) grain. DISTINCT ON picks
+  // the earliest event per grain (carrying that submittal's pipeline_id); the
+  // optional `since` filters on the FIRST transition instant (outer WHERE on the
+  // derived value — never on the raw event, which would wrongly admit a grain whose
+  // true-first submitted transition predates the window). No event-table denormalization
+  // (Architect ruling): the grain lives on TalentSubmittalRecord, JOINed here.
+  async findFirstSubmittedByGrain(input: {
+    tenant_id: string;
+    requisition_ids?: readonly string[];
+    talent_ids?: readonly string[];
+    since?: Date;
+  }): Promise<SubmittedGrainRow[]> {
+    const startedAt = Date.now();
+    const params: unknown[] = [input.tenant_id];
+    const innerClauses: string[] = [];
+    if (input.requisition_ids !== undefined) {
+      params.push([...input.requisition_ids]);
+      innerClauses.push(`AND sr.job_id = ANY($${params.length}::uuid[])`);
+    }
+    if (input.talent_ids !== undefined) {
+      params.push([...input.talent_ids]);
+      innerClauses.push(`AND sr.talent_id = ANY($${params.length}::uuid[])`);
+    }
+    let outerWhere = '';
+    if (input.since !== undefined) {
+      params.push(input.since);
+      outerWhere = `WHERE g.first_submitted_at >= $${params.length}::timestamptz`;
+    }
+    const rows = await this.prisma.$queryRawUnsafe<
+      Array<{
+        talent_id: string;
+        requisition_id: string;
+        pipeline_id: string | null;
+        first_submitted_at: Date;
+      }>
+    >(
+      `SELECT * FROM (
+         SELECT DISTINCT ON (sr.talent_id, sr.job_id)
+                sr.talent_id            AS talent_id,
+                sr.job_id               AS requisition_id,
+                sr.pipeline_id          AS pipeline_id,
+                se.created_at           AS first_submitted_at
+           FROM submittal."TalentSubmittalEvent" se
+           JOIN submittal."TalentSubmittalRecord" sr
+             ON sr.id = se.submittal_id AND sr.tenant_id = se.tenant_id
+          WHERE se.tenant_id = $1::uuid
+            AND se.event_type = 'state_transition'
+            AND se.event_payload->>'to_state' = 'submitted_to_ats'
+            ${innerClauses.join('\n            ')}
+          ORDER BY sr.talent_id, sr.job_id, se.created_at ASC, se.id ASC
+       ) g
+       ${outerWhere}`,
+      ...params,
+    );
+    this.logger.log({
+      event: 'submittal_event.findFirstSubmittedByGrain',
+      tenant_id: input.tenant_id,
+      result_count: rows.length,
+      latency_ms: Date.now() - startedAt,
+    });
+    return rows.map((r) => ({
+      talent_id: r.talent_id,
+      requisition_id: r.requisition_id,
+      pipeline_id: r.pipeline_id,
+      first_submitted_at: r.first_submitted_at,
+    }));
   }
 }

@@ -31,6 +31,9 @@ export type { RevokeSubmittalInput } from './lib/submittal.repository.js';
 
 // M5 PR-8b1 — TalentSubmittalEvent event-log substrate.
 export { TalentSubmittalEventRepository } from './lib/talent-submittal-event.repository.js';
+// Lane 2 / L2-E (SB-5) — the authoritative submitted-history grain the reporting
+// adapter + apps/api enrichment consume.
+export type { SubmittedGrainRow } from './lib/talent-submittal-event.repository.js';
 export type {
   TalentSubmittalEventView,
   SubmittalEventTypeValue,

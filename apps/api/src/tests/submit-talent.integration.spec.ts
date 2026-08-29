@@ -29,15 +29,19 @@ import { PrismaService } from '@aramo/submittal-eligibility';
 // window the atomic guarantee must cover.
 
 const failFlag = { fail: false };
-vi.mock('@aramo/activity', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@aramo/activity')>();
+// Lane 2 / L2-E — the Pipeline mirror (which used insertActivityInTx) is retired, so
+// the atomicity injection re-points to `recordUsage` (the metering write that still
+// runs mid-command, AFTER the authoritative submitted_to_ats state + event write and
+// BEFORE the policy-provenance write). A failure here must still roll back EVERYTHING.
+vi.mock('@aramo/metering', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@aramo/metering')>();
   return {
     ...actual,
-    insertActivityInTx: (...args: Parameters<typeof actual.insertActivityInTx>) => {
+    recordUsage: (...args: Parameters<typeof actual.recordUsage>) => {
       if (failFlag.fail) {
-        throw new Error('INJECTED failure after authoritative write, mid-mirror');
+        throw new Error('INJECTED failure after authoritative write, mid-command');
       }
-      return actual.insertActivityInTx(...args);
+      return actual.recordUsage(...args);
     },
   };
 });
@@ -173,19 +177,24 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(await count('submittal_policy."SubmittalConsumption"', 'requisition_id=$1', [req])).toBe('0');
 
       const res = await svc.submitToClient({ tenant_id: t, submittal_id: sub, event_id: randomUUID(), actor_id: randomUUID(), requestId: 'p1' });
-      expect(res).toEqual({ submittal_id: sub, pipeline_id: pipe, state: 'submitted_to_ats', pipeline_status: 'submitted' });
+      // Lane 2 / L2-E (SB-5) — the result no longer carries a pipeline_status (the
+      // mirror is retired). The submittal is the single authoritative fact.
+      expect(res).toEqual({ submittal_id: sub, pipeline_id: pipe, state: 'submitted_to_ats' });
 
       // AUTHORITATIVE fact: the submittal is submitted_to_ats with confirmed_at set.
       expect(await submittalState(sub)).toBe('submitted_to_ats|true');
-      // MIRROR: pipeline reached submitted, with a history row from qualifying.
-      expect(await pipelineStatus(pipe)).toBe('submitted');
-      expect(await count('pipeline."PipelineStatusHistory"', 'pipeline_id=$1 AND status_from=\'qualifying\' AND status_to=\'submitted\'', [pipe])).toBe('1');
-      // Durable side-effects, each exactly once.
+      // L2-E — Pipeline is UNTOUCHED (D-2 episode stays LIVE): status rests at
+      // qualifying, NO submitted PipelineStatusHistory row, NO pipeline activity, NO
+      // pipeline.state_transition metering event. The submitted signal is derived
+      // from the Submittal event history, not a Pipeline write.
+      expect(await pipelineStatus(pipe)).toBe('qualifying');
+      expect(await count('pipeline."PipelineStatusHistory"', 'pipeline_id=$1 AND status_to=\'submitted\'', [pipe])).toBe('0');
+      expect(await count('activity."Activity"', 'subject_id=$1', [pipe])).toBe('0');
+      expect(await count('metering."UsageEvent"', "tenant_id=$1 AND event_type='pipeline.state_transition'", [t])).toBe('0');
+      // Durable authoritative side-effects, each exactly once.
       expect(await count('submittal."TalentSubmittalEvent"', 'submittal_id=$1', [sub])).toBe('1');
       expect(await count('submittal."OutboxEvent"', 'tenant_id=$1', [t])).toBe('1');
-      expect(await count('activity."Activity"', 'subject_id=$1', [pipe])).toBe('1');
       expect(await count('metering."UsageEvent"', "tenant_id=$1 AND event_type='submittal.state_transition'", [t])).toBe('1');
-      expect(await count('metering."UsageEvent"', "tenant_id=$1 AND event_type='pipeline.state_transition'", [t])).toBe('1');
       expect(await count('submittal_policy."SubmittalConsumption"', 'requisition_id=$1', [req])).toBe('1');
       expect(await count('submittal_policy."SubmittalPolicyEvent"', 'requisition_id=$1', [req])).toBe('1');
     });
@@ -215,11 +224,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Exactly one durable commit across the board.
       expect(await count('submittal_policy."SubmittalConsumption"', 'requisition_id=$1', [req])).toBe('1');
       expect(await count('submittal."TalentSubmittalRecord"', "job_id=$1 AND state='submitted_to_ats'", [req])).toBe('1');
-      expect(await count('pipeline."Pipeline"', "requisition_id=$1 AND status='submitted'", [req])).toBe('1');
+      // Lane 2 / L2-E — no Pipeline mirror: zero pipelines flip to submitted.
+      expect(await count('pipeline."Pipeline"', "requisition_id=$1 AND status='submitted'", [req])).toBe('0');
     });
 
     // ---- P3: forced failure after authoritative write → zero durable rows -------
-    it('P3 forced failure after submitted_to_ats, before mirror completes → ZERO durable writes across all schemas', async () => {
+    it('P3 forced failure after submitted_to_ats, mid-command → ZERO durable writes across all schemas', async () => {
       const t = randomUUID(), talent = randomUUID(), req = randomUUID();
       const pipe = randomUUID(), sub = randomUUID();
       await seedRequisition(t, req, 'open'); // L1-C — the gate admits open; the forced-failure atomicity proof is unchanged.
@@ -233,7 +243,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       // EVERY participating schema shows zero effect — the whole tx rolled back.
       expect(await submittalState(sub)).toBe('ready_for_review|false'); // authoritative write reverted
-      expect(await pipelineStatus(pipe)).toBe('qualifying');            // mirror reverted
+      expect(await pipelineStatus(pipe)).toBe('qualifying');            // Pipeline untouched (no mirror)
       expect(await count('submittal."TalentSubmittalEvent"', 'submittal_id=$1', [sub])).toBe('0');
       expect(await count('submittal."OutboxEvent"', 'tenant_id=$1', [t])).toBe('0');
       expect(await count('pipeline."PipelineStatusHistory"', 'pipeline_id=$1', [pipe])).toBe('0');

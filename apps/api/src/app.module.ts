@@ -54,6 +54,7 @@ import { TalentRecordModule, ResumeReindexModule } from '@aramo/talent-record';
 import { TalentTrustModule } from '@aramo/talent-trust';
 import { TaskModule } from '@aramo/task';
 
+import { SubmittedHistoryModule } from './reporting-adapters/submitted-history.module.js';
 import { SubmitTalentModule } from './submit-talent/submit-talent.module.js';
 // T1-a — composition-root binding of libs/examination's RequisitionStateReader
 // port to the ATS RequisitionRepository adapter (@Global; the wall-legal seam).
@@ -284,6 +285,10 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     // EEO reporting (A4-deferred fields don't exist) and PDF rendering
     // (presentation, deferred).
     ReportingModule,
+    // Lane 2 / L2-E (SB-5) — @Global binding of the reporting SubmittedHistoryPort
+    // to the @aramo/submittal-backed adapter. ReportingModule stays submittal-free;
+    // this composition-root module owns the submittal dependency for the port.
+    SubmittedHistoryModule,
     // PR-A8-4 Gate 5 — ATS-domain CSV export. Reads-only over the 5
     // ATS-domain entities (company / contact / requisition /
     // talent_record / pipeline) — the dependency closure is the R10

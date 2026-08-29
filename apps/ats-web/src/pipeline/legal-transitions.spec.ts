@@ -28,9 +28,10 @@ describe('legalNextStates', () => {
   it('forward edges include the next funnel stage', () => {
     expect(legalNextStates('no_contact')).toContain('contacted');
     expect(legalNextStates('contacted')).toContain('talent_responded');
-    // L2-C — `qualifying`'s affirmative forward edge is now `qualified`.
+    // L2-C — `qualifying`'s affirmative forward edge is now `qualified`. L2-E —
+    // `submitted` is no longer a Pipeline transition target (Submittal-owned).
     expect(legalNextStates('qualifying')).toContain('qualified');
-    expect(legalNextStates('qualified')).toContain('submitted');
+    expect(legalNextStates('qualified')).not.toContain('submitted');
     expect(legalNextStates('offered')).toContain('placed');
   });
 });
@@ -46,8 +47,9 @@ describe('recruiterNextStates (§5 — system-only target exclusion)', () => {
   it('a recruiter can never CHOOSE completed as a move target from qualified', () => {
     const targets = recruiterNextStates('qualified');
     expect(targets).not.toContain('completed');
-    // …but the legal recruiter moves survive the filter.
-    expect(targets).toContain('submitted');
+    // L2-E — `submitted` is no longer a target either (Submittal-owned).
+    expect(targets).not.toContain('submitted');
+    // …the remaining legal recruiter moves survive the filter.
     expect(targets).toContain('qualifying');
     expect(targets).toContain('not_in_consideration');
   });

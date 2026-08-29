@@ -52,10 +52,17 @@ describe('MoveToMenu', () => {
         name: PIPELINE_STATUS_LABELS.completed,
       }),
     ).not.toBeInTheDocument();
-    // …while the legal recruiter moves are still offered.
+    // …and (L2-E) `submitted` is no longer offered either — client submit-to-ats is
+    // Submittal-owned, not a Pipeline transition.
+    expect(
+      within(menu).queryByRole('menuitem', {
+        name: PIPELINE_STATUS_LABELS.submitted,
+      }),
+    ).not.toBeInTheDocument();
+    // …while the remaining legal recruiter moves are still offered.
     expect(
       within(menu).getByRole('menuitem', {
-        name: PIPELINE_STATUS_LABELS.submitted,
+        name: PIPELINE_STATUS_LABELS.qualifying,
       }),
     ).toBeInTheDocument();
   });

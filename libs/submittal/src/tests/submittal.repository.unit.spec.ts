@@ -62,7 +62,7 @@ interface MockPrisma {
   };
   // M5 PR-8b2 §4.7 — state-changing methods use prisma.$transaction(
   // [update, talentSubmittalEvent.create]). Tests that exercise the
-  // confirm/markReady/submitToAts/confirmAts/revoke paths set these
+  // confirm/markReady/confirmAts/revoke paths set these
   // mocks; createSubmittal tests omit them.
   talentSubmittalEvent?: {
     create: ReturnType<typeof vi.fn>;

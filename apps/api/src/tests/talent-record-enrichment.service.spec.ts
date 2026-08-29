@@ -31,6 +31,7 @@ describe('TalentRecordEnrichmentService', () => {
       consent as never,
       pipeline as never,
       {} as never,
+      { findFirstSubmittedByGrain: async () => [] } as never, // L2-E submittal-events
     );
 
     const out = await svc.enrich([view('t1'), view('t2')], {
@@ -76,6 +77,7 @@ describe('TalentRecordEnrichmentService', () => {
       consent as never,
       { findCurrentStageForTalentIds: vi.fn().mockResolvedValue(new Map()) } as never,
       {} as never,
+      { findFirstSubmittedByGrain: async () => [] } as never, // L2-E submittal-events
     );
     const out = await svc.enrich([view('t1')], {
       tenant_id: 't',
@@ -97,6 +99,7 @@ describe('TalentRecordEnrichmentService', () => {
       {} as never,
       {} as never,
       {} as never,
+      { findFirstSubmittedByGrain: async () => [] } as never, // L2-E submittal-events
     );
     expect(
       await svc.enrich([], { tenant_id: 't', visible_requisition_ids: null }),
@@ -151,6 +154,7 @@ describe('TalentRecordEnrichmentService.crossFacets (Segment 4b)', () => {
       consent as never,
       pipeline as never,
       talent as never,
+      { findFirstSubmittedByGrain: async () => [] } as never, // L2-E submittal-events
     );
 
     const query = { tenant_id: 't', sort: 'name' as const };
@@ -203,6 +207,7 @@ describe('TalentRecordEnrichmentService.crossFacets (Segment 4b)', () => {
         consent as never,
         pipeline as never,
         talent as never,
+      { findFirstSubmittedByGrain: async () => [] } as never, // L2-E submittal-events
       );
 
       const out = await svc.crossFacets({ tenant_id: 't' } as never, {

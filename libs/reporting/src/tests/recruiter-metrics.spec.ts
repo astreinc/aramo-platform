@@ -31,6 +31,24 @@ function makeService(opts: {
   const tenantSettingRepository = {
     findOne: vi.fn().mockResolvedValue(opts.settingRow ?? null),
   };
+  // Lane 2 / L2-E (SB-5) — the submitted stream is now event-sourced via the port.
+  // Reproduce the seeded `submitted` transitions AS grains (pipeline_id +
+  // first_submitted_at = the transition's changed_at), since-filtered exactly as the
+  // real port would — so submittals_weekly + avg_time_to_submit stay identical to the
+  // pre-repoint values (the R3 timestamp-parity proof, AC-2/3).
+  const submittedHistory = {
+    findFirstSubmittedByGrain: vi.fn(async (q: { since?: Date }) =>
+      opts.transitions
+        .filter((t) => t.status_to === 'submitted')
+        .filter((t) => q.since === undefined || t.changed_at >= q.since)
+        .map((t) => ({
+          talent_id: 't',
+          requisition_id: 'r',
+          pipeline_id: t.pipeline_id,
+          first_submitted_at: t.changed_at,
+        })),
+    ),
+  };
   const stub = {} as never;
   const svc = new ReportingService(
     stub, // company
@@ -47,6 +65,7 @@ function makeService(opts: {
     {} as never, // placementPipelineRepository (T9-B3; unused here)
     {} as never, // T7-P4 guaranteeExposureRepository (unused here)
     {} as never, // commercialMarginRepository (T9-B4; unused here)
+    submittedHistory as never, // L2-E submitted-history port
   );
   return { svc, requisitionRepository, pipelineRepository, tenantSettingRepository };
 }

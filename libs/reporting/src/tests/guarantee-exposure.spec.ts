@@ -26,6 +26,7 @@ function serviceWithSnapshot(snapshot: GuaranteeExposureSnapshot): ReportingServ
     {} as never, {} as never, {} as never, {} as never, {} as never,
     repo,
     {} as never, // commercialMarginRepository (T9-B4; unused here)
+    { findFirstSubmittedByGrain: async () => [] } as never, // L2-E submitted-history port
   );
 }
 

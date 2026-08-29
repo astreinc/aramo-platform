@@ -61,6 +61,7 @@ function makeService(cohort: Cohort, placed: Placed) {
     stub, // placementPipelineRepository (T9-B3; unused here)
     {} as never, // T7-P4 guaranteeExposureRepository (unused here)
     stub, // commercialMarginRepository (T9-B4; unused here)
+    { findFirstSubmittedByGrain: async () => [] } as never, // L2-E submitted-history port
   );
   return { svc, requisitionRepository, pipelineRepository };
 }

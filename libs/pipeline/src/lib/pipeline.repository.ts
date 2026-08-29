@@ -588,23 +588,11 @@ export class PipelineRepository {
       return projectView(current as PipelineRow);
     }
 
-    // L8-B1 Amendment A1 (R-TIGHTEN) — pipeline `submitted` is the recruiting
-    // MIRROR of an authoritative client submittal (Submittal.submitted_to_ats).
-    // A bare pipeline transition to `submitted` MUST NOT independently create the
-    // business fact; it is reachable ONLY through the submit-to-ats command
-    // (which writes the mirror atomically). Narrow: every OTHER transition is
-    // unchanged.
-    if (args.to_status === 'submitted') {
-      throw new AramoError(
-        'PIPELINE_SUBMIT_REQUIRES_SUBMITTAL',
-        'Pipeline "submitted" is a mirror of a client submittal; use POST /v1/submittals/{id}/submit-to-ats',
-        409,
-        {
-          requestId: args.requestId,
-          details: { pipeline_id: args.id, to_status: args.to_status },
-        },
-      );
-    }
+    // Lane 2 / L2-E (SB-5 / Q1) — `submitted` is no longer a Pipeline transition
+    // target (client submit-to-ats is Submittal-owned). The former
+    // PIPELINE_SUBMIT_REQUIRES_SUBMITTAL special-case is removed: a bare transition
+    // to `submitted` now falls through to the state-machine legality check below and
+    // is refused as INVALID_PIPELINE_TRANSITION (422) like any other illegal target.
 
     // Step 3 — legality check (the state machine). Illegal → 422.
     if (!canTransition(fromStatus, args.to_status)) {
@@ -1140,6 +1128,42 @@ export class PipelineRepository {
       status: r.status as PipelineStatus,
       count: Number(r.count),
     }));
+  }
+
+  // Lane 2 / L2-E (SB-5 overlay) — the CURRENT-episode status per (talent,
+  // requisition) grain, using the SAME live-wins DISTINCT-ON collapse as
+  // countByStatus. Consumed by the reporting/enrichment submitted-overlay to decide,
+  // per submitted grain, whether its current episode has advanced past `submitted`
+  // (interviewing/offered/placed) or is terminal — in which case the raw status wins
+  // and the grain is NOT re-bucketed to submitted. Returns a Map keyed
+  // `${talent_record_id}:${requisition_id}`.
+  async findCurrentStatusByGrains(args: {
+    tenant_id: string;
+    grains: ReadonlyArray<{ talent_record_id: string; requisition_id: string }>;
+  }): Promise<Map<string, PipelineStatus>> {
+    if (args.grains.length === 0) return new Map();
+    const terminals = [...TERMINAL_STATUSES];
+    const talentIds = args.grains.map((g) => g.talent_record_id);
+    const reqIds = args.grains.map((g) => g.requisition_id);
+    const rows = await this.prisma.$queryRawUnsafe<
+      Array<{ talent_record_id: string; requisition_id: string; status: string }>
+    >(
+      `SELECT DISTINCT ON (talent_record_id, requisition_id)
+              talent_record_id, requisition_id, status
+         FROM "pipeline"."Pipeline"
+        WHERE tenant_id = $1::uuid
+          AND (talent_record_id, requisition_id) IN (
+            SELECT t, r FROM unnest($2::uuid[], $3::uuid[]) AS g(t, r)
+          )
+        ORDER BY talent_record_id, requisition_id,
+                 (status::text = ANY($4::text[])) ASC, created_at DESC, id DESC`,
+      args.tenant_id, talentIds, reqIds, terminals,
+    );
+    const out = new Map<string, PipelineStatus>();
+    for (const r of rows) {
+      out.set(`${r.talent_record_id}:${r.requisition_id}`, r.status as PipelineStatus);
+    }
+    return out;
   }
 
   // E6 Q-4 — count DISTINCT (talent, requisition) triples that have a `placed`
