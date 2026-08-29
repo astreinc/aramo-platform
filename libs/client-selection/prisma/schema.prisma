@@ -67,6 +67,55 @@ model ClientSelectionProcess {
   @@schema("client_selection")
 }
 
+// Lane 2 / L2-F (F2) — the interview lifecycle of ONE scheduling under a
+// ClientSelectionProcess. Child by UUID (client_selection_process_id, NO FK; both
+// scope:ats, same cluster). Denormalized requisition_id/talent_record_id/site_id from
+// the parent for the 404-visibility predicate + journey keys. Participants
+// (interviewer_user_ids) are store-only identity.User UUID refs (no FK, unvalidated at
+// F2). Lifecycle: SCHEDULED → {RESCHEDULED|COMPLETED|CANCELED|NO_SHOW}; RESCHEDULED
+// self-loops (re-reschedule) + COMPLETED/CANCELED/NO_SHOW terminal.
+enum InterviewSessionState {
+  SCHEDULED
+  RESCHEDULED
+  COMPLETED
+  CANCELED
+  NO_SHOW
+
+  @@schema("client_selection")
+}
+
+model InterviewSession {
+  id                          String @id @default(uuid()) @db.Uuid
+  tenant_id                   String @db.Uuid
+  // Parent ClientSelectionProcess (UUID-ref, no FK).
+  client_selection_process_id String @db.Uuid
+  // Denormalized write-once from the parent: requisition_id (visibility scope) +
+  // talent_record_id (journey key) + site_id.
+  requisition_id   String  @db.Uuid
+  talent_record_id String  @db.Uuid
+  site_id          String? @db.Uuid
+
+  // Store-only interview descriptor.
+  interview_type String
+  round          Int    @default(1)
+  scheduled_at   DateTime @db.Timestamptz
+  // Store-only participants: identity.User interviewer refs (no FK, unvalidated at F2).
+  interviewer_user_ids String[] @db.Uuid
+
+  state InterviewSessionState @default(SCHEDULED)
+
+  // Optimistic-concurrency version; stale expected_version → INTERVIEW_SESSION_TRANSITION_CONFLICT.
+  version Int @default(0)
+
+  created_at    DateTime @default(now()) @db.Timestamptz
+  updated_at    DateTime @default(now()) @updatedAt @db.Timestamptz
+  created_by_id String?  @db.Uuid
+
+  @@index([tenant_id, client_selection_process_id])
+  @@index([tenant_id, requisition_id])
+  @@schema("client_selection")
+}
+
 // Append-only event log covering BOTH aggregates (process now; InterviewSession in
 // F2 via subject_type='session'). Immutable at the DB layer (BEFORE UPDATE/DELETE
 // triggers; DELETE only under the governed tenant-reset escape). Aggregate identity

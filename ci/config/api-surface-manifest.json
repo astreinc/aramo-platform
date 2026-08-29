@@ -312,6 +312,18 @@
     },
     {
       "method": "POST",
+      "path": "/v1/client-selection/*/interviews"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/client-selection/interview-sessions/*"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/client-selection/interview-sessions/*/transition"
+    },
+    {
+      "method": "POST",
       "path": "/v1/pipelines/*/transition"
     },
     {

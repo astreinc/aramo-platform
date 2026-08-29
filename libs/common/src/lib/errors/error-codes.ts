@@ -706,6 +706,10 @@ export const ERROR_CODES = [
   'CLIENT_SELECTION_SUBMITTAL_INVALID', // the referenced Submittal is not valid for a new client-selection process — non-existent / cross-tenant, OR already owns a process (409)
   'CLIENT_SELECTION_TRANSITION_CONFLICT', // stale expected_version CAS conflict (409)
   'INVALID_CLIENT_SELECTION_TRANSITION', // illegal state-machine transition (422)
+  // Lane 2 / L2-F (F2) — the InterviewSession child.
+  'CLIENT_SELECTION_PROCESS_INVALID', // the parent process is not valid for scheduling — non-existent / cross-tenant / not-visible / terminal (409)
+  'INTERVIEW_SESSION_TRANSITION_CONFLICT', // stale expected_version CAS conflict on a session (409)
+  'INVALID_INTERVIEW_SESSION_TRANSITION', // illegal session state-machine transition (422)
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

@@ -190,10 +190,18 @@
       "ClientSelectionOutboxRepository",
       "ClientSelectionPrismaService",
       "ClientSelectionProcessRepository",
+      "INTERVIEW_SESSION_INITIAL_STATE",
+      "INTERVIEW_SESSION_STATE_VALUES",
+      "INTERVIEW_SESSION_TERMINAL_STATES",
+      "InterviewSessionRepository",
       "canTransitionClientSelection",
+      "canTransitionInterviewSession",
       "isClientSelectionState",
+      "isInterviewSessionState",
       "isTerminalClientSelectionState",
-      "legalNextClientSelectionStates"
+      "isTerminalInterviewSessionState",
+      "legalNextClientSelectionStates",
+      "legalNextInterviewSessionStates"
     ],
     "@aramo/client-talent-restriction": [
       "ASSERTED_BY_TYPE_VALUES",
@@ -2412,6 +2420,7 @@
         "status": "excluded"
       },
       { "project": "api", "status": "production" },
+      { "project": "client-selection", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/examination/src/tests/override.controller.unit.spec.ts",

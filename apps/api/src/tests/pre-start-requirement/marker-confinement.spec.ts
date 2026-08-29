@@ -127,6 +127,10 @@ const EXACT_ALLOWLIST = new Set<string>([
   // Lane 2 / L2-F (F1) — the create-from-submittal orchestration proof uses the escape
   // to reset the client_selection append-only event log between cases.
   'apps/api/src/tests/client-selection-create-from-submittal.integration.spec.ts',
+  // Lane 2 / L2-F (F2) — the InterviewSession proof EXERCISES the escape on the SHARED
+  // client_selection event log (session events are immutable; DELETE only under the
+  // exact authorized GUC).
+  'libs/client-selection/src/tests/interview-session.integration.spec.ts',
 ]);
 
 describe('reset-marker confinement — exact-path default-deny (§2.4)', () => {
