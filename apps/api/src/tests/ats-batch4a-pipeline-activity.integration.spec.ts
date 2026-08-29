@@ -157,6 +157,11 @@ const PIPELINE_L2C_DISPOSITION = resolve(
   ROOT,
   'libs/pipeline/prisma/migrations/20260828150000_l2c_pipeline_disposition/migration.sql',
 );
+// L2-D — SEPARATE const + apply-list entry (never extra resolve() args — ENOTDIR).
+const PIPELINE_L2D_PROVENANCE = resolve(
+  ROOT,
+  'libs/pipeline/prisma/migrations/20260828160000_l2d_pipeline_entry_provenance/migration.sql',
+);
 // L2-B — the consent-schema IdempotencyKey table (backing the required
 // Idempotency-Key on POST /v1/pipelines) is ALREADY applied below via the
 // consent initial-schema migration (added for the TalentConsentEvent contact
@@ -278,6 +283,7 @@ const MIGRATIONS = [
   PIPELINE_L2C_ENUM,
   PIPELINE_L2C_LIVE_EPISODE_RECREATE,
   PIPELINE_L2C_DISPOSITION,
+  PIPELINE_L2D_PROVENANCE,
   POLICY_STORE_INIT,
   POLICY_DECISION_RECORD,
   resolve(ROOT, 'libs/requisition/prisma/migrations/20260803120000_recruiting_status_supersession/migration.sql'),

@@ -229,6 +229,14 @@ export class PipelineController {
       requestId,
       provenance: resolution.provenance,
       created_by_id: authContext.sub,
+      // Lane 2 / L2-D — the recruiter-console episode birth: MANUAL_RECRUITER, the
+      // caller's kind + sub. source_system/source_connection_id are null (no external
+      // system birthed this); external lineage is L2-I territory.
+      entry_provenance: {
+        origin_type: 'MANUAL_RECRUITER',
+        initiated_by_kind: authContext.actor_kind,
+        initiated_by_id: authContext.sub,
+      },
     });
 
     // L2-B — persist the idempotency record AFTER the mutation commits so a

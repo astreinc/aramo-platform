@@ -109,6 +109,14 @@ const EXACT_ALLOWLIST = new Set<string>([
   // Lane 2 / L2-C — the recruiter-lifecycle proof EXERCISES the escape (AC-13:
   // DELETE permitted only under the exact authorized GUC) via raw set_config.
   'libs/pipeline/src/tests/pipeline-l2c-recruiter-lifecycle.integration.spec.ts',
+  // Lane 2 / L2-D — the PipelineEntryProvenance immutability trigger migration
+  // DEFINES the same exact-value tenant_reset DELETE escape (source-of-hire is
+  // immutable), so a governed tenant reset can cascade-delete a provenance row
+  // when its Pipeline is purged.
+  'libs/pipeline/prisma/migrations/20260828160000_l2d_pipeline_entry_provenance/migration.sql',
+  // Lane 2 / L2-D — the entry-provenance proof EXERCISES the escape (AC-IMMUT:
+  // DELETE permitted only under the exact authorized GUC) via raw set_config.
+  'libs/pipeline/src/tests/pipeline-l2d-entry-provenance.integration.spec.ts',
 ]);
 
 describe('reset-marker confinement — exact-path default-deny (§2.4)', () => {

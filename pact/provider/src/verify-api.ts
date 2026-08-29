@@ -496,6 +496,11 @@ const PIPELINE_L2C_DISPOSITION_MIGRATION = resolve(
   ROOT,
   'libs/pipeline/prisma/migrations/20260828150000_l2c_pipeline_disposition/migration.sql',
 );
+// L2-D — SEPARATE const + apply-list entry (never extra resolve() args — ENOTDIR).
+const PIPELINE_L2D_PROVENANCE_MIGRATION = resolve(
+  ROOT,
+  'libs/pipeline/prisma/migrations/20260828160000_l2d_pipeline_entry_provenance/migration.sql',
+);
 // L8-B1 — the submit-to-ats orchestrator touches the submittal_policy schema
 // (RequisitionSubmittalPolicy / SubmittalConsumption / SubmittalPolicyEvent) and
 // reads client_talent_restriction; both schemas must exist in the provider DB.
@@ -3134,6 +3139,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         PIPELINE_L2C_ENUM_MIGRATION,
         PIPELINE_L2C_LIVE_EPISODE_RECREATE_MIGRATION,
         PIPELINE_L2C_DISPOSITION_MIGRATION,
+        PIPELINE_L2D_PROVENANCE_MIGRATION,
         SUBMITTAL_POLICY_INIT_MIGRATION,
         CLIENT_TALENT_RESTRICTION_INIT_MIGRATION,
         POLICY_STORE_INIT_MIGRATION,

@@ -78,6 +78,9 @@ describe('SourcingService.promoteAndAddToPipeline', () => {
     expect(create).toHaveBeenCalledWith({
       tenant_id: TENANT,
       input: { talent_record_id: RECORD_ID, requisition_id: REQ_ID },
+      // L2-D — the sourcing producer always stamps ARAMO_SOURCING entry-provenance
+      // (initiated_by_kind defaults to 'user' when the controller threads none).
+      entry_provenance: { origin_type: 'ARAMO_SOURCING', initiated_by_kind: 'user' },
     });
   });
 
@@ -107,6 +110,8 @@ describe('SourcingService.promoteAndAddToPipeline', () => {
       tenant_id: TENANT,
       input: { talent_record_id: RECORD_ID, requisition_id: REQ_ID },
       provenance: PROVENANCE,
+      // L2-D — the ARAMO_SOURCING entry-provenance rides alongside the policy provenance.
+      entry_provenance: { origin_type: 'ARAMO_SOURCING', initiated_by_kind: 'user' },
     });
     // The SAME record, not a reconstruction — identity, not deep-equality.
     expect((create.mock.calls[0]![0] as { provenance: unknown }).provenance).toBe(PROVENANCE);

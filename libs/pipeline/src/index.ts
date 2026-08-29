@@ -34,6 +34,16 @@ export {
   isRecruiterDispositionAuthority,
   type PipelineDispositionAuthority,
 } from './lib/pipeline-disposition.js';
+// Lane 2 / L2-D — the PipelineEntryProvenance domain (origin classes + write input).
+export {
+  PIPELINE_ENTRY_ORIGIN_VALUES,
+  isPipelineEntryOriginType,
+  isValidInitiatedByKind,
+  projectEntryProvenanceForEvent,
+  type PipelineEntryOriginType,
+  type EntryProvenanceInput,
+  type EntryProvenanceEventProjection,
+} from './lib/pipeline-entry-provenance.js';
 
 export {
   type PipelineView,

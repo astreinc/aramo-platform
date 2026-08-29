@@ -1,4 +1,5 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import type { ActorKind } from '@aramo/auth';
 import { PipelineRepository } from '@aramo/pipeline';
 import type { InsertPolicyDecisionRecordInput } from '@aramo/policy-store';
 import { SavedListRepository } from '@aramo/saved-list';
@@ -208,6 +209,9 @@ export class SourcingService {
       requestId?: string;
       provenance?: InsertPolicyDecisionRecordInput;
       created_by_id?: string;
+      // Lane 2 / L2-D — the initiating actor kind (AuthContext.actor_kind), threaded
+      // so the ARAMO_SOURCING entry-provenance records who birthed the episode.
+      initiated_by_kind?: ActorKind;
     },
   ): Promise<SourcingResult> {
     const outcome = await this.promotion.promoteSubject(subjectRef, opts);
@@ -222,6 +226,16 @@ export class SourcingService {
         ...(opts?.requestId === undefined ? {} : { requestId: opts.requestId }),
         ...(opts?.provenance === undefined ? {} : { provenance: opts.provenance }),
         ...(opts?.created_by_id === undefined ? {} : { created_by_id: opts.created_by_id }),
+        // Lane 2 / L2-D — the Aramo-sourcing episode birth: ARAMO_SOURCING. The
+        // sourced subject's OWN upstream ingestion source is SRC-1 territory (out of
+        // scope), so source_system stays null here.
+        entry_provenance: {
+          origin_type: 'ARAMO_SOURCING',
+          initiated_by_kind: opts?.initiated_by_kind ?? 'user',
+          ...(opts?.created_by_id === undefined
+            ? {}
+            : { initiated_by_id: opts.created_by_id }),
+        },
       });
       pipeline_id = pipeline.id;
     } catch (err) {

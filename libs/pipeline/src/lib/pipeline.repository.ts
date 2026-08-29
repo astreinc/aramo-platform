@@ -7,6 +7,8 @@ import {
   type InsertPolicyDecisionRecordInput,
 } from '@aramo/policy-store';
 
+import type { Prisma } from '../../prisma/generated/client/client.js';
+
 import type { PipelineView } from './dto/pipeline.view.js';
 import type { PipelineStatusHistoryView } from './dto/pipeline-status-history.view.js';
 import type { CreatePipelineRequestDto } from './dto/create-pipeline-request.dto.js';
@@ -25,6 +27,11 @@ import {
   isValidDispositionReason,
   type PipelineDispositionAuthority,
 } from './pipeline-disposition.js';
+import {
+  isValidInitiatedByKind,
+  projectEntryProvenanceForEvent,
+  type EntryProvenanceInput,
+} from './pipeline-entry-provenance.js';
 import { PrismaService } from './prisma/prisma.service.js';
 
 // §4.1 race-floor identification — a concurrent insert that lost the race on the
@@ -78,6 +85,49 @@ export interface DispositionWriteInput {
   reason: string;
   source_provenance?: string | null;
   note?: string | null;
+}
+
+// Lane 2 / L2-D — validate + map an EntryProvenanceInput to the
+// PipelineEntryProvenance create-data. `initiated_by_kind` is validated at the
+// write boundary against libs/auth ACTOR_KINDS (Rule D — libs/auth owns the closed
+// set, never a second DB enum). The SAME input object also enriches the
+// pipeline.created event (v1.1), so the durable row and the event never diverge.
+// Thrown VALIDATION_ERROR is defense-in-depth: producers pass an already-typed
+// ActorKind from AuthContext, so a bad value cannot arise in normal flow.
+function buildEntryProvenanceCreateData(
+  tenant_id: string,
+  pipeline_id: string,
+  input: EntryProvenanceInput,
+  requestId?: string,
+) {
+  if (!isValidInitiatedByKind(input.initiated_by_kind)) {
+    throw new AramoError(
+      'VALIDATION_ERROR',
+      `Invalid initiated_by_kind for entry provenance: ${String(input.initiated_by_kind)}`,
+      400,
+      {
+        // Controller always threads the real requestId; the sourcing path may omit.
+        requestId: requestId ?? 'pipeline-entry-provenance',
+        details: { field: 'initiated_by_kind', value: input.initiated_by_kind },
+      },
+    );
+  }
+  return {
+    tenant_id,
+    pipeline_id,
+    origin_type: input.origin_type,
+    source_system: input.source_system ?? null,
+    source_connection_id: input.source_connection_id ?? null,
+    external_object_type: input.external_object_type ?? null,
+    external_object_id: input.external_object_id ?? null,
+    external_event_id: input.external_event_id ?? null,
+    initiated_by_kind: input.initiated_by_kind,
+    initiated_by_id: input.initiated_by_id ?? null,
+    observed_at: input.observed_at ?? null,
+    ...(input.metadata == null
+      ? {}
+      : { metadata: input.metadata as unknown as Prisma.InputJsonValue }),
+  };
 }
 
 // Segment 3 — the current-stage read-model shape (most-advanced ACTIVE
@@ -255,14 +305,49 @@ export class PipelineRepository {
   // stored columns as-is.
   async restoreRemovedRows(rows: Array<Record<string, unknown>>): Promise<void> {
     for (const row of rows) {
-      await this.prisma.$executeRawUnsafe(
-        `INSERT INTO "pipeline"."Pipeline"
-           (id, tenant_id, site_id, talent_record_id, requisition_id, status, created_at, updated_at)
-         VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, $6::"pipeline"."PipelineStatus", $7::timestamptz, $8::timestamptz)
-         ON CONFLICT (id) DO NOTHING`,
-        row['id'], row['tenant_id'], row['site_id'] ?? null, row['talent_record_id'],
-        row['requisition_id'], row['status'], row['created_at'], row['updated_at'],
-      );
+      // Lane 2 / L2-D — a reversal re-create that BIRTHS a Pipeline episode must,
+      // like create(), write its entry-provenance AND emit the enriched
+      // pipeline.created event (v1.1 — both births obey the rule; no event/provenance
+      // exception). Wrapped in one tx so the row + provenance + event are atomic. The
+      // provenance is re-stamped SYSTEM_RECONCILIATION (§3 — there is no original to
+      // preserve; PRESERVE-ALL never physically removes, so `rows` is contractually
+      // empty and this is a structural invariant, not a hot path).
+      await this.prisma.$transaction(async (tx) => {
+        const affected = await tx.$executeRawUnsafe(
+          `INSERT INTO "pipeline"."Pipeline"
+             (id, tenant_id, site_id, talent_record_id, requisition_id, status, created_at, updated_at)
+           VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, $6::"pipeline"."PipelineStatus", $7::timestamptz, $8::timestamptz)
+           ON CONFLICT (id) DO NOTHING`,
+          row['id'], row['tenant_id'], row['site_id'] ?? null, row['talent_record_id'],
+          row['requisition_id'], row['status'], row['created_at'], row['updated_at'],
+        );
+        // ON CONFLICT DO NOTHING → affected===0 when the id already exists (idempotent
+        // re-run): write provenance + event ONLY on an actual birth, so a re-run never
+        // double-writes and the one-provenance-per-episode UNIQUE is never contended.
+        if (affected !== 1) return;
+        const pipeline_id = String(row['id']);
+        const tenant_id = String(row['tenant_id']);
+        const reconProvenance: EntryProvenanceInput = {
+          origin_type: 'SYSTEM_RECONCILIATION',
+          initiated_by_kind: 'system',
+          metadata: { reversal: true },
+        };
+        await tx.pipelineEntryProvenance.create({
+          data: buildEntryProvenanceCreateData(tenant_id, pipeline_id, reconProvenance),
+        });
+        await tx.outboxEvent.create({
+          data: {
+            tenant_id,
+            event_type: 'pipeline.created',
+            event_payload: {
+              pipeline_id,
+              talent_record_id: String(row['talent_record_id']),
+              requisition_id: String(row['requisition_id']),
+              ...projectEntryProvenanceForEvent(reconProvenance),
+            },
+          },
+        });
+      });
     }
   }
 
@@ -282,6 +367,10 @@ export class PipelineRepository {
     provenance?: InsertPolicyDecisionRecordInput;
     // Lane 2 / L2-B — the actor recorded on the birth history row (NULL -> no_contact).
     created_by_id?: string;
+    // Lane 2 / L2-D — REQUIRED source-of-hire provenance (Rule B: the required arg +
+    // the NOT-NULL origin_type guarantee no episode is born un-classified). Written
+    // in-tx after the pipeline row AND projected onto the pipeline.created event.
+    entry_provenance: EntryProvenanceInput;
   }): Promise<PipelineView> {
     // Initial state hard-coded to `no_contact` per directive §2 /
     // state-machine proof initial-state invariant. Body cannot override.
@@ -324,8 +413,23 @@ export class PipelineRepository {
             changed_by_id: args.created_by_id ?? null,
           },
         });
-        // Lane 2 / L2-B — the canonical creation event, emitted in-tx (a rolled-back
-        // create leaves NO orphan outbox row). Drained by libs/outbox-publisher.
+        // Lane 2 / L2-D — the immutable source-of-hire row, written in the SAME tx
+        // AFTER the pipeline row (Rule B — a rolled-back create leaves no orphan
+        // provenance). This is the AUTHORITATIVE durable record; the event below is
+        // its projection. `initiated_by_kind` validated at the boundary here.
+        await tx.pipelineEntryProvenance.create({
+          data: buildEntryProvenanceCreateData(
+            args.tenant_id,
+            created.id,
+            args.entry_provenance,
+            args.requestId,
+          ),
+        });
+        // Lane 2 / L2-B + L2-D — the canonical creation event, emitted in-tx (a
+        // rolled-back create leaves NO orphan outbox row). Drained by
+        // libs/outbox-publisher. v1.1 ENRICHMENT: the payload carries the entry
+        // provenance projected from the SAME validated input as the durable row
+        // above — the event is an immutable projection, never a second authority.
         await tx.outboxEvent.create({
           data: {
             tenant_id: args.tenant_id,
@@ -334,6 +438,7 @@ export class PipelineRepository {
               pipeline_id: created.id,
               talent_record_id: args.input.talent_record_id,
               requisition_id: args.input.requisition_id,
+              ...projectEntryProvenanceForEvent(args.entry_provenance),
             },
           },
         });
