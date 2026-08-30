@@ -1691,6 +1691,12 @@
         "project": "api",
         "status": "excluded"
       },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/l2h-talent-journey.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
       { "project": "api", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
@@ -1759,6 +1765,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/l2g-placement-lifecycle-orchestrator.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/l2h-talent-journey.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -3647,6 +3659,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/l2h-talent-journey.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/pipeline-talent-enrichment.service.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -3676,6 +3694,12 @@
       { "project": "visibility", "status": "production" }
     ],
     "@aramo/placement": [
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/l2h-talent-journey.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/offer-lifecycle-package.spec.ts",
@@ -4001,6 +4025,12 @@
     "@aramo/pre-start-requirement": [
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/l2h-talent-journey.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/pre-start-requirement/placement-readiness-gate.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -4246,6 +4276,12 @@
       { "project": "api", "status": "production" }
     ],
     "@aramo/submittal": [
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/l2h-talent-journey.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
       { "project": "api", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",

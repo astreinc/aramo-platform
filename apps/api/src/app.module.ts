@@ -64,6 +64,7 @@ import { RequisitionStateReaderModule } from './requisition-state/requisition-st
 import { PreStartRequirementModule } from './pre-start-requirement/pre-start-requirement.module.js';
 import { PlacementModule } from './placement/placement.module.js';
 import { OfferModule } from './offer/offer.module.js';
+import { TalentJourneyModule } from './talent-journey/talent-journey.module.js';
 import { CommunicationsApiModule } from './communications/communications-api.module.js';
 import { ConnectorExecutionModule } from './connector/connector-execution.module.js';
 import { RequisitionIntegrationModule } from './requisition-integration/requisition-integration.module.js';
@@ -370,6 +371,9 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     PlacementModule,
     // Offer Lifecycle (slice #2) — the dedicated pre-placement /v1/offers surface.
     OfferModule,
+    // L2-H — the Unified Talent Journey read-composer (GET /v1/pipelines/:id/journey);
+    // composes the 8 owner aggregates, 404-conceals a non-visible episode, reads only.
+    TalentJourneyModule,
     CommunicationsApiModule,
     // T2-2a — canonicalization orchestrator (NEW leaf lib). Lead-authored
     // per Aramo-T2-2a-Canonicalization-Orchestration-Directive-v1_0-LOCKED.md.

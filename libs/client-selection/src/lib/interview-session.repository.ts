@@ -197,6 +197,25 @@ export class InterviewSessionRepository {
     return projectView(row);
   }
 
+  // Lane 2 / L2-H — the interview sub-state read for the unified journey composer.
+  // Returns the MOST-RECENT session (scheduled_at desc) for the process, or null when
+  // none exists (a coherent absence — never a fabricated state). Visibility is enforced
+  // by the composer loading the pipeline episode through findByIdForActor FIRST (house
+  // pattern); the process + its sessions share that requisition's visibility boundary.
+  async findLatestByProcess(args: {
+    tenant_id: string;
+    client_selection_process_id: string;
+  }): Promise<InterviewSessionView | null> {
+    const row = (await this.prisma.interviewSession.findFirst({
+      where: {
+        tenant_id: args.tenant_id,
+        client_selection_process_id: args.client_selection_process_id,
+      },
+      orderBy: { scheduled_at: 'desc' },
+    })) as SessionRow | null;
+    return row === null ? null : projectView(row);
+  }
+
   // Drive a legal, CAS-guarded session transition. Concealment (404) + CAS (409) +
   // legality (422) precede the atomic tx (UPDATE + event + outbox). RESCHEDULED also
   // sets the new scheduled_at. There is NO no-op short-circuit: the only same-state

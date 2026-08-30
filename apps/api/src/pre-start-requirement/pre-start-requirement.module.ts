@@ -45,6 +45,8 @@ import { READINESS_EVALUATOR, RealReadinessEvaluator } from './readiness-evaluat
     PreStartWaiverService,
     PreStartCancellationService,
   ],
-  exports: [PlacementReadinessService, PreStartMaterializationService, PreStartCancellationService],
+  // L2-H — export the read repository so the Unified Talent Journey composer can read the
+  // pre-start requirement instances for a placement (read-only; no command surface added).
+  exports: [PlacementReadinessService, PreStartMaterializationService, PreStartCancellationService, RequirementInstanceRepository],
 })
 export class PreStartRequirementModule {}
