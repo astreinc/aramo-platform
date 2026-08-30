@@ -1,5 +1,5 @@
 {
-  "aliasTotals": { "apps": 2, "libs": 64, "total": 66 },
+  "aliasTotals": { "apps": 2, "libs": 65, "total": 67 },
   "aliases": {
     "@aramo/activity": "libs/activity/src/index.ts",
     "@aramo/ai-draft": "libs/ai-draft/src/index.ts",
@@ -42,6 +42,7 @@
     "@aramo/outbox-publisher": "libs/outbox-publisher/src/index.ts",
     "@aramo/pipeline": "libs/pipeline/src/index.ts",
     "@aramo/placement": "libs/placement/src/index.ts",
+    "@aramo/placement-pipeline-bridge": "libs/placement-pipeline-bridge/src/index.ts",
     "@aramo/platform-trust": "libs/platform-trust/src/index.ts",
     "@aramo/policy-engine": "libs/policy-engine/src/index.ts",
     "@aramo/policy-store": "libs/policy-store/src/index.ts",
@@ -698,6 +699,7 @@
       "SYSTEM_COMPLETE_ACTION",
       "VALID_OVERRIDE_REASON_CODES",
       "canTransition",
+      "isLiveStatus",
       "isOverrideReasonCode",
       "isPipelineDispositionAuthority",
       "isPipelineEntryOriginType",
@@ -816,6 +818,13 @@
       "resolveEffectiveTermRow",
       "resolvedTermsFromRow",
       "validateGuaranteeTerms"
+    ],
+    "@aramo/placement-pipeline-bridge": [
+      "INBOX_OUTCOME_CODES",
+      "PLACEMENT_STATE_CHANGED_EVENT_TYPE",
+      "PlacementPipelineBridgeModule",
+      "PlacementPipelineBridgePrismaService",
+      "PlacementPipelineInboxRepository"
     ],
     "@aramo/platform-trust": [
       "DORMANT_LINK_STATUSES",
@@ -1749,6 +1758,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/l2g-placement-lifecycle-orchestrator.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/outreach-send.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -2176,6 +2191,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/reporting/src/tests/fill-performance.spec.ts",
+        "project": "reporting",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/reporting/src/tests/fill-shadow-compare.spec.ts",
         "project": "reporting",
         "status": "excluded"
       },
@@ -3620,6 +3641,12 @@
       { "from": "tools/seed-e2e-data.ts", "project": "(unscoped)", "status": "unscoped" },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/l2g-placement-lifecycle-orchestrator.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/pipeline-talent-enrichment.service.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -3719,6 +3746,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/reporting/src/tests/fill-performance.integration.spec.ts",
+        "project": "reporting",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/reporting/src/tests/guarantee-exposure.integration.spec.ts",
         "project": "reporting",
         "status": "excluded"
@@ -3767,6 +3800,15 @@
         "status": "excluded"
       },
       { "project": "requisition", "status": "production" }
+    ],
+    "@aramo/placement-pipeline-bridge": [
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/l2g-placement-lifecycle-orchestrator.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      { "project": "api", "status": "production" }
     ],
     "@aramo/platform-trust": [{ "project": "api", "status": "production" }],
     "@aramo/policy-engine": [
@@ -4825,6 +4867,13 @@
       "name": "placement",
       "root": "libs/placement",
       "sourceRoot": "libs/placement/src",
+      "tags": ["scope:ats"],
+      "targets": ["build", "lint", "test"]
+    },
+    {
+      "name": "placement-pipeline-bridge",
+      "root": "libs/placement-pipeline-bridge",
+      "sourceRoot": "libs/placement-pipeline-bridge/src",
       "tags": ["scope:ats"],
       "targets": ["build", "lint", "test"]
     },

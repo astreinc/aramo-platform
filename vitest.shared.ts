@@ -48,6 +48,7 @@ export default defineConfig({
       // integration / tripwire / drift specs.
       '@aramo/canonicalization': resolve(root, 'libs/canonicalization/src/index.ts'),
       '@aramo/client-selection': resolve(root, 'libs/client-selection/src/index.ts'),
+      '@aramo/placement-pipeline-bridge': resolve(root, 'libs/placement-pipeline-bridge/src/index.ts'),
       // Portal P1 — portal-identity leaf (passwordless portal identity +
       // login tokens). Imported by auth-service (login flow) and apps/api
       // (portal reads, P2). Mirrors tsconfig.base.json; the add-alias-in-same-PR lesson.

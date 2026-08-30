@@ -51,11 +51,49 @@ export interface PipelineStageRollupView {
 // state with the openings_available decrement). NOT the Core
 // submittal-placement count (that lives behind the selection schema
 // seam, no ATS read path; see T5 / M6).
+// Lane 2 / L2-G — provenance of the fill authority a reporting figure derives from.
+// `PLACEMENT_PROCESS` = canonical (PlacementProcess established, D-1); `PIPELINE_PLACED`
+// = the retired legacy pipeline `placed` mirror (surfaced only in the shadow-compare).
+export type CanonicalFillSource = 'PLACEMENT_PROCESS';
+export type LegacyFillSource = 'PIPELINE_PLACED';
+
+// Lane 2 / L2-G — the shadow-compare classification (Decision 2, Rule C). Read-only
+// DIAGNOSTIC: it computes BOTH the legacy (pipeline `placed`) and the canonical
+// (PlacementProcess established) fill per requisition and CLASSIFIES the divergence. It
+// emits classified EVIDENCE only — never a boolean verdict, never an auto-switch, and it
+// does NOT influence any canonical read. Disposed by a human before the `placed`-write
+// retirement merges (SB-5 precedent).
+//   agree         — both sources present, same distinct count AND same first instant.
+//   legacy_only   — a pipeline `placed`-history triple with NO established PlacementProcess
+//                   (the pre-placement-aggregate era).
+//   canonical_only— an established PlacementProcess with NO pipeline `placed` mirror.
+//   diverge       — both present, but different count OR different first instant.
+export type ShadowCompareClass =
+  | 'agree'
+  | 'legacy_only'
+  | 'canonical_only'
+  | 'diverge';
+
+export interface FillShadowCompareRow {
+  requisition_id: string;
+  classification: ShadowCompareClass;
+  legacy_count: number; // distinct (talent) with a pipeline `placed` history on this req
+  canonical_count: number; // distinct (talent) with an established PlacementProcess
+  legacy_first_instant: string | null; // MIN first-placed instant (ISO) or null
+  canonical_first_instant: string | null; // MIN first-established instant (ISO) or null
+  legacy_fill_source: LegacyFillSource;
+  canonical_fill_source: CanonicalFillSource;
+}
+
 export interface PlacementCountReportView {
+  // L2-G — now the count of DISTINCT (talent, requisition) with an *established*
+  // PlacementProcess (canonical fill, D-1). Field name preserved for contract stability;
+  // provenance is stamped in `canonical_fill_source`.
   placed_pipelines: number;
   // Documented seam — the field is informational only, fixed false
   // until the T5 ATS-facing submittal read path lands.
   includes_core_submittal_placements: false;
+  canonical_fill_source?: CanonicalFillSource;
 }
 
 // CompanyMetricsView — per-company ATS operational rollup for the companies
@@ -80,11 +118,16 @@ export interface CompanyMetricsReportView {
   items: CompanyMetricsView[];
 }
 
-// CompanyPlacementView — a placed pipeline at one of the company's reqs (the
-// account-hub Placements tab). ATS-internal (placed pipeline), NOT a Core
-// submittal placement. Talent display name is resolved client-side.
+// CompanyPlacementView — a canonical placement (PlacementProcess established, D-1) at
+// one of the company's reqs (the account-hub Placements tab). Talent display name is
+// resolved client-side. Lane 2 / L2-G — re-based onto the placement spine: identity is
+// now `placement_process_id` (the first-established placement per (talent, req)); the
+// legacy `pipeline_id` is OPTIONAL (the placement spine has no pipeline id) and omitted.
 export interface CompanyPlacementView {
-  pipeline_id: string;
+  placement_process_id: string;
+  // Deprecated (L2-G) — the placement spine carries no pipeline id; retained OPTIONAL for
+  // consumers reading legacy responses. New responses omit it.
+  pipeline_id?: string;
   talent_record_id: string;
   requisition_id: string;
   requisition_title: string;
@@ -157,7 +200,10 @@ export interface RecruiterMetricsReportView {
 // requisitions contribute; partial/open/closed-unfilled have no TTF
 // (§6). No survival/censor statistic. `average_days` is the mean over
 // the contributing requisitions (1 decimal), null when count === 0.
+// L2-G — Time-to-Fill is now opened→established (canonical fill = PlacementProcess
+// established, D-1); `canonical_fill_source` stamps the provenance.
 export interface FillPerformanceReportView {
+  canonical_fill_source?: CanonicalFillSource;
   period: {
     from: string; // ISO absolute instant (UTC-normalized), inclusive
     to: string; // ISO absolute instant (UTC-normalized), exclusive

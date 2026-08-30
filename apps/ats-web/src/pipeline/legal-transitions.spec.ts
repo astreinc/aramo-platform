@@ -32,7 +32,9 @@ describe('legalNextStates', () => {
     // `submitted` is no longer a Pipeline transition target (Submittal-owned).
     expect(legalNextStates('qualifying')).toContain('qualified');
     expect(legalNextStates('qualified')).not.toContain('submitted');
-    expect(legalNextStates('offered')).toContain('placed');
+    // L2-G — `offered → placed` is RETIRED (canonical fill = placement spine).
+    expect(legalNextStates('offered')).not.toContain('placed');
+    expect(legalNextStates('offered')).toContain('not_in_consideration');
   });
 });
 
@@ -83,5 +85,19 @@ describe('L2-F3 — interviewing/client_declined retired as transition targets (
     expect(legalNextStates('submitted')).toContain('not_in_consideration');
     // `client_declined` stays a terminal display state (enum value kept).
     expect(legalNextStates('client_declined')).toEqual([]);
+  });
+});
+
+describe('L2-G — offered→placed retired as a NEW-write edge (FE mirror)', () => {
+  it('the "Move to…" affordance no longer offers placed; placed is unreachable as a target', () => {
+    expect(recruiterNextStates('offered')).not.toContain('placed');
+    // No source row offers `placed` (canonical fill = placement spine; success = COMPLETE).
+    for (const from of Object.keys(LEGAL_TRANSITIONS) as (keyof typeof LEGAL_TRANSITIONS)[]) {
+      expect(LEGAL_TRANSITIONS[from]).not.toContain('placed');
+    }
+    // KEPT: placed stays a terminal display state (enum value kept for legacy rows).
+    expect(legalNextStates('placed')).toEqual([]);
+    // offered still drops to not_in_consideration.
+    expect(recruiterNextStates('offered')).toContain('not_in_consideration');
   });
 });

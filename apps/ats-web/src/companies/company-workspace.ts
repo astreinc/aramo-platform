@@ -298,7 +298,11 @@ export interface CompanyTeam {
   readonly member_user_ids: readonly string[];
 }
 export interface CompanyPlacement {
-  readonly pipeline_id: string;
+  // L2-G — the canonical placement id (PlacementProcess established). Always present.
+  readonly placement_process_id: string;
+  // Deprecated (L2-G) — the placement spine carries no pipeline id; OPTIONAL for legacy
+  // responses only. New responses omit it.
+  readonly pipeline_id?: string;
   readonly talent_record_id: string;
   readonly requisition_id: string;
   readonly requisition_title: string;

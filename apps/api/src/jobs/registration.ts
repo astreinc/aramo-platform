@@ -23,6 +23,10 @@ import {
   RECONCILIATION_DRAIN_QUEUE_NAME,
   RECONCILIATION_DRAIN_INTERVAL_MS,
 } from '../requisition-integration/reconciliation-drain.queue.constants.js';
+import {
+  PLACEMENT_LIFECYCLE_QUEUE_NAME,
+  PLACEMENT_LIFECYCLE_INTERVAL_MS,
+} from '../placement-pipeline-orchestration/placement-lifecycle.queue.constants.js';
 
 // Application bootstrap registration for the repeating Aramo BullMQ jobs
 // (Architecture v2.1 §9.2 / Plan v1.5 §M5 Track A item 6; doc/01 §13 anchor).
@@ -181,6 +185,18 @@ const SCHEDULES = [
     job_name: 'tick',
     job_id: 'reconciliation-drain-300s',
     repeat: { every: RECONCILIATION_DRAIN_INTERVAL_MS },
+  },
+  // L2-G (Part 3) — the placement→pipeline lifecycle orchestrator sweep. Every 300s:
+  // drain a batch of not-yet-consumed placement.process.state_changed events →
+  // reserve (idempotent inbox) → resolve submittal→pipeline lineage → drive the
+  // Pipeline system command (COMPLETE on STARTED / dispositionDownstream on
+  // FELL_THROUGH·NO_SHOW) → markProcessed(outcome). Silent without Redis (CI / local
+  // dev); the drain seam is proven directly via the service. The 15th repeat queue.
+  {
+    queue_name: PLACEMENT_LIFECYCLE_QUEUE_NAME,
+    job_name: 'tick',
+    job_id: 'placement-lifecycle-orchestration-300s',
+    repeat: { every: PLACEMENT_LIFECYCLE_INTERVAL_MS },
   },
 ] as const;
 

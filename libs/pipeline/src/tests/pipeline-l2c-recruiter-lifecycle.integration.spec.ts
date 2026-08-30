@@ -417,6 +417,121 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     });
 
     // -----------------------------------------------------------------------
+    // L2-G (v1.2 R-CMD) — dispositionDownstream: the SYSTEM-only DOWNSTREAM DISPOSITION
+    // command → not_in_consideration (fall-through/no-show before STARTED). Same gates as
+    // complete() but NEVER `completed` (SB-0). apps/api calls THIS, not raw transition().
+    // -----------------------------------------------------------------------
+    it('L2-G: dispositionDownstream drives a live episode -> not_in_consideration with a DOWNSTREAM_OUTCOME disposition (never completed)', async () => {
+      const tenant = randomUUID();
+      const actor = randomUUID();
+      const provenance = randomUUID();
+      const { id } = await walkToQualified(tenant, actor);
+      const before = await repo.findById({ tenant_id: tenant, id });
+      expect(before!.status).toBe('qualified');
+      expect(await dispositionRows(id)).toHaveLength(0);
+
+      const after = await repo.dispositionDownstream({
+        tenant_id: tenant,
+        id,
+        expected_version: before!.version,
+        changed_by_id: actor,
+        requestId: 'dd-ok',
+        visible_requisition_ids: null,
+        scopes: SYSTEM_SCOPES,
+        source_provenance: provenance,
+        reason: 'placement_fell_through',
+      });
+      expect(after.status).toBe('not_in_consideration'); // NEVER completed (SB-0)
+      expect(after.version).toBe(before!.version + 1);
+      const dispo = await dispositionRows(id);
+      expect(dispo).toHaveLength(1);
+      expect(dispo[0]!.authority_class).toBe('DOWNSTREAM_OUTCOME');
+      expect(dispo[0]!.reason).toBe('placement_fell_through');
+      expect(dispo[0]!.source_provenance).toBe(provenance);
+    });
+
+    it('L2-G: dispositionDownstream without pipeline:complete is refused 403 (system-only)', async () => {
+      const tenant = randomUUID();
+      const actor = randomUUID();
+      const { id } = await walkToQualified(tenant, actor);
+      await expect(
+        repo.dispositionDownstream({
+          tenant_id: tenant, id,
+          expected_version: await currentVersion(tenant, id),
+          changed_by_id: actor, requestId: 'dd-403', visible_requisition_ids: null,
+          scopes: ['pipeline:change-status'], // NOT pipeline:complete
+          source_provenance: randomUUID(), reason: 'placement_fell_through',
+        }),
+      ).rejects.toMatchObject({ code: 'PIPELINE_COMPLETE_SYSTEM_ONLY', statusCode: 403 });
+      expect((await repo.findById({ tenant_id: tenant, id }))!.status).toBe('qualified');
+    });
+
+    it('L2-G: dispositionDownstream with an invalid DOWNSTREAM_OUTCOME reason is refused 422', async () => {
+      const tenant = randomUUID();
+      const actor = randomUUID();
+      const { id } = await walkToQualified(tenant, actor);
+      await expect(
+        repo.dispositionDownstream({
+          tenant_id: tenant, id,
+          expected_version: await currentVersion(tenant, id),
+          changed_by_id: actor, requestId: 'dd-422', visible_requisition_ids: null,
+          scopes: SYSTEM_SCOPES,
+          source_provenance: randomUUID(), reason: 'not_a_downstream_reason',
+        }),
+      ).rejects.toMatchObject({ code: 'PIPELINE_DISPOSITION_REASON_INVALID', statusCode: 422 });
+    });
+
+    it('L2-G: dispositionDownstream on an ALREADY-dispositioned live episode → PIPELINE_ALREADY_DISPOSITIONED (409), tx rolled back', async () => {
+      const tenant = randomUUID();
+      const actor = randomUUID();
+      const { id } = await walkToQualified(tenant, actor);
+      // Pre-seed a disposition (a prior close) so the in-tx disposition.create trips the
+      // one-per-episode UNIQUE while the episode is still live (qualified -> nic, from!=to).
+      await prisma.$executeRawUnsafe(
+        `INSERT INTO pipeline."PipelineDisposition" (id, tenant_id, pipeline_id, authority_class, reason) ` +
+          `VALUES ('${randomUUID()}', '${tenant}', '${id}', 'RECRUITER', 'not_a_fit')`,
+      );
+      const before = await repo.findById({ tenant_id: tenant, id });
+      await expect(
+        repo.dispositionDownstream({
+          tenant_id: tenant, id,
+          expected_version: before!.version,
+          changed_by_id: actor, requestId: 'dd-already', visible_requisition_ids: null,
+          scopes: SYSTEM_SCOPES, source_provenance: randomUUID(), reason: 'placement_fell_through',
+        }),
+      ).rejects.toMatchObject({ code: 'PIPELINE_ALREADY_DISPOSITIONED', statusCode: 409 });
+      const after = await repo.findById({ tenant_id: tenant, id });
+      expect(after!.status).toBe('qualified'); // rolled back — unchanged
+      expect(after!.version).toBe(before!.version);
+      expect(await dispositionRows(id)).toHaveLength(1); // still the ONE pre-seeded
+    });
+
+    it('L2-G(idempotency): a re-delivered dispositionDownstream on the SAME episode no-ops (from===to), no second disposition', async () => {
+      const tenant = randomUUID();
+      const actor = randomUUID();
+      const { id } = await walkToQualified(tenant, actor);
+      await repo.dispositionDownstream({
+        tenant_id: tenant, id,
+        expected_version: (await repo.findById({ tenant_id: tenant, id }))!.version,
+        changed_by_id: actor, requestId: 'dd-first', visible_requisition_ids: null,
+        scopes: SYSTEM_SCOPES, source_provenance: randomUUID(), reason: 'placement_fell_through',
+      });
+      const mid = await repo.findById({ tenant_id: tenant, id });
+      expect(mid!.status).toBe('not_in_consideration');
+      // Re-delivery: episode already at not_in_consideration → transition no-op (from===to),
+      // returns current, NO second disposition, NO error, NO version bump. (Recognized-satisfied.)
+      const again = await repo.dispositionDownstream({
+        tenant_id: tenant, id,
+        expected_version: mid!.version,
+        changed_by_id: actor, requestId: 'dd-again', visible_requisition_ids: null,
+        scopes: SYSTEM_SCOPES, source_provenance: randomUUID(), reason: 'placement_fell_through',
+      });
+      expect(again.status).toBe('not_in_consideration');
+      expect(again.version).toBe(mid!.version); // unchanged (no-op)
+      expect(await dispositionRows(id)).toHaveLength(1); // still exactly one
+    });
+
+    // -----------------------------------------------------------------------
     // AC-10 — COMPLETE is illegal from any non-`qualified` state (the matrix only
     //          admits qualified -> completed); refused 422, no disposition.
     // -----------------------------------------------------------------------

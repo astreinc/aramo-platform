@@ -1,0 +1,43 @@
+// Per-module Prisma schema for the placement_pipeline_bridge (Lane 2 / L2-G, Part 3).
+//
+// The thin cross-domain ORCHESTRATION-BOOKKEEPING owner: the processed-event inbox that
+// makes the Placement→Pipeline lifecycle bridge an idempotent consumer. It owns ONLY
+// consumption state ("have I already processed this specific Placement OutboxEvent for
+// the bridge?") — NOT Placement or Pipeline business lifecycle rules (those stay in their
+// aggregates; the coordination decision stays in apps/api). The UNIQUE placement_event_id
+// is the consumer idempotency authority (the standard inbox / idempotent-consumer model).
+// NO distributed transaction spans this schema and the pipeline schema.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "./generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["placement_pipeline_bridge"]
+}
+
+// The inbox row for one consumed Placement OutboxEvent. `reserve()` inserts a `pending`
+// row (UNIQUE placement_event_id → a re-delivered same-event insert is a success no-op);
+// `markProcessed()` flips it to `processed` with a classified `outcome_code`. A row stays
+// `pending` on transient failure (retry-safe) and is ONLY marked `processed` once the
+// Pipeline command SUCCEEDS or reaches a recognized-satisfied state.
+model PlacementPipelineInbox {
+  id String @id @default(uuid()) @db.Uuid
+  // The consumed placement `OutboxEvent.id` — the idempotency authority.
+  placement_event_id String @unique @db.Uuid
+  tenant_id          String @db.Uuid
+  event_type         String
+  // 'pending' | 'processed'
+  status String @default("pending")
+  // Classified outcome once processed: 'completed' | 'dispositioned' | 'already_satisfied'
+  // | 'no_pipeline_lineage' | 'pipeline_not_live' | 'event_not_actionable'. NULL while pending.
+  outcome_code String?
+  reserved_at  DateTime  @default(now()) @db.Timestamptz(6)
+  processed_at DateTime? @db.Timestamptz(6)
+  created_at   DateTime  @default(now()) @db.Timestamptz(6)
+
+  @@index([tenant_id, status])
+  @@schema("placement_pipeline_bridge")
+}

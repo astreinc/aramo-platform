@@ -8,6 +8,7 @@
     "libs/auth-storage",
     "libs/canonicalization",
     "libs/client-selection",
+    "libs/placement-pipeline-bridge",
     "libs/client-talent-restriction",
     "libs/common",
     "libs/communications",

@@ -41,6 +41,7 @@
       "@aramo/outbox-publisher": ["../../dist/libs/outbox-publisher/src/index.d.ts"],
       "@aramo/pipeline": ["../../dist/libs/pipeline/src/index.d.ts"],
       "@aramo/client-selection": ["../../dist/libs/client-selection/src/index.d.ts"],
+      "@aramo/placement-pipeline-bridge": ["../../dist/libs/placement-pipeline-bridge/src/index.d.ts"],
       "@aramo/placement": ["../../dist/libs/placement/src/index.d.ts"],
       "@aramo/pre-start-requirement": ["../../dist/libs/pre-start-requirement/src/index.d.ts"],
       "@aramo/policy-engine": ["../../dist/libs/policy-engine/src/index.d.ts"],

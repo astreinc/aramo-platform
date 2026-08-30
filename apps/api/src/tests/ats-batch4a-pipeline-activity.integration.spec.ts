@@ -38,9 +38,17 @@ import { publishLifecyclePackage } from './publish-lifecycle-package.js';
 // refusal. The `placed` transition is once again a FOUR-write atomic tx
 // (status + history + activity + metering) that leaves requisition
 // capacity UNTOUCHED. Accordingly the two former over-capacity tests
-// (PR-A5b-1 §5 (i) and (ii)/(iii)) are DELETED, and the placed-
-// transition test now proves capacity is NOT mutated (neither by the
-// transition nor by the subsequent delete).
+// (PR-A5b-1 §5 (i) and (ii)/(iii)) are DELETED.
+//
+// L2-G UPDATE (Part 4, #7): `offered → placed` — the SOLE `placed`
+// NEW-write edge — is now RETIRED (canonical fill migrated to the
+// PlacementProcess spine; Pipeline success is the system-only COMPLETE).
+// The former 4-write placed transition no longer fires: the edge is
+// refused with the typed error and writes NOTHING. The enum value is
+// KEPT and legacy `placed` rows stay readable (no history rewrite); the
+// T4-B2 capacity invariant (a `placed` row never mutates
+// openings_available, and purge does not restore) is now proven over a
+// raw legacy `placed` row.
 //
 // THE load-bearing state-machine proof (PR-A5a directive §4):
 //   1. Initial state: pipeline-add creates at `no_contact`.
@@ -54,12 +62,12 @@ import { publishLifecyclePackage } from './publish-lifecycle-package.js';
 //      UsageEvent row. The tx never fired.
 //   4. No-op transition (same status): no history, no activity, no
 //      metering event.
-//   5. Placed transition (offered -> placed) — T4-B2: reaches placed
-//      (status + history + activity + metering ALL written) and does
-//      NOT mutate requisition.openings_available (the B2 writer removal),
-//      and a subsequent delete does NOT restore any slot. The Core
-//      boundaries hold: no submittal."TalentSubmittalRecord" row exists
-//      pre OR post (we never touched that table).
+//   5. Retired offered -> placed (L2-G #7): the edge is refused 422
+//      INVALID_PIPELINE_TRANSITION and writes NOTHING; a raw legacy
+//      `placed` row stays readable, does NOT mutate
+//      requisition.openings_available, and purge does NOT restore any
+//      slot. The Core boundaries hold: no submittal."TalentSubmittalRecord"
+//      row exists pre OR post (we never touched that table).
 //
 // Section (D) below retains ONLY the no-Core-touch structural boundary
 // proof: talent.* / examination.* / submittal.* / job_domain.* schemas
@@ -1006,59 +1014,55 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await cleanupPipeline(created.id);
     });
 
-    it('Placed transition (T4-B2): atomic 4-write — status + history + activity + metering; requisition.openings_available UNTOUCHED and purge does NOT restore', async () => {
-      // T4-B2 §7 retires the PR-A5b-1 capacity coupling: the placed
-      // transition is once again a FOUR-write tx (status + history +
-      // activity + metering) and does NOT mutate requisition capacity.
-      // Capacity availability is now DERIVED (openings - active
-      // ContractAssignment count); over-capacity is representable and is
-      // never a pipeline-time refusal. Here we prove the writer removal
-      // directly: openings_available is UNCHANGED by the placed
-      // transition AND by the subsequent delete (no restore).
+    it('Retired offered->placed NEW-write (L2-G #7): the edge is refused 422 INVALID_PIPELINE_TRANSITION (no writes); a legacy `placed` row stays readable, capacity UNTOUCHED, purge does NOT restore', async () => {
+      // L2-G Part 4 — `offered → placed` was the SOLE `placed` NEW-write edge; it is now
+      // RETIRED (canonical fill = PlacementProcess-established; Pipeline success = system-
+      // only COMPLETE). The former 4-write placed transition no longer fires: the edge is
+      // refused with the typed error and writes NOTHING (retirement mirror of L2-E/L2-F3).
+      // The enum value is KEPT and legacy `placed` rows remain fully readable (no history
+      // rewrite). We also carry forward the T4-B2 capacity invariant — a `placed` row never
+      // mutates requisition.openings_available and purge does not restore — now proven over
+      // a raw legacy `placed` row (the shape pre-L2-G data holds).
       const openingsBefore = await readOpeningsAvailable(REQUISITION_ID);
 
       const created = await createPipeline(recruiterJwt_Ats_SiteA);
-
-      // Walk the legal forward chain to offered, then to placed.
       await walkToOffered(recruiterJwt_Ats_SiteA, created.id);
+      expect(await readStatus(created.id)).toBe('offered');
 
       const usageBeforePlaced = await countUsageEvents();
       const historyBeforePlaced = await countHistoryRows(created.id);
       const activityBeforePlaced = await countActivityRows(created.id);
 
-      const placedRes = await transition(
-        recruiterJwt_Ats_SiteA,
-        created.id,
-        'placed',
+      // The retired edge: offered -> placed is now the typed refusal, not 200/`placed`.
+      const refused = await transition(recruiterJwt_Ats_SiteA, created.id, 'placed');
+      expect(refused.status).toBe(422);
+      expect((refused.body as { error: { code: string } }).error.code).toBe(
+        'INVALID_PIPELINE_TRANSITION',
       );
-      expect(placedRes.status).toBe(200);
-      expect((placedRes.body as { status: string }).status).toBe('placed');
 
-      // 4-write atomicity confirmed for the placed transition.
+      // The retirement writes NOTHING: status stays `offered`; no history/activity/metering.
+      expect(await readStatus(created.id)).toBe('offered');
+      expect(await countHistoryRows(created.id)).toBe(historyBeforePlaced);
+      expect(await countActivityRows(created.id)).toBe(activityBeforePlaced);
+      expect(await countUsageEvents()).toBe(usageBeforePlaced);
+
+      // Legacy `placed` rows remain readable (enum KEPT, no rewrite). Raw-write a legacy
+      // `placed` (as a pre-L2-G episode would already be), and prove the T4-B2 capacity
+      // invariant still holds: its existence does not decrement openings_available.
+      await setupClient.query(
+        `UPDATE pipeline."Pipeline" SET status = 'placed' WHERE id = $1::uuid`,
+        [created.id],
+      );
       expect(await readStatus(created.id)).toBe('placed');
-      expect(await countHistoryRows(created.id)).toBe(historyBeforePlaced + 1);
-      expect(await countActivityRows(created.id)).toBe(activityBeforePlaced + 1);
-      expect(await countUsageEvents()).toBe(usageBeforePlaced + 1);
+      expect(await readOpeningsAvailable(REQUISITION_ID)).toBe(openingsBefore);
 
-      // T4-B2: openings_available is UNTOUCHED — the `placed`-edge
-      // decrement writer was DELETED. (The stored column still exists in
-      // this container because the DROP migration is intentionally not
-      // applied here; it now reads exactly its seeded value.)
-      const openingsAfterPlace = await readOpeningsAvailable(REQUISITION_ID);
-      expect(openingsAfterPlace).toBe(openingsBefore);
-
-      // T4-B2 + L2-B: purging a placed pipeline does NOT restore any slot —
-      // the delete-restore (+1) writer was DELETED, and L2-B withdrew the API
-      // DELETE entirely (cleanup is the governed tenant-reset escape now).
-      // openings_available stays exactly where it was.
+      // Purging a `placed` pipeline does NOT restore any slot (the delete-restore writer
+      // was DELETED; L2-B withdrew the API DELETE — cleanup is the tenant-reset escape).
       await cleanupPipeline(created.id);
-      const openingsAfterPurge = await readOpeningsAvailable(REQUISITION_ID);
-      expect(openingsAfterPurge).toBe(openingsBefore);
+      expect(await readOpeningsAvailable(REQUISITION_ID)).toBe(openingsBefore);
 
-      // The other Core boundaries still hold: submittal."TalentSubmittal
-      // Record" table is not even loaded into this test container — any
-      // attempted write would have thrown a relation-does-not-exist
-      // long before this point.
+      // The other Core boundaries still hold: submittal."TalentSubmittalRecord" is not even
+      // loaded into this test container — any attempted write would have thrown long ago.
       const submittalProbe = await setupClient
         .query<{ exists: boolean }>(
           `SELECT EXISTS (

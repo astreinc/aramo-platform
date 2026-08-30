@@ -171,11 +171,14 @@ const LEGAL_TRANSITIONS: Record<PipelineStatus, readonly PipelineStatus[]> = {
   // `client_declined` is retired as a target here too (client-decline is owner-owned).
   interviewing: ['offered', 'not_in_consideration'],
 
-  // Client offered. Forward to placed (terminal); recruiter/no-consideration drop.
-  // Lane 2 / L2-F3 — the `offered → interviewing` back-edge and `offered →
-  // client_declined` are retired (owner-owned); a legacy offered row still advances
-  // to placed or drops to not_in_consideration.
-  offered: ['placed', 'not_in_consideration'],
+  // Client offered. Lane 2 / L2-G — the `offered → placed` NEW-write edge is RETIRED:
+  // canonical fill is now PlacementProcess *established* (D-1) and successful Pipeline
+  // closure is the system-only COMPLETE (SB-3, wired from Placement STARTED). A bare
+  // transition to `placed` is refused (INVALID_PIPELINE_TRANSITION 422). The `placed`
+  // enum value is KEPT (legacy terminal, §4 tri-state); legacy `placed` rows remain
+  // readable (history / company-placements). A legacy offered row still drops to
+  // not_in_consideration. (L2-F3 already retired offered → interviewing/client_declined.)
+  offered: ['not_in_consideration'],
 
   // Terminal states — no outgoing transitions. Re-entry rides the E6 live-slot
   // release: a terminal episode frees the (tenant, talent, req) slot, and
