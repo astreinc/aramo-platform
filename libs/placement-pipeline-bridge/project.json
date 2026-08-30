@@ -1,0 +1,30 @@
+{
+  "name": "placement-pipeline-bridge",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/placement-pipeline-bridge/src",
+  "projectType": "library",
+  "tags": ["scope:ats"],
+  "targets": {
+    "build": {
+      "executor": "@nx/js:tsc",
+      "outputs": ["{options.outputPath}"],
+      "options": {
+        "outputPath": "dist/libs/placement-pipeline-bridge",
+        "main": "libs/placement-pipeline-bridge/src/index.ts",
+        "tsConfig": "libs/placement-pipeline-bridge/tsconfig.lib.json"
+      }
+    },
+    "lint": {
+      "executor": "@nx/eslint:lint",
+      "options": {
+        "lintFilePatterns": ["libs/placement-pipeline-bridge/**/*.ts"]
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "vitest run --passWithNoTests --root libs/placement-pipeline-bridge"
+      }
+    }
+  }
+}

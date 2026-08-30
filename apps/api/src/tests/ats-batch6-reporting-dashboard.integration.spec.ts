@@ -1317,7 +1317,21 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(body.total).toBe(1);
     });
 
-    it('GET /v1/reports/placement-count — 0 placements + the seam-exclusion flag is exposed', async () => {
+    it('GET /v1/reports/placement-count — reflects the canonical established-placement count (DISTINCT talent,req) + the seam-exclusion flag is exposed', async () => {
+      // L2-G — placement-count is now the tenant-wide count of DISTINCT (requisition,
+      // talent) PlacementProcess ESTABLISHMENTS (the canonical fill spine), NOT a
+      // Pipeline `placed` tally. Prove the endpoint mirrors the DB truth exactly
+      // (robust to whatever placements sibling tests in this shared container seeded).
+      const dbCount = (
+        await setupClient.query<{ c: string }>(
+          `SELECT count(*)::int AS c FROM (
+             SELECT DISTINCT requisition_id, talent_record_id
+               FROM placement."PlacementProcess" WHERE tenant_id = $1::uuid
+           ) t`,
+          [TENANT_ATS],
+        )
+      ).rows[0]!.c;
+
       const res = await fetch(
         `http://127.0.0.1:${port}/v1/reports/placement-count?site_id=${SITE_A}`,
         {
@@ -1330,7 +1344,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         placed_pipelines: number;
         includes_core_submittal_placements: boolean;
       };
-      expect(body.placed_pipelines).toBe(0); // none transitioned to placed
+      expect(body.placed_pipelines).toBe(Number(dbCount)); // canonical established count
       // The dashboard's seam-disclosure flag is wired through here too.
       expect(body.includes_core_submittal_placements).toBe(false);
     });
@@ -1455,12 +1469,16 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       }
     });
 
-    // ==== E6 B-projection (Q-4) — reporting must not double-count episodes ====
-    // Runs LAST: it seeds placed rows and would perturb the tenant-wide baseline
+    // ==== B-projection (Q-4) — reporting must not double-count fills ====
+    // Runs LAST: it seeds fill/placed rows and would perturb the tenant-wide baseline
     // that the earlier assertions (placement-count = 0, pipeline_rollup.total = 1)
-    // depend on. Two coexisting PLACED episodes for one (talent, requisition) —
-    // legal only post-E6 — must count as ONE placement end-to-end through apps/api.
-    it('B-projection: two placed episodes for one (talent, req) count as ONE placement (no double-count)', async () => {
+    // depend on. L2-G migrated the canonical fill authority to the placement spine, so
+    // the no-double-count proof now spans BOTH surfaces for one (talent, requisition):
+    //   - placement-count reads PlacementProcess ESTABLISHED — DISTINCT ON (req, talent)
+    //     must fold TWO established attempts into ONE placement.
+    //   - pipeline-rollup by_status reads Pipeline.status — TWO placed episodes (legal
+    //     post-E6) must fold into ONE placed talent.
+    it('B-projection: two established placements + two placed episodes for one (talent, req) each count as ONE (no double-count)', async () => {
       const company = await postJson('/v1/companies', tenantAdminJwt, {
         name: 'E6 Projection Co',
         site_id: SITE_A,
@@ -1471,8 +1489,43 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         site_id: SITE_A,
       });
       const talent = '01900000-0000-7000-8000-0000000000e6';
-      // Two coexisting placed episodes (raw insert bypasses the guard/transitions;
-      // the E6 partial index permits multiple terminal episodes for one triple).
+
+      // Baselines captured BEFORE this test's own seeding — the shared container already
+      // holds placements/episodes from sibling tests, so the proof is a DELTA (this ONE
+      // new distinct triple must add exactly ONE to each canonical count, never two).
+      const pcOf = async (): Promise<number> => {
+        const r = await fetch(
+          `http://127.0.0.1:${port}/v1/reports/placement-count?site_id=${SITE_A}`,
+          { method: 'GET', headers: { Authorization: `Bearer ${tenantAdminJwt}` } },
+        );
+        return ((await r.json()) as { placed_pipelines: number }).placed_pipelines;
+      };
+      const placedCountOf = async (): Promise<number> => {
+        const r = await fetch(
+          `http://127.0.0.1:${port}/v1/reports/pipeline-rollup?site_id=${SITE_A}`,
+          { method: 'GET', headers: { Authorization: `Bearer ${tenantAdminJwt}` } },
+        );
+        const b = (await r.json()) as { by_status: Array<{ status: string; count: number }> };
+        return b.by_status.find((s) => s.status === 'placed')?.count ?? 0;
+      };
+      const pcBefore = await pcOf();
+      const placedBefore = await placedCountOf();
+
+      // Two established PlacementProcess attempts for one (talent, req) — the canonical
+      // fill fact (L2-G). Distinct ids + submittal refs; readFillCohort DISTINCT ON
+      // (req, talent) must fold them into ONE placement.
+      for (let i = 0; i < 2; i += 1) {
+        await setupClient.query(
+          `INSERT INTO placement."PlacementProcess"
+             (id, tenant_id, submittal_id, requisition_id, talent_record_id, state, offered_at, created_at)
+           VALUES (gen_random_uuid(), $1::uuid, gen_random_uuid(), $2::uuid, $3::uuid,
+                   'STARTED'::placement."PlacementState", CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+          [TENANT_ATS, req.id, talent],
+        );
+      }
+      // Two coexisting placed pipeline episodes (raw insert bypasses the guard/transitions;
+      // the E6 partial index permits multiple terminal episodes for one triple) — for the
+      // pipeline-rollup by_status fold.
       for (let i = 0; i < 2; i += 1) {
         await setupClient.query(
           `INSERT INTO pipeline."Pipeline" (id, tenant_id, talent_record_id, requisition_id, status, created_at, updated_at)
@@ -1481,26 +1534,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         );
       }
 
-      // placement-count is tenant-wide; the baseline placed nothing, so the ONE
-      // distinct (talent, req) placement is the only one → 1, NOT 2 episodes.
-      const pc = await fetch(
-        `http://127.0.0.1:${port}/v1/reports/placement-count?site_id=${SITE_A}`,
-        { method: 'GET', headers: { Authorization: `Bearer ${tenantAdminJwt}` } },
-      );
-      expect(pc.status).toBe(200);
-      const pcBody = (await pc.json()) as { placed_pipelines: number };
-      expect(pcBody.placed_pipelines).toBe(1); // distinct triple, not 2 episodes
+      // placement-count folds the TWO established attempts for the ONE new (talent, req)
+      // into a single additional placement → delta is exactly +1, NOT +2.
+      expect((await pcOf()) - pcBefore).toBe(1);
 
-      // pipeline-rollup by_status counts this talent ONCE under placed.
-      const pr = await fetch(
-        `http://127.0.0.1:${port}/v1/reports/pipeline-rollup?site_id=${SITE_A}`,
-        { method: 'GET', headers: { Authorization: `Bearer ${tenantAdminJwt}` } },
-      );
-      const prBody = (await pr.json()) as {
-        by_status: Array<{ status: string; count: number }>;
-      };
-      const placed = prBody.by_status.find((s) => s.status === 'placed');
-      expect(placed?.count).toBe(1); // one talent placed, not two episodes
+      // pipeline-rollup by_status folds the TWO placed episodes into ONE placed talent → +1.
+      expect((await placedCountOf()) - placedBefore).toBe(1);
     });
   },
 );

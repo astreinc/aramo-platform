@@ -137,4 +137,100 @@ export class PlacementProcessEventRepository {
       })),
     };
   }
+
+  // Lane 2 / L2-G — the CANONICAL fill read (D-1): fill = PlacementProcess *established*
+  // (birth PRE_START = `PlacementProcess.created_at`), NOT the pipeline `placed` mirror.
+  // Returns, per (talent_record_id, requisition_id), the FIRST established instant and
+  // the FIRST STARTED instant (null if never started), collapsing duplicate placements
+  // per triple (DISTINCT ON) exactly as the legacy `MIN(first_placed)` collapse did.
+  // Placement OWNS this read; the reporting lib folds it over the existing
+  // reporting→placement edge (the T9-B2/B3/B4 precedent). Tenant-scoped; `requisition_ids`
+  // applies the reporting-resolved A3 visible set (undefined = tenant-wide; empty =
+  // nothing visible → empty cohort). Date-bounded on the FIRST-established instant.
+  // Time-to-Fill (opened→established) and Time-to-Start (established→STARTED) are the
+  // reporting fold; this read supplies both instants. No pipeline read; no schema change.
+  async readFillCohort(args: {
+    tenant_id: string;
+    requisition_ids?: readonly string[];
+    // Optional window on the FIRST-established instant. Both omitted = no date filter
+    // (the req-cohort / tenant scope is the bound) — the fill-performance + placement-
+    // count + company readers window by requisition, not by established date; only the
+    // recruiter-monthly series windows by established instant.
+    from?: Date;
+    to?: Date;
+  }): Promise<
+    Array<{
+      requisition_id: string;
+      talent_record_id: string;
+      first_placement_process_id: string;
+      first_established_at: Date;
+      first_started_at: Date | null;
+    }>
+  > {
+    const hasReq = args.requisition_ids !== undefined;
+    if (hasReq && args.requisition_ids!.length === 0) {
+      return [];
+    }
+    const hasWindow = args.from !== undefined && args.to !== undefined;
+    // Params: $1 tenant; then optional window ($2 from, $3 to); then optional req array.
+    const params: unknown[] = [args.tenant_id];
+    if (hasWindow) params.push(args.from, args.to);
+    const reqParamIndex = params.length + 1; // next positional slot for the req array
+    if (hasReq) params.push([...args.requisition_ids!]);
+
+    // established = the FIRST PlacementProcess per (talent, req) (birth PRE_START) — its
+    // created_at (fill instant) + id (DISTINCT ON earliest, id-tiebreak for stability);
+    // started = first STARTED-event created_at per (talent, req), joined by placement.
+    const rows = await this.prisma.$queryRawUnsafe<
+      Array<{
+        requisition_id: string;
+        talent_record_id: string;
+        first_placement_process_id: string;
+        first_established_at: Date;
+        first_started_at: Date | null;
+      }>
+    >(
+      `WITH established AS (
+         SELECT DISTINCT ON (p.requisition_id, p.talent_record_id)
+                p.requisition_id, p.talent_record_id,
+                p.id AS first_placement_process_id,
+                p.created_at AS first_established_at
+           FROM "placement"."PlacementProcess" p
+          WHERE p.tenant_id = $1::uuid
+            ${hasReq ? `AND p.requisition_id = ANY($${reqParamIndex}::uuid[])` : ''}
+          ORDER BY p.requisition_id, p.talent_record_id, p.created_at ASC, p.id ASC
+       ),
+       cohort AS (
+         SELECT * FROM established
+          ${hasWindow ? 'WHERE first_established_at >= $2 AND first_established_at < $3' : ''}
+       ),
+       started AS (
+         SELECT p.requisition_id, p.talent_record_id,
+                MIN(e.created_at) AS first_started_at
+           FROM "placement"."PlacementProcessEvent" e
+           JOIN "placement"."PlacementProcess" p ON p.id = e.placement_process_id
+          WHERE e.tenant_id = $1::uuid
+            AND e.event_type = 'state_transition'::"placement"."PlacementEventType"
+            AND e.event_payload->>'to' = 'STARTED'
+          GROUP BY p.requisition_id, p.talent_record_id
+       )
+       SELECT c.requisition_id, c.talent_record_id,
+              c.first_placement_process_id,
+              c.first_established_at,
+              s.first_started_at
+         FROM cohort c
+         LEFT JOIN started s
+           ON s.requisition_id = c.requisition_id
+          AND s.talent_record_id = c.talent_record_id
+        ORDER BY c.requisition_id, c.talent_record_id`,
+      ...params,
+    );
+    return rows.map((r) => ({
+      requisition_id: r.requisition_id,
+      talent_record_id: r.talent_record_id,
+      first_placement_process_id: r.first_placement_process_id,
+      first_established_at: r.first_established_at,
+      first_started_at: r.first_started_at ?? null,
+    }));
+  }
 }

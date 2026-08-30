@@ -26,6 +26,7 @@
     "libs/outbox-publisher",
     "libs/pipeline",
     "libs/placement",
+    "libs/placement-pipeline-bridge",
     "libs/policy-store",
     "libs/portal-identity",
     "libs/pre-start-requirement",

@@ -8,14 +8,15 @@ import {
   type StartedPostgreSqlContainer,
 } from '@testcontainers/postgresql';
 import type { VisibilityContextShape } from '@aramo/common';
-import {
-  PipelineRepository,
-  PipelinePrismaService,
-} from '@aramo/pipeline';
+import { PipelinePrismaService } from '@aramo/pipeline';
 import {
   RequisitionRepository,
   RequisitionPrismaService,
 } from '@aramo/requisition';
+import {
+  PlacementProcessEventRepository,
+  PrismaService as PlacementPrismaService,
+} from '@aramo/placement';
 
 import { ReportingService } from '../lib/reporting.service.js';
 
@@ -27,16 +28,17 @@ import { ReportingService } from '../lib/reporting.service.js';
 // mocked reads. THIS spec proves the SQL-level guarantees the unit spec cannot:
 //   - the [from,to) cohort predicate on Requisition.created_at (D-3);
 //   - cohort keyed on created_at, not updated_at (REOPEN never restarts, §7);
-//   - MIN(changed_at) de-duplication of multiple `placed` history rows for one
-//     (talent, requisition) (§15 — duplicate episode neither double-counts nor
+//   - MIN(created_at) de-duplication of multiple PlacementProcess rows for one
+//     (talent, requisition) (§15 — a duplicate placement neither double-counts nor
 //     advances completion);
 //   - multi-opening Nth-distinct completion end-to-end;
 //   - `canceled` exclusion from numerator AND denominator (§4);
 //   - tenant isolation.
 //
-// Fill authority is ATS pipeline terminal `placed` read from PipelineStatusHistory
-// (D-1) — the rejected capacity path is a `{} as never` stub, so any accidental
-// use would throw.
+// Lane 2 / L2-G — fill authority is now PlacementProcess *established* (birth PRE_START,
+// created_at = fill instant), read via readFillCohort (D-1). The rejected capacity path
+// AND the retired pipeline `placed` read are both `{} as never` stubs, so any accidental
+// use throws — the authority flip is proven, not assumed.
 
 const REQ_MIGRATIONS = [
   '20260602100000_init_requisition_model',
@@ -78,6 +80,28 @@ const PIPELINE_MIGRATIONS = [
   resolve(__dirname, `../../../pipeline/prisma/migrations/${d}/migration.sql`),
 );
 
+// Lane 2 / L2-G — canonical fill authority = PlacementProcess established; this spec now
+// seeds the PlacementProcess spine (not pipeline `placed` history). Placement schema.
+const PLACEMENT_MIGRATIONS = [
+  '20260803180000_init_placement_model',
+  '20260805120000_placement_offer_and_outbox',
+  '20260807120000_placement_fallthrough_reason',
+  '20260808120000_placement_replacement_link',
+  '20260809120000_placement_contract_assignment',
+  '20260825120000_assignment_extension_horizon',
+  '20260810100000_placement_assignment_ended_value',
+  '20260810110000_placement_assignment_aware_guard',
+  '20260810120000_placement_assignment_end_reason',
+  '20260810130000_t5_assignment_rate_version',
+  '20260812140000_t6_b1_effective_window_substrate',
+  '20260813130000_t6_b3_commercial_cancellation',
+  '20260814120000_t7_permanent_placement',
+  '20260824120000_init_offer_model',
+  '20260824130000_placement_offer_id',
+].map((d) =>
+  resolve(__dirname, `../../../placement/prisma/migrations/${d}/migration.sql`),
+);
+
 // Period under test: [FROM, TO) — one month, half-open, UTC-absolute.
 const FROM = new Date('2026-03-01T00:00:00.000Z');
 const TO = new Date('2026-04-01T00:00:00.000Z');
@@ -95,6 +119,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     let container: StartedPostgreSqlContainer;
     let reqPrisma: RequisitionPrismaService;
     let pipePrisma: PipelinePrismaService;
+    let placePrisma: PlacementPrismaService;
     let svc: ReportingService;
     let reqNo = 1;
 
@@ -104,7 +129,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       const setup = new RequisitionPrismaService(url);
       await setup.$connect();
-      for (const path of [...REQ_MIGRATIONS, ...PIPELINE_MIGRATIONS]) {
+      for (const path of [
+        ...REQ_MIGRATIONS,
+        ...PIPELINE_MIGRATIONS,
+        ...PLACEMENT_MIGRATIONS,
+      ]) {
         for (const stmt of splitDdl(readFileSync(path, 'utf8'))) {
           const trimmed = stmt.trim();
           if (trimmed.length === 0) continue;
@@ -115,8 +144,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       reqPrisma = new RequisitionPrismaService(url);
       pipePrisma = new PipelinePrismaService(url);
+      placePrisma = new PlacementPrismaService(url);
       await reqPrisma.$connect();
       await pipePrisma.$connect();
+      await placePrisma.$connect();
 
       // listCohortForActor uses ONLY this.prisma; the policy/capacity deps are
       // never touched, so they are `{} as never` stubs (ctor-satisfying only).
@@ -127,7 +158,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         {} as never, // capacity — the rejected path; must never be called
         { deriveByRequisitionIds: async () => new Map() } as never,
       );
-      const pipelineRepository = new PipelineRepository(pipePrisma);
+      const placementEventRepository = new PlacementProcessEventRepository(
+        placePrisma,
+      );
 
       svc = new ReportingService(
         {} as never, // company
@@ -137,10 +170,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         {} as never, // calendar
         {} as never, // activity
         requisitionRepository,
-        pipelineRepository,
+        // L2-G — fill authority is the placement spine; getFillPerformance must NOT read
+        // pipeline. Stubbed so any accidental legacy `placed` read throws (authority-flip
+        // proof — the legacy read survives ONLY in the diagnostic comparator).
+        {} as never, // pipelineRepository
         {} as never, // tenantSetting
         {} as never, // capacity
-        {} as never, // placementEventRepository (T9-B2; unused by fill-performance)
+        placementEventRepository, // L2-G: the canonical fill read (readFillCohort)
         {} as never, // placementPipelineRepository (T9-B3; unused here)
         {} as never, // T7-P4 guaranteeExposureRepository (unused here)
         {} as never, // commercialMarginRepository (T9-B4; unused here)
@@ -182,34 +218,28 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       return id;
     }
 
-    // Seed a `placed` outcome: a pipeline row + a PipelineStatusHistory row that
-    // transitioned INTO `placed` at `changedAt`. The reporting read derives the
-    // fill authority from the HISTORY row (status_to='placed'), joined to the
-    // pipeline for talent/req.
-    async function seedPlaced(args: {
+    // Lane 2 / L2-G — the fill FACT is now a PlacementProcess *established* (birth
+    // PRE_START), whose `created_at` is the canonical fill instant. The reporting read
+    // derives fill from readFillCohort (first-established per (talent, req)), NOT the
+    // retired pipeline `placed` history. `establishedAt` is the controlled fill instant;
+    // the assertions (cohort boundary, REOPEN, MIN dedup, Nth-fill, canceled, isolation)
+    // are UNCHANGED — only the fact source moved.
+    async function seedEstablished(args: {
       tenant_id: string;
       requisition_id: string;
       talent_record_id: string;
-      changedAt: Date;
+      establishedAt: Date;
     }): Promise<void> {
-      const pipeline_id = randomUUID();
-      await pipePrisma.pipeline.create({
-        data: {
-          id: pipeline_id,
-          tenant_id: args.tenant_id,
-          talent_record_id: args.talent_record_id,
-          requisition_id: args.requisition_id,
-          status: 'placed' as never,
-        },
-      });
-      await pipePrisma.pipelineStatusHistory.create({
+      await placePrisma.placementProcess.create({
         data: {
           id: randomUUID(),
           tenant_id: args.tenant_id,
-          pipeline_id,
-          status_from: 'offered' as never,
-          status_to: 'placed' as never,
-          changed_at: args.changedAt,
+          submittal_id: randomUUID(),
+          talent_record_id: args.talent_record_id,
+          requisition_id: args.requisition_id,
+          state: 'PRE_START' as never,
+          offered_at: args.establishedAt,
+          created_at: args.establishedAt,
         },
       });
     }
@@ -243,11 +273,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         created_at: at(FROM, 2),
         updated_at: at(TO, 30),
       });
-      await seedPlaced({
+      await seedEstablished({
         tenant_id: tenant,
         requisition_id: req,
         talent_record_id: randomUUID(),
-        changedAt: at(FROM, 7),
+        establishedAt: at(FROM, 7),
       });
       const v = await svc.getFillPerformance(
         { tenant_id: tenant, user_id: 'u', scopes: ['report:read'], visibility: seeAll },
@@ -265,8 +295,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const talent = randomUUID();
       const req = await seedReq({ tenant_id: tenant, openings: 1, status: 'open', created_at: FROM });
       // Same talent placed TWICE (two history rows) — MIN picks the earlier.
-      await seedPlaced({ tenant_id: tenant, requisition_id: req, talent_record_id: talent, changedAt: at(FROM, 9) });
-      await seedPlaced({ tenant_id: tenant, requisition_id: req, talent_record_id: talent, changedAt: at(FROM, 3) });
+      await seedEstablished({ tenant_id: tenant, requisition_id: req, talent_record_id: talent, establishedAt: at(FROM, 9) });
+      await seedEstablished({ tenant_id: tenant, requisition_id: req, talent_record_id: talent, establishedAt: at(FROM, 3) });
 
       const v = await svc.getFillPerformance(
         { tenant_id: tenant, user_id: 'u', scopes: ['report:read'], visibility: seeAll },
@@ -283,8 +313,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const tenant = randomUUID();
       const req = await seedReq({ tenant_id: tenant, openings: 2, status: 'open', created_at: FROM });
       // Two distinct talents; opening filled at day 4 then day 8 → completion day 8.
-      await seedPlaced({ tenant_id: tenant, requisition_id: req, talent_record_id: randomUUID(), changedAt: at(FROM, 8) });
-      await seedPlaced({ tenant_id: tenant, requisition_id: req, talent_record_id: randomUUID(), changedAt: at(FROM, 4) });
+      await seedEstablished({ tenant_id: tenant, requisition_id: req, talent_record_id: randomUUID(), establishedAt: at(FROM, 8) });
+      await seedEstablished({ tenant_id: tenant, requisition_id: req, talent_record_id: randomUUID(), establishedAt: at(FROM, 4) });
 
       const v = await svc.getFillPerformance(
         { tenant_id: tenant, user_id: 'u', scopes: ['report:read'], visibility: seeAll },
@@ -299,9 +329,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     it('canceled requisition is excluded from numerator AND denominator', async () => {
       const tenant = randomUUID();
       const canceled = await seedReq({ tenant_id: tenant, openings: 5, status: 'canceled', created_at: FROM });
-      await seedPlaced({ tenant_id: tenant, requisition_id: canceled, talent_record_id: randomUUID(), changedAt: at(FROM, 2) });
+      await seedEstablished({ tenant_id: tenant, requisition_id: canceled, talent_record_id: randomUUID(), establishedAt: at(FROM, 2) });
       const open = await seedReq({ tenant_id: tenant, openings: 1, status: 'open', created_at: at(FROM, 1) });
-      await seedPlaced({ tenant_id: tenant, requisition_id: open, talent_record_id: randomUUID(), changedAt: at(FROM, 3) });
+      await seedEstablished({ tenant_id: tenant, requisition_id: open, talent_record_id: randomUUID(), establishedAt: at(FROM, 3) });
 
       const v = await svc.getFillPerformance(
         { tenant_id: tenant, user_id: 'u', scopes: ['report:read'], visibility: seeAll },
@@ -316,9 +346,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const tenantA = randomUUID();
       const tenantB = randomUUID();
       const reqA = await seedReq({ tenant_id: tenantA, openings: 1, status: 'open', created_at: FROM });
-      await seedPlaced({ tenant_id: tenantA, requisition_id: reqA, talent_record_id: randomUUID(), changedAt: at(FROM, 2) });
+      await seedEstablished({ tenant_id: tenantA, requisition_id: reqA, talent_record_id: randomUUID(), establishedAt: at(FROM, 2) });
       const reqB = await seedReq({ tenant_id: tenantB, openings: 3, status: 'open', created_at: FROM });
-      await seedPlaced({ tenant_id: tenantB, requisition_id: reqB, talent_record_id: randomUUID(), changedAt: at(FROM, 2) });
+      await seedEstablished({ tenant_id: tenantB, requisition_id: reqB, talent_record_id: randomUUID(), establishedAt: at(FROM, 2) });
 
       const v = await svc.getFillPerformance(
         { tenant_id: tenantA, user_id: 'u', scopes: ['report:read'], visibility: seeAll },

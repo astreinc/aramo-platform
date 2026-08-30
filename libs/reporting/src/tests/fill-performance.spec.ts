@@ -6,11 +6,12 @@ import { ReportingService } from '../lib/reporting.service.js';
 // T9-B1 — fill-rate + time-to-fill semantic unit matrix (directive §15).
 //
 // The service is exercised with MOCKED repositories: `listCohortForActor`
-// returns the already-[from,to)+A3-scoped cohort, `listFirstPlacedByRequisitions`
-// returns the per-(talent, req) FIRST placed instant (the MIN is applied
-// in-repo). This spec proves the PURE aggregation semantics: the pipeline-
-// `placed` fill authority, the openings clamp, Nth-distinct completion, status
-// handling, null denominator, and averaging.
+// returns the already-[from,to)+A3-scoped cohort; L2-G — `readFillCohort` returns the
+// per-(talent, req) FIRST-ESTABLISHED instant (canonical fill = PlacementProcess
+// established, D-1; the MIN/dedup is applied in-repo). This spec proves the PURE
+// aggregation semantics: the placement-established fill authority, the openings clamp,
+// Nth-distinct completion, status handling, null denominator, and averaging. Time-to-Fill
+// is opened→established.
 //
 // The SQL-level guarantees are proven in the bearing libs/reporting integration
 // spec (real Postgres): the [from,to) cohort boundary, REOPEN-uses-original-
@@ -32,18 +33,29 @@ type Cohort = ReadonlyArray<{
   status: string;
   created_at: Date;
 }>;
+// L2-G — fill authority = PlacementProcess *established* (D-1). The fixture instant is
+// the FIRST-established (fill) instant; makeService maps it into the readFillCohort shape
+// (adds a synthetic placement id + first_started_at=null; Time-to-Fill uses the
+// established instant, not a STARTED instant).
 type Placed = ReadonlyArray<{
   requisition_id: string;
   talent_record_id: string;
-  first_placed_at: Date;
+  first_established_at: Date;
 }>;
 
 function makeService(cohort: Cohort, placed: Placed) {
   const requisitionRepository = {
     listCohortForActor: vi.fn().mockResolvedValue(cohort),
   };
-  const pipelineRepository = {
-    listFirstPlacedByRequisitions: vi.fn().mockResolvedValue(placed),
+  const fillRows = placed.map((p, i) => ({
+    requisition_id: p.requisition_id,
+    talent_record_id: p.talent_record_id,
+    first_placement_process_id: `pp-${String(i)}`,
+    first_established_at: p.first_established_at,
+    first_started_at: null,
+  }));
+  const placementEventRepository = {
+    readFillCohort: vi.fn().mockResolvedValue(fillRows),
   };
   const stub = {} as never;
   const svc = new ReportingService(
@@ -54,16 +66,16 @@ function makeService(cohort: Cohort, placed: Placed) {
     stub, // calendar
     stub, // activity
     requisitionRepository as never,
-    pipelineRepository as never,
+    stub, // pipelineRepository — L2-G: fill authority is no longer pipeline `placed`
     stub, // tenantSettingRepository
     stub, // capacity — the REJECTED path; must never be touched
-    stub, // placementEventRepository (T9-B2; unused by fill-performance)
+    placementEventRepository as never, // L2-G: the canonical fill read (readFillCohort)
     stub, // placementPipelineRepository (T9-B3; unused here)
     {} as never, // T7-P4 guaranteeExposureRepository (unused here)
     stub, // commercialMarginRepository (T9-B4; unused here)
     { findFirstSubmittedByGrain: async () => [] } as never, // L2-E submitted-history port
   );
-  return { svc, requisitionRepository, pipelineRepository };
+  return { svc, requisitionRepository, placementEventRepository };
 }
 
 const actor = {
@@ -76,14 +88,14 @@ const actor = {
 };
 
 const run = (cohort: Cohort, placed: Placed) => {
-  const { svc, requisitionRepository, pipelineRepository } = makeService(
+  const { svc, requisitionRepository, placementEventRepository } = makeService(
     cohort,
     placed,
   );
   return {
     result: svc.getFillPerformance(actor, { from: FROM, to: TO }),
     requisitionRepository,
-    pipelineRepository,
+    placementEventRepository,
   };
 };
 
@@ -91,13 +103,15 @@ describe('ReportingService.getFillPerformance — fill rate', () => {
   it('single-opening filled → 100% and fully-filled', async () => {
     const { result } = run(
       [{ id: 'r1', openings: 1, status: 'open', created_at: day(0) }],
-      [{ requisition_id: 'r1', talent_record_id: 't1', first_placed_at: day(5) }],
+      [{ requisition_id: 'r1', talent_record_id: 't1', first_established_at: day(5) }],
     );
     const v = await result;
     expect(v.openings).toBe(1);
     expect(v.filled_openings).toBe(1);
     expect(v.fill_rate).toBe(100);
     expect(v.fully_filled_requisitions).toBe(1);
+    // L2-G — provenance stamped: fill authority is the placement spine.
+    expect(v.canonical_fill_source).toBe('PLACEMENT_PROCESS');
   });
 
   it('single-opening unfilled → 0% and not fully-filled', async () => {
@@ -115,9 +129,9 @@ describe('ReportingService.getFillPerformance — fill rate', () => {
     const v = await run(
       [{ id: 'r1', openings: 3, status: 'open', created_at: day(0) }],
       [
-        { requisition_id: 'r1', talent_record_id: 't1', first_placed_at: day(2) },
-        { requisition_id: 'r1', talent_record_id: 't2', first_placed_at: day(6) },
-        { requisition_id: 'r1', talent_record_id: 't3', first_placed_at: day(4) },
+        { requisition_id: 'r1', talent_record_id: 't1', first_established_at: day(2) },
+        { requisition_id: 'r1', talent_record_id: 't2', first_established_at: day(6) },
+        { requisition_id: 'r1', talent_record_id: 't3', first_established_at: day(4) },
       ],
     ).result;
     expect(v.openings).toBe(3);
@@ -130,8 +144,8 @@ describe('ReportingService.getFillPerformance — fill rate', () => {
     const v = await run(
       [{ id: 'r1', openings: 3, status: 'open', created_at: day(0) }],
       [
-        { requisition_id: 'r1', talent_record_id: 't1', first_placed_at: day(2) },
-        { requisition_id: 'r1', talent_record_id: 't2', first_placed_at: day(4) },
+        { requisition_id: 'r1', talent_record_id: 't1', first_established_at: day(2) },
+        { requisition_id: 'r1', talent_record_id: 't2', first_established_at: day(4) },
       ],
     ).result;
     expect(v.openings).toBe(3);
@@ -144,8 +158,8 @@ describe('ReportingService.getFillPerformance — fill rate', () => {
     const v = await run(
       [{ id: 'r1', openings: 1, status: 'open', created_at: day(0) }],
       [
-        { requisition_id: 'r1', talent_record_id: 't1', first_placed_at: day(2) },
-        { requisition_id: 'r1', talent_record_id: 't2', first_placed_at: day(3) },
+        { requisition_id: 'r1', talent_record_id: 't1', first_established_at: day(2) },
+        { requisition_id: 'r1', talent_record_id: 't2', first_established_at: day(3) },
       ],
     ).result;
     expect(v.filled_openings).toBe(1); // min(2, 1)
@@ -161,9 +175,9 @@ describe('ReportingService.getFillPerformance — fill rate', () => {
       ],
       [
         // placements on the canceled req must be ignored entirely
-        { requisition_id: 'rc', talent_record_id: 'tc', first_placed_at: day(4) },
-        { requisition_id: 'ro', talent_record_id: 't1', first_placed_at: day(3) },
-        { requisition_id: 'ro', talent_record_id: 't2', first_placed_at: day(5) },
+        { requisition_id: 'rc', talent_record_id: 'tc', first_established_at: day(4) },
+        { requisition_id: 'ro', talent_record_id: 't1', first_established_at: day(3) },
+        { requisition_id: 'ro', talent_record_id: 't2', first_established_at: day(5) },
       ],
     ).result;
     expect(v.openings).toBe(2); // only the open req's openings
@@ -200,7 +214,7 @@ describe('ReportingService.getFillPerformance — time-to-fill', () => {
   it('single-opening → created_at → first placed instant', async () => {
     const v = await run(
       [{ id: 'r1', openings: 1, status: 'open', created_at: day(0) }],
-      [{ requisition_id: 'r1', talent_record_id: 't1', first_placed_at: day(5) }],
+      [{ requisition_id: 'r1', talent_record_id: 't1', first_established_at: day(5) }],
     ).result;
     expect(v.time_to_fill.count).toBe(1);
     expect(v.time_to_fill.average_days).toBe(5);
@@ -211,9 +225,9 @@ describe('ReportingService.getFillPerformance — time-to-fill', () => {
     const v = await run(
       [{ id: 'r1', openings: 3, status: 'open', created_at: day(0) }],
       [
-        { requisition_id: 'r1', talent_record_id: 't1', first_placed_at: day(2) },
-        { requisition_id: 'r1', talent_record_id: 't2', first_placed_at: day(6) },
-        { requisition_id: 'r1', talent_record_id: 't3', first_placed_at: day(4) },
+        { requisition_id: 'r1', talent_record_id: 't1', first_established_at: day(2) },
+        { requisition_id: 'r1', talent_record_id: 't2', first_established_at: day(6) },
+        { requisition_id: 'r1', talent_record_id: 't3', first_established_at: day(4) },
       ],
     ).result;
     expect(v.time_to_fill.count).toBe(1);
@@ -224,8 +238,8 @@ describe('ReportingService.getFillPerformance — time-to-fill', () => {
     const v = await run(
       [{ id: 'r1', openings: 3, status: 'open', created_at: day(0) }],
       [
-        { requisition_id: 'r1', talent_record_id: 't1', first_placed_at: day(2) },
-        { requisition_id: 'r1', talent_record_id: 't2', first_placed_at: day(4) },
+        { requisition_id: 'r1', talent_record_id: 't1', first_established_at: day(2) },
+        { requisition_id: 'r1', talent_record_id: 't2', first_established_at: day(4) },
       ],
     ).result;
     expect(v.time_to_fill.count).toBe(0);
@@ -235,7 +249,7 @@ describe('ReportingService.getFillPerformance — time-to-fill', () => {
   it('fully filled before a later close → retains the completed time-to-fill', async () => {
     const v = await run(
       [{ id: 'r1', openings: 1, status: 'closed', created_at: day(0) }],
-      [{ requisition_id: 'r1', talent_record_id: 't1', first_placed_at: day(3) }],
+      [{ requisition_id: 'r1', talent_record_id: 't1', first_established_at: day(3) }],
     ).result;
     expect(v.fully_filled_requisitions).toBe(1);
     expect(v.time_to_fill.count).toBe(1);
@@ -249,8 +263,8 @@ describe('ReportingService.getFillPerformance — time-to-fill', () => {
         { id: 'r2', openings: 1, status: 'open', created_at: day(0) },
       ],
       [
-        { requisition_id: 'r1', talent_record_id: 't1', first_placed_at: day(2) },
-        { requisition_id: 'r2', talent_record_id: 't1', first_placed_at: day(4) },
+        { requisition_id: 'r1', talent_record_id: 't1', first_established_at: day(2) },
+        { requisition_id: 'r2', talent_record_id: 't1', first_established_at: day(4) },
       ],
     ).result;
     expect(v.time_to_fill.count).toBe(2);
@@ -262,7 +276,7 @@ describe('ReportingService.getFillPerformance — contract & authority', () => {
   it('echoes the period and forwards [from,to) to the cohort read', async () => {
     const { result, requisitionRepository } = run(
       [{ id: 'r1', openings: 1, status: 'open', created_at: day(0) }],
-      [{ requisition_id: 'r1', talent_record_id: 't1', first_placed_at: day(1) }],
+      [{ requisition_id: 'r1', talent_record_id: 't1', first_established_at: day(1) }],
     );
     const v = await result;
     expect(v.period.from).toBe(FROM.toISOString());
@@ -273,15 +287,15 @@ describe('ReportingService.getFillPerformance — contract & authority', () => {
   });
 
   it('empty cohort → null fill_rate, zero everything, no repo placed read', async () => {
-    const { result, pipelineRepository } = run([], []);
+    const { result, placementEventRepository } = run([], []);
     const v = await result;
     expect(v.openings).toBe(0);
     expect(v.fill_rate).toBeNull();
     expect(v.fully_filled_requisitions).toBe(0);
     expect(v.time_to_fill.count).toBe(0);
-    // No cohort → the placed-history read is short-circuited.
+    // No cohort → the canonical fill read is short-circuited.
     expect(
-      pipelineRepository.listFirstPlacedByRequisitions,
+      placementEventRepository.readFillCohort,
     ).not.toHaveBeenCalled();
   });
 });

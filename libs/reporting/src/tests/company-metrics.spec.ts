@@ -20,14 +20,41 @@ function makeService(opts: {
     listForActor: vi.fn().mockResolvedValue(opts.reqs),
   };
   const pipelineRepository = {
-    // E6 Q-4 — getCompanyMetrics now dedupes by (talent, req): placed via
-    // mode:'exists', the submitted band via mode:'current'. The mock keys on the
-    // status set (placed → placed counts, else submitted counts).
+    // Lane 2 / L2-G — the `placed` leg is gone (fill = placement established). Only the
+    // submitted band (mode:'current') still reads pipeline history.
     countDistinctByRequisition: vi.fn(
-      async (args: { statuses: readonly string[]; mode: 'exists' | 'current' }) =>
-        args.statuses.includes('placed') ? opts.placed : opts.submitted,
+      async () => opts.submitted,
     ),
-    listByRequisitionsAndStatus: vi.fn(async () => opts.placedRows ?? []),
+  };
+  // Lane 2 / L2-G — active_placements + company-placements both derive from the canonical
+  // fill read. Reproduce the seeded placements AS readFillCohort rows: `placedRows` map
+  // 1:1 (id → first_placement_process_id) for the placements list; otherwise `placed`
+  // {req,count} expands into `count` distinct (talent, req) established rows for the count.
+  const EPOCH = new Date('2026-01-01T00:00:00.000Z');
+  const establishedRows =
+    opts.placedRows !== undefined && opts.placedRows.length > 0
+      ? opts.placedRows.map((r) => ({
+          requisition_id: r['requisition_id'] as string,
+          talent_record_id: r['talent_record_id'] as string,
+          first_placement_process_id: r['id'] as string,
+          first_established_at: EPOCH,
+          first_started_at: null,
+        }))
+      : opts.placed.flatMap((p) =>
+          Array.from({ length: p.count }, (_unused, j) => ({
+            requisition_id: p.requisition_id,
+            talent_record_id: `t-${p.requisition_id}-${String(j)}`,
+            first_placement_process_id: `pp-${p.requisition_id}-${String(j)}`,
+            first_established_at: EPOCH,
+            first_started_at: null,
+          })),
+        );
+  const placementEventRepository = {
+    readFillCohort: vi.fn(async (q: { requisition_ids?: readonly string[] }) =>
+      q.requisition_ids === undefined
+        ? establishedRows
+        : establishedRows.filter((r) => q.requisition_ids!.includes(r.requisition_id)),
+    ),
   };
   const stub = {} as never;
   const svc = new ReportingService(
@@ -41,7 +68,7 @@ function makeService(opts: {
     pipelineRepository as never,
     stub, // tenantSettingRepository (unused by company-metrics)
     stub, // capacity (T4-B1 access; company-metrics still uses the stored column)
-    stub, // placementEventRepository (T9-B2; unused here)
+    placementEventRepository as never, // L2-G: the canonical fill read (readFillCohort)
     stub, // placementPipelineRepository (T9-B3; unused here)
     {} as never, // T7-P4 guaranteeExposureRepository (unused here)
     stub, // commercialMarginRepository (T9-B4; unused here)
@@ -132,9 +159,11 @@ describe('ReportingService.getCompanyPlacements', () => {
       ],
     });
     const res = await svc.getCompanyPlacements(actor, 'co-A');
+    // L2-G — identity is now the established placement (placement_process_id); pipeline_id
+    // is retired from this shape (the placement spine carries no pipeline id).
     expect(res).toEqual([
       {
-        pipeline_id: 'pl-1',
+        placement_process_id: 'pl-1',
         talent_record_id: 'tr-1',
         requisition_id: 'r-a1',
         requisition_title: 'Rust Eng',

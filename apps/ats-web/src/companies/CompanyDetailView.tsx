@@ -743,7 +743,7 @@ function PlacementsPanel({
             {placements.map((p) => {
               const name = names[p.talent_record_id] ?? 'Talent';
               return (
-                <li key={p.pipeline_id} className="rc-tmrow rc-tmrow--row">
+                <li key={p.placement_process_id} className="rc-tmrow rc-tmrow--row">
                   <Avatar name={name} size="sm" />
                   <div className="rc-tmrow__body">
                     <div className="rc-tmrow__nm">

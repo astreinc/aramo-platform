@@ -875,6 +875,68 @@ export class PipelineRepository {
     });
   }
 
+  // Lane 2 / L2-G (SB-0 / v1.2 R-CMD) — the SYSTEM-ONLY DOWNSTREAM DISPOSITION command:
+  // an episode that has NOT started but whose downstream placement fell through / no-showed
+  // is disposed to `not_in_consideration` with a DOWNSTREAM_OUTCOME disposition. Parallel
+  // to complete() so apps/api invokes a SAFE Pipeline-owned command and never reconstructs
+  // Pipeline's security rules by calling the generic transition() directly: this method
+  // OWNS the pipeline:complete capability gate (the system downstream-lifecycle authority —
+  // COMPLETE and downstream-DISPOSITION share it), the DOWNSTREAM_OUTCOME authority, reason
+  // validation, the not_in_consideration target, CAS, provenance, and the disposition write.
+  // Re-delivery on an already-dispositioned episode surfaces PIPELINE_ALREADY_DISPOSITIONED
+  // (409) — the caller treats that as recognized-satisfied. NEVER `completed` (SB-0).
+  async dispositionDownstream(args: {
+    tenant_id: string;
+    id: string;
+    expected_version: number;
+    changed_by_id: string;
+    requestId: string;
+    visible_requisition_ids: ReadonlySet<string> | null;
+    scopes: readonly string[];
+    source_provenance: string;
+    reason: string;
+    note?: string;
+  }): Promise<PipelineView> {
+    if (!args.scopes.includes('pipeline:complete')) {
+      throw new AramoError(
+        'PIPELINE_COMPLETE_SYSTEM_ONLY',
+        'Downstream DISPOSITION is a system-only command (requires the pipeline:complete capability)',
+        403,
+        { requestId: args.requestId, details: { pipeline_id: args.id } },
+      );
+    }
+    if (
+      !args.source_provenance ||
+      !isValidDispositionReason('DOWNSTREAM_OUTCOME', args.reason)
+    ) {
+      throw new AramoError(
+        'PIPELINE_DISPOSITION_REASON_INVALID',
+        'Downstream DISPOSITION requires source_provenance and a valid DOWNSTREAM_OUTCOME reason',
+        422,
+        {
+          requestId: args.requestId,
+          details: { pipeline_id: args.id, reason: args.reason },
+        },
+      );
+    }
+    return this.transition({
+      tenant_id: args.tenant_id,
+      id: args.id,
+      to_status: 'not_in_consideration',
+      changed_by_id: args.changed_by_id,
+      ...(args.note === undefined ? {} : { note: args.note }),
+      requestId: args.requestId,
+      expected_version: args.expected_version,
+      visible_requisition_ids: args.visible_requisition_ids,
+      disposition: {
+        authority_class: 'DOWNSTREAM_OUTCOME',
+        reason: args.reason,
+        source_provenance: args.source_provenance,
+        ...(args.note === undefined ? {} : { note: args.note }),
+      },
+    });
+  }
+
   // -------------------------------------------------------------------------
   // Read path
   // -------------------------------------------------------------------------

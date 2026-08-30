@@ -123,7 +123,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       }
     }
 
-    it('transition -> placed does NOT decrement requisition.openings_available (capacity untouched)', async () => {
+    // L2-G — `offered → placed` is retired (canonical fill = placement spine). The
+    // T4-B2 capacity invariant (pipeline owns NO capacity writer) is preserved and
+    // re-proven here over a LEGACY `placed` row (force-written, as legacy rows exist):
+    // its presence does not decrement openings_available.
+    it('a legacy placed row does NOT decrement requisition.openings_available (capacity untouched)', async () => {
       const tenant = randomUUID();
       const req = await seedRequisition(tenant, 3, 3);
       const talent = randomUUID();
@@ -131,21 +135,26 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await drive(tenant, p.id, PATH_TO_OFFERED);
       const before = await openingsAvailable(req);
       expect(before).toBe(3);
-      await casTransition(tenant, p.id, 'placed', 'b2');
+      // placed is legacy-only (L2-G); force it as a legacy row rather than transitioning.
+      await prisma.$executeRawUnsafe(`UPDATE pipeline."Pipeline" SET status = 'placed' WHERE id = '${p.id}'`);
       // POST-B2: capacity is owned by ContractAssignment, not pipeline. Unchanged.
       expect(await openingsAvailable(req)).toBe(3);
     });
 
-    it('transition -> placed with zero available does NOT throw REQUISITION_NO_OPENINGS (409 gate removed; over-capacity is representable)', async () => {
+    // L2-G — the `offered → placed` NEW-write is RETIRED: a transition to `placed` is
+    // refused (INVALID_PIPELINE_TRANSITION 422), never a capacity error, and never a
+    // `placed` write. (This subsumes the former T4-B2 "no REQUISITION_NO_OPENINGS gate"
+    // test — the placed-transition gate no longer exists because the transition is gone.)
+    it('a transition to placed is refused INVALID_PIPELINE_TRANSITION (422); capacity untouched', async () => {
       const tenant = randomUUID();
       const req = await seedRequisition(tenant, 1, 0); // legacy "no openings" state
       const talent = randomUUID();
       const p = await repo.create({ tenant_id: tenant, input: { talent_record_id: talent, requisition_id: req }, entry_provenance: { origin_type: 'MANUAL_RECRUITER', initiated_by_kind: 'user' } });
       await drive(tenant, p.id, PATH_TO_OFFERED);
-      // Pre-B2 this threw 409 and rolled back. Post-B2 it succeeds; capacity untouched.
       await expect(
         casTransition(tenant, p.id, 'placed', 'b2'),
-      ).resolves.toBeDefined();
+      ).rejects.toMatchObject({ code: 'INVALID_PIPELINE_TRANSITION', statusCode: 422 });
+      // The episode stays at offered; capacity untouched.
       expect(await openingsAvailable(req)).toBe(0);
     });
 

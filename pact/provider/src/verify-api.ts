@@ -6934,15 +6934,19 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         });
       },
 
-      // T9-B1 — a DEDICATED state for the fill-performance interaction. Kept
-      // separate from the shared reporting state above because seeding a
-      // requisition + placed pipeline would give the company openings (breaking
-      // the company-metrics `fill_rate: null` / company-placements `[]` /
-      // dashboard empty-`by_status` expectations). A single-opening requisition
-      // (default openings = 1) with one `placed` pipeline + a placed history row
-      // → GET /v1/reports/fill-performance over a wide window returns a
-      // deterministic 100% fill rate and one fully-filled requisition with a
-      // time-to-fill value (§14). Visible tenant-wide via requisition:read:all.
+      // T9-B1 / L2-G — a DEDICATED state for the fill-performance interaction. Kept
+      // separate from the shared reporting state above because seeding a filled
+      // requisition would give the company openings (breaking the company-metrics
+      // `fill_rate: null` / company-placements `[]` / dashboard empty-`by_status`
+      // expectations). L2-G migrated the canonical fill authority to the placement
+      // spine: fill = a PlacementProcess ESTABLISHED (its created_at is the fill
+      // instant), NOT a Pipeline `placed` history triple. A single-opening
+      // requisition (default openings = 1) created 2026-05-10 with ONE established
+      // PlacementProcess on 2026-05-20 → GET /v1/reports/fill-performance returns a
+      // deterministic 100% fill rate, one fully-filled requisition, and a whole
+      // 10-day time-to-fill (§14). A legacy `placed` pipeline is retained (readable
+      // history) but is NO LONGER the fill fact. Visible tenant-wide via
+      // requisition:read:all.
       'an ats-web recruiter and a fully-filled requisition exist': async () => {
         await withClient(async (c) => {
           await resetAllRows(c);
@@ -6960,6 +6964,30 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
             title: 'Filled Req',
             companyId: ATSW_COMPANY_ID,
           });
+          // Pin the requisition open instant so the time-to-fill is a deterministic
+          // whole number (10 days) — the consumer matches average_days by Integer type.
+          await c.query(
+            `UPDATE requisition."Requisition" SET created_at = '2026-05-10T00:00:00.000Z'
+              WHERE id = $1 AND tenant_id = $2`,
+            [ATSW_PIPE_FULL_REQ_ID, TENANT_ID],
+          );
+          // The CANONICAL fill fact (L2-G): one established PlacementProcess for the
+          // (requisition, talent). readFillCohort reads its created_at as the fill instant.
+          await c.query(
+            `INSERT INTO placement."PlacementProcess"
+               (id, tenant_id, submittal_id, requisition_id, talent_record_id, state, offered_at, created_at)
+             VALUES ($1,$2,$3,$4,$5,'STARTED'::placement."PlacementState",
+                     '2026-05-20T00:00:00.000Z', '2026-05-20T00:00:00.000Z')
+             ON CONFLICT (id) DO NOTHING`,
+            [
+              '00000000-0000-7000-8000-f1110000000a',
+              TENANT_ID,
+              '00000000-0000-7000-8000-f1110000000b',
+              ATSW_PIPE_FULL_REQ_ID,
+              ATSW_PIPE_TALENT_ID,
+            ],
+          );
+          // Legacy `placed` pipeline (retained readable history; no longer the fill fact).
           await seedAtsWebPipeline(c, {
             id: ATSW_PIPE_ID,
             talentRecordId: ATSW_PIPE_TALENT_ID,

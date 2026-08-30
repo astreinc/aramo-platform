@@ -234,7 +234,8 @@ describe('CompanyDetailView (account hub)', () => {
       '/v1/reports/company-placements': {
         items: [
           {
-            pipeline_id: 'pl-1',
+            // L2-G — canonical placement id (PlacementProcess established); pipeline_id retired.
+            placement_process_id: 'pp-1',
             talent_record_id: 'tr-1',
             requisition_id: 'r-1',
             requisition_title: 'Senior Rust Engineer',

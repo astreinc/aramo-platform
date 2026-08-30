@@ -31,7 +31,10 @@ export const LEGAL_TRANSITIONS: Record<
   // outgoing edges for legacy rows. Mirrors libs/pipeline/src/lib/pipeline-state.ts.
   submitted: ['qualifying', 'not_in_consideration'],
   interviewing: ['offered', 'not_in_consideration'],
-  offered: ['placed', 'not_in_consideration'],
+  // L2-G — `offered → placed` NEW-write edge RETIRED (canonical fill = PlacementProcess
+  // established; success = system-only COMPLETE, SB-3). `placed` enum kept (legacy
+  // terminal); legacy `placed` rows still render. Mirrors pipeline-state.ts.
+  offered: ['not_in_consideration'],
   not_in_consideration: [],
   client_declined: [],
   placed: [],

@@ -45,8 +45,11 @@ const WORK_AUTH_OPTIONS = WORK_AUTHORIZATION_VALUES.map((v) => ({
 // Pipeline transition target (interview truth is owned by InterviewSession), so the
 // `interview` bucket is now DISPLAY-ONLY: `legalNextStates` never yields `interviewing`,
 // so the bucket button is always disabled (no forward write) — it renders only to place
-// legacy `interviewing` rows on the funnel. The mapping is retained so the bucket keeps
-// its canonical position; it is inert as a write.
+// legacy `interviewing` rows on the funnel. L2-G — `placed` is likewise RETIRED as a
+// NEW-write target (canonical fill = PlacementProcess established; success = system-only
+// COMPLETE), so the `placed` bucket is DISPLAY-ONLY too (button always disabled; legacy
+// `placed` rows still render). Both mappings are retained for canonical position; inert
+// as writes.
 const BUCKET_TARGET: Record<FunnelBucketKey, PipelineStatus> = {
   sourced: 'contacted',
   qualifying: 'qualifying',

@@ -69,6 +69,7 @@ import { ConnectorExecutionModule } from './connector/connector-execution.module
 import { RequisitionIntegrationModule } from './requisition-integration/requisition-integration.module.js';
 import { LifecyclePollModule } from './requisition-integration/lifecycle-poll.module.js';
 import { ReconciliationDrainModule } from './requisition-integration/reconciliation-drain.module.js';
+import { PlacementLifecycleOrchestratorModule } from './placement-pipeline-orchestration/placement-lifecycle-orchestrator.module.js';
 import { TenantCognitoAdapter } from './cognito/tenant-cognito.adapter.js';
 import { TenantWriteFreezeInterceptor } from './tenant-write-freeze/tenant-write-freeze.interceptor.js';
 import { TalentAnchorInterceptor } from './talent-anchor/talent-anchor.interceptor.js';
@@ -337,6 +338,11 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     // claim due pending rows → re-run the governed path / resolve / park;
     // Redis-gated). Drains the rows A1 + FG only WRITE today.
     ReconciliationDrainModule,
+    // L2-G (Part 3) — the placement→pipeline lifecycle orchestrator worker
+    // (scheduled tick → idempotent inbox → submittal→pipeline lineage → Pipeline
+    // COMPLETE / dispositionDownstream; Redis-gated). Consumes placement.process
+    // .state_changed; drives the system-only Pipeline commands by stored lineage.
+    PlacementLifecycleOrchestratorModule,
     // M5 PR-11 §4.5/§4.6 — SkillsTaxonomyModule registers the
     // skill-canonicalization queue + no-op processor (Architecture v2.1
     // §9.2 / Plan v1.5 §M5 Track A item 6 binding).

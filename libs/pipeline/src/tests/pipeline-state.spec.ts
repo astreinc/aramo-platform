@@ -40,7 +40,9 @@ const EXPECTED_LEGAL: Record<PipelineStatus, readonly PipelineStatus[]> = {
   // values kept; source keys kept with their still-valid outgoing edges.
   submitted: ['qualifying', 'not_in_consideration'],
   interviewing: ['offered', 'not_in_consideration'],
-  offered: ['placed', 'not_in_consideration'],
+  // L2-G — `offered → placed` NEW-write edge RETIRED (canonical fill = PlacementProcess
+  // established; success = system-only COMPLETE). `placed` enum kept (legacy terminal).
+  offered: ['not_in_consideration'],
   not_in_consideration: [],
   client_declined: [],
   placed: [],
@@ -106,7 +108,28 @@ describe('canTransition — legal forward + backward + exit edges', () => {
     // the KEPT source edge `interviewing -> offered` remains legal for legacy rows.
     expect(canTransition('submitted', 'interviewing')).toBe(false);
     expect(canTransition('interviewing', 'offered')).toBe(true);
-    expect(canTransition('offered', 'placed')).toBe(true);
+    // L2-G — `offered -> placed` is now RETIRED (canonical fill = placement spine).
+    expect(canTransition('offered', 'placed')).toBe(false);
+  });
+
+  // L2-G — the `offered → placed` NEW-write edge is retired (it was LEGAL before this
+  // slice, ILLEGAL now); `placed` enum value + legacy terminal status KEPT. Successful
+  // Pipeline closure is now the system-only COMPLETE (SB-3), not a manual `placed` write.
+  it('L2-G: offered -> placed is RETIRED; placed is unreachable as a NEW transition target', () => {
+    // BEFORE this slice offered -> placed was the sole placed-writer edge; now illegal.
+    expect(canTransition('offered', 'placed')).toBe(false);
+    // placed is not a target from any OTHER state (no writer mints a new `placed`;
+    // the from===to no-op is excluded — it is legal for every state and the repo
+    // intercepts it separately).
+    for (const from of ALL_STATES) {
+      if (from === 'placed') continue;
+      expect(canTransition(from, 'placed'), `${from} -> placed must be illegal`).toBe(false);
+    }
+    // KEPT: the enum value (placed stays a legacy terminal — the dedicated terminal
+    // test below asserts placed has no outgoing edges).
+    expect(isPipelineStatus('placed')).toBe(true);
+    // offered still drops to not_in_consideration (its remaining edge).
+    expect(canTransition('offered', 'not_in_consideration')).toBe(true);
   });
 
   // L2-F3 — the R9 edge-set is retired: each of the 5 edges was LEGAL before this
@@ -124,7 +147,7 @@ describe('canTransition — legal forward + backward + exit edges', () => {
     expect(canTransition('submitted', 'qualifying')).toBe(true);
     expect(canTransition('interviewing', 'offered')).toBe(true);
     expect(canTransition('interviewing', 'not_in_consideration')).toBe(true);
-    expect(canTransition('offered', 'placed')).toBe(true);
+    // (L2-G separately retires offered → placed; see the dedicated L2-G test.)
     // Enum values retained (no drop).
     expect(isPipelineStatus('interviewing')).toBe(true);
     expect(isPipelineStatus('client_declined')).toBe(true);

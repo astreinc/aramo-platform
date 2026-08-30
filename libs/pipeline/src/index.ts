@@ -13,6 +13,7 @@ export {
   PIPELINE_STATUS_VALUES,
   isPipelineStatus,
   canTransition,
+  isLiveStatus,
   legalNextStates,
   // Lane 2 / L2-E (SB-5) — the active-stage ordinal, consumed by the apps/api
   // current_stage submitted overlay (R5) to compare a raw stage against `submitted`.

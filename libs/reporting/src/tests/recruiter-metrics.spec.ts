@@ -49,6 +49,29 @@ function makeService(opts: {
         })),
     ),
   };
+  // Lane 2 / L2-G — placements_monthly is now canonical: the actor's requisitions'
+  // *established* PlacementProcess (D-1), bucketed by the established instant. Reproduce
+  // each seeded `placed` transition AS an established fill row (first_established_at =
+  // the transition's changed_at), window-filtered exactly as the real readFillCohort —
+  // so placements_monthly stays identical to the pre-flip values.
+  const placementEventRepository = {
+    readFillCohort: vi.fn(async (q: { from?: Date; to?: Date }) =>
+      opts.transitions
+        .filter((t) => t.status_to === 'placed')
+        .filter(
+          (t) =>
+            (q.from === undefined || t.changed_at >= q.from) &&
+            (q.to === undefined || t.changed_at < q.to),
+        )
+        .map((t, i) => ({
+          requisition_id: `r-${String(i)}`,
+          talent_record_id: `t-${String(i)}`,
+          first_placement_process_id: `pp-${String(i)}`,
+          first_established_at: t.changed_at,
+          first_started_at: null,
+        })),
+    ),
+  };
   const stub = {} as never;
   const svc = new ReportingService(
     stub, // company
@@ -61,7 +84,7 @@ function makeService(opts: {
     pipelineRepository as never,
     tenantSettingRepository as never,
     {} as never, // capacity (T4-B1 access; recruiter-metrics does not use it)
-    {} as never, // placementEventRepository (T9-B2; unused here)
+    placementEventRepository as never, // L2-G: canonical fill read (readFillCohort)
     {} as never, // placementPipelineRepository (T9-B3; unused here)
     {} as never, // T7-P4 guaranteeExposureRepository (unused here)
     {} as never, // commercialMarginRepository (T9-B4; unused here)
