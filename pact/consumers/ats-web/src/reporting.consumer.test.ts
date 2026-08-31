@@ -377,6 +377,178 @@ describe('ats-web → reporting', () => {
         expect(body.error.code).toBe('INSUFFICIENT_PERMISSIONS');
       });
   });
+
+  // L2-I (D4a / D5) — recruiting funnel. Pipeline-owned, counts-only current snapshot; the six
+  // recruiting stages are ALWAYS present (zero-filled), so the interaction is deterministic on the
+  // shared reporting state with no pipeline rows seeded.
+  it('GET /v1/reports/recruiting-funnel returns the six Pipeline-owned stages', async () => {
+    await provider
+      .addInteraction()
+      .given('an ats-web recruiter and tenant reporting data exist')
+      .uponReceiving('a recruiting-funnel read')
+      .withRequest('GET', '/v1/reports/recruiting-funnel', (b) => {
+        b.headers({ Cookie: like(ACCESS_COOKIE) });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          canonical_source: 'PIPELINE',
+          stages: [
+            { stage: 'considered', count: like(0) },
+            { stage: 'contacted', count: like(0) },
+            { stage: 'responded', count: like(0) },
+            { stage: 'qualifying', count: like(0) },
+            { stage: 'qualified', count: like(0) },
+            { stage: 'dispositioned', count: like(0) },
+          ],
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/reports/recruiting-funnel`, { headers: { Cookie: ACCESS_COOKIE } });
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as { canonical_source: string };
+        expect(body.canonical_source).toBe('PIPELINE');
+      });
+  });
+
+  it('GET /v1/reports/recruiting-funnel without report:read → 403', async () => {
+    await provider
+      .addInteraction()
+      .given('an ats-web recruiter and tenant reporting data exist')
+      .uponReceiving('a recruiting-funnel read without report:read')
+      .withRequest('GET', '/v1/reports/recruiting-funnel', (b) => {
+        b.headers({ Authorization: 'Bearer eyJfake.noscopes.token' });
+      })
+      .willRespondWith(403, (b) => {
+        b.jsonBody({
+          error: {
+            code: 'INSUFFICIENT_PERMISSIONS',
+            message: like('Required scopes not granted'),
+            request_id: uuid(),
+            details: like({}),
+          },
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/reports/recruiting-funnel`, {
+          headers: { Authorization: 'Bearer eyJfake.noscopes.token' },
+        });
+        expect(res.status).toBe(403);
+      });
+  });
+
+  // L2-I (D4b / D5) — hiring funnel. Downstream-owner-attributed, counts-only; the six hiring
+  // stages are ALWAYS present (zero-filled) with their owner label, deterministic on the shared
+  // reporting state with no submittal/interview/offer/placement rows seeded.
+  it('GET /v1/reports/hiring-funnel returns the six owner-attributed stages', async () => {
+    await provider
+      .addInteraction()
+      .given('an ats-web recruiter and tenant reporting data exist')
+      .uponReceiving('a hiring-funnel read')
+      .withRequest('GET', '/v1/reports/hiring-funnel', (b) => {
+        b.headers({ Cookie: like(ACCESS_COOKIE) });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          stages: [
+            { stage: 'submitted', owner: 'SUBMITTAL', count: like(0) },
+            { stage: 'interview', owner: 'CLIENT_SELECTION', count: like(0) },
+            { stage: 'offer', owner: 'OFFER', count: like(0) },
+            { stage: 'accepted', owner: 'OFFER', count: like(0) },
+            { stage: 'placement', owner: 'PLACEMENT_PROCESS', count: like(0) },
+            { stage: 'start', owner: 'PLACEMENT_PROCESS', count: like(0) },
+          ],
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/reports/hiring-funnel`, { headers: { Cookie: ACCESS_COOKIE } });
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as { stages: Array<{ owner: string }> };
+        expect(body.stages[0].owner).toBe('SUBMITTAL');
+      });
+  });
+
+  it('GET /v1/reports/hiring-funnel without report:read → 403', async () => {
+    await provider
+      .addInteraction()
+      .given('an ats-web recruiter and tenant reporting data exist')
+      .uponReceiving('a hiring-funnel read without report:read')
+      .withRequest('GET', '/v1/reports/hiring-funnel', (b) => {
+        b.headers({ Authorization: 'Bearer eyJfake.noscopes.token' });
+      })
+      .willRespondWith(403, (b) => {
+        b.jsonBody({
+          error: {
+            code: 'INSUFFICIENT_PERMISSIONS',
+            message: like('Required scopes not granted'),
+            request_id: uuid(),
+            details: like({}),
+          },
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/reports/hiring-funnel`, {
+          headers: { Authorization: 'Bearer eyJfake.noscopes.token' },
+        });
+        expect(res.status).toBe(403);
+      });
+  });
+
+  // L2-I (D3 / D5) — source-effectiveness. Period-bounded correlation; with no requisitions in the
+  // wide cohort the sources array is deterministically empty and canonical_fill_source is stamped.
+  it('GET /v1/reports/source-effectiveness returns the classified-evidence correlation', async () => {
+    const FROM = '2020-01-01T00:00:00.000Z';
+    const TO = '2100-01-01T00:00:00.000Z';
+    await provider
+      .addInteraction()
+      .given('an ats-web recruiter and tenant reporting data exist')
+      .uponReceiving('a source-effectiveness read')
+      .withRequest('GET', '/v1/reports/source-effectiveness', (b) => {
+        b.query({ from: FROM, to: TO });
+        b.headers({ Cookie: like(ACCESS_COOKIE) });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({ canonical_fill_source: 'PLACEMENT_PROCESS', sources: [] });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(
+          `${mock.url}/v1/reports/source-effectiveness?from=${encodeURIComponent(FROM)}&to=${encodeURIComponent(TO)}`,
+          { headers: { Cookie: ACCESS_COOKIE } },
+        );
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as { canonical_fill_source: string };
+        expect(body.canonical_fill_source).toBe('PLACEMENT_PROCESS');
+      });
+  });
+
+  it('GET /v1/reports/source-effectiveness without report:read → 403', async () => {
+    const FROM = '2020-01-01T00:00:00.000Z';
+    const TO = '2100-01-01T00:00:00.000Z';
+    await provider
+      .addInteraction()
+      .given('an ats-web recruiter and tenant reporting data exist')
+      .uponReceiving('a source-effectiveness read without report:read')
+      .withRequest('GET', '/v1/reports/source-effectiveness', (b) => {
+        b.query({ from: FROM, to: TO });
+        b.headers({ Authorization: 'Bearer eyJfake.noscopes.token' });
+      })
+      .willRespondWith(403, (b) => {
+        b.jsonBody({
+          error: {
+            code: 'INSUFFICIENT_PERMISSIONS',
+            message: like('Required scopes not granted'),
+            request_id: uuid(),
+            details: like({}),
+          },
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(
+          `${mock.url}/v1/reports/source-effectiveness?from=${encodeURIComponent(FROM)}&to=${encodeURIComponent(TO)}`,
+          { headers: { Authorization: 'Bearer eyJfake.noscopes.token' } },
+        );
+        expect(res.status).toBe(403);
+      });
+  });
 });
 
 describe('ats-web → me', () => {

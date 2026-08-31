@@ -49,6 +49,7 @@ function makeService(snapshot: Snapshot, visibleReqs?: ReadonlyArray<{ id: strin
     stub, // guaranteeExposureRepository (T7-P4; unused here)
     commercialMarginRepository as never,
     { findFirstSubmittedByGrain: async () => [] } as never, // L2-E submitted-history port
+    { findFirstInterviewByGrain: async () => [] } as never, // L2-I D4b interview-history port
   );
   return { svc, commercialMarginRepository, requisitionRepository };
 }

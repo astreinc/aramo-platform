@@ -27,6 +27,7 @@ function serviceWithSnapshot(snapshot: GuaranteeExposureSnapshot): ReportingServ
     repo,
     {} as never, // commercialMarginRepository (T9-B4; unused here)
     { findFirstSubmittedByGrain: async () => [] } as never, // L2-E submitted-history port
+    { findFirstInterviewByGrain: async () => [] } as never, // L2-I D4b interview-history port
   );
 }
 

@@ -202,6 +202,29 @@ export class InterviewSessionRepository {
   // none exists (a coherent absence — never a fabricated state). Visibility is enforced
   // by the composer loading the pipeline episode through findByIdForActor FIRST (house
   // pattern); the process + its sessions share that requisition's visibility boundary.
+  // Lane 2 / L2-I (D4b) — the FIRST-interview-per-(talent, requisition)-grain read for the
+  // reporting hiring funnel (consumed via the reporting-owned INTERVIEW_HISTORY_PORT adapter;
+  // reporting never imports this lib — A7 seam). Returns the earliest scheduled interview instant
+  // per grain, optionally restricted to a requisition visibility set.
+  async findFirstInterviewByGrain(args: {
+    tenant_id: string;
+    requisition_ids?: readonly string[];
+  }): Promise<Array<{ requisition_id: string; talent_record_id: string; first_interview_at: Date }>> {
+    const hasReq = args.requisition_ids !== undefined;
+    if (hasReq && args.requisition_ids!.length === 0) return [];
+    const params: unknown[] = [args.tenant_id];
+    if (hasReq) params.push([...args.requisition_ids!]);
+    const reqClause = hasReq ? `AND s."requisition_id" = ANY($2::uuid[])` : '';
+    const rows = await this.prisma.$queryRawUnsafe<Array<{ requisition_id: string; talent_record_id: string; first_interview_at: Date }>>(
+      `SELECT s."requisition_id", s."talent_record_id", MIN(s."scheduled_at") AS first_interview_at
+         FROM "client_selection"."InterviewSession" s
+        WHERE s."tenant_id" = $1::uuid ${reqClause}
+        GROUP BY s."requisition_id", s."talent_record_id"`,
+      ...params,
+    );
+    return rows.map((r) => ({ requisition_id: r.requisition_id, talent_record_id: r.talent_record_id, first_interview_at: r.first_interview_at }));
+  }
+
   async findLatestByProcess(args: {
     tenant_id: string;
     client_selection_process_id: string;

@@ -30,6 +30,13 @@ import {
   SUBMITTED_HISTORY_PORT,
   type SubmittedHistoryPort,
 } from './ports/submitted-history.port.js';
+// Lane 2 / L2-I (D4b) — the reporting-owned interview-history port. The IMPLEMENTATION is a
+// @aramo/client-selection-backed adapter wired at the apps/api composition root; libs/reporting
+// imports NEITHER @aramo/client-selection NOR its schema (A7 seam-exclusion preserved).
+import {
+  INTERVIEW_HISTORY_PORT,
+  type InterviewHistoryPort,
+} from './ports/interview-history.port.js';
 import {
   applySubmittedOverlayToBuckets,
   submittedBandOverlayByRequisition,
@@ -42,6 +49,11 @@ import type {
   FallthroughReasonView,
   FallthroughReportView,
   FillPerformanceReportView,
+  SourceEffectivenessReportView,
+  RecruitingFunnelReportView,
+  RecruitingFunnelStage,
+  HiringFunnelReportView,
+  HiringFunnelStage,
   FillShadowCompareRow,
   ShadowCompareClass,
   GuaranteeExposureReportView,
@@ -229,6 +241,18 @@ function weeklyAvgDaysMetric(
   return { value, previous, series, goal: goal ?? null };
 }
 
+// L2-I (D4b) — the HIRING-funnel stage order + its OWNING aggregate. The owner label is the
+// authoritative source aggregate for that stage, surfaced on the view so the funnel is self-
+// describing (no stage is Pipeline-owned; that is the recruiting funnel's job).
+const HIRING_STAGE_OWNER: ReadonlyArray<{ stage: HiringFunnelStage; owner: string }> = [
+  { stage: 'submitted', owner: 'SUBMITTAL' },
+  { stage: 'interview', owner: 'CLIENT_SELECTION' },
+  { stage: 'offer', owner: 'OFFER' },
+  { stage: 'accepted', owner: 'OFFER' },
+  { stage: 'placement', owner: 'PLACEMENT_PROCESS' },
+  { stage: 'start', owner: 'PLACEMENT_PROCESS' },
+];
+
 @Injectable()
 export class ReportingService {
   private readonly logger = new Logger(ReportingService.name);
@@ -271,6 +295,11 @@ export class ReportingService {
     // Trailing param (ctor-ripple contained).
     @Inject(SUBMITTED_HISTORY_PORT)
     private readonly submittedHistory: SubmittedHistoryPort,
+    // Lane 2 / L2-I (D4b) — the interview-history port (reporting-owned interface;
+    // @aramo/client-selection-backed adapter injected at the apps/api composition root).
+    // Trailing param (ctor-ripple contained). Provides the hiring-funnel INTERVIEW stage.
+    @Inject(INTERVIEW_HISTORY_PORT)
+    private readonly interviewHistory: InterviewHistoryPort,
   ) {}
 
   // Track 4 / T4-B1 (CASE A access) — single-requisition derived capacity, PULLED
@@ -427,6 +456,124 @@ export class ReportingService {
   // openings (D-2/§5) — only fully-filled reqs contribute (§6). Computed on
   // read over TWO date/cohort-bounded repository reads (D-6); no
   // materialization, no migration, no proxy.
+  // L2-I (D4) — the RECRUITING funnel report (Pipeline-OWNED, reporting-native). Projects the
+  // canonical L2-C PipelineStatus registry onto the six recruiting-funnel stages (Rule D; Lane2-
+  // DDR §4). Downstream-owned statuses (completed / legacy submitted/interviewing/offered/placed/
+  // client_declined) are NOT recruiting stages and are EXCLUDED — the hiring funnel owns them.
+  async getRecruitingFunnel(actor: ActorContext): Promise<RecruitingFunnelReportView> {
+    const visibleReqIds = await this.resolveVisibleRequisitionIds(actor);
+    const raw = await this.pipelineRepository.countByStatus({
+      tenant_id: actor.tenant_id,
+      ...(visibleReqIds === undefined ? {} : { requisition_ids: visibleReqIds }),
+    });
+    const order: readonly RecruitingFunnelStage[] = ['considered', 'contacted', 'responded', 'qualifying', 'qualified', 'dispositioned'];
+    // Rule D — the projection is FROM the imported canonical statuses; a status outside this map
+    // (completed / legacy downstream values) is deliberately not a recruiting-funnel stage.
+    const STATUS_TO_STAGE: Readonly<Record<string, RecruitingFunnelStage>> = {
+      no_status: 'considered',
+      no_contact: 'considered',
+      contacted: 'contacted',
+      talent_responded: 'responded',
+      qualifying: 'qualifying',
+      qualified: 'qualified',
+      not_in_consideration: 'dispositioned',
+    };
+    const counts = new Map<RecruitingFunnelStage, number>(order.map((s) => [s, 0]));
+    for (const { status, count } of raw) {
+      const stage = STATUS_TO_STAGE[status];
+      if (stage !== undefined) counts.set(stage, (counts.get(stage) ?? 0) + count);
+    }
+    return { canonical_source: 'PIPELINE', stages: order.map((stage) => ({ stage, count: counts.get(stage) ?? 0 })) };
+  }
+
+  // L2-I (D4b) — the HIRING funnel: the DOWNSTREAM, owner-attributed counterpart of the recruiting
+  // funnel. Every stage is sourced from its OWNING aggregate, never from Pipeline (which OWNS none
+  // of these — Lane2-DDR §4/§5): submitted ← the Submittal event history (reporting-owned
+  // SUBMITTED_HISTORY_PORT); interview ← the Client-Selection InterviewSession owner (reporting-owned
+  // INTERVIEW_HISTORY_PORT); offer/accepted ← the Offer aggregate (libs/placement, reporting-native
+  // edge); placement/start ← the canonical PlacementProcess fill read (L2-G). The two ports keep
+  // @aramo/submittal and @aramo/client-selection OUT of libs/reporting (A7 seam). Each stage counts
+  // DISTINCT (talent, requisition) grains reaching it — a monotone reached-count, not a bucket
+  // partition; a grain that reached `accepted` is also counted at `submitted`. NO recruiter stage
+  // appears here (the two families never collapse each other).
+  async getHiringFunnel(actor: ActorContext): Promise<HiringFunnelReportView> {
+    const visibleReqIds = await this.resolveVisibleRequisitionIds(actor);
+    // An EXPLICIT empty visible-set → the actor sees no requisitions → all stages zero.
+    if (visibleReqIds !== undefined && visibleReqIds.length === 0) {
+      return { stages: HIRING_STAGE_OWNER.map(({ stage, owner }) => ({ stage, owner, count: 0 })) };
+    }
+    const reqScope = visibleReqIds === undefined ? {} : { requisition_ids: visibleReqIds };
+    const [submitted, interviews, offers, fill] = await Promise.all([
+      this.submittedHistory.findFirstSubmittedByGrain({ tenant_id: actor.tenant_id, ...reqScope }),
+      this.interviewHistory.findFirstInterviewByGrain({ tenant_id: actor.tenant_id, ...reqScope }),
+      this.placementEventRepository.readOfferReachedByGrain({ tenant_id: actor.tenant_id, ...reqScope }),
+      this.placementEventRepository.readFillCohort({ tenant_id: actor.tenant_id, ...reqScope }),
+    ]);
+    const counts: Readonly<Record<HiringFunnelStage, number>> = {
+      submitted: submitted.length,
+      interview: interviews.length,
+      offer: offers.length,
+      accepted: offers.filter((o) => o.accepted).length,
+      placement: fill.length,
+      start: fill.filter((f) => f.first_started_at !== null).length,
+    };
+    return { stages: HIRING_STAGE_OWNER.map(({ stage, owner }) => ({ stage, owner, count: counts[stage] })) };
+  }
+
+  // L2-I (D3) — the GP-1-safe SOURCE-EFFECTIVENESS / outcome-correlation read. Per L2-D source
+  // origin, correlate the recruiting outcome (current canonical status distribution + disposition
+  // reasons) with the canonical hiring outcome (PlacementProcess established, D-1) as CLASSIFIED
+  // EVIDENCE — counts + canonical reason buckets + a rate. It emits NO ordinal quality output
+  // (Rule C) and writes NOTHING (GP-1 — a pure read; the A7 seam keeps any Talent-trust writer out
+  // of libs/reporting by construction). Reads only reporting-native edges (pipeline + placement).
+  async getSourceEffectiveness(
+    actor: ActorContext,
+    period: { from: Date; to: Date },
+  ): Promise<SourceEffectivenessReportView> {
+    const cohortAll = await this.requisitionRepository.listCohortForActor({
+      tenant_id: actor.tenant_id,
+      visibility: actor.visibility,
+      from: period.from,
+      to: period.to,
+      ...(actor.site_id === undefined ? {} : { site_id: actor.site_id }),
+    });
+    const reqIds = cohortAll.map((r) => r.id);
+    if (reqIds.length === 0) return { canonical_fill_source: 'PLACEMENT_PROCESS', sources: [] };
+
+    const [episodes, fill] = await Promise.all([
+      this.pipelineRepository.readSourceEffectivenessCohort({ tenant_id: actor.tenant_id, requisition_ids: reqIds }),
+      this.placementEventRepository.readFillCohort({ tenant_id: actor.tenant_id, requisition_ids: reqIds }),
+    ]);
+    const filledGrains = new Set(fill.map((f) => `${f.requisition_id}:${f.talent_record_id}`));
+
+    interface Agg { episodes: number; byStatus: Map<string, number>; byReason: Map<string, number>; established: number }
+    const bySource = new Map<string, Agg>();
+    for (const e of episodes) {
+      const src = e.origin_type ?? 'UNATTRIBUTED';
+      const g = bySource.get(src) ?? { episodes: 0, byStatus: new Map(), byReason: new Map(), established: 0 };
+      g.episodes += 1;
+      g.byStatus.set(e.status, (g.byStatus.get(e.status) ?? 0) + 1);
+      if (e.status === 'not_in_consideration' && e.disposition_reason !== null) {
+        g.byReason.set(e.disposition_reason, (g.byReason.get(e.disposition_reason) ?? 0) + 1);
+      }
+      if (filledGrains.has(`${e.requisition_id}:${e.talent_record_id}`)) g.established += 1;
+      bySource.set(src, g);
+    }
+
+    const sources = [...bySource.entries()]
+      .map(([source_origin_type, g]) => ({
+        source_origin_type,
+        episodes: g.episodes,
+        by_status: [...g.byStatus.entries()].map(([status, count]) => ({ status, count })).sort((a, b) => a.status.localeCompare(b.status)),
+        dispositioned_by_reason: [...g.byReason.entries()].map(([reason, count]) => ({ reason, count })).sort((a, b) => a.reason.localeCompare(b.reason)),
+        established_placements: g.established,
+        fill_rate: g.episodes > 0 ? Math.round((g.established / g.episodes) * 100) : 0,
+      }))
+      .sort((a, b) => a.source_origin_type.localeCompare(b.source_origin_type));
+
+    return { canonical_fill_source: 'PLACEMENT_PROCESS', sources };
+  }
+
   // -------------------------------------------------------------------------
   async getFillPerformance(
     actor: ActorContext,

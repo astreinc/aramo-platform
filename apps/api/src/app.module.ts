@@ -56,6 +56,7 @@ import { TalentTrustModule } from '@aramo/talent-trust';
 import { TaskModule } from '@aramo/task';
 
 import { SubmittedHistoryModule } from './reporting-adapters/submitted-history.module.js';
+import { InterviewHistoryModule } from './reporting-adapters/interview-history.module.js';
 import { SubmitTalentModule } from './submit-talent/submit-talent.module.js';
 import { ClientSelectionOrchestrationModule } from './client-selection/client-selection-orchestration.module.js';
 // T1-a — composition-root binding of libs/examination's RequisitionStateReader
@@ -297,6 +298,7 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     // to the @aramo/submittal-backed adapter. ReportingModule stays submittal-free;
     // this composition-root module owns the submittal dependency for the port.
     SubmittedHistoryModule,
+    InterviewHistoryModule,
     // PR-A8-4 Gate 5 — ATS-domain CSV export. Reads-only over the 5
     // ATS-domain entities (company / contact / requisition /
     // talent_record / pipeline) — the dependency closure is the R10

@@ -691,6 +691,7 @@
       "PIPELINE_DISPOSITION_REASONS",
       "PIPELINE_ENTRY_ORIGIN_VALUES",
       "PIPELINE_STATUS_VALUES",
+      "PROVIDER_SOURCED_ORIGINS",
       "PipelineController",
       "PipelineModule",
       "PipelineOutboxModule",
@@ -708,12 +709,14 @@
       "isPipelineDispositionAuthority",
       "isPipelineEntryOriginType",
       "isPipelineStatus",
+      "isProviderSourcedOrigin",
       "isRecruiterDispositionAuthority",
       "isRecruiterPipelineAction",
       "isValidDispositionReason",
       "isValidInitiatedByKind",
       "legalNextStates",
       "projectEntryProvenanceForEvent",
+      "projectExternalSourceEventToEntryProvenance",
       "resolveAddTalentOutcome",
       "toEnforcementDisposition"
     ],
@@ -902,6 +905,7 @@
     ],
     "@aramo/reporting": [
       "DashboardController",
+      "INTERVIEW_HISTORY_PORT",
       "ReportingController",
       "ReportingModule",
       "ReportingService",
@@ -1644,6 +1648,12 @@
       { "project": "portal", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/reporting/src/tests/funnel-routes.controller.spec.ts",
+        "project": "reporting",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/reporting/src/tests/guarantee-exposure.spec.ts",
         "project": "reporting",
         "status": "excluded"
@@ -2236,6 +2246,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/reporting/src/tests/hiring-funnel.spec.ts",
+        "project": "reporting",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/reporting/src/tests/margin.integration.spec.ts",
         "project": "reporting",
         "status": "excluded"
@@ -2249,6 +2265,18 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/reporting/src/tests/recruiter-metrics.spec.ts",
+        "project": "reporting",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/reporting/src/tests/recruiting-funnel.spec.ts",
+        "project": "reporting",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/reporting/src/tests/source-effectiveness.spec.ts",
         "project": "reporting",
         "status": "excluded"
       },

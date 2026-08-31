@@ -13,12 +13,28 @@ export {
   type SubmittedHistoryQuery,
 } from './lib/ports/submitted-history.port.js';
 
+// Lane 2 / L2-I (D4b) — the reporting-owned interview-history port. The
+// @aramo/client-selection-backed adapter (apps/api composition root) implements this;
+// libs/reporting imports NO client-selection domain/repo/schema (A7 seam-exclusion preserved).
+export {
+  INTERVIEW_HISTORY_PORT,
+  type InterviewHistoryPort,
+  type InterviewHistoryGrain,
+  type InterviewHistoryQuery,
+} from './lib/ports/interview-history.port.js';
+
 export type {
   TenantCountsReportView,
   RequisitionStatusRollupView,
   PipelineStageRollupView,
   PlacementCountReportView,
   FillPerformanceReportView,
+  SourceEffectivenessReportView,
+  SourceEffectivenessRow,
+  RecruitingFunnelReportView,
+  RecruitingFunnelStage,
+  HiringFunnelReportView,
+  HiringFunnelStage,
   FallthroughReportView,
   FallthroughReasonView,
   AssignmentPipelineReportView,
