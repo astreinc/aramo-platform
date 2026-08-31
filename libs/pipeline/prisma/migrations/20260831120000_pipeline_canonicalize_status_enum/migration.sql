@@ -14,7 +14,8 @@
 -- created one.
 
 -- 1. Drop the partial live-episode index (its predicate names the removed
---    literals placed/client_declined; recreated below with the 2-member set).
+--    literals placed/client_declined, and it is recreated below with the
+--    2-member set).
 DROP INDEX "pipeline"."Pipeline_live_episode_key";
 
 -- 2. Drop the column default so the type change is not blocked by it.

@@ -27,15 +27,17 @@ function makeService(opts: {
   const tenantSettingRepository = {
     findOne: vi.fn().mockResolvedValue(opts.settingRow ?? null),
   };
-  // Lane 2 / L2-E (SB-5) — the submitted stream is now event-sourced via the port.
-  // Reproduce the seeded `submitted` transitions AS grains (pipeline_id +
-  // first_submitted_at = the transition's changed_at), since-filtered exactly as the
+  // Lane 2 / L2-E (SB-5) — the submitted stream is event-sourced from the Submittal
+  // `submitted_to_ats` event history via the port (NOT PipelineStatusHistory; the
+  // Pipeline `submitted` status was eradicated by Legacy-Pipeline-Canonicalization).
+  // Reproduce the seeded submitted_to_ats events AS grains (pipeline_id +
+  // first_submitted_at = the event's changed_at), since-filtered exactly as the
   // real port would — so submittals_weekly + avg_time_to_submit stay identical to the
   // pre-repoint values (the R3 timestamp-parity proof, AC-2/3).
   const submittedHistory = {
     findFirstSubmittedByGrain: vi.fn(async (q: { since?: Date }) =>
       opts.transitions
-        .filter((t) => t.status_to === 'submitted')
+        .filter((t) => t.status_to === 'submitted_to_ats')
         .filter((t) => q.since === undefined || t.changed_at >= q.since)
         .map((t) => ({
           talent_id: 't',
@@ -106,9 +108,9 @@ describe('ReportingService.getRecruiterMetrics', () => {
         { id: 'p2', requisition_id: 'r1', created_at: new Date('2026-06-01T12:00:00Z') },
       ],
       transitions: [
-        // submitted: p1 in the last 7d (1d to submit), p2 in the PRIOR 7d (9d).
-        { pipeline_id: 'p1', status_to: 'submitted', changed_at: new Date('2026-06-16T12:00:00Z') },
-        { pipeline_id: 'p2', status_to: 'submitted', changed_at: new Date('2026-06-10T12:00:00Z') },
+        // submitted_to_ats: p1 in the last 7d (1d to submit), p2 in the PRIOR 7d (9d).
+        { pipeline_id: 'p1', status_to: 'submitted_to_ats', changed_at: new Date('2026-06-16T12:00:00Z') },
+        { pipeline_id: 'p2', status_to: 'submitted_to_ats', changed_at: new Date('2026-06-10T12:00:00Z') },
         // an established placement this calendar month (drives readFillCohort).
         { pipeline_id: 'p2', status_to: 'established', changed_at: new Date('2026-06-05T12:00:00Z') },
       ],

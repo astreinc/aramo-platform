@@ -178,7 +178,6 @@ export const KNOWN_SETTINGS = {
     key: 'metrics.goals',
     default: {
       submittals_weekly: 10,
-      interviews_weekly: 6,
       placements_monthly: 3,
     } as MetricGoalMap,
     validate: isMetricGoalMap,

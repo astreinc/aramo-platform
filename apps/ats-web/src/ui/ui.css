@@ -2441,12 +2441,14 @@ button.rc-link-action {
   background: var(--surface-2);
 }
 
-.rc-tcard__stage--sourced { color: #54606a; background: #eef1f4; }
+/* One rule per canonical FUNNEL_BUCKETS key (stage-map.ts) — the Pipeline owns
+ * recruiting progress only; downstream stages render from their own aggregates.
+ * `closed` merges the two terminals (not_in_consideration + completed) so it
+ * commits to neither ok nor danger — neutral is the honest tone. */
+.rc-tcard__stage--early_engagement { color: var(--muted); background: var(--surface-2); }
 .rc-tcard__stage--qualifying { color: var(--info); background: var(--info-tint); }
-.rc-tcard__stage--submitted { color: var(--brand-strong); background: var(--brand-tint); }
-.rc-tcard__stage--interview { color: var(--info); background: var(--info-tint); }
-.rc-tcard__stage--offer { color: var(--warn); background: var(--warn-tint); }
-.rc-tcard__stage--placed { color: var(--ok); background: var(--ok-tint); }
+.rc-tcard__stage--qualified { color: var(--brand-strong); background: var(--brand-tint); }
+.rc-tcard__stage--closed { color: var(--muted); background: var(--surface-2); }
 
 /* requisition table — Requisitions.dc.html column grammar
  * Requisition · Talent · Pipeline · Owner · Updated · Status. A horizontal
@@ -2711,12 +2713,11 @@ button.rc-link-action {
 
 .rc-distseg { display: block; height: 100%; }
 
-.rc-distseg--sourced { background: var(--line-2); }
+/* Ribbon segments — one per canonical FUNNEL_BUCKETS key (stage-map.ts). */
+.rc-distseg--early_engagement { background: var(--line-2); }
 .rc-distseg--qualifying { background: var(--info); }
-.rc-distseg--submitted { background: var(--brand); }
-.rc-distseg--interview { background: var(--brand-accent); }
-.rc-distseg--offer { background: var(--warn); }
-.rc-distseg--placed { background: var(--ok); }
+.rc-distseg--qualified { background: var(--brand); }
+.rc-distseg--closed { background: var(--ok); }
 
 .rc-distbar__n { font-size: 0.74rem; color: var(--muted); }
 
