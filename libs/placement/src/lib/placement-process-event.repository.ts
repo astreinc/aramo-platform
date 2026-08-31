@@ -149,6 +149,29 @@ export class PlacementProcessEventRepository {
   // nothing visible → empty cohort). Date-bounded on the FIRST-established instant.
   // Time-to-Fill (opened→established) and Time-to-Start (established→STARTED) are the
   // reporting fold; this read supplies both instants. No pipeline read; no schema change.
+  // Lane 2 / L2-I (D4b) — the OFFER-reached read for the hiring funnel (reporting-native; Offer
+  // is a libs/placement aggregate, so no A7 seam is crossed). Per (requisition, talent) grain:
+  // whether ANY offer exists (the `offer` stage) and whether an ACCEPTED offer exists (the
+  // `accepted` stage). `accepted` uses the OFFER 'ACCEPTED' state (the placement precondition).
+  async readOfferReachedByGrain(args: {
+    tenant_id: string;
+    requisition_ids?: readonly string[];
+  }): Promise<Array<{ requisition_id: string; talent_record_id: string; accepted: boolean }>> {
+    const hasReq = args.requisition_ids !== undefined;
+    if (hasReq && args.requisition_ids!.length === 0) return [];
+    const params: unknown[] = [args.tenant_id];
+    if (hasReq) params.push([...args.requisition_ids!]);
+    const reqClause = hasReq ? `AND o."requisition_id" = ANY($2::uuid[])` : '';
+    const rows = await this.prisma.$queryRawUnsafe<Array<{ requisition_id: string; talent_record_id: string; accepted: boolean }>>(
+      `SELECT o."requisition_id", o."talent_record_id", bool_or(o."state" = 'ACCEPTED') AS accepted
+         FROM "offer"."Offer" o
+        WHERE o."tenant_id" = $1::uuid ${reqClause}
+        GROUP BY o."requisition_id", o."talent_record_id"`,
+      ...params,
+    );
+    return rows.map((r) => ({ requisition_id: r.requisition_id, talent_record_id: r.talent_record_id, accepted: Boolean(r.accepted) }));
+  }
+
   async readFillCohort(args: {
     tenant_id: string;
     requisition_ids?: readonly string[];

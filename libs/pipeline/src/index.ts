@@ -49,6 +49,13 @@ export {
   type EntryProvenanceInput,
   type EntryProvenanceEventProjection,
 } from './lib/pipeline-entry-provenance.js';
+// Lane 2 / L2-I (D2) — the external source-event contract (built on L2-D provenance).
+export {
+  PROVIDER_SOURCED_ORIGINS,
+  isProviderSourcedOrigin,
+  projectExternalSourceEventToEntryProvenance,
+  type ExternalSourceEvent,
+} from './lib/external-source-event.js';
 
 export {
   type PipelineView,

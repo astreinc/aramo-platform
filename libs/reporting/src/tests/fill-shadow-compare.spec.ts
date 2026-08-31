@@ -49,6 +49,7 @@ function makeService(opts: {
     {} as never, // guaranteeExposureRepository
     stub, // commercialMarginRepository
     { findFirstSubmittedByGrain: async () => [] } as never,
+    { findFirstInterviewByGrain: async () => [] } as never, // L2-I D4b interview-history port
   );
   return { svc, listFirstPlacedByRequisitions, readFillCohort };
 }

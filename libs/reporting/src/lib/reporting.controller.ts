@@ -28,6 +28,9 @@ import type {
   PipelineStageRollupView,
   PlacementCountReportView,
   RecruiterMetricsReportView,
+  RecruitingFunnelReportView,
+  HiringFunnelReportView,
+  SourceEffectivenessReportView,
   RequisitionStatusRollupView,
   TenantCountsReportView,
 } from './dto/report.view.js';
@@ -397,6 +400,93 @@ export class ReportingController {
     }
     const visibility = await req.resolveVisibility!();
     return this.reportingService.getFallthrough(
+      {
+        tenant_id: authContext.tenant_id,
+        user_id: authContext.sub,
+        scopes: authContext.scopes,
+        visibility,
+        ...(siteIdFromQuery === undefined ? {} : { site_id: siteIdFromQuery }),
+      },
+      { from, to },
+    );
+  }
+
+  // L2-I (D4a / D5) — the RECRUITING funnel report (Pipeline-owned). Counts-only current
+  // snapshot projected from the canonical L2-C PipelineStatus registry onto the six recruiting
+  // stages — NO query parameters. report:read + tenant/site/A3 — the same guard chain as every
+  // other reporting route. Carries NO hiring stage (its downstream counterpart is /hiring-funnel).
+  @Get('recruiting-funnel')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('report:read')
+  @RequireSiteMatch()
+  async recruitingFunnel(
+    @AuthContext() authContext: AuthContextType,
+    @Query('site_id') siteIdFromQuery: string | undefined,
+    @Req() req: Request,
+  ): Promise<RecruitingFunnelReportView> {
+    const visibility = await req.resolveVisibility!();
+    return this.reportingService.getRecruitingFunnel({
+      tenant_id: authContext.tenant_id,
+      user_id: authContext.sub,
+      scopes: authContext.scopes,
+      visibility,
+      ...(siteIdFromQuery === undefined ? {} : { site_id: siteIdFromQuery }),
+    });
+  }
+
+  // L2-I (D4b / D5) — the HIRING funnel report (downstream-owner-attributed). Counts-only current
+  // snapshot; every stage sourced from its OWNING aggregate (Submittal / Client-Selection / Offer /
+  // Placement) via the reporting-owned ports + reads — NO query parameters. report:read +
+  // tenant/site/A3. Carries NO recruiting stage (its upstream counterpart is /recruiting-funnel).
+  @Get('hiring-funnel')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('report:read')
+  @RequireSiteMatch()
+  async hiringFunnel(
+    @AuthContext() authContext: AuthContextType,
+    @Query('site_id') siteIdFromQuery: string | undefined,
+    @Req() req: Request,
+  ): Promise<HiringFunnelReportView> {
+    const visibility = await req.resolveVisibility!();
+    return this.reportingService.getHiringFunnel({
+      tenant_id: authContext.tenant_id,
+      user_id: authContext.sub,
+      scopes: authContext.scopes,
+      visibility,
+      ...(siteIdFromQuery === undefined ? {} : { site_id: siteIdFromQuery }),
+    });
+  }
+
+  // L2-I (D3 / D5) — the SOURCE-EFFECTIVENESS / outcome-correlation report. Per L2-D source origin,
+  // correlate the recruiting outcome (canonical status + disposition reasons) with the canonical
+  // hiring outcome (PlacementProcess established) as CLASSIFIED EVIDENCE — NO ordinal quality
+  // output (Rule C). Cohort = requisitions whose created_at ∈ [from, to). `from`/`to` are REQUIRED
+  // absolute ISO instants carrying `Z`/offset (reuses parseAbsoluteInstant); date-only/zone-less
+  // rejected 400 (VALIDATION_ERROR — an existing code). report:read + tenant/site/A3.
+  @Get('source-effectiveness')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('report:read')
+  @RequireSiteMatch()
+  async sourceEffectiveness(
+    @AuthContext() authContext: AuthContextType,
+    @RequestId() requestId: string,
+    @Query('from') fromRaw: string | undefined,
+    @Query('to') toRaw: string | undefined,
+    @Query('site_id') siteIdFromQuery: string | undefined,
+    @Req() req: Request,
+  ): Promise<SourceEffectivenessReportView> {
+    const from = this.parseAbsoluteInstant('from', fromRaw, requestId);
+    const to = this.parseAbsoluteInstant('to', toRaw, requestId);
+    if (from.getTime() >= to.getTime()) {
+      throw new AramoError(
+        'VALIDATION_ERROR',
+        'from must be strictly before to',
+        400,
+        { requestId, details: { from: fromRaw, to: toRaw } },
+      );
+    }
+    const visibility = await req.resolveVisibility!();
+    return this.reportingService.getSourceEffectiveness(
       {
         tenant_id: authContext.tenant_id,
         user_id: authContext.sub,

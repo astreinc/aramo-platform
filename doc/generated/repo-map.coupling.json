@@ -12066,6 +12066,57 @@
     },
     { "from": "doc/integration-testing.md", "status": "unscoped", "to": "ci/scripts/prepush.ts" },
     {
+      "from": "doc/l2-i-closure-record-draft.md",
+      "status": "unscoped",
+      "to": "doc/t2-closure-record-draft.md"
+    },
+    {
+      "from": "doc/l2-i-closure-record-draft.md",
+      "status": "unscoped",
+      "to": "libs/pipeline/src/tests/external-source-event.integration.spec.ts"
+    },
+    {
+      "from": "doc/l2-i-closure-record-draft.md",
+      "status": "unscoped",
+      "to": "libs/pipeline/src/tests/external-source-event.spec.ts"
+    },
+    {
+      "from": "doc/l2-i-closure-record-draft.md",
+      "status": "unscoped",
+      "to": "libs/reporting/src/tests/funnel-routes.controller.spec.ts"
+    },
+    {
+      "from": "doc/l2-i-closure-record-draft.md",
+      "status": "unscoped",
+      "to": "libs/reporting/src/tests/hiring-funnel.spec.ts"
+    },
+    {
+      "from": "doc/l2-i-closure-record-draft.md",
+      "status": "unscoped",
+      "to": "libs/reporting/src/tests/recruiting-funnel.spec.ts"
+    },
+    {
+      "from": "doc/l2-i-closure-record-draft.md",
+      "status": "unscoped",
+      "to": "libs/reporting/src/tests/seam-exclusion-structural.spec.ts"
+    },
+    {
+      "from": "doc/l2-i-closure-record-draft.md",
+      "status": "unscoped",
+      "to": "libs/reporting/src/tests/source-effectiveness.spec.ts"
+    },
+    { "from": "doc/l2-i-closure-record-draft.md", "status": "unscoped", "to": "openapi/ats.yaml" },
+    {
+      "from": "doc/l2-i-closure-record-draft.md",
+      "status": "unscoped",
+      "to": "pact/consumers/ats-web/src/reporting.consumer.test.ts"
+    },
+    {
+      "from": "doc/l2-i-closure-record-draft.md",
+      "status": "unscoped",
+      "to": "scripts/verify-vocabulary.sh"
+    },
+    {
       "from": "doc/m0-closure-record-draft.md",
       "status": "unscoped",
       "to": "doc/00-ci-deliberate-failure-evidence.md"
@@ -14563,6 +14614,30 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "libs/pipeline/src/tests/external-source-event.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/activity/prisma/migrations/20260602140000_init_activity_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/pipeline/src/tests/external-source-event.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/activity/prisma/migrations/20260801120000_add_activity_redaction_fields/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/pipeline/src/tests/external-source-event.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/metering/prisma/migrations/20260601150000_init_metering_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/pipeline/src/tests/external-source-event.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/requisition/prisma/migrations/20260602100000_init_requisition_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "libs/pipeline/src/tests/pipeline-capacity-authority-removed-b2.integration.spec.ts",
       "status": "excluded",
       "to": "libs/activity/prisma/migrations/20260602140000_init_activity_model/migration.sql"
@@ -14933,6 +15008,12 @@
       "from": "libs/reporting/src/lib/reporting.controller.ts",
       "status": "production",
       "to": "libs/identity/prisma/seed.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/reporting/src/tests/source-effectiveness.spec.ts",
+      "status": "excluded",
+      "to": "scripts/verify-vocabulary.sh"
     },
     {
       "from": "libs/requisition/prisma/schema.prisma",
@@ -15584,6 +15665,16 @@
       "from": "pact/provider/src/verify-api.ts",
       "status": "unscoped",
       "to": "libs/calendar/prisma/migrations/20260602120000_init_calendar_model/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "libs/client-selection/prisma/migrations/20260829120000_l2f_init_client_selection/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "libs/client-selection/prisma/migrations/20260830120000_l2f2_interview_session/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",

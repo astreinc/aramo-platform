@@ -218,6 +218,56 @@ export interface FillPerformanceReportView {
   };
 }
 
+// SourceEffectivenessReportView — L2-I (D3). A GP-1-safe source→outcome CORRELATION read:
+// per L2-D source origin, CLASSIFIED EVIDENCE (counts + canonical reasons + rates), NEVER an
+// ordinal quality output (ADR-0019 / Rule C) and NEVER a Talent-trust write (GP-1). It correlates
+// the recruiting outcome (current canonical Pipeline status distribution + disposition reasons)
+// with the canonical hiring outcome (PlacementProcess established, D-1); provenance is the
+// source origin + `canonical_fill_source`.
+export interface SourceEffectivenessRow {
+  readonly source_origin_type: string; // the L2-D origin (e.g. JOB_BOARD / VMS / EXTERNAL_ATS)
+  readonly episodes: number; // distinct episodes attributed to this source
+  readonly by_status: ReadonlyArray<{ status: string; count: number }>; // current-status distribution
+  readonly dispositioned_by_reason: ReadonlyArray<{ reason: string; count: number }>; // canonical reason buckets
+  readonly established_placements: number; // episodes whose (req,talent) reached PlacementProcess established
+  readonly fill_rate: number; // percent 0-100 = established / episodes (evidence, not a verdict)
+}
+export interface SourceEffectivenessReportView {
+  readonly canonical_fill_source: CanonicalFillSource;
+  readonly sources: ReadonlyArray<SourceEffectivenessRow>;
+}
+
+// RecruitingFunnelReportView — L2-I (D4). The RECRUITING funnel — Pipeline-OWNED stages only,
+// projected from the canonical L2-C PipelineStatus registry (Rule D; Lane2-DDR §4). It carries
+// NO hiring stage (submitted/interview/offer/accepted/placement/start are downstream-owned) —
+// the two families are separate returned shapes on separate routes and never collapse each other.
+export type RecruitingFunnelStage =
+  | 'considered'
+  | 'contacted'
+  | 'responded'
+  | 'qualifying'
+  | 'qualified'
+  | 'dispositioned';
+export interface RecruitingFunnelReportView {
+  readonly canonical_source: 'PIPELINE';
+  readonly stages: ReadonlyArray<{ stage: RecruitingFunnelStage; count: number }>;
+}
+
+// HiringFunnelReportView — L2-I (D4). The HIRING funnel — DOWNSTREAM-owner-attributed stages,
+// each sourced from its OWNING aggregate (Submittal / Client-Selection / Offer / Placement),
+// composed at the apps/api owner-projection boundary (the A7 seam keeps Submittal + Client-
+// Selection out of libs/reporting). It carries NO recruiter-consideration stage.
+export type HiringFunnelStage =
+  | 'submitted'
+  | 'interview'
+  | 'offer'
+  | 'accepted'
+  | 'placement'
+  | 'start';
+export interface HiringFunnelReportView {
+  readonly stages: ReadonlyArray<{ stage: HiringFunnelStage; owner: string; count: number }>;
+}
+
 // FallthroughReportView — T9-B2 authoritative fallthrough-rate + reasons report
 // (GET /v1/reports/fallthrough). Governed by Aramo-T9-B2-Directive-v1_0-LOCKED.
 //

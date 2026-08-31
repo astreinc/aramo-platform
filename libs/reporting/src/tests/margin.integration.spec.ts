@@ -80,6 +80,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         {} as never, // guaranteeExposureRepository (T7-P4; unused here)
         margin, // commercialMarginRepository
         { findFirstSubmittedByGrain: async () => [] } as never, // L2-E submitted-history port
+        { findFirstInterviewByGrain: async () => [] } as never, // L2-I D4b interview-history port
       );
     }
 

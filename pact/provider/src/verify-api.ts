@@ -983,6 +983,20 @@ const PLACEMENT_OFFER_ID_MIGRATION = resolve(
   ROOT,
   'libs/placement/prisma/migrations/20260824130000_placement_offer_id/migration.sql',
 );
+// Lane 2 / L2-I (D4b) — the client_selection schema (L2-F init + the InterviewSession table).
+// The hiring-funnel read's INTERVIEW stage sources the FIRST interview per grain from
+// client_selection."InterviewSession" (via the INTERVIEW_HISTORY_PORT adapter); without these
+// the provider's regenerated client 500s on GET /v1/reports/hiring-funnel. SEPARATE consts
+// (never a 2nd resolve() arg); applied in order (init creates the schema + parent the
+// InterviewSession migration references).
+const CLIENT_SELECTION_INIT_MIGRATION = resolve(
+  ROOT,
+  'libs/client-selection/prisma/migrations/20260829120000_l2f_init_client_selection/migration.sql',
+);
+const CLIENT_SELECTION_INTERVIEW_SESSION_MIGRATION = resolve(
+  ROOT,
+  'libs/client-selection/prisma/migrations/20260830120000_l2f2_interview_session/migration.sql',
+);
 // Track 4 / T4-B2 §6 — the dedicated stored openings_available DROP. Applied here so
 // the provider schema matches the retired-column reality; the requisition read is
 // derived and does not depend on the physical column.
@@ -3255,6 +3269,10 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         // Offer Lifecycle (D6) — offer aggregate + placement.offer_id (client SELECTs it).
         PLACEMENT_OFFER_INIT_MIGRATION,
         PLACEMENT_OFFER_ID_MIGRATION,
+        // Lane 2 / L2-I (D4b) — client_selection schema so the hiring-funnel INTERVIEW stage
+        // (client_selection."InterviewSession") resolves; init before the interview-session table.
+        CLIENT_SELECTION_INIT_MIGRATION,
+        CLIENT_SELECTION_INTERVIEW_SESSION_MIGRATION,
         // T4-B2 §6 — retire the stored openings_available column (derived-only).
         REQUISITION_DROP_OPENINGS_AVAILABLE_MIGRATION,
         // T8-P1 — the external-identity partial-unique index (applied last;

@@ -27,18 +27,25 @@ function collectTsFiles(dir: string): string[] {
   return out;
 }
 
-// Forbidden submittal-implementation surfaces libs/reporting must not import.
+// Forbidden downstream-owner implementation surfaces libs/reporting must not import.
+// L2-E: Submittal (the submitted-history seam). L2-I D4b: Client-Selection (the
+// interview-history seam) — the SAME A7 rule, a second owner reached only via a
+// reporting-owned port whose adapter lives at the apps/api composition root.
 const FORBIDDEN = [
   '@aramo/submittal',
   'SubmittalRepository',
   'TalentSubmittalEventRepository',
   'submittal/prisma/generated',
+  '@aramo/client-selection',
+  'InterviewSessionRepository',
+  'ClientSelectionProcessRepository',
+  'client-selection/prisma/generated',
 ];
 
-describe('L2-E seam-exclusion — libs/reporting imports no Submittal implementation', () => {
+describe('L2-E / L2-I D4b seam-exclusion — libs/reporting imports no downstream-owner implementation', () => {
   const files = collectTsFiles(SRC).filter((f) => !f.endsWith('.spec.ts'));
 
-  it('no source file imports @aramo/submittal or a submittal repository/client', () => {
+  it('no source file imports a submittal OR client-selection repository/client (A7 seam)', () => {
     const offenders: string[] = [];
     for (const file of files) {
       const text = readFileSync(file, 'utf8');
@@ -62,5 +69,12 @@ describe('L2-E seam-exclusion — libs/reporting imports no Submittal implementa
     // The no-import guarantee is enforced by the first test (import-line scan); the
     // port is a pure interface + token with no runtime submittal dependency.
     expect(port).not.toMatch(/^\s*import[^\n]*@aramo\/submittal/m);
+  });
+
+  it('the reporting-owned interview-history port exists (L2-I D4b seam is a port, not an import)', () => {
+    const port = readFileSync(resolve(SRC, 'lib/ports/interview-history.port.ts'), 'utf8');
+    expect(port).toContain('INTERVIEW_HISTORY_PORT');
+    expect(port).toContain('InterviewHistoryPort');
+    expect(port).not.toMatch(/^\s*import[^\n]*@aramo\/client-selection/m);
   });
 });

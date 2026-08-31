@@ -1164,6 +1164,48 @@ export class PipelineRepository {
   // every row, so this is identical to the old groupBy. This is a BUSINESS helper —
   // NEVER call it from an episode/history view (those must show all episodes).
   // The optional requisition_ids list applies the upstream-resolved A3 predicate.
+  // Lane 2 / L2-I (D3) — the SOURCE-EFFECTIVENESS cohort read (episode-level; reporting-native).
+  // Per episode: its L2-D entry-source (origin_type, source_system), its current canonical status,
+  // and its disposition reason (if dispositioned). Correlated against the canonical fill (placement
+  // established) by the reporting composer. NO PII, NO Talent-trust column — episode facts only.
+  async readSourceEffectivenessCohort(args: {
+    tenant_id: string;
+    requisition_ids?: readonly string[];
+  }): Promise<Array<{
+    pipeline_id: string;
+    requisition_id: string;
+    talent_record_id: string;
+    status: PipelineStatus;
+    origin_type: string | null;
+    source_system: string | null;
+    disposition_reason: string | null;
+  }>> {
+    const hasReqFilter = args.requisition_ids !== undefined;
+    const params: unknown[] = hasReqFilter ? [args.tenant_id, [...args.requisition_ids!]] : [args.tenant_id];
+    const reqClause = hasReqFilter ? `AND p.requisition_id = ANY($2::uuid[])` : '';
+    const rows = await this.prisma.$queryRawUnsafe<Array<{
+      pipeline_id: string; requisition_id: string; talent_record_id: string;
+      status: string; origin_type: string | null; source_system: string | null; disposition_reason: string | null;
+    }>>(
+      `SELECT p.id AS pipeline_id, p.requisition_id, p.talent_record_id, p.status::text AS status,
+              ep.origin_type::text AS origin_type, ep.source_system, d.reason AS disposition_reason
+         FROM "pipeline"."Pipeline" p
+         LEFT JOIN "pipeline"."PipelineEntryProvenance" ep ON ep.pipeline_id = p.id
+         LEFT JOIN "pipeline"."PipelineDisposition" d ON d.pipeline_id = p.id
+        WHERE p.tenant_id = $1::uuid ${reqClause}`,
+      ...params,
+    );
+    return rows.map((r) => ({
+      pipeline_id: r.pipeline_id,
+      requisition_id: r.requisition_id,
+      talent_record_id: r.talent_record_id,
+      status: r.status as PipelineStatus,
+      origin_type: r.origin_type,
+      source_system: r.source_system,
+      disposition_reason: r.disposition_reason,
+    }));
+  }
+
   async countByStatus(args: {
     tenant_id: string;
     requisition_ids?: readonly string[];

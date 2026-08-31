@@ -4393,6 +4393,125 @@ paths:
       security:
         - BearerAuth: []
 
+  /v1/reports/recruiting-funnel:
+    get:
+      operationId: getRecruitingFunnelReport
+      summary: Recruiting funnel current-snapshot (Pipeline-owned; L2-I).
+      description: |
+        Counts-only current snapshot of the RECRUITING funnel — the six
+        Pipeline-owned stages projected from the canonical PipelineStatus
+        registry (considered, contacted, responded, qualifying, qualified,
+        dispositioned). NO period parameter. Carries NO hiring stage — the
+        downstream, owner-attributed counterpart is /v1/reports/hiring-funnel.
+        report:read + tenant/site/A3.
+      parameters:
+        - name: site_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+          description: Optional site narrowing (must match the actor's site claim).
+      responses:
+        '200':
+          description: Current recruiting-funnel stage counts.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecruitingFunnelReport'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+      security:
+        - BearerAuth: []
+
+  /v1/reports/hiring-funnel:
+    get:
+      operationId: getHiringFunnelReport
+      summary: Hiring funnel current-snapshot (downstream-owner-attributed; L2-I).
+      description: |
+        Counts-only current snapshot of the HIRING funnel — six downstream
+        stages (submitted, interview, offer, accepted, placement, start), each
+        sourced from its OWNING aggregate (Submittal / Client-Selection / Offer /
+        PlacementProcess) and labelled with that owner. Each count is the DISTINCT
+        (talent, requisition) grain count reaching the stage (a monotone reached-
+        count, not a partition). NO period parameter. Carries NO recruiting stage —
+        the upstream counterpart is /v1/reports/recruiting-funnel. report:read +
+        tenant/site/A3.
+      parameters:
+        - name: site_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+          description: Optional site narrowing (must match the actor's site claim).
+      responses:
+        '200':
+          description: Current hiring-funnel stage counts with owner attribution.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HiringFunnelReport'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+      security:
+        - BearerAuth: []
+
+  /v1/reports/source-effectiveness:
+    get:
+      operationId: getSourceEffectivenessReport
+      summary: Source-effectiveness / outcome-correlation report (L2-I).
+      description: |
+        Per source origin (L2-D provenance), CLASSIFIED-EVIDENCE correlation of
+        the recruiting outcome (current-status distribution + canonical disposition
+        reasons) with the canonical hiring outcome (PlacementProcess established).
+        Emits counts + a percent fill_rate ONLY — NO ordinal quality/verdict output
+        (Rule C). Cohort = requisitions whose created_at ∈ [from, to). `from`/`to`
+        are REQUIRED absolute ISO instants carrying `Z` or an explicit offset;
+        date-only / zone-less values are rejected 400 (VALIDATION_ERROR). report:read
+        + tenant/site/A3.
+      parameters:
+        - name: from
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+          description: Inclusive cohort start — absolute ISO date-time with Z or explicit offset.
+        - name: to
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+          description: Exclusive cohort end — absolute ISO date-time with Z or explicit offset.
+        - name: site_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+          description: Optional site narrowing (must match the actor's site claim).
+      responses:
+        '200':
+          description: Per-source classified-evidence correlation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SourceEffectivenessReport'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+      security:
+        - BearerAuth: []
+
 components:
   securitySchemes:
     # Duplicated byte-for-byte from openapi/common.yaml per locked invariant
@@ -5032,6 +5151,127 @@ components:
                 description: |
                   Bill-rate-weighted aggregate SUM(bill-pay)/SUM(bill)*100 for the group,
                   scale-2 decimal string; null when the group bill total is zero.
+
+    # L2-I (D4a) — recruiting funnel current-snapshot (GET /v1/reports/recruiting-funnel).
+    # Pipeline-owned stages only; counts-on-read, no persistence; additionalProperties:false
+    # closes the contract. canonical_source stamps the owning aggregate.
+    RecruitingFunnelReport:
+      type: object
+      additionalProperties: false
+      required: [canonical_source, stages]
+      properties:
+        canonical_source:
+          type: string
+          enum: [PIPELINE]
+          description: The owning aggregate of every recruiting stage.
+        stages:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [stage, count]
+            properties:
+              stage:
+                type: string
+                enum: [considered, contacted, responded, qualifying, qualified, dispositioned]
+              count:
+                type: integer
+                minimum: 0
+
+    # L2-I (D4b) — hiring funnel current-snapshot (GET /v1/reports/hiring-funnel).
+    # Downstream-owner-attributed stages; each count is the distinct (talent, requisition)
+    # grain count reaching the stage. Counts-on-read, no persistence;
+    # additionalProperties:false closes the contract. No recruiting stage appears.
+    HiringFunnelReport:
+      type: object
+      additionalProperties: false
+      required: [stages]
+      properties:
+        stages:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [stage, owner, count]
+            properties:
+              stage:
+                type: string
+                enum: [submitted, interview, offer, accepted, placement, start]
+              owner:
+                type: string
+                enum: [SUBMITTAL, CLIENT_SELECTION, OFFER, PLACEMENT_PROCESS]
+                description: The authoritative source aggregate for this stage.
+              count:
+                type: integer
+                minimum: 0
+
+    # L2-I (D3) — source-effectiveness / outcome-correlation report
+    # (GET /v1/reports/source-effectiveness). CLASSIFIED EVIDENCE only — counts +
+    # canonical reason buckets + a percent fill_rate; NO ordinal quality/verdict output
+    # (Rule C). Computed-on-read, no persistence; additionalProperties:false closes the
+    # contract. canonical_fill_source stamps the hiring-outcome provenance.
+    SourceEffectivenessReport:
+      type: object
+      additionalProperties: false
+      required: [canonical_fill_source, sources]
+      properties:
+        canonical_fill_source:
+          type: string
+          enum: [PLACEMENT_PROCESS]
+          description: The authoritative hiring-outcome source (established placements).
+        sources:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required:
+              - source_origin_type
+              - episodes
+              - by_status
+              - dispositioned_by_reason
+              - established_placements
+              - fill_rate
+            properties:
+              source_origin_type:
+                type: string
+                description: The L2-D provenance origin (e.g. JOB_BOARD, VMS, EXTERNAL_ATS).
+              episodes:
+                type: integer
+                minimum: 0
+                description: Distinct episodes attributed to this source.
+              by_status:
+                type: array
+                items:
+                  type: object
+                  additionalProperties: false
+                  required: [status, count]
+                  properties:
+                    status:
+                      type: string
+                    count:
+                      type: integer
+                      minimum: 0
+              dispositioned_by_reason:
+                type: array
+                items:
+                  type: object
+                  additionalProperties: false
+                  required: [reason, count]
+                  properties:
+                    reason:
+                      type: string
+                    count:
+                      type: integer
+                      minimum: 0
+              established_placements:
+                type: integer
+                minimum: 0
+                description: Episodes whose (requisition, talent) grain reached PlacementProcess established.
+              fill_rate:
+                type: integer
+                minimum: 0
+                maximum: 100
+                description: Percent = established_placements / episodes (classified evidence, not a verdict).
 
     # T9-B2 — fallthrough rate + reasons operational report
     # (GET /v1/reports/fallthrough). Computed-on-read; no persistence. Note:
