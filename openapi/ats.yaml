@@ -4053,12 +4053,14 @@ paths:
             application/json:
               schema:
                 type: object
+                additionalProperties: false
                 required: [items]
                 properties:
                   items:
                     type: array
                     items:
                       type: object
+                      additionalProperties: false
                       required: [provider_token, disposition, mapped_target, target_kind]
                       properties:
                         provider_token: { type: string }
@@ -4088,6 +4090,7 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               required: [provider_token]
               properties:
                 provider_token: { type: string }
@@ -4101,6 +4104,7 @@ paths:
             application/json:
               schema:
                 type: object
+                additionalProperties: false
                 required: [status]
                 properties:
                   status: { type: string, enum: [authored] }
