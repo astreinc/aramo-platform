@@ -348,6 +348,12 @@ export const SEED_SCOPE_KEYS = [
   // is requisition:import:write only.
   'integration:read',
   'integration:write',
+  // L2-I (D1) — manage the per-connection PIPELINE provider-disposition MAPPING contract
+  // (author/version the provider-token → canonical-Pipeline-action/reason mapping). A NARROW
+  // administrative permission for the mapping contract itself — NOT pipeline mutation
+  // (distinct from pipeline:change-status) and NOT the broad integration:write. GRANTED to
+  // tenant_admin + tenant_owner ONLY (administrative tier; recruiter/account_manager excluded).
+  'integration:pipeline-mapping:write',
   // Requisition Approval sub-workflow — decide the pending_approval → open /
   // → draft (APPROVE / REJECT) governed transitions.
   'requisition:approve',

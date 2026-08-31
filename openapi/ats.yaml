@@ -4039,6 +4039,93 @@ paths:
             application/json:
               schema:
                 $ref: 'common.yaml#/components/schemas/ErrorResponse'
+  /v1/integrations/{connectionId}/pipeline-provider-mappings:
+    get:
+      operationId: listPipelineProviderMappings
+      summary: List a connection's active PIPELINE provider-disposition mappings (L2-I D1).
+      description: Returns the connection's ACTIVE mapping-set rows (provider_token → canonical Pipeline action/reason). Guarded by `integration:read`. A cross-tenant / absent connection returns 404 (never 403).
+      parameters:
+        - { name: connectionId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: false
+                      required: [provider_token, disposition, mapped_target, target_kind]
+                      properties:
+                        provider_token: { type: string }
+                        disposition: { type: string, enum: [EXECUTE_ACTION, IGNORE] }
+                        mapped_target: { type: [string, 'null'] }
+                        target_kind: { type: [string, 'null'], enum: [action, reason, null] }
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+    post:
+      operationId: authorPipelineProviderMapping
+      summary: Author a PIPELINE provider-disposition mapping row (L2-I D1).
+      description: >-
+        Authors (upserts) one provider_token → canonical Pipeline target mapping into the
+        connection's active set. The target must be a canonical recruiter ACTION or a non-system
+        RECRUITER/TALENT/ENGAGEMENT disposition REASON; system-only COMPLETE and DOWNSTREAM_OUTCOME
+        reasons are rejected (422 PIPELINE_PROVIDER_MAPPING_TARGET_INVALID). Guarded by the narrow
+        `integration:pipeline-mapping:write`. A cross-tenant / absent connection returns 404.
+      parameters:
+        - { name: connectionId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [provider_token]
+              properties:
+                provider_token: { type: string }
+                mapped_target: { type: string }
+                disposition: { type: string, enum: [EXECUTE_ACTION, IGNORE] }
+                authority_mode: { type: string, enum: [external_authority, dual_control] }
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [status]
+                properties:
+                  status: { type: string, enum: [authored] }
+        '400':
+          description: Validation error (missing provider_token).
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '422':
+          description: Non-canonical / system-only / DOWNSTREAM_OUTCOME target — code PIPELINE_PROVIDER_MAPPING_TARGET_INVALID.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+      security:
+        - BearerAuth: []
   /v1/integrations/{connectionId}/requisition-lifecycle-mappings:
     get:
       operationId: listLifecycleMappingSets

@@ -356,6 +356,8 @@ export const SEED_IDS = {
     // moved to dc/dd (mechanical id reconciliation; grants unchanged).
     'integration:read': '01900000-0000-7000-8000-0000000000dc',
     'integration:write': '01900000-0000-7000-8000-0000000000dd',
+    // L2-I (D1) — manage the Pipeline provider-disposition mapping contract (next free 0xf6).
+    'integration:pipeline-mapping:write': '01900000-0000-7000-8000-0000000000f6',
     // Requisition Approval sub-workflow — lowest-free suffix 0xdb (df+ free).
     'requisition:approve': '01900000-0000-7000-8000-0000000000db',
     // Offer Lifecycle — next-free suffixes 0xdf, 0xe0.
@@ -2071,6 +2073,30 @@ const INTEGRATION_MANAGEMENT_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (
   return map;
 })();
 
+// L2-I (D1) — the Pipeline provider-disposition MAPPING administration grant. A SEPARATE
+// bundle (append-don't-renumber): integration:pipeline-mapping:write granted to tenant_admin +
+// tenant_owner ONLY (administrative tier, mirroring integration:read/write; recruiter/
+// account_manager/others excluded — no wildcard widening). The connector ServiceAccount does
+// NOT hold it. Fresh disjoint RoleScope id range 0xf10+ (highest prior grant range is 0xf08).
+export const PIPELINE_MAPPING_ADMIN_SEED_BUNDLES: ReadonlyArray<
+  readonly [string, readonly string[]]
+> = [
+  ['tenant_admin', ['integration:pipeline-mapping:write']],
+  ['tenant_owner', ['integration:pipeline-mapping:write']],
+];
+const PIPELINE_MAPPING_ADMIN_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
+  const map: Record<string, string> = {};
+  let i = 0xf10;
+  for (const [role, scopes] of PIPELINE_MAPPING_ADMIN_SEED_BUNDLES) {
+    for (const scope of scopes) {
+      map[`${role}:${scope}`] =
+        `01900000-0000-7000-8000-${i.toString(16).padStart(12, '0')}`;
+      i++;
+    }
+  }
+  return map;
+})();
+
 // Requisition Approval sub-workflow — APPROVE/REJECT authority role-matrix.
 // requisition:approve granted to account_manager + tenant_admin + tenant_owner
 // (the manager tier, mirroring requisition:edit:financials); a recruiter holding
@@ -2563,6 +2589,7 @@ export async function runIdentitySeed(
   await upsertScope(prisma, SEED_IDS.scopes['requisition:import:write'], 'requisition:import:write', 'Track 8 / T8-P2 — run a canonical requisition import (POST /v1/requisition-imports): validate + map provider-neutral records through the governed createForImport path. GRANTED to account_manager, tenant_admin, tenant_owner only; recruiter excluded (bulk external ingestion is an authoritative-tier act, mirrors assignment:create). NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['integration:read'], 'integration:read', 'Track 8 / T8-CONNECTOR-A — read provider-neutral connector connections (Settings → Integrations): list/status/last-sync/error summary. Connector connection ADMINISTRATION; distinct from requisition:import:read (P3 ingestion monitoring). GRANTED to tenant_admin, tenant_owner only. NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['integration:write'], 'integration:write', 'Track 8 / T8-CONNECTOR-A — administer provider-neutral connector connections (create/configure-credential/enable/disable). Never returns raw secret material. GRANTED to tenant_admin, tenant_owner only; recruiter/account_manager excluded (administrative tier). The connector ServiceAccount does NOT hold this — execution authority is requisition:import:write only. NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['integration:pipeline-mapping:write'], 'integration:pipeline-mapping:write', 'Lane 2 / L2-I (D1) — manage the per-connection PIPELINE provider-disposition MAPPING contract: author/version the provider-token → canonical Pipeline recruiter-action / non-system disposition-reason mapping (POST /v1/integrations/:connectionId/pipeline-provider-mappings). A NARROW administrative permission for the mapping contract itself — NOT pipeline mutation (distinct from pipeline:change-status) and NOT the broad integration:write. GRANTED to tenant_admin, tenant_owner only; recruiter/account_manager excluded. The connector ServiceAccount does NOT hold it. NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['communication:read'], 'communication:read', 'COMM-V1 (COMM-B2) — read Communications/Voice surface: provider capabilities, the caller own provider-identity mapping, and a communication interaction by id. Frontline recruiting read (NOT admin-tier). GRANTED to recruiter, account_manager, tenant_admin, tenant_owner. NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['communication:voice:call'], 'communication:voice:call', 'COMM-V1 — initiate an outbound voice call from a Talent record (POST /v1/communications/calls; route lands in COMM-B5). Server-side contacting-consent gate precedes any provider execution. GRANTED to recruiter, account_manager, tenant_admin, tenant_owner. NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['communication:disposition:write'], 'communication:disposition:write', 'COMM-V1 — record the recruiting disposition of a communication interaction (route lands in COMM-B7). GRANTED to recruiter, account_manager, tenant_admin, tenant_owner. NO scope.created (scope-seed precedent).');
@@ -3084,6 +3111,24 @@ export async function runIdentitySeed(
       const rsId = INTEGRATION_MANAGEMENT_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
       if (rsId === undefined) {
         throw new Error(`T8-CONNECTOR-A Integration-Management-Role-Matrix: Missing generated RoleScope id for ${roleKey}:${scopeKey}`);
+      }
+      const scope_id = scopeIdForKey(scopeKey);
+      await prisma.roleScope.upsert({
+        where: { role_id_scope_id: { role_id, scope_id } },
+        update: {},
+        create: { id: rsId, role_id, scope_id },
+      });
+    }
+  }
+
+  // L2-I (D1) — Pipeline provider-disposition MAPPING administration grants (2 rows;
+  // range 0xf10+). integration:pipeline-mapping:write -> tenant_admin + tenant_owner ONLY.
+  for (const [roleKey, scopeKeys] of PIPELINE_MAPPING_ADMIN_SEED_BUNDLES) {
+    const role_id = roleIdForKey(roleKey);
+    for (const scopeKey of scopeKeys) {
+      const rsId = PIPELINE_MAPPING_ADMIN_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
+      if (rsId === undefined) {
+        throw new Error(`L2-I Pipeline-Mapping-Admin-Role-Matrix: Missing generated RoleScope id for ${roleKey}:${scopeKey}`);
       }
       const scope_id = scopeIdForKey(scopeKey);
       await prisma.roleScope.upsert({
