@@ -792,7 +792,6 @@ function SnapshotStrip({
   readonly canReadCommercial: boolean;
   readonly onNavigate: (tab: TabId) => void;
 }) {
-  const interviewing = pipelines.filter((p) => p.status === 'interviewing').length;
   const filled = req.openings - req.openings_available;
   const overCapacity = req.capacity_balance < 0;
   const activeOffers = offers.filter((o) => OPEN_OFFER_STATES.has(o.state)).length;
@@ -809,7 +808,7 @@ function SnapshotStrip({
       <SnapshotCard
         label="Talent"
         value={pipelines.length}
-        hint={interviewing > 0 ? `${interviewing} interviewing` : 'in play'}
+        hint="in play"
         onClick={canReadPipeline ? () => onNavigate('talent') : undefined}
       />
       <SnapshotCard

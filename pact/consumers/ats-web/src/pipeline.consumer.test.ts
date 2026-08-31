@@ -16,17 +16,16 @@ import {
 // machine — interviews/offers/placements are pipeline stages, not endpoints).
 // Merges into ats-web-aramo-core.json.
 //
-// Scope (PC-5 Directive §3 + Gate-5 ruling): 6 interactions —
+// Scope (PC-5 Directive §3 + Gate-5 ruling): 5 interactions —
 //   happy (4): GET /v1/pipelines (list), GET /v1/pipelines/:id/history,
 //     POST /v1/pipelines (create at no_contact, 201), POST :id/transition
 //     (legal no_contact->contacted, 200);
-//   illegal-state (1): POST :id/transition no_contact->placed ->
+//   illegal-state (1): POST :id/transition no_contact->qualified ->
 //     INVALID_PIPELINE_TRANSITION 422 (the client-mirror-drift tripwire —
 //     ats-web mirrors LEGAL_TRANSITIONS client-side, so this pins the server
-//     truth the mirror must track);
-//   refusal (1): POST :id/transition offered->placed when the requisition has
-//     no available openings -> REQUISITION_NO_OPENINGS 409 (the consumer sends
-//     a LEGAL transition but cannot predict server-side capacity).
+//     truth the mirror must track).
+//   (The former over-capacity refusal interaction was RETIRED — see the note
+//    at the end of the describe block.)
 //
 // idempotency: L2-B — POST /v1/pipelines now REQUIRES a UUID Idempotency-Key
 //   (the create interaction sends one); the transition + read endpoints remain
@@ -42,7 +41,6 @@ import {
 const provider = makeAtsWebProvider();
 
 const PIPE_ID = '00000000-0000-7000-8000-71be00000001';
-const PIPE_OFFERED_ID = '00000000-0000-7000-8000-71be00000002';
 const PIPE_TALENT_ID = '00000000-0000-7000-8000-7a1e00000001';
 const PIPE_REQ_ID = '00000000-0000-7000-8000-4e9100000001';
 
@@ -220,13 +218,14 @@ describe('ats-web → POST /v1/pipelines/:id/transition', () => {
       });
   });
 
-  // illegal-state — no_contact -> placed is not in LEGAL_TRANSITIONS.
+  // illegal-state — no_contact -> qualified is not in LEGAL_TRANSITIONS (a
+  // non-adjacent canonical jump), so it fails the transition-matrix guard.
   it('returns 422 INVALID_PIPELINE_TRANSITION for an illegal transition', async () => {
-    const BODY = { to_status: 'placed', expected_version: 0 };
+    const BODY = { to_status: 'qualified', expected_version: 0 };
     await provider
       .addInteraction()
       .given('an ats-web recruiter and a pipeline exist')
-      .uponReceiving('an illegal pipeline transition (no_contact -> placed)')
+      .uponReceiving('an illegal pipeline transition (no_contact -> qualified)')
       .withRequest('POST', `/v1/pipelines/${PIPE_ID}/transition`, (b) => {
         b.headers({ Cookie: like(ACCESS_COOKIE), 'Content-Type': 'application/json' }).jsonBody(
           BODY,
@@ -251,7 +250,7 @@ describe('ats-web → POST /v1/pipelines/:id/transition', () => {
 
   // Track 4 / T4-B2 §7 — the "placing into a full requisition -> 409
   // REQUISITION_NO_OPENINGS" interaction was RETIRED. Pipeline no longer owns
-  // requisition capacity: a `placed` transition never decrements openings and never
+  // requisition capacity: a Pipeline transition never decrements openings and never
   // refuses on over-capacity (over-capacity is a representable DERIVED state, not a
   // pipeline-time gate). The interaction and its provider state are removed from the
   // contract accordingly.

@@ -7,7 +7,7 @@ import type { OfferState } from './types';
 // Rescind / Revise) gated by (state × offer:* scope). The affordance is COSMETIC:
 // each fires onAction(toState) which the container PATCHes to /v1/offers/:id; the
 // BE fail-closed policy + DB trigger are the real authority. No portal, no
-// capacity, no Pipeline-`offered` coupling (scope fence).
+// capacity, no Pipeline-status coupling (scope fence).
 export interface OfferPanelProps {
   readonly state: OfferState;
   readonly scopes: readonly string[];

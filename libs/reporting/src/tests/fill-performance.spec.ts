@@ -66,7 +66,7 @@ function makeService(cohort: Cohort, placed: Placed) {
     stub, // calendar
     stub, // activity
     requisitionRepository as never,
-    stub, // pipelineRepository — L2-G: fill authority is no longer pipeline `placed`
+    stub, // pipelineRepository — L2-G: fill authority is no longer a pipeline read
     stub, // tenantSettingRepository
     stub, // capacity — the REJECTED path; must never be touched
     placementEventRepository as never, // L2-G: the canonical fill read (readFillCohort)

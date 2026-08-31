@@ -146,6 +146,12 @@ const PIPELINE_L2D_PROVENANCE = resolve(
   ROOT,
   'libs/pipeline/prisma/migrations/20260828160000_l2d_pipeline_entry_provenance/migration.sql',
 );
+// Legacy-Pipeline-Canonicalization — 13-state enum -> canonical 7. SEPARATE const +
+// apply-list entry (never an extra resolve() arg — that ENOTDIRs).
+const PIPELINE_CANONICALIZE_ENUM = resolve(
+  ROOT,
+  'libs/pipeline/prisma/migrations/20260831120000_pipeline_canonicalize_status_enum/migration.sql',
+);
 // L2-B — the consent-schema IdempotencyKey table backs the required
 // Idempotency-Key on POST /v1/pipelines. Self-contained (no cross-schema FK).
 const CONSENT_IDEMPOTENCY = resolve(
@@ -452,6 +458,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         PIPELINE_L2C_LIVE_EPISODE_RECREATE,
         PIPELINE_L2C_DISPOSITION,
         PIPELINE_L2D_PROVENANCE,
+        PIPELINE_CANONICALIZE_ENUM,
         CONSENT_IDEMPOTENCY,
         POLICY_STORE_INIT,
         POLICY_DECISION_RECORD,
@@ -1320,7 +1327,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     it('GET /v1/reports/placement-count — reflects the canonical established-placement count (DISTINCT talent,req) + the seam-exclusion flag is exposed', async () => {
       // L2-G — placement-count is now the tenant-wide count of DISTINCT (requisition,
       // talent) PlacementProcess ESTABLISHMENTS (the canonical fill spine), NOT a
-      // Pipeline `placed` tally. Prove the endpoint mirrors the DB truth exactly
+      // Pipeline status tally. Prove the endpoint mirrors the DB truth exactly
       // (robust to whatever placements sibling tests in this shared container seeded).
       const dbCount = (
         await setupClient.query<{ c: string }>(
@@ -1470,15 +1477,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     });
 
     // ==== B-projection (Q-4) — reporting must not double-count fills ====
-    // Runs LAST: it seeds fill/placed rows and would perturb the tenant-wide baseline
-    // that the earlier assertions (placement-count = 0, pipeline_rollup.total = 1)
+    // Runs LAST: it seeds established-placement rows and would perturb the tenant-wide
+    // baseline that the earlier assertions (placement-count = 0, pipeline_rollup.total = 1)
     // depend on. L2-G migrated the canonical fill authority to the placement spine, so
-    // the no-double-count proof now spans BOTH surfaces for one (talent, requisition):
+    // the no-double-count proof reads the placement surface for one (talent, requisition):
     //   - placement-count reads PlacementProcess ESTABLISHED — DISTINCT ON (req, talent)
     //     must fold TWO established attempts into ONE placement.
-    //   - pipeline-rollup by_status reads Pipeline.status — TWO placed episodes (legal
-    //     post-E6) must fold into ONE placed talent.
-    it('B-projection: two established placements + two placed episodes for one (talent, req) each count as ONE (no double-count)', async () => {
+    it('B-projection: two established placements for one (talent, req) count as ONE (no double-count)', async () => {
       const company = await postJson('/v1/companies', tenantAdminJwt, {
         name: 'E6 Projection Co',
         site_id: SITE_A,
@@ -1500,16 +1505,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         );
         return ((await r.json()) as { placed_pipelines: number }).placed_pipelines;
       };
-      const placedCountOf = async (): Promise<number> => {
-        const r = await fetch(
-          `http://127.0.0.1:${port}/v1/reports/pipeline-rollup?site_id=${SITE_A}`,
-          { method: 'GET', headers: { Authorization: `Bearer ${tenantAdminJwt}` } },
-        );
-        const b = (await r.json()) as { by_status: Array<{ status: string; count: number }> };
-        return b.by_status.find((s) => s.status === 'placed')?.count ?? 0;
-      };
       const pcBefore = await pcOf();
-      const placedBefore = await placedCountOf();
 
       // Two established PlacementProcess attempts for one (talent, req) — the canonical
       // fill fact (L2-G). Distinct ids + submittal refs; readFillCohort DISTINCT ON
@@ -1523,23 +1519,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           [TENANT_ATS, req.id, talent],
         );
       }
-      // Two coexisting placed pipeline episodes (raw insert bypasses the guard/transitions;
-      // the E6 partial index permits multiple terminal episodes for one triple) — for the
-      // pipeline-rollup by_status fold.
-      for (let i = 0; i < 2; i += 1) {
-        await setupClient.query(
-          `INSERT INTO pipeline."Pipeline" (id, tenant_id, talent_record_id, requisition_id, status, created_at, updated_at)
-           VALUES (gen_random_uuid(), $1::uuid, $2::uuid, $3::uuid, 'placed', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
-          [TENANT_ATS, talent, req.id],
-        );
-      }
 
       // placement-count folds the TWO established attempts for the ONE new (talent, req)
       // into a single additional placement → delta is exactly +1, NOT +2.
       expect((await pcOf()) - pcBefore).toBe(1);
-
-      // pipeline-rollup by_status folds the TWO placed episodes into ONE placed talent → +1.
-      expect((await placedCountOf()) - placedBefore).toBe(1);
     });
   },
 );

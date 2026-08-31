@@ -3317,14 +3317,14 @@ paths:
       summary: Fill rate + time-to-fill operational report (T9-B1).
       description: |
         Authoritative T9 fill-rate and time-to-fill for the cohort of
-        requisitions created within [from, to). Fill authority is ATS
-        pipeline terminal `placed` (distinct talents per requisition, clamped
+        requisitions created within [from, to). Fill authority is the canonical
+        PlacementProcess established (distinct talents per requisition, clamped
         to declared openings); fill_rate = round(Σ filled_openings / Σ
         openings * 100), null when the cohort has no openings. Time-to-fill is
         measured ONLY for fully-filled requisitions: created_at → the Nth
-        distinct talent's first `placed` transition (N = openings). `canceled`
-        requisitions are excluded from numerator and denominator. Tenant /
-        site / A3 visibility scoped; report:read.
+        distinct talent's first established PlacementProcess (N = openings).
+        `canceled` requisitions are excluded from numerator and denominator.
+        Tenant / site / A3 visibility scoped; report:read.
       parameters:
         - name: from
           in: query
@@ -5471,7 +5471,7 @@ components:
         filled_openings:
           type: integer
           minimum: 0
-          description: Σ min(distinct placed talents, openings) (numerator).
+          description: Σ min(distinct established-placement talents, openings) (numerator).
         fill_rate:
           type: [integer, 'null']
           minimum: 0
@@ -5492,7 +5492,7 @@ components:
             average_days:
               type: [number, 'null']
               minimum: 0
-              description: Mean days created_at→Nth-placed; null when count == 0.
+              description: Mean days created_at→Nth-established; null when count == 0.
 
     # Track 3 / E1-b — PlacementProcess HTTP surface.
     CreatePlacementRequest:

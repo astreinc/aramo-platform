@@ -13,14 +13,14 @@ import { PrismaService } from '@aramo/submittal-eligibility';
 // Lane L8-B1 (v1.2) — the load-bearing atomicity + authority proofs for the
 // "Submit Talent to Client" orchestrator (real Postgres 17, 7 schemas). These
 // are the six non-negotiable Gate-5 proofs:
-//   P1  happy path — submitted_to_ats AUTHORITATIVE + pipeline submitted MIRROR
+//   P1  happy path — submitted_to_ats AUTHORITATIVE + Pipeline UNTOUCHED (mirror retired)
 //   P2  concurrent submittal_limit=1 → exactly ONE commit / ONE consumption / ONE typed refusal
-//   P3  forced failure AFTER submitted_to_ats, before the mirror completes →
+//   P3  forced failure AFTER submitted_to_ats, mid-command →
 //       ZERO durable rows across ALL participating schemas (strong atomicity)
 //   P4  invalid link (null / identity-mismatch) → SUBMITTAL_PIPELINE_LINK_INVALID, no writes
 //   P6  idempotent repeat → refused, slot consumed exactly once
-// (P5 — the bare-pipeline `→ submitted` refusal + no-regression — lives lib-local
-//  in libs/pipeline where PipelineRepository + its client are natural.)
+// (P5 — the illegal-transition refusal + no-regression on the bare Pipeline — lives
+//  lib-local in libs/pipeline where PipelineRepository + its client are natural.)
 //
 // The forced-failure (P3) is injected by wrapping @aramo/activity's
 // insertActivityInTx: it throws ONLY when the runtime flag is set, so P1/P2 use
@@ -73,6 +73,7 @@ const MIGRATIONS = [
   'libs/pipeline/prisma/migrations/20260828140000_l2c_pipeline_live_episode_recreate/migration.sql',
   'libs/pipeline/prisma/migrations/20260828150000_l2c_pipeline_disposition/migration.sql',
   'libs/pipeline/prisma/migrations/20260828160000_l2d_pipeline_entry_provenance/migration.sql',
+  'libs/pipeline/prisma/migrations/20260831120000_pipeline_canonicalize_status_enum/migration.sql',
   'libs/submittal/prisma/migrations/20260523120000_init_submittal_model/migration.sql',
   'libs/submittal/prisma/migrations/20260523200000_add_submittal_revoke/migration.sql',
   'libs/submittal/prisma/migrations/20260526140602_add_submittal_event_log/migration.sql',
@@ -164,7 +165,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       one(`SELECT count(*)::text AS c FROM ${table} WHERE ${where}`, v);
 
     // ---- P1: happy path — authoritative fact + mirror --------------------------
-    it('P1 happy path: submitted_to_ats is AUTHORITATIVE and pipeline submitted is the MIRROR', async () => {
+    it('P1 happy path: submitted_to_ats is AUTHORITATIVE and the Pipeline is UNTOUCHED (mirror retired)', async () => {
       const t = randomUUID(), talent = randomUUID(), req = randomUUID();
       const pipe = randomUUID(), sub = randomUUID();
       await seedRequisition(t, req, 'open'); // L1-C proof 6 — open requisition → the submit SUCCEEDS.
@@ -184,11 +185,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // AUTHORITATIVE fact: the submittal is submitted_to_ats with confirmed_at set.
       expect(await submittalState(sub)).toBe('submitted_to_ats|true');
       // L2-E — Pipeline is UNTOUCHED (D-2 episode stays LIVE): status rests at
-      // qualifying, NO submitted PipelineStatusHistory row, NO pipeline activity, NO
-      // pipeline.state_transition metering event. The submitted signal is derived
-      // from the Submittal event history, not a Pipeline write.
+      // qualifying, NO PipelineStatusHistory row, NO pipeline activity, NO
+      // pipeline.state_transition metering event. The submit-to-client signal is
+      // derived from the Submittal event history, not a Pipeline write.
       expect(await pipelineStatus(pipe)).toBe('qualifying');
-      expect(await count('pipeline."PipelineStatusHistory"', 'pipeline_id=$1 AND status_to=\'submitted\'', [pipe])).toBe('0');
+      expect(await count('pipeline."PipelineStatusHistory"', 'pipeline_id=$1', [pipe])).toBe('0');
       expect(await count('activity."Activity"', 'subject_id=$1', [pipe])).toBe('0');
       expect(await count('metering."UsageEvent"', "tenant_id=$1 AND event_type='pipeline.state_transition'", [t])).toBe('0');
       // Durable authoritative side-effects, each exactly once.
@@ -224,8 +225,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Exactly one durable commit across the board.
       expect(await count('submittal_policy."SubmittalConsumption"', 'requisition_id=$1', [req])).toBe('1');
       expect(await count('submittal."TalentSubmittalRecord"', "job_id=$1 AND state='submitted_to_ats'", [req])).toBe('1');
-      // Lane 2 / L2-E — no Pipeline mirror: zero pipelines flip to submitted.
-      expect(await count('pipeline."Pipeline"', "requisition_id=$1 AND status='submitted'", [req])).toBe('0');
+      // Legacy-Pipeline-Canonicalization — submit-to-ats writes NO Pipeline status; the
+      // `submitted` mirror no longer exists (the value cannot be represented by
+      // PipelineStatus), so there is no mirror-count invariant to assert.
     });
 
     // ---- P3: forced failure after authoritative write → zero durable rows -------

@@ -315,14 +315,6 @@ export function DashboardView({ session }: DashboardViewProps) {
       render: (r) => <span className="num">{pipelineCounts[r.id]?.active ?? 0}</span>,
     },
     {
-      key: 'submitted',
-      header: 'Submitted',
-      align: 'right',
-      render: (r) => (
-        <span className="num">{pipelineCounts[r.id]?.submitted ?? 0}</span>
-      ),
-    },
-    {
       key: 'days',
       header: 'Days open',
       align: 'right',

@@ -70,6 +70,7 @@ const MIGRATIONS = [
   'libs/pipeline/prisma/migrations/20260828140000_l2c_pipeline_live_episode_recreate/migration.sql',
   'libs/pipeline/prisma/migrations/20260828150000_l2c_pipeline_disposition/migration.sql',
   'libs/pipeline/prisma/migrations/20260828160000_l2d_pipeline_entry_provenance/migration.sql',
+  'libs/pipeline/prisma/migrations/20260831120000_pipeline_canonicalize_status_enum/migration.sql',
   'libs/selection/prisma/migrations/20260525120000_init_selection_model/migration.sql',
   'libs/submittal/prisma/migrations/20260523120000_init_submittal_model/migration.sql',
   // + revoke columns + canonical 5-state rename (the current submittal trigger fn
@@ -450,9 +451,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const reqId = uuidv7();
       const recordS = await promote(survivor);
       const recordL = await promote(merged);
-      const pS = await mkPipeline(recordS, reqId, 'placed');
-      const pL = await mkPipeline(recordL, reqId, 'client_declined');
-      const hL = await mkPipelineHistory(pL, 'offered', 'client_declined');
+      const pS = await mkPipeline(recordS, reqId, 'completed');
+      const pL = await mkPipeline(recordL, reqId, 'not_in_consideration');
+      const hL = await mkPipelineHistory(pL, 'qualified', 'not_in_consideration');
       await mergePointer(survivor, merged);
 
       const op = await orchestrator.reconcile({
@@ -469,7 +470,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // The loser's history survived byte-for-byte.
       const hist = await pipelineHistoryRows(pL);
       expect(hist.map((h) => h.id)).toEqual([hL]);
-      expect(hist[0]).toMatchObject({ status_from: 'offered', status_to: 'client_declined' });
+      expect(hist[0]).toMatchObject({ status_from: 'qualified', status_to: 'not_in_consideration' });
     });
 
     // ---- B-reconcile-live-terminal ----
@@ -482,7 +483,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const recordS = await promote(survivor);
       const recordL = await promote(merged);
       const pS = await mkPipeline(recordS, reqId, 'not_in_consideration'); // terminal
-      const pL = await mkPipeline(recordL, reqId, 'submitted');            // live
+      const pL = await mkPipeline(recordL, reqId, 'qualifying');            // live
       await mergePointer(survivor, merged);
 
       const op = await orchestrator.reconcile({
@@ -496,7 +497,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const live = await db.query(
         `SELECT count(*)::int n FROM pipeline."Pipeline"
            WHERE tenant_id=$1::uuid AND talent_record_id=$2::uuid AND requisition_id=$3::uuid
-             AND status NOT IN ('placed','not_in_consideration','client_declined')`,
+             AND status NOT IN ('not_in_consideration','completed')`,
         [TENANT, recordS, reqId],
       );
       expect(live.rows[0].n).toBe(1);
@@ -512,7 +513,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const reqId = uuidv7();
       const recordS = await promote(survivor);
       const recordL = await promote(merged);
-      const pS = await mkPipeline(recordS, reqId, 'submitted'); // live
+      const pS = await mkPipeline(recordS, reqId, 'qualifying'); // live
       const pL = await mkPipeline(recordL, reqId, 'qualifying'); // live → conflict
       // A non-pipeline holder to prove NO OTHER DOMAIN mutates on refusal.
       const eng = await mkSelection(recordL, reqId);
@@ -627,9 +628,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const eng = await mkSelection(recordL, reqId);
       // E6 preserve-all: TERMINAL episodes coexist and repoint (no live/live). The
       // loser row is PRESERVED on the forward sweep (never deleted) and repointed.
-      await mkPipeline(recordS, reqId, 'placed');
-      const loserPipeline = await mkPipeline(recordL, reqId, 'client_declined');
-      const loserHist = await mkPipelineHistory(loserPipeline, 'offered', 'client_declined');
+      await mkPipeline(recordS, reqId, 'completed');
+      const loserPipeline = await mkPipeline(recordL, reqId, 'not_in_consideration');
+      const loserHist = await mkPipelineHistory(loserPipeline, 'qualified', 'not_in_consideration');
       // TR-15 B2R — a credential holder must re-point back on reversal too.
       const edu = await mkEducation(recordL);
       const cert = await mkCertification(recordL);
@@ -671,7 +672,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(restored.rows[0].talent_record_id).toBe(recordL);
       const histAfter = await pipelineHistoryRows(loserPipeline);
       expect(histAfter.map((h) => h.id)).toEqual([loserHist]);
-      expect(histAfter[0]).toMatchObject({ status_from: 'offered', status_to: 'client_declined' });
+      expect(histAfter[0]).toMatchObject({ status_from: 'qualified', status_to: 'not_in_consideration' });
       // Consent reconcile grant removed from R_S.
       expect(await effectiveGrantExists(recordS, 'contacting')).toBe(false);
       // The post-merge accretion is LISTED (not moved) for human triage.

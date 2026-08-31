@@ -15,14 +15,14 @@ describe('StatusPill', () => {
 
 describe('StagePill', () => {
   it('renders the recruiter label with the mapped tone', () => {
-    const { container } = render(<StagePill status="submitted" />);
+    const { container } = render(<StagePill status="qualified" />);
     const pill = container.firstChild as HTMLElement;
-    expect(pill.textContent).toBe('Submitted');
-    expect(pill.className).toContain('rc-pill--brand');
+    expect(pill.textContent).toBe('Qualified');
+    expect(pill.className).toContain('rc-pill--info');
   });
 
   it('tones a terminal-reject stage as danger', () => {
-    const { container } = render(<StagePill status="client_declined" />);
+    const { container } = render(<StagePill status="not_in_consideration" />);
     expect((container.firstChild as HTMLElement).className).toContain('rc-pill--danger');
   });
 });

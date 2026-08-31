@@ -501,6 +501,12 @@ const PIPELINE_L2D_PROVENANCE_MIGRATION = resolve(
   ROOT,
   'libs/pipeline/prisma/migrations/20260828160000_l2d_pipeline_entry_provenance/migration.sql',
 );
+// Legacy-Pipeline-Canonicalization — 13-state enum -> canonical 7. SEPARATE const +
+// apply-list entry (never an extra resolve() arg — that ENOTDIRs).
+const PIPELINE_CANONICALIZE_ENUM_MIGRATION = resolve(
+  ROOT,
+  'libs/pipeline/prisma/migrations/20260831120000_pipeline_canonicalize_status_enum/migration.sql',
+);
 // L8-B1 — the submit-to-ats orchestrator touches the submittal_policy schema
 // (RequisitionSubmittalPolicy / SubmittalConsumption / SubmittalPolicyEvent) and
 // reads client_talent_restriction; both schemas must exist in the provider DB.
@@ -1870,8 +1876,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     const ATSW_ACTIVITY_ID = '00000000-0000-7000-8000-ac7100000001';
 
     // COMPOSABLE (PC-5c+): seed a pipeline row. status defaults 'no_contact'
-    // (the create-state) unless a specific stage is passed (e.g. 'offered' for
-    // the placement-transition case).
+    // (the create-state) unless a specific canonical stage is passed (e.g.
+    // 'qualifying').
     async function seedAtsWebPipeline(
       c: Client,
       params: {
@@ -3154,6 +3160,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         PIPELINE_L2C_LIVE_EPISODE_RECREATE_MIGRATION,
         PIPELINE_L2C_DISPOSITION_MIGRATION,
         PIPELINE_L2D_PROVENANCE_MIGRATION,
+        PIPELINE_CANONICALIZE_ENUM_MIGRATION,
         SUBMITTAL_POLICY_INIT_MIGRATION,
         CLIENT_TALENT_RESTRICTION_INIT_MIGRATION,
         POLICY_STORE_INIT_MIGRATION,
@@ -6121,7 +6128,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
 
       // -- a seeded pipeline at the create-state no_contact (list; the happy
       // transition no_contact->contacted; the illegal transition
-      // no_contact->placed [INVALID_PIPELINE_TRANSITION 422]).
+      // no_contact->qualified [INVALID_PIPELINE_TRANSITION 422]).
       // D7 (LOCKED Aramo-Offer-D7-OfferPanel-Wiring v1.0) — seed a DRAFT offer
       // for the (requisition, talent) the GET /v1/offers list pact filters on.
       // resetAllRows does not touch offer."Offer"; the fixed id + ON CONFLICT
@@ -6958,13 +6965,12 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // `fill_rate: null` / company-placements `[]` / dashboard empty-`by_status`
       // expectations). L2-G migrated the canonical fill authority to the placement
       // spine: fill = a PlacementProcess ESTABLISHED (its created_at is the fill
-      // instant), NOT a Pipeline `placed` history triple. A single-opening
+      // instant), NOT a Pipeline status. A single-opening
       // requisition (default openings = 1) created 2026-05-10 with ONE established
       // PlacementProcess on 2026-05-20 → GET /v1/reports/fill-performance returns a
       // deterministic 100% fill rate, one fully-filled requisition, and a whole
-      // 10-day time-to-fill (§14). A legacy `placed` pipeline is retained (readable
-      // history) but is NO LONGER the fill fact. Visible tenant-wide via
-      // requisition:read:all.
+      // 10-day time-to-fill (§14). Fill is a PlacementProcess fact only. Visible
+      // tenant-wide via requisition:read:all.
       'an ats-web recruiter and a fully-filled requisition exist': async () => {
         await withClient(async (c) => {
           await resetAllRows(c);
@@ -7005,19 +7011,9 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
               ATSW_PIPE_TALENT_ID,
             ],
           );
-          // Legacy `placed` pipeline (retained readable history; no longer the fill fact).
-          await seedAtsWebPipeline(c, {
-            id: ATSW_PIPE_ID,
-            talentRecordId: ATSW_PIPE_TALENT_ID,
-            requisitionId: ATSW_PIPE_FULL_REQ_ID,
-            status: 'placed',
-          });
-          await seedAtsWebPipelineHistory(c, {
-            id: ATSW_PIPE_HISTORY_ID,
-            pipelineId: ATSW_PIPE_ID,
-            statusFrom: 'offered',
-            statusTo: 'placed',
-          });
+          // Legacy-Pipeline-Canonicalization — the retired pipeline placement-mirror
+          // seed is removed; fill is a PlacementProcess fact (seeded above), and the
+          // Pipeline no longer carries any placement status.
         });
       },
 

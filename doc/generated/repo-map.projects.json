@@ -684,7 +684,6 @@
     "@aramo/pipeline": [
       "ACTIVE_FLOW_STAGES",
       "AddTalentPolicyService",
-      "LEGACY_TERMINAL_STATUSES",
       "LIVE_EPISODE_EXCLUSION_STATUSES",
       "NO_POLICY_PUBLISHED_REASON",
       "PIPELINE_DISPOSITION_AUTHORITY_VALUES",
@@ -2223,12 +2222,6 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/reporting/src/tests/fill-performance.spec.ts",
-        "project": "reporting",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "libs/reporting/src/tests/fill-shadow-compare.spec.ts",
         "project": "reporting",
         "status": "excluded"
       },

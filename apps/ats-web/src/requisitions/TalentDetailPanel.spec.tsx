@@ -54,9 +54,10 @@ const ENTRY: PipelineView = {
   site_id: null,
   talent_record_id: 't1',
   requisition_id: 'r1',
-  status: 'interviewing',
+  status: 'qualifying',
   created_at: '2026-08-01T00:00:00Z',
   updated_at: '2026-08-01T00:00:00Z',
+  version: 0,
 };
 
 function renderPanel(over: Partial<Parameters<typeof TalentDetailPanel>[0]> = {}) {
@@ -85,38 +86,40 @@ function renderPanel(over: Partial<Parameters<typeof TalentDetailPanel>[0]> = {}
 describe('TalentDetailPanel', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('renders header (name, NEW, role · req code) + the six workflow stages', () => {
+  it('renders header (name, NEW, role · req code) + the pipeline-owned workflow stages', () => {
     renderPanel();
     expect(screen.getByText('Sarah Nolan')).toBeTruthy();
     expect(screen.getByText('NEW')).toBeTruthy();
     expect(screen.getByText('Senior Rust Engineer · REQ-2041')).toBeTruthy();
-    for (const s of ['Sourced', 'Qualifying', 'Submitted', 'Interview', 'Offer', 'Placed']) {
+    // The 4 canonical pipeline-owned funnel buckets (downstream stages are owned
+    // elsewhere — Legacy-Pipeline-Canonicalization).
+    for (const s of ['Early engagement', 'Qualifying', 'Qualified', 'Closed']) {
       expect(screen.getByText(s)).toBeTruthy();
     }
     expect(screen.getByText('Every change is logged to the audit trail.')).toBeTruthy();
   });
 
-  it('marks the current stage (interviewing → Interview) with the CURRENT chip', () => {
+  it('marks the current stage (qualifying → Qualifying) with the CURRENT chip', () => {
     renderPanel();
     expect(screen.getByText('CURRENT')).toBeTruthy();
-    // Interview's step carries aria-current="step"
-    const current = screen.getByText('Interview').closest('button');
+    // Qualifying's step carries aria-current="step".
+    const current = screen.getByText('Qualifying').closest('button');
     expect(current?.getAttribute('aria-current')).toBe('step');
   });
 
-  it('only a LEGAL next stage is clickable — from interviewing, Offer is enabled, Sourced is not', () => {
+  it('only a LEGAL next stage is clickable — from qualifying, Qualified is enabled, Early engagement is not', () => {
     renderPanel();
-    const offerBtn = screen.getByText('Offer').closest('button') as HTMLButtonElement;
-    const sourcedBtn = screen.getByText('Sourced').closest('button') as HTMLButtonElement;
-    expect(offerBtn.disabled).toBe(false); // interviewing → offered is legal
-    expect(sourcedBtn.disabled).toBe(true); // illegal jump backward
+    const qualifiedBtn = screen.getByText('Qualified').closest('button') as HTMLButtonElement;
+    const earlyBtn = screen.getByText('Early engagement').closest('button') as HTMLButtonElement;
+    expect(qualifiedBtn.disabled).toBe(false); // qualifying → qualified is legal
+    expect(earlyBtn.disabled).toBe(true); // illegal jump backward (→ contacted)
   });
 
   it('clicking a legal stage calls the governed transition + onTransitioned', async () => {
     const { onTransitioned } = renderPanel();
-    fireEvent.click(screen.getByText('Offer').closest('button') as HTMLButtonElement);
+    fireEvent.click(screen.getByText('Qualified').closest('button') as HTMLButtonElement);
     await waitFor(() => expect(transitionPipeline).toHaveBeenCalledTimes(1));
-    expect(transitionPipeline).toHaveBeenCalledWith('p1', { to_status: 'offered' });
+    expect(transitionPipeline).toHaveBeenCalledWith('p1', { to_status: 'qualified', expected_version: 0 });
     await waitFor(() => expect(onTransitioned).toHaveBeenCalledTimes(1));
   });
 

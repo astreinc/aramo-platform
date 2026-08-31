@@ -164,7 +164,7 @@ export interface CurrentStage {
 // create(): inserts the Pipeline row + the birth PipelineStatusHistory row
 // (null → no_contact) + a 'pipeline.created' outbox event, all in one tx (L2-B).
 //
-// Capacity is NOT owned here: a `placed` transition does NOT mutate requisition
+// Capacity is NOT owned here: a Pipeline transition does NOT mutate requisition
 // capacity — capacity is DERIVED from the active ContractAssignment population
 // (T4-B2 §7; placement-owned). There is NO public hard delete: the episode is
 // durable and closes through terminal lifecycle semantics (L2-B). The retired
@@ -588,11 +588,9 @@ export class PipelineRepository {
       return projectView(current as PipelineRow);
     }
 
-    // Lane 2 / L2-E (SB-5 / Q1) — `submitted` is no longer a Pipeline transition
-    // target (client submit-to-ats is Submittal-owned). The former
-    // PIPELINE_SUBMIT_REQUIRES_SUBMITTAL special-case is removed: a bare transition
-    // to `submitted` now falls through to the state-machine legality check below and
-    // is refused as INVALID_PIPELINE_TRANSITION (422) like any other illegal target.
+    // Client submit-to-ats is Submittal-owned and is NOT a Pipeline transition; there
+    // is no special submit-guard. Every illegal target is refused by the ordinary
+    // state-machine legality check below as INVALID_PIPELINE_TRANSITION (422).
 
     // Step 3 — legality check (the state machine). Illegal → 422.
     if (!canTransition(fromStatus, args.to_status)) {
@@ -751,8 +749,8 @@ export class PipelineRepository {
       to_status: args.to_status,
       requisition_id,
       history_id: (historyRow as PipelineStatusHistoryRow).id,
-      // T4-B2 §7 — NO openings_decremented: a `placed` transition no longer
-      // mutates requisition capacity (that authority moved to ContractAssignment).
+      // T4-B2 §7 — NO openings_decremented: a Pipeline transition does not
+      // mutate requisition capacity (that authority moved to ContractAssignment).
     });
     return projectView(updatedRow as PipelineRow);
   }
@@ -1064,34 +1062,6 @@ export class PipelineRepository {
     return out;
   }
 
-  // Segment 4c — preset resolution ("Submitted · this week"). Returns the
-  // DISTINCT talent_record ids that transitioned INTO `submitted` at/after
-  // `since`, tenant-wide. PipelineStatusHistory carries the transition; the
-  // talent id comes through the INTRA-schema relation to Pipeline (both live
-  // in the pipeline schema — never a cross-schema join). Bounded by `limit`:
-  // distinct pipelines, take limit+1, then dedup to talent ids (a talent with
-  // two submitted pipelines folds to one).
-  async findTalentIdsSubmittedSince(args: {
-    tenant_id: string;
-    since: Date;
-    limit: number;
-  }): Promise<string[]> {
-    const rows = await this.prisma.pipelineStatusHistory.findMany({
-      where: {
-        tenant_id: args.tenant_id,
-        status_to: 'submitted',
-        changed_at: { gte: args.since },
-      },
-      select: { pipeline: { select: { talent_record_id: true } } },
-      distinct: ['pipeline_id'],
-      take: args.limit + 1,
-      orderBy: { changed_at: 'desc' },
-    });
-    const ids = new Set<string>();
-    for (const r of rows) ids.add(r.pipeline.talent_record_id);
-    return [...ids];
-  }
-
   /**
    * List pipelines. Optionally filter by requisition_id or talent_record_id
    * (the dominant recruiter-UI queries: "all talents on this req" and
@@ -1234,110 +1204,6 @@ export class PipelineRepository {
     }));
   }
 
-  // Lane 2 / L2-E (SB-5 overlay) — the CURRENT-episode status per (talent,
-  // requisition) grain, using the SAME live-wins DISTINCT-ON collapse as
-  // countByStatus. Consumed by the reporting/enrichment submitted-overlay to decide,
-  // per submitted grain, whether its current episode has advanced past `submitted`
-  // (interviewing/offered/placed) or is terminal — in which case the raw status wins
-  // and the grain is NOT re-bucketed to submitted. Returns a Map keyed
-  // `${talent_record_id}:${requisition_id}`.
-  async findCurrentStatusByGrains(args: {
-    tenant_id: string;
-    grains: ReadonlyArray<{ talent_record_id: string; requisition_id: string }>;
-  }): Promise<Map<string, PipelineStatus>> {
-    if (args.grains.length === 0) return new Map();
-    const terminals = [...TERMINAL_STATUSES];
-    const talentIds = args.grains.map((g) => g.talent_record_id);
-    const reqIds = args.grains.map((g) => g.requisition_id);
-    const rows = await this.prisma.$queryRawUnsafe<
-      Array<{ talent_record_id: string; requisition_id: string; status: string }>
-    >(
-      `SELECT DISTINCT ON (talent_record_id, requisition_id)
-              talent_record_id, requisition_id, status
-         FROM "pipeline"."Pipeline"
-        WHERE tenant_id = $1::uuid
-          AND (talent_record_id, requisition_id) IN (
-            SELECT t, r FROM unnest($2::uuid[], $3::uuid[]) AS g(t, r)
-          )
-        ORDER BY talent_record_id, requisition_id,
-                 (status::text = ANY($4::text[])) ASC, created_at DESC, id DESC`,
-      args.tenant_id, talentIds, reqIds, terminals,
-    );
-    const out = new Map<string, PipelineStatus>();
-    for (const r of rows) {
-      out.set(`${r.talent_record_id}:${r.requisition_id}`, r.status as PipelineStatus);
-    }
-    return out;
-  }
-
-  // E6 Q-4 — count DISTINCT (talent, requisition) triples that have a `placed`
-  // episode EXISTING (a placement is a fact about a human on a requisition, not a
-  // per-episode event). Coexisting placed episodes for one triple count ONCE.
-  // BUSINESS helper — not an episode view.
-  async countDistinctPlaced(args: {
-    tenant_id: string;
-    requisition_ids?: readonly string[];
-  }): Promise<number> {
-    const hasReqFilter = args.requisition_ids !== undefined;
-    const reqClause = hasReqFilter ? `AND requisition_id = ANY($2::uuid[])` : '';
-    const params: unknown[] = hasReqFilter
-      ? [args.tenant_id, [...args.requisition_ids!]]
-      : [args.tenant_id];
-    const rows = await this.prisma.$queryRawUnsafe<Array<{ count: bigint }>>(
-      `SELECT count(*)::bigint AS count FROM (
-         SELECT DISTINCT talent_record_id, requisition_id
-         FROM "pipeline"."Pipeline"
-         WHERE tenant_id = $1::uuid AND status = 'placed'::"pipeline"."PipelineStatus" ${reqClause}
-       ) t`,
-      ...params,
-    );
-    return Number(rows[0]?.count ?? 0n);
-  }
-
-  // E6 Q-4 — per-requisition distinct-triple counts for company metrics. `placed`
-  // uses EXISTS semantics (a placement is a fact); the funnel band {submitted,
-  // interviewing, offered} uses CURRENT-episode semantics (who is currently in that
-  // band). Both dedupe by (talent, requisition). BUSINESS helper — not an episode view.
-  async countDistinctByRequisition(args: {
-    tenant_id: string;
-    requisition_ids: readonly string[];
-    statuses: readonly PipelineStatus[];
-    mode: 'exists' | 'current';
-  }): Promise<Array<{ requisition_id: string; count: number }>> {
-    if (args.requisition_ids.length === 0 || args.statuses.length === 0) return [];
-    const terminals = [...TERMINAL_STATUSES];
-    const reqIds = [...args.requisition_ids];
-    const statuses = [...args.statuses];
-    let sql: string;
-    let params: unknown[];
-    if (args.mode === 'exists') {
-      // Distinct talents with an EXISTING episode in the status set, per req.
-      sql =
-        `SELECT requisition_id, count(DISTINCT talent_record_id)::bigint AS count
-           FROM "pipeline"."Pipeline"
-          WHERE tenant_id = $1::uuid
-            AND requisition_id = ANY($2::uuid[])
-            AND status::text = ANY($3::text[])
-          GROUP BY requisition_id`;
-      params = [args.tenant_id, reqIds, statuses];
-    } else {
-      // Distinct talents whose CURRENT episode is in the status set, per req.
-      sql =
-        `SELECT requisition_id, count(*)::bigint AS count FROM (
-           SELECT DISTINCT ON (talent_record_id, requisition_id) requisition_id, status
-             FROM "pipeline"."Pipeline"
-            WHERE tenant_id = $1::uuid AND requisition_id = ANY($2::uuid[])
-            ORDER BY talent_record_id, requisition_id,
-                     (status::text = ANY($4::text[])) ASC, created_at DESC, id DESC
-         ) cur
-         WHERE status::text = ANY($3::text[])
-         GROUP BY requisition_id`;
-      params = [args.tenant_id, reqIds, statuses, terminals];
-    }
-    const rows = await this.prisma.$queryRawUnsafe<Array<{ requisition_id: string; count: bigint }>>(sql, ...params);
-    return rows.map((r) => ({ requisition_id: r.requisition_id, count: Number(r.count) }));
-  }
-
   // Per-company metrics — group pipeline counts by requisition_id for a status
   // set, so the reporting service can fold them up to the company via the
   // req→company map (cross-schema id-list pattern; pipeline.requisition_id is a
@@ -1404,55 +1270,6 @@ export class PipelineRepository {
       talent_record_id: r.talent_record_id as string,
       requisition_id: r.requisition_id as string,
       status: r.status as PipelineStatus,
-    }));
-  }
-
-  // T9-B1 — the FIRST `placed` transition per (talent, requisition), for the
-  // reporting fill-rate numerator + time-to-fill completion (directive §5;
-  // amendment D-1/D-2). Reads PipelineStatusHistory rows that transitioned
-  // INTO `placed`, joining the INTRA-schema Pipeline relation for
-  // talent_record_id + requisition_id (both live in the pipeline schema —
-  // never a cross-schema join). MIN(changed_at) per (talent, requisition)
-  // collapses multiple placed episodes for the same human on the same req to
-  // the FIRST placed instant, so a later duplicate placed episode neither
-  // double-counts (fill) nor advances completion (TTF). Bounded by the
-  // caller's cohort requisition_ids (already [from,to)+A3-scoped upstream);
-  // empty id list short-circuits. DB-side aggregation (D-6) — no capped
-  // in-memory fold. BUSINESS helper — not an episode/history view.
-  async listFirstPlacedByRequisitions(args: {
-    tenant_id: string;
-    requisition_ids: readonly string[];
-  }): Promise<
-    Array<{
-      requisition_id: string;
-      talent_record_id: string;
-      first_placed_at: Date;
-    }>
-  > {
-    if (args.requisition_ids.length === 0) return [];
-    const rows = await this.prisma.$queryRawUnsafe<
-      Array<{
-        requisition_id: string;
-        talent_record_id: string;
-        first_placed_at: Date;
-      }>
-    >(
-      `SELECT p.requisition_id   AS requisition_id,
-              p.talent_record_id AS talent_record_id,
-              MIN(h.changed_at)  AS first_placed_at
-         FROM "pipeline"."PipelineStatusHistory" h
-         JOIN "pipeline"."Pipeline" p ON p.id = h.pipeline_id
-        WHERE h.tenant_id = $1::uuid
-          AND h.status_to = 'placed'::"pipeline"."PipelineStatus"
-          AND p.requisition_id = ANY($2::uuid[])
-        GROUP BY p.requisition_id, p.talent_record_id`,
-      args.tenant_id,
-      [...args.requisition_ids],
-    );
-    return rows.map((r) => ({
-      requisition_id: r.requisition_id,
-      talent_record_id: r.talent_record_id,
-      first_placed_at: r.first_placed_at,
     }));
   }
 
@@ -1537,34 +1354,4 @@ export class PipelineRepository {
     }));
   }
 
-  // Recruiter-metrics — status-history transitions INTO a status set since a
-  // cutoff, for a pipeline set (windowed). The dominant metrics read: "entered
-  // submitted / interviewing / placed" over a recent window. The reporting
-  // service buckets these in JS for the per-period counts + sparkline series.
-  async listTransitionsInto(args: {
-    tenant_id: string;
-    pipeline_ids: readonly string[];
-    statuses_to: readonly PipelineStatus[];
-    since: Date;
-  }): Promise<
-    Array<{ pipeline_id: string; status_to: PipelineStatus; changed_at: Date }>
-  > {
-    if (args.pipeline_ids.length === 0 || args.statuses_to.length === 0) {
-      return [];
-    }
-    const rows = await this.prisma.pipelineStatusHistory.findMany({
-      where: {
-        tenant_id: args.tenant_id,
-        pipeline_id: { in: Array.from(args.pipeline_ids) },
-        status_to: { in: Array.from(args.statuses_to) },
-        changed_at: { gte: args.since },
-      },
-      select: { pipeline_id: true, status_to: true, changed_at: true },
-    });
-    return rows.map((r) => ({
-      pipeline_id: r.pipeline_id as string,
-      status_to: r.status_to as PipelineStatus,
-      changed_at: r.changed_at as Date,
-    }));
-  }
 }

@@ -23,10 +23,6 @@ function makeService(opts: {
   };
   const pipelineRepository = {
     listForRequisitions: vi.fn().mockResolvedValue(opts.pipelines),
-    listTransitionsInto: vi.fn(
-      async (args: { statuses_to: readonly string[] }) =>
-        opts.transitions.filter((t) => args.statuses_to.includes(t.status_to)),
-    ),
   };
   const tenantSettingRepository = {
     findOne: vi.fn().mockResolvedValue(opts.settingRow ?? null),
@@ -57,7 +53,7 @@ function makeService(opts: {
   const placementEventRepository = {
     readFillCohort: vi.fn(async (q: { from?: Date; to?: Date }) =>
       opts.transitions
-        .filter((t) => t.status_to === 'placed')
+        .filter((t) => t.status_to === 'established')
         .filter(
           (t) =>
             (q.from === undefined || t.changed_at >= q.from) &&
@@ -113,10 +109,8 @@ describe('ReportingService.getRecruiterMetrics', () => {
         // submitted: p1 in the last 7d (1d to submit), p2 in the PRIOR 7d (9d).
         { pipeline_id: 'p1', status_to: 'submitted', changed_at: new Date('2026-06-16T12:00:00Z') },
         { pipeline_id: 'p2', status_to: 'submitted', changed_at: new Date('2026-06-10T12:00:00Z') },
-        // interviewing: one this week.
-        { pipeline_id: 'p1', status_to: 'interviewing', changed_at: new Date('2026-06-17T12:00:00Z') },
-        // placed: one this calendar month.
-        { pipeline_id: 'p2', status_to: 'placed', changed_at: new Date('2026-06-05T12:00:00Z') },
+        // an established placement this calendar month (drives readFillCohort).
+        { pipeline_id: 'p2', status_to: 'established', changed_at: new Date('2026-06-05T12:00:00Z') },
       ],
     });
 
@@ -134,11 +128,8 @@ describe('ReportingService.getRecruiterMetrics', () => {
     });
     expect(byKey['submittals_weekly'].series).toHaveLength(8);
 
-    expect(byKey['interviews_weekly']).toMatchObject({
-      value: 1,
-      period: 'week',
-      goal: null, // no goal configured for this key
-    });
+    // Legacy-Pipeline-Canonicalization — interviews_weekly is removed (no key emitted).
+    expect(byKey['interviews_weekly']).toBeUndefined();
 
     expect(byKey['placements_monthly']).toMatchObject({
       value: 1, // placed 06-05 is in June MTD

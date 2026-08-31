@@ -8,62 +8,50 @@ import {
   type PipelineStatus,
 } from '../lib/pipeline-state.js';
 
-// Pipeline state-machine matrix unit tests (PR-A5a Gate 5).
+// Pipeline state-machine matrix unit tests.
 //
-// Mirrors the libs/submittal canonical 5-state matrix spec
-// (submittal-state.spec.ts) in shape:
-//   - the closed-list tuple covers all enum values
-//   - canTransition accepts every legal forward edge
+//   - the closed-list tuple covers all enum values (canonical 7-state)
+//   - canTransition accepts every legal forward/backward/exit edge
 //   - canTransition rejects every illegal transition across the cross product
 //   - terminal states have no outgoing transitions
 //   - the no-op (from === to) is treated as legal (caller intercepts)
-//   - R12 vocabulary: the OpenCATS legacy anti-token is NOT in the
-//     value tuple; `talent_responded` is.
+//   - R12 vocabulary: the OpenCATS legacy anti-token is NOT in the value tuple;
+//     `talent_responded` is.
 
 const ALL_STATES: readonly PipelineStatus[] = PIPELINE_STATUS_VALUES;
 
-// The proposed legal transition map — duplicated here as a literal so
-// the test fails loudly if pipeline-state.ts drifts from the directive
-// §3 Ruling 1 design. Lead reviews this map at Gate 6.
+// The canonical legal transition map — duplicated here as a literal so the test
+// fails loudly if pipeline-state.ts drifts. The Pipeline owns recruiting progress
+// only; everything past `qualified` is downstream-owned and never a Pipeline status.
 const EXPECTED_LEGAL: Record<PipelineStatus, readonly PipelineStatus[]> = {
-  no_status: ['no_contact', 'contacted', 'not_in_consideration'],
   no_contact: ['contacted', 'talent_responded', 'not_in_consideration'],
   contacted: ['talent_responded', 'no_contact', 'not_in_consideration'],
   talent_responded: ['qualifying', 'contacted', 'not_in_consideration'],
-  // L2-C forward edge is `qualified`. L2-E (SB-5) — `submitted` is no longer a
-  // Pipeline transition target (client submit-to-ats is Submittal-owned); removed
-  // from qualifying / qualified / interviewing.
   qualifying: ['qualified', 'talent_responded', 'not_in_consideration'],
+  // `qualified → completed` is legal ONLY so the system COMPLETE precondition validates.
   qualified: ['qualifying', 'not_in_consideration', 'completed'],
-  // L2-F3 — `interviewing` + `client_declined` are RETIRED as Pipeline transition
-  // targets (owned by ClientSelectionProcess/InterviewSession, Lane2-DDR §4). Enum
-  // values kept; source keys kept with their still-valid outgoing edges.
-  submitted: ['qualifying', 'not_in_consideration'],
-  interviewing: ['offered', 'not_in_consideration'],
-  // L2-G — `offered → placed` NEW-write edge RETIRED (canonical fill = PlacementProcess
-  // established; success = system-only COMPLETE). `placed` enum kept (legacy terminal).
-  offered: ['not_in_consideration'],
   not_in_consideration: [],
-  client_declined: [],
-  placed: [],
-  // L2-C — the canonical SUCCESSFUL terminal (system-only COMPLETE, SB-3).
   completed: [],
 };
 
 describe('PIPELINE_STATUS_VALUES — closed-list tuple', () => {
-  it('contains 13 values', () => {
-    // L2-C added `qualified` (affirmative milestone) and `completed` (canonical
-    // success terminal) to the original 11-state OpenCATS-aligned funnel.
-    expect(PIPELINE_STATUS_VALUES).toHaveLength(13);
+  it('contains the canonical 7 values', () => {
+    expect(PIPELINE_STATUS_VALUES).toHaveLength(7);
+    expect([...PIPELINE_STATUS_VALUES].sort()).toEqual([
+      'completed',
+      'contacted',
+      'no_contact',
+      'not_in_consideration',
+      'qualified',
+      'qualifying',
+      'talent_responded',
+    ]);
   });
 
   it('uses R12 vocabulary: talent_responded is present, the forbidden anti-token (per R12 rename of the OpenCATS label) is absent', () => {
     expect(PIPELINE_STATUS_VALUES).toContain('talent_responded');
-    // The R12-forbidden OpenCATS token is composed at runtime so the
-    // eslint vocabulary rule (no-restricted-syntax) does not flag this
-    // negative-shape assertion. The rule fires on Literal[value=/cand.../]
-    // by design; the assertion here is structurally equivalent to
-    // hardcoding the literal but keeps the literal out of source.
+    // The R12-forbidden OpenCATS token is composed at runtime so the eslint
+    // vocabulary rule does not flag this negative-shape assertion.
     const r12ForbiddenToken = ['cand', 'idate', '_', 'responded'].join('');
     expect(PIPELINE_STATUS_VALUES as readonly string[]).not.toContain(
       r12ForbiddenToken,
@@ -74,8 +62,10 @@ describe('PIPELINE_STATUS_VALUES — closed-list tuple', () => {
     for (const v of PIPELINE_STATUS_VALUES) {
       expect(isPipelineStatus(v)).toBe(true);
     }
-    // The R12-forbidden OpenCATS token (see above for the vocabulary
-    // gate rationale).
+    // The retired legacy values are no longer valid Pipeline statuses.
+    for (const retired of ['no_status', 'submitted', 'interviewing', 'offered', 'client_declined', 'placed']) {
+      expect(isPipelineStatus(retired)).toBe(false);
+    }
     const r12ForbiddenToken = ['cand', 'idate', '_', 'responded'].join('');
     expect(isPipelineStatus(r12ForbiddenToken)).toBe(false);
     expect(isPipelineStatus('NOT_A_STATE')).toBe(false);
@@ -86,7 +76,7 @@ describe('PIPELINE_STATUS_VALUES — closed-list tuple', () => {
 });
 
 describe('canTransition — legal forward + backward + exit edges', () => {
-  it('accepts every transition in the proposed map (Ruling 1)', () => {
+  it('accepts every transition in the canonical map', () => {
     for (const [from, toList] of Object.entries(EXPECTED_LEGAL)) {
       for (const to of toList) {
         expect(
@@ -97,80 +87,27 @@ describe('canTransition — legal forward + backward + exit edges', () => {
     }
   });
 
-  it('accepts the recruiter forward chain (no_contact -> qualified); submitted is Submittal-owned', () => {
+  it('accepts the recruiter forward chain (no_contact -> qualified)', () => {
     expect(canTransition('no_contact', 'contacted')).toBe(true);
     expect(canTransition('contacted', 'talent_responded')).toBe(true);
     expect(canTransition('talent_responded', 'qualifying')).toBe(true);
     expect(canTransition('qualifying', 'qualified')).toBe(true);
-    // L2-E — qualified is the recruiter's terminal active stage; submit-to-ats is
-    // Submittal-owned, so `qualified -> submitted` is no longer legal.
-    // L2-F3 — `submitted -> interviewing` is now RETIRED (interview is owner-owned);
-    // the KEPT source edge `interviewing -> offered` remains legal for legacy rows.
-    expect(canTransition('submitted', 'interviewing')).toBe(false);
-    expect(canTransition('interviewing', 'offered')).toBe(true);
-    // L2-G — `offered -> placed` is now RETIRED (canonical fill = placement spine).
-    expect(canTransition('offered', 'placed')).toBe(false);
-  });
-
-  // L2-G — the `offered → placed` NEW-write edge is retired (it was LEGAL before this
-  // slice, ILLEGAL now); `placed` enum value + legacy terminal status KEPT. Successful
-  // Pipeline closure is now the system-only COMPLETE (SB-3), not a manual `placed` write.
-  it('L2-G: offered -> placed is RETIRED; placed is unreachable as a NEW transition target', () => {
-    // BEFORE this slice offered -> placed was the sole placed-writer edge; now illegal.
-    expect(canTransition('offered', 'placed')).toBe(false);
-    // placed is not a target from any OTHER state (no writer mints a new `placed`;
-    // the from===to no-op is excluded — it is legal for every state and the repo
-    // intercepts it separately).
-    for (const from of ALL_STATES) {
-      if (from === 'placed') continue;
-      expect(canTransition(from, 'placed'), `${from} -> placed must be illegal`).toBe(false);
-    }
-    // KEPT: the enum value (placed stays a legacy terminal — the dedicated terminal
-    // test below asserts placed has no outgoing edges).
-    expect(isPipelineStatus('placed')).toBe(true);
-    // offered still drops to not_in_consideration (its remaining edge).
-    expect(canTransition('offered', 'not_in_consideration')).toBe(true);
-  });
-
-  // L2-F3 — the R9 edge-set is retired: each of the 5 edges was LEGAL before this
-  // slice (see git history / the pre-F3 EXPECTED_LEGAL) and is ILLEGAL now. The enum
-  // values remain (history), and each retired-target's SOURCE key keeps its remaining
-  // edges (proved by the kept-edge assertions below).
-  it('L2-F3: interviewing + client_declined are RETIRED as transition targets (5 edges)', () => {
-    // Retired target-edges (BEFORE: legal; AFTER: illegal).
-    expect(canTransition('submitted', 'interviewing')).toBe(false);
-    expect(canTransition('submitted', 'client_declined')).toBe(false);
-    expect(canTransition('interviewing', 'client_declined')).toBe(false);
-    expect(canTransition('offered', 'interviewing')).toBe(false);
-    expect(canTransition('offered', 'client_declined')).toBe(false);
-    // KEPT source edges (retirement is scoped to the target, not the source key).
-    expect(canTransition('submitted', 'qualifying')).toBe(true);
-    expect(canTransition('interviewing', 'offered')).toBe(true);
-    expect(canTransition('interviewing', 'not_in_consideration')).toBe(true);
-    // (L2-G separately retires offered → placed; see the dedicated L2-G test.)
-    // Enum values retained (no drop).
-    expect(isPipelineStatus('interviewing')).toBe(true);
-    expect(isPipelineStatus('client_declined')).toBe(true);
-  });
-
-  it('L2-E: submitted is NOT a transition target from any state (Q1 — mirror retired)', () => {
-    expect(canTransition('qualifying', 'submitted')).toBe(false);
-    expect(canTransition('qualified', 'submitted')).toBe(false);
-    expect(canTransition('interviewing', 'submitted')).toBe(false);
-    // The qualified milestone edges that remain:
-    expect(canTransition('qualifying', 'qualified')).toBe(true); // QUALIFY
-    expect(canTransition('qualified', 'qualifying')).toBe(true); // back-correction
+    // `qualified` is the last Pipeline-owned state; the downstream aggregates
+    // (Submittal / Client-Selection / Offer / Placement) advance independently.
     expect(canTransition('qualified', 'completed')).toBe(true); // system COMPLETE precondition
-    expect(canTransition('offered', 'completed')).toBe(false);
+    expect(canTransition('qualified', 'qualifying')).toBe(true); // back-correction
   });
 
   it('accepts one-step-backward correction edges', () => {
     expect(canTransition('contacted', 'no_contact')).toBe(true);
     expect(canTransition('talent_responded', 'contacted')).toBe(true);
     expect(canTransition('qualifying', 'talent_responded')).toBe(true);
-    expect(canTransition('submitted', 'qualifying')).toBe(true); // submitted-as-source (legacy)
-    // L2-F3 — the `offered -> interviewing` back-edge is retired (interview owner-owned).
-    expect(canTransition('offered', 'interviewing')).toBe(false);
+  });
+
+  it('every non-terminal offers a disposition exit to not_in_consideration', () => {
+    for (const from of ['no_contact', 'contacted', 'talent_responded', 'qualifying', 'qualified'] as const) {
+      expect(canTransition(from, 'not_in_consideration')).toBe(true);
+    }
   });
 
   it('treats no-op (from === to) as legal — the repo intercepts separately', () => {
@@ -181,7 +118,7 @@ describe('canTransition — legal forward + backward + exit edges', () => {
 });
 
 describe('canTransition — terminal states have no outgoing edges', () => {
-  it.each(['not_in_consideration', 'client_declined', 'placed', 'completed'] as const)(
+  it.each(['not_in_consideration', 'completed'] as const)(
     'rejects every transition out of %s except no-op',
     (terminal) => {
       for (const to of ALL_STATES) {
@@ -213,13 +150,13 @@ describe('canTransition — illegal transitions across the cross product', () =>
     }
   });
 
-  it('rejects nonsense jumps (the prompt §4 example)', () => {
-    expect(canTransition('no_contact', 'placed')).toBe(false);
-    expect(canTransition('no_status', 'placed')).toBe(false);
-    expect(canTransition('no_contact', 'offered')).toBe(false);
-    expect(canTransition('contacted', 'placed')).toBe(false);
-    expect(canTransition('qualifying', 'placed')).toBe(false);
-    expect(canTransition('submitted', 'placed')).toBe(false);
+  it('rejects nonsense jumps', () => {
+    expect(canTransition('no_contact', 'completed')).toBe(false);
+    expect(canTransition('no_contact', 'qualified')).toBe(false);
+    expect(canTransition('contacted', 'qualified')).toBe(false);
+    expect(canTransition('talent_responded', 'completed')).toBe(false);
+    // `completed` is reachable ONLY from `qualified` (the system COMPLETE precondition).
+    expect(canTransition('qualifying', 'completed')).toBe(false);
   });
 });
 

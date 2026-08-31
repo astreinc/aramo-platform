@@ -4,7 +4,7 @@ import { CalendarRepository } from '@aramo/calendar';
 import type { VisibilityContextShape } from '@aramo/common';
 import { CompanyRepository } from '@aramo/company';
 import { ContactRepository } from '@aramo/contact';
-import { PipelineRepository, type PipelineStatus } from '@aramo/pipeline';
+import { PipelineRepository } from '@aramo/pipeline';
 import {
   CapacityProjectionRepository,
   type CapacityProjection,
@@ -37,10 +37,6 @@ import {
   INTERVIEW_HISTORY_PORT,
   type InterviewHistoryPort,
 } from './ports/interview-history.port.js';
-import {
-  applySubmittedOverlayToBuckets,
-  submittedBandOverlayByRequisition,
-} from './ports/submitted-overlay.js';
 import type {
   AssignmentPipelineReportView,
   CompanyMetricsView,
@@ -54,8 +50,6 @@ import type {
   RecruitingFunnelStage,
   HiringFunnelReportView,
   HiringFunnelStage,
-  FillShadowCompareRow,
-  ShadowCompareClass,
   GuaranteeExposureReportView,
   MarginReportView,
   PipelineStageRollupView,
@@ -133,7 +127,6 @@ interface ActorContext {
 // settings map). Mirrors RecruiterMetricKey.
 const RECRUITER_METRIC_KEYS: readonly RecruiterMetricKey[] = [
   'submittals_weekly',
-  'interviews_weekly',
   'placements_monthly',
   'avg_time_to_submit',
 ];
@@ -384,46 +377,15 @@ export class ReportingService {
     // E6 Q-4 — by_status collapses each (talent, req) to its CURRENT episode; total
     // is the distinct-triple count (sum of the collapsed buckets), NOT a raw row
     // count, so a re-entered talent is counted once.
-    const raw = await this.pipelineRepository.countByStatus({
+    // Legacy-Pipeline-Canonicalization — the by_status buckets are the canonical
+    // Pipeline statuses directly. The retired Submittal-sourced `submitted` overlay
+    // is removed; the submitted-to-client fact is Submittal-owned, not a Pipeline band.
+    const by_status = await this.pipelineRepository.countByStatus({
       tenant_id: actor.tenant_id,
       ...(visibleReqIds === undefined ? {} : { requisition_ids: visibleReqIds }),
     });
-    // Lane 2 / L2-E (SB-5) — submitted overlay: reproduce the retired Pipeline mirror
-    // from the authoritative Submittal event history. Each submitted grain whose
-    // current episode has not advanced past submitted is re-bucketed into `submitted`
-    // (moved out of its raw stage — no double count). Parity: with the mirror still
-    // writing the grain's current status IS `submitted`, so the overlay is a no-op;
-    // post-removal it rests at qualifying and is moved here — identical buckets.
-    const by_status = await this.overlaySubmitted(actor.tenant_id, raw, visibleReqIds);
     const total = by_status.reduce((sum, r) => sum + r.count, 0);
     return { total, by_status };
-  }
-
-  // Lane 2 / L2-E (SB-5) — the shared snapshot overlay: fetch the submitted grains
-  // (event-sourced, tenant-scoped, optionally restricted to the visible requisitions)
-  // + their current episode status, then re-bucket per submitted-overlay semantics.
-  private async overlaySubmitted(
-    tenant_id: string,
-    raw: Array<{ status: PipelineStatus; count: number }>,
-    requisition_ids: readonly string[] | undefined,
-  ): Promise<Array<{ status: PipelineStatus; count: number }>> {
-    const grains = await this.submittedHistory.findFirstSubmittedByGrain({
-      tenant_id,
-      ...(requisition_ids === undefined ? {} : { requisition_ids }),
-    });
-    if (grains.length === 0) return raw;
-    const currentByGrain = await this.pipelineRepository.findCurrentStatusByGrains({
-      tenant_id,
-      grains: grains.map((g) => ({
-        talent_record_id: g.talent_id,
-        requisition_id: g.requisition_id,
-      })),
-    });
-    return applySubmittedOverlayToBuckets(
-      raw,
-      grains.map((g) => ({ talent_id: g.talent_id, requisition_id: g.requisition_id })),
-      currentByGrain,
-    ) as Array<{ status: PipelineStatus; count: number }>;
   }
 
   async getPlacementCount(
@@ -470,7 +432,6 @@ export class ReportingService {
     // Rule D — the projection is FROM the imported canonical statuses; a status outside this map
     // (completed / legacy downstream values) is deliberately not a recruiting-funnel stage.
     const STATUS_TO_STAGE: Readonly<Record<string, RecruitingFunnelStage>> = {
-      no_status: 'considered',
       no_contact: 'considered',
       contacted: 'contacted',
       talent_responded: 'responded',
@@ -671,107 +632,6 @@ export class ReportingService {
       time_to_fill: { count: ttfCount, average_days },
       canonical_fill_source: 'PLACEMENT_PROCESS',
     };
-  }
-
-  // -------------------------------------------------------------------------
-  // Lane 2 / L2-G (Decision 2) — the read-only shadow-compare DIAGNOSTIC (Rule C).
-  // Computes BOTH the legacy pipeline `placed` history AND the canonical
-  // PlacementProcess-established fill for the actor's visible requisitions, and
-  // CLASSIFIES the per-requisition divergence into {agree, legacy_only, canonical_only,
-  // diverge}, carrying both counts + both first instants + provenance. It emits
-  // classified EVIDENCE ONLY — never a boolean verdict, never an auto-switch. It does NOT
-  // feed any canonical read (the readers above never call this method), so it can never
-  // silently fall the canonical spine back to Pipeline. Its output is disposed by a human
-  // (carried in the Gate-6 report) BEFORE the `placed` NEW-write is retired (SB-5).
-  // -------------------------------------------------------------------------
-  async getFillShadowCompare(
-    actor: ActorContext,
-  ): Promise<FillShadowCompareRow[]> {
-    const reqs = await this.requisitionRepository.listForActor({
-      tenant_id: actor.tenant_id,
-      visibility: actor.visibility,
-      ...(actor.site_id === undefined ? {} : { site_id: actor.site_id }),
-      limit: 1000,
-    });
-    const reqIds = reqs.map((r) => r.id);
-    if (reqIds.length === 0) return [];
-
-    // Read BOTH sources independently — the diagnostic is the ONLY reader that touches the
-    // retired legacy `placed` path; the canonical readers never do.
-    const [legacyRows, canonicalRows] = await Promise.all([
-      this.pipelineRepository.listFirstPlacedByRequisitions({
-        tenant_id: actor.tenant_id,
-        requisition_ids: reqIds,
-      }),
-      this.placementEventRepository.readFillCohort({
-        tenant_id: actor.tenant_id,
-        requisition_ids: reqIds,
-      }),
-    ]);
-
-    type Agg = { talents: Set<string>; first: Date };
-    const legacy = new Map<string, Agg>();
-    for (const r of legacyRows) {
-      const a = legacy.get(r.requisition_id);
-      if (a === undefined) {
-        legacy.set(r.requisition_id, {
-          talents: new Set([r.talent_record_id]),
-          first: r.first_placed_at,
-        });
-      } else {
-        a.talents.add(r.talent_record_id);
-        if (r.first_placed_at < a.first) a.first = r.first_placed_at;
-      }
-    }
-    const canonical = new Map<string, Agg>();
-    for (const r of canonicalRows) {
-      const a = canonical.get(r.requisition_id);
-      if (a === undefined) {
-        canonical.set(r.requisition_id, {
-          talents: new Set([r.talent_record_id]),
-          first: r.first_established_at,
-        });
-      } else {
-        a.talents.add(r.talent_record_id);
-        if (r.first_established_at < a.first) a.first = r.first_established_at;
-      }
-    }
-
-    const reqUnion = new Set<string>([...legacy.keys(), ...canonical.keys()]);
-    const out: FillShadowCompareRow[] = [];
-    for (const requisition_id of reqUnion) {
-      const l = legacy.get(requisition_id);
-      const c = canonical.get(requisition_id);
-      const legacy_count = l?.talents.size ?? 0;
-      const canonical_count = c?.talents.size ?? 0;
-      const legacy_first_instant = l ? l.first.toISOString() : null;
-      const canonical_first_instant = c ? c.first.toISOString() : null;
-      let classification: ShadowCompareClass;
-      if (legacy_count > 0 && canonical_count === 0) {
-        classification = 'legacy_only';
-      } else if (canonical_count > 0 && legacy_count === 0) {
-        classification = 'canonical_only';
-      } else if (
-        legacy_count === canonical_count &&
-        legacy_first_instant === canonical_first_instant
-      ) {
-        classification = 'agree';
-      } else {
-        classification = 'diverge';
-      }
-      out.push({
-        requisition_id,
-        classification,
-        legacy_count,
-        canonical_count,
-        legacy_first_instant,
-        canonical_first_instant,
-        legacy_fill_source: 'PIPELINE_PLACED',
-        canonical_fill_source: 'PLACEMENT_PROCESS',
-      });
-    }
-    // Deterministic order for the human-dispositioned report + any Pact contract.
-    return out.sort((a, b) => a.requisition_id.localeCompare(b.requisition_id));
   }
 
   // -------------------------------------------------------------------------
@@ -1046,80 +906,42 @@ export class ReportingService {
     }
 
     const reqIds = inScope.map((r) => r.id);
-    // E6 Q-4 — dedupe by (talent, req). Placements use EXISTS(placed) (a placement
-    // is a fact); the submitted band uses CURRENT-episode (who is in it now).
-    const [fillCohort, submittedByReq, submittedGrains] = await Promise.all([
-      // Lane 2 / L2-G — active_placements = distinct (talent, req) *established*
-      // PlacementProcess per requisition (canonical fill, D-1), NOT the retired pipeline
-      // `placed`-EXISTS mirror. readFillCohort yields one row per (talent, req).
+    // active_placements = distinct (talent, req) *established* PlacementProcess per
+    // requisition (canonical fill, L2-G). submitted = distinct (talent, req) Submittal
+    // grains per requisition, sourced Submittal-only from the SubmittedHistoryPort:
+    // Legacy-Pipeline-Canonicalization removed the retired Pipeline submitted/
+    // interviewing/offered band read (no owner-derived interview/offer contribution
+    // is reconstructed here — that belongs to the future Submittal/Offer reporting).
+    const [fillCohort, submittedGrains] = await Promise.all([
       this.placementEventRepository.readFillCohort({
         tenant_id: actor.tenant_id,
         requisition_ids: reqIds,
-      }),
-      this.pipelineRepository.countDistinctByRequisition({
-        tenant_id: actor.tenant_id,
-        requisition_ids: reqIds,
-        statuses: ['submitted', 'interviewing', 'offered'],
-        mode: 'current',
       }),
       this.submittedHistory.findFirstSubmittedByGrain({
         tenant_id: actor.tenant_id,
         requisition_ids: reqIds,
       }),
     ]);
-    // Fold the established cohort to distinct-established-per-requisition counts.
-    const placedByReqMap = new Map<string, number>();
-    for (const row of fillCohort) {
-      placedByReqMap.set(row.requisition_id, (placedByReqMap.get(row.requisition_id) ?? 0) + 1);
-    }
-    const placedByReq: ReadonlyArray<{ requisition_id: string; count: number }> = [
-      ...placedByReqMap.entries(),
-    ].map(([requisition_id, count]) => ({ requisition_id, count }));
-    // Lane 2 / L2-E (SB-5) — submitted-band overlay: add each event-sourced submitted
-    // grain whose current episode is PRE-submitted (not already counted in the raw
-    // band). Parity: mirror-present grains have current-status `submitted` and are
-    // already in the raw band → no-op; a grain already advanced to interviewing/offered
-    // is counted by the raw band → not double-added.
-    const bandAdds =
-      submittedGrains.length === 0
-        ? new Map<string, number>()
-        : submittedBandOverlayByRequisition(
-            submittedGrains.map((g) => ({
-              talent_id: g.talent_id,
-              requisition_id: g.requisition_id,
-            })),
-            await this.pipelineRepository.findCurrentStatusByGrains({
-              tenant_id: actor.tenant_id,
-              grains: submittedGrains.map((g) => ({
-                talent_record_id: g.talent_id,
-                requisition_id: g.requisition_id,
-              })),
-            }),
-          );
-    const submittedByReqOverlaid = new Map<string, number>();
-    for (const { requisition_id, count } of submittedByReq) {
-      submittedByReqOverlaid.set(requisition_id, count);
-    }
-    for (const [req, add] of bandAdds) {
-      submittedByReqOverlaid.set(req, (submittedByReqOverlaid.get(req) ?? 0) + add);
-    }
-    const foldByCompany = (
-      rows: ReadonlyArray<{ requisition_id: string; count: number }>,
+    const foldByReqToCompany = (
+      perReq: Map<string, number>,
     ): Map<string, number> => {
       const m = new Map<string, number>();
-      for (const { requisition_id, count } of rows) {
+      for (const [requisition_id, count] of perReq) {
         const co = reqToCompany.get(requisition_id);
         if (co !== undefined) m.set(co, (m.get(co) ?? 0) + count);
       }
       return m;
     };
-    const placedPer = foldByCompany(placedByReq);
-    const submittedPer = foldByCompany(
-      [...submittedByReqOverlaid.entries()].map(([requisition_id, count]) => ({
-        requisition_id,
-        count,
-      })),
-    );
+    const placedByReqMap = new Map<string, number>();
+    for (const row of fillCohort) {
+      placedByReqMap.set(row.requisition_id, (placedByReqMap.get(row.requisition_id) ?? 0) + 1);
+    }
+    const submittedByReqMap = new Map<string, number>();
+    for (const g of submittedGrains) {
+      submittedByReqMap.set(g.requisition_id, (submittedByReqMap.get(g.requisition_id) ?? 0) + 1);
+    }
+    const placedPer = foldByReqToCompany(placedByReqMap);
+    const submittedPer = foldByReqToCompany(submittedByReqMap);
 
     // Emit a row for EVERY requested company (zeros when it has no visible reqs).
     return wanted.map((company_id) => {
@@ -1237,16 +1059,10 @@ export class ReportingService {
     );
 
     const since = addMonthsUTC(now, -SERIES_MONTHS);
-    // `interviewing` remains a Pipeline history read (a legacy stage, journey-visible).
-    const transitions = await this.pipelineRepository.listTransitionsInto({
-      tenant_id: actor.tenant_id,
-      pipeline_ids: pipelines.map((p) => p.id),
-      statuses_to: ['interviewing'],
-      since,
-    });
-    const interviewing = transitions.filter(
-      (t) => t.status_to === 'interviewing',
-    );
+    // Legacy-Pipeline-Canonicalization — the `interviews_weekly` KPI is REMOVED with
+    // the retired Pipeline `interviewing` status. Interview volume is a Client-Selection
+    // (InterviewSession) fact; it is NOT reconstructed here. When recruiter reporting is
+    // made production-ready, an interview metric is rebuilt from its authoritative owner.
     // Lane 2 / L2-G — placements_monthly is now canonical: the actor's requisitions'
     // *established* PlacementProcess (D-1), bucketed by the established instant, NOT the
     // retired pipeline `placed` transition. Windowed on the established instant; scoped
@@ -1285,11 +1101,6 @@ export class ReportingService {
         key: 'submittals_weekly',
         period: 'week',
         ...weeklyCountMetric(submitted, now, goals.submittals_weekly),
-      },
-      {
-        key: 'interviews_weekly',
-        period: 'week',
-        ...weeklyCountMetric(interviewing, now, goals.interviews_weekly),
       },
       {
         key: 'placements_monthly',
@@ -1335,18 +1146,10 @@ export class ReportingService {
             ? {}
             : { requisition_ids: visibleReqIds }),
         })
-        // Lane 2 / L2-E (SB-5) — same submitted overlay as getPipelineRollup.
-        .then(async (raw) => {
-          const by_status = await this.overlaySubmitted(
-            actor.tenant_id,
-            raw,
-            visibleReqIds,
-          );
-          return {
-            total: by_status.reduce((sum, r) => sum + r.count, 0),
-            by_status,
-          };
-        }),
+        .then((by_status) => ({
+          total: by_status.reduce((sum, r) => sum + r.count, 0),
+          by_status,
+        })),
       // Lane 2 / L2-G — canonical fill (D-1): distinct (talent, req) with an *established*
       // PlacementProcess, not the retired pipeline `placed` mirror.
       this.placementEventRepository

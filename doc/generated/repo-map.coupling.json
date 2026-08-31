@@ -728,6 +728,12 @@
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/ats-batch4a-pipeline-activity.integration.spec.ts",
       "status": "excluded",
+      "to": "libs/pipeline/prisma/migrations/20260831120000_pipeline_canonicalize_status_enum/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/ats-batch4a-pipeline-activity.integration.spec.ts",
+      "status": "excluded",
       "to": "libs/policy-store/prisma/migrations/20260730120000_init_policy_store/migration.sql"
     },
     {
@@ -1232,6 +1238,12 @@
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/ats-batch6-reporting-dashboard.integration.spec.ts",
       "status": "excluded",
+      "to": "libs/pipeline/prisma/migrations/20260831120000_pipeline_canonicalize_status_enum/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/ats-batch6-reporting-dashboard.integration.spec.ts",
+      "status": "excluded",
       "to": "libs/policy-store/prisma/migrations/20260730120000_init_policy_store/migration.sql"
     },
     {
@@ -1701,6 +1713,12 @@
       "from": "apps/api/src/tests/ats-batch8-pr-a8-4-export.integration.spec.ts",
       "status": "excluded",
       "to": "libs/pipeline/prisma/migrations/20260828160000_l2d_pipeline_entry_provenance/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/ats-batch8-pr-a8-4-export.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/pipeline/prisma/migrations/20260831120000_pipeline_canonicalize_status_enum/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -3710,6 +3728,12 @@
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/l2g-placement-lifecycle-orchestrator.integration.spec.ts",
       "status": "excluded",
+      "to": "libs/pipeline/prisma/migrations/20260831120000_pipeline_canonicalize_status_enum/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/l2g-placement-lifecycle-orchestrator.integration.spec.ts",
+      "status": "excluded",
       "to": "libs/placement-pipeline-bridge/prisma/migrations/20260831120000_l2g_init_placement_pipeline_bridge/migration.sql"
     },
     {
@@ -3801,6 +3825,12 @@
       "from": "apps/api/src/tests/l2i-d1-inbound-orchestrator.integration.spec.ts",
       "status": "excluded",
       "to": "libs/pipeline/prisma/migrations/20260828160000_l2d_pipeline_entry_provenance/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/l2i-d1-inbound-orchestrator.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/pipeline/prisma/migrations/20260831120000_pipeline_canonicalize_status_enum/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -4610,6 +4640,12 @@
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/policy-add-talent.integration.spec.ts",
       "status": "excluded",
+      "to": "libs/pipeline/prisma/migrations/20260831120000_pipeline_canonicalize_status_enum/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/policy-add-talent.integration.spec.ts",
+      "status": "excluded",
       "to": "libs/policy-store/prisma/migrations/20260730120000_init_policy_store/migration.sql"
     },
     {
@@ -4791,6 +4827,12 @@
       "from": "apps/api/src/tests/pre-start-requirement/marker-confinement.spec.ts",
       "status": "excluded",
       "to": "libs/pipeline/prisma/migrations/20260828160000_l2d_pipeline_entry_provenance/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/pre-start-requirement/marker-confinement.spec.ts",
+      "status": "excluded",
+      "to": "libs/pipeline/prisma/migrations/20260831120000_pipeline_canonicalize_status_enum/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -6249,6 +6291,12 @@
       "from": "apps/api/src/tests/submit-talent.integration.spec.ts",
       "status": "excluded",
       "to": "libs/pipeline/prisma/migrations/20260828160000_l2d_pipeline_entry_provenance/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/submit-talent.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/pipeline/prisma/migrations/20260831120000_pipeline_canonicalize_status_enum/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -7761,6 +7809,12 @@
       "from": "apps/api/src/tests/tr2a-b3b-reconcile.integration.spec.ts",
       "status": "excluded",
       "to": "libs/pipeline/prisma/migrations/20260828160000_l2d_pipeline_entry_provenance/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/tr2a-b3b-reconcile.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/pipeline/prisma/migrations/20260831120000_pipeline_canonicalize_status_enum/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -9413,11 +9467,6 @@
       "excludedBy": "src/**/*.spec.ts",
       "from": "apps/ats-web/src/pipeline/legal-transitions-drift.spec.ts",
       "status": "excluded",
-      "to": "libs/pipeline/src/lib/pipeline-state.ts"
-    },
-    {
-      "from": "apps/ats-web/src/pipeline/legal-transitions.ts",
-      "status": "production",
       "to": "libs/pipeline/src/lib/pipeline-state.ts"
     },
     {
@@ -12117,6 +12166,11 @@
       "to": "scripts/verify-vocabulary.sh"
     },
     {
+      "from": "doc/legacy-pipeline-canonicalization-closure-draft.md",
+      "status": "unscoped",
+      "to": "ci/scripts/verify-dead-error-codes.ts"
+    },
+    {
       "from": "doc/m0-closure-record-draft.md",
       "status": "unscoped",
       "to": "doc/00-ci-deliberate-failure-evidence.md"
@@ -13577,6 +13631,11 @@
     {
       "from": "libs/common/src/lib/errors/error-codes.ts",
       "status": "production",
+      "to": "ci/scripts/verify-dead-error-codes.ts"
+    },
+    {
+      "from": "libs/common/src/lib/errors/error-codes.ts",
+      "status": "production",
       "to": "doc/02-claude-code-discipline.md"
     },
     {
@@ -14581,6 +14640,11 @@
       "from": "libs/outbox-publisher/src/tests/outbox-publisher.integration.spec.ts",
       "status": "excluded",
       "to": "libs/submittal/prisma/migrations/20260531000000_add_outbox_event/migration.sql"
+    },
+    {
+      "from": "libs/pipeline/prisma/migrations/20260831120000_pipeline_canonicalize_status_enum/migration.sql",
+      "status": "unscoped",
+      "to": "libs/pipeline/src/lib/pipeline-state.ts"
     },
     {
       "from": "libs/pipeline/prisma/schema.prisma",
@@ -15970,6 +16034,11 @@
       "from": "pact/provider/src/verify-api.ts",
       "status": "unscoped",
       "to": "libs/pipeline/prisma/migrations/20260828160000_l2d_pipeline_entry_provenance/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "libs/pipeline/prisma/migrations/20260831120000_pipeline_canonicalize_status_enum/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",

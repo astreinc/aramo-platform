@@ -401,7 +401,7 @@ describe('RequisitionDetailView workspace — load model (no first-paint fan-out
   const PIPELINE_TAL1 = [
     {
       id: 'pp-1', tenant_id: 't', site_id: null, talent_record_id: 'tal-1',
-      requisition_id: 'req-1', status: 'submitted',
+      requisition_id: 'req-1', status: 'qualifying',
       created_at: '2026-08-01T00:00:00Z', updated_at: '2026-08-01T00:00:00Z',
     },
   ];

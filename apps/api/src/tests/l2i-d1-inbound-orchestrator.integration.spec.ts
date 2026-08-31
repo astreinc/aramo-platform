@@ -37,6 +37,7 @@ const PIPELINE_MIGRATIONS = [
   'libs/pipeline/prisma/migrations/20260828140000_l2c_pipeline_live_episode_recreate/migration.sql',
   'libs/pipeline/prisma/migrations/20260828150000_l2c_pipeline_disposition/migration.sql',
   'libs/pipeline/prisma/migrations/20260828160000_l2d_pipeline_entry_provenance/migration.sql',
+  'libs/pipeline/prisma/migrations/20260831120000_pipeline_canonicalize_status_enum/migration.sql',
 ].map((p) => resolve(ROOT, p));
 function integrationMigrations(): string[] {
   const dir = resolve(ROOT, 'libs/integration/prisma/migrations');

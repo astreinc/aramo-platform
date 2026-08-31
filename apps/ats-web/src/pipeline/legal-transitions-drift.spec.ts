@@ -93,17 +93,15 @@ describe('legal-transitions drift smoke spec', () => {
     const beKeys = Object.keys(beMatrix).sort();
     const feKeys = Object.keys(LEGAL_TRANSITIONS).sort();
     expect(feKeys).toEqual(beKeys);
-    // Spot check: all 13 statuses appear as keys in both (L2-C added qualified +
-    // completed to the original 11-state funnel).
+    // All 7 canonical statuses appear as keys in both sides.
     expect(beKeys.length).toBe(PIPELINE_STATUS_VALUES.length);
     // Structural matrix equality (set-of-targets per key).
     expect(normalize(LEGAL_TRANSITIONS)).toEqual(normalize(beMatrix));
   });
 
   it('terminals carry no outgoing targets', () => {
-    expect(LEGAL_TRANSITIONS.placed).toEqual([]);
     expect(LEGAL_TRANSITIONS.not_in_consideration).toEqual([]);
-    expect(LEGAL_TRANSITIONS.client_declined).toEqual([]);
+    expect(LEGAL_TRANSITIONS.completed).toEqual([]);
   });
 
   it('every target referenced is a valid PipelineStatus', () => {

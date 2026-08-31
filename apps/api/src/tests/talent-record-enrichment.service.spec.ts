@@ -18,7 +18,7 @@ describe('TalentRecordEnrichmentService', () => {
       findCurrentStageForTalentIds: vi
         .fn()
         .mockResolvedValue(
-          new Map([['t1', { stage: 'submitted', requisition_id: 'r1' }]]),
+          new Map([['t1', { stage: 'qualifying', requisition_id: 'r1' }]]),
         ),
     };
     const consent = {
@@ -31,7 +31,6 @@ describe('TalentRecordEnrichmentService', () => {
       consent as never,
       pipeline as never,
       {} as never,
-      { findFirstSubmittedByGrain: async () => [] } as never, // L2-E submittal-events
     );
 
     const out = await svc.enrich([view('t1'), view('t2')], {
@@ -42,7 +41,7 @@ describe('TalentRecordEnrichmentService', () => {
     expect(out[0]).toMatchObject({
       id: 't1',
       last_activity_at: '2026-06-10T00:00:00.000Z',
-      current_stage: { stage: 'submitted', requisition_id: 'r1' },
+      current_stage: { stage: 'qualifying', requisition_id: 'r1' },
       consent_summary: 'contactable',
     });
     // unlinked t2 → null activity/stage, do_not_contact
@@ -77,7 +76,6 @@ describe('TalentRecordEnrichmentService', () => {
       consent as never,
       { findCurrentStageForTalentIds: vi.fn().mockResolvedValue(new Map()) } as never,
       {} as never,
-      { findFirstSubmittedByGrain: async () => [] } as never, // L2-E submittal-events
     );
     const out = await svc.enrich([view('t1')], {
       tenant_id: 't',
@@ -99,7 +97,6 @@ describe('TalentRecordEnrichmentService', () => {
       {} as never,
       {} as never,
       {} as never,
-      { findFirstSubmittedByGrain: async () => [] } as never, // L2-E submittal-events
     );
     expect(
       await svc.enrich([], { tenant_id: 't', visible_requisition_ids: null }),
@@ -126,7 +123,7 @@ describe('TalentRecordEnrichmentService.crossFacets (Segment 4b)', () => {
     const pipeline = {
       findCurrentStageForTalentIds: vi.fn().mockResolvedValue(
         new Map([
-          ['t1', { stage: 'submitted', requisition_id: 'r1' }],
+          ['t1', { stage: 'qualifying', requisition_id: 'r1' }],
           ['t2', { stage: 'screening', requisition_id: 'r2' }],
           // t3, t4 absent → 'none'
         ]),
@@ -154,7 +151,6 @@ describe('TalentRecordEnrichmentService.crossFacets (Segment 4b)', () => {
       consent as never,
       pipeline as never,
       talent as never,
-      { findFirstSubmittedByGrain: async () => [] } as never, // L2-E submittal-events
     );
 
     const query = { tenant_id: 't', sort: 'name' as const };
@@ -178,7 +174,7 @@ describe('TalentRecordEnrichmentService.crossFacets (Segment 4b)', () => {
     );
     expect(new Map(out.stage.map((b) => [b.value, b.count]))).toEqual(
       new Map([
-        ['submitted', 1],
+        ['qualifying', 1],
         ['screening', 1],
         ['none', 2],
       ]),
@@ -207,7 +203,6 @@ describe('TalentRecordEnrichmentService.crossFacets (Segment 4b)', () => {
         consent as never,
         pipeline as never,
         talent as never,
-      { findFirstSubmittedByGrain: async () => [] } as never, // L2-E submittal-events
       );
 
       const out = await svc.crossFacets({ tenant_id: 't' } as never, {

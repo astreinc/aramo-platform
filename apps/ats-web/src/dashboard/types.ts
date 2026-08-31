@@ -138,7 +138,6 @@ export interface DashboardView {
 // (the goal-progress bar simply doesn't render — honest, no fabricated line).
 export type RecruiterMetricKey =
   | 'submittals_weekly'
-  | 'interviews_weekly'
   | 'placements_monthly'
   | 'avg_time_to_submit';
 

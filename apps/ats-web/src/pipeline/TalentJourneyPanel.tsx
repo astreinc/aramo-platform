@@ -4,7 +4,7 @@ import { getTalentJourney, type TalentRequisitionJourney } from './talent-journe
 
 // Lane 2 / L2-H — the Unified Talent Journey panel. Renders the BE-composed
 // owner-attributed journey as the SINGLE stage source. The current stage is the value the
-// server computed from the owning aggregate; the offered/placed/client_declined labels are
+// server computed from the owning aggregate; the offer/placement/decline labels are
 // never re-derived on this surface (the placement-BOARD display utility stays board-local and
 // is intentionally not imported here). Each owner-specific action links to its owner's command.
 export function TalentJourneyPanel({ pipelineId }: { pipelineId: string }): JSX.Element {

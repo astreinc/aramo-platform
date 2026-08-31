@@ -6,7 +6,7 @@ import type {
 import { PrismaService } from './prisma/prisma.service.js';
 
 // Lane 2 / L2-F (F3) — the owner-sourced journey-stage projection. Derives the
-// interview + client-decline stages Pipeline `interviewing`/`client_declined` faked,
+// interview + client-decision stages the Pipeline formerly approximated,
 // reading ONLY the ClientSelectionProcess/InterviewSession owner (NO Pipeline import —
 // I15/SB-7; both same ATS cluster). A stage is emitted ONLY when the owner substrate
 // exists, so it is provably owner-sourced: delete the process/session and the stage

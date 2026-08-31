@@ -252,13 +252,12 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     // status update + history + metering event — directive §3 / Ruling 6).
     // The reverse direction never exists: ActivityModule does NOT import
     // PipelineModule (lint:nx-boundaries enforces; one-way edge).
-    // A5a is ATS-internal: pipeline reaches `placed` as a status but
-    // does NOT decrement requisition.openings or sync submittal — that
-    // is A5b.
+    // A5a is ATS-internal: a pipeline transition does NOT decrement
+    // requisition.openings or sync submittal — that is A5b.
     ActivityModule,
     PipelineModule,
-    // Lane 2 / L2-F (F1) — the Client-Selection owner (the interview/client-decline
-    // truth Pipeline faked; retires Pipeline ownership in F3).
+    // Lane 2 / L2-F (F1) — the Client-Selection owner (the interview/client-decision
+    // truth formerly approximated inside the Pipeline; retires Pipeline ownership in F3).
     ClientSelectionModule,
     // PR-A6 Gate 5+6 (combined) — ATS finishers batch 5: calendar +
     // saved-list. Both are pattern-reuse leaves with NO new design
@@ -288,7 +287,7 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     // the seam-exclusion proof: ReportingModule does NOT import any
     // Core / selection / submittal / examination / matching / talent /
     // job_domain module. The dashboard's "placement" metric is the
-    // ATS-internal placed-pipeline view (A5b-1 terminal state), NOT a
+    // ATS-internal established-placement view (L2-G), NOT a
     // Core submittal-confirmed-placement (which would cross the seam;
     // that's T5, judgment-out, M6-gated). Hard exclusions also for
     // EEO reporting (A4-deferred fields don't exist) and PDF rendering

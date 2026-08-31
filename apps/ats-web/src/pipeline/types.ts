@@ -6,69 +6,38 @@
 // The legal-transition matrix is mirrored in ./legal-transitions.ts and
 // guarded by ./legal-transitions-drift.spec.ts.
 
+// The canonical 7-state Pipeline recruiting funnel (mirrors
+// libs/pipeline/src/lib/pipeline-state.ts PIPELINE_STATUS_VALUES). The Pipeline
+// owns recruiting progress only; downstream facts (submittal / interview / offer /
+// placement) are owned by their aggregates and are NOT Pipeline statuses.
 export const PIPELINE_STATUS_VALUES = [
-  'no_status',
   'no_contact',
   'contacted',
   'talent_responded',
   'qualifying',
-  // L2-C (D-6) — affirmative recruiter milestone ("suitable for THIS requisition").
+  // affirmative recruiter milestone ("suitable for THIS requisition").
   'qualified',
-  'submitted',
-  'interviewing',
-  'offered',
   'not_in_consideration',
-  'client_declined',
-  'placed',
-  // L2-C (D-2A) — the canonical SUCCESSFUL terminal (system-only COMPLETE; SB-3).
+  // the canonical SUCCESSFUL terminal (system-only COMPLETE; SB-3).
   'completed',
 ] as const;
 export type PipelineStatus = (typeof PIPELINE_STATUS_VALUES)[number];
 
-// Q3 ruling — the kanban column model.
-// Active flow: 7 forward-progression columns visible by default.
-// Closed: terminal states + the import-legacy `no_status` (collapsed
-// area with counts).
-export const ACTIVE_FLOW_COLUMNS: readonly PipelineStatus[] = [
-  'no_contact',
-  'contacted',
-  'talent_responded',
-  'qualifying',
-  // L2-C — `qualified` rests between `qualifying` and `submitted` (mirrors
-  // ACTIVE_FLOW_STAGES; the recruiter's affirmative milestone column).
-  'qualified',
-  'submitted',
-  'interviewing',
-  'offered',
-];
-
+// The terminal statuses — folded into the Closed area of the kanban.
 export const CLOSED_STATUSES: readonly PipelineStatus[] = [
-  'placed',
-  // L2-C — the canonical SUCCESSFUL terminal (folds into the Closed area).
   'completed',
   'not_in_consideration',
-  'client_declined',
 ];
-
-// `no_status` is import-legacy only — hidden from the active flow per Q3.
-// Rendered in the Closed area if a row carries it.
-export const HIDDEN_FROM_ACTIVE: readonly PipelineStatus[] = ['no_status'];
 
 // Display labels (the recruiter-facing nouns). The state-machine source
 // uses snake_case identifiers; the UI shows the human form.
 export const PIPELINE_STATUS_LABELS: Record<PipelineStatus, string> = {
-  no_status: 'No status',
   no_contact: 'No contact',
   contacted: 'Contacted',
   talent_responded: 'Talent responded',
   qualifying: 'Qualifying',
   qualified: 'Qualified',
-  submitted: 'Submitted',
-  interviewing: 'Interviewing',
-  offered: 'Offered',
   not_in_consideration: 'Not in consideration',
-  client_declined: 'Client declined',
-  placed: 'Placed',
   completed: 'Completed',
 };
 
@@ -78,20 +47,14 @@ export const PIPELINE_STATUS_LABELS: Record<PipelineStatus, string> = {
 // never this label). Co-located with the labels so a status-enum change updates
 // both.
 export const PIPELINE_NEXT_ACTION: Record<PipelineStatus, string> = {
-  no_status: 'Set status',
   no_contact: 'Reach out',
   contacted: 'Await response',
   talent_responded: 'Confirm fit, rate & availability',
   qualifying: 'Confirm qualified',
   qualified: 'Prepare submittal',
-  submitted: 'Await client feedback',
-  interviewing: 'Manage interview',
-  offered: 'Await offer decision',
   not_in_consideration: 'Closed — not proceeding',
-  client_declined: 'Closed — client declined',
-  // L2-C — `placed` is the LEGACY success terminal; `completed` is the canonical
-  // one (reached only via the system COMPLETE command, never a recruiter action).
-  placed: 'Closed — placed (legacy)',
+  // `completed` is the canonical success terminal (reached only via the system
+  // COMPLETE command, never a recruiter action).
   completed: 'Closed — completed',
 };
 

@@ -28,27 +28,12 @@ import { publishLifecyclePackage } from './publish-lifecycle-package.js';
 // PR-A5a Gate 5 — ATS Batch 4a (pipeline state machine + activity)
 // integration spec.
 //
-// T4-B2 UPDATE (§7): the pipeline->requisition capacity coupling that
-// PR-A5b-1 once layered onto section (D) has been RETIRED. The
-// `placed`-transition decrement of requisition.openings_available, its
-// REQUISITION_NO_OPENINGS over-capacity 409 guard, AND the delete-
-// restore (+1) were all DELETED from the pipeline writer. Capacity
-// availability is now DERIVED (openings - active ContractAssignment
-// count); over-capacity is REPRESENTABLE and is never a pipeline-time
-// refusal. The `placed` transition is once again a FOUR-write atomic tx
-// (status + history + activity + metering) that leaves requisition
-// capacity UNTOUCHED. Accordingly the two former over-capacity tests
-// (PR-A5b-1 §5 (i) and (ii)/(iii)) are DELETED.
-//
-// L2-G UPDATE (Part 4, #7): `offered → placed` — the SOLE `placed`
-// NEW-write edge — is now RETIRED (canonical fill migrated to the
-// PlacementProcess spine; Pipeline success is the system-only COMPLETE).
-// The former 4-write placed transition no longer fires: the edge is
-// refused with the typed error and writes NOTHING. The enum value is
-// KEPT and legacy `placed` rows stay readable (no history rewrite); the
-// T4-B2 capacity invariant (a `placed` row never mutates
-// openings_available, and purge does not restore) is now proven over a
-// raw legacy `placed` row.
+// Capacity coupling: the pipeline->requisition capacity coupling was RETIRED
+// (T4-B2 §7); capacity availability is DERIVED (openings - active
+// ContractAssignment count) and is never a pipeline-time refusal.
+// Legacy-Pipeline-Canonicalization removed the downstream Pipeline statuses
+// entirely, so the Pipeline is the canonical 7-state recruiting funnel; a legal
+// transition is a FOUR-write atomic tx (status + history + activity + metering).
 //
 // THE load-bearing state-machine proof (PR-A5a directive §4):
 //   1. Initial state: pipeline-add creates at `no_contact`.
@@ -56,18 +41,12 @@ import { publishLifecyclePackage } from './publish-lifecycle-package.js';
 //      status updates; a PipelineStatusHistory row appears (from / to);
 //      an Activity row appears (pipeline_status_change); a UsageEvent
 //      row appears. ALL FOUR writes present together — the atomic 4-tx.
-//   3. Illegal transition (no_contact -> placed): rejected with 422
+//   3. Illegal transition (no_contact -> qualified): rejected with 422
 //      INVALID_PIPELINE_TRANSITION. Pipeline.status unchanged; NO new
 //      PipelineStatusHistory row; NO new Activity row; NO new
 //      UsageEvent row. The tx never fired.
 //   4. No-op transition (same status): no history, no activity, no
 //      metering event.
-//   5. Retired offered -> placed (L2-G #7): the edge is refused 422
-//      INVALID_PIPELINE_TRANSITION and writes NOTHING; a raw legacy
-//      `placed` row stays readable, does NOT mutate
-//      requisition.openings_available, and purge does NOT restore any
-//      slot. The Core boundaries hold: no submittal."TalentSubmittalRecord"
-//      row exists pre OR post (we never touched that table).
 //
 // Section (D) below retains ONLY the no-Core-touch structural boundary
 // proof: talent.* / examination.* / submittal.* / job_domain.* schemas
@@ -169,6 +148,12 @@ const PIPELINE_L2C_DISPOSITION = resolve(
 const PIPELINE_L2D_PROVENANCE = resolve(
   ROOT,
   'libs/pipeline/prisma/migrations/20260828160000_l2d_pipeline_entry_provenance/migration.sql',
+);
+// Legacy-Pipeline-Canonicalization — 13-state enum -> canonical 7. SEPARATE const +
+// apply-list entry (never an extra resolve() arg — that ENOTDIRs).
+const PIPELINE_CANONICALIZE_ENUM = resolve(
+  ROOT,
+  'libs/pipeline/prisma/migrations/20260831120000_pipeline_canonicalize_status_enum/migration.sql',
 );
 // L2-B — the consent-schema IdempotencyKey table (backing the required
 // Idempotency-Key on POST /v1/pipelines) is ALREADY applied below via the
@@ -292,6 +277,7 @@ const MIGRATIONS = [
   PIPELINE_L2C_LIVE_EPISODE_RECREATE,
   PIPELINE_L2C_DISPOSITION,
   PIPELINE_L2D_PROVENANCE,
+  PIPELINE_CANONICALIZE_ENUM,
   POLICY_STORE_INIT,
   POLICY_DECISION_RECORD,
   resolve(ROOT, 'libs/requisition/prisma/migrations/20260803120000_recruiting_status_supersession/migration.sql'),
@@ -457,17 +443,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       );
     }
 
-    async function readOpeningsAvailable(
-      requisitionId: string,
-    ): Promise<number> {
-      const r = await setupClient.query<{ openings_available: number }>(
-        `SELECT openings_available FROM requisition."Requisition"
-         WHERE id = $1::uuid AND tenant_id = $2::uuid`,
-        [requisitionId, TENANT_ATS],
-      );
-      return r.rows[0]!.openings_available;
-    }
-
     // Requisition-expander enrichment fixtures. Two live TalentRecords in
     // TENANT_ATS carry full contact fields; one CONTACTABLE (contacting grant),
     // one with NO consent event (default-deny → do_not_contact). A third
@@ -627,26 +602,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       }
     }
 
-    async function walkToOffered(jwt: string, id: string): Promise<void> {
-      for (const step of ['contacted', 'talent_responded', 'qualifying']) {
-        const r = await transition(jwt, id, step);
-        expect(r.status, `walkToOffered step ${step}`).toBe(200);
-      }
-      // L8-B1 R-TIGHTEN — `submitted` is no longer reachable through the transition
-      // route (submit-to-ats orchestrator's mirror). L2-F3 — `interviewing` is likewise
-      // legacy-only (the interview truth is owned by InterviewSession; no engine edge
-      // reaches it). Set both directly, then continue via the KEPT source edge
-      // interviewing → offered.
-      await setupClient.query(
-        `UPDATE pipeline."Pipeline" SET status = 'interviewing' WHERE id = $1::uuid`,
-        [id],
-      );
-      for (const step of ['offered']) {
-        const r = await transition(jwt, id, step);
-        expect(r.status, `walkToOffered step ${step}`).toBe(200);
-      }
-    }
-
     async function transition(
       jwt: string,
       id: string,
@@ -707,11 +662,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         [TENANT_ATS],
       );
 
-      // Seed a Requisition row so the placed-transition test has a
-      // concrete openings_available to prove is UNTOUCHED pre/post (the
-      // T4-B2 writer removal — a `placed` transition no longer mutates
-      // requisition capacity). The over-capacity FULL/ROLLBACK fixtures
-      // were retired with the two deleted §5 over-capacity tests.
+      // Seed a Requisition row so the capacity test has a concrete
+      // openings_available to prove is UNTOUCHED pre/post (the T4-B2 writer
+      // removal — a Pipeline transition no longer mutates requisition
+      // capacity). The over-capacity FULL/ROLLBACK fixtures were retired
+      // with the two deleted §5 over-capacity tests.
       await seedRequisitionWithOpenings(REQUISITION_ID, 3);
 
       // Requisition-expander enrichment fixtures (talent records + consent +
@@ -929,8 +884,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     it('Initial state: pipeline-add creates at no_contact (directive §2 invariant)', async () => {
       const created = await createPipeline(recruiterJwt_Ats_SiteA);
       expect(created.status).toBe('no_contact');
-      // The proposed map (Ruling 1) targets `no_contact` as the only
-      // initial — no_status is never reached by this entry point.
+      // `no_contact` is the sole initial state — every new Pipeline row is born there.
       const rowStatus = await readStatus(created.id);
       expect(rowStatus).toBe('no_contact');
       // L2-B — create() now writes exactly one birth history row (NULL -> no_contact);
@@ -973,14 +927,15 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await cleanupPipeline(created.id);
     });
 
-    it('Illegal transition (no_contact -> placed): rejected with INVALID_PIPELINE_TRANSITION; NO writes anywhere', async () => {
+    it('Illegal transition (no_contact -> qualified): rejected with INVALID_PIPELINE_TRANSITION; NO writes anywhere', async () => {
       const created = await createPipeline(recruiterJwt_Ats_SiteA);
       const usageBefore = await countUsageEvents();
       const historyBefore = await countHistoryRows(created.id);
       const activityBefore = await countActivityRows(created.id);
       const statusBefore = await readStatus(created.id);
 
-      const r = await transition(recruiterJwt_Ats_SiteA, created.id, 'placed');
+      // no_contact -> qualified is a non-adjacent canonical jump (not in LEGAL_TRANSITIONS).
+      const r = await transition(recruiterJwt_Ats_SiteA, created.id, 'qualified');
       expect(r.status).toBe(422);
       const body = r.body as { error: { code: string } };
       expect(body.error.code).toBe('INVALID_PIPELINE_TRANSITION');
@@ -1014,65 +969,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await cleanupPipeline(created.id);
     });
 
-    it('Retired offered->placed NEW-write (L2-G #7): the edge is refused 422 INVALID_PIPELINE_TRANSITION (no writes); a legacy `placed` row stays readable, capacity UNTOUCHED, purge does NOT restore', async () => {
-      // L2-G Part 4 — `offered → placed` was the SOLE `placed` NEW-write edge; it is now
-      // RETIRED (canonical fill = PlacementProcess-established; Pipeline success = system-
-      // only COMPLETE). The former 4-write placed transition no longer fires: the edge is
-      // refused with the typed error and writes NOTHING (retirement mirror of L2-E/L2-F3).
-      // The enum value is KEPT and legacy `placed` rows remain fully readable (no history
-      // rewrite). We also carry forward the T4-B2 capacity invariant — a `placed` row never
-      // mutates requisition.openings_available and purge does not restore — now proven over
-      // a raw legacy `placed` row (the shape pre-L2-G data holds).
-      const openingsBefore = await readOpeningsAvailable(REQUISITION_ID);
-
-      const created = await createPipeline(recruiterJwt_Ats_SiteA);
-      await walkToOffered(recruiterJwt_Ats_SiteA, created.id);
-      expect(await readStatus(created.id)).toBe('offered');
-
-      const usageBeforePlaced = await countUsageEvents();
-      const historyBeforePlaced = await countHistoryRows(created.id);
-      const activityBeforePlaced = await countActivityRows(created.id);
-
-      // The retired edge: offered -> placed is now the typed refusal, not 200/`placed`.
-      const refused = await transition(recruiterJwt_Ats_SiteA, created.id, 'placed');
-      expect(refused.status).toBe(422);
-      expect((refused.body as { error: { code: string } }).error.code).toBe(
-        'INVALID_PIPELINE_TRANSITION',
-      );
-
-      // The retirement writes NOTHING: status stays `offered`; no history/activity/metering.
-      expect(await readStatus(created.id)).toBe('offered');
-      expect(await countHistoryRows(created.id)).toBe(historyBeforePlaced);
-      expect(await countActivityRows(created.id)).toBe(activityBeforePlaced);
-      expect(await countUsageEvents()).toBe(usageBeforePlaced);
-
-      // Legacy `placed` rows remain readable (enum KEPT, no rewrite). Raw-write a legacy
-      // `placed` (as a pre-L2-G episode would already be), and prove the T4-B2 capacity
-      // invariant still holds: its existence does not decrement openings_available.
-      await setupClient.query(
-        `UPDATE pipeline."Pipeline" SET status = 'placed' WHERE id = $1::uuid`,
-        [created.id],
-      );
-      expect(await readStatus(created.id)).toBe('placed');
-      expect(await readOpeningsAvailable(REQUISITION_ID)).toBe(openingsBefore);
-
-      // Purging a `placed` pipeline does NOT restore any slot (the delete-restore writer
-      // was DELETED; L2-B withdrew the API DELETE — cleanup is the tenant-reset escape).
-      await cleanupPipeline(created.id);
-      expect(await readOpeningsAvailable(REQUISITION_ID)).toBe(openingsBefore);
-
-      // The other Core boundaries still hold: submittal."TalentSubmittalRecord" is not even
-      // loaded into this test container — any attempted write would have thrown long ago.
-      const submittalProbe = await setupClient
-        .query<{ exists: boolean }>(
-          `SELECT EXISTS (
-             SELECT 1 FROM information_schema.tables
-             WHERE table_schema = 'submittal' AND table_name = 'TalentSubmittalRecord'
-           ) AS exists`,
-        )
-        .catch(() => null);
-      expect(submittalProbe?.rows[0]?.exists ?? false).toBe(false);
-    });
+    // Legacy-Pipeline-Canonicalization — the former downstream-transition retirement
+    // test is DELETED: the statuses it exercised cease to exist as Pipeline values, so
+    // the transitional compatibility rule it proved no longer exists. The generic
+    // INVALID_PIPELINE_TRANSITION contract is proven by the canonical illegal-transition
+    // test above; the T4-B2 capacity invariant lives in the capacity-authority spec.
 
     // -------------------------------------------------------------------------
     // C) Metering-in-transaction (directive §4 item 3)
@@ -1091,12 +992,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(legal.status).toBe(200);
       expect(await countUsageEvents()).toBe(usageBefore + 1);
 
-      // Illegal from contacted -> placed: +0 usage.
+      // Illegal from contacted -> completed: +0 usage (completed is legal only from qualified).
       const usageMid = await countUsageEvents();
       const illegal = await transition(
         recruiterJwt_Ats_SiteA,
         created.id,
-        'placed',
+        'completed',
       );
       expect(illegal.status).toBe(422);
       expect(await countUsageEvents()).toBe(usageMid);

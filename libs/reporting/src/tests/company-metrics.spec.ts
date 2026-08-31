@@ -19,13 +19,19 @@ function makeService(opts: {
   const requisitionRepository = {
     listForActor: vi.fn().mockResolvedValue(opts.reqs),
   };
-  const pipelineRepository = {
-    // Lane 2 / L2-G — the `placed` leg is gone (fill = placement established). Only the
-    // submitted band (mode:'current') still reads pipeline history.
-    countDistinctByRequisition: vi.fn(
-      async () => opts.submitted,
-    ),
-  };
+  // Legacy-Pipeline-Canonicalization — getCompanyMetrics reads NO pipeline status.
+  // active_placements = readFillCohort (PlacementProcess); submitted = the Submittal
+  // grain count (below). pipelineRepository is unused here.
+  const pipelineRepository = {};
+  // Expand opts.submitted {req,count} into distinct first-Submittal grains per req.
+  const submittedGrains = opts.submitted.flatMap((s) =>
+    Array.from({ length: s.count }, (_unused, j) => ({
+      talent_id: `sub-${s.requisition_id}-${String(j)}`,
+      requisition_id: s.requisition_id,
+      first_submitted_at: new Date('2026-01-01T00:00:00.000Z'),
+      pipeline_id: `pipe-${s.requisition_id}-${String(j)}`,
+    })),
+  );
   // Lane 2 / L2-G — active_placements + company-placements both derive from the canonical
   // fill read. Reproduce the seeded placements AS readFillCohort rows: `placedRows` map
   // 1:1 (id → first_placement_process_id) for the placements list; otherwise `placed`
@@ -72,7 +78,7 @@ function makeService(opts: {
     stub, // placementPipelineRepository (T9-B3; unused here)
     {} as never, // T7-P4 guaranteeExposureRepository (unused here)
     stub, // commercialMarginRepository (T9-B4; unused here)
-    { findFirstSubmittedByGrain: async () => [] } as never, // L2-E submitted-history port
+    { findFirstSubmittedByGrain: async () => submittedGrains } as never, // Submittal-only submitted count
     { findFirstInterviewByGrain: async () => [] } as never, // L2-I D4b interview-history port
   );
   return { svc, requisitionRepository, pipelineRepository };
@@ -147,7 +153,7 @@ describe('ReportingService.getCompanyMetrics', () => {
 });
 
 describe('ReportingService.getCompanyPlacements', () => {
-  it('lists placed pipelines at the company reqs with the req title joined', async () => {
+  it('lists established placements at the company reqs with the req title joined', async () => {
     const { svc } = makeService({
       reqs: [
         { id: 'r-a1', company_id: 'co-A', status: 'open', title: 'Rust Eng', openings: 1, openings_available: 0 },
@@ -156,7 +162,7 @@ describe('ReportingService.getCompanyPlacements', () => {
       placed: [],
       submitted: [],
       placedRows: [
-        { id: 'pl-1', talent_record_id: 'tr-1', requisition_id: 'r-a1', status: 'placed' },
+        { id: 'pl-1', talent_record_id: 'tr-1', requisition_id: 'r-a1', status: 'established' },
       ],
     });
     const res = await svc.getCompanyPlacements(actor, 'co-A');

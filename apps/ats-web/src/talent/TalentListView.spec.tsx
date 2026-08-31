@@ -443,7 +443,7 @@ describe('TalentListView (server-side faceted workspace — Segment 4d)', () => 
       talent: [
         makeTalent('1', 'Ada', 'Lovelace', {
           consent_summary: 'contactable',
-          current_stage: { stage: 'interviewing', requisition_id: 'req-1' },
+          current_stage: { stage: 'qualifying', requisition_id: 'req-1' },
           last_activity_at: '2026-06-14T09:00:00.000Z',
         }),
       ],
@@ -451,7 +451,7 @@ describe('TalentListView (server-side faceted workspace — Segment 4d)', () => 
     renderInRouter(<TalentListView sessionOverride={SESSION} />);
     await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument());
     expect(screen.getAllByText('Contactable').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('Interviewing').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Qualifying').length).toBeGreaterThan(0);
   });
 
   it('column-customize toggles a column off (Rate hidden via the Columns menu)', async () => {

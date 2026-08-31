@@ -39,7 +39,7 @@ import type { PipelineStatus } from '../lib/pipeline-state.js';
 
 // Four schemas participate in a pipeline transition: pipeline (state + history),
 // activity + metering (cross-schema raw INSERT in legs 4c/4d), requisition
-// (openings_available decrement in leg 4e on `placed`).
+// (read-only — capacity is DERIVED from ContractAssignment, never written here).
 const MIGRATIONS = [
   '../../../../libs/requisition/prisma/migrations/20260602100000_init_requisition_model/migration.sql',
   '../../../../libs/activity/prisma/migrations/20260602140000_init_activity_model/migration.sql',
@@ -58,18 +58,16 @@ const MIGRATIONS = [
   '../../prisma/migrations/20260828140000_l2c_pipeline_live_episode_recreate/migration.sql',
   '../../prisma/migrations/20260828150000_l2c_pipeline_disposition/migration.sql',
   '../../prisma/migrations/20260828160000_l2d_pipeline_entry_provenance/migration.sql',
+  '../../prisma/migrations/20260831120000_pipeline_canonicalize_status_enum/migration.sql',
 ].map((p) => resolve(__dirname, p));
 
-// The legal edge chain no_contact -> ... -> placed (offered is the only source
-// of `placed`). Every hop is a legal transition in LEGAL_TRANSITIONS.
-const PATH_TO_PLACED: readonly PipelineStatus[] = [
+// The legal recruiter chain no_contact -> ... -> qualified. Every hop is a legal
+// transition in LEGAL_TRANSITIONS (qualified is the last Pipeline-owned state).
+const PATH_TO_QUALIFIED: readonly PipelineStatus[] = [
   'contacted',
   'talent_responded',
   'qualifying',
-  'submitted',
-  'interviewing',
-  'offered',
-  'placed',
+  'qualified',
 ];
 
 // Dollar-quote- AND line-comment-aware DDL splitter — splits on `;` outside
@@ -182,28 +180,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     }
 
     async function drive(tenant: string, id: string, path: readonly PipelineStatus[]): Promise<void> {
+      // Every canonical step is a real, legal engine transition.
       for (const to of path) {
-        // L8-B1 R-TIGHTEN — `→ submitted` is not an engine transition (orchestrator
-        // mirror). L2-F3 — `→ interviewing` is likewise legacy-only (owned by
-        // InterviewSession). L2-G — `→ placed` is likewise legacy-only (canonical fill
-        // = PlacementProcess established; success = system-only COMPLETE). Each is
-        // force-set as a legacy row; the KEPT engine edges carry the rest of the walk.
-        if (to === 'submitted' || to === 'interviewing' || to === 'placed') {
-          await prisma.$executeRawUnsafe(`UPDATE pipeline."Pipeline" SET status = '${to}' WHERE id = '${id}'`);
-          continue;
-        }
         await casTransition(tenant, id, to, 'l1');
       }
-    }
-
-    // L8-B1 R-TIGHTEN — `submitted` is no longer reachable through the engine
-    // (it is the mirror of an authoritative client submittal). Characterizations
-    // that need a pipeline IN `submitted` set it the way the orchestrator's mirror
-    // does — a direct write — rather than driving the refused transition.
-    async function forceSubmitted(id: string): Promise<void> {
-      await prisma.$executeRawUnsafe(
-        `UPDATE pipeline."Pipeline" SET status = 'submitted' WHERE id = '${id}'`,
-      );
     }
 
     // ---- P-dup [E6-updated] — Q-2 one-live-episode guard at the repo layer ----
@@ -295,11 +275,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
     // ==== Track 4 / T4-B2 §7 — CAPACITY PROOFS REMOVED FROM THIS SPEC ====
     // P-capacity / P-restore / B-capacity / B-capacity-restore CHARACTERIZED the
-    // pre-B2 pipeline capacity coupling (the E6 boolean EXISTS(placed) ±1 decrement/
+    // pre-B2 pipeline capacity coupling (the E6 boolean EXISTS-terminal ±1 decrement/
     // restore of requisition.openings_available). B2 §7 REMOVED that mechanism:
     // pipeline no longer writes requisition capacity (ContractAssignment is the sole
     // consumption authority). Those four proofs are therefore obsolete and were
-    // removed here; the NEW authoritative behaviour (a `placed` transition / delete
+    // removed here; the NEW authoritative behaviour (a Pipeline transition / delete
     // leaves capacity untouched, and the REQUISITION_NO_OPENINGS 409 gate is gone)
     // is proven by pipeline-capacity-authority-removed-b2.integration.spec.ts. The
     // remaining proofs below (uniqueness / projection collapse) are E6 concerns,
@@ -307,31 +287,27 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
     // ==== E6 — Q-4 PROJECTION COLLAPSE (Boundary 5, repository layer) ====
     // ---- B-projection-repo [E6] ----
-    // A (talent, req) with a HISTORICAL placed episode + a CURRENT live episode
-    // (legal post-drop) is counted ONCE by the business projections: placements =
-    // distinct triple with placed EXISTS (1, not 2); by_status buckets the talent
-    // under its CURRENT episode's stage only. Episode/history reads are unaffected.
-    it('B-projection-repo [E6]: coexisting episodes collapse — countDistinctPlaced=1, by_status counts the talent once in its current stage', async () => {
+    // A (talent, req) with a HISTORICAL terminal episode + a CURRENT live episode
+    // (legal post-drop) is counted ONCE by the business projection: by_status
+    // buckets the talent under its CURRENT episode's stage only. Episode/history
+    // reads are unaffected (both physical rows survive).
+    it('B-projection-repo [E6]: coexisting episodes collapse — by_status counts the talent once in its current stage', async () => {
       const tenant = randomUUID();
       const req = await seedRequisition(tenant, 5);
       const talent = randomUUID();
 
-      // Episode 1 → placed (terminal). Episode 2 → a fresh live episode at submitted.
+      // Episode 1 → not_in_consideration (terminal). Episode 2 → a fresh live episode at qualifying.
       const p1 = await repo.create({ tenant_id: tenant, input: { talent_record_id: talent, requisition_id: req }, entry_provenance: { origin_type: 'MANUAL_RECRUITER', initiated_by_kind: 'user' } });
-      await drive(tenant, p1.id, PATH_TO_PLACED);
+      await casTransition(tenant, p1.id, 'not_in_consideration', 'ep1-term');
       const p2 = await repo.create({ tenant_id: tenant, input: { talent_record_id: talent, requisition_id: req }, entry_provenance: { origin_type: 'MANUAL_RECRUITER', initiated_by_kind: 'user' } });
       await drive(tenant, p2.id, ['contacted', 'talent_responded', 'qualifying']);
-      await forceSubmitted(p2.id);
-
-      // BUSINESS: placements = distinct (talent, req) with placed EXISTS = 1 (not 2).
-      expect(await repo.countDistinctPlaced({ tenant_id: tenant, requisition_ids: [req] })).toBe(1);
 
       // BUSINESS: by_status collapses to the CURRENT episode — the talent appears
-      // ONCE, under submitted (the live one), and NOT under placed.
+      // ONCE, under qualifying (the live one), and NOT under the terminal.
       const byStatus = await repo.countByStatus({ tenant_id: tenant, requisition_ids: [req] });
       const map = Object.fromEntries(byStatus.map((r) => [r.status, r.count]));
-      expect(map['submitted']).toBe(1);
-      expect(map['placed'] ?? 0).toBe(0);
+      expect(map['qualifying']).toBe(1);
+      expect(map['not_in_consideration'] ?? 0).toBe(0);
 
       // EPISODE view is unaffected: both physical rows still exist.
       expect(await pipelineRowCount(tenant, talent, req)).toBe(2);
@@ -350,8 +326,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       const pAdvanced = await repo.create({ tenant_id: tenant, input: { talent_record_id: talent, requisition_id: reqAdvanced }, entry_provenance: { origin_type: 'MANUAL_RECRUITER', initiated_by_kind: 'user' } });
       const pBehind = await repo.create({ tenant_id: tenant, input: { talent_record_id: talent, requisition_id: reqBehind }, entry_provenance: { origin_type: 'MANUAL_RECRUITER', initiated_by_kind: 'user' } });
-      await drive(tenant, pAdvanced.id, ['contacted', 'talent_responded', 'qualifying']);
-      await forceSubmitted(pAdvanced.id);
+      await drive(tenant, pAdvanced.id, ['contacted', 'talent_responded', 'qualifying', 'qualified']);
       await drive(tenant, pBehind.id, ['contacted', 'talent_responded', 'qualifying']);
 
       const map = await repo.findCurrentStageForTalentIds({
@@ -361,7 +336,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       });
       const cs = map.get(talent);
       expect(cs).toBeDefined();
-      expect(cs!.stage).toBe('submitted'); // submitted (ord 4) beats qualifying (ord 3)
+      expect(cs!.stage).toBe('qualified'); // qualified (ord 4) beats qualifying (ord 3)
       expect(cs!.requisition_id).toBe(reqAdvanced);
     });
 
@@ -391,22 +366,21 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(cs!.stage).toBe('qualifying');
       expect(cs!.requisition_id).toBe(reqLow); // lowest requisition_id wins the tie
     });
-    // ---- P5 [L2-E SB-5] — a bare pipeline `→ submitted` is refused as an ILLEGAL
-    // TRANSITION (422). `submitted` is no longer a Pipeline transition target at all
-    // (client submit-to-ats is Submittal-owned); the former special-case
-    // PIPELINE_SUBMIT_REQUIRES_SUBMITTAL (409) guard is removed, so it falls through
-    // to the ordinary state-machine legality check like any other illegal target.
-    it('P5 [L2-E]: qualifying → submitted is refused with INVALID_PIPELINE_TRANSITION (422); other transitions unaffected', async () => {
+    // ---- P5 — the state-machine guard refuses any illegal target (422) and writes
+    // nothing, and a subsequent legal transition still works. Client submit-to-ats is
+    // Submittal-owned and is NOT a Pipeline transition; there is no special-case guard —
+    // every non-adjacent target falls through to the ordinary legality check.
+    it('P5: an illegal transition is refused with INVALID_PIPELINE_TRANSITION (422); other transitions unaffected', async () => {
       const tenant = randomUUID();
       const req = await seedRequisition(tenant, 1);
       const talent = randomUUID();
       const p = await repo.create({ tenant_id: tenant, input: { talent_record_id: talent, requisition_id: req }, entry_provenance: { origin_type: 'MANUAL_RECRUITER', initiated_by_kind: 'user' } });
       await drive(tenant, p.id, ['contacted', 'talent_responded', 'qualifying']);
 
-      // The bare submit is refused — `submitted` is not a legal target (not the old
-      // 409 mirror guard; the honest state-machine 422).
+      // A non-adjacent jump is refused by the state-machine guard (422): `completed`
+      // is legal ONLY from `qualified`, so qualifying -> completed is illegal.
       await expect(
-        casTransition(tenant, p.id, 'submitted', 'p5'),
+        casTransition(tenant, p.id, 'completed', 'p5'),
       ).rejects.toMatchObject({ code: 'INVALID_PIPELINE_TRANSITION' });
       // The refusal wrote nothing — status is still qualifying.
       const after = await repo.findById({ tenant_id: tenant, id: p.id });

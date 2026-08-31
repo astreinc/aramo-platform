@@ -2139,8 +2139,8 @@ export class RequisitionRepository {
   // set (buildVisibilityWhere) + tenant + optional site. Period-bounded by
   // the [from,to) predicate — deliberately NOT the 200/1000-capped
   // listForActor fold (directive §6 / amendment D-6), and no per-row capacity
-  // read: openings_available is irrelevant to the pipeline-`placed` fill
-  // authority (D-1). Minimal projection — the fill/TTF math needs only
+  // read: openings_available is irrelevant to the established-placement fill
+  // authority (L2-G, D-1). Minimal projection — the fill/TTF math needs only
   // id + openings + status + created_at.
   async listCohortForActor(args: {
     tenant_id: string;

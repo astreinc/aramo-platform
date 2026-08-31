@@ -49,8 +49,8 @@ interface ReqRow {
 }
 
 const ROWS: readonly ReqRow[] = [
-  { id: '2041', title: 'Senior Rust Engineer', company: 'Northwind Robotics', code: 'REQ-2041', inPipeline: 14, submitted: 3, openingsFilled: 1, openings: 3, hot: true, stage: 'interviewing' },
-  { id: '2038', title: 'Data Platform Lead', company: 'Cobalt Health', code: 'REQ-2038', inPipeline: 9, submitted: 2, openingsFilled: 0, openings: 1, hot: false, stage: 'submitted' },
+  { id: '2041', title: 'Senior Rust Engineer', company: 'Northwind Robotics', code: 'REQ-2041', inPipeline: 14, submitted: 3, openingsFilled: 1, openings: 3, hot: true, stage: 'qualified' },
+  { id: '2038', title: 'Data Platform Lead', company: 'Cobalt Health', code: 'REQ-2038', inPipeline: 9, submitted: 2, openingsFilled: 0, openings: 1, hot: false, stage: 'qualifying' },
   { id: '2049', title: 'Staff Frontend Engineer', company: 'Lumen Pay', code: 'REQ-2049', inPipeline: 4, submitted: 0, openingsFilled: 0, openings: 1, hot: false, stage: 'qualifying' },
 ];
 

@@ -29,7 +29,6 @@ interface MetricMeta {
 
 const META: Record<RecruiterMetricKey, MetricMeta> = {
   submittals_weekly: { label: 'Submittals · wk', periodWord: 'wk' },
-  interviews_weekly: { label: 'Interviews set', periodWord: 'wk' },
   placements_monthly: { label: 'Placements · MTD', periodWord: 'mo' },
   avg_time_to_submit: {
     label: 'Avg time-to-submit',
@@ -94,10 +93,10 @@ export function toKpiDisplay(m: RecruiterMetricView): KpiDisplay {
   };
 }
 
-// Fixed display order for the four desk KPIs.
+// Fixed display order for the desk KPIs. (interviews_weekly removed with the
+// retired Pipeline interview stage — Legacy-Pipeline-Canonicalization.)
 export const KPI_ORDER: readonly RecruiterMetricKey[] = [
   'submittals_weekly',
-  'interviews_weekly',
   'placements_monthly',
   'avg_time_to_submit',
 ];

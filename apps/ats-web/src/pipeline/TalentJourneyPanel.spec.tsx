@@ -8,21 +8,21 @@ import { TalentJourneyPanel } from './TalentJourneyPanel';
 import type { TalentRequisitionJourney } from './talent-journey-api';
 
 // Lane 2 / L2-H — AC-8: the FE renders the BE-composed stage as the SINGLE source; the
-// offered/client_declined/placed derivation is NOT independently re-authored on the journey
+// offer/decline/placement derivation is NOT independently re-authored on the journey
 // surface (negative control: the panel does not import derivePipelineDisplayFromPlacement).
 
 const JOURNEY: TalentRequisitionJourney = {
   requisition_id: 'r1',
   talent_record_id: 't1',
-  // The server computed STARTED from PlacementProcess even though a legacy Pipeline row could
-  // show `offered` — the FE must render exactly this, never re-derive it.
+  // The server computed STARTED from PlacementProcess while the Pipeline rests at its
+  // most-advanced canonical stage (`qualified`) — the FE must render exactly this, never re-derive it.
   current_journey_stage: 'STARTED',
   stages: [
     { stage: 'QUALIFIED', owner: 'pipeline', source_object_id: 'p1' },
     { stage: 'SUBMITTED', owner: 'submittal', source_object_id: 'sub1' },
     { stage: 'STARTED', owner: 'placement', source_object_id: 'pl1' },
   ],
-  sub_states: { pipeline_stage: 'offered', placement_state: 'STARTED', offer_state: 'ACCEPTED' },
+  sub_states: { pipeline_stage: 'qualified', placement_state: 'STARTED', offer_state: 'ACCEPTED' },
   actions: [{ action: 'Complete Requirement', owner: 'pre-start', command_route: 'POST /v1/...' }],
 };
 

@@ -286,7 +286,7 @@ describe('RequisitionsListView', () => {
                 site_id: null,
                 talent_record_id: 'tal-1',
                 requisition_id: 'req-open',
-                status: 'submitted',
+                status: 'qualifying',
                 created_at: recent,
                 updated_at: recent,
               },
@@ -314,10 +314,10 @@ describe('RequisitionsListView', () => {
     expect(screen.getByText('Talent on this requisition')).toBeInTheDocument();
     expect(await screen.findByText('Sarah Nolan')).toBeInTheDocument();
     expect(
-      screen.getByText('Submitted', { selector: '.rc-tcard__stage' }),
+      screen.getByText('Qualifying', { selector: '.rc-tcard__stage' }),
     ).toBeInTheDocument();
-    // Derived Next Action for the 'submitted' stage.
-    expect(screen.getByText('Await client feedback')).toBeInTheDocument();
+    // Derived Next Action for the 'qualifying' stage.
+    expect(screen.getByText('Confirm qualified')).toBeInTheDocument();
     expect(screen.getByText('NEW')).toBeInTheDocument();
     // The talent card is a button that opens the slide-in detail panel.
     const talentCard = screen
@@ -360,7 +360,7 @@ describe('RequisitionsListView', () => {
             items: [
               {
                 id: 'pl-1', tenant_id: 't', site_id: null, talent_record_id: 'tal-1',
-                requisition_id: 'req-open', status: 'submitted',
+                requisition_id: 'req-open', status: 'qualifying',
                 created_at: '2026-08-01T00:00:00Z', updated_at: '2026-08-01T00:00:00Z',
                 // No email enrichment → the extender cell shows "—" until edited.
               },
@@ -471,7 +471,7 @@ describe('RequisitionsListView', () => {
 
   // ── PR-REQ rulings ──
 
-  it('R2: Talent stat block shows total in pipeline + Submitted + Interview from one /v1/pipelines call', async () => {
+  it('R2: Talent stat block shows total in pipeline from one /v1/pipelines call', async () => {
     const REQ = makeReq('req-r', 'Platform Engineer', 'open', {
       recruiter_id: 'usr-1',
     });
@@ -480,10 +480,10 @@ describe('RequisitionsListView', () => {
       companies: [{ id: 'co-1', name: 'Northwind' }],
       roster: [{ user_id: 'usr-1', display_name: 'Priya Recruiter' }],
       pipelines: [
-        { id: 'p1', requisition_id: 'req-r', status: 'no_contact' }, // sourced
-        { id: 'p2', requisition_id: 'req-r', status: 'submitted' }, // submitted
-        { id: 'p3', requisition_id: 'req-r', status: 'interviewing' }, // interview
-        { id: 'p4', requisition_id: 'req-r', status: 'placed' }, // placed
+        { id: 'p1', requisition_id: 'req-r', status: 'no_contact' },
+        { id: 'p2', requisition_id: 'req-r', status: 'qualifying' },
+        { id: 'p3', requisition_id: 'req-r', status: 'qualified' },
+        { id: 'p4', requisition_id: 'req-r', status: 'not_in_consideration' },
       ],
     });
     renderList();
@@ -495,11 +495,12 @@ describe('RequisitionsListView', () => {
     await waitFor(() =>
       expect(screen.getByTitle('Priya Recruiter')).toBeInTheDocument(),
     );
+    // Legacy-Pipeline-Canonicalization — the pipeline-derived Submitted + Interview
+    // stats are removed (downstream facts are owner-sourced). Only "In pipeline".
     expect(screen.getByText('In pipeline')).toBeInTheDocument();
-    expect(screen.getByText('Submitted')).toBeInTheDocument();
-    expect(screen.getByText('Interview')).toBeInTheDocument();
-    // total in pipeline = 4 (every entry) → shown as the stat block "In pipeline"
-    // count. (The distribution bar was replaced by the Capacity cell.)
+    expect(screen.queryByText('Submitted')).not.toBeInTheDocument();
+    expect(screen.queryByText('Interview')).not.toBeInTheDocument();
+    // total in pipeline = 4 (every distinct talent) → the stat block "In pipeline" count.
     const inPipeline = screen
       .getByText('In pipeline')
       .closest('.rc-stat')
@@ -542,40 +543,6 @@ describe('RequisitionsListView', () => {
     expect(
       screen.getByTitle('1 opening · 0 available · Fully consumed'),
     ).toBeInTheDocument();
-  });
-
-  it('R2b: stat counts are cumulative "reached" — a talent past a stage still counts toward it', async () => {
-    // Regression: a talent currently at `offered` had already been Submitted and
-    // Interviewed. The stat block must reflect that (Submitted:1, Interview:1) —
-    // the earlier current-stage tally showed 0/0 the moment the talent advanced.
-    const REQ = makeReq('req-c', 'Business Analyst Associate', 'open', {
-      recruiter_id: 'usr-1',
-    });
-    mockEndpoints({
-      reqs: [REQ],
-      companies: [{ id: 'co-1', name: 'Northwind' }],
-      roster: [{ user_id: 'usr-1', display_name: 'Priya Recruiter' }],
-      pipelines: [
-        { id: 'c1', requisition_id: 'req-c', status: 'contacted' }, // sourced — not reached
-        { id: 'c2', requisition_id: 'req-c', status: 'offered' }, // reached submitted + interview
-      ],
-    });
-    renderList();
-    await waitFor(() =>
-      expect(
-        screen.getByText('Business Analyst Associate'),
-      ).toBeInTheDocument(),
-    );
-    const numFor = (label: string): string | null =>
-      screen
-        .getByText(label, { selector: '.rc-stat__l' })
-        .closest('.rc-stat')
-        ?.querySelector('.num')?.textContent ?? null;
-    // Cumulative: the `offered` talent counts toward BOTH earlier stages.
-    expect(numFor('Submitted')).toBe('1');
-    expect(numFor('Interview')).toBe('1');
-    // `contacted` never reached submittal → excluded from both.
-    expect(numFor('In pipeline')).toBe('2');
   });
 
   it('R1: NO Match/Matches affordance on the list surface (reserved seam is detail-only)', async () => {

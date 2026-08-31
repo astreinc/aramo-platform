@@ -11,7 +11,7 @@ import type { RecruitingStatus } from '@aramo/requisition';
 // selection / submittal / examination read is involved — the
 // seam-exclusion is structural. Submittal-derived metrics (e.g. "recent
 // hires from confirmed submittals") are NOT computed here; the
-// ATS-internal placed-pipeline count is the substitute.
+// ATS-internal established-placement count is the substitute.
 
 // TenantCountsReportView — total row counts per ATS entity in the
 // caller's tenant + site filter. Tenant-wide for both recruiter and
@@ -45,45 +45,12 @@ export interface PipelineStageRollupView {
   by_status: Array<{ status: PipelineStatus; count: number }>;
 }
 
-// PlacementCountReportView — the ATS-internal placement count = number
-// of pipelines in `placed` status within the caller's visible set.
-// This is the A5b-1-derived view (placement is the pipeline terminal
-// state with the openings_available decrement). NOT the Core
-// submittal-placement count (that lives behind the selection schema
-// seam, no ATS read path; see T5 / M6).
-// Lane 2 / L2-G — provenance of the fill authority a reporting figure derives from.
-// `PLACEMENT_PROCESS` = canonical (PlacementProcess established, D-1); `PIPELINE_PLACED`
-// = the retired legacy pipeline `placed` mirror (surfaced only in the shadow-compare).
+// PlacementCountReportView — the ATS-internal placement count = distinct (talent,
+// requisition) with an *established* PlacementProcess (canonical fill, L2-G) within the
+// caller's visible set. NOT the Core submittal-placement count (that lives behind the
+// selection schema seam, no ATS read path; see T5 / M6).
+// Provenance of the fill authority a reporting figure derives from.
 export type CanonicalFillSource = 'PLACEMENT_PROCESS';
-export type LegacyFillSource = 'PIPELINE_PLACED';
-
-// Lane 2 / L2-G — the shadow-compare classification (Decision 2, Rule C). Read-only
-// DIAGNOSTIC: it computes BOTH the legacy (pipeline `placed`) and the canonical
-// (PlacementProcess established) fill per requisition and CLASSIFIES the divergence. It
-// emits classified EVIDENCE only — never a boolean verdict, never an auto-switch, and it
-// does NOT influence any canonical read. Disposed by a human before the `placed`-write
-// retirement merges (SB-5 precedent).
-//   agree         — both sources present, same distinct count AND same first instant.
-//   legacy_only   — a pipeline `placed`-history triple with NO established PlacementProcess
-//                   (the pre-placement-aggregate era).
-//   canonical_only— an established PlacementProcess with NO pipeline `placed` mirror.
-//   diverge       — both present, but different count OR different first instant.
-export type ShadowCompareClass =
-  | 'agree'
-  | 'legacy_only'
-  | 'canonical_only'
-  | 'diverge';
-
-export interface FillShadowCompareRow {
-  requisition_id: string;
-  classification: ShadowCompareClass;
-  legacy_count: number; // distinct (talent) with a pipeline `placed` history on this req
-  canonical_count: number; // distinct (talent) with an established PlacementProcess
-  legacy_first_instant: string | null; // MIN first-placed instant (ISO) or null
-  canonical_first_instant: string | null; // MIN first-established instant (ISO) or null
-  legacy_fill_source: LegacyFillSource;
-  canonical_fill_source: CanonicalFillSource;
-}
 
 export interface PlacementCountReportView {
   // L2-G — now the count of DISTINCT (talent, requisition) with an *established*
@@ -99,16 +66,19 @@ export interface PlacementCountReportView {
 // CompanyMetricsView — per-company ATS operational rollup for the companies
 // surface (list columns / drawer / account-hub KPI strip). Composed across
 // company→requisition→pipeline via the cross-schema id-list pattern, scoped by
-// the actor's visibility. `active_placements` is the placed-pipeline count (the
-// A5b-1 terminal state — NOT a Core submittal placement). `fill_rate` is
+// the actor's visibility. `active_placements` is the established-placement count
+// (distinct (talent, req) PlacementProcess, L2-G — NOT a Core submittal placement). `fill_rate` is
 // requisition-derived (filled / openings), null when the company has no
 // openings. NO revenue here (no billing ledger; the FE shows the firmographic
 // annual_revenue_band instead).
 export interface CompanyMetricsView {
   company_id: string;
   open_reqs: number; // status active|on_hold
-  active_placements: number; // pipeline placed
-  submitted: number; // pipeline submitted|interviewing|offered
+  active_placements: number; // distinct (talent, req) established PlacementProcess (L2-G)
+  // NOT-PRODUCTION-AUTHORITATIVE: distinct (talent, req) first-Submittal grains, sourced
+  // Submittal-only (Legacy-Pipeline-Canonicalization removed the Pipeline band read; no
+  // interview/offer contribution is reconstructed pending Submittal/Offer reporting).
+  submitted: number;
   openings: number; // sum of req openings
   filled: number; // sum of (openings - openings_available)
   fill_rate: number | null; // percent 0-100, null when openings === 0
@@ -141,19 +111,16 @@ export interface CompanyPlacementsReportView {
 // header (GET /v1/reports/recruiter-metrics). Each metric is computed over the
 // caller's VISIBLE requisitions (the same A3/D4b assignment predicate the other
 // rollups use — "my" desk), from pipeline status-history transitions:
-//   - submittals_weekly   : entered `submitted`   in the last 7 days
-//   - interviews_weekly   : entered `interviewing` in the last 7 days
-//   - placements_monthly  : entered `placed`       this calendar month
-//   - avg_time_to_submit  : mean days from pipeline-create → `submitted`,
+//   - submittals_weekly   : first Submittal (Submittal-owned) in the last 7 days
+//   - placements_monthly  : established PlacementProcess this calendar month
+//   - avg_time_to_submit  : mean days from pipeline-create → first Submittal,
 //                           over the submittals in the last 7 days
-// All values are REAL (history-derived). `previous` is the immediately-prior
-// comparable period (the trend delta). `series` is the recent per-period
-// sequence (oldest→newest) for the sparkline. `goal` is the tenant-default
-// target for the metric (null when none configured). NO Core / submittal /
-// examination read — the seam-exclusion holds (history is an ATS schema).
+// Legacy-Pipeline-Canonicalization — the `interviews_weekly` KPI is REMOVED with the
+// retired Pipeline interview stage; interview volume is a Client-Selection
+// (InterviewSession) fact and is NOT reconstructed here. An interview metric is rebuilt
+// from its authoritative owner when recruiter reporting is made production-ready.
 export type RecruiterMetricKey =
   | 'submittals_weekly'
-  | 'interviews_weekly'
   | 'placements_monthly'
   | 'avg_time_to_submit';
 
@@ -184,18 +151,18 @@ export interface RecruiterMetricsReportView {
 // (amendment D-3), visibility/tenant/site/A3-scoped. `canceled`
 // requisitions are excluded from BOTH numerator and denominator (§4).
 //
-// Fill authority is ATS pipeline terminal `placed` (D-1) — NOT the
+// Fill authority is the established PlacementProcess (L2-G, D-1) — NOT the
 // rejected capacity-derived `openings - openings_available` and NOT
 // ACTIVE ContractAssignment. Per requisition:
-//   filled_openings(req) = min(distinct placed talents, openings)
+//   filled_openings(req) = min(distinct established-placement talents, openings)
 // Aggregate:
 //   fill_rate = round( Σ filled_openings / Σ openings * 100 )  (percent
 //   0-100, integer — mirrors CompanyMetricsView.fill_rate convention),
 //   null when Σ openings === 0.
 //
 // Time-to-fill (D-2 / §5): start = Requisition.created_at (REOPEN never
-// restarts, §7); end = the Nth distinct talent's FIRST `placed`
-// transition (PipelineStatusHistory.changed_at), N = openings — i.e.
+// restarts, §7); end = the Nth distinct talent's FIRST established
+// PlacementProcess (established instant), N = openings — i.e.
 // the "last required opening filled" instant. ONLY fully-filled
 // requisitions contribute; partial/open/closed-unfilled have no TTF
 // (§6). No survival/censor statistic. `average_days` is the mean over
@@ -209,7 +176,7 @@ export interface FillPerformanceReportView {
     to: string; // ISO absolute instant (UTC-normalized), exclusive
   };
   openings: number; // Σ requisition.openings over the (non-canceled) cohort
-  filled_openings: number; // Σ min(distinct placed talents, openings)
+  filled_openings: number; // Σ min(distinct established-placement talents, openings)
   fill_rate: number | null; // percent 0-100, null when openings === 0
   fully_filled_requisitions: number; // cohort reqs with distinct placed ≥ openings
   time_to_fill: {

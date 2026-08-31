@@ -36,7 +36,6 @@ describe('L2-I D4 — recruiting funnel (Pipeline-owned)', () => {
       { status: 'qualified', count: 5 },
       { status: 'not_in_consideration', count: 2 },
       { status: 'completed', count: 1 }, // system success terminal — NOT a recruiting stage
-      { status: 'placed', count: 1 }, // legacy downstream — NOT a recruiting stage
     ]);
     const view = await svc.getRecruitingFunnel(actor);
     expect(view.canonical_source).toBe('PIPELINE');
@@ -51,13 +50,13 @@ describe('L2-I D4 — recruiting funnel (Pipeline-owned)', () => {
   });
 
   it('NEGATIVE CONTROL — the recruiting family carries NO hiring stage (submitted/interview/offer/accepted/placement/start)', async () => {
-    const { svc } = makeService([{ status: 'qualified', count: 1 }, { status: 'placed', count: 9 }]);
+    const { svc } = makeService([{ status: 'qualified', count: 1 }, { status: 'completed', count: 9 }]);
     const view = await svc.getRecruitingFunnel(actor);
     const stageNames = view.stages.map((s) => s.stage);
     for (const hiring of ['submitted', 'interview', 'offer', 'accepted', 'placement', 'start']) {
       expect(stageNames).not.toContain(hiring);
     }
-    // and `placed` (9) never leaks in as a recruiting count.
+    // and `completed` (9, the system terminal) never leaks in as a recruiting count.
     expect(view.stages.reduce((n, s) => n + s.count, 0)).toBe(1);
   });
 });

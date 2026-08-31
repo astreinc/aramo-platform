@@ -23,14 +23,14 @@ import {
 // identity match + LIVE, else SUBMITTAL_PIPELINE_LINK_INVALID) → eligibility →
 // serialized consumeSlot → `submitted_to_ats` (authoritative) + event + outbox +
 // usage → policy provenance → commit. Any failure rolls back EVERYTHING. L2-E (SB-5)
-// retired the Pipeline `submitted` mirror: this command no longer writes Pipeline —
-// the episode stays LIVE and readers derive the submitted signal from the event.
+// retired the Pipeline mirror: this command no longer writes Pipeline —
+// the episode stays LIVE and readers derive the submit-to-client signal from the event.
 
-// LIVE = the E6 live-episode predicate (mirror of the partial-unique WHERE).
+// LIVE = the live-episode predicate (mirror of the partial-unique WHERE). After
+// Legacy-Pipeline-Canonicalization the exclusion set is the two canonical terminals.
 const NON_LIVE_PIPELINE_STATUSES = new Set([
-  'placed',
   'not_in_consideration',
-  'client_declined',
+  'completed',
 ]);
 
 export interface SubmitTalentToClientInput {
@@ -266,9 +266,9 @@ export class SubmitTalentToClientService {
 
       // Lane 2 / L2-E (SB-5 / D-4) — submit-to-ats does NOT write Pipeline. The
       // authoritative fact is `Submittal.submitted_to_ats` + its immutable
-      // state_transition event (written above); the retired Pipeline `submitted`
-      // mirror is gone. The episode stays LIVE (D-2) at its recruiter stage; the
-      // submitted signal is derived from the Submittal event history by all readers.
+      // state_transition event (written above); the retired Pipeline mirror is gone.
+      // The episode stays LIVE (D-2) at its recruiter stage; the submit-to-client
+      // signal is derived from the Submittal event history by all readers.
 
       // 8 — policy provenance (append-only).
       await tx.$executeRawUnsafe(

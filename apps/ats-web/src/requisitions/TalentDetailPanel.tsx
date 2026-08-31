@@ -45,18 +45,16 @@ const WORK_AUTH_OPTIONS = WORK_AUTHORIZATION_VALUES.map((v) => ({
 // Pipeline transition target (interview truth is owned by InterviewSession), so the
 // `interview` bucket is now DISPLAY-ONLY: `legalNextStates` never yields `interviewing`,
 // so the bucket button is always disabled (no forward write) — it renders only to place
-// legacy `interviewing` rows on the funnel. L2-G — `placed` is likewise RETIRED as a
-// NEW-write target (canonical fill = PlacementProcess established; success = system-only
-// COMPLETE), so the `placed` bucket is DISPLAY-ONLY too (button always disabled; legacy
-// `placed` rows still render). Both mappings are retained for canonical position; inert
-// as writes.
+// Each pipeline-owned funnel bucket maps to the canonical recruiter-reachable
+// target for its "move to bucket" affordance. All four resolve to a recruiter
+// action target (CONTACT / START_QUALIFICATION / QUALIFY / DISPOSITION); `closed`
+// resolves to `not_in_consideration` (the recruiter DISPOSITION terminal) — the
+// system-only `completed` is NEVER a recruiter affordance.
 const BUCKET_TARGET: Record<FunnelBucketKey, PipelineStatus> = {
-  sourced: 'contacted',
+  early_engagement: 'contacted',
   qualifying: 'qualifying',
-  submitted: 'submitted',
-  interview: 'interviewing',
-  offer: 'offered',
-  placed: 'placed',
+  qualified: 'qualified',
+  closed: 'not_in_consideration',
 };
 const BUCKET_INDEX: Record<string, number> = Object.fromEntries(
   FUNNEL_BUCKETS.map((b, i) => [b.key, i]),
