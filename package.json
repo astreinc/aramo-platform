@@ -89,7 +89,7 @@
     "disposable-email-domains-js": "^1.25.0",
     "free-email-domains": "^1.9.47",
     "jose": "~6.2.3",
-    "mammoth": "~1.12.0",
+    "mammoth": "~1.12.1",
     "pdf-parse": "~1.1.1",
     "pg": "~8.20.0",
     "react": "~18.2.0",
