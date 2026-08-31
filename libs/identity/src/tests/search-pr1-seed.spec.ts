@@ -38,7 +38,7 @@ describe('Search PR-1 â scope catalog parity', () => {
     // Track 7 / T7-P3 appended 1 placement:permanent:terms:write (118->119).
     // Track 8 / T8-CONNECTOR-A appended 2 integration:read/write (119->121).
     // L1-A (Create-Governance) appended 1 requisition:create:establish (127->128).
-    expect(SEED_SCOPE_KEYS).toHaveLength(136); // L2-I (D1) +1 integration:pipeline-mapping:write → 135+1=136. L2-F: +3 client-selection:create/read/transition. HYG-1: 132 â 3 dead orphan scopes
+    expect(SEED_SCOPE_KEYS).toHaveLength(136); // L2-I (D1) +1 integration:pipeline-mapping:write -> 135+1=136. L2-F +3 client-selection:create/read/transition; HYG-1 -3 dead orphan scopes.
   });
 
   it('D3b â activity:redact is in the catalog exactly once', () => {
