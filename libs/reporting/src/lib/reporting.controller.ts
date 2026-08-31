@@ -181,7 +181,7 @@ export class ReportingController {
     return { items };
   }
 
-  // Per-company placements — placed pipelines at a company's visible reqs
+  // Per-company placements — established placements at a company's visible reqs
   // (account-hub Placements tab). report:read; visibility-scoped.
   @Get('company-placements')
   @HttpCode(HttpStatus.OK)
@@ -210,7 +210,7 @@ export class ReportingController {
     return { items };
   }
 
-  // Note: returns the ATS-INTERNAL placed-pipeline count. The Core
+  // Note: returns the ATS-INTERNAL established-placement count. The Core
   // submittal-confirmed placement count is NOT computed (the seam
   // exclusion; see ReportingService).
   @Get('placement-count')

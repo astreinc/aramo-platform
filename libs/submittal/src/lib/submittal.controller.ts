@@ -755,8 +755,8 @@ export class SubmittalController {
   // 9-step idempotency flow per markReady precedent.
   // L8-B1 Amendment A1 — the submit-to-ats route was RE-POINTED to the
   // apps/api SubmitTalentController (the "Submit Talent to Client" atomic
-  // command: submitted_to_ats authoritative + pipeline `submitted` mirror in one
-  // transaction). This legacy write path is removed so no parallel path can
+  // command: submitted_to_ats is the authoritative fact; the Pipeline is not
+  // written). This legacy write path is removed so no parallel path can
   // create the client-submittal fact. `submitToAts` on the repository remains for
   // its lib-local integration spec only; it is no longer reachable via any route.
 

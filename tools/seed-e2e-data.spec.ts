@@ -50,9 +50,9 @@ describe('buildSeedPlan', () => {
     expect(plan.requisitions.some((r) => !r.is_hot)).toBe(true);
   });
 
-  it('the pipeline spans multiple stages incl. placed + a terminal (funnel coverage)', () => {
+  it('the pipeline spans multiple stages incl. qualified + a terminal (funnel coverage)', () => {
     const stages = new Set(plan.pipelines.map((p) => p.status));
-    expect(stages.has('placed')).toBe(true);
+    expect(stages.has('qualified')).toBe(true);
     expect(stages.has('not_in_consideration')).toBe(true);
     expect(stages.size).toBeGreaterThanOrEqual(4);
   });
@@ -106,8 +106,8 @@ describe('seed orchestration', () => {
   it('legalPathTo walks the real state machine (no illegal jumps)', () => {
     expect(legalPathTo('no_contact')).toEqual([]);
     expect(legalPathTo('qualifying')).toEqual(['contacted', 'talent_responded', 'qualifying']);
-    expect(legalPathTo('placed')).toEqual([
-      'contacted', 'talent_responded', 'qualifying', 'submitted', 'interviewing', 'offered', 'placed',
+    expect(legalPathTo('qualified')).toEqual([
+      'contacted', 'talent_responded', 'qualifying', 'qualified',
     ]);
     expect(legalPathTo('not_in_consideration')).toEqual(['not_in_consideration']);
   });

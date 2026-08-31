@@ -190,12 +190,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     });
 
     // ---------------------------------------------------------------------------------------
-    // AC-2b — a STARTED placement reads STARTED even when the Pipeline row carries legacy 'offered'.
+    // AC-2b — a STARTED placement reads STARTED even while the Pipeline row is still at a live
+    // recruiting status (`qualified`): the downstream owner drives the journey, not the Pipeline.
     // ---------------------------------------------------------------------------------------
-    it('AC-2b: STARTED placement + legacy pipeline `offered` → current_journey_stage=STARTED (downstream owns it)', async () => {
+    it('AC-2b: STARTED placement + live pipeline `qualified` → current_journey_stage=STARTED (downstream owns it)', async () => {
       const tenant = randomUUID(); const talent = randomUUID();
       const req = randomUUID();
-      const pipe = await seedPipeline(tenant, req, talent, 'offered'); // legacy Pipeline value
+      const pipe = await seedPipeline(tenant, req, talent, 'qualified'); // most-advanced Pipeline-owned status
       const sub = await seedSubmittal(tenant, talent, req, 'submitted_to_ats');
       await seedOffer(tenant, sub, req, talent, 'ACCEPTED', null);
       const placement = await seedPlacement(tenant, sub, req, talent, 'STARTED');
@@ -206,7 +207,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const started = j.stages.find((s) => s.stage === 'STARTED');
       expect(started?.owner).toBe('placement');
       expect(started?.source_object_id).toBe(placement); // AC-1: attributes to the exact owner row
-      // The legacy Pipeline value 'offered' did NOT author a journey stage.
+      // The Pipeline (qualified) never authors an OFFER journey stage — offer is Offer-owned.
       expect(j.stages.some((s) => s.owner === 'pipeline' && s.stage === 'OFFER')).toBe(false);
     });
 

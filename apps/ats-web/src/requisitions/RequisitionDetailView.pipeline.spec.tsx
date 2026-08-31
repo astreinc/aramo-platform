@@ -55,8 +55,8 @@ const ROSTER = {
 
 const PIPELINES = {
   items: [
-    { id: 'p1', tenant_id: 't', site_id: null, talent_record_id: 'tal-1', requisition_id: 'req-1', status: 'interviewing', created_at: '2026-06-15T00:00:00Z', updated_at: '2026-06-15T00:00:00Z' },
-    { id: 'p2', tenant_id: 't', site_id: null, talent_record_id: 'tal-2', requisition_id: 'req-1', status: 'submitted', created_at: '2026-06-14T00:00:00Z', updated_at: '2026-06-14T00:00:00Z' },
+    { id: 'p1', tenant_id: 't', site_id: null, talent_record_id: 'tal-1', requisition_id: 'req-1', status: 'qualified', created_at: '2026-06-15T00:00:00Z', updated_at: '2026-06-15T00:00:00Z' },
+    { id: 'p2', tenant_id: 't', site_id: null, talent_record_id: 'tal-2', requisition_id: 'req-1', status: 'qualifying', created_at: '2026-06-14T00:00:00Z', updated_at: '2026-06-14T00:00:00Z' },
   ],
 };
 
@@ -194,8 +194,8 @@ describe('RequisitionDetailView — header / meta / pipeline (2D)', () => {
       expect(within(grid).getByText(h)).toBeInTheDocument();
     }
     // Pipeline cell = status pill (human label + tone); no funnel ribbon.
-    expect(screen.getByText('Interviewing')).toBeInTheDocument();
-    expect(screen.getByText('Submitted')).toBeInTheDocument();
+    expect(screen.getByText('Qualified')).toBeInTheDocument();
+    expect(screen.getByText('Qualifying')).toBeInTheDocument();
     // Talent cell is a button (opens the side panel), not a router link.
     await waitFor(() =>
       expect(screen.getByRole('button', { name: /Marcus Adeyemi/ })).toBeInTheDocument(),

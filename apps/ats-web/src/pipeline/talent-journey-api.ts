@@ -1,8 +1,8 @@
 import { apiClient } from '@aramo/fe-foundation';
 
 // Lane 2 / L2-H — the Unified Talent Journey read client. The FE consumes the BE-composed
-// owner-attributed stage as the SINGLE stage source; it does NOT re-derive offered/placed/
-// client_declined locally (that FE derivation is a placement-BOARD concern only, never the
+// owner-attributed stage as the SINGLE stage source; it does NOT re-derive offer/placement/
+// decline labels locally (that FE derivation is a placement-BOARD concern only, never the
 // journey funnel). Shape mirrors the apps/api TalentRequisitionJourney contract.
 
 export type JourneyOwner =

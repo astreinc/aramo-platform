@@ -15,14 +15,12 @@ export {
   canTransition,
   isLiveStatus,
   legalNextStates,
-  // Lane 2 / L2-E (SB-5) — the active-stage ordinal, consumed by the apps/api
-  // current_stage submitted overlay (R5) to compare a raw stage against `submitted`.
+  // The active-stage ordinal, consumed by the apps/api current_stage read-model.
   activeStageOrdinal,
   ACTIVE_FLOW_STAGES,
   type PipelineStatus,
-  // Lane 2 / L2-C — the explicit partition registries + the recruiter action surface.
+  // The explicit terminal partition registry + the recruiter action surface.
   CANONICAL_TERMINAL_STATUSES,
-  LEGACY_TERMINAL_STATUSES,
   LIVE_EPISODE_EXCLUSION_STATUSES,
   RECRUITER_ACTION_TO_STATUS,
   isRecruiterPipelineAction,

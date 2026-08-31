@@ -1457,8 +1457,8 @@ components:
         error before SQL UPDATE attempt). Mirrors M5 PR-3
         SELECTION_STATE_INVALID precedent.
         REQUISITION_NO_OPENINGS (HTTP 409) is RESERVED but no longer
-        emitted: T4-B2 §7 retired the pipeline-transition-to-`placed`
-        over-capacity refusal. Pipeline no longer decrements requisition
+        emitted: T4-B2 §7 retired the pipeline-transition over-capacity
+        refusal. Pipeline no longer decrements requisition
         capacity, the stored openings_available column was dropped (§6),
         and over-capacity is now a representable DERIVED state
         (signed capacity_balance < 0; public openings_available floors

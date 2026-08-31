@@ -326,8 +326,7 @@ export function RequisitionsListView({
         .filter((r) => {
           if (isClosedStatus(r.status)) return false;
           if (r.is_hot) return true;
-          const submitted = pipelineCounts[r.id]?.submitted ?? 0;
-          return daysOpen(r) >= AGING_DAYS && submitted === 0;
+          return daysOpen(r) >= AGING_DAYS;
         })
         .slice(0, 6),
     [filtered, pipelineCounts],
@@ -672,24 +671,6 @@ function RequisitionRow({
       : csReasonText
         ? `${csState.label} — ${csReasonText}`
         : csState.label;
-  const cellCount = (key: FunnelBucketKey): number =>
-    funnel?.cells.find((c) => c.key === key)?.count ?? 0;
-  const cellLabel = (key: FunnelBucketKey, fallback: string): string =>
-    funnel?.cells.find((c) => c.key === key)?.label ?? fallback;
-  // "Reached" (cumulative) count — a talent counts toward Submitted once they
-  // are AT submitted or ANY later bucket (interview/offer/placed), and toward
-  // Interview once at interview or later. Fixes the current-stage bug where the
-  // count reverted to 0 the moment a talent advanced past the stage (a submitted
-  // talent stops being "Submitted" once offered). Matches the rollup's own
-  // cumulative `submitted` semantic. Derives from the already-ordered funnel
-  // cells (funnelCounts emits them in FUNNEL_BUCKETS order) — no duplicated fact.
-  const reachedCount = (from: FunnelBucketKey): number => {
-    const cells = funnel?.cells ?? [];
-    const start = cells.findIndex((c) => c.key === from);
-    if (start < 0) return 0;
-    return cells.slice(start).reduce((sum, c) => sum + c.count, 0);
-  };
-
   // The identity sub-line. PR-15 self-consistency: the INTERNAL number is the
   // primary human-readable id (rendered REQ-{number}, prefix presentation-only,
   // always present) — it leads the line exactly as it does on the detail header.
@@ -768,19 +749,12 @@ function RequisitionRow({
         ) : null}
       </div>
 
-      {/* Talent — R2 stat block: total in pipeline + Submitted + Interview */}
+      {/* Talent — total in pipeline. Downstream Submitted/Interview facts are
+          owner-sourced views, not Pipeline-derived, so they are not shown here. */}
       <div className="rc-rt__stats">
         <span className="rc-stat rc-stat--lead">
           <b className="num">{total}</b>
           <span className="rc-stat__l">In pipeline</span>
-        </span>
-        <span className="rc-stat">
-          <b className="num">{reachedCount('submitted')}</b>
-          <span className="rc-stat__l">{cellLabel('submitted', 'Submitted')}</span>
-        </span>
-        <span className="rc-stat">
-          <b className="num">{reachedCount('interview')}</b>
-          <span className="rc-stat__l">{cellLabel('interview', 'Interview')}</span>
         </span>
       </div>
 
@@ -972,8 +946,7 @@ function focusReason(
 ): string {
   const age = daysOpen(r);
   if (r.is_hot) return `priority · ${age}d open`;
-  const submitted = counts[r.id]?.submitted ?? 0;
-  return `aging · ${age}d open, ${submitted} submitted`;
+  return `aging · ${age}d open`;
 }
 
 function ownerName(

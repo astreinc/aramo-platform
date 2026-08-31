@@ -28,42 +28,37 @@ describe('stage-map', () => {
     }
   });
 
-  it('applies the directive stage-pill semantics', () => {
+  it('applies the stage-pill semantics', () => {
     expect(stageTone('no_contact')).toBe('neutral'); // Sourced
     expect(stageTone('contacted')).toBe('neutral');
+    expect(stageTone('talent_responded')).toBe('info');
     expect(stageTone('qualifying')).toBe('info');
-    expect(stageTone('interviewing')).toBe('info'); // Interview
-    expect(stageTone('submitted')).toBe('brand');
-    expect(stageTone('offered')).toBe('warn'); // Offer
-    expect(stageTone('placed')).toBe('ok');
+    expect(stageTone('qualified')).toBe('info');
     expect(stageTone('not_in_consideration')).toBe('danger');
-    expect(stageTone('client_declined')).toBe('danger');
+    expect(stageTone('completed')).toBe('ok');
   });
 
   it('renders the recruiter-facing label from the pipeline source', () => {
     expect(stageLabel('no_contact')).toBe('No contact');
-    expect(stageLabel('placed')).toBe('Placed');
+    expect(stageLabel('completed')).toBe('Completed');
   });
 
-  it('aggregates statuses into ordered 6-bucket funnel counts', () => {
+  it('aggregates statuses into ordered pipeline-owned funnel counts', () => {
     const counts = funnelCounts([
       'no_contact',
       'contacted',
+      'talent_responded',
       'qualifying',
-      'submitted',
-      'submitted',
-      'interviewing',
-      'offered',
-      'placed',
+      'qualified',
+      'not_in_consideration',
+      'completed',
     ]);
     expect(counts.map((c) => c.key)).toEqual(BUCKET_KEYS);
     const byKey = Object.fromEntries(counts.map((c) => [c.key, c.count]));
-    expect(byKey.sourced).toBe(2); // no_contact + contacted
-    expect(byKey.qualifying).toBe(1);
-    expect(byKey.submitted).toBe(2);
-    expect(byKey.interview).toBe(1);
-    expect(byKey.offer).toBe(1);
-    expect(byKey.placed).toBe(1);
+    expect(byKey.early_engagement).toBe(2); // no_contact + contacted
+    expect(byKey.qualifying).toBe(2); // talent_responded + qualifying
+    expect(byKey.qualified).toBe(1);
+    expect(byKey.closed).toBe(2); // not_in_consideration + completed
   });
 
   it('returns zeroed buckets for an empty pipeline', () => {

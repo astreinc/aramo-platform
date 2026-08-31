@@ -703,7 +703,7 @@ function ActivityPanel({
   );
 }
 
-// ── Placements (placed pipelines at the company's reqs) ──
+// ── Placements (established placements at the company's reqs) ──
 function PlacementsPanel({
   placements,
 }: {

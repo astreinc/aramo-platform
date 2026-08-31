@@ -27,8 +27,8 @@ const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 // Lane L8-B1 (v1.2 + Amendment A2) — the re-pointed authoritative client-submittal
-// route. The ONLY way a Talent is submitted to a client and the ONLY way a pipeline
-// reaches `submitted` (the mirror). A thin adapter: it preserves the existing public
+// route. The ONLY way a Talent is submitted to a client (the submittal is the
+// authoritative fact; the Pipeline is not written). A thin adapter: it preserves the existing public
 // contract (Idempotency-Key replay/conflict + the `{ submittal }` response envelope)
 // and delegates the whole atomic write to SubmitTalentToClientService. The legacy
 // submittal-repository submit-to-ats write path is removed (no parallel path); a

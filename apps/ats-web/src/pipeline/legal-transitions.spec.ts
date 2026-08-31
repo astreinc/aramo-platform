@@ -9,32 +9,33 @@ import {
 
 describe('legalNextStates', () => {
   it('returns the matrix row for a non-terminal status', () => {
-    expect(legalNextStates('no_contact')).toEqual(
-      LEGAL_TRANSITIONS.no_contact,
-    );
-    expect(legalNextStates('submitted')).toEqual(
-      LEGAL_TRANSITIONS.submitted,
-    );
+    expect(legalNextStates('no_contact')).toEqual(LEGAL_TRANSITIONS.no_contact);
+    expect(legalNextStates('qualifying')).toEqual(LEGAL_TRANSITIONS.qualifying);
   });
 
-  it('returns an empty list for terminals', () => {
-    expect(legalNextStates('placed')).toEqual([]);
+  it('returns an empty list for the two canonical terminals', () => {
     expect(legalNextStates('not_in_consideration')).toEqual([]);
-    expect(legalNextStates('client_declined')).toEqual([]);
-    // L2-C — `completed` is the canonical success terminal (no outgoing edges).
     expect(legalNextStates('completed')).toEqual([]);
   });
 
-  it('forward edges include the next funnel stage', () => {
+  it('forward edges follow the canonical funnel', () => {
     expect(legalNextStates('no_contact')).toContain('contacted');
     expect(legalNextStates('contacted')).toContain('talent_responded');
-    // L2-C — `qualifying`'s affirmative forward edge is now `qualified`. L2-E —
-    // `submitted` is no longer a Pipeline transition target (Submittal-owned).
+    expect(legalNextStates('talent_responded')).toContain('qualifying');
+    // qualifying's affirmative forward edge is `qualified` (the last Pipeline-owned state).
     expect(legalNextStates('qualifying')).toContain('qualified');
-    expect(legalNextStates('qualified')).not.toContain('submitted');
-    // L2-G — `offered → placed` is RETIRED (canonical fill = placement spine).
-    expect(legalNextStates('offered')).not.toContain('placed');
-    expect(legalNextStates('offered')).toContain('not_in_consideration');
+  });
+
+  it('every non-terminal offers a disposition edge to not_in_consideration', () => {
+    for (const from of [
+      'no_contact',
+      'contacted',
+      'talent_responded',
+      'qualifying',
+      'qualified',
+    ] as const) {
+      expect(legalNextStates(from)).toContain('not_in_consideration');
+    }
   });
 });
 
@@ -49,55 +50,13 @@ describe('recruiterNextStates (§5 — system-only target exclusion)', () => {
   it('a recruiter can never CHOOSE completed as a move target from qualified', () => {
     const targets = recruiterNextStates('qualified');
     expect(targets).not.toContain('completed');
-    // L2-E — `submitted` is no longer a target either (Submittal-owned).
-    expect(targets).not.toContain('submitted');
     // …the remaining legal recruiter moves survive the filter.
     expect(targets).toContain('qualifying');
     expect(targets).toContain('not_in_consideration');
   });
 
-  it('recruiterNextStates equals the matrix row for any status with no system-only targets', () => {
-    expect(recruiterNextStates('qualifying')).toEqual(
-      LEGAL_TRANSITIONS.qualifying,
-    );
-    expect(recruiterNextStates('submitted')).toEqual(
-      LEGAL_TRANSITIONS.submitted,
-    );
-  });
-});
-
-describe('L2-F3 — interviewing/client_declined retired as transition targets (FE mirror)', () => {
-  it('the "Move to…" affordance no longer offers interviewing or client_declined', () => {
-    // Retired targets are absent from every source row's forward set.
-    expect(recruiterNextStates('submitted')).not.toContain('interviewing');
-    expect(recruiterNextStates('submitted')).not.toContain('client_declined');
-    expect(recruiterNextStates('offered')).not.toContain('interviewing');
-    expect(recruiterNextStates('offered')).not.toContain('client_declined');
-    expect(recruiterNextStates('interviewing')).not.toContain('client_declined');
-  });
-
-  it('KEPT source edges remain (retirement is scoped to the target)', () => {
-    // A legacy `interviewing` row still advances to offered / drops to not_in_consideration.
-    expect(legalNextStates('interviewing')).toContain('offered');
-    expect(legalNextStates('interviewing')).toContain('not_in_consideration');
-    // `submitted` keeps its non-retired edges.
-    expect(legalNextStates('submitted')).toContain('qualifying');
-    expect(legalNextStates('submitted')).toContain('not_in_consideration');
-    // `client_declined` stays a terminal display state (enum value kept).
-    expect(legalNextStates('client_declined')).toEqual([]);
-  });
-});
-
-describe('L2-G — offered→placed retired as a NEW-write edge (FE mirror)', () => {
-  it('the "Move to…" affordance no longer offers placed; placed is unreachable as a target', () => {
-    expect(recruiterNextStates('offered')).not.toContain('placed');
-    // No source row offers `placed` (canonical fill = placement spine; success = COMPLETE).
-    for (const from of Object.keys(LEGAL_TRANSITIONS) as (keyof typeof LEGAL_TRANSITIONS)[]) {
-      expect(LEGAL_TRANSITIONS[from]).not.toContain('placed');
-    }
-    // KEPT: placed stays a terminal display state (enum value kept for legacy rows).
-    expect(legalNextStates('placed')).toEqual([]);
-    // offered still drops to not_in_consideration.
-    expect(recruiterNextStates('offered')).toContain('not_in_consideration');
+  it('recruiterNextStates equals the matrix row for a status with no system-only targets', () => {
+    expect(recruiterNextStates('qualifying')).toEqual(LEGAL_TRANSITIONS.qualifying);
+    expect(recruiterNextStates('contacted')).toEqual(LEGAL_TRANSITIONS.contacted);
   });
 });

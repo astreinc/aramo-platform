@@ -13,14 +13,16 @@
 
 export { assertNonProd } from './provision-e2e-recruiter.lib.js';
 
-// 11-state pipeline status (mirror of the BE enum) — the stages the seeded
-// pipeline spans so the funnel ribbon + table populate across buckets.
+// Canonical 7-state pipeline status (mirror of the BE enum) — the recruiter-
+// reachable stages the seeded pipeline spans so the funnel ribbon + table
+// populate across the pipeline-owned buckets. (`completed` is system-only and
+// not reachable via a recruiter transition walk, so it is not a seed target.)
 export type SeedPipelineStatus =
   | 'no_contact'
+  | 'contacted'
+  | 'talent_responded'
   | 'qualifying'
-  | 'submitted'
-  | 'interviewing'
-  | 'placed'
+  | 'qualified'
   | 'not_in_consideration';
 
 export interface SeedContext {
@@ -154,14 +156,15 @@ export function buildSeedPlan(tag: string): SeedPlan {
     availability_status: AVAIL[i] ?? null,
     selection_type: ENGAGE[i] ?? null,
   }));
-  // Pipeline on rq-1 spanning every funnel bucket (Sourced→…→Placed + a
-  // terminal) so the ribbon counts and the stage column populate.
+  // Pipeline on rq-1 spanning the pipeline-owned funnel buckets (Early engagement
+  // → Qualifying → Qualified + a terminal) so the ribbon counts and the stage
+  // column populate.
   const pipelines: PipelineSpec[] = [
     { talentKey: 'tl-1', requisitionKey: 'rq-1', status: 'no_contact' },
     { talentKey: 'tl-2', requisitionKey: 'rq-1', status: 'qualifying' },
-    { talentKey: 'tl-3', requisitionKey: 'rq-1', status: 'submitted' },
-    { talentKey: 'tl-4', requisitionKey: 'rq-1', status: 'interviewing' },
-    { talentKey: 'tl-5', requisitionKey: 'rq-1', status: 'placed' },
+    { talentKey: 'tl-3', requisitionKey: 'rq-1', status: 'qualifying' },
+    { talentKey: 'tl-4', requisitionKey: 'rq-1', status: 'qualified' },
+    { talentKey: 'tl-5', requisitionKey: 'rq-1', status: 'not_in_consideration' },
     { talentKey: 'tl-6', requisitionKey: 'rq-1', status: 'not_in_consideration' },
   ];
   const tasks: TaskSpec[] = [
@@ -350,10 +353,7 @@ const FORWARD: readonly SeedPipelineStatus[] | readonly string[] = [
   'contacted',
   'talent_responded',
   'qualifying',
-  'submitted',
-  'interviewing',
-  'offered',
-  'placed',
+  'qualified',
 ];
 
 export function legalPathTo(target: SeedPipelineStatus): readonly string[] {

@@ -28,13 +28,13 @@ describe('MoveToMenu', () => {
     // A non-adjacent status is NOT offered.
     expect(
       within(menu).queryByRole('menuitem', {
-        name: PIPELINE_STATUS_LABELS.offered,
+        name: PIPELINE_STATUS_LABELS.no_contact,
       }),
     ).not.toBeInTheDocument();
   });
 
   it('renders the Final badge instead of the trigger for terminal statuses', () => {
-    render(<MoveToMenu from="placed" onSubmit={vi.fn()} />);
+    render(<MoveToMenu from="completed" onSubmit={vi.fn()} />);
     expect(
       screen.queryByRole('button', { name: 'Move to…' }),
     ).not.toBeInTheDocument();
@@ -50,13 +50,6 @@ describe('MoveToMenu', () => {
     expect(
       within(menu).queryByRole('menuitem', {
         name: PIPELINE_STATUS_LABELS.completed,
-      }),
-    ).not.toBeInTheDocument();
-    // …and (L2-E) `submitted` is no longer offered either — client submit-to-ats is
-    // Submittal-owned, not a Pipeline transition.
-    expect(
-      within(menu).queryByRole('menuitem', {
-        name: PIPELINE_STATUS_LABELS.submitted,
       }),
     ).not.toBeInTheDocument();
     // …while the remaining legal recruiter moves are still offered.

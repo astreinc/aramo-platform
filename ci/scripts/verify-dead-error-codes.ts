@@ -38,7 +38,7 @@ export const RESERVED_CODES: Record<string, string> = {
   REQUISITION_NO_OPENINGS:
     'RESERVED (T4-B2 §7): the pipeline over-capacity refusal was retired (capacity is now derived), but the code is kept for compatibility — still mapped by the ats-web pipeline error-message map.',
   PIPELINE_SUBMIT_REQUIRES_SUBMITTAL:
-    'RESERVED (Lane 2 / L2-E, SB-5): the Pipeline `submitted` mirror was retired — a bare transition to `submitted` now falls through to INVALID_PIPELINE_TRANSITION (422). The code is kept (registry is append-only; dropping it risks the merge-window append-conflict class) as deprecated/reserved with no throw-site.',
+    'RESERVED (Lane 2 / L2-E, SB-5; retained through Legacy-Pipeline-Canonicalization): the Pipeline `submitted` mirror was retired and the status value has since been removed from the enum entirely — no transition can express or reach it and nothing throws this code. Kept because the error-code registry is APPEND-ONLY (dropping it risks the merge-window append-conflict class); classified deprecated/reserved with no throw-site.',
 };
 
 export function extractRegistry(source: string): string[] {

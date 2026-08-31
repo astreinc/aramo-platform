@@ -13,7 +13,7 @@ import type { PipelineStatus } from '../lib/pipeline-state.js';
 // per boundary): authored and observed RED under the CURRENT decrement/restore/409
 // mechanism, GREEN after the two pipeline writers are removed. After B2 the
 // ContractAssignment lifecycle is the SOLE consumption authority; a Pipeline write
-// (placed / delete) MUST NOT independently mutate requisition capacity, and the
+// (any transition / delete) MUST NOT independently mutate requisition capacity, and the
 // former REQUISITION_NO_OPENINGS 409 over-capacity block is GONE (over-capacity is a
 // representable derived truth — §5 — not a pipeline-time hard gate).
 
@@ -34,15 +34,14 @@ const MIGRATIONS = [
   '../../prisma/migrations/20260828140000_l2c_pipeline_live_episode_recreate/migration.sql',
   '../../prisma/migrations/20260828150000_l2c_pipeline_disposition/migration.sql',
   '../../prisma/migrations/20260828160000_l2d_pipeline_entry_provenance/migration.sql',
+  '../../prisma/migrations/20260831120000_pipeline_canonicalize_status_enum/migration.sql',
 ].map((p) => resolve(__dirname, p));
 
-const PATH_TO_OFFERED: readonly PipelineStatus[] = [
+const PATH_TO_QUALIFIED: readonly PipelineStatus[] = [
   'contacted',
   'talent_responded',
   'qualifying',
-  'submitted',
-  'interviewing',
-  'offered',
+  'qualified',
 ];
 
 describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
@@ -109,62 +108,50 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     }
 
     async function drive(tenant: string, id: string, path: readonly PipelineStatus[]): Promise<void> {
+      // Every canonical step is a real, legal engine transition.
       for (const to of path) {
-        // L8-B1 R-TIGHTEN — `submitted` is the submit-to-ats orchestrator's mirror,
-        // not an engine hop. L2-F3 — `interviewing` is likewise legacy-only (the
-        // interview truth is owned by InterviewSession; no engine edge reaches it).
-        // Both are set with a direct write (as legacy rows exist), then the KEPT
-        // source edges (interviewing → offered → placed) carry the walk forward.
-        if (to === 'submitted' || to === 'interviewing') {
-          await prisma.$executeRawUnsafe(`UPDATE pipeline."Pipeline" SET status = '${to}' WHERE id = '${id}'`);
-          continue;
-        }
         await casTransition(tenant, id, to, 'b2');
       }
     }
 
-    // L2-G — `offered → placed` is retired (canonical fill = placement spine). The
-    // T4-B2 capacity invariant (pipeline owns NO capacity writer) is preserved and
-    // re-proven here over a LEGACY `placed` row (force-written, as legacy rows exist):
-    // its presence does not decrement openings_available.
-    it('a legacy placed row does NOT decrement requisition.openings_available (capacity untouched)', async () => {
+    // T4-B2 capacity invariant (pipeline owns NO capacity writer): driving an episode
+    // through the canonical funnel never decrements requisition.openings_available —
+    // capacity is owned by ContractAssignment, not the Pipeline.
+    it('driving a pipeline through the funnel does NOT decrement requisition.openings_available (capacity untouched)', async () => {
       const tenant = randomUUID();
       const req = await seedRequisition(tenant, 3, 3);
       const talent = randomUUID();
       const p = await repo.create({ tenant_id: tenant, input: { talent_record_id: talent, requisition_id: req }, entry_provenance: { origin_type: 'MANUAL_RECRUITER', initiated_by_kind: 'user' } });
-      await drive(tenant, p.id, PATH_TO_OFFERED);
-      const before = await openingsAvailable(req);
-      expect(before).toBe(3);
-      // placed is legacy-only (L2-G); force it as a legacy row rather than transitioning.
-      await prisma.$executeRawUnsafe(`UPDATE pipeline."Pipeline" SET status = 'placed' WHERE id = '${p.id}'`);
+      expect(await openingsAvailable(req)).toBe(3);
+      await drive(tenant, p.id, PATH_TO_QUALIFIED);
       // POST-B2: capacity is owned by ContractAssignment, not pipeline. Unchanged.
       expect(await openingsAvailable(req)).toBe(3);
     });
 
-    // L2-G — the `offered → placed` NEW-write is RETIRED: a transition to `placed` is
-    // refused (INVALID_PIPELINE_TRANSITION 422), never a capacity error, and never a
-    // `placed` write. (This subsumes the former T4-B2 "no REQUISITION_NO_OPENINGS gate"
-    // test — the placed-transition gate no longer exists because the transition is gone.)
-    it('a transition to placed is refused INVALID_PIPELINE_TRANSITION (422); capacity untouched', async () => {
+    // A refused transition never touches capacity: an illegal canonical transition is
+    // refused (INVALID_PIPELINE_TRANSITION 422), never a capacity error, and writes
+    // nothing. (The former transition-time capacity gate no longer exists.)
+    it('an illegal transition is refused INVALID_PIPELINE_TRANSITION (422); capacity untouched', async () => {
       const tenant = randomUUID();
-      const req = await seedRequisition(tenant, 1, 0); // legacy "no openings" state
+      const req = await seedRequisition(tenant, 1, 0); // "no openings" state
       const talent = randomUUID();
       const p = await repo.create({ tenant_id: tenant, input: { talent_record_id: talent, requisition_id: req }, entry_provenance: { origin_type: 'MANUAL_RECRUITER', initiated_by_kind: 'user' } });
-      await drive(tenant, p.id, PATH_TO_OFFERED);
+      await drive(tenant, p.id, ['contacted', 'talent_responded', 'qualifying']);
+      // qualifying -> completed is illegal (completed is legal only from qualified).
       await expect(
-        casTransition(tenant, p.id, 'placed', 'b2'),
+        casTransition(tenant, p.id, 'completed', 'b2'),
       ).rejects.toMatchObject({ code: 'INVALID_PIPELINE_TRANSITION', statusCode: 422 });
-      // The episode stays at offered; capacity untouched.
+      // The episode stays at qualifying; capacity untouched.
       expect(await openingsAvailable(req)).toBe(0);
     });
 
-    // L2-B — the former "delete of a placed pipeline does NOT restore capacity"
+    // L2-B — the former "delete of a placement row does NOT restore capacity"
     // test is retired: PipelineRepository.delete no longer exists (L2-B makes
     // the episode durable / append-only — withdrawal is a terminal transition,
     // never a destructive row delete). The B2 capacity invariant it guarded —
     // capacity is owned by ContractAssignment, pipeline has no inverse capacity
-    // writer — is already proven by the two transition-to-`placed` tests above
-    // (openings unchanged on placement; over-capacity representable).
+    // writer — is already proven by the two capacity tests above (openings
+    // unchanged when driving the funnel; a refused transition touches nothing).
   },
 );
 

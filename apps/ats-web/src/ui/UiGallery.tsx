@@ -50,10 +50,10 @@ interface DemoRow {
 }
 
 const DEMO_ROWS: readonly DemoRow[] = [
-  { id: '1', name: 'Marcus Adeyemi', role: 'Staff Engineer', stage: 'interviewing', location: 'Austin, TX' },
-  { id: '2', name: 'Sofia Ramos', role: 'Senior Backend', stage: 'submitted', location: 'Remote (US)' },
-  { id: '3', name: 'Diego Martín', role: 'Backend Engineer', stage: 'qualifying', location: 'Remote (US)' },
-  { id: '4', name: 'Nisha Patel', role: 'Senior SWE', stage: 'placed', location: 'Chicago, IL' },
+  { id: '1', name: 'Marcus Adeyemi', role: 'Staff Engineer', stage: 'qualified', location: 'Austin, TX' },
+  { id: '2', name: 'Sofia Ramos', role: 'Senior Backend', stage: 'qualifying', location: 'Remote (US)' },
+  { id: '3', name: 'Diego Martín', role: 'Backend Engineer', stage: 'talent_responded', location: 'Remote (US)' },
+  { id: '4', name: 'Nisha Patel', role: 'Senior SWE', stage: 'completed', location: 'Chicago, IL' },
 ];
 
 const TABLE_COLUMNS: ReadonlyArray<TableColumn<DemoRow>> = [

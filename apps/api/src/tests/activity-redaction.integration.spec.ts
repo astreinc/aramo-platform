@@ -286,7 +286,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     });
 
     it('R3 — a non-note (pipeline_status_change) is NOT redactable → 422 ACTIVITY_NOT_REDACTABLE, enforced server-side', async () => {
-      const id = await seedActivity({ createdBy: AUTHOR, type: 'pipeline_status_change', notes: 'moved to interviewing' });
+      const id = await seedActivity({ createdBy: AUTHOR, type: 'pipeline_status_change', notes: 'moved to qualifying' });
       // Even a scope holder cannot redact system activity.
       const res = await redact(
         await jwtFor(REDACTOR, ['activity:read', 'activity:redact']),

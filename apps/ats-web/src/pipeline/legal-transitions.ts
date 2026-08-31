@@ -13,32 +13,16 @@ export const LEGAL_TRANSITIONS: Record<
   PipelineStatus,
   readonly PipelineStatus[]
 > = {
-  no_status: ['no_contact', 'contacted', 'not_in_consideration'],
   no_contact: ['contacted', 'talent_responded', 'not_in_consideration'],
   contacted: ['talent_responded', 'no_contact', 'not_in_consideration'],
   talent_responded: ['qualifying', 'contacted', 'not_in_consideration'],
-  // L2-C — forward edge is `qualified` (the QUALIFY milestone). L2-E (SB-5) —
-  // `submitted` is no longer a Pipeline transition target (client submit-to-ats is
-  // Submittal-owned); the legacy `qualifying → submitted` edge is removed.
   qualifying: ['qualified', 'talent_responded', 'not_in_consideration'],
-  // L2-C — the recruiter rests the episode at `qualified`. `qualified → completed`
-  // is legal ONLY so the system COMPLETE precondition validates; NEVER a recruiter
-  // "Move to…" option (§5). L2-E — `qualified → submitted` removed.
+  // The recruiter rests the episode at `qualified` (the last Pipeline-owned state).
+  // `qualified → completed` is legal ONLY so the system COMPLETE precondition
+  // validates; it is NEVER a recruiter "Move to…" option (§5).
   qualified: ['qualifying', 'not_in_consideration', 'completed'],
-  // L2-F3 — `interviewing` + `client_declined` are RETIRED as Pipeline transition
-  // targets (the interview + client-decline truths are owned by ClientSelectionProcess/
-  // InterviewSession, Lane2-DDR §4). Enum values kept; source keys keep their still-valid
-  // outgoing edges for legacy rows. Mirrors libs/pipeline/src/lib/pipeline-state.ts.
-  submitted: ['qualifying', 'not_in_consideration'],
-  interviewing: ['offered', 'not_in_consideration'],
-  // L2-G — `offered → placed` NEW-write edge RETIRED (canonical fill = PlacementProcess
-  // established; success = system-only COMPLETE, SB-3). `placed` enum kept (legacy
-  // terminal); legacy `placed` rows still render. Mirrors pipeline-state.ts.
-  offered: ['not_in_consideration'],
   not_in_consideration: [],
-  client_declined: [],
-  placed: [],
-  // L2-C — the canonical SUCCESSFUL terminal (system-only COMPLETE, SB-3).
+  // the canonical SUCCESSFUL terminal (system-only COMPLETE, SB-3).
   completed: [],
 };
 

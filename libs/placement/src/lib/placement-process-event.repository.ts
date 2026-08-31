@@ -139,7 +139,7 @@ export class PlacementProcessEventRepository {
   }
 
   // Lane 2 / L2-G — the CANONICAL fill read (D-1): fill = PlacementProcess *established*
-  // (birth PRE_START = `PlacementProcess.created_at`), NOT the pipeline `placed` mirror.
+  // (birth PRE_START = `PlacementProcess.created_at`), NOT a Pipeline status mirror.
   // Returns, per (talent_record_id, requisition_id), the FIRST established instant and
   // the FIRST STARTED instant (null if never started), collapsing duplicate placements
   // per triple (DISTINCT ON) exactly as the legacy `MIN(first_placed)` collapse did.

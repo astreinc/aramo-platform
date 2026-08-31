@@ -4,33 +4,24 @@
 // actor's visible requisitions); grouped by requisition_id client-side so the
 // surfaces share ONE call, not N+1, and can never drift on the bucket rules.
 
-import { funnelBucket, funnelCounts, type FunnelBucketKey } from '../ui';
+import { funnelCounts, type FunnelBucketKey } from '../ui';
 
 import { CLOSED_STATUSES, type PipelineStatus, type PipelineView } from './types';
 
 export interface ReqPipelineCount {
   // Active = pipelines still moving (not at a terminal stage).
   readonly active: number;
-  // Submitted = pipelines that reached the Submitted funnel bucket or beyond
-  // (submitted / interview / offer / placed).
-  readonly submitted: number;
 }
 
 const TERMINAL = new Set<PipelineStatus>(CLOSED_STATUSES);
-const SUBMITTED_PLUS = new Set(['submitted', 'interview', 'offer', 'placed']);
 
 // E6 Q-4 — the live/terminal partition for the current-episode collapse. Matches
-// the server's `Pipeline_live_episode_key` predicate — L2-C recreated that partial
-// index as `status NOT IN ('not_in_consideration','completed','placed',
-// 'client_declined')` (the four-member exclusion set = CANONICAL ∪ LEGACY
-// terminals). `no_status` counts as non-terminal here so the collapse agrees with
-// the server. `completed` (the canonical success terminal) MUST be listed so a
-// completed episode does not wrongly win as "live" over a legacy terminal.
+// the server's `Pipeline_live_episode_key` predicate — the canonical-terminals-only
+// exclusion set `status NOT IN ('not_in_consideration','completed')`. A terminal
+// episode never wins as "live" over a live one.
 const COLLAPSE_TERMINAL = new Set<PipelineStatus>([
-  'placed',
   'completed',
   'not_in_consideration',
-  'client_declined',
 ]);
 
 // E6 Q-4 — collapse coexisting episodes to ONE current episode per (talent,
@@ -63,11 +54,9 @@ export function rollupByRequisition(
 ): Record<string, ReqPipelineCount> {
   const byReq: Record<string, ReqPipelineCount> = {};
   for (const p of collapseToCurrentEpisode(pipelines)) {
-    const cur = byReq[p.requisition_id] ?? { active: 0, submitted: 0 };
+    const cur = byReq[p.requisition_id] ?? { active: 0 };
     byReq[p.requisition_id] = {
       active: cur.active + (TERMINAL.has(p.status) ? 0 : 1),
-      submitted:
-        cur.submitted + (SUBMITTED_PLUS.has(funnelBucket(p.status)) ? 1 : 0),
     };
   }
   return byReq;

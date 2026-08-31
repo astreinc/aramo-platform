@@ -4,10 +4,9 @@
 // and doc/05-conventions.md "Database Conventions". Cross-schema
 // references are UUID-only without FK constraints (§7.3).
 //
-// PR-A5a Gate 5 — the ATS pipeline state machine (the heart of the
-// batch). Pipeline is the (talent_record × requisition) join row that
-// carries a status drawn from an 11-state enum. PipelineStatusHistory
-// is the append-only audit of every legal transition.
+// The ATS pipeline state machine. Pipeline is the (talent_record × requisition)
+// join row that carries a status drawn from the canonical 7-state enum.
+// PipelineStatusHistory is the append-only audit of every legal transition.
 //
 // The application-layer state machine (libs/pipeline/src/lib/pipeline-
 // state.ts) enforces the legal transition matrix; the DB enum is the
@@ -34,10 +33,10 @@
 //   - requisition_id     → requisition.Requisition
 //   - PipelineStatusHistory.changed_by_id → identity.User
 //
-// PR-A5a/A5b boundary (Ruling 3): `placed` is the terminal status in
-// this batch. NO `openings_available` decrement on requisition. NO
-// submittal sync. Those sibling-domain writes belong to PR-A5b. This
-// schema is ATS-internal at A5a.
+// Pipeline is ATS-internal: a status write triggers NO sibling-domain write
+// (no requisition.openings decrement, no submittal sync). Downstream progress
+// (submittal, offer, placement, assignment) is owned by those aggregates and
+// reached only by UUID reference.
 
 generator client {
   provider = "prisma-client-js"
@@ -49,28 +48,19 @@ datasource db {
   schemas  = ["pipeline"]
 }
 
-// PipelineStatus — the 11-state OpenCATS-aligned recruiting funnel,
-// vocabulary-renamed per R12. `talent_responded` replaces the OpenCATS
-// legacy anti-token (the only R12-impacted label in the chain).
-//
-// Initial state for new Pipeline rows: `no_contact` (directive §2 /
-// state-machine proof § "Initial state"). `no_status` is included for
-// legacy-import parity; the application transition map never targets
-// it.
+// PipelineStatus — the CANONICAL 7-state recruiting funnel, vocabulary-renamed
+// per R12 (`talent_responded` replaces the OpenCATS legacy anti-token). The
+// Pipeline owns recruiting progress only; everything past `qualified` is owned
+// by its downstream aggregate (Submittal / ClientSelection / Offer / Placement)
+// and is never a Pipeline status. Initial state for new rows: `no_contact`.
 enum PipelineStatus {
-  no_status
   no_contact
   contacted
   talent_responded
   qualifying
-  qualified // L2-C (D-6) — affirmative recruiter milestone
-  submitted
-  interviewing
-  offered
+  qualified // affirmative recruiter milestone
   not_in_consideration
-  client_declined
-  placed
-  completed // L2-C (D-2A) — canonical successful terminal (system-only COMPLETE)
+  completed // canonical successful terminal (system-only COMPLETE)
 
   @@schema("pipeline")
 }
@@ -126,12 +116,13 @@ model Pipeline {
 
   // Live-scoped uniqueness (Track 3 E6): at most one LIVE episode per
   // (tenant, talent, req) triple. A recruiter cannot open a second LIVE
-  // episode while one is live; once an episode reaches a terminal status
-  // (placed / not_in_consideration / client_declined) it releases the
-  // live slot and a fresh episode may be created, with the prior episode
-  // PRESERVED as history (Q-1). This is enforced by the partial unique
-  // index `Pipeline_live_episode_key` in the E6 migration — Prisma cannot
-  // express a partial (WHERE) predicate, so it is NOT an @@unique here.
+  // episode while one is live; once an episode reaches a canonical terminal
+  // status (not_in_consideration / completed) it releases the live slot and a
+  // fresh episode may be created, with the prior episode PRESERVED as history
+  // (Q-1). This is enforced by the partial unique index
+  // `Pipeline_live_episode_key` (predicate recreated by the
+  // canonicalize-status-enum migration) — Prisma cannot express a partial
+  // (WHERE) predicate, so it is NOT an @@unique here.
 
   // Indexes — every query path leads with tenant_id.
   @@index([tenant_id, requisition_id])

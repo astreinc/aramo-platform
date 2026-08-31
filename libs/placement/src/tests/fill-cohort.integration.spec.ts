@@ -12,7 +12,7 @@ import { PrismaService } from '../lib/prisma/prisma.service.js';
 import { PlacementProcessEventRepository } from '../lib/placement-process-event.repository.js';
 
 // Lane 2 / L2-G — the CANONICAL fill read (D-1): fill = PlacementProcess *established*
-// (birth PRE_START = created_at), NOT the pipeline `placed` mirror. Proves readFillCohort:
+// (birth PRE_START = created_at), NOT a Pipeline status mirror. Proves readFillCohort:
 //   - one row per (talent_record_id, requisition_id); first_established_at = MIN created_at;
 //   - first_started_at = MIN STARTED-event created_at (null if never started — the
 //     Time-to-Fill vs Time-to-Start distinction, D-1);

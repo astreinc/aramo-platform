@@ -70,10 +70,10 @@ const JOURNEY_STAGE_ORDER: readonly JourneyStageName[] = [
 ];
 const stageOrdinal = (s: JourneyStageName): number => JOURNEY_STAGE_ORDER.indexOf(s);
 
-// Pipeline status → the Pipeline-OWNED journey stage. Only the active-flow stages + the two
-// canonical terminals are Pipeline-owned; the LEGACY values (submitted/interviewing/offered/
-// placed/client_declined) are owned by downstream aggregates now (DDR §4 / SB-3 wall) — the
-// composer NEVER derives a journey stage from a legacy Pipeline value (returns null).
+// Pipeline status → the Pipeline-OWNED journey stage. The Pipeline owns exactly the five
+// active-flow stages + the two canonical terminals; the interview / offer / placement /
+// decline truths are owned by downstream aggregates (DDR §4 / SB-3 wall) and are NEVER
+// derived from a Pipeline value — the composer reads them from their owners.
 function pipelineOwnedStage(status: PipelineView['status']): JourneyStageName | null {
   switch (status) {
     case 'no_contact':
@@ -90,8 +90,11 @@ function pipelineOwnedStage(status: PipelineView['status']): JourneyStageName | 
       return 'COMPLETED';
     case 'not_in_consideration':
       return 'NOT_IN_CONSIDERATION';
-    default:
-      return null; // legacy submitted/interviewing/offered/placed/client_declined — downstream-owned
+    default: {
+      // Exhaustive over the canonical 7-state enum — unreachable.
+      const _exhaustive: never = status;
+      return _exhaustive;
+    }
   }
 }
 

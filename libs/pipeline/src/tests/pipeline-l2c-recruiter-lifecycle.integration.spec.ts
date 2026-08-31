@@ -44,6 +44,7 @@ const MIGRATIONS = [
   '../../prisma/migrations/20260828140000_l2c_pipeline_live_episode_recreate/migration.sql',
   '../../prisma/migrations/20260828150000_l2c_pipeline_disposition/migration.sql',
   '../../prisma/migrations/20260828160000_l2d_pipeline_entry_provenance/migration.sql',
+  '../../prisma/migrations/20260831120000_pipeline_canonicalize_status_enum/migration.sql',
 ].map((p) => resolve(__dirname, p));
 
 // Dollar-quote- AND line-comment-aware DDL splitter (same as the L2-B spec — the

@@ -127,8 +127,8 @@ const COMPANIES = {
 const PIPELINES = {
   items: [
     { id: 'p1', talent_record_id: 't1', requisition_id: 'req-1', status: 'no_contact' },
-    { id: 'p2', talent_record_id: 't2', requisition_id: 'req-1', status: 'submitted' },
-    { id: 'p3', talent_record_id: 't3', requisition_id: 'req-1', status: 'interviewing' },
+    { id: 'p2', talent_record_id: 't2', requisition_id: 'req-1', status: 'qualifying' },
+    { id: 'p3', talent_record_id: 't3', requisition_id: 'req-1', status: 'qualified' },
   ],
 };
 
@@ -178,14 +178,6 @@ const METRICS = {
       previous: 5,
       series: [3, 5, 4, 6, 5, 7, 6, 7],
       goal: 10,
-      period: 'week',
-    },
-    {
-      key: 'interviews_weekly',
-      value: 4,
-      previous: 3,
-      series: [2, 3, 2, 4, 3, 4, 3, 4],
-      goal: null,
       period: 'week',
     },
     {
@@ -255,23 +247,22 @@ describe('DashboardView (My desk)', () => {
     );
   });
 
-  it('parity: my-open-reqs table shows Pipeline/Submitted counts (one /v1/pipelines call)', async () => {
+  it('parity: my-open-reqs table shows the Pipeline count (one /v1/pipelines call)', async () => {
     mockRoutes();
     const { container } = renderDesk();
     await waitFor(() =>
       expect(screen.getByText('Senior Rust Engineer')).toBeInTheDocument(),
     );
-    // The header columns replaced Openings with Pipeline + Submitted. Scope to
-    // the reqs card — "Submitted" is also a funnel-bucket label on the desk.
+    // Legacy-Pipeline-Canonicalization — the pipeline-derived "Submitted" column is
+    // removed (the submitted-to-client fact is Submittal-owned, not a Pipeline
+    // count). Only the Pipeline (active) count remains.
     const reqCard = screen.getByText('My open reqs').closest('.rc-card') as HTMLElement;
     expect(within(reqCard).getByText('Pipeline')).toBeInTheDocument();
-    expect(within(reqCard).getByText('Submitted')).toBeInTheDocument();
-    // req-1 rollup: active = 3 (no terminal), submitted+ = 2 (submitted +
-    // interviewing). Scope to the req row to avoid colliding with the metrics.
+    expect(within(reqCard).queryByText('Submitted')).not.toBeInTheDocument();
+    // req-1 rollup: active = 3 (no terminal). Scope to the req row.
     const row = screen.getByRole('link', { name: /Senior Rust Engineer/ })
       .closest('tr') as HTMLElement;
     expect(within(row).getByText('3')).toBeInTheDocument();
-    expect(within(row).getByText('2')).toBeInTheDocument();
     // No fabricated delta windows leaked in.
     expect(container.textContent).not.toMatch(/this week|MTD|\+\d/);
   });
@@ -367,8 +358,8 @@ describe('DashboardView (My desk)', () => {
           total: 4,
           by_status: [
             { status: 'no_contact', count: 2 },
-            { status: 'submitted', count: 1 },
-            { status: 'placed', count: 1 },
+            { status: 'qualifying', count: 1 },
+            { status: 'completed', count: 1 },
           ],
         },
       }),
@@ -377,14 +368,14 @@ describe('DashboardView (My desk)', () => {
     await waitFor(() =>
       expect(screen.getByText('My active pipeline')).toBeInTheDocument(),
     );
-    // Sourced bucket = no_contact (2); Placed = 1. Scope to the funnel card.
+    // Early engagement bucket = no_contact (2); Closed = completed (1). Scope to the funnel card.
     const card = screen
       .getByText('My active pipeline')
       .closest('.rc-card') as HTMLElement;
     const stage = (label: string) =>
       within(card).getByText(label).closest('.rc-fstage') as HTMLElement;
-    expect(within(stage('Sourced')).getByText('2')).toBeInTheDocument();
-    expect(within(stage('Placed')).getByText('1')).toBeInTheDocument();
+    expect(within(stage('Early engagement')).getByText('2')).toBeInTheDocument();
+    expect(within(stage('Closed')).getByText('1')).toBeInTheDocument();
   });
 
   it('lists only TODAY’s agenda items owned by the principal', async () => {
@@ -471,8 +462,9 @@ describe('DashboardView (My desk)', () => {
     await waitFor(() =>
       expect(screen.getByText('Submittals · wk')).toBeInTheDocument(),
     );
-    // The four mockup KPIs, by their real labels.
-    expect(screen.getByText('Interviews set')).toBeInTheDocument();
+    // The desk KPIs, by their real labels. (Interviews set removed with the
+    // retired Pipeline interview stage — Legacy-Pipeline-Canonicalization.)
+    expect(screen.queryByText('Interviews set')).not.toBeInTheDocument();
     expect(screen.getByText('Placements · MTD')).toBeInTheDocument();
     expect(screen.getByText('Avg time-to-submit')).toBeInTheDocument();
 
@@ -494,8 +486,8 @@ describe('DashboardView (My desk)', () => {
     // Placements MTD: no change (2 vs 2) → flat, "2 of 3 goal" pace.
     expect(kpi('Placements · MTD').getByText(/2 of 3 goal/)).toBeInTheDocument();
 
-    // Real sparklines are drawn (one per card with ≥2 points).
-    expect(container.querySelectorAll('.rc-spark').length).toBe(4);
+    // Real sparklines are drawn (one per card with ≥2 points): 3 desk KPIs.
+    expect(container.querySelectorAll('.rc-spark').length).toBe(3);
     // The fallback plain cards are NOT shown.
     expect(screen.queryByText('Open reqs')).not.toBeInTheDocument();
   });

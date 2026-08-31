@@ -26,7 +26,7 @@ function placement(overrides: Partial<PlacementView> = {}): PlacementView {
   };
 }
 
-describe('PlacementCard — derived display, mismatch, action affordances (§10)', () => {
+describe('PlacementCard — placement state + action affordances (§10)', () => {
   it('renders the authoritative placement state label and NO reason evidence', () => {
     const { container } = render(<PlacementCard placement={placement({ state: 'OFFER_DECLINED' })} scopes={RECRUITER} />);
     expect(screen.getByTestId('placement-state').textContent).toBe('Offer declined');
@@ -35,18 +35,11 @@ describe('PlacementCard — derived display, mismatch, action affordances (§10)
     expect(container.querySelector('[data-testid="placement-reason-detail"]')).toBeNull();
   });
 
-  it('shows a mismatch indicator with BOTH facts when pipeline disagrees (D-6)', () => {
-    // Placement STARTED ⇒ derived 'placed'; legacy pipeline still 'offered'.
-    render(<PlacementCard placement={placement({ state: 'STARTED' })} pipelineStatus="offered" scopes={MANAGER} />);
-    const indicator = screen.getByTestId('placement-mismatch');
-    expect(indicator).toBeInTheDocument();
-    expect(indicator.textContent).toContain('offered'); // the legacy fact is shown
-    // Placement state (authoritative) is still shown.
+  it('renders the authoritative placement state', () => {
+    // Legacy-Pipeline-Canonicalization — there is no Pipeline representation to
+    // reconcile against; the card shows the placement state directly.
+    render(<PlacementCard placement={placement({ state: 'STARTED' })} scopes={MANAGER} />);
     expect(screen.getByTestId('placement-state').textContent).toBe('Started');
-  });
-
-  it('no mismatch indicator when pipeline agrees', () => {
-    render(<PlacementCard placement={placement({ state: 'STARTED' })} pipelineStatus="placed" scopes={MANAGER} />);
     expect(screen.queryByTestId('placement-mismatch')).toBeNull();
   });
 

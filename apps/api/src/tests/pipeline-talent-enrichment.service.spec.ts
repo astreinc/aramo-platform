@@ -46,7 +46,7 @@ function row(id: string, talent_id: string): PipelineView {
     site_id: null,
     talent_record_id: talent_id,
     requisition_id: 'R',
-    status: 'submitted',
+    status: 'qualifying',
     created_at: '2026-08-01T00:00:00Z',
     updated_at: '2026-08-01T00:00:00Z',
   };

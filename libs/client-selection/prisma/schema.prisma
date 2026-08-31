@@ -1,8 +1,8 @@
 // Per-module Prisma schema for the `client_selection` module (Lane 2 / L2-F, F1).
 //
 // The Client-Selection / Interview OWNER: the aggregate that holds the client's
-// review-and-decision lifecycle over a submitted talent — the truth Pipeline
-// `interviewing`/`client_declined` faked (Lane2-DDR §0/§2 D-3, §3 SB-6). Linked to
+// review-and-decision lifecycle over a submitted talent — the interview-and-decision
+// truth the Pipeline formerly approximated (Lane2-DDR §0/§2 D-3, §3 SB-6). Linked to
 // the Submittal aggregate by UUID only (Architecture §7.3, NO FK; both scope:ats,
 // same cluster). Denormalized lineage keys (requisition_id/talent_id/site_id) are
 // captured write-once at create for the 404-visibility predicate + journey keys.

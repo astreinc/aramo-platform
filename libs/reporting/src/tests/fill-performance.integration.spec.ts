@@ -37,7 +37,7 @@ import { ReportingService } from '../lib/reporting.service.js';
 //
 // Lane 2 / L2-G — fill authority is now PlacementProcess *established* (birth PRE_START,
 // created_at = fill instant), read via readFillCohort (D-1). The rejected capacity path
-// AND the retired pipeline `placed` read are both `{} as never` stubs, so any accidental
+// AND the retired pipeline fill read are both `{} as never` stubs, so any accidental
 // use throws — the authority flip is proven, not assumed.
 
 const REQ_MIGRATIONS = [
@@ -76,6 +76,7 @@ const PIPELINE_MIGRATIONS = [
   '20260828140000_l2c_pipeline_live_episode_recreate',
   '20260828150000_l2c_pipeline_disposition',
   '20260828160000_l2d_pipeline_entry_provenance',
+  '20260831120000_pipeline_canonicalize_status_enum',
 ].map((d) =>
   resolve(__dirname, `../../../pipeline/prisma/migrations/${d}/migration.sql`),
 );
@@ -171,7 +172,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         {} as never, // activity
         requisitionRepository,
         // L2-G — fill authority is the placement spine; getFillPerformance must NOT read
-        // pipeline. Stubbed so any accidental legacy `placed` read throws (authority-flip
+        // pipeline. Stubbed so any accidental legacy pipeline read throws (authority-flip
         // proof — the legacy read survives ONLY in the diagnostic comparator).
         {} as never, // pipelineRepository
         {} as never, // tenantSetting
