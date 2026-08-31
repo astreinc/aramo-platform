@@ -3720,6 +3720,102 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/l2i-d1-connector-seam-boundary.spec.ts",
+      "status": "excluded",
+      "to": "libs/integration/src/lib/lifecycle/pipeline-disposition-mapping.repository.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/l2i-d1-inbound-orchestrator.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/activity/prisma/migrations/20260602140000_init_activity_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/l2i-d1-inbound-orchestrator.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/activity/prisma/migrations/20260801120000_add_activity_redaction_fields/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/l2i-d1-inbound-orchestrator.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/metering/prisma/migrations/20260601150000_init_metering_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/l2i-d1-inbound-orchestrator.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/pipeline/prisma/migrations/20260602150000_init_pipeline_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/l2i-d1-inbound-orchestrator.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/pipeline/prisma/migrations/20260807100000_e6_pipeline_live_episode_unique/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/l2i-d1-inbound-orchestrator.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/pipeline/prisma/migrations/20260827120000_l2a_pipeline_version_column/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/l2i-d1-inbound-orchestrator.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/pipeline/prisma/migrations/20260828100000_l2b_pipeline_history_append_only/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/l2i-d1-inbound-orchestrator.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/pipeline/prisma/migrations/20260828110000_l2b_pipeline_ended_at_nullable_status_from/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/l2i-d1-inbound-orchestrator.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/pipeline/prisma/migrations/20260828120000_l2b_pipeline_outbox_event/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/l2i-d1-inbound-orchestrator.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/pipeline/prisma/migrations/20260828130000_l2c_pipeline_qualified_completed_enum/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/l2i-d1-inbound-orchestrator.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/pipeline/prisma/migrations/20260828140000_l2c_pipeline_live_episode_recreate/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/l2i-d1-inbound-orchestrator.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/pipeline/prisma/migrations/20260828150000_l2c_pipeline_disposition/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/l2i-d1-inbound-orchestrator.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/pipeline/prisma/migrations/20260828160000_l2d_pipeline_entry_provenance/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/l2i-d1-inbound-orchestrator.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/requisition/prisma/migrations/20260602100000_init_requisition_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/l2i-d1-mapping-admin-http.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/match-list.negative-shape.spec.ts",
       "status": "excluded",
       "to": "libs/consent/prisma/migrations/20260429164414_initial_consent_schema/migration.sql"
@@ -9834,6 +9930,11 @@
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
       "to": "apps/api/src/offer/offer.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "apps/api/src/pipeline-integration/pipeline-provider-mapping-admin.controller.ts"
     },
     {
       "from": "ci/config/api-surface-manifest.json",

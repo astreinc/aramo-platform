@@ -31,6 +31,18 @@ export {
   type RecordProvenanceInput,
   type ClaimedReconciliationRow,
 } from './lib/lifecycle/requisition-lifecycle-authority.repository.js';
+// L2-I (D1) — the Pipeline provider-disposition mapping seam repositories + types.
+export {
+  PipelineProviderDispositionMappingRepository,
+  ExternalPipelineEpisodeIdentityRepository,
+  PipelineExternalReconciliationRepository,
+  PipelineExternalTransitionProvenanceRepository,
+  type PipelineProviderAuthorityMode,
+  type PipelineDispositionMappingResolved,
+  type ExternalPipelineEpisodeResolved,
+  type PipelineReconciliationInput,
+  type PipelineProvenanceInput,
+} from './lib/lifecycle/pipeline-disposition-mapping.repository.js';
 // CB-D2-R (ADR-0030, R-TAXONOMY) — the ONE authoritative reconciliation vocabulary.
 export {
   RECONCILIATION_FAILURE_REASON,

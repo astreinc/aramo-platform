@@ -554,6 +554,7 @@
       "ConnectorSecretResolutionError",
       "ConnectorSecretResolver",
       "ConnectorTransientError",
+      "ExternalPipelineEpisodeIdentityRepository",
       "ExternalRequisitionIdentityRepository",
       "FIELDGLASS_PROVIDER_KEY",
       "FieldglassConfigError",
@@ -574,6 +575,9 @@
       "MAPPING_DISPOSITION",
       "MAPPING_SET_STATUS",
       "MappingAdminServiceError",
+      "PipelineExternalReconciliationRepository",
+      "PipelineExternalTransitionProvenanceRepository",
+      "PipelineProviderDispositionMappingRepository",
       "RECONCILIATION_DISPOSITION",
       "RECONCILIATION_FAILURE_REASON",
       "RECONCILIATION_FAILURE_REASONS",
@@ -1771,6 +1775,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/l2h-talent-journey.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/l2i-d1-provider-mapping-admin.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -3508,6 +3518,18 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/l2i-d1-inbound-orchestrator.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/l2i-d1-provider-mapping-admin.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/support/fake-lifecycle-source.ts",
         "project": "api",
         "status": "excluded"
@@ -3660,6 +3682,18 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/l2h-talent-journey.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/l2i-d1-connector-seam-boundary.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/l2i-d1-inbound-orchestrator.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },

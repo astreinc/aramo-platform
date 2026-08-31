@@ -137,6 +137,17 @@ model IntegrationConnection {
   lifecycle_observations LifecycleObservationLedger[]
   external_identities    ExternalRequisitionIdentity[]
 
+  // L2-I (D1) — intra-schema relations to the SEPARATE, Pipeline-owned provider
+  // disposition mapping seam (versioned sets + rows) + connection-scoped external
+  // Pipeline-episode identity. Structurally analogous to the requisition seam
+  // above; a distinct model set so a requisition-mapping edit can never reinterpret
+  // a Pipeline disposition (Rejected-alternative in L2-I §Decision).
+  pipeline_disposition_mapping_sets PipelineProviderDispositionMappingSet[]
+  pipeline_disposition_mappings     PipelineProviderDispositionMapping[]
+  external_pipeline_identities      ExternalPipelineEpisodeIdentity[]
+  pipeline_reconciliations          PipelineExternalReconciliation[]
+  pipeline_transition_provenance    PipelineExternalTransitionProvenance[]
+
   // Indexes — every query path leads with tenant_id. NO unique(tenant_id,
   // provider_key) (ruling #2): connection.id is the identity.
   @@index([tenant_id])
@@ -256,6 +267,183 @@ model RequisitionLifecycleMappingSet {
   mappings   RequisitionLifecycleMapping[]
 
   @@unique([connection_id, version])
+  @@index([tenant_id, connection_id])
+
+  @@schema("integration")
+}
+
+// ============================================================================
+// L2-I (D1) — PIPELINE PROVIDER-DISPOSITION MAPPING SEAM
+// A SEPARATE, Pipeline-owned mapping contract structurally analogous to the
+// requisition seam above (versioned Set owns per-token rows), but a DISTINCT
+// model set so the two aggregates' ontologies never couple (L2-I Rejected-alt).
+// It translates a provider disposition/status token into a canonical Pipeline
+// TARGET — a recruiter named ACTION or a NON-system disposition REASON — NEVER a
+// raw PipelineStatus and NEVER the system-only COMPLETE / DOWNSTREAM_OUTCOME
+// (author-time-rejected in apps/api, which owns the pipeline vocabulary; SB-7
+// keeps @aramo/pipeline out of libs/integration). Target vocabulary is a bounded
+// String (cross-schema enum would couple the domains).
+// ============================================================================
+
+// PipelineProviderDispositionMappingSet — the versioned mapping SET (draft /
+// active / historical). Exactly ONE 'active' set per (tenant, connection) — a
+// PARTIAL UNIQUE INDEX on (tenant_id, connection_id) WHERE status='active' (a
+// concrete predicate, never the NULL=NULL trap). Runtime resolves only the ACTIVE
+// set. The partial unique is migration-SQL-only (Prisma @@unique carries no WHERE).
+model PipelineProviderDispositionMappingSet {
+  id            String @id @default(uuid()) @db.Uuid
+  tenant_id     String @db.Uuid
+  connection_id String @db.Uuid
+
+  version Int
+  status  String @default("draft")
+
+  created_at   DateTime  @default(now()) @db.Timestamptz
+  created_by   String    @db.Uuid
+  activated_at DateTime? @db.Timestamptz
+  activated_by String?   @db.Uuid
+  supersedes_set_id String? @db.Uuid
+
+  connection IntegrationConnection                 @relation(fields: [connection_id], references: [id], onDelete: Cascade)
+  mappings   PipelineProviderDispositionMapping[]
+
+  @@unique([connection_id, version])
+  @@index([tenant_id, connection_id])
+
+  @@schema("integration")
+}
+
+// PipelineProviderDispositionMapping — one authored row per (set, provider_token).
+// `disposition` = 'EXECUTE_ACTION' (invoke the mapped canonical target via the
+// governed apps/api command seam) | 'IGNORE' (audited no-op). `mapped_target` is a
+// canonical recruiter ACTION token or a NON-system disposition REASON token
+// (validated against @aramo/pipeline at author time in apps/api; NULL iff IGNORE).
+// `target_kind` = 'action' | 'reason' | null so the orchestrator routes to the
+// named-action command vs a DISPOSITION-with-reason. `mapping_version` is stamped
+// from the owning Set for provenance. `authority_mode` is a bounded String
+// (external_authority default); the connector holds a NON-system authority class.
+model PipelineProviderDispositionMapping {
+  id            String @id @default(uuid()) @db.Uuid
+  tenant_id     String @db.Uuid
+  connection_id String @db.Uuid
+
+  mapping_set_id String @db.Uuid
+
+  // The provider disposition/status token (raw / normalized), opaque to Aramo.
+  provider_token String
+
+  disposition   String  // EXECUTE_ACTION | IGNORE (DB CHECK pins the pairing)
+  mapped_target String? // canonical action|reason token; NULL iff IGNORE
+  target_kind   String? // 'action' | 'reason'; NULL iff IGNORE
+
+  mapping_version Int    @default(1)
+  authority_mode  String @default("external_authority")
+
+  created_at DateTime @default(now()) @db.Timestamptz
+  updated_at DateTime @default(now()) @updatedAt @db.Timestamptz
+
+  connection  IntegrationConnection                 @relation(fields: [connection_id], references: [id], onDelete: Cascade)
+  mapping_set PipelineProviderDispositionMappingSet @relation(fields: [mapping_set_id], references: [id], onDelete: Cascade)
+
+  @@unique([mapping_set_id, provider_token])
+  @@index([tenant_id, connection_id])
+  @@index([mapping_set_id])
+
+  @@schema("integration")
+}
+
+// ExternalPipelineEpisodeIdentity — connection-scoped external Pipeline-episode
+// identity. Binds a provider's episode identifier to an Aramo pipeline episode by
+// UUID reference (NO FK — cross-schema, I15/§7.3). `external_event_id` carries the
+// per-event idempotency unique so a replayed provider observation is recognized.
+model ExternalPipelineEpisodeIdentity {
+  id            String @id @default(uuid()) @db.Uuid
+  tenant_id     String @db.Uuid
+  connection_id String @db.Uuid
+
+  // The provider's episode identifier (opaque). Connection-scoped.
+  external_episode_id String
+
+  // The Aramo pipeline episode (pipeline.Pipeline.id) — UUID ref, NO FK.
+  pipeline_id String @db.Uuid
+
+  // The provider event that established this identity (idempotency grain).
+  external_event_id String
+
+  created_at DateTime @default(now()) @db.Timestamptz
+
+  connection IntegrationConnection @relation(fields: [connection_id], references: [id], onDelete: Cascade)
+
+  @@unique([tenant_id, connection_id, external_episode_id], map: "ExternalPipelineEpisodeIdentity_tenant_conn_ext_episode_key")
+  @@unique([tenant_id, connection_id, pipeline_id], map: "ExternalPipelineEpisodeIdentity_tenant_conn_pipeline_key")
+  @@unique([tenant_id, connection_id, external_event_id], map: "ExternalPipelineEpisodeIdentity_tenant_conn_ext_event_key")
+  @@index([tenant_id, connection_id])
+
+  @@schema("integration")
+}
+
+// PipelineExternalReconciliation — L2-I (D1). The record-then-resolve PENDING queue for
+// a provider observation that could NOT be applied: unmappable token, illegal-from-state,
+// no episode lineage, or dual-control intent. D1 WRITES 'pending' only (the connector NEVER
+// mutates Pipeline on these paths); a draining worker is out of D1 scope. Idempotent on the
+// external event so a replay converges on the existing pending row.
+model PipelineExternalReconciliation {
+  id            String @id @default(uuid()) @db.Uuid
+  tenant_id     String @db.Uuid
+  connection_id String @db.Uuid
+
+  external_event_id   String
+  external_episode_id String
+  provider_token      String
+
+  // The mapped target (if the token mapped but was illegal-from-state); null when unmappable.
+  mapped_target String?
+  // The Aramo episode status at observation time (for audit; null when no lineage).
+  current_pipeline_status String?
+
+  // Why it could not be applied (bounded String): PROVIDER_TOKEN_UNMAPPABLE |
+  // ILLEGAL_FROM_STATE | NO_EPISODE_LINEAGE | DUAL_CONTROL_PENDING.
+  failure_reason String
+  status         String @default("pending")
+
+  created_at DateTime @default(now()) @db.Timestamptz
+
+  connection IntegrationConnection @relation(fields: [connection_id], references: [id], onDelete: Cascade)
+
+  @@unique([tenant_id, connection_id, external_event_id], map: "PipelineExternalReconciliation_tenant_conn_ext_event_key")
+  @@index([tenant_id, connection_id, status])
+
+  @@schema("integration")
+}
+
+// PipelineExternalTransitionProvenance — L2-I (D1). Append-only. Links a GOVERNED Pipeline
+// command (executed via the apps/api command seam) to the external event that drove it,
+// carrying the resolved `mapping_version` and the target. CRITICAL (AC-4): it records the
+// Aramo `aramo_expected_version` actually used (episode CAS token) SEPARATELY from the
+// provider's `provider_sequence` — proving provider ordering is never the Pipeline CAS field.
+model PipelineExternalTransitionProvenance {
+  id            String @id @default(uuid()) @db.Uuid
+  tenant_id     String @db.Uuid
+  connection_id String @db.Uuid
+
+  external_event_id   String
+  external_episode_id String
+  pipeline_id         String @db.Uuid
+
+  mapping_version Int
+  mapped_target   String
+  target_kind     String
+
+  // The Aramo episode version used as the command's expected_version (CAS). NEVER the provider
+  // sequence. provider_sequence is recorded for audit ONLY (nullable), never a CAS input.
+  aramo_expected_version Int
+  provider_sequence      BigInt?
+
+  created_at DateTime @default(now()) @db.Timestamptz
+
+  connection IntegrationConnection @relation(fields: [connection_id], references: [id], onDelete: Cascade)
+
+  @@unique([tenant_id, connection_id, external_event_id], map: "PipelineExternalTransitionProvenance_tenant_conn_ext_event_key")
   @@index([tenant_id, connection_id])
 
   @@schema("integration")

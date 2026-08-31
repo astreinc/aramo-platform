@@ -26,6 +26,13 @@ import {
   RequisitionExternalReconciliationRepository,
   RequisitionExternalTransitionProvenanceRepository,
 } from './lifecycle/requisition-lifecycle-authority.repository.js';
+// L2-I (D1) — Pipeline provider-disposition mapping seam repositories.
+import {
+  PipelineProviderDispositionMappingRepository,
+  ExternalPipelineEpisodeIdentityRepository,
+  PipelineExternalReconciliationRepository,
+  PipelineExternalTransitionProvenanceRepository,
+} from './lifecycle/pipeline-disposition-mapping.repository.js';
 // CB-D2-A1 (ADR-0030) — provider-neutral lifecycle-ingress substrate.
 import { LifecycleSourceAdapterRegistry } from './lifecycle/lifecycle-source-adapter.registry.js';
 import { LifecycleObservationLedgerRepository } from './lifecycle/lifecycle-observation-ledger.repository.js';
@@ -66,6 +73,12 @@ import { RequisitionLifecycleMappingAdminController } from './lifecycle/mapping-
     RequisitionLifecycleMappingRepository,
     RequisitionExternalReconciliationRepository,
     RequisitionExternalTransitionProvenanceRepository,
+    // L2-I (D1) — Pipeline provider-disposition mapping seam (pure data-access; the
+    // governed Pipeline command runs through apps/api, no @aramo/pipeline here — SB-7).
+    PipelineProviderDispositionMappingRepository,
+    ExternalPipelineEpisodeIdentityRepository,
+    PipelineExternalReconciliationRepository,
+    PipelineExternalTransitionProvenanceRepository,
     // CB-D2-A1 (ADR-0030) — provider-neutral lifecycle-ingress substrate. The
     // registry ships EMPTY (Connector-B registers concrete lifecycle sources; A1
     // proves it with a fake). The repos are pure data-access seams — no
@@ -101,6 +114,11 @@ import { RequisitionLifecycleMappingAdminController } from './lifecycle/mapping-
     RequisitionLifecycleMappingRepository,
     RequisitionExternalReconciliationRepository,
     RequisitionExternalTransitionProvenanceRepository,
+    // L2-I (D1) — exported so the apps/api Pipeline reconciler-analog + mapping-admin compose them.
+    PipelineProviderDispositionMappingRepository,
+    ExternalPipelineEpisodeIdentityRepository,
+    PipelineExternalReconciliationRepository,
+    PipelineExternalTransitionProvenanceRepository,
     // CB-D2-A1 — exported so the apps/api ingress/establishment/producer compose them.
     LifecycleSourceAdapterRegistry,
     LifecycleObservationLedgerRepository,

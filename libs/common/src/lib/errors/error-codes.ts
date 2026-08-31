@@ -702,6 +702,12 @@ export const ERROR_CODES = [
   // lacking the pipeline:complete capability. HTTP 403. `completed` is a system
   // consequence of a downstream event carrying lineage, never a recruiter action.
   'PIPELINE_COMPLETE_SYSTEM_ONLY',
+  // Lane 2 / L2-I (D1) — a provider-disposition mapping row was authored with a target
+  // that is NOT in the canonical author-time vocabulary (recruiter named actions +
+  // non-system RECRUITER/TALENT/ENGAGEMENT disposition reasons). System-only COMPLETE and
+  // DOWNSTREAM_OUTCOME reasons are rejected: an external provider observation can never
+  // cross the authority partition. HTTP 422.
+  'PIPELINE_PROVIDER_MAPPING_TARGET_INVALID',
   // Lane 2 / L2-F (F1) — the Client-Selection owner.
   'CLIENT_SELECTION_SUBMITTAL_INVALID', // the referenced Submittal is not valid for a new client-selection process — non-existent / cross-tenant, OR already owns a process (409)
   'CLIENT_SELECTION_TRANSITION_CONFLICT', // stale expected_version CAS conflict (409)

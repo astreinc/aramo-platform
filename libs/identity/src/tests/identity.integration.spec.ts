@@ -238,6 +238,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'identity:tenant:read',
         'identity:user:read',
         'import:read',
+        'integration:pipeline-mapping:write',
         'integration:read',
         'integration:write',
         'offer:create',
@@ -416,7 +417,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Track7/T7-P3: +3 placement:permanent:terms:write grants (account_manager/tenant_admin/tenant_owner) -> 565.
       // Track8/T8-CONNECTOR-A: +4 integration:read/write grants (tenant_admin/tenant_owner ×2) -> 569.
       // L8-B1: +3 submittal-policy:write grants -> 572; +3 requisition:approve grants (account_manager/tenant_admin/tenant_owner) -> 575.
-      expect(roleScopes).toBe(613); // L2-F: +12 client-selection grants (create/read/transition × recruiter/AM/tenant_admin/tenant_owner) → 593+12. HYG-1: 605 − 12 removed grants (pipeline:remove ×2, pipeline:add-activity ×7, submittal-policy:write ×3) → 593
+      expect(roleScopes).toBe(615); // L2-I (D1): +2 grants (integration:pipeline-mapping:write × tenant_admin/tenant_owner, range 0xf10+) → 613+2=615. L2-F: +12 client-selection grants (create/read/transition × recruiter/AM/tenant_admin/tenant_owner) → 593+12. HYG-1: 605 − 12 removed grants (pipeline:remove ×2, pipeline:add-activity ×7, submittal-policy:write ×3) → 593
 
       const utmRole = await prisma.userTenantMembershipRole.findUnique({
         where: { id: SEED_IDS.membership_role_admin },
@@ -518,7 +519,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Track 3 / E2: +7 pre_start_requirement (all non-platform). Re-derived
       // actual 96 (prior literal 85 was pre-existingly understated by 4 — F-2).
       // Track 3 / E2 v1.2.2: +1 pre_start_requirement:reopen (non-platform) → 97.
-      expect(tenantScopes.length).toBe(131); // L2-F: +3 client-selection:create/read/transition (all non-platform) → 126+3. HYG-1: 128 − 3 removed tenant scopes (pipeline:remove, pipeline:add-activity, submittal-policy:write)
+      expect(tenantScopes.length).toBe(132); // L2-I (D1): +1 integration:pipeline-mapping:write (non-platform) → 131+1=132. L2-F: +3 client-selection:create/read/transition (all non-platform) → 126+3. HYG-1: 128 − 3 removed tenant scopes (pipeline:remove, pipeline:add-activity, submittal-policy:write)
       for (const s of tenantScopes) {
         expect(s.key.startsWith('platform:')).toBe(false);
       }
@@ -812,6 +813,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'identity:tenant:read',
         'identity:user:read',
         'import:read',
+        'integration:pipeline-mapping:write',
         'integration:read',
         'integration:write',
         'offer:create',
@@ -1078,6 +1080,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'identity:tenant:read',
         'identity:user:read',
         'import:read',
+        'integration:pipeline-mapping:write',
         'integration:read',
         'integration:write',
         'offer:create',
@@ -1373,6 +1376,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'identity:tenant:read',
         'identity:user:read',
         'import:read',
+        'integration:pipeline-mapping:write',
         'integration:read',
         'integration:write',
         'offer:create',
