@@ -13,14 +13,15 @@ import { PlacementProcessEventRepository } from '../lib/placement-process-event.
 
 // T9-B2 — placement fallthrough cohort aggregate (real Postgres 17), the read
 // authority for the reporting fallthrough report. Governed by
-// Aramo-T9-B2-Directive-v1_0-LOCKED. Proves the SQL semantics:
-//   - denominator = distinct PlacementProcess whose FIRST OFFER_ACCEPTED
-//     transition ∈ [from,to) (D-2/D-4);
+// Aramo-T9-B2-Directive-v1_0-LOCKED. Proves the SQL semantics (L4-0: acceptance
+// lives in the Offer aggregate, so the cohort anchors on ESTABLISHMENT):
+//   - denominator = distinct PlacementProcess ESTABLISHED (born PRE_START =
+//     created_at) ∈ [from,to) (D-2/D-4) — a placement's existence is the accept;
 //   - numerator = those that later terminate in FELL_THROUGH or NO_SHOW only
-//     (D-1) — OFFER_DECLINED/OFFER_RESCINDED/STARTED/still-live excluded;
+//     (D-1) — STARTED/still-live excluded;
 //   - reason = the terminal event's reason_code + reason_label_snapshot (D-3);
 //   - cohort boundary [from,to) inclusive-from/exclusive-to;
-//   - duplicate history never double-counts (first OFFER_ACCEPTED / one terminal);
+//   - duplicate terminal history never double-counts (one row / one terminal);
 //   - requisition_ids filter (A3) + tenant isolation.
 
 const MIGRATIONS = [
@@ -38,7 +39,9 @@ const MIGRATIONS = [
   '20260813130000_t6_b3_commercial_cancellation',
   '20260814120000_t7_permanent_placement',
   '20260824120000_init_offer_model',
+  '20260901130000_offer_compensation_snapshot',
   '20260824130000_placement_offer_id',
+  '20260901120000_l4_placement_offer_state_collapse',
 ].map((d) => resolve(__dirname, `../../prisma/migrations/${d}/migration.sql`));
 
 const FROM = new Date('2026-05-01T00:00:00.000Z');
@@ -78,19 +81,18 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await container?.stop();
     });
 
-    // Seed one placement attempt: a PlacementProcess row + its events. Each event
-    // is a state_transition with event_payload {from,to}. `acceptedAt` (if given)
-    // writes an OFFER_ACCEPTED event; `terminal`+`terminalAt` writes the terminal
-    // transition carrying the reason.
+    // Seed one placement attempt: a PlacementProcess row + its events. The cohort
+    // now anchors on the row's ESTABLISHMENT instant (`created_at`), so `establishedAt`
+    // sets created_at. `terminal`+`terminalAt` writes the terminal transition event
+    // (FELL_THROUGH/NO_SHOW carry the reason); STARTED / no-terminal are live/denominator-only.
     async function seedAttempt(args: {
       tenant_id: string;
       requisition_id: string;
-      acceptedAt?: Date;
-      terminal?: 'FELL_THROUGH' | 'NO_SHOW' | 'OFFER_RESCINDED' | 'STARTED';
+      establishedAt?: Date;
+      terminal?: 'FELL_THROUGH' | 'NO_SHOW' | 'STARTED';
       terminalAt?: Date;
       reason_code?: string | null;
       reason_label?: string | null;
-      declinedOnly?: boolean; // OFFER_EXTENDED -> OFFER_DECLINED, never accepted
     }): Promise<string> {
       const ppId = randomUUID();
       await prisma.placementProcess.create({
@@ -100,9 +102,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           submittal_id: randomUUID(),
           requisition_id: args.requisition_id,
           talent_record_id: randomUUID(),
-          state: (args.terminal ??
-            (args.declinedOnly ? 'OFFER_DECLINED' : 'OFFER_ACCEPTED')) as never,
+          state: (args.terminal ?? 'PRE_START') as never,
           offered_at: FROM,
+          created_at: args.establishedAt ?? at(FROM, 1),
         },
       });
       const ev = async (
@@ -124,12 +126,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           },
         });
       };
-      if (args.declinedOnly === true) {
-        await ev('OFFER_DECLINED', args.terminalAt ?? at(FROM, 2));
-        return ppId;
-      }
-      if (args.acceptedAt !== undefined) await ev('OFFER_ACCEPTED', args.acceptedAt);
-      if (args.terminal !== undefined) {
+      // Only a loss terminal (FELL_THROUGH/NO_SHOW) writes a terminal event → numerator.
+      if (args.terminal === 'FELL_THROUGH' || args.terminal === 'NO_SHOW') {
         await ev(
           args.terminal,
           args.terminalAt ?? at(FROM, 10),
@@ -142,48 +140,43 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
     const tenantWide = { tenant_id: '', from: FROM, to: TO };
 
-    it('FELL_THROUGH + NO_SHOW count numerator; OFFER_RESCINDED/STARTED/live are denominator-only', async () => {
+    it('FELL_THROUGH + NO_SHOW count numerator; STARTED/live are denominator-only', async () => {
       const t = randomUUID();
       const req = randomUUID();
-      // 5 accepted attempts in-window:
-      await seedAttempt({ tenant_id: t, requisition_id: req, acceptedAt: at(FROM, 1), terminal: 'FELL_THROUGH', terminalAt: at(FROM, 5), reason_code: 'start_date_failed', reason_label: 'Start date failed' });
-      await seedAttempt({ tenant_id: t, requisition_id: req, acceptedAt: at(FROM, 1), terminal: 'NO_SHOW', terminalAt: at(FROM, 6), reason_code: 'talent_unreachable', reason_label: 'Talent unreachable' });
-      await seedAttempt({ tenant_id: t, requisition_id: req, acceptedAt: at(FROM, 2), terminal: 'OFFER_RESCINDED', terminalAt: at(FROM, 7), reason_code: 'client_role_cancelled', reason_label: 'Client role cancelled' });
-      await seedAttempt({ tenant_id: t, requisition_id: req, acceptedAt: at(FROM, 2), terminal: 'STARTED', terminalAt: at(FROM, 8) });
-      await seedAttempt({ tenant_id: t, requisition_id: req, acceptedAt: at(FROM, 3) }); // still live
-      // A DECLINED attempt that never reached OFFER_ACCEPTED — excluded from denom:
-      await seedAttempt({ tenant_id: t, requisition_id: req, declinedOnly: true });
+      // 4 established (born) attempts in-window:
+      await seedAttempt({ tenant_id: t, requisition_id: req, establishedAt: at(FROM, 1), terminal: 'FELL_THROUGH', terminalAt: at(FROM, 5), reason_code: 'start_date_failed', reason_label: 'Start date failed' });
+      await seedAttempt({ tenant_id: t, requisition_id: req, establishedAt: at(FROM, 1), terminal: 'NO_SHOW', terminalAt: at(FROM, 6), reason_code: 'talent_unreachable', reason_label: 'Talent unreachable' });
+      await seedAttempt({ tenant_id: t, requisition_id: req, establishedAt: at(FROM, 2), terminal: 'STARTED' }); // denominator-only (not a loss)
+      await seedAttempt({ tenant_id: t, requisition_id: req, establishedAt: at(FROM, 3) }); // still live (PRE_START)
 
       const r = await repo.readFallthroughCohort({ ...tenantWide, tenant_id: t });
-      expect(r.accepted_attempts).toBe(5); // the 5 accepted (declined-only excluded)
+      expect(r.accepted_attempts).toBe(4); // all 4 born in-window
       expect(r.fallthrough).toHaveLength(2); // only FELL_THROUGH + NO_SHOW
       const codes = r.fallthrough.map((f) => f.reason_code).sort();
       expect(codes).toEqual(['start_date_failed', 'talent_unreachable']);
     });
 
-    it('cohort boundary: first OFFER_ACCEPTED inclusive-from, exclusive-to', async () => {
+    it('cohort boundary: establishment inclusive-from, exclusive-to', async () => {
       const t = randomUUID();
       const req = randomUUID();
-      await seedAttempt({ tenant_id: t, requisition_id: req, acceptedAt: at(FROM, -1), terminal: 'FELL_THROUGH' }); // before → out
-      await seedAttempt({ tenant_id: t, requisition_id: req, acceptedAt: FROM, terminal: 'FELL_THROUGH' }); // at from → in
-      await seedAttempt({ tenant_id: t, requisition_id: req, acceptedAt: TO, terminal: 'FELL_THROUGH' }); // at to → out
+      await seedAttempt({ tenant_id: t, requisition_id: req, establishedAt: at(FROM, -1), terminal: 'FELL_THROUGH' }); // before → out
+      await seedAttempt({ tenant_id: t, requisition_id: req, establishedAt: FROM, terminal: 'FELL_THROUGH' }); // at from → in
+      await seedAttempt({ tenant_id: t, requisition_id: req, establishedAt: TO, terminal: 'FELL_THROUGH' }); // at to → out
       const r = await repo.readFallthroughCohort({ tenant_id: t, from: FROM, to: TO });
       expect(r.accepted_attempts).toBe(1);
       expect(r.fallthrough).toHaveLength(1);
     });
 
-    it('duplicate history never double-counts (first OFFER_ACCEPTED, one terminal)', async () => {
+    it('duplicate terminal history never double-counts (one row, one terminal)', async () => {
       const t = randomUUID();
       const req = randomUUID();
       const ppId = randomUUID();
       await prisma.placementProcess.create({
-        data: { id: ppId, tenant_id: t, submittal_id: randomUUID(), requisition_id: req, talent_record_id: randomUUID(), state: 'FELL_THROUGH' as never, offered_at: FROM },
+        data: { id: ppId, tenant_id: t, submittal_id: randomUUID(), requisition_id: req, talent_record_id: randomUUID(), state: 'FELL_THROUGH' as never, offered_at: FROM, created_at: at(FROM, 3) },
       });
       const raw = async (to: string, when: Date, code?: string): Promise<void> => {
         await prisma.placementProcessEvent.create({ data: { id: randomUUID(), tenant_id: t, placement_process_id: ppId, event_type: 'state_transition' as never, event_payload: { from: 'x', to }, created_at: when, ...(code === undefined ? {} : { reason_code: code, reason_label_snapshot: code }) } });
       };
-      await raw('OFFER_ACCEPTED', at(FROM, 3));
-      await raw('OFFER_ACCEPTED', at(FROM, 4)); // duplicate accept row
       await raw('FELL_THROUGH', at(FROM, 9), 'client_cancelled');
       await raw('FELL_THROUGH', at(FROM, 10), 'client_cancelled'); // duplicate terminal row
       const r = await repo.readFallthroughCohort({ tenant_id: t, from: FROM, to: TO });
@@ -195,7 +188,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     it('captures a missing reason (null) on a fallthrough terminal', async () => {
       const t = randomUUID();
       const req = randomUUID();
-      await seedAttempt({ tenant_id: t, requisition_id: req, acceptedAt: at(FROM, 1), terminal: 'FELL_THROUGH', terminalAt: at(FROM, 5), reason_code: null, reason_label: null });
+      await seedAttempt({ tenant_id: t, requisition_id: req, establishedAt: at(FROM, 1), terminal: 'FELL_THROUGH', terminalAt: at(FROM, 5), reason_code: null, reason_label: null });
       const r = await repo.readFallthroughCohort({ tenant_id: t, from: FROM, to: TO });
       expect(r.accepted_attempts).toBe(1);
       expect(r.fallthrough).toHaveLength(1);
@@ -207,10 +200,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const other = randomUUID();
       const reqVisible = randomUUID();
       const reqHidden = randomUUID();
-      await seedAttempt({ tenant_id: t, requisition_id: reqVisible, acceptedAt: at(FROM, 1), terminal: 'FELL_THROUGH' });
-      await seedAttempt({ tenant_id: t, requisition_id: reqHidden, acceptedAt: at(FROM, 1), terminal: 'FELL_THROUGH' });
+      await seedAttempt({ tenant_id: t, requisition_id: reqVisible, establishedAt: at(FROM, 1), terminal: 'FELL_THROUGH' });
+      await seedAttempt({ tenant_id: t, requisition_id: reqHidden, establishedAt: at(FROM, 1), terminal: 'FELL_THROUGH' });
       // another tenant, same requisition id space — must never leak
-      await seedAttempt({ tenant_id: other, requisition_id: reqVisible, acceptedAt: at(FROM, 1), terminal: 'FELL_THROUGH' });
+      await seedAttempt({ tenant_id: other, requisition_id: reqVisible, establishedAt: at(FROM, 1), terminal: 'FELL_THROUGH' });
 
       const scoped = await repo.readFallthroughCohort({ tenant_id: t, from: FROM, to: TO, requisition_ids: [reqVisible] });
       expect(scoped.accepted_attempts).toBe(1);

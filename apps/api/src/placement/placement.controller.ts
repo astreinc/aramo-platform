@@ -96,7 +96,8 @@ export class PlacementController {
   }
 
   // Create on the explicit client-selection/offer fact (initial state
-  // OFFER_EXTENDED). Duplicate live attempt → PLACEMENT_ALREADY_LIVE (409).
+  // PRE_START, downstream of an accepted Offer). Duplicate live attempt →
+  // PLACEMENT_ALREADY_LIVE (409).
   //
   // E4 — replacement is a CONJUNCTION, evaluated at this one point. The route
   // always requires placement:create (the static guard above). When

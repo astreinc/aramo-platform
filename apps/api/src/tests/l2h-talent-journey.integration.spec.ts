@@ -212,18 +212,22 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     });
 
     // ---------------------------------------------------------------------------------------
-    // AC-2c — an established placement in OFFER_ACCEPTED reads ACCEPTED_PLACED (fill = establishment).
+    // AC-2c — an established placement is placement-OWNED and drives its own journey stage
+    // (fill = establishment, not offer-acceptance). L4-0 collapsed the OFFER_* placement
+    // states out: a PlacementProcess is now born at PRE_START (downstream of an accepted
+    // Offer aggregate), so the established/birth state PRE_START drives the PRE_START stage
+    // (ordinal above ACCEPTED_PLACED) over the still-live pipeline/submittal contributions.
     // ---------------------------------------------------------------------------------------
-    it('AC-2c: established placement (OFFER_ACCEPTED) → ACCEPTED_PLACED', async () => {
+    it('AC-2c: established placement (born PRE_START) → current_journey_stage=PRE_START (placement owns it, fill = establishment)', async () => {
       const tenant = randomUUID(); const talent = randomUUID();
       const req = randomUUID();
       const pipe = await seedPipeline(tenant, req, talent, 'qualified');
       const sub = await seedSubmittal(tenant, talent, req, 'submitted_to_ats');
-      await seedPlacement(tenant, sub, req, talent, 'OFFER_ACCEPTED');
+      await seedPlacement(tenant, sub, req, talent, 'PRE_START');
 
       const j = await call(tenant, pipe);
-      expect(j.current_journey_stage).toBe('ACCEPTED_PLACED');
-      expect(j.sub_states.placement_state).toBe('OFFER_ACCEPTED');
+      expect(j.current_journey_stage).toBe('PRE_START'); // downstream placement owner drives it, over pipeline `qualified`
+      expect(j.sub_states.placement_state).toBe('PRE_START');
     });
 
     // ---------------------------------------------------------------------------------------

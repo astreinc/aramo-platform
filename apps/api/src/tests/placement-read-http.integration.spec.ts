@@ -45,7 +45,13 @@ const PLACEMENT_FALLOFF_REMEDY = resolve(ROOT, 'libs/placement/prisma/migrations
 // T7-P3: SEPARATE const (never a 2nd resolve() arg — that path-joins to ENOTDIR).
 const PLACEMENT_GUARANTEE_TERMS = resolve(ROOT, 'libs/placement/prisma/migrations/20260816120000_t7_p3_guarantee_term_versioning/migration.sql');
 const PLACEMENT_OFFER_INIT = resolve(ROOT, 'libs/placement/prisma/migrations/20260824120000_init_offer_model/migration.sql');
+// L4 P1 — Offer.comp_* columns (ADD nullable; regenerated client SELECTs them on every offer read). SEPARATE const.
+const PLACEMENT_OFFER_COMPENSATION = resolve(ROOT, 'libs/placement/prisma/migrations/20260901130000_offer_compensation_snapshot/migration.sql');
 const PLACEMENT_OFFER_ID = resolve(ROOT, 'libs/placement/prisma/migrations/20260824130000_placement_offer_id/migration.sql');
+// L4-0 (Hiring Commitment) — collapse PlacementState 10 -> 6 (the four OFFER_* states
+// removed; offer lifecycle owned solely by the Offer aggregate). Applied LAST; the
+// fail-loud ::text:: cast is a no-op on a fresh DB (zero surviving rows). SEPARATE const.
+const PLACEMENT_OFFER_STATE_COLLAPSE = resolve(ROOT, 'libs/placement/prisma/migrations/20260901120000_l4_placement_offer_state_collapse/migration.sql');
 
 const ISSUER = 'Aramo Core Auth';
 const AUDIENCE = 'aramo-placement-read-http-spec';
@@ -86,7 +92,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('E1-d Placement RE
     setupClient = new Client({ connectionString: url });
     await setupClient.connect();
 
-    for (const p of [ENTITLEMENT_INIT, PLACEMENT_INIT, PLACEMENT_OFFER, PLACEMENT_REASON, PLACEMENT_REPLACEMENT, PLACEMENT_PERMANENT, PLACEMENT_FALLOFF_REMEDY, PLACEMENT_GUARANTEE_TERMS, PLACEMENT_OFFER_INIT, PLACEMENT_OFFER_ID]) {
+    for (const p of [ENTITLEMENT_INIT, PLACEMENT_INIT, PLACEMENT_OFFER, PLACEMENT_REASON, PLACEMENT_REPLACEMENT, PLACEMENT_PERMANENT, PLACEMENT_FALLOFF_REMEDY, PLACEMENT_GUARANTEE_TERMS, PLACEMENT_OFFER_INIT, PLACEMENT_OFFER_COMPENSATION, PLACEMENT_OFFER_ID, PLACEMENT_OFFER_STATE_COLLAPSE]) {
       await setupClient.query(readFileSync(p, 'utf8'));
     }
     // TENANT_ATS is entitled to 'ats' (the intended placement boundary).
@@ -99,7 +105,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('E1-d Placement RE
     await setupClient.query(
       `INSERT INTO placement."PlacementProcess"
         (id, tenant_id, submittal_id, requisition_id, talent_record_id, state, offered_at, created_at)
-       VALUES ($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,'OFFER_EXTENDED', now(), now())`,
+       VALUES ($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,'PRE_START', now(), now())`,
       [PLACEMENT_ID, TENANT_ATS, randomUUID(), PLACEMENT_REQ_ID, randomUUID()],
     );
 

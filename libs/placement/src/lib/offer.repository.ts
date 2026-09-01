@@ -9,6 +9,11 @@ import {
   OFFER_INITIAL_STATE,
   type OfferState,
 } from './lifecycle/offer-lifecycle.js';
+import {
+  classifyOfferCompensation,
+  type OfferCompensationInput,
+  type OfferCompensationSnapshot,
+} from './offer-compensation.js';
 import { OfferTransitionPolicyService } from './policy/offer-transition-policy.service.js';
 
 export interface OfferView {
@@ -22,6 +27,11 @@ export interface OfferView {
   readonly offer_expires_at: string | null;
   readonly client_offer_reference: string | null;
   readonly offer_terms_summary: string | null;
+  // L4-A / P1 — the structured Talent-facing compensation snapshot (null until set).
+  readonly compensation_type: string | null;
+  readonly compensation_amount: string | null; // decimal string (money, never float)
+  readonly compensation_currency: string | null;
+  readonly compensation_period: string | null;
   readonly decline_reason: string | null;
   readonly created_at: string;
 }
@@ -35,6 +45,11 @@ export interface CreateOfferInput {
   readonly offer_expires_at?: string | null;
   readonly client_offer_reference?: string | null;
   readonly offer_terms_summary?: string | null;
+  // L4-A / P1 — comp snapshot input (all-or-nothing; validated in create()).
+  readonly compensation_type?: string | null;
+  readonly compensation_amount?: string | null;
+  readonly compensation_currency?: string | null;
+  readonly compensation_period?: string | null;
   readonly actor_id: string;
   readonly correlation_id: string;
 }
@@ -50,6 +65,13 @@ export interface TransitionOfferInput {
   readonly offer_expires_at?: string | null;
   readonly client_offer_reference?: string | null;
   readonly offer_terms_summary?: string | null;
+  // L4-B / P2 — a term-bearing transition (e.g. NEGOTIATION) may revise the comp
+  // snapshot; supplying any comp field revises it (all-or-nothing, re-validated).
+  readonly compensation_type?: string | null;
+  readonly compensation_amount?: string | null;
+  readonly compensation_currency?: string | null;
+  readonly compensation_period?: string | null;
+  readonly change_reason?: string | null;
   readonly decline_reason?: string | null;
 }
 
@@ -58,6 +80,8 @@ type OfferRow = {
   talent_record_id: string; state: OfferState;
   proposed_start_date: Date | null; offer_expires_at: Date | null;
   client_offer_reference: string | null; offer_terms_summary: string | null;
+  compensation_type: string | null; compensation_amount: { toString(): string } | null;
+  compensation_currency: string | null; compensation_period: string | null;
   decline_reason: string | null; created_at: Date;
 };
 
@@ -70,6 +94,11 @@ function toView(r: OfferRow): OfferView {
     offer_expires_at: r.offer_expires_at?.toISOString() ?? null,
     client_offer_reference: r.client_offer_reference,
     offer_terms_summary: r.offer_terms_summary,
+    // Prisma returns Decimal as a Decimal object — project to a decimal string.
+    compensation_type: r.compensation_type,
+    compensation_amount: r.compensation_amount === null ? null : r.compensation_amount.toString(),
+    compensation_currency: r.compensation_currency,
+    compensation_period: r.compensation_period,
     decline_reason: r.decline_reason,
     created_at: r.created_at.toISOString(),
   };
@@ -140,6 +169,19 @@ export class OfferRepository {
   }
 
   async create(input: CreateOfferInput): Promise<OfferView> {
+    // L4-A / P1 — validate the Talent-facing compensation snapshot at the write
+    // boundary (all-or-nothing; CONTRACT sub-annual / PERMANENT ANNUAL; ISO-4217 +
+    // rate-period). A rejection is VALIDATION_ERROR (400) before any mutation.
+    const comp = classifyOfferCompensation(input as OfferCompensationInput);
+    if (!comp.ok) {
+      throw new AramoError(
+        'VALIDATION_ERROR',
+        `offer compensation snapshot invalid: ${comp.reason}`,
+        400,
+        { requestId: input.correlation_id, details: { reason: comp.reason } },
+      );
+    }
+    const snapshot: OfferCompensationSnapshot | null = comp.snapshot;
     const id = uuidv7();
     try {
       const row = await this.prisma.$transaction(async (tx) => {
@@ -155,6 +197,10 @@ export class OfferRepository {
             offer_expires_at: input.offer_expires_at ? new Date(input.offer_expires_at) : null,
             client_offer_reference: input.client_offer_reference ?? null,
             offer_terms_summary: input.offer_terms_summary ?? null,
+            compensation_type: snapshot?.compensation_type ?? null,
+            compensation_amount: snapshot?.compensation_amount ?? null,
+            compensation_currency: snapshot?.compensation_currency ?? null,
+            compensation_period: snapshot?.compensation_period ?? null,
           },
         })) as OfferRow;
         await tx.offerEvent.create({
@@ -168,6 +214,22 @@ export class OfferRepository {
           data: {
             id: uuidv7(), tenant_id: input.tenant_id, event_type: 'offer.created',
             event_payload: { offer_id: id, submittal_id: input.submittal_id, state: OFFER_INITIAL_STATE },
+          },
+        });
+        // L4-B / P2 — the initial terms are revision #1 (immutable history).
+        await tx.offerRevision.create({
+          data: {
+            id: uuidv7(), tenant_id: input.tenant_id, offer_id: id, revision_number: 1,
+            proposed_start_date: input.proposed_start_date ? new Date(input.proposed_start_date) : null,
+            offer_expires_at: input.offer_expires_at ? new Date(input.offer_expires_at) : null,
+            client_offer_reference: input.client_offer_reference ?? null,
+            offer_terms_summary: input.offer_terms_summary ?? null,
+            compensation_type: snapshot?.compensation_type ?? null,
+            compensation_amount: snapshot?.compensation_amount ?? null,
+            compensation_currency: snapshot?.compensation_currency ?? null,
+            compensation_period: snapshot?.compensation_period ?? null,
+            recorded_by: input.actor_id,
+            change_reason: null,
           },
         });
         return created;
@@ -223,12 +285,43 @@ export class OfferRepository {
       });
     }
 
+    // L4-B / P2 — a term-bearing transition (NEGOTIATION being the canonical one)
+    // may revise the comp snapshot. Supplying any comp field revises it (all-or-
+    // nothing, re-validated); a rejection is VALIDATION_ERROR BEFORE any write. No
+    // comp field supplied ⇒ comp is carried unchanged.
+    const compChange = classifyOfferCompensation(input as OfferCompensationInput);
+    if (!compChange.ok) {
+      throw new AramoError(
+        'VALIDATION_ERROR',
+        `offer compensation snapshot invalid: ${compChange.reason}`,
+        400,
+        { requestId: input.correlation_id, details: { reason: compChange.reason } },
+      );
+    }
+    const compRevised = compChange.snapshot !== null;
+
     const data: Record<string, unknown> = { state: input.to_state };
     if (input.proposed_start_date !== undefined) data['proposed_start_date'] = input.proposed_start_date === null ? null : new Date(input.proposed_start_date);
     if (input.offer_expires_at !== undefined) data['offer_expires_at'] = input.offer_expires_at === null ? null : new Date(input.offer_expires_at);
     if (input.client_offer_reference !== undefined) data['client_offer_reference'] = input.client_offer_reference;
     if (input.offer_terms_summary !== undefined) data['offer_terms_summary'] = input.offer_terms_summary;
     if (input.decline_reason !== undefined) data['decline_reason'] = input.decline_reason;
+    if (compRevised) {
+      data['compensation_type'] = compChange.snapshot!.compensation_type;
+      data['compensation_amount'] = compChange.snapshot!.compensation_amount;
+      data['compensation_currency'] = compChange.snapshot!.compensation_currency;
+      data['compensation_period'] = compChange.snapshot!.compensation_period;
+    }
+
+    // The Offer row carries the CURRENT snapshot; a terms change is journaled as an
+    // immutable OfferRevision (no overwrite-in-place loses a prior version). A pure
+    // state transition (no term field supplied) records NO revision.
+    const termsChanged =
+      input.proposed_start_date !== undefined ||
+      input.offer_expires_at !== undefined ||
+      input.client_offer_reference !== undefined ||
+      input.offer_terms_summary !== undefined ||
+      compRevised;
 
     const row = await this.prisma.$transaction(async (tx) => {
       const updated = (await tx.offer.update({ where: { id: input.id }, data })) as OfferRow;
@@ -245,10 +338,78 @@ export class OfferRepository {
           event_payload: { offer_id: input.id, previous_state: from, next_state: input.to_state },
         },
       });
+      if (termsChanged) {
+        const priorCount = await tx.offerRevision.count({
+          where: { tenant_id: input.tenant_id, offer_id: input.id },
+        });
+        await tx.offerRevision.create({
+          data: {
+            id: uuidv7(), tenant_id: input.tenant_id, offer_id: input.id,
+            revision_number: priorCount + 1,
+            // The FULL resulting snapshot — `updated` is the merged current terms.
+            proposed_start_date: updated.proposed_start_date,
+            offer_expires_at: updated.offer_expires_at,
+            client_offer_reference: updated.client_offer_reference,
+            offer_terms_summary: updated.offer_terms_summary,
+            compensation_type: updated.compensation_type,
+            compensation_amount:
+              updated.compensation_amount === null ? null : updated.compensation_amount.toString(),
+            compensation_currency: updated.compensation_currency,
+            compensation_period: updated.compensation_period,
+            recorded_by: input.actor_id,
+            change_reason: input.change_reason ?? null,
+          },
+        });
+      }
       await insertPolicyDecisionRecordInTx(tx, outcome.provenance);
       return updated;
     });
     return toView(row);
+  }
+
+  // L4 / P6 — governed auto-expiry. A SENT or NEGOTIATION offer whose
+  // offer_expires_at has passed is transitioned to EXPIRED. This is a SYSTEM
+  // action (no user policy — automated), governed by lifecycle LEGALITY: only
+  // SENT/NEGOTIATION carry an EXPIRED edge (the DB trigger is the backstop), and
+  // each expiry is audited (OfferEvent + OutboxEvent). DRAFT never auto-expires
+  // (no EXPIRED edge — an unsent offer). CAS/idempotent: each transition is a
+  // state-guarded updateMany (WHERE state = the captured open state), so a row
+  // already EXPIRED updates 0 rows — safe under concurrent sweeps and retries.
+  async expireOverdueOffers(now: Date, systemActorId: string): Promise<{ expired: number }> {
+    const overdue = (await this.prisma.offer.findMany({
+      where: {
+        state: { in: ['SENT', 'NEGOTIATION'] },
+        offer_expires_at: { not: null, lt: now },
+      },
+      select: { id: true, tenant_id: true, state: true },
+    })) as Array<{ id: string; tenant_id: string; state: OfferState }>;
+
+    let expired = 0;
+    for (const o of overdue) {
+      const didExpire = await this.prisma.$transaction(async (tx) => {
+        const res = await tx.offer.updateMany({
+          where: { id: o.id, tenant_id: o.tenant_id, state: o.state },
+          data: { state: 'EXPIRED' },
+        });
+        if (res.count === 0) return 0; // already moved on — idempotent no-op
+        await tx.offerEvent.create({
+          data: {
+            id: uuidv7(), tenant_id: o.tenant_id, offer_id: o.id,
+            event_type: 'state_transition',
+            event_payload: { previous_state: o.state, next_state: 'EXPIRED', action: 'EXPIRE', actor_id: systemActorId, auto: true },
+          },
+        });
+        await tx.offerOutboxEvent.create({
+          data: {
+            id: uuidv7(), tenant_id: o.tenant_id, event_type: 'offer.expire',
+            event_payload: { offer_id: o.id, previous_state: o.state, next_state: 'EXPIRED', auto: true },
+          },
+        });
+        return 1;
+      });
+      expired += didExpire;
+    }
+    return { expired };
   }
 }
 

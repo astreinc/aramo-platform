@@ -4,6 +4,7 @@
 export { PrismaService } from './lib/prisma/prisma.service.js';
 export { OfferRepository } from './lib/offer.repository.js';
 export type { OfferView, CreateOfferInput, TransitionOfferInput } from './lib/offer.repository.js';
+export { maskOfferCompensation, OFFER_READ_FINANCIAL_SCOPE } from './lib/offer-compensation.js';
 export { OfferTransitionPolicyService, OFFER_POLICY_STORE } from './lib/policy/offer-transition-policy.service.js';
 export {
   OFFER_STATES,

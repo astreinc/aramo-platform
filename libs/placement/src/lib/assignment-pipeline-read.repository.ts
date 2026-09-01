@@ -14,10 +14,11 @@ export interface AssignmentPipelineSnapshot {
   contract_assignments: { active: number; ended: number };
 }
 
-// The five live assignment-pipeline states (directive §3). OFFER_EXTENDED and the
-// four terminal-loss states are deliberately EXCLUDED.
+// The four live assignment-pipeline states (directive §3). The two terminal-loss
+// states (NO_SHOW, FELL_THROUGH) are deliberately EXCLUDED. L4-0: OFFER_ACCEPTED
+// was collapsed out — a PlacementProcess is now born at PRE_START (downstream of
+// an accepted Offer aggregate), so the pipeline begins at PRE_START.
 const LIVE_STATES = [
-  'OFFER_ACCEPTED',
   'PRE_START',
   'BLOCKED',
   'READY_TO_START',
@@ -25,7 +26,6 @@ const LIVE_STATES = [
 ] as const;
 // Start-date buckets apply only to the pre-start subset (STARTED excluded, §8).
 const PRE_START_STATES = [
-  'OFFER_ACCEPTED',
   'PRE_START',
   'BLOCKED',
   'READY_TO_START',

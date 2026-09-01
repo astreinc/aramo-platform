@@ -16,8 +16,9 @@ paths:
         Lists Offers for the tenant, filtered by any of `submittal_id`,
         `requisition_id`, `talent_record_id` (AND-ed). Visibility-scoped: only
         offers whose requisition is visible to the actor are returned. Requires
-        the `ats` capability and the `offer:create` scope (read rides create-
-        authority; no separate `offer:read` scope this slice).
+        the `ats` capability and the `offer:read` scope. The Talent-facing
+        compensation snapshot (compensation_*) is MASKED to null unless the caller
+        also holds `offer:read:financial` (fail-closed field-level masking).
       parameters:
         - name: submittal_id
           in: query
@@ -90,7 +91,10 @@ paths:
     get:
       operationId: getOffer
       summary: Read an Offer by id.
-      description: Requires the `ats` capability and the `offer:create` scope.
+      description: >-
+        Requires the `ats` capability and the `offer:read` scope. The Talent-facing
+        compensation snapshot (compensation_*) is MASKED to null unless the caller
+        also holds `offer:read:financial` (fail-closed field-level masking).
       parameters:
         - name: id
           in: path
@@ -4857,6 +4861,14 @@ components:
         offer_expires_at: { type: [string, 'null'], format: date-time }
         client_offer_reference: { type: [string, 'null'] }
         offer_terms_summary: { type: [string, 'null'] }
+        # L4 / P1 — structured Talent-facing compensation snapshot (CONTRACT = a
+        # sub-annual pay rate; PERMANENT = an ANNUAL base salary). L4 / P5 — these
+        # four fields are MASKED to null unless the caller holds offer:read:financial
+        # (fail-closed). NO bill rate / margin / markup — Talent-facing pay only.
+        compensation_type: { type: [string, 'null'], enum: [CONTRACT, PERMANENT, null] }
+        compensation_amount: { type: [string, 'null'] }
+        compensation_currency: { type: [string, 'null'] }
+        compensation_period: { type: [string, 'null'] }
         decline_reason: { type: [string, 'null'] }
         created_at: { type: string, format: date-time }
     CreateOfferRequest:
@@ -4871,6 +4883,13 @@ components:
         offer_expires_at: { type: [string, 'null'], format: date-time }
         client_offer_reference: { type: [string, 'null'] }
         offer_terms_summary: { type: [string, 'null'] }
+        # L4 / P1 — the comp snapshot is all-or-nothing (supply all four or none);
+        # validated server-side (CONTRACT sub-annual / PERMANENT ANNUAL; ISO-4217;
+        # rate-period). Talent-facing pay only — NO bill rate / margin.
+        compensation_type: { type: [string, 'null'], enum: [CONTRACT, PERMANENT, null] }
+        compensation_amount: { type: [string, 'null'] }
+        compensation_currency: { type: [string, 'null'] }
+        compensation_period: { type: [string, 'null'] }
     TransitionOfferRequest:
       type: object
       additionalProperties: false
@@ -4881,6 +4900,14 @@ components:
         offer_expires_at: { type: [string, 'null'], format: date-time }
         client_offer_reference: { type: [string, 'null'] }
         offer_terms_summary: { type: [string, 'null'] }
+        # L4 / P2 — a term-bearing transition (e.g. NEGOTIATION) may revise the comp
+        # snapshot (all-or-nothing, re-validated); every terms change is journaled as
+        # an immutable OfferRevision. change_reason annotates the revision.
+        compensation_type: { type: [string, 'null'], enum: [CONTRACT, PERMANENT, null] }
+        compensation_amount: { type: [string, 'null'] }
+        compensation_currency: { type: [string, 'null'] }
+        compensation_period: { type: [string, 'null'] }
+        change_reason: { type: [string, 'null'] }
         decline_reason: { type: [string, 'null'] }
     # T8-CONNECTOR-A — provider-neutral connector connection views/requests. NO
     # schema exposes secret_ref, an AWS identifier, or credential material.

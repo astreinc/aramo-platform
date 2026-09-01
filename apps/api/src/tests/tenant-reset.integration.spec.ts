@@ -324,13 +324,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         await db.query(
           `INSERT INTO placement."PlacementProcess"
              (id, tenant_id, submittal_id, requisition_id, talent_record_id, state, offered_at, offer_terms_summary)
-           VALUES ($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,'OFFER_EXTENDED', now(), $6)`,
+           VALUES ($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,'PRE_START', now(), $6)`,
           [ppId, tenant, uuidv7(), uuidv7(), uuidv7(), `signing bonus note for ${tenant}`],
         );
         await db.query(
           `INSERT INTO placement."PlacementProcessEvent"
              (id, tenant_id, placement_process_id, event_type, event_payload)
-           VALUES ($1::uuid,$2::uuid,$3::uuid,'state_transition', jsonb_build_object('to','OFFER_EXTENDED'))`,
+           VALUES ($1::uuid,$2::uuid,$3::uuid,'state_transition', jsonb_build_object('to','PRE_START'))`,
           [uuidv7(), tenant, ppId],
         );
         await db.query(

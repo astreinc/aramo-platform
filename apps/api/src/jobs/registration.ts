@@ -24,6 +24,10 @@ import {
   RECONCILIATION_DRAIN_INTERVAL_MS,
 } from '../requisition-integration/reconciliation-drain.queue.constants.js';
 import {
+  OFFER_EXPIRY_QUEUE_NAME,
+  OFFER_EXPIRY_INTERVAL_MS,
+} from '../offer/offer-expiry.queue.constants.js';
+import {
   PLACEMENT_LIFECYCLE_QUEUE_NAME,
   PLACEMENT_LIFECYCLE_INTERVAL_MS,
 } from '../placement-pipeline-orchestration/placement-lifecycle.queue.constants.js';
@@ -197,6 +201,17 @@ const SCHEDULES = [
     job_name: 'tick',
     job_id: 'placement-lifecycle-orchestration-300s',
     repeat: { every: PLACEMENT_LIFECYCLE_INTERVAL_MS },
+  },
+  // L4 / P6 — the offer auto-expiry sweep. Every 300s: transition every overdue
+  // SENT/NEGOTIATION offer (offer_expires_at < now) to EXPIRED — system-initiated,
+  // legality-enforced (only SENT/NEGOTIATION carry an EXPIRED edge), CAS/idempotent,
+  // audited (OfferEvent + OutboxEvent). Silent without Redis (CI / local dev); the
+  // sweep seam is proven directly via OfferExpiryProducer.
+  {
+    queue_name: OFFER_EXPIRY_QUEUE_NAME,
+    job_name: 'tick',
+    job_id: 'offer-expiry-300s',
+    repeat: { every: OFFER_EXPIRY_INTERVAL_MS },
   },
 ] as const;
 

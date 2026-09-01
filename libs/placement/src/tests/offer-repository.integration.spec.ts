@@ -19,6 +19,9 @@ import { OFFER_LIFECYCLE_PACKAGE_NAME, OFFER_RESOURCE, OFFER_TRANSITION_ACTIONS 
 
 const ROOT = resolve(__dirname, '../../../..');
 const OFFER_MIG = resolve(ROOT, 'libs/placement/prisma/migrations/20260824120000_init_offer_model/migration.sql');
+// L4 P1 — Offer.comp_* columns (ADD nullable; regenerated client SELECTs them on every offer read). SEPARATE const.
+const OFFER_COMPENSATION_MIG = resolve(ROOT, 'libs/placement/prisma/migrations/20260901130000_offer_compensation_snapshot/migration.sql');
+const OFFER_REVISION_MIG = resolve(ROOT, 'libs/placement/prisma/migrations/20260901140000_offer_revision_history/migration.sql');
 const POLICY_MIGS = [
   resolve(ROOT, 'libs/policy-store/prisma/migrations/20260730120000_init_policy_store/migration.sql'),
   resolve(ROOT, 'libs/policy-store/prisma/migrations/20260730160000_add_policy_decision_record/migration.sql'),
@@ -58,6 +61,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       admin = new Client({ connectionString: url });
       await admin.connect();
       await admin.query(readFileSync(OFFER_MIG, 'utf8'));
+      await admin.query(readFileSync(OFFER_COMPENSATION_MIG, 'utf8'));
+      await admin.query(readFileSync(OFFER_REVISION_MIG, 'utf8'));
       for (const p of POLICY_MIGS) await admin.query(readFileSync(p, 'utf8'));
       prisma = new PrismaService(url);
       await prisma.$connect();
@@ -107,6 +112,88 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await repo.transition({ tenant_id: TENANT, id: o.id, to_state: 'NEGOTIATION', scopes: SCOPES, actor_id: ACTOR, correlation_id: uuid() });
       const accepted = await repo.transition({ tenant_id: TENANT, id: o.id, to_state: 'ACCEPTED', scopes: SCOPES, actor_id: ACTOR, correlation_id: uuid() });
       expect(accepted.state).toBe('ACCEPTED');
+    });
+
+    it('P2 — create records revision #1; a NEGOTIATION comp revision appends #2 (monotonic; prior preserved)', async () => {
+      // offer-lifecycle@1.0.0 is already published (immutable) by the legal-edges
+      // test above and persists in the shared DB — reuse it for the transitions.
+      const o = await repo.create({
+        tenant_id: TENANT, submittal_id: uuid(), requisition_id: uuid(), talent_record_id: uuid(),
+        compensation_type: 'CONTRACT', compensation_amount: '85', compensation_currency: 'USD', compensation_period: 'HOURLY',
+        actor_id: ACTOR, correlation_id: uuid(),
+      });
+      const afterCreate = await prisma.offerRevision.findMany({ where: { tenant_id: TENANT, offer_id: o.id }, orderBy: { revision_number: 'asc' } });
+      expect(afterCreate).toHaveLength(1);
+      expect(afterCreate[0]!.revision_number).toBe(1);
+      expect(afterCreate[0]!.compensation_amount?.toString()).toBe('85');
+
+      // A pure state transition (no terms) records NO revision.
+      await repo.transition({ tenant_id: TENANT, id: o.id, to_state: 'SENT', scopes: SCOPES, actor_id: ACTOR, correlation_id: uuid() });
+      expect(await prisma.offerRevision.count({ where: { tenant_id: TENANT, offer_id: o.id } })).toBe(1);
+
+      // NEGOTIATION revising comp → revision #2 + the Offer current snapshot updates.
+      const negotiated = await repo.transition({
+        tenant_id: TENANT, id: o.id, to_state: 'NEGOTIATION', scopes: SCOPES, actor_id: ACTOR, correlation_id: uuid(),
+        compensation_type: 'CONTRACT', compensation_amount: '95', compensation_currency: 'USD', compensation_period: 'HOURLY',
+        change_reason: 'counter-offer',
+      });
+      expect(negotiated.compensation_amount).toBe('95');
+      const revs = await prisma.offerRevision.findMany({ where: { tenant_id: TENANT, offer_id: o.id }, orderBy: { revision_number: 'asc' } });
+      expect(revs.map((r) => r.revision_number)).toEqual([1, 2]);
+      expect(revs[1]!.compensation_amount?.toString()).toBe('95');
+      expect(revs[1]!.change_reason).toBe('counter-offer');
+      // No overwrite-in-place — the prior version is preserved.
+      expect(revs[0]!.compensation_amount?.toString()).toBe('85');
+    });
+
+    it('P2 — OfferRevision is append-only (UPDATE/DELETE rejected at the DB)', async () => {
+      // create() needs no published policy (only transitions do); no publish here.
+      const o = await repo.create({
+        tenant_id: TENANT, submittal_id: uuid(), requisition_id: uuid(), talent_record_id: uuid(),
+        compensation_type: 'PERMANENT', compensation_amount: '145000', compensation_currency: 'USD', compensation_period: 'ANNUAL',
+        actor_id: ACTOR, correlation_id: uuid(),
+      });
+      await expect(
+        admin.query(`UPDATE "offer"."OfferRevision" SET change_reason = 'x' WHERE offer_id = $1`, [o.id]),
+      ).rejects.toThrow(/append-only/);
+      await expect(
+        admin.query(`DELETE FROM "offer"."OfferRevision" WHERE offer_id = $1`, [o.id]),
+      ).rejects.toThrow(/append-only/);
+    });
+
+    it('P6 — expireOverdueOffers expires overdue SENT/NEGOTIATION; DRAFT + future untouched; idempotent', async () => {
+      const NOW = new Date('2026-09-01T00:00:00.000Z');
+      const past = new Date('2026-08-01T00:00:00.000Z');
+      const future = new Date('2026-12-01T00:00:00.000Z');
+      const seed = async (state: string, expires: Date): Promise<string> => {
+        const id = uuid();
+        await prisma.offer.create({
+          data: {
+            id, tenant_id: TENANT, submittal_id: uuid(), requisition_id: uuid(),
+            talent_record_id: uuid(), state: state as never, offer_expires_at: expires,
+          },
+        });
+        return id;
+      };
+      const sent = await seed('SENT', past); // overdue → expires
+      const nego = await seed('NEGOTIATION', past); // overdue → expires
+      const draft = await seed('DRAFT', past); // overdue but no EXPIRED edge → untouched
+      const futureSent = await seed('SENT', future); // not overdue → untouched
+
+      const r1 = await repo.expireOverdueOffers(NOW, SYSTEM);
+      expect(r1.expired).toBe(2);
+      expect((await repo.findById(TENANT, sent))?.state).toBe('EXPIRED');
+      expect((await repo.findById(TENANT, nego))?.state).toBe('EXPIRED');
+      expect((await repo.findById(TENANT, draft))?.state).toBe('DRAFT');
+      expect((await repo.findById(TENANT, futureSent))?.state).toBe('SENT');
+
+      // Each expiry is audited: a state_transition event + an offer.expire outbox row.
+      expect(await prisma.offerEvent.count({ where: { tenant_id: TENANT, offer_id: sent } })).toBeGreaterThanOrEqual(1);
+      expect(await prisma.offerOutboxEvent.count({ where: { tenant_id: TENANT, event_type: 'offer.expire' } })).toBe(2);
+
+      // Idempotent: a second sweep at the same instant expires nothing more.
+      const r2 = await repo.expireOverdueOffers(NOW, SYSTEM);
+      expect(r2.expired).toBe(0);
     });
 
     it('illegal edge DRAFT → ACCEPTED → OFFER_ILLEGAL_TRANSITION (409), no mutation', async () => {

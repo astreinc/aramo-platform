@@ -43,6 +43,7 @@ const MIGRATIONS = [
   // Offer Lifecycle (D6) — the offer aggregate + the placement.offer_id column,
   // required by createPlacement's ACCEPTED-offer precondition.
   '20260824120000_init_offer_model',
+  '20260901130000_offer_compensation_snapshot',
   '20260824130000_placement_offer_id',
 ].map((d) => resolve(__dirname, `../../prisma/migrations/${d}/migration.sql`));
 

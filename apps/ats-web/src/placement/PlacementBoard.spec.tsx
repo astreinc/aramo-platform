@@ -28,8 +28,8 @@ function placement(overrides: Partial<PlacementView> = {}): PlacementView {
 
 describe('PlacementCard — placement state + action affordances (§10)', () => {
   it('renders the authoritative placement state label and NO reason evidence', () => {
-    const { container } = render(<PlacementCard placement={placement({ state: 'OFFER_DECLINED' })} scopes={RECRUITER} />);
-    expect(screen.getByTestId('placement-state').textContent).toBe('Offer declined');
+    const { container } = render(<PlacementCard placement={placement({ state: 'FELL_THROUGH' })} scopes={RECRUITER} />);
+    expect(screen.getByTestId('placement-state').textContent).toBe('Fell through');
     // A card must never carry reason evidence, in the DOM or as an attribute.
     expect(screen.queryByTestId('placement-reason')).toBeNull();
     expect(container.querySelector('[data-testid="placement-reason-detail"]')).toBeNull();
@@ -96,7 +96,7 @@ describe('PlacementEventTimeline — reason on the authorized detail surface (§
       tenant_id: 't1',
       placement_process_id: 'p1',
       event_type: 'state_transition',
-      event_payload: { from: 'OFFER_EXTENDED', to: 'OFFER_ACCEPTED' },
+      event_payload: { from: 'PRE_START', to: 'READY_TO_START' },
       reason_code: null,
       reason_label_snapshot: null,
       reason_detail: null,
@@ -111,7 +111,7 @@ describe('PlacementEventTimeline — reason on the authorized detail surface (§
         events={[
           ev({
             id: 'e2',
-            event_payload: { from: 'OFFER_EXTENDED', to: 'OFFER_DECLINED' },
+            event_payload: { from: 'PRE_START', to: 'FELL_THROUGH' },
             reason_code: 'other',
             reason_label_snapshot: 'Other',
             reason_detail: 'talent took another role',

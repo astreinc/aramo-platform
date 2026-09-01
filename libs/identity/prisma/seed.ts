@@ -360,9 +360,11 @@ export const SEED_IDS = {
     'integration:pipeline-mapping:write': '01900000-0000-7000-8000-0000000000f6',
     // Requisition Approval sub-workflow — lowest-free suffix 0xdb (df+ free).
     'requisition:approve': '01900000-0000-7000-8000-0000000000db',
-    // Offer Lifecycle — next-free suffixes 0xdf, 0xe0.
+    // Offer Lifecycle — suffixes 0xdf, 0xe0; L4/P5 offer:read + offer:read:financial 0xf7, 0xf8.
     'offer:create': '01900000-0000-7000-8000-0000000000df',
     'offer:transition': '01900000-0000-7000-8000-0000000000e0',
+    'offer:read': '01900000-0000-7000-8000-0000000000f7',
+    'offer:read:financial': '01900000-0000-7000-8000-0000000000f8',
     // Requisition Lane 1-A (Create-Governance) — next-free suffix 0xe3
     // (0xdd/0xe1/0xe2 are taken by integration:write / assignment:extend /
     // assignment:commercials:approve; 0xde freed by the HYG-1 submittal-policy:write
@@ -1846,7 +1848,7 @@ const PRE_START_REQUIREMENT_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = ((
 //     ordinary-progression edges). NO activate, NO terminate, NO replace.
 //   - account_manager: recruiter's three + activate + terminate + replace.
 //     activate asserts a placement has STARTED; terminate covers consequential/
-//     terminal outcomes (incl. OFFER_RESCINDED); replace authorizes creating a
+//     terminal outcomes (NO_SHOW/FELL_THROUGH); replace authorizes creating a
 //     successor placement against a terminal predecessor (E4 — a conjunction
 //     with create, never an alternative creation path). All follow the business
 //     meaning, not the (currently capacity-inert) implementation.
@@ -2127,14 +2129,19 @@ const APPROVAL_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
 // Offer Lifecycle — offer aggregate authority role-matrix. offer:create +
 // offer:transition granted to recruiter + account_manager + tenant_admin +
 // tenant_owner (mirrors placement:create / placement:transition — the offer is
-// the pre-placement stage of the same hire-spine tier).
+// the pre-placement stage of the same hire-spine tier). L4/P5: offer:read (read
+// the Offer) + offer:read:financial (see the Talent-facing compensation snapshot)
+// granted to the same four — recruiters negotiate offers, so they set/see the
+// pay. The two are SEPARATE capabilities: absence of offer:read:financial keeps
+// the comp snapshot MASKED (fail-closed), so a future read-only principal (portal
+// / reporting) can hold offer:read WITHOUT financial visibility.
 export const OFFER_SEED_BUNDLES: ReadonlyArray<
   readonly [string, readonly string[]]
 > = [
-  ['recruiter', ['offer:create', 'offer:transition']],
-  ['account_manager', ['offer:create', 'offer:transition']],
-  ['tenant_admin', ['offer:create', 'offer:transition']],
-  ['tenant_owner', ['offer:create', 'offer:transition']],
+  ['recruiter', ['offer:create', 'offer:transition', 'offer:read', 'offer:read:financial']],
+  ['account_manager', ['offer:create', 'offer:transition', 'offer:read', 'offer:read:financial']],
+  ['tenant_admin', ['offer:create', 'offer:transition', 'offer:read', 'offer:read:financial']],
+  ['tenant_owner', ['offer:create', 'offer:transition', 'offer:read', 'offer:read:financial']],
 ];
 
 // Deterministic RoleScope row ids for the 8 offer grants. Fresh disjoint range
@@ -2167,7 +2174,8 @@ export const COMMUNICATION_SEED_BUNDLES: ReadonlyArray<
 ];
 
 // Deterministic RoleScope row ids for the 16 communication grants. Fresh disjoint
-// range 0xc50+ (offer occupies 0xc40..0xc47). DO NOT REORDER without bumping the offset.
+// range 0xc50+ (offer occupies 0xc40..0xc4f — 4 roles x 4 scopes after L4/P5 added
+// offer:read + offer:read:financial). DO NOT REORDER without bumping the offset.
 const COMMUNICATION_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
   const map: Record<string, string> = {};
   let i = 0xc50;
@@ -2566,7 +2574,7 @@ export async function runIdentitySeed(
   await upsertScope(prisma, SEED_IDS.scopes['placement:create'], 'placement:create', 'Track 3 / E1-b — create a PlacementProcess on the client-selection/offer fact (POST /v1/placements). GRANTED (#577 matrix) to recruiter, account_manager, tenant_admin, tenant_owner. NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['placement:transition'], 'placement:transition', 'Track 3 / E1-b — ORDINARY non-terminal PlacementProcess progression (the 5 committed-tier edges: offer->accepted, accepted->pre_start, pre_start->ready_to_start, pre_start->blocked, blocked->pre_start). GRANTED (#577 matrix) to recruiter, account_manager, tenant_admin, tenant_owner. NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['placement:activate'], 'placement:activate', 'Track 3 / E1-b — the edge that establishes the authoritative live/committed placement (ready_to_start->started). Distinct authority from ordinary progression (§2). GRANTED (#577 matrix) to account_manager, tenant_admin, tenant_owner only; recruiter excluded. NO scope.created (scope-seed precedent).');
-  await upsertScope(prisma, SEED_IDS.scopes['placement:terminate'], 'placement:terminate', 'Track 3 / E1-b — terminal/irreversible PlacementProcess termination (the 8 edges into OFFER_DECLINED/OFFER_RESCINDED/NO_SHOW/FELL_THROUGH). GRANTED (#577 matrix) to account_manager, tenant_admin, tenant_owner only; recruiter excluded. NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['placement:terminate'], 'placement:terminate', 'Track 3 / E1-b — terminal/irreversible PlacementProcess termination (the edges into NO_SHOW/FELL_THROUGH). GRANTED (#577 matrix) to account_manager, tenant_admin, tenant_owner only; recruiter excluded. NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['placement:replace'], 'placement:replace', 'Track 3 / E4 — authorize CREATING a replacement PlacementProcess against a terminal predecessor (POST /v1/placements with replaces_placement_process_id). Required IN CONJUNCTION with placement:create, never as an alternative creation path (§3). GRANTED (E4 ratified matrix) to account_manager, tenant_admin and tenant_owner only; recruiter, super_admin, recruiting_manager and all others ZERO (Owner=Admin mirror). NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['placement:permanent:read'], 'placement:permanent:read', 'Track 7 / T7-P1 — read a PermanentPlacement and its immutable guarantee snapshot (GET /v1/placements/:id/permanent). Dedicated least-privilege authority; placement:* / assignment:* NEVER satisfy it. GRANTED (PERMANENT_PLACEMENT_SEED_BUNDLES) to recruiter, account_manager, tenant_admin, tenant_owner (mirrors placement:read). NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['placement:permanent:transition'], 'placement:permanent:transition', 'Track 7 / T7-P1 — transition the PermanentPlacement guarantee lifecycle (POST /v1/placements/:id/permanent/transition; P1 edge GUARANTEE_ACTIVE->GUARANTEE_SATISFIED) AND the second leg of the PERMANENT STARTED conjunction (with placement:activate). Dedicated authority; assignment:commercials:write / placement:* NEVER substitute. GRANTED (PERMANENT_PLACEMENT_SEED_BUNDLES) to account_manager, tenant_admin, tenant_owner only; recruiter excluded (mirrors placement:activate). NO scope.created (scope-seed precedent).');
@@ -2597,6 +2605,8 @@ export async function runIdentitySeed(
   await upsertScope(prisma, SEED_IDS.scopes['requisition:approve'], 'requisition:approve', 'Requisition Approval sub-workflow — decide a requisition approval: the governed APPROVE (pending_approval -> open) and REJECT (pending_approval -> draft) transitions, enforced IN-SERVICE at the requisition repository (a 403 costs no policy decision + no write). APPROVE additionally enforces segregation of duties (the approver must differ from the recruiter who submitted for approval). GRANTED to account_manager, tenant_admin, tenant_owner only (manager tier, mirrors requisition:edit:financials); recruiter excluded — a recruiter cannot approve. NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['offer:create'], 'offer:create', 'Offer Lifecycle — create a DRAFT Offer (POST /v1/offers), the dedicated pre-placement offer aggregate. GRANTED to recruiter, account_manager, tenant_admin, tenant_owner (mirrors placement:create — the offer is the pre-placement stage of the same hire-spine tier). NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['offer:transition'], 'offer:transition', 'Offer Lifecycle — drive an Offer governed transition (PATCH /v1/offers/:id): send / negotiate / revise / accept / decline / expire / rescind, along the legal DRAFT->SENT->NEGOTIATION->ACCEPTED/DECLINED/EXPIRED/RESCINDED edges (the DB trigger + ADR-0024 offer-lifecycle policy enforce legality). GRANTED to recruiter, account_manager, tenant_admin, tenant_owner (mirrors placement:transition). NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['offer:read'], 'offer:read', 'Offer Lifecycle / L4-P5 — read the Offer resource (GET /v1/offers, GET /v1/offers/:id). Grants the offer metadata + lifecycle state; the Talent-facing compensation snapshot is MASKED unless the caller ALSO holds offer:read:financial (fail-closed field-level masking). GRANTED to recruiter, account_manager, tenant_admin, tenant_owner. NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['offer:read:financial'], 'offer:read:financial', 'Offer Lifecycle / L4-P5 — read the structured Talent-facing Offer compensation snapshot (pay/salary presented to the talent) on the Offer read surface. A SEPARATE capability from offer:read: its absence keeps the comp snapshot masked. Covers Talent-facing compensation ONLY — NOT bill rate, margin, markup, or internal commercial planning (those remain under their existing financial authorities). GRANTED to recruiter, account_manager, tenant_admin, tenant_owner. NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['requisition:create:establish'], 'requisition:create:establish', 'Requisition Lane 1-A (Create-Governance) — the functional create qualifier that unlocks the governed initial-state establishment mode (MANUAL-ESTABLISH + SYSTEM). Grants authority to ENTER the governed establishment mode; never permits arbitrary statuses (the establishment-authorization gate still bounds { draft, open }). CATALOG-ONLY in v1: GRANTED to NO human tenant role (recruiter / recruiting_manager / delivery_manager / account_manager never receive it, so no human bypasses draft->approval via the manual create path); held programmatically by system/bootstrap establishment identities + passed by bootstrap/test helpers only. The INTEGRATION import path does NOT use this scope — it reuses the existing requisition:import:write. NO scope.created (scope-seed precedent); NO RoleScope grant.');
 
   // 7. RoleScope assignments — pre-AUTHZ-1 (88 rows: 13 + 12 + 52 + 11).

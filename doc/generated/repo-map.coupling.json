@@ -4506,6 +4506,18 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/placement-http.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/placement/prisma/migrations/20260901120000_l4_placement_offer_state_collapse/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/placement-http.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/placement/prisma/migrations/20260901130000_offer_compensation_snapshot/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/placement-offer-openapi-conformance.spec.ts",
       "status": "excluded",
       "to": "openapi/ats.yaml"
@@ -4569,6 +4581,18 @@
       "from": "apps/api/src/tests/placement-read-http.integration.spec.ts",
       "status": "excluded",
       "to": "libs/placement/prisma/migrations/20260824130000_placement_offer_id/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/placement-read-http.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/placement/prisma/migrations/20260901120000_l4_placement_offer_state_collapse/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/placement-read-http.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/placement/prisma/migrations/20260901130000_offer_compensation_snapshot/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -10333,9 +10357,24 @@
       "to": "libs/placement/prisma/migrations/20260824120000_init_offer_model/migration.sql"
     },
     {
+      "from": "ci/scripts/generate-offer-sql.ts",
+      "status": "unscoped",
+      "to": "libs/placement/prisma/migrations/20260901130000_offer_compensation_snapshot/migration.sql"
+    },
+    {
+      "from": "ci/scripts/generate-offer-sql.ts",
+      "status": "unscoped",
+      "to": "libs/placement/prisma/migrations/20260901140000_offer_revision_history/migration.sql"
+    },
+    {
       "from": "ci/scripts/generate-placement-sql.ts",
       "status": "unscoped",
       "to": "libs/placement/prisma/migrations/20260803180000_init_placement_model/migration.sql"
+    },
+    {
+      "from": "ci/scripts/generate-placement-sql.ts",
+      "status": "unscoped",
+      "to": "libs/placement/prisma/migrations/20260901120000_l4_placement_offer_state_collapse/migration.sql"
     },
     {
       "from": "ci/scripts/generate-repo-map.ts",
@@ -14904,6 +14943,26 @@
       "to": "libs/placement/src/lib/lifecycle/commercial-approval-lifecycle.ts"
     },
     {
+      "from": "libs/placement/prisma/migrations/20260901130000_offer_compensation_snapshot/migration.sql",
+      "status": "unscoped",
+      "to": "ci/scripts/generate-offer-sql.ts"
+    },
+    {
+      "from": "libs/placement/prisma/migrations/20260901130000_offer_compensation_snapshot/migration.sql",
+      "status": "unscoped",
+      "to": "libs/placement/src/lib/generator/offer-sql-generator.ts"
+    },
+    {
+      "from": "libs/placement/prisma/migrations/20260901140000_offer_revision_history/migration.sql",
+      "status": "unscoped",
+      "to": "ci/scripts/generate-offer-sql.ts"
+    },
+    {
+      "from": "libs/placement/prisma/migrations/20260901140000_offer_revision_history/migration.sql",
+      "status": "unscoped",
+      "to": "libs/placement/src/lib/generator/offer-sql-generator.ts"
+    },
+    {
       "from": "libs/placement/project.json",
       "status": "unscoped",
       "to": "libs/placement/src/index.ts"
@@ -14963,9 +15022,33 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "libs/placement/src/tests/offer-lifecycle.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/placement/prisma/migrations/20260901130000_offer_compensation_snapshot/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/placement/src/tests/offer-lifecycle.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/placement/prisma/migrations/20260901140000_offer_revision_history/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "libs/placement/src/tests/offer-repository.integration.spec.ts",
       "status": "excluded",
       "to": "libs/placement/prisma/migrations/20260824120000_init_offer_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/placement/src/tests/offer-repository.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/placement/prisma/migrations/20260901130000_offer_compensation_snapshot/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/placement/src/tests/offer-repository.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/placement/prisma/migrations/20260901140000_offer_revision_history/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -16183,6 +16266,21 @@
       "from": "pact/provider/src/verify-api.ts",
       "status": "unscoped",
       "to": "libs/placement/prisma/migrations/20260826120000_commercial_revision_proposal/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "libs/placement/prisma/migrations/20260901120000_l4_placement_offer_state_collapse/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "libs/placement/prisma/migrations/20260901130000_offer_compensation_snapshot/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "libs/placement/prisma/migrations/20260901140000_offer_revision_history/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",
@@ -17460,6 +17558,8 @@
         { "kind": "prose", "path": ".github/workflows/deploy-public-staging.yml" },
         { "kind": "prose", "path": "ci/scripts/check-integration-roots.ts" },
         { "kind": "prose", "path": "ci/scripts/frontdoor-boot-smoke.sh" },
+        { "kind": "prose", "path": "ci/scripts/generate-offer-sql.ts" },
+        { "kind": "prose", "path": "ci/scripts/generate-placement-sql.ts" },
         { "kind": "prose", "path": "ci/scripts/generate-repo-map.ts" },
         { "kind": "prose", "path": "ci/scripts/integration-roots.ts" },
         { "kind": "nx-target", "path": "ci/scripts/prepush.ts" },

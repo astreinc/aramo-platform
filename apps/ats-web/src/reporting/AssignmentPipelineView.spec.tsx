@@ -11,9 +11,8 @@ import type { AssignmentPipelineReport } from './assignment-pipeline-types';
 afterEach(() => vi.restoreAllMocks());
 
 const REPORT: AssignmentPipelineReport = {
-  total_live: 7,
+  total_live: 6,
   by_state: [
-    { state: 'OFFER_ACCEPTED', count: 1 },
     { state: 'PRE_START', count: 1 },
     { state: 'BLOCKED', count: 1 },
     { state: 'READY_TO_START', count: 1 },
@@ -30,7 +29,7 @@ function mock(report: AssignmentPipelineReport): void {
 }
 
 describe('AssignmentPipelineView', () => {
-  it('renders the five live-state counts, buckets, and the coverage label', async () => {
+  it('renders the four live-state counts, buckets, and the coverage label', async () => {
     mock(REPORT);
     render(<AssignmentPipelineView />);
     await waitFor(() => expect(screen.getByTestId('ap-content')).toBeInTheDocument());
@@ -47,12 +46,11 @@ describe('AssignmentPipelineView', () => {
     }
   });
 
-  it('renders all five state buckets even when counts are zero', async () => {
+  it('renders all four state buckets even when counts are zero', async () => {
     mock({
       ...REPORT,
       total_live: 0,
       by_state: [
-        { state: 'OFFER_ACCEPTED', count: 0 },
         { state: 'PRE_START', count: 0 },
         { state: 'BLOCKED', count: 0 },
         { state: 'READY_TO_START', count: 0 },
@@ -63,7 +61,7 @@ describe('AssignmentPipelineView', () => {
     });
     render(<AssignmentPipelineView />);
     await waitFor(() => expect(screen.getByTestId('ap-content')).toBeInTheDocument());
-    for (const s of ['OFFER_ACCEPTED', 'PRE_START', 'BLOCKED', 'READY_TO_START', 'STARTED']) {
+    for (const s of ['PRE_START', 'BLOCKED', 'READY_TO_START', 'STARTED']) {
       expect(screen.getByTestId(`ap-state-${s}`)).toHaveTextContent('0');
     }
     // coverage disclaimer stays visible in the zero state (§22)

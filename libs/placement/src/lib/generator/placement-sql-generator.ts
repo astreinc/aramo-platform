@@ -6,7 +6,7 @@
 // point; the committed migration file IS its output, and CI asserts
 // byte-equality (ci/scripts/verify-placement-sql.ts).
 //
-// The registry drives: the PlacementState enum values, the 14 UPDATE
+// The registry drives: the PlacementState enum values, the UPDATE
 // transition branches, and the BEFORE INSERT guard's DUPLICATE_GUARD_INACTIVE
 // NOT-IN list. None of those is hand-written here — they are read from
 // LEGAL_TRANSITIONS / PLACEMENT_STATES / DUPLICATE_GUARD_INACTIVE (§5c HALT
@@ -18,7 +18,22 @@ import {
   PLACEMENT_STATES,
 } from '../lifecycle/placement-lifecycle.js';
 
-import { emitMigration } from './sql-ast.js';
+// L4-0: the init migration is FROZEN — its enum/edges/guard regenerate from the historical
+// snapshot, never from the (now-collapsed) live source. The live source drives only the
+// forward collapse migration below.
+import {
+  DUPLICATE_GUARD_INACTIVE_INIT,
+  LEGAL_TRANSITIONS_INIT,
+  PLACEMENT_STATES_INIT,
+} from './placement-lifecycle-init-frozen.js';
+import {
+  assertCommentSafe,
+  emitEnumTypeSwap,
+  emitLifecycleFunction,
+  emitLifecycleTrigger,
+  emitMigration,
+  emitOneLiveGuardFunctionReplace,
+} from './sql-ast.js';
 import type {
   LifecycleTrigger,
   RejectTrigger,
@@ -111,10 +126,12 @@ const EVENT_TABLE_MODEL: SqlTable = {
 
 // PlacementState enum values are the registry's state order (§5c — generated,
 // never hand-listed).
+// FROZEN init enum values (historical 10-value snapshot) — the init migration must
+// regenerate byte-identical; the collapse to the live 6 states is the forward migration.
 const STATE_ENUM_MODEL: SqlEnum = {
   schema: SCHEMA,
   name: STATE_ENUM,
-  values: PLACEMENT_STATES,
+  values: PLACEMENT_STATES_INIT,
 };
 
 const EVENT_TYPE_ENUM_MODEL: SqlEnum = {
@@ -178,11 +195,8 @@ const FOREIGN_KEYS: readonly SqlForeignKey[] = [
 // Triggers.
 // ---------------------------------------------------------------------------
 
-// The 14 UPDATE branches, read from the registry's ordered edge list (§5c).
-const TRANSITION_BRANCHES: readonly TransitionBranch[] = LEGAL_TRANSITIONS.map((t) => ({
-  from: t.from,
-  to: t.to,
-}));
+// FROZEN init edges (14), from the historical snapshot — pins the init trigger.
+const TRANSITION_BRANCHES: readonly TransitionBranch[] = LEGAL_TRANSITIONS_INIT;
 
 const LIFECYCLE_TRIGGER: LifecycleTrigger = {
   schema: SCHEMA,
@@ -193,14 +207,26 @@ const LIFECYCLE_TRIGGER: LifecycleTrigger = {
   keyColumns: KEY_COLUMNS,
   immutableColumns: IMMUTABLE_COLUMNS,
   transitions: TRANSITION_BRANCHES,
-  // DERIVED from lifecycle position (§4c) -- the TERMINAL states. STARTED is
-  // ENGAGED, deliberately absent, so a started placement still blocks a
-  // second attempt (§5).
-  duplicateGuardInactive: DUPLICATE_GUARD_INACTIVE,
+  duplicateGuardInactive: DUPLICATE_GUARD_INACTIVE_INIT,
   transitionViolationMessage:
     'PlacementProcess permits only the 14 legal state transitions (§4) and only the state column may change -- every other column is pinned byte-identical -- this update is neither a legal transition nor a column-identical move',
   duplicateViolationMessage:
     'PlacementProcess permits at most one live attempt per (tenant_id, submittal_id) -- a placement in a non-terminal state (lifecycle position not TERMINAL, STARTED included as ENGAGED) already exists for this pair',
+};
+
+// L4-0 — the LIVE (post-collapse, canonical) lifecycle trigger, driven by the current
+// 6-state source. Used ONLY by the forward collapse migration to recreate the trigger
+// after the enum narrows. The transition count in the message is derived, not hardcoded.
+const LIVE_TRANSITION_BRANCHES: readonly TransitionBranch[] = LEGAL_TRANSITIONS.map((t) => ({
+  from: t.from,
+  to: t.to,
+}));
+
+const LIVE_LIFECYCLE_TRIGGER: LifecycleTrigger = {
+  ...LIFECYCLE_TRIGGER,
+  transitions: LIVE_TRANSITION_BRANCHES,
+  duplicateGuardInactive: DUPLICATE_GUARD_INACTIVE,
+  transitionViolationMessage: `PlacementProcess permits only the ${LIVE_TRANSITION_BRANCHES.length} legal state transitions (§4) and only the state column may change -- every other column is pinned byte-identical -- this update is neither a legal transition nor a column-identical move`,
 };
 
 const REJECT_TRIGGERS: readonly RejectTrigger[] = [
@@ -248,4 +274,57 @@ export function buildPlacementMigrationModel(): SqlMigration {
 
 export function generatePlacementMigrationSql(): string {
   return emitMigration(buildPlacementMigrationModel());
+}
+
+// L4-0 — the generator-owned FORWARD migration collapsing PlacementState to the canonical
+// live states. The init above stays frozen; this is the evolution. Fail-loud: the enum
+// type-swap's ::text:: cast RAISES on any surviving legacy OFFER_* row before destructive
+// conversion (no silent map). It then CREATE-OR-REPLACEs the two affected function BODIES
+// (the combined lifecycle guard + the T4-C assignment-aware one-live INSERT guard) through
+// the SAME emitters to drop the stale OFFER_* literals. It deliberately does NOT drop or
+// re-create the TRIGGERS: migration 20260810110000 (T4-C) re-bound the lifecycle trigger to
+// UPDATE-only and added the separate BEFORE INSERT one-live guard; replacing only the bodies
+// preserves that topology exactly. Deterministic; verify-placement-sql byte-checks it.
+export function generatePlacementOfferStateCollapseSql(): string {
+  const headerLines = [
+    'L4-0 (Hiring Commitment) — collapse PlacementState to the canonical live states.',
+    '',
+    'GENERATED ARTIFACT -- do NOT edit by hand. Produced by libs/placement/src/lib/generator',
+    'from the typed lifecycle registry (src/lib/lifecycle). Regenerate with',
+    '`npm run placement:sql:generate` -- CI asserts byte-equality via `placement:sql:check`.',
+    '',
+    'The four legacy OFFER_* Placement states are removed. Offer lifecycle is owned solely by',
+    'the Offer aggregate (offer.Offer, Lane 4). FAIL-LOUD: the ::text:: enum cast RAISES',
+    'invalid_text_representation on any surviving OFFER_EXTENDED/OFFER_ACCEPTED/OFFER_DECLINED/',
+    'OFFER_RESCINDED row -- the migration stops before destructive conversion, never silently',
+    'maps. Zero surviving rows (census / no-prod-data premise) then it succeeds.',
+    'The two guard function bodies are then CREATE-OR-REPLACEd to drop the stale OFFER_*',
+    'literals. The T4-C trigger bindings (lifecycle UPDATE-only + one-live BEFORE INSERT) are',
+    'left untouched -- plpgsql bodies carry no hard enum dependency, so no trigger drop is needed.',
+    'NOTE keep this block free of the statement terminator and the dollar-quote delimiter --',
+    'the integration migration splitter is dollar-quote aware but does not strip line comments.',
+  ];
+  const header = headerLines
+    .map((l) => (l === '' ? '--' : assertCommentSafe(`-- ${l}`)))
+    .join('\n');
+
+  return (
+    `${header}\n\n` +
+    `-- CollapseEnum (fail-loud ::text:: type-swap)\n` +
+    `${emitEnumTypeSwap({ schema: SCHEMA, table: PROCESS_TABLE, column: STATE_COLUMN, enumName: STATE_ENUM, newValues: PLACEMENT_STATES })}\n\n` +
+    `-- ReplaceLifecycleGuardBody (collapsed ${LIVE_TRANSITION_BRANCHES.length}-edge source, binding unchanged)\n` +
+    `${emitLifecycleFunction(LIVE_LIFECYCLE_TRIGGER)}\n\n` +
+    `-- ReplaceOneLiveGuardBody (T4-C assignment-aware, live-state list collapsed)\n` +
+    `${emitOneLiveGuardFunctionReplace({
+      schema: SCHEMA,
+      table: PROCESS_TABLE,
+      assignmentTable: 'ContractAssignment',
+      functionName: 'enforce_placement_one_live_guard',
+      keyColumns: KEY_COLUMNS,
+      stateColumn: STATE_COLUMN,
+      inactiveStates: DUPLICATE_GUARD_INACTIVE,
+      message:
+        'PlacementProcess permits at most one live attempt per (tenant_id, submittal_id) -- a live placement (non-terminal, or STARTED with an active assignment) already exists for this pair',
+    })}\n`
+  );
 }

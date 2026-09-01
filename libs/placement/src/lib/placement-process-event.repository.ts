@@ -57,12 +57,13 @@ export class PlacementProcessEventRepository {
   // Governed by Aramo-T9-B2-Directive-v1_0-LOCKED. Placement owns this read (the
   // reporting lib consumes it over the existing reporting→placement edge; §11).
   //
-  //   denominator = distinct PlacementProcess whose FIRST OFFER_ACCEPTED
-  //     transition (MIN created_at where event_payload->>'to' = 'OFFER_ACCEPTED')
-  //     falls in [from,to) (D-2/D-4);
+  //   denominator = distinct PlacementProcess ESTABLISHED (born at PRE_START =
+  //     `PlacementProcess.created_at`) in [from,to) (D-2/D-4). L4-0: acceptance
+  //     now lives in the Offer aggregate and a placement is created only
+  //     downstream of an accepted offer, so establishment IS the accepted-cohort
+  //     anchor — the same canonical fill instant as readFillCohort (L2-G);
   //   numerator   = those cohort attempts that later terminate in FELL_THROUGH
-  //     or NO_SHOW ONLY (D-1) — OFFER_DECLINED (never accepted), OFFER_RESCINDED,
-  //     STARTED and still-live are excluded;
+  //     or NO_SHOW ONLY (D-1) — STARTED and still-live are excluded;
   //   reason      = the terminal event's reason_code + reason_label_snapshot
   //     (D-3); reason_detail is NEVER selected (PII wall, §16).
   //
@@ -70,7 +71,7 @@ export class PlacementProcessEventRepository {
   // set (undefined = tenant-wide see-all; empty = nothing visible → empty
   // cohort). Date-bounded, no N+1, no unbounded all-history fold (§12). Returns
   // one row per fallen-through attempt (placements are low-volume); the reporting
-  // service folds the rate + reason group-by. First OFFER_ACCEPTED / DISTINCT ON
+  // service folds the rate + reason group-by. Establishment instant / DISTINCT ON
   // terminal make duplicate history rows non-double-counting (D-6).
   async readFallthroughCohort(args: {
     tenant_id: string;
@@ -91,14 +92,10 @@ export class PlacementProcessEventRepository {
     }
     const acceptedCte = `
       WITH accepted AS (
-        SELECT e.placement_process_id AS pp, MIN(e.created_at) AS first_accepted_at
-          FROM "placement"."PlacementProcessEvent" e
-          JOIN "placement"."PlacementProcess" p ON p.id = e.placement_process_id
-         WHERE e.tenant_id = $1::uuid
-           AND e.event_type = 'state_transition'::"placement"."PlacementEventType"
-           AND e.event_payload->>'to' = 'OFFER_ACCEPTED'
+        SELECT p.id AS pp, p.created_at AS first_accepted_at
+          FROM "placement"."PlacementProcess" p
+         WHERE p.tenant_id = $1::uuid
            ${hasReq ? 'AND p.requisition_id = ANY($4::uuid[])' : ''}
-         GROUP BY e.placement_process_id
       ),
       cohort AS (
         SELECT pp FROM accepted

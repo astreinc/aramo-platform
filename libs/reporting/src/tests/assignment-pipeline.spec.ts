@@ -4,10 +4,11 @@ import type { VisibilityContextShape } from '@aramo/common';
 import { ReportingService } from '../lib/reporting.service.js';
 
 // T9-B3 — assignment-pipeline fold (directive §3/§6/§8/§10). The placement
-// snapshot read is MOCKED; this spec proves the pure fold: five live states
-// zero-filled in fixed lifecycle order; total_live = exact sum of the five
+// snapshot read is MOCKED; this spec proves the pure fold: four live states
+// zero-filled in fixed lifecycle order; total_live = exact sum of the four
 // (contract_assignments NEVER contributes); the UTC + forward_materialized
-// coverage labels; and the A3 visible-requisition pass-through.
+// coverage labels; and the A3 visible-requisition pass-through. L4-0 collapsed
+// OFFER_* out of PlacementState — a placement is born at PRE_START.
 
 const TENANT = 't-1';
 
@@ -62,12 +63,11 @@ const seeAll = {
 const EMPTY_BUCKETS = { overdue: 0, today: 0, next_7_days: 0, later: 0, unspecified: 0 };
 
 describe('ReportingService.getAssignmentPipeline', () => {
-  it('zero-fills the five live states in fixed lifecycle order; total_live = their sum', async () => {
+  it('zero-fills the four live states in fixed lifecycle order; total_live = their sum', async () => {
     const { svc } = makeService({
       by_state: [
         { state: 'STARTED', count: 3 },
         { state: 'PRE_START', count: 2 },
-        { state: 'OFFER_ACCEPTED', count: 1 },
         // BLOCKED + READY_TO_START absent → zero-filled
       ],
       start_date: EMPTY_BUCKETS,
@@ -75,13 +75,12 @@ describe('ReportingService.getAssignmentPipeline', () => {
     });
     const v = await svc.getAssignmentPipeline(seeAll);
     expect(v.by_state).toEqual([
-      { state: 'OFFER_ACCEPTED', count: 1 },
       { state: 'PRE_START', count: 2 },
       { state: 'BLOCKED', count: 0 },
       { state: 'READY_TO_START', count: 0 },
       { state: 'STARTED', count: 3 },
     ]);
-    expect(v.total_live).toBe(6); // 1+2+0+0+3
+    expect(v.total_live).toBe(5); // 2+0+0+3
   });
 
   it('total_live NEVER includes contract_assignments (§10)', async () => {
@@ -113,9 +112,9 @@ describe('ReportingService.getAssignmentPipeline', () => {
       timezone_basis: 'UTC',
     });
     expect(v.contract_assignments.coverage).toBe('forward_materialized');
-    // empty snapshot → all five states zero, total_live 0
+    // empty snapshot → all four states zero, total_live 0
     expect(v.total_live).toBe(0);
-    expect(v.by_state).toHaveLength(5);
+    expect(v.by_state).toHaveLength(4);
   });
 
   it('see-all actor → no requisition filter; recruiter → passes A3 visible ids', async () => {

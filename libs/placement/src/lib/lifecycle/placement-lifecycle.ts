@@ -16,18 +16,19 @@
 // errors at typed call sites via LegalTarget<From> (see canTransitionTyped).
 
 // ---------------------------------------------------------------------------
-// States — the closed 10-value set (§4).
+// States — the closed 6-value set (§4). L4-0: the four OFFER_* states
+// (OFFER_EXTENDED/OFFER_ACCEPTED/OFFER_DECLINED/OFFER_RESCINDED) were collapsed
+// out of the machine — Hiring-Commitment (offer extension/acceptance/decline/
+// rescission) is now the sole authority of the dedicated offer aggregate
+// (offer."Offer", Lane 4). The forward collapse migration
+// (20260901120000_l4_placement_offer_state_collapse) narrows the enum fail-loud.
 // ---------------------------------------------------------------------------
 
 export const PLACEMENT_STATES = [
-  'OFFER_EXTENDED',
-  'OFFER_ACCEPTED',
   'PRE_START',
   'BLOCKED',
   'READY_TO_START',
   'STARTED',
-  'OFFER_DECLINED',
-  'OFFER_RESCINDED',
   'NO_SHOW',
   'FELL_THROUGH',
 ] as const;
@@ -35,11 +36,9 @@ export const PLACEMENT_STATES = [
 export type PlacementState = (typeof PLACEMENT_STATES)[number];
 
 // A placement process is created DOWNSTREAM of an ACCEPTED offer (Offer
-// Lifecycle, D6/R-PRECEDENCE) — offer extension/acceptance now lives in the
+// Lifecycle, D6/R-PRECEDENCE) — offer extension/acceptance lives in the
 // dedicated offer aggregate (offer."Offer"), so the placement is born at
-// PRE_START. The legacy OFFER_* states remain in the machine (non-destructive;
-// their removal is gated on the PROD-box emptiness recon) but are no longer the
-// create-birth state.
+// PRE_START, the create-birth state.
 export const INITIAL_STATE: PlacementState = 'PRE_START';
 
 // ---------------------------------------------------------------------------
@@ -48,27 +47,23 @@ export const INITIAL_STATE: PlacementState = 'PRE_START';
 // DERIVE from these positions rather than being independently authored.
 // ---------------------------------------------------------------------------
 
-export const LIFECYCLE_POSITIONS = ['PRE_COMMITMENT', 'COMMITTED', 'ENGAGED', 'TERMINAL'] as const;
+export const LIFECYCLE_POSITIONS = ['COMMITTED', 'ENGAGED', 'TERMINAL'] as const;
 
 export type LifecyclePosition = (typeof LIFECYCLE_POSITIONS)[number];
 
 // Every state MUST declare a position. `satisfies Record<PlacementState, …>`
 // makes an undeclared state a compile-time error (§4c, §6b, §8).
 export const STATE_POSITION = {
-  OFFER_EXTENDED: 'PRE_COMMITMENT',
-  OFFER_ACCEPTED: 'COMMITTED',
   PRE_START: 'COMMITTED',
   BLOCKED: 'COMMITTED',
   READY_TO_START: 'COMMITTED',
   STARTED: 'ENGAGED',
-  OFFER_DECLINED: 'TERMINAL',
-  OFFER_RESCINDED: 'TERMINAL',
   NO_SHOW: 'TERMINAL',
   FELL_THROUGH: 'TERMINAL',
 } as const satisfies Record<PlacementState, LifecyclePosition>;
 
 // ---------------------------------------------------------------------------
-// Legal transitions — the 14 edges (§4). Each state declares its exact
+// Legal transitions — the 8 edges (§4). Each state declares its exact
 // outgoing targets as string literals; `satisfies Record<PlacementState, …>`
 // forces every state to appear, so a new state with no transition treatment
 // fails the build (§6b, §8). Terminal- and engaged-position states declare
@@ -77,22 +72,18 @@ export const STATE_POSITION = {
 // ---------------------------------------------------------------------------
 
 export const TRANSITIONS = {
-  OFFER_EXTENDED: ['OFFER_ACCEPTED', 'OFFER_DECLINED', 'OFFER_RESCINDED'],
-  OFFER_ACCEPTED: ['PRE_START', 'OFFER_RESCINDED', 'FELL_THROUGH'],
   PRE_START: ['READY_TO_START', 'BLOCKED', 'FELL_THROUGH'],
   BLOCKED: ['PRE_START', 'FELL_THROUGH'],
   READY_TO_START: ['STARTED', 'NO_SHOW', 'FELL_THROUGH'],
   STARTED: [],
-  OFFER_DECLINED: [],
-  OFFER_RESCINDED: [],
   NO_SHOW: [],
   FELL_THROUGH: [],
 } as const satisfies Record<PlacementState, readonly PlacementState[]>;
 
 // The union of legal target states for a given from-state, as a TYPE. A
 // typed call site passing an illegal `to` is a compile-time error (§6b, §8).
-// e.g. LegalTarget<'OFFER_ACCEPTED'> = 'PRE_START' | 'OFFER_RESCINDED' |
-// 'FELL_THROUGH' — 'READY_TO_START' is NOT assignable (§4d).
+// e.g. LegalTarget<'PRE_START'> = 'READY_TO_START' | 'BLOCKED' | 'FELL_THROUGH'
+// — 'STARTED' is NOT assignable (§4d: no direct PRE_START→STARTED shortcut).
 export type LegalTarget<From extends PlacementState> = (typeof TRANSITIONS)[From][number];
 
 // Ordered edge list (from-order then declared target-order) — the canonical

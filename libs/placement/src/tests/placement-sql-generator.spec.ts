@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
+// The init migration is FROZEN to the historical 10-value snapshot, so it is
+// asserted against the frozen snapshot consts, NOT the live (L4-0-collapsed) registry.
 import {
-  DUPLICATE_GUARD_INACTIVE,
-  LEGAL_TRANSITIONS,
-  PLACEMENT_STATES,
-} from '../lib/lifecycle/placement-lifecycle.js';
+  DUPLICATE_GUARD_INACTIVE_INIT,
+  LEGAL_TRANSITIONS_INIT,
+  PLACEMENT_STATES_INIT,
+} from '../lib/generator/placement-lifecycle-init-frozen.js';
 import {
   buildPlacementMigrationModel,
   generatePlacementMigrationSql,
@@ -105,22 +107,22 @@ describe('generatePlacementMigrationSql — the real migration', () => {
     expect(generatePlacementMigrationSql()).toBe(sql);
   });
 
-  it('emits the PlacementState enum in registry order', () => {
+  it('emits the PlacementState enum in frozen-init registry order', () => {
     expect(sql).toContain(
-      `CREATE TYPE "placement"."PlacementState" AS ENUM (${PLACEMENT_STATES.map((s) => `'${s}'`).join(', ')});`,
+      `CREATE TYPE "placement"."PlacementState" AS ENUM (${PLACEMENT_STATES_INIT.map((s) => `'${s}'`).join(', ')});`,
     );
   });
 
-  it('emits exactly the 14 transition branches from the registry', () => {
-    for (const t of LEGAL_TRANSITIONS) {
+  it('emits exactly the 14 transition branches from the frozen init registry', () => {
+    for (const t of LEGAL_TRANSITIONS_INIT) {
       expect(sql).toContain(`OLD.state = '${t.from}' AND NEW.state = '${t.to}'`);
     }
     const branchCount = (sql.match(/OLD\.state = '[A-Z_]+' AND NEW\.state = '/g) ?? []).length;
     expect(branchCount).toBe(14);
   });
 
-  it('the INSERT guard NOT-IN list is exactly DUPLICATE_GUARD_INACTIVE (STARTED excluded)', () => {
-    const notIn = DUPLICATE_GUARD_INACTIVE.map((s) => `'${s}'`).join(', ');
+  it('the INSERT guard NOT-IN list is exactly the frozen DUPLICATE_GUARD_INACTIVE (STARTED excluded)', () => {
+    const notIn = DUPLICATE_GUARD_INACTIVE_INIT.map((s) => `'${s}'`).join(', ');
     expect(sql).toContain(`existing.state NOT IN (${notIn})`);
     expect(sql).not.toContain(`NOT IN (${notIn}, 'STARTED')`);
     // STARTED must not appear in the duplicate-guard NOT-IN list at all.

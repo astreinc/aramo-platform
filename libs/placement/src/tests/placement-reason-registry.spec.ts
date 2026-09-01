@@ -33,12 +33,12 @@ function firstActiveWithPolicy(
 }
 
 describe('E3 placement reason registry — structural invariants (§14.1)', () => {
-  it('the governed target set is exactly the four TERMINAL-position states, derived from the lifecycle', () => {
+  it('the governed target set is exactly the two TERMINAL-position states, derived from the lifecycle', () => {
     const derived = PLACEMENT_STATES.filter((s) => STATE_POSITION[s] === 'TERMINAL');
     expect([...GOVERNED]).toEqual([...derived]);
-    // The four the directive governs, in canonical order.
-    expect([...GOVERNED]).toEqual(['OFFER_DECLINED', 'OFFER_RESCINDED', 'NO_SHOW', 'FELL_THROUGH']);
-    expect(GOVERNED).toHaveLength(4);
+    // The two the directive governs, in canonical order (L4-0 collapsed the OFFER_* terminals out).
+    expect([...GOVERNED]).toEqual(['NO_SHOW', 'FELL_THROUGH']);
+    expect(GOVERNED).toHaveLength(2);
     // isGovernedTerminalTarget agrees for every state.
     for (const s of PLACEMENT_STATES) {
       expect(isGovernedTerminalTarget(s)).toBe(STATE_POSITION[s] === 'TERMINAL');

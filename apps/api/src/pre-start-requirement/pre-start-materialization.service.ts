@@ -50,7 +50,8 @@ export class PreStartMaterializationService {
     private readonly intents: MaterializationIntentRepository,
   ) {}
 
-  // The saga step — invoked immediately after OFFER_ACCEPTED -> PRE_START commits
+  // The saga step — invoked immediately after the placement is created (born at
+  // PRE_START, downstream of an accepted Offer aggregate)
   // (NOT on BLOCKED -> PRE_START recovery: materialize is idempotent, but the saga
   // fires once on first entry; recovery re-entry relies on the existing snapshot).
   // Records a durable intent (so the reconciler can recover from process death),

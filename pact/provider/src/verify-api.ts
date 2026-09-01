@@ -996,6 +996,24 @@ const PLACEMENT_OFFER_ID_MIGRATION = resolve(
   ROOT,
   'libs/placement/prisma/migrations/20260824130000_placement_offer_id/migration.sql',
 );
+// L4 P1 — Offer.comp_* columns (ADD nullable). Applied so the regenerated client's
+// offer comp SELECT resolves (else the provider 500s). SEPARATE const (never a 2nd resolve() arg).
+const OFFER_COMPENSATION_MIGRATION = resolve(
+  ROOT,
+  'libs/placement/prisma/migrations/20260901130000_offer_compensation_snapshot/migration.sql',
+);
+// L4-B / P2 — offer.OfferRevision append-only history table. SEPARATE const (ENOTDIR).
+const OFFER_REVISION_MIGRATION = resolve(
+  ROOT,
+  'libs/placement/prisma/migrations/20260901140000_offer_revision_history/migration.sql',
+);
+// L4-0 — the fail-loud PlacementState collapse to 6 values. Applied LAST among the
+// placement migrations (after the T4-C guard + offer_id) so the CREATE OR REPLACE of
+// the two guard bodies lands on the final schema. SEPARATE const (never a 2nd resolve() arg — ENOTDIR).
+const PLACEMENT_OFFER_STATE_COLLAPSE_MIGRATION = resolve(
+  ROOT,
+  'libs/placement/prisma/migrations/20260901120000_l4_placement_offer_state_collapse/migration.sql',
+);
 // Lane 2 / L2-I (D4b) — the client_selection schema (L2-F init + the InterviewSession table).
 // The hiring-funnel read's INTERVIEW stage sources the FIRST interview per grain from
 // client_selection."InterviewSession" (via the INTERVIEW_HISTORY_PORT adapter); without these
@@ -3292,7 +3310,11 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         PLACEMENT_CONVERSION_MIGRATION,
         // Offer Lifecycle (D6) — offer aggregate + placement.offer_id (client SELECTs it).
         PLACEMENT_OFFER_INIT_MIGRATION,
+        OFFER_COMPENSATION_MIGRATION,
+        OFFER_REVISION_MIGRATION,
         PLACEMENT_OFFER_ID_MIGRATION,
+        // L4-0 — fail-loud PlacementState collapse to 6 values (LAST placement migration).
+        PLACEMENT_OFFER_STATE_COLLAPSE_MIGRATION,
         // Lane 2 / L2-I (D4b) — client_selection schema so the hiring-funnel INTERVIEW stage
         // (client_selection."InterviewSession") resolves; init before the interview-session table.
         CLIENT_SELECTION_INIT_MIGRATION,
@@ -3431,10 +3453,14 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           'talent:read',
           'talent:create',
           'talent:edit',
-          // D7 — Offer Lifecycle. offer:create gates create + read (list/get);
-          // offer:transition gates PATCH. Additive; inert for prior interactions.
+          // D7 — Offer Lifecycle. offer:create gates create; offer:transition gates
+          // PATCH; L4/P5 offer:read gates read (list/get) and offer:read:financial
+          // unmasks the Talent-facing compensation snapshot. Additive; inert for
+          // prior interactions.
           'offer:create',
           'offer:transition',
+          'offer:read',
+          'offer:read:financial',
           // PC-5a — Gate-2a desk (company + contact + D4a) RolesGuard
           // @RequireScopes. company:read:all additionally short-circuits the
           // VisibilityInterceptor resolver to zero reads on the company/
@@ -4472,7 +4498,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           await c.query(
             `INSERT INTO placement."PlacementProcess"
                (id, tenant_id, submittal_id, requisition_id, talent_record_id, state, offered_at, created_at)
-             VALUES ($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,'OFFER_EXTENDED','2026-08-01T00:00:00Z','2026-08-01T00:00:00Z')`,
+             VALUES ($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,'PRE_START','2026-08-01T00:00:00Z','2026-08-01T00:00:00Z')`,
             [
               '00000000-0000-7000-8000-9ace00000001',
               TENANT_ID,
@@ -4507,7 +4533,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
             await c.query(
               `INSERT INTO placement."PlacementProcess"
                  (id, tenant_id, submittal_id, requisition_id, talent_record_id, state, offered_at, created_at)
-               VALUES ($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,'OFFER_EXTENDED','2026-08-01T00:00:00Z','2026-08-01T00:00:00Z')`,
+               VALUES ($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,'PRE_START','2026-08-01T00:00:00Z','2026-08-01T00:00:00Z')`,
               [
                 pid,
                 TENANT_ID,
@@ -4522,8 +4548,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
               `INSERT INTO placement."PlacementProcessEvent"
                  (id, tenant_id, placement_process_id, event_type, event_payload, reason_code, reason_label_snapshot, reason_detail, created_at)
                VALUES
-                 ($1::uuid,$3::uuid,$4::uuid,'state_transition','{"from":"OFFER_EXTENDED","to":"OFFER_ACCEPTED"}'::jsonb,NULL,NULL,NULL,'2026-08-01T12:00:00Z'),
-                 ($2::uuid,$3::uuid,$4::uuid,'state_transition','{"from":"OFFER_EXTENDED","to":"OFFER_DECLINED"}'::jsonb,'other','Other','operational note','2026-08-02T00:00:00Z')`,
+                 ($1::uuid,$3::uuid,$4::uuid,'state_transition','{"from":"PRE_START","to":"READY_TO_START"}'::jsonb,NULL,NULL,NULL,'2026-08-01T12:00:00Z'),
+                 ($2::uuid,$3::uuid,$4::uuid,'state_transition','{"from":"PRE_START","to":"FELL_THROUGH"}'::jsonb,'other','Other','operational note','2026-08-02T00:00:00Z')`,
               [
                 '00000000-0000-7000-8000-e0e000000002',
                 '00000000-0000-7000-8000-e0e000000001',
@@ -7058,8 +7084,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           const pp = '00000000-0000-7000-8000-fa1100000001';
           await c.query(
             `INSERT INTO placement."PlacementProcess"
-               (id, tenant_id, submittal_id, requisition_id, talent_record_id, state, offered_at)
-             VALUES ($1,$2,$3,$4,$5,'FELL_THROUGH'::placement."PlacementState", now())
+               (id, tenant_id, submittal_id, requisition_id, talent_record_id, state, offered_at, created_at)
+             VALUES ($1,$2,$3,$4,$5,'FELL_THROUGH'::placement."PlacementState", now(), '2026-05-15T00:00:00Z')
              ON CONFLICT (id) DO NOTHING`,
             [
               pp,
@@ -7073,7 +7099,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
             `INSERT INTO placement."PlacementProcessEvent"
                (id, tenant_id, placement_process_id, event_type, event_payload, created_at)
              VALUES ($1,$2,$3,'state_transition'::placement."PlacementEventType",
-                     '{"from":"OFFER_EXTENDED","to":"OFFER_ACCEPTED"}'::jsonb, '2026-05-15T00:00:00Z')
+                     '{"from":"PRE_START","to":"READY_TO_START"}'::jsonb, '2026-05-15T00:00:00Z')
              ON CONFLICT (id) DO NOTHING`,
             ['00000000-0000-7000-8000-fa1100000010', TENANT_ID, pp],
           );
@@ -7081,7 +7107,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
             `INSERT INTO placement."PlacementProcessEvent"
                (id, tenant_id, placement_process_id, event_type, event_payload, reason_code, reason_label_snapshot, created_at)
              VALUES ($1,$2,$3,'state_transition'::placement."PlacementEventType",
-                     '{"from":"OFFER_ACCEPTED","to":"FELL_THROUGH"}'::jsonb, 'start_date_failed', 'Start date failed', '2026-05-20T00:00:00Z')
+                     '{"from":"PRE_START","to":"FELL_THROUGH"}'::jsonb, 'start_date_failed', 'Start date failed', '2026-05-20T00:00:00Z')
              ON CONFLICT (id) DO NOTHING`,
             ['00000000-0000-7000-8000-fa1100000011', TENANT_ID, pp],
           );
@@ -7090,7 +7116,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
 
       // T9-B3 — a DEDICATED assignment-pipeline state (kept separate from the
       // fill-performance/fallthrough/shared states). Seeds placements across all
-      // five live states with STARTED×3 (none / ACTIVE / ENDED — proving
+      // four live states with STARTED×3 (none / ACTIVE / ENDED — proving
       // STARTED != active + ended) plus start-date examples incl. a null
       // proposed_start_date. Visible tenant-wide via requisition:read:all.
       'an ats-web recruiter and assignment-pipeline placements exist': async () => {
@@ -7100,7 +7126,6 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           const AP_REQ = '00000000-0000-7000-8000-a91100000001';
           const FILL = '00000000-0000-7000-8000-a9110000ffff';
           const rows: Array<[string, string, string | null]> = [
-            ['00000000-0000-7000-8000-a91100000011', 'OFFER_ACCEPTED', '2026-06-18'],
             ['00000000-0000-7000-8000-a91100000012', 'PRE_START', '2026-07-30'],
             ['00000000-0000-7000-8000-a91100000013', 'BLOCKED', null],
             ['00000000-0000-7000-8000-a91100000014', 'READY_TO_START', '2026-06-18'],

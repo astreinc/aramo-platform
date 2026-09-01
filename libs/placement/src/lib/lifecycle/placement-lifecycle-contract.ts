@@ -31,13 +31,14 @@ type _PositionsExhaustive = Assert<Extends<Exclude<PlacementState, keyof typeof 
 // treatment (§6b). A new state without a TRANSITIONS entry fails to build.
 type _TransitionsExhaustive = Assert<Extends<Exclude<PlacementState, keyof typeof TRANSITIONS>, never>>;
 
-// (3) THE PROHIBITED EDGE (§4d) — READY_TO_START is NOT a legal target of
-// OFFER_ACCEPTED. If someone added it to TRANSITIONS.OFFER_ACCEPTED, this flips
-// to `never` and fails the build.
-type _DirectReadyProhibited = Assert<Extends<'READY_TO_START' extends LegalTarget<'OFFER_ACCEPTED'> ? false : true, true>>;
+// (3) THE PROHIBITED EDGE (§4d) — STARTED is NOT a direct target of PRE_START;
+// the mandatory intermediate is READY_TO_START. If someone added STARTED to
+// TRANSITIONS.PRE_START, this flips to `never` and fails the build.
+type _DirectStartedProhibited = Assert<Extends<'STARTED' extends LegalTarget<'PRE_START'> ? false : true, true>>;
 
-// (4) PRE_START IS THE ENTRY (§4d) — the legal, mandatory step after acceptance.
-type _PreStartIsLegal = Assert<Extends<'PRE_START' extends LegalTarget<'OFFER_ACCEPTED'> ? true : false, true>>;
+// (4) READY_TO_START IS THE ENTRY STEP (§4d) — the legal step out of PRE_START,
+// the create-birth state (offer acceptance now lives in the Offer aggregate).
+type _ReadyIsLegal = Assert<Extends<'READY_TO_START' extends LegalTarget<'PRE_START'> ? true : false, true>>;
 
 // (5) STARTED IS TRANSITION-TERMINAL — it has no legal target (§4c/§5). Its
 // LegalTarget union is `never`.
@@ -48,7 +49,7 @@ type _StartedHasNoTarget = Assert<Extends<LegalTarget<'STARTED'>, never>>;
 export type PlacementLifecycleContract = [
   _PositionsExhaustive,
   _TransitionsExhaustive,
-  _DirectReadyProhibited,
-  _PreStartIsLegal,
+  _DirectStartedProhibited,
+  _ReadyIsLegal,
   _StartedHasNoTarget,
 ];

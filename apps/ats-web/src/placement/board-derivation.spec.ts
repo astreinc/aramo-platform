@@ -25,14 +25,15 @@ describe('E1-d board derivation — action affordances (Proof 8)', () => {
   it('a manager IS offered activate (READY_TO_START→STARTED) and terminate edges', () => {
     const fromReady = allowedActions('READY_TO_START', MANAGER);
     expect(fromReady.some((a) => a.to === 'STARTED' && a.authorityClass === 'activate')).toBe(true);
-    const fromExtended = allowedActions('OFFER_EXTENDED', MANAGER);
-    expect(fromExtended.some((a) => a.authorityClass === 'terminate')).toBe(true);
+    // PRE_START → FELL_THROUGH is a terminate-class edge.
+    const fromPreStart = allowedActions('PRE_START', MANAGER);
+    expect(fromPreStart.some((a) => a.authorityClass === 'terminate')).toBe(true);
   });
 
   it('a recruiter still gets ordinary progression edges where they exist', () => {
-    // OFFER_EXTENDED → OFFER_ACCEPTED is a transition-class edge.
-    const fromExtended = allowedActions('OFFER_EXTENDED', RECRUITER);
-    expect(fromExtended.some((a) => a.to === 'OFFER_ACCEPTED' && a.authorityClass === 'transition')).toBe(true);
+    // PRE_START → READY_TO_START is a transition-class edge.
+    const fromPreStart = allowedActions('PRE_START', RECRUITER);
+    expect(fromPreStart.some((a) => a.to === 'READY_TO_START' && a.authorityClass === 'transition')).toBe(true);
     // READY_TO_START → STARTED is activate-class → recruiter must NOT see it.
     const fromReady = allowedActions('READY_TO_START', RECRUITER);
     expect(fromReady.some((a) => a.to === 'STARTED')).toBe(false);
@@ -40,7 +41,7 @@ describe('E1-d board derivation — action affordances (Proof 8)', () => {
 
   it('edgeAuthorityClass keys on the target position', () => {
     expect(edgeAuthorityClass('STARTED')).toBe('activate');
-    expect(edgeAuthorityClass('OFFER_DECLINED')).toBe('terminate');
-    expect(edgeAuthorityClass('OFFER_ACCEPTED')).toBe('transition');
+    expect(edgeAuthorityClass('FELL_THROUGH')).toBe('terminate');
+    expect(edgeAuthorityClass('READY_TO_START')).toBe('transition');
   });
 });

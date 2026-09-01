@@ -8,12 +8,11 @@ import type { AssignmentPipelineReport } from './assignment-pipeline-types';
 
 // T9-B3 — dedicated assignment-pipeline operational view (report:read), reached
 // from the /reports landing. Current-snapshot counts only: Live Pipeline (the
-// five live states), Upcoming Starts (UTC start-date buckets), and a BOUNDED
+// four live states), Upcoming Starts (UTC start-date buckets), and a BOUNDED
 // Contract Assignment Coverage block explicitly labelled forward-materialized
 // (§13). No charting library, no row-level drilldown, no financial fields.
 
 const STATE_LABEL: Record<string, string> = {
-  OFFER_ACCEPTED: 'Offer Accepted',
   PRE_START: 'Pre-Start',
   BLOCKED: 'Blocked',
   READY_TO_START: 'Ready to Start',

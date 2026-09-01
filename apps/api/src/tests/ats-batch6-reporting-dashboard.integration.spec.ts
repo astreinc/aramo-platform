@@ -861,35 +861,42 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     // through the real reporting→placement read. Directive §19.
     // -------------------------------------------------------------------------
 
-    const FT_FROM = '2020-01-01T00:00:00.000Z';
-    const FT_TO = '2100-01-01T00:00:00.000Z';
+    // L4-0 — the fallthrough cohort now anchors on PlacementProcess.created_at
+    // (establishment). seedFallthrough dates its placement 2026-05-10; the STARTED
+    // seeds (seedStartedPlacement/seedCommercialized) use now(), so a window bounded
+    // to that historical month isolates the cohort to the fallthrough attempts only.
+    const FT_FROM = '2026-05-01T00:00:00.000Z';
+    const FT_TO = '2026-06-01T00:00:00.000Z';
     const ftUrl = (from: string, to: string): string =>
       `http://127.0.0.1:${port}/v1/reports/fallthrough` +
       `?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&site_id=${SITE_A}`;
 
-    // Seed a placement attempt that first-accepts in-window then FELL_THROUGH.
-    // Raw insert (no HTTP path creates OFFER_ACCEPTED transitions in this spec);
-    // the PlacementProcess event log carries {from,to} + reason on the terminal.
+    // Seed a placement attempt: established (born PRE_START) in-window, then FELL_THROUGH.
+    // L4-0 — the accepted cohort is now PlacementProcess ESTABLISHED (its created_at),
+    // NOT an offer-acceptance event; the fallthrough numerator reads the terminal
+    // state_transition event (to IN FELL_THROUGH/NO_SHOW). Raw insert (no HTTP path
+    // establishes + fells a placement in this spec); the event log carries {from,to} +
+    // reason on the terminal (valid 6-state edges: PRE_START->READY_TO_START->FELL_THROUGH).
     async function seedFallthrough(requisition_id: string): Promise<void> {
       const pp = globalThis.crypto.randomUUID();
       await setupClient.query(
         `INSERT INTO placement."PlacementProcess"
-           (id, tenant_id, submittal_id, requisition_id, talent_record_id, state, offered_at)
-         VALUES ($1,$2,$3,$4,$5,'FELL_THROUGH'::placement."PlacementState", now())`,
+           (id, tenant_id, submittal_id, requisition_id, talent_record_id, state, offered_at, created_at)
+         VALUES ($1,$2,$3,$4,$5,'FELL_THROUGH'::placement."PlacementState", now(), '2026-05-10T00:00:00Z')`,
         [pp, TENANT_ATS, globalThis.crypto.randomUUID(), requisition_id, globalThis.crypto.randomUUID()],
       );
       await setupClient.query(
         `INSERT INTO placement."PlacementProcessEvent"
            (id, tenant_id, placement_process_id, event_type, event_payload, created_at)
          VALUES ($1,$2,$3,'state_transition'::placement."PlacementEventType",
-                 '{"from":"OFFER_EXTENDED","to":"OFFER_ACCEPTED"}'::jsonb, '2026-05-15T00:00:00Z')`,
+                 '{"from":"PRE_START","to":"READY_TO_START"}'::jsonb, '2026-05-15T00:00:00Z')`,
         [globalThis.crypto.randomUUID(), TENANT_ATS, pp],
       );
       await setupClient.query(
         `INSERT INTO placement."PlacementProcessEvent"
            (id, tenant_id, placement_process_id, event_type, event_payload, reason_code, reason_label_snapshot, created_at)
          VALUES ($1,$2,$3,'state_transition'::placement."PlacementEventType",
-                 '{"from":"OFFER_ACCEPTED","to":"FELL_THROUGH"}'::jsonb, 'start_date_failed', 'Start date failed', '2026-05-20T00:00:00Z')`,
+                 '{"from":"READY_TO_START","to":"FELL_THROUGH"}'::jsonb, 'start_date_failed', 'Start date failed', '2026-05-20T00:00:00Z')`,
         [globalThis.crypto.randomUUID(), TENANT_ATS, pp],
       );
     }
@@ -1008,7 +1015,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(res.status).toBe(403);
     });
 
-    it('assignment-pipeline shape: five ordered live states, total_live = their sum, UTC/coverage labels, no commercial/ended_at', async () => {
+    it('assignment-pipeline shape: four ordered live states, total_live = their sum, UTC/coverage labels, no commercial/ended_at', async () => {
       const res = await fetch(apUrl(), { method: 'GET', headers: { Authorization: `Bearer ${tenantAdminJwt}` } });
       expect(res.status).toBe(200);
       const raw = await res.text();
@@ -1022,7 +1029,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         contract_assignments: { coverage: string };
       };
       expect(body.by_state.map((r) => r.state)).toEqual([
-        'OFFER_ACCEPTED', 'PRE_START', 'BLOCKED', 'READY_TO_START', 'STARTED',
+        'PRE_START', 'BLOCKED', 'READY_TO_START', 'STARTED',
       ]);
       expect(body.total_live).toBe(body.by_state.reduce((s, r) => s + r.count, 0));
       expect(body.start_date.timezone_basis).toBe('UTC');
@@ -1251,6 +1258,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       });
 
       it('fallthrough: SITE_B exact (1 accepted, 1 fell); no-site = SITE_A + SITE_B (additivity)', async () => {
+        // L4-0 — the cohort anchors on establishment (created_at) within [FT_FROM,FT_TO);
+        // seedFallthrough is dated in that window while the STARTED seeds are born now()
+        // (outside), so only reqSiteB's single fallthrough attempt is in-cohort here.
         const siteB = await ftGet(SITE_B);
         expect(siteB.accepted_attempts).toBe(1);
         expect(siteB.fallthrough_attempts).toBe(1);

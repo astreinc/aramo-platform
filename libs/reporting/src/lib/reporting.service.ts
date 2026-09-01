@@ -638,7 +638,7 @@ export class ReportingService {
   // T9-B2 — authoritative fallthrough-rate + reasons operational report.
   // Governed by Aramo-T9-B2-Directive-v1_0-LOCKED. Placement-attempt level,
   // post-acceptance/pre-start only. The placement lib owns the date-bounded
-  // cohort read (first OFFER_ACCEPTED ∈ [from,to); terminal FELL_THROUGH/NO_SHOW
+  // cohort read (established/born PRE_START ∈ [from,to); terminal FELL_THROUGH/NO_SHOW
   // with reason_code/reason_label_snapshot — NEVER reason_detail); this service
   // folds the rate + the reason group-by. A3 visibility is resolved here and
   // passed as the requisition-id constraint (undefined = tenant-wide see-all).
@@ -724,7 +724,7 @@ export class ReportingService {
   // Aramo-T9-B3-Directive-v1_0-LOCKED. Placement owns the current-state aggregate
   // (readAssignmentPipelineSnapshot over PlacementProcess.state +
   // proposed_start_date + bounded ContractAssignment); this service zero-fills
-  // the FIVE live states in fixed lifecycle order, computes total_live as their
+  // the FOUR live states in fixed lifecycle order, computes total_live as their
   // exact sum (§10 — the contract_assignments block never contributes), and
   // stamps the UTC / forward-materialized coverage labels. Counts-only, no rows,
   // no from/to, no commercial data. report:read + tenant/site/A3.
@@ -745,9 +745,9 @@ export class ReportingService {
       });
 
     const counts = new Map(snapshot.by_state.map((r) => [r.state, r.count]));
-    // Fixed lifecycle order; zero-filled; the five live states only (§3).
+    // Fixed lifecycle order; zero-filled; the four live states only (§3). L4-0
+    // collapsed OFFER_* out — a placement is born at PRE_START.
     const LIVE_ORDER = [
-      'OFFER_ACCEPTED',
       'PRE_START',
       'BLOCKED',
       'READY_TO_START',
@@ -757,7 +757,7 @@ export class ReportingService {
       state,
       count: counts.get(state) ?? 0,
     }));
-    // §10 invariant — total_live is exactly the sum of the five live states.
+    // §10 invariant — total_live is exactly the sum of the four live states.
     const total_live = by_state.reduce((sum, r) => sum + r.count, 0);
 
     return {

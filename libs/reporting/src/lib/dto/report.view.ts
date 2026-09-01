@@ -239,12 +239,14 @@ export interface HiringFunnelReportView {
 // (GET /v1/reports/fallthrough). Governed by Aramo-T9-B2-Directive-v1_0-LOCKED.
 //
 // Placement-attempt level, post-acceptance/pre-start ONLY. Cohort =
-// PlacementProcess attempts whose FIRST OFFER_ACCEPTED transition ∈
+// PlacementProcess attempts ESTABLISHED (born at PRE_START = created_at) ∈
 // [period.from, period.to) (D-2/D-4), scoped to the actor's A3-visible
-// requisitions. `fallthrough_attempts` = those that later terminate in
-// FELL_THROUGH or NO_SHOW ONLY (D-1); OFFER_DECLINED/OFFER_RESCINDED/STARTED and
-// still-live are excluded. `fallthrough_rate` = round(fallthrough / accepted *
-// 100) integer percent (B1 convention), null when accepted_attempts === 0.
+// requisitions. L4-0: acceptance lives in the Offer aggregate and a placement
+// is created only downstream of an accepted offer, so establishment IS the
+// accepted cohort. `fallthrough_attempts` = those that later terminate in
+// FELL_THROUGH or NO_SHOW ONLY (D-1); STARTED and still-live are excluded.
+// `fallthrough_rate` = round(fallthrough / accepted * 100) integer percent
+// (B1 convention), null when accepted_attempts === 0.
 //
 // `reasons` groups the fallthrough terminals by the canonical placement reason
 // (`reason_code` + `reason_label_snapshot` → `reason_label`); a terminal with no
@@ -271,11 +273,11 @@ export interface FallthroughReportView {
 // Aramo-T9-B3-Directive-v1_0-LOCKED. CURRENT-SNAPSHOT, counts-only.
 //
 // The authoritative spine is `PlacementProcess.state` (COMPLETE). `by_state`
-// carries the FIVE live states in fixed lifecycle order — OFFER_ACCEPTED,
-// PRE_START, BLOCKED, READY_TO_START, STARTED — always present (zero-filled);
-// OFFER_EXTENDED and the terminal losses are excluded (§3). `total_live` is the
-// sum of exactly those five counts (§10); the `contract_assignments` block does
-// NOT contribute to it.
+// carries the FOUR live states in fixed lifecycle order — PRE_START, BLOCKED,
+// READY_TO_START, STARTED — always present (zero-filled); the terminal losses
+// (NO_SHOW, FELL_THROUGH) are excluded (§3). L4-0 collapsed OFFER_* out — a
+// placement is born at PRE_START. `total_live` is the sum of exactly those four
+// counts (§10); the `contract_assignments` block does NOT contribute to it.
 //
 // `start_date` buckets the four pre-start states by `proposed_start_date` on a
 // UTC calendar (no tenant timezone exists); NULL → `unspecified` (§8); STARTED

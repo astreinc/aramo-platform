@@ -13,9 +13,9 @@ import { AssignmentPipelineReadRepository } from '../lib/assignment-pipeline-rea
 
 // T9-B3 — assignment-pipeline current-state snapshot aggregate (real Postgres 17).
 // Governed by Aramo-T9-B3-Directive-v1_0-LOCKED. Proves:
-//   §3 five live states counted; OFFER_EXTENDED + terminals excluded;
+//   §3 four live states counted; terminal losses excluded (L4-0: OFFER_* collapsed out);
 //   §16 boundedness fixture — STARTED=3, ACTIVE=1, ENDED=1 (STARTED != ACTIVE+ENDED);
-//   §8 UTC start-date buckets over the 4 pre-start states (STARTED excluded; null→unspecified);
+//   §8 UTC start-date buckets over the 3 pre-start states (STARTED excluded; null→unspecified);
 //   §12 tenant + A3 requisition-id scoping.
 
 const MIGRATIONS = [
@@ -38,7 +38,9 @@ const MIGRATIONS = [
   // PermanentPlacementConversionLineage table, so this curated set needs the migration.
   '20260817120000_t7_px_contract_to_permanent_conversion',
   '20260824120000_init_offer_model',
+  '20260901130000_offer_compensation_snapshot',
   '20260824130000_placement_offer_id',
+  '20260901120000_l4_placement_offer_state_collapse',
 ].map((d) => resolve(__dirname, `../../prisma/migrations/${d}/migration.sql`));
 
 // Fixed snapshot clock so UTC start-date bucketing is deterministic.
@@ -127,17 +129,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     const byState = (rows: Array<{ state: string; count: number }>) =>
       Object.fromEntries(rows.map((r) => [r.state, r.count]));
 
-    it('counts the five live states; excludes OFFER_EXTENDED and terminal losses', async () => {
+    it('counts the four live states; excludes the terminal losses', async () => {
       const t = randomUUID();
       const req = randomUUID();
       for (const s of [
-        'OFFER_EXTENDED', // excluded
-        'OFFER_ACCEPTED',
         'PRE_START',
         'BLOCKED',
         'READY_TO_START',
         'STARTED',
-        'OFFER_DECLINED', // excluded
         'NO_SHOW', // excluded
         'FELL_THROUGH', // excluded
       ]) {
@@ -145,13 +144,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       }
       const r = await repo.readAssignmentPipelineSnapshot({ tenant_id: t, now: NOW });
       const bs = byState(r.by_state);
-      expect(bs['OFFER_ACCEPTED']).toBe(1);
       expect(bs['PRE_START']).toBe(1);
       expect(bs['BLOCKED']).toBe(1);
       expect(bs['READY_TO_START']).toBe(1);
       expect(bs['STARTED']).toBe(1);
-      expect(bs['OFFER_EXTENDED']).toBeUndefined();
-      expect(bs['OFFER_DECLINED']).toBeUndefined();
       expect(bs['NO_SHOW']).toBeUndefined();
       expect(bs['FELL_THROUGH']).toBeUndefined();
     });
@@ -174,14 +170,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(r.contract_assignments.ended).toBe(1);
     });
 
-    it('UTC start-date buckets over the 4 pre-start states; STARTED excluded; null→unspecified', async () => {
+    it('UTC start-date buckets over the 3 pre-start states; STARTED excluded; null→unspecified', async () => {
       const t = randomUUID();
       const req = randomUUID();
-      await seedPP({ tenant_id: t, requisition_id: req, state: 'OFFER_ACCEPTED', proposed_start_date: date('2026-06-14') }); // overdue
+      await seedPP({ tenant_id: t, requisition_id: req, state: 'PRE_START', proposed_start_date: date('2026-06-14') }); // overdue
       await seedPP({ tenant_id: t, requisition_id: req, state: 'PRE_START', proposed_start_date: date('2026-06-15') }); // today
       await seedPP({ tenant_id: t, requisition_id: req, state: 'BLOCKED', proposed_start_date: date('2026-06-18') }); // next_7 (<= +7=06-22)
       await seedPP({ tenant_id: t, requisition_id: req, state: 'READY_TO_START', proposed_start_date: date('2026-06-25') }); // later (> 06-22)
-      await seedPP({ tenant_id: t, requisition_id: req, state: 'OFFER_ACCEPTED', proposed_start_date: null }); // unspecified
+      await seedPP({ tenant_id: t, requisition_id: req, state: 'BLOCKED', proposed_start_date: null }); // unspecified
       // STARTED with a proposed date must NOT appear in any start-date bucket
       await seedPP({ tenant_id: t, requisition_id: req, state: 'STARTED', proposed_start_date: date('2026-06-14') });
 
