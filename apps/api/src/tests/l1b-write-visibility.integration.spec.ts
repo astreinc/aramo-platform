@@ -20,11 +20,16 @@ import {
   type KeyObject,
 } from 'jose';
 import { RequisitionRepository } from '@aramo/requisition';
+import { EFFECTIVE_AUTHORIZATION_RESOLVER } from '@aramo/auth';
 
 import { AppModule } from '../app.module.js';
 
+import { ConfigurableTestResolver } from './support/test-auth-harness.js';
 import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
 import { placementCapacityMigrations } from './support/placement-capacity-migrations.js';
+
+// HF-AUTH-1 — compact tokens carry no scopes; guard resolves via this resolver.
+const __authzTestResolver = new ConfigurableTestResolver();
 
 // L1-B — Requisition WRITE-visibility parity (closes recon defect D2).
 //
@@ -266,7 +271,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         consumer_type: 'recruiter',
         actor_kind: 'user',
         tenant_id: args.tenant_id ?? TENANT_ATS,
-        scopes: args.scopes,
+        authz_version: __authzTestResolver.grant(args.tenant_id ?? TENANT_ATS, args.sub, args.scopes),
         site_id: SITE_A,
       })
         .setProtectedHeader({ alg: ALG })
@@ -524,7 +529,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         tenant_id: TENANT_OTHER,
       });
 
-      module = await Test.createTestingModule({ imports: [AppModule] }).compile();
+      module = await Test.createTestingModule({ imports: [AppModule] })
+        .overrideProvider(EFFECTIVE_AUTHORIZATION_RESOLVER)
+        .useValue(__authzTestResolver)
+        .compile();
       app = module.createNestApplication();
       app.use(cookieParser());
       app.useGlobalPipes(

@@ -299,6 +299,31 @@ model ServiceAccount {
   @@schema("identity")
 }
 
+// HF-AUTH-1 — the monotonic authorization-revision authority for a principal
+// within a tenant. Bumped whenever the principal's EFFECTIVE authorization
+// changes (membership role add/remove, membership activate/deactivate, a
+// RoleScope grant added/removed from an assigned role, role activate/deactivate).
+// The compact access JWT carries the `version` it was minted at; the guard
+// compares it to the current value (via the versioned cache) and forces a
+// re-resolve/refresh on mismatch — so a revoked grant cannot survive on an
+// already-issued token. This is NOT `updated_at`-derived (grant DELETEs bump no
+// timestamp); it is an explicit incrementing counter. Authority lives in
+// Postgres; Redis only CACHES the resolved snapshot under this version.
+model AuthorizationVersion {
+  id           String   @id @db.Uuid
+  tenant_id    String   @db.Uuid
+  // The principal the version tracks. Today always a User (`actor_kind='user'`);
+  // service principals are declared-but-unminted (no scoped token exists), and
+  // when machine issuance lands it MUST reuse this same versioned authority.
+  principal_id String   @db.Uuid
+  version      Int      @default(1)
+  updated_at   DateTime @updatedAt @db.Timestamptz
+
+  @@unique([tenant_id, principal_id])
+  @@index([tenant_id])
+  @@schema("identity")
+}
+
 model ExternalIdentity {
   id               String   @id @db.Uuid
   provider         String

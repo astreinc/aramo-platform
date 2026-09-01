@@ -20,14 +20,19 @@ import {
   type KeyObject,
 } from 'jose';
 import { AramoError } from '@aramo/common';
+import { EFFECTIVE_AUTHORIZATION_RESOLVER } from '@aramo/auth';
 
 import { AppModule } from '../app.module.js';
 
+import { ConfigurableTestResolver } from './support/test-auth-harness.js';
 import {
   applyTalentRecordMigrations,
   seedTalentRecord,
 } from './talent-record-fixtures.js';
 import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
+
+// HF-AUTH-1 — compact tokens carry no scopes; guard resolves via this resolver.
+const __authzTestResolver = new ConfigurableTestResolver();
 
 // M5 PR-6 §4.16 — POST /v1/selections/{id}/outreach HTTP integration spec.
 //
@@ -239,7 +244,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         // R7 BE-prereq: selection endpoints now scope-gated +
         // D4b-composed. requisition:read:all bypasses the D4b
         // visibility check so the happy-path tests proceed.
-        scopes: ['selection:read', 'selection:write', 'selection:outreach', 'requisition:read:all'],
+        authz_version: __authzTestResolver.grant(TENANT_A, RECRUITER_A, ['selection:read', 'selection:write', 'selection:outreach', 'requisition:read:all']),
       })
         .setProtectedHeader({ alg: ALG })
         .setIssuedAt()
@@ -253,7 +258,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         consumer_type: 'portal',
         actor_kind: 'user',
         tenant_id: TENANT_A,
-        scopes: [],
+        authz_version: __authzTestResolver.grant(TENANT_A, TALENT_A, []),
       })
         .setProtectedHeader({ alg: ALG })
         .setIssuedAt()
@@ -281,6 +286,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       };
 
       module = await Test.createTestingModule({ imports: [AppModule] })
+        .overrideProvider(EFFECTIVE_AUTHORIZATION_RESOLVER)
+        .useValue(__authzTestResolver)
         .overrideProvider('DRAFT_PROVIDER_TOKEN')
         .useValue(mockDraftProvider)
         .overrideProvider('DELIVERY_PROVIDER_TOKEN')

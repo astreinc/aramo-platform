@@ -18,8 +18,16 @@ import {
   type CryptoKey,
   type KeyObject,
 } from 'jose';
+import { EFFECTIVE_AUTHORIZATION_RESOLVER } from '@aramo/auth';
 
 import { AppModule } from '../app.module.js';
+
+import { ConfigurableTestResolver } from './support/test-auth-harness.js';
+
+// HF-AUTH-1 — compact tokens carry no scopes; the guard resolves them via this
+// configurable resolver. The mint helper's grant() returns a fresh authz_version
+// per token so each recovers exactly its own scopes.
+const __authzTestResolver = new ConfigurableTestResolver();
 
 // Settings S1 — the endpoint-level foundation proof (Gate-5 §4 gate 1 (d)).
 //
@@ -84,7 +92,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         consumer_type: 'recruiter',
         actor_kind: 'user',
         tenant_id: args.tenant_id,
-        scopes: args.scopes,
+        authz_version: __authzTestResolver.grant(args.tenant_id, args.sub, args.scopes),
       })
         .setProtectedHeader({ alg: ALG })
         .setIssuedAt()
@@ -144,7 +152,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         scopes: ['requisition:read', 'company:read'],
       });
 
-      module = await Test.createTestingModule({ imports: [AppModule] }).compile();
+      module = await Test.createTestingModule({ imports: [AppModule] })
+        .overrideProvider(EFFECTIVE_AUTHORIZATION_RESOLVER)
+        .useValue(__authzTestResolver)
+        .compile();
       app = module.createNestApplication();
       app.use(cookieParser());
       app.useGlobalPipes(

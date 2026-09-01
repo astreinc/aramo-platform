@@ -19,9 +19,11 @@ import {
   type CryptoKey,
   type KeyObject,
 } from 'jose';
+import { EFFECTIVE_AUTHORIZATION_RESOLVER } from '@aramo/auth';
 
 import { AppModule } from '../../../../apps/api/src/app.module.js';
 
+import { ConfigurableTestResolver } from './support/test-auth-harness.js';
 import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
 import {
   applyTalentRecordMigrations,
@@ -87,6 +89,15 @@ const TALENT_A = 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa';
 const RECRUITER_A = '00000000-0000-7000-8000-000000000bb1';
 const JOB_ID = 'eeeeeeee-eeee-7eee-8eee-eeeeeeeeeeee';
 const REQ_A = 'cccccccc-cccc-7ccc-8ccc-cccccccccccc';
+
+// HF-AUTH-1 — this is a business-behaviour spec (SelectionController CRUD + the
+// guard/route boundary: 403-on-missing-scope, 401-on-expiry). Per the Mode-A/B
+// split, guard/route behaviour uses the ConfigurableTestResolver (Mode A) — the
+// principal's effective scopes are declared per-token via grant(); the compact
+// token carries only that grant's authz_version, never a scopes claim. The
+// RBAC-derivation / staleness / fail-closed proofs live in the dedicated
+// DB-backed Mode-B spec (libs/identity/.../hf-auth-1-authz-version).
+const __authzTestResolver = new ConfigurableTestResolver();
 
 function splitDdl(sql: string): string[] {
   const out: string[] = [];
@@ -222,7 +233,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         // D4b-composed. requisition:read:all bypasses the D4b
         // visibility check so the happy-path tests proceed (the
         // D4b-narrowing proofs live in their own dedicated spec).
-        scopes: ['selection:read', 'selection:write', 'selection:outreach', 'requisition:read:all'],
+        // HF-AUTH-1 — the effective scopes are resolved server-side; the token
+        // carries only this grant's authz_version.
+        authz_version: __authzTestResolver.grant(TENANT_A, RECRUITER_A, [
+          'selection:read',
+          'selection:write',
+          'selection:outreach',
+          'requisition:read:all',
+        ]),
       })
         .setProtectedHeader({ alg: ALG })
         .setIssuedAt()
@@ -233,20 +251,24 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       // ---- §18-E token-transition fixtures (T2-P3) --------------------
       // Same signing key / issuer / audience as recruiterJwt so all four
-      // tokens are guard-valid on signature; only scopes and expiry vary.
-      // requisition:read:all is carried on every token so the D4b
-      // visibility check never masks the scope-boundary result.
+      // tokens are guard-valid on signature; only the RESOLVED scopes (via each
+      // token's authz_version) and expiry vary. requisition:read:all is granted
+      // on every token so the D4b visibility check never masks the scope-boundary
+      // result. HF-AUTH-1 — scopes are server-resolved, not token-carried; a
+      // distinct authz_version per token keys its own resolved scope set.
       const nowSec = Math.floor(Date.now() / 1000);
 
-      // (steps 1-2) A token that LACKS selection:read — the enduring scope
-      // boundary after the selection->selection rename completed (T2-P3B).
-      // The selection:read route must refuse it 403.
+      // (steps 1-2) A token whose principal RESOLVES to scopes LACKING
+      // selection:read — the enduring scope boundary. The selection:read route
+      // must refuse it 403 (server-side resolved scopes drive @RequireScopes).
       oldSelectionJwt = await new SignJWT({
         sub: RECRUITER_A,
         consumer_type: 'recruiter',
         actor_kind: 'user',
         tenant_id: TENANT_A,
-        scopes: ['requisition:read:all'],
+        authz_version: __authzTestResolver.grant(TENANT_A, RECRUITER_A, [
+          'requisition:read:all',
+        ]),
       })
         .setProtectedHeader({ alg: ALG })
         .setIssuedAt()
@@ -262,7 +284,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         consumer_type: 'recruiter',
         actor_kind: 'user',
         tenant_id: TENANT_A,
-        scopes: ['selection:read', 'requisition:read:all'],
+        // Signature/exp is checked BEFORE the resolver, so this token 401s on
+        // expiry regardless of its resolved scopes; the grant is here only to
+        // keep the token shape identical to the accepted ones.
+        authz_version: __authzTestResolver.grant(TENANT_A, RECRUITER_A, [
+          'selection:read',
+          'requisition:read:all',
+        ]),
       })
         .setProtectedHeader({ alg: ALG })
         .setIssuedAt(nowSec - 3600)
@@ -271,14 +299,18 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         .setExpirationTime(nowSec - 1800)
         .sign(privateKey);
 
-      // (steps 7-8) FRESH token: what the refresh path re-mints after
-      // re-deriving scopes from the flipped catalog (recruiter → selection:*).
+      // (steps 7-8) FRESH token: what the refresh path re-mints after the
+      // principal's authorization re-derives to include selection:read. Its
+      // authz_version resolves (server-side) to selection:read → accepted.
       freshSelectionJwt = await new SignJWT({
         sub: RECRUITER_A,
         consumer_type: 'recruiter',
         actor_kind: 'user',
         tenant_id: TENANT_A,
-        scopes: ['selection:read', 'requisition:read:all'],
+        authz_version: __authzTestResolver.grant(TENANT_A, RECRUITER_A, [
+          'selection:read',
+          'requisition:read:all',
+        ]),
       })
         .setProtectedHeader({ alg: ALG })
         .setIssuedAt()
@@ -287,7 +319,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         .setExpirationTime('1h')
         .sign(privateKey);
 
-      module = await Test.createTestingModule({ imports: [AppModule] }).compile();
+      module = await Test.createTestingModule({ imports: [AppModule] })
+        // HF-AUTH-1 — bind the Mode-A configurable resolver so the guard hydrates
+        // AuthContext.scopes from the per-token grants above (no RBAC seeding).
+        .overrideProvider(EFFECTIVE_AUTHORIZATION_RESOLVER)
+        .useValue(__authzTestResolver)
+        .compile();
       app = module.createNestApplication();
       app.use(cookieParser());
       app.useGlobalPipes(
@@ -503,12 +540,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     describe('§18-E token-transition recovery boundary', () => {
       const listUrl = () => `http://127.0.0.1:${port}/v1/selections`;
 
-      it('steps 1-2: a token lacking selection:read is refused 403 by the selection:read route', async () => {
+      it('steps 1-2: a principal resolving without selection:read is refused 403 by the selection:read route', async () => {
         const res = await fetch(listUrl(), {
           headers: { Authorization: `Bearer ${oldSelectionJwt}` },
         });
-        // The token is signature-valid and unexpired; the ONLY thing it
-        // lacks is selection:read → @RequireScopes denies with 403.
+        // The token is signature-valid and unexpired; its authz_version resolves
+        // (server-side) to scopes WITHOUT selection:read → @RequireScopes 403.
         expect(res.status).toBe(403);
       });
 

@@ -24,11 +24,16 @@ import {
   TalentTrustRepository,
   type SubjectRef,
 } from '@aramo/talent-trust';
+import { EFFECTIVE_AUTHORIZATION_RESOLVER } from '@aramo/auth';
 
 import { AppModule } from '../app.module.js';
 import { DossierService } from '../talent-identity/dossier.service.js';
 
+import { ConfigurableTestResolver } from './support/test-auth-harness.js';
 import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
+
+// HF-AUTH-1 — compact tokens carry no scopes; guard resolves via this resolver.
+const __authzTestResolver = new ConfigurableTestResolver();
 
 // TR-15 B1 (DDR §2 / directive §5) — the dispute machinery, completed. Proves
 // the arms against real Postgres: the VALID-only raise guard + idempotent repeat
@@ -88,7 +93,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     let dossier: DossierService;
 
     async function signJwt(scopes: string[]): Promise<string> {
-      return new SignJWT({ sub: ADMIN, consumer_type: 'recruiter', actor_kind: 'user', tenant_id: TENANT, scopes })
+      return new SignJWT({ sub: ADMIN, consumer_type: 'recruiter', actor_kind: 'user', tenant_id: TENANT, authz_version: __authzTestResolver.grant(TENANT, ADMIN, scopes)})
         .setProtectedHeader({ alg: 'RS256' })
         .setIssuedAt()
         .setIssuer(ISSUER)
@@ -186,7 +191,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       process.env['AUTH_PUBLIC_KEY'] = publicPem;
       process.env['MAILER_PROVIDER'] = 'stub';
 
-      module = await Test.createTestingModule({ imports: [AppModule] }).compile();
+      module = await Test.createTestingModule({ imports: [AppModule] })
+        .overrideProvider(EFFECTIVE_AUTHORIZATION_RESOLVER)
+        .useValue(__authzTestResolver).compile();
       app = module.createNestApplication();
       app.use(cookieParser());
       app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));

@@ -19,14 +19,19 @@ import {
   type CryptoKey,
   type KeyObject,
 } from 'jose';
+import { EFFECTIVE_AUTHORIZATION_RESOLVER } from '@aramo/auth';
 
 import { AppModule } from '../app.module.js';
 
+import { ConfigurableTestResolver } from './support/test-auth-harness.js';
 import {
   applyTalentRecordMigrations,
   seedTalentRecord,
 } from './talent-record-fixtures.js';
 import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
+
+// HF-AUTH-1 — compact tokens carry no scopes; guard resolves via this resolver.
+const __authzTestResolver = new ConfigurableTestResolver();
 
 // M5 PR-9b §4.6 / Ruling 10 — POST /v1/selections/{id}/outreach
 // consent-at-send refusal integration spec. Plan v1.5 §M5 Track B item 3
@@ -228,7 +233,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         // R7 BE-prereq: selection endpoints now scope-gated +
         // D4b-composed. requisition:read:all bypasses the D4b
         // visibility check so the happy-path tests proceed.
-        scopes: ['selection:read', 'selection:write', 'selection:outreach', 'requisition:read:all'],
+        authz_version: __authzTestResolver.grant(TENANT_A, RECRUITER_A, ['selection:read', 'selection:write', 'selection:outreach', 'requisition:read:all']),
       })
         .setProtectedHeader({ alg: ALG })
         .setIssuedAt()
@@ -245,7 +250,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         // R7 BE-prereq: selection endpoints now scope-gated +
         // D4b-composed. requisition:read:all bypasses the D4b
         // visibility check so the happy-path tests proceed.
-        scopes: ['selection:read', 'selection:write', 'selection:outreach', 'requisition:read:all'],
+        authz_version: __authzTestResolver.grant(TENANT_B, RECRUITER_B, ['selection:read', 'selection:write', 'selection:outreach', 'requisition:read:all']),
       })
         .setProtectedHeader({ alg: ALG })
         .setIssuedAt()
@@ -267,6 +272,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       };
 
       module = await Test.createTestingModule({ imports: [AppModule] })
+        .overrideProvider(EFFECTIVE_AUTHORIZATION_RESOLVER)
+        .useValue(__authzTestResolver)
         .overrideProvider('DRAFT_PROVIDER_TOKEN')
         .useValue(mockDraftProvider)
         .overrideProvider('DELIVERY_PROVIDER_TOKEN')

@@ -20,6 +20,7 @@ import {
   type KeyObject,
 } from 'jose';
 import { AppModule } from '@aramo/api';
+import { EFFECTIVE_AUTHORIZATION_RESOLVER } from '@aramo/auth';
 import { SECRETS_MANAGER_WRITER } from '@aramo/integration';
 // ADR-0024 PR-4a — the /v1/pipelines + /v1/sourcing/pipeline replays now RETRIEVE
 // the lifecycle package and fail closed without it, so the verifier publishes one
@@ -43,6 +44,8 @@ import { TENANT_COGNITO_PORT, AUDIT_FINANCIALS_GATE } from '@aramo/identity';
 // different hash. Single source of truth keeps the hash semantics
 // aligned between seed + lookup.
 import { hashCanonicalizedBody } from '@aramo/common';
+
+import { PactConfigurableResolver } from './auth-helpers.js';
 
 // M5 PR-6 §4.14 — string-DI-token literals overridden so the verify
 // harness doesn't need real Anthropic API + AWS Secrets Manager +
@@ -432,6 +435,10 @@ const IDENTITY_DOMAIN_VERIFICATION_MIGRATION = resolve(ROOT, 'libs/identity/pris
 const IDENTITY_TENANT_SLUG_MIGRATION = resolve(ROOT, 'libs/identity/prisma/migrations/20260626120000_add_tenant_slug/migration.sql');
 const IDENTITY_IDP_MIGRATION = resolve(ROOT, 'libs/identity/prisma/migrations/20260627000000_add_tenant_identity_provider/migration.sql');
 const IDENTITY_IDP_MIGRATION_LC = resolve(ROOT, 'libs/identity/prisma/migrations/20260709130000_add_tenant_lifecycle_status/migration.sql');
+// HF-AUTH-1 — the AuthorizationVersion table. The identity mutation paths exercised
+// by the tenant-user lifecycle pacts (invite / disable / enable / role-change) WRITE
+// a baseline/bump here, so the provider DB must create it or those routes 500.
+const IDENTITY_AUTHZ_VERSION_MIGRATION = resolve(ROOT, 'libs/identity/prisma/migrations/20260901000000_hf_auth_1_authorization_version/migration.sql');
 // PC-4 — activity + pipeline schemas. GET /v1/talent-records runs the
 // apps/api TalentRecordEnrichmentInterceptor, which reads activity
 // (last_activity_at) + pipeline (current_stage) + consent (consent_summary).
@@ -1057,6 +1064,10 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     // assignment:commercials:read, for the margin compound-gate 403 refusal pact
     // (§15: reporting access is not sufficient; the commercial scope is required).
     let reportOnlyJwt: string;
+    // HF-AUTH-1 — the version-keyed configurable resolver bound over AppModule
+    // (MODE A). Each token below is minted with an authz_version returned by
+    // grant(...), which registers that token's scopes for server-side resolution.
+    const pactAuthzResolver = new PactConfigurableResolver();
     // Assigned in beforeAll before any state handler runs; initialized empty
     // for strict null-checks compliance.
     let dbUrl = '';
@@ -3151,6 +3162,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         IDENTITY_DOMAIN_VERIFICATION_MIGRATION,
         IDENTITY_TENANT_SLUG_MIGRATION,
         IDENTITY_IDP_MIGRATION, IDENTITY_IDP_MIGRATION_LC,
+        IDENTITY_AUTHZ_VERSION_MIGRATION,
         SETTINGS_INIT_MIGRATION,
         // PC-4 — activity + pipeline for the talent-records enrichment reads.
         ACTIVITY_INIT_MIGRATION,
@@ -3399,7 +3411,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         // the visibility cascade). Same escalation pattern as the
         // submittal-get / submittal-evidence-package negative-shape
         // specs (D4b commit-plan §2 ruling 5 — vocab/contract tests).
-        scopes: [
+        // HF-AUTH-1 — server-resolved scopes; the token carries this grant's version.
+        authz_version: pactAuthzResolver.grant(TENANT_ID, RECRUITER_ID, [
           'ingestion:write',
           'submittal:create',
           'submittal:approve',
@@ -3557,7 +3570,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           'compensation:view:spread:amount',
           'compensation:view:spread:percent',
           'compensation:view:margin:percent',
-        ],
+        ]),
       })
         .setProtectedHeader({ alg: ALG })
         .setIssuedAt()
@@ -3586,7 +3599,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         consumer_type: 'portal',
         actor_kind: 'user',
         tenant_id: TENANT_ID,
-        scopes: [
+        authz_version: pactAuthzResolver.grant(TENANT_ID, PORTAL_TALENT_ID, [
           'portal:profile:read',
           'portal:consent:read',
           // Portal P2 P2a — the candidate-actor consent write scope (grant/revoke).
@@ -3595,7 +3608,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           'portal:verification:read',
           'portal:dispute:read',
           'portal:dispute:write',
-        ],
+        ]),
       })
         .setProtectedHeader({ alg: ALG })
         .setIssuedAt()
@@ -3614,7 +3627,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         consumer_type: 'ingestion',
         actor_kind: 'service_account',
         tenant_id: TENANT_ID,
-        scopes: ['ingestion:write'],
+        authz_version: pactAuthzResolver.grant(TENANT_ID, RECRUITER_ID, ['ingestion:write']),
       })
         .setProtectedHeader({ alg: ALG })
         .setIssuedAt()
@@ -3632,7 +3645,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         consumer_type: 'recruiter',
         actor_kind: 'user',
         tenant_id: TENANT_ID,
-        scopes: ['talent:read'],
+        authz_version: pactAuthzResolver.grant(TENANT_ID, RECRUITER_ID, ['talent:read']),
       })
         .setProtectedHeader({ alg: ALG })
         .setIssuedAt()
@@ -3650,7 +3663,10 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         consumer_type: 'recruiter',
         actor_kind: 'user',
         tenant_id: TENANT_ID,
-        scopes: ['report:read', 'requisition:read'],
+        authz_version: pactAuthzResolver.grant(TENANT_ID, RECRUITER_ID, [
+          'report:read',
+          'requisition:read',
+        ]),
       })
         .setProtectedHeader({ alg: ALG })
         .setIssuedAt()
@@ -3781,6 +3797,11 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         // T8-CONNECTOR-A — the write-only credential set must not hit AWS SM.
         .overrideProvider(SECRETS_MANAGER_WRITER)
         .useValue({ putSecretValue: async () => undefined })
+        // HF-AUTH-1 — bind the version-keyed configurable resolver (MODE A) so the
+        // guard hydrates AuthContext.scopes from the per-token grants above; the
+        // provider verifies contract shape, not RBAC derivation.
+        .overrideProvider(EFFECTIVE_AUTHORIZATION_RESOLVER)
+        .useValue(pactAuthzResolver)
         .compile();
 
       app = module.createNestApplication();

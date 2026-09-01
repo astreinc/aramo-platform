@@ -16,6 +16,28 @@ export type {
   PlatformDashboardActivityRow,
 } from './lib/tenant.service.js';
 export { RoleService } from './lib/role.service.js';
+// HF-AUTH-1 — authorization-revision authority (bump paths + current-version read).
+export { AuthorizationVersionService } from './lib/authorization-version.service.js';
+export {
+  bumpPrincipalVersion,
+  bumpPrincipalsWithRoleVersion,
+  ensureBaselineVersion,
+} from './lib/authorization-version.ops.js';
+// HF-AUTH-1 — the app-root binding for the compact-token authorization resolver
+// (bind once via AuthorizationResolverModule.forRoot). Plus the pieces the
+// test-auth harness composes directly.
+export { AuthorizationResolverModule } from './lib/authorization/authorization-resolver.module.js';
+export { IdentityEffectiveAuthorizationResolver } from './lib/authorization/identity-effective-authorization-resolver.js';
+export {
+  AUTHZ_RESOLVER_CONFIG,
+  type AuthzResolverConfig,
+} from './lib/authorization/identity-effective-authorization-resolver.js';
+export { InMemoryScopeCache } from './lib/authorization/in-memory-scope-cache.js';
+export { RedisScopeCache } from './lib/authorization/redis-scope-cache.js';
+export {
+  AUTHORIZATION_SCOPE_CACHE,
+  type AuthorizationScopeCache,
+} from './lib/authorization/scope-cache.port.js';
 // Platform-Console Increment-2 PR-1 — tenant lifecycle vocabulary. Exported so
 // the auth-service mint gate + platform-admin action endpoints share the single
 // source of truth for statuses / transitions / mint-deny set.

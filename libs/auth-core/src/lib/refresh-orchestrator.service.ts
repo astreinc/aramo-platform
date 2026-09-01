@@ -97,7 +97,11 @@ export class RefreshOrchestratorService {
       principal_id: found.user_id,
       context_id: found.tenant_id,
     });
-    const scopes = resolved.scopes;
+    // HF-AUTH-1 — re-mint compact: the refreshed token carries the CURRENT authz
+    // revision (re-resolved here), not the scope list. A grant/role/membership
+    // change since the last mint therefore rides forward as a new version, and the
+    // guard resolves the fresh effective scopes server-side.
+    const authzVersion = resolved.authz_version;
     const stampedSiteId = resolved.claims?.['site_id'] ?? null;
 
     const newPlaintext = randomBytes(REFRESH_TOKEN_BYTES).toString('base64url');
@@ -125,7 +129,7 @@ export class RefreshOrchestratorService {
         sub: found.user_id,
         consumer_type: input.consumer,
         tenant_id: found.tenant_id,
-        scopes,
+        authz_version: authzVersion,
         ...(stampedSiteId !== null ? { site_id: stampedSiteId } : {}),
       });
     } catch (err) {

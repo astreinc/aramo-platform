@@ -20,12 +20,17 @@ import {
 import { v7 as uuidv7 } from 'uuid';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { TalentTrustService, TalentTrustRepository } from '@aramo/talent-trust';
+import { EFFECTIVE_AUTHORIZATION_RESOLVER } from '@aramo/auth';
 
 import { AppModule } from '../app.module.js';
 import { ConsistencyService } from '../talent-identity/consistency.service.js';
 import { RecomputeSweepService } from '../talent-identity/recompute-sweep.service.js';
 
+import { ConfigurableTestResolver } from './support/test-auth-harness.js';
 import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
+
+// HF-AUTH-1 — compact tokens carry no scopes; guard resolves via this resolver.
+const __authzTestResolver = new ConfigurableTestResolver();
 
 // TR-12 B1 (DDR §3/§4 + §5) — the caseworker's proposal substrate, end-to-end on
 // real Postgres 17. Proves: (b) dedup + lifecycle (OPEN refresh / DISMISSED
@@ -99,7 +104,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         consumer_type: 'recruiter',
         actor_kind: 'user',
         tenant_id: TENANT,
-        scopes,
+        authz_version: __authzTestResolver.grant(TENANT, ACTOR, scopes),
       })
         .setProtectedHeader({ alg: ALG })
         .setIssuedAt()
@@ -217,7 +222,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       process.env['AUTH_AUDIENCE'] = AUDIENCE;
       process.env['AUTH_PUBLIC_KEY'] = publicPem;
       process.env['MAILER_PROVIDER'] = 'stub';
-      module = await Test.createTestingModule({ imports: [AppModule] }).compile();
+      module = await Test.createTestingModule({ imports: [AppModule] })
+        .overrideProvider(EFFECTIVE_AUTHORIZATION_RESOLVER)
+        .useValue(__authzTestResolver)
+        .compile();
       app = module.createNestApplication();
       app.use(cookieParser());
       app.useGlobalPipes(

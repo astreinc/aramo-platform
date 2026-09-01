@@ -26,7 +26,7 @@ import {
   RequestIdMiddleware,
   resolveIdentityMigrations,
 } from '@aramo/common';
-import { AuthModule, PLATFORM_TENANT_SENTINEL_ID } from '@aramo/auth';
+import { AuthModule, EFFECTIVE_AUTHORIZATION_RESOLVER, PLATFORM_TENANT_SENTINEL_ID } from '@aramo/auth';
 import { AuthorizationModule } from '@aramo/authorization';
 import { EntitlementModule } from '@aramo/entitlement';
 import {
@@ -39,6 +39,7 @@ import { PlatformController } from '../app/platform/platform.controller.js';
 import { PlatformInvitationService } from '../app/platform/platform-invitation.service.js';
 import { TenantPolicyProvisioningService } from '../app/platform/tenant-policy-provisioning.service.js';
 
+import { ConfigurableAuthzResolver } from './support/configurable-authz-resolver.js';
 import { generateTestKeyPair } from './test-keys.js';
 
 // AUTHZ-2 §5 integration proofs (the HTTP surface, real Postgres, mocked
@@ -110,7 +111,7 @@ async function signJwt(args: {
     consumer_type: args.consumer_type,
     actor_kind: args.actor_kind ?? 'user',
     tenant_id: args.tenant_id,
-    scopes: args.scopes,
+    authz_version: __authzResolver.grant(args.tenant_id, args.sub, args.scopes),
   })
     .setProtectedHeader({ alg: 'RS256' })
     .setIssuer('Aramo Core Auth')
@@ -143,6 +144,9 @@ const COMPENSATION_VIEW_PAY_SCOPE_ID =
   '01900000-0000-7000-8000-000000000090';
 const COMPENSATION_VIEW_SPREAD_AMOUNT_SCOPE_ID =
   '01900000-0000-7000-8000-000000000091';
+
+// HF-AUTH-1 — MODE A resolver: each token declares its scopes via grant().
+const __authzResolver = new ConfigurableAuthzResolver();
 
 describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
   'apps/platform-admin — integration (Pattern A invitation flow, real Postgres, mocked Cognito)',
@@ -399,6 +403,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
             useValue: { publishDefaultLifecyclePackage: async () => undefined },
           },
           CognitoAdminService,
+          // HF-AUTH-1 — bind the MODE A resolver so the guard hydrates scopes.
+          { provide: EFFECTIVE_AUTHORIZATION_RESOLVER, useValue: __authzResolver },
           { provide: APP_FILTER, useClass: AramoExceptionFilter },
         ],
       })

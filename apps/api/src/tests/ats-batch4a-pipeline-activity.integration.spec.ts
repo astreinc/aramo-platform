@@ -19,9 +19,11 @@ import {
   type CryptoKey,
   type KeyObject,
 } from 'jose';
+import { EFFECTIVE_AUTHORIZATION_RESOLVER } from '@aramo/auth';
 
 import { AppModule } from '../app.module.js';
 
+import { ConfigurableTestResolver } from './support/test-auth-harness.js';
 import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
 import { publishLifecyclePackage } from './publish-lifecycle-package.js';
 
@@ -362,6 +364,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     let container: StartedPostgreSqlContainer;
     let app: INestApplication;
     let module: TestingModule;
+    // HF-AUTH-1 — the compact token carries no scopes; the guard resolves them via
+    // this configurable resolver. signJwt registers each principal's scopes here
+    // (keyed by tenant+sub) so existing scope expectations hold unchanged.
+    const testResolver = new ConfigurableTestResolver();
     let port = 0;
     let savedEnv: Partial<Record<string, string | undefined>> = {};
     let setupClient: Client;
@@ -378,12 +384,16 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       privateKey: SignKey,
       args: { sub: string; tenant_id: string; site_id?: string; scopes: string[] },
     ): Promise<string> {
+      // HF-AUTH-1 — grant this principal's scopes to the resolver (the token no
+      // longer carries them); grant returns a fresh authz_version to stamp so each
+      // token recovers exactly its own scopes. Then mint compact (no scopes claim).
+      const authzVersion = testResolver.grant(args.tenant_id, args.sub, args.scopes);
       const builder = new SignJWT({
         sub: args.sub,
         consumer_type: 'recruiter',
         actor_kind: 'user',
         tenant_id: args.tenant_id,
-        scopes: args.scopes,
+        authz_version: authzVersion,
         ...(args.site_id === undefined ? {} : { site_id: args.site_id }),
       })
         .setProtectedHeader({ alg: ALG })
@@ -729,7 +739,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         scopes: ENRICH_SCOPES_NO_TALENT,
       });
 
-      module = await Test.createTestingModule({ imports: [AppModule] }).compile();
+      module = await Test.createTestingModule({ imports: [AppModule] })
+        .overrideProvider(EFFECTIVE_AUTHORIZATION_RESOLVER)
+        .useValue(testResolver)
+        .compile();
       app = module.createNestApplication();
       app.use(cookieParser());
       app.useGlobalPipes(

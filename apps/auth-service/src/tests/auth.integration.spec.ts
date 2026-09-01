@@ -25,6 +25,7 @@ import {
   resolveAuthStorageMigrations,
 } from '@aramo/common';
 import {
+  AuthorizationResolverModule,
   IdentityCoreModule,
   IdentityService,
   PrismaService as IdentityPrismaService,
@@ -35,7 +36,7 @@ import {
   AuthStorageModule,
   RefreshTokenService,
 } from '@aramo/auth-storage';
-import { AuthController } from '@aramo/auth-core';
+import { AuthController, PORTAL_SESSION_SCOPES } from '@aramo/auth-core';
 import { HostAuthProfileService } from '@aramo/auth-core';
 import { HostBaseResolver } from '@aramo/auth-core';
 import { CognitoVerifierService } from '@aramo/auth-core';
@@ -141,7 +142,19 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // libs/identity); IdentityAuditService stays real so audit rows
       // genuinely land in Postgres.
       module = await Test.createTestingModule({
-        imports: [CommonModule, IdentityCoreModule, AuthStorageModule],
+        imports: [
+          CommonModule,
+          IdentityCoreModule,
+          AuthStorageModule,
+          // HF-AUTH-1 — bind the REAL server-side resolver (the AuthController
+          // /session path resolves scopes through it). RoleService is stubbed
+          // below, so the resolver returns the stub's fixed scope set at the
+          // baseline authz_version — the same production wiring, no bespoke stub.
+          AuthorizationResolverModule.forRoot({
+            portalScopes: PORTAL_SESSION_SCOPES,
+            scopeCacheTtlSeconds: 300,
+          }),
+        ],
         controllers: [AuthController, JwksController],
         providers: [
           PkceService,

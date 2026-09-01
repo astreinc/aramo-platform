@@ -8,12 +8,17 @@ import { Client } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { exportSPKI, generateKeyPair, SignJWT, type CryptoKey, type KeyObject } from 'jose';
 import { PolicyStore, PrismaService as PolicyStorePrismaService } from '@aramo/policy-store';
+import { EFFECTIVE_AUTHORIZATION_RESOLVER } from '@aramo/auth';
 
 import { AppModule } from '../app.module.js';
 import { REQUISITION_LIFECYCLE_PACKAGE } from '../policy/requisition-lifecycle.package.js';
 
+import { ConfigurableTestResolver } from './support/test-auth-harness.js';
 import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
 import { placementCapacityMigrations } from './support/placement-capacity-migrations.js';
+
+// HF-AUTH-1 — compact tokens carry no scopes; guard resolves via this resolver.
+const __authzTestResolver = new ConfigurableTestResolver();
 
 // Track 1 T1-e — GOVERNED REQUISITION TRANSITIONS, end-to-end against real
 // Postgres 17 through the full HTTP app. Skipped unless ARAMO_RUN_INTEGRATION=1.
@@ -70,7 +75,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     let savedEnv: Partial<Record<string, string | undefined>> = {};
 
     async function jwt(scopes: string[] = ['requisition:create', 'requisition:edit', 'requisition:read', 'requisition:read:all']): Promise<string> {
-      return new SignJWT({ sub: ACTOR, consumer_type: 'recruiter', actor_kind: 'user', tenant_id: TENANT, site_id: SITE, scopes })
+      return new SignJWT({ sub: ACTOR, consumer_type: 'recruiter', actor_kind: 'user', tenant_id: TENANT, site_id: SITE, authz_version: __authzTestResolver.grant(TENANT, ACTOR, scopes)})
         .setProtectedHeader({ alg: ALG }).setIssuedAt().setIssuer(ISSUER).setAudience(AUDIENCE).setExpirationTime('1h').sign(signingKey);
     }
     function baseUrl(): string {
@@ -146,7 +151,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       savedEnv = { DATABASE_URL: process.env['DATABASE_URL'], AUTH_AUDIENCE: process.env['AUTH_AUDIENCE'], AUTH_PUBLIC_KEY: process.env['AUTH_PUBLIC_KEY'] };
       process.env['DATABASE_URL'] = url; process.env['AUTH_AUDIENCE'] = AUDIENCE; process.env['AUTH_PUBLIC_KEY'] = pem;
 
-      const mod: TestingModule = await Test.createTestingModule({ imports: [AppModule] }).compile();
+      const mod: TestingModule = await Test.createTestingModule({ imports: [AppModule] })
+        .overrideProvider(EFFECTIVE_AUTHORIZATION_RESOLVER)
+        .useValue(__authzTestResolver).compile();
       app = mod.createNestApplication();
       app.useGlobalPipes(new ValidationPipe({ transform: true, whitelist: true }));
       await app.init();
@@ -299,7 +306,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await store.publish({ tenant_id: T, definition: { ...REQUISITION_LIFECYCLE_PACKAGE, version: '4.0.0' }, published_by: SYSTEM, effective_from: new Date('2026-01-01T00:00:00Z') });
       // L1-B — write-visibility parity: this DB-inserted req has no assignment,
       // so the actor needs read:all (see-all) to reach the transition gate.
-      const token = await new SignJWT({ sub: ACTOR, consumer_type: 'recruiter', actor_kind: 'user', tenant_id: T, site_id: SITE, scopes: ['requisition:edit', 'requisition:read:all'] })
+      const token = await new SignJWT({ sub: ACTOR, consumer_type: 'recruiter', actor_kind: 'user', tenant_id: T, site_id: SITE, authz_version: __authzTestResolver.grant(T, ACTOR, ['requisition:edit', 'requisition:read:all']) })
         .setProtectedHeader({ alg: ALG }).setIssuedAt().setIssuer(ISSUER).setAudience(AUDIENCE).setExpirationTime('1h').sign(signingKey);
       const id = uuid();
       await db.query(`INSERT INTO requisition."Requisition" (id, tenant_id, site_id, title, company_id, status, requisition_number) VALUES ($1,$2,$3,'r',$4,'open',(SELECT COALESCE(MAX(rn.requisition_number),999)+1 FROM requisition."Requisition" rn WHERE rn.tenant_id=$2))`, [id, T, SITE, uuid()]);
@@ -326,7 +333,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // orthogonal to the edit/approve scopes under test and matches this
       // file's default jwt() (which already carries requisition:read:all).
       async function jwtAs(sub: string, scopes: string[]): Promise<string> {
-        return new SignJWT({ sub, consumer_type: 'recruiter', actor_kind: 'user', tenant_id: TENANT, site_id: SITE, scopes: [...scopes, 'requisition:read:all'] })
+        return new SignJWT({ sub, consumer_type: 'recruiter', actor_kind: 'user', tenant_id: TENANT, site_id: SITE, authz_version: __authzTestResolver.grant(TENANT, sub, [...scopes, 'requisition:read:all']) })
           .setProtectedHeader({ alg: ALG }).setIssuedAt().setIssuer(ISSUER).setAudience(AUDIENCE).setExpirationTime('1h').sign(signingKey);
       }
       // Move a fresh draft requisition into pending_approval as SUBMITTER; returns its id.

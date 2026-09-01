@@ -45,10 +45,12 @@ import {
   resolveAuthStorageMigrations,
 } from '@aramo/common';
 import {
+  AuthorizationResolverModule,
   IdentityCoreModule,
   PrismaService as IdentityPrismaService,
 } from '@aramo/identity';
 import { AuthStorageModule } from '@aramo/auth-storage';
+import { PORTAL_SESSION_SCOPES } from '@aramo/auth-core';
 import { JwtAuthGuard } from '@aramo/auth';
 import {
   AuthorizationModule,
@@ -179,6 +181,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           IdentityCoreModule,
           AuthStorageModule,
           AuthorizationModule,
+          // HF-AUTH-1 — MODE B. The guarded round-trip routes below resolve the
+          // caller's scopes SERVER-SIDE through the real resolver against the
+          // seeded site-axis RBAC (role + scope + site-scoped membership). No
+          // stub: this proves the site-axis authorization end-to-end.
+          AuthorizationResolverModule.forRoot({
+            portalScopes: PORTAL_SESSION_SCOPES,
+            scopeCacheTtlSeconds: 300,
+          }),
         ],
         controllers: [AuthController, JwksController, SiteAxisProofController],
         providers: [
@@ -289,7 +299,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(payload['site_id']).toBe(SITE_ID);
       expect(payload['sub']).toBe(SITE_USER_ID);
       expect(payload['tenant_id']).toBe(TENANT_ID);
-      expect(payload['scopes']).toEqual([SCOPE_KEY]);
+      // HF-AUTH-1 — the compact token carries the site_id (the site-axis claim the
+      // guard enforces) + an authz_version, but NO scopes claim. The [SCOPE_KEY]
+      // authorization for this site is resolved SERVER-SIDE (proven by the
+      // @RequireSiteMatch round-trip below, which now runs through the real
+      // resolver against the seeded site-scoped RBAC).
+      expect(payload['scopes']).toBeUndefined();
+      expect(typeof payload['authz_version']).toBe('number');
     });
 
     // PR-A1a-3 §4 round-trip: matching-site token ACCEPTS at a real

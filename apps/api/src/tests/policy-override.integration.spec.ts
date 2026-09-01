@@ -12,10 +12,15 @@ import {
   PrismaService as PolicyStorePrismaService,
   type PublishPolicyVersionInput,
 } from '@aramo/policy-store';
+import { EFFECTIVE_AUTHORIZATION_RESOLVER } from '@aramo/auth';
 
 import { AppModule } from '../app.module.js';
 
+import { ConfigurableTestResolver } from './support/test-auth-harness.js';
 import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
+
+// HF-AUTH-1 — compact tokens carry no scopes; guard resolves via this resolver.
+const __authzTestResolver = new ConfigurableTestResolver();
 
 // ADR-0024 §D11 (PR-4b) — the two-pass override, E2E over BOTH command
 // boundaries: POST /v1/pipelines and POST /v1/sourcing/pipeline. Real Postgres
@@ -112,7 +117,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     let savedEnv: Partial<Record<string, string | undefined>> = {};
 
     async function signJwt(scopes: string[]): Promise<string> {
-      return new SignJWT({ sub: ACTOR, consumer_type: 'recruiter', actor_kind: 'user', tenant_id: TENANT, site_id: SITE, scopes })
+      return new SignJWT({ sub: ACTOR, consumer_type: 'recruiter', actor_kind: 'user', tenant_id: TENANT, site_id: SITE, authz_version: __authzTestResolver.grant(TENANT, ACTOR, scopes)})
         .setProtectedHeader({ alg: ALG }).setIssuedAt().setIssuer(ISSUER).setAudience(AUDIENCE).setExpirationTime('1h').sign(signingKey);
     }
     async function seedRequisition(status: string): Promise<string> {
@@ -169,7 +174,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       process.env['AUTH_AUDIENCE'] = AUDIENCE;
       process.env['AUTH_PUBLIC_KEY'] = pem;
 
-      const mod: TestingModule = await Test.createTestingModule({ imports: [AppModule] }).compile();
+      const mod: TestingModule = await Test.createTestingModule({ imports: [AppModule] })
+        .overrideProvider(EFFECTIVE_AUTHORIZATION_RESOLVER)
+        .useValue(__authzTestResolver).compile();
       app = mod.createNestApplication();
       app.useGlobalPipes(new ValidationPipe({ transform: true, whitelist: true }));
       await app.init();

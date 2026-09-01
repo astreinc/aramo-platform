@@ -19,9 +19,11 @@ import {
   type CryptoKey,
   type KeyObject,
 } from 'jose';
+import { EFFECTIVE_AUTHORIZATION_RESOLVER } from '@aramo/auth';
 
 import { AppModule } from '../app.module.js';
 
+import { ConfigurableTestResolver } from './support/test-auth-harness.js';
 import {
   applyTalentRecordMigrations,
   seedTalentRecord,
@@ -113,6 +115,8 @@ function splitDdl(sql: string): string[] {
   return out;
 }
 
+const __authzTestResolver = new ConfigurableTestResolver();
+
 describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
   'POST /v1/selections — negative-shape (no Match-Class vocabulary leak)',
   () => {
@@ -182,7 +186,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         // R7 BE-prereq: selection endpoints now scope-gated.
         // requisition:read:all bypasses D4b visibility — focus is
         // response shape / Match-Class leak scan, not authz axes.
-        scopes: ['selection:read', 'selection:write', 'selection:outreach', 'requisition:read:all'],
+        authz_version: __authzTestResolver.grant(TENANT_ID, RECRUITER_ID, ['selection:read', 'selection:write', 'selection:outreach', 'requisition:read:all']),
       })
         .setProtectedHeader({ alg: ALG })
         .setIssuedAt()
@@ -191,7 +195,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         .setExpirationTime('1h')
         .sign(privateKey);
 
-      module = await Test.createTestingModule({ imports: [AppModule] }).compile();
+      module = await Test.createTestingModule({ imports: [AppModule] })
+        .overrideProvider(EFFECTIVE_AUTHORIZATION_RESOLVER)
+        .useValue(__authzTestResolver)
+        .compile();
       app = module.createNestApplication();
       app.use(cookieParser());
       app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: false, transform: true }));

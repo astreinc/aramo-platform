@@ -27,7 +27,13 @@ export type ResolveSessionResult =
       kind: 'resolved';
       principal_id: string;
       context_id: string;
+      // Server-side effective scopes (used for the /session response body, NOT the
+      // token). HF-AUTH-1 — the compact access token carries `authz_version`, not
+      // this list.
       scopes: string[];
+      // HF-AUTH-1 — the principal's current authorization revision, stamped into
+      // the compact token at mint.
+      authz_version: number;
       claims?: Record<string, string>;
     }
   | { kind: 'ambiguous'; choices: { id: string; name: string }[] }
@@ -38,10 +44,13 @@ export interface ResolveScopesInput {
   context_id: string;
 }
 
-// The re-mint path (refresh): re-resolve a known principal's scopes + site claim
-// in a context, reusing the SAME site-stamp logic resolveSession performs.
+// The re-mint path (refresh): re-resolve a known principal's authz_version + site
+// claim in a context, reusing the SAME site-stamp logic resolveSession performs.
+// `scopes` remains for server-side use (e.g. any response body); the re-minted
+// compact token carries `authz_version`, not scopes.
 export interface ResolveScopesResult {
   scopes: string[];
+  authz_version: number;
   claims?: Record<string, string>;
 }
 
