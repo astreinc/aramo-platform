@@ -9929,6 +9929,11 @@
     {
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
+      "to": "apps/api/src/client-decision-orchestration/client-decision.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
       "to": "apps/api/src/client-selection/client-selection-orchestration.controller.ts"
     },
     {
