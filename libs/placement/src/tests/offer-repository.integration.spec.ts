@@ -19,6 +19,8 @@ import { OFFER_LIFECYCLE_PACKAGE_NAME, OFFER_RESOURCE, OFFER_TRANSITION_ACTIONS 
 
 const ROOT = resolve(__dirname, '../../../..');
 const OFFER_MIG = resolve(ROOT, 'libs/placement/prisma/migrations/20260824120000_init_offer_model/migration.sql');
+// L4 P1 — Offer.comp_* columns (ADD nullable; regenerated client SELECTs them on every offer read). SEPARATE const.
+const OFFER_COMPENSATION_MIG = resolve(ROOT, 'libs/placement/prisma/migrations/20260901130000_offer_compensation_snapshot/migration.sql');
 const POLICY_MIGS = [
   resolve(ROOT, 'libs/policy-store/prisma/migrations/20260730120000_init_policy_store/migration.sql'),
   resolve(ROOT, 'libs/policy-store/prisma/migrations/20260730160000_add_policy_decision_record/migration.sql'),
@@ -58,6 +60,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       admin = new Client({ connectionString: url });
       await admin.connect();
       await admin.query(readFileSync(OFFER_MIG, 'utf8'));
+      await admin.query(readFileSync(OFFER_COMPENSATION_MIG, 'utf8'));
       for (const p of POLICY_MIGS) await admin.query(readFileSync(p, 'utf8'));
       prisma = new PrismaService(url);
       await prisma.$connect();

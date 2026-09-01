@@ -10,7 +10,11 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { REPO_ROOT, renderOfferMigration } from './generate-offer-sql.js';
+import {
+  REPO_ROOT,
+  renderOfferCompensationMigration,
+  renderOfferMigration,
+} from './generate-offer-sql.js';
 
 function boundedDiff(expected: string, actual: string, context = 3): string {
   const e = expected.split('\n');
@@ -38,8 +42,7 @@ function boundedDiff(expected: string, actual: string, context = 3): string {
   return out.join('\n');
 }
 
-function main(): void {
-  const { rel, content } = renderOfferMigration();
+function verifyArtifact(rel: string, content: string): void {
   const abs = join(REPO_ROOT, rel);
   if (!existsSync(abs)) {
     console.error(`offer:sql:check FAIL — committed migration missing: ${rel}`);
@@ -54,6 +57,15 @@ function main(): void {
     process.exit(1);
   }
   console.log(`offer:sql:check ok — ${rel} is byte-identical to the registry-generated SQL.`);
+}
+
+function main(): void {
+  // The FROZEN init AND the L4-A forward compensation-snapshot migration are both
+  // generated build artifacts.
+  const init = renderOfferMigration();
+  const comp = renderOfferCompensationMigration();
+  verifyArtifact(init.rel, init.content);
+  verifyArtifact(comp.rel, comp.content);
 }
 
 main();

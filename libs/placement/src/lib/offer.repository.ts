@@ -9,6 +9,11 @@ import {
   OFFER_INITIAL_STATE,
   type OfferState,
 } from './lifecycle/offer-lifecycle.js';
+import {
+  classifyOfferCompensation,
+  type OfferCompensationInput,
+  type OfferCompensationSnapshot,
+} from './offer-compensation.js';
 import { OfferTransitionPolicyService } from './policy/offer-transition-policy.service.js';
 
 export interface OfferView {
@@ -22,6 +27,11 @@ export interface OfferView {
   readonly offer_expires_at: string | null;
   readonly client_offer_reference: string | null;
   readonly offer_terms_summary: string | null;
+  // L4-A / P1 — the structured Talent-facing compensation snapshot (null until set).
+  readonly compensation_type: string | null;
+  readonly compensation_amount: string | null; // decimal string (money, never float)
+  readonly compensation_currency: string | null;
+  readonly compensation_period: string | null;
   readonly decline_reason: string | null;
   readonly created_at: string;
 }
@@ -35,6 +45,11 @@ export interface CreateOfferInput {
   readonly offer_expires_at?: string | null;
   readonly client_offer_reference?: string | null;
   readonly offer_terms_summary?: string | null;
+  // L4-A / P1 — comp snapshot input (all-or-nothing; validated in create()).
+  readonly compensation_type?: string | null;
+  readonly compensation_amount?: string | null;
+  readonly compensation_currency?: string | null;
+  readonly compensation_period?: string | null;
   readonly actor_id: string;
   readonly correlation_id: string;
 }
@@ -58,6 +73,8 @@ type OfferRow = {
   talent_record_id: string; state: OfferState;
   proposed_start_date: Date | null; offer_expires_at: Date | null;
   client_offer_reference: string | null; offer_terms_summary: string | null;
+  compensation_type: string | null; compensation_amount: { toString(): string } | null;
+  compensation_currency: string | null; compensation_period: string | null;
   decline_reason: string | null; created_at: Date;
 };
 
@@ -70,6 +87,11 @@ function toView(r: OfferRow): OfferView {
     offer_expires_at: r.offer_expires_at?.toISOString() ?? null,
     client_offer_reference: r.client_offer_reference,
     offer_terms_summary: r.offer_terms_summary,
+    // Prisma returns Decimal as a Decimal object — project to a decimal string.
+    compensation_type: r.compensation_type,
+    compensation_amount: r.compensation_amount === null ? null : r.compensation_amount.toString(),
+    compensation_currency: r.compensation_currency,
+    compensation_period: r.compensation_period,
     decline_reason: r.decline_reason,
     created_at: r.created_at.toISOString(),
   };
@@ -140,6 +162,19 @@ export class OfferRepository {
   }
 
   async create(input: CreateOfferInput): Promise<OfferView> {
+    // L4-A / P1 — validate the Talent-facing compensation snapshot at the write
+    // boundary (all-or-nothing; CONTRACT sub-annual / PERMANENT ANNUAL; ISO-4217 +
+    // rate-period). A rejection is VALIDATION_ERROR (400) before any mutation.
+    const comp = classifyOfferCompensation(input as OfferCompensationInput);
+    if (!comp.ok) {
+      throw new AramoError(
+        'VALIDATION_ERROR',
+        `offer compensation snapshot invalid: ${comp.reason}`,
+        400,
+        { requestId: input.correlation_id, details: { reason: comp.reason } },
+      );
+    }
+    const snapshot: OfferCompensationSnapshot | null = comp.snapshot;
     const id = uuidv7();
     try {
       const row = await this.prisma.$transaction(async (tx) => {
@@ -155,6 +190,10 @@ export class OfferRepository {
             offer_expires_at: input.offer_expires_at ? new Date(input.offer_expires_at) : null,
             client_offer_reference: input.client_offer_reference ?? null,
             offer_terms_summary: input.offer_terms_summary ?? null,
+            compensation_type: snapshot?.compensation_type ?? null,
+            compensation_amount: snapshot?.compensation_amount ?? null,
+            compensation_currency: snapshot?.compensation_currency ?? null,
+            compensation_period: snapshot?.compensation_period ?? null,
           },
         })) as OfferRow;
         await tx.offerEvent.create({

@@ -73,6 +73,8 @@ const FALLOFF_REMEDY_MIGRATION = resolve(__dirname, '../../../../libs/placement/
 // T7-P3: SEPARATE const (never a 2nd resolve() arg — that path-joins to ENOTDIR).
 const GUARANTEE_TERMS_MIGRATION = resolve(__dirname, '../../../../libs/placement/prisma/migrations/20260816120000_t7_p3_guarantee_term_versioning/migration.sql');
 const OFFER_INIT_MIGRATION = resolve(__dirname, '../../../../libs/placement/prisma/migrations/20260824120000_init_offer_model/migration.sql');
+// L4 P1 — Offer.comp_* columns (ADD nullable; regenerated client SELECTs them on every offer read). SEPARATE const.
+const OFFER_COMPENSATION_MIGRATION = resolve(__dirname, '../../../../libs/placement/prisma/migrations/20260901130000_offer_compensation_snapshot/migration.sql');
 const OFFER_ID_MIGRATION = resolve(__dirname, '../../../../libs/placement/prisma/migrations/20260824130000_placement_offer_id/migration.sql');
 // Slice #3 — Assignment Extension: expected_end_at + AssignmentExtension. A SEPARATE
 // const + apply-list entry (single-path resolve — never a 2nd resolve() arg → ENOTDIR).
@@ -124,7 +126,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('E1-b PlacementCon
     const url = container.getConnectionUri();
     setup = new PrismaService(url);
     await setup.$connect();
-    for (const migration of [INIT_MIGRATION, OFFER_OUTBOX_MIGRATION, REASON_MIGRATION, REPLACEMENT_MIGRATION, CONTRACT_ASSIGNMENT_MIGRATION, ASSIGNMENT_ENDED_MIGRATION, ASSIGNMENT_GUARD_MIGRATION, ASSIGNMENT_END_REASON_MIGRATION, ASSIGNMENT_RATE_VERSION_MIGRATION, EFFECTIVE_WINDOW_MIGRATION, COMMERCIAL_CANCELLATION_MIGRATION, PERMANENT_PLACEMENT_MIGRATION, FALLOFF_REMEDY_MIGRATION, GUARANTEE_TERMS_MIGRATION, OFFER_INIT_MIGRATION, OFFER_ID_MIGRATION, ASSIGNMENT_EXTENSION_MIGRATION, COMMERCIAL_PROPOSAL_MIGRATION, OFFER_STATE_COLLAPSE_MIGRATION]) {
+    for (const migration of [INIT_MIGRATION, OFFER_OUTBOX_MIGRATION, REASON_MIGRATION, REPLACEMENT_MIGRATION, CONTRACT_ASSIGNMENT_MIGRATION, ASSIGNMENT_ENDED_MIGRATION, ASSIGNMENT_GUARD_MIGRATION, ASSIGNMENT_END_REASON_MIGRATION, ASSIGNMENT_RATE_VERSION_MIGRATION, EFFECTIVE_WINDOW_MIGRATION, COMMERCIAL_CANCELLATION_MIGRATION, PERMANENT_PLACEMENT_MIGRATION, FALLOFF_REMEDY_MIGRATION, GUARANTEE_TERMS_MIGRATION, OFFER_INIT_MIGRATION, OFFER_COMPENSATION_MIGRATION, OFFER_ID_MIGRATION, ASSIGNMENT_EXTENSION_MIGRATION, COMMERCIAL_PROPOSAL_MIGRATION, OFFER_STATE_COLLAPSE_MIGRATION]) {
       for (const s of splitDdl(readFileSync(migration, 'utf8'))) {
         if (s.trim()) await setup.$executeRawUnsafe(s.trim());
       }

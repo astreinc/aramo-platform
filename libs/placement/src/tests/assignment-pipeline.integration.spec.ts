@@ -38,6 +38,7 @@ const MIGRATIONS = [
   // PermanentPlacementConversionLineage table, so this curated set needs the migration.
   '20260817120000_t7_px_contract_to_permanent_conversion',
   '20260824120000_init_offer_model',
+  '20260901130000_offer_compensation_snapshot',
   '20260824130000_placement_offer_id',
   '20260901120000_l4_placement_offer_state_collapse',
 ].map((d) => resolve(__dirname, `../../prisma/migrations/${d}/migration.sql`));

@@ -39,6 +39,7 @@ const MIGRATIONS = [
   '20260815120000_t7_p2_falloff_remedy',
   '20260816120000_t7_p3_guarantee_term_versioning',
   '20260824120000_init_offer_model',
+  '20260901130000_offer_compensation_snapshot',
   '20260824130000_placement_offer_id',
 ].map((d) => resolve(__dirname, `../../prisma/migrations/${d}/migration.sql`));
 

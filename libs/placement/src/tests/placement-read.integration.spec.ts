@@ -36,6 +36,8 @@ const FALLOFF_REMEDY_MIGRATION_PATH = resolve(__dirname, '../../prisma/migration
 const GUARANTEE_TERMS_MIGRATION_PATH = resolve(__dirname, '../../prisma/migrations/20260816120000_t7_p3_guarantee_term_versioning/migration.sql');
 // Offer Lifecycle (D6) — the offer aggregate + the placement.offer_id column.
 const OFFER_INIT_MIGRATION_PATH = resolve(__dirname, '../../prisma/migrations/20260824120000_init_offer_model/migration.sql');
+// L4 P1 — Offer.comp_* columns (ADD nullable; regenerated client SELECTs them on every offer read). SEPARATE const.
+const OFFER_COMPENSATION_MIGRATION_PATH = resolve(__dirname, '../../prisma/migrations/20260901130000_offer_compensation_snapshot/migration.sql');
 const OFFER_ID_MIGRATION_PATH = resolve(__dirname, '../../prisma/migrations/20260824130000_placement_offer_id/migration.sql');
 // L4-0 — the fail-loud PlacementState collapse (applied LAST; SEPARATE const, never a 2nd resolve() arg — ENOTDIR).
 const OFFER_STATE_COLLAPSE_MIGRATION_PATH = resolve(__dirname, '../../prisma/migrations/20260901120000_l4_placement_offer_state_collapse/migration.sql');
@@ -89,7 +91,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const url = container.getConnectionUri();
       setupClient = new PrismaService(url);
       await setupClient.$connect();
-      for (const path of [INIT_MIGRATION_PATH, OFFER_OUTBOX_MIGRATION_PATH, REASON_MIGRATION_PATH, REPLACEMENT_MIGRATION_PATH, PERMANENT_PLACEMENT_MIGRATION_PATH, FALLOFF_REMEDY_MIGRATION_PATH, GUARANTEE_TERMS_MIGRATION_PATH, OFFER_INIT_MIGRATION_PATH, OFFER_ID_MIGRATION_PATH, OFFER_STATE_COLLAPSE_MIGRATION_PATH]) {
+      for (const path of [INIT_MIGRATION_PATH, OFFER_OUTBOX_MIGRATION_PATH, REASON_MIGRATION_PATH, REPLACEMENT_MIGRATION_PATH, PERMANENT_PLACEMENT_MIGRATION_PATH, FALLOFF_REMEDY_MIGRATION_PATH, GUARANTEE_TERMS_MIGRATION_PATH, OFFER_INIT_MIGRATION_PATH, OFFER_COMPENSATION_MIGRATION_PATH, OFFER_ID_MIGRATION_PATH, OFFER_STATE_COLLAPSE_MIGRATION_PATH]) {
         for (const stmt of splitDdl(readFileSync(path, 'utf8'))) {
           const trimmed = stmt.trim();
           if (trimmed.length > 0) await setupClient.$executeRawUnsafe(trimmed);

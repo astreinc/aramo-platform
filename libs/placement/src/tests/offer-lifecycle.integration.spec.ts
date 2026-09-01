@@ -17,6 +17,11 @@ const OFFER_MIGRATION = resolve(
   ROOT,
   'libs/placement/prisma/migrations/20260824120000_init_offer_model/migration.sql',
 );
+// L4 P1 — Offer.comp_* columns (ADD nullable; regenerated client SELECTs them on every offer read). SEPARATE const.
+const OFFER_COMPENSATION_MIGRATION = resolve(
+  ROOT,
+  'libs/placement/prisma/migrations/20260901130000_offer_compensation_snapshot/migration.sql',
+);
 
 let ctr = 0;
 const uuid = (): string => `00000000-0000-7000-8000-${(++ctr).toString(16).padStart(12, '0')}`;
@@ -46,6 +51,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       db = new Client({ connectionString: container.getConnectionUri() });
       await db.connect();
       await db.query(readFileSync(OFFER_MIGRATION, 'utf8'));
+      await db.query(readFileSync(OFFER_COMPENSATION_MIGRATION, 'utf8'));
     }, 120_000);
 
     afterAll(async () => {
