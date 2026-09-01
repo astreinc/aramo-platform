@@ -19,6 +19,7 @@ import { InterviewSessionRepository } from '../lib/interview-session.repository.
 const MIGRATIONS = [
   '../../prisma/migrations/20260829120000_l2f_init_client_selection/migration.sql',
   '../../prisma/migrations/20260830120000_l2f2_interview_session/migration.sql',
+  '../../prisma/migrations/20260831130000_l3d_interview_round_unique/migration.sql',
 ].map((p) => resolve(__dirname, p));
 
 function splitDdl(sql: string): string[] {
@@ -140,6 +141,36 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(outbox).toHaveLength(1);
       expect(outbox[0]!.published_at).toBeNull();
     });
+
+    // L3-D — (process, round) uniqueness. A second schedule at the SAME round is refused
+    // deterministically (INTERVIEW_ROUND_EXISTS 409); the first session stays the only row
+    // for that round. A different round is allowed. (Reschedule transitions the existing
+    // session in place; a re-attempt uses the next round — D-3 keeps process state manual.)
+    it('L3-D: a duplicate schedule at the same (process, round) is refused INTERVIEW_ROUND_EXISTS (409); one row per round', async () => {
+      const tenant = randomUUID();
+      const req = randomUUID();
+      const p = await seedProcess(tenant, req);
+      await repo.scheduleInterview({
+        tenant_id: tenant, client_selection_process_id: p.id, interview_type: 'phone',
+        round: 1, scheduled_at: new Date(), requestId: 'd1', visible_requisition_ids: null,
+      });
+      await expect(
+        repo.scheduleInterview({
+          tenant_id: tenant, client_selection_process_id: p.id, interview_type: 'phone',
+          round: 1, scheduled_at: new Date(), requestId: 'd2', visible_requisition_ids: null,
+        }),
+      ).rejects.toMatchObject({ code: 'INTERVIEW_ROUND_EXISTS', statusCode: 409 });
+      // A different round is allowed.
+      const second = await repo.scheduleInterview({
+        tenant_id: tenant, client_selection_process_id: p.id, interview_type: 'phone',
+        round: 2, scheduled_at: new Date(), requestId: 'd3', visible_requisition_ids: null,
+      });
+      expect(second.round).toBe(2);
+      const count = await prisma.interviewSession.count({
+        where: { client_selection_process_id: p.id },
+      });
+      expect(count).toBe(2);
+    }, 60_000);
 
     it('F2.1(neg): scheduling under a non-existent process is CLIENT_SELECTION_PROCESS_INVALID (409)', async () => {
       await expect(

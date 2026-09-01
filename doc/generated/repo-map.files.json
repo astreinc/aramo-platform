@@ -1458,6 +1458,7 @@
     "libs/canonicalization/vitest.config.ts",
     "libs/client-selection/prisma/migrations/20260829120000_l2f_init_client_selection/migration.sql",
     "libs/client-selection/prisma/migrations/20260830120000_l2f2_interview_session/migration.sql",
+    "libs/client-selection/prisma/migrations/20260831130000_l3d_interview_round_unique/migration.sql",
     "libs/client-selection/prisma/schema.prisma",
     "libs/client-selection/project.json",
     "libs/client-selection/src/index.ts",

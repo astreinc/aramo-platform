@@ -1002,6 +1002,7 @@ const CLIENT_SELECTION_INIT_MIGRATION = resolve(
 const CLIENT_SELECTION_INTERVIEW_SESSION_MIGRATION = resolve(
   ROOT,
   'libs/client-selection/prisma/migrations/20260830120000_l2f2_interview_session/migration.sql',
+  'libs/client-selection/prisma/migrations/20260831130000_l3d_interview_round_unique/migration.sql',
 );
 // Track 4 / T4-B2 §6 — the dedicated stored openings_available DROP. Applied here so
 // the provider schema matches the retired-column reality; the requisition read is

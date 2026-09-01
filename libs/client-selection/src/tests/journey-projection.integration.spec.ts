@@ -20,6 +20,7 @@ import { JourneyProjectionRepository } from '../lib/journey-projection.repositor
 const MIGRATIONS = [
   '../../prisma/migrations/20260829120000_l2f_init_client_selection/migration.sql',
   '../../prisma/migrations/20260830120000_l2f2_interview_session/migration.sql',
+  '../../prisma/migrations/20260831130000_l3d_interview_round_unique/migration.sql',
 ].map((p) => resolve(__dirname, p));
 
 function splitDdl(sql: string): string[] {
