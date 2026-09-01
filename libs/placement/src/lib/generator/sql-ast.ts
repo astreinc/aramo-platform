@@ -263,6 +263,52 @@ export function emitLifecycleFunction(t: LifecycleTrigger): string {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Transition-only lifecycle trigger (Lane 6 / L6-C)
+// ---------------------------------------------------------------------------
+// A BEFORE UPDATE guard enforcing ONLY transition legality: if the state column
+// CHANGES, the (OLD,NEW) pair must be one of the legal edges, else RAISE.
+// Terminal states (no out-edge) are thereby immutable, and a state-unchanged
+// (data-only) UPDATE always passes. Unlike the PlacementProcess lifecycle guard
+// this does NOT pin non-state columns and carries NO INSERT duplicate-live
+// concern -- it is for aggregates whose transitions legitimately CARRY data
+// (PermanentPlacement falloff/remedy fields) and whose uniqueness is a @@unique
+// floor rather than an INSERT guard. Generated from the typed transition
+// registry so the SQL edge set cannot drift from the TypeScript source of truth.
+export type TransitionOnlyLifecycleTrigger = {
+  readonly schema: string;
+  readonly table: string;
+  readonly functionName: string;
+  readonly triggerName: string;
+  readonly stateColumn: string;
+  readonly transitions: readonly TransitionBranch[]; // legal edges, ordered
+  readonly headerComment: readonly string[];
+  readonly violationMessage: string; // must carry no single-quote or ';'/'$$'
+};
+
+export function emitTransitionOnlyLifecycleTrigger(t: TransitionOnlyLifecycleTrigger): string {
+  const edges = t.transitions
+    .map((b) => `      (OLD.${t.stateColumn} = '${b.from}' AND NEW.${t.stateColumn} = '${b.to}')`)
+    .join('\n      OR\n');
+  return (
+    `${comment(t.headerComment)}\n` +
+    `CREATE OR REPLACE FUNCTION ${t.schema}.${t.functionName}()\n` +
+    `RETURNS TRIGGER AS $$\n` +
+    `BEGIN\n` +
+    `  IF (NEW.${t.stateColumn} IS DISTINCT FROM OLD.${t.stateColumn}) THEN\n` +
+    `    IF NOT (\n${edges}\n    ) THEN\n` +
+    `      RAISE EXCEPTION\n        '${t.violationMessage}'\n        USING ERRCODE = 'check_violation';\n` +
+    `    END IF;\n` +
+    `  END IF;\n` +
+    `  RETURN NEW;\n` +
+    `END;\n` +
+    `$$ LANGUAGE plpgsql;\n\n` +
+    `CREATE TRIGGER ${t.triggerName}\n` +
+    `  BEFORE UPDATE ON ${q(t.schema, t.table)}\n` +
+    `  FOR EACH ROW EXECUTE FUNCTION ${t.schema}.${t.functionName}();`
+  );
+}
+
 function emitRejectTrigger(r: RejectTrigger): string {
   return (
     `${comment([`${r.table} is append-only and absolutely immutable (§3) -- ${r.op} rejected at the database layer.`])}\n` +

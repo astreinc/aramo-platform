@@ -39,6 +39,10 @@ const MIGRATIONS = [
   '20260824120000_init_offer_model',
   '20260901130000_offer_compensation_snapshot',
   '20260824130000_placement_offer_id',
+  // L6-C — PermanentPlacement lifecycle trigger. Present here so the falloff/remedy
+  // multi-edge path (GUARANTEE_ACTIVE->FELL_OFF->*_DUE->REMEDY_COMPLETED) is proven to
+  // pass under the DB trigger (all legal edges), not just the happy path.
+  '20260901180000_l6c_permanent_placement_lifecycle_parity',
 ].map((d) => resolve(__dirname, `../../prisma/migrations/${d}/migration.sql`));
 
 const T5_TERMS = { pay_rate_amount: '80.00', bill_rate_amount: '120.00', currency: 'USD', rate_period: 'HOURLY' } as const;
