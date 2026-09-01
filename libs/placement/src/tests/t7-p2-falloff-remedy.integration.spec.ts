@@ -171,6 +171,25 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect((await permanent.findByPlacement(input.tenant_id, id))?.lifecycle_state).toBe('REFUND_DUE');
     });
 
+    it('L6-G race protection: concurrent falloff on the same placement resolves to exactly one (DB floor)', async () => {
+      const input = baseInput({ placement_kind: 'PERMANENT' });
+      const id = await startPermanent(input, guaranteeTerms('REFUND'));
+
+      // Two concurrent falloffs both read GUARANTEE_ACTIVE and enter their tx. The DB
+      // floors serialise them to exactly one winner: the loser's GA->FELL_OFF is
+      // rejected (the L6-C lifecycle trigger sees OLD=*_DUE, an illegal edge) and/or the
+      // write-once falloff-facts trigger rejects the second write. No app-level lock is
+      // relied upon for correctness here.
+      const results = await Promise.allSettled([
+        permanent.recordFalloff({ tenant_id: input.tenant_id, placement_process_id: id, effective_date: '2026-06-01', reason: 'TALENT_RESIGNED', recorded_by: randomUUID() }, 'f1'),
+        permanent.recordFalloff({ tenant_id: input.tenant_id, placement_process_id: id, effective_date: '2026-06-01', reason: 'TALENT_RESIGNED', recorded_by: randomUUID() }, 'f2'),
+      ]);
+      expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+      // Exactly one remedy obligation, one deterministic *_DUE state.
+      expect(await prisma.permanentPlacementRemedy.count({ where: { tenant_id: input.tenant_id } })).toBe(1);
+      expect((await permanent.findByPlacement(input.tenant_id, id))?.lifecycle_state).toBe('REFUND_DUE');
+    });
+
     it('falloff on/after the guarantee end date, or before start, is FALLOFF_WINDOW_INVALID (422)', async () => {
       for (const bad of ['2027-01-01' /* == end (start+365) */, '2027-02-01' /* after */, '2025-12-31' /* before start */]) {
         const input = baseInput({ placement_kind: 'PERMANENT' });
