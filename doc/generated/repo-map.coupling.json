@@ -9770,6 +9770,12 @@
       "to": "libs/talent-trust/src/lib/vocab.ts"
     },
     {
+      "excludedBy": "src/**/*.spec.ts",
+      "from": "apps/ats-web/src/ui/funnel-css-drift.spec.ts",
+      "status": "excluded",
+      "to": "apps/ats-web/src/ui/ui.css"
+    },
+    {
       "from": "apps/ats-web/src/ui/ui.css",
       "status": "unscoped",
       "to": "libs/fe-foundation/src/ui/ui.css"
@@ -9925,6 +9931,11 @@
       "from": "apps/portal-web/vite.config.ts",
       "status": "unscoped",
       "to": "libs/fe-foundation/src/index.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "apps/api/src/client-decision-orchestration/client-decision.controller.ts"
     },
     {
       "from": "ci/config/api-surface-manifest.json",
@@ -15470,6 +15481,11 @@
     },
     { "from": "package.json", "status": "unscoped", "to": "ci/scripts/verify-offer-sql.ts" },
     { "from": "package.json", "status": "unscoped", "to": "ci/scripts/verify-orphan-scopes.ts" },
+    {
+      "from": "package.json",
+      "status": "unscoped",
+      "to": "ci/scripts/verify-pipeline-write-authority.ts"
+    },
     { "from": "package.json", "status": "unscoped", "to": "ci/scripts/verify-placement-sql.ts" },
     { "from": "package.json", "status": "unscoped", "to": "ci/scripts/verify-portal-refusal.ts" },
     { "from": "package.json", "status": "unscoped", "to": "ci/scripts/verify-repo-map.ts" },
@@ -15750,6 +15766,11 @@
       "from": "pact/provider/src/verify-api.ts",
       "status": "unscoped",
       "to": "libs/client-selection/prisma/migrations/20260830120000_l2f2_interview_session/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "libs/client-selection/prisma/migrations/20260831130000_l3d_interview_round_unique/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",
@@ -17396,7 +17417,7 @@
   ],
   "scanScope": {
     "dirs": [".github/workflows", ".husky", "ci/scripts", "deploy", "scripts", "tools"],
-    "files": 66,
+    "files": 67,
     "huskyPresent": false
   },
   "scripts": [
@@ -17630,6 +17651,19 @@
       ]
     },
     {
+      "name": "pipeline:write-authority:check",
+      "references": [
+        { "kind": "npm-run", "path": ".github/workflows/ci.yml" },
+        { "kind": "prose", "path": ".github/workflows/ci.yml" },
+        { "kind": "npm-run", "path": "ci/scripts/prepush.ts" },
+        { "kind": "prose", "path": "ci/scripts/prepush.ts" }
+      ]
+    },
+    {
+      "name": "pipeline:write-authority:self-test",
+      "references": [{ "kind": "npm-run", "path": ".github/workflows/ci.yml" }]
+    },
+    {
       "name": "placement:sql:check",
       "references": [
         { "kind": "npm-run", "path": ".github/workflows/ci.yml" },
@@ -17747,6 +17781,7 @@
         { "kind": "prose", "path": "ci/scripts/verify-api-contract-parity.ts" },
         { "kind": "prose", "path": "ci/scripts/verify-error-codes.ts" },
         { "kind": "prose", "path": "ci/scripts/verify-frontdoor-conf.ts" },
+        { "kind": "prose", "path": "ci/scripts/verify-pipeline-write-authority.ts" },
         { "kind": "prose", "path": "deploy/build-images.test.sh" },
         { "kind": "prose", "path": "deploy/migrate-prod.sh" },
         { "kind": "prose", "path": "deploy/migrate-prod.test.sh" },

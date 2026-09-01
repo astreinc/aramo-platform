@@ -111,6 +111,10 @@ model InterviewSession {
   updated_at    DateTime @default(now()) @updatedAt @db.Timestamptz
   created_by_id String?  @db.Uuid
 
+  // L3-D — one session per (process, round). Reschedule transitions the existing
+  // session in place; a re-attempt uses the next round. Duplicate schedule at the same
+  // round → INTERVIEW_ROUND_EXISTS (409). Name pinned to the raw migration's index.
+  @@unique([client_selection_process_id, round], map: "InterviewSession_process_round_key")
   @@index([tenant_id, client_selection_process_id])
   @@index([tenant_id, requisition_id])
   @@schema("client_selection")

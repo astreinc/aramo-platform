@@ -80,7 +80,8 @@
     "libs/selection/src/lib/selection.controller.ts": "AP",
     "libs/submittal/src/lib/submittal.controller.ts": "AP",
     "libs/talent-record/src/lib/talent-record.controller.ts": "AP",
-    "libs/task/src/lib/task.controller.ts": "AP"
+    "libs/task/src/lib/task.controller.ts": "AP",
+    "apps/api/src/client-decision-orchestration/client-decision.controller.ts": "AP"
   },
   "routeOverrides": [],
   "transitionalUndocumented": [
@@ -791,6 +792,10 @@
     {
       "method": "GET",
       "path": "/v1/tenant/users"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/client-selection/*/decision"
     }
   ]
 }

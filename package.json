@@ -55,6 +55,8 @@
     "placement:sql:check": "node --import jiti/register ci/scripts/verify-placement-sql.ts",
     "offer:sql:generate": "node --import jiti/register ci/scripts/generate-offer-sql.ts",
     "offer:sql:check": "node --import jiti/register ci/scripts/verify-offer-sql.ts",
+    "pipeline:write-authority:check": "node --import jiti/register ci/scripts/verify-pipeline-write-authority.ts",
+    "pipeline:write-authority:self-test": "SELF_TEST=1 node --import jiti/register ci/scripts/verify-pipeline-write-authority.ts",
     "env:passthrough-check": "node --import jiti/register ci/scripts/verify-env-passthrough.ts",
     "aggregate-gate:check": "node --import jiti/register ci/scripts/verify-aggregate-gate.ts",
     "contract-parity:check": "node --import jiti/register ci/scripts/verify-api-contract-parity.ts",

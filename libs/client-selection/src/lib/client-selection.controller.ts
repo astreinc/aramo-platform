@@ -88,6 +88,18 @@ export class ClientSelectionController {
         { requestId, details: { field: 'expected_version' } },
       );
     }
+    // L3-E(2) refactor=replace — DECLINED/WITHDRAWN are governed decisions that also
+    // disposition the upstream Pipeline episode; they are driven ONLY through
+    // POST /v1/client-selection/:id/decision (ClientDecisionOrchestrator), never this
+    // forward-transition route. This route drives CLIENT_REVIEW → INTERVIEW → SELECTED.
+    if (body.to_state === 'DECLINED' || body.to_state === 'WITHDRAWN') {
+      throw new AramoError(
+        'INVALID_CLIENT_SELECTION_TRANSITION',
+        'DECLINED/WITHDRAWN must be driven via POST /v1/client-selection/:id/decision (governed Pipeline disposition)',
+        422,
+        { requestId, details: { to_state: body.to_state, use: 'POST /v1/client-selection/:id/decision' } },
+      );
+    }
     const visibleReqIds = await req.resolveVisibleRequisitionIds!();
     return this.repository.transition({
       tenant_id: authContext.tenant_id,
@@ -98,6 +110,7 @@ export class ClientSelectionController {
       requestId,
       visible_requisition_ids: visibleReqIds,
       ...(body.note === undefined ? {} : { note: body.note }),
+      ...(body.reason_code === undefined ? {} : { reason_code: body.reason_code }),
     });
   }
 

@@ -167,6 +167,11 @@ export class ClientSelectionProcessRepository {
     requestId: string;
     visible_requisition_ids: ReadonlySet<string> | null;
     note?: string;
+    // L3-E (P3) — structured withdrawal/decision provenance. A stable cause code
+    // (e.g. talent_withdrew / recruiter_withdrew / client_withdrew / administrative)
+    // so materially different DECLINED/WITHDRAWN causes are NOT collapsed. Optional +
+    // open (no rigid enum this slice); persisted immutably alongside the actor.
+    reason_code?: string;
   }): Promise<ClientSelectionProcessView> {
     const current = await this.prisma.clientSelectionProcess.findFirst({
       where: { tenant_id: args.tenant_id, id: args.id },
@@ -228,6 +233,7 @@ export class ClientSelectionProcessRepository {
 
     const fromState = cur.state;
     const note = args.note ?? null;
+    const reasonCode = args.reason_code ?? null;
     const updated = await this.prisma.$transaction(async (tx) => {
       const u = await tx.clientSelectionProcess.update({
         where: { id: args.id },
@@ -245,6 +251,10 @@ export class ClientSelectionProcessRepository {
             from_state: fromState,
             to_state: args.to_state,
             version: u.version,
+            // L3-E (P3) — immutable provenance: WHO drove the transition + the structured
+            // cause. Previously only `note` was persisted (actor was lost from the log).
+            changed_by_id: args.changed_by_id,
+            reason_code: reasonCode,
             note,
           },
         },

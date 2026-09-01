@@ -62,6 +62,7 @@ import { SubmittedHistoryModule } from './reporting-adapters/submitted-history.m
 import { InterviewHistoryModule } from './reporting-adapters/interview-history.module.js';
 import { SubmitTalentModule } from './submit-talent/submit-talent.module.js';
 import { ClientSelectionOrchestrationModule } from './client-selection/client-selection-orchestration.module.js';
+import { ClientDecisionOrchestrationModule } from './client-decision-orchestration/client-decision-orchestration.module.js';
 // T1-a — composition-root binding of libs/examination's RequisitionStateReader
 // port to the ATS RequisitionRepository adapter (@Global; the wall-legal seam).
 import { RequisitionStateReaderModule } from './requisition-state/requisition-state-reader.module.js';
@@ -367,6 +368,7 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     SubmittalModule,
     SubmitTalentModule,
     ClientSelectionOrchestrationModule,
+    ClientDecisionOrchestrationModule,
     // Track 3 / E7 (ADR-0027) — ClientTalentRestriction (record half of the
     // house pattern; scoped routes only, no flat collection).
     ClientTalentRestrictionModule,

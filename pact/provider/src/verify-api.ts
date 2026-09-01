@@ -1010,6 +1010,11 @@ const CLIENT_SELECTION_INTERVIEW_SESSION_MIGRATION = resolve(
   ROOT,
   'libs/client-selection/prisma/migrations/20260830120000_l2f2_interview_session/migration.sql',
 );
+// L3-D — SEPARATE const (never a 2nd resolve() arg — that ENOTDIRs).
+const CLIENT_SELECTION_INTERVIEW_ROUND_MIGRATION = resolve(
+  ROOT,
+  'libs/client-selection/prisma/migrations/20260831130000_l3d_interview_round_unique/migration.sql',
+);
 // Track 4 / T4-B2 §6 — the dedicated stored openings_available DROP. Applied here so
 // the provider schema matches the retired-column reality; the requisition read is
 // derived and does not depend on the physical column.
@@ -3292,6 +3297,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         // (client_selection."InterviewSession") resolves; init before the interview-session table.
         CLIENT_SELECTION_INIT_MIGRATION,
         CLIENT_SELECTION_INTERVIEW_SESSION_MIGRATION,
+        CLIENT_SELECTION_INTERVIEW_ROUND_MIGRATION,
         // T4-B2 §6 — retire the stored openings_available column (derived-only).
         REQUISITION_DROP_OPENINGS_AVAILABLE_MIGRATION,
         // T8-P1 — the external-identity partial-unique index (applied last;

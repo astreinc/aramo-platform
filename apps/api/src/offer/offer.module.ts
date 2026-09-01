@@ -14,6 +14,7 @@ import {
 } from '@aramo/placement';
 
 import { OfferController } from './offer.controller.js';
+import { OfferClientSelectionGate } from './offer-client-selection-gate.service.js';
 
 // Offer Lifecycle (D5) — apps/api composition root for the /v1/offers surface.
 // The offer transition gate is ADR-0024-governed via the (own generated client,
@@ -34,6 +35,11 @@ import { OfferController } from './offer.controller.js';
     { provide: OFFER_POLICY_STORE, useClass: PolicyStore },
     OfferTransitionPolicyService,
     OfferRepository,
+    // L3-E — SELECTED→Offer authorization gate. Reads the client_selection schema over
+    // the placement connection (one DB, many schemas) via parameterized raw SQL, so the
+    // Offer aggregate never couples to @aramo/client-selection.
+    { provide: 'OfferGateDb', useExisting: PrismaService },
+    OfferClientSelectionGate,
   ],
   exports: [OfferRepository],
 })
