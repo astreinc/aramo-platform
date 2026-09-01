@@ -42,6 +42,9 @@ const MIGRATIONS = [
   '20260824120000_init_offer_model',
   '20260901130000_offer_compensation_snapshot',
   '20260824130000_placement_offer_id',
+  // L6-B — ContractAssignment terminal-immutability trigger: needed to prove the
+  // converted (ENDED/CONVERTED_TO_PERMANENT) source cannot be reopened at the DB.
+  '20260901170000_l6b_contract_assignment_terminal_immutability',
 ].map((d) => resolve(__dirname, `../../prisma/migrations/${d}/migration.sql`));
 
 const T5_TERMS = { pay_rate_amount: '80.00', bill_rate_amount: '120.00', currency: 'USD', rate_period: 'HOURLY' } as const;
@@ -197,6 +200,25 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(types).toContain('permanent_placement.created');
       expect(types).toContain('permanent_placement.guarantee_active');
       expect(types).toContain('placement.assignment.converted_to_permanent');
+    });
+
+    it('L6-E: the converted source (ENDED / CONVERTED_TO_PERMANENT) cannot be reopened — no hidden reopening (DB floor)', async () => {
+      const input = baseInput();
+      const sourceId = await startContract(input);
+      await repo.convertToPermanent({ tenant_id: input.tenant_id, placement_process_id: sourceId, converted_by: randomUUID() }, 'c');
+      expect(await assignmentRow(input.tenant_id, sourceId)).toEqual({ lifecycle_state: 'ENDED', end_reason: 'CONVERTED_TO_PERMANENT' });
+
+      // No hidden reopening: a raw reopen of the converted source is rejected by the
+      // L6-B terminal-immutability trigger (ENDED is frozen regardless of end_reason).
+      await expect(
+        prisma.contractAssignment.updateMany({
+          where: { tenant_id: input.tenant_id, placement_process_id: sourceId },
+          data: { lifecycle_state: 'ACTIVE' },
+        }),
+      ).rejects.toThrow();
+
+      // Unchanged: still the terminal converted record.
+      expect(await assignmentRow(input.tenant_id, sourceId)).toEqual({ lifecycle_state: 'ENDED', end_reason: 'CONVERTED_TO_PERMANENT' });
     });
 
     // ---- 5 — the target snapshot copies the governed stored term version ----
