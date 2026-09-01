@@ -185,6 +185,41 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       ).rejects.toMatchObject({ code: 'INVALID_CLIENT_SELECTION_TRANSITION', statusCode: 422 });
     });
 
+    // L3-E (P3) — WITHDRAWN/DECLINED provenance: the immutable transition event records
+    // WHO acted (changed_by_id) + the structured cause (reason_code), so materially
+    // different withdrawal causes are distinguishable, never collapsed.
+    it('L3-E: a WITHDRAWN transition persists actor + structured reason_code in the immutable event', async () => {
+      const tenant = randomUUID();
+      const req = randomUUID();
+      const actor = randomUUID();
+      const p = await seedProcess(tenant, req);
+      const w = await repo.transition({
+        tenant_id: tenant,
+        id: p.id,
+        to_state: 'WITHDRAWN',
+        expected_version: 0,
+        changed_by_id: actor,
+        reason_code: 'client_withdrew',
+        note: 'client paused the role',
+        requestId: 'w',
+        visible_requisition_ids: null,
+      });
+      expect(w.state).toBe('WITHDRAWN');
+      const events = await prisma.clientSelectionEvent.findMany({
+        where: {
+          subject_id: p.id,
+          subject_type: 'process',
+          event_type: 'client_selection.process.state_transition',
+        },
+      });
+      expect(events).toHaveLength(1);
+      const payload = events[0]!.event_payload as Record<string, unknown>;
+      expect(payload['changed_by_id']).toBe(actor);
+      expect(payload['reason_code']).toBe('client_withdrew');
+      expect(payload['note']).toBe('client paused the role');
+      expect(payload['to_state']).toBe('WITHDRAWN');
+    }, 60_000);
+
     // ----------------------------------------------------------------------
     // Visibility 404-concealment.
     // ----------------------------------------------------------------------

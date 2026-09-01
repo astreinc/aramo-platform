@@ -98,6 +98,7 @@ export class ClientSelectionController {
       requestId,
       visible_requisition_ids: visibleReqIds,
       ...(body.note === undefined ? {} : { note: body.note }),
+      ...(body.reason_code === undefined ? {} : { reason_code: body.reason_code }),
     });
   }
 
