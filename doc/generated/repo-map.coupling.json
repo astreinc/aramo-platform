@@ -14371,6 +14371,12 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "libs/identity/src/tests/invite-s2-three-state.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20260901000000_hf_auth_1_authorization_version/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "libs/identity/src/tests/invite-s3-actions.integration.spec.ts",
       "status": "excluded",
       "to": "libs/identity/prisma/migrations/20260512000000_init_identity_model/migration.sql"
@@ -14410,6 +14416,12 @@
       "from": "libs/identity/src/tests/invite-s3-actions.integration.spec.ts",
       "status": "excluded",
       "to": "libs/identity/prisma/migrations/20260626120000_add_tenant_slug/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/identity/src/tests/invite-s3-actions.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20260901000000_hf_auth_1_authorization_version/migration.sql"
     },
     {
       "from": "libs/import/prisma/schema.prisma",

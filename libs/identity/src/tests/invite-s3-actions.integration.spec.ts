@@ -43,6 +43,8 @@ const MIGRATIONS = [
   'libs/identity/prisma/migrations/20260601000000_add_site_axis/migration.sql',
   'libs/identity/prisma/migrations/20260619000000_add_tenant_profile/migration.sql',
   'libs/identity/prisma/migrations/20260624000000_add_invitation_and_invite_status/migration.sql',
+  // HF-AUTH-1 — the invite/disable/role saga paths bump AuthorizationVersion.
+  'libs/identity/prisma/migrations/20260901000000_hf_auth_1_authorization_version/migration.sql',
 ].map((p) => resolve(ROOT, p));
 
 const TENANT = '01900000-0000-7000-8000-0000000000b1';

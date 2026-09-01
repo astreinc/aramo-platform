@@ -40,6 +40,12 @@ const IDENTITY_INIT = resolve(
   ROOT,
   'libs/identity/prisma/migrations/20260512000000_init_identity_model/migration.sql',
 );
+// HF-AUTH-1 — createUserWithMembership (the invite saga) calls ensureBaselineVersion,
+// which writes AuthorizationVersion; the table must exist or the saga 500s.
+const IDENTITY_AUTHZ_VERSION = resolve(
+  ROOT,
+  'libs/identity/prisma/migrations/20260901000000_hf_auth_1_authorization_version/migration.sql',
+);
 // Domain-Enforcement P1 — additive Tenant.allowed_domain column.
 const IDENTITY_ALLOWED_DOMAIN = resolve(
   ROOT,
@@ -95,6 +101,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await setup.$connect();
       for (const file of [
         IDENTITY_INIT,
+        IDENTITY_AUTHZ_VERSION,
         IDENTITY_ALLOWED_DOMAIN, IDENTITY_DOMAIN_VERIFICATION, IDENTITY_SLUG,
         IDENTITY_SITE_AXIS,
         IDENTITY_PROFILE,

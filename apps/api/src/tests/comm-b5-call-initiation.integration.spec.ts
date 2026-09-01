@@ -208,6 +208,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       module = await Test.createTestingModule({ imports: [AppModule] })
         .overrideProvider(SECRETS_MANAGER_WRITER)
         .useValue(new FakeSecretsWriter())
+        
+        // HF-AUTH-1 — bind the Mode-A resolver so the guard hydrates scopes
+        // (the earlier codemod added the grant but missed this override).
+        .overrideProvider(EFFECTIVE_AUTHORIZATION_RESOLVER)
+        .useValue(__authzTestResolver)
         .compile();
       app = module.createNestApplication();
       app.use(cookieParser());
