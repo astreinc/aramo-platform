@@ -45,6 +45,9 @@ const MIGRATIONS = [
   '20260824120000_init_offer_model',
   '20260901130000_offer_compensation_snapshot',
   '20260824130000_placement_offer_id',
+  // L6-B — ContractAssignment terminal-immutability trigger (trigger-only, no client
+  // shape drift; needed here to exercise the DB-parity reopen-rejection proof).
+  '20260901170000_l6b_contract_assignment_terminal_immutability',
 ].map((d) => resolve(__dirname, `../../prisma/migrations/${d}/migration.sql`));
 
 // Track 5 / T5-P1 — a FORWARD STARTED transition now materialises the initial
@@ -316,6 +319,32 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           data: { lifecycle_state: 'ENDED' }, // no end_reason
         }),
       ).rejects.toThrow();
+    });
+
+    it('L6-B DB parity: an ENDED ContractAssignment is terminal at the DB — a raw reopen / reason-rewrite is rejected, not merely app-guarded', async () => {
+      const tenant_id = randomUUID();
+      const id = await startPlacement(tenant_id, randomUUID());
+      await repo.endAssignment({ tenant_id, placement_process_id: id, end_reason: 'COMPLETED', ended_by: randomUUID() }, 'end');
+      const [row] = await prisma.contractAssignment.findMany({ where: { tenant_id, placement_process_id: id } });
+      expect(row.lifecycle_state).toBe('ENDED'); // precondition (non-vacuity)
+
+      // DB-layer parity (the L6-B invariant): reopening ENDED -> ACTIVE is rejected by
+      // the terminal-immutability trigger, NOT only by the app-level state-guarded CAS.
+      // A raw repository write that bypasses endAssignment still cannot reopen the row.
+      await expect(
+        prisma.contractAssignment.update({ where: { id: row.id }, data: { lifecycle_state: 'ACTIVE' } }),
+      ).rejects.toThrow();
+
+      // The terminal end_reason is likewise frozen (immutable history).
+      await expect(
+        prisma.contractAssignment.update({ where: { id: row.id }, data: { end_reason: 'WORKER_ENDED' } }),
+      ).rejects.toThrow();
+
+      // Behavioral proof (robust to Prisma-7 error-shape nuance): both writes were
+      // REJECTED, so the row is unchanged — still ENDED / COMPLETED.
+      const [after] = await prisma.contractAssignment.findMany({ where: { tenant_id, placement_process_id: id } });
+      expect(after.lifecycle_state).toBe('ENDED');
+      expect(after.end_reason).toBe('COMPLETED');
     });
 
     it('T4-D audit/events: ending an assignment emits placement.assignment.ended atomically with the state flip', async () => {
