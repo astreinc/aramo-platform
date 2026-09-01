@@ -13,6 +13,7 @@ import { dirname, join, resolve } from 'node:path';
 import {
   generateOfferMigrationSql,
   generateOfferCompensationSnapshotSql,
+  generateOfferRevisionSql,
 } from '../../libs/placement/src/lib/generator/offer-sql-generator.js';
 
 const HERE = __dirname;
@@ -26,6 +27,10 @@ export const OFFER_MIGRATION_REL_PATH =
 export const OFFER_COMPENSATION_MIGRATION_REL_PATH =
   'libs/placement/prisma/migrations/20260901130000_offer_compensation_snapshot/migration.sql';
 
+// L4-B / P2 — the FORWARD OfferRevision history migration (after the comp snapshot).
+export const OFFER_REVISION_MIGRATION_REL_PATH =
+  'libs/placement/prisma/migrations/20260901140000_offer_revision_history/migration.sql';
+
 export function renderOfferMigration(): { rel: string; content: string } {
   return { rel: OFFER_MIGRATION_REL_PATH, content: generateOfferMigrationSql() };
 }
@@ -35,6 +40,10 @@ export function renderOfferCompensationMigration(): { rel: string; content: stri
     rel: OFFER_COMPENSATION_MIGRATION_REL_PATH,
     content: generateOfferCompensationSnapshotSql(),
   };
+}
+
+export function renderOfferRevisionMigration(): { rel: string; content: string } {
+  return { rel: OFFER_REVISION_MIGRATION_REL_PATH, content: generateOfferRevisionSql() };
 }
 
 function writeArtifact(rel: string, content: string): void {
@@ -47,8 +56,10 @@ function writeArtifact(rel: string, content: string): void {
 function main(): void {
   const init = renderOfferMigration();
   const comp = renderOfferCompensationMigration();
+  const rev = renderOfferRevisionMigration();
   writeArtifact(init.rel, init.content);
   writeArtifact(comp.rel, comp.content);
+  writeArtifact(rev.rel, rev.content);
   console.log('offer:sql:generate ok');
 }
 

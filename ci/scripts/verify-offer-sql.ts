@@ -14,6 +14,7 @@ import {
   REPO_ROOT,
   renderOfferCompensationMigration,
   renderOfferMigration,
+  renderOfferRevisionMigration,
 } from './generate-offer-sql.js';
 
 function boundedDiff(expected: string, actual: string, context = 3): string {
@@ -64,8 +65,10 @@ function main(): void {
   // generated build artifacts.
   const init = renderOfferMigration();
   const comp = renderOfferCompensationMigration();
+  const rev = renderOfferRevisionMigration();
   verifyArtifact(init.rel, init.content);
   verifyArtifact(comp.rel, comp.content);
+  verifyArtifact(rev.rel, rev.content);
 }
 
 main();

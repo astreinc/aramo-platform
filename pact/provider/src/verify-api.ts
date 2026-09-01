@@ -995,6 +995,11 @@ const OFFER_COMPENSATION_MIGRATION = resolve(
   ROOT,
   'libs/placement/prisma/migrations/20260901130000_offer_compensation_snapshot/migration.sql',
 );
+// L4-B / P2 — offer.OfferRevision append-only history table. SEPARATE const (ENOTDIR).
+const OFFER_REVISION_MIGRATION = resolve(
+  ROOT,
+  'libs/placement/prisma/migrations/20260901140000_offer_revision_history/migration.sql',
+);
 // L4-0 — the fail-loud PlacementState collapse to 6 values. Applied LAST among the
 // placement migrations (after the T4-C guard + offer_id) so the CREATE OR REPLACE of
 // the two guard bodies lands on the final schema. SEPARATE const (never a 2nd resolve() arg — ENOTDIR).
@@ -3294,6 +3299,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         // Offer Lifecycle (D6) — offer aggregate + placement.offer_id (client SELECTs it).
         PLACEMENT_OFFER_INIT_MIGRATION,
         OFFER_COMPENSATION_MIGRATION,
+        OFFER_REVISION_MIGRATION,
         PLACEMENT_OFFER_ID_MIGRATION,
         // L4-0 — fail-loud PlacementState collapse to 6 values (LAST placement migration).
         PLACEMENT_OFFER_STATE_COLLAPSE_MIGRATION,

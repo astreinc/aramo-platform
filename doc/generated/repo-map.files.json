@@ -2370,6 +2370,7 @@
     "libs/placement/prisma/migrations/20260826120000_commercial_revision_proposal/migration.sql",
     "libs/placement/prisma/migrations/20260901120000_l4_placement_offer_state_collapse/migration.sql",
     "libs/placement/prisma/migrations/20260901130000_offer_compensation_snapshot/migration.sql",
+    "libs/placement/prisma/migrations/20260901140000_offer_revision_history/migration.sql",
     "libs/placement/prisma/migrations/migration_lock.toml",
     "libs/placement/prisma/schema.prisma",
     "libs/placement/project.json",

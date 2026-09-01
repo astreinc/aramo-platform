@@ -123,6 +123,11 @@ export class OfferController {
       offer_expires_at: dto.offer_expires_at,
       client_offer_reference: dto.client_offer_reference,
       offer_terms_summary: dto.offer_terms_summary,
+      compensation_type: dto.compensation_type,
+      compensation_amount: dto.compensation_amount,
+      compensation_currency: dto.compensation_currency,
+      compensation_period: dto.compensation_period,
+      change_reason: dto.change_reason,
       decline_reason: dto.decline_reason,
     });
   }

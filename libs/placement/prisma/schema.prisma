@@ -286,11 +286,49 @@ model Offer {
 
   created_at DateTime @default(now()) @db.Timestamptz(6)
 
-  events OfferEvent[]
+  events    OfferEvent[]
+  revisions OfferRevision[]
 
   @@index([tenant_id, submittal_id])
   @@index([tenant_id, requisition_id])
   @@index([tenant_id, talent_record_id])
+  @@schema("offer")
+}
+
+// L4-B / P2 — the IMMUTABLE, append-only history of the offer terms. Each terms
+// change (at create, and on a NEGOTIATION/term-bearing transition) appends a
+// full-snapshot revision; the Offer row keeps the CURRENT snapshot for reads.
+// Same Talent-facing scope as the Offer snapshot — NO bill rate/margin/markup.
+// Append-only enforced by the generated freeze_offer_revision trigger
+// (20260901140000_offer_revision_history), invisible to prisma:validate.
+model OfferRevision {
+  id        String @id @db.Uuid
+  tenant_id String @db.Uuid
+
+  offer_id String @db.Uuid
+  offer    Offer  @relation(fields: [offer_id], references: [id])
+
+  // Monotonic 1-based version per (tenant, offer).
+  revision_number Int
+
+  // The full terms snapshot at this revision.
+  proposed_start_date    DateTime? @db.Date
+  offer_expires_at       DateTime? @db.Timestamptz(6)
+  client_offer_reference String?
+  offer_terms_summary    String?
+  compensation_type      String?
+  compensation_amount    Decimal?  @db.Decimal(12, 2)
+  compensation_currency  String?
+  compensation_period    String?
+
+  // Provenance: the Aramo user (JWT sub) who recorded this revision.
+  recorded_by   String  @db.Uuid
+  change_reason String?
+
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+
+  @@unique([tenant_id, offer_id, revision_number])
+  @@index([tenant_id, offer_id])
   @@schema("offer")
 }
 

@@ -30,5 +30,13 @@ export class TransitionOfferDto {
   @IsOptional() @IsString() offer_expires_at?: string | null;
   @IsOptional() @IsString() @MaxLength(200) client_offer_reference?: string | null;
   @IsOptional() @IsString() @MaxLength(2000) offer_terms_summary?: string | null;
+  // L4-B / P2 — a term-bearing transition (e.g. NEGOTIATION) may revise the comp
+  // snapshot (all-or-nothing, re-validated in the repository) and record a reason;
+  // every terms change is journaled as an immutable OfferRevision.
+  @IsOptional() @IsString() compensation_type?: string | null;
+  @IsOptional() @IsString() compensation_amount?: string | null;
+  @IsOptional() @IsString() compensation_currency?: string | null;
+  @IsOptional() @IsString() compensation_period?: string | null;
+  @IsOptional() @IsString() @MaxLength(2000) change_reason?: string | null;
   @IsOptional() @IsString() @MaxLength(2000) decline_reason?: string | null;
 }

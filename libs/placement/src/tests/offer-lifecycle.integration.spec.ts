@@ -22,6 +22,11 @@ const OFFER_COMPENSATION_MIGRATION = resolve(
   ROOT,
   'libs/placement/prisma/migrations/20260901130000_offer_compensation_snapshot/migration.sql',
 );
+// L4-B / P2 — offer.OfferRevision table (append-only history). SEPARATE const (ENOTDIR).
+const OFFER_REVISION_MIGRATION = resolve(
+  ROOT,
+  'libs/placement/prisma/migrations/20260901140000_offer_revision_history/migration.sql',
+);
 
 let ctr = 0;
 const uuid = (): string => `00000000-0000-7000-8000-${(++ctr).toString(16).padStart(12, '0')}`;
@@ -52,6 +57,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await db.connect();
       await db.query(readFileSync(OFFER_MIGRATION, 'utf8'));
       await db.query(readFileSync(OFFER_COMPENSATION_MIGRATION, 'utf8'));
+      await db.query(readFileSync(OFFER_REVISION_MIGRATION, 'utf8'));
     }, 120_000);
 
     afterAll(async () => {
