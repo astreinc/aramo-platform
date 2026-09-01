@@ -115,7 +115,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     });
 
     it('P2 — create records revision #1; a NEGOTIATION comp revision appends #2 (monotonic; prior preserved)', async () => {
-      await store.publish({ tenant_id: TENANT, definition: permissivePackage(), published_by: SYSTEM });
+      // offer-lifecycle@1.0.0 is already published (immutable) by the legal-edges
+      // test above and persists in the shared DB — reuse it for the transitions.
       const o = await repo.create({
         tenant_id: TENANT, submittal_id: uuid(), requisition_id: uuid(), talent_record_id: uuid(),
         compensation_type: 'CONTRACT', compensation_amount: '85', compensation_currency: 'USD', compensation_period: 'HOURLY',
@@ -146,7 +147,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     });
 
     it('P2 — OfferRevision is append-only (UPDATE/DELETE rejected at the DB)', async () => {
-      await store.publish({ tenant_id: TENANT, definition: permissivePackage(), published_by: SYSTEM });
+      // create() needs no published policy (only transitions do); no publish here.
       const o = await repo.create({
         tenant_id: TENANT, submittal_id: uuid(), requisition_id: uuid(), talent_record_id: uuid(),
         compensation_type: 'PERMANENT', compensation_amount: '145000', compensation_currency: 'USD', compensation_period: 'ANNUAL',
