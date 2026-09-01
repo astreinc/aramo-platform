@@ -18,7 +18,21 @@ import {
   PLACEMENT_STATES,
 } from '../lifecycle/placement-lifecycle.js';
 
-import { emitMigration } from './sql-ast.js';
+// L4-0: the init migration is FROZEN — its enum/edges/guard regenerate from the historical
+// snapshot, never from the (now-collapsed) live source. The live source drives only the
+// forward collapse migration below.
+import {
+  DUPLICATE_GUARD_INACTIVE_INIT,
+  LEGAL_TRANSITIONS_INIT,
+  PLACEMENT_STATES_INIT,
+} from './placement-lifecycle-init-frozen.js';
+import {
+  assertCommentSafe,
+  emitDropLifecycleTrigger,
+  emitEnumTypeSwap,
+  emitLifecycleTrigger,
+  emitMigration,
+} from './sql-ast.js';
 import type {
   LifecycleTrigger,
   RejectTrigger,
@@ -111,10 +125,12 @@ const EVENT_TABLE_MODEL: SqlTable = {
 
 // PlacementState enum values are the registry's state order (§5c — generated,
 // never hand-listed).
+// FROZEN init enum values (historical 10-value snapshot) — the init migration must
+// regenerate byte-identical; the collapse to the live 6 states is the forward migration.
 const STATE_ENUM_MODEL: SqlEnum = {
   schema: SCHEMA,
   name: STATE_ENUM,
-  values: PLACEMENT_STATES,
+  values: PLACEMENT_STATES_INIT,
 };
 
 const EVENT_TYPE_ENUM_MODEL: SqlEnum = {
@@ -178,11 +194,8 @@ const FOREIGN_KEYS: readonly SqlForeignKey[] = [
 // Triggers.
 // ---------------------------------------------------------------------------
 
-// The 14 UPDATE branches, read from the registry's ordered edge list (§5c).
-const TRANSITION_BRANCHES: readonly TransitionBranch[] = LEGAL_TRANSITIONS.map((t) => ({
-  from: t.from,
-  to: t.to,
-}));
+// FROZEN init edges (14), from the historical snapshot — pins the init trigger.
+const TRANSITION_BRANCHES: readonly TransitionBranch[] = LEGAL_TRANSITIONS_INIT;
 
 const LIFECYCLE_TRIGGER: LifecycleTrigger = {
   schema: SCHEMA,
@@ -193,14 +206,26 @@ const LIFECYCLE_TRIGGER: LifecycleTrigger = {
   keyColumns: KEY_COLUMNS,
   immutableColumns: IMMUTABLE_COLUMNS,
   transitions: TRANSITION_BRANCHES,
-  // DERIVED from lifecycle position (§4c) -- the TERMINAL states. STARTED is
-  // ENGAGED, deliberately absent, so a started placement still blocks a
-  // second attempt (§5).
-  duplicateGuardInactive: DUPLICATE_GUARD_INACTIVE,
+  duplicateGuardInactive: DUPLICATE_GUARD_INACTIVE_INIT,
   transitionViolationMessage:
     'PlacementProcess permits only the 14 legal state transitions (§4) and only the state column may change -- every other column is pinned byte-identical -- this update is neither a legal transition nor a column-identical move',
   duplicateViolationMessage:
     'PlacementProcess permits at most one live attempt per (tenant_id, submittal_id) -- a placement in a non-terminal state (lifecycle position not TERMINAL, STARTED included as ENGAGED) already exists for this pair',
+};
+
+// L4-0 — the LIVE (post-collapse, canonical) lifecycle trigger, driven by the current
+// 6-state source. Used ONLY by the forward collapse migration to recreate the trigger
+// after the enum narrows. The transition count in the message is derived, not hardcoded.
+const LIVE_TRANSITION_BRANCHES: readonly TransitionBranch[] = LEGAL_TRANSITIONS.map((t) => ({
+  from: t.from,
+  to: t.to,
+}));
+
+const LIVE_LIFECYCLE_TRIGGER: LifecycleTrigger = {
+  ...LIFECYCLE_TRIGGER,
+  transitions: LIVE_TRANSITION_BRANCHES,
+  duplicateGuardInactive: DUPLICATE_GUARD_INACTIVE,
+  transitionViolationMessage: `PlacementProcess permits only the ${LIVE_TRANSITION_BRANCHES.length} legal state transitions (§4) and only the state column may change -- every other column is pinned byte-identical -- this update is neither a legal transition nor a column-identical move`,
 };
 
 const REJECT_TRIGGERS: readonly RejectTrigger[] = [
@@ -248,4 +273,40 @@ export function buildPlacementMigrationModel(): SqlMigration {
 
 export function generatePlacementMigrationSql(): string {
   return emitMigration(buildPlacementMigrationModel());
+}
+
+// L4-0 — the generator-owned FORWARD migration collapsing PlacementState to the canonical
+// live states. The init above stays frozen; this is the evolution. Fail-loud: the enum
+// type-swap's ::text:: cast RAISES on any surviving legacy OFFER_* row before destructive
+// conversion (no silent map). The lifecycle trigger is dropped and recreated through the
+// SAME emitters — never hand-authored. Deterministic; verify-placement-sql byte-checks it.
+export function generatePlacementOfferStateCollapseSql(): string {
+  const headerLines = [
+    'L4-0 (Hiring Commitment) — collapse PlacementState to the canonical live states.',
+    '',
+    'GENERATED ARTIFACT -- do NOT edit by hand. Produced by libs/placement/src/lib/generator',
+    'from the typed lifecycle registry (src/lib/lifecycle). Regenerate with',
+    '`npm run placement:sql:generate` -- CI asserts byte-equality via `placement:sql:check`.',
+    '',
+    'The four legacy OFFER_* Placement states are removed. Offer lifecycle is owned solely by',
+    'the Offer aggregate (offer.Offer, Lane 4). FAIL-LOUD: the ::text:: enum cast RAISES',
+    'invalid_text_representation on any surviving OFFER_EXTENDED/OFFER_ACCEPTED/OFFER_DECLINED/',
+    'OFFER_RESCINDED row -- the migration stops before destructive conversion, never silently',
+    'maps. Zero surviving rows (census / no-prod-data premise) then it succeeds.',
+    'NOTE keep this block free of the statement terminator and the dollar-quote delimiter --',
+    'the integration migration splitter is dollar-quote aware but does not strip line comments.',
+  ];
+  const header = headerLines
+    .map((l) => (l === '' ? '--' : assertCommentSafe(`-- ${l}`)))
+    .join('\n');
+
+  return (
+    `${header}\n\n` +
+    `-- DropLifecycleTrigger (recreated below from the collapsed 6-state source)\n` +
+    `${emitDropLifecycleTrigger(LIVE_LIFECYCLE_TRIGGER)}\n\n` +
+    `-- CollapseEnum (fail-loud ::text:: type-swap)\n` +
+    `${emitEnumTypeSwap({ schema: SCHEMA, table: PROCESS_TABLE, column: STATE_COLUMN, enumName: STATE_ENUM, newValues: PLACEMENT_STATES })}\n\n` +
+    `-- RecreateLifecycleTrigger\n` +
+    `${emitLifecycleTrigger(LIVE_LIFECYCLE_TRIGGER)}\n`
+  );
 }

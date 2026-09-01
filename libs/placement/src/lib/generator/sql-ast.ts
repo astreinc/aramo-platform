@@ -192,7 +192,7 @@ function emitTransitionBranch(b: TransitionBranch, t: LifecycleTrigger): string 
   );
 }
 
-function emitLifecycleTrigger(t: LifecycleTrigger): string {
+export function emitLifecycleTrigger(t: LifecycleTrigger): string {
   const notInList = t.duplicateGuardInactive.map((s) => `'${s}'`).join(', ');
   const keyPredicate = t.keyColumns
     .map((c) => `        AND existing.${c} = NEW.${c}`)
@@ -263,6 +263,46 @@ function emitRejectTrigger(r: RejectTrigger): string {
     `CREATE TRIGGER ${r.triggerName}\n` +
     `  BEFORE ${r.op} ON ${q(r.schema, r.table)}\n` +
     `  FOR EACH ROW EXECUTE FUNCTION ${r.schema}.${r.functionName}();`
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Forward-evolution emitters (L4-0). The lifecycle trigger/function is
+// generator-owned; a forward migration that narrows the state enum must drop
+// and recreate it through the SAME emitters, never hand-author the SQL.
+// ---------------------------------------------------------------------------
+
+export function emitDropLifecycleTrigger(t: LifecycleTrigger): string {
+  return (
+    `DROP TRIGGER IF EXISTS ${t.triggerName} ON ${q(t.schema, t.table)};\n` +
+    `DROP FUNCTION IF EXISTS ${t.schema}.${t.functionName}();`
+  );
+}
+
+export type EnumTypeSwap = {
+  readonly schema: string;
+  readonly table: string;
+  readonly column: string;
+  readonly enumName: string; // e.g. PlacementState
+  readonly newValues: readonly string[]; // the narrowed value set
+};
+
+// Fail-loud enum narrowing via a new-type swap. The `col::text::<new>` cast RAISES
+// (invalid_text_representation) on any surviving row whose value is not in newValues —
+// stopping the migration BEFORE destructive conversion, never silently mapping or
+// coercing. The state column carries no DB default (app-side UUID/state), so no default
+// drop/restore is needed. Caller drops the lifecycle trigger/function first (it references
+// the enum) and recreates it after via emitLifecycleTrigger.
+export function emitEnumTypeSwap(s: EnumTypeSwap): string {
+  const newType = `${s.enumName}_new`;
+  const values = s.newValues.map((v) => `'${v}'`).join(', ');
+  return (
+    `CREATE TYPE ${q(s.schema, newType)} AS ENUM (${values});\n` +
+    `ALTER TABLE ${q(s.schema, s.table)}\n` +
+    `  ALTER COLUMN "${s.column}" TYPE ${q(s.schema, newType)}\n` +
+    `  USING ("${s.column}"::text::${q(s.schema, newType)});\n` +
+    `DROP TYPE ${q(s.schema, s.enumName)};\n` +
+    `ALTER TYPE ${q(s.schema, newType)} RENAME TO "${s.enumName}";`
   );
 }
 
