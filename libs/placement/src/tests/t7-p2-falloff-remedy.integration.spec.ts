@@ -148,6 +148,29 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(v.remedy?.remedy_type).toBe('REFUND');
     });
 
+    it('L6-F DB parity: illegal falloff-region transitions are rejected at the DB (skip FELL_OFF; reopen a *_DUE state)', async () => {
+      const input = baseInput({ placement_kind: 'PERMANENT' });
+      const id = await startPermanent(input, guaranteeTerms('REFUND'));
+
+      // GUARANTEE_ACTIVE -> REFUND_DUE directly (skipping FELL_OFF) is NOT a legal edge:
+      // the L6-C generated lifecycle trigger rejects it at the DB.
+      await expect(
+        prisma.permanentPlacement.updateMany({ where: { tenant_id: input.tenant_id, placement_process_id: id }, data: { lifecycle_state: 'REFUND_DUE' } }),
+      ).rejects.toThrow();
+
+      // The governed falloff path lands legally in REFUND_DUE (GA->FELL_OFF->REFUND_DUE).
+      await permanent.recordFalloff({ tenant_id: input.tenant_id, placement_process_id: id, effective_date: '2026-06-01', reason: 'TALENT_RESIGNED', recorded_by: randomUUID() }, 'f');
+      expect((await permanent.findByPlacement(input.tenant_id, id))?.lifecycle_state).toBe('REFUND_DUE');
+
+      // Reopening a remedy-due state backward to GUARANTEE_ACTIVE is NOT legal -> DB rejects.
+      await expect(
+        prisma.permanentPlacement.updateMany({ where: { tenant_id: input.tenant_id, placement_process_id: id }, data: { lifecycle_state: 'GUARANTEE_ACTIVE' } }),
+      ).rejects.toThrow();
+
+      // Unchanged: still REFUND_DUE (both raw writes rejected).
+      expect((await permanent.findByPlacement(input.tenant_id, id))?.lifecycle_state).toBe('REFUND_DUE');
+    });
+
     it('falloff on/after the guarantee end date, or before start, is FALLOFF_WINDOW_INVALID (422)', async () => {
       for (const bad of ['2027-01-01' /* == end (start+365) */, '2027-02-01' /* after */, '2025-12-31' /* before start */]) {
         const input = baseInput({ placement_kind: 'PERMANENT' });
