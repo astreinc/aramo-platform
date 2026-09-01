@@ -3,7 +3,7 @@ import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
 import { AramoError, RequestId } from '@aramo/common';
 import { RequireScopes, RolesGuard } from '@aramo/authorization';
 import { EntitlementGuard, RequireCapability } from '@aramo/entitlement';
-import { OfferRepository, type OfferView } from '@aramo/placement';
+import { OfferRepository, maskOfferCompensation, OFFER_READ_FINANCIAL_SCOPE, type OfferView } from '@aramo/placement';
 import type { Request } from 'express';
 
 import { CreateOfferDto, TransitionOfferDto } from './dto/offer.dto.js';
@@ -63,13 +63,14 @@ export class OfferController {
 
   // D7 (LOCKED Aramo-Offer-D7-OfferPanel-Wiring v1.0, R-DISCOVERY) — the offer
   // LIST/filter surface the recruiter UI uses to discover an offer from a
-  // pipeline row's (requisition_id, talent_record_id) [or submittal_id]. Read
-  // rides `offer:create` (no separate offer:read scope this slice — matches the
-  // :id read). Visibility-scoped via resolveVisibleRequisitionIds (no offer
-  // leaks outside the actor's visible requisitions).
+  // pipeline row's (requisition_id, talent_record_id) [or submittal_id].
+  // L4/P5 — gated on offer:read; the Talent-facing compensation snapshot is MASKED
+  // unless the caller also holds offer:read:financial (fail-closed). Visibility-
+  // scoped via resolveVisibleRequisitionIds (no offer leaks outside the actor's
+  // visible requisitions).
   @Get()
   @HttpCode(HttpStatus.OK)
-  @RequireScopes('offer:create')
+  @RequireScopes('offer:read')
   async list(
     @Query('submittal_id') submittalId: string | undefined,
     @Query('requisition_id') requisitionId: string | undefined,
@@ -87,11 +88,12 @@ export class OfferController {
         : { talent_record_id: talentRecordId }),
       visible_requisition_ids: visibleReqIds,
     });
-    return { items };
+    const canSeeFinancial = auth.scopes.includes(OFFER_READ_FINANCIAL_SCOPE);
+    return { items: items.map((o) => maskOfferCompensation(o, canSeeFinancial)) };
   }
 
   @Get(':id')
-  @RequireScopes('offer:create')
+  @RequireScopes('offer:read')
   async read(
     @Param('id', ParseUUIDPipe) id: string,
     @AuthContext() auth: AuthContextType,
@@ -101,7 +103,8 @@ export class OfferController {
     if (view === null) {
       throw new AramoError('NOT_FOUND', 'Offer not found in tenant', 404, { requestId, details: { id } });
     }
-    return view;
+    // L4/P5 — fail-closed field-level financial masking.
+    return maskOfferCompensation(view, auth.scopes.includes(OFFER_READ_FINANCIAL_SCOPE));
   }
 
   @Patch(':id')

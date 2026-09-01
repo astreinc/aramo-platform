@@ -361,6 +361,9 @@ export const SEED_SCOPE_KEYS = [
   // DRAFT offer, and drive its governed transitions (send/negotiate/accept/…).
   'offer:create',
   'offer:transition',
+  // L4 / P5 — read the Offer resource; read its Talent-facing compensation snapshot.
+  'offer:read',
+  'offer:read:financial',
   // Requisition Lane 1-A (Create-Governance) — the functional create qualifier
   // that unlocks the governed establishment mode (MANUAL-ESTABLISH + SYSTEM).
   // CATALOG-ONLY in v1: granted to NO human tenant role (recruiter/RM/DM/AM

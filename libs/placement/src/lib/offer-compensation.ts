@@ -92,3 +92,35 @@ export function classifyOfferCompensation(
     },
   };
 }
+
+// L4 / P5 — the capability that unmasks the Talent-facing compensation snapshot on
+// the Offer read surface. Distinct from offer:read (which grants the Offer resource
+// itself): its ABSENCE keeps the comp snapshot masked (fail-closed). Covers
+// Talent-facing compensation ONLY — never bill rate / margin / markup / internal
+// commercial planning (which never live on the Offer).
+export const OFFER_READ_FINANCIAL_SCOPE = 'offer:read:financial';
+
+// The comp fields subject to field-level masking.
+export interface OfferCompensationFields {
+  compensation_type: string | null;
+  compensation_amount: string | null;
+  compensation_currency: string | null;
+  compensation_period: string | null;
+}
+
+// Fail-closed field-level masking: when the reader lacks offer:read:financial, the
+// four comp fields are nulled; every other field is untouched. Pure — applied at
+// the read boundary where the caller's scopes are known.
+export function maskOfferCompensation<T extends OfferCompensationFields>(
+  view: T,
+  canSeeFinancial: boolean,
+): T {
+  if (canSeeFinancial) return view;
+  return {
+    ...view,
+    compensation_type: null,
+    compensation_amount: null,
+    compensation_currency: null,
+    compensation_period: null,
+  };
+}

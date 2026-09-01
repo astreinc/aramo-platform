@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 
 import {
   classifyOfferCompensation,
+  maskOfferCompensation,
   OFFER_COMPENSATION_TYPES,
+  OFFER_READ_FINANCIAL_SCOPE,
 } from '../lib/offer-compensation.js';
 
 // L4-A / P1 — the structured Talent-facing Offer compensation snapshot validator.
@@ -118,5 +120,36 @@ describe('classifyOfferCompensation (L4-A / P1)', () => {
 
   it('carries no bill/margin surface — the type set is exactly CONTRACT/PERMANENT', () => {
     expect([...OFFER_COMPENSATION_TYPES]).toEqual(['CONTRACT', 'PERMANENT']);
+  });
+});
+
+// L4 / P5 — field-level financial masking (fail-closed on offer:read:financial).
+describe('maskOfferCompensation (L4 / P5)', () => {
+  const full = {
+    id: 'o1',
+    state: 'SENT',
+    compensation_type: 'CONTRACT',
+    compensation_amount: '85',
+    compensation_currency: 'USD',
+    compensation_period: 'HOURLY',
+  };
+
+  it('WITH financial visibility → comp fields untouched', () => {
+    expect(maskOfferCompensation(full, true)).toEqual(full);
+  });
+
+  it('WITHOUT financial visibility → the four comp fields are nulled, everything else intact', () => {
+    expect(maskOfferCompensation(full, false)).toEqual({
+      id: 'o1',
+      state: 'SENT',
+      compensation_type: null,
+      compensation_amount: null,
+      compensation_currency: null,
+      compensation_period: null,
+    });
+  });
+
+  it('the unmask capability is the dedicated offer:read:financial scope', () => {
+    expect(OFFER_READ_FINANCIAL_SCOPE).toBe('offer:read:financial');
   });
 });

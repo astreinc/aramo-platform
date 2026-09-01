@@ -3440,10 +3440,14 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           'talent:read',
           'talent:create',
           'talent:edit',
-          // D7 — Offer Lifecycle. offer:create gates create + read (list/get);
-          // offer:transition gates PATCH. Additive; inert for prior interactions.
+          // D7 — Offer Lifecycle. offer:create gates create; offer:transition gates
+          // PATCH; L4/P5 offer:read gates read (list/get) and offer:read:financial
+          // unmasks the Talent-facing compensation snapshot. Additive; inert for
+          // prior interactions.
           'offer:create',
           'offer:transition',
+          'offer:read',
+          'offer:read:financial',
           // PC-5a — Gate-2a desk (company + contact + D4a) RolesGuard
           // @RequireScopes. company:read:all additionally short-circuits the
           // VisibilityInterceptor resolver to zero reads on the company/
