@@ -1703,6 +1703,11 @@
     ],
     "@aramo/client-selection": [
       {
+        "from": "ci/scripts/verify-pipeline-write-authority.ts",
+        "project": "(unscoped)",
+        "status": "unscoped"
+      },
+      {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/client-selection-create-from-submittal.integration.spec.ts",
         "project": "api",

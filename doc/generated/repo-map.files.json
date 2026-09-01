@@ -858,6 +858,7 @@
     "apps/ats-web/src/ui/band-map.ts",
     "apps/ats-web/src/ui/errors.spec.ts",
     "apps/ats-web/src/ui/errors.ts",
+    "apps/ats-web/src/ui/funnel-css-drift.spec.ts",
     "apps/ats-web/src/ui/index.ts",
     "apps/ats-web/src/ui/pills.spec.tsx",
     "apps/ats-web/src/ui/pills.tsx",

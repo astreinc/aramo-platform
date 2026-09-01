@@ -55,6 +55,17 @@ export function findPipelineImports(text: string): number[] {
     .filter((n) => n > 0);
 }
 
+const CLIENT_SELECTION_IMPORT =
+  /(from\s+['"]@aramo\/client-selection['"]|require\(\s*['"]@aramo\/client-selection['"])/;
+
+/** Lines in `text` that couple to @aramo/client-selection (import lines only). */
+export function findClientSelectionImports(text: string): number[] {
+  return text
+    .split('\n')
+    .map((line, i) => (CLIENT_SELECTION_IMPORT.test(line) ? i + 1 : 0))
+    .filter((n) => n > 0);
+}
+
 // ── file enumeration ───────────────────────────────────────────────────────
 
 function gitFiles(pathspecs: string[]): string[] {
@@ -76,12 +87,16 @@ function selfTest(): void {
   const badImport = `import { PipelineRepository } from '@aramo/pipeline';`;
   const goodImport = `import { SubmittalRepository } from '@aramo/submittal';`;
 
+  const badCsImport = `import { ClientSelectionProcessRepository } from '@aramo/client-selection';`;
+
   const checks: Array<[string, boolean]> = [
     ['raw UPDATE detected', findRawPipelineWrites(badSql).length === 1],
     ['raw INSERT detected', findRawPipelineWrites(badInsert).length === 1],
     ['raw SELECT/read NOT flagged', findRawPipelineWrites(goodSqlRead).length === 0],
     ['@aramo/pipeline import detected', findPipelineImports(badImport).length === 1],
     ['unrelated import NOT flagged', findPipelineImports(goodImport).length === 0],
+    ['@aramo/client-selection import detected', findClientSelectionImports(badCsImport).length === 1],
+    ['unrelated import NOT flagged (cs)', findClientSelectionImports(goodImport).length === 0],
   ];
   const failed = checks.filter(([, ok]) => !ok).map(([name]) => name);
   if (failed.length > 0) {
@@ -89,7 +104,7 @@ function selfTest(): void {
     failed.forEach((f) => console.error(`  ✗ ${f}`));
     process.exit(1);
   }
-  console.log('SELF_TEST ok — both detectors fire on a planted violation and pass clean input.');
+  console.log('SELF_TEST ok — all detectors fire on a planted violation and pass clean input.');
   process.exit(0);
 }
 
@@ -101,6 +116,14 @@ const CONSIDERATION_DIRS = [
   'apps/api/src/submit-talent',
   'apps/api/src/client-selection',
 ];
+
+// L3-I — external/VMS/provider surfaces. Provider observations normalize into the owning
+// aggregate through GOVERNED orchestration (the pipeline-integration seam maps them to
+// canonical Pipeline actions); a provider must never directly assert internal
+// client-consideration state, so these surfaces must not import @aramo/client-selection.
+// (Obsolete Pipeline pseudo-states are separately impossible: the enum is the canonical 7,
+// and W1 forbids raw Pipeline writes here.)
+const PROVIDER_EXTERNAL_DIRS = ['apps/api/src/pipeline-integration'];
 
 function main(): void {
   const violations: string[] = [];
@@ -135,6 +158,22 @@ function main(): void {
     }
   }
 
+  // W3 — external/VMS/provider surfaces must not import @aramo/client-selection
+  // (a provider cannot directly assert internal client-consideration state).
+  const w3Files = gitFiles(
+    PROVIDER_EXTERNAL_DIRS.map((d) => `${d}/**/*.ts`),
+  ).filter((f) => !NON_PRODUCT.test(f));
+  for (const f of w3Files) {
+    const lines = findClientSelectionImports(readFileSync(resolve(REPO_ROOT, f), 'utf8'));
+    for (const ln of lines) {
+      violations.push(
+        `W3 external/provider surface couples to @aramo/client-selection: ${f}:${ln} — ` +
+          `provider observations must normalize into the owning aggregate via governed ` +
+          `orchestration, never assert client-consideration state directly.`,
+      );
+    }
+  }
+
   if (violations.length > 0) {
     console.error(
       `pipeline:write-authority FAILED — ${violations.length} violation(s):`,
@@ -143,8 +182,9 @@ function main(): void {
     process.exit(1);
   }
   console.log(
-    'pipeline:write-authority ok — Pipeline is written only by its owner; ' +
-      'no client-consideration mirror. (W1 raw-SQL sole-ownership, W2 no coupling.)',
+    'pipeline:write-authority ok — Pipeline is written only by its owner; no ' +
+      'client-consideration mirror; no provider asserts client-consideration state. ' +
+      '(W1 raw-SQL sole-ownership, W2 no coupling, W3 no provider→client-selection.)',
   );
 }
 

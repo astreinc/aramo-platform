@@ -9764,6 +9764,12 @@
       "to": "libs/talent-trust/src/lib/vocab.ts"
     },
     {
+      "excludedBy": "src/**/*.spec.ts",
+      "from": "apps/ats-web/src/ui/funnel-css-drift.spec.ts",
+      "status": "excluded",
+      "to": "apps/ats-web/src/ui/ui.css"
+    },
+    {
       "from": "apps/ats-web/src/ui/ui.css",
       "status": "unscoped",
       "to": "libs/fe-foundation/src/ui/ui.css"
