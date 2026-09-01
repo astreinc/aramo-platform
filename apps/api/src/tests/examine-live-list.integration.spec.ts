@@ -18,11 +18,16 @@ import {
   type CryptoKey,
   type KeyObject,
 } from 'jose';
+import { EFFECTIVE_AUTHORIZATION_RESOLVER } from '@aramo/auth';
 
 import { AppModule } from '../app.module.js';
 
+import { ConfigurableTestResolver } from './support/test-auth-harness.js';
 import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
 import { placementCapacityMigrations } from './support/placement-capacity-migrations.js';
+
+// HF-AUTH-1 — compact tokens carry no scopes; guard resolves via this resolver.
+const __authzTestResolver = new ConfigurableTestResolver();
 
 // Gate-1 G1-B keying correction — the FE-VISIBILITY end-to-end proof G1-B
 // deferred (shared-UUID alignment: Job.id = GoldenProfile.job_id =
@@ -239,7 +244,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         consumer_type: 'recruiter',
         actor_kind: 'user',
         tenant_id: TENANT_ID,
-        scopes: [],
+        authz_version: __authzTestResolver.grant(TENANT_ID, RECRUITER_ID, []),
       })
         .setProtectedHeader({ alg: ALG })
         .setIssuedAt()
@@ -250,7 +255,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       module = await Test.createTestingModule({
         imports: [AppModule],
-      }).compile();
+      })
+        .overrideProvider(EFFECTIVE_AUTHORIZATION_RESOLVER)
+        .useValue(__authzTestResolver).compile();
 
       app = module.createNestApplication();
       app.use(cookieParser());

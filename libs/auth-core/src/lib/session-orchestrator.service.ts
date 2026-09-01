@@ -204,7 +204,8 @@ export class SessionOrchestratorService {
     // site_id rides in claims when a site-scoped membership stamped one.
     const principalId = resolution.principal_id;
     const contextId = resolution.context_id;
-    const scopes = resolution.scopes;
+    // HF-AUTH-1 — the compact token carries the authorization revision, not scopes.
+    const authzVersion = resolution.authz_version;
     const siteId = resolution.claims?.['site_id'] ?? null;
 
     const refreshTokenPlaintext = randomBytes(REFRESH_TOKEN_BYTES).toString('base64url');
@@ -231,7 +232,7 @@ export class SessionOrchestratorService {
         sub: principalId,
         consumer_type: input.consumer,
         tenant_id: contextId,
-        scopes,
+        authz_version: authzVersion,
         ...(siteId !== null ? { site_id: siteId } : {}),
       });
     } catch (err) {
@@ -324,7 +325,10 @@ export class SessionOrchestratorService {
       sub: input.portal_user_id,
       consumer_type: 'portal',
       tenant_id: PLATFORM_TENANT_SENTINEL_ID,
-      scopes: PORTAL_SESSION_SCOPES,
+      // HF-AUTH-1 — portal authorization is FIXED (PORTAL_SESSION_SCOPES) and never
+      // grows with the RBAC catalog, so its authz revision is pinned to 1. The
+      // guard's resolver returns the fixed portal set for a version-1 portal token.
+      authz_version: 1,
     });
     const refreshTokenPlaintext = randomBytes(REFRESH_TOKEN_BYTES).toString('base64url');
     const refreshTokenHash = sha256Base64Url(refreshTokenPlaintext);

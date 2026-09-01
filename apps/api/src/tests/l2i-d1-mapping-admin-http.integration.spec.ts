@@ -9,10 +9,15 @@ import cookieParser from 'cookie-parser';
 import { Client } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { exportSPKI, generateKeyPair, SignJWT } from 'jose';
+import { EFFECTIVE_AUTHORIZATION_RESOLVER } from '@aramo/auth';
 
 import { AppModule } from '../app.module.js';
 
+import { ConfigurableTestResolver } from './support/test-auth-harness.js';
 import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
+
+// HF-AUTH-1 — compact tokens carry no scopes; guard resolves via this resolver.
+const __authzTestResolver = new ConfigurableTestResolver();
 
 // L2-I (D1) — the mapping-admin HTTP surface authz + validation, end-to-end through a booted
 // AppModule. The controller is THIN: the guard chain enforces the NARROW
@@ -46,7 +51,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     let readOnlyJwt = '';
 
     async function signJwt(key: unknown, scopes: string[], tenant = TENANT_A): Promise<string> {
-      return new SignJWT({ sub: ADMIN, consumer_type: 'recruiter', actor_kind: 'user', tenant_id: tenant, scopes })
+      return new SignJWT({ sub: ADMIN, consumer_type: 'recruiter', actor_kind: 'user', tenant_id: tenant, authz_version: __authzTestResolver.grant(tenant, ADMIN, scopes)})
         .setProtectedHeader({ alg: ALG }).setIssuedAt().setIssuer('Aramo Core Auth').setAudience(AUDIENCE).setExpirationTime('1h')
         .sign(key as never);
     }
@@ -74,7 +79,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       writeJwt = await signJwt(kp.privateKey, MAPPING_WRITE);
       readOnlyJwt = await signJwt(kp.privateKey, READ_ONLY);
 
-      module = await Test.createTestingModule({ imports: [AppModule] }).compile();
+      module = await Test.createTestingModule({ imports: [AppModule] })
+        .overrideProvider(EFFECTIVE_AUTHORIZATION_RESOLVER)
+        .useValue(__authzTestResolver).compile();
       app = module.createNestApplication();
       app.use(cookieParser());
       app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: false, transform: true }));

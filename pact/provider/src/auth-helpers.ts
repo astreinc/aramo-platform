@@ -1,6 +1,11 @@
 import { generateKeyPairSync } from 'node:crypto';
 
 import { SignJWT, importPKCS8 } from 'jose';
+import type {
+  EffectiveAuthorizationInput,
+  EffectiveAuthorizationResolution,
+  EffectiveAuthorizationResolver,
+} from '@aramo/auth';
 
 // PR-M0R-1 Pact provider auth helpers.
 //
@@ -34,15 +39,18 @@ export interface TestAccessTokenInput {
   sub: string;
   consumer_type: 'recruiter' | 'portal' | 'ingestion';
   tenant_id: string;
-  scopes: string[];
+  // HF-AUTH-1 — the compact token carries an authorization REVISION, not a scope
+  // list. Effective scopes are resolved server-side; a caller declares the
+  // principal's scopes to the resolver (PactConfigurableResolver.grant) and passes
+  // the returned version here.
+  authz_version: number;
   privatePem: string;
 }
 
-// Issues a short-lived test access JWT signed with the supplied test key.
-// The token's `iss` and `aud` claims use the TEST_* constants above, NOT
-// the production constants. Reserved for state-handler use (e.g. seeding
-// an access cookie for /session interactions in follow-on PRs); not used
-// by PR-M0R-1's minimum-viable interaction set.
+// Issues a short-lived COMPACT test access JWT signed with the supplied test key.
+// The token's `iss` and `aud` claims use the TEST_* constants above, NOT the
+// production constants. Carries authz_version, never a scopes claim. Reserved for
+// state-handler use; not used by PR-M0R-1's minimum-viable interaction set.
 export async function issueTestAccessToken(input: TestAccessTokenInput): Promise<string> {
   const signingKey = await importPKCS8(input.privatePem, 'RS256');
   const now = Math.floor(Date.now() / 1000);
@@ -51,7 +59,7 @@ export async function issueTestAccessToken(input: TestAccessTokenInput): Promise
     actor_kind: 'user',
     consumer_type: input.consumer_type,
     tenant_id: input.tenant_id,
-    scopes: input.scopes,
+    authz_version: input.authz_version,
   })
     .setProtectedHeader({ alg: 'RS256', typ: 'JWT' })
     .setIssuer(TEST_ISSUER)
@@ -60,4 +68,35 @@ export async function issueTestAccessToken(input: TestAccessTokenInput): Promise
     .setIssuedAt(now)
     .setExpirationTime(now + TEST_ACCESS_TTL_SECONDS)
     .sign(signingKey);
+}
+
+// HF-AUTH-1 — the Pact provider's app-layer resolver. The provider verifies the
+// API CONTRACT (response shapes / status codes), not RBAC derivation, so it binds
+// this version-keyed configurable resolver (MODE A) over the booted AppModule
+// instead of seeding full RBAC for every synthetic principal: a state/fixture
+// declares "principal P in tenant T holds scopes [...]" via grant(), and the guard
+// hydrates AuthContext.scopes from it. grant() allocates a FRESH authz_version per
+// token and keys the scopes by (tenant, principal, version), so the SAME principal
+// minted with DIFFERENT scope sets (e.g. the full recruiter token vs the
+// deliberately-insufficient one) each resolves to exactly its own set.
+export class PactConfigurableResolver implements EffectiveAuthorizationResolver {
+  private counter = 0;
+  private readonly byVersion = new Map<string, string[]>();
+
+  grant(tenant_id: string, principal_id: string, scopes: string[]): number {
+    const version = ++this.counter;
+    this.byVersion.set(this.vkey(tenant_id, principal_id, version), [...scopes]);
+    return version;
+  }
+
+  async resolve(input: EffectiveAuthorizationInput): Promise<EffectiveAuthorizationResolution> {
+    const scopes = this.byVersion.get(
+      this.vkey(input.tenant_id, input.principal_id, input.token_authz_version),
+    );
+    return { status: 'ok', scopes: scopes ?? [] };
+  }
+
+  private vkey(tenant_id: string, principal_id: string, version: number): string {
+    return `${tenant_id}:${principal_id}:${String(version)}`;
+  }
 }

@@ -10,10 +10,15 @@ import { Client } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { exportSPKI, generateKeyPair, SignJWT, type CryptoKey, type KeyObject } from 'jose';
 import { SECRETS_MANAGER_WRITER, type SecretsManagerWriterPort } from '@aramo/integration';
+import { EFFECTIVE_AUTHORIZATION_RESOLVER } from '@aramo/auth';
 
 import { AppModule } from '../app.module.js';
 
+import { ConfigurableTestResolver } from './support/test-auth-harness.js';
 import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
+
+// HF-AUTH-1 — compact tokens carry no scopes; guard resolves via this resolver.
+const __authzTestResolver = new ConfigurableTestResolver();
 
 // T8-CONNECTOR-A — HTTP-boundary authz + tenant-safe-404 integration proof
 // (directive §46, Architect FIX_NOW #2). Exercises the REAL guard chain
@@ -72,7 +77,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         consumer_type: 'recruiter',
         actor_kind: 'user',
         tenant_id: args.tenant_id,
-        scopes: args.scopes,
+        authz_version: __authzTestResolver.grant(args.tenant_id, ADMIN, args.scopes),
       })
         .setProtectedHeader({ alg: ALG })
         .setIssuedAt()
@@ -118,6 +123,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       tenantBWriteJwt = await signJwt(key, { tenant_id: TENANT_B, scopes: WRITE_SCOPES });
 
       module = await Test.createTestingModule({ imports: [AppModule] })
+        .overrideProvider(EFFECTIVE_AUTHORIZATION_RESOLVER)
+        .useValue(__authzTestResolver)
         .overrideProvider(SECRETS_MANAGER_WRITER)
         .useValue(fakeWriter)
         .compile();

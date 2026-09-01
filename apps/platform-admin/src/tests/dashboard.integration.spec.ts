@@ -19,7 +19,7 @@ import {
   RequestIdMiddleware,
   resolveIdentityMigrations,
 } from '@aramo/common';
-import { AuthModule, PLATFORM_TENANT_SENTINEL_ID } from '@aramo/auth';
+import { AuthModule, EFFECTIVE_AUTHORIZATION_RESOLVER, PLATFORM_TENANT_SENTINEL_ID } from '@aramo/auth';
 import { AuthorizationModule } from '@aramo/authorization';
 import { EntitlementModule } from '@aramo/entitlement';
 import {
@@ -32,6 +32,7 @@ import { PlatformController } from '../app/platform/platform.controller.js';
 import { PlatformInvitationService } from '../app/platform/platform-invitation.service.js';
 import { TenantPolicyProvisioningService } from '../app/platform/tenant-policy-provisioning.service.js';
 
+import { ConfigurableAuthzResolver } from './support/configurable-authz-resolver.js';
 import { generateTestKeyPair } from './test-keys.js';
 
 // Inc-3 PR-3.8 Workstream A — the operator dashboard endpoint HTTP integration
@@ -80,7 +81,7 @@ async function signJwt(args: {
     consumer_type: 'platform',
     actor_kind: 'user',
     tenant_id: PLATFORM_TENANT_SENTINEL_ID,
-    scopes: args.scopes,
+    authz_version: __authzResolver.grant(PLATFORM_TENANT_SENTINEL_ID, args.sub, args.scopes),
   })
     .setProtectedHeader({ alg: 'RS256' })
     .setIssuer('Aramo Core Auth')
@@ -90,6 +91,9 @@ async function signJwt(args: {
     .setExpirationTime(now + 900)
     .sign(key);
 }
+
+// HF-AUTH-1 — MODE A resolver: each token declares its scopes via grant().
+const __authzResolver = new ConfigurableAuthzResolver();
 
 describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
   'apps/platform-admin — operator dashboard HTTP surface (real Postgres)',
@@ -260,6 +264,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
             useValue: { publishDefaultLifecyclePackage: async () => undefined },
           },
           CognitoAdminService,
+          // HF-AUTH-1 — bind the MODE A resolver so the guard hydrates scopes.
+          { provide: EFFECTIVE_AUTHORIZATION_RESOLVER, useValue: __authzResolver },
           { provide: APP_FILTER, useClass: AramoExceptionFilter },
         ],
       })

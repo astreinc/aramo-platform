@@ -18,9 +18,11 @@ import {
   type CryptoKey,
   type KeyObject,
 } from 'jose';
+import { EFFECTIVE_AUTHORIZATION_RESOLVER } from '@aramo/auth';
 
 import { AppModule } from '../app.module.js';
 
+import { ConfigurableTestResolver } from './support/test-auth-harness.js';
 import { applyTalentRecordMigrations } from './talent-record-fixtures.js';
 
 // Portal P1 PR-2a — Portal OPEN-4 chain + R10 negative-shape integration test
@@ -220,6 +222,8 @@ function assertNoR10OrMatchClass(value: unknown, contextPath: string): void {
     assertNoR10OrMatchClass(obj[key], `${contextPath}.${key}`);
   }
 }
+
+const __authzTestResolver = new ConfigurableTestResolver();
 
 describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
   'Portal records — OPEN-4 chain + R10 negative-shape verification (end-to-end)',
@@ -428,14 +432,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         consumer_type: 'portal',
         actor_kind: 'user',
         tenant_id: TENANT_ID,
-        scopes: [
+        authz_version: __authzTestResolver.grant(TENANT_ID, PORTAL_TALENT_ID, [
           'portal:profile:read',
           'portal:consent:read',
           // Portal P3a — verification view + dispute rights.
           'portal:verification:read',
           'portal:dispute:read',
           'portal:dispute:write',
-        ],
+        ]),
       })
         .setProtectedHeader({ alg: ALG })
         .setIssuedAt()
@@ -449,7 +453,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         consumer_type: 'recruiter',
         actor_kind: 'user',
         tenant_id: TENANT_ID,
-        scopes: [],
+        authz_version: __authzTestResolver.grant(TENANT_ID, RECRUITER_ID, []),
       })
         .setProtectedHeader({ alg: ALG })
         .setIssuedAt()
@@ -467,7 +471,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         consumer_type: 'portal',
         actor_kind: 'user',
         tenant_id: UNENTITLED_TENANT_ID,
-        scopes: ['portal:profile:read', 'portal:consent:read'],
+        authz_version: __authzTestResolver.grant(UNENTITLED_TENANT_ID, PORTAL_TALENT_ID, ['portal:profile:read', 'portal:consent:read']),
       })
         .setProtectedHeader({ alg: ALG })
         .setIssuedAt()
@@ -478,7 +482,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       module = await Test.createTestingModule({
         imports: [AppModule],
-      }).compile();
+      })
+        .overrideProvider(EFFECTIVE_AUTHORIZATION_RESOLVER)
+        .useValue(__authzTestResolver)
+        .compile();
 
       app = module.createNestApplication();
       app.use(cookieParser());

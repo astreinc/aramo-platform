@@ -13,6 +13,7 @@
       "@aramo/attachment": ["../../dist/libs/attachment/src/index.d.ts"],
       "@aramo/common": ["../../dist/libs/common/src/index.d.ts"],
       "@aramo/auth": ["../../dist/libs/auth/src/index.d.ts"],
+      "@aramo/auth-core": ["../../dist/libs/auth-core/src/index.d.ts"],
       "@aramo/authorization": ["../../dist/libs/authorization/src/index.d.ts"],
       "@aramo/calendar": ["../../dist/libs/calendar/src/index.d.ts"],
       "@aramo/canonicalization": ["../../dist/libs/canonicalization/src/index.d.ts"],

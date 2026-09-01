@@ -16,12 +16,14 @@ import { Verifier } from '@pact-foundation/pact';
 import { afterAll, beforeAll, describe, it } from 'vitest';
 import { RequestIdMiddleware } from '@aramo/common';
 import {
+  AuthorizationResolverModule,
   IdentityService,
   PrismaService as IdentityPrismaService,
   RoleService,
   TenantService,
 } from '@aramo/identity';
 import { AuthServiceModule } from '@aramo/auth-service';
+import { PORTAL_SESSION_SCOPES } from '@aramo/auth-core';
 
 import { generateTestKeyPair } from './auth-helpers.js';
 import { stateHandlers } from './state-handlers.js';
@@ -78,6 +80,13 @@ const IDENTITY_PROFILE_MIGRATION = resolve(
   ROOT,
   'libs/identity/prisma/migrations/20260619000000_add_tenant_profile/migration.sql',
 );
+// HF-AUTH-1 — the AuthorizationVersion table. resolveSession (issuance) reads the
+// baseline version and the /session resolver reads the current version, so this
+// table must exist or login + /session fail closed.
+const IDENTITY_AUTHZ_VERSION_MIGRATION = resolve(
+  ROOT,
+  'libs/identity/prisma/migrations/20260901000000_hf_auth_1_authorization_version/migration.sql',
+);
 const AUTH_STORAGE_MIGRATION = resolve(
   ROOT,
   'libs/auth-storage/prisma/migrations/20260512100000_init_auth_storage/migration.sql',
@@ -125,6 +134,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         ...splitDdl(readFileSync(IDENTITY_DOMAIN_VERIFICATION_MIGRATION, 'utf8')),
         ...splitDdl(readFileSync(IDENTITY_D4A_MIGRATION, 'utf8')),
         ...splitDdl(readFileSync(IDENTITY_PROFILE_MIGRATION, 'utf8')),
+        ...splitDdl(readFileSync(IDENTITY_AUTHZ_VERSION_MIGRATION, 'utf8')),
         ...splitDdl(readFileSync(AUTH_STORAGE_MIGRATION, 'utf8')),
         ...splitDdl(readFileSync(AUTH_STORAGE_HOST_PROFILE_MIGRATION, 'utf8')),
       ]) {
@@ -174,7 +184,18 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // use the locked Phase 5 envelope shape that the consumer pact
       // expects. Overrides isolate identity/tenant/role lookups.
       module = await Test.createTestingModule({
-        imports: [AuthServiceModule],
+        // HF-AUTH-1 — production bootstraps AuthServiceModule via AppModule, which
+        // @Global-binds the resolver; importing AuthServiceModule directly here
+        // must re-bind it so AuthController (/session) can resolve compact-token
+        // scopes server-side. RoleService is stubbed below, so the real resolver
+        // returns the stub's fixed scope set — same production wiring, no bypass.
+        imports: [
+          AuthServiceModule,
+          AuthorizationResolverModule.forRoot({
+            portalScopes: PORTAL_SESSION_SCOPES,
+            scopeCacheTtlSeconds: 300,
+          }),
+        ],
       })
         .overrideProvider(IdentityService)
         .useValue({
@@ -203,6 +224,9 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         .overrideProvider(RoleService)
         .useValue({
           getScopesByUserAndTenant: async () => ['auth:session:read'],
+          // HF-AUTH-1 — the server-side resolver resolves via the site-aware
+          // reader; return the same fixed session scope for the pact principal.
+          getScopesByUserTenantAndSite: async () => ['auth:session:read'],
         })
         .compile();
 

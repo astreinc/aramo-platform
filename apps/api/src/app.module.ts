@@ -21,7 +21,10 @@ import { ContactModule } from '@aramo/contact';
 import { SelectionModule } from '@aramo/selection';
 import { EntitlementModule } from '@aramo/entitlement';
 import { ExportModule } from '@aramo/export';
-import { IdentityModule, IdentityCoreModule } from '@aramo/identity';
+import { IdentityModule, IdentityCoreModule, AuthorizationResolverModule } from '@aramo/identity';
+// HF-AUTH-1 — the fixed portal session scope set, passed to the resolver so a
+// version-1 portal token resolves to it server-side (portal carries no scopes).
+import { PORTAL_SESSION_SCOPES } from '@aramo/auth-core';
 import { IdentityIndexModule } from '@aramo/identity-index';
 import { PortalIdentityModule } from '@aramo/portal-identity';
 import { AuthStorageModule } from '@aramo/auth-storage';
@@ -134,6 +137,14 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
   imports: [
     CommonModule,
     AuthModule,
+    // HF-AUTH-1 — @Global binding of the compact-token authorization resolver, so
+    // the JwtAuthGuard (used app-wide) can hydrate AuthContext.scopes server-side
+    // from canonical RBAC via the versioned cache. TTL 300s: entries are immutable
+    // per authz_version, so a bump simply uses a new key and stale entries expire.
+    AuthorizationResolverModule.forRoot({
+      portalScopes: PORTAL_SESSION_SCOPES,
+      scopeCacheTtlSeconds: 300,
+    }),
     // PR-A1a §3 — AuthorizationModule provides RolesGuard for the
     // @RequireScopes / @RequireSiteMatch decorators applied to
     // controllers. Leaf lib: depends only on @aramo/auth and

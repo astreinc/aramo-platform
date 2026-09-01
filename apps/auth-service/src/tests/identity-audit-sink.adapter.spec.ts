@@ -4,6 +4,7 @@ import type {
   IdentityService,
   RoleService,
   TenantService,
+  AuthorizationVersionService,
 } from '@aramo/identity';
 import type { RefreshTokenDto, RefreshTokenService } from '@aramo/auth-storage';
 import { AuthController } from '@aramo/auth-core';
@@ -102,7 +103,7 @@ function happyPrincipals(): IdentityPrincipalDirectoryAdapter {
     getScopesByUserAndTenant: vi.fn().mockResolvedValue(['auth:session:read']),
     getScopesByUserTenantAndSite: vi.fn(),
   } as unknown as RoleService;
-  return new IdentityPrincipalDirectoryAdapter(identity, tenant, role, throwingAudit());
+  return new IdentityPrincipalDirectoryAdapter(identity, tenant, role, throwingAudit(), { getCurrentVersion: async () => 1 } as unknown as AuthorizationVersionService);
 }
 
 it('§3.3 LOGIN succeeds despite a throwing audit', async () => {
@@ -131,7 +132,7 @@ it('§3.3 REFRESH succeeds despite a throwing audit', async () => {
     getScopesByUserAndTenant: vi.fn().mockResolvedValue(['auth:session:read']),
     getScopesByUserTenantAndSite: vi.fn(),
   } as unknown as RoleService;
-  const principals = new IdentityPrincipalDirectoryAdapter({} as IdentityService, {} as TenantService, role, throwingAudit());
+  const principals = new IdentityPrincipalDirectoryAdapter({} as IdentityService, {} as TenantService, role, throwingAudit(), { getCurrentVersion: async () => 1 } as unknown as AuthorizationVersionService);
   const svc = new RefreshOrchestratorService(
     {
       findByHash: vi.fn().mockResolvedValue(dto),

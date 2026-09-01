@@ -40,13 +40,14 @@ describe('CookieVerifierService.verify', () => {
       sub: SUB,
       consumer_type: 'recruiter',
       tenant_id: TENANT,
-      scopes: ['auth:session:read'],
+      authz_version: 1,
     });
     const payload = await verifier.verify(jwt);
     expect(payload.sub).toBe(SUB);
     expect(payload.consumer_type).toBe('recruiter');
     expect(payload.tenant_id).toBe(TENANT);
-    expect(payload.scopes).toEqual(['auth:session:read']);
+    // HF-AUTH-1 — the compact cookie carries the authz revision, not scopes.
+    expect(payload.authz_version).toBe(1);
   });
 
   // Test 25: rejects expired tokens.
@@ -57,7 +58,7 @@ describe('CookieVerifierService.verify', () => {
     const expired = await new SignJWT({
       consumer_type: 'recruiter',
       tenant_id: TENANT,
-      scopes: [],
+      authz_version: 1,
     })
       .setProtectedHeader({ alg: 'RS256' })
       .setIssuer('Aramo Core Auth')
@@ -77,7 +78,7 @@ describe('CookieVerifierService.verify', () => {
     const wrongIss = await new SignJWT({
       consumer_type: 'recruiter',
       tenant_id: TENANT,
-      scopes: [],
+      authz_version: 1,
     })
       .setProtectedHeader({ alg: 'RS256' })
       .setIssuer('Some Other Issuer')

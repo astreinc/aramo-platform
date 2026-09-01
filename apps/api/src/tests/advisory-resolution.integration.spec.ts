@@ -19,8 +19,14 @@ import {
   type KeyObject,
 } from 'jose';
 import { v7 as uuidv7 } from 'uuid';
+import { EFFECTIVE_AUTHORIZATION_RESOLVER } from '@aramo/auth';
 
 import { AppModule } from '../app.module.js';
+
+import { ConfigurableTestResolver } from './support/test-auth-harness.js';
+
+// HF-AUTH-1 — compact tokens carry no scopes; the guard resolves via this resolver.
+const __authzTestResolver = new ConfigurableTestResolver();
 
 // TR-2a-3 — the privileged advisory-resolution HTTP surface (real Postgres 17).
 // Boots the AppModule + applies the identity/entitlement/talent_trust schemas,
@@ -90,7 +96,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         consumer_type: 'recruiter',
         actor_kind: 'user',
         tenant_id: tenant,
-        scopes,
+        authz_version: __authzTestResolver.grant(tenant, ADMIN, scopes),
       })
         .setProtectedHeader({ alg: ALG })
         .setIssuedAt()
@@ -204,7 +210,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       process.env['AUTH_AUDIENCE'] = AUDIENCE;
       process.env['AUTH_PUBLIC_KEY'] = publicPem;
 
-      module = await Test.createTestingModule({ imports: [AppModule] }).compile();
+      module = await Test.createTestingModule({ imports: [AppModule] })
+        .overrideProvider(EFFECTIVE_AUTHORIZATION_RESOLVER)
+        .useValue(__authzTestResolver)
+        .compile();
       app = module.createNestApplication();
       app.use(cookieParser());
       app.useGlobalPipes(

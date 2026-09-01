@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type {
+  AuthorizationVersionService,
   IdentityAuditService,
   IdentityService,
   RoleService,
@@ -90,6 +91,7 @@ function makeSvc(mocks: Mocks): RefreshOrchestratorService {
     {} as TenantService,
     mocks.role,
     {} as IdentityAuditService,
+    { getCurrentVersion: async () => 1 } as unknown as AuthorizationVersionService,
   );
   const auditSink = new IdentityAuditSinkAdapter(mocks.audit);
   return new RefreshOrchestratorService(
@@ -255,7 +257,8 @@ describe('RefreshOrchestratorService.handleRefresh', () => {
         sub: USER_ID,
         tenant_id: TENANT_ID,
         site_id: SITE_ID,
-        scopes: ['submittal:create'],
+        // HF-AUTH-1 — the re-minted token carries the authorization revision, not scopes.
+        authz_version: 1,
       }),
     );
   });

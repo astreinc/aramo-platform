@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import {
+  AuthorizationVersionService,
   IdentityAuditService,
   IdentityService,
   RoleService,
@@ -45,6 +46,9 @@ export class IdentityPrincipalDirectoryAdapter implements PrincipalDirectory {
     private readonly tenant: TenantService,
     private readonly role: RoleService,
     private readonly audit: IdentityAuditService,
+    // HF-AUTH-1 — the current authorization revision to stamp into the compact
+    // token (login + refresh mint paths).
+    private readonly authzVersions: AuthorizationVersionService,
   ) {}
 
   async resolveSession(input: ResolveSessionInput): Promise<ResolveSessionResult> {
@@ -127,12 +131,18 @@ export class IdentityPrincipalDirectoryAdapter implements PrincipalDirectory {
       user_id: user.id,
       tenant_id: selectedTenant.id,
     });
+    // HF-AUTH-1 — the authorization revision to stamp into the compact token.
+    const authz_version = await this.authzVersions.getCurrentVersion({
+      tenant_id: selectedTenant.id,
+      principal_id: user.id,
+    });
 
     return {
       kind: 'resolved',
       principal_id: user.id,
       context_id: selectedTenant.id,
       scopes,
+      authz_version,
       ...(site_id !== null ? { claims: { site_id } } : {}),
     };
   }
@@ -142,7 +152,13 @@ export class IdentityPrincipalDirectoryAdapter implements PrincipalDirectory {
       user_id: input.principal_id,
       tenant_id: input.context_id,
     });
-    return { scopes, ...(site_id !== null ? { claims: { site_id } } : {}) };
+    // HF-AUTH-1 — re-resolve the current authorization revision for the compact
+    // re-mint (refresh path).
+    const authz_version = await this.authzVersions.getCurrentVersion({
+      tenant_id: input.context_id,
+      principal_id: input.principal_id,
+    });
+    return { scopes, authz_version, ...(site_id !== null ? { claims: { site_id } } : {}) };
   }
 
   // Invariant 6: site-stamp scope selection, shared by resolveSession and

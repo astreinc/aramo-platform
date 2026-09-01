@@ -19,9 +19,11 @@ import {
   type CryptoKey,
   type KeyObject,
 } from 'jose';
+import { EFFECTIVE_AUTHORIZATION_RESOLVER } from '@aramo/auth';
 
 import { AppModule } from '../app.module.js';
 
+import { ConfigurableTestResolver } from './support/test-auth-harness.js';
 import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
 
 // M4 PR-5 §4.11 — companion negative-shape integration test for POST
@@ -171,6 +173,8 @@ const OVERRIDE_BODY = {
     'Recruiter judgment: talent work history supports a higher entrustment.',
 };
 
+const __authzTestResolver = new ConfigurableTestResolver();
+
 describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
   'POST /v1/examinations/{id}/overrides — negative-shape (no Match-Class vocabulary leak)',
   () => {
@@ -288,7 +292,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         consumer_type: 'recruiter',
         actor_kind: 'user',
         tenant_id: TENANT_ID,
-        scopes: [],
+        authz_version: __authzTestResolver.grant(TENANT_ID, RECRUITER_ID, []),
       })
         .setProtectedHeader({ alg: ALG })
         .setIssuedAt()
@@ -299,7 +303,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       module = await Test.createTestingModule({
         imports: [AppModule],
-      }).compile();
+      })
+        .overrideProvider(EFFECTIVE_AUTHORIZATION_RESOLVER)
+        .useValue(__authzTestResolver)
+        .compile();
 
       app = module.createNestApplication();
       app.use(cookieParser());

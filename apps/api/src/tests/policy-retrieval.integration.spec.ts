@@ -13,12 +13,17 @@ import {
   RequisitionTransitionPolicyService,
   SetPriorityPolicyService,
 } from '@aramo/requisition';
+import { EFFECTIVE_AUTHORIZATION_RESOLVER } from '@aramo/auth';
 
 import { AppModule } from '../app.module.js';
 import { REQUISITION_LIFECYCLE_PACKAGE } from '../policy/requisition-lifecycle.package.js';
 
+import { ConfigurableTestResolver } from './support/test-auth-harness.js';
 import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
 import { publishLifecyclePackage } from './publish-lifecycle-package.js';
+
+// HF-AUTH-1 — compact tokens carry no scopes; guard resolves via this resolver.
+const __authzTestResolver = new ConfigurableTestResolver();
 
 // ADR-0024 PR-4a — runtime retrieval properties: tenant isolation and §D17b
 // version pinning on republish. Real Postgres 17; skipped unless
@@ -65,7 +70,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     let savedEnv: Partial<Record<string, string | undefined>> = {};
 
     async function signJwt(tenant: string): Promise<string> {
-      return new SignJWT({ sub: ACTOR, consumer_type: 'recruiter', actor_kind: 'user', tenant_id: tenant, site_id: SITE, scopes: ['pipeline:add'] })
+      return new SignJWT({ sub: ACTOR, consumer_type: 'recruiter', actor_kind: 'user', tenant_id: tenant, site_id: SITE, authz_version: __authzTestResolver.grant(tenant, ACTOR, ['pipeline:add'])})
         .setProtectedHeader({ alg: ALG }).setIssuedAt().setIssuer(ISSUER).setAudience(AUDIENCE).setExpirationTime('1h').sign(signingKey);
     }
     async function seedRequisition(tenant: string): Promise<string> {
@@ -118,7 +123,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       process.env['AUTH_AUDIENCE'] = AUDIENCE;
       process.env['AUTH_PUBLIC_KEY'] = pem;
 
-      const mod: TestingModule = await Test.createTestingModule({ imports: [AppModule] }).compile();
+      const mod: TestingModule = await Test.createTestingModule({ imports: [AppModule] })
+        .overrideProvider(EFFECTIVE_AUTHORIZATION_RESOLVER)
+        .useValue(__authzTestResolver).compile();
       app = mod.createNestApplication();
       app.useGlobalPipes(new ValidationPipe({ transform: true, whitelist: true }));
       await app.init();

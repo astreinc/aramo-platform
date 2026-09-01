@@ -20,12 +20,16 @@ export interface JwtIssuancePayload {
   sub: string;
   // AUTHZ-2: 'platform' is the 4th consumer_type (Lead ruling 3 — extend
   // auth-service, reuse the issuance pipeline). The platform JWT carries
-  // tenant_id = PLATFORM_TENANT_SENTINEL_ID (Lead ruling 2 B1) and only
-  // platform:* scopes; the DDR §13.1 tripwire is enforced at the route
-  // guard layer (the consumer_type + scope-namespace partition).
+  // tenant_id = PLATFORM_TENANT_SENTINEL_ID (Lead ruling 2 B1); the DDR §13.1
+  // tripwire is enforced at the route guard layer (consumer_type partition).
   consumer_type: 'recruiter' | 'portal' | 'ingestion' | 'platform';
   tenant_id: string;
-  scopes: string[];
+  // HF-AUTH-1 — the compact token carries the principal's authorization REVISION,
+  // NOT the effective scope list. Effective scopes are resolved server-side at the
+  // guard from canonical RBAC (versioned Redis cache), keeping token size bounded
+  // independent of scope-catalog growth. The guard compares this value to the
+  // current authoritative version for immediate revocation.
+  authz_version: number;
   // PR-A1a-3 Ruling 1: optional site axis. Stamped by orchestrators when
   // the user's active membership in tenant is site-scoped; absent for
   // tenant-wide memberships. When absent the JWT claim is OMITTED, not
@@ -51,7 +55,9 @@ export class JwtIssuerService {
       actor_kind: 'user',
       consumer_type: payload.consumer_type,
       tenant_id: payload.tenant_id,
-      scopes: payload.scopes,
+      // HF-AUTH-1 — authorization REVISION reference, not the scope list. No
+      // `scopes` claim is emitted; the guard resolves effective scopes server-side.
+      authz_version: payload.authz_version,
       ...(payload.site_id !== undefined ? { site_id: payload.site_id } : {}),
     })
       .setProtectedHeader({ alg: ALG, kid, typ: 'JWT' })

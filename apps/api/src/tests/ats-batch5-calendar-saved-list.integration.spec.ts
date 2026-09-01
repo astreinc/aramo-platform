@@ -18,11 +18,16 @@ import {
   type CryptoKey,
   type KeyObject,
 } from 'jose';
+import { EFFECTIVE_AUTHORIZATION_RESOLVER } from '@aramo/auth';
 
 import { AppModule } from '../app.module.js';
 
+import { ConfigurableTestResolver } from './support/test-auth-harness.js';
 import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
 import { placementCapacityMigrations } from './support/placement-capacity-migrations.js';
+
+// HF-AUTH-1 — compact tokens carry no scopes; guard resolves via this resolver.
+const __authzTestResolver = new ConfigurableTestResolver();
 
 // PR-A6 Gate 5+6 (combined) — ATS finishers batch 5 integration spec.
 //
@@ -278,7 +283,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         consumer_type: 'recruiter',
         actor_kind: 'user',
         tenant_id: args.tenant_id,
-        scopes: args.scopes,
+        authz_version: __authzTestResolver.grant(args.tenant_id, args.sub, args.scopes),
         ...(args.site_id === undefined ? {} : { site_id: args.site_id }),
       })
         .setProtectedHeader({ alg: ALG })
@@ -399,7 +404,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         scopes: RECRUITER_SCOPES,
       });
 
-      module = await Test.createTestingModule({ imports: [AppModule] }).compile();
+      module = await Test.createTestingModule({ imports: [AppModule] })
+        .overrideProvider(EFFECTIVE_AUTHORIZATION_RESOLVER)
+        .useValue(__authzTestResolver)
+        .compile();
       app = module.createNestApplication();
       app.use(cookieParser());
       app.useGlobalPipes(

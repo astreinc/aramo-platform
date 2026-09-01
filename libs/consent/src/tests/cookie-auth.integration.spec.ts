@@ -17,7 +17,8 @@ import {
   type CryptoKey,
   type KeyObject,
 } from 'jose';
-import { JwtAuthGuard } from '@aramo/auth';
+import { EFFECTIVE_AUTHORIZATION_RESOLVER, JwtAuthGuard } from '@aramo/auth';
+import type { EffectiveAuthorizationResolver } from '@aramo/auth';
 
 import { ConsentController } from '../lib/consent.controller.js';
 import { ConsentService } from '../lib/consent.service.js';
@@ -72,6 +73,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         providers: [
           { provide: ConsentService, useValue: consentServiceMock },
           JwtAuthGuard,
+          // HF-AUTH-1 — the guard resolves effective scopes server-side; bind a
+          // fixed stub so the cookie-authed recruiter holds consent:write.
+          {
+            provide: EFFECTIVE_AUTHORIZATION_RESOLVER,
+            useValue: {
+              resolve: async () => ({ status: 'ok', scopes: ['consent:write'] }),
+            } satisfies EffectiveAuthorizationResolver,
+          },
         ],
       }).compile();
 
@@ -96,7 +105,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         consumer_type: 'recruiter',
         actor_kind: 'user',
         tenant_id: TENANT_ID,
-        scopes: ['consent:write'],
+        // HF-AUTH-1 — compact token: no scopes claim; the guard resolves scopes
+        // server-side via the bound resolver (a fixed stub returning consent:write).
+        authz_version: 1,
         ...claimOverrides,
       };
       return new SignJWT(claims)

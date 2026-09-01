@@ -9,11 +9,16 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { exportSPKI, generateKeyPair, SignJWT, type CryptoKey, type KeyObject } from 'jose';
 import { evaluate, type Decision, type PolicyContext } from '@aramo/policy-engine';
 import { PolicyStore, PrismaService as PolicyStorePrismaService } from '@aramo/policy-store';
+import { EFFECTIVE_AUTHORIZATION_RESOLVER } from '@aramo/auth';
 
 import { AppModule } from '../app.module.js';
 import { REQUISITION_LIFECYCLE_PACKAGE } from '../policy/requisition-lifecycle.package.js';
 
+import { ConfigurableTestResolver } from './support/test-auth-harness.js';
 import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
+
+// HF-AUTH-1 — compact tokens carry no scopes; guard resolves via this resolver.
+const __authzTestResolver = new ConfigurableTestResolver();
 
 // ADR-0024 PR-4c — the RESTRICTIVE MATRIX v2.0.0, E2E against a REAL published
 // package. Real Postgres 17; skipped unless ARAMO_RUN_INTEGRATION=1.
@@ -85,7 +90,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     let savedEnv: Partial<Record<string, string | undefined>> = {};
 
     async function signJwt(scopes: string[]): Promise<string> {
-      return new SignJWT({ sub: ACTOR, consumer_type: 'recruiter', actor_kind: 'user', tenant_id: TENANT, site_id: SITE, scopes })
+      return new SignJWT({ sub: ACTOR, consumer_type: 'recruiter', actor_kind: 'user', tenant_id: TENANT, site_id: SITE, authz_version: __authzTestResolver.grant(TENANT, ACTOR, scopes)})
         .setProtectedHeader({ alg: ALG }).setIssuedAt().setIssuer(ISSUER).setAudience(AUDIENCE).setExpirationTime('1h').sign(signingKey);
     }
     async function seedRequisition(status: string): Promise<string> {
@@ -125,7 +130,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       savedEnv = { DATABASE_URL: process.env['DATABASE_URL'], AUTH_AUDIENCE: process.env['AUTH_AUDIENCE'], AUTH_PUBLIC_KEY: process.env['AUTH_PUBLIC_KEY'] };
       process.env['DATABASE_URL'] = url; process.env['AUTH_AUDIENCE'] = AUDIENCE; process.env['AUTH_PUBLIC_KEY'] = pem;
 
-      const mod: TestingModule = await Test.createTestingModule({ imports: [AppModule] }).compile();
+      const mod: TestingModule = await Test.createTestingModule({ imports: [AppModule] })
+        .overrideProvider(EFFECTIVE_AUTHORIZATION_RESOLVER)
+        .useValue(__authzTestResolver).compile();
       app = mod.createNestApplication();
       app.useGlobalPipes(new ValidationPipe({ transform: true, whitelist: true }));
       await app.init();
@@ -184,7 +191,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await store.publish({ tenant_id: T, definition: { ...REQUISITION_LIFECYCLE_PACKAGE, version: '3.0.0' }, published_by: SYSTEM_PUBLISHER, effective_from: new Date('2026-01-01T00:00:00Z') });
       const req = uuid();
       await db.query(`INSERT INTO requisition."Requisition" (id, tenant_id, title, company_id, status, requisition_number) VALUES ($1,$2,'r',$3,'open', (SELECT COALESCE(MAX(rn.requisition_number),999)+1 FROM requisition."Requisition" rn WHERE rn.tenant_id = $2))`, [req, T, uuid()]);
-      const jwt = await new SignJWT({ sub: ACTOR, consumer_type: 'recruiter', actor_kind: 'user', tenant_id: T, site_id: SITE, scopes: ['pipeline:add'] })
+      const jwt = await new SignJWT({ sub: ACTOR, consumer_type: 'recruiter', actor_kind: 'user', tenant_id: T, site_id: SITE, authz_version: __authzTestResolver.grant(T, ACTOR, ['pipeline:add'])})
         .setProtectedHeader({ alg: ALG }).setIssuedAt().setIssuer(ISSUER).setAudience(AUDIENCE).setExpirationTime('1h').sign(signingKey);
       expect((await postPipeline(jwt, req)).status).toBe(201);
       const first = (await db.query(`SELECT id, policy_version FROM policy_store."PolicyDecisionRecord" WHERE tenant_id=$1 ORDER BY occurred_at DESC LIMIT 1`, [T])).rows[0];

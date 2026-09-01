@@ -4,7 +4,7 @@ import { AramoExceptionFilter, CommonModule } from '@aramo/common';
 import { AuthModule } from '@aramo/auth';
 import { AuthorizationModule } from '@aramo/authorization';
 import { EntitlementModule } from '@aramo/entitlement';
-import { IdentityCoreModule } from '@aramo/identity';
+import { AuthorizationResolverModule, IdentityCoreModule } from '@aramo/identity';
 import {
   PolicyStore,
   PrismaService as PolicyStorePrismaService,
@@ -40,6 +40,15 @@ import { TenantPolicyProvisioningService } from './tenant-policy-provisioning.se
     AuthorizationModule,
     IdentityCoreModule,
     EntitlementModule,
+    // HF-AUTH-1 — the shared JwtAuthGuard (via AuthModule) resolves effective
+    // scopes SERVER-SIDE through this port; without it every platform-admin route
+    // would fail closed. Platform operators are consumer_type='platform', resolved
+    // from the sentinel-tenant RBAC (UserTenantMembership→role→scope) by the real
+    // resolver — no portal sessions here, so portalScopes is empty.
+    AuthorizationResolverModule.forRoot({
+      portalScopes: [],
+      scopeCacheTtlSeconds: 300,
+    }),
   ],
   controllers: [PlatformController],
   providers: [

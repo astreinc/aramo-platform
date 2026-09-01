@@ -1,8 +1,10 @@
 import {
   CanActivate,
   ExecutionContext,
+  Inject,
   Injectable,
   Logger,
+  Optional,
 } from '@nestjs/common';
 import { AramoError } from '@aramo/common';
 import type { Request } from 'express';
@@ -23,6 +25,10 @@ import {
   type AuthContext,
   type ConsumerType,
 } from './auth-context.types.js';
+import {
+  EFFECTIVE_AUTHORIZATION_RESOLVER,
+  type EffectiveAuthorizationResolver,
+} from './effective-authorization-resolver.port.js';
 
 const ISSUER = 'Aramo Core Auth';
 const ALG = 'RS256';
@@ -39,7 +45,10 @@ interface AramoJwtPayload extends JWTPayload {
   consumer_type?: string;
   actor_kind?: string;
   tenant_id?: string;
-  scopes?: string[];
+  // HF-AUTH-1 — the compact token carries an authorization REVISION, not a scope
+  // list. Effective scopes are resolved server-side by the EffectiveAuthorization
+  // resolver and compared against this version for immediate revocation.
+  authz_version?: number;
   site_id?: string;
 }
 
@@ -56,6 +65,22 @@ export class JwtAuthGuard implements CanActivate {
   private readonly logger = new Logger(JwtAuthGuard.name);
   private cachedKey: VerifyKey | undefined;
   private cachedKeyPem: string | undefined;
+
+  // HF-AUTH-1 — the app-layer authorization resolver, bound at the composition
+  // root to an identity-backed, versioned-cache, fail-closed implementation.
+  // Injected as a port so libs/auth takes no dependency on libs/identity.
+  //
+  // @Optional() because AuthModule PROVIDES this guard as a singleton — every
+  // module graph that imports AuthModule (many) would otherwise require the
+  // resolver token at construction, breaking sub-graph boots that never bind it.
+  // Absence is handled FAIL-CLOSED at request time (see canActivate): a request
+  // with no bound resolver is DENIED, never allowed. The real app root always
+  // binds it (@Global), so production is unaffected.
+  constructor(
+    @Optional()
+    @Inject(EFFECTIVE_AUTHORIZATION_RESOLVER)
+    private readonly resolver?: EffectiveAuthorizationResolver,
+  ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context
@@ -105,7 +130,7 @@ export class JwtAuthGuard implements CanActivate {
       });
     }
 
-    const ctx = this.toAuthContext(payload, requestId);
+    const ctx = await this.toAuthContext(payload, requestId);
     request.authContext = ctx;
     return true;
   }
@@ -161,18 +186,24 @@ export class JwtAuthGuard implements CanActivate {
     return key;
   }
 
-  private toAuthContext(
+  // HF-AUTH-1 — validate the COMPACT claim set (no `scopes` claim), then hydrate
+  // AuthContext.scopes by resolving them server-side through the authorization
+  // resolver. The resolver compares the token's `authz_version` to the current
+  // authoritative version: a mismatch is `stale` (immediate revocation → 401), an
+  // unprovable authorization is `unresolvable` (fail closed → deny). Downstream
+  // @RequireScopes / RolesGuard consumers read AuthContext.scopes unchanged.
+  private async toAuthContext(
     payload: AramoJwtPayload,
     requestId: string,
-  ): AuthContext {
-    const { sub, consumer_type, actor_kind, tenant_id, scopes, iat, exp, site_id } =
+  ): Promise<AuthContext> {
+    const { sub, consumer_type, actor_kind, tenant_id, authz_version, iat, exp, site_id } =
       payload;
     if (
       sub === undefined ||
       consumer_type === undefined ||
       actor_kind === undefined ||
       tenant_id === undefined ||
-      scopes === undefined ||
+      authz_version === undefined ||
       iat === undefined ||
       exp === undefined
     ) {
@@ -199,17 +230,59 @@ export class JwtAuthGuard implements CanActivate {
         { requestId },
       );
     }
-    if (!Array.isArray(scopes) || !scopes.every((s) => typeof s === 'string')) {
-      throw new AramoError('INVALID_TOKEN', 'Invalid scopes claim', 401, {
+    if (typeof authz_version !== 'number' || !Number.isInteger(authz_version)) {
+      throw new AramoError('INVALID_TOKEN', 'Invalid authz_version claim', 401, {
         requestId,
       });
     }
+
+    if (this.resolver === undefined) {
+      // No authorization resolver bound in this graph — fail closed. In production
+      // the app root always binds it (@Global); reaching here means a protected
+      // route ran without the resolver, which must DENY, never allow.
+      throw new AramoError(
+        'INVALID_TOKEN',
+        'Authorization resolver not configured',
+        401,
+        { requestId, details: { reason: 'authz_resolver_unbound' } },
+      );
+    }
+    const resolution = await this.resolver.resolve({
+      tenant_id,
+      principal_id: sub,
+      consumer_type,
+      actor_kind,
+      token_authz_version: authz_version,
+      ...(site_id !== undefined ? { site_id } : {}),
+    });
+
+    if (resolution.status === 'stale') {
+      // The principal's authorization changed since this token was minted — force
+      // re-authentication/refresh. This is the immediate-revocation lever.
+      throw new AramoError(
+        'INVALID_TOKEN',
+        'Authorization revision is stale; re-authenticate',
+        401,
+        { requestId, details: { reason: 'authz_version_stale' } },
+      );
+    }
+    if (resolution.status === 'unresolvable') {
+      // Authorization could not be PROVEN (canonical store unreachable and no
+      // trustworthy cache). Fail closed — never trust the token's own claims.
+      throw new AramoError(
+        'INVALID_TOKEN',
+        'Authorization could not be resolved',
+        401,
+        { requestId, details: { reason: 'authz_unresolvable' } },
+      );
+    }
+
     return {
       sub,
       consumer_type,
       actor_kind,
       tenant_id,
-      scopes,
+      scopes: resolution.scopes,
       iat,
       exp,
       ...(site_id !== undefined ? { site_id } : {}),

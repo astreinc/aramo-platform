@@ -14,6 +14,7 @@ import { IdentityService } from './identity.service.js';
 import { ManagementEdgeRepository } from './management-edge.repository.js';
 import { ManagementEdgeService } from './management-edge.service.js';
 import { PrismaService } from './prisma/prisma.service.js';
+import { AuthorizationVersionService } from './authorization-version.service.js';
 import { RoleRepository } from './role.repository.js';
 import { RoleService } from './role.service.js';
 import { TeamRepository } from './team.repository.js';
@@ -88,6 +89,10 @@ import { RoleBundleValidator } from './tenant-user/role-bundle-validator.js';
     IdentityService,
     TenantService,
     RoleService,
+    // HF-AUTH-1 — monotonic authorization-revision authority (bumped by every
+    // effective-authz mutation; read by the compact-token resolver for the
+    // immediate-revocation version match).
+    AuthorizationVersionService,
     // AUTHZ-D4a — team-model substrate (Axis-1 hierarchy + Axis-2 pods).
     ManagementEdgeRepository,
     ManagementEdgeService,
@@ -108,6 +113,7 @@ import { RoleBundleValidator } from './tenant-user/role-bundle-validator.js';
     IdentityService,
     TenantService,
     RoleService,
+    AuthorizationVersionService,
     IdentityAuditService,
     // Platform-Console Increment-2 PR-2 (G1) — exported so the platform-admin
     // PlatformController can inject it for the tenant lifecycle audit read

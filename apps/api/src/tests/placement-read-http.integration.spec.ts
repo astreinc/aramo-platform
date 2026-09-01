@@ -10,8 +10,16 @@ import cookieParser from 'cookie-parser';
 import { Client } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { exportSPKI, generateKeyPair, SignJWT, type CryptoKey, type KeyObject } from 'jose';
+import { EFFECTIVE_AUTHORIZATION_RESOLVER } from '@aramo/auth';
 
 import { AppModule } from '../app.module.js';
+
+import { ConfigurableTestResolver } from './support/test-auth-harness.js';
+
+// HF-AUTH-1 — compact tokens carry no scopes; the guard resolves them via this
+// configurable resolver. The mint helper's grant() returns a fresh authz_version
+// per token so each recovers exactly its own scopes.
+const __authzTestResolver = new ConfigurableTestResolver();
 
 // Track 3 / E1-d — the placement READ surface at the HTTP guard layer (real
 // Postgres 17 + the real AppModule guard chain). Proves D-3 (guard alignment to
@@ -114,8 +122,16 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('E1-d Placement RE
     process.env['AUTH_AUDIENCE'] = AUDIENCE;
     process.env['AUTH_PUBLIC_KEY'] = publicPem;
 
+    // HF-AUTH-1 — compact token: the guard resolves scopes server-side from this
+    // grant's authz_version (MODE A), no scopes claim in the token.
     signJwtFn = (args) =>
-      new SignJWT({ sub: args.sub, consumer_type: 'recruiter', actor_kind: 'user', tenant_id: args.tenant_id, scopes: args.scopes })
+      new SignJWT({
+        sub: args.sub,
+        consumer_type: 'recruiter',
+        actor_kind: 'user',
+        tenant_id: args.tenant_id,
+        authz_version: __authzTestResolver.grant(args.tenant_id, args.sub, args.scopes),
+      })
         .setProtectedHeader({ alg: ALG })
         .setIssuedAt()
         .setIssuer(ISSUER)
@@ -127,7 +143,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('E1-d Placement RE
     notAtsReadJwt = await signJwtFn({ sub: randomUUID(), tenant_id: TENANT_NOT_ATS, scopes: ATS_READ_SCOPES });
     portalJwt = await signJwtFn({ sub: randomUUID(), tenant_id: TENANT_ATS, scopes: PORTAL_SCOPES });
 
-    module = await Test.createTestingModule({ imports: [AppModule] }).compile();
+    module = await Test.createTestingModule({ imports: [AppModule] })
+        .overrideProvider(EFFECTIVE_AUTHORIZATION_RESOLVER)
+        .useValue(__authzTestResolver)
+        .compile();
     app = module.createNestApplication();
     app.use(cookieParser());
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: false, transform: true }));

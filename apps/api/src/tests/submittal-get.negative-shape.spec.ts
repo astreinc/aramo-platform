@@ -19,9 +19,11 @@ import {
   type CryptoKey,
   type KeyObject,
 } from 'jose';
+import { EFFECTIVE_AUTHORIZATION_RESOLVER } from '@aramo/auth';
 
 import { AppModule } from '../app.module.js';
 
+import { ConfigurableTestResolver } from './support/test-auth-harness.js';
 import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
 
 // M4 PR-6 §4.7 — F23 negative-shape integration test for GET
@@ -194,6 +196,8 @@ const CREATE_BODY = {
   },
 };
 
+const __authzTestResolver = new ConfigurableTestResolver();
+
 describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
   'GET /v1/submittals/{id} — negative-shape (no Match-Class vocabulary leak)',
   () => {
@@ -326,7 +330,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         consumer_type: 'recruiter',
         actor_kind: 'user',
         tenant_id: TENANT_ID,
-        scopes: ['submittal:create', 'requisition:read:all'],
+        authz_version: __authzTestResolver.grant(TENANT_ID, RECRUITER_ID, ['submittal:create', 'requisition:read:all']),
       })
         .setProtectedHeader({ alg: ALG })
         .setIssuedAt()
@@ -337,7 +341,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       module = await Test.createTestingModule({
         imports: [AppModule],
-      }).compile();
+      })
+        .overrideProvider(EFFECTIVE_AUTHORIZATION_RESOLVER)
+        .useValue(__authzTestResolver)
+        .compile();
 
       app = module.createNestApplication();
       app.use(cookieParser());
