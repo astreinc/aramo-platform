@@ -161,6 +161,17 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(a.talent_record_id).toBe(input.talent_record_id);
       expect(a.company_id).toBe(company_id);
       expect(a.started_at).toBeInstanceOf(Date);
+
+      // L6-A — branch exclusivity, the symmetric mirror of the PERMANENT side
+      // (t7-p1 "NO ContractAssignment/ARV"): a CONTRACT start mints NO
+      // PermanentPlacement. The two post-start aggregates are mutually exclusive —
+      // the branch is decided from placement_kind and each aggregate carries a
+      // @@unique(tenant_id, placement_process_id) floor, so a placement can never
+      // materialise both.
+      const perm = await prisma.permanentPlacement.findMany({
+        where: { tenant_id: input.tenant_id, placement_process_id: id },
+      });
+      expect(perm).toHaveLength(0);
     });
 
     it('T4-A idempotency: a duplicate assignment for the same start fact is refused', async () => {
