@@ -7,6 +7,7 @@ import { OfferRepository, type OfferView } from '@aramo/placement';
 import type { Request } from 'express';
 
 import { CreateOfferDto, TransitionOfferDto } from './dto/offer.dto.js';
+import { OfferClientSelectionGate } from './offer-client-selection-gate.service.js';
 
 // Offer Lifecycle (D5) — the minimal governed /v1/offers surface: create a DRAFT
 // offer, read one, and drive a governed transition. ONE generic transition route
@@ -20,7 +21,10 @@ import { CreateOfferDto, TransitionOfferDto } from './dto/offer.dto.js';
 @UseGuards(JwtAuthGuard, EntitlementGuard, RolesGuard)
 @RequireCapability('ats')
 export class OfferController {
-  constructor(private readonly offers: OfferRepository) {}
+  constructor(
+    private readonly offers: OfferRepository,
+    private readonly clientSelectionGate: OfferClientSelectionGate,
+  ) {}
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
@@ -30,6 +34,15 @@ export class OfferController {
     @AuthContext() auth: AuthContextType,
     @RequestId() requestId: string,
   ): Promise<OfferView> {
+    // L3-E — SELECTED gates Offer creation (P1 / D-4). The ClientSelectionProcess for
+    // THIS submittal must be SELECTED; otherwise refuse with
+    // OFFER_CLIENT_SELECTION_NOT_SELECTED (409). SELECTED authorizes — it does not
+    // auto-create — and there is no compatibility bypass.
+    await this.clientSelectionGate.assertSelected({
+      tenant_id: auth.tenant_id,
+      submittal_id: dto.submittal_id,
+      requestId,
+    });
     return this.offers.create({
       tenant_id: auth.tenant_id,
       submittal_id: dto.submittal_id,
