@@ -160,6 +160,41 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       ).rejects.toThrow(/append-only/);
     });
 
+    it('P6 — expireOverdueOffers expires overdue SENT/NEGOTIATION; DRAFT + future untouched; idempotent', async () => {
+      const NOW = new Date('2026-09-01T00:00:00.000Z');
+      const past = new Date('2026-08-01T00:00:00.000Z');
+      const future = new Date('2026-12-01T00:00:00.000Z');
+      const seed = async (state: string, expires: Date): Promise<string> => {
+        const id = uuid();
+        await prisma.offer.create({
+          data: {
+            id, tenant_id: TENANT, submittal_id: uuid(), requisition_id: uuid(),
+            talent_record_id: uuid(), state: state as never, offer_expires_at: expires,
+          },
+        });
+        return id;
+      };
+      const sent = await seed('SENT', past); // overdue → expires
+      const nego = await seed('NEGOTIATION', past); // overdue → expires
+      const draft = await seed('DRAFT', past); // overdue but no EXPIRED edge → untouched
+      const futureSent = await seed('SENT', future); // not overdue → untouched
+
+      const r1 = await repo.expireOverdueOffers(NOW, SYSTEM);
+      expect(r1.expired).toBe(2);
+      expect((await repo.findById(TENANT, sent))?.state).toBe('EXPIRED');
+      expect((await repo.findById(TENANT, nego))?.state).toBe('EXPIRED');
+      expect((await repo.findById(TENANT, draft))?.state).toBe('DRAFT');
+      expect((await repo.findById(TENANT, futureSent))?.state).toBe('SENT');
+
+      // Each expiry is audited: a state_transition event + an offer.expire outbox row.
+      expect(await prisma.offerEvent.count({ where: { tenant_id: TENANT, offer_id: sent } })).toBeGreaterThanOrEqual(1);
+      expect(await prisma.offerOutboxEvent.count({ where: { tenant_id: TENANT, event_type: 'offer.expire' } })).toBe(2);
+
+      // Idempotent: a second sweep at the same instant expires nothing more.
+      const r2 = await repo.expireOverdueOffers(NOW, SYSTEM);
+      expect(r2.expired).toBe(0);
+    });
+
     it('illegal edge DRAFT → ACCEPTED → OFFER_ILLEGAL_TRANSITION (409), no mutation', async () => {
       const o = await mkOffer();
       let err: AramoError | undefined;

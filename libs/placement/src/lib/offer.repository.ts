@@ -366,6 +366,51 @@ export class OfferRepository {
     });
     return toView(row);
   }
+
+  // L4 / P6 — governed auto-expiry. A SENT or NEGOTIATION offer whose
+  // offer_expires_at has passed is transitioned to EXPIRED. This is a SYSTEM
+  // action (no user policy — automated), governed by lifecycle LEGALITY: only
+  // SENT/NEGOTIATION carry an EXPIRED edge (the DB trigger is the backstop), and
+  // each expiry is audited (OfferEvent + OutboxEvent). DRAFT never auto-expires
+  // (no EXPIRED edge — an unsent offer). CAS/idempotent: each transition is a
+  // state-guarded updateMany (WHERE state = the captured open state), so a row
+  // already EXPIRED updates 0 rows — safe under concurrent sweeps and retries.
+  async expireOverdueOffers(now: Date, systemActorId: string): Promise<{ expired: number }> {
+    const overdue = (await this.prisma.offer.findMany({
+      where: {
+        state: { in: ['SENT', 'NEGOTIATION'] },
+        offer_expires_at: { not: null, lt: now },
+      },
+      select: { id: true, tenant_id: true, state: true },
+    })) as Array<{ id: string; tenant_id: string; state: OfferState }>;
+
+    let expired = 0;
+    for (const o of overdue) {
+      const didExpire = await this.prisma.$transaction(async (tx) => {
+        const res = await tx.offer.updateMany({
+          where: { id: o.id, tenant_id: o.tenant_id, state: o.state },
+          data: { state: 'EXPIRED' },
+        });
+        if (res.count === 0) return 0; // already moved on — idempotent no-op
+        await tx.offerEvent.create({
+          data: {
+            id: uuidv7(), tenant_id: o.tenant_id, offer_id: o.id,
+            event_type: 'state_transition',
+            event_payload: { previous_state: o.state, next_state: 'EXPIRED', action: 'EXPIRE', actor_id: systemActorId, auto: true },
+          },
+        });
+        await tx.offerOutboxEvent.create({
+          data: {
+            id: uuidv7(), tenant_id: o.tenant_id, event_type: 'offer.expire',
+            event_payload: { offer_id: o.id, previous_state: o.state, next_state: 'EXPIRED', auto: true },
+          },
+        });
+        return 1;
+      });
+      expired += didExpire;
+    }
+    return { expired };
+  }
 }
 
 function isCheckViolation(e: unknown): boolean {

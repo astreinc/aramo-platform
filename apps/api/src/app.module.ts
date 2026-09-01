@@ -72,6 +72,7 @@ import { ConnectorExecutionModule } from './connector/connector-execution.module
 import { RequisitionIntegrationModule } from './requisition-integration/requisition-integration.module.js';
 import { PipelineIntegrationModule } from './pipeline-integration/pipeline-integration.module.js';
 import { LifecyclePollModule } from './requisition-integration/lifecycle-poll.module.js';
+import { OfferExpiryModule } from './offer/offer-expiry.module.js';
 import { ReconciliationDrainModule } from './requisition-integration/reconciliation-drain.module.js';
 import { PlacementLifecycleOrchestratorModule } from './placement-pipeline-orchestration/placement-lifecycle-orchestrator.module.js';
 import { TenantCognitoAdapter } from './cognito/tenant-cognito.adapter.js';
@@ -341,6 +342,7 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     // CB-D2-A1 (ADR-0030) — the provider-neutral lifecycle-poll worker (scheduled
     // tick → fetch → raw-persist → ingress → cursor-advance; Redis-gated).
     LifecyclePollModule,
+    OfferExpiryModule,
     // CB-D2-R (ADR-0030) — the reconciliation-drain worker (scheduled tick →
     // claim due pending rows → re-run the governed path / resolve / park;
     // Redis-gated). Drains the rows A1 + FG only WRITE today.
