@@ -54,7 +54,46 @@ redesign targets.
 - **Outbox** payloads carry identity/provenance only — never pay/bill/spread/margin/
   markup (repository outbox constants; PII/commercial-free by convention).
 
-## C. Commercial surfaces to be OWNED by Lane 7 (finalized in L6-I)
+## C. Commercial surfaces to be OWNED by Lane 7 (finalized, L6-I)
 
-_Placeholder — L6-I finalizes this section with the exact code seams for the commercial
-read projections, the commercial revision commands, and commercial reporting._
+These are the commercial ledger surfaces that live in `libs/placement` today and become
+Lane 7's owned boundary. Lane 6 treats them as read-only neighbors and does not expand
+or redesign them.
+
+### C.1 Data models (`libs/placement/prisma/schema.prisma`)
+- `AssignmentRateVersion` — append-only, effective-window (GiST overlap-exclusion +
+  first-close), immutability trigger; pay/bill/currency/rate_period; derived
+  spread/margin/markup computed on read, never stored.
+- `CommercialRevisionProposal` — the Slice-#4 7-state SoD approval machine
+  (APPROVED != APPLIED), one-live partial-unique.
+
+### C.2 Commercial read projections (`placement.repository.ts`)
+- `getAssignmentCommercialView` (~L1563) — AS-OF effective rate-version read; derives
+  spread/margin/markup on read via `deriveCommercialMetrics`. Read model
+  `AssignmentCommercialView` (`placement-process.types.ts`).
+
+### C.3 Commercial revision commands (`placement.repository.ts`)
+- `createCommercialRevision` (~L1651) — open-tail window close + successor append,
+  FOR UPDATE lock, serialised against endAssignment.
+- `createCommercialRevisionProposal` (~L1818) — capture intent (no apply).
+- `decideCommercialRevisionProposal` (~L1950) — margin-approve / client-approve /
+  apply (reuses createCommercialRevision under lock) / reject.
+- `cancelCommercialRevision` (~L2222).
+- Scopes: `assignment:commercials:read` / `:write` / `:approve`
+  (`libs/identity/src/lib/dto/scope.dto.ts`); routes
+  `apps/api/src/placement/placement.controller.ts` `:id/assignment/commercials/*`.
+
+### C.4 Commercial reporting
+- `libs/placement/src/lib/commercial-margin-read.repository.ts` — margin over ACTIVE
+  CONTRACT `ContractAssignment` joined to its current `AssignmentRateVersion`
+  (PermanentPlacement never participates). Route `GET /v1/reports/margin`
+  (`libs/reporting/src/lib/reporting.controller.ts`), dual-scope `report:read` +
+  `assignment:commercials:read`.
+
+### C.5 Extraction ordering note
+A Lane-7 extraction re-homes C.1–C.4 into a commercial boundary and rewrites the three
+Section-A seams so the assignment lifecycle *invokes* an authoritative commercial contract
+instead of writing the ledger tables directly. Guarantee-exposure (a governed input
+snapshot on PermanentPlacement) is NOT commercial-ledger and stays with the guarantee
+aggregate. No cross-schema FK exists to unwind — all cross-aggregate references are UUID
+scalars.
