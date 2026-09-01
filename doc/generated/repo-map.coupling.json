@@ -10377,6 +10377,11 @@
       "to": "libs/placement/prisma/migrations/20260901120000_l4_placement_offer_state_collapse/migration.sql"
     },
     {
+      "from": "ci/scripts/generate-placement-sql.ts",
+      "status": "unscoped",
+      "to": "libs/placement/prisma/migrations/20260901180000_l6c_permanent_placement_lifecycle_parity/migration.sql"
+    },
+    {
       "from": "ci/scripts/generate-repo-map.ts",
       "status": "unscoped",
       "to": "libs/matching/src/i15-negative-control/cip-imports-ats.fixture.ts"
@@ -12220,6 +12225,36 @@
       "from": "doc/l2-i-closure-record-draft.md",
       "status": "unscoped",
       "to": "scripts/verify-vocabulary.sh"
+    },
+    {
+      "from": "doc/lane-7-commercial-extraction-register.md",
+      "status": "unscoped",
+      "to": "apps/api/src/placement/placement.controller.ts"
+    },
+    {
+      "from": "doc/lane-7-commercial-extraction-register.md",
+      "status": "unscoped",
+      "to": "libs/identity/src/lib/dto/scope.dto.ts"
+    },
+    {
+      "from": "doc/lane-7-commercial-extraction-register.md",
+      "status": "unscoped",
+      "to": "libs/placement/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/lane-7-commercial-extraction-register.md",
+      "status": "unscoped",
+      "to": "libs/placement/src/lib/commercial-margin-read.repository.ts"
+    },
+    {
+      "from": "doc/lane-7-commercial-extraction-register.md",
+      "status": "unscoped",
+      "to": "libs/placement/src/lib/placement.repository.ts"
+    },
+    {
+      "from": "doc/lane-7-commercial-extraction-register.md",
+      "status": "unscoped",
+      "to": "libs/reporting/src/lib/reporting.controller.ts"
     },
     {
       "from": "doc/legacy-pipeline-canonicalization-closure-draft.md",
