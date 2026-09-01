@@ -7,11 +7,16 @@ import { ValidationPipe, type INestApplication } from '@nestjs/common';
 import { Client } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { exportSPKI, generateKeyPair, SignJWT, type CryptoKey, type KeyObject } from 'jose';
+import { EFFECTIVE_AUTHORIZATION_RESOLVER } from '@aramo/auth';
 
 import { AppModule } from '../app.module.js';
 
+import { ConfigurableTestResolver } from './support/test-auth-harness.js';
 import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
 import { publishLifecyclePackage } from './publish-lifecycle-package.js';
+
+// HF-AUTH-1 — compact tokens carry no scopes; guard resolves via this resolver.
+const __authzTestResolver = new ConfigurableTestResolver();
 
 // ADR-0024 PR-3 — the first policy-engine consumer, E2E over REQUISITION_TALENT
 // · ADD (POST /v1/pipelines). Real Postgres 17; skipped unless
@@ -95,7 +100,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         actor_kind: 'user',
         tenant_id: TENANT,
         site_id: SITE,
-        scopes,
+        authz_version: __authzTestResolver.grant(TENANT, ACTOR, scopes),
       })
         .setProtectedHeader({ alg: ALG })
         .setIssuedAt()
@@ -117,7 +122,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     }
 
     async function buildApp(): Promise<INestApplication> {
-      const mod: TestingModule = await Test.createTestingModule({ imports: [AppModule] }).compile();
+      const mod: TestingModule = await Test.createTestingModule({ imports: [AppModule] })
+        .overrideProvider(EFFECTIVE_AUTHORIZATION_RESOLVER)
+        .useValue(__authzTestResolver)
+        .compile();
       const app = mod.createNestApplication();
       app.useGlobalPipes(new ValidationPipe({ transform: true, whitelist: true }));
       await app.init();

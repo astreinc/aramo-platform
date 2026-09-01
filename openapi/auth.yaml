@@ -87,8 +87,10 @@ paths:
       description: |
         Validates pkce_state cookie, exchanges Cognito `code` for an
         ID token, resolves the user, applies tenant resolution,
-        derives scopes, issues an access JWT + refresh token, sets
-        cookies, and emits `identity.session.issued` audit event.
+        issues a COMPACT access JWT (identity + authz_version, no
+        scopes claim) + refresh token, sets cookies, and emits
+        `identity.session.issued` audit event. Effective scopes are
+        resolved server-side per request, not carried in the token.
         Per directive §8.2. Anonymous (the Cognito `code` is the
         auth credential).
       security: []
@@ -426,8 +428,10 @@ components:
       type: object
       additionalProperties: false
       description: |
-        /session response shape — locked at 6 fields per SE.3.g.
-        Mirror of the JWT payload subset the verifier surfaces; the
+        /session response shape — locked at 6 fields per SE.3.g. The
+        compact access JWT carries identity + an authz_version only; the
+        verifier RESOLVES the effective scopes server-side and surfaces
+        them here alongside the identity claims it echoes. The
         `actor_kind` claim is intentionally NOT surfaced here per
         directive §3 Topic 2 (libs/auth's AuthContext stays at 6
         fields; future PRs may extend).

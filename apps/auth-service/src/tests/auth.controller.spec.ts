@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { AramoError } from '@aramo/common';
+import type { EffectiveAuthorizationResolver } from '@aramo/auth';
 import type { IdentityAuditService } from '@aramo/identity';
 import type { RefreshTokenDto, RefreshTokenService } from '@aramo/auth-storage';
 import { AuthController } from '@aramo/auth-core';
@@ -41,6 +42,7 @@ function makeController(
     refreshTokens: RefreshTokenService;
     audit: IdentityAuditService;
     hostBase: HostBaseResolver;
+    authzResolver: EffectiveAuthorizationResolver;
   }> = {},
 ): AuthController {
   // PR-3.1: default HostBaseResolver resolves to no derivation (env fallback),
@@ -54,6 +56,11 @@ function makeController(
   const auditSink = new IdentityAuditSinkAdapter(
     overrides.audit ?? ({} as IdentityAuditService),
   );
+  // HF-AUTH-1 — /session resolves scopes server-side via the resolver port; default
+  // to an ok-resolver returning the canonical session scope.
+  const defaultResolver = {
+    resolve: vi.fn().mockResolvedValue({ status: 'ok', scopes: ['auth:session:read'] }),
+  } as unknown as EffectiveAuthorizationResolver;
   return new AuthController(
     overrides.pkce ?? ({} as PkceService),
     overrides.sessionOrch ?? ({} as SessionOrchestratorService),
@@ -62,6 +69,7 @@ function makeController(
     overrides.refreshTokens ?? ({} as RefreshTokenService),
     auditSink,
     overrides.hostBase ?? defaultHostBase,
+    overrides.authzResolver ?? defaultResolver,
   );
 }
 
@@ -73,7 +81,9 @@ describe('AuthController.session', () => {
         sub: USER_ID,
         consumer_type: 'recruiter',
         tenant_id: TENANT_ID,
-        scopes: ['auth:session:read'],
+        // HF-AUTH-1 — compact cookie: authz_version, no scopes. /session resolves
+        // the scopes for the response body via the resolver (default ok-resolver).
+        authz_version: 1,
         iat: 1_700_000_000,
         exp: 1_700_000_900,
       }),

@@ -12,12 +12,17 @@ import { Client } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { exportSPKI, generateKeyPair, SignJWT, type CryptoKey, type KeyObject } from 'jose';
 import { SECRETS_MANAGER_WRITER, type SecretsManagerWriterPort } from '@aramo/integration';
+import { EFFECTIVE_AUTHORIZATION_RESOLVER } from '@aramo/auth';
 
 import { AppModule } from '../app.module.js';
 import { ZoomWebhookSecretResolver } from '../communications/zoom-webhook-secret.resolver.js';
 import { ZOOM_WEBHOOK_ROUTE, ZOOM_WEBHOOK_MAX_BODY_BYTES } from '../communications/zoom-webhook.constants.js';
 
+import { ConfigurableTestResolver } from './support/test-auth-harness.js';
 import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
+
+// HF-AUTH-1 — compact tokens carry no scopes; guard resolves via this resolver.
+const __authzTestResolver = new ConfigurableTestResolver();
 
 // COMM-B8 — provider-reference capture (embed→provider-id), HTTP boundary + real
 // Postgres 17. Proves the capture closes the dial-time correlation gap: attach a
@@ -78,7 +83,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       return { headers: { Authorization: `Bearer ${jwt}`, 'Content-Type': 'application/json' } };
     }
     async function jwtFor(scopes: string[], sub = RECRUITER): Promise<string> {
-      return new SignJWT({ sub, consumer_type: 'recruiter', actor_kind: 'user', tenant_id: TENANT, scopes })
+      return new SignJWT({ sub, consumer_type: 'recruiter', actor_kind: 'user', tenant_id: TENANT, authz_version: __authzTestResolver.grant(TENANT, sub, scopes)})
         .setProtectedHeader({ alg: ALG })
         .setIssuedAt()
         .setIssuer(ISSUER)
@@ -134,6 +139,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       process.env['ARAMO_ENV'] = 'itest';
 
       module = await Test.createTestingModule({ imports: [AppModule] })
+        .overrideProvider(EFFECTIVE_AUTHORIZATION_RESOLVER)
+        .useValue(__authzTestResolver)
         .overrideProvider(SECRETS_MANAGER_WRITER)
         .useValue(new FakeSecretsWriter())
         .overrideProvider(ZoomWebhookSecretResolver)

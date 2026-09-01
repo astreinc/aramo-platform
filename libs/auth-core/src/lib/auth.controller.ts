@@ -12,7 +12,12 @@ import {
   Res,
 } from '@nestjs/common';
 import { AramoError } from '@aramo/common';
-import { CONSUMER_TYPES, type ConsumerType } from '@aramo/auth';
+import {
+  CONSUMER_TYPES,
+  EFFECTIVE_AUTHORIZATION_RESOLVER,
+  type ConsumerType,
+  type EffectiveAuthorizationResolver,
+} from '@aramo/auth';
 import { RefreshTokenService } from '@aramo/auth-storage';
 import type { Request, Response } from 'express';
 
@@ -137,6 +142,11 @@ export class AuthController {
     private readonly refreshTokens: RefreshTokenService,
     @Inject(AUDIT_SINK) private readonly auditSink: AuditSink,
     private readonly hostBase: HostBaseResolver,
+    // HF-AUTH-1 — /session resolves the effective scopes server-side (the compact
+    // cookie carries none), using the SAME resolver the api guard uses so portal
+    // (fixed scopes) and stale/fail-closed semantics are identical.
+    @Inject(EFFECTIVE_AUTHORIZATION_RESOLVER)
+    private readonly authzResolver: EffectiveAuthorizationResolver,
   ) {}
 
   // §8.1 — GET /auth/{consumer}/login → 302 + pkce_state cookie
@@ -599,11 +609,36 @@ export class AuthController {
         { requestId },
       );
     }
+    // HF-AUTH-1 — resolve the effective scopes server-side for the response body
+    // (the compact cookie carries none). Same resolver as the api guard: portal
+    // returns its fixed set, a bumped authz_version is `stale` (401), an unprovable
+    // authorization is `unresolvable` (401, fail closed).
+    const resolution = await this.authzResolver.resolve({
+      tenant_id: payload.tenant_id,
+      principal_id: payload.sub,
+      consumer_type: payload.consumer_type,
+      actor_kind: 'user',
+      token_authz_version: payload.authz_version,
+      ...(payload.site_id !== undefined ? { site_id: payload.site_id } : {}),
+    });
+    if (resolution.status !== 'ok') {
+      throw new AramoError(
+        'INVALID_TOKEN',
+        'Access token authorization not resolvable',
+        401,
+        {
+          requestId,
+          details: {
+            reason: resolution.status === 'stale' ? 'authz_version_stale' : 'authz_unresolvable',
+          },
+        },
+      );
+    }
     return {
       sub: payload.sub,
       consumer_type: payload.consumer_type,
       tenant_id: payload.tenant_id,
-      scopes: payload.scopes,
+      scopes: resolution.scopes,
       iat: payload.iat,
       exp: payload.exp,
     };

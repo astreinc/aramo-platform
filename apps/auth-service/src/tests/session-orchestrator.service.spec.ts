@@ -9,6 +9,7 @@ import {
   vi,
 } from 'vitest';
 import type {
+  AuthorizationVersionService,
   IdentityAuditService,
   IdentityService,
   RoleService,
@@ -44,6 +45,7 @@ interface Mocks {
   refreshTokens: RefreshTokenService;
   jwtIssuer: JwtIssuerService;
   audit: IdentityAuditService;
+  authzVersions: AuthorizationVersionService;
 }
 
 function makeMocks(overrides: Partial<Mocks> = {}): Mocks {
@@ -141,6 +143,10 @@ function makeMocks(overrides: Partial<Mocks> = {}): Mocks {
       writeEvent: vi.fn().mockResolvedValue(undefined),
       writeGlobalEvent: vi.fn().mockResolvedValue(undefined),
     } as unknown as IdentityAuditService,
+    // HF-AUTH-1 — the adapter stamps the current authorization version into the mint.
+    authzVersions: {
+      getCurrentVersion: vi.fn().mockResolvedValue(1),
+    } as unknown as AuthorizationVersionService,
   };
   return { ...base, ...overrides };
 }
@@ -151,6 +157,7 @@ function makeService(mocks: Mocks): SessionOrchestratorService {
     mocks.tenant,
     mocks.role,
     mocks.audit,
+    mocks.authzVersions,
   );
   const auditSink = new IdentityAuditSinkAdapter(mocks.audit);
   return new SessionOrchestratorService(
@@ -553,7 +560,8 @@ describe('SessionOrchestratorService.handleCallback', () => {
         sub: USER_ID,
         tenant_id: TENANT_ID,
         site_id: SITE_ID,
-        scopes: ['talent:read'],
+        // HF-AUTH-1 — compact mint carries the authorization revision, not scopes.
+        authz_version: 1,
       }),
     );
   });

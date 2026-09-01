@@ -10,10 +10,15 @@ import { Client } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { exportSPKI, generateKeyPair, SignJWT, type CryptoKey, type KeyObject } from 'jose';
 import { SECRETS_MANAGER_WRITER, type SecretsManagerWriterPort } from '@aramo/integration';
+import { EFFECTIVE_AUTHORIZATION_RESOLVER } from '@aramo/auth';
 
 import { AppModule } from '../app.module.js';
 
+import { ConfigurableTestResolver } from './support/test-auth-harness.js';
 import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
+
+// HF-AUTH-1 — compact tokens carry no scopes; guard resolves via this resolver.
+const __authzTestResolver = new ConfigurableTestResolver();
 
 // COMM-B2 (Aramo-COMM-V1) — HTTP-boundary authorization + tenant-safe-404 proof
 // for the /v1/communications read skeleton. Exercises the REAL three-axis guard
@@ -81,7 +86,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         consumer_type: 'recruiter',
         actor_kind: 'user',
         tenant_id: args.tenant_id,
-        scopes: args.scopes,
+        authz_version: __authzTestResolver.grant(args.tenant_id, args.sub, args.scopes),
       })
         .setProtectedHeader({ alg: ALG })
         .setIssuedAt()

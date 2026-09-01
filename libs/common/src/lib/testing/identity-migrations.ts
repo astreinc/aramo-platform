@@ -50,6 +50,11 @@ export const IDENTITY_MIGRATIONS: readonly string[] = [
   'libs/identity/prisma/migrations/20260620000000_add_site_hierarchy/migration.sql',
   'libs/identity/prisma/migrations/20260627000000_add_tenant_identity_provider/migration.sql',
   'libs/identity/prisma/migrations/20260709130000_add_tenant_lifecycle_status/migration.sql',
+  // HF-AUTH-1 — the AuthorizationVersion table (monotonic per-principal authz
+  // revision). Additive CREATE with no cross-dependency, so it applies last. The
+  // identity.repository bump paths write to it on membership create/disable/role
+  // change, so EVERY identity/auth-service integration spec needs it present.
+  'libs/identity/prisma/migrations/20260901000000_hf_auth_1_authorization_version/migration.sql',
 ];
 
 // Resolve the ordered identity migration .sql paths against a repo root. Each

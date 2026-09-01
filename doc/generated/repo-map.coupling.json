@@ -1976,6 +1976,12 @@
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/auth-hardening-d1-recruiter-context.integration.spec.ts",
       "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20260901000000_hf_auth_1_authorization_version/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/auth-hardening-d1-recruiter-context.integration.spec.ts",
+      "status": "excluded",
       "to": "libs/identity/src/tests/identity.integration.spec.ts"
     },
     {
@@ -13714,6 +13720,11 @@
       "to": "libs/identity/prisma/migrations/20260709130000_add_tenant_lifecycle_status/migration.sql"
     },
     {
+      "from": "libs/common/src/lib/testing/identity-migrations.ts",
+      "status": "production",
+      "to": "libs/identity/prisma/migrations/20260901000000_hf_auth_1_authorization_version/migration.sql"
+    },
+    {
       "from": "libs/common/src/lib/types/consent-scope-status.ts",
       "status": "production",
       "to": "doc/02-claude-code-discipline.md"
@@ -15903,6 +15914,11 @@
     {
       "from": "pact/provider/src/verify-api.ts",
       "status": "unscoped",
+      "to": "libs/identity/prisma/migrations/20260901000000_hf_auth_1_authorization_version/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
       "to": "libs/import/prisma/migrations/20260603140000_init_import_model/migration.sql"
     },
     {
@@ -16534,6 +16550,11 @@
       "from": "pact/provider/src/verify.ts",
       "status": "unscoped",
       "to": "libs/identity/prisma/migrations/20260626000000_add_tenant_domain_verification/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify.ts",
+      "status": "unscoped",
+      "to": "libs/identity/prisma/migrations/20260901000000_hf_auth_1_authorization_version/migration.sql"
     },
     { "from": "prisma.config.ts", "status": "unscoped", "to": "libs/consent/prisma/schema.prisma" },
     { "from": "redocly.yaml", "status": "unscoped", "to": "openapi/ats.yaml" },

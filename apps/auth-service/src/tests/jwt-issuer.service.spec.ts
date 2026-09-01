@@ -36,7 +36,7 @@ describe('JwtIssuerService.sign', () => {
       sub: SUB,
       consumer_type: 'recruiter',
       tenant_id: TENANT,
-      scopes: ['auth:session:read'],
+      authz_version: 1,
     });
     const payload = decodeJwt(jwt);
     expect(payload.iss).toBe(ISSUER);
@@ -45,7 +45,9 @@ describe('JwtIssuerService.sign', () => {
     expect(payload['actor_kind']).toBe('user');
     expect(payload['consumer_type']).toBe('recruiter');
     expect(payload['tenant_id']).toBe(TENANT);
-    expect(payload['scopes']).toEqual(['auth:session:read']);
+    // HF-AUTH-1 — compact token: authz_version present, NO scopes claim.
+    expect(payload['authz_version']).toBe(1);
+    expect(payload['scopes']).toBeUndefined();
     expect(typeof payload.iat).toBe('number');
     expect(typeof payload.exp).toBe('number');
     // exp = iat + 900 (15 minutes)
@@ -92,7 +94,7 @@ describe('JwtIssuerService.sign', () => {
       sub: SUB,
       consumer_type: 'portal',
       tenant_id: TENANT,
-      scopes: [],
+      authz_version: 1,
     });
     expect(decodeProtectedHeader(jwt).alg).toBe('RS256');
   });
@@ -108,13 +110,13 @@ describe('JwtIssuerService.sign', () => {
       sub: SUB,
       consumer_type: 'recruiter',
       tenant_id: TENANT,
-      scopes: ['auth:session:read'],
+      authz_version: 1,
     });
     const payload = decodeJwt(jwt);
     expect('site_id' in payload).toBe(false);
     expect(payload['site_id']).toBeUndefined();
     // The pre-A1a-3 claim set is exactly: iss, aud, sub, actor_kind,
-    // consumer_type, tenant_id, scopes, iat, exp. Lock the key set so
+    // consumer_type, tenant_id, authz_version, iat, exp. Lock the key set so
     // any drift fails this test loudly.
     const keys = Object.keys(payload).sort();
     expect(keys).toEqual(
@@ -125,7 +127,7 @@ describe('JwtIssuerService.sign', () => {
         'exp',
         'iat',
         'iss',
-        'scopes',
+        'authz_version',
         'sub',
         'tenant_id',
       ].sort(),
@@ -144,7 +146,7 @@ describe('JwtIssuerService.sign', () => {
       sub: SUB,
       consumer_type: 'recruiter',
       tenant_id: TENANT,
-      scopes: ['talent:read'],
+      authz_version: 1,
       site_id: SITE_ID,
     });
     const payload = decodeJwt(jwt);
@@ -160,11 +162,48 @@ describe('JwtIssuerService.sign', () => {
         'exp',
         'iat',
         'iss',
-        'scopes',
+        'authz_version',
         'site_id',
         'sub',
         'tenant_id',
       ].sort(),
     );
+  });
+});
+
+// HF-AUTH-1 — the token-size PROPERTY guard. The load-bearing invariant: a browser
+// access token is BOUNDED and INDEPENDENT of authorization-catalog size. This is
+// the permanent CI/test wall that stops the old scope-in-token design returning.
+describe('JwtIssuerService — token-size property (HF-AUTH-1)', () => {
+  const BUDGET = 2048; // deliberately far below the 4096 browser cookie ceiling.
+  const MAXIMAL = {
+    sub: '01900000-0000-7000-8000-0000000000ff',
+    consumer_type: 'recruiter' as const,
+    tenant_id: TENANT,
+    site_id: '01900000-0000-7000-8000-0000000000c1',
+  };
+
+  it('a maximal compact token is well under the 2 KB architectural budget and carries NO scopes claim', async () => {
+    const svc = new JwtIssuerService();
+    const jwt = await svc.sign({ ...MAXIMAL, authz_version: 1 });
+    const bytes = Buffer.byteLength(jwt, 'utf8');
+    expect(bytes).toBeLessThanOrEqual(BUDGET);
+    expect(bytes).toBeLessThan(4096); // never near the cookie ceiling that broke login
+    expect(Object.prototype.hasOwnProperty.call(decodeJwt(jwt), 'scopes')).toBe(false);
+  });
+
+  it('token size is INDEPENDENT of authorization growth (the issuer cannot carry scopes at all)', async () => {
+    const svc = new JwtIssuerService();
+    // A tiny vs a very large authz_version models a catalog that has grown / been
+    // revised thousands of times. The compact token stays flat — the only variance
+    // permitted is the integer's decimal width. Scope-catalog growth moves NO bytes
+    // into the token because the issuance payload TYPE has no scopes field.
+    const small = await svc.sign({ ...MAXIMAL, authz_version: 1 });
+    const large = await svc.sign({ ...MAXIMAL, authz_version: 2_147_483_647 });
+    const drift = Math.abs(Buffer.byteLength(large, 'utf8') - Buffer.byteLength(small, 'utf8'));
+    expect(drift).toBeLessThanOrEqual(16);
+    // Structural: neither token has a scopes claim regardless of the "catalog".
+    expect(Object.prototype.hasOwnProperty.call(decodeJwt(small), 'scopes')).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(decodeJwt(large), 'scopes')).toBe(false);
   });
 });

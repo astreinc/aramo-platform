@@ -14,8 +14,22 @@ import {
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { JwtAuthGuard } from '../lib/jwt-auth.guard.js';
+import type {
+  EffectiveAuthorizationResolution,
+  EffectiveAuthorizationResolver,
+} from '../lib/effective-authorization-resolver.port.js';
 
 type SignKey = CryptoKey | KeyObject;
+
+// HF-AUTH-1 — a stub resolver so the guard's server-side scope hydration + the
+// stale/unresolvable branches can be asserted without a DB/cache. `next` is what
+// the guard receives from the app-layer resolver port on the next resolve().
+class StubResolver implements EffectiveAuthorizationResolver {
+  next: EffectiveAuthorizationResolution = { status: 'ok', scopes: ['consent:write'] };
+  async resolve(): Promise<EffectiveAuthorizationResolution> {
+    return this.next;
+  }
+}
 
 const ISSUER = 'Aramo Core Auth';
 const AUDIENCE = 'aramo-test';
@@ -79,7 +93,8 @@ async function makeToken(
     consumer_type: 'recruiter',
     actor_kind: 'user',
     tenant_id: '00000000-0000-0000-0000-000000000001',
-    scopes: ['consent:write'],
+    // HF-AUTH-1 — compact token: authorization REVISION, no scopes claim.
+    authz_version: 1,
     ...overrides,
   };
   return new SignJWT(claims)
@@ -93,10 +108,12 @@ async function makeToken(
 
 describe('JwtAuthGuard', () => {
   let guard: JwtAuthGuard;
+  let resolver: StubResolver;
   const originalEnv = { ...process.env };
 
   beforeEach(() => {
-    guard = new JwtAuthGuard();
+    resolver = new StubResolver();
+    guard = new JwtAuthGuard(resolver);
     process.env['AUTH_PUBLIC_KEY'] = keyPair.publicPem;
     process.env['AUTH_AUDIENCE'] = AUDIENCE;
   });
@@ -163,11 +180,58 @@ describe('JwtAuthGuard', () => {
     });
   });
 
-  it('throws INVALID_TOKEN when scopes claim is missing', async () => {
-    const token = await makeToken({ scopes: undefined });
+  it('throws INVALID_TOKEN when authz_version claim is missing', async () => {
+    const token = await makeToken({ authz_version: undefined });
     const request = makeRequest({ Authorization: `Bearer ${token}` });
     await expect(guard.canActivate(makeContext(request))).rejects.toMatchObject({
       code: 'INVALID_TOKEN',
+    });
+  });
+
+  // HF-AUTH-1 — the token carries NO scopes claim; even if one is (maliciously)
+  // present it is IGNORED — scopes come only from the server-side resolver.
+  it('ignores any scopes claim on the token and hydrates from the resolver', async () => {
+    resolver.next = { status: 'ok', scopes: ['pipeline:read'] };
+    const token = await makeToken({ scopes: ['requisition:delete', 'billing:admin'] });
+    const request = makeRequest({ Authorization: `Bearer ${token}` });
+    const result = await guard.canActivate(makeContext(request));
+    expect(result).toBe(true);
+    expect(request.authContext).toMatchObject({ scopes: ['pipeline:read'] });
+  });
+
+  // HF-AUTH-1 — immediate revocation: a bumped authz_version resolves `stale` → 401.
+  it('throws INVALID_TOKEN (authz_version_stale) when the resolver reports stale', async () => {
+    resolver.next = { status: 'stale' };
+    const token = await makeToken();
+    const request = makeRequest({ Authorization: `Bearer ${token}` });
+    await expect(guard.canActivate(makeContext(request))).rejects.toMatchObject({
+      code: 'INVALID_TOKEN',
+      statusCode: 401,
+    });
+  });
+
+  // HF-AUTH-1 — fail closed: an unprovable authorization resolves `unresolvable` →
+  // deny (401), never trusting the token's own claims.
+  it('throws INVALID_TOKEN (fail closed) when the resolver reports unresolvable', async () => {
+    resolver.next = { status: 'unresolvable' };
+    const token = await makeToken();
+    const request = makeRequest({ Authorization: `Bearer ${token}` });
+    await expect(guard.canActivate(makeContext(request))).rejects.toMatchObject({
+      code: 'INVALID_TOKEN',
+      statusCode: 401,
+    });
+  });
+
+  // HF-AUTH-1 — fail closed when NO resolver is bound (the @Optional injection is
+  // absent in a graph): a valid token is DENIED, never allowed. This is what makes
+  // the guard safe to provide in every AuthModule-importing sub-graph.
+  it('throws INVALID_TOKEN (fail closed) when no resolver is bound at all', async () => {
+    const unboundGuard = new JwtAuthGuard(); // @Optional resolver → undefined
+    const token = await makeToken();
+    const request = makeRequest({ Authorization: `Bearer ${token}` });
+    await expect(unboundGuard.canActivate(makeContext(request))).rejects.toMatchObject({
+      code: 'INVALID_TOKEN',
+      statusCode: 401,
     });
   });
 

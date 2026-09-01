@@ -22,7 +22,7 @@ import { AuthStorageModule } from '@aramo/auth-storage';
 import { PortalIdentityModule } from '@aramo/portal-identity';
 import { IdentityIndexModule } from '@aramo/identity-index';
 import { MailerModule, MAILER_PORT } from '@aramo/mailer';
-import { PortalAuthController } from '@aramo/auth-core';
+import { PortalAuthController, PORTAL_SESSION_SCOPES } from '@aramo/auth-core';
 import { EMAIL_SENDER } from '@aramo/auth-core';
 import { ELIGIBILITY_POLICY } from '@aramo/auth-core';
 import { HostAuthProfileService } from '@aramo/auth-core';
@@ -388,7 +388,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const { accessJwt } = await orchestrator.establishPortalSession({
         portal_user_id: uuidv7(),
       });
-      const scopes = (decodeJwt(accessJwt).scopes as string[]) ?? [];
+      // HF-AUTH-1 — the portal access token is COMPACT: it carries NO scopes claim.
+      // A portal session's effective scopes are resolved SERVER-SIDE to the fixed
+      // PORTAL_SESSION_SCOPES set (the resolver's portal branch returns exactly this
+      // constant). The FIX-PORTAL-SCOPES-1 regression property is preserved: this
+      // asserts the guard authorizes the surfaces from that constant, so reverting
+      // the D1 backfill of PORTAL_SESSION_SCOPES reddens this exactly as before.
+      expect(decodeJwt(accessJwt)['scopes']).toBeUndefined();
+      const scopes = [...PORTAL_SESSION_SCOPES];
       const guard = new RolesGuard(new Reflector());
 
       // (a) scoped READ — portal:verification:read (absent pre-fix → was 403).

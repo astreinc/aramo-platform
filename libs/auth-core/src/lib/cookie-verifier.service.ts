@@ -20,7 +20,10 @@ export interface CookieJwtPayload {
   sub: string;
   consumer_type: 'recruiter' | 'portal' | 'ingestion' | 'platform';
   tenant_id: string;
-  scopes: string[];
+  // HF-AUTH-1 — the compact cookie carries an authorization REVISION, NOT a scope
+  // list. /session resolves the effective scopes server-side for its response body.
+  authz_version: number;
+  site_id?: string;
   iat: number;
   exp: number;
 }
@@ -46,11 +49,14 @@ export class CookieVerifierService {
     const p = result.payload;
     const consumer_type = p['consumer_type'];
     const tenant_id = p['tenant_id'];
-    const scopes = p['scopes'];
+    const authz_version = p['authz_version'];
+    const site_id = p['site_id'];
     if (
       typeof p['sub'] !== 'string' ||
       typeof consumer_type !== 'string' ||
       typeof tenant_id !== 'string' ||
+      typeof authz_version !== 'number' ||
+      !Number.isInteger(authz_version) ||
       typeof p['iat'] !== 'number' ||
       typeof p['exp'] !== 'number'
     ) {
@@ -59,14 +65,12 @@ export class CookieVerifierService {
     if (!(CONSUMER_TYPES as readonly string[]).includes(consumer_type)) {
       throw new Error('jwt_invalid_consumer_type');
     }
-    if (!Array.isArray(scopes) || !scopes.every((s) => typeof s === 'string')) {
-      throw new Error('jwt_invalid_scopes');
-    }
     return {
       sub: p['sub'],
       consumer_type: consumer_type as CookieJwtPayload['consumer_type'],
       tenant_id,
-      scopes: scopes as string[],
+      authz_version,
+      ...(typeof site_id === 'string' ? { site_id } : {}),
       iat: p['iat'],
       exp: p['exp'],
     };

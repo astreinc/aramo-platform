@@ -23,6 +23,18 @@ import { TENANT_COGNITO_PORT, type TenantCognitoPort } from '@aramo/identity';
 
 import { AppModule } from '../app.module.js';
 
+// HF-AUTH-1 — MODE B. This is the flagship RBAC-DERIVATION proof: it must run the
+// REAL identity-backed EffectiveAuthorizationResolver (bound by AppModule) against
+// SEEDED RBAC, NOT the ConfigurableTestResolver. The compact token carries only an
+// authz_version; the guard resolves the effective scope set server-side from the
+// UserTenantMembership→role→scope join. Both principals under test are real:
+//   - the recruiter is provisioned through the actual invite saga (its membership,
+//     roles, and AuthorizationVersion baseline are written to Postgres), so B1–B4
+//     prove the END-TO-END derivation, not a stubbed grant;
+//   - the admin (the invite-authorizing principal) is seeded with a real admin
+//     membership + role + scopes below, so its setup calls are authorized by the
+//     same real resolver, never a bypass.
+
 import { placementCapacityMigrations } from './support/placement-capacity-migrations.js';
 
 // §5 Auth-Hardening Directive 1 — Recruiter login verified (the foundational
@@ -125,6 +137,12 @@ const IDENTITY_PROFILE = resolve(
 const IDENTITY_SITE_HIERARCHY = resolve(
   ROOT,
   'libs/identity/prisma/migrations/20260620000000_add_site_hierarchy/migration.sql',
+);
+// HF-AUTH-1 — the AuthorizationVersion table. The invite saga's ensureBaselineVersion
+// writes here, and the real resolver (MODE B) reads the authoritative version from it.
+const IDENTITY_AUTHZ_VERSION = resolve(
+  ROOT,
+  'libs/identity/prisma/migrations/20260901000000_hf_auth_1_authorization_version/migration.sql',
 );
 const ENTITLEMENT_INIT = resolve(
   ROOT,
@@ -356,16 +374,30 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     let taskOther = ''; //   assignee = the other recruiter
 
 
-    async function signJwt(args: {
-      sub: string;
-      scopes: string[];
-    }): Promise<string> {
+    // Read the principal's CURRENT authoritative authz_version straight from the
+    // AuthorizationVersion table (the same authority the real resolver reads). A
+    // seeded/provisioned principal is at the baseline (1); reading it rather than
+    // hardcoding keeps the token honestly pinned to the DB authority.
+    async function currentAuthzVersion(sub: string): Promise<number> {
+      const res = await db.query<{ version: number }>(
+        `SELECT version FROM identity."AuthorizationVersion"
+          WHERE tenant_id = $1::uuid AND principal_id = $2::uuid`,
+        [TENANT_ATS, sub],
+      );
+      return res.rows[0]?.version ?? 1;
+    }
+
+    // MODE B — the compact token carries ONLY identity + the real authz_version.
+    // No scopes claim; the guard resolves effective scopes server-side from the
+    // seeded/provisioned RBAC via the real EffectiveAuthorizationResolver.
+    async function signJwt(args: { sub: string }): Promise<string> {
+      const authz_version = await currentAuthzVersion(args.sub);
       return new SignJWT({
         sub: args.sub,
         consumer_type: 'recruiter',
         actor_kind: 'user',
         tenant_id: TENANT_ATS,
-        scopes: args.scopes,
+        authz_version,
         site_id: SITE_A,
       })
         .setProtectedHeader({ alg: ALG })
@@ -403,6 +435,64 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         );
       }
       return roleId;
+    }
+
+    // ---- MODE B admin principal. The invite-authorizing admin must be a REAL
+    // resolvable principal now that the guard resolves scopes server-side: a
+    // tenant-wide (site_id NULL), active membership bound to an admin role that
+    // carries TENANT_ADMIN_SCOPES. getCurrentVersion falls back to 1 with no
+    // AuthorizationVersion row, but we insert the baseline explicitly so the
+    // admin token's version read is authoritative (not a fallback). ----
+    async function seedAdminPrincipal(): Promise<void> {
+      await db.query(
+        `INSERT INTO identity."User" (id, email, display_name, is_active, updated_at)
+         VALUES ($1::uuid, $2, $3, true, CURRENT_TIMESTAMP)
+         ON CONFLICT (id) DO NOTHING`,
+        [TENANT_ADMIN, 'tenant.admin.d1@aramo.dev', 'D1 Tenant Admin'],
+      );
+      const membershipId = uuidv7();
+      await db.query(
+        `INSERT INTO identity."UserTenantMembership"
+           (id, user_id, tenant_id, site_id, is_active, invite_status, updated_at)
+         VALUES ($1::uuid, $2::uuid, $3::uuid, NULL, true, 'ACTIVE', CURRENT_TIMESTAMP)
+         ON CONFLICT (id) DO NOTHING`,
+        [membershipId, TENANT_ADMIN, TENANT_ATS],
+      );
+      const adminRoleId = uuidv7();
+      await db.query(
+        `INSERT INTO identity."Role" (id, key, description, is_active, updated_at)
+         VALUES ($1::uuid, 'tenant_admin', 'Tenant Admin', true, CURRENT_TIMESTAMP)
+         ON CONFLICT (id) DO NOTHING`,
+        [adminRoleId],
+      );
+      for (const key of TENANT_ADMIN_SCOPES) {
+        const scopeId = uuidv7();
+        await db.query(
+          `INSERT INTO identity."Scope" (id, key, description)
+           VALUES ($1::uuid, $2, $2)
+           ON CONFLICT (key) DO NOTHING`,
+          [scopeId, key],
+        );
+        await db.query(
+          `INSERT INTO identity."RoleScope" (id, role_id, scope_id)
+           SELECT $1::uuid, $2::uuid, s.id FROM identity."Scope" s WHERE s.key = $3
+           ON CONFLICT (id) DO NOTHING`,
+          [uuidv7(), adminRoleId, key],
+        );
+      }
+      await db.query(
+        `INSERT INTO identity."UserTenantMembershipRole" (id, membership_id, role_id)
+         VALUES ($1::uuid, $2::uuid, $3::uuid)
+         ON CONFLICT (id) DO NOTHING`,
+        [uuidv7(), membershipId, adminRoleId],
+      );
+      await db.query(
+        `INSERT INTO identity."AuthorizationVersion"
+           (id, tenant_id, principal_id, version, updated_at)
+         VALUES ($1::uuid, $2::uuid, $3::uuid, 1, CURRENT_TIMESTAMP)
+         ON CONFLICT (tenant_id, principal_id) DO NOTHING`,
+        [uuidv7(), TENANT_ATS, TENANT_ADMIN],
+      );
     }
 
     // Derive a membership's effective scope set from the real DB join — the
@@ -558,6 +648,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         IDENTITY_D4A,
         IDENTITY_PROFILE,
         IDENTITY_SITE_HIERARCHY,
+        IDENTITY_AUTHZ_VERSION,
         ENTITLEMENT_INIT,
         COMPANY_INIT,
         COMPANY_FIELD_EXPANSION,
@@ -605,6 +696,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       }
 
       await seedRecruiterCatalog();
+      // MODE B — seed the admin as a real resolvable principal BEFORE minting its
+      // token, so the real resolver authorizes the invite/setup calls below.
+      await seedAdminPrincipal();
 
       const kp = await generateKeyPair(ALG);
       const publicPem = await exportSPKI(kp.publicKey as never);
@@ -619,7 +713,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       process.env['AUTH_AUDIENCE'] = AUDIENCE;
       process.env['AUTH_PUBLIC_KEY'] = publicPem;
 
-      adminJwt = await signJwt({ sub: TENANT_ADMIN, scopes: TENANT_ADMIN_SCOPES });
+      adminJwt = await signJwt({ sub: TENANT_ADMIN });
 
       // Bind the TENANT_COGNITO_PORT (required by IdentityModule.forRoot).
       // Invite-S2 (Pattern-2): the invite saga NO LONGER calls Cognito — no
@@ -634,6 +728,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         adminEnableUser: async () => undefined,
       };
 
+      // MODE B — NO resolver override. AppModule binds the real
+      // IdentityEffectiveAuthorizationResolver; only the Cognito port is mocked
+      // (no AWS/SSO), exactly as the invite saga requires.
       module = await Test.createTestingModule({ imports: [AppModule] })
         .overrideProvider(TENANT_COGNITO_PORT)
         .useValue(cognitoMock)
@@ -663,10 +760,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Derive the provisioned recruiter's effective scopes from the real
       // membership chain and sign the principal with exactly that set.
       recruiterScopes = await deriveEffectiveScopes(recruiterUserId);
-      recruiterJwt = await signJwt({
-        sub: recruiterUserId,
-        scopes: recruiterScopes,
-      });
+      recruiterJwt = await signJwt({ sub: recruiterUserId });
 
       // --- Seed the world (admin does all writes) ---
       const companyA = await createCompany('D1 Client A');

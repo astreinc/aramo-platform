@@ -1,6 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { v7 as uuidv7 } from 'uuid';
 
+import {
+  bumpPrincipalVersion,
+  ensureBaselineVersion,
+} from './authorization-version.ops.js';
 import type { ExternalIdentityDto } from './dto/external-identity.dto.js';
 import type { InvitationDto } from './dto/invitation.dto.js';
 import type { MembershipDto } from './dto/membership.dto.js';
@@ -471,6 +475,12 @@ export class IdentityRepository {
           })),
         });
       }
+      // HF-AUTH-1 — establish the principal's authorization-version baseline at
+      // membership birth, in the same tx.
+      await ensureBaselineVersion(tx, {
+        tenant_id: args.tenant_id,
+        principal_id: args.user_id,
+      });
       return {
         user: toUserDto(user),
         external_identity_id,
@@ -510,6 +520,10 @@ export class IdentityRepository {
           })),
         });
       }
+      await ensureBaselineVersion(tx, {
+        tenant_id: args.tenant_id,
+        principal_id: args.user_id,
+      });
     });
     return { membership_id, membership_role_ids };
   }
@@ -563,6 +577,10 @@ export class IdentityRepository {
           })),
         });
       }
+      await ensureBaselineVersion(tx, {
+        tenant_id: args.tenant_id,
+        principal_id: args.user_id,
+      });
       return {
         user: toUserDto(user),
         membership_id,
@@ -761,6 +779,12 @@ export class IdentityRepository {
         where: { id: existing.id },
         data: { is_active: false, deactivated_at: new Date() },
       });
+      // HF-AUTH-1 — disabling a membership removes its effective scopes; bump the
+      // principal's version so any outstanding compact token is immediately stale.
+      await bumpPrincipalVersion(tx, {
+        tenant_id: args.tenant_id,
+        principal_id: args.user_id,
+      });
       return {
         changed: true,
         membership_id: existing.id,
@@ -791,6 +815,12 @@ export class IdentityRepository {
     await this.prisma.userTenantMembership.update({
       where: { id: existing.id },
       data: { is_active: true, deactivated_at: null },
+    });
+    // HF-AUTH-1 — re-enabling restores effective scopes; bump so the change is
+    // reflected immediately (also keeps the version monotonic across the saga).
+    await bumpPrincipalVersion(this.prisma, {
+      tenant_id: args.tenant_id,
+      principal_id: args.user_id,
     });
     return { membership_id: existing.id };
   }
@@ -827,6 +857,21 @@ export class IdentityRepository {
             role_id,
           })),
         });
+      }
+      // HF-AUTH-1 — a role add/remove changes the principal's effective scopes;
+      // bump the version (resolving the membership's tenant/user) when the
+      // assignment set actually changed.
+      if (added_role_ids.length > 0 || removed_role_ids.length > 0) {
+        const membership = await tx.userTenantMembership.findUnique({
+          where: { id: args.membership_id },
+          select: { tenant_id: true, user_id: true },
+        });
+        if (membership !== null) {
+          await bumpPrincipalVersion(tx, {
+            tenant_id: membership.tenant_id,
+            principal_id: membership.user_id,
+          });
+        }
       }
       return { added_role_ids, removed_role_ids };
     });

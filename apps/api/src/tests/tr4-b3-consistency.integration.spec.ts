@@ -20,11 +20,16 @@ import {
 } from 'jose';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { TalentTrustService } from '@aramo/talent-trust';
+import { EFFECTIVE_AUTHORIZATION_RESOLVER } from '@aramo/auth';
 
 import { AppModule } from '../app.module.js';
 import { ConsistencyService } from '../talent-identity/consistency.service.js';
 
+import { ConfigurableTestResolver } from './support/test-auth-harness.js';
 import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
+
+// HF-AUTH-1 — compact tokens carry no scopes; guard resolves via this resolver.
+const __authzTestResolver = new ConfigurableTestResolver();
 
 type SignKey = CryptoKey | KeyObject;
 const ROOT = resolve(__dirname, '../../../..');
@@ -73,7 +78,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     let consistency: ConsistencyService;
 
     async function signJwt(scopes: string[]): Promise<string> {
-      return new SignJWT({ sub: ADMIN, consumer_type: 'recruiter', actor_kind: 'user', tenant_id: TENANT, scopes })
+      return new SignJWT({ sub: ADMIN, consumer_type: 'recruiter', actor_kind: 'user', tenant_id: TENANT, authz_version: __authzTestResolver.grant(TENANT, ADMIN, scopes)})
         .setProtectedHeader({ alg: 'RS256' })
         .setIssuedAt()
         .setIssuer(ISSUER)
@@ -174,7 +179,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       process.env['AUTH_PUBLIC_KEY'] = publicPem;
       process.env['MAILER_PROVIDER'] = 'stub';
 
-      module = await Test.createTestingModule({ imports: [AppModule] }).compile();
+      module = await Test.createTestingModule({ imports: [AppModule] })
+        .overrideProvider(EFFECTIVE_AUTHORIZATION_RESOLVER)
+        .useValue(__authzTestResolver).compile();
       app = module.createNestApplication();
       app.use(cookieParser());
       app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));

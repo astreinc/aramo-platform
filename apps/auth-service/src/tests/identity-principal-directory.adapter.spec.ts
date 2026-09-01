@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type {
+  AuthorizationVersionService,
   IdentityAuditService,
   IdentityService,
   RoleService,
@@ -24,6 +25,7 @@ interface Deps {
   tenant: TenantService;
   role: RoleService;
   audit: IdentityAuditService;
+  authzVersions: AuthorizationVersionService;
 }
 
 function makeDeps(over: {
@@ -83,16 +85,20 @@ function makeDeps(over: {
     getScopesByUserTenantAndSite,
   } as unknown as RoleService;
   const audit = { writeGlobalEvent } as unknown as IdentityAuditService;
+  // HF-AUTH-1 — the adapter stamps the current authorization version into the
+  // resolved session/scopes for the compact token mint.
+  const getCurrentVersion = vi.fn().mockResolvedValue(1);
+  const authzVersions = { getCurrentVersion } as unknown as AuthorizationVersionService;
 
   return {
-    identity, tenant, role, audit,
+    identity, tenant, role, audit, authzVersions,
     resolveUser, findUserByEmail, linkExternalIdentity, activate, getTenantsByUser,
     findActiveMembershipSite, getScopesByUserAndTenant, getScopesByUserTenantAndSite, writeGlobalEvent,
   };
 }
 
 function adapter(d: Deps): IdentityPrincipalDirectoryAdapter {
-  return new IdentityPrincipalDirectoryAdapter(d.identity, d.tenant, d.role, d.audit);
+  return new IdentityPrincipalDirectoryAdapter(d.identity, d.tenant, d.role, d.audit, d.authzVersions);
 }
 
 const SESSION_INPUT = {
@@ -248,12 +254,14 @@ describe('§2.4 invariant 6 — site-stamp scope selection (resolveSession + res
   it('resolveScopes site-scoped → { scopes, claims.site_id }', async () => {
     const d = makeDeps({ site: SITE_ID });
     const r = await adapter(d).resolveScopes({ principal_id: USER_ID, context_id: TENANT_ID });
-    expect(r).toEqual({ scopes: ['talent:read'], claims: { site_id: SITE_ID } });
+    // HF-AUTH-1 — resolveScopes now also carries the current authorization version
+    // (stamped into the re-minted compact token on refresh).
+    expect(r).toEqual({ scopes: ['talent:read'], authz_version: 1, claims: { site_id: SITE_ID } });
   });
 
   it('resolveScopes tenant-wide → { scopes } (no claims)', async () => {
     const d = makeDeps({ site: null });
     const r = await adapter(d).resolveScopes({ principal_id: USER_ID, context_id: TENANT_ID });
-    expect(r).toEqual({ scopes: ['auth:session:read'] });
+    expect(r).toEqual({ scopes: ['auth:session:read'], authz_version: 1 });
   });
 });
