@@ -72,6 +72,7 @@ export const CLASSIFICATIONS: Record<string, Classification> = {
   'company:read:all': { cls: 'SERVICE_ENFORCED', reason: 'visibility-resolver see-all short-circuit (libs/visibility; SCOPE_COMPANY_READ_ALL)' },
   'activity:redact': { cls: 'SERVICE_ENFORCED', reason: 'activity.controller.ts:147 scopes.includes(activity:redact)' },
   'company:read_commercial': { cls: 'SERVICE_ENFORCED', reason: 'stripUnscopedCommercialFields(company.repository.ts:342/654)' },
+  'offer:read:financial': { cls: 'SERVICE_ENFORCED', reason: 'L4/P5 fail-closed field-mask — maskOfferCompensation via auth.scopes.includes(OFFER_READ_FINANCIAL_SCOPE) on GET /v1/offers[/:id] (offer.controller.ts)' },
   'compensation:view:pay': { cls: 'SERVICE_ENFORCED', reason: 'compensation-field-mask.interceptor.ts walkAndMask by scopes' },
   'compensation:view:bill': { cls: 'SERVICE_ENFORCED', reason: 'compensation-field-mask interceptor' },
   'compensation:view:revenue': { cls: 'SERVICE_ENFORCED', reason: 'compensation-field-mask interceptor' },
