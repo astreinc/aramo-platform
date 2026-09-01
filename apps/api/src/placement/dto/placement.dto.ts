@@ -269,7 +269,7 @@ export class CommercialProposalDecisionDto {
 }
 
 // One generic transition route (E1-b §1): the target state is in the body and the
-// canonical 14-edge matrix enforces legality. `to` must be a known placement
+// canonical 8-edge matrix enforces legality. `to` must be a known placement
 // state; an illegal EDGE is a domain refusal (PLACEMENT_STATE_INVALID, 422).
 export class TransitionPlacementDto {
   @IsIn(PLACEMENT_STATES as readonly string[])

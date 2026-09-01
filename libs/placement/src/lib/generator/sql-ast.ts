@@ -70,7 +70,7 @@ export type TransitionBranch = {
 };
 
 // The lifecycle trigger — ONE trigger owning TWO concerns (§5):
-//   A. BEFORE UPDATE — the generated 14-edge transition matrix + column scope.
+//   A. BEFORE UPDATE — the generated transition matrix + column scope.
 //   B. BEFORE INSERT — the duplicate-live-attempt guard using the generated
 //      DUPLICATE_GUARD_INACTIVE classification.
 export type LifecycleTrigger = {

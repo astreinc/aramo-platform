@@ -51,8 +51,6 @@ export const CLASSIFICATIONS: Record<string, Classification> = {
   'auth:session:read': { cls: 'ACTIVE_RESERVED', reason: 'baseline session marker; gate role superseded by consumer_type gating, retained pending F31 scope-registry design (M3-PR-9 Ruling 7)' },
   'identity:user:read': { cls: 'ACTIVE_RESERVED', reason: 'Lead-ratified auditor/compliance bundle (E2 §182); read surface deferred to Reporting/Audit DDR' },
   'identity:tenant:read': { cls: 'ACTIVE_RESERVED', reason: 'same auditor/compliance bundle' },
-  'assignment:create': { cls: 'ACTIVE_RESERVED', reason: 'Track4/T4-D ratified ContractAssignment authority; no live handler yet' },
-  'assignment:update': { cls: 'ACTIVE_RESERVED', reason: 'same T4-D authority; dormant, cited as the reserved verb in live placement code' },
   'examination:read': { cls: 'ACTIVE_RESERVED', reason: 'examination-read gate reserved by the OpenAPI contract (x-required-scope on 5 routes; PR-A1a-2 §48); no live handler yet' },
   // --- EXIT_HYG (owning-lane ruling required) ---
   'consent:read': { cls: 'EXIT_HYG', reason: 'live internal ConsentController surface; keep-or-gate is a Consent/Portal-lane ruling (Dead-Residue Ledger)' },

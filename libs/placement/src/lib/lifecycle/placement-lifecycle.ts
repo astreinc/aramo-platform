@@ -2,8 +2,9 @@
 // Directive: Aramo-Track3-E1a-PlacementProcess-Directive v1.3 LOCKED.
 //
 // THIS FILE IS THE ONLY SOURCE OF TRUTH for the PlacementProcess state
-// machine (§5c). The migration SQL — the 14-edge BEFORE UPDATE transition
-// guard and the BEFORE INSERT duplicate-live-attempt guard — is a
+// machine (§5c). The migration SQL — the BEFORE UPDATE transition guard
+// (8 edges post-L4-0: frozen-init emitted 14, the forward collapse migration
+// narrows to 8) and the BEFORE INSERT duplicate-live-attempt guard — is a
 // deterministic BUILD ARTIFACT generated from this registry
 // (src/lib/generator). Never edit the emitted SQL; never author the two
 // state classifications as independent SQL literals. CI regenerates the SQL
@@ -273,7 +274,7 @@ export function lifecyclePositionOf(state: PlacementState): LifecyclePosition {
 //                                      follows the business meaning of asserting
 //                                      a start, not a present side effect.)
 //   otherwise        -> 'transition' (ordinary non-terminal progression)
-// This is a total function over the 14 legal edges; deriving it is applying a
+// This is a total function over the 8 legal edges; deriving it is applying a
 // ratified classification to grounded facts (Execution Model §13), not policy.
 // ---------------------------------------------------------------------------
 export const PLACEMENT_AUTHORITY_CLASSES = ['transition', 'activate', 'terminate'] as const;

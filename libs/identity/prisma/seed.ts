@@ -329,10 +329,12 @@ export const SEED_IDS = {
     'placement:remedy:resolve': '01900000-0000-7000-8000-0000000000d9',
     // Track 7 / T7-P3 — the guarantee-terms management scope (next free id da).
     'placement:permanent:terms:write': '01900000-0000-7000-8000-0000000000da',
-    // Track 4 / T4-D — ContractAssignment authority family.
+    // Track 4 / T4-D — ContractAssignment authority family. L6-0: assignment:create
+    // (0xd0) + assignment:update (0xd1) REMOVED as grounded-dead ACTIVE_RESERVED scopes
+    // (no live/planned handler; the forward STARTED mint runs under placement:activate,
+    // and no T4-A2 backfill handler materialized across Tracks 4–7 + Lane 4). Hex ids
+    // 0xd0/0xd1 retired; assignment:end keeps 0xd2 (explicit, not positional).
     'assignment:read': '01900000-0000-7000-8000-0000000000cf',
-    'assignment:create': '01900000-0000-7000-8000-0000000000d0',
-    'assignment:update': '01900000-0000-7000-8000-0000000000d1',
     'assignment:end': '01900000-0000-7000-8000-0000000000d2',
     // Slice #3 — Assignment Extension: prolong the planned end. SEPARATE authority
     // from assignment:end (opposite powers). AM + admins only.
@@ -1973,41 +1975,53 @@ const PERMANENT_TERMS_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
 // Track 4 / T4-D — the ContractAssignment role matrix. Role posture MIRRORS the
 // ratified placement AUTHORITATIVE tier (grounded from PLACEMENT_SEED_BUNDLES,
 // not invented): assignment:read -> all four grant-receiving roles (as placement:
-// read); assignment:create/update/end -> account_manager/tenant_admin/tenant_owner
+// read); assignment:end -> account_manager/tenant_admin/tenant_owner
 // only (the tier holding placement:activate/terminate — authoritative post-start
 // commitment mutation). recruiter does operational placement work but NOT
 // authoritative assignment mutation. super_admin/recruiting_manager/all others: ZERO.
-export const ASSIGNMENT_SEED_BUNDLES: ReadonlyArray<
-  readonly [string, readonly string[]]
-> = [
+// (L6-0: assignment:create/update removed as grounded-dead — see id-anchor note below.)
+// L6-0 — assignment:create / assignment:update REMOVED as grounded-dead
+// ACTIVE_RESERVED scopes (no live/planned handler: the forward STARTED mint runs
+// under placement:activate, and no T4-A2 backfill handler ever materialized). They
+// are retained ONLY as id-anchor PLACEHOLDERS in ASSIGNMENT_ID_ANCHOR below so the
+// positional 0xb00+ RoleScope id generator does NOT renumber the surviving grants
+// (append-don't-renumber — the #683/#685 precedent): their id slots become unused
+// holes and every surviving grant keeps its exact id.
+const ASSIGNMENT_REMOVED_SCOPES: ReadonlySet<string> = new Set([
+  'assignment:create',
+  'assignment:update',
+]);
+
+// Frozen id-anchor ordering — includes the removed scopes purely as id placeholders.
+const ASSIGNMENT_ID_ANCHOR: ReadonlyArray<readonly [string, readonly string[]]> = [
   ['recruiter', ['assignment:read']],
   ['account_manager', ['assignment:read', 'assignment:create', 'assignment:update', 'assignment:end', 'assignment:commercials:read', 'assignment:commercials:write']],
   ['tenant_admin', ['assignment:read', 'assignment:create', 'assignment:update', 'assignment:end', 'assignment:commercials:read', 'assignment:commercials:write']],
   ['tenant_owner', ['assignment:read', 'assignment:create', 'assignment:update', 'assignment:end', 'assignment:commercials:read', 'assignment:commercials:write']],
-  // Slice #3 — assignment:extend appended LAST (append-don't-renumber): the positional
-  // 0xb00+ id generator gives these fresh trailing ids WITHOUT shifting the existing
-  // 0xb00..0xb12 grants, so a prod re-seed collides with nothing.
+  // Slice #3 — assignment:extend appended LAST (append-don't-renumber).
   ['account_manager', ['assignment:extend']],
   ['tenant_admin', ['assignment:extend']],
   ['tenant_owner', ['assignment:extend']],
-  // Slice #4 — assignment:commercials:approve appended LAST (append-don't-renumber):
-  // the positional 0xb00+ id generator gives these fresh trailing ids (0xb16..0xb18)
-  // WITHOUT shifting the existing 0xb00..0xb15 grants, so a prod re-seed collides
-  // with nothing (the #683 assignment:extend precedent).
+  // Slice #4 — assignment:commercials:approve appended LAST (append-don't-renumber).
   ['account_manager', ['assignment:commercials:approve']],
   ['tenant_admin', ['assignment:commercials:approve']],
   ['tenant_owner', ['assignment:commercials:approve']],
 ];
 
-// Deterministic RoleScope row ids for the 19 assignment grants (13 Track-4 +
-// 6 Track-5 commercials read/write on account_manager/tenant_admin/tenant_owner).
-// Fresh disjoint range 0xb00+ (append-don't-renumber; placement occupies
-// 0xa00..0xa14). The generator iterates ASSIGNMENT_SEED_BUNDLES so the new grants
-// extend the map automatically.
+// The actual granted bundles = the anchor with removed scopes filtered out.
+export const ASSIGNMENT_SEED_BUNDLES: ReadonlyArray<
+  readonly [string, readonly string[]]
+> = ASSIGNMENT_ID_ANCHOR
+  .map(([role, scopes]) => [role, scopes.filter((s) => !ASSIGNMENT_REMOVED_SCOPES.has(s))] as const)
+  .filter(([, scopes]) => scopes.length > 0);
+
+// Deterministic RoleScope row ids — generated over the ANCHOR (incl. holes for the
+// removed scopes) so surviving grants keep exact ids. Fresh disjoint range 0xb00+
+// (placement occupies 0xa00..0xa14). Only granted (role,scope) keys are ever consumed.
 const ASSIGNMENT_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
   const map: Record<string, string> = {};
   let i = 0xb00;
-  for (const [role, scopes] of ASSIGNMENT_SEED_BUNDLES) {
+  for (const [role, scopes] of ASSIGNMENT_ID_ANCHOR) {
     for (const scope of scopes) {
       map[`${role}:${scope}`] =
         `01900000-0000-7000-8000-${i.toString(16).padStart(12, '0')}`;
@@ -2020,8 +2034,8 @@ const ASSIGNMENT_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
 // Track 8 / T8-P2 — canonical requisition ingestion role-matrix. read -> the
 // four requisition-adjacent roles (as assignment:read); write -> the
 // authoritative tier only (account_manager/tenant_admin/tenant_owner, recruiter
-// excluded — bulk external ingestion is a management act, mirrors
-// assignment:create). No wildcard widening.
+// excluded — bulk external ingestion is a management act, mirrors the
+// authoritative-tier posture). No wildcard widening.
 export const REQUISITION_IMPORT_SEED_BUNDLES: ReadonlyArray<
   readonly [string, readonly string[]]
 > = [
@@ -2583,13 +2597,13 @@ export async function runIdentitySeed(
   // Track 4 / T4-D — ContractAssignment authority family. Role posture mirrors the
   // placement authoritative tier (ASSIGNMENT_SEED_BUNDLES). NO scope.created (scope-seed precedent).
   await upsertScope(prisma, SEED_IDS.scopes['assignment:read'], 'assignment:read', 'Track 4 / T4-D — read a ContractAssignment (the authoritative post-start commitment) and its derived capacity. GRANTED to recruiter, account_manager, tenant_admin, tenant_owner (mirrors placement:read). NO scope.created (scope-seed precedent).');
-  await upsertScope(prisma, SEED_IDS.scopes['assignment:create'], 'assignment:create', 'Track 4 / T4-D — create an authoritative ContractAssignment (post-start commitment; the forward STARTED path and, gated separately, T4-A2 backfill). GRANTED to account_manager, tenant_admin, tenant_owner only; recruiter excluded (authoritative-tier act). NO scope.created (scope-seed precedent).');
-  await upsertScope(prisma, SEED_IDS.scopes['assignment:update'], 'assignment:update', 'Track 4 / T4-D — update an authoritative ContractAssignment. GRANTED to account_manager, tenant_admin, tenant_owner only; recruiter excluded. NO scope.created (scope-seed precedent).');
+  // L6-0 — assignment:create / assignment:update upsertScope calls REMOVED (grounded-dead
+  // ACTIVE_RESERVED scopes; no live/planned handler). Catalog now omits both.
   await upsertScope(prisma, SEED_IDS.scopes['assignment:end'], 'assignment:end', 'Track 4 / T4-D — end a ContractAssignment (ACTIVE->ENDED, with the ratified end reason: normal completion / worker-ended / client-ended). GRANTED to account_manager, tenant_admin, tenant_owner only; recruiter excluded. NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['assignment:extend'], 'assignment:extend', 'Slice #3 — extend an ACTIVE ContractAssignment planned end (expected_end_at moves strictly forward; NO lifecycle transition). SEPARATE authority from assignment:end (extend and terminate are opposite powers, granted independently). GRANTED to account_manager, tenant_admin, tenant_owner only; recruiter excluded. NO scope.created (scope-seed precedent).');
   // Track 5 / T5-P1 — assignment commercial-terms authority family. Dedicated
   // financial permissions (Amendment A2 DEC-4): NEVER satisfied by placement:*,
-  // requisition-financials, or generic assignment:create/update. NO scope.created (scope-seed precedent).
+  // requisition-financials, or generic assignment mutation. NO scope.created (scope-seed precedent).
   await upsertScope(prisma, SEED_IDS.scopes['assignment:commercials:read'], 'assignment:commercials:read', 'Track 5 / T5-P1 — read the actual commercial terms (Assignment Rate Version: pay/bill/currency/period and derived margin) of a ContractAssignment. Independent financial-disclosure gate (least visibility: assignment:read does NOT grant it). GRANTED to account_manager, tenant_admin, tenant_owner only; recruiter excluded (financial data). NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['assignment:commercials:write'], 'assignment:commercials:write', 'Track 5 / T5-P1 — record the initial actual commercial terms of a ContractAssignment. The SECOND leg of the FORWARD STARTED conjunction (required IN CONJUNCTION with placement:activate, never alone; placement:* and requisition-financials never substitute). GRANTED to account_manager, tenant_admin, tenant_owner only; recruiter excluded. NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['assignment:commercials:approve'], 'assignment:commercials:approve', 'Slice #4 — Commercial Approval: exercise commercial AUTHORITY over a proposed revision (margin-approve / client-approve / apply / reject a CommercialRevisionProposal). SEPARATE authority from assignment:commercials:write (propose != approve): a proposer must not self-approve the economics of their own proposal (segregation of duties). GRANTED to account_manager, tenant_admin, tenant_owner only; recruiter excluded. NO scope.created (scope-seed precedent).');
