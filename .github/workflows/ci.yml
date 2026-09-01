@@ -503,6 +503,26 @@ jobs:
       - run: npm run dead-error-codes:self-test
       - run: npm run dead-error-codes:check
 
+  # L3-A — Pipeline write-authority guard (Client-Consideration authority contract).
+  # The Pipeline aggregate is written ONLY by its owner (libs/pipeline / the
+  # system-gated PipelineRepository); the client-consideration domains reference a
+  # Pipeline episode by UUID and must never mirror its status (the retired
+  # Submittal→Pipeline.submitted mirror is the precedent this forbids).
+  # Self-test runs first (proves the detectors are non-vacuous).
+  pipeline-write-authority-check:
+    name: pipeline:write-authority:check
+    runs-on: ubuntu-latest
+    needs: install
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci || npm ci || npm ci # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
+      - run: npm run pipeline:write-authority:self-test
+      - run: npm run pipeline:write-authority:check
+
   # PR-B (Dev Execution Model v1.4 §12) — default-deny integration-root coverage
   # guard. Proves ci/integration-roots.json covers every integration-bearing
   # project and that no runner embeds a divergent root list. Cheap + static, so
@@ -821,6 +841,7 @@ jobs:
       - error-codes-check
       - orphan-scopes-check
       - dead-error-codes-check
+      - pipeline-write-authority-check
       - integration-roots-check
       - repo-map-check
       - identity-index-privacy-wall

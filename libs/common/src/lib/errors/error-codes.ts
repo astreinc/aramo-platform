@@ -718,6 +718,9 @@ export const ERROR_CODES = [
   'CLIENT_SELECTION_PROCESS_INVALID', // the parent process is not valid for scheduling — non-existent / cross-tenant / not-visible / terminal (409)
   'INTERVIEW_SESSION_TRANSITION_CONFLICT', // stale expected_version CAS conflict on a session (409)
   'INVALID_INTERVIEW_SESSION_TRANSITION', // illegal session state-machine transition (422)
+  'INTERVIEW_ROUND_EXISTS', // L3-D — a session already exists for this (process, round); re-attempts use the next round (409)
+  'OFFER_CLIENT_SELECTION_NOT_SELECTED', // L3-E — Offer creation requires the ClientSelectionProcess for the offer's submittal to be SELECTED (409)
+  'CLIENT_SELECTION_WITHDRAW_REASON_INVALID', // L3-E(2) — a WITHDRAWN decision needs a valid closed reason_code so the Pipeline disposition is deterministic (422)
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

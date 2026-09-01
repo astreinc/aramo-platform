@@ -60,6 +60,10 @@ export const PIPELINE_DISPOSITION_REASONS: Record<
     'placement_completed',
     'placement_fell_through',
     'converted_to_permanent',
+    // L3-E(2) — client-consideration terminal outcomes (governed apps/api orchestration
+    // dispositions the qualified episode when Client Selection ends it).
+    'client_selection_declined',
+    'client_selection_withdrawn',
   ],
 } as const;
 

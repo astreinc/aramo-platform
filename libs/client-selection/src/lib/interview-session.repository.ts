@@ -168,6 +168,21 @@ export class InterviewSessionRepository {
         },
       });
       return created;
+    }).catch((err: unknown): never => {
+      // L3-D — a duplicate schedule at the same (process, round) trips the unique index.
+      // Translate the raw P2002 into the stable domain error rather than leaking it.
+      if (isRoundUniqueViolation(err)) {
+        throw new AramoError(
+          'INTERVIEW_ROUND_EXISTS',
+          'An interview session already exists for this process and round',
+          409,
+          {
+            requestId: args.requestId,
+            details: { client_selection_process_id: parent.id, round },
+          },
+        );
+      }
+      throw err;
     });
 
     this.logger.log({
@@ -362,4 +377,31 @@ export class InterviewSessionRepository {
     });
     return projectView(updated as SessionRow);
   }
+}
+
+// L3-D — detect the (process, round) unique-index violation. A Prisma raw-index (not a
+// modelled relation) violation surfaces at meta.driverAdapterError.cause.originalMessage
+// rather than meta.target under Prisma 7 + PrismaPg, so match both — plus the index name
+// in the message — before translating to INTERVIEW_ROUND_EXISTS.
+function isRoundUniqueViolation(err: unknown): boolean {
+  if (typeof err !== 'object' || err === null) return false;
+  const e = err as {
+    code?: unknown;
+    meta?: {
+      target?: unknown;
+      driverAdapterError?: { cause?: { originalMessage?: unknown } };
+    };
+    message?: unknown;
+  };
+  if (e.code !== 'P2002') return false;
+  const named = 'InterviewSession_process_round_key';
+  const target = e.meta?.target;
+  const original = e.meta?.driverAdapterError?.cause?.originalMessage;
+  return (
+    (typeof target === 'string' && target.includes(named)) ||
+    (Array.isArray(target) &&
+      target.some((t) => typeof t === 'string' && t.includes(named))) ||
+    (typeof original === 'string' && original.includes(named)) ||
+    (typeof e.message === 'string' && e.message.includes(named))
+  );
 }

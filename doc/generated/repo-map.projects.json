@@ -196,12 +196,16 @@
       "INTERVIEW_SESSION_TERMINAL_STATES",
       "InterviewSessionRepository",
       "JourneyProjectionRepository",
+      "WITHDRAW_REASON_EFFECT",
       "canTransitionClientSelection",
       "canTransitionInterviewSession",
+      "considerationEffect",
       "isClientSelectionState",
+      "isDispositionOutcomeState",
       "isInterviewSessionState",
       "isTerminalClientSelectionState",
       "isTerminalInterviewSessionState",
+      "isWithdrawReasonCode",
       "legalNextClientSelectionStates",
       "legalNextInterviewSessionStates"
     ],
@@ -1698,6 +1702,11 @@
       { "project": "outbox-publisher", "status": "production" }
     ],
     "@aramo/client-selection": [
+      {
+        "from": "ci/scripts/verify-pipeline-write-authority.ts",
+        "project": "(unscoped)",
+        "status": "unscoped"
+      },
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/client-selection-create-from-submittal.integration.spec.ts",
@@ -3693,6 +3702,11 @@
     ],
     "@aramo/outbox-publisher": [{ "project": "api", "status": "production" }],
     "@aramo/pipeline": [
+      {
+        "from": "ci/scripts/verify-pipeline-write-authority.ts",
+        "project": "(unscoped)",
+        "status": "unscoped"
+      },
       { "from": "tools/seed-e2e-data.ts", "project": "(unscoped)", "status": "unscoped" },
       {
         "excludedBy": "src/tests/**/*",
@@ -4331,6 +4345,11 @@
       { "project": "api", "status": "production" }
     ],
     "@aramo/submittal": [
+      {
+        "from": "ci/scripts/verify-pipeline-write-authority.ts",
+        "project": "(unscoped)",
+        "status": "unscoped"
+      },
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/l2h-talent-journey.integration.spec.ts",

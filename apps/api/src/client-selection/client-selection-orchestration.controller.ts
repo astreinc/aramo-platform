@@ -1,5 +1,5 @@
-import { Body, Controller, Post, Req, UseGuards } from '@nestjs/common';
-import type { Request } from 'express';
+import { Body, Controller, Post, Req, Res, UseGuards } from '@nestjs/common';
+import type { Request, Response } from 'express';
 import { AramoError, RequestId } from '@aramo/common';
 import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
 import { RequireScopes, RolesGuard } from '@aramo/authorization';
@@ -30,6 +30,9 @@ export class ClientSelectionOrchestrationController {
     private readonly command: ClientSelectionCreateFromSubmittalService,
   ) {}
 
+  // L3-C — replay-safe handoff: a first successful create returns 201; a replay for the
+  // same submittal_id returns 200 with the existing process (no second row). The status
+  // is set from the command's `replayed` flag via a passthrough Response.
   @Post()
   @RequireScopes('client-selection:create')
   async create(
@@ -37,6 +40,7 @@ export class ClientSelectionOrchestrationController {
     @Body() body: CreateClientSelectionRequestDto,
     @RequestId() requestId: string,
     @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
   ): Promise<ClientSelectionProcessView> {
     if (typeof body.submittal_id !== 'string' || !UUID_REGEX.test(body.submittal_id)) {
       throw new AramoError(
@@ -47,12 +51,14 @@ export class ClientSelectionOrchestrationController {
       );
     }
     const visibleReqIds = await req.resolveVisibleRequisitionIds!();
-    return this.command.createFromSubmittal({
+    const { process, replayed } = await this.command.createFromSubmittal({
       tenant_id: authContext.tenant_id,
       submittal_id: body.submittal_id,
       created_by_id: authContext.sub,
       visible_requisition_ids: visibleReqIds,
       requestId,
     });
+    res.status(replayed ? 200 : 201);
+    return process;
   }
 }

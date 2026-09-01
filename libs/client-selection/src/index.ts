@@ -18,6 +18,18 @@ export {
   type ClientSelectionState,
 } from './lib/client-selection-state.js';
 
+// L3-E(2) — closed disposition classification (TERMINATES vs PRESERVES) for the governed
+// DECLINE/WITHDRAW → Pipeline disposition orchestration (apps/api).
+export {
+  WITHDRAW_REASON_EFFECT,
+  isWithdrawReasonCode,
+  isDispositionOutcomeState,
+  considerationEffect,
+  type ConsiderationEffect,
+  type WithdrawReasonCode,
+  type DispositionOutcomeState,
+} from './lib/disposition-classification.js';
+
 export type { ClientSelectionProcessView } from './lib/dto/client-selection-process.view.js';
 export type {
   TransitionClientSelectionRequestDto,

@@ -61,7 +61,7 @@ export class ClientSelectionCreateFromSubmittalService {
 
   async createFromSubmittal(
     input: CreateClientSelectionFromSubmittalInput,
-  ): Promise<ClientSelectionProcessView> {
+  ): Promise<{ process: ClientSelectionProcessView; replayed: boolean }> {
     const { tenant_id, submittal_id, visible_requisition_ids, requestId } = input;
 
     const invalid = (reason: string): AramoError =>
@@ -111,29 +111,67 @@ export class ClientSelectionCreateFromSubmittalService {
       site_id = pipes[0]?.site_id ?? null;
     }
 
-    // 4. Owner create (atomic: process + birth event + outbox). A duplicate Submittal
-    //    link trips the @@unique → CLIENT_SELECTION_SUBMITTAL_INVALID (409), the same
-    //    code, since the Submittal is likewise "not valid for a NEW process".
-    const view = await this.repository.create({
-      tenant_id,
-      submittal_id,
-      requisition_id: submittal.job_id,
-      talent_id: submittal.talent_id,
-      site_id,
-      ...(input.created_by_id === undefined ? {} : { created_by_id: input.created_by_id }),
-      requestId,
-    });
+    // 4. Replay-safe handoff (L3-C). Architectural rule: one Submittal produces at
+    //    most one ClientSelectionProcess; a retry with the same submittal_id RETRIEVES
+    //    that same process rather than 409-ing a harmless network/application replay.
+    //    The replay path re-derives + asserts requisition_id/talent_id consistency — a
+    //    genuine mismatch is a conflict (SUBMITTAL_INVALID), never a disguised replay.
+    //    (Tenant/visibility were already enforced in steps 1–2 above.)
+    const assertConsistent = (p: ClientSelectionProcessView): void => {
+      if (p.requisition_id !== submittal.job_id || p.talent_id !== submittal.talent_id) {
+        throw invalid('replay_inconsistent');
+      }
+    };
 
-    this.logger.log({
-      event: 'client_selection_process_created_from_submittal',
-      request_id: requestId,
-      tenant_id,
-      submittal_id,
-      client_selection_process_id: view.id,
-      requisition_id: submittal.job_id,
-      site_id,
-    });
+    const existing = await this.repository.findBySubmittalId({ tenant_id, submittal_id });
+    if (existing !== null) {
+      assertConsistent(existing);
+      this.logger.log({
+        event: 'client_selection_process_replayed_from_submittal',
+        request_id: requestId,
+        tenant_id,
+        submittal_id,
+        client_selection_process_id: existing.id,
+      });
+      return { process: existing, replayed: true };
+    }
 
-    return view;
+    // 5. Owner create (atomic: process + birth event + outbox). The @@unique on
+    //    submittal_id remains the DB backstop.
+    try {
+      const view = await this.repository.create({
+        tenant_id,
+        submittal_id,
+        requisition_id: submittal.job_id,
+        talent_id: submittal.talent_id,
+        site_id,
+        ...(input.created_by_id === undefined ? {} : { created_by_id: input.created_by_id }),
+        requestId,
+      });
+
+      this.logger.log({
+        event: 'client_selection_process_created_from_submittal',
+        request_id: requestId,
+        tenant_id,
+        submittal_id,
+        client_selection_process_id: view.id,
+        requisition_id: submittal.job_id,
+        site_id,
+      });
+
+      return { process: view, replayed: false };
+    } catch (err) {
+      // Concurrent-create race: the @@unique(submittal_id) loser re-fetches onto the
+      //   same replay path (still consistency-checked), so two simultaneous retries
+      //   both resolve to the one process rather than one of them 409-ing.
+      if (err instanceof AramoError && err.code === 'CLIENT_SELECTION_SUBMITTAL_INVALID') {
+        const raced = await this.repository.findBySubmittalId({ tenant_id, submittal_id });
+        if (raced !== null) {
+          assertConsistent(raced);
+          return { process: raced, replayed: true };
+        }
+      }
+      throw err;
+    }
   }
 }
