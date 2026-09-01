@@ -43,8 +43,10 @@ export const REASON_DETAIL_MAX = 2000;
 // ---------------------------------------------------------------------------
 // Governed targets — DERIVED from lifecycle position (TERMINAL), never
 // independently authored, so the governed set cannot drift from the state
-// machine. These are exactly the states for which edgeAuthorityClass === the
-// terminate class, i.e. the four the E3 directive governs.
+// machine. These are exactly the TERMINAL states — the two pre-start fallthrough
+// outcomes the E3 directive governs (NO_SHOW, FELL_THROUGH). L4-0 collapsed the
+// OFFER_DECLINED/OFFER_RESCINDED terminals out — offer decline/rescission is
+// owned by the Offer aggregate (Lane 4), so their reasons no longer live here.
 // ---------------------------------------------------------------------------
 
 export const GOVERNED_TERMINAL_TARGETS: readonly PlacementState[] = PLACEMENT_STATES.filter(
@@ -68,24 +70,21 @@ export type PlacementReasonDefinition = {
   readonly order: number; // deterministic total-sort key (unique)
 };
 
-// The ratified minimum-viable taxonomy. Codes are shared across targets where the
-// operational event is the same (talent_withdrew / other), so the state preserves
-// lifecycle context without minting synonyms.
+// The ratified minimum-viable taxonomy. `other` is shared across both governed
+// targets, so the state preserves lifecycle context without minting synonyms.
 export const PLACEMENT_REASONS: readonly PlacementReasonDefinition[] = [
-  // OFFER_DECLINED — the talent declines the extended offer.
-  { code: 'talent_declined_compensation', label: 'Talent declined — compensation', allowedTargets: ['OFFER_DECLINED'], detailPolicy: 'OPTIONAL', status: 'active', order: 1 },
-  { code: 'talent_declined_role_terms', label: 'Talent declined — role, schedule, or location', allowedTargets: ['OFFER_DECLINED'], detailPolicy: 'OPTIONAL', status: 'active', order: 2 },
-  { code: 'talent_accepted_other_offer', label: 'Talent accepted another offer', allowedTargets: ['OFFER_DECLINED'], detailPolicy: 'OPTIONAL', status: 'active', order: 3 },
-  // Shared: the talent withdrew — at offer (OFFER_DECLINED) or after acceptance,
-  // pre-start (FELL_THROUGH). The target state preserves the lifecycle context.
-  { code: 'talent_withdrew', label: 'Talent withdrew', allowedTargets: ['OFFER_DECLINED', 'FELL_THROUGH'], detailPolicy: 'OPTIONAL', status: 'active', order: 4 },
+  // NO_SHOW — the talent did not start.
+  { code: 'talent_unreachable', label: 'Talent unreachable', allowedTargets: ['NO_SHOW'], detailPolicy: 'OPTIONAL', status: 'active', order: 1 },
+  { code: 'talent_withdrew_before_start', label: 'Talent withdrew before start', allowedTargets: ['NO_SHOW'], detailPolicy: 'OPTIONAL', status: 'active', order: 2 },
+  { code: 'talent_started_elsewhere', label: 'Talent started elsewhere', allowedTargets: ['NO_SHOW'], detailPolicy: 'OPTIONAL', status: 'active', order: 3 },
 
-  // OFFER_RESCINDED — the client withdraws the offer.
-  { code: 'client_budget_or_headcount_change', label: 'Client budget or headcount change', allowedTargets: ['OFFER_RESCINDED'], detailPolicy: 'OPTIONAL', status: 'active', order: 5 },
-  { code: 'client_role_cancelled', label: 'Client cancelled the role', allowedTargets: ['OFFER_RESCINDED'], detailPolicy: 'OPTIONAL', status: 'active', order: 6 },
-  { code: 'client_requirements_changed', label: 'Client requirements changed', allowedTargets: ['OFFER_RESCINDED'], detailPolicy: 'OPTIONAL', status: 'active', order: 7 },
-  { code: 'offer_error_or_correction', label: 'Offer error or correction', allowedTargets: ['OFFER_RESCINDED'], detailPolicy: 'OPTIONAL', status: 'active', order: 8 },
-  // detailPolicy PROHIBITED here is a DATA-CLASSIFICATION decision, NOT a
+  // FELL_THROUGH — broad pre-start fallthrough.
+  { code: 'talent_withdrew', label: 'Talent withdrew', allowedTargets: ['FELL_THROUGH'], detailPolicy: 'OPTIONAL', status: 'active', order: 4 },
+  // pre_start_requirement_failed owns the compliance-failure territory on this
+  // path: it COLLAPSES documentation / background-check / drug-screen / work-
+  // authorization failures. The specific failed requirement (and its sensitive
+  // determination) is owned by libs/pre-start-requirement (E2), NOT duplicated
+  // here — so detail is PROHIBITED as a DATA-CLASSIFICATION decision, NOT a
   // formatting preference. Free text beside a background or compliance
   // determination is exactly where an operator types THE FINDING ITSELF — the
   // specific adverse record about a named individual. That text would land on
@@ -94,28 +93,14 @@ export const PLACEMENT_REASONS: readonly PlacementReasonDefinition[] = [
   // PR #574 / placement.repository.ts), one layer down. Do NOT relax to OPTIONAL
   // without a data-classification ruling: the reason code alone is the fact; the
   // adjudication detail belongs to its owning system, never as free text here.
-  { code: 'background_or_compliance_failure', label: 'Background or compliance failure', allowedTargets: ['OFFER_RESCINDED'], detailPolicy: 'PROHIBITED', status: 'active', order: 9 },
+  { code: 'pre_start_requirement_failed', label: 'Pre-start requirement failed', allowedTargets: ['FELL_THROUGH'], detailPolicy: 'PROHIBITED', status: 'active', order: 5 },
+  { code: 'start_date_failed', label: 'Start date failed', allowedTargets: ['FELL_THROUGH'], detailPolicy: 'OPTIONAL', status: 'active', order: 6 },
+  { code: 'client_cancelled', label: 'Client cancelled before start', allowedTargets: ['FELL_THROUGH'], detailPolicy: 'OPTIONAL', status: 'active', order: 7 },
 
-  // NO_SHOW — the talent did not start.
-  { code: 'talent_unreachable', label: 'Talent unreachable', allowedTargets: ['NO_SHOW'], detailPolicy: 'OPTIONAL', status: 'active', order: 10 },
-  { code: 'talent_withdrew_before_start', label: 'Talent withdrew before start', allowedTargets: ['NO_SHOW'], detailPolicy: 'OPTIONAL', status: 'active', order: 11 },
-  { code: 'talent_started_elsewhere', label: 'Talent started elsewhere', allowedTargets: ['NO_SHOW'], detailPolicy: 'OPTIONAL', status: 'active', order: 12 },
-
-  // FELL_THROUGH — broad pre-start fallthrough.
-  // pre_start_requirement_failed owns the compliance-failure territory on this
-  // path: it COLLAPSES documentation / background-check / drug-screen / work-
-  // authorization failures. The specific failed requirement (and its sensitive
-  // determination) is owned by libs/pre-start-requirement (E2), NOT duplicated
-  // here — so detail is PROHIBITED for the same data-classification reason as
-  // background_or_compliance_failure above.
-  { code: 'pre_start_requirement_failed', label: 'Pre-start requirement failed', allowedTargets: ['FELL_THROUGH'], detailPolicy: 'PROHIBITED', status: 'active', order: 13 },
-  { code: 'start_date_failed', label: 'Start date failed', allowedTargets: ['FELL_THROUGH'], detailPolicy: 'OPTIONAL', status: 'active', order: 14 },
-  { code: 'client_cancelled', label: 'Client cancelled before start', allowedTargets: ['FELL_THROUGH'], detailPolicy: 'OPTIONAL', status: 'active', order: 15 },
-
-  // Shared across all four governed targets. `other` carries REQUIRED detail —
+  // Shared across both governed targets. `other` carries REQUIRED detail —
   // the free-text IS the evidence of which distinction the registry is missing.
   // (High `other` usage is the intended signal for a v2 taxonomy, not user error.)
-  { code: 'other', label: 'Other', allowedTargets: [...GOVERNED_TERMINAL_TARGETS], detailPolicy: 'REQUIRED', status: 'active', order: 16 },
+  { code: 'other', label: 'Other', allowedTargets: [...GOVERNED_TERMINAL_TARGETS], detailPolicy: 'REQUIRED', status: 'active', order: 8 },
 ];
 
 // ---------------------------------------------------------------------------

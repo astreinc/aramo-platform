@@ -12,7 +12,11 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { REPO_ROOT, renderPlacementMigration } from './generate-placement-sql.js';
+import {
+  REPO_ROOT,
+  renderPlacementCollapseMigration,
+  renderPlacementMigration,
+} from './generate-placement-sql.js';
 
 function boundedDiff(expected: string, actual: string, context = 3): string {
   const e = expected.split('\n');
@@ -40,8 +44,7 @@ function boundedDiff(expected: string, actual: string, context = 3): string {
   return out.join('\n');
 }
 
-function main(): void {
-  const { rel, content } = renderPlacementMigration();
+function verifyArtifact(rel: string, content: string): void {
   const abs = join(REPO_ROOT, rel);
   if (!existsSync(abs)) {
     console.error(
@@ -56,7 +59,16 @@ function main(): void {
     console.error('The migration SQL is a generated build artifact; edit the lifecycle registry, not the SQL.');
     process.exit(1);
   }
-  console.log('placement:sql:check ok');
+}
+
+function main(): void {
+  // The FROZEN init (byte-pinned to the historical snapshot) AND the L4-0
+  // forward collapse migration are both generated build artifacts.
+  const init = renderPlacementMigration();
+  const collapse = renderPlacementCollapseMigration();
+  verifyArtifact(init.rel, init.content);
+  verifyArtifact(collapse.rel, collapse.content);
+  console.log('placement:sql:check ok (frozen init + forward collapse migration)');
 }
 
 main();

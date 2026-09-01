@@ -421,7 +421,7 @@ export const ERROR_CODES = [
   // RESTRICTION_INVALID (422) and RESTRICTION_ALREADY_CLOSED (409) stayed two.
   // PLACEMENT_STATE_INVALID (422): an illegal PlacementProcess state transition
   // — the from-state has no such outgoing edge (e.g. the prohibited
-  // OFFER_ACCEPTED → READY_TO_START), or a non-state column mutation. Caller
+  // PRE_START → STARTED shortcut), or a non-state column mutation. Caller
   // remedy: correct the requested transition. Mirrors SUBMITTAL_STATE_INVALID /
   // SELECTION_STATE_INVALID (422). details.reason carries from_state/to_state.
   'PLACEMENT_STATE_INVALID',

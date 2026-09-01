@@ -42,18 +42,17 @@ datasource db {
   schemas  = ["placement", "offer"]
 }
 
-// PlacementState — the closed 10-value lifecycle. The TypeScript registry
+// PlacementState — the closed 6-value lifecycle. The TypeScript registry
 // (src/lib/lifecycle/placement-lifecycle.ts) is the source of truth; this
-// enum mirrors its state order and the generated migration's enum.
+// enum mirrors its state order and the generated migration's enum. L4-0
+// collapsed the four OFFER_* states out — Hiring-Commitment (offer
+// extension/acceptance/decline/rescission) is owned solely by the Offer
+// aggregate (offer.Offer, Lane 4); the placement is born at PRE_START.
 enum PlacementState {
-  OFFER_EXTENDED
-  OFFER_ACCEPTED
   PRE_START
   BLOCKED
   READY_TO_START
   STARTED
-  OFFER_DECLINED
-  OFFER_RESCINDED
   NO_SHOW
   FELL_THROUGH
 

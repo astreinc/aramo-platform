@@ -159,13 +159,17 @@ const OFFER_ID_MIGRATION_PATH = resolve(
   __dirname,
   '../../prisma/migrations/20260824130000_placement_offer_id/migration.sql',
 );
+// L4-0 — the fail-loud PlacementState collapse (applied LAST; SEPARATE const, never a 2nd resolve() arg — ENOTDIR).
+const OFFER_STATE_COLLAPSE_MIGRATION_PATH = resolve(
+  __dirname,
+  '../../prisma/migrations/20260901120000_l4_placement_offer_state_collapse/migration.sql',
+);
 
-// Known transition path to reach each from-state from the initial
-// OFFER_EXTENDED (the transitions to apply, in order).
-// Offer Lifecycle (D6) — placements are born at PRE_START (downstream of an
-// ACCEPTED offer). Paths below drive from PRE_START via createValid. The legacy
-// OFFER_* states remain in the machine but are NO LONGER a create-birth path —
-// tests that must reach an OFFER_* state seed it directly (seedPlacementAtState).
+// Known transition path to reach each from-state from the create-birth state
+// PRE_START (the transitions to apply, in order). Offer Lifecycle (D6) + L4-0 —
+// placements are born at PRE_START (downstream of an ACCEPTED offer, whose
+// extension/acceptance/decline/rescission now lives in the Offer aggregate); the
+// OFFER_* states were collapsed out of the machine.
 const PATH_TO: Record<PlacementState, PlacementState[]> = {
   PRE_START: [],
   BLOCKED: ['BLOCKED'],
@@ -174,12 +178,6 @@ const PATH_TO: Record<PlacementState, PlacementState[]> = {
   STARTED: ['READY_TO_START', 'STARTED'],
   NO_SHOW: ['READY_TO_START', 'NO_SHOW'],
   FELL_THROUGH: ['FELL_THROUGH'],
-  // Legacy offer-phase states — unreachable from the PRE_START birth; reached
-  // only via direct seeding in the explicit legacy-edge tests.
-  OFFER_EXTENDED: [],
-  OFFER_ACCEPTED: [],
-  OFFER_DECLINED: [],
-  OFFER_RESCINDED: [],
 };
 
 function baseInput(overrides: Partial<CreatePlacementInput> = {}): CreatePlacementInput {
@@ -209,7 +207,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       setupClient = new PrismaService(url);
       await setupClient.$connect();
       // Apply the init migration then the additive E1-c and E3 migrations, in order.
-      for (const path of [INIT_MIGRATION_PATH, OFFER_OUTBOX_MIGRATION_PATH, REASON_MIGRATION_PATH, REPLACEMENT_MIGRATION_PATH, CONTRACT_ASSIGNMENT_MIGRATION_PATH, ASSIGNMENT_EXTENSION_MIGRATION_PATH, ASSIGNMENT_ENDED_MIGRATION_PATH, ASSIGNMENT_GUARD_MIGRATION_PATH, ASSIGNMENT_END_REASON_MIGRATION_PATH, ASSIGNMENT_RATE_VERSION_MIGRATION_PATH, EFFECTIVE_WINDOW_MIGRATION_PATH, COMMERCIAL_CANCELLATION_MIGRATION_PATH, PERMANENT_PLACEMENT_MIGRATION_PATH, FALLOFF_REMEDY_MIGRATION_PATH, GUARANTEE_TERMS_MIGRATION_PATH, OFFER_INIT_MIGRATION_PATH, OFFER_ID_MIGRATION_PATH]) {
+      for (const path of [INIT_MIGRATION_PATH, OFFER_OUTBOX_MIGRATION_PATH, REASON_MIGRATION_PATH, REPLACEMENT_MIGRATION_PATH, CONTRACT_ASSIGNMENT_MIGRATION_PATH, ASSIGNMENT_EXTENSION_MIGRATION_PATH, ASSIGNMENT_ENDED_MIGRATION_PATH, ASSIGNMENT_GUARD_MIGRATION_PATH, ASSIGNMENT_END_REASON_MIGRATION_PATH, ASSIGNMENT_RATE_VERSION_MIGRATION_PATH, EFFECTIVE_WINDOW_MIGRATION_PATH, COMMERCIAL_CANCELLATION_MIGRATION_PATH, PERMANENT_PLACEMENT_MIGRATION_PATH, FALLOFF_REMEDY_MIGRATION_PATH, GUARANTEE_TERMS_MIGRATION_PATH, OFFER_INIT_MIGRATION_PATH, OFFER_ID_MIGRATION_PATH, OFFER_STATE_COLLAPSE_MIGRATION_PATH]) {
         const sql = readFileSync(path, 'utf8');
         for (const stmt of splitDdl(sql)) {
           const trimmed = stmt.trim();
@@ -257,19 +255,17 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
     // ---- create ----
 
-    it('creates a placement in the initial OFFER_EXTENDED state', async () => {
+    it('creates a placement in the initial PRE_START state', async () => {
       const v = await createValid(baseInput(), 'req-1');
       expect(v.state).toBe('PRE_START');
       expect(v.id).toMatch(/^[0-9a-f-]{36}$/);
     });
 
-    // ---- all 14 legal edges succeed at the DB layer ----
+    // ---- all 8 legal edges succeed at the DB layer ----
 
-    it('permits all 14 legal edges (DB-level, via the repository)', async () => {
-      // Offer Lifecycle (D6) — this proves the FULL legacy edge graph (incl. the
-      // OFFER_* offer-phase edges a new placement no longer births at). Seed the
-      // edge's from-state DIRECTLY (seedPlacementAtState) so every legal edge —
-      // legacy and current — is exercised regardless of the create-birth state.
+    it('permits all 8 legal edges (DB-level, via the repository)', async () => {
+      // Seed each edge's from-state DIRECTLY (seedPlacementAtState) so every legal
+      // edge is exercised regardless of the PRE_START create-birth state.
       for (const edge of LEGAL_TRANSITIONS) {
         const tenant_id = randomUUID();
         const id = await seedPlacementAtState(prisma, { tenant_id, state: edge.from });
@@ -284,13 +280,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
     // ---- illegal edges rejected ----
 
-    it('rejects the prohibited OFFER_ACCEPTED -> READY_TO_START edge (§4d, PLACEMENT_STATE_INVALID 422)', async () => {
-      // Legacy offer-phase illegal edge — seed directly at OFFER_ACCEPTED (no
-      // longer a create-birth path) to exercise the retained prohibition.
+    it('rejects the prohibited PRE_START -> STARTED edge (§4d, PLACEMENT_STATE_INVALID 422)', async () => {
+      // The prohibited direct shortcut: PRE_START must go via READY_TO_START, never
+      // straight to STARTED.
       const tenant_id = randomUUID();
-      const id = await seedPlacementAtState(prisma, { tenant_id, state: 'OFFER_ACCEPTED' });
+      const id = await seedPlacementAtState(prisma, { tenant_id, state: 'PRE_START' });
       await expect(
-        repo.transition({ tenant_id, placement_process_id: id, to: 'READY_TO_START' }, 'b'),
+        repo.transition({ tenant_id, placement_process_id: id, to: 'STARTED' }, 'b'),
       ).rejects.toMatchObject({ code: 'PLACEMENT_STATE_INVALID', statusCode: 422 });
     });
 
@@ -309,7 +305,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         setupClient.$executeRawUnsafe(
           `UPDATE placement."PlacementProcess" SET state = 'STARTED' WHERE id = '${created.id}'`,
         ),
-      ).rejects.toThrow(/only the 14 legal state transitions/);
+      ).rejects.toThrow(/only the 8 legal state transitions/);
     });
 
     it('the DB trigger rejects a non-state column mutation (§8)', async () => {
@@ -319,7 +315,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         setupClient.$executeRawUnsafe(
           `UPDATE placement."PlacementProcess" SET tenant_id = '${randomUUID()}' WHERE id = '${created.id}'`,
         ),
-      ).rejects.toThrow(/only the 14 legal state transitions/);
+      ).rejects.toThrow(/only the 8 legal state transitions/);
     });
 
     it('BLOCKED -> PRE_START succeeds (the only recovery edge)', async () => {
@@ -369,28 +365,20 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await expect(
         setupClient.$executeRawUnsafe(
           `INSERT INTO placement."PlacementProcess" (id, tenant_id, submittal_id, requisition_id, talent_record_id, state)
-           VALUES ('${randomUUID()}', '${input.tenant_id}', '${input.submittal_id}', '${input.requisition_id}', '${input.talent_record_id}', 'OFFER_EXTENDED')`,
+           VALUES ('${randomUUID()}', '${input.tenant_id}', '${input.submittal_id}', '${input.requisition_id}', '${input.talent_record_id}', 'PRE_START')`,
         ),
       ).rejects.toThrow(/at most one live attempt/);
     });
 
-    // The re-offer workflow — FOUR cases, one per DUPLICATE_GUARD_INACTIVE state.
-    for (const terminal of ['OFFER_DECLINED', 'OFFER_RESCINDED', 'NO_SHOW', 'FELL_THROUGH'] as const) {
+    // The re-offer workflow — one case per DUPLICATE_GUARD_INACTIVE (TERMINAL) state.
+    for (const terminal of ['NO_SHOW', 'FELL_THROUGH'] as const) {
       it(`permits a second attempt after the first reaches ${terminal} (re-offer, §8)`, async () => {
         const shared = { submittal_id: randomUUID(), tenant_id: randomUUID() };
-        // Offer Lifecycle (D6) — drive the FIRST attempt to the terminal. Offer-
-        // phase terminals (OFFER_DECLINED/RESCINDED) are seeded at OFFER_EXTENDED
-        // (legacy edge); PRE_START-reachable terminals drive from the birth state.
-        let firstId: string;
-        if (terminal === 'OFFER_DECLINED' || terminal === 'OFFER_RESCINDED') {
-          firstId = await seedPlacementAtState(prisma, { tenant_id: shared.tenant_id, submittal_id: shared.submittal_id, state: 'OFFER_EXTENDED' });
-          await repo.transition({ tenant_id: shared.tenant_id, placement_process_id: firstId, to: terminal, ...reasonForTarget(terminal) }, 'walk');
-        } else {
-          const created = await createValid(baseInput(shared), `re-${terminal}-a`);
-          firstId = created.id;
-          for (const to of PATH_TO[terminal]) {
-            await repo.transition({ tenant_id: shared.tenant_id, placement_process_id: firstId, to, ...reasonForTarget(to) }, 'walk');
-          }
+        // Drive the FIRST attempt from the PRE_START birth to the terminal.
+        const created = await createValid(baseInput(shared), `re-${terminal}-a`);
+        const firstId = created.id;
+        for (const to of PATH_TO[terminal]) {
+          await repo.transition({ tenant_id: shared.tenant_id, placement_process_id: firstId, to, ...reasonForTarget(to) }, 'walk');
         }
         // first attempt is now terminal — a second attempt is permitted.
         const second = await createValid(baseInput(shared), `re-${terminal}-b`);
@@ -508,7 +496,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           `INSERT INTO placement."PlacementProcess"
              (id, tenant_id, submittal_id, requisition_id, talent_record_id, state, offered_at, offer_expires_at)
            VALUES ('${randomUUID()}', '${randomUUID()}', '${randomUUID()}', '${randomUUID()}', '${randomUUID()}',
-                   'OFFER_EXTENDED', '2026-08-05T12:00:00Z', '2026-08-04T12:00:00Z')`,
+                   'PRE_START', '2026-08-05T12:00:00Z', '2026-08-04T12:00:00Z')`,
         ),
       ).rejects.toThrow(/offer_expiry_after_offered/);
     });
@@ -848,25 +836,16 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       reason: { reason_code?: string | null; reason_detail?: string | null },
       overrides: Partial<CreatePlacementInput> = {},
     ): Promise<string> {
-      // Offer Lifecycle (D6) — offer-phase terminals (OFFER_DECLINED /
-      // OFFER_RESCINDED) are reachable only from OFFER_EXTENDED, which a new
-      // placement no longer births at. These reason tests exercise the LEGACY
-      // offer-phase terminal, so seed directly at OFFER_EXTENDED and decline/
-      // rescind via the retained legacy edge; PRE_START-reachable terminals
-      // (FELL_THROUGH / NO_SHOW) still drive through createValid + PATH_TO.
-      const offerPhaseTerminal = target === 'OFFER_DECLINED' || target === 'OFFER_RESCINDED';
-      let id: string;
-      if (offerPhaseTerminal) {
-        id = await seedPlacementAtState(prisma, { tenant_id: tenant, state: 'OFFER_EXTENDED', ...overrides });
-      } else {
-        const input = baseInput({ tenant_id: tenant, ...overrides });
-        const created = await createValid(input, 'e3-create');
-        id = created.id;
-        const path = PATH_TO[target];
-        for (let i = 0; i < path.length - 1; i++) {
-          const v = await repo.transition({ tenant_id: tenant, placement_process_id: id, to: path[i]! }, 'e3-mid');
-          id = v.id;
-        }
+      // L4-0 — the governed terminals (FELL_THROUGH / NO_SHOW) are reachable from
+      // the PRE_START birth, so drive through createValid + PATH_TO, applying the
+      // reason ONLY on the final governed edge.
+      const input = baseInput({ tenant_id: tenant, ...overrides });
+      const created = await createValid(input, 'e3-create');
+      let id = created.id;
+      const path = PATH_TO[target];
+      for (let i = 0; i < path.length - 1; i++) {
+        const v = await repo.transition({ tenant_id: tenant, placement_process_id: id, to: path[i]! }, 'e3-mid');
+        id = v.id;
       }
       const final = await repo.transition(
         { tenant_id: tenant, placement_process_id: id, to: target, ...reason },
@@ -955,7 +934,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const tenant = randomUUID();
       const input = baseInput({ tenant_id: tenant });
       const created = await createValid(input, 'e3-legacy');
-      // OFFER_EXTENDED -> OFFER_ACCEPTED is non-governed; carries no reason.
+      // PRE_START -> READY_TO_START is non-governed; carries no reason.
       await repo.transition({ tenant_id: tenant, placement_process_id: created.id, to: 'READY_TO_START' }, 'e3-ng');
       const log = await events.listEvents(tenant, created.id);
       expect(log).toHaveLength(1);
@@ -977,9 +956,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       return { state: p?.state ?? null, events: evCount, outbox: Number(r[0]!.count) };
     }
 
-    // A governed terminal target reachable directly from OFFER_EXTENDED, and a
+    // A governed terminal target (a FELL_THROUGH/NO_SHOW reason target), and a
     // reason code NOT allowed for it (for the wrong-target proof).
-    const GOV_TARGET = OPTIONAL_DEF.allowedTargets[0]!; // e.g. OFFER_DECLINED
+    const GOV_TARGET = OPTIONAL_DEF.allowedTargets[0]!; // e.g. FELL_THROUGH
     const WRONG_CODE = PLACEMENT_REASONS.find(
       (r) => r.status === 'active' && !r.allowedTargets.includes(GOV_TARGET),
     )!;
@@ -1007,21 +986,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
             : c.expect === 'detail_required'
               ? REQUIRED_DEF.allowedTargets[0]!
               : GOV_TARGET;
-        // Offer Lifecycle (D6) — reach a state from which `target` is legal so the
-        // FAILING edge is the governed one (non-vacuity). Offer-phase terminals
-        // (OFFER_DECLINED/RESCINDED) are seeded at OFFER_EXTENDED (legacy edge);
-        // PRE_START-reachable terminals drive from the ACCEPTED-offer birth.
-        let id: string;
-        if (target === 'OFFER_DECLINED' || target === 'OFFER_RESCINDED') {
-          id = await seedPlacementAtState(prisma, { tenant_id: tenant, state: 'OFFER_EXTENDED' });
-        } else {
-          const created = await createValid(baseInput({ tenant_id: tenant }), 'e3-neg');
-          id = created.id;
-          const path = PATH_TO[target];
-          for (let i = 0; i < path.length - 1; i++) {
-            const v = await repo.transition({ tenant_id: tenant, placement_process_id: id, to: path[i]! }, 'e3-neg-mid');
-            id = v.id;
-          }
+        // L4-0 — reach a state from which `target` is legal so the FAILING edge is
+        // the governed one (non-vacuity); all governed terminals drive from the birth.
+        const created = await createValid(baseInput({ tenant_id: tenant }), 'e3-neg');
+        let id = created.id;
+        const path = PATH_TO[target];
+        for (let i = 0; i < path.length - 1; i++) {
+          const v = await repo.transition({ tenant_id: tenant, placement_process_id: id, to: path[i]! }, 'e3-neg-mid');
+          id = v.id;
         }
         const before = await reasonSnapshot(tenant, id);
         await expect(
@@ -1183,9 +1155,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const outboxStateChangedBefore = await countOutboxRows(SENTINEL_EVENT_FAIL, 'placement.process.state_changed');
       expect(outboxStateChangedBefore).toBe(1); // the prior transition's state_changed
 
-      // A governed terminal target reachable from OFFER_ACCEPTED (OFFER_RESCINDED
-      // / FELL_THROUGH), with a valid reason so the event carries reason_code and
-      // the sentinel fires on ITS event insert.
+      // A governed terminal target (FELL_THROUGH), with a valid reason so the
+      // event carries reason_code and the sentinel fires on ITS event insert.
       const target: PlacementState = 'FELL_THROUGH';
       const reason = reasonForTarget(target); // an active OPTIONAL code for FELL_THROUGH
       expect(reason.reason_code).toBeDefined();
@@ -1266,7 +1237,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         prisma.$executeRawUnsafe(
           `INSERT INTO placement."PlacementProcess" ` +
             `(id, tenant_id, submittal_id, requisition_id, talent_record_id, state, offered_at, replaces_placement_process_id) ` +
-            `VALUES ('${id}', '${randomUUID()}', '${randomUUID()}', '${randomUUID()}', '${randomUUID()}', 'OFFER_EXTENDED', now(), '${id}')`,
+            `VALUES ('${id}', '${randomUUID()}', '${randomUUID()}', '${randomUUID()}', '${randomUUID()}', 'PRE_START', now(), '${id}')`,
         ),
       ).rejects.toThrow(/replaces_not_self_chk/);
     });
@@ -1295,7 +1266,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     it('E4 / P-valid-1 (repo boundary, T-cyc-1): a NON-terminal predecessor → 422 predecessor_not_terminal', async () => {
       const tenant = randomUUID();
       const req = randomUUID();
-      const live = await createValid(baseInput({ tenant_id: tenant, requisition_id: req }), 'live'); // OFFER_EXTENDED
+      const live = await createValid(baseInput({ tenant_id: tenant, requisition_id: req }), 'live'); // born PRE_START
       await expect(
         createValid(
           baseInput({ tenant_id: tenant, requisition_id: req, replaces_placement_process_id: live.id }),
@@ -1331,7 +1302,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         prisma.$executeRawUnsafe(
           `UPDATE placement."PlacementProcess" SET requisition_id = '${randomUUID()}' WHERE id = '${termId}'`,
         ),
-      ).rejects.toThrow(/only the 14 legal state transitions/);
+      ).rejects.toThrow(/only the 8 legal state transitions/);
     });
   },
 );

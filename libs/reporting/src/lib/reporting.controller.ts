@@ -372,7 +372,7 @@ export class ReportingController {
   // T9-B2 — authoritative fallthrough-rate + reasons operational report.
   // Governed by Aramo-T9-B2-Directive-v1_0-LOCKED. Placement-attempt level,
   // post-acceptance/pre-start (FELL_THROUGH + NO_SHOW) over the cohort of
-  // attempts whose first OFFER_ACCEPTED ∈ [from,to). `from`/`to` REQUIRED
+  // attempts ESTABLISHED (born PRE_START) ∈ [from,to). `from`/`to` REQUIRED
   // absolute ISO instants (reuses parseAbsoluteInstant); report:read +
   // tenant/site/A3. Reasons are grouped by canonical reason_code/label only —
   // reason_detail (PII) is never read or exposed (§16).

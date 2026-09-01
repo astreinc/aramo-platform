@@ -228,7 +228,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     function payloadFor(
       tenant: string,
       submittalId: string,
-      toState: 'STARTED' | 'FELL_THROUGH' | 'NO_SHOW' | 'OFFER_ACCEPTED',
+      toState: 'STARTED' | 'FELL_THROUGH' | 'NO_SHOW' | 'BLOCKED',
       opts: { requisition_id?: string; talent_record_id?: string } = {},
     ): PlacementStateChangedPayload {
       return {
@@ -362,11 +362,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
     // -----------------------------------------------------------------------
     // AC-6 — A non-actionable to_state is a classified skip (no lineage read).
+    // L4-0 collapsed the OFFER_* states out; BLOCKED is now an intermediate live
+    // state the orchestrator does not act on (only STARTED / FELL_THROUGH / NO_SHOW).
     // -----------------------------------------------------------------------
-    it('AC-6: a non-actionable to_state (OFFER_ACCEPTED) is event_not_actionable (processed, no command)', async () => {
+    it('AC-6: a non-actionable to_state (BLOCKED) is event_not_actionable (processed, no command)', async () => {
       const tenant = randomUUID();
       const submittal = await seedSubmittal(tenant, randomUUID());
-      const eventId = await seedEvent(payloadFor(tenant, submittal, 'OFFER_ACCEPTED'));
+      const eventId = await seedEvent(payloadFor(tenant, submittal, 'BLOCKED'));
 
       const counts = await orchestrator.drainBatch({ limit: 50 });
 

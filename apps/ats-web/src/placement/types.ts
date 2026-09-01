@@ -6,58 +6,42 @@
 // sets match.
 
 export const PLACEMENT_STATE_VALUES = [
-  'OFFER_EXTENDED',
-  'OFFER_ACCEPTED',
   'PRE_START',
   'BLOCKED',
   'READY_TO_START',
   'STARTED',
-  'OFFER_DECLINED',
-  'OFFER_RESCINDED',
   'NO_SHOW',
   'FELL_THROUGH',
 ] as const;
 export type PlacementState = (typeof PLACEMENT_STATE_VALUES)[number];
 
-export type LifecyclePosition = 'PRE_COMMITMENT' | 'COMMITTED' | 'ENGAGED' | 'TERMINAL';
+export type LifecyclePosition = 'COMMITTED' | 'ENGAGED' | 'TERMINAL';
 
 export const STATE_POSITION: Record<PlacementState, LifecyclePosition> = {
-  OFFER_EXTENDED: 'PRE_COMMITMENT',
-  OFFER_ACCEPTED: 'COMMITTED',
   PRE_START: 'COMMITTED',
   BLOCKED: 'COMMITTED',
   READY_TO_START: 'COMMITTED',
   STARTED: 'ENGAGED',
-  OFFER_DECLINED: 'TERMINAL',
-  OFFER_RESCINDED: 'TERMINAL',
   NO_SHOW: 'TERMINAL',
   FELL_THROUGH: 'TERMINAL',
 };
 
-// The 14 legal edges (BE §4). Terminal/engaged states declare [].
+// The 8 legal edges (BE §4). Terminal/engaged states declare [].
 export const TRANSITIONS: Record<PlacementState, readonly PlacementState[]> = {
-  OFFER_EXTENDED: ['OFFER_ACCEPTED', 'OFFER_DECLINED', 'OFFER_RESCINDED'],
-  OFFER_ACCEPTED: ['PRE_START', 'OFFER_RESCINDED', 'FELL_THROUGH'],
   PRE_START: ['READY_TO_START', 'BLOCKED', 'FELL_THROUGH'],
   BLOCKED: ['PRE_START', 'FELL_THROUGH'],
   READY_TO_START: ['STARTED', 'NO_SHOW', 'FELL_THROUGH'],
   STARTED: [],
-  OFFER_DECLINED: [],
-  OFFER_RESCINDED: [],
   NO_SHOW: [],
   FELL_THROUGH: [],
 };
 
 // Recruiter-facing labels for the placement lifecycle state.
 export const PLACEMENT_STATE_LABELS: Record<PlacementState, string> = {
-  OFFER_EXTENDED: 'Offer extended',
-  OFFER_ACCEPTED: 'Offer accepted',
   PRE_START: 'Pre-start',
   BLOCKED: 'Blocked',
   READY_TO_START: 'Ready to start',
   STARTED: 'Started',
-  OFFER_DECLINED: 'Offer declined',
-  OFFER_RESCINDED: 'Offer rescinded',
   NO_SHOW: 'No show',
   FELL_THROUGH: 'Fell through',
 };

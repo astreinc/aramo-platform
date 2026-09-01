@@ -41,6 +41,10 @@ const MIGRATIONS = [
   // regenerated placement client SELECTs it, so this curated set needs the ADD
   // COLUMN migration (the read touches PlacementProcess via the client).
   '20260824130000_placement_offer_id',
+  // L4-0 — the fail-loud PlacementState OFFER_* collapse (10→6). MUST run last
+  // (after every other placement migration) so the enum is already at its final
+  // 6-value shape when the read client SELECTs state.
+  '20260901120000_l4_placement_offer_state_collapse',
 ].map((d) =>
   resolve(__dirname, `../../../placement/prisma/migrations/${d}/migration.sql`),
 );
@@ -103,7 +107,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     it('folds real placement data: ordered zero-filled by_state, total_live sum, bounded coverage', async () => {
       const t = randomUUID();
       const req = randomUUID();
-      await pp(t, req, 'OFFER_ACCEPTED');
+      // L4-0: a placement is BORN at PRE_START (no OFFER_* states); the four live
+      // states are PRE_START, BLOCKED, READY_TO_START, STARTED.
+      await pp(t, req, 'PRE_START');
       await pp(t, req, 'READY_TO_START');
       // three STARTED: none / ACTIVE / ENDED (boundedness end-to-end)
       await pp(t, req, 'STARTED');
@@ -111,8 +117,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await ca(t, req, s2, 'ACTIVE');
       const s3 = await pp(t, req, 'STARTED');
       await ca(t, req, s3, 'ENDED');
-      // excluded states must not leak in
-      await pp(t, req, 'OFFER_EXTENDED');
+      // terminal-loss states must not leak into the live pipeline
+      await pp(t, req, 'NO_SHOW');
       await pp(t, req, 'FELL_THROUGH');
 
       const actor = {
@@ -124,14 +130,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const v = await svc.getAssignmentPipeline(actor, { now: NOW });
 
       expect(v.by_state.map((r) => r.state)).toEqual([
-        'OFFER_ACCEPTED', 'PRE_START', 'BLOCKED', 'READY_TO_START', 'STARTED',
+        'PRE_START', 'BLOCKED', 'READY_TO_START', 'STARTED',
       ]);
       const bs = Object.fromEntries(v.by_state.map((r) => [r.state, r.count]));
-      expect(bs['OFFER_ACCEPTED']).toBe(1);
-      expect(bs['PRE_START']).toBe(0);
+      expect(bs['PRE_START']).toBe(1);
+      expect(bs['BLOCKED']).toBe(0);
       expect(bs['READY_TO_START']).toBe(1);
       expect(bs['STARTED']).toBe(3);
-      expect(v.total_live).toBe(5); // 1+0+0+1+3 — excludes OFFER_EXTENDED/FELL_THROUGH
+      expect(v.total_live).toBe(5); // 1+0+1+3 — excludes NO_SHOW/FELL_THROUGH
       // boundedness: STARTED(3) != active(1)+ended(1)
       expect(v.contract_assignments).toEqual({ active: 1, ended: 1, coverage: 'forward_materialized' });
       expect(v.start_date.timezone_basis).toBe('UTC');

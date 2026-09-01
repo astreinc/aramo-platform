@@ -111,7 +111,7 @@ function placementOwnedStage(state: PlacementProcessView['state']): JourneyStage
     case 'BLOCKED':
       return 'PRE_START';
     default:
-      // OFFER_EXTENDED / OFFER_ACCEPTED / terminal (NO_SHOW/FELL_THROUGH/OFFER_*): the fill
+      // READY_TO_START / STARTED / terminal (NO_SHOW/FELL_THROUGH): the fill
       // (establishment) happened — the placement exists — so it is at least ACCEPTED_PLACED.
       return 'ACCEPTED_PLACED';
   }

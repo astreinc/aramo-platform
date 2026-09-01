@@ -1395,11 +1395,10 @@ function PreStartPanel({
 
   useEffect(() => {
     let cancelled = false;
-    // Pre-start requirements are materialized once a placement is committed.
-    // Read all committed placements' requirements lazily (this tab is open).
-    const targets = placements.filter(
-      (p) => p.state !== 'OFFER_EXTENDED' && p.state !== 'OFFER_DECLINED' && p.state !== 'OFFER_RESCINDED',
-    );
+    // Pre-start requirements are materialized once a placement exists (born at
+    // PRE_START, downstream of an accepted offer). Read all placements'
+    // requirements lazily (this tab is open).
+    const targets = placements;
     const init: Record<string, PreStartRow> = {};
     for (const p of targets) {
       init[p.id] = { placement: p, loading: true, error: false, ready: false, blocking: 0, total: 0 };

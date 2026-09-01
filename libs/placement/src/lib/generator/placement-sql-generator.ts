@@ -6,7 +6,7 @@
 // point; the committed migration file IS its output, and CI asserts
 // byte-equality (ci/scripts/verify-placement-sql.ts).
 //
-// The registry drives: the PlacementState enum values, the 14 UPDATE
+// The registry drives: the PlacementState enum values, the UPDATE
 // transition branches, and the BEFORE INSERT guard's DUPLICATE_GUARD_INACTIVE
 // NOT-IN list. None of those is hand-written here — they are read from
 // LEGAL_TRANSITIONS / PLACEMENT_STATES / DUPLICATE_GUARD_INACTIVE (§5c HALT
@@ -28,10 +28,11 @@ import {
 } from './placement-lifecycle-init-frozen.js';
 import {
   assertCommentSafe,
-  emitDropLifecycleTrigger,
   emitEnumTypeSwap,
+  emitLifecycleFunction,
   emitLifecycleTrigger,
   emitMigration,
+  emitOneLiveGuardFunctionReplace,
 } from './sql-ast.js';
 import type {
   LifecycleTrigger,
@@ -278,8 +279,12 @@ export function generatePlacementMigrationSql(): string {
 // L4-0 — the generator-owned FORWARD migration collapsing PlacementState to the canonical
 // live states. The init above stays frozen; this is the evolution. Fail-loud: the enum
 // type-swap's ::text:: cast RAISES on any surviving legacy OFFER_* row before destructive
-// conversion (no silent map). The lifecycle trigger is dropped and recreated through the
-// SAME emitters — never hand-authored. Deterministic; verify-placement-sql byte-checks it.
+// conversion (no silent map). It then CREATE-OR-REPLACEs the two affected function BODIES
+// (the combined lifecycle guard + the T4-C assignment-aware one-live INSERT guard) through
+// the SAME emitters to drop the stale OFFER_* literals. It deliberately does NOT drop or
+// re-create the TRIGGERS: migration 20260810110000 (T4-C) re-bound the lifecycle trigger to
+// UPDATE-only and added the separate BEFORE INSERT one-live guard; replacing only the bodies
+// preserves that topology exactly. Deterministic; verify-placement-sql byte-checks it.
 export function generatePlacementOfferStateCollapseSql(): string {
   const headerLines = [
     'L4-0 (Hiring Commitment) — collapse PlacementState to the canonical live states.',
@@ -293,6 +298,9 @@ export function generatePlacementOfferStateCollapseSql(): string {
     'invalid_text_representation on any surviving OFFER_EXTENDED/OFFER_ACCEPTED/OFFER_DECLINED/',
     'OFFER_RESCINDED row -- the migration stops before destructive conversion, never silently',
     'maps. Zero surviving rows (census / no-prod-data premise) then it succeeds.',
+    'The two guard function bodies are then CREATE-OR-REPLACEd to drop the stale OFFER_*',
+    'literals. The T4-C trigger bindings (lifecycle UPDATE-only + one-live BEFORE INSERT) are',
+    'left untouched -- plpgsql bodies carry no hard enum dependency, so no trigger drop is needed.',
     'NOTE keep this block free of the statement terminator and the dollar-quote delimiter --',
     'the integration migration splitter is dollar-quote aware but does not strip line comments.',
   ];
@@ -302,11 +310,21 @@ export function generatePlacementOfferStateCollapseSql(): string {
 
   return (
     `${header}\n\n` +
-    `-- DropLifecycleTrigger (recreated below from the collapsed 6-state source)\n` +
-    `${emitDropLifecycleTrigger(LIVE_LIFECYCLE_TRIGGER)}\n\n` +
     `-- CollapseEnum (fail-loud ::text:: type-swap)\n` +
     `${emitEnumTypeSwap({ schema: SCHEMA, table: PROCESS_TABLE, column: STATE_COLUMN, enumName: STATE_ENUM, newValues: PLACEMENT_STATES })}\n\n` +
-    `-- RecreateLifecycleTrigger\n` +
-    `${emitLifecycleTrigger(LIVE_LIFECYCLE_TRIGGER)}\n`
+    `-- ReplaceLifecycleGuardBody (collapsed ${LIVE_TRANSITION_BRANCHES.length}-edge source, binding unchanged)\n` +
+    `${emitLifecycleFunction(LIVE_LIFECYCLE_TRIGGER)}\n\n` +
+    `-- ReplaceOneLiveGuardBody (T4-C assignment-aware, live-state list collapsed)\n` +
+    `${emitOneLiveGuardFunctionReplace({
+      schema: SCHEMA,
+      table: PROCESS_TABLE,
+      assignmentTable: 'ContractAssignment',
+      functionName: 'enforce_placement_one_live_guard',
+      keyColumns: KEY_COLUMNS,
+      stateColumn: STATE_COLUMN,
+      inactiveStates: DUPLICATE_GUARD_INACTIVE,
+      message:
+        'PlacementProcess permits at most one live attempt per (tenant_id, submittal_id) -- a live placement (non-terminal, or STARTED with an active assignment) already exists for this pair',
+    })}\n`
   );
 }

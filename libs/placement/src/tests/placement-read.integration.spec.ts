@@ -37,14 +37,16 @@ const GUARANTEE_TERMS_MIGRATION_PATH = resolve(__dirname, '../../prisma/migratio
 // Offer Lifecycle (D6) — the offer aggregate + the placement.offer_id column.
 const OFFER_INIT_MIGRATION_PATH = resolve(__dirname, '../../prisma/migrations/20260824120000_init_offer_model/migration.sql');
 const OFFER_ID_MIGRATION_PATH = resolve(__dirname, '../../prisma/migrations/20260824130000_placement_offer_id/migration.sql');
+// L4-0 — the fail-loud PlacementState collapse (applied LAST; SEPARATE const, never a 2nd resolve() arg — ENOTDIR).
+const OFFER_STATE_COLLAPSE_MIGRATION_PATH = resolve(__dirname, '../../prisma/migrations/20260901120000_l4_placement_offer_state_collapse/migration.sql');
 
-// A governed-terminal reason for OFFER_DECLINED that ALLOWS detail (OPTIONAL
+// A governed-terminal reason for FELL_THROUGH that ALLOWS detail (OPTIONAL
 // policy), so a reason-bearing event carries a non-null reason_detail — the
 // canonical evidence Proof 5 asserts is retrievable on the authorized surface.
 const DECLINE_REASON_OPTIONAL: PlacementReasonDefinition = PLACEMENT_REASONS.find(
-  (r) => r.status === 'active' && r.detailPolicy === 'OPTIONAL' && r.allowedTargets.includes('OFFER_DECLINED'),
+  (r) => r.status === 'active' && r.detailPolicy === 'OPTIONAL' && r.allowedTargets.includes('FELL_THROUGH'),
 )!;
-const REASON_DETAIL_TEXT = 'operational note captured at decline (test evidence)';
+const REASON_DETAIL_TEXT = 'operational note captured at fallthrough (test evidence)';
 
 // Dollar-quote-aware DDL splitter (comment-blind; the migrations carry no
 // `--`-comment-with-semicolon, guarded elsewhere). Local per spec (not shared).
@@ -87,7 +89,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const url = container.getConnectionUri();
       setupClient = new PrismaService(url);
       await setupClient.$connect();
-      for (const path of [INIT_MIGRATION_PATH, OFFER_OUTBOX_MIGRATION_PATH, REASON_MIGRATION_PATH, REPLACEMENT_MIGRATION_PATH, PERMANENT_PLACEMENT_MIGRATION_PATH, FALLOFF_REMEDY_MIGRATION_PATH, GUARANTEE_TERMS_MIGRATION_PATH, OFFER_INIT_MIGRATION_PATH, OFFER_ID_MIGRATION_PATH]) {
+      for (const path of [INIT_MIGRATION_PATH, OFFER_OUTBOX_MIGRATION_PATH, REASON_MIGRATION_PATH, REPLACEMENT_MIGRATION_PATH, PERMANENT_PLACEMENT_MIGRATION_PATH, FALLOFF_REMEDY_MIGRATION_PATH, GUARANTEE_TERMS_MIGRATION_PATH, OFFER_INIT_MIGRATION_PATH, OFFER_ID_MIGRATION_PATH, OFFER_STATE_COLLAPSE_MIGRATION_PATH]) {
         for (const stmt of splitDdl(readFileSync(path, 'utf8'))) {
           const trimmed = stmt.trim();
           if (trimmed.length > 0) await setupClient.$executeRawUnsafe(trimmed);
@@ -112,18 +114,17 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       return repo.createPlacement({ ...input, offer_id }, requestId);
     }
 
-    // Drive a placement to OFFER_DECLINED carrying the canonical reason. This
-    // reads reason evidence on a LEGACY offer-phase terminal, so the row is seeded
-    // DIRECTLY at OFFER_EXTENDED and declined via the retained legacy edge
-    // (OFFER_EXTENDED -> OFFER_DECLINED) — a new placement no longer births there.
-    async function makeDeclinedWithReason(tenant_id: string): Promise<{ id: string; requisition_id: string }> {
+    // Drive a placement to a governed terminal (FELL_THROUGH) carrying the canonical
+    // reason. The row is born PRE_START (the create-birth state) and falls through
+    // via the legal PRE_START -> FELL_THROUGH edge, carrying reason evidence.
+    async function makeFellThroughWithReason(tenant_id: string): Promise<{ id: string; requisition_id: string }> {
       const requisition_id = randomUUID();
-      const id = await seedPlacementAtState(prisma, { tenant_id, state: 'OFFER_EXTENDED', requisition_id });
+      const id = await seedPlacementAtState(prisma, { tenant_id, state: 'PRE_START', requisition_id });
       await repo.transition(
         {
           tenant_id,
           placement_process_id: id,
-          to: 'OFFER_DECLINED',
+          to: 'FELL_THROUGH',
           reason_code: DECLINE_REASON_OPTIONAL.code,
           reason_detail: REASON_DETAIL_TEXT,
         },
@@ -172,12 +173,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     // ---- Proof 4 — collection reason NON-disclosure (boundary: collection projection) --
     it('Proof 4 — a collection item carries NO reason evidence even for a reason-bearing terminal placement', async () => {
       const tenant = randomUUID();
-      const { id } = await makeDeclinedWithReason(tenant);
+      const { id } = await makeFellThroughWithReason(tenant);
 
       const listed = await repo.listForActor({ tenant_id: tenant, visible_requisition_ids: null });
       const item = listed.find((p) => p.id === id);
       expect(item).toBeDefined();
-      expect(item!.state).toBe('OFFER_DECLINED');
+      expect(item!.state).toBe('FELL_THROUGH');
       // The projection must not surface reason evidence on the collection surface.
       for (const key of REASON_KEYS) {
         expect(Object.prototype.hasOwnProperty.call(item!, key)).toBe(false);
@@ -187,10 +188,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     // ---- Proof 5 — event reason DISCLOSURE (boundary: event projection) --
     it('Proof 5 — the event timeline exposes the canonical stored reason (code + label + permitted detail)', async () => {
       const tenant = randomUUID();
-      const { id } = await makeDeclinedWithReason(tenant);
+      const { id } = await makeFellThroughWithReason(tenant);
 
       const timeline = await events.listEvents(tenant, id);
-      const terminal = timeline.find((e) => (e.event_payload as { to?: string })?.to === 'OFFER_DECLINED');
+      const terminal = timeline.find((e) => (e.event_payload as { to?: string })?.to === 'FELL_THROUGH');
       expect(terminal).toBeDefined();
       // Canonical evidence is retrievable on the authorized detail surface (D-1).
       expect(terminal!.reason_code).toBe(DECLINE_REASON_OPTIONAL.code);

@@ -37,6 +37,10 @@ const MIGRATIONS = [
   // regenerated placement client SELECTs it, so this curated set needs the ADD
   // COLUMN migration (the read touches PlacementProcess via the client).
   '20260824130000_placement_offer_id',
+  // L4-0 — the fail-loud PlacementState OFFER_* collapse (10→6). MUST run last
+  // (after every other placement migration) so the enum is already at its final
+  // 6-value shape when the cohort read client SELECTs state.
+  '20260901120000_l4_placement_offer_state_collapse',
 ].map((d) =>
   resolve(__dirname, `../../../placement/prisma/migrations/${d}/migration.sql`),
 );
@@ -98,7 +102,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     async function seed(args: {
       tenant_id: string;
       requisition_id: string;
-      acceptedAt?: Date;
+      // L4-0: the cohort denominator (accepted_attempts) anchors on ESTABLISHMENT =
+      // PlacementProcess.created_at — a placement exists only downstream of an accepted
+      // offer (acceptance now lives in the Offer aggregate), so its birth IS the
+      // accepted-cohort anchor, NOT any placement-side offer transition event. This
+      // is the birth instant.
+      establishedAt?: Date;
       terminal?: 'FELL_THROUGH' | 'NO_SHOW' | 'STARTED';
       reason_code?: string | null;
       reason_label?: string | null;
@@ -111,8 +120,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           submittal_id: randomUUID(),
           requisition_id: args.requisition_id,
           talent_record_id: randomUUID(),
-          state: (args.terminal ?? 'OFFER_ACCEPTED') as never,
+          // Born at PRE_START; a terminal arg advances the spine to its terminal state.
+          state: (args.terminal ?? 'PRE_START') as never,
           offered_at: FROM,
+          // Establishment instant = the cohort anchor (created_at).
+          ...(args.establishedAt === undefined ? {} : { created_at: args.establishedAt }),
         },
       });
       const ev = async (to: string, when: Date, code?: string | null, label?: string | null): Promise<void> => {
@@ -129,18 +141,18 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           },
         });
       };
-      if (args.acceptedAt !== undefined) await ev('OFFER_ACCEPTED', args.acceptedAt);
       if (args.terminal !== undefined) await ev(args.terminal, at(FROM, 10), args.reason_code, args.reason_label);
     }
 
     it('folds real placement data into rate + grouped reasons incl. Unspecified', async () => {
       const t = randomUUID();
       const req = randomUUID();
-      // 4 accepted: 2 fall through (1 coded, 1 null-reason), 1 no-show (coded), 1 started
-      await seed({ tenant_id: t, requisition_id: req, acceptedAt: at(FROM, 1), terminal: 'FELL_THROUGH', reason_code: 'start_date_failed', reason_label: 'Start date failed' });
-      await seed({ tenant_id: t, requisition_id: req, acceptedAt: at(FROM, 1), terminal: 'FELL_THROUGH', reason_code: null, reason_label: null });
-      await seed({ tenant_id: t, requisition_id: req, acceptedAt: at(FROM, 2), terminal: 'NO_SHOW', reason_code: 'talent_unreachable', reason_label: 'Talent unreachable' });
-      await seed({ tenant_id: t, requisition_id: req, acceptedAt: at(FROM, 2), terminal: 'STARTED' });
+      // 4 established in-window (= accepted_attempts): 2 fall through (1 coded, 1
+      // null-reason), 1 no-show (coded), 1 started.
+      await seed({ tenant_id: t, requisition_id: req, establishedAt: at(FROM, 1), terminal: 'FELL_THROUGH', reason_code: 'start_date_failed', reason_label: 'Start date failed' });
+      await seed({ tenant_id: t, requisition_id: req, establishedAt: at(FROM, 1), terminal: 'FELL_THROUGH', reason_code: null, reason_label: null });
+      await seed({ tenant_id: t, requisition_id: req, establishedAt: at(FROM, 2), terminal: 'NO_SHOW', reason_code: 'talent_unreachable', reason_label: 'Talent unreachable' });
+      await seed({ tenant_id: t, requisition_id: req, establishedAt: at(FROM, 2), terminal: 'STARTED' });
 
       const actor = {
         tenant_id: t,

@@ -81,7 +81,7 @@ export type LifecycleTrigger = {
   readonly stateColumn: string;
   readonly keyColumns: readonly string[]; // (tenant_id, submittal_id) — the duplicate key
   readonly immutableColumns: readonly string[]; // pinned byte-identical on UPDATE
-  readonly transitions: readonly TransitionBranch[]; // the 14 legal edges, ordered
+  readonly transitions: readonly TransitionBranch[]; // the legal edges, ordered
   readonly duplicateGuardInactive: readonly string[]; // NOT IN list for the INSERT guard
   readonly transitionViolationMessage: string;
   readonly duplicateViolationMessage: string;
@@ -193,6 +193,21 @@ function emitTransitionBranch(b: TransitionBranch, t: LifecycleTrigger): string 
 }
 
 export function emitLifecycleTrigger(t: LifecycleTrigger): string {
+  return (
+    `${emitLifecycleFunction(t)}\n\n` +
+    `CREATE TRIGGER ${t.triggerName}\n` +
+    `  BEFORE INSERT OR UPDATE ON ${q(t.schema, t.table)}\n` +
+    `  FOR EACH ROW EXECUTE FUNCTION ${t.schema}.${t.functionName}();`
+  );
+}
+
+// The lifecycle FUNCTION alone (header + CREATE OR REPLACE FUNCTION ... $$), WITHOUT
+// the CREATE TRIGGER binding. emitLifecycleTrigger composes this + the binding; a
+// forward migration that only needs to swap the function BODY (e.g. the L4-0 enum
+// collapse, which must NOT disturb a trigger binding an earlier migration re-bound —
+// Track 4 / T4-C rebound this trigger to UPDATE-only) recreates the body via CREATE
+// OR REPLACE and leaves the existing binding untouched.
+export function emitLifecycleFunction(t: LifecycleTrigger): string {
   const notInList = t.duplicateGuardInactive.map((s) => `'${s}'`).join(', ');
   const keyPredicate = t.keyColumns
     .map((c) => `        AND existing.${c} = NEW.${c}`)
@@ -212,7 +227,7 @@ export function emitLifecycleTrigger(t: LifecycleTrigger): string {
     '   submittal_id). A row is live unless its state is DUPLICATE_GUARD_INACTIVE',
     '   (lifecycle position TERMINAL). STARTED is ENGAGED, not TERMINAL, so a',
     '   started placement still blocks a second attempt.',
-    'B. BEFORE UPDATE -- only the state column may change, and only along the 14',
+    `B. BEFORE UPDATE -- only the state column may change, and only along the ${t.transitions.length}`,
     '   legal edges. Every other column is pinned byte-identical. A transition',
     '   violation and a duplicate-live violation raise distinguishable messages.',
     'NOTE keep this comment block free of the statement terminator and the',
@@ -244,10 +259,7 @@ export function emitLifecycleTrigger(t: LifecycleTrigger): string {
     `  END IF;\n\n` +
     `  RETURN NEW;\n` +
     `END;\n` +
-    `$$ LANGUAGE plpgsql;\n\n` +
-    `CREATE TRIGGER ${t.triggerName}\n` +
-    `  BEFORE INSERT OR UPDATE ON ${q(t.schema, t.table)}\n` +
-    `  FOR EACH ROW EXECUTE FUNCTION ${t.schema}.${t.functionName}();`
+    `$$ LANGUAGE plpgsql;`
   );
 }
 
@@ -267,17 +279,14 @@ function emitRejectTrigger(r: RejectTrigger): string {
 }
 
 // ---------------------------------------------------------------------------
-// Forward-evolution emitters (L4-0). The lifecycle trigger/function is
-// generator-owned; a forward migration that narrows the state enum must drop
-// and recreate it through the SAME emitters, never hand-author the SQL.
+// Forward-evolution emitters (L4-0). The lifecycle function/guards are
+// generator-owned; a forward migration that narrows the state enum swaps the
+// enum fail-loud and CREATE-OR-REPLACEs the affected function BODIES through the
+// SAME emitters, never hand-authoring SQL. It deliberately does NOT drop or
+// re-create the TRIGGERS — an earlier migration (Track 4 / T4-C) re-bound the
+// lifecycle trigger to UPDATE-only and added a separate BEFORE INSERT
+// assignment-aware guard; replacing only the bodies preserves that topology.
 // ---------------------------------------------------------------------------
-
-export function emitDropLifecycleTrigger(t: LifecycleTrigger): string {
-  return (
-    `DROP TRIGGER IF EXISTS ${t.triggerName} ON ${q(t.schema, t.table)};\n` +
-    `DROP FUNCTION IF EXISTS ${t.schema}.${t.functionName}();`
-  );
-}
 
 export type EnumTypeSwap = {
   readonly schema: string;
@@ -291,8 +300,9 @@ export type EnumTypeSwap = {
 // (invalid_text_representation) on any surviving row whose value is not in newValues —
 // stopping the migration BEFORE destructive conversion, never silently mapping or
 // coercing. The state column carries no DB default (app-side UUID/state), so no default
-// drop/restore is needed. Caller drops the lifecycle trigger/function first (it references
-// the enum) and recreates it after via emitLifecycleTrigger.
+// drop/restore is needed. plpgsql function bodies are stored as text (no hard type
+// dependency), so the swap succeeds without dropping the guards; the caller then
+// CREATE-OR-REPLACEs the affected function bodies to drop the stale enum literals.
 export function emitEnumTypeSwap(s: EnumTypeSwap): string {
   const newType = `${s.enumName}_new`;
   const values = s.newValues.map((v) => `'${v}'`).join(', ');
@@ -303,6 +313,61 @@ export function emitEnumTypeSwap(s: EnumTypeSwap): string {
     `  USING ("${s.column}"::text::${q(s.schema, newType)});\n` +
     `DROP TYPE ${q(s.schema, s.enumName)};\n` +
     `ALTER TYPE ${q(s.schema, newType)} RENAME TO "${s.enumName}";`
+  );
+}
+
+// CREATE OR REPLACE the Track 4 / T4-C assignment-aware one-live INSERT guard
+// function. This mirrors the hand-authored body from migration
+// 20260810110000_placement_assignment_aware_guard, with the live-state NOT-IN
+// list driven by `inactiveStates` (the collapsed DUPLICATE_GUARD_INACTIVE) so the
+// L4-0 enum collapse drops the stale OFFER_* literals from its body. REPLACE only
+// — the existing BEFORE INSERT trigger binding is left untouched.
+export type OneLiveGuardReplace = {
+  readonly schema: string;
+  readonly table: string;
+  readonly assignmentTable: string; // ContractAssignment
+  readonly functionName: string; // enforce_placement_one_live_guard
+  readonly keyColumns: readonly string[]; // (tenant_id, submittal_id)
+  readonly stateColumn: string;
+  readonly inactiveStates: readonly string[]; // collapsed DUPLICATE_GUARD_INACTIVE
+  readonly message: string;
+};
+
+export function emitOneLiveGuardFunctionReplace(g: OneLiveGuardReplace): string {
+  const notInList = g.inactiveStates.map((s) => `'${s}'`).join(', ');
+  const keyPredicate = g.keyColumns
+    .map((c) => `      AND existing.${c} = NEW.${c}`)
+    .join('\n')
+    .replace('      AND ', '      '); // first key column has no leading AND
+  return (
+    `${comment([
+      `${g.table} one-live INSERT guard (Track 4 / T4-C, assignment-aware). GENERATED`,
+      'from the typed lifecycle registry -- do NOT edit by hand. Block a new attempt if',
+      'a LIVE placement exists for the key: a non-terminal state that is NOT a STARTED',
+      'placement whose ContractAssignment has ENDED. REPLACE only -- the BEFORE INSERT',
+      'trigger binding is left as the T4-C migration created it.',
+    ])}\n` +
+    `CREATE OR REPLACE FUNCTION ${g.schema}.${g.functionName}()\n` +
+    `RETURNS TRIGGER AS $$\n` +
+    `BEGIN\n` +
+    `  IF EXISTS (\n` +
+    `    SELECT 1 FROM ${q(g.schema, g.table)} existing\n` +
+    `    WHERE ${keyPredicate.trimStart()}\n` +
+    `      AND existing.${g.stateColumn} NOT IN (${notInList})\n` +
+    `      AND NOT (\n` +
+    `        existing.${g.stateColumn} = 'STARTED'\n` +
+    `        AND EXISTS (\n` +
+    `          SELECT 1 FROM ${q(g.schema, g.assignmentTable)} ca\n` +
+    `          WHERE ca.placement_process_id = existing.id\n` +
+    `            AND ca.lifecycle_state = 'ENDED'\n` +
+    `        )\n` +
+    `      )\n` +
+    `  ) THEN\n` +
+    `    RAISE EXCEPTION\n      '${g.message}'\n      USING ERRCODE = 'check_violation';\n` +
+    `  END IF;\n` +
+    `  RETURN NEW;\n` +
+    `END;\n` +
+    `$$ LANGUAGE plpgsql;`
   );
 }
 

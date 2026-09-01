@@ -54,12 +54,11 @@ export async function seedAcceptedOffer(
   return id;
 }
 
-// Direct DB seed of a PlacementProcess at an EXPLICIT state — for legacy
-// offer-phase transition-edge tests ONLY (e.g. OFFER_EXTENDED → OFFER_ACCEPTED),
-// which exercise the historical transition graph, not the new creation command.
-// Bypasses createPlacement deliberately (the row is placed in a state a new
-// create no longer births at); offer_id stays NULL (a legacy row). The lifecycle
-// trigger's BEFORE INSERT one-live guard still applies.
+// Direct DB seed of a PlacementProcess at an EXPLICIT state — for transition-edge
+// and terminal tests that need a placement at a NON-BIRTH state (e.g.
+// READY_TO_START, or a terminal NO_SHOW/FELL_THROUGH), which createPlacement does
+// not directly birth at (it always births PRE_START). Bypasses createPlacement
+// deliberately; offer_id stays NULL. The BEFORE INSERT one-live guard still applies.
 interface PlacementSeedClient {
   placementProcess: {
     create: (args: { data: Record<string, unknown> }) => Promise<{ id: string; state: string }>;

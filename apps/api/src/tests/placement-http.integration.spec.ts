@@ -23,7 +23,7 @@ const MANAGER_PLACEMENT = ['placement:read', 'placement:create', 'placement:tran
 const T5_TERMS = { pay_rate_amount: '80.00', bill_rate_amount: '120.00', currency: 'USD', rate_period: 'HOURLY' } as const;
 
 // E3 — a governed terminal transition now requires a canonical reason. Derive a
-// valid OPTIONAL code for OFFER_DECLINED from the registry (no detail needed), so
+// valid OPTIONAL code for the FELL_THROUGH terminal from the registry (no detail needed), so
 // the proofs stay taxonomy-neutral.
 const DECLINE_REASON = PLACEMENT_REASONS.find(
   (r) => r.status === 'active' && r.detailPolicy === 'OPTIONAL' && r.allowedTargets.includes('FELL_THROUGH'),
@@ -80,6 +80,12 @@ const ASSIGNMENT_EXTENSION_MIGRATION = resolve(__dirname, '../../../../libs/plac
 // Slice #4 — Commercial Approval: CommercialRevisionProposal aggregate + event log.
 // A SEPARATE const + apply-list entry (single-path resolve — never a 2nd resolve() arg → ENOTDIR).
 const COMMERCIAL_PROPOSAL_MIGRATION = resolve(__dirname, '../../../../libs/placement/prisma/migrations/20260826120000_commercial_revision_proposal/migration.sql');
+// L4-0 (Hiring Commitment) — collapse PlacementState 10 -> 6 (the four OFFER_* states
+// removed; offer lifecycle is owned solely by the Offer aggregate). Applied LAST; the
+// fail-loud ::text:: cast is a no-op on a fresh DB (zero surviving rows), and it swaps
+// the lifecycle guard body in for the collapsed 8-edge matrix (PRE_START-born).
+// SEPARATE const + apply-list entry (single-path resolve — never a 2nd resolve() arg → ENOTDIR).
+const OFFER_STATE_COLLAPSE_MIGRATION = resolve(__dirname, '../../../../libs/placement/prisma/migrations/20260901120000_l4_placement_offer_state_collapse/migration.sql');
 // T6-B1 overlap exclusion constraint — dropped+restored around the legacy-corruption
 // defensive proof (the only way to seed a state the constraint now forbids).
 const OVERLAP_CONSTRAINT = 'AssignmentRateVersion_no_window_overlap_excl';
@@ -118,7 +124,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('E1-b PlacementCon
     const url = container.getConnectionUri();
     setup = new PrismaService(url);
     await setup.$connect();
-    for (const migration of [INIT_MIGRATION, OFFER_OUTBOX_MIGRATION, REASON_MIGRATION, REPLACEMENT_MIGRATION, CONTRACT_ASSIGNMENT_MIGRATION, ASSIGNMENT_ENDED_MIGRATION, ASSIGNMENT_GUARD_MIGRATION, ASSIGNMENT_END_REASON_MIGRATION, ASSIGNMENT_RATE_VERSION_MIGRATION, EFFECTIVE_WINDOW_MIGRATION, COMMERCIAL_CANCELLATION_MIGRATION, PERMANENT_PLACEMENT_MIGRATION, FALLOFF_REMEDY_MIGRATION, GUARANTEE_TERMS_MIGRATION, OFFER_INIT_MIGRATION, OFFER_ID_MIGRATION, ASSIGNMENT_EXTENSION_MIGRATION, COMMERCIAL_PROPOSAL_MIGRATION]) {
+    for (const migration of [INIT_MIGRATION, OFFER_OUTBOX_MIGRATION, REASON_MIGRATION, REPLACEMENT_MIGRATION, CONTRACT_ASSIGNMENT_MIGRATION, ASSIGNMENT_ENDED_MIGRATION, ASSIGNMENT_GUARD_MIGRATION, ASSIGNMENT_END_REASON_MIGRATION, ASSIGNMENT_RATE_VERSION_MIGRATION, EFFECTIVE_WINDOW_MIGRATION, COMMERCIAL_CANCELLATION_MIGRATION, PERMANENT_PLACEMENT_MIGRATION, FALLOFF_REMEDY_MIGRATION, GUARANTEE_TERMS_MIGRATION, OFFER_INIT_MIGRATION, OFFER_ID_MIGRATION, ASSIGNMENT_EXTENSION_MIGRATION, COMMERCIAL_PROPOSAL_MIGRATION, OFFER_STATE_COLLAPSE_MIGRATION]) {
       for (const s of splitDdl(readFileSync(migration, 'utf8'))) {
         if (s.trim()) await setup.$executeRawUnsafe(s.trim());
       }
@@ -157,7 +163,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('E1-b PlacementCon
     return v.id;
   }
 
-  it('create returns OFFER_EXTENDED', async () => {
+  it('create returns PRE_START', async () => {
     const id = await make(randomUUID());
     expect(id).toMatch(/^[0-9a-f-]{36}$/);
   });
@@ -222,10 +228,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('E1-b PlacementCon
   it('an illegal edge is refused by the matrix (PLACEMENT_STATE_INVALID 422) even with the scope', async () => {
     const t = randomUUID();
     const id = await make(t);
-    // Offer Lifecycle (D6) — born PRE_START; PRE_START -> OFFER_ACCEPTED is not a
-    // legal edge, and OFFER_ACCEPTED is a transition-class target (the scope is
-    // held), so the refusal is the matrix, not authz.
-    await expect(ctrl.transition(auth(['placement:transition'], t), 'r', id, { to: 'OFFER_ACCEPTED' })).rejects.toMatchObject({
+    // L4 6-state machine — born PRE_START; drive it to READY_TO_START, then attempt
+    // READY_TO_START -> BLOCKED. That edge is NOT in the 8-edge matrix, and BLOCKED is
+    // a transition-class target (PRE_START -> BLOCKED is a legal ordinary edge, so the
+    // scope is held), so the refusal is the matrix (422), not authz.
+    await ctrl.transition(auth(['placement:transition'], t), 'r', id, { to: 'READY_TO_START' });
+    await expect(ctrl.transition(auth(['placement:transition'], t), 'r', id, { to: 'BLOCKED' })).rejects.toMatchObject({
       code: 'PLACEMENT_STATE_INVALID',
       statusCode: 422,
     });
@@ -372,7 +380,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('E1-b PlacementCon
 
   it('assignment:read no-assignment — a placement with no ContractAssignment returns { assignment: null } (coherent absence, not error, not fabricated)', async () => {
     const t = randomUUID();
-    const id = await ctrlCreate(auth(RECRUITER_PLACEMENT, t), 'r', body()).then((v) => v.id); // OFFER_EXTENDED, never STARTED
+    const id = await ctrlCreate(auth(RECRUITER_PLACEMENT, t), 'r', body()).then((v) => v.id); // PRE_START, never STARTED
     const res = await ctrl.getAssignment(readAuth(t), 'r', id, reqSeeAll);
     expect(res.assignment).toBeNull();
   });
@@ -736,8 +744,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('E1-b PlacementCon
   });
 
   // ── Track 3 / E4 — replacement authorization + linkage ────────────────────
-  // Create a terminal predecessor to replace: create (OFFER_EXTENDED) then
-  // terminate into OFFER_DECLINED with a valid governed reason. Returns its id.
+  // Create a terminal predecessor to replace: create (born PRE_START) then
+  // terminate into FELL_THROUGH with a valid governed reason. Returns its id.
   async function makeTerminalPredecessor(tenant: string, requisitionId: string): Promise<string> {
     const created = await ctrlCreate(auth(['placement:create'], tenant), 'r', {
       submittal_id: randomUUID(),

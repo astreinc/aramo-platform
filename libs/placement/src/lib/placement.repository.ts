@@ -417,8 +417,9 @@ export class PlacementRepository {
     @Optional() private readonly commercialApprovalPolicy?: CommercialApprovalPolicyService,
   ) {}
 
-  // Create a new PlacementProcess. An offer was made, so the initial state is
-  // OFFER_EXTENDED (§4). Rejects a second LIVE attempt for the same
+  // Create a new PlacementProcess. The placement is created downstream of an
+  // accepted offer (owned by the Offer aggregate), so the initial state is
+  // PRE_START (§4). Rejects a second LIVE attempt for the same
   // (tenant_id, submittal_id) — PLACEMENT_ALREADY_LIVE (409).
   async createPlacement(input: CreatePlacementInput, requestId: string): Promise<PlacementProcessView> {
     // E4 — replacement lineage validation (§5). When replaces_placement_process_id

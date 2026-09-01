@@ -859,9 +859,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       `http://127.0.0.1:${port}/v1/reports/fallthrough` +
       `?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&site_id=${SITE_A}`;
 
-    // Seed a placement attempt that first-accepts in-window then FELL_THROUGH.
-    // Raw insert (no HTTP path creates OFFER_ACCEPTED transitions in this spec);
-    // the PlacementProcess event log carries {from,to} + reason on the terminal.
+    // Seed a placement attempt: established (born PRE_START) in-window, then FELL_THROUGH.
+    // L4-0 — the accepted cohort is now PlacementProcess ESTABLISHED (its created_at),
+    // NOT an offer-acceptance event; the fallthrough numerator reads the terminal
+    // state_transition event (to IN FELL_THROUGH/NO_SHOW). Raw insert (no HTTP path
+    // establishes + fells a placement in this spec); the event log carries {from,to} +
+    // reason on the terminal (valid 6-state edges: PRE_START->READY_TO_START->FELL_THROUGH).
     async function seedFallthrough(requisition_id: string): Promise<void> {
       const pp = globalThis.crypto.randomUUID();
       await setupClient.query(
@@ -874,14 +877,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         `INSERT INTO placement."PlacementProcessEvent"
            (id, tenant_id, placement_process_id, event_type, event_payload, created_at)
          VALUES ($1,$2,$3,'state_transition'::placement."PlacementEventType",
-                 '{"from":"OFFER_EXTENDED","to":"OFFER_ACCEPTED"}'::jsonb, '2026-05-15T00:00:00Z')`,
+                 '{"from":"PRE_START","to":"READY_TO_START"}'::jsonb, '2026-05-15T00:00:00Z')`,
         [globalThis.crypto.randomUUID(), TENANT_ATS, pp],
       );
       await setupClient.query(
         `INSERT INTO placement."PlacementProcessEvent"
            (id, tenant_id, placement_process_id, event_type, event_payload, reason_code, reason_label_snapshot, created_at)
          VALUES ($1,$2,$3,'state_transition'::placement."PlacementEventType",
-                 '{"from":"OFFER_ACCEPTED","to":"FELL_THROUGH"}'::jsonb, 'start_date_failed', 'Start date failed', '2026-05-20T00:00:00Z')`,
+                 '{"from":"READY_TO_START","to":"FELL_THROUGH"}'::jsonb, 'start_date_failed', 'Start date failed', '2026-05-20T00:00:00Z')`,
         [globalThis.crypto.randomUUID(), TENANT_ATS, pp],
       );
     }
@@ -1000,7 +1003,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(res.status).toBe(403);
     });
 
-    it('assignment-pipeline shape: five ordered live states, total_live = their sum, UTC/coverage labels, no commercial/ended_at', async () => {
+    it('assignment-pipeline shape: four ordered live states, total_live = their sum, UTC/coverage labels, no commercial/ended_at', async () => {
       const res = await fetch(apUrl(), { method: 'GET', headers: { Authorization: `Bearer ${tenantAdminJwt}` } });
       expect(res.status).toBe(200);
       const raw = await res.text();
@@ -1014,7 +1017,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         contract_assignments: { coverage: string };
       };
       expect(body.by_state.map((r) => r.state)).toEqual([
-        'OFFER_ACCEPTED', 'PRE_START', 'BLOCKED', 'READY_TO_START', 'STARTED',
+        'PRE_START', 'BLOCKED', 'READY_TO_START', 'STARTED',
       ]);
       expect(body.total_live).toBe(body.by_state.reduce((s, r) => s + r.count, 0));
       expect(body.start_date.timezone_basis).toBe('UTC');
