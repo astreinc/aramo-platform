@@ -15459,6 +15459,11 @@
     },
     { "from": "package.json", "status": "unscoped", "to": "ci/scripts/verify-offer-sql.ts" },
     { "from": "package.json", "status": "unscoped", "to": "ci/scripts/verify-orphan-scopes.ts" },
+    {
+      "from": "package.json",
+      "status": "unscoped",
+      "to": "ci/scripts/verify-pipeline-write-authority.ts"
+    },
     { "from": "package.json", "status": "unscoped", "to": "ci/scripts/verify-placement-sql.ts" },
     { "from": "package.json", "status": "unscoped", "to": "ci/scripts/verify-portal-refusal.ts" },
     { "from": "package.json", "status": "unscoped", "to": "ci/scripts/verify-repo-map.ts" },
@@ -17375,7 +17380,7 @@
   ],
   "scanScope": {
     "dirs": [".github/workflows", ".husky", "ci/scripts", "deploy", "scripts", "tools"],
-    "files": 66,
+    "files": 67,
     "huskyPresent": false
   },
   "scripts": [
@@ -17609,6 +17614,19 @@
       ]
     },
     {
+      "name": "pipeline:write-authority:check",
+      "references": [
+        { "kind": "npm-run", "path": ".github/workflows/ci.yml" },
+        { "kind": "prose", "path": ".github/workflows/ci.yml" },
+        { "kind": "npm-run", "path": "ci/scripts/prepush.ts" },
+        { "kind": "prose", "path": "ci/scripts/prepush.ts" }
+      ]
+    },
+    {
+      "name": "pipeline:write-authority:self-test",
+      "references": [{ "kind": "npm-run", "path": ".github/workflows/ci.yml" }]
+    },
+    {
       "name": "placement:sql:check",
       "references": [
         { "kind": "npm-run", "path": ".github/workflows/ci.yml" },
@@ -17726,6 +17744,7 @@
         { "kind": "prose", "path": "ci/scripts/verify-api-contract-parity.ts" },
         { "kind": "prose", "path": "ci/scripts/verify-error-codes.ts" },
         { "kind": "prose", "path": "ci/scripts/verify-frontdoor-conf.ts" },
+        { "kind": "prose", "path": "ci/scripts/verify-pipeline-write-authority.ts" },
         { "kind": "prose", "path": "deploy/build-images.test.sh" },
         { "kind": "prose", "path": "deploy/migrate-prod.sh" },
         { "kind": "prose", "path": "deploy/migrate-prod.test.sh" },

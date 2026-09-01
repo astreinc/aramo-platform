@@ -131,6 +131,10 @@ steps.push(['integration-roots:check', () => run('npm run --silent tests:integra
 // regenerate and byte-compare against the committed file (generate-and-compare
 // idiom, like repo-map:check / error-codes:check).
 steps.push(['placement:sql:check', () => run('npm run --silent placement:sql:check')]);
+// L3-A — Pipeline write-authority wall. Cheap + static (grep-class, like the
+// scope/error-code guards): no raw Pipeline write outside libs/pipeline, and no
+// @aramo/pipeline coupling in the client-consideration domains. Unconditional.
+steps.push(['pipeline:write-authority:check', () => run('npm run --silent pipeline:write-authority:check')]);
 // repo-map is a generated SET (doc/generated/repo-map.*.json) — new/removed
 // tracked files or changed cross-lib coupling drift it. Same generate-and-compare
 // idiom as placement:sql:check; mirrors the CI repo-map:check wall + the

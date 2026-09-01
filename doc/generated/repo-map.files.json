@@ -1042,6 +1042,7 @@
     "ci/scripts/verify-ingestion-refusal.ts",
     "ci/scripts/verify-offer-sql.ts",
     "ci/scripts/verify-orphan-scopes.ts",
+    "ci/scripts/verify-pipeline-write-authority.ts",
     "ci/scripts/verify-placement-sql.ts",
     "ci/scripts/verify-portal-refusal.ts",
     "ci/scripts/verify-repo-map.ts",

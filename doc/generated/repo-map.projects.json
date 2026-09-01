@@ -3693,6 +3693,11 @@
     ],
     "@aramo/outbox-publisher": [{ "project": "api", "status": "production" }],
     "@aramo/pipeline": [
+      {
+        "from": "ci/scripts/verify-pipeline-write-authority.ts",
+        "project": "(unscoped)",
+        "status": "unscoped"
+      },
       { "from": "tools/seed-e2e-data.ts", "project": "(unscoped)", "status": "unscoped" },
       {
         "excludedBy": "src/tests/**/*",
@@ -4331,6 +4336,11 @@
       { "project": "api", "status": "production" }
     ],
     "@aramo/submittal": [
+      {
+        "from": "ci/scripts/verify-pipeline-write-authority.ts",
+        "project": "(unscoped)",
+        "status": "unscoped"
+      },
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/l2h-talent-journey.integration.spec.ts",
