@@ -113,7 +113,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await seedPipeline(TENANT_A, pipelineId, talent, req, site);
       await seedSubmittal(TENANT_A, submittalId, talent, req, pipelineId);
 
-      const view = await svc.createFromSubmittal({
+      const { process: view } = await svc.createFromSubmittal({
         tenant_id: TENANT_A,
         submittal_id: submittalId,
         created_by_id: randomUUID(),
@@ -144,7 +144,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const submittalId = randomUUID();
       await seedSubmittal(TENANT_A, submittalId, talent, req, null);
 
-      const view = await svc.createFromSubmittal({
+      const { process: view } = await svc.createFromSubmittal({
         tenant_id: TENANT_A,
         submittal_id: submittalId,
         visible_requisition_ids: null,
@@ -154,6 +154,54 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(view.requisition_id).toBe(req);
       expect(view.talent_id).toBe(talent);
       expect(view.site_id).toBeNull();
+    }, 60_000);
+
+    // L3-C — the Submittal→ClientSelection handoff is REPLAY-SAFE. One Submittal
+    // produces at most one ClientSelectionProcess; a retry with the same submittal_id
+    // RETRIEVES that same process (replayed:true) rather than 409-ing a harmless
+    // network/application replay. First create = replayed:false (201 at the route);
+    // replay = replayed:true (200). No second process/event row is written. The replay
+    // path re-derives + asserts requisition_id/talent_id consistency (a genuine mismatch
+    // is a conflict, never a disguised replay).
+    it('L3-C: replay of the same submittal returns the SAME process (idempotent), writing no second row', async () => {
+      const talent = randomUUID();
+      const req = randomUUID();
+      const site = randomUUID();
+      const pipelineId = randomUUID();
+      const submittalId = randomUUID();
+      await seedPipeline(TENANT_A, pipelineId, talent, req, site);
+      await seedSubmittal(TENANT_A, submittalId, talent, req, pipelineId);
+
+      const first = await svc.createFromSubmittal({
+        tenant_id: TENANT_A,
+        submittal_id: submittalId,
+        created_by_id: randomUUID(),
+        visible_requisition_ids: null,
+        requestId: 'req-c-first',
+      });
+      const second = await svc.createFromSubmittal({
+        tenant_id: TENANT_A,
+        submittal_id: submittalId,
+        created_by_id: randomUUID(),
+        visible_requisition_ids: null,
+        requestId: 'req-c-replay',
+      });
+
+      expect(first.replayed).toBe(false);
+      expect(second.replayed).toBe(true);
+      expect(second.process.id).toBe(first.process.id);
+
+      // Exactly ONE process, and only the birth event (the replay wrote nothing).
+      const procs = await sql.query<{ c: string }>(
+        `SELECT count(*)::text AS c FROM "client_selection"."ClientSelectionProcess" WHERE submittal_id=$1`,
+        [submittalId],
+      );
+      expect(procs.rows[0]!.c).toBe('1');
+      const events = await sql.query<{ c: string }>(
+        `SELECT count(*)::text AS c FROM "client_selection"."ClientSelectionEvent" WHERE subject_id=$1`,
+        [first.process.id],
+      );
+      expect(events.rows[0]!.c).toBe('1');
     }, 60_000);
 
     // F1.1(neg) — a non-existent Submittal is refused CLIENT_SELECTION_SUBMITTAL_INVALID
