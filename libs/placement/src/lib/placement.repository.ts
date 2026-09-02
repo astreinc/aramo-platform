@@ -935,6 +935,22 @@ export class PlacementRepository {
 
   // Track 4 / T4-C — end the ContractAssignment of a STARTED placement (the ONE
   // ratified assignment edge, ACTIVE -> ENDED). Post-start attrition/completion
+  // L7-C — the canonical commercial transaction instant. Postgres now() is
+  // transaction-stable (returns the tx start time), and the B3 future-boundary
+  // RE-OPEN trigger gates on now(); resolving the app-side reconciliation instant
+  // from the SAME database clock removes any app-server-vs-DB skew at END / CONVERT /
+  // cancel window reconciliation (recon D-3). One authoritative model: absolute UTC
+  // TIMESTAMPTZ, half-open [from,to), NULL = +infinity, no backdating. (Guarantee
+  // DATE semantics on PermanentPlacement are a deliberately separate model, untouched.)
+  private async commercialTxInstant(tx: Prisma.TransactionClient): Promise<Date> {
+    const rows = await tx.$queryRawUnsafe<Array<{ now: Date }>>(`SELECT now() AS "now"`);
+    const first = rows[0];
+    if (first === undefined) {
+      throw new Error('placement: SELECT now() returned no row');
+    }
+    return first.now;
+  }
+
   // lives HERE, not as a new PlacementProcess edge (T4-Q1 — STARTED stays
   // transition-terminal). Ending releases the one-live guard (G2) and, at T4-B2,
   // capacity. Only an ACTIVE assignment transitions; a no-op returns NOT_FOUND so
@@ -976,10 +992,11 @@ export class PlacementRepository {
         });
       }
 
-      // §15 — derive ONE server instant T_end, reused for ContractAssignment.ended_at,
-      // commercial-window reconciliation, and the assignment-ended event occurrence.
-      // No independent clocks.
-      const tEnd = new Date();
+      // §15 — derive ONE instant T_end from the DATABASE clock (L7-C: transaction-stable
+      // now(), the SAME clock the B3 re-open trigger gates on), reused for
+      // ContractAssignment.ended_at, commercial-window reconciliation, and the
+      // assignment-ended event occurrence. No independent/app clocks.
+      const tEnd = await this.commercialTxInstant(tx);
 
       // §16 — the non-cancelled commercial sequence at END, ascending. Reconciliation
       // guarantees NO non-cancelled version remains effective beyond T_end.
@@ -1272,9 +1289,10 @@ export class PlacementRepository {
           });
         }
 
-        // §5 — ONE absolute instant captured once. guarantee_start_date is its UTC
+        // §5 — ONE absolute instant from the DATABASE clock (L7-C: transaction-stable
+        // now(), matching the B3 re-open trigger). guarantee_start_date is its UTC
         // CALENDAR date (no browser/tenant-local timezone, no caller-supplied tz).
-        const tConvert = new Date();
+        const tConvert = await this.commercialTxInstant(tx);
         const guaranteeStartStr = tConvert.toISOString().slice(0, 10);
         const guaranteeStart = parseCalendarDate(guaranteeStartStr);
         if (guaranteeStart === null) {
@@ -2355,7 +2373,7 @@ export class PlacementRepository {
         throw new AramoError('NOT_FOUND', 'AssignmentRateVersion not found', 404, { requestId, details: { placement_process_id: input.placement_process_id, revision_id: input.revision_id, reason: 'revision_not_found' } });
       }
 
-      const operationTime = new Date();
+      const operationTime = await this.commercialTxInstant(tx); // L7-C: DB clock (matches the B3 re-open now() gate)
       // §3 eligibility, most-specific refusal first (all 409 with details.reason).
       if (target.cancelled_at !== null) {
         throw this.commercialConflict('already_cancelled', assignment.id, requestId);
