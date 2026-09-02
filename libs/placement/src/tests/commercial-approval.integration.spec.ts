@@ -328,6 +328,34 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       for (const id of appliedIds) expect(id).toBe(read?.applied_rate_version_id);
     });
 
+    // ---- L7-F: governed proposal-lifecycle outbox (money-free, on the shared drain) ----
+    it('L7-F: each meaningful proposal transition emits a money-free governance outbox event', async () => {
+      const s = await seedActiveOpen();
+      await store.publish({ tenant_id: s.tenant, definition: permissivePackage(), published_by: SYSTEM });
+      const p = await propose(s);
+      await repo.transitionCommercialRevisionProposal({ tenant_id: s.tenant, placement_process_id: s.ppid, proposal_id: p.id, action: 'submit', actor_id: PROPOSER }, 'x');
+      await repo.decideCommercialRevisionProposal({ tenant_id: s.tenant, placement_process_id: s.ppid, proposal_id: p.id, action: 'margin_approve', actor_id: APPROVER, scopes: APPROVE_SCOPES }, 'x');
+      await repo.decideCommercialRevisionProposal({ tenant_id: s.tenant, placement_process_id: s.ppid, proposal_id: p.id, action: 'client_approve', actor_id: CLIENT_APPROVER, scopes: APPROVE_SCOPES, client_approval_source: 'MANUAL' }, 'x');
+      await repo.decideCommercialRevisionProposal({ tenant_id: s.tenant, placement_process_id: s.ppid, proposal_id: p.id, action: 'apply', actor_id: APPLIER, scopes: APPROVE_SCOPES }, 'x');
+
+      const events = await client.outboxEvent.findMany({
+        where: { tenant_id: s.tenant, event_type: 'placement.commercial.proposal.state_changed' },
+      });
+      // PROPOSE + SUBMIT + MARGIN_APPROVE + CLIENT_APPROVE + APPLY.
+      expect(events).toHaveLength(5);
+      for (const e of events) {
+        const payload = e.event_payload as Record<string, unknown>;
+        // provenance / state only.
+        expect(payload).toHaveProperty('proposal_id');
+        expect(payload).toHaveProperty('next_state');
+        expect(payload).toHaveProperty('action');
+        // money-free — NEVER pay/bill/margin/markup/currency/rate_period.
+        for (const banned of ['pay_rate_amount', 'bill_rate_amount', 'margin_percent', 'markup_percent', 'spread_amount', 'currency', 'rate_period']) {
+          expect(payload).not.toHaveProperty(banned);
+        }
+      }
+    });
+
     // ---- Apply-time reconciliation: a window conflict leaves the proposal APPROVED ----
     it('apply-time window conflict → 409 ASSIGNMENT_COMMERCIAL_REVISION_CONFLICT; proposal STAYS APPROVED (reconciliation)', async () => {
       const s = await seedActiveOpen();

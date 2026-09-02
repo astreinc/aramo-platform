@@ -124,6 +124,12 @@ const OUTBOX_RATE_VERSION_CANCELLED = 'placement.assignment.rate_version.cancell
 // permanent CREATE). Identity + governed lineage facts ONLY — NO PII, NO pay/bill/
 // margin/markup, no free text (the append-only, non-reset-covered outbox convention).
 const OUTBOX_ASSIGNMENT_CONVERTED_TO_PERMANENT = 'placement.assignment.converted_to_permanent';
+// Lane 7 / L7-F — governed commercial-proposal lifecycle event. Emitted on EACH meaningful
+// proposal transition (created/submitted/margin_approve/client_approve/reject/withdraw/apply)
+// onto the SHARED placement outbox (already drained by PlacementOutboxRepository — NO new
+// undrained namespace). Payload carries identity/provenance/state ONLY — NEVER pay/bill/
+// margin/markup/currency/rate_period (the money-free outbox convention).
+const OUTBOX_COMMERCIAL_PROPOSAL_STATE_CHANGED = 'placement.commercial.proposal.state_changed';
 
 // Track 5 / T5-P1 — a decimal money string (never a float): up to 10 integer
 // digits and up to 2 fractional, matching the Decimal(12,2) column. Defensive
@@ -949,6 +955,39 @@ export class PlacementRepository {
       throw new Error('placement: SELECT now() returned no row');
     }
     return first.now;
+  }
+
+  // L7-F — emit the governed commercial-proposal lifecycle event on the shared placement
+  // outbox, in the SAME tx as the state write (atomic with the audit row). Identity/
+  // provenance/state ONLY — no money.
+  private async emitProposalStateChangedOutbox(
+    tx: Prisma.TransactionClient,
+    e: {
+      tenant_id: string;
+      proposal_id: string;
+      placement_process_id: string;
+      previous_state: string | null;
+      next_state: string;
+      action: string;
+      actor_id: string;
+    },
+  ): Promise<void> {
+    await tx.outboxEvent.create({
+      data: {
+        id: uuidv7(),
+        tenant_id: e.tenant_id,
+        event_type: OUTBOX_COMMERCIAL_PROPOSAL_STATE_CHANGED,
+        event_payload: {
+          tenant_id: e.tenant_id,
+          proposal_id: e.proposal_id,
+          placement_process_id: e.placement_process_id,
+          previous_state: e.previous_state,
+          next_state: e.next_state,
+          action: e.action,
+          actor_id: e.actor_id,
+        },
+      },
+    });
   }
 
   // lives HERE, not as a new PlacementProcess edge (T4-Q1 — STARTED stays
@@ -1967,6 +2006,10 @@ export class PlacementRepository {
             event_payload: { previous_state: null, next_state: COMMERCIAL_PROPOSAL_INITIAL_STATE, action: 'PROPOSE', actor_id: input.requested_by },
           },
         });
+        await this.emitProposalStateChangedOutbox(tx, {
+          tenant_id: input.tenant_id, proposal_id: proposalId, placement_process_id: input.placement_process_id,
+          previous_state: null, next_state: COMMERCIAL_PROPOSAL_INITIAL_STATE, action: 'PROPOSE', actor_id: input.requested_by,
+        });
         return created;
       });
       return this.toProposalView(row, reference);
@@ -2005,6 +2048,10 @@ export class PlacementRepository {
           event_type: 'state_transition',
           event_payload: { previous_state: proposal.state, next_state: to, action, actor_id: input.actor_id },
         },
+      });
+      await this.emitProposalStateChangedOutbox(tx, {
+        tenant_id: input.tenant_id, proposal_id: proposal.id, placement_process_id: input.placement_process_id,
+        previous_state: proposal.state, next_state: to, action, actor_id: input.actor_id,
       });
       return updated;
     });
@@ -2154,6 +2201,10 @@ export class PlacementRepository {
             event_payload: { previous_state: 'APPROVED', next_state: 'APPLIED', action, actor_id: input.actor_id, assignment_rate_version_id: applied.assignment_rate_version_id },
           },
         });
+        await this.emitProposalStateChangedOutbox(tx, {
+          tenant_id: input.tenant_id, proposal_id: proposal.id, placement_process_id: input.placement_process_id,
+          previous_state: 'APPROVED', next_state: 'APPLIED', action, actor_id: input.actor_id,
+        });
         await insertPolicyDecisionRecordInTx(tx, outcome.provenance);
         return updated;
       });
@@ -2187,6 +2238,10 @@ export class PlacementRepository {
           event_type: 'state_transition',
           event_payload: { previous_state: proposal.state, next_state: to, action, actor_id: input.actor_id },
         },
+      });
+      await this.emitProposalStateChangedOutbox(tx, {
+        tenant_id: input.tenant_id, proposal_id: proposal.id, placement_process_id: input.placement_process_id,
+        previous_state: proposal.state, next_state: to, action, actor_id: input.actor_id,
       });
       await insertPolicyDecisionRecordInTx(tx, outcome.provenance);
       return updated;
