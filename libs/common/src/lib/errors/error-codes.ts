@@ -721,6 +721,14 @@ export const ERROR_CODES = [
   'INTERVIEW_ROUND_EXISTS', // L3-D — a session already exists for this (process, round); re-attempts use the next round (409)
   'OFFER_CLIENT_SELECTION_NOT_SELECTED', // L3-E — Offer creation requires the ClientSelectionProcess for the offer's submittal to be SELECTED (409)
   'CLIENT_SELECTION_WITHDRAW_REASON_INVALID', // L3-E(2) — a WITHDRAWN decision needs a valid closed reason_code so the Pipeline disposition is deterministic (422)
+  // Lane 7 / L7-E — commercial-approval SoD stage separation. Appended LAST (never
+  // renumber). COMMERCIAL_PROPOSAL_STAGE_CONFLICT (403): the same actor may not perform
+  // consecutive authority stages on ONE proposal — the margin approver may not also
+  // record client approval, and the client-approval recorder may not also APPLY. Distinct
+  // from COMMERCIAL_PROPOSAL_SELF_APPROVAL (proposer != approver): this is approver-stage
+  // separation. Fail-closed at the application boundary; details.reason discriminates
+  // `margin_approver_is_client_approver` | `client_approver_is_applier`.
+  'COMMERCIAL_PROPOSAL_STAGE_CONFLICT',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

@@ -2050,6 +2050,22 @@ export class PlacementRepository {
       });
     }
 
+    // L7-E — SoD STAGE separation (not just proposer != approver): the same actor may
+    // not perform CONSECUTIVE authority stages on one proposal. Fail-closed at the app
+    // boundary, reading the immutable prior-stage provenance already recorded on the
+    // proposal (review_decided_by = the margin approver; client_approval_recorded_by =
+    // the client-approval recorder). Deterministic — never role-name or UI-based.
+    if (input.action === 'client_approve' && proposal.review_decided_by !== null && input.actor_id === proposal.review_decided_by) {
+      throw new AramoError('COMMERCIAL_PROPOSAL_STAGE_CONFLICT', 'The margin approver may not also record client approval for the same proposal', 403, {
+        requestId, details: { proposal_id: proposal.id, action: expected, reason: 'margin_approver_is_client_approver' },
+      });
+    }
+    if (input.action === 'apply' && proposal.client_approval_recorded_by !== null && input.actor_id === proposal.client_approval_recorded_by) {
+      throw new AramoError('COMMERCIAL_PROPOSAL_STAGE_CONFLICT', 'The client-approval recorder may not also apply the same proposal', 403, {
+        requestId, details: { proposal_id: proposal.id, action: expected, reason: 'client_approver_is_applier' },
+      });
+    }
+
     // ADR-0024 fail-closed policy at the approval boundary (R-POLICY). Evaluate
     // BEFORE any write; a DENY persists the decision record and refuses.
     const policy = this.requireCommercialApprovalPolicy(requestId);
