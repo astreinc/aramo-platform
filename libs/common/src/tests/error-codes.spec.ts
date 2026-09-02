@@ -126,9 +126,11 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       'PLACEMENT_STATE_INVALID',
       'PLACEMENT_ALREADY_LIVE',
       // Track 3 E2 — 2 pre-start requirement refusals (domain validation 422 +
-      // fail-closed READY_TO_START gate 409).
+      // fail-closed READY_TO_START gate 409). Lane 5 L5-P2 adds the concurrent
+      // status-move CAS conflict (409).
       'PRE_START_REQUIREMENT_INVALID',
       'PRE_START_NOT_READY',
+      'PRE_START_REQUIREMENT_CONFLICT',
       // Track 3 E3 — 1 governed terminal/fallthrough reason-evidence refusal
       // (one code, details.reason discriminator; 422).
       'PLACEMENT_REASON_INVALID',

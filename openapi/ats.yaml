@@ -4519,6 +4519,35 @@ paths:
       security:
         - BearerAuth: []
 
+  /v1/reports/onboarding-rollup:
+    get:
+      operationId: getOnboardingRollupReport
+      summary: Onboarding-readiness rollup report (Lane 5 / L5-P8).
+      description: |
+        Tenant-scoped, aggregate-only rollup of the first-class pre-start
+        (onboarding) requirement facts, pulled read-only over the
+        reporting→pre-start-requirement edge (directive Amendment A1, option (a)).
+        Emits the requirement-completion matrix (one cell per requirement_type ×
+        status, deterministically ordered), resolved/unresolved/blocking-unresolved
+        totals, and the readiness-decision history from the append-only decision
+        ledger. Counts only — NO per-instance row, NO placement id, NO evidence
+        pointer, NO actor id. Observation surface only; it carries no command path
+        and grants reporting no authority over onboarding requirements. Tenant
+        scoped; report:read.
+      responses:
+        '200':
+          description: Tenant onboarding-readiness aggregate.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OnboardingRollupReport'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+      security:
+        - BearerAuth: []
+
 components:
   securitySchemes:
     # Duplicated byte-for-byte from openapi/common.yaml per locked invariant
@@ -5472,6 +5501,72 @@ components:
           minimum: 0
           maximum: 100
           description: states.fell_off / cohort_count as a percent 0-100; 0 when cohort_count == 0.
+    # Lane 5 / L5-P8 — onboarding-readiness rollup report
+    # (GET /v1/reports/onboarding-rollup). Tenant-scoped aggregate over the
+    # first-class pre-start facts; read-only. Counts only — no per-instance row.
+    OnboardingRollupReport:
+      type: object
+      additionalProperties: false
+      required:
+        - by_type_status
+        - totals
+        - readiness_decisions
+      properties:
+        by_type_status:
+          type: array
+          description: |
+            Requirement-completion matrix: one cell per (requirement_type, status),
+            deterministically ordered (requirement_type ASC, then status ASC).
+          items:
+            type: object
+            additionalProperties: false
+            required: [requirement_type, status, count]
+            properties:
+              requirement_type:
+                type: string
+              status:
+                type: string
+                description: PENDING | IN_PROGRESS | SATISFIED | FAILED | WAIVED | CANCELED.
+              count:
+                type: integer
+                minimum: 0
+        totals:
+          type: object
+          additionalProperties: false
+          required: [total, resolved, unresolved, blocking_unresolved]
+          properties:
+            total:
+              type: integer
+              minimum: 0
+            resolved:
+              type: integer
+              minimum: 0
+              description: SATISFIED | WAIVED | CANCELED (does not hold a placement).
+            unresolved:
+              type: integer
+              minimum: 0
+              description: PENDING | IN_PROGRESS | FAILED.
+            blocking_unresolved:
+              type: integer
+              minimum: 0
+              description: Unresolved instances that are ALSO blocking — the readiness-gap signal.
+        readiness_decisions:
+          type: object
+          additionalProperties: false
+          required: [ready, refused, refused_materialization_absent, refused_blocking_unresolved]
+          properties:
+            ready:
+              type: integer
+              minimum: 0
+            refused:
+              type: integer
+              minimum: 0
+            refused_materialization_absent:
+              type: integer
+              minimum: 0
+            refused_blocking_unresolved:
+              type: integer
+              minimum: 0
     FillPerformanceReport:
       type: object
       additionalProperties: false

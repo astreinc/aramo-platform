@@ -315,6 +315,7 @@ export const SEED_IDS = {
     'pre_start_requirement:waive_blocking': '01900000-0000-7000-8000-0000000000c6',
     'pre_start_requirement:read_restricted_evidence': '01900000-0000-7000-8000-0000000000c7',
     'pre_start_requirement:reopen': '01900000-0000-7000-8000-0000000000c8',
+    'pre_start_requirement:verify': '01900000-0000-7000-8000-0000000000f9',
     'placement:read': '01900000-0000-7000-8000-0000000000c9',
     'placement:create': '01900000-0000-7000-8000-0000000000ca',
     'placement:transition': '01900000-0000-7000-8000-0000000000cb',
@@ -2578,6 +2579,7 @@ export async function runIdentitySeed(
   await upsertScope(prisma, SEED_IDS.scopes['pre_start_requirement:waive_blocking'], 'pre_start_requirement:waive_blocking', 'Track 3 / E2 — waive a BLOCKING requirement (override a background check, drug screen or I-9 — a compliance act with legal exposure). REGISTERED WITH ZERO DEFAULT GRANTS (§13c-1): a tenant grants it explicitly to a named holder; a tenant with no holder cannot perform a blocking waiver, which is correct, not a gap. NO scope.created audit event (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['pre_start_requirement:read_restricted_evidence'], 'pre_start_requirement:read_restricted_evidence', 'Track 3 / E2 — view evidence_reference for restricted requirement types (screening evidence). Gated independently of :read (§13b). REGISTERED WITH ZERO DEFAULT GRANTS (§13c-1): granted only by a named human decision, never inherited from a bundle. NO scope.created audit event (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['pre_start_requirement:reopen'], 'pre_start_requirement:reopen', 'Track 3 / E2 — reopen a resolved/failed pre-start requirement instance back to PENDING (a privileged audited action; §13-R v1.2.2). Lifted OUT of :act because reopening reverses a recorded compliance outcome. REGISTERED WITH ZERO DEFAULT GRANTS (§13c-1): granted only by a named human decision, never inherited from a bundle — not to any recruiter role, configure/publish holders, tenant_admin, tenant_owner, waiver holders, auditor or super_admin. NO scope.created audit event (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['pre_start_requirement:verify'], 'pre_start_requirement:verify', 'Lane 5 / L5-P6 — governed VERIFICATION of a VERIFICATION_REQUIRED requirement: a distinct verifier satisfies it (separation of duties from :act, which cannot satisfy a verification-required requirement). REGISTERED WITH ZERO DEFAULT GRANTS (§13c-1): a verifier is a named human decision per tenant, never inherited from a bundle — the :act recruiter is deliberately not the verifier. NO scope.created audit event (scope-seed precedent).');
   // Track 3 / E1-b — PlacementProcess authorization (E1-b Approval Record §2). read
   // gates GET, create gates POST /v1/placements; the generic transition route
   // requires the class scope DERIVED from the target edge under the ratified

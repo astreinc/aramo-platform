@@ -14,6 +14,7 @@ import {
   GuaranteeExposureReadModule,
   CommercialMarginReadModule,
 } from '@aramo/placement';
+import { PreStartReportingReadModule } from '@aramo/pre-start-requirement';
 import { RequisitionModule } from '@aramo/requisition';
 import { SavedListModule } from '@aramo/saved-list';
 import { SettingsModule } from '@aramo/settings';
@@ -39,6 +40,12 @@ import { ReportingService } from './reporting.service.js';
 //   - ActivityModule      → ActivityRepository.count / list
 //   - RequisitionModule   → countForActor / countByStatusForActor (A3)
 //   - PipelineModule      → count / countByStatus
+//   - PreStartReportingReadModule (L5-P8) → PreStartReportingRepository
+//       .readOnboardingRollup — READ-ONLY onboarding-readiness aggregate over the
+//       first-class pre-start facts (requirement completion + readiness-decision
+//       history). Forward edge (reporting → pre-start); pre-start has no back-edge
+//       (acyclic). No write authority is imported — reporting cannot mutate
+//       onboarding requirements.
 //
 // === Seam-exclusion (structural) ===
 //
@@ -74,6 +81,10 @@ import { ReportingService } from './reporting.service.js';
     // reporting; placement has no back-edge (acyclic).
     GuaranteeExposureReadModule,
     CommercialMarginReadModule,
+    // Lane 5 / L5-P8 — PULL the pre-start-owned onboarding-readiness aggregate
+    // (directive Amendment A1, option (a)). Leaf w.r.t. reporting; pre-start has
+    // no back-edge (acyclic). Read-only — exports only the read repository.
+    PreStartReportingReadModule,
     RequisitionModule,
     SavedListModule,
     SettingsModule,

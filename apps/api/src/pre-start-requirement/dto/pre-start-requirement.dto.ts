@@ -125,4 +125,24 @@ export class WaiveDto {
   @IsOptional()
   @IsString()
   source?: string;
+
+  // L5-P5 — optional supporting evidence pointer for the waiver.
+  @IsOptional()
+  @IsString()
+  evidence_reference?: string;
+}
+
+// L5-P6 — the governed verification of a VERIFICATION_REQUIRED requirement.
+export class VerifyDto {
+  @IsOptional()
+  @IsString()
+  justification?: string;
+
+  @IsOptional()
+  @IsString()
+  source?: string;
+
+  @IsOptional()
+  @IsString()
+  evidence_reference?: string;
 }

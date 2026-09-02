@@ -8,6 +8,7 @@ import type {
   RequirementDefinitionInput,
   RequirementStatusValue,
   RequirementTypeValue,
+  SatisfactionPolicyValue,
   ScopeTypeValue,
   SetStateValue,
   WaiverModeValue,
@@ -53,6 +54,7 @@ export type DefinitionView = {
   readonly owner_role: string | null;
   readonly sequence: number;
   readonly waiver_mode: WaiverModeValue;
+  readonly satisfaction_policy: SatisfactionPolicyValue;
   readonly created_at: Date;
 };
 
@@ -96,6 +98,7 @@ export type InstanceView = {
   readonly blocking: boolean;
   readonly owner_role: string | null;
   readonly waiver_mode: WaiverModeValue;
+  readonly satisfaction_policy: SatisfactionPolicyValue;
   readonly status: RequirementStatusValue;
   readonly completed_at: Date | null;
   readonly completed_by: string | null;
@@ -131,6 +134,22 @@ export type WaiveInput = {
   readonly actor_type: string;
   readonly justification: string;
   readonly source?: string;
+  // L5-P5 — OPTIONAL supporting evidence pointer for the waiver (ruling P5: no
+  // hard-null). authority + justification remain mandatory.
+  readonly evidence_reference?: string;
+};
+
+// L5-P6 (ruling P4) — the governed verification of a VERIFICATION_REQUIRED
+// requirement: a distinct verifier moves it to SATISFIED (separation of duties from
+// the :act path). Refused (not applicable) for a SELF_ATTEST requirement.
+export type VerifyInput = {
+  readonly tenant_id: string;
+  readonly requirement_instance_id: string;
+  readonly actor_id: string;
+  readonly actor_type: string;
+  readonly justification?: string;
+  readonly source?: string;
+  readonly evidence_reference?: string;
 };
 
 export type AuditView = {
@@ -162,6 +181,16 @@ export type BlockingAssessment = {
   readonly ready: boolean;
 };
 
+// L5-P4 (ruling P3) — the BLOCKED projection. BLOCKED's authoritative cause is a
+// blocking requirement in FAILED (intervention needed), derived from the requirement
+// facts — never a separate blocker store. PENDING/IN_PROGRESS blocking requirements
+// are normal onboarding (PRE_START), NOT a block.
+export type BlockerProjection = {
+  readonly placement_process_id: string;
+  readonly blocked: boolean;
+  readonly failed_blocking: readonly InstanceView[];
+};
+
 // ---- Materialization intent (reconciler work record) --------------------------
 
 export type IntentStatus = 'pending' | 'resolved' | 'quarantined';
@@ -172,6 +201,11 @@ export type IntentView = {
   readonly placement_process_id: string;
   readonly scope: ScopeTypeValue;
   readonly scope_ref_id: string;
+  // L5-P5 — the layered materialization context captured at intake, so the
+  // reconciler can re-resolve the same TENANT->CLIENT->REQUISITION chain. Nullable:
+  // a placement with no client/requisition ref resolves TENANT-only.
+  readonly client_id: string | null;
+  readonly requisition_id: string | null;
   readonly status: IntentStatus;
   readonly attempts: number;
   readonly quarantine_reason: string | null;
@@ -179,3 +213,81 @@ export type IntentView = {
   readonly created_at: Date;
   readonly updated_at: Date;
 };
+
+// L5-P5 — the layered resolution context beyond the tenant (always present). Either
+// ref may be null (that layer is skipped in the merge).
+export type LayeredContext = {
+  readonly client_id: string | null;
+  readonly requisition_id: string | null;
+};
+
+// ---- Readiness decision ledger (Lane 5 / L5-P3, ruling P7) ---------------------
+
+export type ReadinessDecisionResult = 'READY' | 'REFUSED';
+export type ReadinessRefusalReason = 'materialization_absent' | 'blocking_unresolved';
+
+// The immutable record of one MARK_READY decision — success or refusal.
+export interface RecordReadinessDecisionInput {
+  readonly tenant_id: string;
+  readonly placement_process_id: string;
+  readonly result: ReadinessDecisionResult;
+  readonly refusal_reason: ReadinessRefusalReason | null;
+  readonly materialized: boolean;
+  readonly total_requirements: number;
+  readonly unresolved_blocking_count: number;
+  readonly actor_id: string;
+  // 'user' | 'system'
+  readonly actor_type: string;
+}
+
+export type ReadinessDecisionView = {
+  readonly id: string;
+  readonly tenant_id: string;
+  readonly placement_process_id: string;
+  readonly result: ReadinessDecisionResult;
+  readonly refusal_reason: ReadinessRefusalReason | null;
+  readonly materialized: boolean;
+  readonly total_requirements: number;
+  readonly unresolved_blocking_count: number;
+  readonly actor_id: string;
+  readonly actor_type: string;
+  readonly created_at: Date;
+};
+
+// =============================================================================
+// L5-P8 — the reporting-facing read AGGREGATE (option (a), directive Amendment A1).
+//
+// This is the ONLY shape the reporting→pre-start read edge PULLS. It is a
+// tenant-scoped, read-only rollup over the first-class pre-start facts
+// (PreStartRequirementInstance + the append-only PreStartReadinessDecision
+// ledger). It carries NO per-instance mutation surface and NO command input —
+// reporting observes onboarding readiness; it never governs it.
+// =============================================================================
+
+// One requirement-completion cell: count of instances in (type, status).
+export interface OnboardingRequirementCell {
+  readonly requirement_type: string;
+  readonly status: RequirementStatusValue;
+  readonly count: number;
+}
+
+export interface PreStartOnboardingRollupSnapshot {
+  // Requirement-completion rollup: one cell per (requirement_type, status).
+  readonly by_type_status: readonly OnboardingRequirementCell[];
+  readonly totals: {
+    readonly total: number;
+    // RESOLVED = SATISFIED | WAIVED | CANCELED (does not hold a placement).
+    readonly resolved: number;
+    // UNRESOLVED = PENDING | IN_PROGRESS | FAILED.
+    readonly unresolved: number;
+    // The readiness-gap signal: unresolved instances that are ALSO blocking.
+    readonly blocking_unresolved: number;
+  };
+  // Readiness-decision history rollup (from the append-only ledger).
+  readonly readiness_decisions: {
+    readonly ready: number;
+    readonly refused: number;
+    readonly refused_materialization_absent: number;
+    readonly refused_blocking_unresolved: number;
+  };
+}

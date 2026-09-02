@@ -20,9 +20,10 @@ import {
   type InstanceView,
 } from '@aramo/pre-start-requirement';
 
-import { CreateDraftSetDto, EditDraftSetDto, ReopenDto, StatusMoveDto, WaiveDto } from './dto/pre-start-requirement.dto.js';
+import { CreateDraftSetDto, EditDraftSetDto, ReopenDto, StatusMoveDto, VerifyDto, WaiveDto } from './dto/pre-start-requirement.dto.js';
 import { PlacementReadinessService } from './placement-readiness.service.js';
 import { PreStartWaiverService } from './pre-start-waiver.service.js';
+import { PlacementBlockReconciliationService } from './placement-block-reconciliation.service.js';
 
 const READ_RESTRICTED_EVIDENCE_SCOPE = 'pre_start_requirement:read_restricted_evidence';
 
@@ -40,6 +41,9 @@ export class PreStartRequirementController {
     private readonly requirements: RequirementInstanceRepository,
     private readonly readiness: PlacementReadinessService,
     private readonly waivers: PreStartWaiverService,
+    // L5-P4 — a status/waiver/reopen move can change the blocker projection; reconcile
+    // the placement's PRE_START <-> BLOCKED state as a governed consequence.
+    private readonly blockReconciliation: PlacementBlockReconciliationService,
   ) {}
 
   // ---- Definition sets (configure / publish) ----------------------------------
@@ -162,6 +166,7 @@ export class PreStartRequirementController {
       },
       requestId,
     );
+    await this.blockReconciliation.reconcile(auth.tenant_id, updated.placement_process_id, requestId);
     return this.redactEvidence(updated, canReadRestricted);
   }
 
@@ -191,6 +196,7 @@ export class PreStartRequirementController {
       },
       requestId,
     );
+    await this.blockReconciliation.reconcile(auth.tenant_id, updated.placement_process_id, requestId);
     return this.redactEvidence(updated, canReadRestricted);
   }
 
@@ -211,9 +217,38 @@ export class PreStartRequirementController {
     const updated = await this.waivers.waive(
       auth,
       instanceId,
-      { authority: body.authority, justification: body.justification, source: body.source },
+      { authority: body.authority, justification: body.justification, source: body.source, evidence_reference: body.evidence_reference },
       requestId,
     );
+    await this.blockReconciliation.reconcile(auth.tenant_id, updated.placement_process_id, requestId);
+    return this.redactEvidence(updated, canReadRestricted);
+  }
+
+  // L5-P6 (ruling P4) — governed verification: a distinct verifier satisfies a
+  // VERIFICATION_REQUIRED requirement (separation of duties from :act). Its own scope.
+  @Post('requirements/:instanceId/verify')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('pre_start_requirement:verify')
+  async verify(
+    @AuthContext() auth: AuthContextType,
+    @RequestId() requestId: string,
+    @Param('instanceId', ParseUUIDPipe) instanceId: string,
+    @Body() body: VerifyDto,
+  ) {
+    const canReadRestricted = auth.scopes.includes(READ_RESTRICTED_EVIDENCE_SCOPE);
+    const updated = await this.requirements.verify(
+      {
+        tenant_id: auth.tenant_id,
+        requirement_instance_id: instanceId,
+        actor_id: auth.sub,
+        actor_type: auth.actor_kind,
+        justification: body.justification,
+        source: body.source,
+        evidence_reference: body.evidence_reference,
+      },
+      requestId,
+    );
+    await this.blockReconciliation.reconcile(auth.tenant_id, updated.placement_process_id, requestId);
     return this.redactEvidence(updated, canReadRestricted);
   }
 
@@ -227,7 +262,10 @@ export class PreStartRequirementController {
     @RequestId() requestId: string,
     @Param('placementId', ParseUUIDPipe) placementId: string,
   ) {
-    return this.readiness.markReadyToStart({ tenant_id: auth.tenant_id, placement_process_id: placementId }, requestId);
+    return this.readiness.markReadyToStart(
+      { tenant_id: auth.tenant_id, placement_process_id: placementId, actor_id: auth.sub, actor_type: 'user' },
+      requestId,
+    );
   }
 
   // evidence_reference is a restricted pointer (§4d). Redacted unless the caller

@@ -445,6 +445,13 @@ export const ERROR_CODES = [
   // blocking_unresolved (a blocking requirement is pending/failed). The one code
   // a caller must be able to branch on to decide whether to wait or act.
   'PRE_START_NOT_READY',
+  // Lane 5 / L5-P2 — PRE_START_REQUIREMENT_CONFLICT (409): a governed requirement
+  // status move (SATISFIED | FAILED | CANCELED | REOPENED | WAIVED, or IN_PROGRESS)
+  // lost the state-guarded CAS — the instance moved out of the expected `from` status
+  // under a concurrent writer between load and commit. A DISTINCT registered conflict,
+  // never a silent last-write-wins (which would append two contradictory audit rows);
+  // the caller re-reads and retries. Mirrors REQUISITION_VERSION_CONFLICT.
+  'PRE_START_REQUIREMENT_CONFLICT',
   // Track 3 / E3 (Placement Fallthrough Reason Registry) — ONE reason-validation
   // refusal covering every governed terminal/fallthrough reason-evidence case,
   // discriminated by details.reason (the E7 RESTRICTION_INVALID precedent — per-

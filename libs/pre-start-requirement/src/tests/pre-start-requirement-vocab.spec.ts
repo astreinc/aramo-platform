@@ -33,8 +33,8 @@ describe('E2 closed registries', () => {
     ]);
   });
 
-  it('scope is TENANT-only (§4b)', () => {
-    expect([...SCOPE_TYPE_VALUES]).toEqual(['TENANT']);
+  it('scope is the layered precedence chain, least-specific to most-specific (L5-P5)', () => {
+    expect([...SCOPE_TYPE_VALUES]).toEqual(['TENANT', 'CLIENT', 'REQUISITION']);
   });
 
   it('has the compact governed status set (REOPENED is an action, not a status)', () => {

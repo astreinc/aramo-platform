@@ -266,6 +266,7 @@ export const SEED_SCOPE_KEYS = [
   'pre_start_requirement:waive_blocking',
   'pre_start_requirement:read_restricted_evidence',
   'pre_start_requirement:reopen',
+  'pre_start_requirement:verify',
   // Track 3 / E1-b — PlacementProcess HTTP surface. Dedicated placement:* scopes
   // (E1-b Approval Record §2 — no ATS-scope reuse). The transition route enforces
   // the 14-edge matrix; the authority split is DERIVED from that matrix under the

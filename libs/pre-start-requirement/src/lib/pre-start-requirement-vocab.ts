@@ -27,13 +27,27 @@ export function isRequirementType(v: unknown): v is RequirementTypeValue {
 
 // ScopeType — definition-set applicability discriminator (§4b). TENANT ONLY today
 // (scope_ref_id == tenant_id). Client/requisition scopes and their precedence are
-// DEFERRED (ruled) — the column pair is the seam; adding a scope is a
-// source-controlled registry + resolver change under review.
-export const SCOPE_TYPE_VALUES = ['TENANT'] as const;
+// L5-P5 (ruling P2) — the layered onboarding-config scopes, least-specific to
+// most-specific. resolveEffective merges the open published set at each present
+// layer keyed on requirement_type: a more-specific layer OVERRIDES the same type and
+// AUGMENTS with new types. The order in this tuple IS the precedence order (index =
+// specificity). Adding a scope is a source-controlled registry change (never a data op).
+export const SCOPE_TYPE_VALUES = ['TENANT', 'CLIENT', 'REQUISITION'] as const;
 export type ScopeTypeValue = (typeof SCOPE_TYPE_VALUES)[number];
 export function isScopeType(v: unknown): v is ScopeTypeValue {
   return typeof v === 'string' && (SCOPE_TYPE_VALUES as readonly string[]).includes(v);
 }
+
+// L5-P6 (ruling P4) — the requirement's SATISFACTION POLICY: what SATISFIED requires.
+// SELF_ATTEST — the ordinary :act path may satisfy directly (upload/self-declare).
+// VERIFICATION_REQUIRED — SATISFIED is reachable ONLY via the governed :verify op by a
+// distinct verifier (separation of duties); :act is refused. Default SELF_ATTEST.
+export const SATISFACTION_POLICY_VALUES = ['SELF_ATTEST', 'VERIFICATION_REQUIRED'] as const;
+export type SatisfactionPolicyValue = (typeof SATISFACTION_POLICY_VALUES)[number];
+export function isSatisfactionPolicy(v: unknown): v is SatisfactionPolicyValue {
+  return typeof v === 'string' && (SATISFACTION_POLICY_VALUES as readonly string[]).includes(v);
+}
+export const DEFAULT_SATISFACTION_POLICY: SatisfactionPolicyValue = 'SELF_ATTEST';
 
 // RequirementStatus — the compact governed operational state (§14 A2). REOPENED
 // is NOT a persisted status; it is a privileged audited action returning a
@@ -148,6 +162,8 @@ export interface RequirementDefinitionInput {
   owner_role: string | null;
   sequence: number;
   waiver_mode: WaiverModeValue;
+  // L5-P6 — optional; absent = SELF_ATTEST (matches the DB column default).
+  satisfaction_policy?: SatisfactionPolicyValue;
 }
 
 export function isRequirementDefinitionInput(v: unknown): v is RequirementDefinitionInput {
@@ -159,7 +175,9 @@ export function isRequirementDefinitionInput(v: unknown): v is RequirementDefini
     typeof e['blocking'] === 'boolean' &&
     (e['owner_role'] === null || typeof e['owner_role'] === 'string') &&
     typeof e['sequence'] === 'number' &&
-    isWaiverMode(e['waiver_mode'])
+    isWaiverMode(e['waiver_mode']) &&
+    // L5-P6 — optional; when present it must be a valid policy.
+    (e['satisfaction_policy'] === undefined || isSatisfactionPolicy(e['satisfaction_policy']))
   );
 }
 
@@ -175,6 +193,8 @@ export function canonicalizeDefinitions(defs: readonly RequirementDefinitionInpu
       owner_role: d.owner_role,
       sequence: d.sequence,
       waiver_mode: d.waiver_mode,
+      // L5-P6 — part of the config, so it participates in the version checksum.
+      satisfaction_policy: d.satisfaction_policy ?? DEFAULT_SATISFACTION_POLICY,
     }));
   return JSON.stringify(canonical);
 }

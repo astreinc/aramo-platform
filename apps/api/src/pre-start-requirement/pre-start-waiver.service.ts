@@ -27,6 +27,8 @@ export interface WaiveRequest {
   authority: string;
   justification: string;
   source?: string;
+  // L5-P5 — optional supporting evidence pointer for the waiver.
+  evidence_reference?: string;
 }
 
 @Injectable()
@@ -71,6 +73,7 @@ export class PreStartWaiverService {
         actor_type: auth.actor_kind,
         justification: body.justification,
         source: body.source,
+        evidence_reference: body.evidence_reference,
       },
       requestId,
     );
