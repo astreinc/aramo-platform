@@ -419,8 +419,10 @@ describe('ats-web → POST /v1/placements/:id/assignment/commercials/proposals/:
             ...commercialProposalView(),
             id: uuid(PROPOSAL_ID),
             state: like('PENDING_CLIENT_APPROVAL'),
+            // The margin decision stamps the review evidence + echoes the request note.
             review_decided_by: uuid(ACTING_APPROVER_ID),
             review_decided_at: regex(ISO_TIMESTAMP, '2026-08-02T00:00:00Z'),
+            review_note: like('margin within band'),
           },
         });
       })
@@ -453,6 +455,13 @@ describe('ats-web → POST /v1/placements/:id/assignment/commercials/proposals/:
             ...commercialProposalView(),
             id: uuid(PROPOSAL_ID),
             state: like('APPLIED'),
+            // An APPLIED proposal carries the full prior review + client-approval
+            // evidence (populated by the other decision actors) alongside the apply
+            // stamp — matchers, since these are seeded/derived, not fixed.
+            review_decided_by: uuid('00000000-0000-7000-8000-4ec000000099'),
+            review_decided_at: regex(ISO_TIMESTAMP, '2026-02-15T00:00:00Z'),
+            client_approval_recorded_by: uuid('00000000-0000-7000-8000-4ec000000099'),
+            client_approved_at: regex(ISO_TIMESTAMP, '2026-02-20T00:00:00Z'),
             applied_rate_version_id: uuid('00000000-0000-7000-8000-a1e000000004'),
             applied_by: uuid(ACTING_APPROVER_ID),
             applied_at: regex(ISO_TIMESTAMP, '2026-08-02T00:00:00Z'),
