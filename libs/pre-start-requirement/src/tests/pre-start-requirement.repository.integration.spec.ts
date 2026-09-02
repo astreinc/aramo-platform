@@ -27,6 +27,12 @@ const READINESS_MIGRATION_PATH = resolve(
   __dirname,
   '../../prisma/migrations/20260901160000_l5_pre_start_readiness_decision/migration.sql',
 );
+// L5-P6 — separate const (ENOTDIR trap). The regen'd client SELECTs/INSERTs
+// satisfaction_policy, so the column must exist in the test DB.
+const SATISFACTION_POLICY_MIGRATION_PATH = resolve(
+  __dirname,
+  '../../prisma/migrations/20260901200000_l5_pre_start_satisfaction_policy/migration.sql',
+);
 
 const DEFS: RequirementDefinitionInput[] = [
   { requirement_type: 'BACKGROUND_CHECK', label: 'Background check', blocking: true, owner_role: null, sequence: 1, waiver_mode: 'NOT_WAIVABLE' },
@@ -49,7 +55,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const url = container.getConnectionUri();
       setupClient = new PrismaService(url);
       await setupClient.$connect();
-      for (const migrationPath of [INIT_MIGRATION_PATH, READINESS_MIGRATION_PATH]) {
+      for (const migrationPath of [INIT_MIGRATION_PATH, READINESS_MIGRATION_PATH, SATISFACTION_POLICY_MIGRATION_PATH]) {
         for (const stmt of splitDdl(readFileSync(migrationPath, 'utf8'))) {
           const trimmed = stmt.trim();
           if (trimmed.length === 0) continue;
@@ -524,6 +530,78 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
     it('resolveEffective: no published set at any layer → null (fail-closed)', async () => {
       expect(await sets.resolveEffective(randomUUID(), { client_id: null, requisition_id: randomUUID() }, 'r')).toBeNull();
+    });
+
+    // ---- L5-P6 — completion vs verification split (ruling P4) + waiver evidence (P5) ----
+
+    // Publish a TENANT set whose BACKGROUND_CHECK is VERIFICATION_REQUIRED, materialize.
+    async function seedVerified(): Promise<{ tenant: string; placement: string }> {
+      const tenant = randomUUID();
+      const placement = randomUUID();
+      await publishSet(tenant, 'TENANT', tenant, 'v1', [
+        { requirement_type: 'BACKGROUND_CHECK', label: 'BG', blocking: true, owner_role: null, sequence: 1, waiver_mode: 'AUTHORIZED_INTERNAL', satisfaction_policy: 'VERIFICATION_REQUIRED' },
+        { requirement_type: 'NDA', label: 'NDA', blocking: false, owner_role: null, sequence: 2, waiver_mode: 'AUTHORIZED_INTERNAL' }, // default SELF_ATTEST
+      ]);
+      const set = await sets.resolveEffective(tenant, { client_id: null, requisition_id: null }, 'r');
+      await instances.materialize(tenant, placement, set!);
+      return { tenant, placement };
+    }
+
+    it('materialize snapshots satisfaction_policy (VERIFICATION_REQUIRED preserved; default SELF_ATTEST)', async () => {
+      const { tenant, placement } = await seedVerified();
+      const list = await instances.findByPlacement(tenant, placement);
+      expect(list.find((i) => i.requirement_type === 'BACKGROUND_CHECK')?.satisfaction_policy).toBe('VERIFICATION_REQUIRED');
+      expect(list.find((i) => i.requirement_type === 'NDA')?.satisfaction_policy).toBe('SELF_ATTEST');
+    });
+
+    it(':act cannot SATISFY a VERIFICATION_REQUIRED requirement; verify() can (separation of duties)', async () => {
+      const { tenant, placement } = await seedVerified();
+      const bg = (await instances.findByPlacement(tenant, placement)).find((i) => i.requirement_type === 'BACKGROUND_CHECK');
+      // :act SATISFIED is refused for a verification-required requirement.
+      await expect(
+        instances.applyStatusMove(
+          { tenant_id: tenant, requirement_instance_id: bg?.id ?? '', to: 'SATISFIED', actor_id: randomUUID(), actor_type: 'user', completed_by: randomUUID() },
+          'a',
+        ),
+      ).rejects.toMatchObject({ code: 'PRE_START_REQUIREMENT_INVALID', context: { details: { reason: 'verification_required' } } });
+      // The governed verify op (a distinct verifier) satisfies it, recording source=verification.
+      const verifier = randomUUID();
+      const verified = await instances.verify(
+        { tenant_id: tenant, requirement_instance_id: bg?.id ?? '', actor_id: verifier, actor_type: 'user', justification: 'checked' },
+        'v',
+      );
+      expect(verified.status).toBe('SATISFIED');
+      const audits = await instances.listAudits(tenant, bg?.id ?? '');
+      expect(audits.at(-1)).toMatchObject({ action: 'SATISFIED', resulting_status: 'SATISFIED', source: 'verification', actor_id: verifier });
+    });
+
+    it('verify() is refused for a SELF_ATTEST requirement (not applicable)', async () => {
+      const { tenant, placement } = await seedVerified();
+      const nda = (await instances.findByPlacement(tenant, placement)).find((i) => i.requirement_type === 'NDA');
+      await expect(
+        instances.verify({ tenant_id: tenant, requirement_instance_id: nda?.id ?? '', actor_id: randomUUID(), actor_type: 'user' }, 'v'),
+      ).rejects.toMatchObject({ code: 'PRE_START_REQUIREMENT_INVALID', context: { details: { reason: 'not_verification_required' } } });
+    });
+
+    it('the frozen-column trigger rejects a raw mutation of satisfaction_policy', async () => {
+      const { tenant, placement } = await seedVerified();
+      const bg = (await instances.findByPlacement(tenant, placement)).find((i) => i.requirement_type === 'BACKGROUND_CHECK');
+      await expect(
+        setupClient.$executeRawUnsafe(
+          `UPDATE pre_start_requirement."PreStartRequirementInstance" SET satisfaction_policy = 'SELF_ATTEST' WHERE id = '${bg?.id}'`,
+        ),
+      ).rejects.toThrow(/immutable/);
+    });
+
+    it('a waiver MAY carry a supporting-evidence pointer (P5 — no hard-null)', async () => {
+      const { tenant, placement } = await seedVerified();
+      const bg = (await instances.findByPlacement(tenant, placement)).find((i) => i.requirement_type === 'BACKGROUND_CHECK');
+      const waived = await instances.waive(
+        { tenant_id: tenant, requirement_instance_id: bg?.id ?? '', authority: 'INTERNAL', actor_id: randomUUID(), actor_type: 'user', justification: 'accepted risk', evidence_reference: 'att://waiver-memo-1' },
+        'w',
+      );
+      expect(waived.status).toBe('WAIVED');
+      expect(waived.evidence_reference).toBe('att://waiver-memo-1');
     });
   },
 );

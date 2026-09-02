@@ -38,6 +38,11 @@ const INTENT_CONTEXT_MIGRATION_PATH = resolve(
   __dirname,
   '../../../../../libs/pre-start-requirement/prisma/migrations/20260901190000_l5_pre_start_intent_layered_context/migration.sql',
 );
+// L5-P6 — materialize now INSERTs satisfaction_policy, so the column must exist.
+const SATISFACTION_POLICY_MIGRATION_PATH = resolve(
+  __dirname,
+  '../../../../../libs/pre-start-requirement/prisma/migrations/20260901200000_l5_pre_start_satisfaction_policy/migration.sql',
+);
 
 // The minimal SOURCE tables the orchestrator READS (exact columns only), mirroring the
 // L2-G orchestrator spec's approach to a cross-schema read-source. L5-P5 adds a minimal
@@ -85,7 +90,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const url = container.getConnectionUri();
       setupClient = new PreStartPrismaService(url);
       await setupClient.$connect();
-      for (const migrationPath of [INIT_MIGRATION_PATH, INTENT_CONTEXT_MIGRATION_PATH]) {
+      for (const migrationPath of [INIT_MIGRATION_PATH, INTENT_CONTEXT_MIGRATION_PATH, SATISFACTION_POLICY_MIGRATION_PATH]) {
         for (const stmt of splitDdl(readFileSync(migrationPath, 'utf8'))) {
           if (stmt.trim()) await setupClient.$executeRawUnsafe(stmt.trim());
         }

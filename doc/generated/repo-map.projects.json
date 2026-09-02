@@ -892,6 +892,7 @@
     ],
     "@aramo/pre-start-requirement": [
       "AUDIT_ACTION_VALUES",
+      "DEFAULT_SATISFACTION_POLICY",
       "DefinitionSetRepository",
       "MaterializationIntentRepository",
       "PrismaService",
@@ -899,6 +900,7 @@
       "REQUIREMENT_TYPE_VALUES",
       "ReadinessDecisionRepository",
       "RequirementInstanceRepository",
+      "SATISFACTION_POLICY_VALUES",
       "SCOPE_TYPE_VALUES",
       "SET_STATE_VALUES",
       "WAIVER_AUTHORITY_VALUES",
@@ -912,6 +914,7 @@
       "isRequirementStatus",
       "isRequirementType",
       "isResolvedStatus",
+      "isSatisfactionPolicy",
       "isScopeType",
       "isSetState",
       "isUnresolvedStatus",

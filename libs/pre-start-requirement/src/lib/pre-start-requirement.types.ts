@@ -8,6 +8,7 @@ import type {
   RequirementDefinitionInput,
   RequirementStatusValue,
   RequirementTypeValue,
+  SatisfactionPolicyValue,
   ScopeTypeValue,
   SetStateValue,
   WaiverModeValue,
@@ -53,6 +54,7 @@ export type DefinitionView = {
   readonly owner_role: string | null;
   readonly sequence: number;
   readonly waiver_mode: WaiverModeValue;
+  readonly satisfaction_policy: SatisfactionPolicyValue;
   readonly created_at: Date;
 };
 
@@ -96,6 +98,7 @@ export type InstanceView = {
   readonly blocking: boolean;
   readonly owner_role: string | null;
   readonly waiver_mode: WaiverModeValue;
+  readonly satisfaction_policy: SatisfactionPolicyValue;
   readonly status: RequirementStatusValue;
   readonly completed_at: Date | null;
   readonly completed_by: string | null;
@@ -131,6 +134,22 @@ export type WaiveInput = {
   readonly actor_type: string;
   readonly justification: string;
   readonly source?: string;
+  // L5-P5 — OPTIONAL supporting evidence pointer for the waiver (ruling P5: no
+  // hard-null). authority + justification remain mandatory.
+  readonly evidence_reference?: string;
+};
+
+// L5-P6 (ruling P4) — the governed verification of a VERIFICATION_REQUIRED
+// requirement: a distinct verifier moves it to SATISFIED (separation of duties from
+// the :act path). Refused (not applicable) for a SELF_ATTEST requirement.
+export type VerifyInput = {
+  readonly tenant_id: string;
+  readonly requirement_instance_id: string;
+  readonly actor_id: string;
+  readonly actor_type: string;
+  readonly justification?: string;
+  readonly source?: string;
+  readonly evidence_reference?: string;
 };
 
 export type AuditView = {

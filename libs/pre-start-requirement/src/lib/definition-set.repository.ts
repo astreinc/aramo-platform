@@ -5,6 +5,7 @@ import { AramoError } from '@aramo/common';
 import { PrismaService } from './prisma/prisma.service.js';
 import {
   checksumDefinitions,
+  DEFAULT_SATISFACTION_POLICY,
   isRequirementDefinitionInput,
   isScopeType,
   type RequirementDefinitionInput,
@@ -45,6 +46,7 @@ interface DefRow {
   owner_role: string | null;
   sequence: number;
   waiver_mode: string;
+  satisfaction_policy: string;
   created_at: Date;
 }
 
@@ -59,6 +61,7 @@ function projectDef(r: DefRow): DefinitionView {
     owner_role: r.owner_role,
     sequence: r.sequence,
     waiver_mode: r.waiver_mode as DefinitionView['waiver_mode'],
+    satisfaction_policy: r.satisfaction_policy as DefinitionView['satisfaction_policy'],
     created_at: r.created_at,
   };
 }
@@ -279,6 +282,7 @@ export class DefinitionSetRepository {
         owner_role: d.owner_role,
         sequence: d.sequence,
         waiver_mode: d.waiver_mode,
+        satisfaction_policy: d.satisfaction_policy,
       })),
     );
     return { ...projectSet(anchor, []), version, checksum, definitions };
@@ -317,6 +321,7 @@ export class DefinitionSetRepository {
           owner_role: d.owner_role,
           sequence: d.sequence,
           waiver_mode: d.waiver_mode,
+          satisfaction_policy: d.satisfaction_policy ?? DEFAULT_SATISFACTION_POLICY,
         },
       })) as DefRow;
       rows.push(row);

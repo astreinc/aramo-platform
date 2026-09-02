@@ -24,6 +24,9 @@ export { ReadinessDecisionRepository } from './lib/readiness-decision.repository
 export {
   REQUIREMENT_TYPE_VALUES,
   SCOPE_TYPE_VALUES,
+  SATISFACTION_POLICY_VALUES,
+  DEFAULT_SATISFACTION_POLICY,
+  isSatisfactionPolicy,
   REQUIREMENT_STATUS_VALUES,
   WAIVER_MODE_VALUES,
   WAIVER_AUTHORITY_VALUES,
@@ -49,6 +52,7 @@ export {
 export type {
   RequirementTypeValue,
   ScopeTypeValue,
+  SatisfactionPolicyValue,
   RequirementStatusValue,
   WaiverModeValue,
   WaiverAuthorityValue,
@@ -69,6 +73,7 @@ export type {
   InstanceView,
   StatusMoveInput,
   WaiveInput,
+  VerifyInput,
   AuditView,
   BlockingAssessment,
   BlockerProjection,
