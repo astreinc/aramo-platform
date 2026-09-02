@@ -9,6 +9,7 @@ import { PrismaService } from '../lib/prisma/prisma.service.js';
 import { DefinitionSetRepository } from '../lib/definition-set.repository.js';
 import { RequirementInstanceRepository } from '../lib/requirement-instance.repository.js';
 import { ReadinessDecisionRepository } from '../lib/readiness-decision.repository.js';
+import { PreStartReportingRepository } from '../lib/pre-start-reporting.repository.js';
 import type { RequirementDefinitionInput } from '../lib/pre-start-requirement-vocab.js';
 import type { SetView } from '../lib/pre-start-requirement.types.js';
 
@@ -49,6 +50,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     let sets: DefinitionSetRepository;
     let instances: RequirementInstanceRepository;
     let decisions: ReadinessDecisionRepository;
+    let reporting: PreStartReportingRepository;
 
     beforeAll(async () => {
       container = await new PostgreSqlContainer('postgres:17').start();
@@ -67,6 +69,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       sets = new DefinitionSetRepository(prisma);
       instances = new RequirementInstanceRepository(prisma);
       decisions = new ReadinessDecisionRepository(prisma);
+      reporting = new PreStartReportingRepository(prisma);
     }, 120_000);
 
     afterAll(async () => {
@@ -602,6 +605,83 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       );
       expect(waived.status).toBe('WAIVED');
       expect(waived.evidence_reference).toBe('att://waiver-memo-1');
+    });
+
+    // ---- Integration proof (L5-P8): the reporting-facing read AGGREGATE ----
+    // Non-vacuous: the rollup is all-zero BEFORE any fact exists for the tenant,
+    // then EXACT after materialization + governed moves + recorded decisions. The
+    // aggregate is read-only — this repository exposes no write path.
+
+    it('readOnboardingRollup is all-zero for a tenant with no pre-start facts', async () => {
+      const emptyTenant = randomUUID();
+      const rollup = await reporting.readOnboardingRollup({ tenant_id: emptyTenant });
+      expect(rollup.by_type_status).toEqual([]);
+      expect(rollup.totals).toEqual({ total: 0, resolved: 0, unresolved: 0, blocking_unresolved: 0 });
+      expect(rollup.readiness_decisions).toEqual({
+        ready: 0,
+        refused: 0,
+        refused_materialization_absent: 0,
+        refused_blocking_unresolved: 0,
+      });
+    });
+
+    it('readOnboardingRollup aggregates the EXACT type×status matrix, totals + decision history', async () => {
+      const { tenant, placement } = await seedPlacement();
+      const list = await instances.findByPlacement(tenant, placement);
+      const bg = list.find((i) => i.requirement_type === 'BACKGROUND_CHECK')!; // blocking
+      const paperwork = list.find((i) => i.requirement_type === 'CLIENT_PAPERWORK')!; // blocking, waivable
+      // NDA (non-blocking) is left PENDING.
+
+      // Governed moves: SATISFY the blocking background check, WAIVE the blocking paperwork.
+      await instances.applyStatusMove(
+        { tenant_id: tenant, requirement_instance_id: bg.id, to: 'SATISFIED', actor_id: randomUUID(), actor_type: 'user', completed_by: randomUUID() },
+        's',
+      );
+      await instances.waive(
+        { tenant_id: tenant, requirement_instance_id: paperwork.id, authority: 'COMPLIANCE', actor_id: randomUUID(), actor_type: 'user', justification: 'approved' },
+        'w',
+      );
+
+      // Readiness-decision history: one refusal (blocking still unresolved earlier)
+      // and one eventual READY.
+      const actor = randomUUID();
+      await decisions.record({
+        tenant_id: tenant, placement_process_id: placement, result: 'REFUSED',
+        refusal_reason: 'blocking_unresolved', materialized: true, total_requirements: 3,
+        unresolved_blocking_count: 1, actor_id: actor, actor_type: 'user',
+      });
+      await decisions.record({
+        tenant_id: tenant, placement_process_id: placement, result: 'READY',
+        refusal_reason: null, materialized: true, total_requirements: 3,
+        unresolved_blocking_count: 0, actor_id: actor, actor_type: 'user',
+      });
+
+      const rollup = await reporting.readOnboardingRollup({ tenant_id: tenant });
+
+      // EXACT matrix: BACKGROUND_CHECK→SATISFIED, CLIENT_PAPERWORK→WAIVED, NDA→PENDING.
+      // Deterministically ordered (requirement_type ASC).
+      expect(rollup.by_type_status).toEqual([
+        { requirement_type: 'BACKGROUND_CHECK', status: 'SATISFIED', count: 1 },
+        { requirement_type: 'CLIENT_PAPERWORK', status: 'WAIVED', count: 1 },
+        { requirement_type: 'NDA', status: 'PENDING', count: 1 },
+      ]);
+      // resolved = SATISFIED + WAIVED = 2; unresolved = NDA PENDING = 1; both blocking
+      // requirements are now resolved, so blocking_unresolved = 0.
+      expect(rollup.totals).toEqual({ total: 3, resolved: 2, unresolved: 1, blocking_unresolved: 0 });
+      expect(rollup.readiness_decisions).toEqual({
+        ready: 1,
+        refused: 1,
+        refused_materialization_absent: 0,
+        refused_blocking_unresolved: 1,
+      });
+    });
+
+    it('readOnboardingRollup is tenant-scoped — another tenant sees none of these facts', async () => {
+      const { tenant } = await seedPlacement();
+      const mine = await reporting.readOnboardingRollup({ tenant_id: tenant });
+      expect(mine.totals.total).toBe(3);
+      const other = await reporting.readOnboardingRollup({ tenant_id: randomUUID() });
+      expect(other.totals.total).toBe(0);
     });
   },
 );

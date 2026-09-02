@@ -895,6 +895,8 @@
       "DEFAULT_SATISFACTION_POLICY",
       "DefinitionSetRepository",
       "MaterializationIntentRepository",
+      "PreStartReportingReadModule",
+      "PreStartReportingRepository",
       "PrismaService",
       "REQUIREMENT_STATUS_VALUES",
       "REQUIREMENT_TYPE_VALUES",
@@ -2108,6 +2110,12 @@
         "project": "reporting",
         "status": "excluded"
       },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/reporting/src/tests/onboarding-rollup.spec.ts",
+        "project": "reporting",
+        "status": "excluded"
+      },
       { "project": "reporting", "status": "production" },
       { "project": "requisition", "status": "production" },
       { "project": "saved-list", "status": "production" },
@@ -2714,6 +2722,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/reporting/src/tests/margin.spec.ts",
+        "project": "reporting",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/reporting/src/tests/onboarding-rollup.spec.ts",
         "project": "reporting",
         "status": "excluded"
       },
@@ -3363,6 +3377,12 @@
       {
         "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/ats-web/src/portal-disputes/PortalDisputesView.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/pre-start/PreStartWorkspaceView.spec.tsx",
         "project": "aramo-ats-web",
         "status": "excluded"
       },
@@ -4575,7 +4595,14 @@
         "project": "api",
         "status": "excluded"
       },
-      { "project": "api", "status": "production" }
+      { "project": "api", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/reporting/src/tests/onboarding-rollup.spec.ts",
+        "project": "reporting",
+        "status": "excluded"
+      },
+      { "project": "reporting", "status": "production" }
     ],
     "@aramo/reporting": [{ "project": "api", "status": "production" }],
     "@aramo/requisition": [

@@ -253,3 +253,41 @@ export type ReadinessDecisionView = {
   readonly actor_type: string;
   readonly created_at: Date;
 };
+
+// =============================================================================
+// L5-P8 — the reporting-facing read AGGREGATE (option (a), directive Amendment A1).
+//
+// This is the ONLY shape the reporting→pre-start read edge PULLS. It is a
+// tenant-scoped, read-only rollup over the first-class pre-start facts
+// (PreStartRequirementInstance + the append-only PreStartReadinessDecision
+// ledger). It carries NO per-instance mutation surface and NO command input —
+// reporting observes onboarding readiness; it never governs it.
+// =============================================================================
+
+// One requirement-completion cell: count of instances in (type, status).
+export interface OnboardingRequirementCell {
+  readonly requirement_type: string;
+  readonly status: RequirementStatusValue;
+  readonly count: number;
+}
+
+export interface PreStartOnboardingRollupSnapshot {
+  // Requirement-completion rollup: one cell per (requirement_type, status).
+  readonly by_type_status: readonly OnboardingRequirementCell[];
+  readonly totals: {
+    readonly total: number;
+    // RESOLVED = SATISFIED | WAIVED | CANCELED (does not hold a placement).
+    readonly resolved: number;
+    // UNRESOLVED = PENDING | IN_PROGRESS | FAILED.
+    readonly unresolved: number;
+    // The readiness-gap signal: unresolved instances that are ALSO blocking.
+    readonly blocking_unresolved: number;
+  };
+  // Readiness-decision history rollup (from the append-only ledger).
+  readonly readiness_decisions: {
+    readonly ready: number;
+    readonly refused: number;
+    readonly refused_materialization_absent: number;
+    readonly refused_blocking_unresolved: number;
+  };
+}

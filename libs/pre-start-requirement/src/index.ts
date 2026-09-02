@@ -20,6 +20,12 @@ export { RequirementInstanceRepository } from './lib/requirement-instance.reposi
 export { MaterializationIntentRepository } from './lib/materialization-intent.repository.js';
 export { ReadinessDecisionRepository } from './lib/readiness-decision.repository.js';
 
+// L5-P8 — the reporting-facing READ surface (option (a)). Read-only aggregate +
+// its NestJS read module. This is the ONLY thing the reporting→pre-start edge
+// pulls; no write repository is exported to that consumer.
+export { PreStartReportingRepository } from './lib/pre-start-reporting.repository.js';
+export { PreStartReportingReadModule } from './lib/pre-start-reporting.module.js';
+
 // Closed registries + guards + checksum (directive §4c / §14 A2).
 export {
   REQUIREMENT_TYPE_VALUES,
@@ -83,4 +89,6 @@ export type {
   ReadinessRefusalReason,
   RecordReadinessDecisionInput,
   ReadinessDecisionView,
+  OnboardingRequirementCell,
+  PreStartOnboardingRollupSnapshot,
 } from './lib/pre-start-requirement.types.js';

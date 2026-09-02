@@ -383,6 +383,38 @@ export interface MarginReportView {
   groups: MarginGroupView[];
 }
 
+// OnboardingRollupReportView — Lane 5 / L5-P8 onboarding-readiness operational
+// view (GET /v1/reports/onboarding-rollup). Governed by
+// Aramo-Fulfillment-Onboarding-Readiness-Lane5-Directive-v1_0-LOCKED (Amendment A1,
+// option (a)). Tenant-scoped, READ-ONLY aggregate over the first-class pre-start
+// facts, PULLED via the reporting→pre-start-requirement edge. It carries NO
+// per-instance row, NO placement id, NO evidence pointer, NO actor id — it is an
+// aggregate observation surface, never a command surface.
+export interface OnboardingRequirementCellView {
+  requirement_type: string;
+  status: string;
+  count: number;
+}
+
+export interface OnboardingRollupReportView {
+  // Requirement-completion matrix: one cell per (requirement_type, status),
+  // deterministically ordered (type ASC, then status ASC).
+  by_type_status: OnboardingRequirementCellView[];
+  totals: {
+    total: number;
+    resolved: number; // SATISFIED | WAIVED | CANCELED
+    unresolved: number; // PENDING | IN_PROGRESS | FAILED
+    blocking_unresolved: number; // the readiness-gap signal
+  };
+  // Readiness-decision history from the append-only ledger.
+  readiness_decisions: {
+    ready: number;
+    refused: number;
+    refused_materialization_absent: number;
+    refused_blocking_unresolved: number;
+  };
+}
+
 // DashboardView — the composition payload for GET /v1/dashboard.
 // Bundles the ATS-internal metrics into a single response so a
 // recruiter UI doesn't have to N-round-trip on load.

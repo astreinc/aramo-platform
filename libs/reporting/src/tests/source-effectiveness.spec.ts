@@ -35,6 +35,7 @@ function makeService(episodes: ReadonlyArray<{ origin_type: string | null; statu
     stub, {} as never, stub,
     { findFirstSubmittedByGrain: async () => [] } as never,
     { findFirstInterviewByGrain: async () => [] } as never, // L2-I D4b interview-history port
+    {} as never, // L5-P8 pre-start reporting read repo (unused here)
   );
   return { svc, talentWriter, readSourceEffectivenessCohort, readFillCohort };
 }

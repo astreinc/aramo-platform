@@ -13,6 +13,10 @@ import {
   GuaranteeExposureReadRepository,
   CommercialMarginReadRepository,
 } from '@aramo/placement';
+import {
+  PreStartReportingRepository,
+  type PreStartOnboardingRollupSnapshot,
+} from '@aramo/pre-start-requirement';
 import { RequisitionRepository } from '@aramo/requisition';
 import { SavedListRepository } from '@aramo/saved-list';
 import {
@@ -53,6 +57,7 @@ import type {
   GuaranteeExposureReportView,
   MarginReportView,
   PipelineStageRollupView,
+  OnboardingRollupReportView,
   PlacementCountReportView,
   RecruiterMetricKey,
   RecruiterMetricView,
@@ -293,6 +298,12 @@ export class ReportingService {
     // Trailing param (ctor-ripple contained). Provides the hiring-funnel INTERVIEW stage.
     @Inject(INTERVIEW_HISTORY_PORT)
     private readonly interviewHistory: InterviewHistoryPort,
+    // Lane 5 / L5-P8 — the pre-start-owned onboarding-readiness aggregate, PULLED
+    // via the reporting→pre-start-requirement edge (directive Amendment A1, option
+    // (a)). Trailing param (ctor-ripple contained). READ-ONLY over the first-class
+    // pre-start facts; reporting holds no write authority over onboarding
+    // requirements. Provided by PreStartReportingReadModule.
+    private readonly preStartReportingRepository: PreStartReportingRepository,
   ) {}
 
   // Track 4 / T4-B1 (CASE A access) — single-requisition derived capacity, PULLED
@@ -349,6 +360,36 @@ export class ReportingService {
       saved_lists,
       calendar_events,
       activities,
+    };
+  }
+
+  // Lane 5 / L5-P8 — the onboarding-readiness rollup. A pass-through mapping of the
+  // pre-start-owned aggregate (directive Amendment A1, option (a)) into the
+  // reporting view. Tenant-scoped; read-only. The pre-start module owns the facts;
+  // reporting only observes them (no per-instance detail, no command path).
+  async getOnboardingRollup(actor: ActorContext): Promise<OnboardingRollupReportView> {
+    const snapshot: PreStartOnboardingRollupSnapshot =
+      await this.preStartReportingRepository.readOnboardingRollup({
+        tenant_id: actor.tenant_id,
+      });
+    return {
+      by_type_status: snapshot.by_type_status.map((c) => ({
+        requirement_type: c.requirement_type,
+        status: c.status,
+        count: c.count,
+      })),
+      totals: {
+        total: snapshot.totals.total,
+        resolved: snapshot.totals.resolved,
+        unresolved: snapshot.totals.unresolved,
+        blocking_unresolved: snapshot.totals.blocking_unresolved,
+      },
+      readiness_decisions: {
+        ready: snapshot.readiness_decisions.ready,
+        refused: snapshot.readiness_decisions.refused,
+        refused_materialization_absent: snapshot.readiness_decisions.refused_materialization_absent,
+        refused_blocking_unresolved: snapshot.readiness_decisions.refused_blocking_unresolved,
+      },
     };
   }
 
