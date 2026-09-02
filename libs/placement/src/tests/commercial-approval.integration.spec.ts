@@ -252,6 +252,42 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(rows[1].bill_rate_amount.toFixed(2)).toBe('150.00');
     });
 
+    // ---- L7-A: atomic APPLY — concurrent double-apply creates EXACTLY ONE version ----
+    it('L7-A: concurrent APPLY of one APPROVED proposal materialises EXACTLY ONE AssignmentRateVersion (atomic; no orphan)', async () => {
+      const s = await seedActiveOpen();
+      await store.publish({ tenant_id: s.tenant, definition: permissivePackage(), published_by: SYSTEM });
+      const before = await versionCount(s);
+      expect(before).toBe(1);
+      const p = await propose(s);
+      await repo.transitionCommercialRevisionProposal({ tenant_id: s.tenant, placement_process_id: s.ppid, proposal_id: p.id, action: 'submit', actor_id: PROPOSER }, 'x');
+      await repo.decideCommercialRevisionProposal({ tenant_id: s.tenant, placement_process_id: s.ppid, proposal_id: p.id, action: 'margin_approve', actor_id: APPROVER, scopes: APPROVE_SCOPES }, 'x');
+      await repo.decideCommercialRevisionProposal({ tenant_id: s.tenant, placement_process_id: s.ppid, proposal_id: p.id, action: 'client_approve', actor_id: APPROVER, scopes: APPROVE_SCOPES, client_approval_source: 'MANUAL' }, 'x');
+
+      // Two concurrent APPLYs of the SAME approved proposal. Before L7-A each ran
+      // createCommercialRevision in its own tx before the proposal CAS → before+2
+      // (an orphan rate version). The single-tx + proposal FOR UPDATE lock now
+      // serialises them: the loser re-reads state=APPLIED and returns idempotently.
+      const results = await Promise.allSettled([
+        repo.decideCommercialRevisionProposal({ tenant_id: s.tenant, placement_process_id: s.ppid, proposal_id: p.id, action: 'apply', actor_id: APPROVER, scopes: APPROVE_SCOPES }, 'a1'),
+        repo.decideCommercialRevisionProposal({ tenant_id: s.tenant, placement_process_id: s.ppid, proposal_id: p.id, action: 'apply', actor_id: APPROVER, scopes: APPROVE_SCOPES }, 'a2'),
+      ]);
+
+      // Core proof: EXACTLY ONE new version (the orphan-ARV bug produced before+2).
+      expect(await versionCount(s)).toBe(before + 1);
+
+      const read = await repo.findCommercialRevisionProposalById(s.tenant, s.ppid, p.id, 'x');
+      expect(read?.state).toBe('APPLIED');
+      expect(read?.applied_rate_version_id).not.toBeNull();
+
+      // At least one apply succeeded, and every succeeded apply agrees on the ONE
+      // applied version (idempotent replay — no second, orphan truth).
+      const appliedIds = results
+        .filter((r) => r.status === 'fulfilled')
+        .map((r) => (r as PromiseFulfilledResult<{ applied_rate_version_id: string | null }>).value.applied_rate_version_id);
+      expect(appliedIds.length).toBeGreaterThanOrEqual(1);
+      for (const id of appliedIds) expect(id).toBe(read?.applied_rate_version_id);
+    });
+
     // ---- Apply-time reconciliation: a window conflict leaves the proposal APPROVED ----
     it('apply-time window conflict → 409 ASSIGNMENT_COMMERCIAL_REVISION_CONFLICT; proposal STAYS APPROVED (reconciliation)', async () => {
       const s = await seedActiveOpen();

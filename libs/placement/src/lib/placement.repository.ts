@@ -1690,114 +1690,156 @@ export class PlacementRepository {
       tNew = parsed;
     }
 
-    return this.prisma.$transaction(async (tx) => {
-      // §12.1 — lock the owning assignment row FIRST. endAssignment takes the SAME
-      // lock, serializing revision-vs-revision AND revision-vs-end (no shared column
-      // otherwise couples them).
-      const locked = await tx.$queryRawUnsafe<
-        Array<{ id: string; requisition_id: string; talent_record_id: string; lifecycle_state: string | null }>
-      >(
-        `SELECT "id", "requisition_id", "talent_record_id", "lifecycle_state"::text AS "lifecycle_state"
-           FROM "placement"."ContractAssignment"
-          WHERE "tenant_id" = $1::uuid AND "placement_process_id" = $2::uuid
-          FOR UPDATE`,
-        input.tenant_id,
-        input.placement_process_id,
-      );
-      const assignment = locked[0];
-      if (assignment === undefined) {
-        throw new AramoError('NOT_FOUND', 'No ContractAssignment for placement', 404, { requestId, details: { placement_process_id: input.placement_process_id, reason: 'assignment_not_found' } });
-      }
-      if (assignment.lifecycle_state !== 'ACTIVE') {
-        throw new AramoError('NOT_FOUND', 'No active ContractAssignment to revise', 404, { requestId, details: { placement_process_id: input.placement_process_id, reason: 'active_assignment_not_found' } });
-      }
-      // The open tail = the single non-cancelled version with NULL effective_to (B1's
-      // overlap EXCLUDE guarantees at most one). No open version → nothing to revise
-      // (a BACKFILLED assignment lacking initial terms lands here — §4).
-      const predecessor = await tx.assignmentRateVersion.findFirst({
-        where: { tenant_id: input.tenant_id, contract_assignment_id: assignment.id, cancelled_at: null, effective_to: null },
-      });
-      if (predecessor === null) {
-        throw new AramoError('NOT_FOUND', 'No open commercial version to revise', 404, { requestId, details: { placement_process_id: input.placement_process_id, reason: 'open_commercial_version_not_found' } });
-      }
-      if (tNew.getTime() <= predecessor.effective_from.getTime()) {
-        throw new AramoError('VALIDATION_ERROR', 'effective_from must be after the current version start', 400, { requestId, details: { field: 'effective_from', reason: 'effective_from_not_after_current' } });
-      }
+    return this.prisma.$transaction((tx) =>
+      this.appendCommercialRevisionInTx(
+        tx,
+        {
+          tenant_id: input.tenant_id,
+          placement_process_id: input.placement_process_id,
+          pay_rate_amount: input.pay_rate_amount,
+          bill_rate_amount: input.bill_rate_amount,
+          currency: input.currency,
+          rate_period: input.rate_period,
+          changeReason,
+          recorded_by: input.recorded_by,
+        },
+        tNew,
+        requestId,
+      ),
+    );
+  }
 
-      const successorId = uuidv7();
-      try {
-        // §11 — the governed effective_to first-close (B1 capability) under the
-        // transaction-local marker, confined to this method; then append the
-        // successor and its atomic outbox event.
-        await tx.$executeRawUnsafe(`SET LOCAL app.assignment_commercial_revision = 'authorized'`);
-        await tx.assignmentRateVersion.update({ where: { id: predecessor.id }, data: { effective_to: tNew } });
-        const successor = await tx.assignmentRateVersion.create({
-          data: {
-            id: successorId,
-            tenant_id: input.tenant_id,
-            contract_assignment_id: assignment.id,
-            requisition_id: assignment.requisition_id,
-            talent_record_id: assignment.talent_record_id,
-            pay_rate_amount: input.pay_rate_amount,
-            bill_rate_amount: input.bill_rate_amount,
-            currency: input.currency,
-            rate_period: input.rate_period,
-            effective_from: tNew,
-            recorded_by: input.recorded_by,
-            change_reason: changeReason,
-          },
-        });
-        // Atomic outbox: identity/provenance ONLY (money EXCLUDED, A2 §8) + the
-        // superseded predecessor id so a consumer can walk the revision chain.
-        await tx.outboxEvent.create({
-          data: {
-            id: uuidv7(),
-            tenant_id: input.tenant_id,
-            event_type: OUTBOX_RATE_VERSION_CREATED,
-            event_payload: {
-              tenant_id: input.tenant_id,
-              contract_assignment_id: assignment.id,
-              assignment_rate_version_id: successorId,
-              superseded_rate_version_id: predecessor.id,
-              requisition_id: assignment.requisition_id,
-              talent_record_id: assignment.talent_record_id,
-              effective_from: tNew.toISOString(),
-            },
-          },
-        });
-        const metrics = deriveCommercialMetrics(successor.pay_rate_amount, successor.bill_rate_amount);
-        return {
+  // L7-A — the in-transaction ARV first-close+append CORE, extracted so BOTH
+  // createCommercialRevision (its own tx) AND the governed proposal APPLY (INSIDE the
+  // decide tx) execute it. That is what gives APPLY single-transaction atomicity: the
+  // rate-version append and the proposal APPLIED stamp commit together or not at all,
+  // so a concurrent double-APPLY can no longer leave an orphan AssignmentRateVersion.
+  // Assumes the caller already ran the pre-tx validation (currency/rate_period/money/
+  // change_reason) and resolved `tNew`; this helper locks the owning assignment FIRST
+  // (same row lock endAssignment/convert take → revision-vs-revision AND revision-vs-end
+  // serialize), first-closes the open predecessor, appends the successor + its atomic
+  // money-free outbox event, and returns the projected view.
+  private async appendCommercialRevisionInTx(
+    tx: Prisma.TransactionClient,
+    input: {
+      tenant_id: string;
+      placement_process_id: string;
+      pay_rate_amount: string;
+      bill_rate_amount: string;
+      currency: string;
+      rate_period: string;
+      changeReason: string;
+      recorded_by: string;
+    },
+    tNew: Date,
+    requestId: string,
+  ): Promise<AssignmentCommercialView> {
+    // §12.1 — lock the owning assignment row FIRST. endAssignment takes the SAME
+    // lock, serializing revision-vs-revision AND revision-vs-end (no shared column
+    // otherwise couples them).
+    const locked = await tx.$queryRawUnsafe<
+      Array<{ id: string; requisition_id: string; talent_record_id: string; lifecycle_state: string | null }>
+    >(
+      `SELECT "id", "requisition_id", "talent_record_id", "lifecycle_state"::text AS "lifecycle_state"
+         FROM "placement"."ContractAssignment"
+        WHERE "tenant_id" = $1::uuid AND "placement_process_id" = $2::uuid
+        FOR UPDATE`,
+      input.tenant_id,
+      input.placement_process_id,
+    );
+    const assignment = locked[0];
+    if (assignment === undefined) {
+      throw new AramoError('NOT_FOUND', 'No ContractAssignment for placement', 404, { requestId, details: { placement_process_id: input.placement_process_id, reason: 'assignment_not_found' } });
+    }
+    if (assignment.lifecycle_state !== 'ACTIVE') {
+      throw new AramoError('NOT_FOUND', 'No active ContractAssignment to revise', 404, { requestId, details: { placement_process_id: input.placement_process_id, reason: 'active_assignment_not_found' } });
+    }
+    // The open tail = the single non-cancelled version with NULL effective_to (B1's
+    // overlap EXCLUDE guarantees at most one). No open version → nothing to revise
+    // (a BACKFILLED assignment lacking initial terms lands here — §4).
+    const predecessor = await tx.assignmentRateVersion.findFirst({
+      where: { tenant_id: input.tenant_id, contract_assignment_id: assignment.id, cancelled_at: null, effective_to: null },
+    });
+    if (predecessor === null) {
+      throw new AramoError('NOT_FOUND', 'No open commercial version to revise', 404, { requestId, details: { placement_process_id: input.placement_process_id, reason: 'open_commercial_version_not_found' } });
+    }
+    if (tNew.getTime() <= predecessor.effective_from.getTime()) {
+      throw new AramoError('VALIDATION_ERROR', 'effective_from must be after the current version start', 400, { requestId, details: { field: 'effective_from', reason: 'effective_from_not_after_current' } });
+    }
+
+    const successorId = uuidv7();
+    try {
+      // §11 — the governed effective_to first-close (B1 capability) under the
+      // transaction-local marker, confined to this method; then append the
+      // successor and its atomic outbox event.
+      await tx.$executeRawUnsafe(`SET LOCAL app.assignment_commercial_revision = 'authorized'`);
+      await tx.assignmentRateVersion.update({ where: { id: predecessor.id }, data: { effective_to: tNew } });
+      const successor = await tx.assignmentRateVersion.create({
+        data: {
+          id: successorId,
+          tenant_id: input.tenant_id,
           contract_assignment_id: assignment.id,
-          assignment_rate_version_id: successor.id,
           requisition_id: assignment.requisition_id,
           talent_record_id: assignment.talent_record_id,
-          pay_rate_amount: successor.pay_rate_amount.toFixed(2),
-          bill_rate_amount: successor.bill_rate_amount.toFixed(2),
-          currency: successor.currency,
-          rate_period: successor.rate_period,
-          spread_amount: metrics.spread_amount,
-          margin_percent: metrics.margin_percent,
-          markup_percent: metrics.markup_percent,
-          effective_from: successor.effective_from,
-          effective_to: successor.effective_to,
-          change_reason: successor.change_reason,
-          recorded_by: successor.recorded_by,
-          created_at: successor.created_at,
-        };
-      } catch (err) {
-        // §16 — named-constraint translation; NEVER a raw P2002/23505/23P01 leak.
-        // A cancelled row still reserves its exact effective_from (non-partial unique
-        // key), so a same-instant re-schedule after cancellation stays this 409
-        // duplicate_effective_from (T6-B3 §5).
-        if (isWindowOverlapViolation(err)) {
-          throw this.commercialConflict('window_overlap', assignment.id, requestId);
-        }
-        if (isDuplicateEffectiveFromViolation(err)) {
-          throw this.commercialConflict('duplicate_effective_from', assignment.id, requestId);
-        }
-        throw err;
+          pay_rate_amount: input.pay_rate_amount,
+          bill_rate_amount: input.bill_rate_amount,
+          currency: input.currency,
+          rate_period: input.rate_period,
+          effective_from: tNew,
+          recorded_by: input.recorded_by,
+          change_reason: input.changeReason,
+        },
+      });
+      // Atomic outbox: identity/provenance ONLY (money EXCLUDED, A2 §8) + the
+      // superseded predecessor id so a consumer can walk the revision chain.
+      await tx.outboxEvent.create({
+        data: {
+          id: uuidv7(),
+          tenant_id: input.tenant_id,
+          event_type: OUTBOX_RATE_VERSION_CREATED,
+          event_payload: {
+            tenant_id: input.tenant_id,
+            contract_assignment_id: assignment.id,
+            assignment_rate_version_id: successorId,
+            superseded_rate_version_id: predecessor.id,
+            requisition_id: assignment.requisition_id,
+            talent_record_id: assignment.talent_record_id,
+            effective_from: tNew.toISOString(),
+          },
+        },
+      });
+      const metrics = deriveCommercialMetrics(successor.pay_rate_amount, successor.bill_rate_amount);
+      return {
+        contract_assignment_id: assignment.id,
+        assignment_rate_version_id: successor.id,
+        requisition_id: assignment.requisition_id,
+        talent_record_id: assignment.talent_record_id,
+        pay_rate_amount: successor.pay_rate_amount.toFixed(2),
+        bill_rate_amount: successor.bill_rate_amount.toFixed(2),
+        currency: successor.currency,
+        rate_period: successor.rate_period,
+        spread_amount: metrics.spread_amount,
+        margin_percent: metrics.margin_percent,
+        markup_percent: metrics.markup_percent,
+        effective_from: successor.effective_from,
+        effective_to: successor.effective_to,
+        change_reason: successor.change_reason,
+        recorded_by: successor.recorded_by,
+        created_at: successor.created_at,
+      };
+    } catch (err) {
+      // §16 — named-constraint translation; NEVER a raw P2002/23505/23P01 leak.
+      // A cancelled row still reserves its exact effective_from (non-partial unique
+      // key), so a same-instant re-schedule after cancellation stays this 409
+      // duplicate_effective_from (T6-B3 §5).
+      if (isWindowOverlapViolation(err)) {
+        throw this.commercialConflict('window_overlap', assignment.id, requestId);
       }
-    });
+      if (isDuplicateEffectiveFromViolation(err)) {
+        throw this.commercialConflict('duplicate_effective_from', assignment.id, requestId);
+      }
+      throw err;
+    }
   }
 
   // ==========================================================================
@@ -2003,27 +2045,64 @@ export class PlacementRepository {
       });
     }
 
-    // APPLY (R-APPLY) — reuse createCommercialRevision (its OWN tx: lock,
-    // predecessor close, successor append, GiST/duplicate guard, marker, outbox,
-    // 409). On its ASSIGNMENT_COMMERCIAL_REVISION_CONFLICT the proposal stays
-    // APPROVED (R-APPLY-RECONCILIATION) — the 409 propagates, no state change.
+    // APPLY (R-APPLY) — L7-A: ONE atomic governed transaction. Lock the proposal row
+    // FIRST (deterministic order proposal → assignment), re-check its state UNDER the
+    // lock, then append the AssignmentRateVersion and stamp APPLIED in the SAME tx via
+    // appendCommercialRevisionInTx. A concurrent double-APPLY serializes on the proposal
+    // lock: the loser re-reads state=APPLIED and returns the existing applied version —
+    // so at most ONE rate version is ever created, with proposal.state + applied_rate_
+    // version_id committed atomically (closes the orphan-rate-version race). On the
+    // helper's ASSIGNMENT_COMMERCIAL_REVISION_CONFLICT 409 the whole tx rolls back and
+    // the proposal stays APPROVED (R-APPLY-RECONCILIATION).
     if (input.action === 'apply') {
-      const applied = await this.createCommercialRevision(
-        {
-          tenant_id: input.tenant_id,
-          placement_process_id: proposal.placement_process_id,
-          pay_rate_amount: proposal.proposed_pay_rate_amount.toFixed(2),
-          bill_rate_amount: proposal.proposed_bill_rate_amount.toFixed(2),
-          currency: proposal.proposed_currency,
-          rate_period: proposal.proposed_rate_period,
-          effective_from: proposal.proposed_effective_from ? proposal.proposed_effective_from.toISOString() : null,
-          change_reason: proposal.reason,
-          recorded_by: input.actor_id,
-        },
-        requestId,
-      );
-      const appliedAt = new Date();
       const row = await this.prisma.$transaction(async (tx) => {
+        const lockedRows = await tx.$queryRawUnsafe<Array<{ state: string }>>(
+          `SELECT "state"::text AS "state"
+             FROM "placement"."CommercialRevisionProposal"
+            WHERE "id" = $1::uuid AND "tenant_id" = $2::uuid
+            FOR UPDATE`,
+          proposal.id,
+          input.tenant_id,
+        );
+        const lockedState = lockedRows[0]?.state;
+        // Idempotent replay: an already-APPLIED proposal returns its existing applied
+        // rate version — NO second AssignmentRateVersion.
+        if (lockedState === 'APPLIED') {
+          return tx.commercialRevisionProposal.findUniqueOrThrow({ where: { id: proposal.id } });
+        }
+        // Re-check legality FROM the locked state (it may have moved since loadProposal).
+        if (lockedState !== 'APPROVED') {
+          throw this.proposalStateInvalid(lockedState ?? proposal.state, 'APPLIED', requestId);
+        }
+        // Resolve the effective instant at APPLY-time (proposed instant if any, else the
+        // apply instant), re-checking no-backdating UNDER lock — a once-future proposal
+        // may now be in the past. currency/rate_period/money were validated at propose.
+        const appliedAt = new Date();
+        let tNew = appliedAt;
+        if (proposal.proposed_effective_from != null) {
+          if (proposal.proposed_effective_from.getTime() < appliedAt.getTime()) {
+            throw new AramoError('VALIDATION_ERROR', 'the proposed effective_from is now in the past; re-propose with a current instant', 400, {
+              requestId,
+              details: { field: 'effective_from', reason: 'effective_from_in_past' },
+            });
+          }
+          tNew = proposal.proposed_effective_from;
+        }
+        const applied = await this.appendCommercialRevisionInTx(
+          tx,
+          {
+            tenant_id: input.tenant_id,
+            placement_process_id: proposal.placement_process_id,
+            pay_rate_amount: proposal.proposed_pay_rate_amount.toFixed(2),
+            bill_rate_amount: proposal.proposed_bill_rate_amount.toFixed(2),
+            currency: proposal.proposed_currency,
+            rate_period: proposal.proposed_rate_period,
+            changeReason: proposal.reason,
+            recorded_by: input.actor_id,
+          },
+          tNew,
+          requestId,
+        );
         const updated = await tx.commercialRevisionProposal.update({
           where: { id: proposal.id },
           data: { state: 'APPLIED', applied_rate_version_id: applied.assignment_rate_version_id, applied_by: input.actor_id, applied_at: appliedAt },
@@ -2032,7 +2111,7 @@ export class PlacementRepository {
           data: {
             id: uuidv7(), tenant_id: input.tenant_id, proposal_id: proposal.id,
             event_type: 'state_transition',
-            event_payload: { previous_state: proposal.state, next_state: 'APPLIED', action, actor_id: input.actor_id, assignment_rate_version_id: applied.assignment_rate_version_id },
+            event_payload: { previous_state: 'APPROVED', next_state: 'APPLIED', action, actor_id: input.actor_id, assignment_rate_version_id: applied.assignment_rate_version_id },
           },
         });
         await insertPolicyDecisionRecordInTx(tx, outcome.provenance);
