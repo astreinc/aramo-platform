@@ -2,8 +2,9 @@
 // Directive: Aramo-Track3-E1a-PlacementProcess-Directive v1.3 LOCKED.
 //
 // THIS FILE IS THE ONLY SOURCE OF TRUTH for the PlacementProcess state
-// machine (§5c). The migration SQL — the 14-edge BEFORE UPDATE transition
-// guard and the BEFORE INSERT duplicate-live-attempt guard — is a
+// machine (§5c). The migration SQL — the BEFORE UPDATE transition guard
+// (8 edges post-L4-0: frozen-init emitted 14, the forward collapse migration
+// narrows to 8) and the BEFORE INSERT duplicate-live-attempt guard — is a
 // deterministic BUILD ARTIFACT generated from this registry
 // (src/lib/generator). Never edit the emitted SQL; never author the two
 // state classifications as independent SQL literals. CI regenerates the SQL
@@ -149,9 +150,13 @@ export const CONTRACT_ASSIGNMENT_TRANSITIONS: Record<'ACTIVE' | 'ENDED', readonl
 
 // ---------------------------------------------------------------------------
 // Track 7 / T7-P1 — the PermanentPlacement guarantee lifecycle registry.
-// TYPED-MAP enforcement (T7-P1 directive §3.3), analogous to
-// CONTRACT_ASSIGNMENT_TRANSITIONS — NOT a generated DB lifecycle trigger. P2 may
-// revisit DB-generated enforcement if the expanded lifecycle warrants it.
+// This typed map is the CANONICAL source of truth for the guarantee state
+// machine. Lane 6 / L6-C added DB-level parity: a generated BEFORE UPDATE trigger
+// (migration 20260901180000, emitted from THIS map via the placement SQL
+// generator — placement:sql:check byte-equality) now enforces transition legality
+// + terminal immutability at the database too. The app-layer runtime guard
+// (canTransitionPermanentPlacement) remains defense-in-depth; the map stays the
+// single source both derive from.
 //
 // P1 ships EXACTLY the happy path: GUARANTEE_ACTIVE -> GUARANTEE_SATISFIED.
 // GUARANTEE_SATISFIED is terminal. FELL_OFF and the remedy states are T7-P2 and
@@ -168,7 +173,7 @@ export const PLACEMENT_KINDS = ['CONTRACT', 'PERMANENT'] as const;
 
 // Track 7 / T7-P2 — the guarantee lifecycle grows to the full falloff + remedy
 // machine (T7-P2 directive §4). Additive states; the typed map stays canonical
-// (§3.7 — NO generated DB lifecycle trigger). GUARANTEE_ACTIVE, GUARANTEE_SATISFIED
+// (and, since L6-C, the generated DB trigger derives from it). GUARANTEE_ACTIVE, GUARANTEE_SATISFIED
 // ship in P1; FELL_OFF + the three remedy-due states + REMEDY_COMPLETED are P2.
 export const PERMANENT_PLACEMENT_STATES = [
   'GUARANTEE_ACTIVE',
@@ -273,7 +278,7 @@ export function lifecyclePositionOf(state: PlacementState): LifecyclePosition {
 //                                      follows the business meaning of asserting
 //                                      a start, not a present side effect.)
 //   otherwise        -> 'transition' (ordinary non-terminal progression)
-// This is a total function over the 14 legal edges; deriving it is applying a
+// This is a total function over the 8 legal edges; deriving it is applying a
 // ratified classification to grounded facts (Execution Model §13), not policy.
 // ---------------------------------------------------------------------------
 export const PLACEMENT_AUTHORITY_CLASSES = ['transition', 'activate', 'terminate'] as const;

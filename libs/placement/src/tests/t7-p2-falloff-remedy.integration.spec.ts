@@ -39,6 +39,10 @@ const MIGRATIONS = [
   '20260824120000_init_offer_model',
   '20260901130000_offer_compensation_snapshot',
   '20260824130000_placement_offer_id',
+  // L6-C — PermanentPlacement lifecycle trigger. Present here so the falloff/remedy
+  // multi-edge path (GUARANTEE_ACTIVE->FELL_OFF->*_DUE->REMEDY_COMPLETED) is proven to
+  // pass under the DB trigger (all legal edges), not just the happy path.
+  '20260901180000_l6c_permanent_placement_lifecycle_parity',
 ].map((d) => resolve(__dirname, `../../prisma/migrations/${d}/migration.sql`));
 
 const T5_TERMS = { pay_rate_amount: '80.00', bill_rate_amount: '120.00', currency: 'USD', rate_period: 'HOURLY' } as const;
@@ -142,6 +146,48 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(v.falloff_reason).toBe('TALENT_RESIGNED');
       expect(v.falloff_effective_date?.toISOString().slice(0, 10)).toBe('2026-06-01');
       expect(v.remedy?.remedy_type).toBe('REFUND');
+    });
+
+    it('L6-F DB parity: illegal falloff-region transitions are rejected at the DB (skip FELL_OFF; reopen a *_DUE state)', async () => {
+      const input = baseInput({ placement_kind: 'PERMANENT' });
+      const id = await startPermanent(input, guaranteeTerms('REFUND'));
+
+      // GUARANTEE_ACTIVE -> REFUND_DUE directly (skipping FELL_OFF) is NOT a legal edge:
+      // the L6-C generated lifecycle trigger rejects it at the DB.
+      await expect(
+        prisma.permanentPlacement.updateMany({ where: { tenant_id: input.tenant_id, placement_process_id: id }, data: { lifecycle_state: 'REFUND_DUE' } }),
+      ).rejects.toThrow();
+
+      // The governed falloff path lands legally in REFUND_DUE (GA->FELL_OFF->REFUND_DUE).
+      await permanent.recordFalloff({ tenant_id: input.tenant_id, placement_process_id: id, effective_date: '2026-06-01', reason: 'TALENT_RESIGNED', recorded_by: randomUUID() }, 'f');
+      expect((await permanent.findByPlacement(input.tenant_id, id))?.lifecycle_state).toBe('REFUND_DUE');
+
+      // Reopening a remedy-due state backward to GUARANTEE_ACTIVE is NOT legal -> DB rejects.
+      await expect(
+        prisma.permanentPlacement.updateMany({ where: { tenant_id: input.tenant_id, placement_process_id: id }, data: { lifecycle_state: 'GUARANTEE_ACTIVE' } }),
+      ).rejects.toThrow();
+
+      // Unchanged: still REFUND_DUE (both raw writes rejected).
+      expect((await permanent.findByPlacement(input.tenant_id, id))?.lifecycle_state).toBe('REFUND_DUE');
+    });
+
+    it('L6-G race protection: concurrent falloff on the same placement resolves to exactly one (DB floor)', async () => {
+      const input = baseInput({ placement_kind: 'PERMANENT' });
+      const id = await startPermanent(input, guaranteeTerms('REFUND'));
+
+      // Two concurrent falloffs both read GUARANTEE_ACTIVE and enter their tx. The DB
+      // floors serialise them to exactly one winner: the loser's GA->FELL_OFF is
+      // rejected (the L6-C lifecycle trigger sees OLD=*_DUE, an illegal edge) and/or the
+      // write-once falloff-facts trigger rejects the second write. No app-level lock is
+      // relied upon for correctness here.
+      const results = await Promise.allSettled([
+        permanent.recordFalloff({ tenant_id: input.tenant_id, placement_process_id: id, effective_date: '2026-06-01', reason: 'TALENT_RESIGNED', recorded_by: randomUUID() }, 'f1'),
+        permanent.recordFalloff({ tenant_id: input.tenant_id, placement_process_id: id, effective_date: '2026-06-01', reason: 'TALENT_RESIGNED', recorded_by: randomUUID() }, 'f2'),
+      ]);
+      expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+      // Exactly one remedy obligation, one deterministic *_DUE state.
+      expect(await prisma.permanentPlacementRemedy.count({ where: { tenant_id: input.tenant_id } })).toBe(1);
+      expect((await permanent.findByPlacement(input.tenant_id, id))?.lifecycle_state).toBe('REFUND_DUE');
     });
 
     it('falloff on/after the guarantee end date, or before start, is FALLOFF_WINDOW_INVALID (422)', async () => {

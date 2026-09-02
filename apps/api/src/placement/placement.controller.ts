@@ -40,7 +40,7 @@ import {
 } from './dto/placement.dto.js';
 
 // Track 3 / E1-b + E1-d — the guarded PlacementProcess HTTP surface. ONE generic
-// transition route (§1): the target is in the body and the canonical 14-edge
+// transition route (§1): the target is in the body and the canonical 8-edge
 // matrix (DB-trigger-enforced) owns legality — no named outcome routes.
 // Authorization (§2) uses dedicated placement:* scopes; the transition route
 // requires the placement:<class> scope DERIVED from the target edge under the
@@ -151,7 +151,7 @@ export class PlacementController {
   // Generic governed transition. The required scope is DATA-dependent on the edge:
   // ordinary progression → placement:transition, live/capacity → placement:activate,
   // terminal → placement:terminate. Checked here (before the state change); the
-  // 14-edge matrix then enforces legality (PLACEMENT_STATE_INVALID, 422).
+  // 8-edge matrix then enforces legality (PLACEMENT_STATE_INVALID, 422).
   @Post(':id/transition')
   @HttpCode(HttpStatus.OK)
   async transition(
@@ -590,7 +590,7 @@ export class PlacementController {
   // instant and appends the successor, atomically and serialized against
   // endAssignment. Guarded by the DEDICATED write scope assignment:commercials:write
   // — now a post-start enforcement site (§9): assignment:commercials:read NEVER
-  // satisfies it, and placement:* / assignment:update do NOT substitute. Tenant-scoped
+  // satisfies it, and placement:* does NOT substitute. Tenant-scoped
   // like endAssignment (the mutation precedent); NO @RequireSiteMatch (§10). The
   // recording principal (recorded_by) is the JWT subject, never the wire. Absent /
   // not-ACTIVE / no-open-version resolve to 404 (never 403); a window conflict is a

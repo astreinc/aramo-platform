@@ -2504,8 +2504,8 @@ paths:
         is ACTIVE.
 
         Guarded by the DEDICATED write scope `assignment:commercials:write` (a post-start
-        enforcement site): `assignment:commercials:read`, `placement:*`, and
-        `assignment:update` do NOT satisfy it. `recorded_by` is the authenticated
+        enforcement site): `assignment:commercials:read` and `placement:*` do NOT
+        satisfy it. `recorded_by` is the authenticated
         subject — never the request body. `effective_from` is optional; omitted means the
         server "now" instant (used for BOTH the close and the open). A supplied instant
         in the past is refused (400). A requested instant that overlaps or duplicates an
@@ -3100,7 +3100,7 @@ paths:
         transition (ACTIVE stays ACTIVE — extension is an event, never a state) and no
         capacity effect (capacity derives from the ACTIVE count). Gated by the DEDICATED
         `assignment:extend` authority (capability `ats`) — SEPARATE from `assignment:end`;
-        `placement:*` / `assignment:end` / `assignment:update` do NOT satisfy it. The
+        `placement:*` / `assignment:end` do NOT satisfy it. The
         repository appends an immutable AssignmentExtension history row, updates
         `expected_end_at`, and emits `placement.assignment.extended` atomically. Refusals:
         404 (no active assignment / not visible / cross-tenant); 422
