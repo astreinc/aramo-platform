@@ -205,6 +205,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     it('L6-E: the converted source (ENDED / CONVERTED_TO_PERMANENT) cannot be reopened — no hidden reopening (DB floor)', async () => {
       const input = baseInput();
       const sourceId = await startContract(input);
+      await seedTerms(input.tenant_id, input.requisition_id, { duration: 365, policy: 'REFUND', exposure: '50000.00' });
       await repo.convertToPermanent({ tenant_id: input.tenant_id, placement_process_id: sourceId, converted_by: randomUUID() }, 'c');
       expect(await assignmentRow(input.tenant_id, sourceId)).toEqual({ lifecycle_state: 'ENDED', end_reason: 'CONVERTED_TO_PERMANENT' });
 
