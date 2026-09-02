@@ -27,9 +27,12 @@ export function isRequirementType(v: unknown): v is RequirementTypeValue {
 
 // ScopeType — definition-set applicability discriminator (§4b). TENANT ONLY today
 // (scope_ref_id == tenant_id). Client/requisition scopes and their precedence are
-// DEFERRED (ruled) — the column pair is the seam; adding a scope is a
-// source-controlled registry + resolver change under review.
-export const SCOPE_TYPE_VALUES = ['TENANT'] as const;
+// L5-P5 (ruling P2) — the layered onboarding-config scopes, least-specific to
+// most-specific. resolveEffective merges the open published set at each present
+// layer keyed on requirement_type: a more-specific layer OVERRIDES the same type and
+// AUGMENTS with new types. The order in this tuple IS the precedence order (index =
+// specificity). Adding a scope is a source-controlled registry change (never a data op).
+export const SCOPE_TYPE_VALUES = ['TENANT', 'CLIENT', 'REQUISITION'] as const;
 export type ScopeTypeValue = (typeof SCOPE_TYPE_VALUES)[number];
 export function isScopeType(v: unknown): v is ScopeTypeValue {
   return typeof v === 'string' && (SCOPE_TYPE_VALUES as readonly string[]).includes(v);

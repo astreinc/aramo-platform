@@ -162,6 +162,16 @@ export type BlockingAssessment = {
   readonly ready: boolean;
 };
 
+// L5-P4 (ruling P3) — the BLOCKED projection. BLOCKED's authoritative cause is a
+// blocking requirement in FAILED (intervention needed), derived from the requirement
+// facts — never a separate blocker store. PENDING/IN_PROGRESS blocking requirements
+// are normal onboarding (PRE_START), NOT a block.
+export type BlockerProjection = {
+  readonly placement_process_id: string;
+  readonly blocked: boolean;
+  readonly failed_blocking: readonly InstanceView[];
+};
+
 // ---- Materialization intent (reconciler work record) --------------------------
 
 export type IntentStatus = 'pending' | 'resolved' | 'quarantined';
@@ -172,10 +182,55 @@ export type IntentView = {
   readonly placement_process_id: string;
   readonly scope: ScopeTypeValue;
   readonly scope_ref_id: string;
+  // L5-P5 — the layered materialization context captured at intake, so the
+  // reconciler can re-resolve the same TENANT->CLIENT->REQUISITION chain. Nullable:
+  // a placement with no client/requisition ref resolves TENANT-only.
+  readonly client_id: string | null;
+  readonly requisition_id: string | null;
   readonly status: IntentStatus;
   readonly attempts: number;
   readonly quarantine_reason: string | null;
   readonly last_attempt_at: Date | null;
   readonly created_at: Date;
   readonly updated_at: Date;
+};
+
+// L5-P5 — the layered resolution context beyond the tenant (always present). Either
+// ref may be null (that layer is skipped in the merge).
+export type LayeredContext = {
+  readonly client_id: string | null;
+  readonly requisition_id: string | null;
+};
+
+// ---- Readiness decision ledger (Lane 5 / L5-P3, ruling P7) ---------------------
+
+export type ReadinessDecisionResult = 'READY' | 'REFUSED';
+export type ReadinessRefusalReason = 'materialization_absent' | 'blocking_unresolved';
+
+// The immutable record of one MARK_READY decision — success or refusal.
+export interface RecordReadinessDecisionInput {
+  readonly tenant_id: string;
+  readonly placement_process_id: string;
+  readonly result: ReadinessDecisionResult;
+  readonly refusal_reason: ReadinessRefusalReason | null;
+  readonly materialized: boolean;
+  readonly total_requirements: number;
+  readonly unresolved_blocking_count: number;
+  readonly actor_id: string;
+  // 'user' | 'system'
+  readonly actor_type: string;
+}
+
+export type ReadinessDecisionView = {
+  readonly id: string;
+  readonly tenant_id: string;
+  readonly placement_process_id: string;
+  readonly result: ReadinessDecisionResult;
+  readonly refusal_reason: ReadinessRefusalReason | null;
+  readonly materialized: boolean;
+  readonly total_requirements: number;
+  readonly unresolved_blocking_count: number;
+  readonly actor_id: string;
+  readonly actor_type: string;
+  readonly created_at: Date;
 };

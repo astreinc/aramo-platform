@@ -18,6 +18,7 @@ export { PrismaService } from './lib/prisma/prisma.service.js';
 export { DefinitionSetRepository } from './lib/definition-set.repository.js';
 export { RequirementInstanceRepository } from './lib/requirement-instance.repository.js';
 export { MaterializationIntentRepository } from './lib/materialization-intent.repository.js';
+export { ReadinessDecisionRepository } from './lib/readiness-decision.repository.js';
 
 // Closed registries + guards + checksum (directive §4c / §14 A2).
 export {
@@ -70,6 +71,11 @@ export type {
   WaiveInput,
   AuditView,
   BlockingAssessment,
+  BlockerProjection,
   IntentStatus,
   IntentView,
+  ReadinessDecisionResult,
+  ReadinessRefusalReason,
+  RecordReadinessDecisionInput,
+  ReadinessDecisionView,
 } from './lib/pre-start-requirement.types.js';

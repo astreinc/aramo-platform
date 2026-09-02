@@ -897,6 +897,7 @@
       "PrismaService",
       "REQUIREMENT_STATUS_VALUES",
       "REQUIREMENT_TYPE_VALUES",
+      "ReadinessDecisionRepository",
       "RequirementInstanceRepository",
       "SCOPE_TYPE_VALUES",
       "SET_STATE_VALUES",
@@ -4232,6 +4233,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/pre-start-requirement/placement-block-reconciliation.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/requisition-concurrency.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -4550,6 +4557,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/pre-start-requirement/placement-readiness-gate.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/pre-start-requirement/pre-start-orchestrator.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },

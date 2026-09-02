@@ -21,9 +21,11 @@ const PLACEMENT = '00000000-0000-0000-0000-0000000000bb';
 
 function service(evaluator: ReadinessEvaluator) {
   const transition = vi.fn().mockResolvedValue({ id: PLACEMENT, state: 'READY_TO_START' });
+  // L5-P3 — the readiness decision ledger (recorded on every outcome).
+  const record = vi.fn().mockResolvedValue({});
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const svc = new PlacementReadinessService({ transition } as any, evaluator);
-  return { svc, transition };
+  const svc = new PlacementReadinessService({ transition } as any, evaluator, { record } as any);
+  return { svc, transition, record };
 }
 
 // The REAL evaluator delegates to the domain assessBlocking (here a mocked repo
@@ -50,7 +52,8 @@ const HAPPY: BlockingAssessment = { placement_process_id: PLACEMENT, materialize
 const NO_SNAPSHOT: BlockingAssessment = { placement_process_id: PLACEMENT, materialized: false, total: 0, unresolved_blocking: [], ready: false };
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const UNRESOLVED: BlockingAssessment = { placement_process_id: PLACEMENT, materialized: true, total: 2, unresolved_blocking: [{ blocking: true, status: 'PENDING' } as any], ready: false };
-const input = { tenant_id: TENANT, placement_process_id: PLACEMENT };
+const ACTOR = '00000000-0000-0000-0000-0000000000cc';
+const input = { tenant_id: TENANT, placement_process_id: PLACEMENT, actor_id: ACTOR, actor_type: 'user' };
 
 // ---- Part 1: no environment bypass token -------------------------------------
 
@@ -124,5 +127,45 @@ describe('§14 A2-R part 3 — permissive double proves the gate is load-bearing
     const { svc, transition } = service(permissiveEvaluator);
     await svc.markReadyToStart(input, 'r'); // does NOT throw
     expect(transition).toHaveBeenCalledOnce();
+  });
+});
+
+// ---- L5-P3 (ruling P7) — every decision is recorded to the immutable ledger ------
+
+describe('L5-P3 — every MARK_READY decision is recorded (success and both refusals)', () => {
+  it('READY records result=READY with the actor and assessment counts', async () => {
+    const { svc, record } = service(realEvaluator(HAPPY));
+    await svc.markReadyToStart(input, 'r');
+    expect(record).toHaveBeenCalledOnce();
+    expect(record.mock.calls[0]?.[0]).toMatchObject({
+      placement_process_id: PLACEMENT,
+      result: 'READY',
+      refusal_reason: null,
+      materialized: true,
+      total_requirements: 2,
+      unresolved_blocking_count: 0,
+      actor_id: ACTOR,
+      actor_type: 'user',
+    });
+  });
+
+  it('materialization_absent records result=REFUSED / reason=materialization_absent (before the throw)', async () => {
+    const { svc, record } = service(realEvaluator(NO_SNAPSHOT));
+    await expect(svc.markReadyToStart(input, 'r')).rejects.toMatchObject({ code: 'PRE_START_NOT_READY' });
+    expect(record.mock.calls[0]?.[0]).toMatchObject({
+      result: 'REFUSED',
+      refusal_reason: 'materialization_absent',
+      materialized: false,
+    });
+  });
+
+  it('blocking_unresolved records result=REFUSED / reason=blocking_unresolved', async () => {
+    const { svc, record } = service(realEvaluator(UNRESOLVED));
+    await expect(svc.markReadyToStart(input, 'r')).rejects.toMatchObject({ code: 'PRE_START_NOT_READY' });
+    expect(record.mock.calls[0]?.[0]).toMatchObject({
+      result: 'REFUSED',
+      refusal_reason: 'blocking_unresolved',
+      unresolved_blocking_count: 1,
+    });
   });
 });

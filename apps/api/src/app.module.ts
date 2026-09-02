@@ -78,6 +78,7 @@ import { LifecyclePollModule } from './requisition-integration/lifecycle-poll.mo
 import { OfferExpiryModule } from './offer/offer-expiry.module.js';
 import { ReconciliationDrainModule } from './requisition-integration/reconciliation-drain.module.js';
 import { PlacementLifecycleOrchestratorModule } from './placement-pipeline-orchestration/placement-lifecycle-orchestrator.module.js';
+import { PreStartOrchestratorModule } from './pre-start-requirement/pre-start-orchestrator.module.js';
 import { TenantCognitoAdapter } from './cognito/tenant-cognito.adapter.js';
 import { TenantWriteFreezeInterceptor } from './tenant-write-freeze/tenant-write-freeze.interceptor.js';
 import { TalentAnchorInterceptor } from './talent-anchor/talent-anchor.interceptor.js';
@@ -363,6 +364,12 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     // COMPLETE / dispositionDownstream; Redis-gated). Consumes placement.process
     // .state_changed; drives the system-only Pipeline commands by stored lineage.
     PlacementLifecycleOrchestratorModule,
+    // L5-P1 (E2 ignition) — the pre-start orchestrator worker (scheduled 60s tick →
+    // reconcile pending intents + intake materialize on placement.process.created +
+    // cancel unresolved requirements on placement terminal; Redis-gated). Ignites the
+    // E2 seams that shipped with no production caller. Idempotency rides E2's own state
+    // (materialization intent + instance resolution) — no new inbox table.
+    PreStartOrchestratorModule,
     // M5 PR-11 §4.5/§4.6 — SkillsTaxonomyModule registers the
     // skill-canonicalization queue + no-op processor (Architecture v2.1
     // §9.2 / Plan v1.5 §M5 Track A item 6 binding).

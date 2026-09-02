@@ -15,6 +15,7 @@ import {
 } from './pre-start-requirement-vocab.js';
 import type {
   AuditView,
+  BlockerProjection,
   BlockingAssessment,
   InstanceView,
   SetView,
@@ -180,14 +181,21 @@ export class RequirementInstanceRepository {
     // status with NO audit row (matches the DB provenance invariant, which does
     // not require provenance for a move to IN_PROGRESS).
     if (input.to === 'IN_PROGRESS') {
-      const row = (await this.prisma.preStartRequirementInstance.update({
-        where: { id: current.id },
+      // State-guarded CAS: the row must still be in the captured `from` status. A
+      // concurrent move that already advanced it matches 0 rows → conflict (never a
+      // silent last-write-wins).
+      const res = await this.prisma.preStartRequirementInstance.updateMany({
+        where: { id: current.id, tenant_id: input.tenant_id, status: from },
         data: { status: 'IN_PROGRESS' },
+      });
+      if (res.count === 0) throw this.conflict(current.id, from, 'IN_PROGRESS', requestId);
+      const row = (await this.prisma.preStartRequirementInstance.findFirst({
+        where: { tenant_id: input.tenant_id, id: current.id },
       })) as InstanceRow;
       return projectInstance(row);
     }
     const action = isReopen(from, input.to) ? 'REOPENED' : input.to;
-    return this.commitMove(current, input.to, action, {
+    return this.commitMove(current, input.to, action, requestId, {
       tenant_id: input.tenant_id,
       actor_id: input.actor_id,
       actor_type: input.actor_type,
@@ -235,7 +243,7 @@ export class RequirementInstanceRepository {
     if (input.justification.trim().length === 0) {
       throw this.invalid('a waiver requires a justification', requestId, { requirement_instance_id: current.id });
     }
-    return this.commitMove(current, 'WAIVED', 'WAIVED', {
+    return this.commitMove(current, 'WAIVED', 'WAIVED', requestId, {
       tenant_id: input.tenant_id,
       actor_id: input.actor_id,
       actor_type: input.actor_type,
@@ -254,6 +262,16 @@ export class RequirementInstanceRepository {
       orderBy: { created_at: 'asc' },
     })) as AuditRow[];
     return rows.map(projectAudit);
+  }
+
+  // L5-P4 (ruling P3) — the BLOCKED projection. The authoritative cause of a block is
+  // a blocking requirement in FAILED (intervention needed); PENDING/IN_PROGRESS
+  // blocking requirements are normal outstanding onboarding (PRE_START), not a block.
+  // Derived from the requirement facts — no separate blocker store (no duplicate truth).
+  async deriveBlockers(tenant_id: string, placement_process_id: string): Promise<BlockerProjection> {
+    const instances = await this.findByPlacement(tenant_id, placement_process_id);
+    const failed_blocking = instances.filter((i) => i.blocking && i.status === 'FAILED');
+    return { placement_process_id, blocked: failed_blocking.length > 0, failed_blocking };
   }
 
   // The lib's readiness contribution. No snapshot => materialized:false =>
@@ -292,6 +310,7 @@ export class RequirementInstanceRepository {
     current: InstanceRow,
     to: RequirementStatusValue,
     action: string,
+    requestId: string,
     meta: {
       tenant_id: string;
       actor_id: string;
@@ -309,8 +328,13 @@ export class RequirementInstanceRepository {
     // Resolved statuses stamp completion; REOPENED clears it.
     const resolved = isResolvedStatus(to);
     const updated = await this.prisma.$transaction(async (tx) => {
-      const u = (await tx.preStartRequirementInstance.update({
-        where: { id: current.id },
+      // State-guarded CAS inside the tx: the row must still be in the captured `from`
+      // status. Postgres row-locks the UPDATE and re-evaluates the predicate, so a
+      // concurrent move that already advanced the row matches 0 rows → conflict. This
+      // closes the double-audit race (two writers appending contradictory provenance);
+      // exactly one move commits, the loser is told to re-read (409, not silent).
+      const res = await tx.preStartRequirementInstance.updateMany({
+        where: { id: current.id, tenant_id: meta.tenant_id, status: from },
         data: {
           status: to,
           completed_at: resolved ? now : null,
@@ -318,6 +342,10 @@ export class RequirementInstanceRepository {
           // evidence_reference is set only on a forward resolution that carries one.
           ...(meta.evidence_reference !== null ? { evidence_reference: meta.evidence_reference } : {}),
         },
+      });
+      if (res.count === 0) throw this.conflict(current.id, from, to, requestId);
+      const u = (await tx.preStartRequirementInstance.findFirst({
+        where: { tenant_id: meta.tenant_id, id: current.id },
       })) as InstanceRow;
       await tx.preStartRequirementAudit.create({
         data: {
@@ -342,6 +370,30 @@ export class RequirementInstanceRepository {
 
   private invalid(message: string, requestId: string, details: Record<string, unknown>): AramoError {
     return new AramoError('PRE_START_REQUIREMENT_INVALID', message, 422, { requestId, details });
+  }
+  // The state-guarded CAS lost: the instance moved out of the expected `from` status
+  // under a concurrent writer between load and commit. A distinct 409 (never a silent
+  // last-write-wins); the caller re-reads and retries.
+  private conflict(
+    requirement_instance_id: string,
+    from: RequirementStatusValue,
+    to: RequirementStatusValue,
+    requestId: string,
+  ): AramoError {
+    return new AramoError(
+      'PRE_START_REQUIREMENT_CONFLICT',
+      `requirement status move conflict: the instance is no longer in ${from} (a concurrent move advanced it)`,
+      409,
+      {
+        requestId,
+        details: {
+          requirement_instance_id,
+          expected_from_status: from,
+          attempted_to_status: to,
+          reason: 'concurrent_status_move',
+        },
+      },
+    );
   }
   private invalidMove(
     from: RequirementStatusValue,

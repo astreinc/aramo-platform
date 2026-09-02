@@ -8,6 +8,7 @@ import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testconta
 import { PrismaService } from '../lib/prisma/prisma.service.js';
 import { DefinitionSetRepository } from '../lib/definition-set.repository.js';
 import { RequirementInstanceRepository } from '../lib/requirement-instance.repository.js';
+import { ReadinessDecisionRepository } from '../lib/readiness-decision.repository.js';
 import type { RequirementDefinitionInput } from '../lib/pre-start-requirement-vocab.js';
 import type { SetView } from '../lib/pre-start-requirement.types.js';
 
@@ -19,6 +20,12 @@ import type { SetView } from '../lib/pre-start-requirement.types.js';
 const INIT_MIGRATION_PATH = resolve(
   __dirname,
   '../../prisma/migrations/20260804090000_init_pre_start_requirement/migration.sql',
+);
+// L5-P3 — a SEPARATE const (never a 2nd resolve() arg — ENOTDIR trap). Applied
+// after init so the readiness ledger table + its append-only triggers exist.
+const READINESS_MIGRATION_PATH = resolve(
+  __dirname,
+  '../../prisma/migrations/20260901160000_l5_pre_start_readiness_decision/migration.sql',
 );
 
 const DEFS: RequirementDefinitionInput[] = [
@@ -35,22 +42,25 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     let prisma: PrismaService;
     let sets: DefinitionSetRepository;
     let instances: RequirementInstanceRepository;
+    let decisions: ReadinessDecisionRepository;
 
     beforeAll(async () => {
       container = await new PostgreSqlContainer('postgres:17').start();
       const url = container.getConnectionUri();
       setupClient = new PrismaService(url);
       await setupClient.$connect();
-      const sql = readFileSync(INIT_MIGRATION_PATH, 'utf8');
-      for (const stmt of splitDdl(sql)) {
-        const trimmed = stmt.trim();
-        if (trimmed.length === 0) continue;
-        await setupClient.$executeRawUnsafe(trimmed);
+      for (const migrationPath of [INIT_MIGRATION_PATH, READINESS_MIGRATION_PATH]) {
+        for (const stmt of splitDdl(readFileSync(migrationPath, 'utf8'))) {
+          const trimmed = stmt.trim();
+          if (trimmed.length === 0) continue;
+          await setupClient.$executeRawUnsafe(trimmed);
+        }
       }
       prisma = new PrismaService(url);
       await prisma.$connect();
       sets = new DefinitionSetRepository(prisma);
       instances = new RequirementInstanceRepository(prisma);
+      decisions = new ReadinessDecisionRepository(prisma);
     }, 120_000);
 
     afterAll(async () => {
@@ -292,6 +302,228 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const { tenant, placement } = await seedPlacement();
       expect((await instances.findByPlacement(tenant, placement)).length).toBe(3);
       expect((await instances.findByPlacement(randomUUID(), placement)).length).toBe(0);
+    });
+
+    // ---- L5-P2 — state-guarded CAS closes the concurrent-move race ----
+
+    it('concurrent moves on separate connections — exactly one commits, exactly one audit row (no double last-write-wins)', async () => {
+      const { tenant, placement } = await seedPlacement();
+      const [inst] = await instances.findByPlacement(tenant, placement);
+
+      // Two SEPARATE connections so the two loads genuinely interleave. A single client
+      // serializes them and the app-guard reload (canMoveStatus) — not the CAS — catches
+      // the loser; separate connections let both read PENDING before either commits, so
+      // the row-locked CAS (WHERE status = the captured 'PENDING') is what decides the
+      // winner: one UPDATE matches, the other matches 0 rows → PRE_START_REQUIREMENT_CONFLICT.
+      const prismaB = new PrismaService(container.getConnectionUri());
+      await prismaB.$connect();
+      const instancesB = new RequirementInstanceRepository(prismaB);
+      try {
+        const outcomes = await Promise.allSettled([
+          instances.applyStatusMove(
+            { tenant_id: tenant, requirement_instance_id: inst?.id ?? '', to: 'SATISFIED', actor_id: randomUUID(), actor_type: 'user', completed_by: randomUUID() },
+            'race-a',
+          ),
+          instancesB.applyStatusMove(
+            { tenant_id: tenant, requirement_instance_id: inst?.id ?? '', to: 'FAILED', actor_id: randomUUID(), actor_type: 'user' },
+            'race-b',
+          ),
+        ]);
+
+        // Exactly one move commits; the loser is refused — the CAS conflict (409) under a
+        // true race, or a reloaded illegal-move (422) if the two happened to serialize.
+        // Never a silent second success.
+        expect(outcomes.filter((r) => r.status === 'fulfilled').length).toBe(1);
+        const rejected = outcomes.filter((r) => r.status === 'rejected') as PromiseRejectedResult[];
+        expect(rejected.length).toBe(1);
+        expect(['PRE_START_REQUIREMENT_CONFLICT', 'PRE_START_REQUIREMENT_INVALID']).toContain(
+          (rejected[0]?.reason as { code?: string }).code,
+        );
+
+        // The defect proof: the audit ledger holds EXACTLY ONE row for this instance.
+        // Before the CAS, both concurrent writers committed and appended a row — two
+        // contradictory provenance rows + last-write-wins.
+        const audits = await instances.listAudits(tenant, inst?.id ?? '');
+        expect(audits.length).toBe(1);
+      } finally {
+        await prismaB.$disconnect();
+      }
+    });
+
+    // ---- L5-P3 — readiness decision ledger (append-only, ruling P7) ----
+
+    const DECISION_TBL = 'pre_start_requirement."PreStartReadinessDecision"';
+
+    it('records a READY and a REFUSED decision; listByPlacement returns them in order', async () => {
+      const tenant = randomUUID();
+      const placement = randomUUID();
+      const actor = randomUUID();
+      const refused = await decisions.record({
+        tenant_id: tenant, placement_process_id: placement, result: 'REFUSED',
+        refusal_reason: 'materialization_absent', materialized: false, total_requirements: 0,
+        unresolved_blocking_count: 0, actor_id: actor, actor_type: 'user',
+      });
+      expect(refused.result).toBe('REFUSED');
+      const ready = await decisions.record({
+        tenant_id: tenant, placement_process_id: placement, result: 'READY',
+        refusal_reason: null, materialized: true, total_requirements: 3,
+        unresolved_blocking_count: 0, actor_id: actor, actor_type: 'user',
+      });
+      expect(ready.result).toBe('READY');
+      const all = await decisions.listByPlacement(tenant, placement);
+      expect(all.map((d) => d.result)).toEqual(['REFUSED', 'READY']);
+    });
+
+    it('the result/reason CHECK rejects an inconsistent row (REFUSED without a reason)', async () => {
+      const tenant = randomUUID();
+      await expect(
+        setupClient.$executeRawUnsafe(
+          `INSERT INTO ${DECISION_TBL} (id, tenant_id, placement_process_id, result, refusal_reason, materialized, total_requirements, unresolved_blocking_count, actor_id, actor_type)
+             VALUES ('${randomUUID()}','${tenant}','${randomUUID()}','REFUSED', NULL, false, 0, 0, '${randomUUID()}','user')`,
+        ),
+      ).rejects.toThrow();
+    });
+
+    it('the ledger rejects UPDATE and DELETE at the database layer (append-only)', async () => {
+      const tenant = randomUUID();
+      const placement = randomUUID();
+      const d = await decisions.record({
+        tenant_id: tenant, placement_process_id: placement, result: 'READY',
+        refusal_reason: null, materialized: true, total_requirements: 1,
+        unresolved_blocking_count: 0, actor_id: randomUUID(), actor_type: 'system',
+      });
+      await expect(
+        setupClient.$executeRawUnsafe(`UPDATE ${DECISION_TBL} SET result = 'REFUSED' WHERE id = '${d.id}'`),
+      ).rejects.toThrow(/append-only/);
+      await expect(
+        setupClient.$executeRawUnsafe(`DELETE FROM ${DECISION_TBL} WHERE id = '${d.id}'`),
+      ).rejects.toThrow(/append-only/);
+    });
+
+    it("the EXACT authorized tenant-reset GUC permits the delete; a wrong value does not", async () => {
+      const tenant = randomUUID();
+      const placement = randomUUID();
+      const d = await decisions.record({
+        tenant_id: tenant, placement_process_id: placement, result: 'READY',
+        refusal_reason: null, materialized: true, total_requirements: 1,
+        unresolved_blocking_count: 0, actor_id: randomUUID(), actor_type: 'user',
+      });
+      await expect(
+        prisma.$transaction(async (tx) => {
+          await tx.$executeRawUnsafe(`SET LOCAL app.tenant_reset = 'nope'`);
+          await tx.$executeRawUnsafe(`DELETE FROM ${DECISION_TBL} WHERE id = '${d.id}'`);
+        }),
+      ).rejects.toThrow(/not permitted/);
+      await prisma.$transaction(async (tx) => {
+        await tx.$executeRawUnsafe(`SET LOCAL app.tenant_reset = 'authorized'`);
+        await tx.$executeRawUnsafe(`DELETE FROM ${DECISION_TBL} WHERE id = '${d.id}'`);
+      });
+      expect((await decisions.listByPlacement(tenant, placement)).length).toBe(0);
+    });
+
+    it('decisions are tenant-isolated', async () => {
+      const tenant = randomUUID();
+      const placement = randomUUID();
+      await decisions.record({
+        tenant_id: tenant, placement_process_id: placement, result: 'READY',
+        refusal_reason: null, materialized: true, total_requirements: 1,
+        unresolved_blocking_count: 0, actor_id: randomUUID(), actor_type: 'user',
+      });
+      expect((await decisions.listByPlacement(tenant, placement)).length).toBe(1);
+      expect((await decisions.listByPlacement(randomUUID(), placement)).length).toBe(0);
+    });
+
+    // ---- L5-P4 — the BLOCKED projection (deriveBlockers, ruling P3) ----
+
+    it('deriveBlockers: all PENDING → not blocked; a FAILED blocking requirement → blocked', async () => {
+      const { tenant, placement } = await seedPlacement();
+      // Normal onboarding (all PENDING) is NOT a block.
+      expect((await instances.deriveBlockers(tenant, placement)).blocked).toBe(false);
+
+      const list = await instances.findByPlacement(tenant, placement);
+      const bg = list.find((i) => i.requirement_type === 'BACKGROUND_CHECK'); // blocking=true
+      await instances.applyStatusMove(
+        { tenant_id: tenant, requirement_instance_id: bg?.id ?? '', to: 'FAILED', actor_id: randomUUID(), actor_type: 'user', reason: 'adverse_finding' },
+        'f',
+      );
+
+      const proj = await instances.deriveBlockers(tenant, placement);
+      expect(proj.blocked).toBe(true);
+      expect(proj.failed_blocking.map((i) => i.requirement_type)).toEqual(['BACKGROUND_CHECK']);
+    });
+
+    it('deriveBlockers: a FAILED NON-blocking requirement does NOT block', async () => {
+      const { tenant, placement } = await seedPlacement();
+      const list = await instances.findByPlacement(tenant, placement);
+      const nda = list.find((i) => i.requirement_type === 'NDA'); // blocking=false
+      await instances.applyStatusMove(
+        { tenant_id: tenant, requirement_instance_id: nda?.id ?? '', to: 'FAILED', actor_id: randomUUID(), actor_type: 'user' },
+        'f',
+      );
+      expect((await instances.deriveBlockers(tenant, placement)).blocked).toBe(false);
+    });
+
+    // ---- L5-P5 — layered precedence (resolveEffective, ruling P2) ----
+
+    async function publishSet(
+      tenant: string,
+      scope: 'TENANT' | 'CLIENT' | 'REQUISITION',
+      ref: string,
+      version: string,
+      defs: RequirementDefinitionInput[],
+    ): Promise<void> {
+      const draft = await sets.createDraft(
+        { tenant_id: tenant, scope, scope_ref_id: ref, version, definitions: defs },
+        's',
+      );
+      await sets.publish({ tenant_id: tenant, set_id: draft.id, published_by: randomUUID() }, 's');
+    }
+
+    it('resolveEffective: TENANT-only resolves the tenant baseline', async () => {
+      const tenant = randomUUID();
+      await publishSet(tenant, 'TENANT', tenant, 'v1', DEFS);
+      const eff = await sets.resolveEffective(tenant, { client_id: null, requisition_id: null }, 'r');
+      expect(eff?.definitions.map((d) => d.requirement_type).sort()).toEqual([
+        'BACKGROUND_CHECK',
+        'CLIENT_PAPERWORK',
+        'NDA',
+      ]);
+    });
+
+    it('resolveEffective: REQUISITION overrides same-type + augments new types; version is composite', async () => {
+      const tenant = randomUUID();
+      const req = randomUUID();
+      await publishSet(tenant, 'TENANT', tenant, 'v1', DEFS);
+      await publishSet(tenant, 'REQUISITION', req, 'v3', [
+        { requirement_type: 'BACKGROUND_CHECK', label: 'override', blocking: false, owner_role: null, sequence: 1, waiver_mode: 'AUTHORIZED_INTERNAL' },
+        { requirement_type: 'DRUG_SCREEN', label: 'aug', blocking: true, owner_role: null, sequence: 2, waiver_mode: 'CLIENT_AUTHORITY_ONLY' },
+      ]);
+      const eff = await sets.resolveEffective(tenant, { client_id: null, requisition_id: req }, 'r');
+      expect(eff?.definitions.map((d) => d.requirement_type).sort()).toEqual([
+        'BACKGROUND_CHECK',
+        'CLIENT_PAPERWORK',
+        'DRUG_SCREEN',
+        'NDA',
+      ]);
+      // the more-specific REQUISITION layer won the override.
+      expect(eff?.definitions.find((d) => d.requirement_type === 'BACKGROUND_CHECK')?.blocking).toBe(false);
+      expect(eff?.version).toBe('TENANT:v1|REQUISITION:v3');
+    });
+
+    it('resolveEffective: deterministic — same inputs yield the same checksum', async () => {
+      const tenant = randomUUID();
+      const req = randomUUID();
+      await publishSet(tenant, 'TENANT', tenant, 'v1', DEFS);
+      await publishSet(tenant, 'REQUISITION', req, 'v1', [
+        { requirement_type: 'DRUG_SCREEN', label: 'd', blocking: true, owner_role: null, sequence: 1, waiver_mode: 'CLIENT_AUTHORITY_ONLY' },
+      ]);
+      const a = await sets.resolveEffective(tenant, { client_id: null, requisition_id: req }, 'r');
+      const b = await sets.resolveEffective(tenant, { client_id: null, requisition_id: req }, 'r');
+      expect(a?.checksum).toBe(b?.checksum);
+    });
+
+    it('resolveEffective: no published set at any layer → null (fail-closed)', async () => {
+      expect(await sets.resolveEffective(randomUUID(), { client_id: null, requisition_id: randomUUID() }, 'r')).toBeNull();
     });
   },
 );
