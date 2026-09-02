@@ -262,6 +262,7 @@
       "assertModuleHasNoLlmImports",
       "computeEmailFingerprint",
       "createAramoLogger",
+      "deriveCommercialMetrics",
       "findNoLlmBoundaryViolations",
       "hashCanonicalizedBody",
       "isGovernedRuntime",
@@ -5409,7 +5410,7 @@
       "name": "integration",
       "root": "libs/integration",
       "sourceRoot": "libs/integration/src",
-      "tags": ["scope:ats"],
+      "tags": ["scope:ats", "type:connector"],
       "targets": ["build", "lint", "test"]
     },
     {
@@ -5472,7 +5473,7 @@
       "name": "placement",
       "root": "libs/placement",
       "sourceRoot": "libs/placement/src",
-      "tags": ["scope:ats"],
+      "tags": ["domain:placement", "scope:ats"],
       "targets": ["build", "lint", "test"]
     },
     {

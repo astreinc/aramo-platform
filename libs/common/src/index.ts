@@ -98,3 +98,7 @@ export {
   AUTH_STORAGE_MIGRATIONS,
   resolveAuthStorageMigrations,
 } from './lib/testing/identity-migrations.js';
+
+// Lane 7 / L7-D — the ONE canonical commercial arithmetic (spread/margin/markup).
+export { deriveCommercialMetrics } from './lib/commercial/commercial-metrics.js';
+export type { CommercialMetrics } from './lib/commercial/commercial-metrics.js';

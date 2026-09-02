@@ -1548,6 +1548,7 @@
     "libs/common/prisma/schema.prisma",
     "libs/common/project.json",
     "libs/common/src/index.ts",
+    "libs/common/src/lib/commercial/commercial-metrics.ts",
     "libs/common/src/lib/common.module.ts",
     "libs/common/src/lib/cross-schema-consistency.processor.ts",
     "libs/common/src/lib/cross-schema-consistency.queue.constants.ts",

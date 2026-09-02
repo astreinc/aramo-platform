@@ -2506,8 +2506,11 @@ paths:
         Guarded by the DEDICATED write scope `assignment:commercials:write` (a post-start
         enforcement site): `assignment:commercials:read` and `placement:*` do NOT
         satisfy it. `recorded_by` is the authenticated
-        subject — never the request body. `effective_from` is optional; omitted means the
-        server "now" instant (used for BOTH the close and the open). A supplied instant
+        subject — never the request body. `effective_from` is REQUIRED (L7-B — the
+        revision's identity is its effective instant, so a retry collides on the unique
+        key rather than minting a second version); it is used for BOTH the predecessor
+        close and the successor open. An absent instant is refused 400
+        (`reason: effective_from_required`). A supplied instant
         in the past is refused (400). A requested instant that overlaps or duplicates an
         existing effective window is refused 409 `ASSIGNMENT_COMMERCIAL_REVISION_CONFLICT`
         (`details.reason`: `window_overlap` | `duplicate_effective_from`). An absent /
@@ -6316,7 +6319,7 @@ components:
     CommercialRevisionRequest:
       type: object
       additionalProperties: false
-      required: [pay_rate_amount, bill_rate_amount, currency, rate_period, change_reason]
+      required: [pay_rate_amount, bill_rate_amount, currency, rate_period, effective_from, change_reason]
       properties:
         pay_rate_amount:
           type: string
@@ -6333,7 +6336,10 @@ components:
         effective_from:
           type: string
           format: date-time
-          description: Optional ISO-8601 instant; omitted = the server 'now'. Must not be in the past and must be after the current version start.
+          description: >-
+            REQUIRED ISO-8601 instant (L7-B — deterministic revision identity; a retry
+            collides on the unique key rather than minting a second version). Must not be
+            in the past and must be after the current version start.
         change_reason:
           type: string
           maxLength: 2000

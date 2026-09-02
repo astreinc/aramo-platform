@@ -225,6 +225,7 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       'INTERVIEW_ROUND_EXISTS',
       'OFFER_CLIENT_SELECTION_NOT_SELECTED',
       'CLIENT_SELECTION_WITHDRAW_REASON_INVALID',
+      'COMMERCIAL_PROPOSAL_STAGE_CONFLICT',
     ]);
   });
 });

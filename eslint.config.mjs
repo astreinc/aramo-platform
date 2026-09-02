@@ -443,4 +443,32 @@ export default [
       'no-restricted-syntax': 'off',
     },
   },
+  {
+    // Lane 7 / L7-H — the external-integration ⊥ commercial-authority wall. The
+    // connector lib (libs/integration) must never reach commercial WRITE truth by
+    // importing libs/placement directly; a provider/VMS observation reaches
+    // commercial state only through governed apps/api orchestration (the untagged
+    // composition root). Structural enforcement of the behavioral rule the recon
+    // found held only by convention. This is a DIRECT-import ban (no-restricted-
+    // imports), not an nx boundary tag: the connector legitimately depends on
+    // requisition, which itself depends on placement, so a transitive
+    // notDependOnLibsWithTags rule would (incorrectly) fail the legitimate
+    // integration → requisition → placement chain. The risk we actually gate is a
+    // NEW direct import of the commercial repository, which this catches exactly.
+    files: ['libs/integration/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['@aramo/placement', '@aramo/placement/*'],
+              message:
+                'L7-H: connectors reach commercial truth only through governed apps/api orchestration, never by importing libs/placement directly.',
+            },
+          ],
+        },
+      ],
+    },
+  },
 ];

@@ -81,8 +81,8 @@ describe('buildChannelPostingPayload — R3 negative (runtime)', () => {
     expect(JSON.stringify(payload)).not.toContain('LEAK');
   });
 
-  it('confirms the gated-key set under test is non-empty (13 comp + 7 financials)', () => {
-    expect(COMPENSATION_FIELD_KEYS.length).toBe(13);
+  it('confirms the gated-key set under test is non-empty (14 comp + 7 financials)', () => {
+    expect(COMPENSATION_FIELD_KEYS.length).toBe(14);
     expect(REQUISITION_FINANCIAL_FIELD_KEYS.length).toBe(7);
   });
 });

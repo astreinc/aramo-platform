@@ -206,6 +206,7 @@ const FULL_VIEW: Record<string, unknown> = {
   salary_amount: null,
   salary_currency: null,
   margin_amount: '20.00',
+  spread_amount: '20.00',
   markup_percent: '33.33',
   margin_percent: '25.00',
 };

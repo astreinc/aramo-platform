@@ -141,7 +141,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'x',
       );
     const PROPOSER = 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaa1';
-    const APPROVER = 'bbbbbbbb-bbbb-7bbb-8bbb-bbbbbbbbbbb1';
+    const APPROVER = 'bbbbbbbb-bbbb-7bbb-8bbb-bbbbbbbbbbb1'; // the MARGIN approver
+    // L7-E — SoD stage separation requires distinct actors across consecutive authority
+    // stages (margin approver != client approver; client approver != applier; all != proposer).
+    const CLIENT_APPROVER = 'cccccccc-cccc-7ccc-8ccc-ccccccccccc1';
+    const APPLIER = 'dddddddd-dddd-7ddd-8ddd-ddddddddddd1';
     const APPROVE_SCOPES = ['assignment:commercials:approve'];
 
     // ---- Propose = INTENT (no rate version written) + margin derivation ----
@@ -197,6 +201,42 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(err?.statusCode).toBe(403);
     });
 
+    // ---- L7-E: SoD stage separation across authority stages ----
+    it('L7-E SoD: the margin approver may not also record client approval → COMMERCIAL_PROPOSAL_STAGE_CONFLICT (403)', async () => {
+      const s = await seedActiveOpen();
+      await store.publish({ tenant_id: s.tenant, definition: permissivePackage(), published_by: SYSTEM });
+      const p = await propose(s);
+      await repo.transitionCommercialRevisionProposal({ tenant_id: s.tenant, placement_process_id: s.ppid, proposal_id: p.id, action: 'submit', actor_id: PROPOSER }, 'x');
+      await repo.decideCommercialRevisionProposal({ tenant_id: s.tenant, placement_process_id: s.ppid, proposal_id: p.id, action: 'margin_approve', actor_id: APPROVER, scopes: APPROVE_SCOPES }, 'x');
+      // The SAME actor (the margin approver) attempting client approval is refused.
+      await expect(
+        repo.decideCommercialRevisionProposal({ tenant_id: s.tenant, placement_process_id: s.ppid, proposal_id: p.id, action: 'client_approve', actor_id: APPROVER, scopes: APPROVE_SCOPES, client_approval_source: 'MANUAL' }, 'x'),
+      ).rejects.toMatchObject({ code: 'COMMERCIAL_PROPOSAL_STAGE_CONFLICT', statusCode: 403, context: { details: { reason: 'margin_approver_is_client_approver' } } });
+      // Fail-closed: state unchanged (still PENDING_CLIENT_APPROVAL), and a DISTINCT actor succeeds.
+      const stuck = await repo.findCommercialRevisionProposalById(s.tenant, s.ppid, p.id, 'x');
+      expect(stuck?.state).toBe('PENDING_CLIENT_APPROVAL');
+      const ok = await repo.decideCommercialRevisionProposal({ tenant_id: s.tenant, placement_process_id: s.ppid, proposal_id: p.id, action: 'client_approve', actor_id: CLIENT_APPROVER, scopes: APPROVE_SCOPES, client_approval_source: 'MANUAL' }, 'x');
+      expect(ok.state).toBe('APPROVED');
+    });
+
+    it('L7-E SoD: the client-approval recorder may not also apply → COMMERCIAL_PROPOSAL_STAGE_CONFLICT (403)', async () => {
+      const s = await seedActiveOpen();
+      await store.publish({ tenant_id: s.tenant, definition: permissivePackage(), published_by: SYSTEM });
+      const p = await propose(s);
+      await repo.transitionCommercialRevisionProposal({ tenant_id: s.tenant, placement_process_id: s.ppid, proposal_id: p.id, action: 'submit', actor_id: PROPOSER }, 'x');
+      await repo.decideCommercialRevisionProposal({ tenant_id: s.tenant, placement_process_id: s.ppid, proposal_id: p.id, action: 'margin_approve', actor_id: APPROVER, scopes: APPROVE_SCOPES }, 'x');
+      await repo.decideCommercialRevisionProposal({ tenant_id: s.tenant, placement_process_id: s.ppid, proposal_id: p.id, action: 'client_approve', actor_id: CLIENT_APPROVER, scopes: APPROVE_SCOPES, client_approval_source: 'MANUAL' }, 'x');
+      // The client-approval recorder attempting to APPLY is refused.
+      const before = await versionCount(s);
+      await expect(
+        repo.decideCommercialRevisionProposal({ tenant_id: s.tenant, placement_process_id: s.ppid, proposal_id: p.id, action: 'apply', actor_id: CLIENT_APPROVER, scopes: APPROVE_SCOPES }, 'x'),
+      ).rejects.toMatchObject({ code: 'COMMERCIAL_PROPOSAL_STAGE_CONFLICT', statusCode: 403, context: { details: { reason: 'client_approver_is_applier' } } });
+      // Fail-closed: still APPROVED, NO rate version minted; a DISTINCT applier succeeds.
+      expect(await versionCount(s)).toBe(before);
+      const applied = await repo.decideCommercialRevisionProposal({ tenant_id: s.tenant, placement_process_id: s.ppid, proposal_id: p.id, action: 'apply', actor_id: APPLIER, scopes: APPROVE_SCOPES }, 'x');
+      expect(applied.state).toBe('APPLIED');
+    });
+
     // ---- ADR-0024 fail-closed ----
     it('FAIL-CLOSED: authority transition with NO published package → POLICY_DENIED (403), no state change', async () => {
       const s = await seedActiveOpen(); // this tenant has NO published package
@@ -218,7 +258,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const p = await propose(s);
       let err: AramoError | undefined;
       try {
-        await repo.decideCommercialRevisionProposal({ tenant_id: s.tenant, placement_process_id: s.ppid, proposal_id: p.id, action: 'client_approve', actor_id: APPROVER, scopes: APPROVE_SCOPES }, 'x');
+        await repo.decideCommercialRevisionProposal({ tenant_id: s.tenant, placement_process_id: s.ppid, proposal_id: p.id, action: 'client_approve', actor_id: CLIENT_APPROVER, scopes: APPROVE_SCOPES }, 'x');
       } catch (e) { err = e as AramoError; }
       expect(err?.code).toBe('COMMERCIAL_PROPOSAL_STATE_INVALID');
       expect(err?.statusCode).toBe(422);
@@ -233,16 +273,16 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const p = await propose(s);
       await repo.transitionCommercialRevisionProposal({ tenant_id: s.tenant, placement_process_id: s.ppid, proposal_id: p.id, action: 'submit', actor_id: PROPOSER }, 'x');
       await repo.decideCommercialRevisionProposal({ tenant_id: s.tenant, placement_process_id: s.ppid, proposal_id: p.id, action: 'margin_approve', actor_id: APPROVER, scopes: APPROVE_SCOPES, note: 'margin ok' }, 'x');
-      const clientApproved = await repo.decideCommercialRevisionProposal({ tenant_id: s.tenant, placement_process_id: s.ppid, proposal_id: p.id, action: 'client_approve', actor_id: APPROVER, scopes: APPROVE_SCOPES, client_reference: 'WO-892731', client_approval_source: 'VMS' }, 'x');
+      const clientApproved = await repo.decideCommercialRevisionProposal({ tenant_id: s.tenant, placement_process_id: s.ppid, proposal_id: p.id, action: 'client_approve', actor_id: CLIENT_APPROVER, scopes: APPROVE_SCOPES, client_reference: 'WO-892731', client_approval_source: 'VMS' }, 'x');
       expect(clientApproved.state).toBe('APPROVED');
       expect(clientApproved.client_reference).toBe('WO-892731');
       expect(clientApproved.client_approval_source).toBe('VMS');
       expect(clientApproved.review_decided_by).toBe(APPROVER);
 
-      const applied = await repo.decideCommercialRevisionProposal({ tenant_id: s.tenant, placement_process_id: s.ppid, proposal_id: p.id, action: 'apply', actor_id: APPROVER, scopes: APPROVE_SCOPES }, 'x');
+      const applied = await repo.decideCommercialRevisionProposal({ tenant_id: s.tenant, placement_process_id: s.ppid, proposal_id: p.id, action: 'apply', actor_id: APPLIER, scopes: APPROVE_SCOPES }, 'x');
       expect(applied.state).toBe('APPLIED');
       expect(applied.applied_rate_version_id).not.toBeNull();
-      expect(applied.applied_by).toBe(APPROVER);
+      expect(applied.applied_by).toBe(APPLIER);
       // exactly ONE new version; predecessor closed
       expect(await versionCount(s)).toBe(before + 1);
       const rows = await client.assignmentRateVersion.findMany({ where: { tenant_id: s.tenant, contract_assignment_id: s.aid }, orderBy: { effective_from: 'asc' } });
@@ -250,6 +290,70 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(rows[1].id).toBe(applied.applied_rate_version_id);
       expect(rows[1].pay_rate_amount.toFixed(2)).toBe('90.00');
       expect(rows[1].bill_rate_amount.toFixed(2)).toBe('150.00');
+    });
+
+    // ---- L7-A: atomic APPLY — concurrent double-apply creates EXACTLY ONE version ----
+    it('L7-A: concurrent APPLY of one APPROVED proposal materialises EXACTLY ONE AssignmentRateVersion (atomic; no orphan)', async () => {
+      const s = await seedActiveOpen();
+      await store.publish({ tenant_id: s.tenant, definition: permissivePackage(), published_by: SYSTEM });
+      const before = await versionCount(s);
+      expect(before).toBe(1);
+      const p = await propose(s);
+      await repo.transitionCommercialRevisionProposal({ tenant_id: s.tenant, placement_process_id: s.ppid, proposal_id: p.id, action: 'submit', actor_id: PROPOSER }, 'x');
+      await repo.decideCommercialRevisionProposal({ tenant_id: s.tenant, placement_process_id: s.ppid, proposal_id: p.id, action: 'margin_approve', actor_id: APPROVER, scopes: APPROVE_SCOPES }, 'x');
+      await repo.decideCommercialRevisionProposal({ tenant_id: s.tenant, placement_process_id: s.ppid, proposal_id: p.id, action: 'client_approve', actor_id: CLIENT_APPROVER, scopes: APPROVE_SCOPES, client_approval_source: 'MANUAL' }, 'x');
+
+      // Two concurrent APPLYs of the SAME approved proposal. Before L7-A each ran
+      // createCommercialRevision in its own tx before the proposal CAS → before+2
+      // (an orphan rate version). The single-tx + proposal FOR UPDATE lock now
+      // serialises them: the loser re-reads state=APPLIED and returns idempotently.
+      const results = await Promise.allSettled([
+        repo.decideCommercialRevisionProposal({ tenant_id: s.tenant, placement_process_id: s.ppid, proposal_id: p.id, action: 'apply', actor_id: APPLIER, scopes: APPROVE_SCOPES }, 'a1'),
+        repo.decideCommercialRevisionProposal({ tenant_id: s.tenant, placement_process_id: s.ppid, proposal_id: p.id, action: 'apply', actor_id: APPLIER, scopes: APPROVE_SCOPES }, 'a2'),
+      ]);
+
+      // Core proof: EXACTLY ONE new version (the orphan-ARV bug produced before+2).
+      expect(await versionCount(s)).toBe(before + 1);
+
+      const read = await repo.findCommercialRevisionProposalById(s.tenant, s.ppid, p.id, 'x');
+      expect(read?.state).toBe('APPLIED');
+      expect(read?.applied_rate_version_id).not.toBeNull();
+
+      // At least one apply succeeded, and every succeeded apply agrees on the ONE
+      // applied version (idempotent replay — no second, orphan truth).
+      const appliedIds = results
+        .filter((r) => r.status === 'fulfilled')
+        .map((r) => (r as PromiseFulfilledResult<{ applied_rate_version_id: string | null }>).value.applied_rate_version_id);
+      expect(appliedIds.length).toBeGreaterThanOrEqual(1);
+      for (const id of appliedIds) expect(id).toBe(read?.applied_rate_version_id);
+    });
+
+    // ---- L7-F: governed proposal-lifecycle outbox (money-free, on the shared drain) ----
+    it('L7-F: each meaningful proposal transition emits a money-free governance outbox event', async () => {
+      const s = await seedActiveOpen();
+      await store.publish({ tenant_id: s.tenant, definition: permissivePackage(), published_by: SYSTEM });
+      const p = await propose(s);
+      await repo.transitionCommercialRevisionProposal({ tenant_id: s.tenant, placement_process_id: s.ppid, proposal_id: p.id, action: 'submit', actor_id: PROPOSER }, 'x');
+      await repo.decideCommercialRevisionProposal({ tenant_id: s.tenant, placement_process_id: s.ppid, proposal_id: p.id, action: 'margin_approve', actor_id: APPROVER, scopes: APPROVE_SCOPES }, 'x');
+      await repo.decideCommercialRevisionProposal({ tenant_id: s.tenant, placement_process_id: s.ppid, proposal_id: p.id, action: 'client_approve', actor_id: CLIENT_APPROVER, scopes: APPROVE_SCOPES, client_approval_source: 'MANUAL' }, 'x');
+      await repo.decideCommercialRevisionProposal({ tenant_id: s.tenant, placement_process_id: s.ppid, proposal_id: p.id, action: 'apply', actor_id: APPLIER, scopes: APPROVE_SCOPES }, 'x');
+
+      const events = await client.outboxEvent.findMany({
+        where: { tenant_id: s.tenant, event_type: 'placement.commercial.proposal.state_changed' },
+      });
+      // PROPOSE + SUBMIT + MARGIN_APPROVE + CLIENT_APPROVE + APPLY.
+      expect(events).toHaveLength(5);
+      for (const e of events) {
+        const payload = e.event_payload as Record<string, unknown>;
+        // provenance / state only.
+        expect(payload).toHaveProperty('proposal_id');
+        expect(payload).toHaveProperty('next_state');
+        expect(payload).toHaveProperty('action');
+        // money-free — NEVER pay/bill/margin/markup/currency/rate_period.
+        for (const banned of ['pay_rate_amount', 'bill_rate_amount', 'margin_percent', 'markup_percent', 'spread_amount', 'currency', 'rate_period']) {
+          expect(payload).not.toHaveProperty(banned);
+        }
+      }
     });
 
     // ---- Apply-time reconciliation: a window conflict leaves the proposal APPROVED ----
@@ -262,10 +366,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const p = await propose(s, { effective_from: T_FUT1 });
       await repo.transitionCommercialRevisionProposal({ tenant_id: s.tenant, placement_process_id: s.ppid, proposal_id: p.id, action: 'submit', actor_id: PROPOSER }, 'x');
       await repo.decideCommercialRevisionProposal({ tenant_id: s.tenant, placement_process_id: s.ppid, proposal_id: p.id, action: 'margin_approve', actor_id: APPROVER, scopes: APPROVE_SCOPES }, 'x');
-      await repo.decideCommercialRevisionProposal({ tenant_id: s.tenant, placement_process_id: s.ppid, proposal_id: p.id, action: 'client_approve', actor_id: APPROVER, scopes: APPROVE_SCOPES, client_approval_source: 'MANUAL' }, 'x');
+      await repo.decideCommercialRevisionProposal({ tenant_id: s.tenant, placement_process_id: s.ppid, proposal_id: p.id, action: 'client_approve', actor_id: CLIENT_APPROVER, scopes: APPROVE_SCOPES, client_approval_source: 'MANUAL' }, 'x');
       let err: AramoError | undefined;
       try {
-        await repo.decideCommercialRevisionProposal({ tenant_id: s.tenant, placement_process_id: s.ppid, proposal_id: p.id, action: 'apply', actor_id: APPROVER, scopes: APPROVE_SCOPES }, 'x');
+        await repo.decideCommercialRevisionProposal({ tenant_id: s.tenant, placement_process_id: s.ppid, proposal_id: p.id, action: 'apply', actor_id: APPLIER, scopes: APPROVE_SCOPES }, 'x');
       } catch (e) { err = e as AramoError; }
       expect(err?.code).toBe('ASSIGNMENT_COMMERCIAL_REVISION_CONFLICT');
       const read = await repo.findCommercialRevisionProposalById(s.tenant, s.ppid, p.id, 'x');

@@ -38,6 +38,7 @@ const FULL_VIEW = {
   salary_amount: null,
   salary_currency: null,
   margin_amount: '20.00',
+  spread_amount: '20.00',
   markup_percent: '33.33',
   margin_percent: '25.00',
 } as const;
@@ -71,9 +72,12 @@ describe('visibleCompensationFields — scope→field expansion', () => {
     ]);
   });
 
-  it('each spread scope grants exactly one derived field (single granularity)', () => {
+  it('the spread-amount scope grants the bill-pay gap under BOTH names (margin_amount plan + spread_amount ledger); percent scopes stay single-field', () => {
+    // L7-G — view:spread:amount masks the bill-pay $ gap wherever it appears: the
+    // requisition plan calls it margin_amount, the assignment ledger calls it spread_amount.
     expect([...visibleCompensationFields([COMPENSATION_VIEW_SPREAD_AMOUNT])]).toEqual([
       'margin_amount',
+      'spread_amount',
     ]);
     expect([...visibleCompensationFields([COMPENSATION_VIEW_SPREAD_PERCENT])]).toEqual([
       'markup_percent',

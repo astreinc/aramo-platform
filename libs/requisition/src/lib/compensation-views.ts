@@ -1,4 +1,6 @@
-import { Prisma } from '../../prisma/generated/client/client.js';
+import { deriveCommercialMetrics } from '@aramo/common';
+
+import type { Prisma } from '../../prisma/generated/client/client.js';
 
 import type { RatePeriod } from './dto/rate-period.js';
 
@@ -68,17 +70,11 @@ export function computeDerivedViews(
   if (payCcy !== billCcy) return NULL_VIEWS;
   if (payPeriod !== billPeriod) return NULL_VIEWS;
 
-  const spread = bill.minus(pay);
-  const zero = new Prisma.Decimal(0);
-  const hundred = new Prisma.Decimal(100);
-
-  const margin_amount = spread.toFixed(2);
-  const markup_percent = pay.equals(zero)
-    ? null
-    : spread.div(pay).times(hundred).toFixed(2);
-  const margin_percent = bill.equals(zero)
-    ? null
-    : spread.div(bill).times(hundred).toFixed(2);
-
-  return { margin_amount, markup_percent, margin_percent };
+  // L7-D — delegate the spread/margin/markup arithmetic to the ONE canonical authority
+  // (@aramo/common), so the requisition compensation PLAN and the assignment commercial
+  // LEDGER can never drift. requisition keeps the name `margin_amount` for the plan-level
+  // bill-pay quantity — a DELIBERATE plan-vs-actual distinction from the ledger's
+  // `spread_amount`; the number is identical (PO example: pay=60, bill=80 → 20 / 33.33 / 25).
+  const m = deriveCommercialMetrics(pay.toFixed(2), bill.toFixed(2));
+  return { margin_amount: m.spread_amount, markup_percent: m.markup_percent, margin_percent: m.margin_percent };
 }
