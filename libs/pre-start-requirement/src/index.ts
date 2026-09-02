@@ -26,6 +26,19 @@ export { ReadinessDecisionRepository } from './lib/readiness-decision.repository
 export { PreStartReportingRepository } from './lib/pre-start-reporting.repository.js';
 export { PreStartReportingReadModule } from './lib/pre-start-reporting.module.js';
 
+// L5-P9 — the provider-integration guard/contract (observation → governed command;
+// a READY_TO_START flip is unrepresentable). Pure policy; no persistence.
+export {
+  PROVIDER_OBSERVATION_OUTCOME_VALUES,
+  isProviderObservationOutcome,
+  toGovernedRequirementCommand,
+} from './lib/pre-start-provider-observation.js';
+export type {
+  ProviderObservationOutcome,
+  PreStartProviderObservation,
+  GovernedRequirementCommand,
+} from './lib/pre-start-provider-observation.js';
+
 // Closed registries + guards + checksum (directive §4c / §14 A2).
 export {
   REQUIREMENT_TYPE_VALUES,

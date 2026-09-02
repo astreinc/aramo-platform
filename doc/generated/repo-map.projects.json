@@ -895,6 +895,7 @@
       "DEFAULT_SATISFACTION_POLICY",
       "DefinitionSetRepository",
       "MaterializationIntentRepository",
+      "PROVIDER_OBSERVATION_OUTCOME_VALUES",
       "PreStartReportingReadModule",
       "PreStartReportingRepository",
       "PrismaService",
@@ -911,6 +912,7 @@
       "canonicalizeDefinitions",
       "checksumDefinitions",
       "isAuditAction",
+      "isProviderObservationOutcome",
       "isReopen",
       "isRequirementDefinitionInput",
       "isRequirementStatus",
@@ -923,7 +925,8 @@
       "isWaiverAuthority",
       "isWaiverMode",
       "isWaiverPermitted",
-      "requiredAuthorityFor"
+      "requiredAuthorityFor",
+      "toGovernedRequirementCommand"
     ],
     "@aramo/reporting": [
       "DashboardController",
