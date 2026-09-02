@@ -52,6 +52,15 @@ const SCOPE_DEP_CONSTRAINTS = [
   { sourceTag: 'scope:auth', onlyDependOnLibsWithTags: ['scope:auth', 'scope:boundary', 'scope:shared'] },
   { sourceTag: 'scope:boundary', onlyDependOnLibsWithTags: ['scope:boundary', 'scope:shared'] },
   { sourceTag: 'scope:shared', onlyDependOnLibsWithTags: ['scope:shared'] },
+  // Lane 7 / L7-H — the external-integration ⊥ commercial-authority wall. A connector
+  // (libs/integration, tag type:connector) is BOTH scope:ats (so scope:ats already lets it
+  // reach placement) AND type:connector; this ADDITIVE constraint forbids it from importing
+  // libs/placement (tag domain:placement) — where ALL commercial write authority lives. So a
+  // provider/VMS observation can only reach commercial truth through governed apps/api
+  // orchestration (the composition root, untagged/unconstrained), NEVER by directly calling
+  // the commercial repository. Structural enforcement of the behavioral rule the recon found
+  // held only by convention (both libs were merely scope:ats).
+  { sourceTag: 'type:connector', notDependOnLibsWithTags: ['domain:placement'] },
   { sourceTag: '*', onlyDependOnLibsWithTags: ['*'] },
 ];
 

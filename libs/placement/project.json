@@ -3,7 +3,7 @@
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
   "sourceRoot": "libs/placement/src",
   "projectType": "library",
-  "tags": ["scope:ats"],
+  "tags": ["scope:ats", "domain:placement"],
   "targets": {
     "build": {
       "executor": "@nx/js:tsc",
