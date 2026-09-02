@@ -182,9 +182,12 @@ export class CommercialRevisionDto {
   @IsIn(RATE_PERIOD_VALUES as readonly string[])
   rate_period!: string;
 
-  @IsOptional()
+  // L7-B — REQUIRED (no @IsOptional): a commercial revision's identity is its
+  // effective instant, so a retry collides on the (tenant, assignment, effective_from)
+  // unique key rather than minting a second version. The repository enforces
+  // no-backdating + effective_from_required at the write boundary.
   @IsDateString()
-  effective_from?: string;
+  effective_from!: string;
 
   // Required (no @IsOptional). Trimmed-non-empty is enforced at the repository
   // write boundary (VALIDATION_ERROR) — the cap here is a cheap wire guard.

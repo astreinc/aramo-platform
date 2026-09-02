@@ -235,6 +235,8 @@ const REVISION_REQUEST = {
   bill_rate_amount: '120.00',
   currency: 'USD',
   rate_period: 'HOURLY',
+  // L7-B — effective_from is REQUIRED (deterministic revision identity).
+  effective_from: '2030-01-01T00:00:00Z',
   change_reason: 'rate correction',
 };
 

@@ -1676,19 +1676,25 @@ export class PlacementRepository {
     if (changeReason.length === 0) {
       throw new AramoError('VALIDATION_ERROR', 'change_reason is required', 400, { requestId, details: { field: 'change_reason' } });
     }
-    const now = new Date();
-    let tNew = now;
-    if (input.effective_from != null) {
-      const parsed = new Date(input.effective_from);
-      if (Number.isNaN(parsed.getTime())) {
-        throw new AramoError('VALIDATION_ERROR', 'effective_from must be a valid ISO-8601 instant', 400, { requestId, details: { field: 'effective_from' } });
-      }
-      // No backdating (§6.1): a supplied instant materially in the past is refused.
-      if (parsed.getTime() < now.getTime()) {
-        throw new AramoError('VALIDATION_ERROR', 'effective_from cannot be in the past', 400, { requestId, details: { field: 'effective_from', reason: 'effective_from_in_past' } });
-      }
-      tNew = parsed;
+    // L7-B — a direct commercial revision REQUIRES an explicit effective_from: the
+    // revision's identity IS its effective instant, so the (tenant, assignment,
+    // effective_from) unique key makes a harmless retry collide (409 duplicate_effective_from)
+    // instead of silently minting a second version because the server clock advanced.
+    // (The governed APPLY path resolves its own instant from the proposal and is idempotent
+    // via the one-live proposal + the atomic APPLY lock — it does not pass through here.)
+    if (input.effective_from == null) {
+      throw new AramoError('VALIDATION_ERROR', 'effective_from is required for a commercial revision (deterministic revision identity)', 400, { requestId, details: { field: 'effective_from', reason: 'effective_from_required' } });
     }
+    const now = new Date();
+    const parsed = new Date(input.effective_from);
+    if (Number.isNaN(parsed.getTime())) {
+      throw new AramoError('VALIDATION_ERROR', 'effective_from must be a valid ISO-8601 instant', 400, { requestId, details: { field: 'effective_from' } });
+    }
+    // No backdating (§6.1): a supplied instant materially in the past is refused.
+    if (parsed.getTime() < now.getTime()) {
+      throw new AramoError('VALIDATION_ERROR', 'effective_from cannot be in the past', 400, { requestId, details: { field: 'effective_from', reason: 'effective_from_in_past' } });
+    }
+    const tNew = parsed;
 
     return this.prisma.$transaction((tx) =>
       this.appendCommercialRevisionInTx(

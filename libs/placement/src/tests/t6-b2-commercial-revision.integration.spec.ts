@@ -106,16 +106,30 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const verId = await insertVersion({ tenant_id: tenant, contract_assignment_id: aid, effective_from: T_PAST, effective_to: null });
       return { tenant, ppid, aid, verId };
     }
+    // L7-B: a commercial revision REQUIRES an explicit effective_from (deterministic
+    // identity). The helper defaults it to a valid future instant so instant-agnostic
+    // tests stay concise; tests that assert the required-contract override it to undefined.
     const revise = (s: { tenant: string; ppid: string }, extra: Record<string, unknown> = {}) =>
       repo.createCommercialRevision(
-        { tenant_id: s.tenant, placement_process_id: s.ppid, ...TERMS, change_reason: 'rate correction', recorded_by: randomUUID(), ...extra },
+        { tenant_id: s.tenant, placement_process_id: s.ppid, ...TERMS, effective_from: T_FUT1, change_reason: 'rate correction', recorded_by: randomUUID(), ...extra },
         'x',
       );
     const rowsFor = (s: { tenant: string; aid: string }) =>
       client.assignmentRateVersion.findMany({ where: { tenant_id: s.tenant, contract_assignment_id: s.aid }, orderBy: { effective_from: 'asc' } });
 
     // ---- §20.1 revision creation ----
-    it('immediate revision closes the predecessor at T_new and appends the open successor', async () => {
+    it('L7-B: a revision with NO effective_from is refused (400 effective_from_required)', async () => {
+      const s = await seedActiveOpen();
+      await expect(revise(s, { effective_from: undefined })).rejects.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        statusCode: 400,
+        context: { details: { field: 'effective_from', reason: 'effective_from_required' } },
+      });
+      // ZERO mutation: still just the seeded open version.
+      expect(await rowsFor(s)).toHaveLength(1);
+    });
+
+    it('a revision closes the predecessor at effective_from and appends the open successor', async () => {
       const s = await seedActiveOpen();
       const recorder = randomUUID();
       const view = await revise(s, { pay_rate_amount: '90.00', bill_rate_amount: '150.00', change_reason: '  bumped rate  ', recorded_by: recorder });
