@@ -1,17 +1,44 @@
-# Lane 7 — Commercial Lifecycle Extraction Register
+# Lane 7 — Commercial Lifecycle Boundary (logical, co-located)
 
-**Status:** OPEN registry, produced during Lane 6 (Active Employment / Placement).
-Lane 6 does **not** perform the extraction — it records the exact seams so a future
-Lane 7 (Commercial Lifecycle) can extract `AssignmentRateVersion`,
-`CommercialRevisionProposal`, rate-history ownership, and the bill/pay commercial
-revision lifecycle out of `libs/placement` into their own boundary.
+**Status (L7-0, PO-ratified 2026-09-02): Option A — logical boundary only. Physical
+extraction is NOT authorized.** The commercial models stay physically co-located in
+`libs/placement`. Lane 7 is the canonical owner of the CONTRACT commercial lifecycle;
+this document defines the logical commercial-module boundary (enforced structurally by
+L7-G's nx guard). The three lifecycle→commercial seams (Section A) are PRESERVED as
+explicit single-transaction orchestration seams — extraction was declined precisely
+because they require single-ACID-transaction correctness that a physical split would
+break, and because authority is already cleanly and solely owned in place (no authority
+violation). Option B (physical extraction) remains recorded debt, revisited only on a
+real driver (separate deploy/scale, or a discovered authority violation).
 
-**Governing rulings (PO, 2026-09-01):** the commercial ledger MAY remain physically
-co-located in `libs/placement` during Lane 6; physical co-location does **not** grant
-Lane 6 ownership. Lane 6 treats commercial surfaces as neighboring/read-only deps
-except where the assignment lifecycle must invoke an already-authoritative commercial
-contract, and must **not** expand or redesign them. Extraction happens in Lane 7 (or
-earlier only to eliminate a real authority violation — none found in Lane 6).
+**Governing rulings (PO, 2026-09-01 → ratified 2026-09-02):** the commercial ledger
+remains physically co-located in `libs/placement`; a clear LOGICAL boundary is
+established and enforced where practical. Lane 7 owns: `AssignmentRateVersion`,
+`CommercialRevisionProposal`, pay/bill/currency/rate-period, effective windows,
+revision/cancellation history + governance, derived spread/margin/markup, commercial
+read projections + reporting. Lane 7 does NOT own the ContractAssignment employment
+lifecycle, the PermanentPlacement / guarantee lifecycle, guarantee exposure/remedy
+(stays with PermanentPlacement — governed snapshot/obligation, not the rate ledger), or
+payment execution (Aramo records obligations, never a payout object).
+
+**L7-0 reconciliation notes:**
+- Symbol correction: the AS-OF commercial read is `findAssignmentCommercialProjection`
+  (`libs/placement/src/lib/placement.repository.ts`), NOT `getAssignmentCommercialView`
+  (which does not exist). All Section-C references below use the corrected name.
+- ARV immutability-trigger provenance: `placement.reject_assignment_rate_version_mutation`
+  is CREATEd in migration `20260810130000_t5_assignment_rate_version`, then
+  CREATE-OR-REPLACE-superseded in `20260812140000_t6_b1_effective_window_substrate`
+  (adds the governed `effective_to` first-close carve-out) and again in
+  `20260813130000_t6_b3_commercial_cancellation` (adds the write-once cancellation +
+  future-boundary re-open carve-outs). The LIVE trigger body is the t6-b3 version; the
+  binding is unchanged across the two replacements.
+- Logical commercial module = `commercial/commercial-metrics.ts`,
+  `lifecycle/commercial-approval-lifecycle.ts`, `policy/commercial-approval-policy.service.ts`,
+  `reasons/commercial-cancellation-reasons.ts`, `commercial-margin-read.repository.ts` +
+  `.module.ts`, and the commercial methods of `placement.repository.ts`
+  (`create/cancelCommercialRevision`, `create/find/transition/decideCommercialRevisionProposal`,
+  `findAssignmentCommercialProjection`, `listAssignmentCommercialRevisions`). All commercial
+  WRITES are confined to `placement.repository.ts`; no external lib writes the ledger.
 
 All line references are against `libs/placement/src/lib/placement.repository.ts` at the
 Lane-6 baseline unless noted.
@@ -68,7 +95,7 @@ or redesign them.
   (APPROVED != APPLIED), one-live partial-unique.
 
 ### C.2 Commercial read projections (`placement.repository.ts`)
-- `getAssignmentCommercialView` (~L1563) — AS-OF effective rate-version read; derives
+- `findAssignmentCommercialProjection` (~L1577) — AS-OF effective rate-version read; derives
   spread/margin/markup on read via `deriveCommercialMetrics`. Read model
   `AssignmentCommercialView` (`placement-process.types.ts`).
 
