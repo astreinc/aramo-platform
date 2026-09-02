@@ -55,6 +55,12 @@ export const COMPENSATION_FIELD_KEYS = [
   'salary_amount',
   'salary_currency',
   'margin_amount',
+  // L7-G — the AssignmentCommercialView (assignment commercial ledger) names the bill-pay
+  // gap `spread_amount`; it is the SAME sensitive derived quantity as the requisition plan's
+  // `margin_amount`, so it is masked by the SAME scope (view:spread:amount). Without this it
+  // survived the mask by field-name mismatch — a leak (recon L7 finding). currency/rate_period
+  // on that view are non-sensitive denomination metadata and are deliberately NOT masked.
+  'spread_amount',
   'markup_percent',
   'margin_percent',
 ] as const;
@@ -83,7 +89,7 @@ const SCOPE_TO_FIELDS: Readonly<Record<string, readonly CompensationFieldKey[]>>
     'bill_rate_currency',
     'bill_rate_period',
   ],
-  [COMPENSATION_VIEW_SPREAD_AMOUNT]: ['margin_amount'],
+  [COMPENSATION_VIEW_SPREAD_AMOUNT]: ['margin_amount', 'spread_amount'],
   [COMPENSATION_VIEW_SPREAD_PERCENT]: ['markup_percent'],
   [COMPENSATION_VIEW_MARGIN_PERCENT]: ['margin_percent'],
 };
