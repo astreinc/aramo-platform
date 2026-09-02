@@ -2,9 +2,17 @@ import { MASKED_INDICATOR, periodSuffix } from './commercial-format';
 
 // Slice #4 — the LIVE margin preview for the propose dialog. Before a proposal exists there
 // is no server-derived margin, so the dialog previews the entered pay/bill against the
-// CURRENT terms locally. Once a proposal exists the BE margin object is authority and is
-// rendered verbatim (never through this helper). Math is done in integer CENTS to avoid the
-// float drift the memory rule warns against; percents are rounded to 2 decimal places.
+// CURRENT terms locally. Math is done in integer CENTS to avoid the float drift the memory
+// rule warns against; percents are rounded to 2 decimal places.
+//
+// L7-D — EXPLICITLY NON-AUTHORITATIVE. This is a display-only preview and is NOT the
+// commercial formula authority: the sole authority is @aramo/common deriveCommercialMetrics
+// (decimal.js), which the backend applies before any value is persisted. This helper is
+// intentionally NOT that function (the browser bundle stays free of decimal.js); it exists
+// only to render an in-flight estimate. Once a proposal exists the BE margin object is
+// authority and is rendered verbatim, never through this helper — so a preview/BE mismatch
+// resolves to the BE value, never the reverse.
+//
 // A current side the actor may not view (masked → undefined) renders the non-leaking
 // indicator, and every delta that depends on it collapses to the same indicator.
 
