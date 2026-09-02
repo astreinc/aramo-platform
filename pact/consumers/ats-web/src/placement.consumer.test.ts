@@ -32,6 +32,11 @@ import {
 const provider = makeAtsWebProvider();
 
 const PLACEMENT_ID = '00000000-0000-7000-8000-9ace00000001';
+// L7-G — the seeded CommercialRevisionProposal id (byte-identical to the provider
+// seedCommercialProposal fixture). The acting approver (the cookie's JWT subject)
+// is provider-side RECRUITER_ID = ...0000000000bb.
+const PROPOSAL_ID = '00000000-0000-7000-8000-c0b000000001';
+const ACTING_APPROVER_ID = '00000000-0000-0000-0000-0000000000bb';
 const REQ_ID = '00000000-0000-7000-8000-4e9000000001';
 const SUBMITTAL_ID = '00000000-0000-7000-8000-50b000000001';
 const TALENT_ID_P = '00000000-0000-7000-8000-7a1e00000001';
@@ -380,6 +385,175 @@ describe('ats-web → POST /v1/placements/:id/assignment/commercials/proposals',
         const body = (await res.json()) as { proposal: { state: string; margin: { margin_point_delta: string } } };
         expect(body.proposal.state).toBe('DRAFT');
         expect(body.proposal.margin.margin_point_delta).toBe('6.67');
+      });
+  });
+});
+
+// L7-G — the commercial-proposal DECISION contract (the authority surface:
+// MARGIN_APPROVE / CLIENT_APPROVE / APPLY / REJECT, gated by
+// assignment:commercials:approve + SoD stage-separation + ADR-0024 fail-closed
+// policy). Unlike a bare scope/capability refusal (omitted by the header note —
+// the client always holds its scope), these are BUSINESS-RULE outcomes the
+// ats-web client must render distinctly, so — exactly like the revision-conflict
+// 409 envelope — they are contracted. The request body is the decision DTO
+// { action, note? }. Each interaction pairs with a provider state handler that
+// seeds the proposal with requested_by / review_decided_by set relative to the
+// acting approver so the SoD/stage refusals fire, and publishes (or clears) the
+// commercial-approval policy so the ALLOW / POLICY_DENIED gate resolves.
+const DECISION_PATH = `/v1/placements/${PLACEMENT_ID}/assignment/commercials/proposals/${PROPOSAL_ID}/decision`;
+
+describe('ats-web → POST /v1/placements/:id/assignment/commercials/proposals/:proposalId/decision', () => {
+  it('returns 200 and advances a submitted proposal to PENDING_CLIENT_APPROVAL on an authorized margin approval', async () => {
+    const request = { action: 'margin_approve', note: 'margin within band' };
+    await provider
+      .addInteraction()
+      .given('a submitted commercial proposal by another writer with the commercial-approval policy published')
+      .uponReceiving('an authorized margin approval of a submitted commercial proposal')
+      .withRequest('POST', DECISION_PATH, (b) => {
+        b.headers({ Cookie: like(ACCESS_COOKIE) });
+        b.jsonBody(request);
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          proposal: {
+            ...commercialProposalView(),
+            id: uuid(PROPOSAL_ID),
+            state: like('PENDING_CLIENT_APPROVAL'),
+            review_decided_by: uuid(ACTING_APPROVER_ID),
+            review_decided_at: regex(ISO_TIMESTAMP, '2026-08-02T00:00:00Z'),
+          },
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}${DECISION_PATH}`, {
+          method: 'POST',
+          headers: { Cookie: ACCESS_COOKIE, 'Content-Type': 'application/json' },
+          body: JSON.stringify(request),
+        });
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as { proposal: { state: string; review_decided_by: string } };
+        expect(body.proposal.state).toBe('PENDING_CLIENT_APPROVAL');
+        expect(body.proposal.review_decided_by).not.toBeNull();
+      });
+  });
+
+  it('returns 200 and applies an approved proposal (state APPLIED with the applied rate version recorded)', async () => {
+    const request = { action: 'apply' };
+    await provider
+      .addInteraction()
+      .given('an approved commercial proposal decided by other actors with the commercial-approval policy published')
+      .uponReceiving('an authorized apply of an approved commercial proposal')
+      .withRequest('POST', DECISION_PATH, (b) => {
+        b.headers({ Cookie: like(ACCESS_COOKIE) });
+        b.jsonBody(request);
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          proposal: {
+            ...commercialProposalView(),
+            id: uuid(PROPOSAL_ID),
+            state: like('APPLIED'),
+            applied_rate_version_id: uuid('00000000-0000-7000-8000-a1e000000004'),
+            applied_by: uuid(ACTING_APPROVER_ID),
+            applied_at: regex(ISO_TIMESTAMP, '2026-08-02T00:00:00Z'),
+          },
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}${DECISION_PATH}`, {
+          method: 'POST',
+          headers: { Cookie: ACCESS_COOKIE, 'Content-Type': 'application/json' },
+          body: JSON.stringify(request),
+        });
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as { proposal: { state: string; applied_rate_version_id: string } };
+        expect(body.proposal.state).toBe('APPLIED');
+        expect(body.proposal.applied_rate_version_id).not.toBeNull();
+      });
+  });
+
+  it('returns 403 COMMERCIAL_PROPOSAL_SELF_APPROVAL when the acting approver authored the proposal', async () => {
+    const request = { action: 'margin_approve' };
+    await provider
+      .addInteraction()
+      .given('a submitted commercial proposal authored by the acting approver')
+      .uponReceiving('a margin approval by the proposal author (self-approval)')
+      .withRequest('POST', DECISION_PATH, (b) => {
+        b.headers({ Cookie: like(ACCESS_COOKIE) });
+        b.jsonBody(request);
+      })
+      .willRespondWith(403, (b) => {
+        b.jsonBody(
+          errorBody(
+            'COMMERCIAL_PROPOSAL_SELF_APPROVAL',
+            'The proposer may not exercise commercial authority over their own proposal',
+          ),
+        );
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}${DECISION_PATH}`, {
+          method: 'POST',
+          headers: { Cookie: ACCESS_COOKIE, 'Content-Type': 'application/json' },
+          body: JSON.stringify(request),
+        });
+        expect(res.status).toBe(403);
+        const body = (await res.json()) as { error: { code: string } };
+        expect(body.error.code).toBe('COMMERCIAL_PROPOSAL_SELF_APPROVAL');
+      });
+  });
+
+  it('returns 403 COMMERCIAL_PROPOSAL_STAGE_CONFLICT when the margin approver also records client approval', async () => {
+    const request = { action: 'client_approve' };
+    await provider
+      .addInteraction()
+      .given('a client-pending commercial proposal whose margin was approved by the acting approver')
+      .uponReceiving('a client approval by the same actor who approved the margin (stage conflict)')
+      .withRequest('POST', DECISION_PATH, (b) => {
+        b.headers({ Cookie: like(ACCESS_COOKIE) });
+        b.jsonBody(request);
+      })
+      .willRespondWith(403, (b) => {
+        b.jsonBody(
+          errorBody(
+            'COMMERCIAL_PROPOSAL_STAGE_CONFLICT',
+            'The margin approver may not also record client approval for the same proposal',
+          ),
+        );
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}${DECISION_PATH}`, {
+          method: 'POST',
+          headers: { Cookie: ACCESS_COOKIE, 'Content-Type': 'application/json' },
+          body: JSON.stringify(request),
+        });
+        expect(res.status).toBe(403);
+        const body = (await res.json()) as { error: { code: string } };
+        expect(body.error.code).toBe('COMMERCIAL_PROPOSAL_STAGE_CONFLICT');
+      });
+  });
+
+  it('returns 403 POLICY_DENIED when no commercial-approval policy is published (fail-closed)', async () => {
+    const request = { action: 'margin_approve' };
+    await provider
+      .addInteraction()
+      .given('a submitted commercial proposal by another writer with no commercial-approval policy published')
+      .uponReceiving('a margin approval with no published commercial-approval policy')
+      .withRequest('POST', DECISION_PATH, (b) => {
+        b.headers({ Cookie: like(ACCESS_COOKIE) });
+        b.jsonBody(request);
+      })
+      .willRespondWith(403, (b) => {
+        b.jsonBody(errorBody('POLICY_DENIED', 'The commercial approval policy denied this transition'));
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}${DECISION_PATH}`, {
+          method: 'POST',
+          headers: { Cookie: ACCESS_COOKIE, 'Content-Type': 'application/json' },
+          body: JSON.stringify(request),
+        });
+        expect(res.status).toBe(403);
+        const body = (await res.json()) as { error: { code: string } };
+        expect(body.error.code).toBe('POLICY_DENIED');
       });
   });
 });

@@ -3570,6 +3570,11 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           // for prior interactions (they hit neither commercials route).
           'assignment:commercials:read',
           'assignment:commercials:write',
+          // Lane 7 / L7-G — the commercial-approval AUTHORITY scope so the ats-web
+          // commercial-proposal DECISION interactions (margin_approve/client_approve/
+          // apply/reject + the SoD/policy refusals) pass RolesGuard. Additive; inert for
+          // prior interactions (they hit no decision route).
+          'assignment:commercials:approve',
           // Track 7 / T7-P5 — the permanent-placement guarantee scopes so the ats-web
           // permanent-placement.consumer interactions pass RolesGuard on GET permanent /
           // satisfy (transition) / falloff / remedy-complete / guarantee-terms create/list/
@@ -3910,6 +3915,98 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           [v.id, TENANT_ID, B2_AID, B2_REQ, B2_TAL, v.effective_from, v.effective_to, B2_REC, v.cancelled_at ?? null],
         );
       }
+    }
+
+    // ===== Lane 7 / L7-G — commercial-proposal DECISION seed helpers =====
+    // The provider JWT subject (auth.sub / actor_id at the decide route) is
+    // RECRUITER_ID. These seeds set requested_by / review_decided_by RELATIVE to
+    // RECRUITER_ID so the SoD + stage-separation refusals fire deterministically:
+    //   requested_by === RECRUITER_ID           → SELF_APPROVAL (throws before policy)
+    //   PENDING_CLIENT_APPROVAL + review_decided_by === RECRUITER_ID
+    //                                            → STAGE_CONFLICT (throws before policy)
+    //   requested_by !== RECRUITER_ID + policy published  → authorized decision
+    //   requested_by !== RECRUITER_ID + NO policy published → POLICY_DENIED (fail-closed)
+    // The proposal-state trigger fires only on UPDATE (keys on OLD.state), so a
+    // direct INSERT may seed any state. Test-only setup — production authorization,
+    // SoD, and ADR-0024 policy resolution run exactly as in production; no backdoor.
+    const PACT_COMM_PROPOSAL_ID = '00000000-0000-7000-8000-c0b000000001';
+    const PACT_COMM_OPEN_VERSION_ID = '00000000-0000-7000-8000-a1e000000001';
+    // A proposer distinct from RECRUITER_ID (the acting approver) — so an
+    // authorized decision is NOT a self-approval.
+    const PACT_COMM_OTHER_PROPOSER = '00000000-0000-7000-8000-4ec000000099';
+    const COMMERCIAL_APPROVAL_PACKAGE = 'commercial-approval-lifecycle';
+
+    async function seedCommercialProposal(
+      c: Client,
+      o: {
+        state: string;
+        requested_by: string;
+        review_decided_by?: string | null;
+        client_approval_recorded_by?: string | null;
+      },
+    ): Promise<void> {
+      // An active assignment with a single open (current) rate version 80/120.
+      await seedActiveCommercialAssignment(c, [
+        { id: PACT_COMM_OPEN_VERSION_ID, effective_from: '2026-01-01T00:00:00Z', effective_to: null },
+      ]);
+      await c.query(
+        `INSERT INTO placement."CommercialRevisionProposal"
+           (id, tenant_id, contract_assignment_id, placement_process_id, requisition_id, talent_record_id,
+            state, reference_rate_version_id, proposed_pay_rate_amount, proposed_bill_rate_amount,
+            proposed_currency, proposed_rate_period, reason, requested_by,
+            review_decided_by, review_decided_at, client_approval_recorded_by, client_approved_at, created_at)
+         VALUES ($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,$6::uuid,
+                 $7::placement."CommercialProposalState",$8::uuid,90.00,150.00,
+                 'USD','HOURLY','rate uplift',$9::uuid,
+                 $10::uuid,$11::timestamptz,$12::uuid,$13::timestamptz,'2026-02-01T00:00:00Z')`,
+        [
+          PACT_COMM_PROPOSAL_ID, TENANT_ID, B2_AID, B2_PID, B2_REQ, B2_TAL,
+          o.state, PACT_COMM_OPEN_VERSION_ID, o.requested_by,
+          o.review_decided_by ?? null,
+          o.review_decided_by ? '2026-02-15T00:00:00Z' : null,
+          o.client_approval_recorded_by ?? null,
+          o.client_approval_recorded_by ? '2026-02-20T00:00:00Z' : null,
+        ],
+      );
+    }
+
+    // Publish (idempotently) an ALLOW commercial-approval policy package for the
+    // pact tenant, so an authorized decision passes the ADR-0024 fail-closed gate.
+    async function ensureCommercialApprovalPolicy(): Promise<void> {
+      const policyPrisma = new PolicyStorePrismaService(dbUrl);
+      await policyPrisma.$connect();
+      try {
+        const policyStore = new PolicyStore(policyPrisma);
+        const active = await policyStore.getActiveVersion(TENANT_ID, COMMERCIAL_APPROVAL_PACKAGE);
+        if (active === null) {
+          await policyStore.publish({
+            tenant_id: TENANT_ID,
+            published_by: '00000000-0000-0000-0000-000000000000',
+            definition: {
+              name: COMMERCIAL_APPROVAL_PACKAGE,
+              version: '1.0.0',
+              registry: {
+                resources: ['COMMERCIAL_REVISION_PROPOSAL'],
+                actions: ['MARGIN_APPROVE', 'CLIENT_APPROVE', 'APPLY', 'REJECT'],
+              },
+              default_disposition: { decision: 'ALLOW', reason_code: 'PACT_COMMERCIAL_ALLOW' },
+              rules: [],
+            },
+          });
+        }
+      } finally {
+        await policyPrisma.onModuleDestroy();
+      }
+    }
+
+    // Remove any published commercial-approval package for the pact tenant, so the
+    // ADR-0024 gate resolves fail-closed (POLICY_DENIED) regardless of interaction
+    // order. policy_store is a schema in the same DB, reachable via withClient.
+    async function clearCommercialApprovalPolicy(c: Client): Promise<void> {
+      await c.query(
+        `DELETE FROM policy_store."StoredPolicyVersion" WHERE tenant_id = $1::uuid AND package_name = $2`,
+        [TENANT_ID, COMMERCIAL_APPROVAL_PACKAGE],
+      );
     }
 
     // ===== Track 7 / T7-P5 permanent-placement seed helpers + fixtures =====
@@ -4574,6 +4671,65 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
             { id: '00000000-0000-7000-8000-a1e000000001', effective_from: '2026-01-01T00:00:00Z', effective_to: null },
           ]),
         );
+      },
+
+      // ===== Lane 7 / L7-G commercial-proposal DECISION pacts (ats-web) =====
+      // A proposal submitted for review by a DIFFERENT writer (requested_by !=
+      // RECRUITER_ID = the acting approver → not a self-approval), with an ALLOW
+      // commercial-approval policy published → the acting approver's MARGIN_APPROVE
+      // is authorized (200; state advances to PENDING_CLIENT_APPROVAL).
+      'a submitted commercial proposal by another writer with the commercial-approval policy published': async () => {
+        await ensureCommercialApprovalPolicy();
+        await withClient((c) =>
+          seedCommercialProposal(c, { state: 'PENDING_REVIEW', requested_by: PACT_COMM_OTHER_PROPOSER }),
+        );
+      },
+      // An APPROVED proposal whose review + client-approval evidence actors are ALL
+      // distinct from the acting approver (so neither SoD nor stage-separation
+      // fires), with an ALLOW policy published → the acting approver's APPLY is
+      // authorized: the proposal advances to APPLIED and mints/records the applied
+      // rate version (the L7-A atomic-APPLY seam, contracted).
+      'an approved commercial proposal decided by other actors with the commercial-approval policy published': async () => {
+        await ensureCommercialApprovalPolicy();
+        await withClient((c) =>
+          seedCommercialProposal(c, {
+            state: 'APPROVED',
+            requested_by: PACT_COMM_OTHER_PROPOSER,
+            review_decided_by: PACT_COMM_OTHER_PROPOSER,
+            client_approval_recorded_by: PACT_COMM_OTHER_PROPOSER,
+          }),
+        );
+      },
+      // A proposal the acting approver AUTHORED (requested_by === RECRUITER_ID) →
+      // MARGIN_APPROVE is a self-approval → COMMERCIAL_PROPOSAL_SELF_APPROVAL 403
+      // (thrown before policy; the SoD rule is independent of any published policy).
+      'a submitted commercial proposal authored by the acting approver': async () => {
+        await withClient((c) =>
+          seedCommercialProposal(c, { state: 'PENDING_REVIEW', requested_by: RECRUITER_ID }),
+        );
+      },
+      // A client-pending proposal whose MARGIN was approved by the acting approver
+      // (review_decided_by === RECRUITER_ID) → the same actor doing CLIENT_APPROVE
+      // violates stage separation → COMMERCIAL_PROPOSAL_STAGE_CONFLICT 403 (thrown
+      // before policy).
+      'a client-pending commercial proposal whose margin was approved by the acting approver': async () => {
+        await withClient((c) =>
+          seedCommercialProposal(c, {
+            state: 'PENDING_CLIENT_APPROVAL',
+            requested_by: PACT_COMM_OTHER_PROPOSER,
+            review_decided_by: RECRUITER_ID,
+          }),
+        );
+      },
+      // A proposal submitted for review by a different writer, but NO commercial-
+      // approval policy published → the ADR-0024 gate resolves fail-closed →
+      // POLICY_DENIED 403. clearCommercialApprovalPolicy makes the absence
+      // deterministic regardless of interaction order.
+      'a submitted commercial proposal by another writer with no commercial-approval policy published': async () => {
+        await withClient(async (c) => {
+          await clearCommercialApprovalPolicy(c);
+          await seedCommercialProposal(c, { state: 'PENDING_REVIEW', requested_by: PACT_COMM_OTHER_PROPOSER });
+        });
       },
       // A CANCELLED version already reserves the requested instant (2030-01-01) under
       // the NON-partial unique key, so the revision insert collides → 409
