@@ -861,8 +861,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     // through the real reporting→placement read. Directive §19.
     // -------------------------------------------------------------------------
 
-    const FT_FROM = '2020-01-01T00:00:00.000Z';
-    const FT_TO = '2100-01-01T00:00:00.000Z';
+    // L4-0 — the fallthrough cohort now anchors on PlacementProcess.created_at
+    // (establishment). seedFallthrough dates its placement 2026-05-10; the STARTED
+    // seeds (seedStartedPlacement/seedCommercialized) use now(), so a window bounded
+    // to that historical month isolates the cohort to the fallthrough attempts only.
+    const FT_FROM = '2026-05-01T00:00:00.000Z';
+    const FT_TO = '2026-06-01T00:00:00.000Z';
     const ftUrl = (from: string, to: string): string =>
       `http://127.0.0.1:${port}/v1/reports/fallthrough` +
       `?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&site_id=${SITE_A}`;
@@ -877,8 +881,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const pp = globalThis.crypto.randomUUID();
       await setupClient.query(
         `INSERT INTO placement."PlacementProcess"
-           (id, tenant_id, submittal_id, requisition_id, talent_record_id, state, offered_at)
-         VALUES ($1,$2,$3,$4,$5,'FELL_THROUGH'::placement."PlacementState", now())`,
+           (id, tenant_id, submittal_id, requisition_id, talent_record_id, state, offered_at, created_at)
+         VALUES ($1,$2,$3,$4,$5,'FELL_THROUGH'::placement."PlacementState", now(), '2026-05-10T00:00:00Z')`,
         [pp, TENANT_ATS, globalThis.crypto.randomUUID(), requisition_id, globalThis.crypto.randomUUID()],
       );
       await setupClient.query(
@@ -1254,6 +1258,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       });
 
       it('fallthrough: SITE_B exact (1 accepted, 1 fell); no-site = SITE_A + SITE_B (additivity)', async () => {
+        // L4-0 — the cohort anchors on establishment (created_at) within [FT_FROM,FT_TO);
+        // seedFallthrough is dated in that window while the STARTED seeds are born now()
+        // (outside), so only reqSiteB's single fallthrough attempt is in-cohort here.
         const siteB = await ftGet(SITE_B);
         expect(siteB.accepted_attempts).toBe(1);
         expect(siteB.fallthrough_attempts).toBe(1);

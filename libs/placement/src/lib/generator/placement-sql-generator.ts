@@ -15,6 +15,8 @@
 import {
   DUPLICATE_GUARD_INACTIVE,
   LEGAL_TRANSITIONS,
+  PERMANENT_PLACEMENT_STATES,
+  PERMANENT_PLACEMENT_TRANSITIONS,
   PLACEMENT_STATES,
 } from '../lifecycle/placement-lifecycle.js';
 
@@ -33,6 +35,7 @@ import {
   emitLifecycleTrigger,
   emitMigration,
   emitOneLiveGuardFunctionReplace,
+  emitTransitionOnlyLifecycleTrigger,
 } from './sql-ast.js';
 import type {
   LifecycleTrigger,
@@ -327,4 +330,48 @@ export function generatePlacementOfferStateCollapseSql(): string {
         'PlacementProcess permits at most one live attempt per (tenant_id, submittal_id) -- a live placement (non-terminal, or STARTED with an active assignment) already exists for this pair',
     })}\n`
   );
+}
+
+// ---------------------------------------------------------------------------
+// Lane 6 / L6-C — PermanentPlacement guarantee lifecycle DB-trigger parity.
+// ---------------------------------------------------------------------------
+// The 7-state guarantee machine was enforced ONLY by the typed
+// PERMANENT_PLACEMENT_TRANSITIONS map (application layer). This forward migration
+// adds the missing DB-level parity as a transition-legality-only BEFORE UPDATE
+// trigger generated from the SAME typed registry. Transitions carry data
+// (falloff/remedy), so non-state columns are NOT pinned; the @@unique floor owns
+// exclusivity, so there is no INSERT concern.
+const PERMANENT_LIFECYCLE_EDGES: readonly TransitionBranch[] = PERMANENT_PLACEMENT_STATES.flatMap(
+  (from) => (PERMANENT_PLACEMENT_TRANSITIONS[from] as readonly string[]).map((to) => ({ from, to })),
+);
+
+export function generatePermanentPlacementLifecycleSql(): string {
+  return `${emitTransitionOnlyLifecycleTrigger({
+    schema: SCHEMA,
+    table: 'PermanentPlacement',
+    functionName: 'enforce_permanent_placement_lifecycle',
+    triggerName: '"PermanentPlacement_lifecycle"',
+    stateColumn: 'lifecycle_state',
+    transitions: PERMANENT_LIFECYCLE_EDGES,
+    headerComment: [
+      '============================================================================',
+      'PermanentPlacement guarantee lifecycle guard (Lane 6 / L6-C).',
+      'GENERATED from the typed PERMANENT_PLACEMENT_TRANSITIONS registry',
+      '(src/lib/lifecycle). Do NOT edit this SQL by hand -- CI regenerates it and',
+      'asserts byte-equality (placement:sql:check).',
+      '',
+      'BEFORE UPDATE -- if lifecycle_state CHANGES it must follow a ratified edge,',
+      'else the transition is rejected. Terminal states (no out-edge) are thereby',
+      'immutable. A state-unchanged (data-only) UPDATE always passes -- transitions',
+      'legitimately carry falloff/remedy data, so non-state columns are NOT pinned',
+      'here (falloff write-once is a separate trigger) and there is no INSERT concern',
+      '(the unique (tenant_id, placement_process_id) index owns exclusivity).',
+      'NOTE keep this comment block free of the statement terminator and the',
+      'dollar-quote delimiter -- the integration migration splitter is dollar-quote',
+      'aware but does not strip line comments.',
+      '============================================================================',
+    ],
+    violationMessage:
+      'placement.PermanentPlacement guarantee lifecycle -- illegal transition (only the ratified edges are permitted, and terminal states are immutable)',
+  })}\n`;
 }

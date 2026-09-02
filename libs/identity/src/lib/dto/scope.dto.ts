@@ -315,14 +315,12 @@ export const SEED_SCOPE_KEYS = [
   // placement:activate/terminate). recruiter does operational placement work, NOT
   // authoritative post-start assignment mutation.
   'assignment:read',
-  'assignment:create', // ACTIVE_RESERVED — authority class ratified (Track4/T4-D) for deferred ContractAssignment creation; no live handler yet.
-  'assignment:update', // ACTIVE_RESERVED — same ratified T4-D authority; dormant, cited as the reserved verb in live placement code.
   'assignment:end',
   'assignment:extend',
   // Track 5 / T5-P1 — assignment commercial-terms (Assignment Rate Version)
   // authority. Dedicated financial permissions (Amendment A2 DEC-4): NEVER
   // satisfied by placement:*, requisition-financials, or the generic
-  // assignment:create/update. commercials:write is the second leg of the FORWARD
+  // assignment mutation authority. commercials:write is the second leg of the FORWARD
   // STARTED conjunction; commercials:read independently governs financial
   // disclosure (least visibility — assignment:read does NOT grant it).
   'assignment:commercials:read',
@@ -336,7 +334,7 @@ export const SEED_SCOPE_KEYS = [
   // the external-system requisition ingestion surface (/v1/requisition-imports).
   // read -> recruiter/account_manager/tenant_admin/tenant_owner (mirrors
   // assignment:read); write -> account_manager/tenant_admin/tenant_owner only
-  // (authoritative-tier act, recruiter excluded — mirrors assignment:create).
+  // (authoritative-tier act, recruiter excluded — mirrors the authoritative tier).
   'requisition:import:read',
   'requisition:import:write',
   // Track 8 / T8-CONNECTOR-A — provider-neutral connector-connection MANAGEMENT

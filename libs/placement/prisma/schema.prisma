@@ -424,6 +424,12 @@ enum ContractAssignmentEndReason {
 // The two DB CHECKs (in migration 20260809120000) enforce that in the substrate.
 // Cross-schema refs are UUID-only, no FK (§7.3). Additive migration; the
 // generator-owned init stays byte-identical (§4 additive ownership).
+//
+// NAMING (L6-0): ContractAssignment (this model, libs/placement) = the POST-START
+// employment assignment. It is DISTINCT from company.RequisitionAssignment
+// (libs/company, D4a) = the recruiter/ownership assignment of a requisition. Same
+// word "assignment", different bounded contexts + schemas + no shared API surface;
+// no rename (Lane-6 directive — no actual API/UI ambiguity).
 model ContractAssignment {
   id String @id @db.Uuid
 

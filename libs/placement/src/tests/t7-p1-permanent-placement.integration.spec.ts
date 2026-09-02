@@ -43,6 +43,9 @@ const MIGRATIONS = [
   '20260824120000_init_offer_model',
   '20260901130000_offer_compensation_snapshot',
   '20260824130000_placement_offer_id',
+  // L6-C — PermanentPlacement guarantee-lifecycle DB-trigger parity (generated,
+  // transition-legality-only). Applied last (PermanentPlacement table already exists).
+  '20260901180000_l6c_permanent_placement_lifecycle_parity',
 ].map((d) => resolve(__dirname, `../../prisma/migrations/${d}/migration.sql`));
 
 const T5_TERMS = { pay_rate_amount: '80.00', bill_rate_amount: '120.00', currency: 'USD', rate_period: 'HOURLY' } as const;
@@ -338,6 +341,42 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       const events = await prisma.permanentPlacementEvent.findMany({ where: { tenant_id: input.tenant_id }, orderBy: { created_at: 'asc' } });
       expect(events.map((e) => (e.event_payload as { to: string }).to)).toEqual(['GUARANTEE_ACTIVE', 'GUARANTEE_SATISFIED']);
+    });
+
+    // ---- L6-C — DB-trigger parity for the guarantee lifecycle ----
+    // The app typed-map guard already rejects illegal transitions (see "a second
+    // satisfy is illegal", below). L6-C adds the DB-layer floor: a raw write that
+    // bypasses the repository still cannot drive an illegal edge, and terminal
+    // states are immutable at the database. The generated trigger is emitted from
+    // the SAME PERMANENT_PLACEMENT_TRANSITIONS registry (placement:sql:check).
+    it('L6-C DB parity: an illegal guarantee transition and a terminal reopen are rejected at the DB (not only app-guarded)', async () => {
+      const input = baseInput({ placement_kind: 'PERMANENT' });
+      const id = await startPermanent(input, ELAPSED_TERMS);
+
+      // DB-layer: an illegal edge (GUARANTEE_ACTIVE -> REMEDY_COMPLETED skips the
+      // machine) is rejected by the generated lifecycle trigger, not only the app map.
+      await expect(
+        prisma.permanentPlacement.updateMany({
+          where: { tenant_id: input.tenant_id, placement_process_id: id },
+          data: { lifecycle_state: 'REMEDY_COMPLETED' },
+        }),
+      ).rejects.toThrow();
+
+      // Advance legally to a terminal state via the governed path (window elapsed).
+      await permanent.transition({ tenant_id: input.tenant_id, placement_process_id: id, to: 'GUARANTEE_SATISFIED' }, 'satisfy');
+
+      // Terminal immutability at the DB: reopening GUARANTEE_SATISFIED -> GUARANTEE_ACTIVE is rejected.
+      await expect(
+        prisma.permanentPlacement.updateMany({
+          where: { tenant_id: input.tenant_id, placement_process_id: id },
+          data: { lifecycle_state: 'GUARANTEE_ACTIVE' },
+        }),
+      ).rejects.toThrow();
+
+      // Behavioral proof (robust to Prisma-7 error-shape nuance): both raw writes were
+      // rejected, so the row is unchanged — still GUARANTEE_SATISFIED.
+      const [row] = await prisma.permanentPlacement.findMany({ where: { tenant_id: input.tenant_id, placement_process_id: id } });
+      expect(row.lifecycle_state).toBe('GUARANTEE_SATISFIED');
     });
 
     it('premature satisfy (window not elapsed) is PERMANENT_PLACEMENT_GUARANTEE_WINDOW_INVALID (422)', async () => {

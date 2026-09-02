@@ -14,6 +14,7 @@ import { join } from 'node:path';
 
 import {
   REPO_ROOT,
+  renderPermanentPlacementLifecycleMigration,
   renderPlacementCollapseMigration,
   renderPlacementMigration,
 } from './generate-placement-sql.js';
@@ -66,9 +67,11 @@ function main(): void {
   // forward collapse migration are both generated build artifacts.
   const init = renderPlacementMigration();
   const collapse = renderPlacementCollapseMigration();
+  const permanentLifecycle = renderPermanentPlacementLifecycleMigration();
   verifyArtifact(init.rel, init.content);
   verifyArtifact(collapse.rel, collapse.content);
-  console.log('placement:sql:check ok (frozen init + forward collapse migration)');
+  verifyArtifact(permanentLifecycle.rel, permanentLifecycle.content);
+  console.log('placement:sql:check ok (frozen init + forward collapse + L6-C permanent-lifecycle parity)');
 }
 
 main();

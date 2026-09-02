@@ -973,16 +973,15 @@ describe('E1-b placement matrix — read/create guard boundary (real RolesGuard 
     expect(denial(h, ['assignment:commercials:write'])).toMatchObject({ code: 'INSUFFICIENT_PERMISSIONS', statusCode: 403 });
   });
 
-  it('T6-B2: POST .../commercials/revisions requires assignment:commercials:write — WITH it passes; WITHOUT 403; read / placement:* / assignment:update do NOT satisfy it', () => {
+  it('T6-B2: POST .../commercials/revisions requires assignment:commercials:write — WITH it passes; WITHOUT 403; read / placement:* do NOT satisfy it', () => {
     const h = PlacementController.prototype.createAssignmentCommercialRevision as unknown as (...a: unknown[]) => unknown;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     expect(guard.canActivate(ctx(h, ['assignment:commercials:write']) as any)).toBe(true);
     expect(denial(h, [])).toMatchObject({ code: 'INSUFFICIENT_PERMISSIONS', statusCode: 403 });
     // read does NOT imply write — the dedicated financial WRITE scope is required.
     expect(denial(h, ['assignment:commercials:read'])).toMatchObject({ code: 'INSUFFICIENT_PERMISSIONS', statusCode: 403 });
-    // placement authority and the dormant assignment:update do NOT substitute (§9 no-reuse).
+    // placement authority does NOT substitute for the dedicated commercial write (§9 no-reuse).
     expect(denial(h, ['placement:activate', 'placement:transition', 'placement:terminate'])).toMatchObject({ code: 'INSUFFICIENT_PERMISSIONS', statusCode: 403 });
-    expect(denial(h, ['assignment:update'])).toMatchObject({ code: 'INSUFFICIENT_PERMISSIONS', statusCode: 403 });
   });
 
   it('T6-B2: GET .../commercials/revisions requires assignment:commercials:read — WITH it passes; WITHOUT 403; write does NOT imply read', () => {

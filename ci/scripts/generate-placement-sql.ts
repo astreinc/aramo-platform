@@ -12,6 +12,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 
 import {
+  generatePermanentPlacementLifecycleSql,
   generatePlacementMigrationSql,
   generatePlacementOfferStateCollapseSql,
 } from '../../libs/placement/src/lib/generator/placement-sql-generator.js';
@@ -31,12 +32,22 @@ export const MIGRATION_REL_PATH =
 export const COLLAPSE_MIGRATION_REL_PATH =
   'libs/placement/prisma/migrations/20260901120000_l4_placement_offer_state_collapse/migration.sql';
 
+// L6-C: the PermanentPlacement guarantee-lifecycle DB-trigger parity migration — a
+// SEPARATE generator-owned artifact emitted from the typed PERMANENT_PLACEMENT_TRANSITIONS
+// registry (transition-legality-only BEFORE UPDATE guard). Also under sql:check.
+export const PERMANENT_LIFECYCLE_MIGRATION_REL_PATH =
+  'libs/placement/prisma/migrations/20260901180000_l6c_permanent_placement_lifecycle_parity/migration.sql';
+
 export function renderPlacementMigration(): { rel: string; content: string } {
   return { rel: MIGRATION_REL_PATH, content: generatePlacementMigrationSql() };
 }
 
 export function renderPlacementCollapseMigration(): { rel: string; content: string } {
   return { rel: COLLAPSE_MIGRATION_REL_PATH, content: generatePlacementOfferStateCollapseSql() };
+}
+
+export function renderPermanentPlacementLifecycleMigration(): { rel: string; content: string } {
+  return { rel: PERMANENT_LIFECYCLE_MIGRATION_REL_PATH, content: generatePermanentPlacementLifecycleSql() };
 }
 
 function writeArtifact(rel: string, content: string): void {
@@ -49,8 +60,10 @@ function writeArtifact(rel: string, content: string): void {
 function main(): void {
   const init = renderPlacementMigration();
   const collapse = renderPlacementCollapseMigration();
+  const permanentLifecycle = renderPermanentPlacementLifecycleMigration();
   writeArtifact(init.rel, init.content);
   writeArtifact(collapse.rel, collapse.content);
+  writeArtifact(permanentLifecycle.rel, permanentLifecycle.content);
   console.log('placement:sql:generate ok');
 }
 
