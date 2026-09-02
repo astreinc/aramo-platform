@@ -26,6 +26,11 @@ const MARKER = ['app', 'tenant_reset'].join('.');
 const EXACT_ALLOWLIST = new Set<string>([
   // E2 trigger migration — defines the exact-value escape.
   'libs/pre-start-requirement/prisma/migrations/20260804090000_init_pre_start_requirement/migration.sql',
+  // Lane 5 / L5-P3 — the PreStartReadinessDecision append-only migration: its
+  // reject-UPDATE/DELETE trigger carries the same exact-value tenant_reset escape
+  // (the E2 init precedent) so a governed tenant reset can delete the immutable
+  // readiness-decision rows.
+  'libs/pre-start-requirement/prisma/migrations/20260901160000_l5_pre_start_readiness_decision/migration.sql',
   // Dedicated E2 integration proof — exercises the escape via raw SET LOCAL.
   'libs/pre-start-requirement/src/tests/pre-start-requirement.repository.integration.spec.ts',
   // The tenant-reset service — the ONLY production code that sets the marker.

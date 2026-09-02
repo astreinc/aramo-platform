@@ -31,6 +31,10 @@ import {
   PLACEMENT_LIFECYCLE_QUEUE_NAME,
   PLACEMENT_LIFECYCLE_INTERVAL_MS,
 } from '../placement-pipeline-orchestration/placement-lifecycle.queue.constants.js';
+import {
+  PRE_START_ORCHESTRATOR_QUEUE_NAME,
+  PRE_START_ORCHESTRATOR_INTERVAL_MS,
+} from '../pre-start-requirement/pre-start-orchestrator.queue.constants.js';
 
 // Application bootstrap registration for the repeating Aramo BullMQ jobs
 // (Architecture v2.1 §9.2 / Plan v1.5 §M5 Track A item 6; doc/01 §13 anchor).
@@ -212,6 +216,19 @@ const SCHEDULES = [
     job_name: 'tick',
     job_id: 'offer-expiry-300s',
     repeat: { every: OFFER_EXPIRY_INTERVAL_MS },
+  },
+  // L5-P1 (E2 ignition) — the pre-start orchestrator sweep. Every 60s: reconcile
+  // pending materialization intents + intake-materialize on placement.process.created
+  // (placements with no intent yet) + cancel unresolved requirements on placement
+  // terminal (NO_SHOW / FELL_THROUGH). Idempotency rides E2's own state (intent unique
+  // + instance resolution) — no new inbox. Silent without Redis (CI / local dev); the
+  // tick seam is proven directly via PreStartOrchestratorService. The 17th repeat queue
+  // (offer-expiry is the 16th).
+  {
+    queue_name: PRE_START_ORCHESTRATOR_QUEUE_NAME,
+    job_name: 'tick',
+    job_id: 'pre-start-orchestration-60s',
+    repeat: { every: PRE_START_ORCHESTRATOR_INTERVAL_MS },
   },
 ] as const;
 

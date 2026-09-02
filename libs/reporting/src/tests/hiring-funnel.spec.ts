@@ -38,6 +38,7 @@ function makeService(s: Sources) {
     stub, stub, stub,
     { findFirstSubmittedByGrain } as never,
     { findFirstInterviewByGrain } as never,
+    {} as never, // L5-P8 pre-start reporting read repo (unused here)
   );
   return { svc, findFirstSubmittedByGrain, findFirstInterviewByGrain, readOfferReachedByGrain, readFillCohort };
 }

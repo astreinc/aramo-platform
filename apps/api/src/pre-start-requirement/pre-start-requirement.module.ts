@@ -6,6 +6,7 @@ import {
   DefinitionSetRepository,
   MaterializationIntentRepository,
   PrismaService as PreStartPrismaService,
+  ReadinessDecisionRepository,
   RequirementInstanceRepository,
 } from '@aramo/pre-start-requirement';
 import { PlacementRepository, PrismaService as PlacementPrismaService } from '@aramo/placement';
@@ -15,6 +16,7 @@ import { PlacementReadinessService } from './placement-readiness.service.js';
 import { PreStartMaterializationService } from './pre-start-materialization.service.js';
 import { PreStartWaiverService } from './pre-start-waiver.service.js';
 import { PreStartCancellationService } from './pre-start-cancellation.service.js';
+import { PlacementBlockReconciliationService } from './placement-block-reconciliation.service.js';
 import { READINESS_EVALUATOR, RealReadinessEvaluator } from './readiness-evaluator.js';
 
 // Track 3 / E2 — apps/api composition root. The readiness gate is the one place
@@ -35,6 +37,7 @@ import { READINESS_EVALUATOR, RealReadinessEvaluator } from './readiness-evaluat
     DefinitionSetRepository,
     RequirementInstanceRepository,
     MaterializationIntentRepository,
+    ReadinessDecisionRepository,
     PlacementRepository,
     // §14 A2-R — production ALWAYS binds the real evaluator. Tests override this
     // token with a permissive double; there is no environment bypass.
@@ -44,9 +47,14 @@ import { READINESS_EVALUATOR, RealReadinessEvaluator } from './readiness-evaluat
     PreStartMaterializationService,
     PreStartWaiverService,
     PreStartCancellationService,
+    PlacementBlockReconciliationService,
   ],
   // L2-H — export the read repository so the Unified Talent Journey composer can read the
   // pre-start requirement instances for a placement (read-only; no command surface added).
-  exports: [PlacementReadinessService, PreStartMaterializationService, PreStartCancellationService, RequirementInstanceRepository],
+  // L5-P1 — PreStartPrismaService is exported so the pre-start orchestrator worker
+  // (a separate composition module) can bind it as the raw cross-schema reader via a
+  // STRING token useExisting (ONE shared pooled client; no second bare-class provider,
+  // avoiding the non-strict app.get lookup-collision trap).
+  exports: [PlacementReadinessService, PreStartMaterializationService, PreStartCancellationService, RequirementInstanceRepository, PreStartPrismaService],
 })
 export class PreStartRequirementModule {}

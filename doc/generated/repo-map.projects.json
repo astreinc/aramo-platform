@@ -892,12 +892,18 @@
     ],
     "@aramo/pre-start-requirement": [
       "AUDIT_ACTION_VALUES",
+      "DEFAULT_SATISFACTION_POLICY",
       "DefinitionSetRepository",
       "MaterializationIntentRepository",
+      "PROVIDER_OBSERVATION_OUTCOME_VALUES",
+      "PreStartReportingReadModule",
+      "PreStartReportingRepository",
       "PrismaService",
       "REQUIREMENT_STATUS_VALUES",
       "REQUIREMENT_TYPE_VALUES",
+      "ReadinessDecisionRepository",
       "RequirementInstanceRepository",
+      "SATISFACTION_POLICY_VALUES",
       "SCOPE_TYPE_VALUES",
       "SET_STATE_VALUES",
       "WAIVER_AUTHORITY_VALUES",
@@ -906,18 +912,21 @@
       "canonicalizeDefinitions",
       "checksumDefinitions",
       "isAuditAction",
+      "isProviderObservationOutcome",
       "isReopen",
       "isRequirementDefinitionInput",
       "isRequirementStatus",
       "isRequirementType",
       "isResolvedStatus",
+      "isSatisfactionPolicy",
       "isScopeType",
       "isSetState",
       "isUnresolvedStatus",
       "isWaiverAuthority",
       "isWaiverMode",
       "isWaiverPermitted",
-      "requiredAuthorityFor"
+      "requiredAuthorityFor",
+      "toGovernedRequirementCommand"
     ],
     "@aramo/reporting": [
       "DashboardController",
@@ -2104,6 +2113,12 @@
         "project": "reporting",
         "status": "excluded"
       },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/reporting/src/tests/onboarding-rollup.spec.ts",
+        "project": "reporting",
+        "status": "excluded"
+      },
       { "project": "reporting", "status": "production" },
       { "project": "requisition", "status": "production" },
       { "project": "saved-list", "status": "production" },
@@ -2710,6 +2725,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/reporting/src/tests/margin.spec.ts",
+        "project": "reporting",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/reporting/src/tests/onboarding-rollup.spec.ts",
         "project": "reporting",
         "status": "excluded"
       },
@@ -3359,6 +3380,12 @@
       {
         "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/ats-web/src/portal-disputes/PortalDisputesView.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/pre-start/PreStartWorkspaceView.spec.tsx",
         "project": "aramo-ats-web",
         "status": "excluded"
       },
@@ -4232,6 +4259,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/pre-start-requirement/placement-block-reconciliation.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/requisition-concurrency.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -4555,11 +4588,24 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/pre-start-requirement/pre-start-orchestrator.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/pre-start-requirement/waiver-authority.spec.ts",
         "project": "api",
         "status": "excluded"
       },
-      { "project": "api", "status": "production" }
+      { "project": "api", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/reporting/src/tests/onboarding-rollup.spec.ts",
+        "project": "reporting",
+        "status": "excluded"
+      },
+      { "project": "reporting", "status": "production" }
     ],
     "@aramo/reporting": [{ "project": "api", "status": "production" }],
     "@aramo/requisition": [

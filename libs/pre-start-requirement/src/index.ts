@@ -18,11 +18,34 @@ export { PrismaService } from './lib/prisma/prisma.service.js';
 export { DefinitionSetRepository } from './lib/definition-set.repository.js';
 export { RequirementInstanceRepository } from './lib/requirement-instance.repository.js';
 export { MaterializationIntentRepository } from './lib/materialization-intent.repository.js';
+export { ReadinessDecisionRepository } from './lib/readiness-decision.repository.js';
+
+// L5-P8 — the reporting-facing READ surface (option (a)). Read-only aggregate +
+// its NestJS read module. This is the ONLY thing the reporting→pre-start edge
+// pulls; no write repository is exported to that consumer.
+export { PreStartReportingRepository } from './lib/pre-start-reporting.repository.js';
+export { PreStartReportingReadModule } from './lib/pre-start-reporting.module.js';
+
+// L5-P9 — the provider-integration guard/contract (observation → governed command;
+// a READY_TO_START flip is unrepresentable). Pure policy; no persistence.
+export {
+  PROVIDER_OBSERVATION_OUTCOME_VALUES,
+  isProviderObservationOutcome,
+  toGovernedRequirementCommand,
+} from './lib/pre-start-provider-observation.js';
+export type {
+  ProviderObservationOutcome,
+  PreStartProviderObservation,
+  GovernedRequirementCommand,
+} from './lib/pre-start-provider-observation.js';
 
 // Closed registries + guards + checksum (directive §4c / §14 A2).
 export {
   REQUIREMENT_TYPE_VALUES,
   SCOPE_TYPE_VALUES,
+  SATISFACTION_POLICY_VALUES,
+  DEFAULT_SATISFACTION_POLICY,
+  isSatisfactionPolicy,
   REQUIREMENT_STATUS_VALUES,
   WAIVER_MODE_VALUES,
   WAIVER_AUTHORITY_VALUES,
@@ -48,6 +71,7 @@ export {
 export type {
   RequirementTypeValue,
   ScopeTypeValue,
+  SatisfactionPolicyValue,
   RequirementStatusValue,
   WaiverModeValue,
   WaiverAuthorityValue,
@@ -68,8 +92,16 @@ export type {
   InstanceView,
   StatusMoveInput,
   WaiveInput,
+  VerifyInput,
   AuditView,
   BlockingAssessment,
+  BlockerProjection,
   IntentStatus,
   IntentView,
+  ReadinessDecisionResult,
+  ReadinessRefusalReason,
+  RecordReadinessDecisionInput,
+  ReadinessDecisionView,
+  OnboardingRequirementCell,
+  PreStartOnboardingRollupSnapshot,
 } from './lib/pre-start-requirement.types.js';

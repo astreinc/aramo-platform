@@ -27,6 +27,7 @@ import { LoginPage } from './routes/LoginPage';
 import { OrgHierarchyView } from './org/OrgHierarchyView';
 import { PlacementBoardView } from './placement/PlacementBoardView';
 import { PlacementDetailView } from './placement/PlacementDetailView';
+import { PreStartWorkspaceView } from './pre-start/PreStartWorkspaceView';
 import { RequisitionCreateView } from './requisitions/RequisitionCreateView';
 import { RequisitionDetailView } from './requisitions/RequisitionDetailView';
 import { RequisitionsListView } from './requisitions/RequisitionsListView';
@@ -261,6 +262,20 @@ export function App() {
                           sessionStateOverride={state}
                         >
                           <PlacementDetailView />
+                        </RouteGuard>
+                      }
+                    />
+                    {/* L5-P7 — the dedicated onboarding workspace (per placement),
+                        gated by pre_start_requirement:read; the governed acts inside
+                        are additionally scope-gated at the affordance layer + BE. */}
+                    <Route
+                      path="onboarding/:placementId"
+                      element={
+                        <RouteGuard
+                          requireScope="pre_start_requirement:read"
+                          sessionStateOverride={state}
+                        >
+                          <PreStartWorkspaceView />
                         </RouteGuard>
                       }
                     />

@@ -86,6 +86,8 @@ model PreStartRequirementDefinition {
   sequence         Int
   // NOT_WAIVABLE | CLIENT_AUTHORITY_ONLY | COMPLIANCE_AUTHORITY_ONLY | AUTHORIZED_INTERNAL
   waiver_mode      String
+  // L5-P6 — SELF_ATTEST | VERIFICATION_REQUIRED (config on Definition; frozen snapshot on Instance).
+  satisfaction_policy String @default("SELF_ATTEST")
 
   created_at DateTime @default(now()) @db.Timestamptz(6)
 
@@ -133,6 +135,8 @@ model PreStartRequirementInstance {
   blocking         Boolean
   owner_role       String?
   waiver_mode      String
+  // L5-P6 — SELF_ATTEST | VERIFICATION_REQUIRED (config on Definition; frozen snapshot on Instance).
+  satisfaction_policy String @default("SELF_ATTEST")
 
   // Compact governed operational state (§14 A2). PENDING | IN_PROGRESS |
   // SATISFIED | FAILED | WAIVED | CANCELED.
@@ -179,6 +183,12 @@ model PreStartMaterializationIntent {
   scope        String
   scope_ref_id String @db.Uuid
 
+  // L5-P5 — the layered materialization context (TENANT->CLIENT->REQUISITION),
+  // captured at intake so the reconciler re-resolves the same chain. Nullable: a
+  // placement with no client/requisition ref resolves the tenant baseline alone.
+  client_id      String? @db.Uuid
+  requisition_id String? @db.Uuid
+
   // pending | resolved | quarantined
   status            String    @default("pending")
   attempts          Int       @default(0)
@@ -224,5 +234,37 @@ model PreStartRequirementAudit {
 
   @@index([tenant_id, requirement_instance_id])
   @@index([requirement_instance_id, created_at])
+  @@schema("pre_start_requirement")
+}
+
+// Lane 5 / L5-P3 — the readiness decision ledger (ruling P7). Every MARK_READY
+// decision — success AND both refusals (materialization_absent, blocking_unresolved)
+// — is recorded immutably: outcome, assessment counts, actor, timestamp. Opaque UUID
+// reference to placement.PlacementProcess (no FK, no relation, no import). The
+// evaluated snapshot identity is NOT denormalized — it is authoritatively the
+// immutable PreStartRequirementInstance set for the placement (single owner, no
+// drift). Append-only (trigger-enforced UPDATE/DELETE rejection).
+model PreStartReadinessDecision {
+  id        String @id @db.Uuid
+  tenant_id String @db.Uuid
+
+  placement_process_id String @db.Uuid
+
+  // READY | REFUSED
+  result String
+  // materialization_absent | blocking_unresolved (NULL when READY)
+  refusal_reason String?
+
+  materialized              Boolean
+  total_requirements        Int
+  unresolved_blocking_count Int
+
+  actor_id String @db.Uuid
+  // user | system
+  actor_type String
+
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([tenant_id, placement_process_id, created_at])
   @@schema("pre_start_requirement")
 }

@@ -4976,6 +4976,12 @@
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/pre-start-requirement/marker-confinement.spec.ts",
       "status": "excluded",
+      "to": "libs/pre-start-requirement/prisma/migrations/20260901160000_l5_pre_start_readiness_decision/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/pre-start-requirement/marker-confinement.spec.ts",
+      "status": "excluded",
       "to": "libs/pre-start-requirement/src/tests/pre-start-requirement.repository.integration.spec.ts"
     },
     {
@@ -4989,6 +4995,24 @@
       "from": "apps/api/src/tests/pre-start-requirement/marker-confinement.spec.ts",
       "status": "excluded",
       "to": "libs/tenant-reset/src/lib/tenant-reset.service.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/pre-start-requirement/pre-start-orchestrator.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/pre-start-requirement/prisma/migrations/20260804090000_init_pre_start_requirement/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/pre-start-requirement/pre-start-orchestrator.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/pre-start-requirement/prisma/migrations/20260901190000_l5_pre_start_intent_layered_context/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/pre-start-requirement/pre-start-orchestrator.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/pre-start-requirement/prisma/migrations/20260901200000_l5_pre_start_satisfaction_policy/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",

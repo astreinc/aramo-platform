@@ -88,6 +88,7 @@ function makeService(opts: {
     {} as never, // commercialMarginRepository (T9-B4; unused here)
     submittedHistory as never, // L2-E submitted-history port
     { findFirstInterviewByGrain: async () => [] } as never, // L2-I D4b interview-history port
+    {} as never, // L5-P8 pre-start reporting read repo (unused here)
   );
   return { svc, requisitionRepository, pipelineRepository, tenantSettingRepository };
 }

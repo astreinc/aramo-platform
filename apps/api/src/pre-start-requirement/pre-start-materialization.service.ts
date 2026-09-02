@@ -36,6 +36,10 @@ export interface MaterializeSagaInput {
   placement_process_id: string;
   scope: ScopeTypeValue;
   scope_ref_id: string;
+  // L5-P5 — the layered precedence context (TENANT baseline is scope/scope_ref_id;
+  // CLIENT/REQUISITION augment/override). Either may be null (that layer is skipped).
+  client_id: string | null;
+  requisition_id: string | null;
 }
 
 // The system actor recorded on operational log lines (materialization is not a
@@ -58,7 +62,10 @@ export class PreStartMaterializationService {
   // then attempts materialization once synchronously.
   async materializeForPlacement(input: MaterializeSagaInput): Promise<void> {
     const selector: ScopeSelector = { scope: input.scope, scope_ref_id: input.scope_ref_id };
-    const intent = await this.intents.ensureIntent(input.tenant_id, input.placement_process_id, selector);
+    const intent = await this.intents.ensureIntent(input.tenant_id, input.placement_process_id, selector, {
+      client_id: input.client_id,
+      requisition_id: input.requisition_id,
+    });
     // A resolved/quarantined intent is terminal — do not re-attempt.
     if (intent.status !== 'pending') {
       return;
@@ -72,9 +79,11 @@ export class PreStartMaterializationService {
     const requestId = `pre-start-materialize:${input.placement_process_id}`;
     try {
       await this.intents.recordAttempt(intentId);
-      const set = await this.sets.resolveApplicable(
+      // L5-P5 — resolve the EFFECTIVE layered config (TENANT -> CLIENT -> REQUISITION)
+      // and materialize the merged snapshot. Null when no layer has an open set.
+      const set = await this.sets.resolveEffective(
         input.tenant_id,
-        { scope: input.scope, scope_ref_id: input.scope_ref_id },
+        { client_id: input.client_id, requisition_id: input.requisition_id },
         requestId,
       );
 
@@ -115,6 +124,8 @@ export class PreStartMaterializationService {
         placement_process_id: intent.placement_process_id,
         scope: intent.scope,
         scope_ref_id: intent.scope_ref_id,
+        client_id: intent.client_id,
+        requisition_id: intent.requisition_id,
       });
     }
     return { processed: due.length };

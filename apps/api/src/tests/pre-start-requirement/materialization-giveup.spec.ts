@@ -15,7 +15,7 @@ const PLACEMENT = '00000000-0000-0000-0000-0000000000bb';
 function makeService(opts: {
   intentAttempts?: number;
   intentStatus?: 'pending' | 'resolved' | 'quarantined';
-  resolveApplicable?: unknown;
+  resolveEffective?: unknown;
   materializeImpl?: () => Promise<unknown>;
 }) {
   const intent = {
@@ -34,7 +34,7 @@ function makeService(opts: {
     markQuarantined: vi.fn().mockResolvedValue(intent),
     listPending: vi.fn().mockResolvedValue([intent]),
   };
-  const sets = { resolveApplicable: vi.fn().mockResolvedValue(opts.resolveApplicable ?? null) };
+  const sets = { resolveEffective: vi.fn().mockResolvedValue(opts.resolveEffective ?? null) };
   const requirements = {
     materialize: opts.materializeImpl ? vi.fn(opts.materializeImpl) : vi.fn().mockResolvedValue([]),
   };
@@ -43,11 +43,11 @@ function makeService(opts: {
   return { svc, intents, sets, requirements };
 }
 
-const input = { tenant_id: TENANT, placement_process_id: PLACEMENT, scope: 'TENANT' as const, scope_ref_id: TENANT };
+const input = { tenant_id: TENANT, placement_process_id: PLACEMENT, scope: 'TENANT' as const, scope_ref_id: TENANT, client_id: null, requisition_id: null };
 
 describe('PreStartMaterializationService — resolve / quarantine policy', () => {
   it('config failure (no published set) QUARANTINES immediately, no retry burn', async () => {
-    const { svc, intents } = makeService({ resolveApplicable: null });
+    const { svc, intents } = makeService({ resolveEffective: null });
     await svc.materializeForPlacement(input);
     expect(intents.markQuarantined).toHaveBeenCalledOnce();
     expect(intents.markQuarantined.mock.calls[0]![1]).toBe('no_published_definition_set');
@@ -56,7 +56,7 @@ describe('PreStartMaterializationService — resolve / quarantine policy', () =>
 
   it('success MARKS RESOLVED', async () => {
     const set = { id: 's1', version: 'v1', checksum: 'c', definitions: [] };
-    const { svc, intents } = makeService({ resolveApplicable: set });
+    const { svc, intents } = makeService({ resolveEffective: set });
     await svc.materializeForPlacement(input);
     expect(intents.markResolved).toHaveBeenCalledOnce();
     expect(intents.markQuarantined).not.toHaveBeenCalled();
@@ -65,7 +65,7 @@ describe('PreStartMaterializationService — resolve / quarantine policy', () =>
   it('transient failure below the cap STAYS PENDING (no quarantine)', async () => {
     const set = { id: 's1', version: 'v1', checksum: 'c', definitions: [] };
     const { svc, intents } = makeService({
-      resolveApplicable: set,
+      resolveEffective: set,
       intentAttempts: 0,
       materializeImpl: () => Promise.reject(new Error('db blip')),
     });
@@ -77,7 +77,7 @@ describe('PreStartMaterializationService — resolve / quarantine policy', () =>
   it(`transient failure at the cap (${MAX_MATERIALIZE_ATTEMPTS}) QUARANTINES`, async () => {
     const set = { id: 's1', version: 'v1', checksum: 'c', definitions: [] };
     const { svc, intents } = makeService({
-      resolveApplicable: set,
+      resolveEffective: set,
       intentAttempts: MAX_MATERIALIZE_ATTEMPTS - 1,
       materializeImpl: () => Promise.reject(new Error('db blip')),
     });
@@ -89,6 +89,6 @@ describe('PreStartMaterializationService — resolve / quarantine policy', () =>
   it('a terminal (resolved/quarantined) intent is NOT re-attempted', async () => {
     const { svc, sets } = makeService({ intentStatus: 'quarantined' });
     await svc.materializeForPlacement(input);
-    expect(sets.resolveApplicable).not.toHaveBeenCalled();
+    expect(sets.resolveEffective).not.toHaveBeenCalled();
   });
 });

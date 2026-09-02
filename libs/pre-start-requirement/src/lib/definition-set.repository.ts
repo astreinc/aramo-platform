@@ -5,14 +5,17 @@ import { AramoError } from '@aramo/common';
 import { PrismaService } from './prisma/prisma.service.js';
 import {
   checksumDefinitions,
+  DEFAULT_SATISFACTION_POLICY,
   isRequirementDefinitionInput,
   isScopeType,
   type RequirementDefinitionInput,
+  type ScopeTypeValue,
 } from './pre-start-requirement-vocab.js';
 import type {
   CreateDraftSetInput,
   DefinitionView,
   EditDraftSetInput,
+  LayeredContext,
   PublishSetInput,
   ScopeSelector,
   SetView,
@@ -43,6 +46,7 @@ interface DefRow {
   owner_role: string | null;
   sequence: number;
   waiver_mode: string;
+  satisfaction_policy: string;
   created_at: Date;
 }
 
@@ -57,6 +61,7 @@ function projectDef(r: DefRow): DefinitionView {
     owner_role: r.owner_role,
     sequence: r.sequence,
     waiver_mode: r.waiver_mode as DefinitionView['waiver_mode'],
+    satisfaction_policy: r.satisfaction_policy as DefinitionView['satisfaction_policy'],
     created_at: r.created_at,
   };
 }
@@ -224,6 +229,65 @@ export class DefinitionSetRepository {
     return projectSet(setRow, defRows);
   }
 
+  // L5-P5 (ruling P2) — resolve the EFFECTIVE published config for a placement by
+  // merging the layered chain TENANT -> CLIENT -> REQUISITION (least-specific first).
+  // A more-specific layer OVERRIDES a same-requirement_type definition and AUGMENTS
+  // with new types. Deterministic: fixed layer order + a stable requirement_type sort.
+  // Each merged definition keeps its authored id (requirement_definition_id), so the
+  // materialized instance records exactly which layer's definition it came from. The
+  // synthetic effective SetView's version is the composite of the contributing layer
+  // versions and its checksum hashes the merged definitions. Null when NO layer has an
+  // open published set (fail-closed, as the single-scope resolver).
+  async resolveEffective(
+    tenant_id: string,
+    context: LayeredContext,
+    _requestId: string,
+  ): Promise<SetView | null> {
+    const layers: Array<{ scope: ScopeTypeValue; ref: string }> = [
+      { scope: 'TENANT', ref: tenant_id },
+      ...(context.client_id !== null ? [{ scope: 'CLIENT' as ScopeTypeValue, ref: context.client_id }] : []),
+      ...(context.requisition_id !== null
+        ? [{ scope: 'REQUISITION' as ScopeTypeValue, ref: context.requisition_id }]
+        : []),
+    ];
+
+    const merged = new Map<string, DefinitionView>();
+    const contributing: Array<{ scope: ScopeTypeValue; set: SetRow }> = [];
+    for (const layer of layers) {
+      const setRow = (await this.prisma.preStartRequirementSet.findFirst({
+        where: { tenant_id, scope: layer.scope, scope_ref_id: layer.ref, state: 'published', effective_to: null },
+        orderBy: { published_at: 'desc' },
+      })) as SetRow | null;
+      if (setRow === null) continue;
+      const defRows = (await this.prisma.preStartRequirementDefinition.findMany({
+        where: { tenant_id, set_id: setRow.id },
+        orderBy: { sequence: 'asc' },
+      })) as DefRow[];
+      contributing.push({ scope: layer.scope, set: setRow });
+      // More-specific layers run later and overwrite the same requirement_type.
+      for (const d of defRows) merged.set(d.requirement_type, projectDef(d));
+    }
+    if (contributing.length === 0) return null;
+
+    const anchor = contributing[contributing.length - 1]!.set; // most-specific present layer
+    const definitions = [...merged.values()].sort((a, b) =>
+      a.requirement_type < b.requirement_type ? -1 : a.requirement_type > b.requirement_type ? 1 : 0,
+    );
+    const version = contributing.map((c) => `${c.scope}:${c.set.version}`).join('|');
+    const checksum = checksumDefinitions(
+      definitions.map((d) => ({
+        requirement_type: d.requirement_type,
+        label: d.label,
+        blocking: d.blocking,
+        owner_role: d.owner_role,
+        sequence: d.sequence,
+        waiver_mode: d.waiver_mode,
+        satisfaction_policy: d.satisfaction_policy,
+      })),
+    );
+    return { ...projectSet(anchor, []), version, checksum, definitions };
+  }
+
   async findById(tenant_id: string, set_id: string): Promise<SetView | null> {
     const setRow = (await this.prisma.preStartRequirementSet.findFirst({
       where: { tenant_id, id: set_id },
@@ -257,6 +321,7 @@ export class DefinitionSetRepository {
           owner_role: d.owner_role,
           sequence: d.sequence,
           waiver_mode: d.waiver_mode,
+          satisfaction_policy: d.satisfaction_policy ?? DEFAULT_SATISFACTION_POLICY,
         },
       })) as DefRow;
       rows.push(row);
@@ -266,9 +331,10 @@ export class DefinitionSetRepository {
 
   private assertScope(scope: string, scope_ref_id: string, tenant_id: string, requestId: string): void {
     if (!isScopeType(scope)) {
-      throw this.invalid(`scope must be one of the supported scope types (TENANT-only today)`, requestId, { scope });
+      throw this.invalid(`scope must be one of the supported scope types (TENANT | CLIENT | REQUISITION)`, requestId, { scope });
     }
-    // §4b: TENANT scope_ref_id is the tenant itself.
+    // §4b: TENANT scope_ref_id is the tenant itself. CLIENT/REQUISITION carry the
+    // client/account or requisition id (an in-tenant opaque ref, no equality rule).
     if (scope === 'TENANT' && scope_ref_id !== tenant_id) {
       throw this.invalid('TENANT scope_ref_id must equal tenant_id', requestId, { scope_ref_id, tenant_id });
     }

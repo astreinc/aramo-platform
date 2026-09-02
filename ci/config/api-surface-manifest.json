@@ -371,6 +371,10 @@
     },
     {
       "method": "POST",
+      "path": "/v1/pre-start-requirement/requirements/*/verify"
+    },
+    {
+      "method": "POST",
       "path": "/v1/pre-start-requirement/requirements/*/waive"
     },
     {

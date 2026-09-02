@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { v7 as uuidv7 } from 'uuid';
 
 import { PrismaService } from './prisma/prisma.service.js';
-import type { IntentView, ScopeSelector } from './pre-start-requirement.types.js';
+import type { IntentView, LayeredContext, ScopeSelector } from './pre-start-requirement.types.js';
 
 interface IntentRow {
   id: string;
@@ -10,6 +10,8 @@ interface IntentRow {
   placement_process_id: string;
   scope: string;
   scope_ref_id: string;
+  client_id: string | null;
+  requisition_id: string | null;
   status: string;
   attempts: number;
   quarantine_reason: string | null;
@@ -25,6 +27,8 @@ function projectIntent(r: IntentRow): IntentView {
     placement_process_id: r.placement_process_id,
     scope: r.scope as IntentView['scope'],
     scope_ref_id: r.scope_ref_id,
+    client_id: r.client_id,
+    requisition_id: r.requisition_id,
     status: r.status as IntentView['status'],
     attempts: r.attempts,
     quarantine_reason: r.quarantine_reason,
@@ -52,6 +56,7 @@ export class MaterializationIntentRepository {
     tenant_id: string,
     placement_process_id: string,
     selector: ScopeSelector,
+    context: LayeredContext,
   ): Promise<IntentView> {
     const existing = (await this.prisma.preStartMaterializationIntent.findFirst({
       where: { tenant_id, placement_process_id },
@@ -67,6 +72,9 @@ export class MaterializationIntentRepository {
           placement_process_id,
           scope: selector.scope,
           scope_ref_id: selector.scope_ref_id,
+          // L5-P5 — the durable layered context (re-resolved by the reconciler).
+          client_id: context.client_id,
+          requisition_id: context.requisition_id,
           status: 'pending',
           attempts: 0,
         },

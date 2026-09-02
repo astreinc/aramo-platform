@@ -31,6 +31,7 @@ import type {
   RecruitingFunnelReportView,
   HiringFunnelReportView,
   SourceEffectivenessReportView,
+  OnboardingRollupReportView,
   RequisitionStatusRollupView,
   TenantCountsReportView,
 } from './dto/report.view.js';
@@ -77,6 +78,26 @@ export class ReportingController {
       scopes: authContext.scopes,
       visibility,
       ...(siteIdFromQuery === undefined ? {} : { site_id: siteIdFromQuery }),
+    });
+  }
+
+  // Lane 5 / L5-P8 — onboarding-readiness rollup (directive Amendment A1, option
+  // (a)). Tenant-wide aggregate over the first-class pre-start facts, PULLED via
+  // the reporting→pre-start-requirement edge. No site axis (pre-start has no site
+  // column) and no per-instance detail — a pure aggregate observation surface.
+  @Get('onboarding-rollup')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('report:read')
+  async onboardingRollup(
+    @AuthContext() authContext: AuthContextType,
+    @Req() req: Request,
+  ): Promise<OnboardingRollupReportView> {
+    const visibility = await req.resolveVisibility!();
+    return this.reportingService.getOnboardingRollup({
+      tenant_id: authContext.tenant_id,
+      user_id: authContext.sub,
+      scopes: authContext.scopes,
+      visibility,
     });
   }
 
