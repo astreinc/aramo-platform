@@ -2042,6 +2042,7 @@
     "libs/identity/src/tests/invite-s2-three-state.integration.spec.ts",
     "libs/identity/src/tests/invite-s3-actions.integration.spec.ts",
     "libs/identity/src/tests/me.spec.ts",
+    "libs/identity/src/tests/offer-grant-id-stability.spec.ts",
     "libs/identity/src/tests/placement-role-matrix.spec.ts",
     "libs/identity/src/tests/platform-dashboard.service.spec.ts",
     "libs/identity/src/tests/portal-role-scope-parity.spec.ts",

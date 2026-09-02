@@ -117,14 +117,21 @@ Before any migration, **take a fresh DB backup here — `migrate-prod.sh` does N
 script has no self-dump; every `pre-migration-backup-*.sql` on the box was taken manually. Take it
 explicitly:
 ```
-docker exec aramo-prod-postgres sh -c 'pg_dump "$DATABASE_URL"' > /opt/aramo/pre-migration-backup-$(date +%Y%m%d-%H%M%S).sql
-# VERIFY SIZE before STEP 3: this command fails SILENTLY producing a 0-byte file if DATABASE_URL is
-# not present in that shell — a 0-byte / trivially-small file is NOT a backup.
+# Dump by explicit role + db — DATABASE_URL is NOT in the postgres container's env, so
+# `pg_dump "$DATABASE_URL"` fails SILENTLY (falls back to role `root`) and writes a 0-byte
+# file. Use $POSTGRES_USER / $POSTGRES_DB (which ARE in the container env):
+docker exec aramo-prod-postgres sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB"' > /opt/aramo/pre-migration-backup-$(date +%Y%m%d-%H%M%S).sql
+# VERIFY SIZE before STEP 3: a 0-byte / trivially-small file is NOT a backup. Confirm a
+# real dump (hundreds of KB+, a trailing "-- PostgreSQL database dump complete" marker).
 ls -l /opt/aramo/pre-migration-backup-*.sql | tail -1
+tail -1 /opt/aramo/pre-migration-backup-*.sql | tail -1   # → completion marker present
 ```
-**GATE:** a verified, complete pre-migration backup — **NON-ZERO size** (per the caveat above) —
-must exist before STEP 3. A failed migration with no backup is the one genuinely unrecoverable
-scenario. (Skip only if RUN_MIGRATE=no.)
+**GATE:** a verified, complete pre-migration backup — **NON-ZERO size** with the completion
+marker (per the caveat above) — must exist before STEP 3. A failed migration with no backup
+is the one genuinely unrecoverable scenario. (Skip only if RUN_MIGRATE=no.)
+> **Defect history:** the `pg_dump "$DATABASE_URL"` form silently produced a 0-byte file in
+> the 2026-09-02 window (DATABASE_URL absent from the container env → fell back to role
+> `root` → failed). Corrected to the `-U/-d` form above.
 
 ### STEP 3 — MIGRATE (only if RUN_MIGRATE=yes)
 ```
@@ -162,8 +169,20 @@ finish or run it backgrounded and poll, but DO confirm the actual exit status be
 AUTHORIZED_SHA=<exact 40-hex governed release head>
 deploy/build-images.sh "$AUTHORIZED_SHA"
 ```
-**GATE:** each exits 0 (zero TS2307 — the `^build` fix is in-tree on any recent SHA). If any fails,
-**STOP** — do NOT recreate. Report the failure.
+**PIN THE ROLLBACK FLOOR FIRST (before a `--no-cache` build):** `build-images.sh` tags images
+only `:local`, so a `--no-cache` rebuild overwrites the `:local` tag of the currently-running
+images and a killed build can GC their layers — destroying the rollback floor (STEP 11/ROLLBACK
+would fall back to a weeks-old tag). Before building, pin the running images to the CURRENT box
+SHA so they survive the rebuild:
+```
+CURRENT_SHA=$(git rev-parse --short HEAD)   # run BEFORE STEP 1's checkout, or use the pre-flight HEAD
+for svc in api auth-service platform-admin nginx; do
+  docker tag "aramo/$svc:local" "aramo/$svc:$CURRENT_SHA" 2>/dev/null || true
+done
+docker images 'aramo/*' | grep "$CURRENT_SHA"   # confirm the prior images are now SHA-pinned
+```
+**GATE:** each build exits 0 (zero TS2307 — the `^build` fix is in-tree on any recent SHA). If any
+fails, **STOP** — do NOT recreate. Report the failure.
 
 **SPA / UI note:** `ats-web` (the frontend SPA) is **baked into the nginx image** (`/srv`), not a
 standalone service. So a **UI-only change requires rebuilding the nginx image** and recreating nginx.

@@ -2159,18 +2159,37 @@ export const OFFER_SEED_BUNDLES: ReadonlyArray<
   ['tenant_owner', ['offer:create', 'offer:transition', 'offer:read', 'offer:read:financial']],
 ];
 
-// Deterministic RoleScope row ids for the 8 offer grants. Fresh disjoint range
-// 0xc40+ (submittal-policy 0xc20, approval 0xc30). DO NOT REORDER.
-const OFFER_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
+// Deterministic RoleScope row ids for the 16 offer grants, in the reserved offer
+// block 0xc40..0xc4f (submittal-policy 0xc20, approval 0xc30, COMM 0xc50+).
+//
+// ⚠ HF-SEED-OFFER-ID (prod P2002, 2026-09-02): these ids MUST be allocated in TWO
+// passes, NOT by a single role-major counter over OFFER_SEED_BUNDLES. The two
+// ORIGINAL scopes (offer:create/offer:transition) were live in prod at 0xc40..0xc47
+// BEFORE L4/P5 added offer:read + offer:read:financial. A single positional counter
+// over the widened 4-scope bundles shifts every id after the first role, so a NEW
+// (role,scope) pair's create-id lands on an id an existing prod row already owns
+// (recruiter:offer:read -> 0xc42 == prod's account_manager:offer:create) -> P2002 on
+// the already-seeded prod DB (CI's fresh DB never collides). So: ORIGINAL scopes keep
+// 0xc40..0xc47 (prod-stable); ADDED scopes take the fresh sub-range 0xc48..0xc4f.
+// Guarded by offer-grant-id-stability.spec.ts. DO NOT interleave; DO NOT reorder the
+// role list or the ORIGINAL/ADDED split without bumping to a new free range.
+const OFFER_ORIGINAL_SCOPES = ['offer:create', 'offer:transition'] as const;
+const OFFER_ADDED_SCOPES = ['offer:read', 'offer:read:financial'] as const;
+export const OFFER_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
   const map: Record<string, string> = {};
+  const roles = OFFER_SEED_BUNDLES.map(([role]) => role);
   let i = 0xc40;
-  for (const [role, scopes] of OFFER_SEED_BUNDLES) {
-    for (const scope of scopes) {
-      map[`${role}:${scope}`] =
-        `01900000-0000-7000-8000-${i.toString(16).padStart(12, '0')}`;
-      i++;
+  const assign = (scopeSet: readonly string[]): void => {
+    for (const role of roles) {
+      for (const scope of scopeSet) {
+        map[`${role}:${scope}`] =
+          `01900000-0000-7000-8000-${i.toString(16).padStart(12, '0')}`;
+        i++;
+      }
     }
-  }
+  };
+  assign(OFFER_ORIGINAL_SCOPES); // 0xc40..0xc47 — prod-established, MUST stay stable
+  assign(OFFER_ADDED_SCOPES); //   0xc48..0xc4f — L4/P5 additions, fresh range
   return map;
 })();
 
