@@ -16,6 +16,7 @@ export {
   Rail,
   RailNavItem,
   RailNavLabel,
+  RailNavSection,
   RailUser,
   TopBar,
   Breadcrumb,
