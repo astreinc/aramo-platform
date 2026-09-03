@@ -1,15 +1,14 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 
-import { Avatar, FUNNEL_BUCKETS, funnelBucket, HotToggle, type FunnelBucketKey } from '../ui';
+import { Avatar, HotToggle } from '../ui';
 import { InlineEditField, InlineSelectField } from '../components/InlineEditField';
-import { legalNextStates } from '../pipeline/legal-transitions';
 import { transitionPipeline } from '../pipeline/pipeline-api';
 import {
-  PIPELINE_NEXT_ACTION,
-  type PipelineStatus,
-  type PipelineView,
-} from '../pipeline/types';
+  getTalentJourney,
+  type TalentRequisitionJourney,
+} from '../pipeline/talent-journey-api';
+import { type PipelineStatus, type PipelineView } from '../pipeline/types';
 import { OfferPanelContainer } from '../offers/OfferPanelContainer';
 import { getTalent, updateTalent } from '../talent/talent-api';
 import type { TalentRecordView, UpdateTalentRecordRequest } from '../talent/types';
@@ -18,6 +17,8 @@ import {
   WORK_AUTHORIZATION_VALUES,
   type WorkAuthorization,
 } from '../talent/stated-fields';
+
+import { TalentJourneySection } from './TalentJourneySection';
 
 // Inline-edit is gated on talent:edit and writes the REAL talent-record columns
 // via PATCH /v1/talent-records/:id (updateTalent, UpdateTalentRecordRequestDto).
@@ -32,33 +33,12 @@ const WORK_AUTH_OPTIONS = WORK_AUTHORIZATION_VALUES.map((v) => ({
 }));
 
 // REQ talent slide-in detail panel. Opens from a talent card in a requisition's
-// expanded row. The workflow stepper is a COSMETIC affordance over the governed
-// pipeline lifecycle: a stage is clickable only when it is a legal next
-// transition (legalNextStates, the FE mirror of the BE matrix), and the backend
-// `/v1/pipelines/:id/transition` remains the authority (a rejected move surfaces
-// an error, never a silent bypass). So "Placed" cannot be reached except from
-// "offer", preserving the offer→placement governance.
-
-// The status a click on each funnel bucket transitions TO (the bucket's canonical
-// forward status). Legality is gated by legalNextStates, so a bucket whose target is
-// not a legal next state renders DISABLED. L2-F3 — `interviewing` is RETIRED as a
-// Pipeline transition target (interview truth is owned by InterviewSession), so the
-// `interview` bucket is now DISPLAY-ONLY: `legalNextStates` never yields `interviewing`,
-// so the bucket button is always disabled (no forward write) — it renders only to place
-// Each pipeline-owned funnel bucket maps to the canonical recruiter-reachable
-// target for its "move to bucket" affordance. All four resolve to a recruiter
-// action target (CONTACT / START_QUALIFICATION / QUALIFY / DISPOSITION); `closed`
-// resolves to `not_in_consideration` (the recruiter DISPOSITION terminal) — the
-// system-only `completed` is NEVER a recruiter affordance.
-const BUCKET_TARGET: Record<FunnelBucketKey, PipelineStatus> = {
-  early_engagement: 'contacted',
-  qualifying: 'qualifying',
-  qualified: 'qualified',
-  closed: 'not_in_consideration',
-};
-const BUCKET_INDEX: Record<string, number> = Object.fromEntries(
-  FUNNEL_BUCKETS.map((b, i) => [b.key, i]),
-);
+// expanded row. S3 — the former cosmetic Pipeline-only workflow stepper is
+// SUPERSEDED by the backend-owned Unified Talent Journey (TalentJourneySection,
+// GET /v1/pipelines/:id/journey). Pipeline no longer presents downstream stage
+// truth here; each stage is owner-attributed by the server. Offer creation stays
+// governed by the delivered Offer API + ClientSelection SELECTED gate (the drawer
+// surfaces the Offer decision panel only when the journey returns an offer action).
 
 export interface TalentDetailPanelProps {
   readonly entry: PipelineView;
@@ -101,8 +81,16 @@ export function TalentDetailPanel({
   onTalentFieldSaved,
 }: TalentDetailPanelProps): JSX.Element {
   const [record, setRecord] = useState<TalentRecordView | null>(null);
-  const [busy, setBusy] = useState<FunnelBucketKey | null>(null);
-  const [err, setErr] = useState<string | null>(null);
+  // S3 — backend-owned Unified Talent Journey for this pipeline episode. The
+  // single source of cross-owner stage truth (no FE re-derivation).
+  const [journey, setJourney] = useState<TalentRequisitionJourney | null>(null);
+  const [journeyErr, setJourneyErr] = useState<string | null>(null);
+  // Recruiting-lane advance (governed Pipeline transition). CAS version is echoed
+  // from the last successful transition so repeated advances stay conflict-safe.
+  const [version, setVersion] = useState(entry.version);
+  const [pipelineBusy, setPipelineBusy] = useState(false);
+  const [pipelineErr, setPipelineErr] = useState<string | null>(null);
+  const canAdvancePipeline = scopes.includes('pipeline:change-status');
 
   // The RAW talent record (full TalentRecordView) — the SOURCE for inline edit.
   useEffect(() => {
@@ -118,6 +106,54 @@ export function TalentDetailPanel({
       cancelled = true;
     };
   }, [entry.talent_record_id]);
+
+  // S3 — fetch the owner-attributed journey for THIS pipeline episode. A
+  // non-visible/cross-tenant episode is concealed as 404 by the server; we keep
+  // the drawer usable (details/rates still render) and surface a neutral note.
+  useEffect(() => {
+    let cancelled = false;
+    void getTalentJourney(entry.id)
+      .then((j) => {
+        if (!cancelled) setJourney(j);
+      })
+      .catch(() => {
+        if (!cancelled) setJourneyErr('Journey is unavailable for this talent.');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [entry.id]);
+
+  // Re-read the owner-attributed journey after a governed action so the rail and
+  // current lane reflect the new authoritative state (no optimistic FE guess).
+  const refetchJourney = (): void => {
+    void getTalentJourney(entry.id)
+      .then((j) => setJourney(j))
+      .catch(() => {
+        /* keep the last-known journey; the action already succeeded */
+      });
+  };
+
+  // Recruiting-lane advance — a REAL governed Pipeline transition (CAS-guarded).
+  // Legality is the backend's; a rejected move surfaces a controlled message and
+  // never advances the UI. On success we re-read the journey (the authority).
+  const handleRecruitingAdvance = (toStatus: string): void => {
+    setPipelineBusy(true);
+    setPipelineErr(null);
+    void transitionPipeline(entry.id, {
+      to_status: toStatus as PipelineStatus,
+      expected_version: version,
+    })
+      .then((updated) => {
+        setVersion(updated.version);
+        onTransitioned(updated);
+        refetchJourney();
+      })
+      .catch(() => {
+        setPipelineErr('Could not advance — the backend rejected this action.');
+      })
+      .finally(() => setPipelineBusy(false));
+  };
 
   // talent:edit gates editability (the BE PATCH is authoritative). Without it,
   // the fields stay the read-only enrichment display.
@@ -174,27 +210,14 @@ export function TalentDetailPanel({
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  const currentBucket = funnelBucket(entry.status);
-  const currentIdx = BUCKET_INDEX[currentBucket] ?? 0;
-  const legal = new Set<PipelineStatus>(legalNextStates(entry.status));
-
-  const move = async (bucket: FunnelBucketKey): Promise<void> => {
-    const target = BUCKET_TARGET[bucket];
-    if (target === entry.status || !legal.has(target)) return;
-    setBusy(bucket);
-    setErr(null);
-    try {
-      const updated = await transitionPipeline(entry.id, {
-        to_status: target,
-        expected_version: entry.version,
-      });
-      onTransitioned(updated);
-    } catch {
-      setErr('Could not move the talent — the backend rejected this transition.');
-    } finally {
-      setBusy(null);
-    }
-  };
+  // Offer is realised ONLY from REAL domain truth: ClientSelection === SELECTED
+  // (the delivered offer-create precondition) or an offer row already exists. It
+  // is NEVER inferred from actions[] or the presence of a pipeline/talent row —
+  // that was the workflow-sequencing defect (premature "Make offer" at no_contact).
+  const selectionState =
+    (journey?.sub_states['selection_state'] as string | null | undefined) ?? null;
+  const hasOfferRow = journey?.stages.some((s) => s.owner === 'offer') ?? false;
+  const offerRelevant = selectionState === 'SELECTED' || hasOfferRow;
 
   const name =
     talentName ??
@@ -234,47 +257,37 @@ export function TalentDetailPanel({
         </header>
 
         <div className="rc-cdp__body">
-          <section className="rc-cdp__sec">
-            <div className="rc-cdp__seclabel">Workflow status</div>
-            <ol className="rc-cdp__steps">
-              {FUNNEL_BUCKETS.map((b, i) => {
-                const done = i < currentIdx;
-                const current = i === currentIdx;
-                const target = BUCKET_TARGET[b.key];
-                const clickable = target !== entry.status && legal.has(target);
-                return (
-                  <li key={b.key}>
-                    <button
-                      type="button"
-                      disabled={!clickable || busy !== null}
-                      onClick={() => void move(b.key)}
-                      aria-current={current ? 'step' : undefined}
-                      className={`rc-cdp__step${current ? ' rc-cdp__step--current' : ''}${
-                        done ? ' rc-cdp__step--done' : ''
-                      }${clickable ? ' rc-cdp__step--click' : ''}`}
-                    >
-                      <span className="rc-cdp__dot" aria-hidden="true">
-                        {done ? '✓' : ''}
-                      </span>
-                      <span className="rc-cdp__steplabel">{b.label}</span>
-                      {current ? <span className="rc-cdp__chip">CURRENT</span> : null}
-                    </button>
-                  </li>
-                );
-              })}
-            </ol>
-            {err ? <p className="rc-cdp__err">{err}</p> : null}
-            <p className="rc-cdp__note">Every change is logged to the audit trail.</p>
-          </section>
-
-          <section className="rc-cdp__sec">
-            <div className="rc-cdp__seclabel">Offer decision</div>
-            <OfferPanelContainer
-              requisitionId={entry.requisition_id}
+          {journey !== null ? (
+            <TalentJourneySection
+              journey={journey}
               talentRecordId={entry.talent_record_id}
-              scopes={scopes}
+              requisitionId={entry.requisition_id}
+              canAdvancePipeline={canAdvancePipeline}
+              onRecruitingAdvance={handleRecruitingAdvance}
+              pipelineBusy={pipelineBusy}
+              error={pipelineErr}
             />
-          </section>
+          ) : (
+            <section className="rc-cdp__sec">
+              <div className="rc-cdp__seclabel">Talent journey</div>
+              <p className="rc-cdp__note">{journeyErr ?? 'Loading journey…'}</p>
+            </section>
+          )}
+
+          {/* Offer decision — surfaced ONLY when the journey permits an offer
+              (server returns an offer action once ClientSelection is SELECTED) or
+              one already exists. The delivered Offer API + SELECTED gate remain
+              authoritative; there is no FE bypass and Qualified never shows it. */}
+          {offerRelevant ? (
+            <section className="rc-cdp__sec">
+              <div className="rc-cdp__seclabel">Offer decision</div>
+              <OfferPanelContainer
+                requisitionId={entry.requisition_id}
+                talentRecordId={entry.talent_record_id}
+                scopes={scopes}
+              />
+            </section>
+          ) : null}
 
           <section className="rc-cdp__sec">
             <div className="rc-cdp__seclabel">Talent details</div>
@@ -397,10 +410,6 @@ export function TalentDetailPanel({
             </div>
           </section>
 
-          <div className="rc-cdp__next">
-            <span className="rc-cdp__nextl">Next step</span>
-            {PIPELINE_NEXT_ACTION[entry.status]}
-          </div>
         </div>
 
         <footer className="rc-cdp__ft">

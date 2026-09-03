@@ -559,6 +559,7 @@ export function RequisitionsListView({
                 <span className="rc-rt__hc">Pipeline</span>
                 <span className="rc-rt__hc">Capacity</span>
                 <span className="rc-rt__hc">Client Status</span>
+                <span className="rc-rt__hc">Attention</span>
                 <span className="rc-rt__hc">Owner</span>
                 <span className="rc-rt__hc">Updated</span>
                 <span className="rc-rt__hc">Status</span>
@@ -635,6 +636,7 @@ function RequisitionRow({
 }: RequisitionRowProps) {
   const detailHref = `/requisitions/${req.id}`;
   const total = funnel?.total ?? 0;
+  const attn = rowAttention(req, funnel);
   // Capacity (replaces the pipeline distribution bar per PO ruling + the T4-B2
   // capacity_balance read-exposure amendment). The signed capacity_balance
   // distinguishes the three truthful states — the clamped openings_available
@@ -749,12 +751,24 @@ function RequisitionRow({
         ) : null}
       </div>
 
-      {/* Talent — total in pipeline. Downstream Submitted/Interview facts are
-          owner-sourced views, not Pipeline-derived, so they are not shown here. */}
+      {/* Talent — .dc 3-cell block. "In pipeline" is the real Pipeline-backed
+          requisition-grain count. "Submitted"/"Interview" are OWNER-sourced
+          (Submittal / ClientSelection); no bounded requisition-grain rollup
+          exists, and per Ruling 3 we do NOT fan out per-talent — so they render
+          a muted — (never a false 0). DESIGN GAP — BACKEND CAPABILITY REQUIRED:
+          requisition-grain downstream funnel rollup for Submitted / Interview. */}
       <div className="rc-rt__stats">
         <span className="rc-stat rc-stat--lead">
           <b className="num">{total}</b>
           <span className="rc-stat__l">In pipeline</span>
+        </span>
+        <span className="rc-stat rc-stat--muted" title="Owner-sourced (Submittal) — no requisition-grain rollup available">
+          <b className="num">—</b>
+          <span className="rc-stat__l">Submitted</span>
+        </span>
+        <span className="rc-stat rc-stat--muted" title="Owner-sourced (Client Selection) — no requisition-grain rollup available">
+          <b className="num">—</b>
+          <span className="rc-stat__l">Interview</span>
         </span>
       </div>
 
@@ -795,6 +809,25 @@ function RequisitionRow({
           submittal be sent right now? A separate truth from Pipeline and Capacity. */}
       <div className="rc-rt__cs" title={csTitle}>
         <span className={`rc-cs rc-cs--${csState.key}`}>{csState.label}</span>
+      </div>
+
+      {/* Attention (.dc column) — grounded ONLY from already-loaded
+          requisition-grain data (req fields + the single /v1/pipelines funnel).
+          No per-talent fan-out, no fabricated aggregate condition. Muted — when
+          nothing is grounded, never a false alarm. */}
+      <div className="rc-rt__attn" title={attn.text}>
+        <span
+          className="rc-rt__attn-dot"
+          style={{ background: attn.dotColor }}
+          aria-hidden="true"
+        />
+        <span
+          className={`rc-rt__attn-txt${
+            attn.tone === 'muted' ? ' rc-rt__attn-txt--muted' : ''
+          }`}
+        >
+          {attn.text}
+        </span>
       </div>
 
       {/* Owner */}
@@ -947,6 +980,58 @@ function focusReason(
   const age = daysOpen(r);
   if (r.is_hot) return `priority · ${age}d open`;
   return `aging · ${age}d open`;
+}
+
+// Per-row ATTENTION (.dc column). GROUNDED-ONLY: derived exclusively from
+// already-loaded requisition-grain data — the requisition fields and the single
+// unfiltered /v1/pipelines funnel (no per-talent fan-out, no unavailable
+// aggregate rollup). Returns a muted em-dash when nothing is truthfully
+// grounded — never a fabricated alarm. (Ruling 3.)
+type RowAttention = {
+  readonly tone: 'brand' | 'warn' | 'muted';
+  readonly text: string;
+  readonly dotColor: string;
+};
+
+function rowAttention(
+  r: RequisitionView,
+  funnel: ReqFunnel | undefined,
+): RowAttention {
+  const brand = 'var(--brand)';
+  const warn = 'var(--warn)';
+  const muted = 'var(--line-2)';
+  const total = funnel?.total ?? 0;
+  const age = daysOpen(r);
+  const qualified =
+    funnel?.cells?.find((c) => c.key === 'qualified')?.count ?? 0;
+
+  // Client submittals explicitly closed — a grounded requisition-level fact.
+  if (r.client_submittal_status === 'closed') {
+    return { tone: 'warn', text: 'Client submittals closed', dotColor: warn };
+  }
+  // Qualified talent present while the client window is open → prepare submittal.
+  // Both signals are requisition-grain (pipeline funnel + eligibility field).
+  if (
+    qualified > 0 &&
+    (r.client_submittal_status == null || r.client_submittal_status === 'open')
+  ) {
+    return {
+      tone: 'brand',
+      text: 'Prepare submittal — talent qualified',
+      dotColor: brand,
+    };
+  }
+  // Open a while with no pipeline activity at all.
+  if (total === 0 && age >= AGING_DAYS) {
+    return { tone: 'warn', text: `No talent activity · ${age}d open`, dotColor: warn };
+  }
+  if (r.is_hot) {
+    return { tone: 'brand', text: 'Priority', dotColor: brand };
+  }
+  if (age >= AGING_DAYS) {
+    return { tone: 'warn', text: `Aging · ${age}d open`, dotColor: warn };
+  }
+  return { tone: 'muted', text: '—', dotColor: muted };
 }
 
 function ownerName(

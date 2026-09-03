@@ -1159,12 +1159,16 @@ function TalentJourney({
           </Link>
         </div>
         <div className="rc-tj__row rc-tj__row--head" role="row">
+          {/* Ruling 2 — canonical journey labels: Recruiting / Client / Offer /
+              Pre-Start / Employment (never "Onboarding"/"Pipeline"/"Assignment").
+              Each cell still reads from its OWNING aggregate; only the column
+              header presentation is the unified-journey vocabulary. */}
           <span className="rc-tj__ch">Talent</span>
-          <span className="rc-tj__ch">Pipeline</span>
+          <span className="rc-tj__ch">Recruiting</span>
           <span className="rc-tj__ch">Client</span>
           <span className="rc-tj__ch">Offer</span>
-          <span className="rc-tj__ch">Pre-start</span>
-          <span className="rc-tj__ch">Assignment</span>
+          <span className="rc-tj__ch">Pre-Start</span>
+          <span className="rc-tj__ch">Employment</span>
         </div>
         {pipelines.length === 0 ? (
           <div className="rc-tj__row" role="row">

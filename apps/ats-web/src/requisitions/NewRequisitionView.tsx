@@ -65,7 +65,6 @@ import {
 import {
   RATE_PERIOD_VALUES,
   RATE_TYPE_VALUES,
-  SELECTABLE_RECRUITING_STATUS_VALUES,
   type CompensationModel,
   type CreateRequisitionRequest,
   type RecruitingStatus,
@@ -145,12 +144,23 @@ interface FormState
     EnterpriseFormState,
     FinancialFormState {}
 
+// The only initial status a MANUAL (human) create may ESTABLISH. Establishing
+// open/hold/etc. needs requisition:create:establish (catalog-only, no human role);
+// those states are reached via the governed lifecycle after create. Kept as the
+// sole create option so the form matches establishment-authorization-gate.ts.
+const MANUAL_CREATE_STATUS_VALUES: readonly RecruitingStatus[] = ['draft'];
+
 function emptyState(): FormState {
   return {
     title: '',
     company_id: '',
     contact_id: '',
-    status: 'open',
+    // A MANUAL (human) create can only ESTABLISH a `draft` — establishing `open`
+    // requires requisition:create:establish, which is catalog-only and granted to
+    // no human role (establishment-authorization-gate.ts). Open is reached via the
+    // governed lifecycle (Submit for approval → Approve), never at create. So the
+    // form defaults to and only offers `draft`; anything else 403s server-side.
+    status: 'draft',
     description: '',
     notes: '',
     is_hot: false,
@@ -775,10 +785,13 @@ export function NewRequisitionView({ sessionOverride }: NewRequisitionViewProps)
                   value={state.openings}
                   onChange={(v) => setField('openings', v)}
                 />
+                {/* A human create can only ESTABLISH a draft; open/hold/etc. are
+                    reached via the governed lifecycle, never at create. Offer only
+                    the establishable status so the form cannot 403 server-side. */}
                 <SelectField
                   label="Status"
                   value={state.status}
-                  options={SELECTABLE_RECRUITING_STATUS_VALUES}
+                  options={MANUAL_CREATE_STATUS_VALUES}
                   onChange={(v) => setField('status', v as RecruitingStatus)}
                 />
                 <div className="rc-ifield">

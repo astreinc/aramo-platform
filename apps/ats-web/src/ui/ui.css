@@ -363,7 +363,8 @@ button.rc-link-action {
  * line 2 (co) 12.5px #5C6770 links #022AC0; line 3 (sub) 11.5px #93A0A8. The
  * MetaStrip + its rc-meta* rules are DELETED (not in the prototype). */
 .rc-dhead__title {
-  font-size: 19px;
+  /* .dc authority — Requisition Detail.dc.html H1 is 20px/700/-.02em. */
+  font-size: 20px;
   font-weight: 700;
   letter-spacing: -0.02em;
   display: flex;
@@ -2457,19 +2458,19 @@ button.rc-link-action {
 
 .rc-rt__scroll { overflow-x: auto; }
 
-.rc-rt { min-width: 1190px; }
+.rc-rt { min-width: 1240px; }
 
 .rc-rt__head,
 .rc-rt__row {
   display: grid;
-  /* L8-B2 — 9 tracks: star · Requisition · Talent · Pipeline · Capacity ·
-     Client Status · Owner · Updated · Recruiting Status. */
+  /* .dc authority — 10 tracks: star · Requisition · Talent(3-cell) · Pipeline ·
+     Capacity · Client Status · Attention · Owner · Updated · Status. */
   grid-template-columns:
-    26px minmax(220px, 1.4fr) minmax(240px, 1.15fr) minmax(140px, 0.9fr) minmax(130px, 0.8fr)
-    110px 90px 110px 100px;
+    26px minmax(230px, 1.3fr) 280px minmax(115px, 0.8fr) 110px
+    100px minmax(135px, 0.9fr) 60px 80px 90px;
   gap: 0 14px;
   align-items: center;
-  padding: 12px 16px;
+  padding: 14px 16px;
 }
 
 /* REQ-PIXEL-PARITY-1 — leading ★ column (personal favorite, PR-14). The
@@ -2633,6 +2634,11 @@ button.rc-link-action {
 
 .rc-stat__l { font-size: 0.6875rem; color: var(--muted); } /* 11px (prototype) */
 
+/* Owner-sourced Talent cells with no requisition-grain rollup render a muted —
+   (Ruling 3): the value is de-emphasised so it reads as "not available", never
+   as a real zero. */
+.rc-stat--muted b { color: var(--muted); font-weight: 600; }
+
 /* Pipeline distribution bar (the 6-bucket funnel, segmented) */
 
 .rc-rt__pipe { display: flex; align-items: center; gap: 9px; }
@@ -2700,6 +2706,30 @@ button.rc-link-action {
 .rc-cs--open { color: var(--ok); background: var(--ok-tint); }
 .rc-cs--paused { color: #54606a; background: #eef1f4; }
 .rc-cs--closed { color: var(--warn); background: var(--warn-tint); }
+
+/* Attention cell (.dc) — a 7px status dot + one truncated grounded line. The
+   dot colour is set inline per grounded tone; muted rows read as a de-emphasised
+   em-dash. */
+.rc-rt__attn {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+.rc-rt__attn-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: none;
+}
+.rc-rt__attn-txt {
+  font-size: 0.72rem;
+  color: var(--secondary, #5c6770);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rc-rt__attn-txt--muted { color: var(--muted); }
 
 .rc-distbar {
   display: flex;
@@ -3995,7 +4025,9 @@ select.rc-input { appearance: none; padding-right: 28px; }
    --muted, brand wash #E8EDFB, primary hover #3355E0. */
 .rc-cdp__backdrop { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.28); z-index: 40; }
 .rc-cdp {
-  position: fixed; top: 0; right: 0; bottom: 0; width: 420px; max-width: 100vw;
+  /* Wider working panel for recruiters (the 2-col talent details + journey read
+     more comfortably); still responsive — never exceeds the viewport. */
+  position: fixed; top: 0; right: 0; bottom: 0; width: min(560px, 96vw); max-width: 100vw;
   background: #fff; z-index: 41; display: flex; flex-direction: column;
   border-left: 1px solid var(--border, #E5E9ED); box-shadow: -8px 0 28px rgba(2, 42, 192, 0.10);
 }
@@ -4022,6 +4054,161 @@ select.rc-input { appearance: none; padding-right: 28px; }
 .rc-cdp__chip { font-size: 10px; font-weight: 700; letter-spacing: 0.05em; color: var(--brand-strong, #022AC0); border: 1px solid var(--brand-strong, #022AC0); border-radius: 6px; padding: 1px 6px; }
 .rc-cdp__note { font-size: 12px; color: var(--muted, #93A0A8); margin: 10px 0 0; }
 .rc-cdp__err { font-size: 12px; color: #B42318; margin: 8px 0 0; }
+
+/* ── S3 Talent Journey (rc-cjr) — backend-owned journey presentation in the
+   drawer. 5-milestone rail + owner-attributed lane + next-step. .dc values. ── */
+.rc-cjr {
+  list-style: none;
+  margin: 0 0 14px;
+  padding: 0;
+  display: flex;
+  align-items: flex-start;
+}
+.rc-cjr__m {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  text-align: center;
+}
+.rc-cjr__dot {
+  position: relative;
+  z-index: 1;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid #c6cdd4;
+  background: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  line-height: 1;
+  color: #fff;
+  flex: none;
+}
+.rc-cjr__label { font-size: 10.5px; color: #93a0a8; font-weight: 500; }
+.rc-cjr__line {
+  position: absolute;
+  top: 6px;
+  left: 50%;
+  width: 100%;
+  height: 1.5px;
+  background: #e5e9ed;
+  z-index: 0;
+}
+.rc-cjr__m--done .rc-cjr__dot { background: #1f7a4d; border-color: #1f7a4d; }
+.rc-cjr__m--done .rc-cjr__label { color: #1b2730; }
+.rc-cjr__line--done { background: #1f7a4d; }
+.rc-cjr__m--current .rc-cjr__dot {
+  background: var(--brand-strong, #022ac0);
+  border-color: var(--brand-strong, #022ac0);
+}
+.rc-cjr__m--current .rc-cjr__label { color: #011f8d; font-weight: 700; }
+
+.rc-cjr__lane {
+  border: 1px solid var(--border, #e5e9ed);
+  border-radius: 11px;
+  padding: 12px 14px;
+}
+.rc-cjr__laneh {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.rc-cjr__lanet {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #011f8d;
+}
+.rc-cjr__owned { font-size: 11px; color: #93a0a8; }
+.rc-cjr__item { display: flex; align-items: center; gap: 10px; }
+.rc-cjr__idot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--brand-strong, #022ac0);
+  border: 2px solid var(--brand-strong, #022ac0);
+  flex: none;
+}
+.rc-cjr__ilabel { flex: 1; font-size: 13.5px; font-weight: 600; color: #1b2730; }
+.rc-cjr__chip {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: #011f8d;
+  background: #e8edfb;
+  border-radius: 6px;
+  padding: 1px 6px;
+  flex: none;
+}
+.rc-cjr__next {
+  border: 1px solid #c9d4f2;
+  background: rgba(232, 237, 251, 0.33);
+  border-radius: 11px;
+  padding: 12px 14px;
+  margin-top: 12px;
+}
+.rc-cjr__nextl {
+  display: block;
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: #93a0a8;
+  margin-bottom: 4px;
+}
+.rc-cjr__nextbody { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.rc-cjr__nexttxt { font-size: 13.5px; font-weight: 700; color: #1b2730; margin: 0; }
+.rc-cjr__nexttxt--muted { font-weight: 500; color: #93a0a8; }
+.rc-cjr__why { font-size: 11px; color: #5c6770; margin: 6px 0 0; }
+.rc-cjr__cta {
+  display: inline-flex;
+  align-items: center;
+  background: var(--brand-strong, #022ac0);
+  color: #fff;
+  border-radius: 8px;
+  padding: 9px 16px;
+  font-size: 12.5px;
+  font-weight: 600;
+  text-decoration: none;
+}
+.rc-cjr__cta:hover { background: #3355e0; }
+.rc-cjr__cta:disabled { opacity: 0.6; cursor: default; }
+
+/* Recruiting-lane sub-stage checklist (No contact → Qualified). Dots vary by
+   done/current/pending; reuses the lane label/chip tokens. */
+.rc-cjr__checklist {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.rc-cjr__ci { display: flex; align-items: center; gap: 10px; }
+.rc-cjr__ci .rc-cjr__idot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  line-height: 1;
+  color: #fff;
+  border: 2px solid #c6cdd4;
+  background: #fff;
+}
+.rc-cjr__ci--done .rc-cjr__idot { background: #1f7a4d; border-color: #1f7a4d; }
+.rc-cjr__ci--current .rc-cjr__idot {
+  background: var(--brand-strong, #022ac0);
+  border-color: var(--brand-strong, #022ac0);
+}
+.rc-cjr__ci--pending .rc-cjr__ilabel { color: #93a0a8; }
 .rc-cdp__grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 16px; }
 .rc-cdp__fieldl { font-size: 11px; color: var(--muted, #93A0A8); margin-bottom: 2px; }
 .rc-cdp__fieldv { font-size: 14px; color: #1F2937; }
@@ -4075,9 +4262,9 @@ select.rc-input { appearance: none; padding-right: 28px; }
 .rc-dhead__sub { margin-top: 8px; font-size: 11.5px; color: #93a0a8; }
 .rc-dhead__sub .mono { font-family: 'IBM Plex Mono', ui-monospace, monospace; }
 
-/* Snapshot strip — repeat(auto-fit,minmax(126px,1fr)); gap 9px. */
+/* Snapshot strip — .dc: repeat(auto-fit,minmax(122px,1fr)); gap 9px. */
 .rc-snap {
-  display: grid; grid-template-columns: repeat(auto-fit, minmax(126px, 1fr));
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(122px, 1fr));
   gap: 9px; margin: 16px 0 14px;
 }
 .rc-snapcard {
@@ -4095,7 +4282,7 @@ button.rc-snapcard:hover {
   font-size: 9.5px; letter-spacing: 0.07em; text-transform: uppercase;
   font-weight: 600; color: #93a0a8; margin-bottom: 3px;
 }
-.rc-snapcard__v { font-size: 13.5px; font-weight: 700; color: #1b2730; }
+.rc-snapcard__v { font-size: 14px; font-weight: 700; color: #1b2730; }
 .rc-snapcard__sub { font-size: 10.5px; color: #93a0a8; margin-top: 1px; }
 .rc-snapcard--warn { border-color: #e8c4b4; }
 .rc-snapcard--warn .rc-snapcard__k,
@@ -4138,7 +4325,7 @@ button.rc-snapcard:hover {
 }
 .rc-ws-tabs .tabs__tab {
   border: 0; border-bottom: 2px solid transparent; border-radius: 0;
-  background: none; color: #5c6770; font-weight: 600; font-size: 13px; padding: 9px 13px;
+  background: none; color: #5c6770; font-weight: 600; font-size: 13px; padding: 9px 12px;
   white-space: nowrap;
 }
 .rc-ws-tabs .tabs__tab:hover { color: #022ac0; }
