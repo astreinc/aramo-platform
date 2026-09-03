@@ -6,6 +6,19 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { RequisitionsListView } from './RequisitionsListView';
 import type { RecruitingStatus, RequisitionView } from './types';
 
+// S3 — opening the Talent drawer consumes the backend-owned journey. Mock it so
+// drawer-opening list tests render without hitting the network.
+vi.mock('../pipeline/talent-journey-api', () => ({
+  getTalentJourney: vi.fn(async () => ({
+    requisition_id: 'r',
+    talent_record_id: 't',
+    current_journey_stage: 'QUALIFIED',
+    stages: [{ stage: 'QUALIFIED', owner: 'pipeline', source_object_id: 'p' }],
+    sub_states: { pipeline: 'qualified' },
+    actions: [],
+  })),
+}));
+
 function makeReq(
   id: string,
   title: string,
@@ -327,7 +340,7 @@ describe('RequisitionsListView', () => {
     expect(
       screen.getByRole('dialog', { name: /talent detail/i }),
     ).toBeInTheDocument();
-    expect(screen.getByText('Workflow status')).toBeInTheDocument();
+    expect(screen.getByText('Talent journey')).toBeInTheDocument();
     // Close the panel before asserting the expander collapse.
     fireEvent.click(screen.getByLabelText('Close'));
     // Click again collapses.
@@ -495,17 +508,30 @@ describe('RequisitionsListView', () => {
     await waitFor(() =>
       expect(screen.getByTitle('Priya Recruiter')).toBeInTheDocument(),
     );
-    // Legacy-Pipeline-Canonicalization — the pipeline-derived Submitted + Interview
-    // stats are removed (downstream facts are owner-sourced). Only "In pipeline".
+    // .dc 3-cell TALENT block (Ruling 3): "In pipeline" is the real Pipeline
+    // count; "Submitted"/"Interview" are OWNER-sourced with no requisition-grain
+    // rollup, so they render a muted em-dash — never a fabricated count (and never
+    // a false 0). DESIGN GAP filed for the rollup.
     expect(screen.getByText('In pipeline')).toBeInTheDocument();
-    expect(screen.queryByText('Submitted')).not.toBeInTheDocument();
-    expect(screen.queryByText('Interview')).not.toBeInTheDocument();
+    expect(screen.getByText('Submitted')).toBeInTheDocument();
+    expect(screen.getByText('Interview')).toBeInTheDocument();
     // total in pipeline = 4 (every distinct talent) → the stat block "In pipeline" count.
     const inPipeline = screen
       .getByText('In pipeline')
       .closest('.rc-stat')
       ?.querySelector('.num');
     expect(inPipeline?.textContent).toBe('4');
+    // Submitted / Interview are muted em-dashes, not numbers.
+    const submitted = screen
+      .getByText('Submitted')
+      .closest('.rc-stat')
+      ?.querySelector('.num');
+    expect(submitted?.textContent).toBe('—');
+    const interview = screen
+      .getByText('Interview')
+      .closest('.rc-stat')
+      ?.querySelector('.num');
+    expect(interview?.textContent).toBe('—');
   });
 
   it('Capacity cell shows avail/openings + the derived state (Available / Fully consumed / Over capacity)', async () => {

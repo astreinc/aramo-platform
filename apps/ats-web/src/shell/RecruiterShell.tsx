@@ -25,7 +25,7 @@ import {
   NotificationButton,
   Rail,
   RailNavItem,
-  RailNavLabel,
+  RailNavSection,
   RailUser,
   TopBar,
   UserMenu,
@@ -240,13 +240,11 @@ function RecruiterShellInner({
     >
       <AramoBrand />
       {renderNav(PRIMARY_NAV)}
-      <RailNavLabel>Work</RailNavLabel>
-      {renderNav(WORK_NAV)}
+      <RailNavSection label="Work">{renderNav(WORK_NAV)}</RailNavSection>
       {hasAdminScope(session) ? (
-        <>
-          <RailNavLabel>Administration</RailNavLabel>
+        <RailNavSection label="Administration">
           {renderNav(ADMIN_NAV)}
-        </>
+        </RailNavSection>
       ) : null}
     </Rail>
   );

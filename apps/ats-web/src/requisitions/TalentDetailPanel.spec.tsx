@@ -3,24 +3,43 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { transitionPipeline } from '../pipeline/pipeline-api';
 import type { PipelineView } from '../pipeline/types';
+import {
+  getTalentJourney,
+  type TalentRequisitionJourney,
+} from '../pipeline/talent-journey-api';
 import { listOffers } from '../offers/offers-api';
 import { getTalent, updateTalent } from '../talent/talent-api';
 
 import { TalentDetailPanel } from './TalentDetailPanel';
 
-vi.mock('../pipeline/pipeline-api', () => ({
-  transitionPipeline: vi.fn(async (_id: string, body: { to_status: string }) => ({
-    id: 'p1',
-    tenant_id: 'T',
-    site_id: null,
-    talent_record_id: 't1',
+// S3 — the drawer consumes the backend-owned Unified Talent Journey. Fixtures are
+// hoisted so the vi.mock factory can close over them. QUALIFIED has NO offer
+// action (Create offer must not surface); SELECTED returns an offer action.
+const { QUALIFIED_JOURNEY, SELECTED_JOURNEY } = vi.hoisted(() => ({
+  QUALIFIED_JOURNEY: {
     requisition_id: 'r1',
-    status: body.to_status,
-    created_at: '2026-08-01T00:00:00Z',
-    updated_at: '2026-08-01T00:00:00Z',
-  })),
+    talent_record_id: 't1',
+    current_journey_stage: 'QUALIFIED',
+    stages: [{ stage: 'QUALIFIED', owner: 'pipeline', source_object_id: 'p1' }],
+    sub_states: { pipeline_stage: 'qualified', selection_state: null, offer_state: null },
+    actions: [],
+  } as TalentRequisitionJourney,
+  SELECTED_JOURNEY: {
+    requisition_id: 'r1',
+    talent_record_id: 't1',
+    current_journey_stage: 'CLIENT_REVIEW',
+    stages: [
+      { stage: 'QUALIFIED', owner: 'pipeline', source_object_id: 'p1' },
+      { stage: 'SUBMITTED', owner: 'submittal', source_object_id: 's1' },
+      { stage: 'CLIENT_REVIEW', owner: 'client-selection', source_object_id: 'cs1' },
+    ],
+    sub_states: { pipeline_stage: 'qualified', selection_state: 'SELECTED', offer_state: null },
+    actions: [{ action: 'Create offer', owner: 'offer', command_route: '/v1/offers' }],
+  } as TalentRequisitionJourney,
+}));
+vi.mock('../pipeline/talent-journey-api', () => ({
+  getTalentJourney: vi.fn(async () => QUALIFIED_JOURNEY),
 }));
 
 // The panel sources the RAW record from getTalent (full TalentRecordView) for
@@ -86,41 +105,47 @@ function renderPanel(over: Partial<Parameters<typeof TalentDetailPanel>[0]> = {}
 describe('TalentDetailPanel', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('renders header (name, NEW, role · req code) + the pipeline-owned workflow stages', () => {
+  it('renders header (name, NEW, role · req code) + the backend-owned Talent Journey rail', async () => {
     renderPanel();
     expect(screen.getByText('Sarah Nolan')).toBeTruthy();
     expect(screen.getByText('NEW')).toBeTruthy();
     expect(screen.getByText('Senior Rust Engineer · REQ-2041')).toBeTruthy();
-    // The 4 canonical pipeline-owned funnel buckets (downstream stages are owned
-    // elsewhere — Legacy-Pipeline-Canonicalization).
-    for (const s of ['Early engagement', 'Qualifying', 'Qualified', 'Closed']) {
-      expect(screen.getByText(s)).toBeTruthy();
+    // The 5 owner-attributed milestones (Ruling 2 — canonical "Pre-Start",
+    // never "Onboarding"), scoped to the journey rail. Journey loads async from
+    // GET /v1/pipelines/:id/journey.
+    const rail = await screen.findByRole('list', { name: 'Talent journey' });
+    for (const m of ['Recruiting', 'Client', 'Offer', 'Pre-Start', 'Employment']) {
+      expect(within(rail).getByText(m)).toBeTruthy();
     }
-    expect(screen.getByText('Every change is logged to the audit trail.')).toBeTruthy();
+    expect(await screen.findByText(/summary of its owning workflow/i)).toBeTruthy();
   });
 
-  it('marks the current stage (qualifying → Qualifying) with the CURRENT chip', () => {
+  it('reads the journey from GET /v1/pipelines/:id/journey (owner truth, not FE-derived)', async () => {
     renderPanel();
-    expect(screen.getByText('CURRENT')).toBeTruthy();
-    // Qualifying's step carries aria-current="step".
-    const current = screen.getByText('Qualifying').closest('button');
-    expect(current?.getAttribute('aria-current')).toBe('step');
+    await screen.findByRole('list', { name: 'Talent journey' });
+    expect(getTalentJourney).toHaveBeenCalledWith('p1');
   });
 
-  it('only a LEGAL next stage is clickable — from qualifying, Qualified is enabled, Early engagement is not', () => {
+  it('marks the current lane with the CURRENT chip from journey truth', async () => {
     renderPanel();
-    const qualifiedBtn = screen.getByText('Qualified').closest('button') as HTMLButtonElement;
-    const earlyBtn = screen.getByText('Early engagement').closest('button') as HTMLButtonElement;
-    expect(qualifiedBtn.disabled).toBe(false); // qualifying → qualified is legal
-    expect(earlyBtn.disabled).toBe(true); // illegal jump backward (→ contacted)
+    expect(await screen.findByText('CURRENT')).toBeTruthy();
+    // The lane heading is owner-attributed (pipeline → Recruiting) — not derived.
+    expect(screen.getByText(/owned by Pipeline/i)).toBeTruthy();
   });
 
-  it('clicking a legal stage calls the governed transition + onTransitioned', async () => {
-    const { onTransitioned } = renderPanel();
-    fireEvent.click(screen.getByText('Qualified').closest('button') as HTMLButtonElement);
-    await waitFor(() => expect(transitionPipeline).toHaveBeenCalledTimes(1));
-    expect(transitionPipeline).toHaveBeenCalledWith('p1', { to_status: 'qualified', expected_version: 0 });
-    await waitFor(() => expect(onTransitioned).toHaveBeenCalledTimes(1));
+  it('Qualified NEVER exposes Create Offer — no offer action in the journey', async () => {
+    // Even holding offer:create, the drawer must not surface the offer decision
+    // surface at Qualified: the journey returns no offer-owner action.
+    renderPanel({ scopes: ['offer:create', 'offer:transition'] });
+    await screen.findByRole('list', { name: 'Talent journey' });
+    expect(screen.queryByText('Offer decision')).toBeNull();
+    expect(listOffers).not.toHaveBeenCalled();
+  });
+
+  it('routes the Qualified next step to the delivered submittal surface (owner module)', async () => {
+    renderPanel();
+    const cta = await screen.findByText('Prepare submittal');
+    expect(cta.closest('a')?.getAttribute('href')).toBe('/talent/t1/submittal/r1');
   });
 
   it('close via ✕ and via backdrop click', () => {
@@ -135,9 +160,11 @@ describe('TalentDetailPanel', () => {
     expect(screen.getAllByText('—').length).toBeGreaterThan(0);
   });
 
-  // D7 — the Offer panel is mounted and wired: with offer scopes, the container
+  // D7 + S3 — the Offer panel mounts ONLY when the journey permits an offer
+  // (SELECTED returns an offer action). Then, with offer scopes, the container
   // fetches the offer and OfferPanel renders its state + a governed affordance.
-  it('mounts the Offer panel — with offer scopes, a live SENT offer surfaces Accept', async () => {
+  it('mounts the Offer panel when the journey permits it (Selected) — a live SENT offer surfaces Accept', async () => {
+    vi.mocked(getTalentJourney).mockResolvedValueOnce(SELECTED_JOURNEY);
     vi.mocked(listOffers).mockResolvedValueOnce({
       items: [
         {

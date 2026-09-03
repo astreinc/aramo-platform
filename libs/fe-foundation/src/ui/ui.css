@@ -123,7 +123,12 @@
   padding: 18px 14px;
   position: sticky;
   top: 0;
+  /* Pin to viewport height so `sticky` has room to stay fixed while the main
+     column scrolls. `overflow: hidden` keeps the colored background flush to the
+     rail box; the inner `.rc-nav` scrolls internally (below) when its items
+     exceed the viewport, so nothing spills onto the light canvas. */
   height: 100vh;
+  overflow: hidden;
 }
 
 .rc-rail__brand {
@@ -170,6 +175,60 @@
 .rc-nav {
   display: flex;
   flex-direction: column;
+  /* Fill the space between brand and foot, and scroll internally when the item
+     list is taller than the viewport. `min-height: 0` lets a flex child shrink
+     below its content size so the overflow actually engages. This keeps the
+     `.rc-rail__foot` (user + log out) pinned to the bottom of the viewport. */
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  /* Hide the scrollbar (ChatGPT/Claude-style) while keeping the region
+     scrollable — no chunky track in the colored rail. */
+  scrollbar-width: none; /* Firefox */
+}
+.rc-nav::-webkit-scrollbar {
+  display: none; /* Chromium / Safari */
+}
+
+/* Collapsible section: heading-as-disclosure-toggle + rotating chevron over a
+   group of nav items. Primary items stay ungrouped (always visible); Work and
+   Administration are wrapped in `.rc-nav__section`. */
+.rc-nav__section-toggle {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  background: transparent;
+  border: 0;
+  padding: 0 10px 0 0;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+.rc-nav__section-toggle .rc-nav__label {
+  flex: 1 1 auto;
+}
+.rc-nav__caret {
+  width: 15px;
+  height: 15px;
+  flex: none;
+  opacity: 0.5;
+  color: var(--rail-text);
+  transition: transform 0.16s ease, opacity 0.12s ease;
+}
+.rc-nav__section--collapsed .rc-nav__caret {
+  transform: rotate(-90deg);
+}
+.rc-nav__section-toggle:hover .rc-nav__label,
+.rc-nav__section-toggle:hover .rc-nav__caret {
+  opacity: 0.85;
+}
+.rc-nav__group {
+  display: flex;
+  flex-direction: column;
+}
+.rc-nav__section--collapsed .rc-nav__group {
+  display: none;
 }
 
 .rc-nav__label {
@@ -675,6 +734,14 @@
 .rc-rail__brand {
     justify-content: center;
   }
+  /* Icon-only rail: section toggles are meaningless without labels — hide them
+     and always reveal the grouped items as icons. */
+.rc-nav__section-toggle {
+    display: none;
+  }
+.rc-nav__section--collapsed .rc-nav__group {
+    display: flex;
+  }
 }
 
 /* ── Collapsible rail (user toggle) + brand-in-topbar ── */
@@ -703,6 +770,15 @@
 .rc-app--rail-collapsed .rc-rail__user,
 .rc-app--rail-collapsed .rc-rail__logout {
   justify-content: center;
+}
+
+/* Icon-only rail (user toggle): hide the section disclosure toggles and always
+   show their grouped items as icons — mirrors the max-width:1080px behavior. */
+.rc-app--rail-collapsed .rc-nav__section-toggle {
+  display: none;
+}
+.rc-app--rail-collapsed .rc-nav__section--collapsed .rc-nav__group {
+  display: flex;
 }
 
 /* the edge toggle */

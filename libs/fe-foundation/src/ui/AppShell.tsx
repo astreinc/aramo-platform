@@ -9,6 +9,7 @@ import {
 import { Link as RouterLink, NavLink as RouterNavLink } from 'react-router-dom';
 
 import {
+  IconChevronDown,
   IconChevronRight,
   IconLogo,
   IconSearch,
@@ -276,6 +277,65 @@ export function RailNavItem({
 
 export function RailNavLabel({ children }: { readonly children: ReactNode }) {
   return <div className="rc-nav__label">{children}</div>;
+}
+
+interface RailNavSectionProps {
+  /** Section heading (also the collapse-toggle accessible name). */
+  readonly label: string;
+  /** Initial expanded state before any persisted user choice. Default open. */
+  readonly defaultOpen?: boolean;
+  readonly children: ReactNode;
+}
+
+// A collapsible rail section (ChatGPT/Claude-style): a heading that doubles as a
+// disclosure toggle with a rotating chevron, over a group of RailNavItems. The
+// open/closed choice persists per-label in localStorage so it survives reloads.
+// In the icon-only (collapsed) rail the toggle is CSS-hidden and the group is
+// always shown as icons (see ui.css) — collapsing is meaningless without labels.
+export function RailNavSection({
+  label,
+  defaultOpen = true,
+  children,
+}: RailNavSectionProps) {
+  const storageKey = `rc-nav-section:${label}`;
+  const [open, setOpen] = useState<boolean>(() => {
+    try {
+      const saved = window.localStorage.getItem(storageKey);
+      return saved == null ? defaultOpen : saved === '1';
+    } catch {
+      return defaultOpen;
+    }
+  });
+  const toggle = () =>
+    setOpen((prev) => {
+      const next = !prev;
+      try {
+        window.localStorage.setItem(storageKey, next ? '1' : '0');
+      } catch {
+        /* storage unavailable — keep the in-memory toggle working */
+      }
+      return next;
+    });
+  const groupId = `rc-nav-group-${label.toLowerCase().replace(/\s+/g, '-')}`;
+  return (
+    <div
+      className={`rc-nav__section${open ? '' : ' rc-nav__section--collapsed'}`}
+    >
+      <button
+        type="button"
+        className="rc-nav__section-toggle"
+        aria-expanded={open}
+        aria-controls={groupId}
+        onClick={toggle}
+      >
+        <span className="rc-nav__label">{label}</span>
+        <IconChevronDown className="rc-nav__caret" aria-hidden="true" />
+      </button>
+      <div className="rc-nav__group" id={groupId} role="group" aria-label={label}>
+        {children}
+      </div>
+    </div>
+  );
 }
 
 interface RailUserProps {

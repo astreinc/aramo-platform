@@ -254,7 +254,7 @@ export class TalentJourneyReadService {
         : stages.reduce((max, s) => (stageOrdinal(s.stage) > stageOrdinal(max) ? s.stage : max), stages[0]!.stage);
 
     // ---- actions — owner-specific, routing to each owner's EXISTING command (no journey write). --
-    const actions = deriveActions({ episode, submittal, currentOffer, currentPlacement, preStartInstances });
+    const actions = deriveActions({ episode, submittal, selection, currentOffer, currentPlacement, preStartInstances });
 
     this.logger.log({ event: 'talent_journey_composed', pipeline_id: episode.id, current_journey_stage, stage_count: stages.length });
 
@@ -293,6 +293,7 @@ function representativePreStartStatus(
 function deriveActions(ctx: {
   episode: PipelineView;
   submittal: TalentSubmittalRecordView | null;
+  selection: { readonly state: string } | null;
   currentOffer: OfferView | null;
   currentPlacement: PlacementProcessView | null;
   preStartInstances: readonly PreStartInstanceView[];
@@ -306,9 +307,16 @@ function deriveActions(ctx: {
   if (ctx.submittal !== null && ctx.submittal.state !== 'submitted_to_ats') {
     actions.push({ action: 'Submit to Client', owner: 'submittal', command_route: `POST /v1/submittals/${ctx.submittal.id}/submit` });
   }
-  // Offer Extend Offer — available when there is no current open offer yet.
-  if (ctx.currentOffer === null || OFFER_STATE_POSITION[ctx.currentOffer.state] === 'CLOSED') {
-    actions.push({ action: 'Extend Offer', owner: 'offer', command_route: `POST /v1/offers` });
+  // Offer creation — ONLY after ClientSelection is SELECTED (the delivered offer
+  // precondition; OfferClientSelectionGate 409s otherwise). Emitting this action
+  // before SELECTED advertised a premature "Create offer" for a just-added Talent
+  // (workflow-sequencing defect). It is offered only when selection is SELECTED
+  // AND there is no current open offer yet.
+  if (
+    ctx.selection?.state === 'SELECTED' &&
+    (ctx.currentOffer === null || OFFER_STATE_POSITION[ctx.currentOffer.state] === 'CLOSED')
+  ) {
+    actions.push({ action: 'Create offer', owner: 'offer', command_route: `POST /v1/offers` });
   }
   // Pre-Start Complete Requirement — available while a blocking requirement is unresolved.
   if (ctx.currentPlacement !== null && ctx.preStartInstances.some((i) => isUnresolvedStatus(i.status as never))) {

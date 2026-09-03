@@ -358,6 +358,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(j.sub_states.placement_state).toBeNull();
       expect(j.stages.every((s) => s.owner === 'pipeline')).toBe(true);
       expect(j.stages.some((s) => s.stage === 'OFFER' || s.stage === 'ACCEPTED_PLACED')).toBe(false);
+      // S3-FIX regression — a pipeline-only (non-SELECTED) Talent must NOT be
+      // offered an offer-create action. Emitting it here was the workflow-
+      // sequencing defect that advertised premature "Create offer" in the drawer.
+      // The offer action is gated on ClientSelection SELECTED.
+      expect(j.actions.some((a) => a.owner === 'offer')).toBe(false);
     });
   },
 );

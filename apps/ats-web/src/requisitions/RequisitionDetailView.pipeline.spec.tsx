@@ -7,6 +7,19 @@ import { BreadcrumbProvider, useBreadcrumbEntity } from '../shell/breadcrumb';
 
 import { RequisitionDetailView } from './RequisitionDetailView';
 
+// S3 — the Talent drawer consumes the backend-owned journey; mock it so opening
+// the panel from the Talent grid renders without a network read.
+vi.mock('../pipeline/talent-journey-api', () => ({
+  getTalentJourney: vi.fn(async () => ({
+    requisition_id: 'r',
+    talent_record_id: 't',
+    current_journey_stage: 'QUALIFIED',
+    stages: [{ stage: 'QUALIFIED', owner: 'pipeline', source_object_id: 'p' }],
+    sub_states: { pipeline: 'qualified' },
+    actions: [],
+  })),
+}));
+
 // 2D — the re-skinned header / meta strip / Pipeline tab (funnel ribbon +
 // talent table) + breadcrumb publication. The cockpit (Details tab) is
 // proven in RequisitionDetailView.cockpit.spec.tsx.
@@ -190,7 +203,8 @@ describe('RequisitionDetailView — header / meta / pipeline (2D)', () => {
     await screen.findByRole('heading', { name: /Senior Rust Engineer/ });
     // Grid header columns.
     const grid = screen.getByRole('table', { name: 'Talent journey' });
-    for (const h of ['Talent', 'Pipeline', 'Client', 'Offer', 'Pre-start', 'Assignment']) {
+    // Ruling 2 — canonical journey column labels.
+    for (const h of ['Talent', 'Recruiting', 'Client', 'Offer', 'Pre-Start', 'Employment']) {
       expect(within(grid).getByText(h)).toBeInTheDocument();
     }
     // Pipeline cell = status pill (human label + tone); no funnel ribbon.
@@ -201,9 +215,14 @@ describe('RequisitionDetailView — header / meta / pipeline (2D)', () => {
       expect(screen.getByRole('button', { name: /Marcus Adeyemi/ })).toBeInTheDocument(),
     );
     expect(screen.getByRole('button', { name: /Sofia Ramos/ })).toBeInTheDocument();
-    // Drill-through: clicking the talent opens the owning side panel.
+    // Drill-through: clicking the talent opens the owning side panel, which
+    // renders the backend-owned journey rail (scoped to the dialog to avoid the
+    // grid's own "Talent journey" heading).
     fireEvent.click(screen.getByRole('button', { name: /Marcus Adeyemi/ }));
-    expect(await screen.findByText('Workflow status')).toBeInTheDocument();
+    const dialog = await screen.findByRole('dialog');
+    expect(
+      await within(dialog).findByRole('list', { name: 'Talent journey' }),
+    ).toBeInTheDocument();
   });
 
   it('no leftover old-styled surfaces: no funnel ribbon / at-a-glance card / reserved seam / inline MoveToMenu', async () => {

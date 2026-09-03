@@ -7,6 +7,19 @@ import { BreadcrumbProvider } from '../shell/breadcrumb';
 
 import { RequisitionDetailView } from './RequisitionDetailView';
 
+// S3 — the Talent drawer consumes the backend-owned journey; mock it so opening
+// the panel from the Talent grid renders without a network read.
+vi.mock('../pipeline/talent-journey-api', () => ({
+  getTalentJourney: vi.fn(async () => ({
+    requisition_id: 'r',
+    talent_record_id: 't',
+    current_journey_stage: 'QUALIFIED',
+    stages: [{ stage: 'QUALIFIED', owner: 'pipeline', source_object_id: 'p' }],
+    sub_states: { pipeline: 'qualified' },
+    actions: [],
+  })),
+}));
+
 // Requisition WORKSPACE — the role/responsibility-oriented replacement. Proves:
 // scope-driven default tab + tab availability, snapshot eager cards, grounded-only
 // attention (NO interviews-today / deadline-countdown), masked-by-absence
@@ -455,7 +468,7 @@ describe('RequisitionDetailView workspace — load model (no first-paint fan-out
     // Close + reopen the SAME row → cache hit, NO refetch.
     fireEvent.click(screen.getByRole('button', { name: 'Close' }));
     fireEvent.click(await screen.findByRole('button', { name: /Marcus Adeyemi/ }));
-    await screen.findByText('Workflow status'); // panel reopened
+    await screen.findByText('Talent journey'); // panel reopened
     expect(submittalCalls()).toBe(1);
     expect(preStartCalls()).toBe(1);
   });
