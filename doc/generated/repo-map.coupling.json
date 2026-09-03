@@ -67,6 +67,11 @@
     {
       "from": ".github/workflows/ci.yml",
       "status": "unscoped",
+      "to": "ci/scripts/service-boot-smoke.sh"
+    },
+    {
+      "from": ".github/workflows/ci.yml",
+      "status": "unscoped",
       "to": "ci/scripts/verify-frontdoor-conf.ts"
     },
     { "from": ".github/workflows/ci.yml", "status": "unscoped", "to": "scripts/audit-check.sh" },
@@ -10437,6 +10442,11 @@
       "to": "ci/integration-roots.json"
     },
     {
+      "from": "ci/scripts/service-boot-smoke.sh",
+      "status": "unscoped",
+      "to": "ci/scripts/boot-smoke-loader.cjs"
+    },
+    {
       "from": "ci/scripts/verify-api-contract-parity.ts",
       "status": "unscoped",
       "to": "ci/config/api-surface-manifest.json"
@@ -17586,7 +17596,7 @@
   ],
   "scanScope": {
     "dirs": [".github/workflows", ".husky", "ci/scripts", "deploy", "scripts", "tools"],
-    "files": 67,
+    "files": 69,
     "huskyPresent": false
   },
   "scripts": [
@@ -17624,6 +17634,7 @@
         { "kind": "nx-target", "path": "ci/scripts/prepush.ts" },
         { "kind": "prose", "path": "ci/scripts/prepush.ts" },
         { "kind": "prose", "path": "ci/scripts/release-manifest.ts" },
+        { "kind": "prose", "path": "ci/scripts/service-boot-smoke.sh" },
         { "kind": "prose", "path": "ci/scripts/verify-aggregate-gate.ts" },
         { "kind": "prose", "path": "ci/scripts/verify-env-passthrough.ts" },
         { "kind": "prose", "path": "ci/scripts/verify-offer-sql.ts" },
@@ -17939,6 +17950,7 @@
       "references": [
         { "kind": "nx-target", "path": ".github/workflows/ci.yml" },
         { "kind": "prose", "path": ".github/workflows/ci.yml" },
+        { "kind": "prose", "path": "ci/scripts/boot-smoke-loader.cjs" },
         { "kind": "prose", "path": "ci/scripts/check-integration-roots.ts" },
         { "kind": "prose", "path": "ci/scripts/check-version-sync.ts" },
         { "kind": "prose", "path": "ci/scripts/frontdoor-boot-smoke.sh" },
