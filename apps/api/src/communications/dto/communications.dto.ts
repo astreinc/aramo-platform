@@ -69,6 +69,77 @@ export interface CommunicationProviderIdentityListDto {
   items: CommunicationProviderIdentityDto[];
 }
 
+// COMM-C1 — configure/update the tenant's Zoom communication provider credential.
+// Authorized by integration:write. The typed Zoom credential bundle is validated
+// + encoded server-side via the Zoom credential codec and written through the
+// existing Integration credential path to Secrets Manager; NO token/secret is
+// ever persisted to Postgres or returned. This DTO carries the credential bundle
+// INBOUND only (write-only) — it never appears in any read/GET response.
+export class ConfigureZoomCredentialDto {
+  @IsString() @MaxLength(8192) access_token!: string;
+  @IsOptional() @IsString() @MaxLength(8192) refresh_token?: string;
+  @IsOptional() @IsString() @MaxLength(255) token_type?: string;
+  @IsOptional() @IsString() @MaxLength(2048) scope?: string;
+  @IsOptional() @IsString() @MaxLength(64) expires_at?: string;
+  // The Zoom account id this bundle authorizes (provider account identity). Bound
+  // to the connection's provider_account_id — NOT secret material.
+  @IsOptional() @IsString() @MaxLength(255) account_id?: string;
+}
+
+// COMM-C1 — provider-neutral capability posture for the admin config surface. A
+// capability is `supported` when the registered adapter declares it; `execution`
+// records whether THIS release can actually execute it. In PR-1 voice execution
+// is available (call route B5) and SMS execution is NOT (declared-only; no send
+// path). No SMS Send affordance may be implied.
+export type CommunicationCapabilityExecution = 'available' | 'not_available';
+
+export interface CommunicationCapabilityStateDto {
+  voice: { supported: boolean; execution: CommunicationCapabilityExecution };
+  sms: { supported: boolean; execution: CommunicationCapabilityExecution };
+}
+
+// COMM-C1 — a tenant communication provider's configuration state for Settings →
+// Integrations → Communications. Provider-neutral in contract (this slice has
+// only zoom_phone). SECRET-FREE: carries `credential_configured` (whether a
+// credential exists) but never the value, secret_ref, or any AWS identifier.
+export interface CommunicationProviderConfigDto {
+  provider_key: string;
+  display_name: string;
+  // null when the tenant has not provisioned a connection for this provider yet.
+  connection_id: string | null;
+  configuration_state: 'not_configured' | 'configured' | 'active' | 'degraded' | 'disabled';
+  status: CommunicationConnectionStatus | null;
+  credential_configured: boolean;
+  provider_account_id: string | null;
+  last_successful_at: string | null;
+  last_error_code: string | null;
+  recruiter_mapping_count: number;
+  capabilities: CommunicationCapabilityStateDto;
+}
+
+// Mirror of the integration connection lifecycle statuses (no secret surface).
+export type CommunicationConnectionStatus =
+  | 'disconnected'
+  | 'configured'
+  | 'active'
+  | 'degraded'
+  | 'disabled';
+
+export interface CommunicationProviderConfigListDto {
+  items: CommunicationProviderConfigDto[];
+}
+
+// COMM-C1 — result of a tenant-admin connection test. `checked: 'structural'`
+// is TRUTHFUL: the current Zoom adapter validates connection binding only (a
+// provider account is bound); a live external Zoom account/token ping is B8-
+// deferred and NOT performed here. No secret material is ever echoed.
+export interface CommunicationConnectionTestResultDto {
+  provider_key: string;
+  healthy: boolean;
+  detail: string | null;
+  checked: 'structural';
+}
+
 // COMM-B2 — response DTOs for the Communications/Voice read skeleton. Mirrors of
 // the openapi/ats.yaml schemas (documented in Boundary E). No secret/token/raw
 // provider payload is ever surfaced; provider call ids are correlation metadata.

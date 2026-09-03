@@ -3599,6 +3599,78 @@ paths:
           $ref: 'common.yaml#/components/responses/Conflict'
       security:
         - BearerAuth: []
+  /v1/communications/providers:
+    get:
+      operationId: listCommunicationProviders
+      summary: List the tenant's communication provider configurations (admin).
+      description: |
+        COMM-C1 — the tenant's communication provider configuration list for
+        Settings → Integrations → Communications. Requires the `ats` capability
+        and the `integration:read` scope. Tolerant of an un-provisioned provider
+        (returned as `not_configured`); never returns secret material.
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommunicationProviderConfigList'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+      security:
+        - BearerAuth: []
+  /v1/communications/providers/zoom/credential:
+    post:
+      operationId: configureZoomCommunicationCredential
+      summary: Configure or update the tenant's Zoom communication credential (admin).
+      description: |
+        COMM-C1 — validate + encode the Zoom credential bundle server-side and
+        write it through the Integration credential path to Secrets Manager. The
+        credential is WRITE-ONLY: no token/secret is persisted to Postgres or
+        returned. Requires the `ats` capability and the `integration:write` scope.
+        400 VALIDATION_ERROR on an invalid bundle.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConfigureZoomCredentialRequest'
+      responses:
+        '200':
+          description: OK — the refreshed, secret-free provider configuration.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommunicationProviderConfigList'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+      security:
+        - BearerAuth: []
+  /v1/communications/providers/zoom/test:
+    post:
+      operationId: testZoomCommunicationConnection
+      summary: Test the tenant's Zoom communication connection (admin).
+      description: |
+        COMM-C1 — run the provider adapter's structural connection validation (a
+        provider account is bound). It does NOT perform a live external ping and
+        never fakes success; the result carries `checked: structural`. Requires
+        the `ats` capability and the `integration:write` scope. 409
+        COMMUNICATION_PROVIDER_NOT_CONFIGURED when no provider connection exists.
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommunicationConnectionTestResult'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '409':
+          $ref: 'common.yaml#/components/responses/Conflict'
+      security:
+        - BearerAuth: []
   /v1/communications/calls:
     post:
       operationId: initiateCommunicationCall
@@ -4613,6 +4685,109 @@ components:
                 inbound: { type: boolean }
             recording: { type: boolean }
             transcript: { type: boolean }
+    CommunicationCapabilityState:
+      type: object
+      additionalProperties: false
+      description: |
+        COMM-C1 — per-capability posture for the admin configuration surface.
+        `supported` = the adapter declares the capability; `execution` = whether
+        this release can actually execute it (voice: available; SMS: not_available).
+      required: [voice, sms]
+      properties:
+        voice:
+          type: object
+          additionalProperties: false
+          required: [supported, execution]
+          properties:
+            supported: { type: boolean }
+            execution: { type: string, enum: [available, not_available] }
+        sms:
+          type: object
+          additionalProperties: false
+          required: [supported, execution]
+          properties:
+            supported: { type: boolean }
+            execution: { type: string, enum: [available, not_available] }
+    CommunicationProviderConfig:
+      type: object
+      additionalProperties: false
+      description: |
+        COMM-C1 — a communication provider's configuration state (Settings →
+        Integrations → Communications). Secret-free: `credential_configured`
+        records whether a credential exists, never its value or secret_ref.
+      required:
+        - provider_key
+        - display_name
+        - connection_id
+        - configuration_state
+        - status
+        - credential_configured
+        - provider_account_id
+        - last_successful_at
+        - last_error_code
+        - recruiter_mapping_count
+        - capabilities
+      properties:
+        provider_key: { type: string }
+        display_name: { type: string }
+        connection_id:
+          type: [string, 'null']
+          format: uuid
+        configuration_state:
+          type: string
+          enum: [not_configured, configured, active, degraded, disabled]
+        status:
+          type: [string, 'null']
+          enum: [disconnected, configured, active, degraded, disabled, null]
+        credential_configured: { type: boolean }
+        provider_account_id:
+          type: [string, 'null']
+        last_successful_at:
+          type: [string, 'null']
+          format: date-time
+        last_error_code:
+          type: [string, 'null']
+        recruiter_mapping_count: { type: integer }
+        capabilities:
+          $ref: '#/components/schemas/CommunicationCapabilityState'
+    CommunicationProviderConfigList:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CommunicationProviderConfig'
+    ConfigureZoomCredentialRequest:
+      type: object
+      additionalProperties: false
+      description: |
+        COMM-C1 — write-only Zoom credential bundle. Validated + encoded
+        server-side and stored in Secrets Manager; never read back.
+      required: [access_token]
+      properties:
+        access_token: { type: string, maxLength: 8192 }
+        refresh_token: { type: string, maxLength: 8192 }
+        token_type: { type: string, maxLength: 255 }
+        scope: { type: string, maxLength: 2048 }
+        expires_at: { type: string, maxLength: 64 }
+        account_id: { type: string, maxLength: 255 }
+    CommunicationConnectionTestResult:
+      type: object
+      additionalProperties: false
+      description: |
+        COMM-C1 — result of a structural connection test. `checked: structural`
+        is truthful: no live external ping is performed (B8-deferred).
+      required: [provider_key, healthy, detail, checked]
+      properties:
+        provider_key: { type: string }
+        healthy: { type: boolean }
+        detail:
+          type: [string, 'null']
+        checked:
+          type: string
+          enum: [structural]
     CommunicationProviderIdentity:
       type: object
       additionalProperties: false

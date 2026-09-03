@@ -130,6 +130,77 @@ describe('ats-web → GET /v1/communications/interactions/{id}', () => {
   });
 });
 
+describe('ats-web → GET /v1/communications/providers (COMM-C1 admin)', () => {
+  it('returns 200 with the tenant communication provider configurations (secret-free)', async () => {
+    await provider
+      .addInteraction()
+      .given('a tenant entitled to ats with a configured zoom_phone connection and a provider-identity mapping')
+      .uponReceiving('an ats-web communication provider configuration list read')
+      .withRequest('GET', '/v1/communications/providers', (b) => {
+        b.headers({ Cookie: like(ACCESS_COOKIE) });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          items: eachLike({
+            provider_key: like('zoom_phone'),
+            display_name: like('Zoom Phone'),
+            connection_id: uuid(CONNECTION_ID),
+            configuration_state: like('configured'),
+            status: like('configured'),
+            credential_configured: like(true),
+            provider_account_id: like('zoom-acct-pact'),
+            last_successful_at: null,
+            last_error_code: null,
+            recruiter_mapping_count: like(1),
+            capabilities: {
+              voice: { supported: like(true), execution: like('available') },
+              sms: { supported: like(true), execution: like('not_available') },
+            },
+          }),
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/communications/providers`, {
+          headers: { Cookie: ACCESS_COOKIE },
+        });
+        expect(res.status).toBe(200);
+        const raw = await res.text();
+        expect(raw).not.toMatch(/secret_ref|access_token|refresh_token|arn:aws/i);
+        const body = (await JSON.parse(raw)) as { items: Array<{ provider_key: string }> };
+        expect(body.items[0]?.provider_key).toBe('zoom_phone');
+      });
+  });
+});
+
+describe('ats-web → POST /v1/communications/providers/zoom/test (COMM-C1 admin)', () => {
+  it('returns 200 with a structural connection test result', async () => {
+    await provider
+      .addInteraction()
+      .given('a tenant entitled to ats with a configured zoom_phone connection')
+      .uponReceiving('an ats-web communication provider connection test')
+      .withRequest('POST', '/v1/communications/providers/zoom/test', (b) => {
+        b.headers({ Cookie: like(ACCESS_COOKIE) });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          provider_key: like('zoom_phone'),
+          healthy: like(true),
+          detail: null,
+          checked: like('structural'),
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/communications/providers/zoom/test`, {
+          method: 'POST',
+          headers: { Cookie: ACCESS_COOKIE },
+        });
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as { checked: string };
+        expect(body.checked).toBe('structural');
+      });
+  });
+});
+
 describe('ats-web → GET /v1/communications/provider-identities (admin)', () => {
   it('returns 200 with the tenant provider-identity mappings', async () => {
     await provider
