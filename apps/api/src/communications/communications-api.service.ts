@@ -6,6 +6,7 @@ import {
   encodeZoomCredential,
   ZoomCredentialDecodeError,
   type VoiceCapabilities,
+  type VoiceEvidenceInteractionRow,
   type ZoomCredentialBundle,
 } from '@aramo/communications';
 import {
@@ -20,6 +21,8 @@ import type {
   CommunicationInteractionViewDto,
   CommunicationProviderConfigDto,
   CommunicationProviderIdentityDto,
+  VoiceEngagementEvidenceDto,
+  VoiceEvidenceStrength,
 } from './dto/communications.dto.js';
 
 // COMM-B2/B3 — apps/api orchestration for the Communications/Voice read surface.
@@ -321,6 +324,21 @@ export class CommunicationsApiService {
     };
   }
 
+  /**
+   * COMM-C2A — the provider-neutral derived voice-engagement evidence for a
+   * Talent × Requisition. Reads Communications' own intersection of interactions
+   * (talent subject ∩ requisition regarding) and projects attempt / two-way /
+   * evidence-strength. No new table; no vendor key ever leaves the read.
+   */
+  async getVoiceEvidence(
+    tenantId: string,
+    talentId: string,
+    requisitionId: string,
+  ): Promise<VoiceEngagementEvidenceDto> {
+    const rows = await this.repo.findVoiceEvidenceInteractions(tenantId, talentId, requisitionId);
+    return deriveVoiceEvidence(talentId, requisitionId, rows);
+  }
+
   /** A communication interaction by id, tenant-scoped. Null when absent/cross-tenant. */
   async getInteraction(
     tenantId: string,
@@ -355,6 +373,64 @@ export class CommunicationsApiService {
  * P2002 code and the Prisma-7/PrismaPg driver-adapter shape (raw violation at
  * driverAdapterError.cause.originalMessage).
  */
+// COMM-C2A (R4) — the recruiter-attested dispositions that count as a two-way
+// conversation. left_voicemail/no_answer/busy/wrong_number are attempts only;
+// not_interested/do_not_contact are real outcomes but NOT positive qualification.
+const QUALIFYING_TWO_WAY_DISPOSITIONS: ReadonlySet<string> = new Set([
+  'connected',
+  'interested',
+  'callback_requested',
+  'follow_up_required',
+]);
+
+/**
+ * COMM-C2A — derive the provider-neutral voice-evidence projection from the
+ * intersection interactions (newest-first). Provider-verified connectivity
+ * (status connected/completed) outranks a recruiter-attested disposition for the
+ * evidence grade (R3). `null` strength means an attempt exists but no two-way.
+ */
+function deriveVoiceEvidence(
+  talentId: string,
+  requisitionId: string,
+  rows: readonly VoiceEvidenceInteractionRow[],
+): VoiceEngagementEvidenceDto {
+  const attempted = rows.length > 0;
+  const providerTwoWay = rows.some((r) => r.status === 'connected' || r.status === 'completed');
+  const recruiterTwoWay = rows.some((r) =>
+    r.dispositions.some((d) => QUALIFYING_TWO_WAY_DISPOSITIONS.has(d.disposition)),
+  );
+  const evidenceStrength: VoiceEvidenceStrength | null = providerTwoWay
+    ? 'PROVIDER_VERIFIED'
+    : recruiterTwoWay
+      ? 'RECRUITER_ATTESTED'
+      : null;
+
+  // Rows are created_at DESC; the first is the most recent interaction and its
+  // dispositions are dispositioned_at DESC.
+  const latest = rows[0] ?? null;
+  const latestDisposition = latest?.dispositions[0] ?? null;
+  let latestAt: Date | null = latest?.created_at ?? null;
+  if (
+    latest !== null &&
+    latestDisposition !== null &&
+    latestAt !== null &&
+    latestDisposition.dispositioned_at > latestAt
+  ) {
+    latestAt = latestDisposition.dispositioned_at;
+  }
+
+  return {
+    talent_id: talentId,
+    requisition_id: requisitionId,
+    attempted,
+    two_way_conversation: providerTwoWay || recruiterTwoWay,
+    evidence_strength: evidenceStrength,
+    latest_interaction_id: latest?.id ?? null,
+    latest_outcome: latestDisposition?.disposition ?? null,
+    latest_at: latestAt === null ? null : latestAt.toISOString(),
+  };
+}
+
 /**
  * COMM-C1 — project a communication provider + its (optional) connection into the
  * secret-free admin configuration DTO. `configuration_state` collapses the raw

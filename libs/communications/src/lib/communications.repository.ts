@@ -40,6 +40,16 @@ export interface InteractionRow {
   updated_at: Date;
 }
 
+// COMM-C2A — a minimal interaction row for the voice-evidence projection: the
+// interaction id + status + created_at, plus its disposition outcomes (newest
+// first). Deliberately narrow — the projection only needs status + outcomes.
+export interface VoiceEvidenceInteractionRow {
+  id: string;
+  status: CommunicationInteractionStatus;
+  created_at: Date;
+  dispositions: { disposition: CommunicationDispositionOutcome; dispositioned_at: Date }[];
+}
+
 export interface InteractionStatusPatch {
   status: CommunicationInteractionStatus;
   started_at?: Date;
@@ -295,6 +305,58 @@ export class CommunicationsRepository {
       orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
       take: limit + 1,
     })) as InteractionRow[];
+  }
+
+  // COMM-C2A — the derived voice-evidence intersection read. Returns the voice
+  // interactions associated to BOTH the Talent (subject) AND the Requisition
+  // (regarding), newest-first, each with its disposition history (newest-first).
+  // Reads Communications' OWN rows only (no cross-domain join). The composition
+  // root derives the provider-neutral attempt/two-way/strength projection from
+  // this; the repository stays vendor- and Lane-2-agnostic.
+  async findVoiceEvidenceInteractions(
+    tenantId: string,
+    talentId: string,
+    requisitionId: string,
+  ): Promise<VoiceEvidenceInteractionRow[]> {
+    const rows = await this.prisma.communicationInteraction.findMany({
+      where: {
+        tenant_id: tenantId,
+        channel: 'voice' satisfies CommunicationChannel,
+        AND: [
+          {
+            associations: {
+              some: {
+                tenant_id: tenantId,
+                subject_type: 'talent_record' satisfies CommunicationSubjectType,
+                subject_id: talentId,
+                relation_type: 'subject' satisfies CommunicationRelationType,
+              },
+            },
+          },
+          {
+            associations: {
+              some: {
+                tenant_id: tenantId,
+                subject_type: 'requisition' satisfies CommunicationSubjectType,
+                subject_id: requisitionId,
+                relation_type: 'regarding' satisfies CommunicationRelationType,
+              },
+            },
+          },
+        ],
+      },
+      select: {
+        id: true,
+        status: true,
+        created_at: true,
+        dispositions: {
+          select: { disposition: true, dispositioned_at: true },
+          orderBy: { dispositioned_at: 'desc' },
+        },
+      },
+      orderBy: { created_at: 'desc' },
+    });
+    return rows as VoiceEvidenceInteractionRow[];
   }
 
   // ---- CommunicationDisposition ----

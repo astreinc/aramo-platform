@@ -40,6 +40,11 @@ export type CallPhoneSlot = (typeof CALL_PHONE_SLOTS)[number];
 
 export class InitiateCallRegardingDto {
   @IsUUID() requisition_id!: string;
+  // COMM-C2A — the Pipeline episode for this Talent × Requisition. When the call
+  // is launched from the Requisition Talent drawer the FE supplies it so the
+  // interaction is bound to the pipeline context (R5) and a successful first
+  // attempt can drive the governed no_contact→contacted CONTACT action (R6).
+  @IsOptional() @IsUUID() pipeline_id?: string;
 }
 
 export class InitiateCommunicationCallDto {
@@ -67,6 +72,26 @@ export class UpsertProviderIdentityDto {
 
 export interface CommunicationProviderIdentityListDto {
   items: CommunicationProviderIdentityDto[];
+}
+
+// COMM-C2A — provider-neutral derived voice-engagement evidence for a
+// Talent × Requisition. A READ projection over existing Communications rows (no
+// new table). Lane 2 consumes these neutral facts — NEVER a vendor key (R14):
+//   attempted            → VOICE_ATTEMPT_RECORDED
+//   two_way_conversation → VOICE_CONVERSATION_RECORDED
+// evidence_strength distinguishes a provider-attested connection from a
+// recruiter-attested disposition (R3); it is null when only an attempt exists.
+export type VoiceEvidenceStrength = 'PROVIDER_VERIFIED' | 'RECRUITER_ATTESTED';
+
+export interface VoiceEngagementEvidenceDto {
+  talent_id: string;
+  requisition_id: string;
+  attempted: boolean;
+  two_way_conversation: boolean;
+  evidence_strength: VoiceEvidenceStrength | null;
+  latest_interaction_id: string | null;
+  latest_outcome: string | null;
+  latest_at: string | null;
 }
 
 // COMM-C1 — configure/update the tenant's Zoom communication provider credential.

@@ -45,6 +45,10 @@ const RECRUITER_UNMAPPED = '00000000-0000-7000-8000-000000000aa2';
 const RECRUITER_TO_BIND = '00000000-0000-7000-8000-000000000aa4';
 const CONNECTION = '01900000-0000-7000-8000-0000000000c1';
 const INTERACTION_A = '01900000-0000-7000-8000-0000000000d1';
+// COMM-C2A — voice-evidence intersection fixtures (talent subject ∩ requisition regarding).
+const VE_TALENT = '00000000-0000-7000-8000-0000000000e1';
+const VE_REQ = '00000000-0000-7000-8000-0000000000e2';
+const VE_INTERACTION = '01900000-0000-7000-8000-0000000000e3';
 
 // The RolesGuard reads scopes from the JWT; pass them directly.
 const READ_SCOPES = ['communication:read'];
@@ -136,6 +140,27 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
            (id, tenant_id, integration_connection_id, recruiter_id, provider_user_id, voice_enabled, sms_enabled, status)
          VALUES (gen_random_uuid(), $1::uuid, $2::uuid, $3::uuid, 'pv-user-1', true, false, 'active')`,
         [TENANT_A, CONNECTION, RECRUITER_MAPPED],
+      );
+      // COMM-C2A — a voice interaction (status connected) associated to BOTH the
+      // Talent (subject) AND the Requisition (regarding) in TENANT_A, so the
+      // voice-evidence intersection read returns provider-verified two-way evidence.
+      await db.query(
+        `INSERT INTO communications."CommunicationInteraction"
+           (id, tenant_id, channel, direction, status, integration_connection_id, from_address, to_address, connected_at)
+         VALUES ($1::uuid, $2::uuid, 'voice', 'outbound', 'connected', $3::uuid, '+15715550100', '+17035550111', now())`,
+        [VE_INTERACTION, TENANT_A, CONNECTION],
+      );
+      await db.query(
+        `INSERT INTO communications."CommunicationAssociation"
+           (id, tenant_id, interaction_id, subject_type, subject_id, relation_type)
+         VALUES (gen_random_uuid(), $1::uuid, $2::uuid, 'talent_record', $3::uuid, 'subject')`,
+        [TENANT_A, VE_INTERACTION, VE_TALENT],
+      );
+      await db.query(
+        `INSERT INTO communications."CommunicationAssociation"
+           (id, tenant_id, interaction_id, subject_type, subject_id, relation_type)
+         VALUES (gen_random_uuid(), $1::uuid, $2::uuid, 'requisition', $3::uuid, 'regarding')`,
+        [TENANT_A, VE_INTERACTION, VE_REQ],
       );
 
       const kp = await generateKeyPair(ALG);
@@ -385,6 +410,53 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(res.status).toBe(409);
       const err = (await res.json()) as { error?: { code?: string } };
       expect(err.error?.code).toBe('COMMUNICATION_PROVIDER_NOT_CONFIGURED');
+    });
+
+    // ── COMM-C2A — derived voice-evidence read ──
+
+    it('voice-evidence: DENIED without communication:read (403)', async () => {
+      const res = await fetch(
+        url(`/v1/communications/voice-evidence?talent_id=${VE_TALENT}&requisition_id=${VE_REQ}`),
+        auth(noScopeJwt),
+      );
+      expect(res.status).toBe(403);
+    });
+
+    it('voice-evidence: talent × requisition intersection → provider-verified two-way', async () => {
+      const res = await fetch(
+        url(`/v1/communications/voice-evidence?talent_id=${VE_TALENT}&requisition_id=${VE_REQ}`),
+        auth(mappedJwt),
+      );
+      expect(res.status).toBe(200);
+      const raw = await res.text();
+      expect(raw).not.toMatch(/zoom|secret|token/i); // provider-neutral, secret-free
+      const body = JSON.parse(raw) as {
+        attempted: boolean;
+        two_way_conversation: boolean;
+        evidence_strength: string | null;
+        latest_interaction_id: string | null;
+      };
+      expect(body.attempted).toBe(true);
+      expect(body.two_way_conversation).toBe(true);
+      expect(body.evidence_strength).toBe('PROVIDER_VERIFIED'); // status=connected
+      expect(body.latest_interaction_id).toBe(VE_INTERACTION);
+    });
+
+    it('voice-evidence: cross-tenant is empty (tenant-scoped, no leak)', async () => {
+      const res = await fetch(
+        url(`/v1/communications/voice-evidence?talent_id=${VE_TALENT}&requisition_id=${VE_REQ}`),
+        auth(tenantBJwt),
+      );
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { attempted: boolean; two_way_conversation: boolean; evidence_strength: string | null };
+      expect(body.attempted).toBe(false);
+      expect(body.two_way_conversation).toBe(false);
+      expect(body.evidence_strength).toBeNull();
+    });
+
+    it('voice-evidence: non-UUID query params → 400 VALIDATION_ERROR', async () => {
+      const res = await fetch(url(`/v1/communications/voice-evidence?talent_id=nope&requisition_id=${VE_REQ}`), auth(mappedJwt));
+      expect(res.status).toBe(400);
     });
 
     it('me/provider-identity: mapped recruiter → 200 with provider_user_id (no secret)', async () => {

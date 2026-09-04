@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Headers, HttpCode, HttpStatus, Param, ParseUUIDPipe, Post, Put, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Headers, HttpCode, HttpStatus, Param, ParseUUIDPipe, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
+import type { Request } from 'express';
 import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
 import { AramoError, hashCanonicalizedBody, RequestId } from '@aramo/common';
 import { RequireScopes, RolesGuard } from '@aramo/authorization';
@@ -17,6 +18,7 @@ import type {
   CommunicationProviderConfigListDto,
   CommunicationProviderIdentityDto,
   CommunicationProviderIdentityListDto,
+  VoiceEngagementEvidenceDto,
 } from './dto/communications.dto.js';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -53,6 +55,7 @@ export class CommunicationsController {
     @Headers('Idempotency-Key') idempotencyKey: string | undefined,
     @AuthContext() auth: AuthContextType,
     @RequestId() requestId: string,
+    @Req() req: Request,
   ): Promise<CommunicationInteractionViewDto> {
     const key = this.assertIdempotencyKeyRequired(idempotencyKey, requestId);
     const requestHash = hashCanonicalizedBody(dto as unknown);
@@ -65,7 +68,11 @@ export class CommunicationsController {
     if (lookup.kind === 'replay') {
       return lookup.response_body as CommunicationInteractionViewDto;
     }
-    const view = await this.calls.initiate(auth, dto, requestId);
+    // COMM-C2A — the caller's visible requisition set (global VisibilityInterceptor)
+    // is threaded into the call orchestration so the CONTACT side effect honours
+    // the same concealment as the Pipeline surface.
+    const visibleReqIds = await req.resolveVisibleRequisitionIds!();
+    const view = await this.calls.initiate(auth, dto, requestId, visibleReqIds);
     await this.idempotency.persist({
       tenant_id: auth.tenant_id,
       key,
@@ -191,6 +198,28 @@ export class CommunicationsController {
     @RequestId() requestId: string,
   ): Promise<CommunicationConnectionTestResultDto> {
     return this.comms.testProviderConnection(auth.tenant_id, requestId);
+  }
+
+  // COMM-C2A — provider-neutral derived voice-engagement evidence for a
+  // Talent × Requisition (attempt vs recruiter/provider two-way conversation).
+  // A read projection over existing Communications rows (no new table). Gated
+  // communication:read; tenant-scoped. Lane 2 consumes these neutral facts.
+  @Get('voice-evidence')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('communication:read')
+  async voiceEvidence(
+    @Query('talent_id') talentId: string,
+    @Query('requisition_id') requisitionId: string,
+    @AuthContext() auth: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<VoiceEngagementEvidenceDto> {
+    if (!UUID_REGEX.test(talentId ?? '') || !UUID_REGEX.test(requisitionId ?? '')) {
+      throw new AramoError('VALIDATION_ERROR', 'talent_id and requisition_id must be UUIDs', 400, {
+        requestId,
+        details: { talent_id: talentId ?? null, requisition_id: requisitionId ?? null },
+      });
+    }
+    return this.comms.getVoiceEvidence(auth.tenant_id, talentId, requisitionId);
   }
 
   @Get('interactions/:interactionId')

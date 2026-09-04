@@ -7,6 +7,7 @@ export { CommunicationsService, type TransitionOptions } from './lib/communicati
 export {
   CommunicationsRepository,
   type InteractionRow,
+  type VoiceEvidenceInteractionRow,
   type InteractionStatusPatch,
   type ProviderIdentityView,
 } from './lib/communications.repository.js';

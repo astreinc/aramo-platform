@@ -1,18 +1,31 @@
 import { useEffect, useState } from 'react';
 import { ApiError } from '@aramo/fe-foundation';
 
+import { safeErrorMessage } from '../ui';
 import type { TalentRecordView } from '../talent/types';
 
-import { getMyCommunicationProviderIdentity } from './communications-api';
+import {
+  getMyCommunicationProviderIdentity,
+  initiateCommunicationCall,
+  recordCommunicationDisposition,
+  type InitiateCallInput,
+} from './communications-api';
 import { ZoomPhoneEmbed, type ZoomEmbedLoader } from './ZoomPhoneEmbed';
-import type { CommunicationProviderIdentity } from './types';
+import {
+  COMMUNICATION_DISPOSITION_OUTCOMES,
+  type CallRegardingContext,
+  type CommunicationDispositionOutcome,
+  type CommunicationInteractionView,
+  type CommunicationProviderIdentity,
+} from './types';
 
-// COMM-B4 — the recruiter Call drawer. Ships the UX shell (phone picker,
-// "calling as", "regarding", provider embed) but DOES NOT initiate a call: the
-// submit stays disabled until COMM-B5 introduces POST /v1/communications/calls +
-// the server-side contacting-consent gate. No Zoom vocabulary lives here — it is
-// confined to ZoomPhoneEmbed. Phone suppression is backend-authoritative: a
-// suppressed/absent number arrives null and simply never appears in the picker.
+// COMM-C2A — the recruiter Call drawer, now WIRED to the delivered backend call
+// route (POST /v1/communications/calls) and the append-only disposition surface.
+// Consent + provider config remain backend-authoritative: a refusal surfaces as
+// safe copy, never provider-admin detail. When launched from a Requisition Talent
+// context the `regarding` (requisition + pipeline) is supplied, so a successful
+// first attempt can drive the governed no_contact→contacted transition server-side.
+// No Zoom vocabulary lives here — it is confined to ZoomPhoneEmbed.
 
 interface PhoneOption {
   readonly key: 'cell' | 'work' | 'home';
@@ -28,6 +41,19 @@ function phoneOptions(t: TalentRecordView): PhoneOption[] {
   ].filter((o): o is PhoneOption => o.number !== null && o.number.length > 0);
 }
 
+const DISPOSITION_LABELS: Record<CommunicationDispositionOutcome, string> = {
+  connected: 'Connected — spoke with talent',
+  interested: 'Interested',
+  callback_requested: 'Callback requested',
+  follow_up_required: 'Follow-up required',
+  left_voicemail: 'Left voicemail',
+  no_answer: 'No answer',
+  busy: 'Busy',
+  wrong_number: 'Wrong number',
+  not_interested: 'Not interested',
+  do_not_contact: 'Do not contact',
+};
+
 type IdentityState =
   | { kind: 'loading' }
   | { kind: 'ready'; identity: CommunicationProviderIdentity }
@@ -37,20 +63,42 @@ type IdentityState =
 export interface CallDrawerProps {
   readonly talent: TalentRecordView;
   readonly onClose: () => void;
-  /** Injected for tests; defaults to the real client. */
+  /** Talent × Requisition (+ pipeline) context when launched from the requisition drawer. */
+  readonly regarding?: CallRegardingContext;
+  /** Fired after a call is placed and/or a disposition recorded, so the owner can refetch. */
+  readonly onCompleted?: () => void;
+  /** Injected for tests; default to the real clients. */
   readonly providerIdentityFn?: () => Promise<CommunicationProviderIdentity>;
+  readonly initiateFn?: typeof initiateCommunicationCall;
+  readonly dispositionFn?: typeof recordCommunicationDisposition;
   readonly embedLoader?: ZoomEmbedLoader;
 }
 
 export function CallDrawer({
   talent,
   onClose,
+  regarding,
+  onCompleted,
   providerIdentityFn = getMyCommunicationProviderIdentity,
+  initiateFn = initiateCommunicationCall,
+  dispositionFn = recordCommunicationDisposition,
   embedLoader,
 }: CallDrawerProps) {
   const options = phoneOptions(talent);
   const [selected, setSelected] = useState<PhoneOption['key'] | null>(options[0]?.key ?? null);
   const [identity, setIdentity] = useState<IdentityState>({ kind: 'loading' });
+
+  // Call lifecycle: idle → placing → placed (interaction recorded) → done.
+  const [interaction, setInteraction] = useState<CommunicationInteractionView | null>(null);
+  const [placing, setPlacing] = useState(false);
+  const [callError, setCallError] = useState<string | null>(null);
+
+  // Disposition capture (post-call).
+  const [disposition, setDisposition] = useState<CommunicationDispositionOutcome | ''>('');
+  const [notes, setNotes] = useState('');
+  const [savingDisp, setSavingDisp] = useState(false);
+  const [dispError, setDispError] = useState<string | null>(null);
+  const [dispDone, setDispDone] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -72,6 +120,48 @@ export function CallDrawer({
   }, [providerIdentityFn]);
 
   const callerReady = identity.kind === 'ready';
+  const canPlace = callerReady && selected !== null && !placing && interaction === null;
+
+  const placeCall = async (): Promise<void> => {
+    if (!canPlace || selected === null) return;
+    setPlacing(true);
+    setCallError(null);
+    try {
+      const input: InitiateCallInput = {
+        talent_id: talent.id,
+        phone_slot: selected,
+        ...(regarding !== undefined
+          ? { regarding: { requisition_id: regarding.requisition_id, pipeline_id: regarding.pipeline_id } }
+          : {}),
+      };
+      const view = await initiateFn(input);
+      setInteraction(view);
+      // A successful attempt may have advanced the pipeline (no_contact→contacted).
+      onCompleted?.();
+    } catch (err) {
+      setCallError(safeErrorMessage(err, 'Could not place the call. Try again.'));
+    } finally {
+      setPlacing(false);
+    }
+  };
+
+  const saveDisposition = async (): Promise<void> => {
+    if (interaction === null || disposition === '' || savingDisp) return;
+    setSavingDisp(true);
+    setDispError(null);
+    try {
+      await dispositionFn(interaction.id, {
+        disposition,
+        ...(notes.trim() !== '' ? { notes: notes.trim() } : {}),
+      });
+      setDispDone(true);
+      onCompleted?.();
+    } catch (err) {
+      setDispError(safeErrorMessage(err, 'Could not save the outcome. Try again.'));
+    } finally {
+      setSavingDisp(false);
+    }
+  };
 
   return (
     <aside className="rc-comm-drawer" role="dialog" aria-label={`Call ${talent.first_name} ${talent.last_name}`}>
@@ -94,6 +184,7 @@ export function CallDrawer({
                 name="rc-comm-phone"
                 value={o.key}
                 checked={selected === o.key}
+                disabled={interaction !== null}
                 onChange={() => setSelected(o.key)}
               />
               {o.label} · {o.number}
@@ -124,25 +215,87 @@ export function CallDrawer({
 
       <section className="rc-comm-drawer__section">
         <h3 className="rc-comm-drawer__subhd">Regarding</h3>
-        <p className="rc-comm-drawer__muted">General talent contact</p>
+        <p className="rc-comm-drawer__muted">
+          {regarding !== undefined ? 'This requisition' : 'General talent contact'}
+        </p>
       </section>
 
       <ZoomPhoneEmbed loader={embedLoader} />
 
+      {/* ── Disposition capture (post-call, append-only; existing taxonomy) ── */}
+      {interaction !== null ? (
+        <section className="rc-comm-drawer__section" data-testid="call-disposition">
+          <h3 className="rc-comm-drawer__subhd">Outcome</h3>
+          {dispDone ? (
+            <p className="rc-comm-drawer__caller" data-testid="disposition-saved">Outcome recorded.</p>
+          ) : (
+            <>
+              <label className="rc-comm-drawer__radio">
+                Disposition
+                <select
+                  className="rc-input"
+                  value={disposition}
+                  data-testid="disposition-select"
+                  onChange={(e) => setDisposition(e.target.value as CommunicationDispositionOutcome | '')}
+                >
+                  <option value="">— Select outcome —</option>
+                  {COMMUNICATION_DISPOSITION_OUTCOMES.map((o) => (
+                    <option key={o} value={o}>
+                      {DISPOSITION_LABELS[o]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="rc-comm-drawer__radio">
+                Notes (optional)
+                <textarea
+                  className="rc-input"
+                  value={notes}
+                  data-testid="disposition-notes"
+                  onChange={(e) => setNotes(e.target.value)}
+                  rows={2}
+                />
+              </label>
+              {dispError !== null ? <p className="rc-comm-drawer__muted">{dispError}</p> : null}
+              <button
+                type="button"
+                className="rc-comm-drawer__call"
+                disabled={disposition === '' || savingDisp}
+                data-testid="disposition-submit"
+                onClick={() => void saveDisposition()}
+              >
+                {savingDisp ? 'Saving…' : 'Record outcome'}
+              </button>
+            </>
+          )}
+        </section>
+      ) : null}
+
       <footer className="rc-comm-drawer__ft">
-        <button
-          type="button"
-          className="rc-comm-drawer__call"
-          disabled
-          title="Call initiation arrives in a later release"
-        >
-          Call
-        </button>
-        <p className="rc-comm-drawer__note">
-          {callerReady && selected !== null
-            ? 'Call initiation arrives in a later release.'
-            : 'Select a number and confirm your calling identity to place a call.'}
-        </p>
+        {interaction === null ? (
+          <>
+            <button
+              type="button"
+              className="rc-comm-drawer__call"
+              disabled={!canPlace}
+              data-testid="call-submit"
+              onClick={() => void placeCall()}
+            >
+              {placing ? 'Calling…' : 'Call'}
+            </button>
+            <p className="rc-comm-drawer__note">
+              {callError !== null
+                ? callError
+                : callerReady && selected !== null
+                  ? 'Places a call and records it as engagement evidence.'
+                  : 'Select a number and confirm your calling identity to place a call.'}
+            </p>
+          </>
+        ) : (
+          <p className="rc-comm-drawer__note" data-testid="call-placed">
+            Call recorded. Add the outcome above, then close.
+          </p>
+        )}
       </footer>
     </aside>
   );

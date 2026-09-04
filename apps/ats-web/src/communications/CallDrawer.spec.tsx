@@ -1,5 +1,5 @@
 import { ApiError } from '@aramo/fe-foundation';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { TalentRecordView } from '../talent/types';
@@ -12,8 +12,10 @@ import type { CommunicationProviderIdentity } from './types';
 // backend-authoritative (a null number never appears in the picker); "calling
 // as" resolves from the recruiter's own provider-identity; a 404
 // COMMUNICATION_USER_NOT_MAPPED renders a not-mapped explanation with NO admin
-// controls; the submit stays DISABLED (call initiation = COMM-B5); and the Zoom
-// embed loader is injected through to the boundary.
+// controls; the Zoom embed loader is injected through to the boundary; and
+// (COMM-C2A) the submit places a real call with the requisition/pipeline context,
+// post-call disposition capture uses the existing taxonomy, and a consent refusal
+// surfaces safe copy.
 
 function makeTalent(overrides: Partial<TalentRecordView> = {}): TalentRecordView {
   return {
@@ -139,17 +141,101 @@ describe('CallDrawer — calling identity', () => {
   });
 });
 
-describe('CallDrawer — submit deferral (COMM-B5)', () => {
-  it('keeps the Call submit disabled', async () => {
+describe('CallDrawer — call initiation + disposition (COMM-C2A)', () => {
+  const INTERACTION = {
+    id: 'int-1',
+    channel: 'voice',
+    direction: 'outbound',
+    status: 'initiated',
+    from_address: '+15550109000',
+    to_address: '+15550100',
+    created_at: '2026-09-04T00:00:00Z',
+  };
+
+  it('is disabled until the calling identity resolves', async () => {
     render(
       <CallDrawer
-        talent={makeTalent()}
+        talent={makeTalent({ phone_cell: '555-0100' })}
         onClose={vi.fn()}
         providerIdentityFn={vi.fn().mockResolvedValue(IDENTITY)}
       />,
     );
-    const submit = screen.getByRole('button', { name: 'Call' });
-    expect(submit).toBeDisabled();
+    // Before the identity resolves the submit is disabled (caller not confirmed).
+    expect(screen.getByTestId('call-submit')).toBeDisabled();
+    await waitFor(() => expect(screen.getByTestId('call-submit')).toBeEnabled());
+  });
+
+  it('places a call with the Talent × Requisition (+ pipeline) context and reports completion', async () => {
+    const initiateFn = vi.fn().mockResolvedValue(INTERACTION);
+    const onCompleted = vi.fn();
+    render(
+      <CallDrawer
+        talent={makeTalent({ phone_cell: '555-0100' })}
+        onClose={vi.fn()}
+        regarding={{ requisition_id: 'req-1', pipeline_id: 'pipe-1' }}
+        onCompleted={onCompleted}
+        providerIdentityFn={vi.fn().mockResolvedValue(IDENTITY)}
+        initiateFn={initiateFn}
+      />,
+    );
+    const submit = await screen.findByTestId('call-submit');
+    await waitFor(() => expect(submit).toBeEnabled());
+    fireEvent.click(submit);
+    await waitFor(() => expect(initiateFn).toHaveBeenCalledTimes(1));
+    expect(initiateFn).toHaveBeenCalledWith({
+      talent_id: 'tal-1',
+      phone_slot: 'cell',
+      regarding: { requisition_id: 'req-1', pipeline_id: 'pipe-1' },
+    });
+    // A successful attempt reports completion (owner refetches evidence + journey).
+    expect(onCompleted).toHaveBeenCalled();
+    // Disposition capture appears post-call.
+    expect(await screen.findByTestId('call-disposition')).toBeInTheDocument();
+  });
+
+  it('records a disposition using the existing taxonomy after the call', async () => {
+    const initiateFn = vi.fn().mockResolvedValue({ ...INTERACTION, id: 'int-9' });
+    const dispositionFn = vi.fn().mockResolvedValue({ id: 'disp-1' });
+    render(
+      <CallDrawer
+        talent={makeTalent({ phone_cell: '555-0100' })}
+        onClose={vi.fn()}
+        providerIdentityFn={vi.fn().mockResolvedValue(IDENTITY)}
+        initiateFn={initiateFn}
+        dispositionFn={dispositionFn}
+      />,
+    );
+    const submit = await screen.findByTestId('call-submit');
+    await waitFor(() => expect(submit).toBeEnabled());
+    fireEvent.click(submit);
+    const select = await screen.findByTestId('disposition-select');
+    fireEvent.change(select, { target: { value: 'connected' } });
+    fireEvent.click(screen.getByTestId('disposition-submit'));
+    await waitFor(() =>
+      expect(dispositionFn).toHaveBeenCalledWith('int-9', { disposition: 'connected' }),
+    );
+    expect(await screen.findByTestId('disposition-saved')).toBeInTheDocument();
+  });
+
+  it('surfaces safe copy when consent is denied (403) and shows no disposition capture', async () => {
+    const initiateFn = vi
+      .fn()
+      .mockRejectedValue(new ApiError(403, 'consent', 'COMMUNICATION_CALL_CONSENT_DENIED'));
+    render(
+      <CallDrawer
+        talent={makeTalent({ phone_cell: '555-0100' })}
+        onClose={vi.fn()}
+        providerIdentityFn={vi.fn().mockResolvedValue(IDENTITY)}
+        initiateFn={initiateFn}
+      />,
+    );
+    const submit = await screen.findByTestId('call-submit');
+    await waitFor(() => expect(submit).toBeEnabled());
+    fireEvent.click(submit);
+    await waitFor(() => expect(initiateFn).toHaveBeenCalled());
+    // The call failed → no interaction, no disposition capture, drawer stays usable.
+    expect(screen.queryByTestId('call-disposition')).not.toBeInTheDocument();
+    expect(document.body.innerHTML).not.toContain('consent');
   });
 });
 

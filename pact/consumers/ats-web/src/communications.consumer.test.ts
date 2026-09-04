@@ -201,6 +201,43 @@ describe('ats-web → POST /v1/communications/providers/zoom/test (COMM-C1 admin
   });
 });
 
+describe('ats-web → GET /v1/communications/voice-evidence (COMM-C2A)', () => {
+  it('returns 200 with provider-neutral derived voice evidence', async () => {
+    const talentId = 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa';
+    const requisitionId = 'bbbbbbbb-bbbb-7bbb-8bbb-bbbbbbbbbbbb';
+    await provider
+      .addInteraction()
+      .given('a tenant entitled to ats with a connected voice interaction for a talent and requisition')
+      .uponReceiving('an ats-web voice engagement evidence read')
+      .withRequest('GET', '/v1/communications/voice-evidence', (b) => {
+        b.query({ talent_id: talentId, requisition_id: requisitionId }).headers({ Cookie: like(ACCESS_COOKIE) });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          talent_id: uuid(talentId),
+          requisition_id: uuid(requisitionId),
+          attempted: like(true),
+          two_way_conversation: like(true),
+          evidence_strength: like('PROVIDER_VERIFIED'),
+          latest_interaction_id: uuid('eeeeeeee-eeee-7eee-8eee-eeeeeeeeeeee'),
+          latest_outcome: null,
+          latest_at: regex(ISO_TIMESTAMP, '2026-09-04T00:00:01Z'),
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(
+          `${mock.url}/v1/communications/voice-evidence?talent_id=${talentId}&requisition_id=${requisitionId}`,
+          { headers: { Cookie: ACCESS_COOKIE } },
+        );
+        expect(res.status).toBe(200);
+        const raw = await res.text();
+        expect(raw).not.toMatch(/zoom|secret|token/i);
+        const body = (await JSON.parse(raw)) as { attempted: boolean };
+        expect(body.attempted).toBe(true);
+      });
+  });
+});
+
 describe('ats-web → GET /v1/communications/provider-identities (admin)', () => {
   it('returns 200 with the tenant provider-identity mappings', async () => {
     await provider

@@ -4585,6 +4585,44 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           );
         });
       },
+      // COMM-C2A — a voice interaction (connected) associated to BOTH the Talent
+      // (subject) AND the Requisition (regarding), so the voice-evidence read
+      // returns provider-verified two-way evidence for (talent, requisition).
+      'a tenant entitled to ats with a connected voice interaction for a talent and requisition': async () => {
+        await withClient(async (c) => {
+          const conn = 'cccccccc-cccc-7ccc-8ccc-cccccccccccc';
+          const interaction = 'eeeeeeee-eeee-7eee-8eee-eeeeeeeeeeee';
+          const talent = 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa';
+          const requisition = 'bbbbbbbb-bbbb-7bbb-8bbb-bbbbbbbbbbbb';
+          await c.query(`DELETE FROM communications."CommunicationAssociation" WHERE tenant_id = $1::uuid`, [TENANT_ID]);
+          await c.query(`DELETE FROM communications."CommunicationInteraction" WHERE tenant_id = $1::uuid`, [TENANT_ID]);
+          await c.query(`DELETE FROM integration."IntegrationConnection" WHERE tenant_id = $1::uuid`, [TENANT_ID]);
+          await c.query(
+            `INSERT INTO integration."IntegrationConnection"
+               (id, tenant_id, provider_key, status, secret_ref, provider_account_id, version, created_at, updated_at)
+             VALUES ($1::uuid,$2::uuid,'zoom_phone','configured','connector:v1:pact','zoom-acct-pact',0,now(),now())`,
+            [conn, TENANT_ID],
+          );
+          await c.query(
+            `INSERT INTO communications."CommunicationInteraction"
+               (id, tenant_id, channel, direction, status, integration_connection_id, from_address, to_address, connected_at)
+             VALUES ($1::uuid,$2::uuid,'voice','outbound','connected',$3::uuid,'+15715550100','+17035550111',now())`,
+            [interaction, TENANT_ID, conn],
+          );
+          await c.query(
+            `INSERT INTO communications."CommunicationAssociation"
+               (id, tenant_id, interaction_id, subject_type, subject_id, relation_type)
+             VALUES (gen_random_uuid(),$1::uuid,$2::uuid,'talent_record',$3::uuid,'subject')`,
+            [TENANT_ID, interaction, talent],
+          );
+          await c.query(
+            `INSERT INTO communications."CommunicationAssociation"
+               (id, tenant_id, interaction_id, subject_type, subject_id, relation_type)
+             VALUES (gen_random_uuid(),$1::uuid,$2::uuid,'requisition',$3::uuid,'regarding')`,
+            [TENANT_ID, interaction, requisition],
+          );
+        });
+      },
       // ===== E1-d placement read pacts (ats-web placement.consumer) =====
       // Fixture UUIDs mirror pact/consumers/ats-web/src/placement.consumer.test.ts.
       // The placement is seeded under TENANT_ID (the JWT tenant); requisition:
