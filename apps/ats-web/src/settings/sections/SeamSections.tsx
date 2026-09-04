@@ -12,6 +12,7 @@ import {
 import { SettingsSeam, SettingsSection } from '../components';
 import { RequisitionIngestionView } from '../../requisition-imports/RequisitionIngestionView';
 import { IntegrationConnectionsPanel } from '../../integrations/IntegrationConnectionsPanel';
+import { CommunicationsProvidersPanel } from '../../communications/CommunicationsProvidersPanel';
 
 // Settings Rebuild Directive 1 — the honest seams.
 //
@@ -162,6 +163,12 @@ export function IntegrationsSection() {
           fetch). A separate sibling from the P3 monitoring view above, which
           remains governed by requisition:import:read (not regated). */}
       <IntegrationConnectionsPanel />
+
+      {/* COMM-C1 — tenant communication provider configuration (Zoom-only in
+          PR-1). INDEPENDENTLY gated on integration:read/write (self-gates; absent
+          scope => absent + no fetch). Reads as Settings → Integrations →
+          Communications; changes NO recruiting behaviour. */}
+      <CommunicationsProvidersPanel />
 
       <SettingsSeam
         icon={<IconPlug />}

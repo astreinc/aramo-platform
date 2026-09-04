@@ -10,6 +10,7 @@ import { Client } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { exportSPKI, generateKeyPair, SignJWT, type CryptoKey, type KeyObject } from 'jose';
 import { SECRETS_MANAGER_WRITER, type SecretsManagerWriterPort } from '@aramo/integration';
+import { decodeZoomCredential } from '@aramo/communications';
 import { EFFECTIVE_AUTHORIZATION_RESOLVER } from '@aramo/auth';
 
 import { AppModule } from '../app.module.js';
@@ -51,11 +52,15 @@ const NO_COMM_SCOPES = ['requisition:import:read'];
 // Admin (provider-connection configuration) scopes for the mapping-admin routes.
 const ADMIN_SCOPES = ['integration:read', 'integration:write'];
 
+// Captures writes so COMM-C1 can prove the credential-path CLOSURE: the value
+// handed to Secrets Manager is the ENCODED Zoom bundle, never persisted to PG.
 class FakeSecretsWriter implements SecretsManagerWriterPort {
-  async putSecretValue(): Promise<void> {
-    /* no-op — AppModule boot must not reach AWS */
+  readonly writes = new Map<string, string>();
+  async putSecretValue(secretId: string, value: string): Promise<void> {
+    this.writes.set(secretId, value);
   }
 }
+const capturingSecretsWriter = new FakeSecretsWriter();
 
 describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
   'COMM-B2 communications HTTP authz — real Postgres 17',
@@ -72,6 +77,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     let noScopeJwt: string;
     let tenantBJwt: string;
     let adminJwt: string;
+    let adminBJwt: string;
 
     function auth(jwt: string): RequestInit {
       return { headers: { Authorization: `Bearer ${jwt}`, 'Content-Type': 'application/json' } };
@@ -152,10 +158,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       noScopeJwt = await signJwt(key, { sub: RECRUITER_MAPPED, tenant_id: TENANT_A, scopes: NO_COMM_SCOPES });
       tenantBJwt = await signJwt(key, { sub: RECRUITER_MAPPED, tenant_id: TENANT_B, scopes: READ_SCOPES });
       adminJwt = await signJwt(key, { sub: RECRUITER_MAPPED, tenant_id: TENANT_A, scopes: ADMIN_SCOPES });
+      adminBJwt = await signJwt(key, { sub: RECRUITER_MAPPED, tenant_id: TENANT_B, scopes: ADMIN_SCOPES });
 
       module = await Test.createTestingModule({ imports: [AppModule] })
         .overrideProvider(SECRETS_MANAGER_WRITER)
-        .useValue(new FakeSecretsWriter())
+        .useValue(capturingSecretsWriter)
         
         // HF-AUTH-1 — bind the Mode-A resolver so the guard hydrates scopes
         // (the earlier codemod added the grant but missed this override).
@@ -255,6 +262,129 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(res.status).toBe(409);
       const err = (await res.json()) as { error?: { code?: string } };
       expect(err.error?.code).toBe('COMMUNICATION_PROVIDER_USER_ALREADY_MAPPED');
+    });
+
+    // ── COMM-C1 — tenant communication provider CONFIGURATION admin ──
+
+    it('providers (admin list): DENIED without integration:read (403)', async () => {
+      // communication:read is NOT integration:read.
+      const res = await fetch(url('/v1/communications/providers'), auth(mappedJwt));
+      expect(res.status).toBe(403);
+    });
+
+    it('providers (admin list): tenant A integration:read → 200, zoom_phone only, secret-free', async () => {
+      const res = await fetch(url('/v1/communications/providers'), auth(adminJwt));
+      expect(res.status).toBe(200);
+      const raw = await res.text();
+      // No secret material of any kind in the admin read.
+      expect(raw).not.toMatch(/secret_ref|access_token|refresh_token|arn:aws/i);
+      const body = JSON.parse(raw) as {
+        items: Array<{
+          provider_key: string;
+          configuration_state: string;
+          credential_configured: boolean;
+          capabilities: { voice: { execution: string }; sms: { supported: boolean; execution: string } };
+          recruiter_mapping_count: number;
+        }>;
+      };
+      // ONLY the ratified provider is surfaced — no excluded/non-ratified vendor.
+      expect(body.items.map((i) => i.provider_key)).toEqual(['zoom_phone']);
+      const zoom = body.items[0];
+      expect(zoom.configuration_state).toBe('configured');
+      expect(zoom.credential_configured).toBe(true);
+      expect(zoom.capabilities.voice.execution).toBe('available');
+      // SMS declared by the adapter but NOT executable in PR-1.
+      expect(zoom.capabilities.sms.supported).toBe(true);
+      expect(zoom.capabilities.sms.execution).toBe('not_available');
+      expect(zoom.recruiter_mapping_count).toBeGreaterThanOrEqual(1);
+    });
+
+    it('providers (admin list): un-provisioned tenant → 200 not_configured (tolerant, NOT 409)', async () => {
+      const res = await fetch(url('/v1/communications/providers'), auth(adminBJwt));
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        items: Array<{ provider_key: string; configuration_state: string; connection_id: string | null; credential_configured: boolean }>;
+      };
+      const zoom = body.items.find((i) => i.provider_key === 'zoom_phone');
+      expect(zoom?.configuration_state).toBe('not_configured');
+      expect(zoom?.connection_id).toBeNull();
+      expect(zoom?.credential_configured).toBe(false);
+    });
+
+    it('configure zoom credential: DENIED without integration:write (403)', async () => {
+      const res = await fetch(url('/v1/communications/providers/zoom/credential'), {
+        method: 'POST',
+        ...auth(mappedJwt),
+        body: JSON.stringify({ access_token: 'atk-denied' }),
+      });
+      expect(res.status).toBe(403);
+    });
+
+    it('configure zoom credential: encodes to Secrets Manager; DB stores secret_ref, NOT the raw token', async () => {
+      const SECRET_TOKEN = 'atk-c1-secret-value';
+      const res = await fetch(url('/v1/communications/providers/zoom/credential'), {
+        method: 'POST',
+        ...auth(adminJwt),
+        body: JSON.stringify({ access_token: SECRET_TOKEN, refresh_token: 'rtk-c1', account_id: 'zoom-acct-1' }),
+      });
+      expect(res.status).toBe(200);
+      const raw = await res.text();
+      // The write-only response never echoes the token.
+      expect(raw).not.toContain(SECRET_TOKEN);
+      expect(raw).not.toContain('rtk-c1');
+
+      // The value handed to Secrets Manager is the ENCODED Zoom bundle.
+      const written = [...capturingSecretsWriter.writes.values()].map((v) => {
+        try {
+          return decodeZoomCredential(v);
+        } catch {
+          return null;
+        }
+      });
+      expect(written.some((b) => b?.access_token === SECRET_TOKEN)).toBe(true);
+
+      // Postgres stores ONLY the opaque secret_ref — never the raw credential.
+      const row = await db.query(
+        `SELECT id, secret_ref, provider_account_id, status FROM integration."IntegrationConnection" WHERE tenant_id = $1::uuid AND provider_key = 'zoom_phone'`,
+        [TENANT_A],
+      );
+      expect(row.rows.length).toBe(1);
+      expect(row.rows[0].secret_ref).not.toBeNull();
+      const rowText = JSON.stringify(row.rows[0]);
+      expect(rowText).not.toContain(SECRET_TOKEN);
+      expect(rowText).not.toContain('rtk-c1');
+    });
+
+    it('configure zoom credential: invalid bundle (empty access_token) → 400 VALIDATION_ERROR', async () => {
+      const res = await fetch(url('/v1/communications/providers/zoom/credential'), {
+        method: 'POST',
+        ...auth(adminJwt),
+        body: JSON.stringify({ access_token: '' }),
+      });
+      expect(res.status).toBe(400);
+    });
+
+    it('test connection: DENIED without integration:write (403)', async () => {
+      const res = await fetch(url('/v1/communications/providers/zoom/test'), { method: 'POST', ...auth(mappedJwt) });
+      expect(res.status).toBe(403);
+    });
+
+    it('test connection: tenant A integration:write → 200 structural health, no secret', async () => {
+      const res = await fetch(url('/v1/communications/providers/zoom/test'), { method: 'POST', ...auth(adminJwt) });
+      expect(res.status).toBe(200);
+      const raw = await res.text();
+      expect(raw).not.toMatch(/secret|token|arn:aws/i);
+      const body = JSON.parse(raw) as { provider_key: string; healthy: boolean; checked: string };
+      expect(body.provider_key).toBe('zoom_phone');
+      expect(body.checked).toBe('structural');
+      expect(body.healthy).toBe(true); // provider_account_id is bound
+    });
+
+    it('test connection: un-provisioned tenant → 409 COMMUNICATION_PROVIDER_NOT_CONFIGURED', async () => {
+      const res = await fetch(url('/v1/communications/providers/zoom/test'), { method: 'POST', ...auth(adminBJwt) });
+      expect(res.status).toBe(409);
+      const err = (await res.json()) as { error?: { code?: string } };
+      expect(err.error?.code).toBe('COMMUNICATION_PROVIDER_NOT_CONFIGURED');
     });
 
     it('me/provider-identity: mapped recruiter → 200 with provider_user_id (no secret)', async () => {

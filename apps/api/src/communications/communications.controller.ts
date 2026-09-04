@@ -2,16 +2,19 @@ import { Body, Controller, Get, Headers, HttpCode, HttpStatus, Param, ParseUUIDP
 import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
 import { AramoError, hashCanonicalizedBody, RequestId } from '@aramo/common';
 import { RequireScopes, RolesGuard } from '@aramo/authorization';
+import type { ZoomCredentialBundle } from '@aramo/communications';
 import { IdempotencyService } from '@aramo/consent';
 import { EntitlementGuard, RequireCapability } from '@aramo/entitlement';
 
 import { CommunicationsApiService } from './communications-api.service.js';
 import { CommunicationCallService } from './communication-call.service.js';
 import { CommunicationTimelineService } from './communication-timeline.service.js';
-import { AttachProviderReferenceDto, InitiateCommunicationCallDto, RecordDispositionDto, UpsertProviderIdentityDto } from './dto/communications.dto.js';
+import { AttachProviderReferenceDto, ConfigureZoomCredentialDto, InitiateCommunicationCallDto, RecordDispositionDto, UpsertProviderIdentityDto } from './dto/communications.dto.js';
 import type {
   CommunicationCapabilitiesDto,
+  CommunicationConnectionTestResultDto,
   CommunicationInteractionViewDto,
+  CommunicationProviderConfigListDto,
   CommunicationProviderIdentityDto,
   CommunicationProviderIdentityListDto,
 } from './dto/communications.dto.js';
@@ -134,6 +137,60 @@ export class CommunicationsController {
     @RequestId() requestId: string,
   ): Promise<CommunicationProviderIdentityDto> {
     return this.comms.upsertProviderIdentity(auth.tenant_id, recruiterId, dto, requestId);
+  }
+
+  // COMM-C1 — tenant communication provider CONFIGURATION admin (Settings →
+  // Integrations → Communications). Authorized by integration:* (configuring the
+  // tenant's provider integration), NOT communication:* — mirrors the
+  // provider-identity admin routes above. Provider-neutral list contract; the
+  // credential/test actions are Zoom-specific by nature (typed Zoom bundle).
+
+  // Tolerant admin read: returns every administered provider with its config
+  // state, including `not_configured` — never 409s on an un-provisioned tenant.
+  @Get('providers')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('integration:read')
+  async listProviders(
+    @AuthContext() auth: AuthContextType,
+  ): Promise<CommunicationProviderConfigListDto> {
+    const items = await this.comms.listProviderConfigurations(auth.tenant_id);
+    return { items };
+  }
+
+  // Write-only credential configure/update. The typed Zoom bundle is validated +
+  // encoded server-side and written through the Integration credential path to
+  // Secrets Manager; NO secret/token is persisted to Postgres or returned.
+  @Post('providers/zoom/credential')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('integration:write')
+  async configureZoomCredential(
+    @Body() dto: ConfigureZoomCredentialDto,
+    @AuthContext() auth: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<CommunicationProviderConfigListDto> {
+    const bundle: ZoomCredentialBundle = {
+      access_token: dto.access_token,
+      ...(dto.refresh_token !== undefined ? { refresh_token: dto.refresh_token } : {}),
+      ...(dto.token_type !== undefined ? { token_type: dto.token_type } : {}),
+      ...(dto.scope !== undefined ? { scope: dto.scope } : {}),
+      ...(dto.expires_at !== undefined ? { expires_at: dto.expires_at } : {}),
+      ...(dto.account_id !== undefined ? { account_id: dto.account_id } : {}),
+    };
+    const item = await this.comms.configureZoomCredential(auth.tenant_id, bundle, requestId);
+    return { items: [item] };
+  }
+
+  // Tenant-admin connection test — structural validateConnection only (no live
+  // external ping; B8-deferred). Never mutates recruiting state; never echoes a
+  // secret. No usable connection -> 409 COMMUNICATION_PROVIDER_NOT_CONFIGURED.
+  @Post('providers/zoom/test')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('integration:write')
+  async testZoomConnection(
+    @AuthContext() auth: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<CommunicationConnectionTestResultDto> {
+    return this.comms.testProviderConnection(auth.tenant_id, requestId);
   }
 
   @Get('interactions/:interactionId')
