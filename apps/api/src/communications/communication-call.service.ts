@@ -10,9 +10,16 @@ import {
 } from '@aramo/communications';
 import { ConsentService } from '@aramo/consent';
 import { IntegrationConnectionService } from '@aramo/integration';
+import { PipelineRepository, type PipelineView } from '@aramo/pipeline';
 import { TalentRecordRepository } from '@aramo/talent-record';
 
 import type { CallPhoneSlot, CommunicationInteractionViewDto, InitiateCommunicationCallDto } from './dto/communications.dto.js';
+
+// COMM-C2A — the Pipeline scope that authorizes the governed no_contact→contacted
+// side effect. The orchestration only fires when the caller actually holds it, so
+// a recruiter who may place a call but not change pipeline status never triggers a
+// silent transition (authority preserved, R6).
+const PIPELINE_CHANGE_STATUS_SCOPE = 'pipeline:change-status';
 
 // COMM-B5 — apps/api call-initiation orchestration. Lives at the composition root
 // (NOT libs/communications) so the domain stays free of consent/integration/
@@ -44,12 +51,20 @@ export class CommunicationCallService {
     private readonly providers: VoiceProviderRegistry,
     private readonly consent: ConsentService,
     @Inject(REQUISITION_EXISTENCE_PORT) private readonly requisitions: RequisitionExistencePort,
+    // COMM-C2A — composition-root read/act into Pipeline for the governed
+    // no_contact→contacted orchestration. apps/api is the composition root; NO
+    // libs/communications → pipeline edge is created (R6).
+    private readonly pipelines: PipelineRepository,
   ) {}
 
   async initiate(
     auth: AuthContextType,
     dto: InitiateCommunicationCallDto,
     requestId: string,
+    // COMM-C2A — the caller's visible requisition set (resolved by the global
+    // VisibilityInterceptor in the controller). Threaded through so the CONTACT
+    // orchestration honours the SAME concealment the Pipeline surface enforces.
+    visibleRequisitionIds: ReadonlySet<string> | null,
   ): Promise<CommunicationInteractionViewDto> {
     const tenantId = auth.tenant_id;
     const recruiterId = auth.sub;
@@ -92,6 +107,7 @@ export class CommunicationCallService {
     }
 
     // 3) Validate optional `regarding` requisition (tenant-safe existence).
+    let pipeline: PipelineView | null = null;
     if (dto.regarding !== undefined && dto.regarding !== null) {
       const exists = await this.requisitions.exists(tenantId, dto.regarding.requisition_id);
       if (!exists) {
@@ -101,6 +117,30 @@ export class CommunicationCallService {
           422,
           { requestId, details: { requisition_id: dto.regarding.requisition_id } },
         );
+      }
+
+      // COMM-C2A (R5) — when a Pipeline episode is supplied, the evidence-bearing
+      // call MUST be reliably attributable to the Talent × Requisition. Resolve
+      // it with the caller's visibility (a non-visible/absent pipeline conceals as
+      // "not initiable"), and confirm it matches BOTH the Talent and Requisition.
+      if (dto.regarding.pipeline_id !== undefined) {
+        pipeline = await this.pipelines.findByIdForActor({
+          tenant_id: tenantId,
+          id: dto.regarding.pipeline_id,
+          visible_requisition_ids: visibleRequisitionIds,
+        });
+        if (
+          pipeline === null ||
+          pipeline.requisition_id !== dto.regarding.requisition_id ||
+          pipeline.talent_record_id !== dto.talent_id
+        ) {
+          throw new AramoError(
+            'COMMUNICATION_CALL_NOT_INITIABLE',
+            'the referenced pipeline does not match this talent and requisition',
+            422,
+            { requestId, details: { pipeline_id: dto.regarding.pipeline_id } },
+          );
+        }
       }
     }
 
@@ -178,6 +218,18 @@ export class CommunicationCallService {
         subject_id: dto.regarding.requisition_id,
         relation_type: 'regarding',
       });
+      // COMM-C2A (R5) — additive Pipeline association using the already-admitted
+      // subject_type='pipeline', so the (Talent × Requisition × Pipeline) context
+      // is durably recoverable for the derived engagement read.
+      if (pipeline !== null) {
+        await this.comms.associate({
+          tenant_id: tenantId,
+          interaction_id: interaction.id,
+          subject_type: 'pipeline',
+          subject_id: pipeline.id,
+          relation_type: 'regarding',
+        });
+      }
     }
 
     // 8) Call the provider — after create. Transition on the outcome.
@@ -209,7 +261,49 @@ export class CommunicationCallService {
     }
 
     const initiated = await this.comms.transition(tenantId, interaction.id, 'initiated');
+
+    // 9) COMM-C2A (R6) — governed no_contact→contacted orchestration. A durable
+    // voice attempt now exists. If the caller holds pipeline authority and the
+    // episode is still `no_contact`, drive the governed CONTACT action through the
+    // Pipeline state machine (never a direct status write). BEST-EFFORT: a CAS
+    // conflict, concealment, or any Pipeline error is swallowed — the
+    // communication evidence is preserved and never rolled back.
+    if (pipeline !== null && auth.scopes.includes(PIPELINE_CHANGE_STATUS_SCOPE)) {
+      await this.maybeAdvanceToContacted(auth, pipeline, visibleRequisitionIds, requestId);
+    }
+
     return toView(initiated);
+  }
+
+  /**
+   * COMM-C2A — drive the governed CONTACT action iff the episode is still
+   * `no_contact`. Never replays past `contacted` (R6), never bypasses the state
+   * machine/CAS, and never throws: evidence is already durable, so a failed
+   * transition is logged and reconciled-safe, not surfaced to the caller.
+   */
+  private async maybeAdvanceToContacted(
+    auth: AuthContextType,
+    pipeline: PipelineView,
+    visibleRequisitionIds: ReadonlySet<string> | null,
+    requestId: string,
+  ): Promise<void> {
+    if (pipeline.status !== 'no_contact') return;
+    try {
+      await this.pipelines.applyAction({
+        tenant_id: auth.tenant_id,
+        id: pipeline.id,
+        action: 'CONTACT',
+        expected_version: pipeline.version,
+        changed_by_id: auth.sub,
+        requestId,
+        visible_requisition_ids: visibleRequisitionIds,
+      });
+    } catch (err) {
+      // Reconcile-safe: preserve the evidence, do not fail the call.
+      this.logger.warn(
+        `communication.contact_orchestration_skipped tenant=${auth.tenant_id} pipeline=${pipeline.id} reason=${err instanceof AramoError ? err.code : 'unknown'}`,
+      );
+    }
   }
 }
 

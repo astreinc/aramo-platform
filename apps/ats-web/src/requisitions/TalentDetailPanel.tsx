@@ -10,6 +10,10 @@ import {
 } from '../pipeline/talent-journey-api';
 import { type PipelineStatus, type PipelineView } from '../pipeline/types';
 import { OfferPanelContainer } from '../offers/OfferPanelContainer';
+import { CallButton } from '../communications/CallButton';
+import { VoiceEvidenceSummary } from '../communications/VoiceEvidenceSummary';
+import { getVoiceEngagementEvidence } from '../communications/communications-api';
+import type { VoiceEngagementEvidence } from '../communications/types';
 import { getTalent, updateTalent } from '../talent/talent-api';
 import type { TalentRecordView, UpdateTalentRecordRequest } from '../talent/types';
 import {
@@ -91,6 +95,10 @@ export function TalentDetailPanel({
   const [pipelineBusy, setPipelineBusy] = useState(false);
   const [pipelineErr, setPipelineErr] = useState<string | null>(null);
   const canAdvancePipeline = scopes.includes('pipeline:change-status');
+  // COMM-C2A — derived voice engagement evidence for this Talent × Requisition,
+  // loaded when the drawer opens (R5 — no first-paint/list fan-out).
+  const canCall = scopes.includes('communication:voice:call');
+  const [voiceEvidence, setVoiceEvidence] = useState<VoiceEngagementEvidence | null>(null);
 
   // The RAW talent record (full TalentRecordView) — the SOURCE for inline edit.
   useEffect(() => {
@@ -132,6 +140,35 @@ export function TalentDetailPanel({
       .catch(() => {
         /* keep the last-known journey; the action already succeeded */
       });
+  };
+
+  // COMM-C2A — load the derived voice evidence when the drawer opens; refetch
+  // after a call/disposition (a first attempt may also have advanced the pipeline,
+  // so the journey is re-read too).
+  const refetchVoiceEvidence = (): void => {
+    void getVoiceEngagementEvidence(entry.talent_record_id, entry.requisition_id)
+      .then((e) => setVoiceEvidence(e))
+      .catch(() => {
+        /* neutral — the drawer stays usable without the evidence summary */
+      });
+  };
+  useEffect(() => {
+    let cancelled = false;
+    void getVoiceEngagementEvidence(entry.talent_record_id, entry.requisition_id)
+      .then((e) => {
+        if (!cancelled) setVoiceEvidence(e);
+      })
+      .catch(() => {
+        /* neutral */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [entry.talent_record_id, entry.requisition_id]);
+
+  const handleVoiceCompleted = (): void => {
+    refetchVoiceEvidence();
+    refetchJourney();
   };
 
   // Recruiting-lane advance — a REAL governed Pipeline transition (CAS-guarded).
@@ -273,6 +310,25 @@ export function TalentDetailPanel({
               <p className="rc-cdp__note">{journeyErr ?? 'Loading journey…'}</p>
             </section>
           )}
+
+          {/* COMM-C2A — Voice engagement (Recruiting presentation only, R9). A
+              truthful evidence summary + the governed Call control for this
+              Talent × Requisition. Placing a call records durable evidence and can
+              drive the governed no_contact→contacted transition server-side; it
+              NEVER implies qualification or client-submittal eligibility (R8). */}
+          <section className="rc-cdp__sec" data-testid="voice-engagement">
+            <div className="rc-cdp__seclabel">Voice engagement</div>
+            <VoiceEvidenceSummary evidence={voiceEvidence} />
+            {record !== null ? (
+              <CallButton
+                talent={record}
+                session={null}
+                canCall={canCall}
+                regarding={{ requisition_id: entry.requisition_id, pipeline_id: entry.id }}
+                onCompleted={handleVoiceCompleted}
+              />
+            ) : null}
+          </section>
 
           {/* Offer decision — surfaced ONLY when the journey permits an offer
               (server returns an offer action once ClientSelection is SELECTED) or

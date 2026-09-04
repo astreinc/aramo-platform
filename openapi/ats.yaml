@@ -3671,6 +3671,43 @@ paths:
           $ref: 'common.yaml#/components/responses/Conflict'
       security:
         - BearerAuth: []
+  /v1/communications/voice-evidence:
+    get:
+      operationId: getVoiceEngagementEvidence
+      summary: Derived voice engagement evidence for a Talent × Requisition (COMM-C2A).
+      description: |
+        Provider-neutral derived evidence over existing Communications rows (no new
+        table): whether a voice attempt exists, whether a recruiter/provider two-way
+        conversation exists, and the evidence strength. Requires the `ats` capability
+        and the `communication:read` scope. Tenant-scoped. Never returns a vendor key
+        or secret material. Does NOT assert qualification or client-submittal
+        eligibility.
+      parameters:
+        - name: talent_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: requisition_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VoiceEngagementEvidence'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+      security:
+        - BearerAuth: []
   /v1/communications/calls:
     post:
       operationId: initiateCommunicationCall
@@ -4868,7 +4905,49 @@ components:
                 requisition_id:
                   type: string
                   format: uuid
+                pipeline_id:
+                  type: string
+                  format: uuid
+                  description: |
+                    COMM-C2A — the Pipeline episode for this Talent × Requisition.
+                    Supplied by the Requisition Talent drawer so the interaction is
+                    bound to the pipeline context and a successful first attempt can
+                    drive the governed no_contact→contacted transition.
           description: Optional requisition context; omitted or null for a Talent-only call.
+    VoiceEngagementEvidence:
+      type: object
+      additionalProperties: false
+      description: |
+        COMM-C2A — provider-neutral derived voice engagement evidence for a
+        Talent × Requisition. `attempted` = VOICE_ATTEMPT_RECORDED;
+        `two_way_conversation` = VOICE_CONVERSATION_RECORDED. `evidence_strength`
+        distinguishes a provider-attested connection from a recruiter-attested
+        disposition; null when only an attempt exists. No vendor key; no secret.
+      required:
+        - talent_id
+        - requisition_id
+        - attempted
+        - two_way_conversation
+        - evidence_strength
+        - latest_interaction_id
+        - latest_outcome
+        - latest_at
+      properties:
+        talent_id: { type: string, format: uuid }
+        requisition_id: { type: string, format: uuid }
+        attempted: { type: boolean }
+        two_way_conversation: { type: boolean }
+        evidence_strength:
+          type: [string, 'null']
+          enum: [PROVIDER_VERIFIED, RECRUITER_ATTESTED, null]
+        latest_interaction_id:
+          type: [string, 'null']
+          format: uuid
+        latest_outcome:
+          type: [string, 'null']
+        latest_at:
+          type: [string, 'null']
+          format: date-time
     CommunicationInteractionView:
       type: object
       additionalProperties: false

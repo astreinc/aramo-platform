@@ -10,6 +10,7 @@ import {
 import { ConsentModule } from '@aramo/consent';
 import { EntitlementModule } from '@aramo/entitlement';
 import { IntegrationModule } from '@aramo/integration';
+import { PipelineModule } from '@aramo/pipeline';
 import { RequisitionModule } from '@aramo/requisition';
 import { TalentRecordModule } from '@aramo/talent-record';
 
@@ -51,6 +52,10 @@ const ZOOM_VOICE_PROVIDER_REGISTRAR = Symbol('ZOOM_VOICE_PROVIDER_REGISTRAR');
     ConsentModule,
     TalentRecordModule,
     RequisitionModule,
+    // COMM-C2A — composition-root read/act into Pipeline for the governed
+    // no_contact→contacted orchestration (PipelineRepository). apps/api edge only;
+    // NO libs/communications → pipeline dependency (R6).
+    PipelineModule,
   ],
   controllers: [CommunicationsController, ZoomWebhookController, TalentCommunicationsController],
   providers: [

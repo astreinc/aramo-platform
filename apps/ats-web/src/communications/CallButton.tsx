@@ -6,7 +6,7 @@ import type { TalentRecordView } from '../talent/types';
 import { getCommunicationCapabilities, getMyCommunicationProviderIdentity } from './communications-api';
 import { CallDrawer } from './CallDrawer';
 import type { ZoomEmbedLoader } from './ZoomPhoneEmbed';
-import { COMMUNICATION_VOICE_CALL_SCOPE, type CommunicationCapabilities, type CommunicationProviderIdentity } from './types';
+import { COMMUNICATION_VOICE_CALL_SCOPE, type CallRegardingContext, type CommunicationCapabilities, type CommunicationProviderIdentity } from './types';
 
 // COMM-B4 — the recruiter Call affordance for the Talent full-profile header.
 // Least-visibility (directive B4 rulings): with NO communication:voice:call scope
@@ -22,6 +22,15 @@ type CapState = { kind: 'loading' } | { kind: 'available' } | { kind: 'unavailab
 export interface CallButtonProps {
   readonly talent: TalentRecordView;
   readonly session: Session | null;
+  /**
+   * Explicit voice-call authority. When provided it overrides the session-scope
+   * check — used by the requisition drawer, which holds a scopes[] (not a Session).
+   */
+  readonly canCall?: boolean;
+  /** Talent × Requisition (+ pipeline) context when launched from the requisition drawer. */
+  readonly regarding?: CallRegardingContext;
+  /** Fired after a call is placed / disposition recorded, so the owner can refetch. */
+  readonly onCompleted?: () => void;
   /** Injected for tests; default to the real clients. */
   readonly capabilitiesFn?: () => Promise<CommunicationCapabilities>;
   readonly providerIdentityFn?: () => Promise<CommunicationProviderIdentity>;
@@ -31,11 +40,14 @@ export interface CallButtonProps {
 export function CallButton({
   talent,
   session,
+  canCall,
+  regarding,
+  onCompleted,
   capabilitiesFn = getCommunicationCapabilities,
   providerIdentityFn = getMyCommunicationProviderIdentity,
   embedLoader,
 }: CallButtonProps) {
-  const gated = session !== null && hasScope(session, COMMUNICATION_VOICE_CALL_SCOPE);
+  const gated = canCall ?? (session !== null && hasScope(session, COMMUNICATION_VOICE_CALL_SCOPE));
   const [cap, setCap] = useState<CapState>({ kind: 'loading' });
   const [open, setOpen] = useState(false);
 
@@ -69,6 +81,8 @@ export function CallButton({
           <CallDrawer
             talent={talent}
             onClose={() => setOpen(false)}
+            {...(regarding !== undefined ? { regarding } : {})}
+            {...(onCompleted !== undefined ? { onCompleted } : {})}
             providerIdentityFn={providerIdentityFn}
             embedLoader={embedLoader}
           />

@@ -1331,6 +1331,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/communication-call-orchestration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/communications-authz.integration.spec.ts",
         "project": "api",
         "status": "excluded"
