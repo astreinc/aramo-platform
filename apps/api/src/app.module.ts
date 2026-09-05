@@ -71,6 +71,7 @@ import { PlacementModule } from './placement/placement.module.js';
 import { OfferModule } from './offer/offer.module.js';
 import { TalentJourneyModule } from './talent-journey/talent-journey.module.js';
 import { CommunicationsApiModule } from './communications/communications-api.module.js';
+import { EngagementApiModule } from './engagement/engagement-api.module.js';
 import { ConnectorExecutionModule } from './connector/connector-execution.module.js';
 import { RequisitionIntegrationModule } from './requisition-integration/requisition-integration.module.js';
 import { PipelineIntegrationModule } from './pipeline-integration/pipeline-integration.module.js';
@@ -402,6 +403,7 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     // composes the 8 owner aggregates, 404-conceals a non-visible episode, reads only.
     TalentJourneyModule,
     CommunicationsApiModule,
+    EngagementApiModule,
     // T2-2a — canonicalization orchestrator (NEW leaf lib). Lead-authored
     // per Aramo-T2-2a-Canonicalization-Orchestration-Directive-v1_0-LOCKED.md.
     // Service-only at T2-2a (no controller). Imported here BEFORE

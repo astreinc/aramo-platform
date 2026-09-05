@@ -9,6 +9,8 @@ import {
   type SubmittalPolicyInputs,
 } from '@aramo/submittal-eligibility';
 
+import { EngagementGateService } from '../engagement/engagement-gate.service.js';
+
 // Lane L8-B1 (v1.2) — the "Submit Talent to Client" orchestration command.
 //
 // THE single authoritative client-submittal operation. One interactive
@@ -87,6 +89,9 @@ export class SubmitTalentToClientService {
   constructor(
     @Inject('SubmitTalentDb') private readonly db: OrchestratorDb,
     @Inject('SubmitTalentToClientLogger') private readonly logger: AramoLogger,
+    // COMM-C3 — the engagement gate (composition-root); resolves policy + neutral
+    // evidence + provenance on its OWN connections and returns the typed verdict.
+    private readonly engagementGate: EngagementGateService,
   ) {}
 
   async submitToClient(
@@ -171,13 +176,14 @@ export class SubmitTalentToClientService {
       // (409) — no free pass for a missing requisition. details.status carries the
       // current status (null when absent). This gate only READS status; it never
       // writes it (Rule 3 / H4 one-way).
-      const reqStatusRows = await tx.$queryRawUnsafe<Array<{ status: string }>>(
-        `SELECT "status" FROM "requisition"."Requisition"
+      const reqStatusRows = await tx.$queryRawUnsafe<Array<{ status: string; company_id: string | null }>>(
+        `SELECT "status","company_id" FROM "requisition"."Requisition"
           WHERE "id" = $1::uuid AND "tenant_id" = $2::uuid`,
         requisition_id,
         tenant_id,
       );
       const requisition_status = reqStatusRows[0]?.status;
+      const company_id = reqStatusRows[0]?.company_id ?? null;
       if (requisition_status !== 'open') {
         throw err(
           'REQUISITION_NOT_OPEN',
@@ -202,10 +208,24 @@ export class SubmitTalentToClientService {
         requisition_id,
         talent_record_id,
       );
+      // COMM-C3 — the engagement gate (R1/C3-7): runs AFTER the existing
+      // eligibility inputs are gathered and BEFORE slot consumption/mutation. The
+      // gate resolves the effective policy + provider-neutral evidence and writes
+      // append-only provenance on its OWN connections (surviving a deny abort); the
+      // pure decision below denies with the carried typed reason when unsatisfied.
+      const engagement = await this.engagementGate.assess({
+        tenant_id,
+        talent_id: talent_record_id,
+        requisition_id,
+        company_id,
+        actor_id: input.actor_id,
+        correlation_id: requestId,
+      });
       const decision = evaluateEligibility(inputs, {
         now: new Date(),
         consumed_count: consumedRows[0]?.n ?? 0,
         restriction_active,
+        engagement,
       });
       if (!decision.eligible && decision.deny !== undefined) {
         throw err(decision.deny, `Submittal not eligible: ${decision.deny}`, 409, {

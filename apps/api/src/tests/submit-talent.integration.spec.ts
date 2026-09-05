@@ -9,6 +9,15 @@ import {
 } from '@testcontainers/postgresql';
 import { Client } from 'pg';
 import { PrismaService } from '@aramo/submittal-eligibility';
+import { CommunicationsRepository, CommunicationsPrismaService } from '@aramo/communications';
+import { EngagementPolicyService } from '@aramo/engagement';
+
+// COMM-C3 — the engagement gate is composed into the orchestrator; imported here
+// to construct the real gate against the same test DB (dormant unless a policy is
+// published for the tenant — the amendment default).
+import { EngagementPolicyGatewayAdapter } from '../engagement/engagement-policy-gateway.adapter.js';
+import { VoiceEvidenceReaderAdapter } from '../engagement/voice-evidence.adapter.js';
+import { EngagementGateService } from '../engagement/engagement-gate.service.js';
 
 // Lane L8-B1 (v1.2) — the load-bearing atomicity + authority proofs for the
 // "Submit Talent to Client" orchestrator (real Postgres 17, 7 schemas). These
@@ -84,6 +93,11 @@ const MIGRATIONS = [
   'libs/submittal/prisma/migrations/20260822130000_l8b1_submittal_pipeline_link/migration.sql',
   'libs/client-talent-restriction/prisma/migrations/20260803163000_init_client_talent_restriction_model/migration.sql',
   'libs/submittal-eligibility/prisma/migrations/20260822120000_init_submittal_eligibility_model/migration.sql',
+  // COMM-C3 — the engagement gate reads/writes policy_store (StoredPolicyVersion +
+  // PolicyDecisionRecord) and reads communications evidence when governed.
+  'libs/policy-store/prisma/migrations/20260730120000_init_policy_store/migration.sql',
+  'libs/policy-store/prisma/migrations/20260730160000_add_policy_decision_record/migration.sql',
+  'libs/communications/prisma/migrations/20260825120000_init_communications/migration.sql',
 ].map(mig);
 
 const logger = { log: () => undefined, error: () => undefined, warn: () => undefined } as never;
@@ -94,6 +108,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     let container: StartedPostgreSqlContainer;
     let sql: Client;
     let db: PrismaService;
+    let commsPrisma: CommunicationsPrismaService;
+    let engagementPolicy: EngagementPolicyService;
     let svc: InstanceType<typeof SubmitTalentToClientService>;
 
     beforeAll(async () => {
@@ -105,11 +121,24 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       for (const p of MIGRATIONS) await sql.query(readFileSync(p, 'utf8'));
       db = new PrismaService(url);
       await db.$connect();
-      svc = new SubmitTalentToClientService(db, logger);
+      // COMM-C3 — construct the real engagement gate against the same DB. The
+      // gateway adapter + provenance use raw SQL over policy_store on `db`; the
+      // evidence reader uses a communications connection. Ungoverned tenants
+      // (no published policy) are DORMANT, so the existing proofs are unchanged.
+      commsPrisma = new CommunicationsPrismaService(url);
+      await commsPrisma.$connect();
+      engagementPolicy = new EngagementPolicyService(new EngagementPolicyGatewayAdapter(db as never));
+      const gate = new EngagementGateService(
+        engagementPolicy,
+        new VoiceEvidenceReaderAdapter(new CommunicationsRepository(commsPrisma)),
+        db as never,
+      );
+      svc = new SubmitTalentToClientService(db, logger, gate);
     }, 180_000);
 
     afterAll(async () => {
       await db?.$disconnect();
+      await commsPrisma?.$disconnect();
       await sql?.end();
       await container?.stop();
     });
@@ -341,6 +370,129 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       // AFTER — unchanged. The gate is one-way (read-only); it wrote nothing.
       expect(await requisitionStatus(req)).toBe('submittals_closed');
+    });
+
+    // ───────────────── COMM-C3 engagement gate (directive §9) ─────────────────
+    async function publishVoicePolicy(
+      t: string,
+      minStrength: 'RECRUITER_ATTESTED' | 'PROVIDER_VERIFIED',
+      opts: { future?: boolean } = {},
+    ): Promise<void> {
+      await engagementPolicy.publish({
+        tenant_id: t,
+        version: 'v1',
+        definition: {
+          schema_version: 1,
+          scope: 'TENANT',
+          scope_ref: null,
+          requirements: [
+            { channel: 'voice', required: true, condition: 'two_way_conversation', minimum_strength: minStrength },
+          ],
+        },
+        published_by: randomUUID(),
+        ...(opts.future === true ? { effective_from: new Date(Date.now() + 10_000_000_000) } : {}),
+      });
+    }
+    async function seedVoiceEvidence(
+      t: string,
+      talent: string,
+      req: string,
+      opts: { status?: string; disposition?: string },
+    ): Promise<void> {
+      const interaction = randomUUID();
+      await sql.query(
+        `INSERT INTO communications."CommunicationInteraction"
+           (id,tenant_id,channel,direction,status,integration_connection_id,from_address,to_address,connected_at)
+         VALUES ($1,$2,'voice','outbound',$3::communications."CommunicationInteractionStatus",$4,'+15715550100','+17035550111',now())`,
+        [interaction, t, opts.status ?? 'initiated', randomUUID()],
+      );
+      await sql.query(
+        `INSERT INTO communications."CommunicationAssociation" (id,tenant_id,interaction_id,subject_type,subject_id,relation_type)
+         VALUES (gen_random_uuid(),$1,$2,'talent_record',$3,'subject')`,
+        [t, interaction, talent],
+      );
+      await sql.query(
+        `INSERT INTO communications."CommunicationAssociation" (id,tenant_id,interaction_id,subject_type,subject_id,relation_type)
+         VALUES (gen_random_uuid(),$1,$2,'requisition',$3,'regarding')`,
+        [t, interaction, req],
+      );
+      if (opts.disposition !== undefined) {
+        await sql.query(
+          `INSERT INTO communications."CommunicationDisposition" (id,tenant_id,interaction_id,disposition,dispositioned_by_id,dispositioned_at)
+           VALUES (gen_random_uuid(),$1,$2,$3::communications."CommunicationDispositionOutcome",$4,now())`,
+          [t, interaction, opts.disposition, randomUUID()],
+        );
+      }
+    }
+    async function setupSubmit(t: string): Promise<{ talent: string; req: string; sub: string }> {
+      const talent = randomUUID(), req = randomUUID(), pipe = randomUUID(), sub = randomUUID();
+      await seedRequisition(t, req, 'open');
+      await seedPipeline(t, pipe, talent, req);
+      await seedSubmittal(t, sub, talent, req, pipe);
+      return { talent, req, sub };
+    }
+    const submit = (t: string, sub: string, tag: string) =>
+      svc.submitToClient({ tenant_id: t, submittal_id: sub, event_id: randomUUID(), actor_id: randomUUID(), requestId: tag });
+
+    it('C3 dormant: a never-governed tenant submits under the existing gates (no engagement enforcement)', async () => {
+      const t = randomUUID();
+      const { sub } = await setupSubmit(t);
+      const res = await submit(t, sub, 'c3-dormant');
+      expect(res.state).toBe('submitted_to_ats');
+    });
+
+    it('C3-1: governed tenant with NO effective policy → fail-closed POLICY_MISSING', async () => {
+      const t = randomUUID();
+      await publishVoicePolicy(t, 'RECRUITER_ATTESTED', { future: true }); // published → governed; not yet effective
+      const { sub } = await setupSubmit(t);
+      await expect(submit(t, sub, 'c3-1')).rejects.toMatchObject({
+        code: 'CLIENT_SUBMITTAL_ENGAGEMENT_POLICY_MISSING',
+        statusCode: 409,
+      });
+    });
+
+    it('C3-2: voice-required, NO voice evidence → blocked ENGAGEMENT_INCOMPLETE', async () => {
+      const t = randomUUID();
+      await publishVoicePolicy(t, 'RECRUITER_ATTESTED');
+      const { sub } = await setupSubmit(t);
+      await expect(submit(t, sub, 'c3-2')).rejects.toMatchObject({
+        code: 'CLIENT_SUBMITTAL_ENGAGEMENT_INCOMPLETE',
+        statusCode: 409,
+      });
+    });
+
+    it('C3-3: voice-required, recruiter-attested evidence, policy allows it → eligible', async () => {
+      const t = randomUUID();
+      await publishVoicePolicy(t, 'RECRUITER_ATTESTED');
+      const { talent, req, sub } = await setupSubmit(t);
+      await seedVoiceEvidence(t, talent, req, { status: 'initiated', disposition: 'connected' });
+      const res = await submit(t, sub, 'c3-3');
+      expect(res.state).toBe('submitted_to_ats');
+      // Provenance: an ALLOW engagement decision is recorded (append-only).
+      const prov = await sql.query(
+        `SELECT decision FROM policy_store."PolicyDecisionRecord" WHERE tenant_id=$1 AND action='ENGAGEMENT_GATE'`,
+        [t],
+      );
+      expect(prov.rows.some((r: { decision: string }) => r.decision === 'ALLOW')).toBe(true);
+    });
+
+    it('C3-4: policy requires PROVIDER_VERIFIED but only recruiter-attested exists → blocked', async () => {
+      const t = randomUUID();
+      await publishVoicePolicy(t, 'PROVIDER_VERIFIED');
+      const { talent, req, sub } = await setupSubmit(t);
+      await seedVoiceEvidence(t, talent, req, { status: 'initiated', disposition: 'connected' });
+      await expect(submit(t, sub, 'c3-4')).rejects.toMatchObject({
+        code: 'CLIENT_SUBMITTAL_ENGAGEMENT_INCOMPLETE',
+      });
+    });
+
+    it('C3-5: provider-verified evidence (connected status) → eligible', async () => {
+      const t = randomUUID();
+      await publishVoicePolicy(t, 'PROVIDER_VERIFIED');
+      const { talent, req, sub } = await setupSubmit(t);
+      await seedVoiceEvidence(t, talent, req, { status: 'connected' });
+      const res = await submit(t, sub, 'c3-5');
+      expect(res.state).toBe('submitted_to_ats');
     });
   },
 );

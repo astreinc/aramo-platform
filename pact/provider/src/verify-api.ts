@@ -4623,6 +4623,17 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           );
         });
       },
+      // COMM-C3 — dormant engagement readiness: the tenant has published NO
+      // engagement policy, so the gate is non-enforcing and readiness reports
+      // governed=false / policy_present=false / satisfied=true.
+      'a tenant entitled to ats with no engagement policy published': async () => {
+        await withClient(async (c) => {
+          await c.query(
+            `DELETE FROM "policy_store"."StoredPolicyVersion" WHERE tenant_id = $1::uuid AND package_name LIKE 'engagement-policy%'`,
+            [TENANT_ID],
+          );
+        });
+      },
       // ===== E1-d placement read pacts (ats-web placement.consumer) =====
       // Fixture UUIDs mirror pact/consumers/ats-web/src/placement.consumer.test.ts.
       // The placement is seeded under TENANT_ID (the JWT tenant); requisition:

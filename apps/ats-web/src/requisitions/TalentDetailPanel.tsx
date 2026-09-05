@@ -14,6 +14,7 @@ import { CallButton } from '../communications/CallButton';
 import { VoiceEvidenceSummary } from '../communications/VoiceEvidenceSummary';
 import { getVoiceEngagementEvidence } from '../communications/communications-api';
 import type { VoiceEngagementEvidence } from '../communications/types';
+import { EngagementReadinessSummary } from '../engagement/EngagementReadinessSummary';
 import { getTalent, updateTalent } from '../talent/talent-api';
 import type { TalentRecordView, UpdateTalentRecordRequest } from '../talent/types';
 import {
@@ -328,6 +329,18 @@ export function TalentDetailPanel({
                 onCompleted={handleVoiceCompleted}
               />
             ) : null}
+          </section>
+
+          {/* COMM-C3 — Submittal readiness (engagement gate). Provider-neutral
+              per-requirement status; loaded on drawer open (no list fan-out, R18).
+              It states only whether engagement requirements are met — NEVER that
+              the Talent is Qualified (R19). The backend gate is authoritative. */}
+          <section className="rc-cdp__sec" data-testid="submittal-readiness">
+            <div className="rc-cdp__seclabel">Submittal readiness</div>
+            <EngagementReadinessSummary
+              talentId={entry.talent_record_id}
+              requisitionId={entry.requisition_id}
+            />
           </section>
 
           {/* Offer decision — surfaced ONLY when the journey permits an offer

@@ -23,6 +23,7 @@
     "apps/api/src/pipeline-integration/pipeline-provider-mapping-admin.controller.ts": "AP",
     "apps/api/src/talent-journey/talent-journey.controller.ts": "AP",
     "apps/api/src/communications/communications.controller.ts": "AP",
+    "apps/api/src/engagement/engagement.controller.ts": "AP",
     "apps/api/src/communications/talent-communications.controller.ts": "AP",
     "apps/api/src/communications/zoom-webhook.controller.ts": "XP",
     "apps/api/src/placement/guarantee-terms.controller.ts": "AP",

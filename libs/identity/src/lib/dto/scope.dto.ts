@@ -353,6 +353,13 @@ export const SEED_SCOPE_KEYS = [
   // (distinct from pipeline:change-status) and NOT the broad integration:write. GRANTED to
   // tenant_admin + tenant_owner ONLY (administrative tier; recruiter/account_manager excluded).
   'integration:pipeline-mapping:write',
+  // COMM-C3 — Tenant Engagement Policy administration (Settings → Recruiting).
+  // read: view the effective engagement policy + evidence-channel capabilities.
+  // write: publish a new immutable engagement-policy version. Dedicated admin
+  // scopes (R16); NOT reused from communication/integration authority. GRANTED to
+  // tenant_admin + tenant_owner only.
+  'engagement:policy:read',
+  'engagement:policy:write',
   // Requisition Approval sub-workflow — decide the pending_approval → open /
   // → draft (APPROVE / REJECT) governed transitions.
   'requisition:approve',

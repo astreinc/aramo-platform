@@ -62,6 +62,7 @@
       "@aramo/job-domain": ["libs/job-domain/src/index.ts"],
       "@aramo/mailer": ["libs/mailer/src/index.ts"],
       "@aramo/matching": ["libs/matching/src/index.ts"],
+      "@aramo/engagement": ["libs/engagement/src/index.ts"],
       "@aramo/policy-engine": ["libs/policy-engine/src/index.ts"],
       "@aramo/policy-store": ["libs/policy-store/src/index.ts"],
       "@aramo/metering": ["libs/metering/src/index.ts"],
