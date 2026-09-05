@@ -228,6 +228,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'contact:read',
         'contact:search',
         'dashboard:read',
+        'engagement:policy:read',
+        'engagement:policy:write',
         'examination:read',
         'export:read',
         'identity:resolve',
@@ -518,7 +520,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Track 3 / E2: +7 pre_start_requirement (all non-platform). Re-derived
       // actual 96 (prior literal 85 was pre-existingly understated by 4 — F-2).
       // Track 3 / E2 v1.2.2: +1 pre_start_requirement:reopen (non-platform) → 97.
-      expect(tenantScopes.length).toBe(133); // L5-P6: +1 pre_start_requirement:verify (non-platform tenant scope) → 133. L6-0: −2 assignment:create + assignment:update (both non-platform, grounded-dead) → 134−2=132. L4/P5: +2 offer:read + offer:read:financial (both non-platform) → 132+2=134. L2-I (D1): +1 integration:pipeline-mapping:write (non-platform) → 131+1=132. L2-F: +3 client-selection:create/read/transition (all non-platform) → 126+3. HYG-1: 128 − 3 removed tenant scopes (pipeline:remove, pipeline:add-activity, submittal-policy:write)
+      expect(tenantScopes.length).toBe(135); // COMM-C3: +2 engagement:policy:read + engagement:policy:write (both non-platform tenant scopes) → 133+2=135. L5-P6: +1 pre_start_requirement:verify (non-platform tenant scope) → 133. L6-0: −2 assignment:create + assignment:update (both non-platform, grounded-dead) → 134−2=132. L4/P5: +2 offer:read + offer:read:financial (both non-platform) → 132+2=134. L2-I (D1): +1 integration:pipeline-mapping:write (non-platform) → 131+1=132. L2-F: +3 client-selection:create/read/transition (all non-platform) → 126+3. HYG-1: 128 − 3 removed tenant scopes (pipeline:remove, pipeline:add-activity, submittal-policy:write)
       for (const s of tenantScopes) {
         expect(s.key.startsWith('platform:')).toBe(false);
       }
@@ -802,6 +804,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'contact:read',
         'contact:search',
         'dashboard:read',
+        'engagement:policy:read',
+        'engagement:policy:write',
         'examination:read',
         'export:read',
         'identity:resolve',
@@ -1067,6 +1071,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'contact:read',
         'contact:search',
         'dashboard:read',
+        'engagement:policy:read',
+        'engagement:policy:write',
         'examination:read',
         'export:read',
         'identity:resolve',
@@ -1363,6 +1369,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'selection:outreach',
         'selection:read',
         'selection:write',
+        'engagement:policy:read',
+        'engagement:policy:write',
         'examination:read',
         'export:read',
         'identity:resolve',
