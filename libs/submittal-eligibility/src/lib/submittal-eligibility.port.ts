@@ -22,7 +22,35 @@ export type EligibilityDenyCode =
   | 'SUBMITTALS_CLOSED'
   | 'SUBMITTAL_WINDOW_PASSED'
   | 'SUBMITTAL_LIMIT_REACHED'
-  | 'TALENT_RESTRICTED_AT_CLIENT';
+  | 'TALENT_RESTRICTED_AT_CLIENT'
+  // COMM-C3 — engagement-gate refusals (all 409, R15). The typed reason is
+  // computed by the Engagement domain and pre-resolved by the apps/api
+  // orchestrator into the minimal `EngagementEligibilityInput` below; this pure
+  // port never reads Communications/Policy — it only honours what it is passed.
+  | 'CLIENT_SUBMITTAL_ENGAGEMENT_POLICY_MISSING'
+  | 'CLIENT_SUBMITTAL_ENGAGEMENT_INCOMPLETE'
+  | 'CLIENT_SUBMITTAL_ENGAGEMENT_EVIDENCE_UNAVAILABLE';
+
+/** COMM-C3 engagement deny reasons (subset of EligibilityDenyCode). */
+export type EngagementEligibilityDenyCode =
+  | 'CLIENT_SUBMITTAL_ENGAGEMENT_POLICY_MISSING'
+  | 'CLIENT_SUBMITTAL_ENGAGEMENT_INCOMPLETE'
+  | 'CLIENT_SUBMITTAL_ENGAGEMENT_EVIDENCE_UNAVAILABLE';
+
+/**
+ * COMM-C3 — the minimal typed engagement-readiness input (R12). The orchestrator
+ * gathers policy + provider-neutral evidence, runs the Engagement evaluator, and
+ * passes ONLY this resolved verdict here. Absent ⇒ no engagement gating (the
+ * fail-closed contract lives in the orchestrator, which passes satisfied=false +
+ * a typed reason when a required policy is missing or evidence is unavailable).
+ */
+export interface EngagementEligibilityInput {
+  readonly satisfied: boolean;
+  /** Present iff !satisfied — the typed 409 engagement refusal. */
+  readonly deny: EngagementEligibilityDenyCode | null;
+  /** Bounded, non-sensitive channels blocking the gate (for the refusal body). */
+  readonly missing?: readonly string[];
+}
 
 /** Persisted policy INPUTS (absent policy ⇒ all null/undefined ⇒ default OPEN). */
 export interface SubmittalPolicyInputs {
@@ -40,6 +68,13 @@ export interface EligibilityContext {
   readonly consumed_count: number;
   /** True iff an active ClientTalentRestriction exists for this (client, talent). */
   readonly restriction_active: boolean;
+  /**
+   * COMM-C3 — the pre-resolved engagement-readiness verdict (R12). Optional for
+   * backward compatibility; when present and NOT satisfied, the decision denies
+   * with the carried typed engagement reason. Checked AFTER the existing window +
+   * restriction gates.
+   */
+  readonly engagement?: EngagementEligibilityInput;
 }
 
 /** The derived effective window status + why (for provenance + refusal mapping). */
@@ -109,6 +144,11 @@ export function evaluateEligibility(
   }
   if (ctx.restriction_active) {
     return { eligible: false, status, deny: 'TALENT_RESTRICTED_AT_CLIENT' };
+  }
+  // COMM-C3 — engagement gate (last; after window + restriction). The orchestrator
+  // passes a pre-resolved verdict; this pure function only honours it.
+  if (ctx.engagement !== undefined && !ctx.engagement.satisfied && ctx.engagement.deny !== null) {
+    return { eligible: false, status, deny: ctx.engagement.deny };
   }
   return { eligible: true, status };
 }

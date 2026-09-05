@@ -3708,6 +3708,114 @@ paths:
           $ref: 'common.yaml#/components/responses/Forbidden'
       security:
         - BearerAuth: []
+  /v1/engagement/capabilities:
+    get:
+      operationId: getEngagementCapabilities
+      summary: Provider-neutral evidence-channel capabilities (COMM-C3).
+      description: |
+        The evidence-channel capability snapshot (voice available; email not yet).
+        Requires the `ats` capability and `engagement:policy:read`. Provider-neutral.
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EngagementCapabilitiesList'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+      security:
+        - BearerAuth: []
+  /v1/engagement/policy/effective:
+    get:
+      operationId: getEffectiveEngagementPolicy
+      summary: The effective (TENANT/CLIENT/REQUISITION-resolved) engagement policy (COMM-C3).
+      description: |
+        Resolve the effective engagement policy for an optional company/requisition
+        context. Requires the `ats` capability and `engagement:policy:read`. Returns
+        `effective: null` when no layer has an active published policy.
+      parameters:
+        - name: requisition_id
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+        - name: company_id
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EffectiveEngagementPolicyResponse'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+      security:
+        - BearerAuth: []
+  /v1/engagement/policy:
+    post:
+      operationId: publishEngagementPolicy
+      summary: Publish a new immutable engagement-policy version (COMM-C3).
+      description: |
+        Publish a typed, versioned, effective-dated engagement policy. Requires the
+        `ats` capability and `engagement:policy:write`. Validated + activation-guarded
+        (422 ENGAGEMENT_POLICY_SCHEMA_INVALID / ENGAGEMENT_POLICY_NOT_ACTIVATABLE):
+        an email-required policy cannot be activated while no email producer exists.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PublishEngagementPolicyRequest'
+      responses:
+        '200':
+          description: OK — the published version metadata (secret-free).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublishedEngagementPolicyResponse'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '422':
+          $ref: 'common.yaml#/components/responses/UnprocessableEntity'
+      security:
+        - BearerAuth: []
+  /v1/engagement/readiness:
+    get:
+      operationId: getEngagementReadiness
+      summary: Recruiter readiness for a Talent × Requisition (COMM-C3).
+      description: |
+        Provider-neutral engagement-gate readiness for the requisition Talent drawer.
+        Requires the `ats` capability and `pipeline:read`. Does NOT assert Qualified
+        or client-submittal eligibility beyond the engagement requirements.
+      parameters:
+        - name: talent_id
+          in: query
+          required: true
+          schema: { type: string, format: uuid }
+        - name: requisition_id
+          in: query
+          required: true
+          schema: { type: string, format: uuid }
+        - name: company_id
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EngagementReadinessResponse'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+      security:
+        - BearerAuth: []
   /v1/communications/calls:
     post:
       operationId: initiateCommunicationCall
@@ -4914,6 +5022,127 @@ components:
                     bound to the pipeline context and a successful first attempt can
                     drive the governed no_contact→contacted transition.
           description: Optional requisition context; omitted or null for a Talent-only call.
+    EngagementChannelCapability:
+      type: object
+      additionalProperties: false
+      required: [channel, available]
+      properties:
+        channel: { type: string, enum: [voice, email] }
+        available: { type: boolean }
+    EngagementCapabilitiesList:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/EngagementChannelCapability' }
+    EngagementRequirement:
+      type: object
+      additionalProperties: false
+      description: COMM-C3 typed, provider-neutral engagement requirement (no vendor key).
+      required: [channel, required, condition]
+      properties:
+        channel: { type: string, enum: [voice, email] }
+        required: { type: boolean }
+        condition: { type: string, enum: [two_way_conversation, recorded_evidence] }
+        minimum_strength:
+          type: string
+          enum: [RECRUITER_ATTESTED, PROVIDER_VERIFIED]
+    EffectiveEngagementPolicy:
+      type: object
+      additionalProperties: false
+      required: [requirements, layers, composite_version]
+      properties:
+        requirements:
+          type: array
+          items: { $ref: '#/components/schemas/EngagementRequirement' }
+        layers:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [scope, package_name, version, checksum]
+            properties:
+              scope: { type: string, enum: [TENANT, CLIENT, REQUISITION] }
+              package_name: { type: string }
+              version: { type: string }
+              checksum: { type: string }
+        composite_version: { type: string }
+    EffectiveEngagementPolicyResponse:
+      type: object
+      additionalProperties: false
+      required: [effective]
+      properties:
+        effective:
+          oneOf:
+            - { type: 'null' }
+            - { $ref: '#/components/schemas/EffectiveEngagementPolicy' }
+    PublishEngagementPolicyRequest:
+      type: object
+      additionalProperties: false
+      required: [version, scope, schema_version, requirements]
+      properties:
+        version: { type: string, maxLength: 64 }
+        scope: { type: string, enum: [TENANT, CLIENT, REQUISITION] }
+        scope_ref:
+          type: [string, 'null']
+          format: uuid
+        schema_version: { type: integer }
+        requirements:
+          type: array
+          maxItems: 8
+          items: { $ref: '#/components/schemas/EngagementRequirement' }
+        effective_from: { type: string, format: date-time }
+    PublishedEngagementPolicyResponse:
+      type: object
+      additionalProperties: false
+      required: [published]
+      properties:
+        published:
+          type: object
+          additionalProperties: false
+          required: [package_name, scope, scope_ref, version, checksum, effective_from, effective_to, published_by, published_at]
+          properties:
+            package_name: { type: string }
+            scope: { type: string, enum: [TENANT, CLIENT, REQUISITION] }
+            scope_ref:
+              type: [string, 'null']
+            version: { type: string }
+            checksum: { type: string }
+            effective_from: { type: string, format: date-time }
+            effective_to:
+              type: [string, 'null']
+              format: date-time
+            published_by: { type: string, format: uuid }
+            published_at: { type: string, format: date-time }
+    EngagementReadinessResponse:
+      type: object
+      additionalProperties: false
+      required: [governed, policy_present, satisfied, results, missing, unavailable, capabilities]
+      properties:
+        governed: { type: boolean }
+        policy_present: { type: boolean }
+        satisfied: { type: boolean }
+        unavailable: { type: boolean }
+        missing:
+          type: array
+          items: { type: string, enum: [voice, email] }
+        results:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [channel, required, status]
+            properties:
+              channel: { type: string, enum: [voice, email] }
+              required: { type: boolean }
+              status:
+                type: string
+                enum: [satisfied, not_required, missing, insufficient_strength, unavailable, no_producer]
+        capabilities:
+          type: array
+          items: { $ref: '#/components/schemas/EngagementChannelCapability' }
     VoiceEngagementEvidence:
       type: object
       additionalProperties: false

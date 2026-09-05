@@ -6289,6 +6289,12 @@
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/submit-talent.integration.spec.ts",
       "status": "excluded",
+      "to": "libs/communications/prisma/migrations/20260825120000_init_communications/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/submit-talent.integration.spec.ts",
+      "status": "excluded",
       "to": "libs/metering/prisma/migrations/20260601150000_init_metering_model/migration.sql"
     },
     {
@@ -6356,6 +6362,18 @@
       "from": "apps/api/src/tests/submit-talent.integration.spec.ts",
       "status": "excluded",
       "to": "libs/pipeline/prisma/migrations/20260831120000_pipeline_canonicalize_status_enum/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/submit-talent.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/policy-store/prisma/migrations/20260730120000_init_policy_store/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/submit-talent.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/policy-store/prisma/migrations/20260730160000_add_policy_decision_record/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -10053,6 +10071,11 @@
     {
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
+      "to": "apps/api/src/engagement/engagement.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
       "to": "apps/api/src/offer/offer.controller.ts"
     },
     {
@@ -11766,6 +11789,11 @@
     {
       "from": "doc/governance/recon/2026-08-09/SEG-03-persistence.md",
       "status": "unscoped",
+      "to": "pact/consumers/ats-web/src/engagement.consumer.test.ts"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-03-persistence.md",
+      "status": "unscoped",
       "to": "pact/provider/src/verify-api.ts"
     },
     {
@@ -12172,6 +12200,11 @@
       "from": "doc/governance/recon/2026-08-09/SEG-08-ledger.md",
       "status": "unscoped",
       "to": "libs/client-talent-restriction/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-08-ledger.md",
+      "status": "unscoped",
+      "to": "libs/engagement/src/index.ts"
     },
     {
       "from": "doc/governance/recon/2026-08-09/SEG-08-ledger.md",
@@ -14091,6 +14124,16 @@
       "from": "libs/contact/project.json",
       "status": "unscoped",
       "to": "libs/contact/tsconfig.lib.json"
+    },
+    {
+      "from": "libs/engagement/project.json",
+      "status": "unscoped",
+      "to": "libs/engagement/src/index.ts"
+    },
+    {
+      "from": "libs/engagement/project.json",
+      "status": "unscoped",
+      "to": "libs/engagement/tsconfig.lib.json"
     },
     {
       "from": "libs/entitlement/prisma/schema.prisma",
@@ -17380,6 +17423,7 @@
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/company/src/index.ts" },
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/consent/src/index.ts" },
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/contact/src/index.ts" },
+    { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/engagement/src/index.ts" },
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/entitlement/src/index.ts" },
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/events/src/index.ts" },
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/evidence/src/index.ts" },
@@ -17523,6 +17567,7 @@
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/company/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/consent/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/contact/src/index.ts" },
+    { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/engagement/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/entitlement/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/events/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/evidence/src/index.ts" },

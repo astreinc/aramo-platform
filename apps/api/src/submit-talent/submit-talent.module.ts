@@ -8,6 +8,8 @@ import {
   PrismaService as SubmittalEligibilityPrismaService,
 } from '@aramo/submittal-eligibility';
 
+import { EngagementGateModule } from '../engagement/engagement-gate.module.js';
+
 import { SubmitTalentController } from './submit-talent.controller.js';
 import { SubmitTalentToClientService } from './submit-talent.service.js';
 
@@ -18,7 +20,7 @@ import { SubmitTalentToClientService } from './submit-talent.service.js';
 // transaction on the submittal-eligibility connection (bound as 'SubmitTalentDb')
 // and issues cross-schema parameterized raw SQL confined to that boundary.
 @Module({
-  imports: [AuthModule, SubmittalEligibilityModule, SubmittalModule, ConsentModule],
+  imports: [AuthModule, SubmittalEligibilityModule, SubmittalModule, ConsentModule, EngagementGateModule],
   controllers: [SubmitTalentController],
   providers: [
     SubmitTalentToClientService,

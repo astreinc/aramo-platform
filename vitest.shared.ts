@@ -115,6 +115,10 @@ export default defineConfig({
       '@aramo/job-distribution': resolve(root, 'libs/job-distribution/src/index.ts'),
       '@aramo/job-domain': resolve(root, 'libs/job-domain/src/index.ts'),
       '@aramo/matching': resolve(root, 'libs/matching/src/index.ts'),
+      // COMM-C3 engagement — Tenant Engagement Policy domain. Mirrors the
+      // tsconfig.base.json @aramo/engagement path so vitest resolves it for the
+      // submit-talent gate + admin API consumers.
+      '@aramo/engagement': resolve(root, 'libs/engagement/src/index.ts'),
       // PR-1 policy-engine (ADR-0024 §D7) — the stateless, dependency-free
       // boundary evaluator. Mirrors the tsconfig.base.json @aramo/policy-engine
       // path so vitest resolves it once PR-2/PR-3 consumers import it.

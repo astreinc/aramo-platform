@@ -593,6 +593,19 @@ export const ERROR_CODES = [
   'SUBMITTAL_LIMIT_REACHED',
   // TALENT_RESTRICTED_AT_CLIENT (409): an active ClientTalentRestriction bars this Talent at this client.
   'TALENT_RESTRICTED_AT_CLIENT',
+  // COMM-C3 — engagement gate at client-submittal (all 409, R15). MISSING: no
+  // effective published engagement policy resolves (fail-closed). INCOMPLETE: a
+  // required engagement requirement is not satisfied. EVIDENCE_UNAVAILABLE: a
+  // required channel's evidence read failed / cannot produce a trustworthy result
+  // (distinct from "no evidence", R9).
+  'CLIENT_SUBMITTAL_ENGAGEMENT_POLICY_MISSING',
+  'CLIENT_SUBMITTAL_ENGAGEMENT_INCOMPLETE',
+  'CLIENT_SUBMITTAL_ENGAGEMENT_EVIDENCE_UNAVAILABLE',
+  // COMM-C3 — engagement-policy publish/admin refusals (422). SCHEMA_INVALID:
+  // typed/structural validation failed. NOT_ACTIVATABLE: a required channel has no
+  // evidence producer yet (e.g. email today), so the policy cannot be activated (R7).
+  'ENGAGEMENT_POLICY_SCHEMA_INVALID',
+  'ENGAGEMENT_POLICY_NOT_ACTIVATABLE',
   // L8-B1 Amendment A1 — Submittal↔Pipeline authority-chain refusals (HTTP 409).
   // PIPELINE_SUBMIT_REQUIRES_SUBMITTAL (409): DEPRECATED/RESERVED — the Pipeline `submitted`
   // mirror was retired (L2-E) and the status value removed from the enum entirely

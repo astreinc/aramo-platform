@@ -1,5 +1,5 @@
 {
-  "aliasTotals": { "apps": 2, "libs": 65, "total": 67 },
+  "aliasTotals": { "apps": 2, "libs": 66, "total": 68 },
   "aliases": {
     "@aramo/activity": "libs/activity/src/index.ts",
     "@aramo/ai-draft": "libs/ai-draft/src/index.ts",
@@ -21,6 +21,7 @@
     "@aramo/company": "libs/company/src/index.ts",
     "@aramo/consent": "libs/consent/src/index.ts",
     "@aramo/contact": "libs/contact/src/index.ts",
+    "@aramo/engagement": "libs/engagement/src/index.ts",
     "@aramo/entitlement": "libs/entitlement/src/index.ts",
     "@aramo/events": "libs/events/src/index.ts",
     "@aramo/evidence": "libs/evidence/src/index.ts",
@@ -367,6 +368,23 @@
       "QUIET_DAYS",
       "RELATIONSHIP_ROLE_VALUES",
       "assertContactVocab"
+    ],
+    "@aramo/engagement": [
+      "ENGAGEMENT_CHANNELS",
+      "ENGAGEMENT_EVIDENCE_STRENGTHS",
+      "ENGAGEMENT_PACKAGE_LIKE",
+      "ENGAGEMENT_POLICY_GATEWAY",
+      "ENGAGEMENT_POLICY_SCOPES",
+      "EngagementPolicyService",
+      "EngagementPolicyValidationError",
+      "assertEngagementPolicyActivatable",
+      "engagementPackageName",
+      "evaluateEngagementReadiness",
+      "evidenceCapabilities",
+      "isEvidenceChannelAvailable",
+      "meetsStrength",
+      "requirementKey",
+      "validateEngagementPolicyDefinition"
     ],
     "@aramo/entitlement": [
       "CAPABILITY_VALUES",
@@ -2941,6 +2959,12 @@
         "project": "api",
         "status": "excluded"
       },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/submit-talent.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
       { "project": "api", "status": "production" }
     ],
     "@aramo/company": [
@@ -3032,6 +3056,15 @@
       { "project": "reporting", "status": "production" },
       { "project": "saved-list", "status": "production" },
       { "project": "visibility", "status": "production" }
+    ],
+    "@aramo/engagement": [
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/submit-talent.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      { "project": "api", "status": "production" }
     ],
     "@aramo/entitlement": [
       { "project": "activity", "status": "production" },
@@ -4559,6 +4592,13 @@
         "project": "aramo-pact-provider",
         "status": "unscoped"
       },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/engagement/src/tests/engagement-policy.spec.ts",
+        "project": "engagement",
+        "status": "excluded"
+      },
+      { "project": "engagement", "status": "production" },
       { "project": "pipeline", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
@@ -5351,6 +5391,13 @@
       "name": "contact",
       "root": "libs/contact",
       "sourceRoot": "libs/contact/src",
+      "tags": ["scope:ats"],
+      "targets": ["build", "lint", "test"]
+    },
+    {
+      "name": "engagement",
+      "root": "libs/engagement",
+      "sourceRoot": "libs/engagement/src",
       "tags": ["scope:ats"],
       "targets": ["build", "lint", "test"]
     },

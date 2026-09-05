@@ -19,6 +19,8 @@ export {
 } from './lib/submittal-eligibility.port.js';
 export type {
   EligibilityDenyCode,
+  EngagementEligibilityDenyCode,
+  EngagementEligibilityInput,
   SubmittalPolicyInputs,
   EligibilityContext,
   WindowStatusDerivation,
