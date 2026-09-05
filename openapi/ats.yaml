@@ -5039,6 +5039,7 @@ components:
           items: { $ref: '#/components/schemas/EngagementChannelCapability' }
     EngagementRequirement:
       type: object
+      additionalProperties: false
       description: COMM-C3 typed, provider-neutral engagement requirement (no vendor key).
       required: [channel, required, condition]
       properties:
