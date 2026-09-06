@@ -5290,8 +5290,11 @@ components:
     EffectiveEngagementPolicyResponse:
       type: object
       additionalProperties: false
-      required: [effective]
+      required: [governed, effective]
       properties:
+        governed:
+          type: boolean
+          description: Whether the tenant has ever published a policy (C3 three-state; false = never configured / dormant).
         effective:
           oneOf:
             - { type: 'null' }

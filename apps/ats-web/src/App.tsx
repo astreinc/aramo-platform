@@ -45,6 +45,7 @@ import { TenantProfileSection } from './settings/sections/TenantProfileSection';
 import { BranchesSection } from './settings/sections/BranchesSection';
 import { ImportSection } from './settings/sections/ImportSection';
 import { ComplianceSection } from './settings/sections/ComplianceSection';
+import { EngagementPolicySection } from './settings/sections/EngagementPolicySection';
 import {
   ApplySection,
   BillingSection,
@@ -586,6 +587,14 @@ export function App() {
                               <Route
                                 path="settings/branches"
                                 element={<BranchesSection />}
+                              />
+                              {/* COMM-C3 — Engagement Policy authoring/publication
+                                  (Settings → Recruiting). Non-enforcing until a
+                                  policy is published; edit/publish self-gate on
+                                  engagement:policy:write. */}
+                              <Route
+                                path="settings/engagement-policy"
+                                element={<EngagementPolicySection />}
                               />
                               <Route
                                 path="settings/localization"

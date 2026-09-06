@@ -169,6 +169,22 @@ export const SETTINGS_NAV: readonly NavGroup[] = [
     ],
   },
   {
+    // COMM-C3 — Engagement Policy is a recruiting governance control (the Submit-
+    // to-Client enforcement boundary). It answers "what evidence is required?";
+    // provider setup ("how is evidence produced?") stays under Integrations.
+    heading: 'Recruiting',
+    items: [
+      {
+        key: 'engagement-policy',
+        label: 'Engagement policy',
+        icon: <IconShieldCheck />,
+        to: '/admin/settings/engagement-policy',
+        match: '/admin/settings/engagement-policy',
+        status: 'live',
+      },
+    ],
+  },
+  {
     heading: 'Data',
     items: [
       {
