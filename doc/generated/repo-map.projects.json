@@ -371,18 +371,25 @@
       "assertContactVocab"
     ],
     "@aramo/engagement": [
+      "DEFAULT_ENGAGEMENT_ENFORCEMENT_MODE",
       "ENGAGEMENT_CHANNELS",
+      "ENGAGEMENT_ENFORCEMENT_MODES",
       "ENGAGEMENT_EVIDENCE_STRENGTHS",
+      "ENGAGEMENT_OVERRIDE_REASON_MAX",
+      "ENGAGEMENT_OVERRIDE_REASON_MIN",
       "ENGAGEMENT_PACKAGE_LIKE",
       "ENGAGEMENT_POLICY_GATEWAY",
       "ENGAGEMENT_POLICY_SCOPES",
       "EngagementPolicyService",
       "EngagementPolicyValidationError",
       "assertEngagementPolicyActivatable",
+      "decideEngagement",
       "engagementPackageName",
       "evaluateEngagementReadiness",
       "evidenceCapabilities",
+      "isEngagementEnforcementMode",
       "isEvidenceChannelAvailable",
+      "isValidOverrideReason",
       "meetsStrength",
       "requirementKey",
       "validateEngagementPolicyDefinition"
@@ -3122,6 +3129,12 @@
     "@aramo/engagement": [
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/engagement-gate.service.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/submit-talent.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -3411,6 +3424,12 @@
       },
       {
         "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/microsoft/MicrosoftProviderAdminStatus.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/ats-web/src/org/AddEdgeDialog.spec.tsx",
         "project": "aramo-ats-web",
         "status": "excluded"
@@ -3682,6 +3701,12 @@
       {
         "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/ats-web/src/sourcing/SourcingPoolView.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/submittals/AdvanceStep.spec.tsx",
         "project": "aramo-ats-web",
         "status": "excluded"
       },
@@ -4170,6 +4195,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/microsoft-establishment.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/support/fake-lifecycle-source.ts",
         "project": "api",
         "status": "excluded"
@@ -4606,6 +4637,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/cb-d2-r-reconciliation-drain.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/engagement-gate.service.spec.ts",
         "project": "api",
         "status": "excluded"
       },

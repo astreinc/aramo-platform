@@ -27,6 +27,9 @@ export {
   ENGAGEMENT_CHANNELS,
   ENGAGEMENT_EVIDENCE_STRENGTHS,
   ENGAGEMENT_POLICY_SCOPES,
+  ENGAGEMENT_ENFORCEMENT_MODES,
+  DEFAULT_ENGAGEMENT_ENFORCEMENT_MODE,
+  isEngagementEnforcementMode,
   meetsStrength,
   requirementKey,
 } from './lib/domain/engagement-vocab.js';
@@ -34,11 +37,25 @@ export type {
   EngagementChannel,
   EngagementEvidenceStrength,
   EngagementPolicyScope,
+  EngagementEnforcementMode,
   EngagementRequirement,
   VoiceEngagementRequirement,
   EmailEngagementRequirement,
   EngagementPolicyDefinition,
 } from './lib/domain/engagement-vocab.js';
+
+// Pure enforcement decision (PART A — ADVISORY / ENFORCING / ENFORCING_WITH_OVERRIDE).
+export {
+  decideEngagement,
+  isValidOverrideReason,
+  ENGAGEMENT_OVERRIDE_REASON_MIN,
+  ENGAGEMENT_OVERRIDE_REASON_MAX,
+} from './lib/domain/engagement-decision.js';
+export type {
+  EngagementDecision,
+  EngagementDecisionOutcome,
+  EngagementOverrideRequest,
+} from './lib/domain/engagement-decision.js';
 
 // Validation + activation guard (R7).
 export {

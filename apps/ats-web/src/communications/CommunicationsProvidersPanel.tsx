@@ -1,64 +1,66 @@
 import { useCallback, useEffect, useState } from 'react';
 import { hasScope, useSession, useToast, type Session } from '@aramo/fe-foundation';
 
-import { Button, Card, EmptyState, ErrorState, LoadingState, safeErrorMessage } from '../ui';
+import { Button, Card, ErrorState, LoadingState, safeErrorMessage } from '../ui';
 import { SettingCardHead, StatChip } from '../settings/components';
-import { IntegrationConnectionStatusPill } from '../integrations/IntegrationConnectionStatusPill';
 import {
   disableIntegrationConnection,
   enableIntegrationConnection,
 } from '../integrations/integrations-api';
-import { MicrosoftProviderAdminStatus } from '../microsoft/MicrosoftProviderAdminStatus';
+import { getMicrosoftProviderStatus, type MicrosoftProviderStatus } from '../microsoft/microsoft-api';
+import { ConfigureMicrosoftDialog } from '../microsoft/ConfigureMicrosoftDialog';
 
 import { ConfigureZoomCredentialDialog } from './ConfigureZoomCredentialDialog';
 import { RecruiterMappingsDialog } from './RecruiterMappingsDialog';
 import { listCommunicationProviders, testZoomConnection } from './provider-config-api';
 import type { CommunicationProviderConfig } from './provider-config-types';
+import { COMMUNICATION_REGISTRY, readyProvider, type ChannelDef } from './communication-registry';
 
-// COMM-C1 — Settings → Integrations → Communications. Tenant communication
-// provider configuration + admin UI (Zoom-only in PR-1). Least-visibility,
-// mirroring IntegrationConnectionsPanel:
-//   - no `integration:read`  → renders nothing AND makes no fetch;
-//   - read only              → status/capability visibility, NO write controls;
-//   - `integration:write`    → configure/test/mapping/enable-disable affordances.
-// A credential VALUE is never rendered — only whether one exists
-// (`credential_configured`). SMS is shown as declared / execution-deferred; no
-// Send affordance is offered. This surface changes NO recruiting behaviour.
+// COMM-C1 + PART C — Settings → Integrations → Communication channels. CHANNEL-FIRST
+// (Architect channel/provider correction): the platform registry lists independent
+// channels (Voice/Email/Meeting/SMS); each shows its selected/eligible provider,
+// truthful Tenant configuration state, and only backed actions. One active provider
+// per channel; a not-ready provider (Zoom Meetings, Zoom SMS) is shown as a disabled
+// "future" option and is never selectable/configurable. Meeting reuses the Microsoft
+// credential substrate but is an independent channel. Least-visibility: no
+// `integration:read` → nothing renders and no fetch; `integration:write` gates
+// Configure/Test/Change. A credential value is never shown.
 
 interface Props {
   readonly sessionOverride?: Session;
   readonly listFn?: () => Promise<readonly CommunicationProviderConfig[]>;
+  readonly microsoftStatusFn?: () => Promise<MicrosoftProviderStatus>;
   readonly testFn?: typeof testZoomConnection;
   readonly enableFn?: (id: string) => Promise<unknown>;
   readonly disableFn?: (id: string) => Promise<unknown>;
 }
 
-type ListState =
+type LoadState =
   | { status: 'loading' }
-  | { status: 'ready'; items: readonly CommunicationProviderConfig[] }
+  | { status: 'ready'; providers: readonly CommunicationProviderConfig[]; microsoft: MicrosoftProviderStatus | null }
   | { status: 'error' };
 
 export function CommunicationsProvidersPanel({
   sessionOverride,
   listFn,
+  microsoftStatusFn,
   testFn,
   enableFn,
   disableFn,
 }: Props = {}) {
   const sessionState = useSession();
   const session =
-    sessionOverride ??
-    (sessionState.status === 'authenticated' ? sessionState.session : null);
+    sessionOverride ?? (sessionState.status === 'authenticated' ? sessionState.session : null);
   const canRead = session != null && hasScope(session, 'integration:read');
   const canWrite = session != null && hasScope(session, 'integration:write');
 
-  // Least-visibility: no surface and NO fetch when the read scope is absent.
   if (!canRead) return null;
 
   return (
     <Panel
       canWrite={canWrite}
       listFn={listFn ?? listCommunicationProviders}
+      microsoftStatusFn={microsoftStatusFn ?? getMicrosoftProviderStatus}
       testFn={testFn ?? testZoomConnection}
       enableFn={enableFn ?? enableIntegrationConnection}
       disableFn={disableFn ?? disableIntegrationConnection}
@@ -66,40 +68,106 @@ export function CommunicationsProvidersPanel({
   );
 }
 
+interface ChannelView {
+  readonly def: ChannelDef;
+  readonly providerName: string | null;
+  readonly configured: boolean;
+  readonly connectionId: string | null;
+  readonly status: CommunicationProviderConfig['status'] | null;
+  readonly detail: string;
+  readonly chip: { tone: 'ok' | 'warn' | 'muted'; label: string };
+}
+
+function deriveChannel(
+  def: ChannelDef,
+  providers: readonly CommunicationProviderConfig[],
+  microsoft: MicrosoftProviderStatus | null,
+): ChannelView {
+  const ready = readyProvider(def);
+  if (ready === null) {
+    return {
+      def,
+      providerName: null,
+      configured: false,
+      connectionId: null,
+      status: null,
+      detail: 'No supported provider for this channel yet.',
+      chip: { tone: 'muted', label: 'No provider available yet' },
+    };
+  }
+  if (def.backend === 'zoom_phone') {
+    const zoom = providers.find((p) => p.provider_key === 'zoom_phone') ?? null;
+    const configured = zoom !== null && zoom.configuration_state !== 'not_configured';
+    return {
+      def,
+      providerName: ready.name,
+      configured,
+      connectionId: zoom?.connection_id ?? null,
+      status: zoom?.status ?? null,
+      detail: configured
+        ? `${ready.name} — ${zoom!.recruiter_mapping_count} recruiter mapping${zoom!.recruiter_mapping_count === 1 ? '' : 's'}`
+        : `${ready.name} — Credential missing · 0 recruiter mappings`,
+      chip: configured
+        ? { tone: 'ok', label: 'Active' }
+        : { tone: 'warn', label: 'Selected · not configured' },
+    };
+  }
+  // Microsoft-backed (Email + Meeting share the substrate; independent channels).
+  const configured = microsoft?.configuration_state === 'CONFIGURED';
+  const attention = microsoft?.configuration_state === 'REQUIRES_ATTENTION';
+  return {
+    def,
+    providerName: ready.name,
+    configured,
+    connectionId: microsoft?.connection_id ?? null,
+    status: null,
+    detail: configured ? `${ready.name} — Configured` : `${ready.name} — Not configured`,
+    chip: configured
+      ? { tone: 'ok', label: 'Active' }
+      : attention
+        ? { tone: 'warn', label: 'Requires attention' }
+        : { tone: 'warn', label: 'Selected · not configured' },
+  };
+}
+
 function Panel({
   canWrite,
   listFn,
+  microsoftStatusFn,
   testFn,
   enableFn,
   disableFn,
 }: {
   readonly canWrite: boolean;
   readonly listFn: () => Promise<readonly CommunicationProviderConfig[]>;
+  readonly microsoftStatusFn: () => Promise<MicrosoftProviderStatus>;
   readonly testFn: () => Promise<{ healthy: boolean; detail: string | null }>;
   readonly enableFn: (id: string) => Promise<unknown>;
   readonly disableFn: (id: string) => Promise<unknown>;
 }) {
   const toast = useToast();
   const [refreshKey, setRefreshKey] = useState(0);
-  const [list, setList] = useState<ListState>({ status: 'loading' });
+  const [load, setLoad] = useState<LoadState>({ status: 'loading' });
   const [busy, setBusy] = useState(false);
-  const [configureOpen, setConfigureOpen] = useState(false);
+  const [zoomConfigureOpen, setZoomConfigureOpen] = useState(false);
+  const [microsoftConfigureOpen, setMicrosoftConfigureOpen] = useState(false);
   const [mappingsOpen, setMappingsOpen] = useState(false);
+  const [pickerFor, setPickerFor] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    setList({ status: 'loading' });
-    listFn()
-      .then((items) => {
-        if (!cancelled) setList({ status: 'ready', items });
+    setLoad({ status: 'loading' });
+    Promise.all([listFn(), microsoftStatusFn().catch(() => null)])
+      .then(([providers, microsoft]) => {
+        if (!cancelled) setLoad({ status: 'ready', providers, microsoft });
       })
       .catch(() => {
-        if (!cancelled) setList({ status: 'error' });
+        if (!cancelled) setLoad({ status: 'error' });
       });
     return () => {
       cancelled = true;
     };
-  }, [listFn, refreshKey]);
+  }, [listFn, microsoftStatusFn, refreshKey]);
 
   const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
 
@@ -137,63 +205,141 @@ function Panel({
     [busy, refresh, toast],
   );
 
+  const microsoftStatus = load.status === 'ready' ? load.microsoft : null;
+
   return (
-    <section data-testid="communications-providers" aria-label="Communications providers">
+    <section data-testid="communications-providers" aria-label="Communication channels">
       <Card flush>
         <SettingCardHead
-          title="Communications"
-          sub="Configure the communication providers your team uses. Credential values are never shown."
+          title="Communication channels"
+          sub="One active provider per channel. The list of channels and eligible providers is served by the platform registry — new providers appear when their connector ships. Credential values are never shown."
         />
         <div className="rc-card--pad">
-          {list.status === 'loading' && <LoadingState label="Loading communication providers…" />}
-          {list.status === 'error' && (
-            <ErrorState message="Could not load communication providers." onRetry={refresh} />
+          {load.status === 'loading' && <LoadingState label="Loading communication channels…" />}
+          {load.status === 'error' && (
+            <ErrorState message="Could not load communication channels." onRetry={refresh} />
           )}
-          {list.status === 'ready' && list.items.length === 0 && (
-            <EmptyState message="No communication providers are available." />
-          )}
-          {list.status === 'ready' &&
-            list.items.map((p) => (
-              <ProviderCard
-                key={p.provider_key}
-                provider={p}
-                canWrite={canWrite}
-                busy={busy}
-                onConfigure={() => setConfigureOpen(true)}
-                onTest={runTest}
-                onManageMappings={() => setMappingsOpen(true)}
-                onEnable={() =>
-                  p.connection_id != null &&
-                  runLifecycle(
-                    enableFn,
-                    p.connection_id,
-                    'Provider connection enabled.',
-                    'Could not enable the connection.',
-                  )
-                }
-                onDisable={() =>
-                  p.connection_id != null &&
-                  runLifecycle(
-                    disableFn,
-                    p.connection_id,
-                    'Provider connection disabled.',
-                    'Could not disable the connection.',
-                  )
-                }
-              />
-            ))}
+          {load.status === 'ready' &&
+            COMMUNICATION_REGISTRY.map((def) => {
+              const view = deriveChannel(def, load.providers, load.microsoft);
+              const anyReady = def.providers.some((p) => p.ready);
+              return (
+                <div
+                  key={def.channel}
+                  className="set-rows"
+                  role="group"
+                  aria-label={def.channel}
+                  data-testid={`comm-channel-${def.channel}`}
+                >
+                  <div className="set-row">
+                    <span className="set-row__l">
+                      <span className="set-row__t">{def.channel}</span>
+                      <span className="set-row__s" data-testid={`comm-channel-detail-${def.channel}`}>
+                        {view.detail}
+                      </span>
+                    </span>
+                    <span className="set-row__r" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                      <span data-testid={`comm-channel-state-${def.channel}`}>
+                        <StatChip tone={view.chip.tone} dot>
+                          {view.chip.label}
+                        </StatChip>
+                      </span>
+                      {canWrite && view.providerName !== null && view.def.backend !== null && (
+                        <Button
+                          variant="primary"
+                          size="sm"
+                          disabled={busy}
+                          data-testid={`comm-configure-${def.channel}`}
+                          onClick={() =>
+                            def.backend === 'zoom_phone'
+                              ? setZoomConfigureOpen(true)
+                              : setMicrosoftConfigureOpen(true)
+                          }
+                        >
+                          {view.configured ? 'Update' : 'Configure'}
+                        </Button>
+                      )}
+                      {canWrite && def.backend === 'zoom_phone' && (
+                        <>
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            disabled={busy || !view.configured}
+                            data-testid={`comm-test-${def.channel}`}
+                            onClick={runTest}
+                          >
+                            Test connection
+                          </Button>
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            disabled={busy || !view.configured}
+                            data-testid={`comm-mappings-${def.channel}`}
+                            onClick={() => setMappingsOpen(true)}
+                          >
+                            Manage recruiter mappings
+                          </Button>
+                        </>
+                      )}
+                      {canWrite && (
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          disabled={busy || !anyReady}
+                          title={anyReady ? '' : 'No supported provider for this channel yet'}
+                          data-testid={`comm-change-provider-${def.channel}`}
+                          onClick={() => setPickerFor(pickerFor === def.channel ? null : def.channel)}
+                        >
+                          {view.providerName === null ? 'Choose provider' : 'Change provider'}
+                        </Button>
+                      )}
+                    </span>
+                  </div>
+
+                  {pickerFor === def.channel && (
+                    <div className="set-row" data-testid={`comm-picker-${def.channel}`} style={{ flexDirection: 'column', alignItems: 'stretch', gap: 6 }}>
+                      <span className="set-row__s" style={{ fontWeight: 700 }}>
+                        SELECT A PROVIDER — one active per channel
+                      </span>
+                      {def.providers.map((p) => (
+                        <div
+                          key={p.name}
+                          data-testid={`comm-provider-option-${def.channel}-${p.initials}`}
+                          style={{ display: 'flex', gap: 8, alignItems: 'center', opacity: p.ready ? 1 : 0.55 }}
+                        >
+                          <input
+                            type="radio"
+                            name={`provider-${def.channel}`}
+                            disabled={!p.ready}
+                            checked={p.ready && p.name === view.providerName}
+                            readOnly
+                          />
+                          <span style={{ flex: 1 }}>
+                            <strong>{p.name}</strong>
+                            <span className="set-row__s" style={{ display: 'block' }}>{p.note}</span>
+                          </span>
+                          <StatChip tone={p.ready ? 'ok' : 'muted'}>
+                            {p.ready ? (p.name === view.providerName ? 'Selected' : 'Supported') : 'Future · not available yet'}
+                          </StatChip>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
         </div>
       </Card>
 
-      {/* COMM-C2B — Microsoft 365 provider status (capabilities + recruiter
-          mapping counts). Read-only admin surface. */}
-      <Card>
-        <MicrosoftProviderAdminStatus />
-      </Card>
-
       <ConfigureZoomCredentialDialog
-        open={configureOpen}
-        onOpenChange={setConfigureOpen}
+        open={zoomConfigureOpen}
+        onOpenChange={setZoomConfigureOpen}
+        onConfigured={() => refresh()}
+      />
+      <ConfigureMicrosoftDialog
+        open={microsoftConfigureOpen}
+        onOpenChange={setMicrosoftConfigureOpen}
+        hasSecret={microsoftStatus?.configuration_state === 'CONFIGURED'}
         onConfigured={() => refresh()}
       />
       <RecruiterMappingsDialog
@@ -203,96 +349,5 @@ function Panel({
         onChanged={() => refresh()}
       />
     </section>
-  );
-}
-
-function ProviderCard({
-  provider,
-  canWrite,
-  busy,
-  onConfigure,
-  onTest,
-  onManageMappings,
-  onEnable,
-  onDisable,
-}: {
-  readonly provider: CommunicationProviderConfig;
-  readonly canWrite: boolean;
-  readonly busy: boolean;
-  readonly onConfigure: () => void;
-  readonly onTest: () => void;
-  readonly onManageMappings: () => void;
-  readonly onEnable: () => void;
-  readonly onDisable: () => void;
-}) {
-  const p = provider;
-  const configured = p.status !== null && p.configuration_state !== 'not_configured';
-  return (
-    <div className="set-rows" role="group" aria-label={p.display_name} data-testid={`comm-provider-${p.provider_key}`}>
-      <div className="set-row">
-        <span className="set-row__l">
-          <span className="set-row__t">{p.display_name}</span>
-          <span className="set-row__s">
-            {p.credential_configured ? 'Credential configured' : 'Credential missing'}
-            {p.provider_account_id != null ? ` · account ${p.provider_account_id}` : ''}
-            {p.last_error_code != null ? ` · ${p.last_error_code}` : ''}
-          </span>
-        </span>
-        <span className="set-row__r">
-          {p.status !== null ? (
-            <IntegrationConnectionStatusPill status={p.status} />
-          ) : (
-            <StatChip tone="muted" dot>
-              Not configured
-            </StatChip>
-          )}
-        </span>
-      </div>
-
-      {/* Capability posture — voice executable; SMS declared / execution deferred. */}
-      <div className="set-row">
-        <span className="set-row__l">
-          <span className="set-row__t">Capabilities</span>
-          <span className="set-row__s" data-testid={`comm-caps-${p.provider_key}`}>
-            {p.capabilities.voice.supported
-              ? `Voice — ${p.capabilities.voice.execution === 'available' ? 'Available' : 'Not available'}`
-              : 'Voice — Not supported'}
-            {p.capabilities.sms.supported
-              ? ' · SMS — Declared / execution deferred'
-              : ''}
-          </span>
-        </span>
-        <span className="set-row__r">
-          <StatChip tone="muted">{`${p.recruiter_mapping_count} recruiter mapping${p.recruiter_mapping_count === 1 ? '' : 's'}`}</StatChip>
-        </span>
-      </div>
-
-      {canWrite && (
-        <div className="set-row">
-          <span className="set-row__l" />
-          <span className="set-row__r" style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-            <Button variant="secondary" size="sm" disabled={busy} onClick={onConfigure} data-testid={`comm-configure-${p.provider_key}`}>
-              {p.credential_configured ? 'Update credentials' : 'Configure'}
-            </Button>
-            <Button variant="secondary" size="sm" disabled={busy || !configured} onClick={onTest} data-testid={`comm-test-${p.provider_key}`}>
-              Test connection
-            </Button>
-            <Button variant="secondary" size="sm" disabled={busy || !configured} onClick={onManageMappings} data-testid={`comm-mappings-${p.provider_key}`}>
-              Manage recruiter mappings
-            </Button>
-            {p.connection_id != null && p.status !== 'active' && p.status !== 'disabled' && (
-              <Button variant="secondary" size="sm" disabled={busy} onClick={onEnable} data-testid={`comm-enable-${p.provider_key}`}>
-                Enable
-              </Button>
-            )}
-            {p.connection_id != null && p.status !== 'disabled' && p.status !== null && (
-              <Button variant="secondary" size="sm" disabled={busy} onClick={onDisable} data-testid={`comm-disable-${p.provider_key}`}>
-                Disable
-              </Button>
-            )}
-          </span>
-        </div>
-      )}
-    </div>
   );
 }

@@ -43,6 +43,13 @@ export interface SubmitTalentToClientInput {
   readonly actor_id: string;
   readonly note?: string | null;
   readonly requestId: string;
+  /**
+   * COMM PART A — the actor holds `engagement:policy:override` (resolved from the
+   * caller's scopes). Authority is scope-based, never a role name.
+   */
+  readonly actor_can_override?: boolean;
+  /** COMM PART A — an explicit engagement-policy override with a recorded reason. */
+  readonly engagement_override?: { readonly reason: string } | undefined;
 }
 
 export interface SubmitTalentToClientResult {
@@ -217,8 +224,11 @@ export class SubmitTalentToClientService {
         tenant_id,
         talent_id: talent_record_id,
         requisition_id,
+        submittal_id,
         company_id,
         actor_id: input.actor_id,
+        actor_can_override: input.actor_can_override ?? false,
+        override: input.engagement_override,
         correlation_id: requestId,
       });
       const decision = evaluateEligibility(inputs, {

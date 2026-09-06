@@ -4122,19 +4122,43 @@ paths:
   /v1/integrations/microsoft/status:
     get:
       operationId: microsoftProviderStatus
-      summary: Tenant-admin Microsoft provider status + mapping counts (COMM-C2B).
-      description: Provider capabilities + recruiter identity mapping counts by status. Guarded by `integration:read`. Token-free.
-      parameters:
-        - in: query
-          name: connection_id
-          required: false
-          schema: { type: string, format: uuid }
+      summary: Tenant-admin Microsoft provider status + configuration state (COMM-C2B / PART B).
+      description: >-
+        Tenant provider `configuration_state` (NOT_CONFIGURED / CONFIGURED /
+        REQUIRES_ATTENTION) + capabilities + recruiter identity mapping counts
+        (a separate axis from tenant configuration). Never throws when
+        unconfigured. Guarded by `integration:read`. Token-free.
       responses:
         '200':
           description: OK.
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/MicrosoftConnectionMappingStatus' }
+              schema: { $ref: '#/components/schemas/MicrosoftProviderStatus' }
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+      security:
+        - BearerAuth: []
+  /v1/integrations/microsoft/configure:
+    post:
+      operationId: microsoftConfigure
+      summary: Tenant-admin establishment of the Microsoft connection (PART B).
+      description: >-
+        Create/update the tenant Microsoft connection. Non-secret config
+        (client_id + authority_tenant) is stored on the governed
+        IntegrationConnection; the client secret (when supplied) is written
+        write-only to Secrets Manager and NEVER returned. Guarded by
+        `integration:write`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ConfigureMicrosoftConnectionRequest' }
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MicrosoftProviderStatus' }
         '403':
           $ref: 'common.yaml#/components/responses/Forbidden'
       security:
@@ -5207,6 +5231,46 @@ components:
             unmapped: { type: integer }
             disabled: { type: integer }
             reauth_required: { type: integer }
+    MicrosoftProviderStatus:
+      type: object
+      additionalProperties: false
+      required: [configuration_state, connection_id, provider_key, capabilities, identities]
+      properties:
+        configuration_state:
+          type: string
+          enum: [NOT_CONFIGURED, CONFIGURED, REQUIRES_ATTENTION]
+        connection_id:
+          type: [string, 'null']
+          format: uuid
+        provider_key: { type: string }
+        capabilities:
+          type: object
+          additionalProperties: false
+          required: [email, meeting]
+          properties:
+            email: { type: boolean }
+            meeting: { type: boolean }
+        identities:
+          type: object
+          additionalProperties: false
+          required: [active, unmapped, disabled, reauth_required]
+          properties:
+            active: { type: integer }
+            unmapped: { type: integer }
+            disabled: { type: integer }
+            reauth_required: { type: integer }
+    ConfigureMicrosoftConnectionRequest:
+      type: object
+      additionalProperties: false
+      required: [client_id, authority_tenant]
+      properties:
+        client_id: { type: string, minLength: 1, maxLength: 200 }
+        authority_tenant: { type: string, minLength: 1, maxLength: 200 }
+        client_secret:
+          type: string
+          minLength: 1
+          maxLength: 512
+          description: Write-only. Sent once; stored in Secrets Manager; never returned. Omit on update to keep the stored secret.
     SendMicrosoftEmailRequest:
       type: object
       additionalProperties: false
@@ -5270,7 +5334,7 @@ components:
     EffectiveEngagementPolicy:
       type: object
       additionalProperties: false
-      required: [requirements, layers, composite_version]
+      required: [requirements, layers, composite_version, enforcement_mode]
       properties:
         requirements:
           type: array
@@ -5287,6 +5351,10 @@ components:
               version: { type: string }
               checksum: { type: string }
         composite_version: { type: string }
+        enforcement_mode:
+          type: string
+          enum: [ADVISORY, ENFORCING, ENFORCING_WITH_OVERRIDE]
+          description: Resolved effective mode (PART A). Legacy policies without a mode resolve to ENFORCING.
     EffectiveEngagementPolicyResponse:
       type: object
       additionalProperties: false
@@ -5315,6 +5383,10 @@ components:
           maxItems: 8
           items: { $ref: '#/components/schemas/EngagementRequirement' }
         effective_from: { type: string, format: date-time }
+        enforcement_mode:
+          type: string
+          enum: [ADVISORY, ENFORCING, ENFORCING_WITH_OVERRIDE]
+          description: Optional (PART A). Absent persists as absent and resolves to ENFORCING (never ADVISORY).
     PublishedEngagementPolicyResponse:
       type: object
       additionalProperties: false

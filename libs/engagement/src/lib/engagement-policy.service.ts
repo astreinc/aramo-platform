@@ -2,9 +2,11 @@ import { Inject, Injectable } from '@nestjs/common';
 import { checksumMatches, computeChecksum, selectEffectiveAt } from '@aramo/policy-store';
 
 import {
+  DEFAULT_ENGAGEMENT_ENFORCEMENT_MODE,
   ENGAGEMENT_POLICY_SCOPES,
   requirementKey,
   type EngagementChannel,
+  type EngagementEnforcementMode,
   type EngagementPolicyDefinition,
   type EngagementPolicyScope,
   type EngagementRequirement,
@@ -41,6 +43,12 @@ export interface ResolvedEngagementPolicy extends ResolvedEngagementRequirements
   readonly layers: readonly EngagementPolicyLayerRef[];
   /** Composite version+checksum over the contributing layers (audit provenance). */
   readonly composite_version: string;
+  /**
+   * The resolved effective enforcement mode (PART A). The most-specific
+   * contributing layer's mode wins; a layer with no explicit mode defaults to
+   * ENFORCING (A2 backward-compat — a legacy policy is never ADVISORY).
+   */
+  readonly enforcement_mode: EngagementEnforcementMode;
 }
 
 export interface EngagementScopeContext {
@@ -132,6 +140,10 @@ export class EngagementPolicyService {
 
     const merged = new Map<EngagementChannel, EngagementRequirement>();
     const layers: EngagementPolicyLayerRef[] = [];
+    // The most-specific contributing layer's mode wins; a layer without an explicit
+    // mode contributes ENFORCING (A2). Loop is least→most specific, so the last
+    // present layer's resolved mode is the effective one.
+    let enforcementMode: EngagementEnforcementMode = DEFAULT_ENGAGEMENT_ENFORCEMENT_MODE;
 
     // Least-specific first (ENGAGEMENT_POLICY_SCOPES order) so a more-specific
     // layer, applied later, overwrites the same channel key.
@@ -145,6 +157,7 @@ export class EngagementPolicyService {
       if (active === undefined) continue;
       const def = decodeDefinition(active);
       for (const req of def.requirements) merged.set(requirementKey(req), req);
+      enforcementMode = def.enforcement_mode ?? DEFAULT_ENGAGEMENT_ENFORCEMENT_MODE;
       layers.push({ scope, package_name: spec.pkg, version: active.version, checksum: active.checksum });
     }
 
@@ -154,6 +167,7 @@ export class EngagementPolicyService {
       requirements: [...merged.values()],
       layers,
       composite_version: layers.map((l) => `${l.scope}:${l.version}:${l.checksum.slice(0, 12)}`).join('|'),
+      enforcement_mode: enforcementMode,
     };
   }
 }

@@ -30,6 +30,11 @@ export interface EngagementReadiness {
   readonly missing: readonly ('voice' | 'email')[];
   readonly results: readonly EngagementRequirementResult[];
   readonly capabilities: readonly EngagementChannelCapability[];
+  // PART A — the effective enforcement mode + whether an override affordance is
+  // relevant (ENFORCING_WITH_OVERRIDE and not satisfied). Whether the actor MAY
+  // override is a separate scope check (engagement:policy:override).
+  readonly enforcement_mode?: 'ADVISORY' | 'ENFORCING' | 'ENFORCING_WITH_OVERRIDE' | null;
+  readonly override_available?: boolean;
 }
 
 export async function getEngagementReadiness(

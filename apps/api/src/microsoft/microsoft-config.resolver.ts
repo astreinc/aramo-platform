@@ -3,6 +3,7 @@ import {
   IntegrationConnectionService,
   SECRETS_MANAGER_PORT,
   deriveConnectorSecretManagerId,
+  type IntegrationConnectionView,
   type SecretsManagerPort,
 } from '@aramo/integration';
 import { MICROSOFT_PROVIDER_KEY } from '@aramo/microsoft-graph';
@@ -11,6 +12,13 @@ import { MICROSOFT_PROVIDER_KEY } from '@aramo/microsoft-graph';
 // config for the composition root. Microsoft-specific config (client_id,
 // authority) lives ONLY here (R20). The client secret is read from the connector
 // secret path (R3) and never persisted/returned.
+//
+// COMM PART B — this resolver also OWNS tenant-admin establishment of the
+// Microsoft connection: create/update the provider-neutral IntegrationConnection
+// (config = client_id + authority_tenant) and set the confidential-client secret
+// WRITE-ONLY into the connector secret path (never Postgres/return/log). This is
+// the application-credential custody, DISTINCT from C2B's per-recruiter delegated
+// token custody (msgraph-delegated path).
 
 interface MicrosoftConnectionConfig {
   client_id?: string;
@@ -21,6 +29,18 @@ export interface ResolvedMicrosoftConfig {
   readonly clientId: string;
   readonly clientSecret?: string;
   readonly authorityTenant?: string;
+}
+
+/** Tenant-admin establishment input (PART B). client_secret is optional on update. */
+export interface ConfigureMicrosoftConnectionInput {
+  readonly client_id: string;
+  readonly authority_tenant: string;
+  readonly client_secret?: string;
+}
+
+export interface MicrosoftConnectionSummary {
+  readonly connection_id: string;
+  readonly has_secret: boolean;
 }
 
 @Injectable()
@@ -36,6 +56,49 @@ export class MicrosoftConfigResolver {
       throw new Error('MSGRAPH_REDIRECT_URI is not configured');
     }
     return uri;
+  }
+
+  /** The tenant's Microsoft connection (secret-free view), or null when unconfigured. */
+  async findConnection(tenantId: string): Promise<IntegrationConnectionView | null> {
+    return this.connections.findConnectionByProviderKey(tenantId, MICROSOFT_PROVIDER_KEY);
+  }
+
+  /**
+   * PART B — tenant-admin create/update of the Microsoft connection. Non-secret
+   * config (client_id + authority_tenant) is stored on the governed
+   * IntegrationConnection; the client secret (when supplied) is written WRITE-ONLY
+   * to the connector secret path via IntegrationConnectionService.setCredential —
+   * never persisted to Postgres, returned, or logged. Tenant isolation is enforced
+   * by IntegrationConnectionService (every op is tenant-scoped).
+   */
+  async configureConnection(
+    tenantId: string,
+    input: ConfigureMicrosoftConnectionInput,
+  ): Promise<MicrosoftConnectionSummary> {
+    const config: MicrosoftConnectionConfig = {
+      client_id: input.client_id,
+      authority_tenant: input.authority_tenant,
+    };
+    const existing = await this.connections.findConnectionByProviderKey(tenantId, MICROSOFT_PROVIDER_KEY);
+    const connection =
+      existing === null
+        ? await this.connections.createConnection({
+            tenant_id: tenantId,
+            provider_key: MICROSOFT_PROVIDER_KEY,
+            config,
+          })
+        : await this.connections.updateConnection(tenantId, existing.id, { config });
+
+    if (input.client_secret !== undefined && input.client_secret.length > 0) {
+      // Write-only: raw secret → Secrets Manager only (rotates/replaces on update).
+      await this.connections.setCredential({
+        tenant_id: tenantId,
+        id: connection.id,
+        credential: input.client_secret,
+      });
+      return { connection_id: connection.id, has_secret: true };
+    }
+    return { connection_id: connection.id, has_secret: existing?.has_secret ?? false };
   }
 
   nowSeconds(): number {

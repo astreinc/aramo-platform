@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 
 import { getEngagementReadiness, type EngagementReadiness } from './engagement-api';
+import { EngagementOverridePrompt } from './EngagementOverridePrompt';
 
 // COMM-C3 — the recruiter Submittal-readiness summary (R19). Provider-neutral,
 // truthful per-requirement status; loaded when the drawer opens (no first-paint
@@ -27,10 +28,16 @@ export function EngagementReadinessSummary({
   talentId,
   requisitionId,
   loadFn = getEngagementReadiness,
+  canOverride = false,
+  onOverride,
 }: {
   readonly talentId: string;
   readonly requisitionId: string;
   readonly loadFn?: typeof getEngagementReadiness;
+  /** PART A — the actor holds engagement:policy:override (from session scopes). */
+  readonly canOverride?: boolean;
+  /** PART A — submit with an override reason (wires to submitToAts). */
+  readonly onOverride?: (reason: string) => void | Promise<void>;
 }): JSX.Element {
   const [state, setState] = useState<State>({ kind: 'loading' });
 
@@ -96,6 +103,10 @@ export function EngagementReadinessSummary({
           ? 'Engagement requirements met for client submittal.'
           : 'Client submittal is blocked until the engagement requirements are met.'}
       </p>
+      {/* PART A (A9) — the override affordance appears only under an
+          ENFORCING_WITH_OVERRIDE policy with missing evidence; authority is the
+          engagement:policy:override scope. Read-error remains non-overridable. */}
+      <EngagementOverridePrompt readiness={r} canOverride={canOverride} onOverride={onOverride ?? (() => undefined)} />
     </div>
   );
 }

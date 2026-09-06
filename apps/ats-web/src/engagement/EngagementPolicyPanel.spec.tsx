@@ -9,14 +9,22 @@ const CAPS = [
   { channel: 'email' as const, available: true },
 ];
 const loadCaps = () => vi.fn().mockResolvedValue(CAPS);
+// Default: both channels have a configured Tenant provider (fully available).
+const READY = { voice: true, email: true };
 
-function panel(state: EngagementPolicyState, publishFn = vi.fn().mockResolvedValue(undefined), canWrite = true) {
+function panel(
+  state: EngagementPolicyState,
+  publishFn = vi.fn().mockResolvedValue(undefined),
+  canWrite = true,
+  readiness = READY,
+) {
   return render(
     <EngagementPolicyPanel
       canRead
       canWrite={canWrite}
       loadStateFn={vi.fn().mockResolvedValue(state)}
       loadCapabilitiesFn={loadCaps()}
+      loadReadinessFn={vi.fn().mockResolvedValue(readiness)}
       publishFn={publishFn}
       versionFn={() => 'v-test-1'}
     />,
@@ -46,9 +54,11 @@ describe('EngagementPolicyPanel (COMM-C3 admin)', () => {
         requirements: [{ channel: 'email', required: true, condition: 'recorded_evidence' }],
         layers: [{ scope: 'TENANT', version: 'v1', checksum: 'abc' }],
         composite_version: 'TENANT:v1:abc',
+        enforcement_mode: 'ENFORCING',
       },
     });
-    expect(await screen.findByTestId('engagement-policy-status-published')).toHaveTextContent(/enforcing/i);
+    expect(await screen.findByTestId('engagement-policy-status-published')).toBeInTheDocument();
+    expect(screen.getByTestId('engagement-policy-effective-mode')).toHaveTextContent(/enforcing/i);
     expect(screen.getByTestId('engagement-policy-req-email')).toHaveTextContent(/email evidence required/i);
     // "email sent" ≠ "responded": the requirement must not claim reply/open.
     expect(screen.getByTestId('engagement-policy-req-email')).not.toHaveTextContent(/repl|open|read/i);
@@ -92,9 +102,41 @@ describe('EngagementPolicyPanel (COMM-C3 admin)', () => {
     const input = publishFn.mock.calls[0][0] as PublishEngagementPolicyInput;
     expect(input.scope).toBe('TENANT');
     expect(input.requirements).toEqual([{ channel: 'email', required: true, condition: 'recorded_evidence' }]);
+    expect(input.enforcement_mode).toBe('ADVISORY'); // new-draft default (recommended first step)
     // Provider neutrality: the whole payload carries no vendor terms.
     const json = JSON.stringify(input).toLowerCase();
     expect(json).not.toMatch(/microsoft|graph|zoom/);
+  });
+
+  it('C6 — Email is "Available" only when a Tenant provider is configured; else "Supported by platform"', async () => {
+    panel({ governed: false, effective: null }, vi.fn(), true, { voice: true, email: false });
+    // Platform-capable but no configured Email provider → truthful, not "Available".
+    expect(await screen.findByTestId('engagement-cap-email')).toHaveTextContent(/supported by platform · provider not configured/i);
+    expect(screen.getByTestId('engagement-cap-voice')).toHaveTextContent(/available/i);
+  });
+
+  it('C6 — a channel with no configured provider cannot be required (toggle disabled)', async () => {
+    panel({ governed: false, effective: null }, vi.fn(), true, { voice: true, email: false });
+    fireEvent.click(await screen.findByTestId('engagement-policy-configure'));
+    expect(screen.getByTestId('engagement-policy-email-toggle')).toBeDisabled();
+    expect(screen.getByTestId('engagement-policy-voice-toggle')).toBeEnabled();
+    expect(screen.getByTestId('engagement-policy-email-unavailable')).toBeInTheDocument();
+  });
+
+  it('enforcement radios map 1:1 to the backend enum and are carried on publish', async () => {
+    const publishFn = vi.fn().mockResolvedValue(undefined);
+    panel({ governed: false, effective: null }, publishFn);
+    fireEvent.click(await screen.findByTestId('engagement-policy-configure'));
+    fireEvent.click(screen.getByTestId('engagement-policy-email-toggle'));
+    // All three modes present.
+    expect(screen.getByTestId('engagement-policy-mode-ADVISORY')).toBeInTheDocument();
+    expect(screen.getByTestId('engagement-policy-mode-ENFORCING')).toBeInTheDocument();
+    expect(screen.getByTestId('engagement-policy-mode-ENFORCING_WITH_OVERRIDE')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('engagement-policy-mode-ENFORCING_WITH_OVERRIDE'));
+    fireEvent.click(screen.getByTestId('engagement-policy-review'));
+    fireEvent.click(screen.getByTestId('engagement-policy-publish'));
+    await waitFor(() => expect(publishFn).toHaveBeenCalledTimes(1));
+    expect((publishFn.mock.calls[0][0] as PublishEngagementPolicyInput).enforcement_mode).toBe('ENFORCING_WITH_OVERRIDE');
   });
 
   it('publishes email + voice with minimum strength when both enabled', async () => {
