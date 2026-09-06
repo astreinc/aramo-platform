@@ -1,0 +1,30 @@
+{
+  "name": "microsoft-graph",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/microsoft-graph/src",
+  "projectType": "library",
+  "tags": ["scope:ats"],
+  "targets": {
+    "build": {
+      "executor": "@nx/js:tsc",
+      "outputs": ["{options.outputPath}"],
+      "options": {
+        "outputPath": "dist/libs/microsoft-graph",
+        "main": "libs/microsoft-graph/src/index.ts",
+        "tsConfig": "libs/microsoft-graph/tsconfig.lib.json"
+      }
+    },
+    "lint": {
+      "executor": "@nx/eslint:lint",
+      "options": {
+        "lintFilePatterns": ["libs/microsoft-graph/**/*.ts"]
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "vitest run --passWithNoTests --root libs/microsoft-graph"
+      }
+    }
+  }
+}

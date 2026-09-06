@@ -28,7 +28,7 @@ export class EngagementController {
     private readonly gate: EngagementGateService,
   ) {}
 
-  /** Provider-neutral evidence-channel capabilities (voice available / email not). */
+  /** Provider-neutral evidence-channel capabilities (voice + email available per COMM-C2B). */
   @Get('capabilities')
   @HttpCode(HttpStatus.OK)
   @RequireScopes('engagement:policy:read')

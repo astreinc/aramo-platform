@@ -107,6 +107,10 @@ import { RequisitionLifecycleMappingAdminController } from './lifecycle/mapping-
     // consumer category). The secret id is derived server-side from config env,
     // never from client input.
     SECRETS_MANAGER_PORT,
+    // COMM-C2B — the Secrets Manager WRITE port, so the composition root can bind
+    // the delegated-token custody adapter (Microsoft token bundles → secret store,
+    // off Postgres). Server-derived secret ids only; never client input.
+    SECRETS_MANAGER_WRITER,
     // CB-D2-FG (R-CREDENTIAL) — exported so the apps/api lifecycle-poll producer
     // can resolve + inject the tenant-bound ephemeral credential per connection.
     ConnectorSecretResolver,

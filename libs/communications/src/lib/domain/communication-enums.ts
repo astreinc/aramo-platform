@@ -3,8 +3,9 @@
 // vendor vocabulary appears here — the domain is provider-neutral; any provider
 // terminology is confined to the provider adapter.
 
-/** The medium of an interaction. `voice` executes in COMM-V1; sms/email carried by design. */
-export const COMMUNICATION_CHANNELS = ['voice', 'sms', 'email'] as const;
+/** The medium of an interaction. `voice` executes in COMM-V1; sms/email/meeting
+ *  carried by design (email + meeting execute in COMM-C2B). */
+export const COMMUNICATION_CHANNELS = ['voice', 'sms', 'email', 'meeting'] as const;
 export type CommunicationChannel = (typeof COMMUNICATION_CHANNELS)[number];
 
 /** Direction of an interaction. Outbound is the COMM-V1 target. */

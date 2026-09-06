@@ -10,6 +10,7 @@ export {
   type VoiceEvidenceInteractionRow,
   type InteractionStatusPatch,
   type ProviderIdentityView,
+  type ProviderIdentityBindingRow,
 } from './lib/communications.repository.js';
 export { PrismaService as CommunicationsPrismaService } from './lib/prisma/prisma.service.js';
 

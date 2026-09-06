@@ -606,6 +606,13 @@ export const ERROR_CODES = [
   // evidence producer yet (e.g. email today), so the policy cannot be activated (R7).
   'ENGAGEMENT_POLICY_SCHEMA_INVALID',
   'ENGAGEMENT_POLICY_NOT_ACTIVATABLE',
+  // COMM-C2B — Microsoft delegated execution refusals (all 409). REAUTHORIZATION_
+  // REQUIRED: the recruiter's Microsoft identity is unbound/revoked/expired and
+  // must be (re)authorized. EMAIL_CONSENT_DENIED: contacting-consent blocks the
+  // email. PROVIDER_NOT_CONFIGURED: the tenant has no usable Microsoft connection.
+  'MICROSOFT_REAUTHORIZATION_REQUIRED',
+  'COMMUNICATION_EMAIL_CONSENT_DENIED',
+  'MICROSOFT_PROVIDER_NOT_CONFIGURED',
   // L8-B1 Amendment A1 — Submittal↔Pipeline authority-chain refusals (HTTP 409).
   // PIPELINE_SUBMIT_REQUIRES_SUBMITTAL (409): DEPRECATED/RESERVED — the Pipeline `submitted`
   // mirror was retired (L2-E) and the status value removed from the enum entirely

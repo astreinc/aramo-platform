@@ -4059,6 +4059,130 @@ paths:
           $ref: 'common.yaml#/components/responses/Forbidden'
       security:
         - BearerAuth: []
+  /v1/integrations/microsoft/authorize/start:
+    get:
+      operationId: microsoftAuthorizeStart
+      summary: Begin Microsoft delegated authorization (COMM-C2B).
+      description: Returns the Microsoft authorize URL for the signed-in recruiter. Guarded by `communication:read`.
+      parameters:
+        - in: query
+          name: connection_id
+          required: false
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MicrosoftAuthorizeStartResponse' }
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+      security:
+        - BearerAuth: []
+  /v1/integrations/microsoft/callback:
+    get:
+      operationId: microsoftAuthorizeCallback
+      summary: Microsoft OAuth callback (COMM-C2B).
+      description: State-authenticated (encrypted, integrity-protected, TTL-bounded). Exchanges the code server-side and binds the recruiter identity; returns a token-free view.
+      parameters:
+        - in: query
+          name: code
+          required: true
+          schema: { type: string }
+        - in: query
+          name: state
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MicrosoftCallbackResponse' }
+  /v1/integrations/microsoft/me:
+    get:
+      operationId: microsoftBindingStatus
+      summary: The signed-in recruiter's Microsoft binding status (COMM-C2B).
+      description: For reauthorization UX. Guarded by `communication:read`. Token-free.
+      parameters:
+        - in: query
+          name: connection_id
+          required: false
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MicrosoftRecruiterBindingStatus' }
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+      security:
+        - BearerAuth: []
+  /v1/integrations/microsoft/status:
+    get:
+      operationId: microsoftProviderStatus
+      summary: Tenant-admin Microsoft provider status + mapping counts (COMM-C2B).
+      description: Provider capabilities + recruiter identity mapping counts by status. Guarded by `integration:read`. Token-free.
+      parameters:
+        - in: query
+          name: connection_id
+          required: false
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MicrosoftConnectionMappingStatus' }
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+      security:
+        - BearerAuth: []
+  /v1/integrations/microsoft/email:
+    post:
+      operationId: microsoftSendEmail
+      summary: Send recruiter email via the bound delegated Microsoft identity (COMM-C2B).
+      description: Consent-gated. Records provider-neutral email evidence on Graph acceptance. Guarded by `communication:email:send`. Token-free response.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SendMicrosoftEmailRequest' }
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MicrosoftEmailSendResult' }
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '409':
+          $ref: 'common.yaml#/components/responses/Conflict'
+      security:
+        - BearerAuth: []
+  /v1/integrations/microsoft/meeting:
+    post:
+      operationId: microsoftCreateMeeting
+      summary: Create a Teams meeting (create-link-only) via the bound delegated identity (COMM-C2B).
+      description: Create-link-only — NO Talent invite. Records provider-neutral meeting evidence + join reference. Guarded by `communication:meeting:create`. Token-free response.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateMicrosoftMeetingRequest' }
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MicrosoftMeetingResult' }
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '409':
+          $ref: 'common.yaml#/components/responses/Conflict'
+      security:
+        - BearerAuth: []
   /v1/integrations:
     get:
       operationId: listIntegrationConnections
@@ -5037,6 +5161,100 @@ components:
         items:
           type: array
           items: { $ref: '#/components/schemas/EngagementChannelCapability' }
+    MicrosoftAuthorizeStartResponse:
+      type: object
+      additionalProperties: false
+      required: [authorize_url]
+      properties:
+        authorize_url: { type: string }
+    MicrosoftCallbackResponse:
+      type: object
+      additionalProperties: false
+      required: [provider_identity_id, status, ms_object_id]
+      properties:
+        provider_identity_id: { type: string, format: uuid }
+        status: { type: string, enum: [active, unmapped, disabled, reauth_required] }
+        ms_object_id: { type: string }
+    MicrosoftRecruiterBindingStatus:
+      type: object
+      additionalProperties: false
+      required: [connection_id, bound, status, needs_reauthorization]
+      properties:
+        connection_id: { type: string, format: uuid }
+        bound: { type: boolean }
+        status: { type: string, enum: [active, unmapped, disabled, reauth_required] }
+        needs_reauthorization: { type: boolean }
+    MicrosoftConnectionMappingStatus:
+      type: object
+      additionalProperties: false
+      required: [connection_id, provider_key, capabilities, identities]
+      properties:
+        connection_id: { type: string, format: uuid }
+        provider_key: { type: string }
+        capabilities:
+          type: object
+          additionalProperties: false
+          required: [email, meeting]
+          properties:
+            email: { type: boolean }
+            meeting: { type: boolean }
+        identities:
+          type: object
+          additionalProperties: false
+          required: [active, unmapped, disabled, reauth_required]
+          properties:
+            active: { type: integer }
+            unmapped: { type: integer }
+            disabled: { type: integer }
+            reauth_required: { type: integer }
+    SendMicrosoftEmailRequest:
+      type: object
+      additionalProperties: false
+      required: [talent_record_id, requisition_id, to_email, subject, body, idempotency_key]
+      properties:
+        talent_record_id: { type: string, format: uuid }
+        requisition_id: { type: string, format: uuid }
+        pipeline_id: { type: string, format: uuid }
+        connection_id: { type: string, format: uuid }
+        to_email: { type: string, format: email }
+        subject: { type: string, minLength: 1, maxLength: 998 }
+        body: { type: string, minLength: 1, maxLength: 100000 }
+        idempotency_key: { type: string, minLength: 8, maxLength: 200 }
+    MicrosoftEmailSendResult:
+      type: object
+      additionalProperties: false
+      required: [interaction_id, status, talent_record_id, requisition_id, idempotent_replay]
+      properties:
+        interaction_id: { type: string, format: uuid }
+        status: { type: string, enum: [accepted] }
+        talent_record_id: { type: string, format: uuid }
+        requisition_id: { type: string, format: uuid }
+        idempotent_replay: { type: boolean }
+    CreateMicrosoftMeetingRequest:
+      type: object
+      additionalProperties: false
+      required: [talent_record_id, requisition_id, subject, start_date_time, end_date_time, idempotency_key]
+      properties:
+        talent_record_id: { type: string, format: uuid }
+        requisition_id: { type: string, format: uuid }
+        pipeline_id: { type: string, format: uuid }
+        connection_id: { type: string, format: uuid }
+        subject: { type: string, minLength: 1, maxLength: 1024 }
+        start_date_time: { type: string, format: date-time }
+        end_date_time: { type: string, format: date-time }
+        idempotency_key: { type: string, minLength: 8, maxLength: 200 }
+    MicrosoftMeetingResult:
+      type: object
+      additionalProperties: false
+      required: [interaction_id, join_url, scheduled_start, scheduled_end, talent_record_id, requisition_id, idempotent_replay]
+      properties:
+        interaction_id: { type: string, format: uuid }
+        join_url: { type: string }
+        scheduled_start: { type: string, format: date-time }
+        scheduled_end: { type: string, format: date-time }
+        talent_record_id: { type: string, format: uuid }
+        requisition_id: { type: string, format: uuid }
+        idempotent_replay: { type: boolean }
     EngagementRequirement:
       type: object
       additionalProperties: false

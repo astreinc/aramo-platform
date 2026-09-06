@@ -39,9 +39,35 @@ export class VoiceEvidenceReaderAdapter implements VoiceEvidenceReader {
     requisitionId: string,
   ): Promise<EngagementEvidenceFact[]> {
     const voice = await this.readVoice(tenantId, talentId, requisitionId);
-    // Email has a domain channel + association substrate but NO producer yet (R7/§7).
-    const email: EngagementEvidenceFact = { channel: 'email', availability: 'no_producer' };
+    const email = await this.readEmail(tenantId, talentId, requisitionId);
     return [voice, email];
+  }
+
+  // COMM-C2B — provider-neutral email evidence: a Graph-accepted outbound send is
+  // persisted as a channel=email CommunicationInteraction with terminal status
+  // `completed`. `recorded_evidence` reflects ONLY that such an accepted send is
+  // on record — never a response/contact signal ("email sent" ≠ "Talent
+  // responded"). Fail-closed on a read error (R9). Zero provider/identity fields.
+  private async readEmail(
+    tenantId: string,
+    talentId: string,
+    requisitionId: string,
+  ): Promise<EngagementEvidenceFact> {
+    try {
+      const rows = await this.comms.findChannelEvidenceInteractions(
+        tenantId,
+        talentId,
+        requisitionId,
+        'email',
+      );
+      return {
+        channel: 'email',
+        availability: 'available',
+        recorded_evidence: rows.some((r) => r.status === 'completed'),
+      };
+    } catch {
+      return { channel: 'email', availability: 'read_error' };
+    }
   }
 
   private async readVoice(

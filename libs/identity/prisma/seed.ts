@@ -380,6 +380,9 @@ export const SEED_IDS = {
     'communication:voice:call': '01900000-0000-7000-8000-0000000000e5',
     'communication:disposition:write': '01900000-0000-7000-8000-0000000000e6',
     'communication:notes:write': '01900000-0000-7000-8000-0000000000e7',
+    // COMM-C2B — recruiter Microsoft 365 execution scopes.
+    'communication:email:send': '01900000-0000-7000-8000-0000000000e8',
+    'communication:meeting:create': '01900000-0000-7000-8000-0000000000e9',
   },
   // RoleScope ids — one per (role,scope) assignment. Hardcoded sequence
   // 0x30..0x39 (10 assignments: 6 tenant_admin + 4 recruiter; the 3
@@ -2139,6 +2142,32 @@ const ENGAGEMENT_POLICY_ADMIN_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = 
   return map;
 })();
 
+// COMM-C2B — recruiter Microsoft execution grants. email:send / meeting:create
+// granted to the same operational tier as communication:voice:call (recruiter,
+// account_manager, tenant_admin, tenant_owner). Fresh disjoint RoleScope id range
+// 0xf30+ (append-don't-renumber — a dedicated bundle so existing communication
+// grant ids at 0xc50+ never shift). 8 grants (2 scopes x 4 roles).
+export const COMMUNICATION_C2B_SEED_BUNDLES: ReadonlyArray<
+  readonly [string, readonly string[]]
+> = [
+  ['recruiter', ['communication:email:send', 'communication:meeting:create']],
+  ['account_manager', ['communication:email:send', 'communication:meeting:create']],
+  ['tenant_admin', ['communication:email:send', 'communication:meeting:create']],
+  ['tenant_owner', ['communication:email:send', 'communication:meeting:create']],
+];
+const COMMUNICATION_C2B_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
+  const map: Record<string, string> = {};
+  let i = 0xf30;
+  for (const [role, scopes] of COMMUNICATION_C2B_SEED_BUNDLES) {
+    for (const scope of scopes) {
+      map[`${role}:${scope}`] =
+        `01900000-0000-7000-8000-${i.toString(16).padStart(12, '0')}`;
+      i++;
+    }
+  }
+  return map;
+})();
+
 // Requisition Approval sub-workflow — APPROVE/REJECT authority role-matrix.
 // requisition:approve granted to account_manager + tenant_admin + tenant_owner
 // (the manager tier, mirroring requisition:edit:financials); a recruiter holding
@@ -2669,6 +2698,8 @@ export async function runIdentitySeed(
   await upsertScope(prisma, SEED_IDS.scopes['offer:read:financial'], 'offer:read:financial', 'Offer Lifecycle / L4-P5 — read the structured Talent-facing Offer compensation snapshot (pay/salary presented to the talent) on the Offer read surface. A SEPARATE capability from offer:read: its absence keeps the comp snapshot masked. Covers Talent-facing compensation ONLY — NOT bill rate, margin, markup, or internal commercial planning (those remain under their existing financial authorities). GRANTED to recruiter, account_manager, tenant_admin, tenant_owner. NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['engagement:policy:read'], 'engagement:policy:read', 'COMM-C3 — read the tenant Engagement Policy: the effective (TENANT/CLIENT/REQUISITION-resolved) engagement requirements + evidence-channel capabilities (Settings → Recruiting → Engagement Requirements). A dedicated administration read (R16); NOT reused from communication/integration authority. GRANTED to tenant_admin, tenant_owner only; recruiter/account_manager excluded. NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['engagement:policy:write'], 'engagement:policy:write', 'COMM-C3 — publish a new immutable Tenant Engagement Policy version (typed, versioned, effective-dated; validated + activation-guarded so an unsatisfiable required channel like email cannot be activated). A dedicated administration write (R16); NOT the broad integration:write. GRANTED to tenant_admin, tenant_owner only; recruiter/account_manager excluded. NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['communication:email:send'], 'communication:email:send', 'COMM-C2B — send recruiter email through the bound delegated Microsoft identity (POST /v1/integrations/microsoft/email). Server-side contacting-consent gate precedes any provider execution; provider-neutral email evidence is recorded on success. GRANTED to recruiter, account_manager, tenant_admin, tenant_owner (mirrors communication:voice:call). NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['communication:meeting:create'], 'communication:meeting:create', 'COMM-C2B — create a Teams meeting through the bound delegated Microsoft identity (POST /v1/integrations/microsoft/meeting; create-link-only, no Talent invite). Records provider-neutral meeting evidence (join reference + Talent x Requisition association). GRANTED to recruiter, account_manager, tenant_admin, tenant_owner (mirrors communication:voice:call). NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['requisition:create:establish'], 'requisition:create:establish', 'Requisition Lane 1-A (Create-Governance) — the functional create qualifier that unlocks the governed initial-state establishment mode (MANUAL-ESTABLISH + SYSTEM). Grants authority to ENTER the governed establishment mode; never permits arbitrary statuses (the establishment-authorization gate still bounds { draft, open }). CATALOG-ONLY in v1: GRANTED to NO human tenant role (recruiter / recruiting_manager / delivery_manager / account_manager never receive it, so no human bypasses draft->approval via the manual create path); held programmatically by system/bootstrap establishment identities + passed by bootstrap/test helpers only. The INTEGRATION import path does NOT use this scope — it reuses the existing requisition:import:write. NO scope.created (scope-seed precedent); NO RoleScope grant.');
 
   // 7. RoleScope assignments — pre-AUTHZ-1 (88 rows: 13 + 12 + 52 + 11).
@@ -3219,6 +3250,25 @@ export async function runIdentitySeed(
       const rsId = ENGAGEMENT_POLICY_ADMIN_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
       if (rsId === undefined) {
         throw new Error(`COMM-C3 Engagement-Policy-Admin-Role-Matrix: Missing generated RoleScope id for ${roleKey}:${scopeKey}`);
+      }
+      const scope_id = scopeIdForKey(scopeKey);
+      await prisma.roleScope.upsert({
+        where: { role_id_scope_id: { role_id, scope_id } },
+        update: {},
+        create: { id: rsId, role_id, scope_id },
+      });
+    }
+  }
+
+  // COMM-C2B — recruiter Microsoft execution grants (8 rows; range 0xf30+).
+  // communication:email:send / :meeting:create -> recruiter + account_manager +
+  // tenant_admin + tenant_owner (mirrors communication:voice:call).
+  for (const [roleKey, scopeKeys] of COMMUNICATION_C2B_SEED_BUNDLES) {
+    const role_id = roleIdForKey(roleKey);
+    for (const scopeKey of scopeKeys) {
+      const rsId = COMMUNICATION_C2B_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
+      if (rsId === undefined) {
+        throw new Error(`COMM-C2B Communication-Execution-Role-Matrix: Missing generated RoleScope id for ${roleKey}:${scopeKey}`);
       }
       const scope_id = scopeIdForKey(scopeKey);
       await prisma.roleScope.upsert({

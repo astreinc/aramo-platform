@@ -388,6 +388,11 @@ export const SEED_SCOPE_KEYS = [
   'communication:voice:call',
   'communication:disposition:write',
   'communication:notes:write',
+  // COMM-C2B — recruiter Microsoft 365 execution: send email / create a Teams
+  // meeting through the bound delegated identity (routes in C2B). Per-channel
+  // execution scopes, mirroring the communication:voice:call precedent.
+  'communication:email:send',
+  'communication:meeting:create',
 ] as const;
 export type SeedScopeKey = (typeof SEED_SCOPE_KEYS)[number];
 

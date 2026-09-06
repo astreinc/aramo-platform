@@ -2653,6 +2653,18 @@
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/comm-b5-call-initiation.integration.spec.ts",
       "status": "excluded",
+      "to": "libs/communications/prisma/migrations/20260905130000_comm_c2b_provider_identity_email_tenant/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/comm-b5-call-initiation.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/communications/prisma/migrations/20260905140000_comm_c2b_meeting_channel/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/comm-b5-call-initiation.integration.spec.ts",
+      "status": "excluded",
       "to": "libs/consent/prisma/migrations/20260429164414_initial_consent_schema/migration.sql"
     },
     {
@@ -2689,6 +2701,18 @@
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/comm-b6-zoom-webhook.integration.spec.ts",
       "status": "excluded",
+      "to": "libs/communications/prisma/migrations/20260905130000_comm_c2b_provider_identity_email_tenant/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/comm-b6-zoom-webhook.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/communications/prisma/migrations/20260905140000_comm_c2b_meeting_channel/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/comm-b6-zoom-webhook.integration.spec.ts",
+      "status": "excluded",
       "to": "libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql"
     },
     {
@@ -2707,6 +2731,18 @@
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/comm-b7-disposition-timeline.integration.spec.ts",
       "status": "excluded",
+      "to": "libs/communications/prisma/migrations/20260905130000_comm_c2b_provider_identity_email_tenant/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/comm-b7-disposition-timeline.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/communications/prisma/migrations/20260905140000_comm_c2b_meeting_channel/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/comm-b7-disposition-timeline.integration.spec.ts",
+      "status": "excluded",
       "to": "libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql"
     },
     {
@@ -2720,6 +2756,18 @@
       "from": "apps/api/src/tests/comm-b8-provider-reference.integration.spec.ts",
       "status": "excluded",
       "to": "libs/communications/prisma/migrations/20260825120000_init_communications/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/comm-b8-provider-reference.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/communications/prisma/migrations/20260905130000_comm_c2b_provider_identity_email_tenant/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/comm-b8-provider-reference.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/communications/prisma/migrations/20260905140000_comm_c2b_meeting_channel/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -2792,6 +2840,18 @@
       "from": "apps/api/src/tests/communications-authz.integration.spec.ts",
       "status": "excluded",
       "to": "libs/communications/prisma/migrations/20260825120000_init_communications/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/communications-authz.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/communications/prisma/migrations/20260905130000_comm_c2b_provider_identity_email_tenant/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/communications-authz.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/communications/prisma/migrations/20260905140000_comm_c2b_meeting_channel/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -6290,6 +6350,18 @@
       "from": "apps/api/src/tests/submit-talent.integration.spec.ts",
       "status": "excluded",
       "to": "libs/communications/prisma/migrations/20260825120000_init_communications/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/submit-talent.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/communications/prisma/migrations/20260905130000_comm_c2b_provider_identity_email_tenant/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/submit-talent.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/communications/prisma/migrations/20260905140000_comm_c2b_meeting_channel/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -10072,6 +10144,16 @@
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
       "to": "apps/api/src/engagement/engagement.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "apps/api/src/microsoft/microsoft-authorization.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "apps/api/src/microsoft/microsoft-callback.controller.ts"
     },
     {
       "from": "ci/config/api-surface-manifest.json",
@@ -14737,6 +14819,16 @@
       "to": "libs/metering/tsconfig.lib.json"
     },
     {
+      "from": "libs/microsoft-graph/project.json",
+      "status": "unscoped",
+      "to": "libs/microsoft-graph/src/index.ts"
+    },
+    {
+      "from": "libs/microsoft-graph/project.json",
+      "status": "unscoped",
+      "to": "libs/microsoft-graph/tsconfig.lib.json"
+    },
+    {
       "from": "libs/object-storage/project.json",
       "status": "unscoped",
       "to": "libs/object-storage/src/index.ts"
@@ -15993,6 +16085,16 @@
       "from": "pact/provider/src/verify-api.ts",
       "status": "unscoped",
       "to": "libs/communications/prisma/migrations/20260825120000_init_communications/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "libs/communications/prisma/migrations/20260905130000_comm_c2b_provider_identity_email_tenant/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "libs/communications/prisma/migrations/20260905140000_comm_c2b_meeting_channel/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",
@@ -17452,6 +17554,11 @@
     {
       "from": "tsconfig.base.json",
       "status": "unscoped",
+      "to": "libs/microsoft-graph/src/index.ts"
+    },
+    {
+      "from": "tsconfig.base.json",
+      "status": "unscoped",
       "to": "libs/object-storage/src/index.ts"
     },
     {
@@ -17588,6 +17695,7 @@
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/mailer/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/matching/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/metering/src/index.ts" },
+    { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/microsoft-graph/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/object-storage/src/index.ts" },
     {
       "from": "vitest.shared.ts",

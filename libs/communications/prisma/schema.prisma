@@ -41,6 +41,8 @@ enum CommunicationChannel {
   voice
   sms
   email
+  // COMM-C2B — provider-neutral meeting channel (e.g. a Teams online meeting).
+  meeting
 
   @@schema("communications")
 }
@@ -164,6 +166,15 @@ model CommunicationInteraction {
   from_address String
   to_address   String
 
+  // COMM-C2B — email-send idempotency key. Retried sends with the same key
+  // resolve the existing interaction (a PARTIAL unique index on
+  // (tenant_id, idempotency_key) enforces non-duplication at the DB).
+  idempotency_key String?
+
+  // COMM-C2B — provider-neutral join reference/URL for a meeting-channel
+  // interaction (e.g. a Teams join URL). Never a token or provider secret.
+  join_reference String?
+
   started_at   DateTime? @db.Timestamptz
   ringing_at   DateTime? @db.Timestamptz
   connected_at DateTime? @db.Timestamptz
@@ -276,6 +287,11 @@ model CommunicationProviderIdentity {
 
   voice_enabled Boolean @default(false)
   sms_enabled   Boolean @default(false)
+  // COMM-C2B — email capability + the provider's OWN tenant identifier (e.g.
+  // Microsoft `tid`), part of the delegated identity binding (R6). Neutral names
+  // (R20): the column holds a provider tenant id, never a Microsoft-specific key.
+  email_enabled      Boolean @default(false)
+  provider_tenant_id String?
 
   status CommunicationProviderIdentityStatus @default(unmapped)
 

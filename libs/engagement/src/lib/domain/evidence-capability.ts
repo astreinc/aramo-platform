@@ -7,8 +7,11 @@ import { ENGAGEMENT_CHANNELS, type EngagementChannel } from './engagement-vocab.
 // that gates activation of a required channel (R7) and distinguishes
 // "unavailable" from "no evidence" at read time (R9).
 //
-// At the locked baseline: voice has the C2A provider-neutral evidence read;
-// email has a domain channel + association substrate but NO producer/read yet.
+// Voice has the C2A provider-neutral evidence read; email has the C2B
+// provider-neutral producer (Graph accepted send → CommunicationInteraction) +
+// read (recorded_evidence), so both channels are now available. Flipping this
+// flag does NOT publish or activate any Tenant Engagement Policy — it only lets
+// an email-required policy pass the R7 activation guard once a real producer exists.
 
 export interface ChannelEvidenceCapability {
   readonly channel: EngagementChannel;
@@ -17,7 +20,7 @@ export interface ChannelEvidenceCapability {
 
 const CAPABILITY: Readonly<Record<EngagementChannel, boolean>> = Object.freeze({
   voice: true,
-  email: false,
+  email: true, // COMM-C2B — real email producer + provider-neutral read now exist.
 });
 
 /** Whether a real provider-neutral evidence producer/read exists for `channel`. */
