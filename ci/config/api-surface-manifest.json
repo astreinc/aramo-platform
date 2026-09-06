@@ -71,6 +71,8 @@
     "libs/import/src/lib/requisition-import.controller.ts": "AP",
     "libs/ingestion/src/lib/ingestion.controller.ts": "AD",
     "libs/integration/src/lib/integration.controller.ts": "AP",
+    "apps/api/src/microsoft/microsoft-authorization.controller.ts": "AP",
+    "apps/api/src/microsoft/microsoft-callback.controller.ts": "AP",
     "libs/integration/src/lib/lifecycle/mapping-admin/requisition-lifecycle-mapping-admin.controller.ts": "AP",
     "libs/pipeline/src/lib/pipeline.controller.ts": "AP",
     "libs/portal/src/lib/portal.controller.ts": "AP",

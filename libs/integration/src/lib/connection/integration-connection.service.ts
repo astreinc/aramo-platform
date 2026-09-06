@@ -82,6 +82,17 @@ export class IntegrationConnectionService {
   }
 
   /**
+   * Read a connection's non-secret `config` JSON (tenant-safe). For composition
+   * roots that need provider-neutral configuration (e.g. an OAuth client_id /
+   * authority) without exposing it on the public view. NEVER returns secrets —
+   * credential material lives only behind `secret_ref` in Secrets Manager.
+   */
+  async getConnectionConfig(tenantId: string, id: string): Promise<unknown> {
+    const row = await this.requireConnection(tenantId, id);
+    return row.config;
+  }
+
+  /**
    * COMM-B3 — resolve the tenant's USABLE (configured|active) connection for a
    * provider_key, or null. Provider-neutral: the caller supplies the key. Used
    * by the composition root to bind a communications provider to its connection

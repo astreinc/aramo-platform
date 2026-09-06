@@ -1,0 +1,6 @@
+# Git worktrees are checked out under .claude/worktrees/ (separate branch
+# checkouts of THIS repo). Nx must not scan them: their project.json files are
+# duplicate definitions of the workspace's own projects and break the project
+# graph ("projects defined in multiple locations"). This is build-tooling
+# hygiene only — it changes no application code, test, or build output.
+.claude/worktrees

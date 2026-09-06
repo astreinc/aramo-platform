@@ -98,6 +98,8 @@ const MIGRATIONS = [
   'libs/policy-store/prisma/migrations/20260730120000_init_policy_store/migration.sql',
   'libs/policy-store/prisma/migrations/20260730160000_add_policy_decision_record/migration.sql',
   'libs/communications/prisma/migrations/20260825120000_init_communications/migration.sql',
+  'libs/communications/prisma/migrations/20260905130000_comm_c2b_provider_identity_email_tenant/migration.sql',
+  'libs/communications/prisma/migrations/20260905140000_comm_c2b_meeting_channel/migration.sql',
 ].map(mig);
 
 const logger = { log: () => undefined, error: () => undefined, warn: () => undefined } as never;

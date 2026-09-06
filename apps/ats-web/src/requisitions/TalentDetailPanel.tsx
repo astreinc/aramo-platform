@@ -15,6 +15,7 @@ import { VoiceEvidenceSummary } from '../communications/VoiceEvidenceSummary';
 import { getVoiceEngagementEvidence } from '../communications/communications-api';
 import type { VoiceEngagementEvidence } from '../communications/types';
 import { EngagementReadinessSummary } from '../engagement/EngagementReadinessSummary';
+import { MicrosoftRecruiterActions } from '../microsoft/MicrosoftRecruiterActions';
 import { getTalent, updateTalent } from '../talent/talent-api';
 import type { TalentRecordView, UpdateTalentRecordRequest } from '../talent/types';
 import {
@@ -329,6 +330,19 @@ export function TalentDetailPanel({
                 onCompleted={handleVoiceCompleted}
               />
             ) : null}
+          </section>
+
+          {/* COMM-C2B — recruiter Microsoft 365 actions (send email / create a
+              Teams meeting) via the bound delegated identity. Create-link-only
+              meetings; evidence-only — never attendance or a Talent response. */}
+          <section className="rc-cdp__sec" data-testid="microsoft-engagement">
+            <div className="rc-cdp__seclabel">Microsoft 365</div>
+            <MicrosoftRecruiterActions
+              talentId={entry.talent_record_id}
+              requisitionId={entry.requisition_id}
+              pipelineId={entry.id}
+              toEmail={emailValue ?? undefined}
+            />
           </section>
 
           {/* COMM-C3 — Submittal readiness (engagement gate). Provider-neutral

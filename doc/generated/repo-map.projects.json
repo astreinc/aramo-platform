@@ -1,5 +1,5 @@
 {
-  "aliasTotals": { "apps": 2, "libs": 66, "total": 68 },
+  "aliasTotals": { "apps": 2, "libs": 67, "total": 69 },
   "aliases": {
     "@aramo/activity": "libs/activity/src/index.ts",
     "@aramo/ai-draft": "libs/ai-draft/src/index.ts",
@@ -39,6 +39,7 @@
     "@aramo/mailer": "libs/mailer/src/index.ts",
     "@aramo/matching": "libs/matching/src/index.ts",
     "@aramo/metering": "libs/metering/src/index.ts",
+    "@aramo/microsoft-graph": "libs/microsoft-graph/src/index.ts",
     "@aramo/object-storage": "libs/object-storage/src/index.ts",
     "@aramo/outbox-publisher": "libs/outbox-publisher/src/index.ts",
     "@aramo/pipeline": "libs/pipeline/src/index.ts",
@@ -693,6 +694,43 @@
       "evaluateEntrustability"
     ],
     "@aramo/metering": ["recordUsage"],
+    "@aramo/microsoft-graph": [
+      "DELEGATED_TOKEN_STORE",
+      "DelegatedAuthorizationService",
+      "FORBIDDEN_SCOPE_PATTERNS",
+      "MICROSOFT_CAPABILITIES",
+      "MICROSOFT_DEFAULT_AUTHORITY_TENANT",
+      "MICROSOFT_DELEGATED_SCOPES",
+      "MICROSOFT_GRAPH_PORT",
+      "MICROSOFT_LOGIN_AUTHORITY",
+      "MICROSOFT_OAUTH_PORT",
+      "MICROSOFT_OAUTH_STATE_TTL_SECONDS",
+      "MICROSOFT_PROVIDER_KEY",
+      "MS_SCOPE_MAIL_SEND",
+      "MS_SCOPE_OFFLINE_ACCESS",
+      "MS_SCOPE_ONLINE_MEETINGS_RW",
+      "MS_SCOPE_OPENID",
+      "MS_SCOPE_PROFILE",
+      "MS_SCOPE_USER_READ",
+      "MicrosoftConsentRevokedError",
+      "MicrosoftIdentityNotBoundError",
+      "MicrosoftOAuthStateError",
+      "MicrosoftReauthRequiredError",
+      "MicrosoftScopeViolationError",
+      "PROVIDER_IDENTITY_STORE",
+      "TOKEN_REFRESH_SKEW_SECONDS",
+      "assertLeastPrivilegeScopes",
+      "assertNoTokenMaterial",
+      "buildMicrosoftAuthorizeUrl",
+      "buildMicrosoftTokenEndpoint",
+      "decryptMicrosoftOAuthState",
+      "encryptMicrosoftOAuthState",
+      "generateMicrosoftPkce",
+      "isMicrosoftOAuthStateExpired",
+      "microsoftScopeParam",
+      "redactTokenBundle",
+      "tokenNeedsRefresh"
+    ],
     "@aramo/object-storage": [
       "INGESTION_KEY_SEGMENT",
       "OBJECT_STORAGE_DEFAULT_EXPIRY_SECONDS",
@@ -1410,6 +1448,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/match-list.negative-shape.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/microsoft-email-send.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -2961,6 +3005,24 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/microsoft-delegated-auth.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/microsoft-email-send.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/microsoft-meeting-create.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/submit-talent.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -4102,6 +4164,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/microsoft-delegated-auth.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/support/fake-lifecycle-source.ts",
         "project": "api",
         "status": "excluded"
@@ -4206,6 +4274,27 @@
       { "project": "pipeline", "status": "production" },
       { "project": "selection", "status": "production" },
       { "project": "submittal", "status": "production" }
+    ],
+    "@aramo/microsoft-graph": [
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/microsoft-delegated-auth.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/microsoft-email-send.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/microsoft-meeting-create.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      { "project": "api", "status": "production" }
     ],
     "@aramo/object-storage": [
       {
@@ -5525,6 +5614,13 @@
       "root": "libs/metering",
       "sourceRoot": "libs/metering/src",
       "tags": ["scope:shared"],
+      "targets": ["build", "lint", "test"]
+    },
+    {
+      "name": "microsoft-graph",
+      "root": "libs/microsoft-graph",
+      "sourceRoot": "libs/microsoft-graph/src",
+      "tags": ["scope:ats"],
       "targets": ["build", "lint", "test"]
     },
     {

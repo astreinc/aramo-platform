@@ -95,4 +95,25 @@ describe('evaluateEngagementReadiness', () => {
     expect(r.satisfied).toBe(false);
     expect(r.results[0]?.status).toBe('no_producer');
   });
+
+  // COMM-C2B — with a real producer, email is 'available' and carries only
+  // recorded_evidence (accepted outbound send on record), never a response signal.
+  it('email required + available + recorded_evidence=true → satisfied (C2B)', () => {
+    const r = evaluateEngagementReadiness(
+      { requirements: [{ channel: 'email', required: true, condition: 'recorded_evidence' }] },
+      [{ channel: 'email', availability: 'available', recorded_evidence: true }],
+    );
+    expect(r.satisfied).toBe(true);
+    expect(r.results[0]?.status).toBe('satisfied');
+  });
+
+  it('email required + available + recorded_evidence=false → missing, not satisfied (C2B)', () => {
+    const r = evaluateEngagementReadiness(
+      { requirements: [{ channel: 'email', required: true, condition: 'recorded_evidence' }] },
+      [{ channel: 'email', availability: 'available', recorded_evidence: false }],
+    );
+    expect(r.satisfied).toBe(false);
+    expect(r.results[0]?.status).toBe('missing');
+    expect(r.missing).toContain('email');
+  });
 });

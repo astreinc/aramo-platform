@@ -67,10 +67,9 @@ describe('validation + activation guard (R7)', () => {
     expect(() => validateEngagementPolicyDefinition(def('TENANT', null, [voiceReq('RECRUITER_ATTESTED')]))).not.toThrow();
   });
 
-  it('rejects an email-REQUIRED policy from activation (no producer, R7)', () => {
-    expect(() => assertEngagementPolicyActivatable(def('TENANT', null, [emailReq(true)]))).toThrowError(
-      /not be activated|no evidence producer/i,
-    );
+  it('allows an email-REQUIRED policy to activate now that a real producer exists (COMM-C2B)', () => {
+    // C2B-9 flipped email capability → available (real Graph producer + read).
+    expect(() => assertEngagementPolicyActivatable(def('TENANT', null, [emailReq(true)]))).not.toThrow();
   });
 
   it('allows an email requirement with required=false', () => {

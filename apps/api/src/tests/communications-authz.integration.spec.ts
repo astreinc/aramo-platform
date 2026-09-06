@@ -35,8 +35,10 @@ const ALG = 'RS256';
 
 const ENTITLEMENT_INIT = resolve(ROOT, 'libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql');
 const COMMUNICATIONS_INIT = resolve(ROOT, 'libs/communications/prisma/migrations/20260825120000_init_communications/migration.sql');
+const COMMUNICATIONS_C2B = resolve(ROOT, 'libs/communications/prisma/migrations/20260905130000_comm_c2b_provider_identity_email_tenant/migration.sql');
+const COMMUNICATIONS_C2B_MEETING = resolve(ROOT, 'libs/communications/prisma/migrations/20260905140000_comm_c2b_meeting_channel/migration.sql');
 const INTEGRATION_INIT = resolve(ROOT, 'libs/integration/prisma/migrations/20260814170000_init_integration_connection/migration.sql');
-const MIGRATIONS = [ENTITLEMENT_INIT, COMMUNICATIONS_INIT, INTEGRATION_INIT];
+const MIGRATIONS = [ENTITLEMENT_INIT, COMMUNICATIONS_INIT, COMMUNICATIONS_C2B, COMMUNICATIONS_C2B_MEETING, INTEGRATION_INIT];
 
 const TENANT_A = '01900000-0000-7000-8000-0000000000a1';
 const TENANT_B = '01900000-0000-7000-8000-0000000000b2';

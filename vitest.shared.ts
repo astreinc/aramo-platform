@@ -119,6 +119,10 @@ export default defineConfig({
       // tsconfig.base.json @aramo/engagement path so vitest resolves it for the
       // submit-talent gate + admin API consumers.
       '@aramo/engagement': resolve(root, 'libs/engagement/src/index.ts'),
+      // COMM-C2B microsoft-graph — Microsoft 365 delegated provider (scope:ats).
+      // Mirrors the tsconfig.base.json @aramo/microsoft-graph path so vitest
+      // resolves the domain/ports for lib specs + the apps/api composition root.
+      '@aramo/microsoft-graph': resolve(root, 'libs/microsoft-graph/src/index.ts'),
       // PR-1 policy-engine (ADR-0024 §D7) — the stateless, dependency-free
       // boundary evaluator. Mirrors the tsconfig.base.json @aramo/policy-engine
       // path so vitest resolves it once PR-2/PR-3 consumers import it.

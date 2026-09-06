@@ -8,6 +8,7 @@ import {
   disableIntegrationConnection,
   enableIntegrationConnection,
 } from '../integrations/integrations-api';
+import { MicrosoftProviderAdminStatus } from '../microsoft/MicrosoftProviderAdminStatus';
 
 import { ConfigureZoomCredentialDialog } from './ConfigureZoomCredentialDialog';
 import { RecruiterMappingsDialog } from './RecruiterMappingsDialog';
@@ -182,6 +183,12 @@ function Panel({
               />
             ))}
         </div>
+      </Card>
+
+      {/* COMM-C2B — Microsoft 365 provider status (capabilities + recruiter
+          mapping counts). Read-only admin surface. */}
+      <Card>
+        <MicrosoftProviderAdminStatus />
       </Card>
 
       <ConfigureZoomCredentialDialog

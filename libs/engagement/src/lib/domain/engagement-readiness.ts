@@ -21,12 +21,21 @@ export type EngagementEvidenceFact =
       readonly evidence_strength: EngagementEvidenceStrength | null;
     }
   | {
+      // COMM-C2B — email has a real provider-neutral producer/read now. The only
+      // fact email carries is whether a provider-accepted outbound send is on
+      // record (`recorded_evidence`). This is deliberately NOT a response/contact
+      // signal: "email sent" is not "Talent responded" (locked COMM boundary).
+      readonly channel: 'email';
+      readonly availability: 'available';
+      readonly recorded_evidence: boolean;
+    }
+  | {
       // The channel's evidence read failed / cannot produce a trustworthy result.
       readonly channel: EngagementChannel;
       readonly availability: 'read_error';
     }
   | {
-      // The channel has no real evidence producer at this baseline (e.g. email).
+      // The channel has no real evidence producer at this baseline.
       readonly channel: EngagementChannel;
       readonly availability: 'no_producer';
     };
@@ -107,8 +116,11 @@ function statusFor(
     if (!meetsStrength(fact.evidence_strength, req.minimum_strength)) return 'insufficient_strength';
     return 'satisfied';
   }
-  // email 'recorded_evidence' would check a recorded flag here — but email is
-  // never 'available' at this baseline (no producer), so this path is unreachable
-  // for an active policy. Defensive: treat as missing rather than silently pass.
+  // COMM-C2B — email 'recorded_evidence': a provider-accepted outbound send on
+  // record satisfies the requirement; absence is plain incompleteness (missing).
+  if (req.channel === 'email' && fact.channel === 'email') {
+    return fact.recorded_evidence ? 'satisfied' : 'missing';
+  }
+  // Defensive: unknown channel/fact pairing is treated as missing, never a pass.
   return 'missing';
 }

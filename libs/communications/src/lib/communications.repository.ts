@@ -31,6 +31,8 @@ export interface InteractionRow {
   initiated_by_id: string | null;
   from_address: string;
   to_address: string;
+  idempotency_key: string | null;
+  join_reference: string | null;
   started_at: Date | null;
   ringing_at: Date | null;
   connected_at: Date | null;
@@ -77,6 +79,14 @@ export class CommunicationsRepository {
     from_address: string;
     to_address: string;
     initiated_by_id?: string | null;
+    // COMM-C2B — optional terminal status + idempotency key for outbound email;
+    // meeting fields (provider id, join reference/URL, scheduled window).
+    status?: CommunicationInteractionStatus;
+    idempotency_key?: string | null;
+    provider_interaction_id?: string | null;
+    join_reference?: string | null;
+    started_at?: Date | null;
+    ended_at?: Date | null;
   }): Promise<InteractionRow> {
     return (await this.prisma.communicationInteraction.create({
       data: {
@@ -84,13 +94,28 @@ export class CommunicationsRepository {
         site_id: args.site_id ?? null,
         channel: args.channel,
         direction: args.direction,
-        status: 'created',
+        status: args.status ?? 'created',
         integration_connection_id: args.integration_connection_id,
         from_address: args.from_address,
         to_address: args.to_address,
         initiated_by_id: args.initiated_by_id ?? null,
+        idempotency_key: args.idempotency_key ?? null,
+        provider_interaction_id: args.provider_interaction_id ?? null,
+        join_reference: args.join_reference ?? null,
+        started_at: args.started_at ?? null,
+        ended_at: args.ended_at ?? null,
       },
     })) as InteractionRow;
+  }
+
+  /** COMM-C2B — idempotency lookup for outbound email (tenant-scoped). */
+  async findInteractionByIdempotencyKey(
+    tenantId: string,
+    idempotencyKey: string,
+  ): Promise<InteractionRow | null> {
+    return (await this.prisma.communicationInteraction.findFirst({
+      where: { tenant_id: tenantId, idempotency_key: idempotencyKey },
+    })) as InteractionRow | null;
   }
 
   /** Tenant-safe read — null when the id belongs to another tenant. */
@@ -359,6 +384,50 @@ export class CommunicationsRepository {
     return rows as VoiceEvidenceInteractionRow[];
   }
 
+  /**
+   * COMM-C2B — provider-neutral channel evidence read. Returns interactions of a
+   * given `channel` that intersect (talent subject ∩ requisition regarding). The
+   * channel is a PARAMETER — no vendor/Microsoft-specific query logic. Used by the
+   * engagement evidence reader for `email` (recorded-evidence check).
+   */
+  async findChannelEvidenceInteractions(
+    tenantId: string,
+    talentId: string,
+    requisitionId: string,
+    channel: CommunicationChannel,
+  ): Promise<Array<{ id: string; status: CommunicationInteractionStatus }>> {
+    return (await this.prisma.communicationInteraction.findMany({
+      where: {
+        tenant_id: tenantId,
+        channel,
+        AND: [
+          {
+            associations: {
+              some: {
+                tenant_id: tenantId,
+                subject_type: 'talent_record' satisfies CommunicationSubjectType,
+                subject_id: talentId,
+                relation_type: 'subject' satisfies CommunicationRelationType,
+              },
+            },
+          },
+          {
+            associations: {
+              some: {
+                tenant_id: tenantId,
+                subject_type: 'requisition' satisfies CommunicationSubjectType,
+                subject_id: requisitionId,
+                relation_type: 'regarding' satisfies CommunicationRelationType,
+              },
+            },
+          },
+        ],
+      },
+      select: { id: true, status: true },
+      orderBy: { created_at: 'desc' },
+    })) as Array<{ id: string; status: CommunicationInteractionStatus }>;
+  }
+
   // ---- CommunicationDisposition ----
 
   async recordDisposition(args: {
@@ -502,6 +571,97 @@ export class CommunicationsRepository {
     })) as { id: string; provider_user_id: string; status: CommunicationProviderIdentityStatus } | null;
   }
 
+  // ---- COMM-C2B delegated provider-identity binding (email/meeting) ----
+
+  private static readonly BINDING_SELECT = {
+    id: true,
+    tenant_id: true,
+    integration_connection_id: true,
+    recruiter_id: true,
+    provider_user_id: true,
+    provider_tenant_id: true,
+    status: true,
+    email_enabled: true,
+  } as const;
+
+  /** Bind (or re-bind on reauthorization) a recruiter to a delegated identity (R6). */
+  async upsertProviderIdentityBinding(args: {
+    tenant_id: string;
+    integration_connection_id: string;
+    recruiter_id: string;
+    provider_user_id: string;
+    provider_tenant_id: string;
+    email_enabled: boolean;
+  }): Promise<ProviderIdentityBindingRow> {
+    return (await this.prisma.communicationProviderIdentity.upsert({
+      where: {
+        integration_connection_id_recruiter_id: {
+          integration_connection_id: args.integration_connection_id,
+          recruiter_id: args.recruiter_id,
+        },
+      },
+      create: {
+        tenant_id: args.tenant_id,
+        integration_connection_id: args.integration_connection_id,
+        recruiter_id: args.recruiter_id,
+        provider_user_id: args.provider_user_id,
+        provider_tenant_id: args.provider_tenant_id,
+        email_enabled: args.email_enabled,
+        status: 'active',
+      },
+      update: {
+        provider_user_id: args.provider_user_id,
+        provider_tenant_id: args.provider_tenant_id,
+        email_enabled: args.email_enabled,
+      },
+      select: CommunicationsRepository.BINDING_SELECT,
+    })) as ProviderIdentityBindingRow;
+  }
+
+  /** Tenant-safe binding read for a recruiter on a connection. */
+  async findProviderIdentityBindingForRecruiter(
+    tenantId: string,
+    connectionId: string,
+    recruiterId: string,
+  ): Promise<ProviderIdentityBindingRow | null> {
+    return (await this.prisma.communicationProviderIdentity.findFirst({
+      where: { tenant_id: tenantId, integration_connection_id: connectionId, recruiter_id: recruiterId },
+      select: CommunicationsRepository.BINDING_SELECT,
+    })) as ProviderIdentityBindingRow | null;
+  }
+
+  /** Tenant-safe status transition (R7). Returns null if no row for the tenant. */
+  async setProviderIdentityStatus(
+    tenantId: string,
+    id: string,
+    status: CommunicationProviderIdentityStatus,
+  ): Promise<ProviderIdentityBindingRow | null> {
+    const updated = await this.prisma.communicationProviderIdentity.updateMany({
+      where: { id, tenant_id: tenantId },
+      data: { status },
+    });
+    if (updated.count === 0) {
+      return null;
+    }
+    return (await this.prisma.communicationProviderIdentity.findFirst({
+      where: { id, tenant_id: tenantId },
+      select: CommunicationsRepository.BINDING_SELECT,
+    })) as ProviderIdentityBindingRow;
+  }
+
+  /** Per-status counts for a connection (admin mapping health). */
+  async countProviderIdentitiesByStatus(
+    tenantId: string,
+    connectionId: string,
+  ): Promise<Array<{ status: CommunicationProviderIdentityStatus; count: number }>> {
+    const rows = await this.prisma.communicationProviderIdentity.groupBy({
+      by: ['status'],
+      where: { tenant_id: tenantId, integration_connection_id: connectionId },
+      _count: { _all: true },
+    });
+    return rows.map((r) => ({ status: r.status, count: r._count._all }));
+  }
+
   /**
    * Connection-agnostic provider-identity lookup for a recruiter (tenant-safe).
    * The connection is account-level; until a connection is bound (COMM-B3) the
@@ -618,4 +778,17 @@ export interface ProviderIdentityView {
   voice_enabled: boolean;
   sms_enabled: boolean;
   status: CommunicationProviderIdentityStatus;
+}
+
+// COMM-C2B — the full recruiter↔provider identity binding (delegated Microsoft),
+// including the email capability flag and the provider's own tenant id (R6).
+export interface ProviderIdentityBindingRow {
+  id: string;
+  tenant_id: string;
+  integration_connection_id: string;
+  recruiter_id: string;
+  provider_user_id: string;
+  provider_tenant_id: string | null;
+  status: CommunicationProviderIdentityStatus;
+  email_enabled: boolean;
 }
