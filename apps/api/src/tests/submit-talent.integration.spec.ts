@@ -496,5 +496,90 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const res = await submit(t, sub, 'c3-5');
       expect(res.state).toBe('submitted_to_ats');
     });
+
+    // COMM-C3 (post-C2B) — email-requirement enforcement. Publishing an email
+    // requirement makes an accepted outbound email evidence mandatory before
+    // Submit to Client. Provider-neutral: the gate checks channel=email, never a
+    // vendor. ("email sent" evidence = an accepted send on record, NOT a reply.)
+    async function publishEmailPolicy(
+      t: string,
+      opts: { voice?: 'RECRUITER_ATTESTED' | 'PROVIDER_VERIFIED' } = {},
+    ): Promise<void> {
+      const requirements: Array<Record<string, unknown>> = [
+        { channel: 'email', required: true, condition: 'recorded_evidence' },
+      ];
+      if (opts.voice !== undefined) {
+        requirements.push({
+          channel: 'voice',
+          required: true,
+          condition: 'two_way_conversation',
+          minimum_strength: opts.voice,
+        });
+      }
+      await engagementPolicy.publish({
+        tenant_id: t,
+        version: 'v1',
+        definition: { schema_version: 1, scope: 'TENANT', scope_ref: null, requirements } as never,
+        published_by: randomUUID(),
+      });
+    }
+    async function seedEmailEvidence(t: string, talent: string, req: string): Promise<void> {
+      const interaction = randomUUID();
+      await sql.query(
+        `INSERT INTO communications."CommunicationInteraction"
+           (id,tenant_id,channel,direction,status,integration_connection_id,from_address,to_address)
+         VALUES ($1,$2,'email','outbound','completed',$3,'recruiter@example.test','talent@example.test')`,
+        [interaction, t, randomUUID()],
+      );
+      await sql.query(
+        `INSERT INTO communications."CommunicationAssociation" (id,tenant_id,interaction_id,subject_type,subject_id,relation_type)
+         VALUES (gen_random_uuid(),$1,$2,'talent_record',$3,'subject')`,
+        [t, interaction, talent],
+      );
+      await sql.query(
+        `INSERT INTO communications."CommunicationAssociation" (id,tenant_id,interaction_id,subject_type,subject_id,relation_type)
+         VALUES (gen_random_uuid(),$1,$2,'requisition',$3,'regarding')`,
+        [t, interaction, req],
+      );
+    }
+
+    it('C3-C: email-required, NO email evidence → blocked ENGAGEMENT_INCOMPLETE', async () => {
+      const t = randomUUID();
+      await publishEmailPolicy(t);
+      const { sub } = await setupSubmit(t);
+      await expect(submit(t, sub, 'c3-c-block')).rejects.toMatchObject({
+        code: 'CLIENT_SUBMITTAL_ENGAGEMENT_INCOMPLETE',
+        statusCode: 409,
+      });
+    });
+
+    it('C3-C: email-required, accepted email evidence exists → eligible', async () => {
+      const t = randomUUID();
+      await publishEmailPolicy(t);
+      const { talent, req, sub } = await setupSubmit(t);
+      await seedEmailEvidence(t, talent, req);
+      const res = await submit(t, sub, 'c3-c-allow');
+      expect(res.state).toBe('submitted_to_ats');
+    });
+
+    it('C3-D: email + qualifying voice required, email only (voice missing) → blocked', async () => {
+      const t = randomUUID();
+      await publishEmailPolicy(t, { voice: 'RECRUITER_ATTESTED' });
+      const { talent, req, sub } = await setupSubmit(t);
+      await seedEmailEvidence(t, talent, req);
+      await expect(submit(t, sub, 'c3-d-block')).rejects.toMatchObject({
+        code: 'CLIENT_SUBMITTAL_ENGAGEMENT_INCOMPLETE',
+      });
+    });
+
+    it('C3-D: email + qualifying voice required, both present → eligible', async () => {
+      const t = randomUUID();
+      await publishEmailPolicy(t, { voice: 'RECRUITER_ATTESTED' });
+      const { talent, req, sub } = await setupSubmit(t);
+      await seedEmailEvidence(t, talent, req);
+      await seedVoiceEvidence(t, talent, req, { status: 'initiated', disposition: 'connected' });
+      const res = await submit(t, sub, 'c3-d-allow');
+      expect(res.state).toBe('submitted_to_ats');
+    });
   },
 );

@@ -36,7 +36,13 @@ export class EngagementController {
     return { items: this.policy.capabilities() };
   }
 
-  /** The effective (TENANT/CLIENT/REQUISITION-resolved) engagement policy, or null. */
+  /**
+   * The effective (TENANT/CLIENT/REQUISITION-resolved) engagement policy, or null,
+   * plus `governed` — whether the tenant has EVER published a policy. Together they
+   * express the C3 three-state for the admin surface: governed=false → never
+   * configured (dormant/non-enforcing); governed=true + effective=null →
+   * configured-but-no-effective (fail-closed); effective present → evaluated.
+   */
   @Get('policy/effective')
   @HttpCode(HttpStatus.OK)
   @RequireScopes('engagement:policy:read')
@@ -44,12 +50,15 @@ export class EngagementController {
     @Query('requisition_id') requisitionId: string | undefined,
     @Query('company_id') companyId: string | undefined,
     @AuthContext() auth: AuthContextType,
-  ): Promise<{ effective: unknown }> {
-    const effective = await this.policy.resolveEffective(auth.tenant_id, {
-      company_id: companyId ?? null,
-      requisition_id: requisitionId ?? null,
-    });
-    return { effective };
+  ): Promise<{ governed: boolean; effective: unknown }> {
+    const [governed, effective] = await Promise.all([
+      this.policy.isTenantGoverned(auth.tenant_id),
+      this.policy.resolveEffective(auth.tenant_id, {
+        company_id: companyId ?? null,
+        requisition_id: requisitionId ?? null,
+      }),
+    ]);
+    return { governed, effective };
   }
 
   /** Publish a new immutable engagement-policy version (validated + activation-guarded). */
