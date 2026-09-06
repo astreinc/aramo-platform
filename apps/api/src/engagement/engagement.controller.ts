@@ -75,6 +75,7 @@ export class EngagementController {
       scope: dto.scope,
       scope_ref: dto.scope_ref ?? null,
       requirements: dto.requirements,
+      ...(dto.enforcement_mode === undefined ? {} : { enforcement_mode: dto.enforcement_mode }),
     } as unknown as EngagementPolicyDefinition;
     try {
       const published = await this.policy.publish({

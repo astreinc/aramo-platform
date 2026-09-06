@@ -1,15 +1,34 @@
 import { useCallback, useEffect, useState } from 'react';
 
 import {
+  getTenantChannelReadiness as defaultLoadReadiness,
+  type TenantChannelReadiness,
+} from '../communications/tenant-channel-readiness';
+
+import {
   getEngagementCapabilities as defaultLoadCaps,
   getEngagementPolicyState as defaultLoadState,
   publishEngagementPolicy as defaultPublish,
   type EngagementCapability,
+  type EngagementEnforcementMode,
   type EngagementEvidenceStrength,
   type EngagementPolicyState,
   type EngagementRequirement,
   type PublishEngagementPolicyInput,
 } from './engagement-policy-api';
+
+// PART A — enforcement modes surfaced as radios (map 1:1 to the backend enum).
+// "Enforcing with manager override" is the product label; the underlying authority
+// is the `engagement:policy:override` scope, never a role name.
+const ENFORCEMENT_OPTIONS: ReadonlyArray<{ mode: EngagementEnforcementMode; label: string; desc: string }> = [
+  { mode: 'ADVISORY', label: 'Advisory', desc: 'Recruiters see a warning at Submit to client but can proceed. Recommended first step.' },
+  { mode: 'ENFORCING', label: 'Enforcing', desc: 'Submit to client is blocked until required evidence exists.' },
+  {
+    mode: 'ENFORCING_WITH_OVERRIDE',
+    label: 'Enforcing with manager override',
+    desc: 'Blocked for recruiters; users with override permission may proceed with a recorded reason.',
+  },
+];
 
 // COMM-C3 — Tenant Engagement Policy administration (Settings → Recruiting →
 // Engagement Policy). The C3 three-state is surfaced honestly:
@@ -27,6 +46,11 @@ export interface EngagementPolicyPanelProps {
   readonly loadStateFn?: () => Promise<EngagementPolicyState>;
   readonly loadCapabilitiesFn?: () => Promise<EngagementCapability[]>;
   readonly publishFn?: (input: PublishEngagementPolicyInput) => Promise<void>;
+  /**
+   * PART C (C6/§10) — Tenant OPERATIONAL readiness per channel (a configured
+   * provider exists). Distinct from platform capability; composed on the FE.
+   */
+  readonly loadReadinessFn?: () => Promise<TenantChannelReadiness>;
   /** Test seam for a deterministic version string (defaults to a timestamp). */
   readonly versionFn?: () => string;
 }
@@ -42,29 +66,33 @@ function statusOf(state: EngagementPolicyState): DisplayStatus {
 export function EngagementPolicyPanel(props: EngagementPolicyPanelProps): JSX.Element {
   const loadState = props.loadStateFn ?? defaultLoadState;
   const loadCaps = props.loadCapabilitiesFn ?? defaultLoadCaps;
+  const loadReadiness = props.loadReadinessFn ?? defaultLoadReadiness;
   const publish = props.publishFn ?? defaultPublish;
   const version = props.versionFn ?? (() => `v${Date.now()}`);
 
   const [state, setState] = useState<EngagementPolicyState | null>(null);
   const [caps, setCaps] = useState<readonly EngagementCapability[]>([]);
+  const [readiness, setReadiness] = useState<TenantChannelReadiness>({ voice: false, email: false });
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [emailRequired, setEmailRequired] = useState(false);
   const [voiceRequired, setVoiceRequired] = useState(false);
   const [voiceStrength, setVoiceStrength] = useState<EngagementEvidenceStrength>('RECRUITER_ATTESTED');
+  const [enforcementMode, setEnforcementMode] = useState<EngagementEnforcementMode>('ADVISORY');
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
-      const [s, c] = await Promise.all([loadState(), loadCaps()]);
+      const [s, c, r] = await Promise.all([loadState(), loadCaps(), loadReadiness()]);
       setState(s);
       setCaps(c);
+      setReadiness(r);
       setError(null);
     } catch {
       setError('engagement_policy_load_failed');
     }
-  }, [loadState, loadCaps]);
+  }, [loadState, loadCaps, loadReadiness]);
 
   useEffect(() => {
     if (props.canRead) void refresh();
@@ -78,6 +106,9 @@ export function EngagementPolicyPanel(props: EngagementPolicyPanelProps): JSX.El
     setEmailRequired(email?.required === true);
     setVoiceRequired(voice?.required === true);
     setVoiceStrength(voice?.channel === 'voice' ? voice.minimum_strength : 'RECRUITER_ATTESTED');
+    // Seed the enforcement mode from the current effective policy; a brand-new
+    // draft defaults to ADVISORY (the recommended, non-blocking first step).
+    setEnforcementMode(state?.effective?.enforcement_mode ?? 'ADVISORY');
     setConfirming(false);
     setEditing(true);
   }, [state]);
@@ -98,7 +129,7 @@ export function EngagementPolicyPanel(props: EngagementPolicyPanelProps): JSX.El
     if (requirements.length === 0) return; // guarded by the disabled button too
     setBusy(true);
     try {
-      await publish({ version: version(), scope: 'TENANT', schema_version: 1, requirements });
+      await publish({ version: version(), scope: 'TENANT', schema_version: 1, requirements, enforcement_mode: enforcementMode });
       setEditing(false);
       setConfirming(false);
       await refresh();
@@ -107,7 +138,7 @@ export function EngagementPolicyPanel(props: EngagementPolicyPanelProps): JSX.El
     } finally {
       setBusy(false);
     }
-  }, [emailRequired, voiceRequired, voiceStrength, publish, version, refresh]);
+  }, [emailRequired, voiceRequired, voiceStrength, enforcementMode, publish, version, refresh]);
 
   if (!props.canRead) {
     return <div data-testid="engagement-policy-forbidden">You do not have access to Engagement Policy.</div>;
@@ -120,7 +151,19 @@ export function EngagementPolicyPanel(props: EngagementPolicyPanelProps): JSX.El
   }
 
   const status = statusOf(state);
-  const capOf = (ch: 'email' | 'voice'): boolean => caps.find((c) => c.channel === ch)?.available ?? false;
+  // Platform capability (the channel has a producer at all) vs Tenant readiness
+  // (a configured provider exists for this Tenant). C6/§10: a channel is
+  // AVAILABLE to require only when BOTH hold. Platform-capable but no configured
+  // provider ⇒ "Supported by platform · provider not configured" (not requirable).
+  const platformCapable = (ch: 'email' | 'voice'): boolean =>
+    caps.find((c) => c.channel === ch)?.available ?? false;
+  const channelAvailable = (ch: 'email' | 'voice'): boolean => platformCapable(ch) && readiness[ch];
+  const availabilityLabel = (ch: 'email' | 'voice'): string =>
+    channelAvailable(ch)
+      ? 'Available'
+      : platformCapable(ch)
+        ? 'Supported by platform · provider not configured'
+        : 'Unavailable';
 
   return (
     <div data-testid="engagement-policy-panel">
@@ -140,7 +183,12 @@ export function EngagementPolicyPanel(props: EngagementPolicyPanelProps): JSX.El
       )}
       {status === 'published' && state.effective !== null && (
         <div data-testid="engagement-policy-status-published">
-          <p><strong>Status: Published — enforcing</strong></p>
+          <p><strong>Status: Published</strong></p>
+          <p data-testid="engagement-policy-effective-mode">
+            Enforcement:{' '}
+            {ENFORCEMENT_OPTIONS.find((o) => o.mode === state.effective?.enforcement_mode)?.label ??
+              state.effective.enforcement_mode}
+          </p>
           <p>Recruiters must satisfy these requirements before Submit to Client:</p>
           <ul>
             {state.effective.requirements
@@ -159,9 +207,9 @@ export function EngagementPolicyPanel(props: EngagementPolicyPanelProps): JSX.El
 
       <dl>
         <dt>Email evidence</dt>
-        <dd data-testid="engagement-cap-email">{capOf('email') ? 'Available' : 'Unavailable'}</dd>
+        <dd data-testid="engagement-cap-email">{availabilityLabel('email')}</dd>
         <dt>Voice evidence</dt>
-        <dd data-testid="engagement-cap-voice">{capOf('voice') ? 'Available' : 'Unavailable'}</dd>
+        <dd data-testid="engagement-cap-voice">{availabilityLabel('voice')}</dd>
       </dl>
 
       {!props.canWrite && (
@@ -177,23 +225,31 @@ export function EngagementPolicyPanel(props: EngagementPolicyPanelProps): JSX.El
       {props.canWrite && editing && (
         <div data-testid="engagement-policy-draft">
           <p><strong>Draft (not enforced until published)</strong></p>
-          <label>
+          <label title={channelAvailable('email') ? '' : 'A configured Email provider is required before Email evidence can be required.'}>
             <input
               type="checkbox"
               data-testid="engagement-policy-email-toggle"
               checked={emailRequired}
+              disabled={!channelAvailable('email')}
               onChange={(e) => setEmailRequired(e.target.checked)}
             />
             Require Email Evidence
+            {!channelAvailable('email') && (
+              <span data-testid="engagement-policy-email-unavailable"> — {availabilityLabel('email')}</span>
+            )}
           </label>
-          <label>
+          <label title={channelAvailable('voice') ? '' : 'A configured Voice provider is required before Voice evidence can be required.'}>
             <input
               type="checkbox"
               data-testid="engagement-policy-voice-toggle"
               checked={voiceRequired}
+              disabled={!channelAvailable('voice')}
               onChange={(e) => setVoiceRequired(e.target.checked)}
             />
             Require Voice Conversation
+            {!channelAvailable('voice') && (
+              <span data-testid="engagement-policy-voice-unavailable"> — {availabilityLabel('voice')}</span>
+            )}
           </label>
           {voiceRequired && (
             <label>
@@ -208,6 +264,23 @@ export function EngagementPolicyPanel(props: EngagementPolicyPanelProps): JSX.El
               </select>
             </label>
           )}
+
+          <fieldset data-testid="engagement-policy-enforcement" style={{ border: 'none', padding: 0, margin: '10px 0' }}>
+            <legend style={{ fontWeight: 700 }}>Enforcement</legend>
+            {ENFORCEMENT_OPTIONS.map((opt) => (
+              <label key={opt.mode} style={{ display: 'block', marginTop: 6 }}>
+                <input
+                  type="radio"
+                  name="engagement-enforcement-mode"
+                  data-testid={`engagement-policy-mode-${opt.mode}`}
+                  checked={enforcementMode === opt.mode}
+                  onChange={() => setEnforcementMode(opt.mode)}
+                />
+                <strong> {opt.label}</strong>
+                <span style={{ display: 'block', fontSize: 12, color: '#5C6770' }}>{opt.desc}</span>
+              </label>
+            ))}
+          </fieldset>
 
           {!confirming && (
             <div>

@@ -1,6 +1,7 @@
 import {
   ENGAGEMENT_CHANNELS,
   ENGAGEMENT_EVIDENCE_STRENGTHS,
+  isEngagementEnforcementMode,
   type EngagementPolicyDefinition,
   type EngagementRequirement,
 } from './engagement-vocab.js';
@@ -35,6 +36,15 @@ export function validateEngagementPolicyDefinition(def: EngagementPolicyDefiniti
       'ENGAGEMENT_POLICY_SCHEMA_INVALID',
       'unsupported engagement policy schema_version',
       { schema_version: def.schema_version },
+    );
+  }
+  // enforcement_mode is OPTIONAL (A2 backward-compat): absent is legal and
+  // resolves to ENFORCING downstream. When present it must be a known mode.
+  if (def.enforcement_mode !== undefined && !isEngagementEnforcementMode(def.enforcement_mode)) {
+    throw new EngagementPolicyValidationError(
+      'ENGAGEMENT_POLICY_SCHEMA_INVALID',
+      `unsupported enforcement_mode: ${String(def.enforcement_mode)}`,
+      { enforcement_mode: def.enforcement_mode },
     );
   }
   const seen = new Set<string>();

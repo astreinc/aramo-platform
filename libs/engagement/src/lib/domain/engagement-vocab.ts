@@ -31,6 +31,31 @@ export function meetsStrength(
 export const ENGAGEMENT_POLICY_SCOPES = ['TENANT', 'CLIENT', 'REQUISITION'] as const;
 export type EngagementPolicyScope = (typeof ENGAGEMENT_POLICY_SCOPES)[number];
 
+/**
+ * COMM enforcement-mode enhancement (PART A) — how a published policy applies at
+ * Submit to client. A domain-owned closed enum; NEVER free text and NEVER an
+ * integration/provider concept.
+ *   ADVISORY               — evaluate + warn, but do not block an otherwise-authorized submit.
+ *   ENFORCING              — block until required evidence exists (the original C3 behavior).
+ *   ENFORCING_WITH_OVERRIDE— block recruiters; an actor holding the override scope may
+ *                            proceed with a recorded reason.
+ */
+export const ENGAGEMENT_ENFORCEMENT_MODES = ['ADVISORY', 'ENFORCING', 'ENFORCING_WITH_OVERRIDE'] as const;
+export type EngagementEnforcementMode = (typeof ENGAGEMENT_ENFORCEMENT_MODES)[number];
+
+/**
+ * Backward-compatibility (A2, LOCKED) — a published/effective policy WITHOUT an
+ * explicit enforcement_mode is HARD enforcement. A legacy policy is NEVER
+ * reinterpreted as ADVISORY. This default is applied at resolution, so an
+ * on-disk definition that predates the field keeps its original blocking behavior.
+ */
+export const DEFAULT_ENGAGEMENT_ENFORCEMENT_MODE: EngagementEnforcementMode = 'ENFORCING';
+
+/** True iff `mode` is a recognized enforcement mode (untrusted-JSON boundary guard). */
+export function isEngagementEnforcementMode(mode: unknown): mode is EngagementEnforcementMode {
+  return typeof mode === 'string' && (ENGAGEMENT_ENFORCEMENT_MODES as readonly string[]).includes(mode);
+}
+
 // A single typed requirement. Closed discriminated union on `channel` (R5). The
 // `condition` is a closed enum per channel — never a free-form predicate.
 export interface VoiceEngagementRequirement {
@@ -58,6 +83,12 @@ export interface EngagementPolicyDefinition {
   readonly scope: EngagementPolicyScope;
   readonly scope_ref: string | null;
   readonly requirements: readonly EngagementRequirement[];
+  /**
+   * How this policy applies at Submit to client (PART A). OPTIONAL for
+   * backward-compatibility (A2): an absent mode resolves to
+   * DEFAULT_ENGAGEMENT_ENFORCEMENT_MODE (ENFORCING) — never ADVISORY.
+   */
+  readonly enforcement_mode?: EngagementEnforcementMode;
 }
 
 /** The neutral requirement key used for merge + missing-list reporting (R11/R15). */

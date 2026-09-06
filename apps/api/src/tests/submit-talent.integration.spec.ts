@@ -581,5 +581,93 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const res = await submit(t, sub, 'c3-d-allow');
       expect(res.state).toBe('submitted_to_ats');
     });
+
+    // ───────── COMM PART A — enforcement modes + authoritative override (real-PG) ─────────
+    async function publishVoicePolicyMode(
+      t: string,
+      mode: 'ADVISORY' | 'ENFORCING' | 'ENFORCING_WITH_OVERRIDE',
+    ): Promise<void> {
+      await engagementPolicy.publish({
+        tenant_id: t,
+        version: 'v1',
+        definition: {
+          schema_version: 1,
+          scope: 'TENANT',
+          scope_ref: null,
+          enforcement_mode: mode,
+          requirements: [
+            { channel: 'voice', required: true, condition: 'two_way_conversation', minimum_strength: 'RECRUITER_ATTESTED' },
+          ],
+        },
+        published_by: randomUUID(),
+      });
+    }
+    const reasonCodeOf = async (t: string): Promise<string> => {
+      const rows = await sql.query(
+        `SELECT reason_code, inputs FROM policy_store."PolicyDecisionRecord" WHERE tenant_id=$1 AND action='ENGAGEMENT_GATE' ORDER BY occurred_at DESC LIMIT 1`,
+        [t],
+      );
+      return rows.rows[0]?.reason_code as string;
+    };
+
+    it('PART A ADVISORY: voice-required, NO evidence → ALLOWED (proceeds incomplete) + ADVISORY_PROCEED provenance', async () => {
+      const t = randomUUID();
+      await publishVoicePolicyMode(t, 'ADVISORY');
+      const { sub } = await setupSubmit(t);
+      const res = await submit(t, sub, 'partA-advisory');
+      expect(res.state).toBe('submitted_to_ats'); // advisory does not block
+      expect(await reasonCodeOf(t)).toBe('ENGAGEMENT_ADVISORY_PROCEED');
+    });
+
+    it('PART A ENFORCING_WITH_OVERRIDE: no evidence + NO override attempt → blocked', async () => {
+      const t = randomUUID();
+      await publishVoicePolicyMode(t, 'ENFORCING_WITH_OVERRIDE');
+      const { sub } = await setupSubmit(t);
+      await expect(submit(t, sub, 'partA-noovr')).rejects.toMatchObject({
+        code: 'CLIENT_SUBMITTAL_ENGAGEMENT_INCOMPLETE',
+      });
+    });
+
+    it('PART A ENFORCING_WITH_OVERRIDE: override WITHOUT scope → blocked (no allow)', async () => {
+      const t = randomUUID();
+      await publishVoicePolicyMode(t, 'ENFORCING_WITH_OVERRIDE');
+      const { sub } = await setupSubmit(t);
+      await expect(
+        svc.submitToClient({
+          tenant_id: t,
+          submittal_id: sub,
+          event_id: randomUUID(),
+          actor_id: randomUUID(),
+          actor_can_override: false,
+          engagement_override: { reason: 'let me through' },
+          requestId: 'partA-noscope',
+        }),
+      ).rejects.toMatchObject({ code: 'CLIENT_SUBMITTAL_ENGAGEMENT_INCOMPLETE' });
+    });
+
+    it('PART A ENFORCING_WITH_OVERRIDE: scope + reason → ALLOWED + authoritative overridden provenance (reason recorded, evidence not fabricated)', async () => {
+      const t = randomUUID();
+      await publishVoicePolicyMode(t, 'ENFORCING_WITH_OVERRIDE');
+      const { sub } = await setupSubmit(t);
+      const res = await svc.submitToClient({
+        tenant_id: t,
+        submittal_id: sub,
+        event_id: randomUUID(),
+        actor_id: randomUUID(),
+        actor_can_override: true,
+        engagement_override: { reason: 'Client phone-screened; evidence sync pending.' },
+        requestId: 'partA-override',
+      });
+      expect(res.state).toBe('submitted_to_ats');
+      const rows = await sql.query(
+        `SELECT decision, reason_code, inputs FROM policy_store."PolicyDecisionRecord" WHERE tenant_id=$1 AND action='ENGAGEMENT_GATE' ORDER BY occurred_at DESC LIMIT 1`,
+        [t],
+      );
+      expect(rows.rows[0].decision).toBe('ALLOW');
+      expect(rows.rows[0].reason_code).toBe('ENGAGEMENT_OVERRIDDEN');
+      expect(rows.rows[0].inputs.overridden).toBe(true);
+      expect(rows.rows[0].inputs.override_reason).toBe('Client phone-screened; evidence sync pending.');
+      expect(rows.rows[0].inputs.missing).toEqual(['voice']); // evidence NOT fabricated — still recorded missing
+    });
   },
 );

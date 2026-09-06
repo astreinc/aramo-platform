@@ -35,6 +35,15 @@ function def(scope: EngagementPolicyScope, ref: string | null, reqs: EngagementR
   return { schema_version: 1, scope, scope_ref: ref, requirements: reqs };
 }
 
+function defMode(
+  scope: EngagementPolicyScope,
+  ref: string | null,
+  reqs: EngagementRequirement[],
+  mode: EngagementPolicyDefinition['enforcement_mode'],
+): EngagementPolicyDefinition {
+  return { schema_version: 1, scope, scope_ref: ref, requirements: reqs, ...(mode ? { enforcement_mode: mode } : {}) };
+}
+
 function row(d: EngagementPolicyDefinition, version: string): StoredPolicyVersionRow {
   return {
     package_name: engagementPackageName(d.scope, d.scope_ref),
@@ -125,5 +134,45 @@ describe('layered resolution TENANT→CLIENT→REQUISITION (R11)', () => {
     const voice = eff?.requirements.find((r) => r.channel === 'voice');
     expect(voice?.channel === 'voice' && voice.minimum_strength).toBe('RECRUITER_ATTESTED'); // REQUISITION wins
     expect(eff?.layers.map((l) => l.scope)).toEqual(['TENANT', 'CLIENT', 'REQUISITION']);
+  });
+});
+
+describe('enforcement_mode resolution (PART A / A2 backward-compat)', () => {
+  const COMPANY = '00000000-0000-7000-8000-0000000000c1';
+  const REQ = '00000000-0000-7000-8000-0000000000r1';
+
+  it('a legacy policy WITHOUT enforcement_mode resolves to ENFORCING (never ADVISORY)', async () => {
+    const svc = new EngagementPolicyService(fakeGateway([row(def('TENANT', null, [emailReq(true)]), 'v1')]));
+    const eff = await svc.resolveEffective(TENANT, {});
+    expect(eff?.enforcement_mode).toBe('ENFORCING');
+  });
+
+  it('an explicit ADVISORY tenant policy resolves ADVISORY', async () => {
+    const svc = new EngagementPolicyService(
+      fakeGateway([row(defMode('TENANT', null, [emailReq(true)], 'ADVISORY'), 'v1')]),
+    );
+    expect((await svc.resolveEffective(TENANT, {}))?.enforcement_mode).toBe('ADVISORY');
+  });
+
+  it('the MOST-SPECIFIC layer mode wins (TENANT ADVISORY, REQUISITION ENFORCING_WITH_OVERRIDE)', async () => {
+    const svc = new EngagementPolicyService(
+      fakeGateway([
+        row(defMode('TENANT', null, [voiceReq('RECRUITER_ATTESTED')], 'ADVISORY'), 'v1'),
+        row(defMode('REQUISITION', REQ, [voiceReq('RECRUITER_ATTESTED')], 'ENFORCING_WITH_OVERRIDE'), 'v1'),
+      ]),
+    );
+    const eff = await svc.resolveEffective(TENANT, { company_id: COMPANY, requisition_id: REQ });
+    expect(eff?.enforcement_mode).toBe('ENFORCING_WITH_OVERRIDE');
+  });
+
+  it('a more-specific layer WITHOUT a mode falls back to ENFORCING even if a broader layer was ADVISORY', async () => {
+    const svc = new EngagementPolicyService(
+      fakeGateway([
+        row(defMode('TENANT', null, [voiceReq('RECRUITER_ATTESTED')], 'ADVISORY'), 'v1'),
+        row(def('REQUISITION', REQ, [voiceReq('RECRUITER_ATTESTED')]), 'v1'), // no mode → ENFORCING
+      ]),
+    );
+    const eff = await svc.resolveEffective(TENANT, { company_id: COMPANY, requisition_id: REQ });
+    expect(eff?.enforcement_mode).toBe('ENFORCING');
   });
 });

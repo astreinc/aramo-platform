@@ -2781,7 +2781,22 @@ components:
       type: object
       additionalProperties: false
       description: |
-        Empty request body per Ruling 13.
+        Optionally carries an engagement-policy override (COMM PART A). Absent =
+        no override. An override is inert unless the effective policy is
+        ENFORCING_WITH_OVERRIDE and required evidence is missing; it is honoured
+        only when the actor holds `engagement:policy:override` and supplies a
+        non-empty reason (validated server-side; authoritative audit provenance).
+      properties:
+        engagement_override:
+          type: object
+          additionalProperties: false
+          required: [reason]
+          properties:
+            reason:
+              type: string
+              minLength: 1
+              maxLength: 1000
+              description: Human-entered override reason (recorded in append-only decision provenance).
 
     SubmitToAtsResponse:
       type: object

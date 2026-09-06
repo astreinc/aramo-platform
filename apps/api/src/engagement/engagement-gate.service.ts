@@ -1,7 +1,9 @@
 import { Inject, Injectable } from '@nestjs/common';
 import {
+  decideEngagement,
   evaluateEngagementReadiness,
   EngagementPolicyService,
+  type EngagementDecision,
   type EngagementReadiness,
   type ResolvedEngagementPolicy,
 } from '@aramo/engagement';
@@ -22,6 +24,23 @@ interface RawDb {
   $executeRawUnsafe(query: string, ...values: unknown[]): Promise<number>;
 }
 
+/** The audit reason_code for a decision (PART A outcomes) or the dormant/missing fallback. */
+function reasonCodeFor(decision: EngagementDecision | null, result: EngagementEligibilityInput): string {
+  if (decision !== null) {
+    switch (decision.outcome) {
+      case 'ALLOW_SATISFIED':
+        return 'ENGAGEMENT_SATISFIED';
+      case 'ALLOW_ADVISORY':
+        return 'ENGAGEMENT_ADVISORY_PROCEED';
+      case 'ALLOW_OVERRIDDEN':
+        return 'ENGAGEMENT_OVERRIDDEN';
+      default:
+        return result.deny ?? 'ENGAGEMENT_DENIED';
+    }
+  }
+  return result.satisfied ? 'ENGAGEMENT_SATISFIED' : (result.deny ?? 'ENGAGEMENT_DENIED');
+}
+
 export interface EngagementAssessInput {
   readonly tenant_id: string;
   readonly talent_id: string;
@@ -29,6 +48,12 @@ export interface EngagementAssessInput {
   readonly company_id: string | null;
   readonly actor_id: string;
   readonly correlation_id: string;
+  /** The submittal being decided (audit provenance, A8). */
+  readonly submittal_id?: string;
+  /** The actor holds `engagement:policy:override` (resolved upstream from scopes). */
+  readonly actor_can_override?: boolean;
+  /** An explicit override with a human reason (PART A / A6-A8). */
+  readonly override?: { readonly reason: string } | undefined;
 }
 
 @Injectable()
@@ -52,6 +77,7 @@ export class EngagementGateService {
     });
 
     let readiness: EngagementReadiness | null = null;
+    let decision: EngagementDecision | null = null;
     let result: EngagementEligibilityInput;
 
     if (policy === null) {
@@ -71,12 +97,20 @@ export class EngagementGateService {
         input.requisition_id,
       );
       readiness = evaluateEngagementReadiness(policy, facts);
-      if (readiness.satisfied) {
+      // PART A — apply the effective enforcement mode. ADVISORY proceeds-incomplete;
+      // ENFORCING blocks; ENFORCING_WITH_OVERRIDE allows a scoped+reasoned override.
+      decision = decideEngagement(readiness, policy.enforcement_mode, {
+        requested: input.override !== undefined,
+        actorHasOverrideScope: input.actor_can_override ?? false,
+        reason: input.override?.reason ?? null,
+      });
+      if (decision.allow) {
+        // ALLOW covers satisfied, advisory-proceed, and a valid override.
         result = { satisfied: true, deny: null };
       } else {
         result = {
           satisfied: false,
-          deny: readiness.unavailable
+          deny: decision.outcome === 'BLOCK_UNAVAILABLE'
             ? 'CLIENT_SUBMITTAL_ENGAGEMENT_EVIDENCE_UNAVAILABLE'
             : 'CLIENT_SUBMITTAL_ENGAGEMENT_INCOMPLETE',
           missing: readiness.missing,
@@ -84,7 +118,10 @@ export class EngagementGateService {
       }
     }
 
-    await this.recordProvenance(input, policy, readiness, result);
+    // Provenance is best-effort audit EXCEPT for an applied override: an override
+    // that allows an otherwise-blocked submit MUST be durably recorded (A8), so a
+    // provenance-write failure there is fail-closed (throws → aborts the submit).
+    await this.recordProvenance(input, policy, readiness, decision, result);
     return result;
   }
 
@@ -104,6 +141,9 @@ export class EngagementGateService {
     governed: boolean;
     policy_present: boolean;
     satisfied: boolean;
+    enforcement_mode: ResolvedEngagementPolicy['enforcement_mode'] | null;
+    /** True iff the effective policy is ENFORCING_WITH_OVERRIDE (drives override UX). */
+    override_available: boolean;
     results: EngagementReadiness['results'];
     missing: EngagementReadiness['missing'];
     unavailable: boolean;
@@ -122,6 +162,8 @@ export class EngagementGateService {
         governed,
         policy_present: false,
         satisfied: !governed,
+        enforcement_mode: null,
+        override_available: false,
         results: [],
         missing: [],
         unavailable: false,
@@ -134,6 +176,10 @@ export class EngagementGateService {
       governed: true,
       policy_present: true,
       satisfied: readiness.satisfied,
+      enforcement_mode: policy.enforcement_mode,
+      // The override affordance is offered only when the policy permits it AND
+      // there is something missing; whether the actor MAY override is a scope check.
+      override_available: policy.enforcement_mode === 'ENFORCING_WITH_OVERRIDE' && !readiness.satisfied,
       results: readiness.results,
       missing: readiness.missing,
       unavailable: readiness.unavailable,
@@ -145,19 +191,30 @@ export class EngagementGateService {
     input: EngagementAssessInput,
     policy: ResolvedEngagementPolicy | null,
     readiness: EngagementReadiness | null,
+    decision: EngagementDecision | null,
     result: EngagementEligibilityInput,
   ): Promise<void> {
-    // PII-free snapshot (R17): resolved layers/checksums, requirements evaluated,
-    // and the high-level per-requirement result — never a raw provider payload.
+    // PII-free snapshot (R17/A8): resolved layers/checksums, enforcement mode,
+    // requirements evaluated, per-requirement result, missing items, and — only on
+    // an applied override — the human reason. Never a raw provider payload/secret.
+    const overridden = decision?.overridden === true;
     const inputs = {
       talent_id: input.talent_id,
       requisition_id: input.requisition_id,
+      submittal_id: input.submittal_id ?? null,
+      enforcement_mode: policy?.enforcement_mode ?? null,
+      decision_outcome: decision?.outcome ?? (result.satisfied ? 'ALLOW_DORMANT' : 'BLOCK_POLICY_MISSING'),
+      overridden,
+      // Advisory-proceed and override both proceed with requirements incomplete.
+      proceeded_incomplete: decision?.proceededIncomplete ?? false,
+      override_reason: overridden ? decision?.overrideReason ?? null : null,
       policy_layers: policy?.layers ?? [],
       requirements: policy?.requirements.map((r) => ({ channel: r.channel, required: r.required })) ?? [],
       results: readiness?.results ?? [],
-      missing: result.missing ?? [],
+      missing: result.missing ?? readiness?.missing ?? [],
     };
-    try {
+    const reasonCode = reasonCodeFor(decision, result);
+    const write = async (): Promise<void> => {
       await this.db.$executeRawUnsafe(
         `INSERT INTO "policy_store"."PolicyDecisionRecord"
            ("id","tenant_id","decision","policy_version","rule_id","reason_code","resource","action","inputs","actor_id","origin","correlation_id","occurred_at")
@@ -166,7 +223,7 @@ export class EngagementGateService {
         result.satisfied ? 'ALLOW' : 'DENY',
         policy?.composite_version ?? '__no_policy__',
         '__engagement__',
-        result.satisfied ? 'ENGAGEMENT_SATISFIED' : (result.deny ?? 'ENGAGEMENT_DENIED'),
+        reasonCode,
         'CLIENT_SUBMITTAL',
         'ENGAGEMENT_GATE',
         JSON.stringify(inputs),
@@ -174,9 +231,18 @@ export class EngagementGateService {
         'ui',
         input.correlation_id,
       );
+    };
+    if (overridden) {
+      // Authoritative: an override MUST leave a durable audit record. A write
+      // failure here fails closed — it propagates and aborts the submit (A8).
+      await write();
+      return;
+    }
+    try {
+      await write();
     } catch {
-      // Provenance is best-effort audit; a write failure must not itself block or
-      // mask the gate decision (the decision already stands on the returned verdict).
+      // Non-override provenance is best-effort audit; a write failure must not
+      // itself block or mask the gate decision (the verdict already stands).
     }
   }
 }

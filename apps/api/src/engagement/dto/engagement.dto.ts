@@ -42,4 +42,9 @@ export class PublishEngagementPolicyRequestDto {
   @Type(() => Object)
   requirements!: Array<VoiceRequirementDto | EmailRequirementDto>;
   @IsOptional() @IsString() effective_from?: string;
+  // PART A — how the policy applies at submit. OPTIONAL (A2): an absent mode is
+  // persisted as absent and resolves to ENFORCING (never ADVISORY) at read time.
+  @IsOptional()
+  @IsIn(['ADVISORY', 'ENFORCING', 'ENFORCING_WITH_OVERRIDE'])
+  enforcement_mode?: 'ADVISORY' | 'ENFORCING' | 'ENFORCING_WITH_OVERRIDE';
 }

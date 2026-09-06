@@ -9,13 +9,14 @@ import {
 } from '@aramo/microsoft-graph';
 
 import {
+  ConfigureMicrosoftConnectionRequestDto,
   CreateMicrosoftMeetingRequestDto,
   SendMicrosoftEmailRequestDto,
 } from './dto/microsoft.dto.js';
 import { EmailConsentDeniedError } from './email-consent-gate.port.js';
 import {
   MicrosoftAuthorizationOrchestrator,
-  type ConnectionMappingStatusView,
+  type MicrosoftProviderStatusView,
   type RecruiterBindingStatusView,
 } from './microsoft-authorization.orchestrator.js';
 import type { EmailSendResultView } from './microsoft-email.service.js';
@@ -71,17 +72,46 @@ export class MicrosoftAuthorizationController {
     }
   }
 
-  /** Tenant-admin provider status + recruiter mapping counts. */
+  /**
+   * Tenant-admin provider status — configuration_state + recruiter mapping counts.
+   * NEVER throws when unconfigured (PART B/B5): a safe-disconnected tenant reads as
+   * NOT_CONFIGURED with zero recruiter bindings, so the admin UI can render a
+   * first-class "Configure" affordance instead of an error.
+   */
   @Get('status')
   @HttpCode(HttpStatus.OK)
   @RequireScopes('integration:read')
   async status(
     @AuthContext() auth: AuthContextType,
-    @Query('connection_id') connectionId: string | undefined,
     @RequestId() requestId: string,
-  ): Promise<ConnectionMappingStatusView> {
+  ): Promise<MicrosoftProviderStatusView> {
     try {
-      return await this.orchestrator.getConnectionMappingStatus(auth.tenant_id, connectionId);
+      return await this.orchestrator.getProviderStatus(auth.tenant_id);
+    } catch (err) {
+      throw this.mapError(err, requestId);
+    }
+  }
+
+  /**
+   * PART B — tenant-admin establishment: create/update the Microsoft connection.
+   * Non-secret config (client_id + authority_tenant) is stored on the governed
+   * IntegrationConnection; the client secret (when supplied) is written WRITE-ONLY
+   * to Secrets Manager and NEVER returned. Authorized by integration:write.
+   */
+  @Post('configure')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('integration:write')
+  async configure(
+    @AuthContext() auth: AuthContextType,
+    @Body() dto: ConfigureMicrosoftConnectionRequestDto,
+    @RequestId() requestId: string,
+  ): Promise<MicrosoftProviderStatusView> {
+    try {
+      return await this.orchestrator.configureConnection(auth.tenant_id, {
+        client_id: dto.client_id,
+        authority_tenant: dto.authority_tenant,
+        ...(dto.client_secret === undefined ? {} : { client_secret: dto.client_secret }),
+      });
     } catch (err) {
       throw this.mapError(err, requestId);
     }

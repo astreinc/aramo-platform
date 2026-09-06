@@ -26,6 +26,20 @@ import { SubmitTalentToClientService } from './submit-talent.service.js';
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+/**
+ * COMM PART A — parse an optional engagement-policy override from the submit body.
+ * Shape: `{ engagement_override: { reason: string } }`. The reason's validity
+ * (non-empty, bounded) is enforced authoritatively in the Engagement domain; here
+ * we only extract a well-typed reason string (or undefined = no override).
+ */
+function parseEngagementOverride(body: Record<string, unknown>): { reason: string } | undefined {
+  const raw = body['engagement_override'];
+  if (raw === null || typeof raw !== 'object') return undefined;
+  const reason = (raw as Record<string, unknown>)['reason'];
+  if (typeof reason !== 'string') return undefined;
+  return { reason };
+}
+
 // Lane L8-B1 (v1.2 + Amendment A2) — the re-pointed authoritative client-submittal
 // route. The ONLY way a Talent is submitted to a client (the submittal is the
 // authoritative fact; the Pipeline is not written). A thin adapter: it preserves the existing public
@@ -80,6 +94,12 @@ export class SubmitTalentController {
       return lookup.response_body as SubmitToAtsResponse;
     }
 
+    // COMM PART A — an optional engagement-policy override. Authority is
+    // scope-based (`engagement:policy:override`), never a role name; a reason is
+    // required (validated in the domain). The override is inert unless the effective
+    // policy is ENFORCING_WITH_OVERRIDE and a required evidence item is missing.
+    const engagementOverride = parseEngagementOverride(body);
+
     // The single atomic operation: submitted_to_ats (authoritative) + pipeline
     // `submitted` mirror + serialized slot consumption + provenance, all-or-nothing.
     const eventId = randomUUID();
@@ -88,6 +108,8 @@ export class SubmitTalentController {
       submittal_id,
       event_id: eventId,
       actor_id: authContext.sub,
+      actor_can_override: authContext.scopes.includes('engagement:policy:override'),
+      engagement_override: engagementOverride,
       requestId,
     });
 

@@ -77,10 +77,14 @@ export async function markReady(
 export async function submitToAts(
   submittalId: string,
   idempotencyKey: string,
+  // PART A — an optional engagement-policy override (authorized user + reason).
+  // The server honours it only under ENFORCING_WITH_OVERRIDE with real missing
+  // evidence + the engagement:policy:override scope; audit is authoritative.
+  engagementOverride?: { reason: string },
 ): Promise<SubmittalResponse> {
   return apiClient.post<SubmittalResponse>(
     `/v1/submittals/${submittalId}/submit-to-ats`,
-    {},
+    engagementOverride ? { engagement_override: engagementOverride } : {},
     { headers: { 'Idempotency-Key': idempotencyKey } },
   );
 }

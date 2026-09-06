@@ -7,6 +7,8 @@ import { apiClient } from '@aramo/fe-foundation';
 
 export type EngagementChannel = 'voice' | 'email';
 export type EngagementEvidenceStrength = 'RECRUITER_ATTESTED' | 'PROVIDER_VERIFIED';
+// PART A — how a published policy applies at submit. Provider-neutral; no vendor term.
+export type EngagementEnforcementMode = 'ADVISORY' | 'ENFORCING' | 'ENFORCING_WITH_OVERRIDE';
 
 export interface EngagementCapability {
   readonly channel: EngagementChannel;
@@ -32,6 +34,8 @@ export interface EffectiveEngagementPolicy {
   readonly requirements: readonly EngagementRequirement[];
   readonly layers: ReadonlyArray<{ scope: string; version: string; checksum: string }>;
   readonly composite_version: string;
+  /** Resolved effective mode; legacy policies without a mode resolve to ENFORCING. */
+  readonly enforcement_mode: EngagementEnforcementMode;
 }
 
 /** The C3 three-state, expressed for the admin surface. */
@@ -48,6 +52,8 @@ export interface PublishEngagementPolicyInput {
   readonly scope_ref?: string;
   readonly schema_version: 1;
   readonly requirements: readonly EngagementRequirement[];
+  /** PART A — how the policy enforces at submit (defaults to ENFORCING when omitted). */
+  readonly enforcement_mode?: EngagementEnforcementMode;
 }
 
 export async function getEngagementCapabilities(): Promise<EngagementCapability[]> {

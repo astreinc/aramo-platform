@@ -230,6 +230,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'contact:read',
         'contact:search',
         'dashboard:read',
+        'engagement:policy:override',
         'engagement:policy:read',
         'engagement:policy:write',
         'examination:read',
@@ -420,7 +421,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Track7/T7-P3: +3 placement:permanent:terms:write grants (account_manager/tenant_admin/tenant_owner) -> 565.
       // Track8/T8-CONNECTOR-A: +4 integration:read/write grants (tenant_admin/tenant_owner ×2) -> 569.
       // L8-B1: +3 submittal-policy:write grants -> 572; +3 requisition:approve grants (account_manager/tenant_admin/tenant_owner) -> 575.
-      expect(roleScopes).toBe(629); // COMM-C2B: +8 grants (communication:email:send + communication:meeting:create × recruiter/AM/tenant_admin/tenant_owner, range 0xf30+) → 621+8=629. COMM-C3: +4 grants (engagement:policy:read + engagement:policy:write × tenant_admin/tenant_owner) → 617+4=621. L6-0: −6 grants (assignment:create + assignment:update × account_manager/tenant_admin/tenant_owner removed as grounded-dead ACTIVE_RESERVED) → 623−6=617. L4/P5: +8 grants (offer:read + offer:read:financial × recruiter/AM/tenant_admin/tenant_owner) → 615+8=623. L2-I (D1): +2 grants (integration:pipeline-mapping:write × tenant_admin/tenant_owner, range 0xf10+) → 613+2=615. L2-F: +12 client-selection grants (create/read/transition × recruiter/AM/tenant_admin/tenant_owner) → 593+12. HYG-1: 605 − 12 removed grants (pipeline:remove ×2, pipeline:add-activity ×7, submittal-policy:write ×3) → 593
+      expect(roleScopes).toBe(631); // COMM PART A: +2 grants (engagement:policy:override × tenant_admin/tenant_owner, range 0xf40+) → 629+2=631. COMM-C2B: +8 grants (communication:email:send + communication:meeting:create × recruiter/AM/tenant_admin/tenant_owner, range 0xf30+) → 621+8=629. COMM-C3: +4 grants (engagement:policy:read + engagement:policy:write × tenant_admin/tenant_owner) → 617+4=621. L6-0: −6 grants (assignment:create + assignment:update × account_manager/tenant_admin/tenant_owner removed as grounded-dead ACTIVE_RESERVED) → 623−6=617. L4/P5: +8 grants (offer:read + offer:read:financial × recruiter/AM/tenant_admin/tenant_owner) → 615+8=623. L2-I (D1): +2 grants (integration:pipeline-mapping:write × tenant_admin/tenant_owner, range 0xf10+) → 613+2=615. L2-F: +12 client-selection grants (create/read/transition × recruiter/AM/tenant_admin/tenant_owner) → 593+12. HYG-1: 605 − 12 removed grants (pipeline:remove ×2, pipeline:add-activity ×7, submittal-policy:write ×3) → 593
 
       const utmRole = await prisma.userTenantMembershipRole.findUnique({
         where: { id: SEED_IDS.membership_role_admin },
@@ -522,7 +523,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Track 3 / E2: +7 pre_start_requirement (all non-platform). Re-derived
       // actual 96 (prior literal 85 was pre-existingly understated by 4 — F-2).
       // Track 3 / E2 v1.2.2: +1 pre_start_requirement:reopen (non-platform) → 97.
-      expect(tenantScopes.length).toBe(137); // COMM-C2B: +2 communication:email:send + communication:meeting:create (both non-platform) → 135+2=137. COMM-C3: +2 engagement:policy:read + engagement:policy:write (both non-platform tenant scopes) → 133+2=135. L5-P6: +1 pre_start_requirement:verify (non-platform tenant scope) → 133. L6-0: −2 assignment:create + assignment:update (both non-platform, grounded-dead) → 134−2=132. L4/P5: +2 offer:read + offer:read:financial (both non-platform) → 132+2=134. L2-I (D1): +1 integration:pipeline-mapping:write (non-platform) → 131+1=132. L2-F: +3 client-selection:create/read/transition (all non-platform) → 126+3. HYG-1: 128 − 3 removed tenant scopes (pipeline:remove, pipeline:add-activity, submittal-policy:write)
+      expect(tenantScopes.length).toBe(138); // COMM PART A: +1 engagement:policy:override (non-platform tenant scope) → 137+1=138. COMM-C2B: +2 communication:email:send + communication:meeting:create (both non-platform) → 135+2=137. COMM-C3: +2 engagement:policy:read + engagement:policy:write (both non-platform tenant scopes) → 133+2=135. L5-P6: +1 pre_start_requirement:verify (non-platform tenant scope) → 133. L6-0: −2 assignment:create + assignment:update (both non-platform, grounded-dead) → 134−2=132. L4/P5: +2 offer:read + offer:read:financial (both non-platform) → 132+2=134. L2-I (D1): +1 integration:pipeline-mapping:write (non-platform) → 131+1=132. L2-F: +3 client-selection:create/read/transition (all non-platform) → 126+3. HYG-1: 128 − 3 removed tenant scopes (pipeline:remove, pipeline:add-activity, submittal-policy:write)
       for (const s of tenantScopes) {
         expect(s.key.startsWith('platform:')).toBe(false);
       }
@@ -745,7 +746,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     // no-change PATCH). The company table is not in this identity-only
     // testcontainer, so no Company-row assertion is made here.
 
-    it('test 14 — getScopesByUserAndTenant returns tenant_admin scope set (107 scopes; Track4/T4-D assignment + Track5/T5-P1 assignment:commercials + Track7/T7-P1 placement:permanent + Track7/T7-P2 placement:remedy:resolve + Track8/T8-P2 requisition:import)', async () => {
+    it('test 14 — getScopesByUserAndTenant returns tenant_admin scope set (108 scopes; Track4/T4-D assignment + Track5/T5-P1 assignment:commercials + Track7/T7-P1 placement:permanent + Track7/T7-P2 placement:remedy:resolve + Track8/T8-P2 requisition:import)', async () => {
       const scopes = await roleSvc.getScopesByUserAndTenant({
         user_id: SEED_IDS.user_admin,
         tenant_id: SEED_IDS.tenant,
@@ -808,6 +809,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'contact:read',
         'contact:search',
         'dashboard:read',
+        'engagement:policy:override',
         'engagement:policy:read',
         'engagement:policy:write',
         'examination:read',
@@ -1019,7 +1021,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     // Test 17 — scope catalog correctness
     // -----------------------------------------------------------------
 
-    it('test 17 — scope catalog correctness: 12-role staffing catalog + T5-P1 assignment:commercials + T7-P1 placement:permanent + T7-P2 placement:remedy:resolve + T8-P2 requisition:import (tenant_admin 107, recruiter 60, candidate 7, tenant_owner 107, account_manager 85, sourcer 25, finance 10, auditor 5, recruiting_manager 56, delivery_manager 33, lead_recruiter 53, back_office 25)', async () => {
+    it('test 17 — scope catalog correctness: 12-role staffing catalog + T5-P1 assignment:commercials + T7-P1 placement:permanent + T7-P2 placement:remedy:resolve + T8-P2 requisition:import (tenant_admin 108, recruiter 60, candidate 7, tenant_owner 108, account_manager 85, sourcer 25, finance 10, auditor 5, recruiting_manager 56, delivery_manager 33, lead_recruiter 53, back_office 25)', async () => {
       // tenant_admin scope set (47 post AUTHZ-D4a; 43 + 4 team-model scopes)
       const adminScopes = await roleSvc.getScopesByUserAndTenant({
         user_id: SEED_IDS.user_admin,
@@ -1077,6 +1079,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'contact:read',
         'contact:search',
         'dashboard:read',
+        'engagement:policy:override',
         'engagement:policy:read',
         'engagement:policy:write',
         'examination:read',
@@ -1379,6 +1382,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'selection:outreach',
         'selection:read',
         'selection:write',
+        'engagement:policy:override',
         'engagement:policy:read',
         'engagement:policy:write',
         'examination:read',

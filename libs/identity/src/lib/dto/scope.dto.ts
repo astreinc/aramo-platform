@@ -360,6 +360,11 @@ export const SEED_SCOPE_KEYS = [
   // tenant_admin + tenant_owner only.
   'engagement:policy:read',
   'engagement:policy:write',
+  // override: an authorized user (scope-based) may proceed past a genuinely-missing
+  // required evidence item at Submit to client under an ENFORCING_WITH_OVERRIDE
+  // policy, WITH a recorded reason + authoritative provenance. tenant_admin +
+  // tenant_owner only.
+  'engagement:policy:override',
   // Requisition Approval sub-workflow — decide the pending_approval → open /
   // → draft (APPROVE / REJECT) governed transitions.
   'requisition:approve',

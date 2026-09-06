@@ -30,11 +30,23 @@ export interface MicrosoftMeetingResult {
   readonly idempotent_replay: boolean;
 }
 
+export type MicrosoftConfigurationState = 'NOT_CONFIGURED' | 'CONFIGURED' | 'REQUIRES_ATTENTION';
+
 export interface MicrosoftProviderStatus {
-  readonly connection_id: string;
+  // PART B — tenant provider CONFIGURATION state (distinct from recruiter auth).
+  readonly configuration_state: MicrosoftConfigurationState;
+  readonly connection_id: string | null;
   readonly provider_key: string;
   readonly capabilities: { readonly email: boolean; readonly meeting: boolean };
   readonly identities: Record<MicrosoftIdentityStatus, number>;
+}
+
+// PART B — tenant-admin establishment input. client_secret is write-only: it is
+// sent once and never read back; omitting it on an update keeps the stored one.
+export interface ConfigureMicrosoftInput {
+  readonly client_id: string;
+  readonly authority_tenant: string;
+  readonly client_secret?: string;
 }
 
 export interface SendEmailInput {
@@ -75,4 +87,9 @@ export async function createMicrosoftMeeting(input: CreateMeetingInput): Promise
 
 export async function getMicrosoftProviderStatus(): Promise<MicrosoftProviderStatus> {
   return apiClient.get<MicrosoftProviderStatus>('/v1/integrations/microsoft/status');
+}
+
+/** PART B — tenant-admin create/update of the Microsoft connection (integration:write). */
+export async function configureMicrosoft(input: ConfigureMicrosoftInput): Promise<MicrosoftProviderStatus> {
+  return apiClient.post<MicrosoftProviderStatus>('/v1/integrations/microsoft/configure', input);
 }
