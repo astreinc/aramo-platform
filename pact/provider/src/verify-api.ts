@@ -271,7 +271,15 @@ const ENTITLEMENT_INIT_MIGRATION = resolve(
 const COMMUNICATIONS_INIT_MIGRATION = resolve(
   ROOT,
   'libs/communications/prisma/migrations/20260825120000_init_communications/migration.sql',
+);
+// COMM-C2B — SEPARATE consts (a single resolve() per path; never extra args — a
+// 2nd/3rd resolve() arg would concatenate into one nested path → ENOTDIR).
+const COMMUNICATIONS_C2B_MIGRATION = resolve(
+  ROOT,
   'libs/communications/prisma/migrations/20260905130000_comm_c2b_provider_identity_email_tenant/migration.sql',
+);
+const COMMUNICATIONS_C2B_MEETING_MIGRATION = resolve(
+  ROOT,
   'libs/communications/prisma/migrations/20260905140000_comm_c2b_meeting_channel/migration.sql',
 );
 // PR-A1c §4 sweep — metering schema applied because every selection +
@@ -3162,6 +3170,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         INTEGRATION_LIFECYCLE_AUTHORITY_MIGRATION,
         INTEGRATION_MAPPING_SET_MIGRATION,
         COMMUNICATIONS_INIT_MIGRATION,
+        COMMUNICATIONS_C2B_MIGRATION,
+        COMMUNICATIONS_C2B_MEETING_MIGRATION,
         // PR-A1c §4 — metering schema (in-tx UsageEvent INSERT in every
         // selection + submittal state-transition write method).
         METERING_INIT_MIGRATION,
