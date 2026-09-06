@@ -62,6 +62,7 @@ export const CLASSIFICATIONS: Record<string, Classification> = {
   // --- SERVICE_ENFORCED (scopes.includes / field-mask / edit-gate / visibility-resolver) ---
   'placement:replace': { cls: 'SERVICE_ENFORCED', reason: 'auth.scopes.includes(placement:replace) (placement.controller.ts:118)' },
   'requisition:approve': { cls: 'SERVICE_ENFORCED', reason: 'approval-authorization-gate.ts:37 scopes.includes(REQUISITION_APPROVE)' },
+  'engagement:policy:override': { cls: 'SERVICE_ENFORCED', reason: 'COMM PART A — conditional override capability WITHIN the submittal:approve-guarded submit route; enforced imperatively via authContext.scopes.includes(engagement:policy:override) (submit-talent.controller.ts:111) + the Engagement domain decision, not a dedicated @RequireScopes route' },
   'talent:search': { cls: 'SERVICE_ENFORCED', reason: 'talent-record.controller.ts:153 scopes.includes(talent:search)' },
   'company:search': { cls: 'SERVICE_ENFORCED', reason: 'company.controller.ts:96 scopes.includes(company:search)' },
   'requisition:search': { cls: 'SERVICE_ENFORCED', reason: 'requisition.controller.ts:120 scopes.includes(requisition:search)' },
