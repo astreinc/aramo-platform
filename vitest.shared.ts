@@ -21,6 +21,7 @@ export default defineConfig({
       '@aramo/activity': resolve(root, 'libs/activity/src/index.ts'),
       '@aramo/common': resolve(root, 'libs/common/src/index.ts'),
       '@aramo/communications': resolve(root, 'libs/communications/src/index.ts'),
+      '@aramo/conversation-intelligence': resolve(root, 'libs/conversation-intelligence/src/index.ts'),
       '@aramo/auth': resolve(root, 'libs/auth/src/index.ts'),
       // Auth-Decoupling PR-5b — the portable identity core (scope:auth). Mirrors
       // the tsconfig.base.json @aramo/auth-core alias so vitest resolves the moved
