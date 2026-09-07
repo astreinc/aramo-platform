@@ -5145,12 +5145,15 @@ components:
             - type: 'null'
     CreateRequisitionRequest:
       type: object
-      additionalProperties: true
+      additionalProperties: false
       description: |
-        Minimum truthful contract for the Requisition Work Location surface
-        (directive R15). Enumerates the required core fields plus the structured
-        location fields affected by this PR; additional authoring fields are
-        permitted and intentionally not listed here.
+        Requisition Work Location authoring contract for POST /v1/requisitions —
+        the surface changed by this directive (R15): the required identity plus
+        the structured location block (city / state / postal_code) and work
+        arrangement. This documents the Work Location fields the directive
+        governs; the endpoint's full authoring payload is validated server-side
+        by the requisition DTO and is intentionally not restated here (no global
+        OpenAPI reconciliation).
       required: [title, company_id]
       properties:
         title:
@@ -5170,11 +5173,12 @@ components:
           description: 'onsite | hybrid | remote.'
     RequisitionLocationView:
       type: object
-      additionalProperties: true
+      additionalProperties: false
       description: |
-        Minimum truthful read projection for the Requisition Work Location
-        surface (directive R15). The full RequisitionView carries additional
-        fields intentionally not enumerated here.
+        Requisition Work Location read projection (directive R15): the location
+        block (city / state / postal_code) + work arrangement returned on create
+        and read. The full RequisitionView carries additional fields validated
+        server-side and intentionally not restated here.
       required: [id, city, state, postal_code]
       properties:
         id:
