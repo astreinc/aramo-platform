@@ -25,12 +25,22 @@ export interface ConsentTextContext {
 }
 
 // Human-readable clause per scope (frozen with the version).
+// CI-B1: recording/transcription/ai_processing clauses satisfy the exhaustive
+// Record type. The generic portal PROFILE consent template (portal-consent-v1)
+// is NOT rendered for these conversation-operation scopes — they carry their own
+// versioned disclosure via operation-notice-texts.ts (CI directive §4.4), and
+// getPortalConsentTexts / the /consent/state matrix iterate PROFILE_CONSENT_SCOPES
+// only. These clauses document scope meaning and remain available if ever surfaced.
 const SCOPE_PHRASES: Record<ConsentScopeValue, string> = {
   profile_storage: 'store my profile',
   resume_processing: 'process my résumé',
   matching: 'match me to opportunities',
   contacting: 'contact me about opportunities',
   cross_tenant_visibility: 'share my profile beyond this organization',
+  recording: 'record voice conversations with me',
+  transcription: 'create written transcripts of conversations with me',
+  ai_processing:
+    'use automated (AI) analysis of conversation transcripts to assist recruiters',
 };
 
 // version id → deterministic renderer. Existing entries are FROZEN.
