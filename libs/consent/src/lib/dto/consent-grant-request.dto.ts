@@ -9,12 +9,31 @@ import {
 } from 'class-validator';
 
 // Closed enums match openapi/common.yaml ConsentScope and ConsentCapturedMethod.
-export const CONSENT_SCOPES = [
+//
+// PROFILE_CONSENT_SCOPES — the talent-facing consent matrix surfaced by
+// /consent/state (resolveAllScopes) and the portal consent-text flow. This is the
+// pre-CI-B1 five-scope set; its shape is the ats-web/portal consumer contract.
+export const PROFILE_CONSENT_SCOPES = [
   'profile_storage',
   'resume_processing',
   'matching',
   'contacting',
   'cross_tenant_visibility',
+] as const;
+// CI-B1 (Aramo-CI-Conversation-Intelligence-Directive-v1_2-LOCKED §4) — the three
+// INDEPENDENT conversation-operation scopes. ADD-not-rename; each is evaluated
+// independently (SCOPE_DEPENDENCY_CHAIN — empty prerequisite chains). Governed via
+// /consent/check; NOT part of the /consent/state profile matrix (their UI surfaces
+// in a later CI seam), so adding them does not change the existing state contract.
+export const CONVERSATION_OPERATION_SCOPES = [
+  'recording',
+  'transcription',
+  'ai_processing',
+] as const;
+// Full grantable/checkable scope vocabulary (mirrors openapi/common.yaml ConsentScope).
+export const CONSENT_SCOPES = [
+  ...PROFILE_CONSENT_SCOPES,
+  ...CONVERSATION_OPERATION_SCOPES,
 ] as const;
 export type ConsentScopeValue = (typeof CONSENT_SCOPES)[number];
 

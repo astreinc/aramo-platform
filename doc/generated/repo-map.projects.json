@@ -1,5 +1,5 @@
 {
-  "aliasTotals": { "apps": 2, "libs": 68, "total": 70 },
+  "aliasTotals": { "apps": 2, "libs": 69, "total": 71 },
   "aliases": {
     "@aramo/activity": "libs/activity/src/index.ts",
     "@aramo/ai-draft": "libs/ai-draft/src/index.ts",
@@ -21,6 +21,7 @@
     "@aramo/company": "libs/company/src/index.ts",
     "@aramo/consent": "libs/consent/src/index.ts",
     "@aramo/contact": "libs/contact/src/index.ts",
+    "@aramo/conversation-intelligence": "libs/conversation-intelligence/src/index.ts",
     "@aramo/conversation-transcript": "libs/conversation-transcript/src/index.ts",
     "@aramo/engagement": "libs/engagement/src/index.ts",
     "@aramo/entitlement": "libs/entitlement/src/index.ts",
@@ -339,6 +340,7 @@
       "CONSENT_SCOPES",
       "CONSENT_SOURCE_TYPES",
       "CONSENT_TEXT_CURRENT_VERSION",
+      "CONVERSATION_NOTICE_OPERATIONS",
       "ConsentCheckRequestDto",
       "ConsentController",
       "ConsentGrantRequestDto",
@@ -348,6 +350,7 @@
       "ConsentService",
       "IdempotencyService",
       "NOTICE_TEXT_CURRENT_VERSION",
+      "OPERATION_NOTICE_CURRENT_VERSION",
       "OPERATION_SCOPE_MAP",
       "OutboxPublisherRepository",
       "PrismaService",
@@ -355,8 +358,10 @@
       "SourceConsentService",
       "StaleConsentProcessor",
       "StaleConsentRepository",
+      "hashOperationNotice",
       "hashPlatformNotice",
       "hashPortalConsentText",
+      "renderOperationNotice",
       "renderPlatformNotice",
       "renderPlatformNoticeEmail",
       "renderPortalConsentText"
@@ -370,6 +375,17 @@
       "QUIET_DAYS",
       "RELATIONSHIP_ROLE_VALUES",
       "assertContactVocab"
+    ],
+    "@aramo/conversation-intelligence": [
+      "ConversationIntelligenceModule",
+      "PrismaService",
+      "REQUISITION_ANALYSIS_CONTEXT_READER",
+      "REQUISITION_ANALYSIS_CONTEXT_SCHEMA_VERSION",
+      "RequisitionAnalysisContextSnapshotRepository",
+      "RequisitionAnalysisContextSnapshotService",
+      "RequisitionGoldenProfileContextReader",
+      "buildRequisitionAnalysisContext",
+      "isRequisitionAnalysisContextV1"
     ],
     "@aramo/conversation-transcript": [
       "CONVERSATION_TRANSCRIPT_PROVIDER",
@@ -2539,6 +2555,12 @@
       { "project": "company", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/consent/src/tests/consent-conversation-operations.integration.spec.ts",
+        "project": "consent",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/consent/src/tests/consent.controller.spec.ts",
         "project": "consent",
         "status": "excluded"
@@ -2569,6 +2591,19 @@
         "status": "excluded"
       },
       { "project": "contact", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/conversation-intelligence/src/tests/requisition-analysis-context-snapshot.integration.spec.ts",
+        "project": "conversation-intelligence",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/conversation-intelligence/src/tests/requisition-analysis-context-snapshot.service.spec.ts",
+        "project": "conversation-intelligence",
+        "status": "excluded"
+      },
+      { "project": "conversation-intelligence", "status": "production" },
       { "project": "entitlement", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
@@ -3154,6 +3189,7 @@
       { "project": "saved-list", "status": "production" },
       { "project": "visibility", "status": "production" }
     ],
+    "@aramo/conversation-intelligence": [],
     "@aramo/conversation-transcript": [],
     "@aramo/engagement": [
       {
@@ -4266,6 +4302,13 @@
       { "project": "api", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/conversation-intelligence/src/tests/requisition-analysis-context-snapshot.integration.spec.ts",
+        "project": "conversation-intelligence",
+        "status": "excluded"
+      },
+      { "project": "conversation-intelligence", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/requisition/src/tests/profile-confirm-keying.spec.ts",
         "project": "requisition",
         "status": "excluded"
@@ -4924,6 +4967,13 @@
         "status": "excluded"
       },
       { "project": "api", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/conversation-intelligence/src/tests/requisition-analysis-context-snapshot.integration.spec.ts",
+        "project": "conversation-intelligence",
+        "status": "excluded"
+      },
+      { "project": "conversation-intelligence", "status": "production" },
       { "project": "export", "status": "production" },
       { "project": "import", "status": "production" },
       { "project": "pipeline", "status": "production" },
@@ -5552,6 +5602,13 @@
       "name": "contact",
       "root": "libs/contact",
       "sourceRoot": "libs/contact/src",
+      "tags": ["scope:ats"],
+      "targets": ["build", "lint", "test"]
+    },
+    {
+      "name": "conversation-intelligence",
+      "root": "libs/conversation-intelligence",
+      "sourceRoot": "libs/conversation-intelligence/src",
       "tags": ["scope:ats"],
       "targets": ["build", "lint", "test"]
     },

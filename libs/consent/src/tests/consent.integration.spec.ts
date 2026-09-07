@@ -11,6 +11,9 @@ import {
 import { PrismaService } from '../lib/prisma/prisma.service.js';
 import type { ConsentGrantResponseDto } from '../lib/dto/consent-grant-response.dto.js';
 import type { ConsentRevokeResponseDto } from '../lib/dto/consent-revoke-response.dto.js';
+// CI-B1: /consent/state (resolveAllScopes) surfaces the PROFILE consent matrix;
+// derive the count from the canonical tuple so it never goes stale (Rule D).
+import { PROFILE_CONSENT_SCOPES } from '../lib/dto/consent-grant-request.dto.js';
 
 const MIGRATION_PATH = resolve(
   __dirname,
@@ -564,7 +567,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         talent_record_id: talent,
         requestId: 'state-empty-req',
       });
-      expect(result.scopes).toHaveLength(5);
+      expect(result.scopes).toHaveLength(PROFILE_CONSENT_SCOPES.length);
       for (const s of result.scopes) {
         expect(s.status).toBe('no_grant');
         expect(s.granted_at).toBeNull();
@@ -637,7 +640,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         requestId: 'state-mixed-req',
       });
 
-      expect(result.scopes).toHaveLength(5);
+      expect(result.scopes).toHaveLength(PROFILE_CONSENT_SCOPES.length);
 
       const profile = result.scopes.find((s) => s.scope === 'profile_storage');
       expect(profile?.status).toBe('granted');

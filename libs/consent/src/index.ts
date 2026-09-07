@@ -14,6 +14,18 @@ export {
   hashPlatformNotice,
   renderPlatformNoticeEmail,
 } from './lib/notice-texts.js';
+// CI-B1 — conversation-operation disclosure/notice registry (recording,
+// transcription, ai_processing); §4.4 versioned notice + sha256 evidence.
+export {
+  CONVERSATION_NOTICE_OPERATIONS,
+  OPERATION_NOTICE_CURRENT_VERSION,
+  renderOperationNotice,
+  hashOperationNotice,
+} from './lib/operation-notice-texts.js';
+export type {
+  ConversationNoticeOperation,
+  OperationNoticeContext,
+} from './lib/operation-notice-texts.js';
 export { ConsentController } from './lib/consent.controller.js';
 export { ConsentService } from './lib/consent.service.js';
 export {

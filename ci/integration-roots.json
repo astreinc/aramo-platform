@@ -12,6 +12,7 @@
     "libs/common",
     "libs/communications",
     "libs/consent",
+    "libs/conversation-intelligence",
     "libs/conversation-transcript",
     "libs/entitlement",
     "libs/evidence",

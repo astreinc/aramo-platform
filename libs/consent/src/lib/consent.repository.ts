@@ -12,7 +12,7 @@ import {
 } from './dto/consent-check-operation.js';
 import type { ConsentDecisionDto } from './dto/consent-decision.dto.js';
 import {
-  CONSENT_SCOPES,
+  PROFILE_CONSENT_SCOPES,
   type ConsentCapturedMethodValue,
   type ConsentScopeValue,
 } from './dto/consent-grant-request.dto.js';
@@ -138,6 +138,15 @@ const SCOPE_DEPENDENCY_CHAIN: Record<ConsentScopeValue, readonly ConsentScopeVal
   matching: ['profile_storage'],
   contacting: ['profile_storage', 'matching'],
   cross_tenant_visibility: ['profile_storage', 'matching', 'contacting'],
+  // CI-B1 (Aramo-CI-Conversation-Intelligence-Directive-v1_2-LOCKED §4.1/§4.2):
+  // the conversation-operation scopes have EMPTY prerequisite chains — each is
+  // fully independent. This is the structural enforcement of the LOCKED rule
+  // "RECORDING IS NOT A PREREQUISITE FOR TRANSCRIPTION" and forbids the
+  // contacting→transcription / transcription→AI / recording→transcription
+  // implications: no chain couples any of these to each other or to contacting.
+  recording: [],
+  transcription: [],
+  ai_processing: [],
 };
 
 // Decision F (PR-4): 12-month staleness window for the contacting scope.
@@ -842,7 +851,11 @@ export class ConsentRepository {
         },
       });
 
-      const scopes: TalentConsentScopeStateDto[] = CONSENT_SCOPES.map(
+      // /consent/state surfaces the talent-facing PROFILE consent matrix (the
+      // ats-web/portal consumer contract). CI-B1: conversation-operation scopes
+      // (recording/transcription/ai_processing) are governed via /consent/check,
+      // NOT shown in this matrix, so the response shape is unchanged.
+      const scopes: TalentConsentScopeStateDto[] = PROFILE_CONSENT_SCOPES.map(
         (scope) => deriveScopeStateForReadEndpoint(events, scope),
       );
 
