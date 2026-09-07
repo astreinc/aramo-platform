@@ -338,6 +338,7 @@
       "CONSENT_SCOPES",
       "CONSENT_SOURCE_TYPES",
       "CONSENT_TEXT_CURRENT_VERSION",
+      "CONVERSATION_NOTICE_OPERATIONS",
       "ConsentCheckRequestDto",
       "ConsentController",
       "ConsentGrantRequestDto",
@@ -347,6 +348,7 @@
       "ConsentService",
       "IdempotencyService",
       "NOTICE_TEXT_CURRENT_VERSION",
+      "OPERATION_NOTICE_CURRENT_VERSION",
       "OPERATION_SCOPE_MAP",
       "OutboxPublisherRepository",
       "PrismaService",
@@ -354,8 +356,10 @@
       "SourceConsentService",
       "StaleConsentProcessor",
       "StaleConsentRepository",
+      "hashOperationNotice",
       "hashPlatformNotice",
       "hashPortalConsentText",
+      "renderOperationNotice",
       "renderPlatformNotice",
       "renderPlatformNoticeEmail",
       "renderPortalConsentText"
@@ -2509,6 +2513,12 @@
         "status": "excluded"
       },
       { "project": "company", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/consent/src/tests/consent-conversation-operations.integration.spec.ts",
+        "project": "consent",
+        "status": "excluded"
+      },
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/consent/src/tests/consent.controller.spec.ts",

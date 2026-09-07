@@ -138,6 +138,15 @@ const SCOPE_DEPENDENCY_CHAIN: Record<ConsentScopeValue, readonly ConsentScopeVal
   matching: ['profile_storage'],
   contacting: ['profile_storage', 'matching'],
   cross_tenant_visibility: ['profile_storage', 'matching', 'contacting'],
+  // CI-B1 (Aramo-CI-Conversation-Intelligence-Directive-v1_2-LOCKED §4.1/§4.2):
+  // the conversation-operation scopes have EMPTY prerequisite chains — each is
+  // fully independent. This is the structural enforcement of the LOCKED rule
+  // "RECORDING IS NOT A PREREQUISITE FOR TRANSCRIPTION" and forbids the
+  // contacting→transcription / transcription→AI / recording→transcription
+  // implications: no chain couples any of these to each other or to contacting.
+  recording: [],
+  transcription: [],
+  ai_processing: [],
 };
 
 // Decision F (PR-4): 12-month staleness window for the contacting scope.

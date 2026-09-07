@@ -9,12 +9,19 @@ import {
 } from 'class-validator';
 
 // Closed enums match openapi/common.yaml ConsentScope and ConsentCapturedMethod.
+// CI-B1 (Aramo-CI-Conversation-Intelligence-Directive-v1_2-LOCKED §4) appends the
+// three INDEPENDENT conversation-operation scopes (recording, transcription,
+// ai_processing). ADD-not-rename; each is evaluated independently (see
+// SCOPE_DEPENDENCY_CHAIN — empty prerequisite chains).
 export const CONSENT_SCOPES = [
   'profile_storage',
   'resume_processing',
   'matching',
   'contacting',
   'cross_tenant_visibility',
+  'recording',
+  'transcription',
+  'ai_processing',
 ] as const;
 export type ConsentScopeValue = (typeof CONSENT_SCOPES)[number];
 

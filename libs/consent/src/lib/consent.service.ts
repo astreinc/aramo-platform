@@ -5,6 +5,7 @@ import type { AuthContextType } from '@aramo/auth';
 import { ConsentRepository } from './consent.repository.js';
 import {
   CONSENT_TEXT_CURRENT_VERSION,
+  PORTAL_PROFILE_CONSENT_SCOPES,
   hashPortalConsentText,
   renderPortalConsentText,
 } from './consent-texts.js';
@@ -309,15 +310,20 @@ export class ConsentService {
    * Portal P2 P2b (§PR-2) — render the EXACT versioned consent text the portal
    * user must see before granting (the D7 hash preimage). Rendering here shares
    * `renderPortalConsentText` with the grant path's hashing, so the displayed
-   * bytes ARE the preimage. Returns all 5 scopes at the current version
-   * (deterministic; the UI picks the scope the user is granting). The recipient
-   * is named by tenant_id (the canonical legal clause) — the friendlier tenant
-   * name is UI chrome the controller supplies separately.
+   * bytes ARE the preimage. Returns the portal PROFILE consent scopes at the
+   * current version (deterministic; the UI picks the scope the user is
+   * granting). The recipient is named by tenant_id (the canonical legal clause)
+   * — the friendlier tenant name is UI chrome the controller supplies
+   * separately. CI-B1: iterates PORTAL_PROFILE_CONSENT_SCOPES (not all
+   * CONSENT_SCOPES) — the conversation-operation scopes
+   * (recording/transcription/ai_processing) are governed by their own versioned
+   * disclosure (operation-notice-texts.ts), not this generic profile template,
+   * so this endpoint's response is unchanged by the CI-B1 scope additions.
    */
   getPortalConsentTexts(recipientTenantId: string): PortalConsentTextResponseDto {
     return {
       version: CONSENT_TEXT_CURRENT_VERSION,
-      texts: CONSENT_SCOPES.map((scope) => ({
+      texts: PORTAL_PROFILE_CONSENT_SCOPES.map((scope) => ({
         scope,
         text: renderPortalConsentText(CONSENT_TEXT_CURRENT_VERSION, {
           recipient_tenant_id: recipientTenantId,

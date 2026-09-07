@@ -13,6 +13,7 @@ import {
   CONSENT_CHECK_OPERATIONS,
   OPERATION_SCOPE_MAP,
 } from '../lib/dto/consent-check-operation.js';
+import { CONSENT_SCOPES } from '../lib/dto/consent-grant-request.dto.js';
 
 const TENANT_ID = '00000000-0000-0000-0000-000000000001';
 const TALENT_ID = '00000000-0000-0000-0000-0000000000aa';
@@ -447,6 +448,11 @@ describe('ConsentRepository.resolveConsentState — Decision C (operation→scop
         'matching',
         'contacting',
         'cross_tenant_visibility',
+        // CI-B1: seed the independent conversation-operation scopes so
+        // recording/transcription/ai_processing operations resolve "allowed".
+        'recording',
+        'transcription',
+        'ai_processing',
       ];
       tx.talentConsentEvent.findMany.mockResolvedValue(
         allScopes.map((scope, idx) =>
@@ -1008,13 +1014,10 @@ describe('ConsentRepository.resolveConsentState — Decision L (R4: ledger-only 
 // source-aware most-restrictive intersection unchanged.
 // ----------------------------------------------------------------------
 
-const ALL_SCOPES = [
-  'profile_storage',
-  'resume_processing',
-  'matching',
-  'contacting',
-  'cross_tenant_visibility',
-] as const;
+// CI-B1: derive from the canonical tuple (Rule D — no second copy of the scope
+// list). Auto-covers the recording/transcription/ai_processing additions and any
+// future scope, so resolveAllScopes count assertions never go stale silently.
+const ALL_SCOPES = CONSENT_SCOPES;
 
 function makeAllScopesInput(): {
   tenant_id: string;
@@ -1028,14 +1031,14 @@ function makeAllScopesInput(): {
   };
 }
 
-describe('ConsentRepository.resolveAllScopes — Decision D (always 5 scopes)', () => {
-  it('empty ledger → all 5 scopes return status=no_grant with null timestamps', async () => {
+describe('ConsentRepository.resolveAllScopes — Decision D (always all scopes)', () => {
+  it('empty ledger → all scopes return status=no_grant with null timestamps', async () => {
     const tx = makeTx();
     tx.talentConsentEvent.findMany.mockResolvedValue([]);
     const repo = new ConsentRepository(makePrisma(tx));
     const result = await repo.resolveAllScopes(makeAllScopesInput());
 
-    expect(result.scopes).toHaveLength(5);
+    expect(result.scopes).toHaveLength(ALL_SCOPES.length);
     expect(result.is_anonymized).toBe(false);
     expect(result.tenant_id).toBe(TENANT_ID);
     expect(result.talent_record_id).toBe(TALENT_ID);
@@ -1049,7 +1052,7 @@ describe('ConsentRepository.resolveAllScopes — Decision D (always 5 scopes)', 
     }
   });
 
-  it('always returns exactly 5 entries, one per ConsentScope value', async () => {
+  it('always returns exactly one entry per ConsentScope value', async () => {
     const tx = makeTx();
     tx.talentConsentEvent.findMany.mockResolvedValue([
       makeLedgerRow({ scope: 'matching', action: 'granted' }),
@@ -1057,7 +1060,7 @@ describe('ConsentRepository.resolveAllScopes — Decision D (always 5 scopes)', 
     const repo = new ConsentRepository(makePrisma(tx));
     const result = await repo.resolveAllScopes(makeAllScopesInput());
 
-    expect(result.scopes).toHaveLength(5);
+    expect(result.scopes).toHaveLength(ALL_SCOPES.length);
     const scopesReturned = result.scopes.map((s) => s.scope).sort();
     expect(scopesReturned).toEqual([...ALL_SCOPES].sort());
   });
@@ -1082,7 +1085,7 @@ describe('ConsentRepository.resolveAllScopes — single-scope and multi-scope mi
     expect(matching?.revoked_at).toBeNull();
 
     const others = result.scopes.filter((s) => s.scope !== 'matching');
-    expect(others).toHaveLength(4);
+    expect(others).toHaveLength(ALL_SCOPES.length - 1);
     for (const other of others) {
       expect(other.status).toBe('no_grant');
     }
