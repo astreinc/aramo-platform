@@ -21,6 +21,13 @@ export default defineConfig({
       '@aramo/activity': resolve(root, 'libs/activity/src/index.ts'),
       '@aramo/common': resolve(root, 'libs/common/src/index.ts'),
       '@aramo/communications': resolve(root, 'libs/communications/src/index.ts'),
+      // CI-B3 — provider-neutral conversation-transcript substrate. Mirrors the
+      // tsconfig.base.json @aramo/conversation-transcript alias so vitest
+      // resolves the lib barrel from its integration/unit specs.
+      '@aramo/conversation-transcript': resolve(
+        root,
+        'libs/conversation-transcript/src/index.ts',
+      ),
       '@aramo/auth': resolve(root, 'libs/auth/src/index.ts'),
       // Auth-Decoupling PR-5b — the portable identity core (scope:auth). Mirrors
       // the tsconfig.base.json @aramo/auth-core alias so vitest resolves the moved
