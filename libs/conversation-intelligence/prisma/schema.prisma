@@ -1,0 +1,95 @@
+// Per-module Prisma schema for the `conversation-intelligence` module.
+//
+// CI-B2 — Immutable Requisition Analysis Context. Per
+// Aramo-CI-Conversation-Intelligence-Directive-v1_2-LOCKED.md §10 +
+// ADR-0031 (the `conversation-intelligence` bounded context owns the
+// immutable Requisition analysis-context snapshot). Architecture
+// v2.0/v2.1 §7.1 (Schema-per-Module); cross-schema references are
+// UUID-only without FK constraints (§7.3); tenant_id replicated (§7.2).
+//
+// WHY A DEDICATED SNAPSHOT (directive §10 + ADR-0031): the mutable
+// current Requisition row is never historical proof. Requisition has no
+// reusable immutable content-version, and GoldenProfile (job_domain) is
+// updated in place with no version/hash. A CI analysis must bind to
+// what the Requisition context WAS at capture time, so this context is
+// copied into an immutable snapshot the future CI run references by
+// stable id.
+//
+// Model shape (hybrid — directive-named metadata columns + one typed
+// JSONB payload, schema-versioned + app-layer validated):
+//   - id / tenant_id / requisition_id — identity + the cross-schema
+//     Requisition reference (UUID-only, §7.3).
+//   - source_requisition_version — the exact Requisition CAS token
+//     (Requisition.version) captured, so a reader can prove which
+//     source revision the snapshot reflects.
+//   - golden_profile_id — the cross-schema GoldenProfile reference at
+//     capture time (queryable provenance; the content itself is copied
+//     into the payload because the source is mutable).
+//   - snapshot_schema_version — the payload contract version.
+//   - context — the typed, allowlisted recruiting-context payload
+//     (libs/conversation-intelligence/src/lib/dto/
+//     requisition-analysis-context.ts). Compensation / financial-
+//     planning columns are NEVER read into it (minimum-necessary
+//     posture; directive §10 + §17).
+//   - captured_at / created_at — capture + persist timestamps.
+//
+// Immutability (directive §10, ARCHITECTURE_HALT on a mutable snapshot):
+// the entity has no lifecycle column (no updated_at, no status), so the
+// BEFORE UPDATE trigger added in the same migration is whole-row
+// unconditional — any UPDATE is rejected at the database layer. This is
+// the libs/evidence TalentJobEvidencePackage precedent (Group 2 §2.6,
+// whole-row). Belt-and-suspenders: the repository surface exposes create
+// + reads only — no update / upsert / delete path.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "./generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["conversation_intelligence"]
+}
+
+// CI-B2 — RequisitionAnalysisContextSnapshot (immutable CI-specific
+// Requisition analysis-context snapshot). Cross-schema references
+// (`requisition_id`, `golden_profile_id`) are UUID-only per §7.3. The
+// `context` JSONB is typed + validated at the application layer.
+model RequisitionAnalysisContextSnapshot {
+  // Identity. UUID v4 generated app-side (randomUUID) at capture.
+  id        String @id @db.Uuid
+  tenant_id String @db.Uuid
+
+  // Cross-schema reference to requisition.Requisition (§7.3 — UUID-only,
+  // no FK). The snapshot preserves the context of THIS requisition.
+  requisition_id String @db.Uuid
+
+  // The exact source Requisition optimistic-concurrency token
+  // (Requisition.version) at capture time. Lets a future CI run prove
+  // which Requisition revision it interpreted against.
+  source_requisition_version Int
+
+  // The GoldenProfile reference at capture time (nullable — a
+  // requisition need not have a minted GoldenProfile). Queryable
+  // provenance; the profile CONTENT is copied into `context` because the
+  // source GoldenProfile is mutable (no version/hash on job_domain).
+  golden_profile_id String? @db.Uuid
+
+  // The payload contract version (REQUISITION_ANALYSIS_CONTEXT_SCHEMA_VERSION).
+  snapshot_schema_version String @db.VarChar(64)
+
+  // The typed, allowlisted recruiting-context payload (JSONB §7.4).
+  context Json
+
+  // Capture (domain) + persist (row) timestamps. No updated_at — the
+  // entity is immutable (whole-row BEFORE UPDATE trigger below).
+  captured_at DateTime @db.Timestamptz
+  created_at  DateTime @default(now()) @db.Timestamptz
+
+  // Lookups: by (tenant, requisition, captured_at) for "the context
+  // snapshots for this requisition, newest first"; by (tenant,
+  // created_at) for tenant-scoped chronological reads.
+  @@index([tenant_id, requisition_id, captured_at])
+  @@index([tenant_id, created_at])
+  @@schema("conversation_intelligence")
+}
