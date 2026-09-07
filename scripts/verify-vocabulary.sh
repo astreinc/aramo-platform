@@ -471,6 +471,15 @@ TIER2_EXCLUDES=(
   "doc/generated/repo-map.projects.json"
   "doc/generated/repo-map.files.json"
   "doc/generated/repo-map.coupling.json"
+  # CI-B0 (Aramo-CI-Conversation-Intelligence-Directive-v1_2-LOCKED §29): the
+  # repository copy of the LOCKED CI directive. This LOCKED governance artifact
+  # names prohibited AI-authority concepts solely to define refusal boundaries.
+  # EXACT-FILE scoped — deliberately NOT a doc/directives/** or doc/ blanket, and
+  # NOT the canonical LOCKED directory. The canonical OneDrive copy is recognized
+  # by exact filename in .claude/hooks/vocab-guard.sh (the only surface that scans
+  # non-repo writes); this entry covers both the repo-wide gate and the hook's
+  # repo-relative match (vocab-lib.sh extracts TIER2_EXCLUDES at runtime).
+  "doc/directives/Aramo-CI-Conversation-Intelligence-Directive-v1_2-LOCKED.md"
 )
 
 # =============================================================================

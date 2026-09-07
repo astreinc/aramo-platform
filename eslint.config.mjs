@@ -223,6 +223,23 @@ export default [
       ],
     },
   },
+  // CI-B0 (Aramo-CI-Conversation-Intelligence-Directive-v1_2-LOCKED §29):
+  // exact-file Tier-2 exemption for the repository copy of the LOCKED CI
+  // directive. This LOCKED governance artifact names prohibited AI-authority
+  // concepts solely to define refusal boundaries. §29 mandates the exemption
+  // across all three enforcement surfaces; this is the eslint.config.mjs surface.
+  // NOTE (single-surface asymmetry — same precedent as the doc/generated/*.json
+  // entries in scripts/verify-vocabulary.sh, lines ~467-473): the
+  // no-restricted-syntax vocabulary rule above is scoped to apps/**+libs/**
+  // *.{ts,tsx,js,jsx} and cannot fire on a doc/directives/*.md file, so this
+  // block is inert today and exists as the §29-mandated third-surface entry /
+  // forward-guard. EXACT-FILE scoped — NOT a doc/directives/** or *.md blanket.
+  {
+    files: ['doc/directives/Aramo-CI-Conversation-Intelligence-Directive-v1_2-LOCKED.md'],
+    rules: {
+      'no-restricted-syntax': 'off',
+    },
+  },
   // M5 PR-2 — selection event-log substrate exemption.
   // The SelectionEventType enum carries `outreach_sent` per Group 2 §3
   // canonical "selection outreach" product vocabulary. The substring
