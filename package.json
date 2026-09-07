@@ -110,7 +110,7 @@
     "@nx/eslint-plugin": "~22.7.4",
     "@nx/js": "~22.7.0",
     "@nx/nest": "~22.7.3",
-    "@nx/vite": "~22.7.3",
+    "@nx/vite": "~23.2.0",
     "@nx/workspace": "~22.7.0",
     "@pact-foundation/pact": "~16.5.0",
     "@playwright/test": "~1.60.0",
