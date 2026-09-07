@@ -37,6 +37,8 @@ export interface UpdateRequisitionRequestDto {
   start_date?: string | null;
   city?: string | null;
   state?: string | null;
+  // WL-B1 — canonical postal code (UI label "ZIP / Postal code").
+  postal_code?: string | null;
   recruiter_id?: string | null;
   owner_id?: string | null;
 

@@ -1044,7 +1044,9 @@ function ownerName(
 }
 
 function locationOf(r: RequisitionView): string {
-  const place = [r.city, r.state].filter(Boolean).join(', ');
+  const place = [[r.city, r.state].filter(Boolean).join(', '), r.postal_code]
+    .filter(Boolean)
+    .join(' ');
   const remote =
     r.work_arrangement === 'remote'
       ? 'Remote'
@@ -1072,7 +1074,9 @@ function clientOptions(
 // REQ-PIXEL-PARITY-1 (hybrid) — the location filter key: "City, ST" when a
 // physical place is known, else the remote/hybrid arrangement. FE-derived.
 function locationKeyOf(r: RequisitionView): string {
-  const place = [r.city, r.state].filter(Boolean).join(', ');
+  const place = [[r.city, r.state].filter(Boolean).join(', '), r.postal_code]
+    .filter(Boolean)
+    .join(' ');
   if (place) return place;
   if (r.work_arrangement === 'remote') return 'Remote';
   if (r.work_arrangement === 'hybrid') return 'Hybrid';

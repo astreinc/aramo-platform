@@ -384,6 +384,9 @@ export const SEED_IDS = {
     // COMM-C2B — recruiter Microsoft 365 execution scopes.
     'communication:email:send': '01900000-0000-7000-8000-0000000000e8',
     'communication:meeting:create': '01900000-0000-7000-8000-0000000000e9',
+    // WL-B2 (R6/R14) — DEDICATED address-lookup scope. Next free scope suffix
+    // after the 0xfc engagement:policy:override max (append-don't-renumber): 0xfd.
+    'address:lookup': '01900000-0000-7000-8000-0000000000fd',
   },
   // RoleScope ids — one per (role,scope) assignment. Hardcoded sequence
   // 0x30..0x39 (10 assignments: 6 tenant_admin + 4 recruiter; the 3
@@ -661,6 +664,9 @@ export const ROLE_SCOPE_ASSIGNMENTS = {
     // the requisition:assign/requisition:read:all pattern — TA holds the
     // full operational set plus the see-all + the management mechanisms).
     'company:assign', 'org:manage', 'team:manage', 'company:read:all',
+    // WL-B2 (R6/R14) — address-lookup query permission. tenant_admin holds
+    // company:create + requisition:create/:edit, so it is in the union.
+    'address:lookup',
   ],
   recruiter: [
     'consent:read',
@@ -699,6 +705,10 @@ export const ROLE_SCOPE_ASSIGNMENTS = {
     // NOT requisition:assign (tenant_admin only — assignment is an admin act).
     'attachment:read', 'attachment:create', 'attachment:delete',
     'pipeline:read', 'activity:create',
+    // WL-B2 (R6/R14) — address-lookup query permission. recruiter holds
+    // company:create + requisition:create, so it is in the union (retains
+    // company autocomplete, gains requisition work-location autocomplete).
+    'address:lookup',
   ],
   // AUTHZ-1b: viewer ROLE_SCOPE_ASSIGNMENTS block removed (role retired).
   // PR-A1a Ruling 3 — new portal-user role; scopes are portal-only.
@@ -829,6 +839,15 @@ const ROLE_SCOPE_ROW_IDS: Record<string, string> = {
   'tenant_admin:org:manage': SEED_IDS.role_scopes.tenant_admin_org_manage,
   'tenant_admin:team:manage': SEED_IDS.role_scopes.tenant_admin_team_manage,
   'tenant_admin:company:read:all': SEED_IDS.role_scopes.tenant_admin_company_read_all,
+  // WL-B2 (R6/R14) — address:lookup grants for the two base ROLE_SCOPE_ASSIGNMENTS
+  // roles. Explicit literal ids from a FRESH contiguous 0x1100 block (append-
+  // don't-renumber; above the current max generated range — CLIENT_SELECTION_
+  // INTERVIEW occupies 0x100c..0x1013). The four AUTHZ1-bundle roles that also
+  // hold the scope (tenant_owner/account_manager/recruiting_manager/lead_recruiter)
+  // take 0x1102..0x1105 via ADDRESS_LOOKUP_SEED_BUNDLES (they cannot be added to
+  // the frozen AUTHZ1_BUNDLES scope arrays without renumbering the 0x400 counter).
+  'tenant_admin:address:lookup': '01900000-0000-7000-8000-000000001100',
+  'recruiter:address:lookup': '01900000-0000-7000-8000-000000001101',
 };
 
 // AUTHZ-1 / AUTHZ-1b — bundle catalog for the 9 staffing-tenant roles
@@ -2363,6 +2382,45 @@ const CLIENT_SELECTION_INTERVIEW_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string>
   return map;
 })();
 
+// WL-B2 (R6/R14) — the ADDRESS_LOOKUP role matrix for the AUTHZ1-bundle members
+// of the grant union. address:lookup goes to the UNION of (every company:create
+// holder) ∪ (every requisition:create/:edit holder). The two base roles
+// (tenant_admin, recruiter) receive it via ROLE_SCOPE_ASSIGNMENTS + explicit
+// ROLE_SCOPE_ROW_IDS (0x1100/0x1101); the four AUTHZ1-bundle roles below receive
+// it HERE. They are NOT added to the frozen AUTHZ1_BUNDLES scope arrays because
+// that would renumber the positional 0x400 counter (append-don't-renumber).
+// Union justification (all four hold company:create + requisition:create/:edit):
+//   tenant_owner, account_manager, recruiting_manager, lead_recruiter.
+// EXCLUDED (hold none of the three trigger scopes): sourcer, finance, auditor,
+// auditor_with_financials, delivery_manager (edit:status only, NOT edit),
+// back_office, candidate, super_admin. address:lookup NEVER grants any mutation
+// authority — it only admits the /v1/address-lookup proxy.
+export const ADDRESS_LOOKUP_SEED_BUNDLES: ReadonlyArray<
+  readonly [string, readonly string[]]
+> = [
+  ['tenant_owner', ['address:lookup']],
+  ['account_manager', ['address:lookup']],
+  ['recruiting_manager', ['address:lookup']],
+  ['lead_recruiter', ['address:lookup']],
+];
+
+// Deterministic RoleScope row ids for the 4 AUTHZ1-bundle address:lookup grants.
+// Fresh contiguous range 0x1102+ (the two base-role grants took 0x1100/0x1101;
+// append-don't-renumber — the prior max generated range, CLIENT_SELECTION_
+// INTERVIEW, occupies 0x100c..0x1013). DO NOT REORDER without bumping the offset.
+const ADDRESS_LOOKUP_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
+  const map: Record<string, string> = {};
+  let i = 0x1102;
+  for (const [role, scopes] of ADDRESS_LOOKUP_SEED_BUNDLES) {
+    for (const scope of scopes) {
+      map[`${role}:${scope}`] =
+        `01900000-0000-7000-8000-${i.toString(16).padStart(12, '0')}`;
+      i++;
+    }
+  }
+  return map;
+})();
+
 interface IdentityPrismaClient {
   tenant: typeof PrismaClient.prototype.tenant;
   user: typeof PrismaClient.prototype.user;
@@ -2728,6 +2786,7 @@ export async function runIdentitySeed(
   await upsertScope(prisma, SEED_IDS.scopes['communication:email:send'], 'communication:email:send', 'COMM-C2B — send recruiter email through the bound delegated Microsoft identity (POST /v1/integrations/microsoft/email). Server-side contacting-consent gate precedes any provider execution; provider-neutral email evidence is recorded on success. GRANTED to recruiter, account_manager, tenant_admin, tenant_owner (mirrors communication:voice:call). NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['communication:meeting:create'], 'communication:meeting:create', 'COMM-C2B — create a Teams meeting through the bound delegated Microsoft identity (POST /v1/integrations/microsoft/meeting; create-link-only, no Talent invite). Records provider-neutral meeting evidence (join reference + Talent x Requisition association). GRANTED to recruiter, account_manager, tenant_admin, tenant_owner (mirrors communication:voice:call). NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['requisition:create:establish'], 'requisition:create:establish', 'Requisition Lane 1-A (Create-Governance) — the functional create qualifier that unlocks the governed initial-state establishment mode (MANUAL-ESTABLISH + SYSTEM). Grants authority to ENTER the governed establishment mode; never permits arbitrary statuses (the establishment-authorization gate still bounds { draft, open }). CATALOG-ONLY in v1: GRANTED to NO human tenant role (recruiter / recruiting_manager / delivery_manager / account_manager never receive it, so no human bypasses draft->approval via the manual create path); held programmatically by system/bootstrap establishment identities + passed by bootstrap/test helpers only. The INTEGRATION import path does NOT use this scope — it reuses the existing requisition:import:write. NO scope.created (scope-seed precedent); NO RoleScope grant.');
+  await upsertScope(prisma, SEED_IDS.scopes['address:lookup'], 'address:lookup', 'WL-B2 (R6/R14) — query the shared address-lookup proxy (GET /v1/address-lookup/autocomplete + /details) off the external provider. DEDICATED, least-privilege: grants ONLY the authority to query the lookup service; it NEVER implies authority to create/update a Company or Requisition or to mutate any aggregate (those keep their own company:create / requisition:create|edit gates). GRANTED to the UNION of address-enabled surface authors — every company:create holder ∪ every requisition:create/:edit holder: tenant_admin + recruiter (ROLE_SCOPE_ASSIGNMENTS) and tenant_owner + account_manager + recruiting_manager + lead_recruiter (ADDRESS_LOOKUP_SEED_BUNDLES). NO scope.created (scope-seed precedent).');
 
   // 7. RoleScope assignments — pre-AUTHZ-1 (88 rows: 13 + 12 + 52 + 11).
   for (const [roleKey, scopeKeys] of Object.entries(ROLE_SCOPE_ASSIGNMENTS)) {
@@ -3419,6 +3478,29 @@ export async function runIdentitySeed(
       if (rsId === undefined) {
         throw new Error(
           `ClientSelection-Interview-Role-Matrix: Missing generated RoleScope id for ${roleKey}:${scopeKey}`,
+        );
+      }
+      const scope_id = scopeIdForKey(scopeKey);
+      await prisma.roleScope.upsert({
+        where: { role_id_scope_id: { role_id, scope_id } },
+        update: {},
+        create: { id: rsId, role_id, scope_id },
+      });
+    }
+  }
+
+  // WL-B2 (R6/R14) — address:lookup grants for the four AUTHZ1-bundle members of
+  // the union (tenant_owner/account_manager/recruiting_manager/lead_recruiter;
+  // range 0x1102+). The two base roles (tenant_admin/recruiter) are seeded by the
+  // ROLE_SCOPE_ASSIGNMENTS loop above via their explicit ROLE_SCOPE_ROW_IDS
+  // entries (0x1100/0x1101) — NOT here, so no (role, scope) pair is double-granted.
+  for (const [roleKey, scopeKeys] of ADDRESS_LOOKUP_SEED_BUNDLES) {
+    const role_id = roleIdForKey(roleKey);
+    for (const scopeKey of scopeKeys) {
+      const rsId = ADDRESS_LOOKUP_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
+      if (rsId === undefined) {
+        throw new Error(
+          `AddressLookup-Role-Matrix: Missing generated RoleScope id for ${roleKey}:${scopeKey}`,
         );
       }
       const scope_id = scopeIdForKey(scopeKey);

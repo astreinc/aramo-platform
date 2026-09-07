@@ -278,6 +278,10 @@ const REQUISITION_LIFECYCLE_APPEND_ONLY_MIGRATION = resolve(
   ROOT,
   'libs/requisition/prisma/migrations/20260827120000_requisition_lifecycle_event_append_only/migration.sql',
 );
+const REQUISITION_POSTAL_CODE_MIGRATION = resolve(
+  ROOT,
+  'libs/requisition/prisma/migrations/20260907120000_add_requisition_postal_code/migration.sql',
+);
 const TALENT_RECORD_IMPORT_BACK_REF = resolve(
   ROOT,
   'libs/talent-record/prisma/migrations/20260603140100_add_import_batch_id_to_talent_record/migration.sql',
@@ -472,6 +476,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         SAVED_LIST_LIST_KIND,
         METERING_INIT,
         resolve(ROOT, 'libs/requisition/prisma/migrations/20260803120000_recruiting_status_supersession/migration.sql'),
+        REQUISITION_POSTAL_CODE_MIGRATION,
         // Track 4 T4-B2 — requisition read DERIVES openings_available from the
         // placement-owned ACTIVE ContractAssignment population; placement schema required.
         ...placementCapacityMigrations(ROOT),

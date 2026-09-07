@@ -193,6 +193,12 @@ model Requisition {
   start_date DateTime? @db.Timestamptz
   city       String?
   state      String?
+  // Requisition Work Location Autocomplete Directive v1.0 (WL-B1) — canonical
+  // postal code (UI label "ZIP / Postal code"). Optional, additive, ADD-not-
+  // rename. Populated manually or from a selected address-autocomplete
+  // suggestion (details.zip -> postal_code). Location authority stays structured
+  // (city/state/postal_code); the search text is never persisted.
+  postal_code String?
 
   // ---- Job-Module enterprise field expansion (additive) ---------------
   // Job-Module Directive v1.0 §1 Part 1. All optional/defaulted; String-

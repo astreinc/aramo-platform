@@ -23,6 +23,7 @@ import type { EntryProvenanceInput } from '../lib/pipeline-entry-provenance.js';
 // apps/api + pact; this spec proves the repository-level invariants end to end.
 const MIGRATIONS = [
   '../../../../libs/requisition/prisma/migrations/20260602100000_init_requisition_model/migration.sql',
+  '../../../../libs/requisition/prisma/migrations/20260907120000_add_requisition_postal_code/migration.sql',
   '../../../../libs/activity/prisma/migrations/20260602140000_init_activity_model/migration.sql',
   '../../../../libs/activity/prisma/migrations/20260801120000_add_activity_redaction_fields/migration.sql',
   '../../../../libs/metering/prisma/migrations/20260601150000_init_metering_model/migration.sql',

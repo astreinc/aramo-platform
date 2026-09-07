@@ -50,6 +50,7 @@ const MIGRATIONS = [
   'libs/requisition/prisma/migrations/20260605123400_add_compensation_fields_to_requisition/migration.sql',
   'libs/requisition/prisma/migrations/20260611220000_job_module_requisition_fields/migration.sql',
   'libs/requisition/prisma/migrations/20260803120000_recruiting_status_supersession/migration.sql',
+  'libs/requisition/prisma/migrations/20260907120000_add_requisition_postal_code/migration.sql',
   'libs/pipeline/prisma/migrations/20260602150000_init_pipeline_model/migration.sql',
   // Track 3 E6 — total unique -> live-scoped partial unique.
   'libs/pipeline/prisma/migrations/20260807100000_e6_pipeline_live_episode_unique/migration.sql',

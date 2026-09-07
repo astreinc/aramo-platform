@@ -8,6 +8,144 @@ info:
     Match-List Summary-only rule (API Contracts L586-588). Future ATS PRs
     populate additional operations per API Contracts v1.0 Phase 2.
 paths:
+  # ── Requisition Work Location Autocomplete Directive v1.0 (WL-B5) ──
+  # Minimum truthful contract for the surfaces this PR changed (R15): the
+  # backend-proxied address-lookup endpoints (now gated on the dedicated
+  # `address:lookup` scope) and the requisition Work Location fields
+  # (city / state / postal_code). NOT a global requisition-contract definition.
+  /v1/address-lookup/autocomplete:
+    get:
+      operationId: autocompleteAddress
+      summary: Provider-neutral address autocomplete (backend-proxied).
+      description: |
+        Returns provider-neutral address suggestions for a typed query, proxied
+        server-side to the configured provider (never a browser-direct call; the
+        provider API key is never exposed to the browser or the response).
+        Requires the `address:lookup` scope and the `ats` capability entitlement.
+        NEVER-BLOCK: when the feature is disabled or the provider is degraded an
+        empty 200 (`suggestions: []`) is returned. A query shorter than 3
+        characters is a 400.
+      parameters:
+        - name: query
+          in: query
+          required: true
+          description: The partial address text (at least 3 characters).
+          schema:
+            type: string
+            minLength: 3
+        - name: session_token
+          in: query
+          required: false
+          description: Optional autocomplete session token (UUID) for per-session provider billing.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Suggestions (an empty list when disabled or degraded).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AddressAutocompleteResponse'
+        '400':
+          description: Query too short or invalid.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '403':
+          description: Insufficient permissions (missing `address:lookup`) or tenant not entitled.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+      security:
+        - BearerAuth: []
+  /v1/address-lookup/details:
+    get:
+      operationId: getAddressDetails
+      summary: Resolve a suggestion into provider-neutral structured address details.
+      description: |
+        Resolves a suggestion (`place_id`) into a provider-neutral structured
+        address, proxied server-side. Requires the `address:lookup` scope and the
+        `ats` capability. NEVER-BLOCK: disable/provider-failure returns
+        `details: null` at 200. No geolocation (lat/lng) is ever returned or
+        persisted. A blank `place_id` is a 400.
+      parameters:
+        - name: place_id
+          in: query
+          required: true
+          description: The suggestion identifier returned by autocomplete.
+          schema:
+            type: string
+        - name: session_token
+          in: query
+          required: false
+          description: The session token that opened the autocomplete session.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Resolved details (`null` when disabled or degraded).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AddressDetailsResponse'
+        '400':
+          description: Missing or invalid `place_id`.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '403':
+          description: Insufficient permissions (missing `address:lookup`) or tenant not entitled.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+      security:
+        - BearerAuth: []
+  /v1/requisitions:
+    post:
+      operationId: createRequisition
+      summary: Create a requisition (manual authoring — Work Location surface).
+      description: |
+        Creates a requisition in the caller's tenant. Requires the
+        `requisition:create` scope and the `ats` capability. This definition is
+        the minimum truthful contract for the Work Location surface changed by
+        this PR (R15): the required core fields plus the structured location
+        fields (city / state / `postal_code`). The full authoring payload carries
+        additional fields not enumerated here (`additionalProperties: true`).
+        Location authority is structured — the optional `postal_code`
+        (UI label "ZIP / Postal code") is entered manually or populated from a
+        selected address-lookup suggestion; the autocomplete search text is never
+        persisted.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRequisitionRequest'
+      responses:
+        '201':
+          description: Requisition created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequisitionLocationView'
+        '400':
+          description: Validation error.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '403':
+          description: Insufficient permissions or tenant not entitled.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+      security:
+        - BearerAuth: []
   /v1/offers:
     get:
       operationId: listOffers
@@ -4947,6 +5085,114 @@ components:
         opaque reference and never documented. Paired with the `x-zm-request-timestamp` header.
 
   schemas:
+    # ── Requisition Work Location Autocomplete Directive v1.0 (WL-B5) ──
+    AddressSuggestion:
+      type: object
+      additionalProperties: false
+      description: Provider-neutral address suggestion (Address-Autocomplete v1.0).
+      required: [place_id, description, primary_text, secondary_text]
+      properties:
+        place_id:
+          type: string
+          description: Opaque provider suggestion id — pass to /v1/address-lookup/details.
+        description:
+          type: string
+        primary_text:
+          type: string
+        secondary_text:
+          type: string
+    AddressAutocompleteResponse:
+      type: object
+      additionalProperties: false
+      description: Autocomplete result. `suggestions` is empty when the feature is disabled or the provider is degraded (never-block).
+      required: [suggestions]
+      properties:
+        suggestions:
+          type: array
+          items:
+            $ref: '#/components/schemas/AddressSuggestion'
+    AddressDetails:
+      type: object
+      additionalProperties: false
+      description: Provider-neutral resolved address. No geolocation (lat/lng) is returned or persisted (Address-Autocomplete v1.0).
+      required: [place_id, provider, address, address2, city, state, zip, country]
+      properties:
+        place_id:
+          type: string
+        provider:
+          type: string
+        address:
+          type: [string, 'null']
+        address2:
+          type: [string, 'null']
+        city:
+          type: [string, 'null']
+        state:
+          type: [string, 'null']
+        zip:
+          type: [string, 'null']
+        country:
+          type: [string, 'null']
+    AddressDetailsResponse:
+      type: object
+      additionalProperties: false
+      description: Details envelope. `details` is null when the feature is disabled or the provider is degraded (never-block).
+      required: [details]
+      properties:
+        details:
+          anyOf:
+            - $ref: '#/components/schemas/AddressDetails'
+            - type: 'null'
+    CreateRequisitionRequest:
+      type: object
+      additionalProperties: false
+      description: |
+        Requisition Work Location authoring contract for POST /v1/requisitions —
+        the surface changed by this directive (R15): the required identity plus
+        the structured location block (city / state / postal_code) and work
+        arrangement. This documents the Work Location fields the directive
+        governs; the endpoint's full authoring payload is validated server-side
+        by the requisition DTO and is intentionally not restated here (no global
+        OpenAPI reconciliation).
+      required: [title, company_id]
+      properties:
+        title:
+          type: string
+        company_id:
+          type: string
+          format: uuid
+        city:
+          type: string
+        state:
+          type: string
+        postal_code:
+          type: string
+          description: Canonical postal code (UI label "ZIP / Postal code"). Optional.
+        work_arrangement:
+          type: string
+          description: 'onsite | hybrid | remote.'
+    RequisitionLocationView:
+      type: object
+      additionalProperties: false
+      description: |
+        Requisition Work Location read projection (directive R15): the location
+        block (city / state / postal_code) + work arrangement returned on create
+        and read. The full RequisitionView carries additional fields validated
+        server-side and intentionally not restated here.
+      required: [id, city, state, postal_code]
+      properties:
+        id:
+          type: string
+          format: uuid
+        city:
+          type: [string, 'null']
+        state:
+          type: [string, 'null']
+        postal_code:
+          type: [string, 'null']
+          description: Canonical postal code (UI label "ZIP / Postal code").
+        work_arrangement:
+          type: [string, 'null']
     CommunicationCapabilities:
       type: object
       additionalProperties: false

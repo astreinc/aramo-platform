@@ -110,6 +110,8 @@ export interface RequisitionView {
   readonly start_date: string | null;
   readonly city: string | null;
   readonly state: string | null;
+  // WL-B1 — canonical postal code (UI label "ZIP / Postal code").
+  readonly postal_code: string | null;
   readonly recruiter_id: string | null;
   readonly owner_id: string | null;
   readonly entered_by_id: string | null;
@@ -246,6 +248,7 @@ export interface CreateRequisitionRequest {
   readonly start_date?: string;
   readonly city?: string;
   readonly state?: string;
+  readonly postal_code?: string;
 
   // v1.1 §2.3 discriminator
   readonly compensation_model?: CompensationModel;
@@ -332,6 +335,7 @@ export interface UpdateRequisitionRequest {
   readonly start_date?: string | null;
   readonly city?: string | null;
   readonly state?: string | null;
+  readonly postal_code?: string | null;
 
   readonly compensation_model?: CompensationModel | null;
 

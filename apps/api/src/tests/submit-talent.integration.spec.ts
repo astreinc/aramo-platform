@@ -70,6 +70,7 @@ const MIGRATIONS = [
   // real lifecycle values. It is authored to run atop the requisition init alone
   // (its RequisitionLifecycleEvent alters are IF EXISTS) — see its header.
   'libs/requisition/prisma/migrations/20260803120000_recruiting_status_supersession/migration.sql',
+  'libs/requisition/prisma/migrations/20260907120000_add_requisition_postal_code/migration.sql',
   'libs/activity/prisma/migrations/20260602140000_init_activity_model/migration.sql',
   'libs/pipeline/prisma/migrations/20260602150000_init_pipeline_model/migration.sql',
   'libs/pipeline/prisma/migrations/20260807100000_e6_pipeline_live_episode_unique/migration.sql',
