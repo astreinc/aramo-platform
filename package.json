@@ -91,7 +91,7 @@
     "decimal.js": "10.6.0",
     "disposable-email-domains-js": "^1.25.0",
     "free-email-domains": "^1.9.47",
-    "jose": "~6.2.3",
+    "jose": "~6.2.11",
     "mammoth": "~1.12.0",
     "pdf-parse": "~1.1.1",
     "pg": "~8.20.0",
