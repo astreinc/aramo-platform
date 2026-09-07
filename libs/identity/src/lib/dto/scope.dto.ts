@@ -347,6 +347,17 @@ export const SEED_SCOPE_KEYS = [
   // is requisition:import:write only.
   'integration:read',
   'integration:write',
+  // WL-B2 (R6/R14) — DEDICATED cross-cutting address-lookup permission. Gates
+  // the shared /v1/address-lookup proxy (autocomplete + details) off the
+  // external provider. Grants ONLY the authority to QUERY the lookup service —
+  // it does NOT imply company/requisition create/update or any aggregate
+  // mutation (those keep their own company:create / requisition:create|edit
+  // gates). GRANTED to the UNION of the roles that author address-enabled
+  // surfaces: every company:create holder ∪ every requisition:create/:edit
+  // holder (tenant_admin, recruiter via ROLE_SCOPE_ASSIGNMENTS; tenant_owner,
+  // account_manager, recruiting_manager, lead_recruiter via
+  // ADDRESS_LOOKUP_SEED_BUNDLES). NO scope.created (scope-seed precedent).
+  'address:lookup',
   // L2-I (D1) — manage the per-connection PIPELINE provider-disposition MAPPING contract
   // (author/version the provider-token → canonical-Pipeline-action/reason mapping). A NARROW
   // administrative permission for the mapping contract itself — NOT pipeline mutation

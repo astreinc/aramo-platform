@@ -26,11 +26,17 @@ const MAX_SESSION_TOKEN_LENGTH = 128;
 // AddressLookupController — backend proxy for provider address autocomplete
 // (Address-Autocomplete v1.0).
 //
-// Guard chain (mirrors CompanyController exactly — company.controller.ts:
-// 57-60,137-138): JwtAuthGuard → EntitlementGuard(@RequireCapability('ats'))
-// → RolesGuard(@RequireScopes('company:create') + @RequireSiteMatch). NO new
-// scope — the lookup folds into company:create (the surface it serves: filling
-// the company create form). The full chain bounds the PAID external-API cost
+// Guard chain (mirrors CompanyController's other guards exactly —
+// company.controller.ts): JwtAuthGuard → EntitlementGuard(@RequireCapability
+// ('ats')) → RolesGuard(@RequireScopes('address:lookup') + @RequireSiteMatch).
+// DEDICATED scope (WL-B2, R6/R14): address:lookup grants ONLY the authority to
+// query the address-lookup service. It NEVER implies authority to create/update
+// a Company or Requisition, or to mutate any aggregate — those keep their own
+// company:create / requisition:create|edit gates. address:lookup is granted to
+// the roles that author address-enabled surfaces (the UNION of company:create
+// holders and requisition:create/:edit holders), so both the company create
+// form and the requisition work-location autocomplete are served by one
+// least-privilege scope. The full chain still bounds the PAID external-API cost
 // to legitimately-scoped, tenant-matched users.
 //
 // The provider key NEVER reaches this layer's output: the adapter sends it in
@@ -50,7 +56,7 @@ export class AddressLookupController {
 
   @Get('autocomplete')
   @HttpCode(HttpStatus.OK)
-  @RequireScopes('company:create')
+  @RequireScopes('address:lookup')
   @RequireSiteMatch()
   async autocomplete(
     @Query('query') query: string | undefined,
@@ -90,7 +96,7 @@ export class AddressLookupController {
 
   @Get('details')
   @HttpCode(HttpStatus.OK)
-  @RequireScopes('company:create')
+  @RequireScopes('address:lookup')
   @RequireSiteMatch()
   async details(
     @Query('place_id') placeId: string | undefined,

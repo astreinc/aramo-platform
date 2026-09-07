@@ -402,8 +402,12 @@ export function RequisitionDetailView({
   // directory (departed users still resolve).
   const ownerId = req.recruiter_id ?? req.owner_id ?? null;
   const ownerName = ownerId !== null ? (userNames[ownerId] ?? null) : null;
-  // Header line-2 clauses (each omitted when absent).
-  const headerPlace = [req.city, req.state].filter(Boolean).join(', ');
+  // Header line-2 clauses (each omitted when absent). WL-B4/R13 — render
+  // "City, State ZIP" (e.g. "Washington, DC 20005") with partial values clean:
+  // no stray null/undefined, no dangling comma when a part is missing.
+  const headerPlace = [[req.city, req.state].filter(Boolean).join(', '), req.postal_code]
+    .filter(Boolean)
+    .join(' ');
   const headerArrangement = remoteLabel(req.work_arrangement, req.onsite_days_per_week);
   const headerType =
     req.type ?? (req.duration !== null ? `Contract ${req.duration}` : null);

@@ -86,6 +86,12 @@ export class CreateRequisitionRequestDto {
   @IsString()
   state?: string;
 
+  // WL-B1 — canonical postal code (UI label "ZIP / Postal code"). Optional; the
+  // location authoring surface stays structured (city/state/postal_code).
+  @IsOptional()
+  @IsString()
+  postal_code?: string;
+
   @IsOptional()
   @IsString()
   recruiter_id?: string;

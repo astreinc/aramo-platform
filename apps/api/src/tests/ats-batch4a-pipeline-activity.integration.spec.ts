@@ -283,6 +283,7 @@ const MIGRATIONS = [
   POLICY_STORE_INIT,
   POLICY_DECISION_RECORD,
   resolve(ROOT, 'libs/requisition/prisma/migrations/20260803120000_recruiting_status_supersession/migration.sql'),
+  resolve(ROOT, 'libs/requisition/prisma/migrations/20260907120000_add_requisition_postal_code/migration.sql'),
   CONSENT_INIT,
   CONSENT_REKEY_TO_TALENT_RECORD,
 ];

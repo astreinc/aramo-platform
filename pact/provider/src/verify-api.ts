@@ -1057,6 +1057,12 @@ const REQUISITION_EXTERNAL_IDENTITY_MIGRATION = resolve(
   ROOT,
   'libs/requisition/prisma/migrations/20260812130000_t8p1_requisition_external_identity_unique/migration.sql',
 );
+// WL-B1 — additive canonical Requisition postal_code column (ADD-not-rename).
+// Applied last (only needs the Requisition table to exist).
+const REQUISITION_POSTAL_CODE_MIGRATION = resolve(
+  ROOT,
+  'libs/requisition/prisma/migrations/20260907120000_add_requisition_postal_code/migration.sql',
+);
 
 // Constants used by the consent-read given-states (and formerly the retired
 // thin consumer). The talent uuid matches the value the consumer tests
@@ -3337,6 +3343,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         // T8-P1 — the external-identity partial-unique index (applied last;
         // needs source_system/external_req_id columns from the job-module set).
         REQUISITION_EXTERNAL_IDENTITY_MIGRATION,
+        // WL-B1 — canonical postal_code column (additive, applied last).
+        REQUISITION_POSTAL_CODE_MIGRATION,
       ]) {
         await setup.query(readFileSync(migrationPath, 'utf8'));
       }
@@ -3487,6 +3495,11 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           'company:edit',
           'company:delete',
           'company:assign',
+          // WL-B2 (R6/R14) — the /v1/address-lookup proxy repointed off
+          // company:create onto the dedicated address:lookup scope. The
+          // ats-web recruiter token holds it (recruiter is in the grant
+          // union), so the degraded-mode contract still authorizes (R16).
+          'address:lookup',
           'contact:read',
           'contact:search',
           'contact:create',

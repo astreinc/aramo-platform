@@ -30,6 +30,10 @@ const REQUISITION_INIT = resolve(
   __dirname,
   '../../../requisition/prisma/migrations/20260602100000_init_requisition_model/migration.sql',
 );
+const REQUISITION_POSTAL_CODE_MIGRATION = resolve(
+  __dirname,
+  '../../../requisition/prisma/migrations/20260907120000_add_requisition_postal_code/migration.sql',
+);
 const PLACEMENT_MIGRATIONS = [
   '20260803180000_init_placement_model',
   '20260805120000_placement_offer_and_outbox',
@@ -47,7 +51,7 @@ const PLACEMENT_MIGRATIONS = [
   '20260816120000_t7_p3_guarantee_term_versioning',
 ].map((d) => resolve(__dirname, `../../../placement/prisma/migrations/${d}/migration.sql`));
 
-const ALL_MIGRATIONS = [REQUISITION_INIT, ...PLACEMENT_MIGRATIONS];
+const ALL_MIGRATIONS = [REQUISITION_INIT, REQUISITION_POSTAL_CODE_MIGRATION, ...PLACEMENT_MIGRATIONS];
 
 // Representative population. `stored` is the legacy openings_available value for the
 // state (what the pre-B2 pipeline decrement would have left); `active` real ACTIVE

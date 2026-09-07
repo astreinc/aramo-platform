@@ -77,6 +77,7 @@ const MIGRATIONS = [
   // PR-14 — additive user_requisition_state table (missing -> 500 on enriched requisition list/get).
   'libs/requisition/prisma/migrations/20260802160000_add_user_requisition_state/migration.sql',
   'libs/requisition/prisma/migrations/20260803120000_recruiting_status_supersession/migration.sql',
+  'libs/requisition/prisma/migrations/20260907120000_add_requisition_postal_code/migration.sql',
   // job-domain
   'libs/job-domain/prisma/migrations/20260519100000_init_job_domain_model/migration.sql',
   // T1-a — drop the retired job_domain.Requisition table + enum so this proof
