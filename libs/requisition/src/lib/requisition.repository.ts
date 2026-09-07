@@ -322,6 +322,7 @@ interface RequisitionRow {
   start_date: Date | null;
   city: string | null;
   state: string | null;
+  postal_code: string | null;
   recruiter_id: string | null;
   owner_id: string | null;
   entered_by_id: string | null;
@@ -445,6 +446,7 @@ function projectView(
     start_date: row.start_date === null ? null : row.start_date.toISOString(),
     city: row.city,
     state: row.state,
+    postal_code: row.postal_code,
     recruiter_id: row.recruiter_id,
     owner_id: row.owner_id,
     entered_by_id: row.entered_by_id,
@@ -951,6 +953,7 @@ export class RequisitionRepository {
       start_date: input.start_date === undefined ? null : new Date(input.start_date),
       city: input.city ?? null,
       state: input.state ?? null,
+      postal_code: input.postal_code ?? null,
       recruiter_id: input.recruiter_id ?? entered_by_id,
       owner_id: input.owner_id ?? entered_by_id,
       entered_by_id,
@@ -1080,6 +1083,7 @@ export class RequisitionRepository {
       start_date: input.start_date === undefined ? null : new Date(input.start_date),
       city: input.city ?? null,
       state: input.state ?? null,
+      postal_code: input.postal_code ?? null,
       recruiter_id: input.recruiter_id ?? entered_by_id,
       owner_id: input.owner_id ?? entered_by_id,
       entered_by_id,
@@ -1253,6 +1257,7 @@ export class RequisitionRepository {
     if (i.start_date !== undefined) data['start_date'] = i.start_date === null ? null : new Date(i.start_date);
     if (i.city !== undefined) data['city'] = i.city;
     if (i.state !== undefined) data['state'] = i.state;
+    if (i.postal_code !== undefined) data['postal_code'] = i.postal_code;
     if (i.recruiter_id !== undefined) data['recruiter_id'] = i.recruiter_id;
     if (i.owner_id !== undefined) data['owner_id'] = i.owner_id;
     // v1.1 §2 — comp fields. Each follows the same PATCH semantics:

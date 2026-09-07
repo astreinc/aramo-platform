@@ -93,6 +93,7 @@ const EXACT_ALLOWLIST = new Set<string>([
   // exact-value tenant_reset DELETE escape (the placement precedent) so governed
   // tenant reset can delete the lifecycle-event rows (registered in tenant-reset.service.ts).
   'libs/requisition/prisma/migrations/20260827120000_requisition_lifecycle_event_append_only/migration.sql',
+  'libs/requisition/prisma/migrations/20260907120000_add_requisition_postal_code/migration.sql',
   // L1-F1 — the append-only integration proof exercises the tenant-reset DELETE
   // escape (governed lifecycle-event-row cleanup) via raw SET LOCAL.
   'apps/api/src/tests/requisition-lifecycle-append-only.integration.spec.ts',

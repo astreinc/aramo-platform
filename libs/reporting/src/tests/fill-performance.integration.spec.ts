@@ -60,6 +60,8 @@ const REQ_MIGRATIONS = [
   '20260812130000_t8p1_requisition_external_identity_unique',
   // L1-F1 — RequisitionLifecycleEvent append-only triggers + reset escape.
   '20260827120000_requisition_lifecycle_event_append_only',
+  // WL-B1 — additive Requisition.postal_code (the regenerated client SELECTs it).
+  '20260907120000_add_requisition_postal_code',
 ].map((d) =>
   resolve(__dirname, `../../../requisition/prisma/migrations/${d}/migration.sql`),
 );

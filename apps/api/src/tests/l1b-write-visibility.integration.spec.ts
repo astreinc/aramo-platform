@@ -466,6 +466,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           ROOT,
           'libs/requisition/prisma/migrations/20260803120000_recruiting_status_supersession/migration.sql',
         ),
+        resolve(
+          ROOT,
+          'libs/requisition/prisma/migrations/20260907120000_add_requisition_postal_code/migration.sql',
+        ),
         ...placementCapacityMigrations(ROOT),
       ]) {
         await setupClient.query(readFileSync(p, 'utf8'));

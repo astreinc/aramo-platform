@@ -165,6 +165,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         SELECTION_INIT,
         METERING_INIT,
         resolve(ROOT, 'libs/requisition/prisma/migrations/20260803120000_recruiting_status_supersession/migration.sql'),
+        resolve(ROOT, 'libs/requisition/prisma/migrations/20260907120000_add_requisition_postal_code/migration.sql'),
       ]) {
         const sql = readFileSync(p, 'utf8');
         for (const stmt of splitDdl(sql)) {

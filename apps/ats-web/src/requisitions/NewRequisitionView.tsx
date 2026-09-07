@@ -18,6 +18,8 @@ import {
 } from '../ui';
 import { listCompanies, listContactsForCompany } from '../companies/companies-api';
 import type { CompanyView, ContactView } from '../companies/types';
+import { AddressTypeahead } from '../companies/AddressTypeahead';
+import type { AddressDetails } from '../companies/types';
 
 import {
   emptyCompensationFormState,
@@ -133,6 +135,8 @@ interface BasicsFormState {
   start_date: string;
   city: string;
   state: string;
+  // WL-B1 — canonical postal code (UI label "ZIP / Postal code").
+  postal_code: string;
   // Requisition Record Spec Amendment v1.0 (ungated commercial facts).
   rate_type: string;
   allow_subcontractors: boolean;
@@ -168,6 +172,7 @@ function emptyState(): FormState {
     start_date: '',
     city: '',
     state: '',
+    postal_code: '',
     rate_type: '',
     allow_subcontractors: false,
     ...emptyCompensationFormState(),
@@ -199,6 +204,7 @@ function buildCreateBody(
   if (state.start_date !== '') body['start_date'] = state.start_date;
   if (state.city !== '') body['city'] = state.city;
   if (state.state !== '') body['state'] = state.state;
+  if (state.postal_code !== '') body['postal_code'] = state.postal_code;
 
   // Requisition Record Spec Amendment v1.0 — ungated, omit-empty.
   if (state.rate_type !== '') body['rate_type'] = state.rate_type;
@@ -363,6 +369,16 @@ export function NewRequisitionView({ sessionOverride }: NewRequisitionViewProps)
       else updated[key as string] = next;
       return updated;
     });
+  }
+
+  // WL-B3 — a selected address suggestion fills the STRUCTURED location fields
+  // (city / state / postal_code). Autocomplete is non-authoritative assistance
+  // (R3): the search text is never persisted, no provider place-id / geo is
+  // stored (R4), and the recruiter remains free to edit the filled values (R12).
+  function populateWorkLocation(details: AddressDetails): void {
+    if (details.city != null) setField('city', details.city);
+    if (details.state != null) setField('state', details.state);
+    if (details.zip != null) setField('postal_code', details.zip);
   }
 
   function onCompanyChange(companyId: string): void {
@@ -820,6 +836,19 @@ export function NewRequisitionView({ sessionOverride }: NewRequisitionViewProps)
                   </>
                 }
               />
+              {/* WL-B3 — Search work location (reuses AddressTypeahead). Optional
+                  input assistance; fills City/State/ZIP, all still editable. */}
+              <div className="rc-ifield">
+                <label className="rc-ifield__lb">Search work location</label>
+                <AddressTypeahead
+                  onSelectAddress={populateWorkLocation}
+                  disabled={submitting}
+                  testId="req-worklocation-search"
+                />
+                <span style={{ display: 'block', fontSize: 12, color: '#5C6770', marginTop: 4 }}>
+                  Optional — fills City, State and ZIP / Postal code; you can edit them after.
+                </span>
+              </div>
               <div className="rc-fgrid">
                 <Field
                   label="City"
@@ -832,6 +861,12 @@ export function NewRequisitionView({ sessionOverride }: NewRequisitionViewProps)
                   prov={provenance['state']}
                   value={state.state}
                   onChange={(v) => setField('state', v)}
+                />
+                <Field
+                  label="ZIP / Postal code"
+                  prov={provenance['postal_code']}
+                  value={state.postal_code}
+                  onChange={(v) => setField('postal_code', v)}
                 />
                 <EnumSelect
                   label="Work arrangement"
