@@ -11320,6 +11320,16 @@
       "to": "libs/integration/src/lib/domain/connector-actor.ts"
     },
     {
+      "from": "doc/adr/0031-conversation-intelligence-architecture.md",
+      "status": "unscoped",
+      "to": "doc/adr/README.md"
+    },
+    {
+      "from": "doc/adr/0031-conversation-intelligence-architecture.md",
+      "status": "unscoped",
+      "to": "doc/directives/Aramo-CI-Conversation-Intelligence-Directive-v1_2-LOCKED.md"
+    },
+    {
       "from": "doc/adr/Aramo-ADR-0007-Talent-RTBF-Anonymization-v1_0-LOCKED.md",
       "status": "unscoped",
       "to": "doc/runbooks/talent-rtbf-erasure.md"
@@ -11425,6 +11435,11 @@
     },
     {
       "from": "doc/directives/00-DIRECTIVE-STANDARD.md",
+      "status": "unscoped",
+      "to": "scripts/verify-vocabulary.sh"
+    },
+    {
+      "from": "doc/directives/Aramo-CI-Conversation-Intelligence-Directive-v1_2-LOCKED.md",
       "status": "unscoped",
       "to": "scripts/verify-vocabulary.sh"
     },
@@ -13207,6 +13222,11 @@
     },
     { "from": "eslint.config.mjs", "status": "unscoped", "to": "doc/02-claude-code-discipline.md" },
     { "from": "eslint.config.mjs", "status": "unscoped", "to": "doc/03-refusal-layer.md" },
+    {
+      "from": "eslint.config.mjs",
+      "status": "unscoped",
+      "to": "doc/directives/Aramo-CI-Conversation-Intelligence-Directive-v1_2-LOCKED.md"
+    },
     {
       "from": "eslint.config.mjs",
       "status": "unscoped",
@@ -17173,6 +17193,11 @@
       "from": "scripts/verify-vocabulary.sh",
       "status": "unscoped",
       "to": "doc/architecture/aramo-platform-console-enterprise-architecture.md"
+    },
+    {
+      "from": "scripts/verify-vocabulary.sh",
+      "status": "unscoped",
+      "to": "doc/directives/Aramo-CI-Conversation-Intelligence-Directive-v1_2-LOCKED.md"
     },
     {
       "from": "scripts/verify-vocabulary.sh",

@@ -32,6 +32,16 @@ file="$(hook_json_field '.tool_input.file_path')"
 # Skip: non-text / binary / empty.
 vocab_is_text "$file" || exit 0
 
+# CI-B0 exact-file governance exemption (Aramo-CI-Conversation-Intelligence-
+# Directive-v1_2-LOCKED.md §29). This LOCKED governance artifact names prohibited
+# AI-authority concepts solely to define refusal boundaries. Recognized by EXACT
+# filename so it is exempt in BOTH the canonical LOCKED store and the repository
+# doc/directives/ copy. EXACT-FILE only — no directory, extension, or other file
+# is exempted; the repo-relative TIER2_EXCLUDES entry is the paired surface.
+case "$(basename "$file")" in
+  "Aramo-CI-Conversation-Intelligence-Directive-v1_2-LOCKED.md") exit 0 ;;
+esac
+
 # Relative path (for exemption matching against the extracted arrays).
 rel="$file"
 case "$file" in
