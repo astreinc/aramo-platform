@@ -12,7 +12,7 @@ import {
 } from './dto/consent-check-operation.js';
 import type { ConsentDecisionDto } from './dto/consent-decision.dto.js';
 import {
-  CONSENT_SCOPES,
+  PROFILE_CONSENT_SCOPES,
   type ConsentCapturedMethodValue,
   type ConsentScopeValue,
 } from './dto/consent-grant-request.dto.js';
@@ -851,7 +851,11 @@ export class ConsentRepository {
         },
       });
 
-      const scopes: TalentConsentScopeStateDto[] = CONSENT_SCOPES.map(
+      // /consent/state surfaces the talent-facing PROFILE consent matrix (the
+      // ats-web/portal consumer contract). CI-B1: conversation-operation scopes
+      // (recording/transcription/ai_processing) are governed via /consent/check,
+      // NOT shown in this matrix, so the response shape is unchanged.
+      const scopes: TalentConsentScopeStateDto[] = PROFILE_CONSENT_SCOPES.map(
         (scope) => deriveScopeStateForReadEndpoint(events, scope),
       );
 

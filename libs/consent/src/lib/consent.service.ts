@@ -5,7 +5,6 @@ import type { AuthContextType } from '@aramo/auth';
 import { ConsentRepository } from './consent.repository.js';
 import {
   CONSENT_TEXT_CURRENT_VERSION,
-  PORTAL_PROFILE_CONSENT_SCOPES,
   hashPortalConsentText,
   renderPortalConsentText,
 } from './consent-texts.js';
@@ -21,7 +20,7 @@ import type { ConsentHistoryResponseDto } from './dto/consent-history-response.d
 import type { ConsentDecisionLogEventType } from './dto/consent-decision-log-entry.dto.js';
 import type { ConsentDecisionLogResponseDto } from './dto/consent-decision-log-response.dto.js';
 import type { ConsentScopeValue } from './dto/consent-grant-request.dto.js';
-import { CONSENT_SCOPES } from './dto/consent-grant-request.dto.js';
+import { CONSENT_SCOPES, PROFILE_CONSENT_SCOPES } from './dto/consent-grant-request.dto.js';
 import type { PortalConsentTextResponseDto } from './dto/portal-consent-text.dto.js';
 import {
   CursorDecodeError,
@@ -314,16 +313,16 @@ export class ConsentService {
    * current version (deterministic; the UI picks the scope the user is
    * granting). The recipient is named by tenant_id (the canonical legal clause)
    * — the friendlier tenant name is UI chrome the controller supplies
-   * separately. CI-B1: iterates PORTAL_PROFILE_CONSENT_SCOPES (not all
-   * CONSENT_SCOPES) — the conversation-operation scopes
-   * (recording/transcription/ai_processing) are governed by their own versioned
-   * disclosure (operation-notice-texts.ts), not this generic profile template,
-   * so this endpoint's response is unchanged by the CI-B1 scope additions.
+   * separately. CI-B1: iterates PROFILE_CONSENT_SCOPES (not all CONSENT_SCOPES)
+   * — the conversation-operation scopes (recording/transcription/ai_processing)
+   * are governed by their own versioned disclosure (operation-notice-texts.ts),
+   * not this generic profile template, so this endpoint's response is unchanged
+   * by the CI-B1 scope additions.
    */
   getPortalConsentTexts(recipientTenantId: string): PortalConsentTextResponseDto {
     return {
       version: CONSENT_TEXT_CURRENT_VERSION,
-      texts: PORTAL_PROFILE_CONSENT_SCOPES.map((scope) => ({
+      texts: PROFILE_CONSENT_SCOPES.map((scope) => ({
         scope,
         text: renderPortalConsentText(CONSENT_TEXT_CURRENT_VERSION, {
           recipient_tenant_id: recipientTenantId,

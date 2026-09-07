@@ -29,8 +29,8 @@ export interface ConsentTextContext {
 // Record type. The generic portal PROFILE consent template (portal-consent-v1)
 // is NOT rendered for these conversation-operation scopes — they carry their own
 // versioned disclosure via operation-notice-texts.ts (CI directive §4.4), and
-// getPortalConsentTexts iterates PORTAL_PROFILE_CONSENT_SCOPES only. These
-// clauses document scope meaning and remain available if ever surfaced.
+// getPortalConsentTexts / the /consent/state matrix iterate PROFILE_CONSENT_SCOPES
+// only. These clauses document scope meaning and remain available if ever surfaced.
 const SCOPE_PHRASES: Record<ConsentScopeValue, string> = {
   profile_storage: 'store my profile',
   resume_processing: 'process my résumé',
@@ -42,21 +42,6 @@ const SCOPE_PHRASES: Record<ConsentScopeValue, string> = {
   ai_processing:
     'use automated (AI) analysis of conversation transcripts to assist recruiters',
 };
-
-// Portal PROFILE consent-text scopes — the scopes offered through the generic
-// portal-consent-v1 "I authorize ... for 12 months" template. CI-B1 keeps this
-// list to the pre-existing profile scopes; the conversation-operation scopes
-// (recording/transcription/ai_processing) are governed by their own versioned
-// disclosure registry (operation-notice-texts.ts) and are deliberately NOT
-// surfaced through the profile template. Adding a profile scope here is an
-// Architect-reviewed change (ADD-not-rename).
-export const PORTAL_PROFILE_CONSENT_SCOPES: readonly ConsentScopeValue[] = [
-  'profile_storage',
-  'resume_processing',
-  'matching',
-  'contacting',
-  'cross_tenant_visibility',
-];
 
 // version id → deterministic renderer. Existing entries are FROZEN.
 const TEMPLATES: Record<string, (ctx: ConsentTextContext) => string> = {

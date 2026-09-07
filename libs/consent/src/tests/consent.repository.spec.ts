@@ -13,7 +13,7 @@ import {
   CONSENT_CHECK_OPERATIONS,
   OPERATION_SCOPE_MAP,
 } from '../lib/dto/consent-check-operation.js';
-import { CONSENT_SCOPES } from '../lib/dto/consent-grant-request.dto.js';
+import { PROFILE_CONSENT_SCOPES } from '../lib/dto/consent-grant-request.dto.js';
 
 const TENANT_ID = '00000000-0000-0000-0000-000000000001';
 const TALENT_ID = '00000000-0000-0000-0000-0000000000aa';
@@ -1014,10 +1014,11 @@ describe('ConsentRepository.resolveConsentState — Decision L (R4: ledger-only 
 // source-aware most-restrictive intersection unchanged.
 // ----------------------------------------------------------------------
 
-// CI-B1: derive from the canonical tuple (Rule D — no second copy of the scope
-// list). Auto-covers the recording/transcription/ai_processing additions and any
-// future scope, so resolveAllScopes count assertions never go stale silently.
-const ALL_SCOPES = CONSENT_SCOPES;
+// CI-B1: the /consent/state matrix surfaces the PROFILE consent scopes only
+// (conversation-operation scopes are governed via /consent/check, not this
+// matrix). Derive from the canonical tuple (Rule D) so count assertions never go
+// stale on future profile-scope changes.
+const ALL_SCOPES = PROFILE_CONSENT_SCOPES;
 
 function makeAllScopesInput(): {
   tenant_id: string;
