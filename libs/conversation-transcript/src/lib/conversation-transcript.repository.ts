@@ -32,11 +32,17 @@ export interface ConversationTranscriptRow {
   source_sha256: string | null;
   normalized_artifact_ref: string | null;
   normalized_sha256: string | null;
+  // CI-B4 — which normalization contract minted the normalized artifact.
+  normalization_schema_version: string | null;
   retention_policy_ref: string | null;
   expires_at: Date | null;
   deleted_at: Date | null;
+  // CI-B4 — NORMALIZED artifact deletion marker (independent of source deleted_at).
+  normalized_deleted_at: Date | null;
   attempt_count: number;
   last_error_code: string | null;
+  // CI-B4 — normalization-phase bounded-retry counter (separate from acquisition).
+  normalization_attempt_count: number;
   provider_generated_at: Date | null;
   source_available_at: Date | null;
   acquired_at: Date | null;

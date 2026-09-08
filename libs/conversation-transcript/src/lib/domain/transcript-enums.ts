@@ -3,8 +3,14 @@
 // vocabulary for the domain/service layer). No vendor terminology appears
 // here — provider-specific names terminate at adapter boundaries.
 
-/** Acquisition lifecycle states (directive §20). B3 owns acquisition only. */
+/**
+ * Transcript lifecycle states (directive §20). B3 owns the ACQUISITION states;
+ * CI-B4 ADDITIVELY appends the NORMALIZATION states (add-only, mirrors the
+ * Prisma enum). Acquisition and normalization failure states are kept SEPARATE
+ * so the state carries the failing phase.
+ */
 export const TRANSCRIPT_STATES = [
+  // Acquisition (CI-B3).
   'waiting_for_source',
   'source_available',
   'acquiring',
@@ -13,8 +19,27 @@ export const TRANSCRIPT_STATES = [
   'failed_retryable',
   'intervention_required',
   'failed_terminal',
+  // Normalization (CI-B4).
+  'normalizing',
+  'normalized',
+  'normalization_failed_retryable',
+  'normalization_intervention_required',
+  'normalization_failed_terminal',
 ] as const;
 export type TranscriptState = (typeof TRANSCRIPT_STATES)[number];
+
+/**
+ * Canonical speaker role vocabulary for the NORMALIZED transcript artifact
+ * (directive §9). Closed set. B4 NEVER infers a role from a provider display
+ * name — an unresolved speaker is UNKNOWN.
+ */
+export const TRANSCRIPT_SPEAKER_ROLES = [
+  'RECRUITER',
+  'TALENT',
+  'OTHER',
+  'UNKNOWN',
+] as const;
+export type TranscriptSpeakerRole = (typeof TRANSCRIPT_SPEAKER_ROLES)[number];
 
 /** Content custody modes (directive §7.3). */
 export const TRANSCRIPT_CUSTODY_MODES = [

@@ -15,6 +15,8 @@ import { TranscriptInvalidStateError } from './errors.js';
 export const TRANSCRIPT_STATE_TRANSITIONS: Readonly<
   Record<TranscriptState, readonly TranscriptState[]>
 > = {
+  // ---- Acquisition (CI-B3) — existing edges unchanged; `source_ready` gains
+  // the additive edge into `normalizing` (CI-B4 continues from it). ----
   waiting_for_source: ['source_available', 'expired', 'failed_terminal'],
   source_available: ['acquiring', 'expired', 'failed_terminal'],
   acquiring: [
@@ -30,16 +32,39 @@ export const TRANSCRIPT_STATE_TRANSITIONS: Readonly<
     'expired',
   ],
   intervention_required: ['acquiring', 'failed_terminal', 'expired'],
-  source_ready: ['expired'],
+  source_ready: ['normalizing', 'expired'],
+  // ---- Normalization (CI-B4) — a lattice parallel to acquisition. ----
+  normalizing: [
+    'normalized',
+    'normalization_failed_retryable',
+    'normalization_intervention_required',
+    'normalization_failed_terminal',
+    'expired',
+  ],
+  normalization_failed_retryable: [
+    'normalizing',
+    'normalization_intervention_required',
+    'normalization_failed_terminal',
+    'expired',
+  ],
+  normalization_intervention_required: [
+    'normalizing',
+    'normalization_failed_terminal',
+    'expired',
+  ],
+  // `normalized` is the stable success state CI-B6 consumes from.
+  normalized: ['expired'],
   // Terminal states — no outgoing transitions.
   expired: [],
   failed_terminal: [],
+  normalization_failed_terminal: [],
 } as const;
 
 /** States with no outgoing transition (directive §20 terminal conditions). */
 export const TERMINAL_TRANSCRIPT_STATES: readonly TranscriptState[] = [
   'expired',
   'failed_terminal',
+  'normalization_failed_terminal',
 ];
 
 export function isTerminalTranscriptState(state: TranscriptState): boolean {
