@@ -1,5 +1,5 @@
 {
-  "aliasTotals": { "apps": 2, "libs": 68, "total": 70 },
+  "aliasTotals": { "apps": 2, "libs": 69, "total": 71 },
   "aliases": {
     "@aramo/activity": "libs/activity/src/index.ts",
     "@aramo/ai-draft": "libs/ai-draft/src/index.ts",
@@ -22,6 +22,7 @@
     "@aramo/consent": "libs/consent/src/index.ts",
     "@aramo/contact": "libs/contact/src/index.ts",
     "@aramo/conversation-intelligence": "libs/conversation-intelligence/src/index.ts",
+    "@aramo/conversation-transcript": "libs/conversation-transcript/src/index.ts",
     "@aramo/engagement": "libs/engagement/src/index.ts",
     "@aramo/entitlement": "libs/entitlement/src/index.ts",
     "@aramo/events": "libs/events/src/index.ts",
@@ -385,6 +386,33 @@
       "RequisitionGoldenProfileContextReader",
       "buildRequisitionAnalysisContext",
       "isRequisitionAnalysisContextV1"
+    ],
+    "@aramo/conversation-transcript": [
+      "CONVERSATION_TRANSCRIPT_PROVIDER",
+      "ConversationTranscriptModule",
+      "ConversationTranscriptPrismaService",
+      "ConversationTranscriptProviderRegistry",
+      "ConversationTranscriptRepository",
+      "ConversationTranscriptService",
+      "FAKE_TRANSCRIPT_PROVIDER_KEY",
+      "FakeConversationTranscriptProvider",
+      "INTERACTION_REFERENCE_PORT",
+      "MAX_ACQUISITION_ATTEMPTS",
+      "TERMINAL_TRANSCRIPT_STATES",
+      "TRANSCRIPTION_AUTHORIZATION_RESOLVER",
+      "TRANSCRIPT_CUSTODY_MODES",
+      "TRANSCRIPT_RECORDING_DEPENDENCIES",
+      "TRANSCRIPT_SOURCE_TYPES",
+      "TRANSCRIPT_STATES",
+      "TRANSCRIPT_STATE_TRANSITIONS",
+      "TranscriptAcquisitionNotAuthorizedError",
+      "TranscriptInteractionNotFoundError",
+      "TranscriptInvalidStateError",
+      "TranscriptProviderReferenceConflictError",
+      "assertTranscriptTransition",
+      "canTranscriptTransition",
+      "isTerminalTranscriptState",
+      "isTranscriptionAuthorized"
     ],
     "@aramo/engagement": [
       "DEFAULT_ENGAGEMENT_ENFORCEMENT_MODE",
@@ -3162,6 +3190,7 @@
       { "project": "visibility", "status": "production" }
     ],
     "@aramo/conversation-intelligence": [],
+    "@aramo/conversation-transcript": [],
     "@aramo/engagement": [
       {
         "excludedBy": "src/tests/**/*",
@@ -5580,6 +5609,13 @@
       "name": "conversation-intelligence",
       "root": "libs/conversation-intelligence",
       "sourceRoot": "libs/conversation-intelligence/src",
+      "tags": ["scope:ats"],
+      "targets": ["build", "lint", "test"]
+    },
+    {
+      "name": "conversation-transcript",
+      "root": "libs/conversation-transcript",
+      "sourceRoot": "libs/conversation-transcript/src",
       "tags": ["scope:ats"],
       "targets": ["build", "lint", "test"]
     },

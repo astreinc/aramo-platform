@@ -14442,6 +14442,21 @@
       "to": "libs/conversation-intelligence/tsconfig.lib.json"
     },
     {
+      "from": "libs/conversation-transcript/prisma/schema.prisma",
+      "status": "unscoped",
+      "to": "doc/05-conventions.md"
+    },
+    {
+      "from": "libs/conversation-transcript/project.json",
+      "status": "unscoped",
+      "to": "libs/conversation-transcript/src/index.ts"
+    },
+    {
+      "from": "libs/conversation-transcript/project.json",
+      "status": "unscoped",
+      "to": "libs/conversation-transcript/tsconfig.lib.json"
+    },
+    {
       "from": "libs/engagement/project.json",
       "status": "unscoped",
       "to": "libs/engagement/src/index.ts"
@@ -16117,6 +16132,11 @@
       "from": "package.json",
       "status": "unscoped",
       "to": "libs/conversation-intelligence/prisma/schema.prisma"
+    },
+    {
+      "from": "package.json",
+      "status": "unscoped",
+      "to": "libs/conversation-transcript/prisma/schema.prisma"
     },
     { "from": "package.json", "status": "unscoped", "to": "libs/entitlement/prisma/schema.prisma" },
     {
@@ -17827,6 +17847,11 @@
       "status": "unscoped",
       "to": "libs/conversation-intelligence/src/index.ts"
     },
+    {
+      "from": "tsconfig.base.json",
+      "status": "unscoped",
+      "to": "libs/conversation-transcript/src/index.ts"
+    },
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/engagement/src/index.ts" },
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/entitlement/src/index.ts" },
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/events/src/index.ts" },
@@ -17980,6 +18005,11 @@
       "from": "vitest.shared.ts",
       "status": "unscoped",
       "to": "libs/conversation-intelligence/src/index.ts"
+    },
+    {
+      "from": "vitest.shared.ts",
+      "status": "unscoped",
+      "to": "libs/conversation-transcript/src/index.ts"
     },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/engagement/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/entitlement/src/index.ts" },

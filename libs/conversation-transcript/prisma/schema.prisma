@@ -1,0 +1,168 @@
+// Per-module Prisma schema for the `conversation_transcript` module — CI-V1
+// (Aramo Conversation Intelligence, provider-neutral transcript substrate,
+// CI-B3). Authorized by Aramo-CI-Conversation-Intelligence-Directive-v1_2-LOCKED
+// §3.3 (Conversation Transcript context) + §5 (provider-neutral transcript
+// contract) + §7 (custody model) + §20 (processing state) + §27 (idempotency).
+//
+// Per Architecture v2.0/v2.1 Schema-per-Module and doc/05-conventions.md
+// "Database Conventions". Cross-schema references are UUID-only WITHOUT FK
+// constraints (directive §3.3: this context references CommunicationInteraction;
+// it does NOT own or duplicate it).
+//
+// LOCKED rulings baked in:
+//   * ConversationTranscript is the transcript METADATA / lifecycle authority.
+//     CommunicationInteraction remains the Communications system of record
+//     (directive §3.1); interaction_id is a UUID-only correlation reference.
+//   * NO transcript body and NO raw provider payload is EVER persisted here
+//     (directive §7.1, §30.1/§30.5). Source and normalized transcript CONTENT
+//     live in encrypted object storage; Postgres holds opaque artifact refs +
+//     integrity hashes + metadata only.
+//   * provider_key is a NORMALIZED lowercase string — NEVER a closed provider
+//     enum; no vendor names (Zoom/Teams) are frozen here (directive §5:
+//     provider-specific field names terminate at adapter boundaries).
+//   * The idempotency invariant is
+//     UNIQUE(tenant_id, provider_key, provider_transcript_id) — a provider
+//     transcript resource is stable WITHIN a (tenant, provider); replay of a
+//     transcript-availability event or acquisition converges (directive §27).
+//   * recording_dependency is PROVIDER-DECLARED, never a global invariant —
+//     "transcription without recording" is a per-provider capability, unproven
+//     for Zoom until CI-B5Z (directive §4.3, §6.2, §30.20).
+//
+// Cross-schema logical references (UUID-only, no FK):
+//   - tenant_id      -> identity.Tenant
+//   - interaction_id -> communications.CommunicationInteraction
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "./generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["conversation_transcript"]
+}
+
+// TranscriptState — the smallest useful ACQUISITION lifecycle (directive §20).
+// B3 owns acquisition states only; normalization states (NORMALIZING/NORMALIZED)
+// are deliberately NOT modelled here — CI-B4 adds them ADDITIVELY (enum values
+// are add-only). `source_ready` is the stable success state B4 continues from.
+enum TranscriptState {
+  waiting_for_source
+  source_available
+  acquiring
+  source_ready
+  expired
+  failed_retryable
+  intervention_required
+  failed_terminal
+
+  @@schema("conversation_transcript")
+}
+
+// TranscriptCustodyMode — where the transcript CONTENT lives (directive §7.3).
+// The presence of transcript METADATA never requires permanent Aramo custody of
+// transcript CONTENT; metadata deletion and artifact deletion are distinct.
+enum TranscriptCustodyMode {
+  // Metadata retained by Aramo; content remains at the provider; no durable
+  // Aramo transcript artifact required.
+  provider_referenced
+  // Content temporarily in Aramo object storage for a bounded processing
+  // window; expiry/deletion governed.
+  temporarily_cached
+  // Transcript artifact retained per explicit Tenant policy.
+  aramo_retained
+
+  @@schema("conversation_transcript")
+}
+
+// TranscriptSourceType — the class of the provider-supplied source artifact
+// (directive §5 capability model). Provider-neutral; `unknown` until declared.
+enum TranscriptSourceType {
+  provider_full_transcript
+  provider_live_stream
+  unknown
+
+  @@schema("conversation_transcript")
+}
+
+// TranscriptRecordingDependency — PROVIDER-DECLARED (never global). Whether the
+// provider's eligible full transcript requires cloud recording (directive §4.3,
+// §6.2). B3 must not assume one value for all providers (§30.20).
+enum TranscriptRecordingDependency {
+  required
+  not_required
+  unknown
+
+  @@schema("conversation_transcript")
+}
+
+// ConversationTranscript — the provider-neutral transcript metadata aggregate.
+// Smallest durable shape that proves: which tenant, which interaction, which
+// provider, which provider transcript resource, what acquisition state, whether
+// source/normalized artifacts exist, which integrity hashes exist, which custody
+// / retention policy applies, and the acquisition timeline. NO transcript body.
+model ConversationTranscript {
+  id        String @id @default(uuid()) @db.Uuid
+  tenant_id String @db.Uuid
+
+  // UUID-only reference to communications.CommunicationInteraction (no FK).
+  // Same-tenant existence is enforced at the application boundary via the
+  // InteractionReferencePort (directive §3.1/§3.3: Communications keeps
+  // interaction authority; this context never duplicates it).
+  interaction_id String @db.Uuid
+
+  // Provider IDENTITY metadata (provider-neutral). provider_key is a normalized
+  // lowercase string; provider_transcript_id is the provider's transcript
+  // resource id (correlation only). provider_resource_ref is an OPTIONAL opaque
+  // provider reference/URL — never a token or provider secret.
+  provider_key           String
+  provider_transcript_id String
+  provider_resource_ref  String?
+
+  source_type          TranscriptSourceType          @default(unknown)
+  recording_dependency TranscriptRecordingDependency @default(unknown)
+
+  // BCP-47 language tag where the provider declares it.
+  language String?
+
+  // Provider capability metadata (nullable = provider did not declare).
+  speaker_attribution_supported Boolean?
+  timestamps_supported          Boolean?
+
+  state        TranscriptState       @default(waiting_for_source)
+  custody_mode TranscriptCustodyMode @default(provider_referenced)
+
+  // OPAQUE object-storage handles — NEVER a body, NEVER a public URL. Null until
+  // the source artifact is acquired (B3) / the normalized artifact exists (B4).
+  source_artifact_ref     String?
+  source_sha256           String?
+  normalized_artifact_ref String?
+  normalized_sha256       String?
+
+  // Retention/custody metadata (directive §8.2). No indefinite default: expiry
+  // is set from Tenant policy by governance, not hard-coded here.
+  retention_policy_ref String?
+  expires_at           DateTime? @db.Timestamptz
+  // Artifact deletion marker — distinct from metadata deletion (§7.3/§8.2).
+  deleted_at           DateTime? @db.Timestamptz
+
+  // Bounded-retry poison counter + last taxonomy token (never raw provider text)
+  // — mirrors the RequisitionExternalReconciliation record-then-resolve pattern.
+  attempt_count   Int     @default(0)
+  last_error_code String?
+
+  provider_generated_at DateTime? @db.Timestamptz
+  source_available_at   DateTime? @db.Timestamptz
+  acquired_at           DateTime? @db.Timestamptz
+  normalized_at         DateTime? @db.Timestamptz
+
+  created_at DateTime @default(now()) @db.Timestamptz
+  updated_at DateTime @default(now()) @updatedAt @db.Timestamptz
+
+  // Idempotency invariant (directive §27): one provider transcript resource maps
+  // to exactly one aggregate within a (tenant, provider). Replay converges.
+  @@unique([tenant_id, provider_key, provider_transcript_id])
+  @@index([tenant_id, state])
+  @@index([tenant_id, interaction_id])
+  @@schema("conversation_transcript")
+}

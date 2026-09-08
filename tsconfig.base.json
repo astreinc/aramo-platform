@@ -45,6 +45,7 @@
       "@aramo/client-talent-restriction": ["libs/client-talent-restriction/src/index.ts"],
       "@aramo/company": ["libs/company/src/index.ts"],
       "@aramo/consent": ["libs/consent/src/index.ts"],
+      "@aramo/conversation-transcript": ["libs/conversation-transcript/src/index.ts"],
       "@aramo/contact": ["libs/contact/src/index.ts"],
       "@aramo/entitlement": ["libs/entitlement/src/index.ts"],
       "@aramo/events": ["libs/events/src/index.ts"],
