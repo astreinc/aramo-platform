@@ -56,3 +56,19 @@ export class TranscriptAcquisitionNotAuthorizedError extends Error {
     this.name = 'TranscriptAcquisitionNotAuthorizedError';
   }
 }
+
+/**
+ * The referenced ConversationTranscript aggregate does not exist within the
+ * tenant (CI-B4). Tenant-safe: a wrong-tenant transcript id is "not found"
+ * (directive §28 tenant isolation). Carries no detail beyond the echoed id.
+ */
+export class TranscriptNotFoundError extends Error {
+  readonly tenantId: string;
+  readonly transcriptId: string;
+  constructor(tenantId: string, transcriptId: string) {
+    super('ConversationTranscript not found in tenant');
+    this.name = 'TranscriptNotFoundError';
+    this.tenantId = tenantId;
+    this.transcriptId = transcriptId;
+  }
+}

@@ -24,10 +24,12 @@ export {
   TRANSCRIPT_CUSTODY_MODES,
   TRANSCRIPT_SOURCE_TYPES,
   TRANSCRIPT_RECORDING_DEPENDENCIES,
+  TRANSCRIPT_SPEAKER_ROLES,
   type TranscriptState,
   type TranscriptCustodyMode,
   type TranscriptSourceType,
   type TranscriptRecordingDependency,
+  type TranscriptSpeakerRole,
 } from './lib/domain/transcript-enums.js';
 
 // Transcript acquisition state machine.
@@ -44,6 +46,7 @@ export {
   TranscriptInteractionNotFoundError,
   TranscriptProviderReferenceConflictError,
   TranscriptAcquisitionNotAuthorizedError,
+  TranscriptNotFoundError,
 } from './lib/domain/errors.js';
 
 // Provider-neutral acquisition port + capability contract + registry + fake.
@@ -74,3 +77,67 @@ export {
   isTranscriptionAuthorized,
   type TranscriptionAuthorization,
 } from './lib/ports/transcription-authorization.js';
+
+// ==== CI-B4 — canonical normalization + artifact lifecycle ====
+
+export {
+  TranscriptNormalizationService,
+  MAX_NORMALIZATION_ATTEMPTS,
+  type NormalizeTranscriptCommand,
+} from './lib/normalization/transcript-normalization.service.js';
+
+// Canonical normalized transcript contract (the CI-B6 input shape).
+export {
+  NORMALIZED_TRANSCRIPT_SCHEMA_VERSION,
+  deriveUtteranceId,
+  type NormalizedTranscript,
+  type NormalizedUtterance,
+} from './lib/normalization/normalized-transcript.js';
+export { validateNormalizedTranscript } from './lib/normalization/normalized-transcript.validator.js';
+export {
+  canonicalize,
+  canonicalStringify,
+  canonicalBytes,
+} from './lib/normalization/canonical-json.js';
+export { sha256Hex, sha256HexUtf8 } from './lib/normalization/hashing.js';
+export { normalizeUtteranceText } from './lib/normalization/text-normalization.js';
+
+// Normalization error taxonomy.
+export {
+  NORMALIZATION_ERROR_CODES,
+  NormalizationError,
+  SourceArtifactNotFoundError,
+  SourceHashMismatchError,
+  SourceFormatUnsupportedError,
+  SourceParseFailedError,
+  NormalizedArtifactWriteError,
+  NormalizationSchemaInvalidError,
+  type NormalizationErrorCode,
+} from './lib/normalization/normalization-errors.js';
+
+// Provider-neutral source-parser seam + generic fixture parser.
+export {
+  TRANSCRIPT_SOURCE_PARSER_REGISTRY,
+  type TranscriptSourceParser,
+  type ParsedSourceTranscript,
+  type RawTranscriptSegment,
+} from './lib/normalization/transcript-source-parser.port.js';
+export { TranscriptSourceParserRegistry } from './lib/normalization/transcript-source-parser.registry.js';
+export {
+  FixtureTranscriptParser,
+  FIXTURE_TRANSCRIPT_FORMAT,
+} from './lib/normalization/fixture-transcript-parser.js';
+
+// Artifact-store port (bound at composition root) + in-memory test fake.
+export {
+  TRANSCRIPT_ARTIFACT_STORE,
+  TranscriptArtifactWriteError,
+  TranscriptArtifactNotFoundError,
+  type TranscriptArtifactStore,
+  type PutNormalizedInput,
+} from './lib/normalization/transcript-artifact-store.port.js';
+export {
+  InMemoryTranscriptArtifactStore,
+  buildNormalizedArtifactKey,
+  type FakeWriteMode,
+} from './lib/normalization/fake/in-memory-transcript-artifact-store.js';

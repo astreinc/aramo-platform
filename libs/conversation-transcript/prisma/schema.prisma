@@ -42,10 +42,12 @@ datasource db {
   schemas  = ["conversation_transcript"]
 }
 
-// TranscriptState — the smallest useful ACQUISITION lifecycle (directive §20).
-// B3 owns acquisition states only; normalization states (NORMALIZING/NORMALIZED)
-// are deliberately NOT modelled here — CI-B4 adds them ADDITIVELY (enum values
-// are add-only). `source_ready` is the stable success state B4 continues from.
+// TranscriptState — the transcript lifecycle. B3 owned ACQUISITION states; CI-B4
+// ADDITIVELY appends the NORMALIZATION states (directive §20; enum values are
+// add-only — never renamed/removed). `source_ready` remains the stable B3
+// success state and is now the entry to normalization. Acquisition and
+// normalization failures are kept SEPARATE so state carries the failing phase
+// (crisp provenance); existing B3 transitions/tests are unchanged.
 enum TranscriptState {
   waiting_for_source
   source_available
@@ -55,6 +57,12 @@ enum TranscriptState {
   failed_retryable
   intervention_required
   failed_terminal
+  // CI-B4 — normalization lifecycle (additive).
+  normalizing
+  normalized
+  normalization_failed_retryable
+  normalization_intervention_required
+  normalization_failed_terminal
 
   @@schema("conversation_transcript")
 }
@@ -139,17 +147,30 @@ model ConversationTranscript {
   normalized_artifact_ref String?
   normalized_sha256       String?
 
+  // CI-B4 — the normalization schema contract version that produced the
+  // normalized artifact (e.g. `conversation-transcript.normalized.v1`). Proves
+  // WHICH normalization contract minted the artifact (directive §21 provenance).
+  normalization_schema_version String?
+
   // Retention/custody metadata (directive §8.2). No indefinite default: expiry
   // is set from Tenant policy by governance, not hard-coded here.
   retention_policy_ref String?
   expires_at           DateTime? @db.Timestamptz
-  // Artifact deletion marker — distinct from metadata deletion (§7.3/§8.2).
+  // SOURCE artifact deletion marker — distinct from metadata deletion (§7.3/§8.2).
   deleted_at           DateTime? @db.Timestamptz
+  // CI-B4 — NORMALIZED artifact deletion marker. Independent of the source
+  // marker: source and normalized artifacts have independent lifecycles/expiry
+  // (directive §8.2 — "Do not assume source and normalized artifacts share the
+  // same expiry"). Deleting one never silently deletes the other.
+  normalized_deleted_at DateTime? @db.Timestamptz
 
   // Bounded-retry poison counter + last taxonomy token (never raw provider text)
   // — mirrors the RequisitionExternalReconciliation record-then-resolve pattern.
   attempt_count   Int     @default(0)
   last_error_code String?
+  // CI-B4 — normalization-phase bounded-retry counter, kept SEPARATE from the
+  // acquisition `attempt_count` so the two phases never contaminate each other.
+  normalization_attempt_count Int @default(0)
 
   provider_generated_at DateTime? @db.Timestamptz
   source_available_at   DateTime? @db.Timestamptz

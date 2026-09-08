@@ -37,10 +37,39 @@ describe('CI-B3 transcript acquisition state machine', () => {
     expect(canTranscriptTransition('failed_terminal', 'acquiring')).toBe(false);
   });
 
-  it('B3 does NOT model normalization states (deferred to CI-B4)', () => {
-    // No normalizing/normalized token exists — B4 adds them additively.
-    expect(TRANSCRIPT_STATES).not.toContain('normalizing');
-    expect(TRANSCRIPT_STATES).not.toContain('normalized');
+  it('B3 acquisition states/edges are intact after the CI-B4 additive extension', () => {
+    // The 8 acquisition states remain, unchanged; B4 only ADDED states/edges.
+    for (const s of [
+      'waiting_for_source',
+      'source_available',
+      'acquiring',
+      'source_ready',
+      'expired',
+      'failed_retryable',
+      'intervention_required',
+      'failed_terminal',
+    ] as const) {
+      expect(TRANSCRIPT_STATES).toContain(s);
+    }
+    // Acquisition edges unchanged: source_ready never re-enters acquisition.
+    expect(canTranscriptTransition('source_ready', 'acquiring')).toBe(false);
+  });
+
+  it('CI-B4 normalization states are present and reachable from source_ready', () => {
+    for (const s of [
+      'normalizing',
+      'normalized',
+      'normalization_failed_retryable',
+      'normalization_intervention_required',
+      'normalization_failed_terminal',
+    ] as const) {
+      expect(TRANSCRIPT_STATES).toContain(s);
+    }
+    // The additive normalization entry edge.
+    expect(canTranscriptTransition('source_ready', 'normalizing')).toBe(true);
+    expect(canTranscriptTransition('normalizing', 'normalized')).toBe(true);
+    // Acquisition failures and normalization failures are distinct states.
+    expect(canTranscriptTransition('acquiring', 'normalization_failed_terminal')).toBe(false);
   });
 
   it('assertTranscriptTransition throws a typed error on an illegal edge', () => {
