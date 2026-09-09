@@ -14,6 +14,8 @@ import { PipelineModule } from '@aramo/pipeline';
 import { RequisitionModule } from '@aramo/requisition';
 import { TalentRecordModule } from '@aramo/talent-record';
 
+import { ConversationTranscriptZoomModule } from '../conversation-transcript/conversation-transcript-zoom.module.js';
+
 import { CommunicationsController } from './communications.controller.js';
 import { TalentCommunicationsController } from './talent-communications.controller.js';
 import { CommunicationsApiService } from './communications-api.service.js';
@@ -56,6 +58,10 @@ const ZOOM_VOICE_PROVIDER_REGISTRAR = Symbol('ZOOM_VOICE_PROVIDER_REGISTRAR');
     // no_contact→contacted orchestration (PipelineRepository). apps/api edge only;
     // NO libs/communications → pipeline dependency (R6).
     PipelineModule,
+    // CI-B5Z — the Conversation-Intelligence Zoom transcript composition. Exports
+    // ZOOM_TRANSCRIPT_EVENT_HANDLER, which ZoomWebhookService @Optional-injects to
+    // route phone.recording_transcript_completed into the CI acquisition flow.
+    ConversationTranscriptZoomModule,
   ],
   controllers: [CommunicationsController, ZoomWebhookController, TalentCommunicationsController],
   providers: [
