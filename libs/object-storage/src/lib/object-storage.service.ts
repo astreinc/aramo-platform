@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 
 import { Inject, Injectable } from '@nestjs/common';
 import {
+  DeleteObjectCommand,
   GetObjectCommand,
   PutObjectCommand,
   PutObjectTaggingCommand,
@@ -205,6 +206,116 @@ export class ObjectStorageService {
     // `s3://bucket/key` URL, which the reader mis-keyed → 404; that was the
     // latent defect this fix closes. No `s3://` scheme, no bucket, in a stored ref.
     return { storage_ref: storage_key, sha256 };
+  }
+
+  // CI-B5Z — server-side generic byte PUT/GET/DELETE by an already-built opaque
+  // key (the transcript source/normalized-artifact evidence path needs a
+  // server-side download, which the presigned-only surface above did not
+  // provide). Callers own key construction (tenant-scoped, opaque). Bytes are
+  // never logged; the sha256 is a content hash (not PII).
+
+  /** Server-side PUT of raw bytes to an opaque key; returns the bare key + sha256. */
+  async putObjectBytes(input: {
+    storage_key: string;
+    body: Buffer;
+    content_type: string;
+    requestId: string;
+  }): Promise<{ storage_ref: string; sha256: string }> {
+    const { bucket } = this.s3Factory.getConfig();
+    const client = this.s3Factory.getClient();
+    const sha256 = createHash('sha256').update(input.body).digest('hex');
+    try {
+      await client.send(
+        new PutObjectCommand({
+          Bucket: bucket,
+          Key: input.storage_key,
+          Body: input.body,
+          ContentType: input.content_type,
+        }),
+      );
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      throw new AramoError('OBJECT_STORAGE_UPLOAD_FAILED', `object put failed: ${message}`, 502, {
+        requestId: input.requestId,
+        details: { kind: 'put_object_bytes_failed', bucket, storage_key: input.storage_key },
+      });
+    }
+    this.logger.log({
+      event: 'object_storage.object_put',
+      requestId: input.requestId,
+      bucket,
+      storage_key: input.storage_key,
+      content_type: input.content_type,
+      byte_length: input.body.length,
+      sha256,
+    });
+    return { storage_ref: input.storage_key, sha256 };
+  }
+
+  /** Server-side GET of raw bytes by opaque key, bounded by maxBytes. */
+  async getObjectBytes(input: {
+    storage_key: string;
+    requestId: string;
+    maxBytes: number;
+  }): Promise<Buffer> {
+    const { bucket } = this.s3Factory.getConfig();
+    const client = this.s3Factory.getClient();
+    let body: Uint8Array;
+    try {
+      const res = await client.send(
+        new GetObjectCommand({ Bucket: bucket, Key: input.storage_key }),
+      );
+      const stream = res.Body as { transformToByteArray(): Promise<Uint8Array> } | undefined;
+      if (stream === undefined) {
+        throw new AramoError('OBJECT_STORAGE_UPLOAD_FAILED', 'empty object body', 502, {
+          requestId: input.requestId,
+          details: { kind: 'get_object_bytes_empty', bucket, storage_key: input.storage_key },
+        });
+      }
+      body = await stream.transformToByteArray();
+    } catch (err: unknown) {
+      if (err instanceof AramoError) throw err;
+      const message = err instanceof Error ? err.message : String(err);
+      throw new AramoError('OBJECT_STORAGE_UPLOAD_FAILED', `object get failed: ${message}`, 502, {
+        requestId: input.requestId,
+        details: { kind: 'get_object_bytes_failed', bucket, storage_key: input.storage_key },
+      });
+    }
+    if (body.byteLength > input.maxBytes) {
+      throw new AramoError('OBJECT_STORAGE_UPLOAD_FAILED', 'object exceeds max bytes', 502, {
+        requestId: input.requestId,
+        details: { kind: 'get_object_bytes_too_large', bucket, storage_key: input.storage_key },
+      });
+    }
+    this.logger.log({
+      event: 'object_storage.object_get',
+      requestId: input.requestId,
+      bucket,
+      storage_key: input.storage_key,
+      byte_length: body.byteLength,
+    });
+    return Buffer.from(body);
+  }
+
+  /** Server-side DELETE by opaque key (idempotent at the S3 layer). */
+  async deleteObjectByKey(input: { storage_key: string; requestId: string }): Promise<void> {
+    const { bucket } = this.s3Factory.getConfig();
+    const client = this.s3Factory.getClient();
+    try {
+      await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: input.storage_key }));
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      throw new AramoError('OBJECT_STORAGE_UPLOAD_FAILED', `object delete failed: ${message}`, 502, {
+        requestId: input.requestId,
+        details: { kind: 'delete_object_by_key_failed', bucket, storage_key: input.storage_key },
+      });
+    }
+    this.logger.log({
+      event: 'object_storage.object_delete',
+      requestId: input.requestId,
+      bucket,
+      storage_key: input.storage_key,
+    });
   }
 
   async createPresignedGet(

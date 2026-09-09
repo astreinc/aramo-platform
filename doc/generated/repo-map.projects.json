@@ -432,6 +432,7 @@
       "TranscriptSourceParserRegistry",
       "assertTranscriptTransition",
       "buildNormalizedArtifactKey",
+      "buildSourceArtifactKey",
       "canTranscriptTransition",
       "canonicalBytes",
       "canonicalStringify",
@@ -3093,6 +3094,12 @@
     "@aramo/communications": [
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/ci-b5z-consent-transcript-gate.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/communications-authz.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -3152,6 +3159,12 @@
       { "project": "visibility", "status": "production" }
     ],
     "@aramo/consent": [
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/ci-b5z-consent-transcript-gate.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/pipeline-talent-enrichment.service.spec.ts",
@@ -3220,7 +3233,21 @@
       { "project": "visibility", "status": "production" }
     ],
     "@aramo/conversation-intelligence": [],
-    "@aramo/conversation-transcript": [],
+    "@aramo/conversation-transcript": [
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/ci-b5z-zoom-transcript-adapter.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/ci-b5z-zoom-transcript-orchestration.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      { "project": "api", "status": "production" }
+    ],
     "@aramo/engagement": [
       {
         "excludedBy": "src/tests/**/*",

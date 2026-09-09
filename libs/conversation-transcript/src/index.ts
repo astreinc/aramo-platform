@@ -135,9 +135,11 @@ export {
   TranscriptArtifactNotFoundError,
   type TranscriptArtifactStore,
   type PutNormalizedInput,
+  type PutSourceInput,
 } from './lib/normalization/transcript-artifact-store.port.js';
 export {
   InMemoryTranscriptArtifactStore,
   buildNormalizedArtifactKey,
+  buildSourceArtifactKey,
   type FakeWriteMode,
 } from './lib/normalization/fake/in-memory-transcript-artifact-store.js';
