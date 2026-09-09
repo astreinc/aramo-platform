@@ -293,6 +293,27 @@ export class CommunicationsRepository {
     return rows.map((r) => r.interaction_id);
   }
 
+  // CI-B5Z — the DURABLE Talent identity(ies) for an interaction: the canonical
+  // `subject` CommunicationAssociation(s) of subject_type=talent_record,
+  // tenant-scoped. This is association TRUTH — never inference from phone/name/
+  // time. The caller (CI consent enforcement) requires EXACTLY ONE: zero → park,
+  // multiple → intervention/fail-closed. Returns distinct talent subject ids.
+  async findTalentSubjectIdsForInteraction(
+    tenantId: string,
+    interactionId: string,
+  ): Promise<string[]> {
+    const rows = await this.prisma.communicationAssociation.findMany({
+      where: {
+        tenant_id: tenantId,
+        interaction_id: interactionId,
+        subject_type: 'talent_record' satisfies CommunicationSubjectType,
+        relation_type: 'subject' satisfies CommunicationRelationType,
+      },
+      select: { subject_id: true },
+    });
+    return [...new Set(rows.map((r) => r.subject_id))];
+  }
+
   // COMM-B7 — the Talent communication timeline read. Interactions linked to the
   // talent via a `subject` CommunicationAssociation (Communications associations
   // ONLY — no Requisition/Activity join), tenant-scoped, ordered (created_at DESC,

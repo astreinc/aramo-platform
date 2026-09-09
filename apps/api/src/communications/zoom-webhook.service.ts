@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import {
   CommunicationInvalidStateError,
   CommunicationsRepository,
@@ -16,6 +16,16 @@ import {
   ZOOM_WEBHOOK_PROVIDER_KEY,
   ZOOM_WEBHOOK_TOLERANCE_SEC,
 } from './zoom-webhook.constants.js';
+import {
+  ZOOM_TRANSCRIPT_EVENT_HANDLER,
+  type ZoomTranscriptEventHandler,
+} from './zoom-transcript-event-handler.port.js';
+
+// CI-B5Z — the official recording-transcript availability event. Routed to the
+// CI transcript-acquisition handler through this SAME governed ingress (after
+// signature verification + idempotent inbox reservation); it never bypasses the
+// CommunicationProviderEvent inbox and never creates a second event table.
+const ZOOM_RECORDING_TRANSCRIPT_COMPLETED_EVENT = 'phone.recording_transcript_completed';
 
 // COMM-B6 — apps/api Zoom webhook ingress processing. Implements the LOCKED
 // anti-oracle flow. Tenant is resolved ONLY after cryptographic authenticity is
@@ -59,6 +69,11 @@ export class ZoomWebhookService {
     private readonly providers: VoiceProviderRegistry,
     private readonly repo: CommunicationsRepository,
     private readonly comms: CommunicationsService,
+    // CI-B5Z — optional: bound when the Conversation-Intelligence composition
+    // module is present. Unbound → transcript events are recorded `ignored`.
+    @Optional()
+    @Inject(ZOOM_TRANSCRIPT_EVENT_HANDLER)
+    private readonly transcriptHandler: ZoomTranscriptEventHandler | null = null,
   ) {}
 
   async process(input: ZoomWebhookInput): Promise<ZoomWebhookOutcome> {
@@ -117,6 +132,38 @@ export class ZoomWebhookService {
     });
     if (!reservation.reserved) {
       // Redelivery — the original event already stands. No re-processing.
+      return { status: 204 };
+    }
+
+    // 5b) CI-B5Z recording-transcript route — the event is already in the
+    // canonical inbox; hand it to the CI transcript-acquisition handler. On a
+    // retriable outcome (e.g. transcript arrived before interaction correlation)
+    // the inbox row is recorded `failed` so it stays re-drivable; otherwise
+    // `processed`. Handler errors never surface transcript content.
+    if (envelope.event === ZOOM_RECORDING_TRANSCRIPT_COMPLETED_EVENT) {
+      if (this.transcriptHandler === null) {
+        await this.repo.markProviderEventProcessed(reservation.row.id, {
+          status: 'ignored',
+          error_code: 'CI_TRANSCRIPT_HANDLER_UNBOUND',
+        });
+        return { status: 204 };
+      }
+      try {
+        const outcome = await this.transcriptHandler.handle({
+          tenant_id: connection.tenant_id,
+          integration_connection_id: connection.id,
+          correlation: envelope.object,
+          raw_body: input.rawBody,
+        });
+        await this.repo.markProviderEventProcessed(reservation.row.id, {
+          status: outcome.retriable ? 'failed' : 'processed',
+        });
+      } catch {
+        await this.repo.markProviderEventProcessed(reservation.row.id, {
+          status: 'failed',
+          error_code: 'CI_TRANSCRIPT_HANDLER_ERROR',
+        });
+      }
       return { status: 204 };
     }
 

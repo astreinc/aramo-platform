@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 import { Injectable } from '@nestjs/common';
 import { AramoError, hashCanonicalizedBody } from '@aramo/common';
 import type { AuthContextType } from '@aramo/auth';
@@ -111,6 +113,30 @@ export class ConsentService {
       idempotencyKey,
       requestHash: hashCanonicalizedBody(request),
       requestId,
+    });
+  }
+
+  /**
+   * CI-B5Z — narrow INTERNAL enforcement check for a trusted background/service
+   * caller (no HTTP user identity). Invokes the SAME canonical decision logic
+   * (`resolveConsentState`) as the HTTP `check()` path — it does NOT duplicate
+   * consent logic, mint a user session, or mutate consent. Tenant- + talent-
+   * bound, fail-closed (the caller treats any non-'allowed' as denied). Not
+   * exposed as an HTTP route. Used by the CI transcript-acquisition enforcement
+   * adapter to independently gate `recording` and `transcription`.
+   */
+  async checkOperationForService(input: {
+    tenant_id: string;
+    talent_record_id: string;
+    operation: 'recording' | 'transcription';
+  }): Promise<ConsentDecisionDto> {
+    return this.consentRepo.resolveConsentState({
+      tenant_id: input.tenant_id,
+      talent_record_id: input.talent_record_id,
+      operation: input.operation,
+      idempotencyKey: undefined,
+      requestHash: hashCanonicalizedBody(input),
+      requestId: randomUUID(),
     });
   }
 

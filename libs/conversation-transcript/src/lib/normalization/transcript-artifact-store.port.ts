@@ -35,7 +35,30 @@ export interface PutNormalizedInput {
   readonly bytes: Buffer;
 }
 
+export interface PutSourceInput {
+  readonly tenant_id: string;
+  /**
+   * Opaque, caller-supplied stable key basis for the source object. The
+   * acquisition adapter supplies its provider identity (e.g.
+   * `zoom_phone/<provider_transcript_id>`) because it does not hold the
+   * aggregate id at write time; the store treats it as an opaque path segment.
+   * Must be deterministic per provider transcript so re-writes converge.
+   */
+  readonly ref_basis: string;
+  /** Raw provider SOURCE transcript bytes — durable evidence, never mutated. */
+  readonly bytes: Buffer;
+}
+
 export interface TranscriptArtifactStore {
+  /**
+   * Write the raw SOURCE artifact (provider transcript evidence); returns its
+   * opaque ref + server-computed SHA-256. Deterministic key for a given
+   * (tenant, transcript) so idempotent re-writes converge on the same ref (CI-B5
+   * raw-evidence capture — the gap B3/B4 left: no source-byte write path existed).
+   * Throws {@link TranscriptArtifactWriteError} on failure.
+   */
+  putSource(input: PutSourceInput): Promise<{ ref: string; sha256: string }>;
+
   /**
    * Read SOURCE artifact bytes by opaque, tenant-scoped ref. Throws
    * {@link TranscriptArtifactNotFoundError} when absent (tenant-safe: another

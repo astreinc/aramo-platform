@@ -4,10 +4,13 @@
 // idempotent re-writes converge), and a key that contains NO transcript text or
 // PII. Content is held as opaque bytes; nothing is logged.
 
+import { createHash } from 'node:crypto';
+
 import {
   TranscriptArtifactNotFoundError,
   TranscriptArtifactWriteError,
   type PutNormalizedInput,
+  type PutSourceInput,
   type TranscriptArtifactStore,
 } from '../transcript-artifact-store.port.js';
 
@@ -16,13 +19,21 @@ export function buildNormalizedArtifactKey(tenantId: string, transcriptId: strin
   return `conversation-transcript/${tenantId}/${transcriptId}/normalized.json`;
 }
 
+/** Deterministic, tenant-scoped, opaque SOURCE-artifact key (raw evidence). */
+export function buildSourceArtifactKey(tenantId: string, refBasis: string): string {
+  return `conversation-transcript/${tenantId}/${refBasis}/source`;
+}
+
 export type FakeWriteMode = 'ok' | 'retryable' | 'terminal';
 
 export class InMemoryTranscriptArtifactStore implements TranscriptArtifactStore {
   /** key = `${tenantId}::${ref}` → bytes. */
   private readonly objects = new Map<string, Buffer>();
   public writeMode: FakeWriteMode = 'ok';
+  /** Independent failure injection for source writes (raw evidence). */
+  public sourceWriteMode: FakeWriteMode = 'ok';
   public putCallCount = 0;
+  public putSourceCallCount = 0;
 
   private key(tenantId: string, ref: string): string {
     return `${tenantId}::${ref}`;
@@ -36,6 +47,16 @@ export class InMemoryTranscriptArtifactStore implements TranscriptArtifactStore 
   /** Test helper: read persisted bytes (returns undefined if absent). */
   peek(tenantId: string, ref: string): Buffer | undefined {
     return this.objects.get(this.key(tenantId, ref));
+  }
+
+  async putSource(input: PutSourceInput): Promise<{ ref: string; sha256: string }> {
+    this.putSourceCallCount += 1;
+    if (this.sourceWriteMode === 'retryable') throw new TranscriptArtifactWriteError(true);
+    if (this.sourceWriteMode === 'terminal') throw new TranscriptArtifactWriteError(false);
+    const ref = buildSourceArtifactKey(input.tenant_id, input.ref_basis);
+    this.objects.set(this.key(input.tenant_id, ref), input.bytes);
+    const sha256 = createHash('sha256').update(input.bytes).digest('hex');
+    return { ref, sha256 };
   }
 
   async getSource(tenantId: string, ref: string): Promise<Buffer> {
