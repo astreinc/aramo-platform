@@ -385,7 +385,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install ripgrep
-        run: sudo apt-get update && sudo apt-get install -y ripgrep
+        run: |
+          # ripgrep is not preinstalled on ubuntu-latest. Install it from the
+          # runner's prepopulated Ubuntu apt index. Do NOT run apt-get update here:
+          # that refreshes unrelated third-party repos and can fail this gate before
+          # the vocabulary scan starts.
+          sudo apt-get install -y ripgrep
+          rg --version
       - run: bash scripts/verify-vocabulary.sh
 
   # ---------------------------------------------------------------------------
