@@ -22,6 +22,7 @@
       "@aramo/communications": ["../../dist/libs/communications/src/index.d.ts"],
       "@aramo/company": ["../../dist/libs/company/src/index.d.ts"],
       "@aramo/consent": ["../../dist/libs/consent/src/index.d.ts"],
+      "@aramo/conversation-intelligence": ["../../dist/libs/conversation-intelligence/src/index.d.ts"],
       "@aramo/conversation-transcript": ["../../dist/libs/conversation-transcript/src/index.d.ts"],
       "@aramo/contact": ["../../dist/libs/contact/src/index.d.ts"],
       "@aramo/selection": ["../../dist/libs/selection/src/index.d.ts"],

@@ -93,3 +93,152 @@ model RequisitionAnalysisContextSnapshot {
   @@index([tenant_id, created_at])
   @@schema("conversation_intelligence")
 }
+
+// ============================================================================
+// CI-B6 — Conversation Intelligence Processing (additive; same
+// `conversation_intelligence` schema). Turns (B4 normalized transcript + B2
+// immutable Requisition snapshot + B1 ai_processing authorization) into an
+// IMMUTABLE processing run with AI-GENERATED CLAIMS, transcript-span citations,
+// and a review-ready draft. Directive §11-§24. NO transcript body, NO raw model
+// response, NO hidden reasoning, NO numeric ordering, NO workflow mutation. Completed
+// runs + all claims/citations/drafts are immutable (BEFORE UPDATE triggers in
+// the migration). Cross-schema refs (interaction/transcript/snapshot) UUID-only.
+// ============================================================================
+
+// Processing lifecycle. Immutable terminal = completed | failed_terminal.
+// `blocked_not_authorized` is re-drivable (consent may later allow).
+// `completed` == READY_FOR_REVIEW (B7).
+enum ConversationIntelligenceRunStatus {
+  queued
+  processing
+  completed
+  failed_retryable
+  intervention_required
+  failed_terminal
+  blocked_not_authorized
+
+  @@schema("conversation_intelligence")
+}
+
+// AI-claim evidence status (directive §14 vocabulary, verbatim). Describes
+// CONVERSATION evidence — never a hiring judgment or ordering.
+enum ConversationIntelligenceClaimStatus {
+  SUPPORTED_BY_STATEMENT
+  PARTIALLY_SUPPORTED
+  DISCUSSED_UNCLEAR
+  NOT_DISCUSSED
+  CONTRADICTED
+
+  @@schema("conversation_intelligence")
+}
+
+// ConversationIntelligenceRun — immutable CI processing-run provenance. The
+// analysis-identity unique key (tenant + transcript + snapshot + model + prompt
+// version + schema version) makes a re-run converge; a changed model/prompt/
+// schema is a NEW run (never a silent overwrite).
+model ConversationIntelligenceRun {
+  id        String @id @db.Uuid
+  tenant_id String @db.Uuid
+
+  // Cross-schema references (UUID-only, no FK).
+  interaction_id                           String @db.Uuid
+  conversation_transcript_id               String @db.Uuid
+  requisition_analysis_context_snapshot_id String @db.Uuid
+
+  // The exact normalized-artifact hash this run was grounded on (evidence bind).
+  normalized_sha256 String
+
+  // Model + prompt + output-schema provenance (audit/repro).
+  model_provider          String
+  model_name              String
+  model_version           String?
+  prompt_template_id      String
+  prompt_template_version String
+  prompt_sha256           String
+  output_schema_version   String
+
+  status          ConversationIntelligenceRunStatus @default(queued)
+  attempt_count   Int                               @default(0)
+  last_error_code String?
+
+  started_at   DateTime? @db.Timestamptz
+  completed_at DateTime? @db.Timestamptz
+  created_at   DateTime  @default(now()) @db.Timestamptz
+  updated_at   DateTime  @default(now()) @updatedAt @db.Timestamptz
+
+  claims ConversationIntelligenceClaim[]
+  draft  ConversationIntelligenceDraft?
+
+  @@unique([tenant_id, conversation_transcript_id, requisition_analysis_context_snapshot_id, model_provider, model_name, prompt_template_version, output_schema_version], name: "analysis_identity", map: "CIRun_analysis_identity_key")
+  @@index([tenant_id, status])
+  @@index([tenant_id, conversation_transcript_id])
+  @@schema("conversation_intelligence")
+}
+
+// ConversationIntelligenceClaim — one AI-generated claim. `statement` is the
+// AI-generated claim text (e.g. "Talent stated ~8 years of Java") — never a
+// verbatim transcript copy, never an objective fact assertion.
+model ConversationIntelligenceClaim {
+  id        String @id @db.Uuid
+  tenant_id String @db.Uuid
+  run_id    String @db.Uuid
+
+  ordinal     Int
+  claim_type  String
+  // Stable immutable-snapshot context path/key (e.g. `work_authorization`) where
+  // the claim grounds against a Requisition requirement; null for a pure
+  // conversation claim not tied to a snapshot requirement.
+  context_ref String?
+  statement   String
+  status      ConversationIntelligenceClaimStatus
+
+  created_at DateTime @default(now()) @db.Timestamptz
+
+  run       ConversationIntelligenceRun        @relation(fields: [run_id], references: [id], onDelete: Cascade)
+  citations ConversationIntelligenceCitation[]
+
+  @@unique([run_id, ordinal])
+  @@index([tenant_id, run_id])
+  @@schema("conversation_intelligence")
+}
+
+// ConversationIntelligenceCitation — transcript-span evidence anchor. Stores
+// COORDINATES ONLY (utterance id + offsets + the exact transcript hash) — never
+// the quoted transcript text (no transcript body in the CI database).
+model ConversationIntelligenceCitation {
+  id        String @id @db.Uuid
+  tenant_id String @db.Uuid
+  claim_id  String @db.Uuid
+
+  conversation_transcript_id String @db.Uuid
+  normalized_sha256          String
+  utterance_id               String
+  start_offset               Int?
+  end_offset                 Int?
+
+  created_at DateTime @default(now()) @db.Timestamptz
+
+  claim ConversationIntelligenceClaim @relation(fields: [claim_id], references: [id], onDelete: Cascade)
+
+  @@index([tenant_id, claim_id])
+  @@schema("conversation_intelligence")
+}
+
+// ConversationIntelligenceDraft — the review-ready, AI-generated structured
+// draft (one per run). `content` is a versioned structured JSON fragment of
+// sections referencing claims; it is NOT an approved note and NOT transcript body.
+model ConversationIntelligenceDraft {
+  id        String @id @db.Uuid
+  tenant_id String @db.Uuid
+  run_id    String @unique @db.Uuid
+
+  schema_version String
+  content        Json
+
+  created_at DateTime @default(now()) @db.Timestamptz
+
+  run ConversationIntelligenceRun @relation(fields: [run_id], references: [id], onDelete: Cascade)
+
+  @@index([tenant_id, run_id])
+  @@schema("conversation_intelligence")
+}
