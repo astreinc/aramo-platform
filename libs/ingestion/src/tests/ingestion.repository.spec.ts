@@ -28,15 +28,33 @@ function makePrisma(overrides: {
   create?: ReturnType<typeof vi.fn>;
   findUnique?: ReturnType<typeof vi.fn>;
   findFirst?: ReturnType<typeof vi.fn>;
+  update?: ReturnType<typeof vi.fn>;
 }): PrismaService {
   return {
     rawPayloadReference: {
       create: overrides.create ?? vi.fn(),
       findUnique: overrides.findUnique ?? vi.fn(),
       findFirst: overrides.findFirst ?? vi.fn(),
+      update: overrides.update ?? vi.fn(),
     },
   } as unknown as PrismaService;
 }
+
+// TM-L1-B — the seven server-owned provenance-envelope columns. No post-create
+// repository write path may include any of these in an UPDATE `data` payload;
+// they are write-once at intake. This is the app-surface layer of a
+// defence-in-depth: the DB boundary also rejects any envelope-column UPDATE via
+// the raw_payload_reference_provenance immutability trigger (migration
+// 20260909120000; proven in ingestion.integration.spec.ts).
+const PROVENANCE_ENVELOPE_FIELDS = [
+  'tenant_id',
+  'source',
+  'source_class',
+  'storage_ref',
+  'sha256',
+  'content_type',
+  'captured_at',
+] as const;
 
 describe('IngestionRepository.createPayload', () => {
   it('issues prisma.rawPayloadReference.create with the supplied fields', async () => {
@@ -164,5 +182,39 @@ describe('IngestionRepository.findByProfileUrl', () => {
       },
       orderBy: { created_at: 'asc' },
     });
+  });
+});
+
+// TM-L1-B — the two post-create update paths touch ONLY their lifecycle column;
+// neither may write any provenance-envelope field. This is the app-surface
+// immutability wall: normalization/extraction/canonicalization cannot overwrite
+// arrival provenance.
+describe('IngestionRepository — post-create updates never mutate the provenance envelope', () => {
+  it('markExtractionDone updates only extraction_done_at (no envelope field)', async () => {
+    const update = vi.fn().mockResolvedValue(ROW);
+    const repo = new IngestionRepository(makePrisma({ update }));
+
+    await repo.markExtractionDone(PAYLOAD_ID);
+
+    const call = update.mock.calls[0]?.[0] as { where: unknown; data: Record<string, unknown> };
+    expect(call.where).toEqual({ id: PAYLOAD_ID });
+    expect(Object.keys(call.data)).toEqual(['extraction_done_at']);
+    for (const field of PROVENANCE_ENVELOPE_FIELDS) {
+      expect(call.data).not.toHaveProperty(field);
+    }
+  });
+
+  it('bumpExtractionAttempt updates only extraction_attempts (no envelope field)', async () => {
+    const update = vi.fn().mockResolvedValue(ROW);
+    const repo = new IngestionRepository(makePrisma({ update }));
+
+    await repo.bumpExtractionAttempt(PAYLOAD_ID);
+
+    const call = update.mock.calls[0]?.[0] as { where: unknown; data: Record<string, unknown> };
+    expect(call.where).toEqual({ id: PAYLOAD_ID });
+    expect(Object.keys(call.data)).toEqual(['extraction_attempts']);
+    for (const field of PROVENANCE_ENVELOPE_FIELDS) {
+      expect(call.data).not.toHaveProperty(field);
+    }
   });
 });

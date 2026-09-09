@@ -39,14 +39,35 @@ function findAllMigrationSqlPaths(): string[] {
   return subdirs.map((d) => resolve(MIGRATIONS_DIR, d, 'migration.sql'));
 }
 
-// Mirrors the libs/talent / libs/identity splitDdl: strip line comments
-// first, then split on statement-boundary semicolons.
+// Strip line comments first, then split on statement-boundary semicolons that
+// are NOT inside a `$$`-delimited body. Dollar-quote awareness (mirrors the
+// libs/sourced-talent immutability-trigger harness) lets the provenance
+// immutability trigger's plpgsql function — whose body contains its own
+// semicolons — apply as a single statement.
 function splitDdl(sql: string): string[] {
   const noLineComments = sql.replace(/--[^\n]*$/gm, '');
-  return noLineComments
-    .split(/;\s*\n/)
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0);
+  const out: string[] = [];
+  let current = '';
+  let inDollar = false;
+  for (let i = 0; i < noLineComments.length; i += 1) {
+    if (noLineComments.startsWith('$$', i)) {
+      inDollar = !inDollar;
+      current += '$$';
+      i += 1;
+      continue;
+    }
+    const ch = noLineComments[i]!;
+    if (ch === ';' && !inDollar) {
+      const trimmed = current.trim();
+      if (trimmed.length > 0) out.push(trimmed);
+      current = '';
+    } else {
+      current += ch;
+    }
+  }
+  const tail = current.trim();
+  if (tail.length > 0) out.push(tail);
+  return out;
 }
 
 function shaHex(seed: string): string {
@@ -363,6 +384,132 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // A higher cap re-admits it (still not done).
       const higherCap = await repo.findArrivalsNeedingExtraction({ limit: 100, maxAttempts: 6 });
       expect(higherCap.some((a) => a.id === id)).toBe(true);
+    });
+
+    // ---- TM-L1-B — Arrival provenance envelope survives lifecycle mutation ---
+    // The seven server-owned envelope columns (tenant_id, source, source_class,
+    // storage_ref, sha256, content_type, captured_at) are written once at intake
+    // and MUST survive every downstream lifecycle write unchanged — the
+    // extract-once gate (markExtractionDone / bumpExtractionAttempt) AND the
+    // canonicalization writeback (resolved_subject_id). Provenance is preserved,
+    // never dropped or overwritten (directive: "normalization cannot drop or
+    // overwrite arrival provenance").
+    interface ArrivalEnvelope {
+      tenant_id: string;
+      source: string;
+      source_class: string;
+      storage_ref: string;
+      sha256: string;
+      content_type: string;
+      captured_at: Date;
+    }
+    async function readEnvelope(id: string): Promise<ArrivalEnvelope> {
+      const rows = await prisma.$queryRawUnsafe<ArrivalEnvelope[]>(
+        `SELECT tenant_id, source, source_class, storage_ref, sha256, content_type, captured_at
+         FROM "ingestion"."RawPayloadReference" WHERE id = '${id}'::uuid`,
+      );
+      return rows[0]!;
+    }
+
+    it('provenance envelope is byte-identical after markExtractionDone + bumpExtractionAttempt + canonicalization writeback', async () => {
+      const tenantId = uuidv7();
+      const capturedAtInput = '2026-07-04T09:15:30.000Z';
+      const sha = shaHex('prov-survives-' + tenantId);
+      const storageRef = 's3://aramo-raw-ingestion/' + tenantId + '/prov.pdf';
+      const accepted = await service.acceptPayload({
+        tenant_id: tenantId,
+        request: {
+          source: 'indeed',
+          storage_ref: storageRef,
+          sha256: sha,
+          content_type: 'application/pdf',
+          captured_at: capturedAtInput,
+        },
+      });
+      const id = accepted.id;
+
+      const before = await readEnvelope(id);
+      // captured_at read-back: the stored value equals the arrival input exactly.
+      expect(before.captured_at.toISOString()).toBe(capturedAtInput);
+      // source_class is the server-derived value for the 'indeed' channel.
+      expect(before.source_class).toBe('THIRD_PARTY_UNVERIFIED');
+
+      // Run every real post-intake write path against this arrival.
+      const repo = new IngestionRepository(prisma);
+      await repo.bumpExtractionAttempt(id);
+      await setResolved(id, uuidv7()); // canonicalization writeback (resolved_subject_id)
+      await repo.markExtractionDone(id);
+
+      const after = await readEnvelope(id);
+      // Every provenance-envelope column is unchanged by the lifecycle writes.
+      expect(after.tenant_id).toBe(before.tenant_id);
+      expect(after.source).toBe('indeed');
+      expect(after.source_class).toBe('THIRD_PARTY_UNVERIFIED');
+      expect(after.storage_ref).toBe(storageRef);
+      expect(after.sha256).toBe(sha);
+      expect(after.content_type).toBe('application/pdf');
+      expect(after.captured_at.toISOString()).toBe(capturedAtInput);
+    });
+
+    // ---- TM-L1-B FIX_NOW — DB-enforced envelope immutability (trigger) -------
+    // The provenance envelope is immutable at the DATABASE boundary, not only by
+    // application update shape. A direct UPDATE of any of the seven envelope
+    // columns is rejected by the raw_payload_reference_provenance trigger;
+    // lifecycle/writeback columns remain updateable.
+    it('the DB trigger rejects every envelope-column UPDATE but allows lifecycle-column writes', async () => {
+      const tenantId = uuidv7();
+      const capturedAtInput = '2026-07-05T08:00:00.000Z';
+      const sha = shaHex('db-immutable-' + tenantId);
+      const storageRef = 's3://aramo-raw-ingestion/' + tenantId + '/immut.json';
+      const accepted = await service.acceptPayload({
+        tenant_id: tenantId,
+        request: {
+          source: 'talent_direct', // → source_class SELF
+          storage_ref: storageRef,
+          sha256: sha,
+          content_type: 'application/json',
+          captured_at: capturedAtInput,
+        },
+      });
+      const id = accepted.id;
+      const before = await readEnvelope(id);
+
+      // Each protected dimension, an independent representative new value, is
+      // rejected by the DB trigger (not by application code — this is a direct
+      // SQL UPDATE against the row).
+      const rejections: Array<[string, string]> = [
+        ['tenant_id', `tenant_id = '${uuidv7()}'::uuid`],
+        ['source', `source = 'github'`],
+        ['source_class', `source_class = 'THIRD_PARTY_UNVERIFIED'`],
+        ['storage_ref', `storage_ref = 's3://aramo-raw-ingestion/hijacked'`],
+        ['sha256', `sha256 = '${shaHex('other-' + tenantId)}'`],
+        ['content_type', `content_type = 'text/plain'`],
+        ['captured_at', `captured_at = '2030-01-01T00:00:00.000Z'`],
+      ];
+      for (const [field, setExpr] of rejections) {
+        await expect(
+          prisma.$executeRawUnsafe(
+            `UPDATE "ingestion"."RawPayloadReference" SET ${setExpr} WHERE id = '${id}'::uuid`,
+          ),
+          `envelope field ${field} must be immutable at the DB boundary`,
+        ).rejects.toThrow(/provenance envelope is immutable/);
+      }
+
+      // Lifecycle-only writes still succeed: extraction gate + attempt counter +
+      // canonicalization writeback (resolved_subject_id).
+      const repo = new IngestionRepository(prisma);
+      await repo.bumpExtractionAttempt(id);
+      await setResolved(id, uuidv7());
+      await repo.markExtractionDone(id);
+      await expect(
+        prisma.$executeRawUnsafe(
+          `UPDATE "ingestion"."RawPayloadReference" SET extraction_attempts = 3 WHERE id = '${id}'::uuid`,
+        ),
+      ).resolves.toBeDefined();
+
+      // The original envelope is intact after every rejected mutation.
+      const after = await readEnvelope(id);
+      expect(after).toEqual(before);
     });
   },
 );
