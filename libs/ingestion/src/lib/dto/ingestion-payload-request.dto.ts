@@ -7,21 +7,22 @@ import {
   MaxLength,
 } from 'class-validator';
 
-// Closed allowed-source vocabulary per API Contracts v1.0 Phase 4
-// "Allowed Adapter Types". The four-layer prohibited-source enforcement
-// (Phase 4 §"Four-Layer ... Refusal Enforcement") is structurally
-// implemented by this @IsIn(...) constraint at the wire boundary: a
-// request carrying a value outside this list fails class-validator
-// at the controller and never reaches the service. PR-12 ships the
-// closed-enum layer only; the Pact prohibited-source-type test that
-// validates the rejection externally is PR-14 scope per directive §5.
-export const INGESTION_SOURCES = [
-  'talent_direct',
-  'indeed',
-  'github',
-  'astre_import',
-] as const;
-export type IngestionSource = (typeof INGESTION_SOURCES)[number];
+// Closed allowed-source vocabulary. TM-L1-A: the source values are now DERIVED
+// from the single canonical source contract (../source-contract.js) so the wire
+// allowlist, the source -> source_class map, and the OpenAPI enum cannot drift
+// apart. Re-exported here to preserve the historical import surface
+// (@aramo/ingestion, the dto barrel, and specs consume INGESTION_SOURCES /
+// IngestionSource from this module).
+//
+// The four-layer prohibited-source enforcement (API Contracts v1.0 Phase 4
+// §"Four-Layer ... Refusal Enforcement") is structurally implemented by the
+// @IsIn(INGESTION_SOURCES) constraint below at the wire boundary: a request
+// carrying a value outside this closed list fails class-validator at the
+// controller and never reaches the service (R7 Layer 1).
+import { INGESTION_SOURCES, type IngestionSource } from '../source-contract.js';
+
+export { INGESTION_SOURCES };
+export type { IngestionSource };
 
 // POST /ingestion/payloads request body. Per API Contracts v1.0 Phase 4
 // RawPayloadReference (storage_ref, sha256, content_type, captured_at)
@@ -55,6 +56,12 @@ export class IngestionPayloadRequestDto {
   @IsISO8601()
   captured_at!: string;
 
+  // NOTE (TM-L1-A / DDR-1 §3.3): `verified_email` is a documented misnomer — it
+  // carries the channel-CLAIMED email (a caller/channel CLAIM), NOT a
+  // platform-verified one. Verification level is carried by the server-derived
+  // source_class, never by this field's name. Used only as a dedup-supporting
+  // signal. A rename to `claimed_email` is filed non-blocking debt, deferred off
+  // this bounded seam to avoid a wide DB/API/contract break (see Gate-5 report).
   @IsOptional()
   @IsString()
   @MaxLength(320)

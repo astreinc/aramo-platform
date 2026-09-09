@@ -158,7 +158,8 @@
     "qs": "6.16.0",
     "body-parser": "2.3.0",
     "hono": "4.12.25",
-    "multer": "2.2.0",
+    "multer": "2.3.0",
+    "@xmldom/xmldom": "0.8.15",
     "deepmerge-ts": "^8.0.1",
     "mysql2": "^3.22.0"
   }
