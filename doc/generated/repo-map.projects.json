@@ -4263,6 +4263,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/manual-capture.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/src1-e2e-closure.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -4519,6 +4525,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/indeed-apply-webhook.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/manual-capture.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -5216,6 +5228,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/indeed-apply-webhook.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/manual-capture.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
