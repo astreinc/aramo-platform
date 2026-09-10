@@ -274,8 +274,9 @@ function processorSetup(opts: { isReady?: boolean; isEnabled?: boolean; runStatu
   const processing = { process: vi.fn(async () => ({ outcome: 'completed' })) };
   const producer = { scheduleReconcile: vi.fn(), enqueueRun: vi.fn() };
   const reconciler = { reconcile: vi.fn(async () => ({ reEnqueued: 0 })) };
+  const registrar = { register: vi.fn() };
   const redisConfig = { isConfigured: true } as never;
-  const proc = new CiProcessingProcessor(config, runs as never, processing as never, producer as never, reconciler as never, redisConfig, noopLogger);
+  const proc = new CiProcessingProcessor(config, runs as never, processing as never, producer as never, reconciler as never, registrar as never, redisConfig, noopLogger);
   return { proc, processing, reconciler, runs };
 }
 
