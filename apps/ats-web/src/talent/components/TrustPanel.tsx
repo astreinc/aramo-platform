@@ -1,8 +1,8 @@
+import type { ReactNode } from 'react';
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Button, InlineAlert } from '@aramo/fe-foundation';
 
-import { BandPill } from '../../ui';
+import { BandPill, Button, Card, InlineAlert, StatusPill, type PillTone } from '../../ui';
 import {
   getDossier,
   getDossierEvidence,
@@ -85,145 +85,169 @@ export function TrustPanel({ talentId, canResolve }: Props) {
     }
   };
 
-  if (loading) return <p className="rc-drawer__empty">Loading trust assessment…</p>;
+  if (loading) return <p className="talent-detail__empty">Loading trust assessment…</p>;
   if (error !== null) return <InlineAlert variant="error">{error}</InlineAlert>;
   if (head === null) return null;
 
-  if (!head.ledger_established) {
-    return (
-      <div className="rc-trust">
-        <p className="rc-trust__empty">No evidence ledger for this record.</p>
-      </div>
-    );
-  }
+  const established = head.ledger_established;
+  const proposalKinds = [
+    ...new Set(
+      (head.proposal_pointers ?? []).map((p) => PROPOSAL_POINTER_LABEL[p.kind] ?? p.kind),
+    ),
+  ];
 
   return (
-    <div className="rc-trust">
-      <section className="rc-trust__sec">
-        <h4>Assessment</h4>
-        <div className="rc-trust-bands">
-          {DIMENSIONS.map((d) => (
-            <div key={d.key} className="rc-trust-band">
-              <span className="rc-trust-band__dim">{d.label}</span>
-              <BandPill band={head.dimensions[d.key].band} />
+    <>
+      {/* Trust & Evidence — the prototype's claim-row card, driven by the REAL
+          dossier. Each dimension / verification / identity-history entry is a
+          "claim" row with a right-aligned, named state (never a number, R10). */}
+      <Card>
+        <div className="talent-detail__ctitle">Trust &amp; evidence</div>
+        <div className="talent-detail__note" style={{ marginTop: 0 }}>
+          Named, explainable states per claim — never an opaque number. Human
+          disposition is recorded.
+        </div>
+
+        {!established ? (
+          <p className="talent-detail__empty">No evidence ledger for this record yet.</p>
+        ) : (
+          <div className="talent-detail__trows">
+            {DIMENSIONS.map((d) => (
+              <TRow
+                key={d.key}
+                title={d.label}
+                right={<BandPill band={head.dimensions[d.key].band} />}
+              />
+            ))}
+            {head.verifications.map((v) => (
+              <TRow
+                key={`v-${v.anchor_kind}`}
+                title={v.anchor_kind}
+                evidence="Verification anchor"
+                right={
+                  <StatusPill tone={verificationTone(v.status)} dot>
+                    {v.status}
+                  </StatusPill>
+                }
+              />
+            ))}
+            {head.merge_provenance.map((m) => (
+              <TRow
+                key={m.operation_id}
+                title={`Identity — merged ${m.role === 'survivor' ? 'in' : 'into another record'}`}
+                evidence={m.completed_at != null ? m.completed_at.slice(0, 10) : undefined}
+                right={<StatusPill tone="neutral" dot>Merge history</StatusPill>}
+              />
+            ))}
+          </div>
+        )}
+
+        {head.statements.length > 0 ? (
+          <ul className="talent-detail__tstatements">
+            {head.statements.map((s) => (
+              <li key={s}>{s}</li>
+            ))}
+          </ul>
+        ) : null}
+
+        {/* TR-12 B2 — pointer toward the Trust Proposals queue; OPEN kinds as
+            words (R10, no count). The queue is the source of truth. */}
+        {proposalKinds.length > 0 ? (
+          <div className="talent-detail__note">
+            Open trust proposals: {proposalKinds.join(', ')}.{' '}
+            <Link to="/trust/proposals">Go to Trust Proposals →</Link>
+          </div>
+        ) : null}
+      </Card>
+
+      {/* The contradiction "attention" panel — the prototype's amber call-out,
+          built from REAL contradiction items. The resolve action (TR-4) is
+          gated on identity:resolve. */}
+      {head.contradictions.length > 0 ? (
+        <div className="talent-detail__attention">
+          <div className="talent-detail__attention-title">Why this needs attention</div>
+          {head.contradictions.map((c) => (
+            <div key={c.evidence_id} className="talent-detail__attention-row">
+              <div className="talent-detail__attention-body">
+                {c.reason != null && c.reason !== '' ? c.reason : 'Conflicting evidence'}
+                <span className="talent-detail__attention-meta"> · {c.assertion_type}</span>
+              </div>
+              {canResolve ? (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setResolving(c)}
+                  data-testid="resolve-open"
+                >
+                  Resolve
+                </Button>
+              ) : null}
             </div>
           ))}
         </div>
-        {head.statements.length > 0 ? (
-          <ul className="rc-trust-statements">
-            {head.statements.map((s) => (
-              <li key={s} className="rc-trust-statements__line">
-                {s}
-              </li>
-            ))}
-          </ul>
-        ) : null}
-      </section>
-
-      {/* TR-12 B2 — the pointer line toward the caseworker's queue. OPEN proposals
-          only; the KINDS render as words (R10 — no count number). The queue is the
-          source of truth; this is a pointer, not a duplicate. */}
-      {(head.proposal_pointers ?? []).length > 0 ? (
-        <section className="rc-trust__sec rc-trust-proposals-pointer">
-          <p className="rc-muted-line">
-            Open trust proposals:{' '}
-            {[
-              ...new Set(
-                (head.proposal_pointers ?? []).map((p) => PROPOSAL_POINTER_LABEL[p.kind] ?? p.kind),
-              ),
-            ].join(', ')}
-            . <Link to="/trust/proposals">Go to Trust Proposals →</Link>
-          </p>
-        </section>
       ) : null}
 
-      {head.contradictions.length > 0 ? (
-        <section className="rc-trust__sec">
-          <h4>Contradictions</h4>
-          <ul className="rc-trust-list">
-            {head.contradictions.map((c) => (
-              <li key={c.evidence_id} className="rc-trust-item">
-                <div className="rc-trust-item__body">
-                  <span className="rc-trust-item__type">{c.assertion_type}</span>
-                  {c.reason != null && c.reason !== '' ? (
-                    <span className="rc-trust-item__reason">{c.reason}</span>
-                  ) : (
-                    <span className="rc-trust-item__reason">Conflicting evidence</span>
-                  )}
-                </div>
-                {canResolve ? (
-                  <Button variant="secondary" onClick={() => setResolving(c)} data-testid="resolve-open">
-                    Resolve
-                  </Button>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        </section>
+      {established ? (
+        <Card>
+          <div className="talent-detail__ctitle">Evidence timeline</div>
+          {timeline.length === 0 ? (
+            <p className="talent-detail__empty">No ledger events yet.</p>
+          ) : (
+            <div className="talent-detail__trows">
+              {timeline.map((it) => (
+                <TRow
+                  key={it.event.id}
+                  title={`${it.event.event_type} · ${it.evidence.assertion_type}`}
+                  evidence={it.event.occurred_at.slice(0, 10)}
+                />
+              ))}
+            </div>
+          )}
+          {nextCursor !== null ? (
+            <div style={{ marginTop: 12 }}>
+              <Button variant="secondary" size="sm" onClick={() => void loadMore()} disabled={timelineBusy}>
+                {timelineBusy ? 'Loading…' : 'Load more'}
+              </Button>
+            </div>
+          ) : null}
+        </Card>
       ) : null}
-
-      {head.verifications.length > 0 ? (
-        <section className="rc-trust__sec">
-          <h4>Verification</h4>
-          <ul className="rc-trust-list">
-            {head.verifications.map((v) => (
-              <li key={`${v.anchor_kind}`} className="rc-trust-item">
-                <span className="rc-trust-item__type">{v.anchor_kind}</span>
-                <span className="rc-trust-item__reason">{v.status}</span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
-
-      {head.merge_provenance.length > 0 ? (
-        <section className="rc-trust__sec">
-          <h4>Identity history</h4>
-          <ul className="rc-trust-list">
-            {head.merge_provenance.map((m) => (
-              <li key={m.operation_id} className="rc-trust-item">
-                <span className="rc-trust-item__type">
-                  Merged {m.role === 'survivor' ? 'in' : 'into another record'}
-                </span>
-                {m.completed_at != null ? (
-                  <span className="rc-trust-item__reason">{m.completed_at.slice(0, 10)}</span>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
-
-      <section className="rc-trust__sec">
-        <h4>Timeline</h4>
-        {timeline.length === 0 ? (
-          <p className="rc-muted-line">No ledger events yet.</p>
-        ) : (
-          <ul className="rc-trust-list">
-            {timeline.map((it) => (
-              <li key={it.event.id} className="rc-trust-item">
-                <div className="rc-trust-item__body">
-                  <span className="rc-trust-item__type">
-                    {it.event.event_type} · {it.evidence.assertion_type}
-                  </span>
-                  <span className="rc-trust-item__reason">{it.event.occurred_at.slice(0, 10)}</span>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-        {nextCursor !== null ? (
-          <Button variant="secondary" onClick={() => void loadMore()} disabled={timelineBusy}>
-            {timelineBusy ? 'Loading…' : 'Load more'}
-          </Button>
-        ) : null}
-      </section>
 
       <ContradictionResolveDialog
         item={resolving}
         onClose={() => setResolving(null)}
         onResolved={() => void load()}
       />
+    </>
+  );
+}
+
+// A prototype "claim" row: title (+ optional evidence sub-line) with a
+// right-aligned named state pill.
+function TRow({
+  title,
+  evidence,
+  right,
+}: {
+  title: string;
+  evidence?: string;
+  right?: ReactNode;
+}) {
+  return (
+    <div className="talent-detail__trow">
+      <div className="talent-detail__trow-main">
+        <div className="talent-detail__trow-title">{title}</div>
+        {evidence !== undefined && evidence !== '' ? (
+          <div className="talent-detail__trow-ev">{evidence}</div>
+        ) : null}
+      </div>
+      {right != null ? <div className="talent-detail__trow-state">{right}</div> : null}
     </div>
   );
+}
+
+function verificationTone(status: string): PillTone {
+  if (/verif|valid|confirm/i.test(status)) return 'ok';
+  if (/pend|expir|await/i.test(status)) return 'warn';
+  return 'neutral';
 }
