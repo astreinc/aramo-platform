@@ -314,6 +314,28 @@ export class CommunicationsRepository {
     return [...new Set(rows.map((r) => r.subject_id))];
   }
 
+  // CI-B6P §16 — the DURABLE Requisition(s) an interaction is "regarding": the
+  // canonical `regarding` CommunicationAssociation(s) of subject_type=requisition,
+  // tenant-scoped. This is association TRUTH — never inference from the Talent's
+  // latest pipeline, recruiter context, phone, most-recent Requisition, or time
+  // proximity. The caller (CI scheduling) requires EXACTLY ONE: zero → park,
+  // multiple → intervention/fail-closed. Returns distinct requisition subject ids.
+  async findRequisitionIdsForInteraction(
+    tenantId: string,
+    interactionId: string,
+  ): Promise<string[]> {
+    const rows = await this.prisma.communicationAssociation.findMany({
+      where: {
+        tenant_id: tenantId,
+        interaction_id: interactionId,
+        subject_type: 'requisition' satisfies CommunicationSubjectType,
+        relation_type: 'regarding' satisfies CommunicationRelationType,
+      },
+      select: { subject_id: true },
+    });
+    return [...new Set(rows.map((r) => r.subject_id))];
+  }
+
   // COMM-B7 — the Talent communication timeline read. Interactions linked to the
   // talent via a `subject` CommunicationAssociation (Communications associations
   // ONLY — no Requisition/Activity join), tenant-scoped, ordered (created_at DESC,

@@ -7,6 +7,8 @@ import { PrismaService } from './prisma/prisma.service.js';
 import { AnthropicProvider } from './providers/anthropic.provider.js';
 import { DRAFT_PROVIDER_TOKEN } from './providers/tokens.js';
 import { SecretCacheService } from './secrets/secret-cache.service.js';
+import { AnthropicStructuredGenerationService } from './structured-generation/anthropic-structured-generation.service.js';
+import { STRUCTURED_GENERATION_PROVIDER } from './structured-generation/structured-generation.types.js';
 
 // libs/ai-draft module — M5 PR-5 substrate. Per ADR-0015 + Ruling 11
 // (Process Lesson 45): imports = [] because CommonModule.exports content
@@ -31,6 +33,9 @@ import { SecretCacheService } from './secrets/secret-cache.service.js';
     AiDraftRepository,
     SecretCacheService,
     { provide: DRAFT_PROVIDER_TOKEN, useClass: AnthropicProvider },
+    // CI-B6P — reusable structured-generation surface (owns the Anthropic SDK
+    // client, reuses SecretCacheService). Exported for the CI composition root.
+    { provide: STRUCTURED_GENERATION_PROVIDER, useClass: AnthropicStructuredGenerationService },
     AiDraftService,
     {
       provide: 'AiDraftServiceLogger',
@@ -41,6 +46,6 @@ import { SecretCacheService } from './secrets/secret-cache.service.js';
       useFactory: () => createAramoLogger(AiDraftRepository.name),
     },
   ],
-  exports: [AiDraftService],
+  exports: [AiDraftService, STRUCTURED_GENERATION_PROVIDER],
 })
 export class AiDraftModule {}

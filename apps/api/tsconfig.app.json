@@ -10,6 +10,7 @@
     "types": ["node"],
     "paths": {
       "@aramo/activity": ["../../dist/libs/activity/src/index.d.ts"],
+      "@aramo/ai-draft": ["../../dist/libs/ai-draft/src/index.d.ts"],
       "@aramo/attachment": ["../../dist/libs/attachment/src/index.d.ts"],
       "@aramo/common": ["../../dist/libs/common/src/index.d.ts"],
       "@aramo/auth": ["../../dist/libs/auth/src/index.d.ts"],

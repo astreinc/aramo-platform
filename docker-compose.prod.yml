@@ -148,6 +148,13 @@ services:
       # (same source as the postgres service → cannot drift).
       - DATABASE_URL=postgresql://${POSTGRES_USER:-aramo}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@postgres:5432/${POSTGRES_DB:-aramo}?schema=public
       - REDIS_URL=redis://redis:6379
+      # CI-B6P — Conversation Intelligence processing. DARK by default: the
+      # activation flag must be explicitly "true" to enable any model call. Both
+      # carry safe defaults (optional ${VAR:-default} form → exempt from the
+      # env-passthrough documentation assertion). The Anthropic API key is NOT an
+      # env var here — it is fetched via the existing Secrets Manager custody.
+      - CI_PROCESSING_ENABLED=${CI_PROCESSING_ENABLED:-false}
+      - CI_ANTHROPIC_MODEL=${CI_ANTHROPIC_MODEL:-claude-sonnet-4-6}
       # pass-through by name from the sourced shell env (multi-line-safe):
       - AUTH_AUDIENCE
       - AUTH_PUBLIC_KEY
