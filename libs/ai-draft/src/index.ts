@@ -10,3 +10,16 @@ export {
   ARAMO_AI_DRAFT_MODEL,
 } from './lib/dto/event-payloads.js';
 export type { AiDraftEventType } from './lib/dto/event-payloads.js';
+
+// CI-B6P §4 — reusable structured-generation surface (the smallest public
+// boundary over the sanctioned Anthropic infrastructure + secret custody).
+// The Anthropic SDK is owned internally; NO vendor type crosses this barrel.
+export { AnthropicStructuredGenerationService } from './lib/structured-generation/anthropic-structured-generation.service.js';
+export {
+  STRUCTURED_GENERATION_PROVIDER,
+  type StructuredGenerationProvider,
+  type StructuredGenerationRequest,
+  type StructuredGenerationOutcome,
+  type StructuredGenerationTransport,
+  type StructuredGenerationErrorCategory,
+} from './lib/structured-generation/structured-generation.types.js';

@@ -78,6 +78,9 @@ import { RequisitionIntegrationModule } from './requisition-integration/requisit
 import { PipelineIntegrationModule } from './pipeline-integration/pipeline-integration.module.js';
 import { LifecyclePollModule } from './requisition-integration/lifecycle-poll.module.js';
 import { OfferExpiryModule } from './offer/offer-expiry.module.js';
+// CI-B6P — the production Conversation Intelligence processing worker
+// (Anthropic structured-output adapter; DARK by default — CI_PROCESSING_ENABLED).
+import { CiProcessingModule } from './conversation-intelligence/ci-processing.module.js';
 import { ReconciliationDrainModule } from './requisition-integration/reconciliation-drain.module.js';
 import { PlacementLifecycleOrchestratorModule } from './placement-pipeline-orchestration/placement-lifecycle-orchestrator.module.js';
 import { PreStartOrchestratorModule } from './pre-start-requirement/pre-start-orchestrator.module.js';
@@ -357,6 +360,8 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     // tick → fetch → raw-persist → ingress → cursor-advance; Redis-gated).
     LifecyclePollModule,
     OfferExpiryModule,
+    // CI-B6P — production CI processing (dark by default; app boots with real DI).
+    CiProcessingModule,
     // CB-D2-R (ADR-0030) — the reconciliation-drain worker (scheduled tick →
     // claim due pending rows → re-run the governed path / resolve / park;
     // Redis-gated). Drains the rows A1 + FG only WRITE today.

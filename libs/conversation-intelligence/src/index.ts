@@ -84,6 +84,12 @@ export {
 } from './lib/analysis/analysis-schema.js';
 export { validateAnalysisResult } from './lib/analysis/analysis-validator.js';
 export { validateCitationsAgainstTranscript } from './lib/analysis/citation-validator.js';
+// CI-B6P — provider-neutral JSON-Schema representation of analysis.v1, handed
+// to a production model provider for native structured output (directive §8).
+export {
+  CI_ANALYSIS_JSON_SCHEMA,
+  CI_ANALYSIS_JSON_SCHEMA_NAME,
+} from './lib/analysis/analysis-json-schema.js';
 export {
   CI_PROMPT_TEMPLATE_ID,
   CI_PROMPT_TEMPLATE_VERSION,
