@@ -98,6 +98,23 @@ export class ConversationIntelligenceRunRepository {
     return (row as CiRunRow) ?? null;
   }
 
+  /**
+   * CI-B6P §19 — bounded, restart-safe recovery scan. Returns re-drivable runs
+   * ({id, tenant_id} only) in `queued` or `failed_retryable` — the work a
+   * reconciler should (re-)enqueue after a crash/restart or an enqueue-lost gap.
+   * Cross-tenant (system sweep); ordered oldest-first; hard LIMIT (never an
+   * unbounded scan). No transcript/model content is read.
+   */
+  async listReDrivableRuns(limit: number): Promise<{ id: string; tenant_id: string }[]> {
+    const rows = await this.prisma.conversationIntelligenceRun.findMany({
+      where: { status: { in: ['queued', 'failed_retryable'] } },
+      select: { id: true, tenant_id: true },
+      orderBy: { created_at: 'asc' },
+      take: limit,
+    });
+    return rows.map((r) => ({ id: r.id, tenant_id: r.tenant_id }));
+  }
+
   /** Create a queued run; on unique conflict (concurrent create) return the existing. */
   async createOrGetQueued(prov: CiRunProvenance): Promise<CiRunRow> {
     const existing = await this.findByAnalysisIdentity(prov);

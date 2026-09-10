@@ -87,7 +87,9 @@
       "AI_DRAFT_EVENT_TYPES",
       "ARAMO_AI_DRAFT_MODEL",
       "AiDraftModule",
-      "AiDraftService"
+      "AiDraftService",
+      "AnthropicStructuredGenerationService",
+      "STRUCTURED_GENERATION_PROVIDER"
     ],
     "@aramo/api": ["AppModule"],
     "@aramo/attachment": [
@@ -378,6 +380,8 @@
     ],
     "@aramo/conversation-intelligence": [
       "AI_PROCESSING_AUTHORIZATION",
+      "CI_ANALYSIS_JSON_SCHEMA",
+      "CI_ANALYSIS_JSON_SCHEMA_NAME",
       "CI_ANALYSIS_SCHEMA_VERSION",
       "CI_CLAIM_STATUSES",
       "CI_CLAIM_STATUSES_REQUIRING_CITATION",
@@ -1355,6 +1359,13 @@
       { "project": "reporting", "status": "production" }
     ],
     "@aramo/ai-draft": [
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/ci-b6p-composition.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      { "project": "api", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/requisition/src/tests/requisition-intake.service.spec.ts",
@@ -2412,6 +2423,12 @@
       { "project": "ai-draft", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/ci-b6p-processing.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/indeed-apply-webhook.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -3273,7 +3290,21 @@
       { "project": "saved-list", "status": "production" },
       { "project": "visibility", "status": "production" }
     ],
-    "@aramo/conversation-intelligence": [{ "project": "api", "status": "production" }],
+    "@aramo/conversation-intelligence": [
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/ci-b6p-composition.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/ci-b6p-processing.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      { "project": "api", "status": "production" }
+    ],
     "@aramo/conversation-transcript": [
       {
         "excludedBy": "src/tests/**/*",
