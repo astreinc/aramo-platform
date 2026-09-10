@@ -128,7 +128,9 @@ export class ConsentService {
   async checkOperationForService(input: {
     tenant_id: string;
     talent_record_id: string;
-    operation: 'recording' | 'transcription';
+    // CI-B6 adds `ai_processing` (independent CI operation, directive §4.2). The
+    // scope map (OPERATION_SCOPE_MAP) already maps all three to their own scopes.
+    operation: 'recording' | 'transcription' | 'ai_processing';
   }): Promise<ConsentDecisionDto> {
     return this.consentRepo.resolveConsentState({
       tenant_id: input.tenant_id,

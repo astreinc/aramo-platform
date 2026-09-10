@@ -377,15 +377,44 @@
       "assertContactVocab"
     ],
     "@aramo/conversation-intelligence": [
+      "AI_PROCESSING_AUTHORIZATION",
+      "CI_ANALYSIS_SCHEMA_VERSION",
+      "CI_CLAIM_STATUSES",
+      "CI_CLAIM_STATUSES_REQUIRING_CITATION",
+      "CI_CLAIM_STATUS_FORBIDS_CITATION",
+      "CI_MAX_PROCESSING_ATTEMPTS",
+      "CI_PROCESSING_ERROR_CODES",
+      "CI_PROMPT_TEMPLATE_ID",
+      "CI_PROMPT_TEMPLATE_SHA256",
+      "CI_PROMPT_TEMPLATE_TEXT",
+      "CI_PROMPT_TEMPLATE_VERSION",
+      "CI_RUN_STATUSES",
+      "CI_RUN_TERMINAL_STATUSES",
+      "CI_RUN_TRANSITIONS",
+      "CONVERSATION_INTELLIGENCE_MODEL_PROVIDER",
+      "CiAnalysisValidationError",
+      "CiRunInvalidStateError",
+      "CiRunNotFoundError",
       "ConversationIntelligenceModule",
+      "ConversationIntelligenceProcessingService",
+      "ConversationIntelligenceRunRepository",
+      "FAKE_CI_MODEL_PROVIDER_KEY",
+      "FakeCiModelProvider",
+      "NORMALIZED_TRANSCRIPT_SOURCE",
+      "PROTECTED_TRAIT_MARKERS",
       "PrismaService",
       "REQUISITION_ANALYSIS_CONTEXT_READER",
       "REQUISITION_ANALYSIS_CONTEXT_SCHEMA_VERSION",
+      "REQUISITION_SNAPSHOT_SOURCE",
       "RequisitionAnalysisContextSnapshotRepository",
       "RequisitionAnalysisContextSnapshotService",
       "RequisitionGoldenProfileContextReader",
+      "assertCiRunTransition",
       "buildRequisitionAnalysisContext",
-      "isRequisitionAnalysisContextV1"
+      "canCiRunTransition",
+      "isRequisitionAnalysisContextV1",
+      "validateAnalysisResult",
+      "validateCitationsAgainstTranscript"
     ],
     "@aramo/conversation-transcript": [
       "CONVERSATION_TRANSCRIPT_PROVIDER",
@@ -3100,6 +3129,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/ci-b6-composition-adapters.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/communications-authz.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -3162,6 +3197,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/ci-b5z-consent-transcript-gate.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/ci-b6-composition-adapters.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -3232,7 +3273,7 @@
       { "project": "saved-list", "status": "production" },
       { "project": "visibility", "status": "production" }
     ],
-    "@aramo/conversation-intelligence": [],
+    "@aramo/conversation-intelligence": [{ "project": "api", "status": "production" }],
     "@aramo/conversation-transcript": [
       {
         "excludedBy": "src/tests/**/*",
@@ -3243,6 +3284,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/ci-b5z-zoom-transcript-orchestration.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/ci-b6-composition-adapters.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -4463,6 +4510,12 @@
       { "project": "api", "status": "production" }
     ],
     "@aramo/object-storage": [
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/ci-b6-composition-adapters.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/indeed-apply-webhook.integration.spec.ts",
