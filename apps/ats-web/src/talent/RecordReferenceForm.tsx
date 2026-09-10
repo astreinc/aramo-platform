@@ -1,5 +1,7 @@
 import { useCallback, useState } from 'react';
 
+import { Card, InlineAlert } from '../ui';
+
 import { recordReferenceAttestation } from './talent-api';
 
 // TR-9 B1 (D5) — the modest capture affordance: a recruiter records a reference
@@ -64,56 +66,76 @@ export function RecordReferenceForm({ recordId }: Props): JSX.Element {
   );
 
   return (
-    <form onSubmit={submit} aria-label="Record reference">
-      <h3>Record reference</h3>
-      <p>Record a reference you already hold. The platform does not contact the referee.</p>
-      <label>
-        Referee name
-        <input value={name} onChange={(e) => setName(e.target.value)} required />
-      </label>
-      <label>
-        Referee email (optional)
-        <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
-      </label>
-      <label>
-        Referee company (optional)
-        <input value={company} onChange={(e) => setCompany(e.target.value)} />
-      </label>
-      <label>
-        Referee role (optional)
-        <input value={role} onChange={(e) => setRole(e.target.value)} />
-      </label>
-      <label>
-        Relationship
-        <input
-          value={relationship}
-          onChange={(e) => setRelationship(e.target.value)}
-          placeholder="e.g. former manager"
-          required
-        />
-      </label>
-      <label>
-        About
-        <select
-          value={statementClass}
-          onChange={(e) => setStatementClass(e.target.value as StatementClass)}
-        >
-          {STATEMENT_CLASS_LABELS.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label>
-        What the referee said
-        <textarea value={statement} onChange={(e) => setStatement(e.target.value)} required />
-      </label>
-      <button type="submit" disabled={busy}>
-        {busy ? 'Recording…' : 'Record reference'}
-      </button>
-      {message !== null && <p role="status">{message}</p>}
-      {error !== null && <p role="alert">{error}</p>}
-    </form>
+    <Card>
+      <form onSubmit={submit} aria-label="Record reference" className="talent-detail__refform">
+        <div className="talent-detail__ctitle">Record reference</div>
+        <p className="talent-detail__note" style={{ marginTop: 0 }}>
+          Record a reference you already hold. The platform does not contact the referee.
+        </p>
+        <div className="talent-detail__refgrid">
+          <label className="talent-detail__field">
+            <span>Referee name</span>
+            <input value={name} onChange={(e) => setName(e.target.value)} required />
+          </label>
+          <label className="talent-detail__field">
+            <span>Referee email (optional)</span>
+            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+          </label>
+          <label className="talent-detail__field">
+            <span>Referee company (optional)</span>
+            <input value={company} onChange={(e) => setCompany(e.target.value)} />
+          </label>
+          <label className="talent-detail__field">
+            <span>Referee role (optional)</span>
+            <input value={role} onChange={(e) => setRole(e.target.value)} />
+          </label>
+          <label className="talent-detail__field">
+            <span>Relationship</span>
+            <input
+              value={relationship}
+              onChange={(e) => setRelationship(e.target.value)}
+              placeholder="e.g. former manager"
+              required
+            />
+          </label>
+          <label className="talent-detail__field">
+            <span>About</span>
+            <select
+              value={statementClass}
+              onChange={(e) => setStatementClass(e.target.value as StatementClass)}
+            >
+              {STATEMENT_CLASS_LABELS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <label className="talent-detail__field talent-detail__field--full">
+          <span>What the referee said</span>
+          <textarea value={statement} onChange={(e) => setStatement(e.target.value)} required />
+        </label>
+        <div className="talent-detail__refactions">
+          <button
+            type="submit"
+            disabled={busy}
+            className="tc-button tc-button--primary tc-button--md"
+          >
+            {busy ? 'Recording…' : 'Record reference'}
+          </button>
+        </div>
+        {message !== null && (
+          <div role="status">
+            <InlineAlert variant="success">{message}</InlineAlert>
+          </div>
+        )}
+        {error !== null && (
+          <div role="alert">
+            <InlineAlert variant="error">{error}</InlineAlert>
+          </div>
+        )}
+      </form>
+    </Card>
   );
 }

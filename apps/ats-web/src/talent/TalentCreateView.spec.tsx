@@ -95,6 +95,30 @@ function fillName(first = 'Ada', last = 'Lovelace') {
   fireEvent.change(screen.getByLabelText('Last name'), { target: { value: last } });
 }
 
+// The manual-create required set (PO-agreed): email, phone, city, state, work
+// authorization (a choice — NOT_DISCLOSED allowed), desired rate.
+function fillRequired() {
+  fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'ada@example.com' } });
+  fireEvent.change(screen.getByLabelText('Cell phone'), { target: { value: '555-0100' } });
+  fireEvent.change(screen.getByLabelText('City'), { target: { value: 'Austin' } });
+  fireEvent.change(screen.getByLabelText('State'), { target: { value: 'TX' } });
+  fireEvent.change(screen.getByLabelText('Work authorization'), {
+    target: { value: 'US_CITIZEN' },
+  });
+  fireEvent.change(screen.getByLabelText('Desired pay'), { target: { value: '$80/hr' } });
+}
+
+// Attach a résumé on the MANUAL path (the rail's required uploader). Resolves
+// once the storage_key lands and the rail swaps to the attached-résumé card.
+async function attachResumeManual() {
+  fireEvent.change(screen.getByLabelText('Attach résumé'), {
+    target: { files: [makeFile()] },
+  });
+  await waitFor(() =>
+    expect(screen.getByText(/attaches on save/i)).toBeInTheDocument(),
+  );
+}
+
 function signAttestation() {
   fireEvent.click(screen.getByRole('checkbox'));
 }
@@ -119,23 +143,41 @@ describe('TalentCreateView — intake + manual path', () => {
     expect(screen.getByLabelText('First name')).toBeInTheDocument();
   });
 
-  it('manual create: POST talent, NO attachment, NO consent grant, success → open profile', async () => {
+  it('manual create requires the full field set + résumé, then POSTs talent + attaches, NO consent grant', async () => {
     const calls = installFetch((req) => {
+      if (req.url.includes('/v1/talent-records/resume-upload-url') && req.method === 'POST') {
+        return {
+          status: 200,
+          body: {
+            storage_key: 'tenant/draft/m.pdf',
+            presigned_url: 'https://s3-stub/m?sig=x',
+            expires_at: '2030-01-01T00:00:00Z',
+          },
+        };
+      }
+      if (req.url.startsWith('https://s3-stub/') && req.method === 'PUT') {
+        return { status: 200, body: '' };
+      }
       if (req.url === '/v1/talent-records' && req.method === 'POST') {
         return { status: 201, body: { id: 'tal-m', first_name: 'Ada', last_name: 'Lovelace' } };
+      }
+      if (req.url === '/v1/attachments' && req.method === 'POST') {
+        return { status: 201, body: { id: 'att-m', is_resume: true } };
       }
       return { status: 404, body: {} };
     });
     renderAt();
     fireEvent.click(screen.getByRole('button', { name: /enter details manually/i }));
     fillName();
+    fillRequired();
+    await attachResumeManual();
     signAttestation();
     fireEvent.click(screen.getByRole('button', { name: /create talent/i }));
     await waitFor(() =>
       expect(screen.getByText(/added to your talent/i)).toBeInTheDocument(),
     );
-    // No résumé → no attachment POST.
-    expect(calls.find((c) => c.url === '/v1/attachments')).toBeUndefined();
+    // Résumé is mandatory on the manual path → the attachment POST fires.
+    expect(calls.find((c) => c.url === '/v1/attachments' && c.method === 'POST')).toBeDefined();
     // Consent grants are DEFERRED — never fired (keying HALT).
     noConsentGrant(calls);
     // "Open profile" navigates to the detail.
@@ -145,16 +187,35 @@ describe('TalentCreateView — intake + manual path', () => {
 });
 
 describe('TalentCreateView — save gate', () => {
-  it('Create is disabled until name + attestation are satisfied', () => {
-    installFetch(() => ({ status: 200, body: {} }));
+  it('Create is disabled until name, required fields, résumé and attestation are all satisfied', async () => {
+    installFetch((req) => {
+      if (req.url.includes('/v1/talent-records/resume-upload-url') && req.method === 'POST') {
+        return {
+          status: 200,
+          body: {
+            storage_key: 'k',
+            presigned_url: 'https://s3-stub/k?sig=x',
+            expires_at: '2030-01-01T00:00:00Z',
+          },
+        };
+      }
+      if (req.url.startsWith('https://s3-stub/') && req.method === 'PUT') {
+        return { status: 200, body: '' };
+      }
+      return { status: 200, body: {} };
+    });
     renderAt();
     fireEvent.click(screen.getByRole('button', { name: /enter details manually/i }));
     const create = () => screen.getByRole('button', { name: /create talent/i });
-    expect(create()).toBeDisabled(); // no name, not attested
+    expect(create()).toBeDisabled(); // nothing yet
     fillName();
-    expect(create()).toBeDisabled(); // name ok, still not attested
+    expect(create()).toBeDisabled(); // name only
+    fillRequired();
+    expect(create()).toBeDisabled(); // required fields ok, no résumé/attestation
+    await attachResumeManual();
+    expect(create()).toBeDisabled(); // résumé ok, not attested
     signAttestation();
-    expect(create()).toBeEnabled(); // required consent defaults satisfied
+    expect(create()).toBeEnabled(); // all gates satisfied
   });
 
   it('renders the deferred-consent + dedup + work/edu seams', () => {
@@ -182,6 +243,7 @@ describe('TalentCreateView — résumé path (rulings 1+2+3)', () => {
     expect((screen.getByLabelText('Email') as HTMLInputElement).value).toBe('ada@example.com');
     // Provenance: the prefilled fields carry a résumé chip.
     expect(screen.getAllByText('résumé').length).toBeGreaterThan(0);
+    fillRequired();
     signAttestation();
     fireEvent.click(screen.getByRole('button', { name: /create talent/i }));
     await waitFor(() =>
@@ -209,6 +271,7 @@ describe('TalentCreateView — résumé path (rulings 1+2+3)', () => {
       ),
     );
     fillName();
+    fillRequired();
     signAttestation();
     fireEvent.click(screen.getByRole('button', { name: /create talent/i }));
     await waitFor(() =>
@@ -239,6 +302,7 @@ describe('TalentCreateView — résumé path (rulings 1+2+3)', () => {
     fireEvent.change(screen.getByTestId('resume-file-input'), { target: { files: [makeFile('scan.pdf')] } });
     await waitFor(() => expect(screen.getByText(/couldn’t read this résumé/i)).toBeInTheDocument());
     fillName();
+    fillRequired();
     signAttestation();
     fireEvent.click(screen.getByRole('button', { name: /create talent/i }));
     await waitFor(() => expect(screen.getByText(/added to your talent/i)).toBeInTheDocument());
@@ -271,6 +335,7 @@ describe('TalentCreateView — attach soft-fail + cancel', () => {
     await waitFor(() =>
       expect((screen.getByLabelText('First name') as HTMLInputElement).value).toBe('Ada'),
     );
+    fillRequired();
     signAttestation();
     fireEvent.click(screen.getByRole('button', { name: /create talent/i }));
     await waitFor(() => expect(screen.getByText(/added to your talent/i)).toBeInTheDocument());

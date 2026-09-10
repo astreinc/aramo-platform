@@ -81,11 +81,15 @@ export function IntakeForm({
     label: string,
     options: readonly string[],
     labels: Record<string, string>,
+    required = false,
   ) {
     return (
       <div className="rc-ifield">
         <label className="rc-ifield__lb">
-          <span>{label}</span>
+          <span>
+            {label}
+            {required ? <span className="rc-ifield__req"> *</span> : null}
+          </span>
           <ProvenanceChip prov={provenance[key] as Provenance | undefined} />
         </label>
         <select
@@ -134,9 +138,9 @@ export function IntakeForm({
           }
         />
         <div className="rc-fgrid">
-          {field('email1', 'Email', { type: 'email' })}
+          {field('email1', 'Email', { type: 'email', required: true })}
           {field('email2', 'Secondary email', { type: 'email' })}
-          {field('phone_cell', 'Cell phone', { type: 'tel' })}
+          {field('phone_cell', 'Cell phone', { type: 'tel', required: true })}
           {field('phone_home', 'Home phone', { type: 'tel' })}
           {field('phone_work', 'Work phone', { type: 'tel' })}
           {field('web_site', 'Website / portfolio', { type: 'url' })}
@@ -154,8 +158,8 @@ export function IntakeForm({
         />
         <div className="rc-fgrid">
           {field('address', 'Street address', { full: true })}
-          {field('city', 'City')}
-          {field('state', 'State')}
+          {field('city', 'City', { required: true })}
+          {field('state', 'State', { required: true })}
           {field('zip', 'Postal code')}
           <div className="rc-ifield">
             <label className="rc-ifield__lb">
@@ -210,10 +214,11 @@ export function IntakeForm({
             'Work authorization',
             WORK_AUTHORIZATION_VALUES,
             WORK_AUTHORIZATION_LABELS,
+            true,
           )}
           {field('date_available', 'Date available', { type: 'date' })}
           {field('current_pay', 'Current pay', { placeholder: 'e.g. $72/hr' })}
-          {field('desired_pay', 'Desired pay', { placeholder: 'e.g. $80/hr' })}
+          {field('desired_pay', 'Desired pay', { required: true, placeholder: 'e.g. $80/hr' })}
         </div>
         <p className="rc-fnote">
           <Icons.IconInfo />

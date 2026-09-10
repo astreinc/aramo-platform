@@ -53,15 +53,17 @@ describe('TrustPanel', () => {
     expect(await screen.findByText('Identity')).toBeInTheDocument();
     // the statement renders as a plain line
     expect(screen.getByText('Observed over time')).toBeInTheDocument();
-    // no digit anywhere in the assessment section
-    const assessment = screen.getByText('Assessment').closest('section');
-    expect(assessment?.textContent ?? '').not.toMatch(/\d/);
+    // no digit anywhere in the Trust & evidence card (never a number, R10)
+    const card = screen.getByText('Trust & evidence').closest('.rc-card');
+    expect(card?.textContent ?? '').not.toMatch(/\d/);
   });
 
   it('renders the honest empty state for a record with no ledger', async () => {
     vi.mocked(getDossier).mockResolvedValue(head({ ledger_established: false }));
     renderPanel();
-    expect(await screen.findByText('No evidence ledger for this record.')).toBeInTheDocument();
+    expect(
+      await screen.findByText('No evidence ledger for this record yet.'),
+    ).toBeInTheDocument();
   });
 
   it('shows a Resolve action on a contradiction only when the actor can resolve', async () => {
@@ -79,13 +81,14 @@ describe('TrustPanel', () => {
     });
     vi.mocked(getDossier).mockResolvedValue(withContra);
     const { unmount } = renderPanel(true);
-    expect(await screen.findByText('EMPLOYMENT')).toBeInTheDocument();
+    // The contradiction renders in the attention panel (reason · assertion type).
+    expect(await screen.findByText(/Overlapping roles/)).toBeInTheDocument();
     expect(screen.getByTestId('resolve-open')).toBeInTheDocument();
     unmount();
 
     vi.mocked(getDossier).mockResolvedValue(withContra);
     renderPanel(false);
-    await screen.findByText('EMPLOYMENT');
+    await screen.findByText(/Overlapping roles/);
     expect(screen.queryByTestId('resolve-open')).not.toBeInTheDocument();
   });
 

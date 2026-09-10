@@ -197,9 +197,49 @@ export function TalentCreateView() {
   }
 
   // ── Save gate ───────────────────────────────────────────────────────────
+  // Manual-create required set (PO-agreed). FE validation only — the DB stays
+  // nullable so externally-sourced / staged records are unaffected. Work
+  // authorization requires a CHOICE (NOT_DISCLOSED is a valid explicit value).
   const nameOk = fields.first_name.trim() !== '' && fields.last_name.trim() !== '';
+  const emailOk = /\S+@\S+\.\S+/.test(fields.email1.trim());
+  const phoneOk = fields.phone_cell.trim() !== '';
+  const cityOk = fields.city.trim() !== '';
+  const stateOk = fields.state.trim() !== '';
+  const workAuthOk = fields.work_authorization !== '';
+  const rateOk = fields.desired_pay.trim() !== '';
+  const resumeOk = resume.storage_key !== undefined;
   const consentOk = requiredConsentGranted(consent);
-  const canCreate = nameOk && consentOk && attested && !submitting;
+  const canCreate =
+    nameOk &&
+    emailOk &&
+    phoneOk &&
+    cityOk &&
+    stateOk &&
+    workAuthOk &&
+    rateOk &&
+    resumeOk &&
+    consentOk &&
+    attested &&
+    !submitting;
+
+  // Attach-only résumé upload for the manual path (no re-parse, so manual
+  // entries are preserved). The 3-step create pipeline's prefill path
+  // (handleFile) still runs when a résumé is dropped at intake.
+  async function attachResumeOnly(file: File): Promise<void> {
+    beginTimer();
+    setResume({ status: 'uploading', file });
+    const contentType = file.type === '' ? 'application/octet-stream' : file.type;
+    try {
+      const presign = await requestResumeUploadUrl({
+        filename: file.name,
+        content_type: contentType,
+      });
+      await putResumeToStorage(presign.presigned_url, file, contentType);
+      setResume({ status: 'ready', file, storage_key: presign.storage_key });
+    } catch (err) {
+      setResume({ status: 'error', file, error: uploadErrorMessage(err) });
+    }
+  }
 
   async function onCreate(): Promise<void> {
     if (!canCreate) return;
@@ -296,7 +336,14 @@ export function TalentCreateView() {
           <aside className="rc-editgrid__rail">
             {resume.file !== undefined && resume.storage_key !== undefined ? (
               <ResumeCard fileName={resume.file.name} sizeBytes={resume.file.size} />
-            ) : null}
+            ) : (
+              <ResumeRequiredCard
+                status={resume.status}
+                fileName={resume.file?.name}
+                onFile={(f) => void attachResumeOnly(f)}
+                disabled={submitting}
+              />
+            )}
 
             <ReservedSeam title="Duplicate check" tag="Coming soon">
               Aramo surfaces likely-duplicate people for you to decide — it never
@@ -324,9 +371,17 @@ export function TalentCreateView() {
             </section>
 
             <SaveBar
-              nameOk={nameOk}
-              consentOk={consentOk}
-              attested={attested}
+              gates={[
+                { ok: nameOk, label: 'First and last name' },
+                { ok: emailOk, label: 'Email address' },
+                { ok: phoneOk, label: 'Phone number' },
+                { ok: cityOk && stateOk, label: 'City and state' },
+                { ok: workAuthOk, label: 'Work authorization' },
+                { ok: rateOk, label: 'Desired rate' },
+                { ok: resumeOk, label: 'Résumé attached' },
+                { ok: consentOk, label: 'Required consent captured' },
+                { ok: attested, label: 'Attestation signed' },
+              ]}
               canCreate={canCreate}
               submitting={submitting}
               onCreate={onCreate}
@@ -410,19 +465,59 @@ function ResumeCard({
   );
 }
 
+// ── Right-rail résumé-required uploader (manual path) ────────────────────────
+function ResumeRequiredCard({
+  status,
+  fileName,
+  onFile,
+  disabled,
+}: {
+  readonly status: ResumeState['status'];
+  readonly fileName?: string;
+  readonly onFile: (file: File) => void;
+  readonly disabled: boolean;
+}) {
+  return (
+    <section className="rc-sidecard rc-resumecard" aria-label="Résumé">
+      <h3 className="rc-sidecard__h">
+        <Icons.IconFile />
+        Résumé <span className="rc-ifield__req">*</span>
+      </h3>
+      <p className="rc-resumecard__fm">
+        {status === 'uploading'
+          ? `Uploading${fileName !== undefined ? ` ${fileName}` : ''}…`
+          : status === 'error'
+            ? 'Upload failed — try again.'
+            : 'A résumé is required to create a talent manually.'}
+      </p>
+      <label className="rc-btn rc-btn--ghost" style={{ cursor: 'pointer' }}>
+        <Icons.IconFile />
+        {status === 'uploading' ? 'Uploading…' : 'Attach résumé'}
+        <input
+          type="file"
+          accept=".pdf,.doc,.docx"
+          aria-label="Attach résumé"
+          hidden
+          disabled={disabled || status === 'uploading'}
+          onChange={(ev) => {
+            const f = ev.target.files?.[0];
+            if (f !== undefined) onFile(f);
+          }}
+        />
+      </label>
+    </section>
+  );
+}
+
 // ── Save-gate bar ────────────────────────────────────────────────────────────
 function SaveBar({
-  nameOk,
-  consentOk,
-  attested,
+  gates,
   canCreate,
   submitting,
   onCreate,
   onCancel,
 }: {
-  readonly nameOk: boolean;
-  readonly consentOk: boolean;
-  readonly attested: boolean;
+  readonly gates: ReadonlyArray<{ ok: boolean; label: string }>;
   readonly canCreate: boolean;
   readonly submitting: boolean;
   readonly onCreate: () => void;
@@ -431,9 +526,9 @@ function SaveBar({
   return (
     <section className="rc-savebar">
       <ul className="rc-savebar__gates">
-        <GateRow ok={nameOk} label="First and last name" />
-        <GateRow ok={consentOk} label="Required consent captured" />
-        <GateRow ok={attested} label="Attestation signed" />
+        {gates.map((g) => (
+          <GateRow key={g.label} ok={g.ok} label={g.label} />
+        ))}
       </ul>
       <button
         type="button"

@@ -4377,6 +4377,234 @@ button.rc-tj__cell:hover { color: #022ac0; text-decoration: underline; }
 
 .talent-detail__actions { display: flex; gap: 8px; margin: 6px 0 2px; }
 
+/* ─── FE-convergence: Talent Detail — prototype-aligned layout ─── */
+.talent-detail__crumb { font-size: 12px; color: var(--c-text-subtle); margin-bottom: 14px; }
+.talent-detail__crumb-sep { margin: 0 4px; }
+
+.talent-detail__head {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 20px 24px;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-lg);
+  margin-bottom: 14px;
+}
+.talent-detail__avatar {
+  width: 56px; height: 56px; border-radius: 50%;
+  background: #e8edfb; color: #011f8d;
+  display: grid; place-items: center;
+  font-size: 19px; font-weight: 700; flex: none;
+}
+.talent-detail__head-main { flex: 1 1 260px; min-width: 260px; }
+.talent-detail__idrow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.talent-detail__name { margin: 0; font-size: 19px; font-weight: 700; letter-spacing: -0.01em; }
+.talent-detail__badges { display: inline-flex; flex-wrap: wrap; gap: 8px; }
+.talent-detail__subline { font-size: 13px; color: var(--c-text-muted); margin-top: 4px; }
+.talent-detail__framing { font-size: 12px; color: var(--c-text-subtle); margin-top: 2px; }
+.talent-detail__contact {
+  display: flex; gap: 16px; flex-wrap: wrap; align-items: center;
+  margin-top: 9px; font-size: 12px; color: var(--c-text-muted);
+}
+.talent-detail__contact-item { display: inline-flex; align-items: center; gap: 6px; }
+.talent-detail__contact-item > svg { width: 13px; height: 13px; color: var(--c-text-subtle); flex: none; }
+.talent-detail__mono { font-family: var(--font-mono); }
+.talent-detail__head .talent-detail__actions {
+  margin: 0; flex: none; flex-wrap: wrap; align-items: flex-start; gap: 8px;
+}
+.talent-detail__edit-link { text-decoration: none; }
+
+/* "Verify identity" — an attention (amber) action. Inherits sizing from
+   tc-button--sm; only the colours differ so a pending verification visibly
+   asks for the recruiter's attention (not a neutral button). */
+.talent-detail__verify {
+  background-color: #faefd8;
+  border-color: #f0dfb7;
+  color: #946011;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.talent-detail__verify:hover:not(:disabled) {
+  background-color: #f5e3bf;
+  border-color: #e8d09a;
+}
+.talent-detail__verify > svg { width: 14px; height: 14px; color: #946011; flex: none; }
+
+.talent-detail__snapshot { margin-bottom: 14px; }
+
+.talent-detail__body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 14px;
+  align-items: start;
+}
+.talent-detail__main { min-width: 0; }
+.talent-detail__rail {
+  display: flex; flex-direction: column; gap: 12px;
+  position: sticky; top: 16px;
+}
+@media (max-width: 900px) {
+  .talent-detail__body { grid-template-columns: 1fr; }
+  .talent-detail__rail { position: static; }
+}
+
+/* Cards / content — stacked cards in the main column carry the prototype's
+   14px vertical rhythm (the rail spaces its own cards via flex gap). */
+.talent-detail__main .rc-card { margin-bottom: 14px; }
+.talent-detail__main .rc-card:last-child { margin-bottom: 0; }
+.talent-detail__ctitle { font-size: 13.5px; font-weight: 700; }
+.talent-detail__card-head { display: flex; align-items: center; margin-bottom: 10px; }
+.talent-detail__note { font-size: 11px; color: var(--c-text-subtle); margin-top: 10px; }
+.talent-detail__empty { font-size: 12.5px; color: var(--c-text-subtle); padding: 6px 0; margin: 0; }
+.talent-detail__skills { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 4px; }
+.talent-detail__skill {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid var(--c-border); background: var(--c-surface-2);
+  border-radius: 7px; padding: 4px 11px; font-size: 11.5px; font-weight: 600; color: #54606a;
+}
+.talent-detail__docs { list-style: none; margin: 0; padding: 0; }
+.talent-detail__doc { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid #f2f4f6; }
+.talent-detail__doc-name { display: flex; flex-direction: column; min-width: 0; }
+.talent-detail__doc-meta { font-size: 11px; color: var(--c-text-subtle); }
+
+/* Journey cards */
+.talent-detail__jcard { border: 1px solid var(--c-border); border-radius: 11px; padding: 14px 16px; margin-top: 10px; }
+.talent-detail__jhead { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.talent-detail__jhead > :last-child { margin-left: auto; }
+.talent-detail__jnext { font-size: 12px; color: var(--c-text-muted); margin-top: 10px; }
+
+/* Engagement relationship */
+.talent-detail__rel {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-top: 4px;
+}
+.talent-detail__rel-k { font-size: 10.5px; font-weight: 700; letter-spacing: 0.07em; color: var(--c-text-subtle); margin-bottom: 4px; }
+.talent-detail__rel-v { font-size: 13px; font-weight: 700; }
+.talent-detail__rel-actions {
+  display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
+  margin-top: 14px; padding-top: 14px; border-top: 1px solid #f2f4f6;
+}
+.talent-detail__rel-note { font-size: 11px; color: var(--c-text-subtle); }
+
+/* Activity timeline */
+.talent-detail__timeline { list-style: none; margin: 0; padding: 0; }
+.talent-detail__timeline-item { padding: 10px 0; border-top: 1px solid #f2f4f6; }
+.talent-detail__timeline-item p { margin: 0 0 2px; font-size: 12.5px; color: #3a454e; }
+.talent-detail__timeline-item time { font-size: 11px; color: var(--c-text-subtle); }
+
+/* Right-rail key/value cards */
+.talent-detail__rail-title { font-size: 12.5px; font-weight: 700; margin-bottom: 10px; }
+.talent-detail__kvs { display: flex; flex-direction: column; gap: 8px; font-size: 12px; color: var(--c-text-muted); }
+.talent-detail__kv { display: flex; justify-content: space-between; gap: 12px; }
+.talent-detail__kv-strong { color: var(--c-text); }
+.talent-detail__kv-ok { color: var(--ok); }
+.talent-detail__kv-warn { color: var(--warn); }
+.talent-detail__kv-danger { color: #b3261e; }
+
+/* Trust & Evidence — claim rows + attention panel */
+.talent-detail__trows { margin-top: 4px; }
+.talent-detail__trow {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 14px;
+  padding: 12px 0; border-top: 1px solid #f2f4f6;
+}
+.talent-detail__trow-main { flex: 1; min-width: 200px; }
+.talent-detail__trow-title { font-size: 13px; font-weight: 700; }
+.talent-detail__trow-ev { font-size: 11.5px; color: var(--c-text-muted); margin-top: 2px; }
+.talent-detail__trow-state { flex: none; margin-top: 2px; }
+.talent-detail__tstatements { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.talent-detail__tstatements li { font-size: 12.5px; color: var(--brand-strong); line-height: 1.4; }
+.talent-detail__attention {
+  border: 1px solid #f0dfb7; background: #faefd8aa; border-radius: var(--r-lg);
+  padding: 16px 20px; margin-bottom: 14px;
+}
+.talent-detail__attention-title { font-size: 13px; font-weight: 700; color: var(--warn); margin-bottom: 6px; }
+.talent-detail__attention-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 0;
+}
+.talent-detail__attention-body { font-size: 12.5px; color: var(--c-text-muted); line-height: 1.55; }
+.talent-detail__attention-meta { color: var(--c-text-subtle); }
+
+/* Record-reference form */
+.talent-detail__refgrid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 11px 14px; margin-top: 12px;
+}
+.talent-detail__field { display: flex; flex-direction: column; gap: 4px; }
+.talent-detail__field > span { font-size: 11.5px; font-weight: 600; }
+.talent-detail__field input,
+.talent-detail__field select,
+.talent-detail__field textarea {
+  box-sizing: border-box; width: 100%;
+  border: 1px solid var(--c-border-strong); border-radius: 8px; padding: 8.5px 11px;
+  font: 400 12.5px var(--font-sans); color: var(--c-text); background: var(--c-surface); outline: none;
+}
+.talent-detail__field textarea { min-height: 72px; resize: vertical; }
+.talent-detail__field--full { margin-top: 12px; }
+.talent-detail__refactions { margin-top: 14px; }
+.talent-detail__field--error input,
+.talent-detail__field--error select { border-color: #b3261e; box-shadow: 0 0 0 3px #b3261e22; }
+
+/* Edit-profile slide-over drawer */
+.talent-detail__scrim {
+  position: fixed; inset: 0; background: rgba(11, 16, 34, 0.42); z-index: 60;
+}
+.talent-detail__drawer {
+  position: fixed; top: 0; right: 0; bottom: 0; width: min(480px, 94vw);
+  background: var(--c-surface); z-index: 61;
+  box-shadow: -24px 0 60px -24px rgba(11, 16, 34, 0.35);
+  display: flex; flex-direction: column;
+}
+.talent-detail__drawer-head {
+  display: flex; align-items: center; gap: 12px;
+  padding: 16px 22px; border-bottom: 1px solid var(--c-border);
+}
+.talent-detail__avatar--sm { width: 34px; height: 34px; font-size: 12px; }
+.talent-detail__drawer-head-main { flex: 1; min-width: 0; }
+.talent-detail__drawer-title { font-size: 14.5px; font-weight: 700; }
+.talent-detail__drawer-sub { font-size: 11.5px; color: var(--c-text-subtle); }
+.talent-detail__drawer-x {
+  margin-left: auto; border: none; background: #eef1f4; color: #54606a;
+  border-radius: 8px; width: 28px; height: 28px; display: grid; place-items: center;
+  font-size: 16px; line-height: 1; cursor: pointer;
+}
+.talent-detail__drawer-x:hover { background: var(--c-border-strong); }
+.talent-detail__drawer-body { flex: 1; overflow-y: auto; padding: 18px 22px; }
+.talent-detail__drawer-sec { margin-bottom: 16px; }
+.talent-detail__drawer-sec-label {
+  display: flex; align-items: center; gap: 10px; margin: 6px 0 10px;
+}
+.talent-detail__drawer-sec-label > span:first-child {
+  font-size: 10.5px; font-weight: 700; letter-spacing: 0.08em; color: var(--c-text-subtle);
+  flex: none;
+}
+.talent-detail__drawer-sec-rule { flex: 1; height: 1px; background: #f2f4f6; }
+.talent-detail__ro { font-style: normal; font-size: 10px; font-weight: 700; color: var(--c-text-subtle); }
+.talent-detail__ro-value {
+  padding: 8.5px 11px; border: 1px dashed var(--c-border-strong); border-radius: 8px;
+  background: var(--c-surface-2); color: var(--c-text-muted); font-size: 12.5px;
+}
+.talent-detail__resume-row { display: flex; align-items: center; gap: 12px; }
+.talent-detail__resume-info { flex: 1; min-width: 0; font-size: 12px; color: var(--c-text-muted); }
+.talent-detail__resume-btn { cursor: pointer; flex: none; }
+.talent-detail__drawer-info {
+  display: block; padding: 10px 13px; border-radius: 9px;
+  background: #e8edfb55; border: 1px solid #e8edfb;
+  font-size: 11.5px; color: var(--c-text-muted); line-height: 1.5;
+}
+.talent-detail__drawer-foot {
+  display: flex; align-items: center; gap: 10px;
+  padding: 14px 22px; border-top: 1px solid var(--c-border);
+}
+.talent-detail__drawer-full { margin-left: auto; font-size: 12px; font-weight: 600; white-space: nowrap; }
+
+/* Add-to-requisition dialog */
+.talent-detail__dialog-field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; margin-bottom: 12px; }
+.talent-detail__dialog-field select {
+  border: 1px solid var(--c-border-strong); border-radius: 8px; padding: 8.5px 11px;
+  font: 400 12.5px var(--font-sans); color: var(--c-text); background: var(--c-surface);
+}
+.talent-detail__dialog-actions { display: flex; gap: 10px; margin-top: 6px; }
+
 .rc-comm-call {
   display: inline-flex; align-items: center; gap: 6px;
   padding: 6px 14px; border-radius: 8px; border: 1px solid #022ac0;
