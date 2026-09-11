@@ -8,9 +8,9 @@
 // match data, and any operational metadata not in the API Contracts Phase 3
 // Profile group.
 //
-// 4e-rest re-home: findSelfProfile moved OFF the Core Talent+overlay reader
-// (libs/talent) ONTO TalentRecord (this lib, the ATS heart). `lifecycle_status`
-// was DROPPED — it was a Core `Talent` field with no TalentRecord equivalent;
+// 4e-rest re-home: findSelfProfile reads TalentRecord (this lib, the ATS
+// heart). `lifecycle_status` was DROPPED — a field with no TalentRecord
+// equivalent;
 // `tenant_status` (the per-tenant relationship status, folded onto TalentRecord
 // in 4d) remains the profile's status field. tenant_status / source_channel are
 // nullable on TalentRecord, so the reader returns null (→ 404) when either is

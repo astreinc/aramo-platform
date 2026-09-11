@@ -29,11 +29,10 @@ import { TalentRecordRepository } from './talent-record.repository.js';
 //
 // Failing (2) → 422 TALENT_LINK_INVALID reason='cluster_not_found'.
 //
-// 4e-rest: the Core-Talent link (core_talent_id) was dropped once selection
-// (#349) and consent (#350) released their Core reads. The link is now
-// CLUSTER-ONLY (the PERSON_CLUSTER pointer in identity_index). The former Core
-// guard (Talent.findTalentById → core_talent_not_found) is gone; guard-4 is now
-// the cluster-exists check. cluster_id is a cross-tenant id, read/written
+// 4e-rest: the former identity-link column was dropped once selection (#349)
+// and consent (#350) released their former identity reads. The link is now
+// CLUSTER-ONLY (the PERSON_CLUSTER pointer in identity_index). The former
+// identity-existence guard is gone; guard-4 is now the cluster-exists check. cluster_id is a cross-tenant id, read/written
 // server-side only — the link VIEW exposes only a boolean is_linked.
 //
 // === Why this lives in a dedicated service (not the controller, not

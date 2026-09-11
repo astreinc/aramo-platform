@@ -17,17 +17,17 @@ import { CrossSchemaConsistencyRepository } from '../lib/cross-schema-consistenc
 // M5 PR-11 §4.4 + §6.24 — cross-schema-consistency integration spec
 // (PL-66 Category 5 FIRST RATIFICATION USE).
 //
-// Applies 5 schema migrations to a single Postgres testcontainer, seeds
-// 1 valid talent + 1 orphaned consent.TalentConsentEvent (whose talent_id
-// does NOT match any talent.Talent.id), enqueues a scan job, and asserts:
+// Applies the schema migrations to a single Postgres testcontainer, seeds
+// 1 valid TalentRecord + 1 orphaned consent.TalentConsentEvent (whose
+// talent_record_id does NOT match any talent_record.TalentRecord.id), enqueues
+// a scan job, and asserts:
 //   - The cross-schema repository returns orphan_count = 1 for the
-//     consent->talent pair.
+//     consent->talent_record pair.
 //   - All other 4 pairs return orphan_count = 0 (empty tables).
 //   - The BullMQ-mediated worker run completes without failures.
 //
 // MIGRATIONS list:
 //   libs/consent/prisma/migrations/20260429164414_initial_consent_schema/migration.sql
-//   libs/talent/prisma/migrations/20260516085014_init_talent_model/migration.sql
 //   libs/selection/prisma/migrations/20260525120000_init_selection_model/migration.sql
 //   libs/examination/prisma/migrations/20260517200000_init_examination_model/migration.sql
 //   libs/job-domain/prisma/migrations/20260519100000_init_job_domain_model/migration.sql
@@ -37,10 +37,9 @@ const MIGRATIONS: readonly string[] = [
   // Step-5 consent re-key: talent_id → talent_record_id (the consent pair now
   // LEFT JOINs talent_record.TalentRecord).
   resolve(__dirname, '../../../consent/prisma/migrations/20260630170000_rekey_consent_to_talent_record/migration.sql'),
-  resolve(__dirname, '../../../talent/prisma/migrations/20260516085014_init_talent_model/migration.sql'),
-  // 4e-selection-key — the selection→talent pair now LEFT JOINs
-  // talent_record.TalentRecord (was talent.Talent), so the target table must
-  // exist. Init only (the orphan scan selects no TalentRecord columns).
+  // The consent / selection / examination pairs all LEFT JOIN
+  // talent_record.TalentRecord, so the target table must exist. Init only
+  // (the orphan scan selects no TalentRecord columns).
   resolve(__dirname, '../../../talent-record/prisma/migrations/20260602120000_init_talent_record_model/migration.sql'),
   resolve(__dirname, '../../../job-domain/prisma/migrations/20260519100000_init_job_domain_model/migration.sql'),
   resolve(__dirname, '../../../selection/prisma/migrations/20260525120000_init_selection_model/migration.sql'),

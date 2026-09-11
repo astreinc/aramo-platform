@@ -9,8 +9,8 @@
 // requisition / company / contact) DEFINED NOW so later batches can
 // reuse the table without a schema migration. A4 wires + tests the
 // `talent` owner path ONLY (owner_id resolves against
-// `talent_record.TalentRecord` — the ATS recruiter-facing record, NOT
-// Core `talent.Talent`; amendment §5).
+// `talent_record.TalentRecord` — the ATS recruiter-facing record;
+// amendment §5).
 //
 // Service-layer owner validation (controller / service) is what makes
 // the typed-discriminator integrity work: at attach time, the service

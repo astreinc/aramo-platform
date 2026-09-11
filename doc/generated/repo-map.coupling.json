@@ -443,12 +443,6 @@
     },
     {
       "excludedBy": "src/tests/**/*",
-      "from": "apps/api/src/tests/ats-a8-2-suggest-mapping.integration.spec.ts",
-      "status": "excluded",
-      "to": "libs/talent/prisma/migrations/20260516085014_init_talent_model/migration.sql"
-    },
-    {
-      "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/ats-batch1-gating.integration.spec.ts",
       "status": "excluded",
       "to": "libs/company/prisma/migrations/20260601160000_init_company_model/migration.sql"
@@ -932,12 +926,6 @@
       "from": "apps/api/src/tests/ats-batch4b-talent-link.integration.spec.ts",
       "status": "excluded",
       "to": "libs/talent-record/prisma/migrations/20260910130000_add_talent_title_and_country/migration.sql"
-    },
-    {
-      "excludedBy": "src/tests/**/*",
-      "from": "apps/api/src/tests/ats-batch4b-talent-link.integration.spec.ts",
-      "status": "excluded",
-      "to": "libs/talent/prisma/migrations/20260516085014_init_talent_model/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -1652,12 +1640,6 @@
       "from": "apps/api/src/tests/ats-batch7-import-engine.integration.spec.ts",
       "status": "excluded",
       "to": "libs/talent-record/prisma/migrations/20260910130000_add_talent_title_and_country/migration.sql"
-    },
-    {
-      "excludedBy": "src/tests/**/*",
-      "from": "apps/api/src/tests/ats-batch7-import-engine.integration.spec.ts",
-      "status": "excluded",
-      "to": "libs/talent/prisma/migrations/20260516085014_init_talent_model/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -3107,12 +3089,6 @@
     },
     {
       "excludedBy": "src/tests/**/*",
-      "from": "apps/api/src/tests/conversation-started.integration.spec.ts",
-      "status": "excluded",
-      "to": "libs/talent/prisma/migrations/20260516085014_init_talent_model/migration.sql"
-    },
-    {
-      "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/conversation-started.negative-shape.spec.ts",
       "status": "excluded",
       "to": "libs/ai-draft/prisma/migrations/20260525170000_init/migration.sql"
@@ -3236,12 +3212,6 @@
       "from": "apps/api/src/tests/conversation-started.negative-shape.spec.ts",
       "status": "excluded",
       "to": "libs/talent-evidence/prisma/migrations/20260714120000_tr7_b1_education_certification/migration.sql"
-    },
-    {
-      "excludedBy": "src/tests/**/*",
-      "from": "apps/api/src/tests/conversation-started.negative-shape.spec.ts",
-      "status": "excluded",
-      "to": "libs/talent/prisma/migrations/20260516085014_init_talent_model/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -4247,12 +4217,6 @@
     },
     {
       "excludedBy": "src/tests/**/*",
-      "from": "apps/api/src/tests/outreach-send-consent-revoked.integration.spec.ts",
-      "status": "excluded",
-      "to": "libs/talent/prisma/migrations/20260516085014_init_talent_model/migration.sql"
-    },
-    {
-      "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/outreach-send.integration.spec.ts",
       "status": "excluded",
       "to": "libs/ai-draft/prisma/migrations/20260525170000_init/migration.sql"
@@ -4379,12 +4343,6 @@
     },
     {
       "excludedBy": "src/tests/**/*",
-      "from": "apps/api/src/tests/outreach-send.integration.spec.ts",
-      "status": "excluded",
-      "to": "libs/talent/prisma/migrations/20260516085014_init_talent_model/migration.sql"
-    },
-    {
-      "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/outreach-send.negative-shape.spec.ts",
       "status": "excluded",
       "to": "libs/ai-draft/prisma/migrations/20260525170000_init/migration.sql"
@@ -4508,12 +4466,6 @@
       "from": "apps/api/src/tests/outreach-send.negative-shape.spec.ts",
       "status": "excluded",
       "to": "libs/talent-evidence/prisma/migrations/20260714120000_tr7_b1_education_certification/migration.sql"
-    },
-    {
-      "excludedBy": "src/tests/**/*",
-      "from": "apps/api/src/tests/outreach-send.negative-shape.spec.ts",
-      "status": "excluded",
-      "to": "libs/talent/prisma/migrations/20260516085014_init_talent_model/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -5036,12 +4988,6 @@
       "from": "apps/api/src/tests/portal-refusal.negative-shape.spec.ts",
       "status": "excluded",
       "to": "libs/portal-identity/prisma/migrations/20260714120000_init_portal_identity/migration.sql"
-    },
-    {
-      "excludedBy": "src/tests/**/*",
-      "from": "apps/api/src/tests/portal-refusal.negative-shape.spec.ts",
-      "status": "excluded",
-      "to": "libs/talent/prisma/migrations/20260516085014_init_talent_model/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -5705,12 +5651,6 @@
     },
     {
       "excludedBy": "src/tests/**/*",
-      "from": "apps/api/src/tests/response-received.integration.spec.ts",
-      "status": "excluded",
-      "to": "libs/talent/prisma/migrations/20260516085014_init_talent_model/migration.sql"
-    },
-    {
-      "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/response-received.negative-shape.spec.ts",
       "status": "excluded",
       "to": "libs/ai-draft/prisma/migrations/20260525170000_init/migration.sql"
@@ -5837,12 +5777,6 @@
     },
     {
       "excludedBy": "src/tests/**/*",
-      "from": "apps/api/src/tests/response-received.negative-shape.spec.ts",
-      "status": "excluded",
-      "to": "libs/talent/prisma/migrations/20260516085014_init_talent_model/migration.sql"
-    },
-    {
-      "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/selection-create.negative-shape.spec.ts",
       "status": "excluded",
       "to": "libs/consent/prisma/migrations/20260429164414_initial_consent_schema/migration.sql"
@@ -5960,12 +5894,6 @@
       "from": "apps/api/src/tests/selection-create.negative-shape.spec.ts",
       "status": "excluded",
       "to": "libs/talent-evidence/prisma/migrations/20260714120000_tr7_b1_education_certification/migration.sql"
-    },
-    {
-      "excludedBy": "src/tests/**/*",
-      "from": "apps/api/src/tests/selection-create.negative-shape.spec.ts",
-      "status": "excluded",
-      "to": "libs/talent/prisma/migrations/20260516085014_init_talent_model/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -6092,12 +6020,6 @@
       "from": "apps/api/src/tests/selection-transition.negative-shape.spec.ts",
       "status": "excluded",
       "to": "libs/talent-evidence/prisma/migrations/20260714120000_tr7_b1_education_certification/migration.sql"
-    },
-    {
-      "excludedBy": "src/tests/**/*",
-      "from": "apps/api/src/tests/selection-transition.negative-shape.spec.ts",
-      "status": "excluded",
-      "to": "libs/talent/prisma/migrations/20260516085014_init_talent_model/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -6242,12 +6164,6 @@
       "from": "apps/api/src/tests/selection.controller.integration.spec.ts",
       "status": "excluded",
       "to": "libs/talent-evidence/prisma/migrations/20260714120000_tr7_b1_education_certification/migration.sql"
-    },
-    {
-      "excludedBy": "src/tests/**/*",
-      "from": "apps/api/src/tests/selection.controller.integration.spec.ts",
-      "status": "excluded",
-      "to": "libs/talent/prisma/migrations/20260516085014_init_talent_model/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -10152,11 +10068,6 @@
     {
       "from": "apps/ats-web/src/talent/consent.ts",
       "status": "production",
-      "to": "doc/go-live-known-limitations.md"
-    },
-    {
-      "from": "apps/ats-web/src/talent/consent.ts",
-      "status": "production",
       "to": "libs/consent/src/lib/dto/consent-grant-request.dto.ts"
     },
     {
@@ -12170,11 +12081,6 @@
     {
       "from": "doc/governance/recon/2026-08-09/SEG-03-persistence.md",
       "status": "unscoped",
-      "to": "libs/talent/prisma/migrations/20260704160000_drop_core_talent/migration.sql"
-    },
-    {
-      "from": "doc/governance/recon/2026-08-09/SEG-03-persistence.md",
-      "status": "unscoped",
       "to": "libs/tenant-reset/src/lib/reset-batch.store.ts"
     },
     {
@@ -12771,11 +12677,6 @@
       "status": "unscoped",
       "to": "libs/consent/src/tests/consent.refusal-r6.spec.ts"
     },
-    {
-      "from": "doc/m1-closure-record-draft.md",
-      "status": "unscoped",
-      "to": "libs/talent/prisma/schema.prisma"
-    },
     { "from": "doc/m1-closure-record-draft.md", "status": "unscoped", "to": "openapi/common.yaml" },
     {
       "from": "doc/milestone-signoffs/M0-refusal-signoff.md",
@@ -12906,11 +12807,6 @@
       "from": "doc/milestone-signoffs/M1-refusal-signoff.md",
       "status": "unscoped",
       "to": "libs/consent/src/tests/consent.refusal-r6.spec.ts"
-    },
-    {
-      "from": "doc/milestone-signoffs/M1-refusal-signoff.md",
-      "status": "unscoped",
-      "to": "libs/talent/prisma/schema.prisma"
     },
     {
       "from": "doc/milestone-signoffs/M1-refusal-signoff.md",
@@ -13057,6 +12953,16 @@
       "to": "infrastructure/bootstrap/create-anthropic-secret.sh"
     },
     {
+      "from": "doc/runbooks/core-talent-ledger-reconciliation.md",
+      "status": "unscoped",
+      "to": "deploy/migrate-prod.sh"
+    },
+    {
+      "from": "doc/runbooks/core-talent-ledger-reconciliation.md",
+      "status": "unscoped",
+      "to": "tools/db-sync-local.sh"
+    },
+    {
       "from": "doc/runbooks/frontdoor-cutover.md",
       "status": "unscoped",
       "to": "deploy/build-images.sh"
@@ -13146,6 +13052,11 @@
       "from": "doc/runbooks/singlebox-ops.md",
       "status": "unscoped",
       "to": "deploy/systemd/singlebox-compose.sh"
+    },
+    {
+      "from": "doc/runbooks/singlebox-ops.md",
+      "status": "unscoped",
+      "to": "doc/runbooks/core-talent-ledger-reconciliation.md"
     },
     {
       "from": "doc/runbooks/singlebox-ops.md",
@@ -14345,12 +14256,6 @@
       "from": "libs/common/src/tests/cross-schema-consistency.integration.spec.ts",
       "status": "excluded",
       "to": "libs/selection/prisma/migrations/20260525120000_init_selection_model/migration.sql"
-    },
-    {
-      "excludedBy": "src/tests/**/*",
-      "from": "libs/common/src/tests/cross-schema-consistency.integration.spec.ts",
-      "status": "excluded",
-      "to": "libs/talent/prisma/migrations/20260516085014_init_talent_model/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -16107,12 +16012,6 @@
       "status": "production",
       "to": "apps/api/src/tests/app-module-di.spec.ts"
     },
-    { "from": "libs/talent/project.json", "status": "unscoped", "to": "libs/talent/src/index.ts" },
-    {
-      "from": "libs/talent/project.json",
-      "status": "unscoped",
-      "to": "libs/talent/tsconfig.lib.json"
-    },
     { "from": "libs/task/project.json", "status": "unscoped", "to": "libs/task/src/index.ts" },
     { "from": "libs/task/project.json", "status": "unscoped", "to": "libs/task/tsconfig.lib.json" },
     {
@@ -16339,7 +16238,6 @@
       "status": "unscoped",
       "to": "libs/talent-trust/prisma/schema.prisma"
     },
-    { "from": "package.json", "status": "unscoped", "to": "libs/talent/prisma/schema.prisma" },
     { "from": "package.json", "status": "unscoped", "to": "libs/task/prisma/schema.prisma" },
     {
       "from": "package.json",
@@ -18068,7 +17966,6 @@
     },
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/talent-record/src/index.ts" },
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/talent-trust/src/index.ts" },
-    { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/talent/src/index.ts" },
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/task/src/index.ts" },
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/tenant-reset/src/index.ts" },
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/visibility/src/index.ts" },
@@ -18194,7 +18091,6 @@
     },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/talent-record/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/talent-trust/src/index.ts" },
-    { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/talent/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/task/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/tenant-reset/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/visibility/src/index.ts" },

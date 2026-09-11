@@ -5,7 +5,7 @@
 // consistent with the PR-10 String/closed-vocabulary convention; a plain
 // String column is btree-indexable for the Segment-4 server-side facet/sort.
 // §6 topology: both land on the ATS TalentRecord (recruiter-CRM projection);
-// NO Core Talent/overlay write (R12 — the Core model stays thin).
+// no separate identity-model write (R12 — the record stays thin).
 // §3 refusal posture: both are talent-STATED facts (R10-clean — a self-reported
 // category, never a Portal-forbidden ordinal or inferred output).
 //

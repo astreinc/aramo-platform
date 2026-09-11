@@ -326,7 +326,7 @@ export class TalentRecordController {
   }
 
   // -------------------------------------------------------------------------
-  // PR-A5b-2 — Core-Talent link routes (the keystone).
+  // PR-A5b-2 — cluster-link routes (the keystone).
   //
   // Scope reuse: the existing seeded `talent:read` / `talent:edit`
   // scopes cover the read / write surface naturally. A dedicated
@@ -340,7 +340,7 @@ export class TalentRecordController {
   //   - LINK-NOT-CREATE — never mints an identity.
   //   - ASSOCIATE-NOT-RESOLVE — cluster_id is an explicit input.
   // 4e-rest: the link is now CLUSTER-ONLY (the PERSON_CLUSTER pointer); the
-  // Core-Talent link (core_talent_id) was dropped.
+  // former identity-link column was dropped.
   // -------------------------------------------------------------------------
 
   @Get(':id/link')

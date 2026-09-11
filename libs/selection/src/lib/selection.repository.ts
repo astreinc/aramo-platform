@@ -40,9 +40,8 @@ import { PrismaService } from './prisma/prisma.service.js';
 // Three-pattern cross-schema validator design (Amendment v1.1 §2):
 //   Pattern A (Requisition): findRequisitionById + app-layer tenant check.
 //   Pattern B (Examination): findById + app-layer tenant check; nullable.
-//   Pattern C (Talent): findOverlayByTenant + null-check (overlay-existence
-//     proxy for tenant visibility — TalentDto is tenant-agnostic by
-//     design; the overlay table is the tenant-visibility surface).
+//   Pattern C (Talent): findById on TalentRecord + null-check (in-tenant
+//     existence — selection.talent_id is a talent_record.TalentRecord.id).
 // All three validators run BEFORE prisma.$transaction opens (fail-fast).
 // Validation order: talent_id → requisition_id → examination_id.
 //
@@ -306,8 +305,7 @@ export class SelectionRepository {
     private readonly selectionEventRepository: SelectionEventRepository,
     // Pattern C cross-schema validator dep. selection.talent_id IS a
     // TalentRecord.id (4e-selection-key); createSelection validates it
-    // against the tenant-scoped TalentRecord. (The dead Core TalentRepository
-    // was removed in 4e-rest — Core retirement.)
+    // against the tenant-scoped TalentRecord.
     private readonly talentRecordRepository: TalentRecordRepository,
     // M5 PR-3 — Pattern A (Requisition) cross-schema validator dep. T1-a
     // re-pointed this from the retired job_domain.Requisition mirror to the
@@ -551,10 +549,9 @@ export class SelectionRepository {
     this.validateCreateInput(input);
 
     // ---- Step 2a: Pattern C — TalentRecord (in-tenant existence) ------
-    // 4e-selection-key: selection.talent_id is now a TalentRecord.id (the
-    // ATS heart), not a Core talent.Talent.id. The caller supplies it; we
-    // validate it exists in the requesting tenant against the TalentRecord
-    // table (was Core findOverlayByTenant before the re-point). null → 422.
+    // 4e-selection-key: selection.talent_id is a TalentRecord.id (the ATS
+    // heart). The caller supplies it; we validate it exists in the requesting
+    // tenant against the TalentRecord table. null → 422.
     const talentRecord = await this.talentRecordRepository.findById({
       tenant_id: input.tenant_id,
       id: input.talent_id,

@@ -10,10 +10,11 @@ import { Pool, type PoolClient } from 'pg';
 //
 // Critical pairs (per audit Axis E Lead-Q-E1=(b) disposition):
 //   1. consent."TalentConsentEvent".talent_record_id ↔ talent_record."TalentRecord".id
-//      (Step-5 consent re-key — was talent."Talent".id before the re-key)
+//      (Step-5 consent re-key — consent is keyed on talent_record_id)
 //   2. selection."TalentSelection".talent_id ↔ talent_record."TalentRecord".id
-//      (4e-selection-key — was talent."Talent".id before the re-point)
-//   3. examination."TalentJobExamination".talent_id ↔ talent."Talent".id
+//      (4e-selection-key — the selection key is talent_record.TalentRecord.id)
+//   3. examination."TalentJobExamination".talent_id ↔ talent_record."TalentRecord".id
+//      (ADR-0016 — the examination's talent key is the ATS TalentRecord.id)
 //   4. examination."TalentJobExamination".job_id ↔ job_domain."Job".id
 //   5. examination."TalentJobExamination".golden_profile_id
 //      ↔ job_domain."GoldenProfile".id
@@ -54,7 +55,7 @@ export interface CrossSchemaPairResult {
 const PAIRS = [
   {
     // Step-5 consent re-key: consent.TalentConsentEvent.talent_record_id now
-    // references talent_record.TalentRecord.id (was Core talent.Talent).
+    // references talent_record.TalentRecord.id (the ATS heart / person key).
     pair_id: 'consent.TalentConsentEvent.talent_record_id->talent_record.TalentRecord',
     sql:
       'SELECT cte.id AS row_id, cte.talent_record_id AS missing_foreign_id ' +
@@ -66,8 +67,8 @@ const PAIRS = [
     // 4e-selection-key + T2-P2: the Selection workflow's talent_id (was
     // selection.TalentSelection, now selection.TalentSelection after the
     // T2-P2 relocation) references talent_record.TalentRecord.id (the ATS
-    // heart), not Core talent.Talent. Without this the scanner would LEFT JOIN
-    // every selection row to a NULL Core row and report 100% orphaned.
+    // heart) — the ATS TalentRecord table. Without this the scanner would LEFT
+    // JOIN every selection row to a NULL row and report 100% orphaned.
     pair_id: 'selection.TalentSelection.talent_id->talent_record.TalentRecord',
     sql:
       'SELECT tje."id" AS row_id, tje."talent_id" AS missing_foreign_id ' +
@@ -76,12 +77,14 @@ const PAIRS = [
       'WHERE tr."id" IS NULL',
   },
   {
-    pair_id: 'examination.TalentJobExamination.talent_id->talent.Talent',
+    // ADR-0016: TalentJobExamination.talent_id references talent_record.TalentRecord.id
+    // (the ATS heart / person key), same as the consent + selection pairs above.
+    pair_id: 'examination.TalentJobExamination.talent_id->talent_record.TalentRecord',
     sql:
       'SELECT tje."id" AS row_id, tje."talent_id" AS missing_foreign_id ' +
       'FROM "examination"."TalentJobExamination" tje ' +
-      'LEFT JOIN "talent"."Talent" t ON t."id" = tje."talent_id" ' +
-      'WHERE t."id" IS NULL',
+      'LEFT JOIN "talent_record"."TalentRecord" tr ON tr."id" = tje."talent_id" ' +
+      'WHERE tr."id" IS NULL',
   },
   {
     pair_id: 'examination.TalentJobExamination.job_id->job_domain.Job',

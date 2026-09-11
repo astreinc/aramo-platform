@@ -429,8 +429,8 @@ export class TalentRecordRepository {
     // Promotion-Trigger slice-A — the per-tenant lifecycle status at mint. A
     // SERVER-side param (NOT on the wire DTO): the recruiter create omits it
     // (→ null); the promotion path sets 'sourced'. Nullable string, no enum;
-    // nothing else writes tenant_status (the retired Core overlay was its
-    // former writer).
+    // nothing else writes tenant_status (the former tenant-overlay writer is
+    // retired).
     tenant_status?: string;
   }): Promise<TalentRecordView> {
     const { tenant_id, entered_by_id, input } = args;
@@ -501,13 +501,9 @@ export class TalentRecordRepository {
   }
 
   // PR-A8-1 — import-engine create. Mirrors create(); attributes the
-  // row to the import batch for reversion. Sets `core_talent_id = NULL`
-  // unconditionally — THE non-negotiable boundary (directive §0): the
-  // engine creates `TalentRecord` rows but NEVER calls Core Talent's
-  // createTalent / createOverlay. Canonicalization is M6/T2. The
-  // load-bearing integration-spec assertion is `talent.*` bit-identical
-  // row-count pre/post (the A5b-2 boundary proof, replayed at the
-  // import layer).
+  // row to the import batch for reversion. THE non-negotiable boundary
+  // (directive §0): the engine creates `TalentRecord` rows only and never
+  // performs identity resolution — that is canonicalization's job (M6/T2).
   async createForImport(args: {
     tenant_id: string;
     entered_by_id: string;
@@ -553,7 +549,7 @@ export class TalentRecordRepository {
         title: input.title ?? null,
         owner_id: input.owner_id ?? entered_by_id,
         entered_by_id,
-        // core_talent_id is OMITTED — defaults to NULL. THE boundary.
+        // THE boundary: this create performs no identity resolution.
         import_batch_id,
       },
     });
@@ -992,11 +988,10 @@ export class TalentRecordRepository {
   }
 
   // -------------------------------------------------------------------------
-  // PR-A5b-2 — Core-Talent link write surface (data-only).
+  // PR-A5b-2 — cluster-link write surface (data-only).
   //
   // setLink / clearLink are PRIMITIVE column writes — no cross-lib
-  // validation lives here. The two-step in-tenant gate
-  // (Talent exists in Core + tenant has an overlay) is run by
+  // validation lives here. The cluster-exists check is run by
   // TalentLinkService BEFORE calling these methods. Both calls are
   // tenant-scoped at the row level (WHERE id = :id AND tenant_id = :t)
   // so a controller mistake cannot set the link on a row from a
@@ -1064,8 +1059,8 @@ export class TalentRecordRepository {
     return row?.redacted_text ?? null;
   }
 
-  // 4e-rest: cluster-only link write (the Core-Talent link + core_talent_id
-  // were dropped). Writes the PERSON_CLUSTER pointer; tenant-scoped at the row
+  // 4e-rest: cluster-only link write (the former identity-link column was
+  // dropped). Writes the PERSON_CLUSTER pointer; tenant-scoped at the row
   // level so a controller mistake cannot link a row from a different tenant.
   async setLink(args: {
     tenant_id: string;

@@ -237,10 +237,9 @@ export interface CreateTalentRecordRequest {
 // omitted → unchanged; explicit null → cleared. Contact / employer /
 // pay / notes fields are nullable (T | null); flags are non-nullable.
 //
-// core_talent_id is DELIBERATELY EXCLUDED (PR-A5b-2): the Core-Talent
-// link is owned by TalentLinkService and set only via dedicated
-// POST/DELETE /v1/talent-records/:id/link routes. The form must NOT
-// surface it.
+// The identity link is DELIBERATELY EXCLUDED (PR-A5b-2): the cluster link
+// is owned by TalentLinkService and set only via dedicated POST/DELETE
+// /v1/talent-records/:id/link routes. The form must NOT surface it.
 export interface UpdateTalentRecordRequest {
   readonly first_name?: string;
   readonly last_name?: string;

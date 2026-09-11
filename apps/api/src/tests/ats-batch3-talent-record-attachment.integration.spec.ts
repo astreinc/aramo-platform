@@ -61,7 +61,7 @@ const TALENT_RECORD_INIT = resolve(
   ROOT,
   'libs/talent-record/prisma/migrations/20260602120000_init_talent_record_model/migration.sql',
 );
-// PR-A5b-2 — additive core_talent_id column (the keystone link). Applied
+// PR-A5b-2 — the additive identity-link column migration. Applied
 // AFTER TALENT_RECORD_INIT so the ALTER TABLE finds its target.
 const TALENT_RECORD_LINK_ADD = resolve(
   ROOT,

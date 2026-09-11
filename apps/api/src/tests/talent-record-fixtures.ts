@@ -14,7 +14,7 @@ const ROOT = resolve(__dirname, '../../../..');
 
 // The COLUMN-mutating talent-record migrations. The Prisma client projects
 // every scalar column on findFirst, so the table must match the client (init +
-// the additive columns, minus the 4e-rest core_talent_id drop). The trgm /
+// the additive columns, minus the 4e-rest identity-link column drop). The trgm /
 // résumé-text / search-index migrations add no TalentRecord scalar columns and
 // are intentionally omitted.
 const TALENT_RECORD_MIGRATION_PATHS = [
@@ -23,8 +23,8 @@ const TALENT_RECORD_MIGRATION_PATHS = [
   'libs/talent-record/prisma/migrations/20260603140100_add_import_batch_id_to_talent_record/migration.sql',
   'libs/talent-record/prisma/migrations/20260615000000_talent_stated_fields/migration.sql',
   'libs/talent-record/prisma/migrations/20260630140000_overlay_fold_cluster_id/migration.sql',
-  // 4e-rest — drops core_talent_id (must run last so the test schema matches
-  // the regenerated Prisma client, which no longer projects the column).
+  // 4e-rest — drops the retired identity-link column (must run last so the test
+  // schema matches the regenerated Prisma client, which no longer projects it).
   'libs/talent-record/prisma/migrations/20260701120000_drop_core_talent_id/migration.sql',
   // Gate-1 G1-A — adds work_authorization (the regenerated client projects it;
   // the test schema must carry it or findFirst 500s).

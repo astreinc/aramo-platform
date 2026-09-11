@@ -53,11 +53,11 @@ import type { TalentRecordView } from './types';
 //   • Work history & education — ReservedSeam (IntakeForm). No parse, no store.
 //   • Match insight — already a ReservedSeam in the design system (R10).
 //
-// DEFERRED (Lead HALT — keying carry):
-//   • POST /v1/consent/grant is NOT fired. The grant keys on a Core talent_id
-//     a new ATS record lacks at create; minting one at ATS-create would break
-//     the locked LINK-NOT-CREATE invariant. Consent is captured + gates the
-//     save; the grant goes live once the Core-creation seam exists. See
+// DEFERRED (product decision):
+//   • POST /v1/consent/grant is NOT fired at create. There is no keying
+//     blocker — the consent ledger keys on talent_record_id, which the new
+//     record has at create. Consent is captured + gates the save; wiring the
+//     grant call into the create path is a pending product decision. See
 //     doc/go-live-known-limitations.md + ./consent.ts.
 
 type Phase = 'intake' | 'parsing' | 'form' | 'success';

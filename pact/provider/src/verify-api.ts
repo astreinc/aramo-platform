@@ -77,9 +77,8 @@ const PACT_DELIVERY_PROVIDER_TOKEN = 'DELIVERY_PROVIDER_TOKEN';
 //     amendment). 'a recruiter token' / 'no valid token' are retained
 //     (still exercised by live examination / portal-thin pacts).
 //   - M3 PR-9 §4.8: portal-thin (5 interactions; profile happy + 403 +
-//     401, consent happy + 403). Talent + TalentTenantOverlay seeded via
-//     a new seedPortalTalentFixture helper; talent migration added to
-//     the bootstrap. New ingestion JWT signed for the consent-403 case.
+//     401, consent happy + 403). Portal fixtures seed the ATS TalentRecord.
+//     New ingestion JWT signed for the consent-403 case.
 //
 // Migration set (per Gate 5 §4.7 inspection + PR-15 §3 + M3 PR-8 §4.7):
 // consent + ingestion + examination init + examination live-list index +
@@ -215,8 +214,8 @@ const JOB_DOMAIN_DROP_REQUISITION_MIGRATION = resolve(
   ROOT,
   'libs/job-domain/prisma/migrations/20260801130000_drop_job_domain_requisition/migration.sql',
 );
-// Fix-Slice-Final-Drop — the talent (Core husk) schema is retired; no provider
-// state seeds or reads talent.Talent, so its init migration is no longer applied.
+// The retired pre-Talent entity schema is gone; no provider state seeds or
+// reads it, so its init migration is no longer applied.
 // 4e-selection-key — selection.talent_id now references
 // talent_record.TalentRecord.id, so the selection-create provider state
 // (seedSelectionBasics) seeds a TalentRecord. The column-mutating
@@ -227,8 +226,8 @@ const TALENT_RECORD_MIGRATIONS = [
   'libs/talent-record/prisma/migrations/20260603140100_add_import_batch_id_to_talent_record/migration.sql',
   'libs/talent-record/prisma/migrations/20260615000000_talent_stated_fields/migration.sql',
   'libs/talent-record/prisma/migrations/20260630140000_overlay_fold_cluster_id/migration.sql',
-  // 4e-rest — drops core_talent_id (must run last so the provider schema
-  // matches the regenerated Prisma client, which no longer projects it).
+  // 4e-rest — drops the retired identity-link column (must run last so the
+  // provider schema matches the regenerated Prisma client, which no longer projects it).
   'libs/talent-record/prisma/migrations/20260701120000_drop_core_talent_id/migration.sql',
   // Gate-1 G1-A — adds work_authorization (regenerated client projects it).
   'libs/talent-record/prisma/migrations/20260702120000_add_work_authorization_to_talent_record/migration.sql',
@@ -1168,8 +1167,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       await c.query('TRUNCATE TABLE examination."TalentJobExamination" CASCADE');
       // T1-a — job_domain.Requisition retired; the ATS requisition is truncated
       // with the rest of the requisition schema elsewhere in this reset.
-      // Fix-Slice-Final-Drop: the Core husk (talent.Talent + overlay) is
-      // dropped; no provider state seeds it (nothing reads it post-fix-sequence).
+      // The retired pre-Talent entity schema is dropped; no provider state
+      // seeds it (nothing reads it).
       // 4e-selection-key — selection.talent_id references TalentRecord.
       await c.query('TRUNCATE TABLE talent_record."TalentRecord" CASCADE');
       // M4 PR-3 — submittal-create state handlers seed an examination
@@ -2948,9 +2947,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
 
     // M4 PR-7 §4.9 — seed helper for submittal-revoke pact verification.
     //
-    // Seeds Talent + TalentTenantOverlay + Requisition +
-    // TalentJobEvidencePackage + TalentSubmittalRecord (when
-    // submittalExists=true) at the requested submittalState. The
+    // Seeds Requisition + TalentJobEvidencePackage + TalentSubmittalRecord
+    // (when submittalExists=true) at the requested submittalState. The
     // chain walks the canonical 5-state mainline (created ->
     // handoff_draft -> ready_for_review -> submitted_to_ats ->
     // confirmed) in order via raw SQL UPDATEs, each going through

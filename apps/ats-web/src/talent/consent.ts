@@ -6,23 +6,16 @@
 // These are REAL: POST /v1/consent/grant accepts exactly these scopes.
 //
 // ──────────────────────────────────────────────────────────────────────────
-// KEYING HALT (Lead ruling, this PR):
-//   The consent grant keys on a `talent_id` that is the CORE Talent id
-//   (@IsUUID, cross-schema). A freshly-created ATS TalentRecord has a
-//   nullable `core_talent_id` that is unset at create. Minting a thin Core
-//   Talent + overlay at ATS-create to populate it would VIOLATE the locked
-//   LINK-NOT-CREATE invariant (ats-batch4b-talent-link.integration.spec.ts:
-//   bit-identical talent.* row-counts under ATS ops) and Proof 6 (the
-//   single authorized `.talent.create(` call site lives in canonicalization
-//   ONLY). Core-creation/resolution belongs in canonicalization (ingestion-
-//   driven), NOT the ATS adapter.
+// Consent keying:
+//   The consent ledger (consent.TalentConsentEvent) is keyed on
+//   `talent_record_id` — the ATS TalentRecord.id, which exists at create.
+//   POST /v1/consent/grant therefore has its correct key the moment the
+//   record is created; there is no separate identity to create, link, or wait
+//   for.
 //
-//   THEREFORE: this PR captures consent in the UI to full parity and gates
-//   the save on it, but does NOT fire POST /v1/consent/grant — firing it
-//   keyed to the ATS record id would be a wrong-key write (consent-data
-//   corruption on the moat). The grant is a documented backend-first carry:
-//   it goes live once the Core-creation seam exists and core_talent_id is
-//   populated through canonicalization. See doc/go-live-known-limitations.md.
+//   Current behaviour: this flow captures consent in the UI to full parity and
+//   gates the save on it. Wiring the POST /v1/consent/grant call into the
+//   create path is a tracked product decision (not a keying blocker).
 // ──────────────────────────────────────────────────────────────────────────
 
 // Hand-mirrored — keep in lockstep with CONSENT_SCOPES (libs/consent).

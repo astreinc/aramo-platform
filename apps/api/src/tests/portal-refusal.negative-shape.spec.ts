@@ -79,10 +79,6 @@ const JOB_DOMAIN_INIT_MIGRATION = resolve(
   ROOT,
   'libs/job-domain/prisma/migrations/20260519100000_init_job_domain_model/migration.sql',
 );
-const TALENT_INIT_MIGRATION = resolve(
-  ROOT,
-  'libs/talent/prisma/migrations/20260516085014_init_talent_model/migration.sql',
-);
 // PR-A1b §4 sweep — portal routes are now class-level @RequireCapability('portal');
 // the integration boot must have the entitlement schema available so the
 // tenant-axis gate can be exercised (both pass and deliberate-failure paths).
@@ -255,7 +251,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         EXAMINATION_INIT_MIGRATION,
         EXAMINATION_LIVE_LIST_MIGRATION,
         JOB_DOMAIN_INIT_MIGRATION,
-        TALENT_INIT_MIGRATION,
         ENTITLEMENT_INIT_MIGRATION,
         // Portal P2 P2b — identity.Tenant for the tenant_name enrichment read.
         ...IDENTITY_TENANT_MIGRATIONS,

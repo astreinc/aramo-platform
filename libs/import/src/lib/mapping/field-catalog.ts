@@ -184,10 +184,9 @@ const REQUISITION_CATALOG: readonly FieldCatalogEntry[] = [
 // talent_record — libs/talent-record CreateTalentRecordRequestDto.
 // first_name + last_name are required. THE non-negotiable boundary
 // (A8-1 directive §0): import target_entity='talent_record' creates
-// TalentRecord rows ONLY — Core talent.* rows are NEVER touched. The
-// catalog only carries TalentRecord fields; no core_talent_id, no
-// tier, no Portal judgment fields (R10 — Core judgment surfaces are
-// not import targets).
+// TalentRecord rows ONLY. The catalog only carries TalentRecord fields;
+// no identity-link id, no tier, no Portal judgment fields (R10 — judgment
+// surfaces are not import targets).
 const TALENT_RECORD_CATALOG: readonly FieldCatalogEntry[] = [
   // Inbound-vocabulary aliases (synonym design rule §5 — talent-only
   // import-seam carve-out): `candidate` / `candidatename` / `applicant`

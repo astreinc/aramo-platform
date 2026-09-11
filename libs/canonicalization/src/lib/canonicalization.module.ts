@@ -21,9 +21,8 @@ import { PrismaService } from './prisma/prisma.service.js';
 //   - Consumer-direction leaf; imports IngestionModule (the follower still
 //     reads/writes the ingestion RawPayloadReference), IdentityIndexModule
 //     (4b cluster) + TalentTrustModule (L2 resolution seam). Fix-Slice-Final-
-//     Drop removed the TalentModule + TalentEvidenceModule edges — with the
-//     husk retired, canonicalize no longer follows the talent / talent_evidence
-//     schemas.
+//     Drop removed the TalentModule + TalentEvidenceModule edges; canonicalize
+//     no longer follows the talent / talent_evidence schemas.
 //
 //   - T2-2a: service-only (no controller). The PR-10 precedent.
 //

@@ -64,10 +64,6 @@ const METERING_INIT_MIGRATION_PATH = resolve(
   __dirname,
   '../../../metering/prisma/migrations/20260601150000_init_metering_model/migration.sql',
 );
-const TALENT_MIGRATION_PATH = resolve(
-  __dirname,
-  '../../../talent/prisma/migrations/20260516085014_init_talent_model/migration.sql',
-);
 const EXAMINATION_INIT_MIGRATION_PATH = resolve(
   __dirname,
   '../../../examination/prisma/migrations/20260517200000_init_examination_model/migration.sql',
@@ -151,7 +147,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         // M6 PR-2 §3 — selection OutboxEvent (same `selection` namespace).
         // PR-A1c §4 — metering schema (cross-schema in-tx UsageEvent INSERT).
         readFileSync(METERING_INIT_MIGRATION_PATH, 'utf8'),
-        readFileSync(TALENT_MIGRATION_PATH, 'utf8'),
         ...TALENT_RECORD_MIGRATION_PATHS.map((p) => readFileSync(p, 'utf8')),
         readFileSync(EXAMINATION_INIT_MIGRATION_PATH, 'utf8'),
       ];
@@ -224,21 +219,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       });
 
       // ---- PR-3 write-path seeds (cross-schema) -----------------------
-      // Talent core (tenant-agnostic) + per-tenant overlays.
-      await seedTalent(setupClient, TALENT_A);
-      await seedTalent(setupClient, TALENT_B);
-      await seedTalentOverlay(setupClient, {
-        talent_id: TALENT_A,
-        tenant_id: TENANT_A,
-      });
-      // No overlay for TALENT_A in TENANT_B → Pattern C refusal test.
-      await seedTalentOverlay(setupClient, {
-        talent_id: TALENT_B,
-        tenant_id: TENANT_A,
-      });
       // 4e-selection-key — the Pattern-C validator now resolves against
-      // TalentRecord (id == talent_id, tenant-scoped). Seed the same
-      // (talent, tenant) pairs the overlays cover; NO TalentRecord for
+      // TalentRecord (id == talent_id, tenant-scoped). NO TalentRecord for
       // TALENT_A in TENANT_B → Pattern C refusal stays a 422.
       await seedTalentRecord(setupClient, {
         id: TALENT_A,
@@ -734,14 +716,6 @@ async function seedSelection(
   );
 }
 
-async function seedTalent(client: PrismaService, id: string): Promise<void> {
-  await client.$executeRawUnsafe(
-    `INSERT INTO talent."Talent" (id, lifecycle_status, updated_at) VALUES (
-       '${id}'::uuid, 'active', NOW()
-     )`,
-  );
-}
-
 // 4e-selection-key — TalentRecord (the ATS heart) the create validator now
 // resolves against. id == the selection's talent_id (tenant-scoped).
 async function seedTalentRecord(
@@ -753,29 +727,6 @@ async function seedTalentRecord(
        id, tenant_id, first_name, last_name, created_at, updated_at
      ) VALUES (
        '${opts.id}'::uuid, '${opts.tenant_id}'::uuid, 'Pact', 'Talent', NOW(), NOW()
-     )`,
-  );
-}
-
-// Monotonic counter ensures unique overlay IDs across calls (test
-// fixtures repeat across talent/tenant combinations).
-let overlaySeq = 0;
-async function seedTalentOverlay(
-  client: PrismaService,
-  opts: { talent_id: string; tenant_id: string },
-): Promise<void> {
-  overlaySeq += 1;
-  const overlayId = `00000000-0000-7fff-8fff-${overlaySeq.toString(16).padStart(12, '0')}`;
-  await client.$executeRawUnsafe(
-    `INSERT INTO talent."TalentTenantOverlay" (
-       id, talent_id, tenant_id, source_channel, tenant_status, updated_at
-     ) VALUES (
-       '${overlayId}'::uuid,
-       '${opts.talent_id}'::uuid,
-       '${opts.tenant_id}'::uuid,
-       'self_signup',
-       'active',
-       NOW()
      )`,
   );
 }

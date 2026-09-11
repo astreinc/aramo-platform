@@ -33,8 +33,8 @@ const __authzTestResolver = new ConfigurableTestResolver();
 // ATS Batch 4b (TalentRecord ↔ PERSON_CLUSTER link) integration spec.
 // THE keystone of the ATS↔identity seam.
 //
-// 4e-rest: the Core-Talent link (core_talent_id) was dropped once selection
-// (#349) + consent (#350) released their Core reads. The link is now
+// 4e-rest: the retired identity-link column was dropped once selection
+// (#349) + consent (#350) released their legacy reads. The link is now
 // CLUSTER-ONLY — the TalentRecord.cluster_id pointer into the PII-free
 // identity_index (PersonCluster). The proofs below are the cluster-axis
 // re-statement of the original Core-link keystone.
@@ -47,9 +47,7 @@ const __authzTestResolver = new ConfigurableTestResolver();
 //   (2) LINK-NOT-CREATE (the sacred boundary, bit-identical row-counts):
 //       pre/post link, `identity_index."PersonCluster"` row-count is
 //       bit-identical (the linker created NO cluster — it only set the
-//       ATS-side pointer). The deferred Core husk (`talent."Talent"` /
-//       `talent."TalentTenantOverlay"`) is likewise never touched. Same
-//       proof for unlink.
+//       ATS-side pointer). Same proof for unlink.
 //   (3) REJECT non-existent cluster (the cluster-exists gate, guard-4):
 //       link to a cluster_id absent from identity_index → 422
 //       TALENT_LINK_INVALID, reason='cluster_not_found'.
@@ -79,13 +77,6 @@ const ROOT = resolve(__dirname, '../../../..');
 const ENTITLEMENT_INIT = resolve(
   ROOT,
   'libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql',
-);
-// The deferred Core husk tables — retained this increment (TR-2-coordinated
-// drop). Applied so the LINK-NOT-CREATE proof can assert the linker never
-// touches them.
-const TALENT_INIT = resolve(
-  ROOT,
-  'libs/talent/prisma/migrations/20260516085014_init_talent_model/migration.sql',
 );
 const TALENT_RECORD_INIT = resolve(
   ROOT,
@@ -130,8 +121,8 @@ const TALENT_RECORD_TITLE_COUNTRY = resolve(
   ROOT,
   'libs/talent-record/prisma/migrations/20260910130000_add_talent_title_and_country/migration.sql',
 );
-// 4e-rest — drops core_talent_id (last, so the test schema matches the
-// regenerated Prisma client, which no longer projects the column).
+// 4e-rest — drops the retired identity-link column (last, so the test schema
+// matches the regenerated Prisma client, which no longer projects the column).
 const TALENT_RECORD_DROP_CORE = resolve(
   ROOT,
   'libs/talent-record/prisma/migrations/20260701120000_drop_core_talent_id/migration.sql',
@@ -144,7 +135,6 @@ const IDENTITY_INDEX_INIT = resolve(
 
 const MIGRATIONS = [
   ENTITLEMENT_INIT,
-  TALENT_INIT,
   TALENT_RECORD_INIT,
   TALENT_RECORD_LINK_ADD,
   TALENT_RECORD_IMPORT_BACK_REF,
@@ -220,21 +210,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         .setAudience(AUDIENCE)
         .setExpirationTime('1h');
       return builder.sign(privateKey);
-    }
-
-    // The deferred Core husk — the linker must never touch these.
-    async function countTalentRows(): Promise<number> {
-      const r = await setupClient.query<{ c: string }>(
-        `SELECT COUNT(*)::text AS c FROM talent."Talent"`,
-      );
-      return Number(r.rows[0]!.c);
-    }
-
-    async function countOverlayRows(): Promise<number> {
-      const r = await setupClient.query<{ c: string }>(
-        `SELECT COUNT(*)::text AS c FROM talent."TalentTenantOverlay"`,
-      );
-      return Number(r.rows[0]!.c);
     }
 
     // The cluster index — the LINK-NOT-CREATE boundary the linker validates
@@ -576,14 +551,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
     // -------------------------------------------------------------------------
     // C) Proof (2) — LINK-NOT-CREATE (the sacred boundary). Bit-identical
-    //    identity_index.PersonCluster row-count pre/post any link/unlink; the
-    //    deferred Core husk is likewise never touched.
+    //    identity_index.PersonCluster row-count pre/post any link/unlink — the
+    //    linker only sets the ATS-side pointer, it creates no cluster.
     // -------------------------------------------------------------------------
 
-    it('LINK-NOT-CREATE: link / unlink leave identity_index.PersonCluster (and the deferred Core husk) row-counts bit-identical', async () => {
+    it('LINK-NOT-CREATE: link / unlink leave identity_index.PersonCluster row-count bit-identical (the linker only sets the ATS-side pointer)', async () => {
       const clusterRowsBefore = await countClusterRows();
-      const talentRowsBefore = await countTalentRows();
-      const overlayRowsBefore = await countOverlayRows();
 
       const record = await createTalentRecord(recruiterJwt_Ats_SiteA, {
         first: 'BoundaryCheck',
@@ -592,17 +565,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Link.
       const link = await postLink(recruiterJwt_Ats_SiteA, record.id, CLUSTER_OK);
       expect(link.status).toBe(200);
-      // The keystone boundary: no cluster (and no Core row) was created.
+      // The keystone boundary: no cluster was created — the linker only set the
+      // ATS-side pointer to the pre-existing cluster.
       expect(await countClusterRows()).toBe(clusterRowsBefore);
-      expect(await countTalentRows()).toBe(talentRowsBefore);
-      expect(await countOverlayRows()).toBe(overlayRowsBefore);
 
       // Unlink.
       const unlink = await deleteLink(recruiterJwt_Ats_SiteA, record.id);
       expect(unlink.status).toBe(200);
       expect(await countClusterRows()).toBe(clusterRowsBefore);
-      expect(await countTalentRows()).toBe(talentRowsBefore);
-      expect(await countOverlayRows()).toBe(overlayRowsBefore);
 
       await fetch(
         `http://127.0.0.1:${port}/v1/talent-records/${record.id}?site_id=${SITE_A}`,

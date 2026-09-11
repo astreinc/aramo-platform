@@ -74,7 +74,6 @@ const MIGRATIONS = [
   M('libs/requisition/prisma/migrations/20260602100000_init_requisition_model/migration.sql'),
   M('libs/requisition/prisma/migrations/20260803120000_recruiting_status_supersession/migration.sql'),
   M('libs/requisition/prisma/migrations/20260907120000_add_requisition_postal_code/migration.sql'),
-  M('libs/talent/prisma/migrations/20260516085014_init_talent_model/migration.sql'),
   M('libs/talent-evidence/prisma/migrations/20260519170000_init_talent_evidence_model/migration.sql'),
   M('libs/talent-evidence/prisma/migrations/20260714120000_tr7_b1_education_certification/migration.sql'),
   M('libs/evidence/prisma/migrations/20260522090000_init_evidence_model/migration.sql'),
@@ -181,23 +180,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await applyTalentRecordMigrations(setup);
       await seedTalentRecord(setup, { id: TALENT_A, tenant_id: TENANT_A });
       await seedTalentRecord(setup, { id: TALENT_B, tenant_id: TENANT_B });
-
-      // Seed Talents + overlays for two tenants (TENANT_A + TENANT_B).
-      await setup.query(
-        `INSERT INTO talent."Talent" (id, lifecycle_status, updated_at)
-         VALUES ($1, 'active', NOW()), ($2, 'active', NOW())`,
-        [TALENT_A, TALENT_B],
-      );
-      await setup.query(
-        `INSERT INTO talent."TalentTenantOverlay"
-           (id, talent_id, tenant_id, source_channel, tenant_status, updated_at)
-         VALUES ($1, $2, $3, 'self_signup', 'active', NOW()),
-                ($4, $5, $6, 'self_signup', 'active', NOW())`,
-        [
-          '00000000-0000-7fff-8fff-0000000000a1', TALENT_A, TENANT_A,
-          '00000000-0000-7fff-8fff-0000000000a2', TALENT_B, TENANT_B,
-        ],
-      );
       await setup.query(
         `INSERT INTO job_domain."Job" (id, tenant_id) VALUES ($1, $2), ($3, $4)
          ON CONFLICT (id) DO NOTHING`,

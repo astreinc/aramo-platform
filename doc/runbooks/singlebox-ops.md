@@ -313,6 +313,11 @@ new `invite_status` column until it was applied by hand.
 cd /opt/aramo && git pull --ff-only   # new code + new migration files
                                        # (or drop new image tags ARAMO_API_IMAGE/…)
 
+# ONE-TIME (first deploy after the Core-Talent tombstone removal): the two
+# deleted libs/talent migrations leave orphan rows in public._local_migrations
+# that would fail the count-gate below. Reconcile ONCE first — see
+# doc/runbooks/core-talent-ledger-reconciliation.md.
+
 # >>> migration step + GATE — NEVER SKIP. <<<
 # Applies pending migrations (idempotent; an in-sync DB is a no-op) and then
 # asserts ZERO pending. On a failed/partial apply it exits non-zero — STOP:

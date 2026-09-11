@@ -22,10 +22,9 @@ import {
 //     "needs canonicalize" (NULL) and "canonicalized" (non-NULL).
 //
 //   - Each tick: fetch up to N unresolved payloads (oldest first),
-//     invoke CanonicalizationService.canonicalize() per row with
-//     core_talent_id + resolution_method OMITTED so the inline T2-1
-//     resolver runs (verified-email match → existing Talent + new
-//     overlay; no match → CREATE-NEW).
+//     invoke CanonicalizationService.canonicalize() per row; the inline
+//     T2-1 resolver runs (verified-email SubjectAnchor match → existing
+//     ResolutionSubject; no match → new subject).
 //
 //   - Durability: a failed canonicalize leaves resolved_subject_id NULL;
 //     the next tick re-picks the row. A payload is NEVER lost on
@@ -135,8 +134,8 @@ export class CanonicalizationTriggerProcessor
       try {
         const result = await this.service.canonicalize({
           payload_id: row.id,
-          // T2-3 production path: core_talent_id + resolution_method
-          // OMITTED → the inline resolver runs.
+          // T2-3 production path: the inline resolver runs (no caller-supplied
+          // identity id — canonicalize resolves the subject itself).
           source_channel: this.mapSourceToChannel(row.source),
           authContext: { tenant_id: row.tenant_id },
           requestId: `canon-trigger:${args.jobId ?? 'manual'}:${row.id}`,
@@ -173,7 +172,7 @@ export class CanonicalizationTriggerProcessor
     return { attempted: unresolved.length, succeeded, failed };
   }
 
-  // Map ingestion source → TalentTenantOverlay.source_channel closed
+  // Map ingestion source → TalentRecord.source_channel closed
   // vocabulary (Talent Record Spec §2.2): self_signup | recruiter_capture
   // | referral | import. Conservative default = 'import' (the recruiter-
   // pushed shortlist case + indeed + astre_import all land here); the

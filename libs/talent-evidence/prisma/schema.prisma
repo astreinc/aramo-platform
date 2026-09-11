@@ -5,13 +5,10 @@
 // elsewhere in the program are UUID-only without FK constraints (§7.3).
 //
 // IDENTITY KEYING (ADR-0016 step 4c): every `talent_id` column below
-// references talent_record.TalentRecord.id (the tenant-scoped ATS heart) —
-// NOT Core talent.Talent, which is a per-tenant husk pending retirement.
-// EXCEPTION — TalentContactMethod: ATS-created rows carry the TalentRecord
-// id, but the ingestion/canonicalization path transitionally writes the
-// per-tenant Core husk id (ingestion precedes ATS curation; the ingestion-
-// evidence→TalentRecord association is a later realignment step). See that
-// model's note.
+// references talent_record.TalentRecord.id (the tenant-scoped ATS heart).
+// (TalentContactMethod formerly carried a transitional per-tenant identity id
+// on the ingestion path ahead of ATS curation; that write has been retired —
+// see that model's note.)
 //
 // M3 PR-5 — Talent-evidence entity foundation. The 7 Talent-evidence
 // sub-entities required by EvidenceReference (Group 2 §2.4) are built here,
@@ -296,10 +293,9 @@ model TalentCertificationEntry {
 // §2.2 #4 — TalentContactMethod (Declared + Derived).
 model TalentContactMethod {
   id                  String                          @id @db.Uuid
-  // talent_id: ATS-created rows reference talent_record.TalentRecord.id; the
-  // ingestion/canonicalization path transitionally writes the per-tenant Core
-  // husk id (no TalentRecord exists at ingestion time). The husk→TalentRecord
-  // association is a later realignment step (ADR-0016). UUID-only, no FK.
+  // talent_id references talent_record.TalentRecord.id. (The ingestion path
+  // formerly wrote a transitional per-tenant identity id here ahead of ATS
+  // curation; that write has been retired.) UUID-only, no FK.
   talent_id           String                          @db.Uuid
   tenant_id           String                          @db.Uuid
 

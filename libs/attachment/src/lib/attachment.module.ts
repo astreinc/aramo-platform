@@ -24,8 +24,8 @@ import { PrismaService } from './prisma/prisma.service.js';
 //                           talent-record edge; no cycle, talent-record
 //                           does NOT import attachment)
 //
-// Deliberately NOT imported: @aramo/talent (Core, the tenant-AGNOSTIC
-// identity). The Core-Talent adapter is A5.
+// The attachment owner path depends on TalentRecordModule only — no separate
+// identity-lib dependency.
 @Module({
   imports: [
     AuthModule,

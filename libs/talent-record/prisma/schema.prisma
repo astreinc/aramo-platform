@@ -5,9 +5,7 @@
 // references are UUID-only without FK constraints (§7.3).
 //
 // PR-A4 Gate 5 (post-amendment) — the recruiter-facing ATS talent
-// record. Renamed from "libs/talent" to avoid collision with the
-// pre-existing Core libs/talent (tenant-AGNOSTIC identity Talent +
-// TalentTenantOverlay, PR-10 baseline).
+// record. `TalentRecord` is the ATS system of record and the person key.
 //
 // 4d/4e — the identity link lands here as a nullable `cluster_id`
 // column referencing `identity_index.PersonCluster.id` (Architecture
@@ -18,14 +16,14 @@
 // mints a cluster — proven by the integration spec's bit-identical
 // PersonCluster row-counts) and ASSOCIATE-NOT-RESOLVE (the linker takes
 // cluster_id as an explicit input; no PII-keyed resolution surface).
-// 4e-rest dropped the former Core-Talent link (`core_talent_id`).
+// 4e-rest dropped the former identity-link column; the link is cluster-only.
 //
 // Refusals enforced structurally:
 //   - R10 — NO portal-forbidden numeric/ordinal fields. The talent
 //     record carries identity + contact + recruiter notes ONLY. Any
-//     examination output lives in Core (libs/examination); never here.
+//     examination output lives in libs/examination; never here.
 //   - R12 — locked vocabulary token (`talent`). The model name is
-//     `TalentRecord` to disambiguate locally against Core's `Talent`.
+//     `TalentRecord`, the person record's canonical name.
 //
 // Schema-row shape mirrors the A2/A3 pattern (libs/requisition
 // exemplar): id uuid PK + tenant_id required + site_id optional +
@@ -111,16 +109,15 @@ model TalentRecord {
   owner_id      String? @db.Uuid
   entered_by_id String? @db.Uuid
 
-  // ADR-0016 step 4d — the TalentTenantOverlay fold. The overlay's
-  // tenant-relationship fields move onto the TalentRecord (the ATS heart);
-  // the overlay table itself survives until 4e (the ingestion/canonicalize
-  // path still writes a per-tenant Core-husk overlay). NULLABLE — ATS-created
-  // records have no overlay writer today, so these are unset until the ATS
-  // sets the tenant relationship (or the ingestion→TalentRecord association,
-  // a later step). Closed vocabularies match the overlay (Talent Record Spec
-  // §2.2): source_channel {self_signup|recruiter_capture|referral|import};
-  // tenant_status is the per-tenant lifecycle.
-  source_channel      String? // closed vocab (overlay parity), nullable on the fold
+  // ADR-0016 step 4d — the tenant-overlay fold. The former overlay's
+  // tenant-relationship fields now live on the TalentRecord (the ATS heart);
+  // the separate overlay table has been retired. NULLABLE — ATS-created
+  // records have no writer for these until the ATS sets the tenant
+  // relationship (or the ingestion→TalentRecord association, a later step).
+  // Closed vocabularies (Talent Record Spec §2.2): source_channel
+  // {self_signup|recruiter_capture|referral|import}; tenant_status is the
+  // per-tenant lifecycle.
+  source_channel      String? // closed vocab (Talent Record Spec §2.2), nullable on the fold
   tenant_status       String?
   source_recruiter_id String? @db.Uuid
 
@@ -142,18 +139,18 @@ model TalentRecord {
   // ADR-0016 step 4d — the cross-tenant identity pointer: the
   // identity_index.PersonCluster this record belongs to (UUID-only cross-
   // schema ref, no FK per §7.3). The post-realignment identity pointer.
-  // 4e-rest retired the Core husk (the `core_talent_id` column + the Core
-  // Talent link were dropped once selection (#349) + consent (#350) released
-  // them). cluster_id is a write-less forward column until TR-2 re-establishes
-  // cluster linking with its own semantics.
+  // 4e-rest dropped the former identity-link column (retired once selection
+  // (#349) + consent (#350) released their former identity reads). cluster_id
+  // is a write-less forward column until TR-2 re-establishes cluster linking
+  // with its own semantics.
   cluster_id String? @db.Uuid
 
   // PR-A8-1 — back-reference to the import batch that created this row
   // (NULL for rows created outside the import engine). Cross-schema
   // logical reference to import.ImportBatch.id (§7.3). THE non-
-  // negotiable boundary (directive §0): the engine NEVER calls Core's
-  // createTalent / createOverlay — the bit-identical talent.* row-counts
-  // pre/post the import is the load-bearing integration-spec assertion.
+  // negotiable boundary (directive §0): the import engine creates
+  // TalentRecord rows only and never performs identity resolution — that
+  // is canonicalization's job (M6/T2).
   import_batch_id String? @db.Uuid
 
   // Timestamps.
@@ -276,7 +273,7 @@ model TalentRecordFieldProvenance {
   talent_record_id String @db.Uuid
   // The enrichable TalentRecord column this provenance covers (email1,
   // phone_cell, web_site, address, …). Constrained to the enrichable set by the
-  // writer (not a DB CHECK — the libs/talent / libs/consent String precedent).
+  // writer (not a DB CHECK — the libs/consent String-vocabulary precedent).
   field_name       String
   // The L2 EvidenceRecord that projected the current value (→ its payload_id
   // gives the contributing arrival). Cross-schema UUID-only, no FK.

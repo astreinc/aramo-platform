@@ -15,7 +15,7 @@ import { describe, expect, it } from 'vitest';
 //             resolution_method is still computed (verified_email_match |
 //             new_identity). No standalone named resolver on the lib surface
 //             (findByVerifiedEmail / resolveIdentity / resolveTalent forbidden).
-//   Proof 6 — INVERTED at Fix-Slice-2 — canonicalize mints ZERO Core husk.
+//   Proof 6 — INVERTED at Fix-Slice-2 — canonicalize mints ZERO legacy person-entity rows.
 //             The canonicalize source carries zero `.talent.create(` and no
 //             husk overlay write. Scope: the canonicalization lib source ONLY
 //             (Amendment v1.1 §4.6) — the dormant TalentService.createTalent
@@ -151,7 +151,7 @@ describe('Fix-Slice-2 — Proof 5 (re-homed): within-tenant resolution lives on 
   });
 });
 
-describe('Fix-Slice-Final-Drop — Proof 6 (widened): the Core husk mint is retired PLATFORM-WIDE', () => {
+describe('Fix-Slice-Final-Drop — Proof 6 (widened): the legacy person-entity mint is retired PLATFORM-WIDE', () => {
   it('ZERO `.talent.create(` call sites across ALL production source (libs/ + apps/) — the husk substrate is gone', () => {
     // Widened per the final drop slice: the dormant TalentService.createTalent
     // (libs/talent) is removed, so `.talent.create(` is now zero EVERYWHERE, not

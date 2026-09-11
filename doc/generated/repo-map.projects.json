@@ -1,5 +1,5 @@
 {
-  "aliasTotals": { "apps": 2, "libs": 69, "total": 71 },
+  "aliasTotals": { "apps": 2, "libs": 68, "total": 70 },
   "aliases": {
     "@aramo/activity": "libs/activity/src/index.ts",
     "@aramo/ai-draft": "libs/ai-draft/src/index.ts",
@@ -63,7 +63,6 @@
     "@aramo/sourced-talent": "libs/sourced-talent/src/index.ts",
     "@aramo/submittal": "libs/submittal/src/index.ts",
     "@aramo/submittal-eligibility": "libs/submittal-eligibility/src/index.ts",
-    "@aramo/talent": "libs/talent/src/index.ts",
     "@aramo/talent-evidence": "libs/talent-evidence/src/index.ts",
     "@aramo/talent-extraction": "libs/talent-extraction/src/index.ts",
     "@aramo/talent-reconcile": "libs/talent-reconcile/src/index.ts",
@@ -1210,7 +1209,6 @@
       "isSubmittalPolicyReason",
       "isSubmittalWindowStatus"
     ],
-    "@aramo/talent": [],
     "@aramo/talent-evidence": ["PrismaService", "TalentEvidenceModule", "TalentEvidenceRepository"],
     "@aramo/talent-extraction": [
       "ARAMO_SKILL_NAMESPACE",
@@ -5313,7 +5311,6 @@
       { "project": "api", "status": "production" },
       { "project": "requisition", "status": "production" }
     ],
-    "@aramo/talent": [],
     "@aramo/talent-evidence": [
       {
         "excludedBy": "src/tests/**/*",
@@ -6083,13 +6080,6 @@
       "name": "submittal-eligibility",
       "root": "libs/submittal-eligibility",
       "sourceRoot": "libs/submittal-eligibility/src",
-      "tags": ["scope:ats"],
-      "targets": ["build", "lint", "test"]
-    },
-    {
-      "name": "talent",
-      "root": "libs/talent",
-      "sourceRoot": "libs/talent/src",
       "tags": ["scope:ats"],
       "targets": ["build", "lint", "test"]
     },
