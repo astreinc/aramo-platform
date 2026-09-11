@@ -321,7 +321,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       }
     }, 60_000);
 
-    it('NON-SEEDED: an Indeed application carrying a base64 résumé promotes end-to-end with zero manual evidence seeding', async () => {
+    it('NON-SEEDED: an Indeed application whose extraction yields no cell-phone evidence is FILTERED OUT of promotion (deferred), not minted', async () => {
       const docx = await makeResumeDocx();
       const payloadId = await postWebhook('apply-src2-001', {
         resume: { file: { data: docx.toString('base64'), fileName: 'jane.docx', contentType: RESUME_MIME } },
@@ -340,19 +340,27 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(outcome.extracted).toBeGreaterThanOrEqual(1);
       expect(await identityEvidence(arrival.resolved_subject_id, 'FULL_NAME')).toBeGreaterThanOrEqual(1);
 
-      // Promote WITHOUT any recordEvidence seeding — the evidence came from extraction.
+      // TalentRecord Admission Invariant — the governed promotion gate is a
+      // FILTER: a subject is admitted only when the required contact anchors
+      // (primary email AND cell phone) exist as identity evidence. Email is
+      // attached at the arrival; a cell phone is optional at the source and the
+      // résumé parse yields none here, so this subject carries NO PHONE evidence.
+      // The gate therefore filters it OUT — it stays in the staging substrate
+      // (deferred), never minted as an incomplete record. Producing the missing
+      // contact evidence later (enrichment / recruiter entry / a canonicalize
+      // phone-attach) is OUT OF THE CURRENT SCOPE; promotion simply waits for it.
       const promoted = await promotion.promoteSubject(
         { tenant_id: TENANT_ID, ref_type: 'SOURCED_TALENT', ref_id: payloadId },
         { requestId: 'src2-promote-1' },
       );
-      expect(promoted.status).toBe('promoted');
-      const recordId = promoted.status === 'promoted' ? promoted.talent_record_id : '';
+      expect(promoted.status).toBe('deferred_incomplete_contact');
+      // No TalentRecord was minted for the filtered-out subject.
       const rec = await db.query(
-        `SELECT first_name, last_name FROM "talent_record"."TalentRecord" WHERE id=$1`,
-        [recordId],
+        `SELECT id FROM "talent_record"."TalentRecord"
+          WHERE tenant_id=$1 AND first_name='Jane' AND last_name='Smith'`,
+        [TENANT_ID],
       );
-      expect(rec.rows[0].first_name).toBe('Jane');
-      expect(rec.rows[0].last_name).toBe('Smith');
+      expect(rec.rows.length).toBe(0);
     });
 
     it('NON-JSON regression: a bare résumé-object arrival extracts byte-identically (FULL_NAME written)', async () => {

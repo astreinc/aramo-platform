@@ -89,6 +89,9 @@ const TALENT_RECORD_MIGRATION_PATHS = [
   // TR-2a-B3a (DDR-3 §3) — record_status / superseded_* columns (regenerated
   // client projects them; TalentRecordRepository.findById 500s without them).
   '../../../talent-record/prisma/migrations/20260706210000_tr2a_b3a_talent_record_supersession/migration.sql',
+  // B1+B2 — title + country columns (regenerated client projects both;
+  // TalentRecordRepository.findById 500s without them).
+  '../../../talent-record/prisma/migrations/20260910130000_add_talent_title_and_country/migration.sql',
 ].map((p) => resolve(__dirname, p));
 
 const TENANT_A = '11111111-1111-7111-8111-111111111111';
