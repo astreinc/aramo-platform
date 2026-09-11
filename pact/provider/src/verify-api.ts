@@ -6895,6 +6895,22 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
             assertionType: 'FULL_NAME',
             assertionPayload: { first_name: 'Grace', last_name: 'Hopper' },
           });
+          // TalentRecord Admission Invariant — the governed promotion gate now
+          // requires a primary email + cell phone on the subject's identity
+          // evidence (else it defers). A promotable subject therefore carries
+          // both, so promote-to-bench / promote-to-pipeline mint a fresh record.
+          await seedAtsWebEvidenceRecord(c, {
+            id: '00000000-0000-7000-8000-e00000000004',
+            subjectId: ATSW_MINT_SUBJECT_ID,
+            assertionType: 'EMAIL',
+            assertionPayload: { normalized_value: 'grace.hopper@example.com' },
+          });
+          await seedAtsWebEvidenceRecord(c, {
+            id: '00000000-0000-7000-8000-e00000000005',
+            subjectId: ATSW_MINT_SUBJECT_ID,
+            assertionType: 'PHONE',
+            assertionPayload: { value: '+15125550199' },
+          });
           await seedAtsWebRawPayloadReference(c, {
             id: ATSW_MINT_ARRIVAL_ID,
             source: 'talent_direct',
