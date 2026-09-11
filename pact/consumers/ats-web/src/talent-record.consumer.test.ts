@@ -39,7 +39,16 @@ import {
 const provider = makeAtsWebProvider();
 
 const TALENT_ID = '00000000-0000-7000-8000-7a0000000001';
-const CREATE_BODY = { first_name: 'Grace', last_name: 'Hopper' };
+// TalentRecord Admission Invariant — a manual create requires the identity +
+// contact anchors (first_name, last_name, primary email, cell phone). The
+// provider replays this exact body against its create state, so it must be a
+// complete, admissible create.
+const CREATE_BODY = {
+  first_name: 'Grace',
+  last_name: 'Hopper',
+  email1: 'grace.hopper@example.test',
+  phone_cell: '+15125550100',
+};
 const UPDATE_BODY = { is_hot: true };
 
 // Faithful core of TalentRecordView (Pact tolerates the provider's fuller

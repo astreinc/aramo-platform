@@ -19,10 +19,12 @@ export interface IntakeState {
   phone_home: string;
   phone_work: string;
   web_site: string;
+  title: string;
   address: string;
   city: string;
   state: string;
   zip: string;
+  country: string;
   availability_status: string;
   engagement_type: string;
   work_authorization: string;
@@ -49,10 +51,12 @@ export const INTAKE_TEXT_KEYS: ReadonlyArray<
   'phone_home',
   'phone_work',
   'web_site',
+  'title',
   'address',
   'city',
   'state',
   'zip',
+  'country',
   'availability_status',
   'engagement_type',
   'work_authorization',
@@ -76,6 +80,7 @@ const PREFILL_TEXT_KEYS: ReadonlyArray<keyof IntakeState> = [
   'phone_home',
   'phone_work',
   'web_site',
+  'title',
   'address',
   'city',
   'state',
@@ -93,10 +98,12 @@ export function emptyIntakeState(): IntakeState {
     phone_home: '',
     phone_work: '',
     web_site: '',
+    title: '',
     address: '',
     city: '',
     state: '',
     zip: '',
+    country: 'US', // B2 — default USA for all talent
     availability_status: '',
     engagement_type: '',
     work_authorization: '',

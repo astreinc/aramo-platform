@@ -29,6 +29,7 @@ export interface TalentRecordView {
   readonly city: string | null;
   readonly state: string | null;
   readonly zip: string | null;
+  readonly country: string; // B2 — ISO-3166 alpha-2, defaults 'US' for all talent
   readonly source: string | null;
   readonly key_skills: string | null;
   readonly current_employer: string | null;
@@ -55,6 +56,7 @@ export interface TalentRecordView {
   readonly notes: string | null;
   readonly web_site: string | null;
   readonly best_time_to_call: string | null;
+  readonly title: string | null; // B1 — professional title (most-recent role)
   readonly owner_id: string | null;
   readonly entered_by_id: string | null;
   readonly created_at: string;
@@ -64,6 +66,8 @@ export interface TalentRecordView {
   // content-search path; absent on every other read (the BE omits it).
   // Optional so name-search / LIST responses mirror unchanged.
   readonly resume_snippet?: string | null;
+  // B5 — recruiting-readiness (derived boolean, detail-read only; never a number).
+  readonly recruiting_ready?: boolean;
 }
 
 export interface TalentRecordListResponse {
@@ -139,6 +143,14 @@ export interface AttachmentListResponse {
   readonly items: readonly AttachmentView[];
 }
 
+// B6 — hand-mirrored from libs/object-storage PresignedGetResult. The
+// GET /v1/attachments/:id/download-url response: a short-lived presigned GET
+// URL for the stored file (résumé view/download) + its expiry instant.
+export interface AttachmentDownloadUrlResponse {
+  readonly presigned_url: string;
+  readonly expires_at: string;
+}
+
 // TR-3 B2 — email-verification hand-mirrors.
 //
 // Hand-mirrored from the frozen TR-3 B2 backend contract (the authenticated
@@ -204,6 +216,7 @@ export interface CreateTalentRecordRequest {
   readonly city?: string;
   readonly state?: string;
   readonly zip?: string;
+  readonly country?: string; // B2 — FE defaults 'US' on manual create
   readonly source?: string;
   readonly key_skills?: string;
   readonly current_employer?: string;
@@ -215,6 +228,7 @@ export interface CreateTalentRecordRequest {
   readonly notes?: string;
   readonly web_site?: string;
   readonly best_time_to_call?: string;
+  readonly title?: string; // B1 — professional title
   readonly owner_id?: string;
 }
 
@@ -251,6 +265,8 @@ export interface UpdateTalentRecordRequest {
   readonly notes?: string | null;
   readonly web_site?: string | null;
   readonly best_time_to_call?: string | null;
+  readonly title?: string | null; // B1 — professional title
+  readonly country?: string; // B2 — non-null column (defaults 'US'); no clear-to-null
   // Talent-stated categorical fields (stated-fields amendment §4). Present in the
   // BE UpdateTalentRecordRequestDto; mirrored here so the Edit-profile panel's
   // selects can PATCH them. Nullable → clears to "not stated".
@@ -289,6 +305,7 @@ export interface TalentRecordPrefill {
   readonly key_skills?: string;
   readonly current_employer?: string;
   readonly web_site?: string;
+  readonly title?: string; // B1 — résumé-proposed professional title
 }
 
 export interface ParseResumeResult {

@@ -25,6 +25,7 @@ import { AppModule } from '../app.module.js';
 
 import { ConfigurableTestResolver } from './support/test-auth-harness.js';
 import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
+import { validTalentCreateBody } from './talent-record-fixtures.js';
 
 // HF-AUTH-1 — compact tokens carry no scopes; guard resolves via this resolver.
 const __authzTestResolver = new ConfigurableTestResolver();
@@ -124,6 +125,11 @@ const TALENT_RECORD_SUPERSESSION = resolve(
   ROOT,
   'libs/talent-record/prisma/migrations/20260706210000_tr2a_b3a_talent_record_supersession/migration.sql',
 );
+// B1+B2 — title + country columns (regenerated client projects them).
+const TALENT_RECORD_TITLE_COUNTRY = resolve(
+  ROOT,
+  'libs/talent-record/prisma/migrations/20260910130000_add_talent_title_and_country/migration.sql',
+);
 // 4e-rest — drops core_talent_id (last, so the test schema matches the
 // regenerated Prisma client, which no longer projects the column).
 const TALENT_RECORD_DROP_CORE = resolve(
@@ -146,6 +152,7 @@ const MIGRATIONS = [
   TALENT_RECORD_OVERLAY_FOLD,
   TALENT_RECORD_WORK_AUTH,
   TALENT_RECORD_SUPERSESSION,
+  TALENT_RECORD_TITLE_COUNTRY,
   TALENT_RECORD_DROP_CORE,
   IDENTITY_INDEX_INIT,
 ];
@@ -269,11 +276,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
             Authorization: `Bearer ${jwt}`,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({
-            first_name: args?.first ?? 'Pat',
-            last_name: 'Linktest',
-            site_id: SITE_A,
-          }),
+          body: JSON.stringify(
+            validTalentCreateBody({
+              first_name: args?.first ?? 'Pat',
+              last_name: 'Linktest',
+              site_id: SITE_A,
+            }),
+          ),
         },
       );
       const body = (await res.json()) as { id: string };

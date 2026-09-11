@@ -83,6 +83,8 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       'MANAGEMENT_CYCLE_REJECTED',
       // TR-2a-B3a — 1 record-supersession operational-refusal code.
       'TALENT_RECORD_SUPERSEDED',
+      // B3/B4 — manual-create dedup refusal (duplicate primary email).
+      'TALENT_RECORD_DUPLICATE',
       // TR-6 B2 — 6 advisory-resolution domain refusal codes (replacing the
       // AramoExceptionFilter status-collapse on the advisory surface only).
       'ADVISORY_NOT_PENDING',

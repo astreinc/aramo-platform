@@ -1,6 +1,7 @@
 import { useState } from 'react';
 
 import { Card, CardHead, Icons, ReservedSeam } from '../ui';
+import { AddressTypeahead } from '../companies/AddressTypeahead';
 
 import {
   AVAILABILITY_LABELS,
@@ -124,6 +125,7 @@ export function IntakeForm({
         <div className="rc-fgrid">
           {field('first_name', 'First name', { required: true })}
           {field('last_name', 'Last name', { required: true })}
+          {field('title', 'Title')}
           {field('current_employer', 'Current employer', { full: true })}
         </div>
       </Card>
@@ -156,11 +158,40 @@ export function IntakeForm({
             </>
           }
         />
+        {/* Address autocomplete (reuses the requisition work-location typeahead
+            + the /v1/address-lookup endpoints). Optional — fills the fields
+            below, which stay fully editable. Never blocks manual entry. */}
+        <div className="rc-ifield rc-ifield--full">
+          <label className="rc-ifield__lb">
+            <span>Search address</span>
+          </label>
+          <AddressTypeahead
+            disabled={disabled}
+            testId="talent-address-search"
+            onSelectAddress={(d) => {
+              onField('address', d.address ?? '');
+              onField('city', d.city ?? '');
+              onField('state', d.state ?? '');
+              onField('zip', d.zip ?? '');
+              if (d.country !== null && d.country !== '') {
+                onField('country', d.country);
+              }
+            }}
+          />
+          <p className="rc-fnote">
+            <Icons.IconInfo />
+            <span>
+              Optional — fills street, city, state, ZIP and country from the
+              chosen address. You can edit them after.
+            </span>
+          </p>
+        </div>
         <div className="rc-fgrid">
           {field('address', 'Street address', { full: true })}
           {field('city', 'City', { required: true })}
           {field('state', 'State', { required: true })}
           {field('zip', 'Postal code')}
+          {field('country', 'Country')}
           <div className="rc-ifield">
             <label className="rc-ifield__lb">
               <span>Relocation</span>

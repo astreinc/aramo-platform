@@ -288,6 +288,67 @@ describe('TalentDetailView', () => {
     );
   });
 
+  it('B6 — clicking a document previews it inline (PDF); Download opens it in a new tab', async () => {
+    const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
+    // The /download-url pattern must be registered BEFORE /v1/attachments so
+    // installFetch (insertion-order match) does not route it to the list.
+    installFetch({
+      '/v1/attachments/att-1/download-url': {
+        presigned_url: 'https://s3-stub/dl?sig=x',
+        expires_at: '2030-01-01T00:00:00Z',
+      },
+      '/v1/attachments': { items: [makeAttachment('att-1', 'resume.pdf')] },
+      '/v1/talent-records/tal-1': makeTalent(),
+    });
+    renderAt('/talent/tal-1', makeSession(['talent:read', 'attachment:read']));
+    await waitFor(() => expect(screen.getByText('resume.pdf')).toBeInTheDocument());
+    // Clicking the filename mints a presigned URL and previews it inline.
+    fireEvent.click(screen.getByRole('button', { name: 'resume.pdf' }));
+    await waitFor(() => {
+      const calls = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls;
+      expect(
+        calls.find((c) => String(c[0]).includes('/v1/attachments/att-1/download-url')),
+      ).toBeDefined();
+    });
+    const frame = await waitFor(() =>
+      screen.getByTitle('Preview of resume.pdf'),
+    );
+    expect(frame).toHaveAttribute('src', 'https://s3-stub/dl?sig=x');
+    // Download opens the presigned URL in a new tab.
+    fireEvent.click(screen.getByRole('button', { name: 'Download' }));
+    await waitFor(() =>
+      expect(openSpy).toHaveBeenCalledWith(
+        'https://s3-stub/dl?sig=x',
+        '_blank',
+        'noopener,noreferrer',
+      ),
+    );
+  });
+
+  it('B6 — a non-previewable document (e.g. .docx) falls back to open, not an inline frame', async () => {
+    installFetch({
+      '/v1/attachments/att-1/download-url': {
+        presigned_url: 'https://s3-stub/dl?sig=y',
+        expires_at: '2030-01-01T00:00:00Z',
+      },
+      '/v1/attachments': {
+        items: [
+          makeAttachment('att-1', 'Omvignesh.docx', {
+            mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          }),
+        ],
+      },
+      '/v1/talent-records/tal-1': makeTalent(),
+    });
+    renderAt('/talent/tal-1', makeSession(['talent:read', 'attachment:read']));
+    await waitFor(() => expect(screen.getByText('Omvignesh.docx')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: 'Omvignesh.docx' }));
+    await waitFor(() =>
+      expect(screen.getByText(/inline preview isn't available/i)).toBeInTheDocument(),
+    );
+    expect(screen.queryByTitle(/Preview of/)).toBeNull();
+  });
+
   it('Activity tab calls subject_type=talent_record', async () => {
     installFetch({
       '/v1/talent-records/tal-1': makeTalent(),

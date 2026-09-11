@@ -57,7 +57,12 @@ export type PromotionOutcome =
   // another subject"). Block the mint until identity is settled (a human
   // resolves the advisory). NOT an attribute contradiction (those ride onto
   // the record) — this is identity-not-settled.
-  | { status: 'deferred_unresolved_identity' };
+  | { status: 'deferred_unresolved_identity' }
+  // TalentRecord Admission Invariant — the subject's declared identity evidence
+  // does not yet carry BOTH a primary email AND a cell phone. A TalentRecord
+  // must not exist without its contact anchors, so the subject stays in the
+  // staging substrate; the poll retries once the contact evidence arrives.
+  | { status: 'deferred_incomplete_contact' };
 
 @Injectable()
 export class PromotionService {
@@ -142,11 +147,30 @@ export class PromotionService {
     // 5. Map the declared identity evidence to the record's PII fields.
     const contact = extractContact(identity);
     const f = contact.fields;
+
+    // 5a. Admission invariant — the governed promotion gate guarantees the
+    //     contact anchors. A subject whose declared identity evidence lacks a
+    //     primary email OR a cell phone is NOT admissible as a TalentRecord;
+    //     defer (it remains in staging) rather than minting an incomplete row.
+    //     The poll re-promotes once the missing contact evidence arrives. This
+    //     gate precedes the input build so email1/phone_cell are present as the
+    //     DTO's required admission anchors.
+    const email1 = (f.email1 ?? '').trim();
+    const phoneCell = (f.phone_cell ?? '').trim();
+    if (email1 === '' || phoneCell === '') {
+      this.logger.warn(
+        `promoteSubject: subject ${subject.id} missing required contact anchor(s) ` +
+          `(email1=${email1 !== ''}, phone_cell=${phoneCell !== ''}); ` +
+          `deferring admission (${requestId})`,
+      );
+      return { status: 'deferred_incomplete_contact' };
+    }
+
     const input: CreateTalentRecordRequestDto = {
       first_name: name.first_name,
       last_name: name.last_name,
-      ...(f.email1 !== undefined ? { email1: f.email1 } : {}),
-      ...(f.phone_cell !== undefined ? { phone_cell: f.phone_cell } : {}),
+      email1,
+      phone_cell: phoneCell,
       ...(f.address !== undefined ? { address: f.address } : {}),
       ...(f.address2 !== undefined ? { address2: f.address2 } : {}),
       ...(f.city !== undefined ? { city: f.city } : {}),

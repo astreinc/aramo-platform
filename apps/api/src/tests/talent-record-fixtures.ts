@@ -30,6 +30,9 @@ const TALENT_RECORD_MIGRATION_PATHS = [
   // the test schema must carry it or findFirst 500s).
   'libs/talent-record/prisma/migrations/20260702120000_add_work_authorization_to_talent_record/migration.sql',
   'libs/talent-record/prisma/migrations/20260706210000_tr2a_b3a_talent_record_supersession/migration.sql',
+  // B1+B2 — adds title + country (the regenerated client projects both; the
+  // test schema must carry them or findFirst 500s).
+  'libs/talent-record/prisma/migrations/20260910130000_add_talent_title_and_country/migration.sql',
 ].map((p) => resolve(ROOT, p));
 
 // Apply the talent_record schema to a test database. Feeds each whole
@@ -42,6 +45,30 @@ export async function applyTalentRecordMigrations(client: Client): Promise<void>
   for (const path of TALENT_RECORD_MIGRATION_PATHS) {
     await client.query(readFileSync(path, 'utf8'));
   }
+}
+
+// TalentRecord Admission Invariant — a valid `POST /v1/talent-records` body.
+// Since the admission invariant (email1 + phone_cell required) now gates the
+// manual-create path, every HTTP create in the integration suite must supply
+// the contact anchors. This helper is the ONE place that knows what a valid
+// create body looks like: callers pass only the fields they assert on
+// (first_name / last_name / site_id / etc.) and get distinct, valid email +
+// cell phone by default (a per-file monotonic counter keeps successive creates
+// dedup-safe — the 409 duplicate-email guard). Pass email1/phone_cell
+// explicitly to exercise the duplicate / missing-field paths on purpose.
+let talentCreateSeq = 0;
+export function validTalentCreateBody(
+  overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
+  talentCreateSeq += 1;
+  const n = talentCreateSeq;
+  return {
+    first_name: 'Valid',
+    last_name: `Talent${n}`,
+    email1: `valid.talent.${n}@example.test`,
+    phone_cell: `+1512555${String(1000 + (n % 9000)).padStart(4, '0')}`,
+    ...overrides,
+  };
 }
 
 // Seed a TalentRecord the selection-create Pattern-C validator

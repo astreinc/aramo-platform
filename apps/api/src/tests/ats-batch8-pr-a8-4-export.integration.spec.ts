@@ -27,6 +27,7 @@ import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
 import { publishLifecyclePackage } from './publish-lifecycle-package.js';
 import { placementCapacityMigrations } from './support/placement-capacity-migrations.js';
 import { establishOpenRequisition } from './support/establish-open-requisition.js';
+import { validTalentCreateBody } from './talent-record-fixtures.js';
 
 // HF-AUTH-1 — compact tokens carry no scopes; guard resolves via this resolver.
 const __authzTestResolver = new ConfigurableTestResolver();
@@ -303,6 +304,11 @@ const TALENT_RECORD_SUPERSESSION = resolve(
   ROOT,
   'libs/talent-record/prisma/migrations/20260706210000_tr2a_b3a_talent_record_supersession/migration.sql',
 );
+// B1+B2 — title + country columns (regenerated client projects them).
+const TALENT_RECORD_TITLE_COUNTRY = resolve(
+  ROOT,
+  'libs/talent-record/prisma/migrations/20260910130000_add_talent_title_and_country/migration.sql',
+);
 
 // === CORE / SELECTION / SUBMITTAL MIGRATIONS — DELIBERATELY OMITTED ===
 //
@@ -448,6 +454,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         TALENT_RECORD_OVERLAY_FOLD,
         TALENT_RECORD_WORK_AUTH,
         TALENT_RECORD_SUPERSESSION,
+        TALENT_RECORD_TITLE_COUNTRY,
         PIPELINE_INIT,
         PIPELINE_E6,
         PIPELINE_VERSION,
@@ -568,20 +575,20 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         site_id: SITE_A,
       });
 
-      const talentNormal = await postJson('/v1/talent-records', tenantAdminJwt, {
+      const talentNormal = await postJson('/v1/talent-records', tenantAdminJwt, validTalentCreateBody({
         first_name: 'Normal',
         last_name: 'Talent',
         site_id: SITE_A,
-      });
+      }));
       void talentNormal;
 
       // The talent_record that carries the RFC-4180 round-trip payload.
-      const talentSpecial = await postJson('/v1/talent-records', tenantAdminJwt, {
+      const talentSpecial = await postJson('/v1/talent-records', tenantAdminJwt, validTalentCreateBody({
         first_name: 'Edge',
         last_name: 'Case',
         notes: SPECIAL_NOTES,
         site_id: SITE_A,
-      });
+      }));
       talentRecordSpecialId = talentSpecial.id;
 
       // L1-A — these export fixtures need OPEN requisitions (a pipeline is

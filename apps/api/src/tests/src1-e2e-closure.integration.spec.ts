@@ -259,22 +259,34 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(pool.some((r) => r.subject_id === subjectId)).toBe(true);
 
       // ---- 6. seed declared identity evidence (extraction proxy — channel-agnostic) ----
-      await trust.recordEvidence({
-        subjectRef: {
-          tenant_id: TENANT_ID,
-          ref_type: 'SOURCED_TALENT',
-          ref_id: payloadId,
-          link_source: 'src1-pr3-extraction-proxy',
-        },
-        dimension: 'IDENTITY',
-        assertion_type: 'FULL_NAME',
-        assertion_payload: { first_name: 'Ada', last_name: 'Lovelace' },
-        source_class: 'THIRD_PARTY_UNVERIFIED',
-        method: 'DOCUMENT',
-        portability_class: 'TENANT_ONLY',
-        decay_profile: 'DURABLE',
-        created_by: 'src1-pr3-test',
-      });
+      //   The TalentRecord Admission Invariant requires a primary email + cell
+      //   phone on the subject's identity evidence, so the extraction proxy
+      //   seeds all three anchors (name + email + phone) the signed application
+      //   carried — the governed promotion gate then mints rather than defers.
+      const recordAnchor = (
+        assertion_type: string,
+        assertion_payload: Record<string, unknown>,
+      ) =>
+        trust.recordEvidence({
+          subjectRef: {
+            tenant_id: TENANT_ID,
+            ref_type: 'SOURCED_TALENT',
+            ref_id: payloadId,
+            link_source: 'src1-pr3-extraction-proxy',
+          },
+          dimension: 'IDENTITY',
+          assertion_type,
+          assertion_payload,
+          source_class: 'THIRD_PARTY_UNVERIFIED',
+          method: 'DOCUMENT',
+          portability_class: 'TENANT_ONLY',
+          decay_profile: 'DURABLE',
+          created_by: 'src1-pr3-test',
+        });
+      await recordAnchor('FULL_NAME', { first_name: 'Ada', last_name: 'Lovelace' });
+      // canonical claim shape for EMAIL/PHONE is { value } (the normalized identifier).
+      await recordAnchor('EMAIL', { value: 'ada@example.com' });
+      await recordAnchor('PHONE', { value: '4155550100' });
 
       // ---- 7. promoteSubject → TalentRecord ----
       const outcome = await promotion.promoteSubject(

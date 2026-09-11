@@ -54,6 +54,8 @@ const MIGRATIONS = [
   'libs/talent-record/prisma/migrations/20260701120000_drop_core_talent_id/migration.sql',
   'libs/talent-record/prisma/migrations/20260702120000_add_work_authorization_to_talent_record/migration.sql',
   'libs/talent-record/prisma/migrations/20260706210000_tr2a_b3a_talent_record_supersession/migration.sql',
+  // B1+B2 — title + country columns (regenerated client projects them).
+  'libs/talent-record/prisma/migrations/20260910130000_add_talent_title_and_country/migration.sql',
   // consent (+ audit schema) full.
   'libs/consent/prisma/migrations/20260429164414_initial_consent_schema/migration.sql',
   'libs/consent/prisma/migrations/20260630170000_rekey_consent_to_talent_record/migration.sql',

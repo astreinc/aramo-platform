@@ -25,6 +25,7 @@ import { AppModule } from '../app.module.js';
 import { ConfigurableTestResolver } from './support/test-auth-harness.js';
 import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
 import { placementCapacityMigrations } from './support/placement-capacity-migrations.js';
+import { validTalentCreateBody } from './talent-record-fixtures.js';
 
 // HF-AUTH-1 — compact tokens carry no scopes; guard resolves via this resolver.
 const __authzTestResolver = new ConfigurableTestResolver();
@@ -223,6 +224,11 @@ const TALENT_RECORD_SUPERSESSION = resolve(
   ROOT,
   'libs/talent-record/prisma/migrations/20260706210000_tr2a_b3a_talent_record_supersession/migration.sql',
 );
+// B1+B2 — title + country columns (regenerated client projects them).
+const TALENT_RECORD_TITLE_COUNTRY = resolve(
+  ROOT,
+  'libs/talent-record/prisma/migrations/20260910130000_add_talent_title_and_country/migration.sql',
+);
 
 const ISSUER = 'Aramo Core Auth';
 const AUDIENCE = 'aramo-ats-batch5-calendar-saved-list-spec';
@@ -328,6 +334,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         TALENT_RECORD_OVERLAY_FOLD,
         TALENT_RECORD_WORK_AUTH,
         TALENT_RECORD_SUPERSESSION,
+        TALENT_RECORD_TITLE_COUNTRY,
         resolve(ROOT, 'libs/requisition/prisma/migrations/20260803120000_recruiting_status_supersession/migration.sql'),
         REQUISITION_POSTAL_CODE_MIGRATION,
         // Track 4 T4-B2 — requisition read DERIVES openings_available from the
@@ -599,11 +606,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           Authorization: `Bearer ${recruiterOwnerJwt}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          first_name: 'List',
-          last_name: 'Member',
-          site_id: SITE_A,
-        }),
+        body: JSON.stringify(
+          validTalentCreateBody({
+            first_name: 'List',
+            last_name: 'Member',
+            site_id: SITE_A,
+          }),
+        ),
       });
       expect(tRes.status).toBe(201);
       const talent = (await tRes.json()) as { id: string };
@@ -684,11 +693,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
             Authorization: `Bearer ${recruiterJwt_OtherTenant}`,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({
-            first_name: 'Cross',
-            last_name: 'Tenant',
-            site_id: SITE_A,
-          }),
+          body: JSON.stringify(
+            validTalentCreateBody({
+              first_name: 'Cross',
+              last_name: 'Tenant',
+              site_id: SITE_A,
+            }),
+          ),
         },
       );
       expect(otherTalentRes.status).toBe(201);

@@ -5051,6 +5051,41 @@ paths:
       security:
         - BearerAuth: []
 
+  # ── Talent Detail Backend Enablement (B6) ──
+  /v1/attachments/{id}/download-url:
+    get:
+      operationId: getAttachmentDownloadUrl
+      summary: Mint a short-lived presigned URL to view/download an attachment.
+      description: >-
+        Returns a short-lived, expiry-capped presigned GET URL for the stored
+        file behind an attachment (e.g. a résumé), so an authorized recruiter can
+        view or download it. Tenant-scoped: a 404 is returned when the attachment
+        is not in the caller's tenant. Requires the `ats` capability and the
+        `attachment:read` scope. The URL is signed server-side; the object-storage
+        credentials are never exposed.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: A presigned GET URL and its expiry.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttachmentDownloadUrl'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+
 components:
   securitySchemes:
     # Duplicated byte-for-byte from openapi/common.yaml per locked invariant
@@ -5085,6 +5120,20 @@ components:
         opaque reference and never documented. Paired with the `x-zm-request-timestamp` header.
 
   schemas:
+    # ── Talent Detail Backend Enablement (B6) ──
+    AttachmentDownloadUrl:
+      type: object
+      additionalProperties: false
+      description: A short-lived presigned GET URL for an attachment's stored file, and its expiry.
+      required: [presigned_url, expires_at]
+      properties:
+        presigned_url:
+          type: string
+          description: Short-lived, expiry-capped URL to GET the file bytes directly from object storage.
+        expires_at:
+          type: string
+          format: date-time
+          description: ISO-8601 instant after which the presigned URL is no longer valid.
     # ── Requisition Work Location Autocomplete Directive v1.0 (WL-B5) ──
     AddressSuggestion:
       type: object

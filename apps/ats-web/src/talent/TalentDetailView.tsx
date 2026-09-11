@@ -13,7 +13,6 @@ import {
   Button,
   Card,
   Icons,
-  MetricCard,
   StatusPill,
   bandLabel,
   type PillTone,
@@ -43,6 +42,7 @@ import { TrustPanel } from './components/TrustPanel';
 import { RecordReferenceForm } from './RecordReferenceForm';
 import { TalentEditDrawer } from './TalentEditDrawer';
 import {
+  getAttachmentDownloadUrl,
   getEmailVerificationStatus,
   getTalent,
   listTalentAttachments,
@@ -431,7 +431,10 @@ export function TalentDetailView({ sessionOverride }: TalentDetailViewProps) {
     });
   }
 
-  const subParts = [talent.current_employer, locationOf(talent)].filter(
+  // Prototype sub-line: title · location. Title (B1) leads; falls back to the
+  // current employer when the record has no title yet.
+  const headline = talent.title ?? talent.current_employer;
+  const subParts = [headline, locationOf(talent)].filter(
     (v): v is string => v !== null && v !== '',
   );
 
@@ -588,6 +591,9 @@ function HeaderBadges({
           {AVAILABILITY_LABELS[talent.availability_status]}
         </StatusPill>
       ) : null}
+      {talent.recruiting_ready === true ? (
+        <StatusPill tone="info" dot>Recruiting ready</StatusPill>
+      ) : null}
       {ledgerEstablished ? (
         <StatusPill tone="warn" dot>
           {reviewCount > 0
@@ -671,23 +677,22 @@ function SnapshotStrip({
   talent: TalentRecordView;
   opportunities: number | null;
 }) {
+  const tiles: { label: string; value: string }[] = [
+    { label: 'Opportunities', value: opportunities === null ? '—' : `${opportunities} active` },
+    { label: 'Submittals', value: '—' },
+    { label: 'Interviews', value: '—' },
+    { label: 'Offers', value: '—' },
+    { label: 'Assignments', value: '—' },
+    { label: 'Last contact', value: formatDate(talent.last_activity_at) || '—' },
+  ];
   return (
-    <div
-      className="rc-metrics rc-metrics--6 talent-detail__snapshot"
-      data-testid="talent-snapshot"
-    >
-      <MetricCard
-        label="Opportunities"
-        value={opportunities === null ? '—' : `${opportunities} active`}
-      />
-      <MetricCard label="Submittals" value="—" />
-      <MetricCard label="Interviews" value="—" />
-      <MetricCard label="Offers" value="—" />
-      <MetricCard label="Assignments" value="—" />
-      <MetricCard
-        label="Last contact"
-        value={formatDate(talent.last_activity_at) || '—'}
-      />
+    <div className="talent-detail__snapshot" data-testid="talent-snapshot">
+      {tiles.map((t) => (
+        <div key={t.label} className="talent-detail__snap">
+          <div className="talent-detail__snap-k">{t.label}</div>
+          <div className="talent-detail__snap-v">{t.value}</div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -762,6 +767,39 @@ function DocumentsCard({ talentId }: { talentId: string }) {
     };
   }, [talentId]);
 
+  const [preview, setPreview] = useState<{
+    name: string;
+    url: string;
+    mime: string | null;
+  } | null>(null);
+  const [docError, setDocError] = useState<string | null>(null);
+
+  // B6 — inline preview: mint a fresh short-lived presigned GET and show it in
+  // an embedded frame (PDF / images render natively; other types fall back to
+  // open/download since browsers can't render them inline). URLs are per-click,
+  // never stored. A failure is surfaced (not silently swallowed) so the
+  // recruiter sees why nothing opened.
+  const previewDoc = (a: AttachmentView) => {
+    setDocError(null);
+    getAttachmentDownloadUrl(a.id)
+      .then((res) => {
+        setPreview({ name: a.file_name, url: res.presigned_url, mime: a.mime });
+      })
+      .catch(() => {
+        setDocError('We couldn’t open this document. Please try again.');
+      });
+  };
+  const downloadDoc = (id: string) => {
+    setDocError(null);
+    getAttachmentDownloadUrl(id)
+      .then((res) => {
+        window.open(res.presigned_url, '_blank', 'noopener,noreferrer');
+      })
+      .catch(() => {
+        setDocError('We couldn’t open this document. Please try again.');
+      });
+  };
+
   return (
     <Card>
       <div className="talent-detail__card-head">
@@ -776,23 +814,91 @@ function DocumentsCard({ talentId }: { talentId: string }) {
           No attachments for this talent record yet.
         </p>
       ) : (
-        <ul className="talent-detail__docs">
-          {items.map((a) => (
-            <li key={a.id} className="talent-detail__doc">
-              <span className="talent-detail__doc-name">
-                <strong>{a.file_name}</strong>
-                <span className="talent-detail__doc-meta">
-                  {a.is_resume ? 'Résumé · ' : ''}
-                  {bytes(a.size_bytes)}
-                  {a.mime !== null ? ` · ${a.mime}` : ''}
+        <>
+          <ul className="talent-detail__docs">
+            {items.map((a) => (
+              <li key={a.id} className="talent-detail__doc">
+                <span className="talent-detail__doc-name">
+                  <button
+                    type="button"
+                    className="talent-detail__doc-link"
+                    onClick={() => previewDoc(a)}
+                  >
+                    {a.file_name}
+                  </button>
+                  <span className="talent-detail__doc-meta">
+                    {a.is_resume ? 'Résumé · ' : ''}
+                    {bytes(a.size_bytes)}
+                    {a.mime !== null ? ` · ${a.mime}` : ''}
+                  </span>
                 </span>
-              </span>
-            </li>
-          ))}
-        </ul>
+                <button
+                  type="button"
+                  className="talent-detail__doc-dl"
+                  onClick={() => previewDoc(a)}
+                >
+                  Preview
+                </button>
+                <button
+                  type="button"
+                  className="talent-detail__doc-dl"
+                  onClick={() => downloadDoc(a.id)}
+                >
+                  Download
+                </button>
+              </li>
+            ))}
+          </ul>
+          {docError !== null ? (
+            <div style={{ marginTop: 10 }}>
+              <InlineAlert variant="error">{docError}</InlineAlert>
+            </div>
+          ) : null}
+          {preview !== null ? (
+            <div className="talent-detail__doc-preview">
+              <div className="talent-detail__doc-preview-head">
+                <span className="talent-detail__doc-preview-name">{preview.name}</span>
+                <button
+                  type="button"
+                  className="talent-detail__doc-dl"
+                  onClick={() => setPreview(null)}
+                >
+                  Close
+                </button>
+              </div>
+              {isPreviewableMime(preview.mime) ? (
+                <iframe
+                  title={`Preview of ${preview.name}`}
+                  src={preview.url}
+                  className="talent-detail__doc-frame"
+                />
+              ) : (
+                <p className="talent-detail__empty">
+                  Inline preview isn't available for this file type
+                  {preview.mime !== null ? ` (${preview.mime})` : ''}.{' '}
+                  <button
+                    type="button"
+                    className="talent-detail__doc-link"
+                    onClick={() =>
+                      window.open(preview.url, '_blank', 'noopener,noreferrer')
+                    }
+                  >
+                    Open in a new tab
+                  </button>
+                </p>
+              )}
+            </div>
+          ) : null}
+        </>
       )}
     </Card>
   );
+}
+
+// Browsers render PDFs and images inline; everything else (e.g. .docx) can't be
+// previewed natively and falls back to open/download.
+function isPreviewableMime(mime: string | null): boolean {
+  return mime === 'application/pdf' || (mime !== null && mime.startsWith('image/'));
 }
 
 // JOURNEY tab — the talent's pipelines across requisitions, styled as the

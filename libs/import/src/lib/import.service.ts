@@ -156,7 +156,12 @@ const REQUIRED_FIELDS: Record<ImportTargetEntity, readonly string[]> = {
   company: ['name'],
   contact: ['first_name', 'last_name', 'company_id'],
   requisition: ['title', 'company_id'],
-  talent_record: ['first_name', 'last_name'],
+  // Admission invariant — a TalentRecord requires the identity + contact
+  // anchors. An import row missing a name, primary email, or cell phone is
+  // SKIPPED (recorded as a per-row failure: "missing required field(s)"),
+  // never admitted as a half-formed record. Completion happens upstream in the
+  // staging substrate before the row is re-presented to the engine.
+  talent_record: ['first_name', 'last_name', 'email1', 'phone_cell'],
 };
 
 // Apply the confirmed mapping to a raw row, returning the entity DTO

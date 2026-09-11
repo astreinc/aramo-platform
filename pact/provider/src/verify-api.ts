@@ -238,6 +238,9 @@ const TALENT_RECORD_MIGRATIONS = [
   // is the TR-2a↔Pact coupling point — whichever of the TR-2a track / a
   // concurrent pact-consumer track lands SECOND rebases this list onto the other.
   'libs/talent-record/prisma/migrations/20260706210000_tr2a_b3a_talent_record_supersession/migration.sql',
+  // B1+B2 — title + country columns (regenerated client projects them; the
+  // provider schema must carry them or every TalentRecord read 500s).
+  'libs/talent-record/prisma/migrations/20260910130000_add_talent_title_and_country/migration.sql',
 ].map((p) => resolve(ROOT, p));
 // PR-A1b §4 sweep — entitlement schema applied for the pact verifier so
 // the portal-thin pact interactions (5 interactions traversing the now
@@ -6891,6 +6894,22 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
             subjectId: ATSW_MINT_SUBJECT_ID,
             assertionType: 'FULL_NAME',
             assertionPayload: { first_name: 'Grace', last_name: 'Hopper' },
+          });
+          // TalentRecord Admission Invariant — the governed promotion gate now
+          // requires a primary email + cell phone on the subject's identity
+          // evidence (else it defers). A promotable subject therefore carries
+          // both, so promote-to-bench / promote-to-pipeline mint a fresh record.
+          await seedAtsWebEvidenceRecord(c, {
+            id: '00000000-0000-7000-8000-e00000000004',
+            subjectId: ATSW_MINT_SUBJECT_ID,
+            assertionType: 'EMAIL',
+            assertionPayload: { normalized_value: 'grace.hopper@example.com' },
+          });
+          await seedAtsWebEvidenceRecord(c, {
+            id: '00000000-0000-7000-8000-e00000000005',
+            subjectId: ATSW_MINT_SUBJECT_ID,
+            assertionType: 'PHONE',
+            assertionPayload: { value: '+15125550199' },
           });
           await seedAtsWebRawPayloadReference(c, {
             id: ATSW_MINT_ARRIVAL_ID,

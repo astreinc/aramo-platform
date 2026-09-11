@@ -58,6 +58,7 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   INVITATION_ALREADY_EXISTS: 409,
   MANAGEMENT_CYCLE_REJECTED: 409,
   TALENT_RECORD_SUPERSEDED: 422,
+  TALENT_RECORD_DUPLICATE: 409,
   // TR-6 B2 — advisory-resolution domain codes (see error-codes.ts).
   ADVISORY_NOT_PENDING: 409,
   ADVISORY_NOT_MERGED: 409,

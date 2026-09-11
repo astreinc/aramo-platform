@@ -59,12 +59,14 @@ function initials(t: TalentRecordView): string {
 export function TalentEditDrawer({ talent, onClose, onSaved }: Props) {
   const [firstName, setFirstName] = useState(talent.first_name);
   const [lastName, setLastName] = useState(talent.last_name);
+  const [title, setTitle] = useState(talent.title ?? ''); // B1
   // Email + phone are identity/dedup anchors: READ-ONLY once set, but a genuine
   // record that is MISSING them (e.g. externally sourced) can be completed here.
   const [email1, setEmail1] = useState(talent.email1 ?? '');
   const [phoneCell, setPhoneCell] = useState(talent.phone_cell ?? '');
   const [city, setCity] = useState(talent.city ?? '');
   const [state, setState] = useState(talent.state ?? '');
+  const [country, setCountry] = useState(talent.country ?? 'US'); // B2
   const [workAuth, setWorkAuth] = useState<string>(talent.work_authorization ?? '');
   const [engagement, setEngagement] = useState<string>(talent.engagement_type ?? '');
   const [availability, setAvailability] = useState<string>(talent.availability_status ?? '');
@@ -111,8 +113,10 @@ export function TalentEditDrawer({ talent, onClose, onSaved }: Props) {
     const patch: UpdateTalentRecordRequest = {
       first_name: firstName.trim(),
       last_name: lastName.trim(),
+      title: title.trim() === '' ? null : title.trim(), // B1
       city: city.trim(),
       state: state.trim(),
+      country: country.trim() === '' ? 'US' : country.trim(), // B2 (non-null; default US)
       work_authorization: workAuth as WorkAuthorization,
       desired_pay: desiredPay.trim(),
       // Optional talent-stated selects — empty clears to "not stated".
@@ -206,6 +210,14 @@ export function TalentEditDrawer({ talent, onClose, onSaved }: Props) {
                 <span>Last name *</span>
                 <input value={lastName} onChange={(e) => setLastName(e.target.value)} />
               </label>
+              <label className="talent-detail__field">
+                <span>Title</span>
+                <input
+                  value={title}
+                  placeholder="e.g. Sr. Cloud Engineer"
+                  onChange={(e) => setTitle(e.target.value)}
+                />
+              </label>
             </div>
           </DrawerSection>
 
@@ -259,6 +271,14 @@ export function TalentEditDrawer({ talent, onClose, onSaved }: Props) {
               <label className={`talent-detail__field${err(errors.state)}`}>
                 <span>State *</span>
                 <input value={state} onChange={(e) => setState(e.target.value)} />
+              </label>
+              <label className="talent-detail__field">
+                <span>Country</span>
+                <input
+                  value={country}
+                  placeholder="US"
+                  onChange={(e) => setCountry(e.target.value)}
+                />
               </label>
               <label className={`talent-detail__field${err(errors.workAuth)}`}>
                 <span>Work authorization *</span>
