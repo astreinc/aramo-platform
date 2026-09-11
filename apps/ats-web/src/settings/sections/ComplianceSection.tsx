@@ -98,7 +98,7 @@ export function ComplianceSection() {
           </SettingRow>
           <SettingRow
             title="Talent-initiated erasure (RTBF)"
-            sub="Talent can request erasure from the talent portal. Résumé text is purged on talent delete; the consent ledger is retained."
+            sub="Talent can request erasure from the talent portal. Resume text is purged on talent delete; the consent ledger is retained."
           >
             <StatChip tone="info" dot>
               Portal-enabled
@@ -118,7 +118,7 @@ export function ComplianceSection() {
         icon={<IconLock />}
         title="Retention policy"
         vision={[
-          'Set tenant retention windows for résumé text and inactive talent (e.g. 12 / 24 months, until-deletion).',
+          'Set tenant retention windows for resume text and inactive talent (e.g. 12 / 24 months, until-deletion).',
           'Auto-flag inactive talent for review after a no-engagement period.',
           'Scheduled purge jobs honouring per-tenant policy — distinct from S3 lifecycle and RDS PITR.',
         ]}

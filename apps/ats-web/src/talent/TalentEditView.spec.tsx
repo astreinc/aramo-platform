@@ -86,7 +86,7 @@ afterEach(() => {
 });
 
 describe('TalentEditView', () => {
-  it('pre-fetches + renders the form with values pre-filled; no résumé upload section', async () => {
+  it('pre-fetches + renders the form with values pre-filled; no resume upload section', async () => {
     installFetch((req) => {
       if (req.url.includes('/v1/talent-records/tal-42') && req.method === 'GET') {
         return { status: 200, body: makeTalent() };
@@ -101,9 +101,9 @@ describe('TalentEditView', () => {
     expect((screen.getByLabelText('Key skills') as HTMLTextAreaElement).value).toBe(
       'Bernoulli numbers',
     );
-    // NO résumé upload section in EDIT.
+    // NO resume upload section in EDIT.
     expect(screen.queryByTestId('resume-upload-section')).toBeNull();
-    expect(screen.queryByText(/upload résumé/i)).toBeNull();
+    expect(screen.queryByText(/upload resume/i)).toBeNull();
   });
 
   it('submits a PATCH (true PATCH — only changed fields) and navigates to detail', async () => {

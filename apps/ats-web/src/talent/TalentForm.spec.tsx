@@ -97,7 +97,7 @@ describe('TalentForm — CREATE', () => {
     expect(body).not.toHaveProperty('notes');
   });
 
-  it('applies a résumé prefill into the form (merges; does not overwrite existing edits to OTHER fields)', async () => {
+  it('applies a resume prefill into the form (merges; does not overwrite existing edits to OTHER fields)', async () => {
     const initialPrefill: TalentRecordPrefill | undefined = undefined;
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     const { rerender } = render(

@@ -39,7 +39,7 @@ describe('search-api — ?q= URL construction', () => {
     expect(paths[3]).toBe('/v1/contacts?q=a+b');
   });
 
-  // Search PR-2 — the résumé content-search call uses the DISTINCT ?resume_q=
+  // Search PR-2 — the resume content-search call uses the DISTINCT ?resume_q=
   // param against the same talent-records path (never ?q=&?resume_q=).
   it('searchTalentByResume targets /v1/talent-records?resume_q= (distinct param)', async () => {
     const spy = mockOk();

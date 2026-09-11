@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 
-import { Card, CardHead, Icons, ReservedSeam } from '../ui';
+import { Icons } from '../ui';
 import { AddressTypeahead } from '../companies/AddressTypeahead';
 
 import {
@@ -26,10 +26,15 @@ interface IntakeFormProps {
   readonly onRemoveSkill: (index: number) => void;
 }
 
-// The Add-Talent left column — the card-based intake form (mockup parity).
-// Purely presentational: the parent (TalentCreateView) owns all state +
-// the save gate. Every field maps 1:1 to a real CreateTalentRecordRequest
-// key; provenance chips render REAL signal only (résumé / edited).
+// The Step-2 "Review & create" body — the resume-first Add-Talent field form,
+// aligned to the prototype (design/aramo-prototype/platform/Talent.dc.html):
+// a grid of section cards (uppercase eyebrow + optional tag), each holding the
+// real TalentRecord columns. Purely presentational — the parent
+// (TalentCreateView) owns all state + the save gate. Every field maps 1:1 to a
+// real CreateTalentRecordRequest key; provenance chips render REAL signal only
+// (resume / edited). Contact-permission consent is governed SEPARATELY (not
+// captured here). Skills/employment/education/certifications are captured as
+// structured evidence AFTER creation.
 
 export function IntakeForm({
   values,
@@ -42,29 +47,28 @@ export function IntakeForm({
   onAddSkill,
   onRemoveSkill,
 }: IntakeFormProps) {
+  // A section is tagged "FROM RESUME" when the resume parse populated any of
+  // its fields (real provenance signal, not a static badge).
+  const parsed = skillsFromResume || Object.values(provenance).includes('resume');
+
   function field(
     key: keyof IntakeState,
     label: string,
-    opts: {
-      type?: string;
-      required?: boolean;
-      full?: boolean;
-      placeholder?: string;
-    } = {},
+    opts: { type?: string; required?: boolean; full?: boolean; placeholder?: string } = {},
   ) {
     const prov = provenance[key as string] as Provenance | undefined;
     const flagged = prov === 'resume';
     return (
-      <div className={`rc-ifield${opts.full ? ' rc-ifield--full' : ''}`}>
-        <label className="rc-ifield__lb">
+      <label className={`rc-secfield${opts.full ? ' rc-secfield--full' : ''}`}>
+        <span className="rc-secfield__lb">
           <span>
             {label}
-            {opts.required ? <span className="rc-ifield__req"> *</span> : null}
+            {opts.required ? <span className="rc-secfield__req"> *</span> : null}
           </span>
           <ProvenanceChip prov={prov} />
-        </label>
+        </span>
         <input
-          className={`rc-input${flagged ? ' rc-input--prov' : ''}`}
+          className={`rc-secinput${flagged ? ' rc-secinput--prov' : ''}`}
           type={opts.type ?? 'text'}
           value={values[key] as string}
           placeholder={opts.placeholder}
@@ -73,7 +77,7 @@ export function IntakeForm({
           disabled={disabled}
           onChange={(ev) => onField(key, ev.target.value)}
         />
-      </div>
+      </label>
     );
   }
 
@@ -85,16 +89,16 @@ export function IntakeForm({
     required = false,
   ) {
     return (
-      <div className="rc-ifield">
-        <label className="rc-ifield__lb">
+      <label className="rc-secfield">
+        <span className="rc-secfield__lb">
           <span>
             {label}
-            {required ? <span className="rc-ifield__req"> *</span> : null}
+            {required ? <span className="rc-secfield__req"> *</span> : null}
           </span>
           <ProvenanceChip prov={provenance[key] as Provenance | undefined} />
-        </label>
+        </span>
         <select
-          className="rc-input"
+          className="rc-secinput"
           value={values[key]}
           aria-label={label}
           disabled={disabled}
@@ -107,64 +111,58 @@ export function IntakeForm({
             </option>
           ))}
         </select>
+      </label>
+    );
+  }
+
+  function toggle(key: 'can_relocate' | 'is_hot', label: string) {
+    return (
+      <div className="rc-secfield">
+        <span className="rc-secfield__lb">
+          <span>{label}</span>
+        </span>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={values[key]}
+          aria-label={label}
+          className={`rc-toggle${values[key] ? ' rc-toggle--on' : ''}`}
+          disabled={disabled}
+          onClick={() => onToggle(key)}
+        >
+          <span className="rc-toggle__sw" aria-hidden="true" />
+          {values[key] ? 'Yes' : 'No'}
+        </button>
       </div>
     );
   }
 
   return (
-    <div className="rc-intake">
-      <Card>
-        <CardHead
-          title={
-            <>
-              <Icons.IconUser className="rc-card__hic" />
-              Identity
-            </>
-          }
-        />
-        <div className="rc-fgrid">
-          {field('first_name', 'First name', { required: true })}
-          {field('last_name', 'Last name', { required: true })}
-          {field('title', 'Title')}
-          {field('current_employer', 'Current employer', { full: true })}
-        </div>
-      </Card>
+    <div className="rc-secgrid">
+      <Section label="Identity" tag={parsed ? 'FROM RESUME' : undefined}>
+        {field('first_name', 'First name', { required: true })}
+        {field('last_name', 'Last name', { required: true })}
+        {field('title', 'Professional title', { full: true })}
+      </Section>
 
-      <Card>
-        <CardHead
-          title={
-            <>
-              <Icons.IconMail className="rc-card__hic" />
-              Contact
-            </>
-          }
-        />
-        <div className="rc-fgrid">
-          {field('email1', 'Email', { type: 'email', required: true })}
-          {field('email2', 'Secondary email', { type: 'email' })}
-          {field('phone_cell', 'Cell phone', { type: 'tel', required: true })}
-          {field('phone_home', 'Home phone', { type: 'tel' })}
-          {field('phone_work', 'Work phone', { type: 'tel' })}
-          {field('web_site', 'Website / portfolio', { type: 'url' })}
-        </div>
-      </Card>
+      <Section label="Contact" tag={parsed ? 'FROM RESUME' : undefined}>
+        {field('email1', 'Primary email', { type: 'email', required: true })}
+        {field('email2', 'Secondary email', { type: 'email' })}
+        {field('phone_cell', 'Mobile', { type: 'tel', required: true })}
+        {field('phone_home', 'Home phone', { type: 'tel' })}
+        {field('phone_work', 'Work phone', { type: 'tel' })}
+        {field('best_time_to_call', 'Best time to call')}
+        {field('web_site', 'Website / portfolio', { type: 'url', full: true })}
+      </Section>
 
-      <Card>
-        <CardHead
-          title={
-            <>
-              <Icons.IconPin className="rc-card__hic" />
-              Location
-            </>
-          }
-        />
+      <Section label="Location" tag={parsed ? 'FROM RESUME' : undefined}>
         {/* Address autocomplete (reuses the requisition work-location typeahead
-            + the /v1/address-lookup endpoints). Optional — fills the fields
-            below, which stay fully editable. Never blocks manual entry. */}
-        <div className="rc-ifield rc-ifield--full">
-          <label className="rc-ifield__lb">
+            + /v1/address-lookup). Optional — fills the fields below, which stay
+            editable. Never blocks manual entry. */}
+        <div className="rc-secfield rc-secfield--full">
+          <span className="rc-secfield__lb">
             <span>Search address</span>
-          </label>
+          </span>
           <AddressTypeahead
             disabled={disabled}
             testId="talent-address-search"
@@ -173,148 +171,80 @@ export function IntakeForm({
               onField('city', d.city ?? '');
               onField('state', d.state ?? '');
               onField('zip', d.zip ?? '');
-              if (d.country !== null && d.country !== '') {
-                onField('country', d.country);
-              }
+              if (d.country !== null && d.country !== '') onField('country', d.country);
             }}
           />
-          <p className="rc-fnote">
-            <Icons.IconInfo />
-            <span>
-              Optional — fills street, city, state, ZIP and country from the
-              chosen address. You can edit them after.
-            </span>
+        </div>
+        {field('address', 'Street address', { full: true })}
+        {field('address2', 'Address line 2', { full: true })}
+        {field('city', 'City', { required: true })}
+        {field('state', 'State', { required: true })}
+        {field('zip', 'Postal code')}
+        {field('country', 'Country')}
+        {toggle('can_relocate', 'Can relocate')}
+      </Section>
+
+      <Section label="Professional" tag={parsed ? 'FROM RESUME' : undefined}>
+        {field('current_employer', 'Current employer', { full: true })}
+      </Section>
+
+      <Section label="Work authorization">
+        {select(
+          'work_authorization',
+          'Work authorization',
+          WORK_AUTHORIZATION_VALUES,
+          WORK_AUTHORIZATION_LABELS,
+          true,
+        )}
+      </Section>
+
+      <Section label="Availability & preferences">
+        {select('availability_status', 'Availability', AVAILABILITY_STATUS_VALUES, AVAILABILITY_LABELS)}
+        {field('date_available', 'Available from', { type: 'date' })}
+        {select('engagement_type', 'Engagement type', ENGAGEMENT_TYPE_VALUES, ENGAGEMENT_LABELS)}
+        {field('desired_pay', 'Desired rate', { required: true, placeholder: '$/hr' })}
+        {field('current_pay', 'Current pay', { placeholder: 'e.g. $72/hr' })}
+        {toggle('is_hot', 'Hot talent')}
+      </Section>
+
+      <Section label="Skills" tag={parsed ? 'FROM RESUME' : undefined}>
+        <div className="rc-secfield rc-secfield--full">
+          <SkillsEditor
+            skills={skills}
+            disabled={disabled}
+            onAdd={onAddSkill}
+            onRemove={onRemoveSkill}
+          />
+          <p className="rc-secnote">
+            Stored as free text. Canonical skill evidence is produced later by the
+            Skills Taxonomy — no rating is applied here.
           </p>
         </div>
-        <div className="rc-fgrid">
-          {field('address', 'Street address', { full: true })}
-          {field('city', 'City', { required: true })}
-          {field('state', 'State', { required: true })}
-          {field('zip', 'Postal code')}
-          {field('country', 'Country')}
-          <div className="rc-ifield">
-            <label className="rc-ifield__lb">
-              <span>Relocation</span>
-            </label>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={values.can_relocate}
-              aria-label="Can relocate"
-              className={`rc-toggle${values.can_relocate ? ' rc-toggle--on' : ''}`}
-              disabled={disabled}
-              onClick={() => onToggle('can_relocate')}
-            >
-              <span className="rc-toggle__sw" aria-hidden="true" />
-              Can relocate
-            </button>
-          </div>
-        </div>
-      </Card>
+      </Section>
 
-      <Card>
-        <CardHead
-          title={
-            <>
-              <Icons.IconContacts className="rc-card__hic" />
-              Talent-stated
-            </>
-          }
-          actions={
-            <span className="rc-card__hint">
-              <Icons.IconInfo />
-              confirm with the talent
-            </span>
-          }
-        />
-        <div className="rc-fgrid">
-          {select(
-            'availability_status',
-            'Availability',
-            AVAILABILITY_STATUS_VALUES,
-            AVAILABILITY_LABELS,
-          )}
-          {select(
-            'engagement_type',
-            'Engagement type',
-            ENGAGEMENT_TYPE_VALUES,
-            ENGAGEMENT_LABELS,
-          )}
-          {select(
-            'work_authorization',
-            'Work authorization',
-            WORK_AUTHORIZATION_VALUES,
-            WORK_AUTHORIZATION_LABELS,
-            true,
-          )}
-          {field('date_available', 'Date available', { type: 'date' })}
-          {field('current_pay', 'Current pay', { placeholder: 'e.g. $72/hr' })}
-          {field('desired_pay', 'Desired pay', { required: true, placeholder: 'e.g. $80/hr' })}
-        </div>
-        <p className="rc-fnote">
-          <Icons.IconInfo />
-          <span>
-            Pay is free-text and talent-stated. (Commercial comp masking applies
-            in the bill/pay model, not at capture.)
+      <Section label="Source context" tag="RECORDED AUTOMATICALLY">
+        {field('source', 'Source relationship', {
+          full: true,
+          placeholder: 'e.g. Referral — via Kofi Mensah',
+        })}
+      </Section>
+
+      <Section label="Ownership">
+        <div className="rc-secfield">
+          <span className="rc-secfield__lb">
+            <span>Owner</span>
           </span>
-        </p>
-      </Card>
+          <input className="rc-secinput" value="You" aria-label="Owner" disabled readOnly />
+        </div>
+      </Section>
 
-      <Card>
-        <CardHead
-          title={
-            <>
-              <Icons.IconTag className="rc-card__hic" />
-              Skills
-            </>
-          }
-          actions={
-            skillsFromResume ? (
-              <span className="rc-prov rc-prov--resume">
-                <Icons.IconFile />
-                parsed
-              </span>
-            ) : undefined
-          }
-        />
-        <SkillsEditor
-          skills={skills}
-          disabled={disabled}
-          onAdd={onAddSkill}
-          onRemove={onRemoveSkill}
-        />
-        <p className="rc-fnote">
-          <Icons.IconInfo />
-          <span>
-            Stored as free text. Canonical skill evidence is produced later by
-            the Skills Taxonomy — no rating is applied here.
-          </span>
-        </p>
-      </Card>
-
-      <ReservedSeam
-        title="Work history & education"
-        tag="Capture coming soon"
-      >
-        Work history and education are captured as structured evidence with
-        Aramo Core. For now, add them in the résumé and recruiter notes.
-      </ReservedSeam>
-
-      <Card>
-        <CardHead
-          title={
-            <>
-              <Icons.IconList className="rc-card__hic" />
-              Notes &amp; flags
-            </>
-          }
-        />
-        <div className="rc-ifield rc-ifield--full">
-          <label className="rc-ifield__lb">
+      <Section label="Notes">
+        <div className="rc-secfield rc-secfield--full">
+          <span className="rc-secfield__lb">
             <span>Recruiter notes</span>
-          </label>
+          </span>
           <textarea
-            className="rc-input rc-input--area"
+            className="rc-secinput rc-secinput--area"
             value={values.notes}
             aria-label="Recruiter notes"
             placeholder="Context, screening notes…"
@@ -323,20 +253,37 @@ export function IntakeForm({
             onChange={(ev) => onField('notes', ev.target.value)}
           />
         </div>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={values.is_hot}
-          aria-label="Mark as hot talent"
-          className={`rc-toggle rc-toggle--hot${values.is_hot ? ' rc-toggle--on' : ''}`}
-          disabled={disabled}
-          onClick={() => onToggle('is_hot')}
-        >
-          <span className="rc-toggle__sw" aria-hidden="true" />
-          Mark as hot talent
-        </button>
-      </Card>
+      </Section>
+
+      <Section label="Employment · education · certifications" tag="AFTER CREATION">
+        <div className="rc-secfield rc-secfield--full">
+          <p className="rc-secnote">
+            Added on the Talent record after creation as structured records with
+            evidence — not free text.
+          </p>
+        </div>
+      </Section>
     </div>
+  );
+}
+
+function Section({
+  label,
+  tag,
+  children,
+}: {
+  readonly label: string;
+  readonly tag?: string;
+  readonly children: ReactNode;
+}) {
+  return (
+    <section className="rc-seccard">
+      <div className="rc-seccard__hd">
+        <span className="rc-seccard__lb">{label}</span>
+        {tag !== undefined ? <span className="rc-seccard__tag">{tag}</span> : null}
+      </div>
+      <div className="rc-secfields">{children}</div>
+    </section>
   );
 }
 
@@ -374,7 +321,7 @@ function SkillsEditor({ skills, disabled, onAdd, onRemove }: SkillsEditorProps) 
       </ul>
       <div className="rc-skills__add">
         <input
-          className="rc-input"
+          className="rc-secinput"
           type="text"
           value={draft}
           aria-label="Add a skill"

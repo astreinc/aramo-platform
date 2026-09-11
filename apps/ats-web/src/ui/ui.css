@@ -2957,6 +2957,139 @@ button.rc-link-action {
 
 select.rc-input { appearance: none; padding-right: 28px; }
 
+/* ── Step-2 section-card grid (résumé-first Add-Talent, prototype parity) ── */
+
+.rc-secgrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 400px), 1fr));
+  gap: 14px;
+}
+
+.rc-seccard {
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: 12px; padding: 15px 18px; align-self: start;
+}
+
+.rc-seccard__hd { display: flex; align-items: center; gap: 8px; margin-bottom: 11px; }
+
+.rc-seccard__lb {
+  font-size: 0.6875rem; font-weight: 700; letter-spacing: 0.07em;
+  color: var(--faint); text-transform: uppercase;
+}
+
+.rc-seccard__tag {
+  border-radius: 10px; padding: 1.5px 8px; font-size: 0.5625rem; font-weight: 700;
+  letter-spacing: 0.04em; background: var(--line); color: var(--muted);
+  text-transform: uppercase;
+}
+
+.rc-secfields {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px 13px;
+}
+
+.rc-secfield { display: flex; flex-direction: column; gap: 4px; }
+
+.rc-secfield--full { grid-column: 1 / -1; }
+
+.rc-secfield__lb {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  font-size: 0.72rem; font-weight: 600; color: var(--ink);
+}
+
+.rc-secfield__req { color: var(--hot); }
+
+.rc-secinput {
+  width: 100%; box-sizing: border-box; border: 1px solid var(--line-2);
+  border-radius: 8px; padding: 8.5px 11px; font: inherit; font-size: 0.78rem;
+  color: var(--ink); background: var(--surface);
+}
+
+.rc-secinput:focus { outline: none; border-color: var(--brand-accent); box-shadow: 0 0 0 3px var(--brand-tint); }
+
+.rc-secinput--prov { border-color: #c9d8ec; background: #fbfdff; }
+
+.rc-secinput--area { resize: vertical; min-height: 64px; }
+
+select.rc-secinput { appearance: none; padding-right: 28px; }
+
+.rc-secnote { font-size: 0.72rem; color: var(--muted); margin: 6px 0 0; line-height: 1.4; }
+
+/* ── 2-step framing (Source → Review & create) ── */
+
+.rc-stepwrap { max-width: 640px; margin: 24px auto 0; }
+
+.rc-stepeyebrow {
+  font-size: 0.6875rem; font-weight: 700; letter-spacing: 0.07em;
+  color: var(--faint); text-transform: uppercase; text-align: center;
+  margin-bottom: 10px;
+}
+
+.rc-stephdr { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+
+.rc-stephdr .rc-stepeyebrow { text-align: left; margin-bottom: 0; }
+
+.rc-step__back {
+  border: 1px solid var(--line-2); background: var(--surface); color: var(--muted);
+  border-radius: 8px; padding: 6px 11px; font: inherit; font-size: 0.72rem;
+  font-weight: 600; cursor: pointer; white-space: nowrap;
+}
+
+.rc-step__back:hover:not(:disabled) { background: var(--surface-2, #fafbfc); }
+
+.rc-step__back:disabled { opacity: 0.5; cursor: default; }
+
+.rc-parsedpill {
+  display: inline-flex; align-items: center; gap: 7px; border: 1px solid #cbe5d5;
+  background: #e6f2ea; color: #1f7a4d; border-radius: 16px; padding: 4px 12px;
+  font-size: 0.72rem; font-weight: 600; margin-bottom: 14px;
+}
+
+.rc-parsedpill svg { width: 13px; height: 13px; flex: none; }
+
+/* ── Duplicate-match card (Delta 2) ── */
+
+.rc-dupcard {
+  border: 1px solid #f0dfb7; background: #faefd8aa; border-radius: 12px;
+  padding: 14px 18px; margin-bottom: 16px;
+}
+
+.rc-dupcard__hd { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; color: #946011; }
+
+.rc-dupcard__hd svg { width: 14px; height: 14px; flex: none; }
+
+.rc-dupcard__t { font-size: 0.78rem; font-weight: 700; color: #946011; }
+
+.rc-dupcard__body { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+
+.rc-dupcard__av {
+  width: 32px; height: 32px; border-radius: 50%; background: var(--brand-tint);
+  color: var(--brand); display: grid; place-items: center; font-size: 0.69rem;
+  font-weight: 700; flex: none;
+}
+
+.rc-dupcard__who { flex: 1; min-width: 200px; display: flex; flex-direction: column; }
+
+.rc-dupcard__nm { font-size: 0.8rem; font-weight: 700; color: var(--ink); }
+
+.rc-dupcard__sig { font-size: 0.72rem; color: var(--muted); }
+
+.rc-dupcard__acts { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.rc-dupcard__review {
+  border: 1px solid var(--brand-accent); background: var(--surface); color: var(--brand-accent);
+  border-radius: 7px; padding: 6.5px 13px; font: inherit; font-size: 0.72rem;
+  font-weight: 600; cursor: pointer; white-space: nowrap;
+}
+
+.rc-dupcard__diff {
+  border: 1px solid var(--line-2); background: var(--surface); color: var(--ink);
+  border-radius: 7px; padding: 6.5px 12px; font: inherit; font-size: 0.72rem;
+  font-weight: 600; cursor: pointer; white-space: nowrap;
+}
+
+.rc-dupcard__foot { font-size: 0.69rem; color: #946011; margin-top: 8px; }
+
 /* ── Toggle (relocate / hot) ── */
 
 .rc-toggle {

@@ -89,20 +89,20 @@ export function updateErrorMessage(error: unknown): string {
 export function uploadErrorMessage(error: unknown): string {
   if (error instanceof ApiError) {
     if (error.status === 403) {
-      return 'You do not have permission to upload résumés.';
+      return 'You do not have permission to upload resumes.';
     }
     if (error.status === 413) {
       return 'The file is too large to upload.';
     }
   }
-  return 'The résumé upload failed. Please try again.';
+  return 'The resume upload failed. Please try again.';
 }
 
 export function attachErrorMessage(error: unknown): string {
   if (error instanceof ApiError) {
     if (error.status === 403) {
-      return 'The talent was saved, but attaching the résumé failed (no permission).';
+      return 'The talent was saved, but attaching the resume failed (no permission).';
     }
   }
-  return 'The talent was saved, but attaching the résumé failed. You can re-attach it later from the detail page.';
+  return 'The talent was saved, but attaching the resume failed. You can re-attach it later from the detail page.';
 }

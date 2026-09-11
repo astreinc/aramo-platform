@@ -40,7 +40,7 @@ export interface IntakeState {
 }
 
 // The string-valued keys (everything except the two booleans) — the set that
-// carries résumé provenance + the omit-vs-empty discipline.
+// carries resume provenance + the omit-vs-empty discipline.
 export const INTAKE_TEXT_KEYS: ReadonlyArray<
   Exclude<keyof IntakeState, 'can_relocate' | 'is_hot'>
 > = [
@@ -71,7 +71,7 @@ export const INTAKE_TEXT_KEYS: ReadonlyArray<
   'notes',
 ];
 
-// The résumé prefill only ever populates these keys (the parser's stated-fact
+// The resume prefill only ever populates these keys (the parser's stated-fact
 // surface — libs/resume-parse field-extractor). `key_skills` is handled
 // separately as chips.
 const PREFILL_TEXT_KEYS: ReadonlyArray<keyof IntakeState> = [
@@ -148,7 +148,7 @@ export interface PrefillApplication {
   readonly skillsFromResume: boolean;
 }
 
-// Apply a résumé prefill onto a fresh/empty state. Only keys present in the
+// Apply a resume prefill onto a fresh/empty state. Only keys present in the
 // prefill are populated, each tagged provenance 'resume'. Skills come from
 // the free-text key_skills. (Applied once, on a clean intake — the recruiter
 // then edits; edits flip provenance to 'edited' in the view.)
@@ -174,7 +174,7 @@ export function applyPrefill(
   };
 }
 
-// Mark a field 'edited' if it previously came from the résumé. A field with
+// Mark a field 'edited' if it previously came from the resume. A field with
 // no prior provenance (recruiter-entered) carries none.
 export function provenanceAfterEdit(prev: Provenance | undefined): Provenance | undefined {
   if (prev === 'resume' || prev === 'edited') return 'edited';

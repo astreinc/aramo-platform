@@ -1,7 +1,8 @@
 import { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { ApiError } from '@aramo/fe-foundation';
 
-import { Icons, InlineAlert, PageHeader, ReservedSeam } from '../ui';
+import { Icons, InlineAlert, PageHeader } from '../ui';
 
 import { ResumeDropzone } from './ResumeDropzone';
 import { ParseProgress } from './ParseProgress';
@@ -34,11 +35,11 @@ import type { TalentRecordView } from './types';
 // edit + right rail) → success. Manual entry skips straight to the form.
 //
 // WIRED (real backend, no mock):
-//   • Résumé S3 flow: presign PUT → direct-to-S3 PUT → deterministic parse
+//   • Resume S3 flow: presign PUT → direct-to-S3 PUT → deterministic parse
 //     (stated facts only, no-LLM per ADR-0015) → create → attach (auto-clears
 //     the orphan-pending tag). Attach fires in ALL parse branches; attach is
 //     soft-fail (talent is still created).
-//   • Provenance chips: REAL signal only (résumé / edited).
+//   • Provenance chips: REAL signal only (resume / edited).
 //
 // SEAMS (no backend → no fabrication):
 //   • Work history & education — captured AFTER creation as structured
@@ -73,6 +74,10 @@ export function TalentCreateView() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [attachWarning, setAttachWarning] = useState<string | null>(null);
+  // Delta-2 — the duplicate-match card. Populated REACTIVELY from the real
+  // 409 TALENT_RECORD_DUPLICATE (admission-invariant dedup: an active talent in
+  // the tenant already has this primary email). existing_id links to it.
+  const [duplicate, setDuplicate] = useState<{ existing_id?: string } | null>(null);
   const [created, setCreated] = useState<TalentRecordView | null>(null);
 
   const beginTimer = useCallback(() => {
@@ -101,7 +106,7 @@ export function TalentCreateView() {
     setSkills((prev) => prev.filter((_, i) => i !== index));
   }
 
-  // ── Résumé flow (the real 3-step) ───────────────────────────────────────
+  // ── Resume flow (the real 3-step) ───────────────────────────────────────
   async function handleFile(file: File): Promise<void> {
     beginTimer();
     setPhase('parsing');
@@ -118,7 +123,7 @@ export function TalentCreateView() {
       storage_key = presign.storage_key;
       presigned_url = presign.presigned_url;
     } catch (err) {
-      // Upload-url failed before any S3 object exists. A résumé is REQUIRED to
+      // Upload-url failed before any S3 object exists. A resume is REQUIRED to
       // create a talent (no manual-entry fallback), so stay on the intake
       // screen with the error surfaced for retry.
       setResume({ status: 'error', file, error: uploadErrorMessage(err) });
@@ -129,7 +134,7 @@ export function TalentCreateView() {
     try {
       await putResumeToStorage(presigned_url, file, contentType);
     } catch (err) {
-      // The presigned PUT failed: no committed object. Résumé is required, so
+      // The presigned PUT failed: no committed object. Resume is required, so
       // stay on intake with the error for retry (no manual-entry fallback).
       setResume({ status: 'error', file, error: uploadErrorMessage(err) });
       setPhase('intake');
@@ -166,6 +171,7 @@ export function TalentCreateView() {
     setSubmitting(false);
     setSubmitError(null);
     setAttachWarning(null);
+    setDuplicate(null);
     setCreated(null);
   }
 
@@ -197,12 +203,22 @@ export function TalentCreateView() {
     setSubmitting(true);
     setSubmitError(null);
     setAttachWarning(null);
+    setDuplicate(null);
 
     let record: TalentRecordView;
     try {
       record = await createTalent(buildCreateBody(fields, skills));
     } catch (err) {
-      setSubmitError(createErrorMessage(err));
+      // A duplicate primary email is refused server-side (admission invariant).
+      // Surface the duplicate-match card rather than a generic error so the
+      // recruiter can review the existing talent or use a different email —
+      // never a silent merge.
+      if (err instanceof ApiError && err.code === 'TALENT_RECORD_DUPLICATE') {
+        const existing = err.details?.['existing_id'];
+        setDuplicate({ existing_id: typeof existing === 'string' ? existing : undefined });
+      } else {
+        setSubmitError(createErrorMessage(err));
+      }
       setSubmitting(false);
       return;
     }
@@ -248,11 +264,14 @@ export function TalentCreateView() {
     <section className="rc-addtalent">
       <PageHeader
         title="New talent"
-        description="Add a person to your shared tenant talent pool — start with a résumé, then review and complete every field."
+        description="Add a person to your shared tenant talent pool — start with a resume, then review and complete every field."
       />
 
       {phase === 'intake' ? (
-        <ResumeDropzone onFile={handleFile} />
+        <div className="rc-stepwrap">
+          <div className="rc-stepeyebrow">Step 1 of 2 · Source</div>
+          <ResumeDropzone onFile={handleFile} />
+        </div>
       ) : null}
 
       {phase === 'parsing' && resume.file !== undefined ? (
@@ -265,7 +284,27 @@ export function TalentCreateView() {
       {phase === 'form' ? (
         <div className="rc-editgrid">
           <div className="rc-editgrid__main">
+            <div className="rc-stephdr">
+              <button
+                type="button"
+                className="rc-step__back"
+                disabled={submitting}
+                onClick={() => setPhase('intake')}
+              >
+                ← Back
+              </button>
+              <span className="rc-stepeyebrow">Step 2 of 2 · Review &amp; create</span>
+            </div>
             <ParseBanner resume={resume} skillsFromResume={skillsFromResume} />
+            {duplicate !== null ? (
+              <DupMatchCard
+                name={`${fields.first_name} ${fields.last_name}`.trim()}
+                email={fields.email1}
+                existingId={duplicate.existing_id}
+                onReview={(id) => navigate(`/talent/${id}`)}
+                onDifferent={() => setDuplicate(null)}
+              />
+            ) : null}
             {submitError !== null ? (
               <InlineAlert variant="error">{submitError}</InlineAlert>
             ) : null}
@@ -283,16 +322,11 @@ export function TalentCreateView() {
           </div>
 
           <aside className="rc-editgrid__rail">
-            {/* The form phase is reached only after a résumé upload committed
-                (résumé is required), so the attached-résumé card always shows. */}
+            {/* The form phase is reached only after a resume upload committed
+                (resume is required), so the attached-resume card always shows. */}
             {resume.file !== undefined ? (
               <ResumeCard fileName={resume.file.name} sizeBytes={resume.file.size} />
             ) : null}
-
-            <ReservedSeam title="Duplicate check" tag="Coming soon">
-              Aramo surfaces likely-duplicate people for you to decide — it never
-              silently merges. Duplicate detection arrives soon.
-            </ReservedSeam>
 
             <section className="rc-sidecard" aria-label="Contact permissions">
               <h3 className="rc-sidecard__h">
@@ -313,7 +347,7 @@ export function TalentCreateView() {
                 { ok: cityOk && stateOk, label: 'City and state' },
                 { ok: workAuthOk, label: 'Work authorization' },
                 { ok: rateOk, label: 'Desired rate' },
-                { ok: resumeOk, label: 'Résumé attached' },
+                { ok: resumeOk, label: 'Resume attached' },
               ]}
               canCreate={canCreate}
               submitting={submitting}
@@ -338,29 +372,93 @@ function ParseBanner({
   if (resume.status === 'error') {
     return (
       <InlineAlert variant="error">
-        We couldn’t auto-read this résumé — review and complete the fields
-        below; the résumé is attached and saved with the record.
+        We couldn’t auto-read this resume — review and complete the fields
+        below; the resume is attached and saved with the record.
       </InlineAlert>
     );
   }
   if (resume.file !== undefined && resume.storage_key !== undefined) {
     return (
-      <InlineAlert variant="success">
-        Parsed the stated facts from the résumé{skillsFromResume ? ' (including skills)' : ''}.
-        Review anything flagged, complete the required fields, then create.
-      </InlineAlert>
+      <div className="rc-parsedpill">
+        <Icons.IconCheck />
+        <span>
+          Parsed from {resume.file.name} — review the proposed values below
+          {skillsFromResume ? ' (skills included)' : ''}.
+        </span>
+      </div>
     );
   }
+  return null;
+}
+
+// ── Duplicate-match card (Delta 2) ───────────────────────────────────────────
+// Shown when the create is refused with 409 TALENT_RECORD_DUPLICATE — the
+// admission-invariant dedup found an active talent in the tenant with this
+// primary email. NEVER a silent merge: the recruiter reviews the existing
+// record or uses a different email. (The prototype's "Continue — different
+// person" does not apply to an EXACT-email match — the server enforces primary
+// email uniqueness — so the second action changes the email instead.)
+function DupMatchCard({
+  name,
+  email,
+  existingId,
+  onReview,
+  onDifferent,
+}: {
+  readonly name: string;
+  readonly email: string;
+  readonly existingId?: string;
+  readonly onReview: (id: string) => void;
+  readonly onDifferent: () => void;
+}) {
+  const initials =
+    name
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((w) => w[0])
+      .join('')
+      .slice(0, 2)
+      .toUpperCase() || '—';
   return (
-    <p className="rc-addtalent__hint">
-      <Icons.IconInfo />
-      Manual entry. Tip: dropping a résumé auto-fills name, contact, location and
-      skills from the stated facts.
-    </p>
+    <div className="rc-dupcard" role="alert">
+      <div className="rc-dupcard__hd">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
+          <path d="M12 3l10 18H2z" />
+          <path d="M12 10v5M12 17.5v.5" />
+        </svg>
+        <span className="rc-dupcard__t">Possible existing Talent</span>
+      </div>
+      <div className="rc-dupcard__body">
+        <span className="rc-dupcard__av">{initials}</span>
+        <span className="rc-dupcard__who">
+          <span className="rc-dupcard__nm">{name === '' ? 'This person' : name}</span>
+          <span className="rc-dupcard__sig">
+            Matched signal: Email{email !== '' ? ` · ${email}` : ''}
+          </span>
+        </span>
+        <span className="rc-dupcard__acts">
+          {existingId !== undefined ? (
+            <button
+              type="button"
+              className="rc-dupcard__review"
+              onClick={() => onReview(existingId)}
+            >
+              Review existing Talent
+            </button>
+          ) : null}
+          <button type="button" className="rc-dupcard__diff" onClick={onDifferent}>
+            Use a different email
+          </button>
+        </span>
+      </div>
+      <div className="rc-dupcard__foot">
+        No silent merge — identity resolution is a human decision.
+      </div>
+    </div>
   );
 }
 
-// ── Right-rail résumé card ───────────────────────────────────────────────────
+// ── Right-rail resume card ───────────────────────────────────────────────────
 function ResumeCard({
   fileName,
   sizeBytes,
@@ -369,10 +467,10 @@ function ResumeCard({
   readonly sizeBytes: number;
 }) {
   return (
-    <section className="rc-sidecard rc-resumecard" aria-label="Résumé">
+    <section className="rc-sidecard rc-resumecard" aria-label="Resume">
       <h3 className="rc-sidecard__h">
         <Icons.IconFile />
-        Résumé
+        Resume
       </h3>
       <div className="rc-resumecard__file">
         <span className="rc-resumecard__fic" aria-hidden="true">
@@ -388,8 +486,8 @@ function ResumeCard({
       <p className="rc-consent__note">
         <Icons.IconShield />
         <span>
-          SSN-shaped patterns are redacted before the résumé text is stored
-          (D4). Résumé text purges on delete (ADR-0015 cascade).
+          SSN-shaped patterns are redacted before the resume text is stored
+          (D4). Resume text purges on delete (ADR-0015 cascade).
         </span>
       </p>
     </section>
@@ -467,7 +565,7 @@ function SuccessScreen({
         <Icons.IconCheck />
       </div>
       <h2>{name} added to your talent</h2>
-      <p>Profile created, résumé attached and queued for indexing.</p>
+      <p>Profile created, resume attached and queued for indexing.</p>
       {elapsedMs > 0 ? (
         <div className="rc-success__big mono">{(elapsedMs / 1000).toFixed(1)}s</div>
       ) : null}

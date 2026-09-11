@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { InlineAlert, PageHeader, safeErrorMessage } from '../ui';
 
 import { CompensationDisplayPicker } from './CompensationDisplayPicker';
+import { ResumeExtractionModePicker } from './ResumeExtractionModePicker';
 import { FinancialsToggle } from './FinancialsToggle';
 import { fetchTenantSettings } from './settings-api';
 import type { TenantSettingsView } from './types';
@@ -58,6 +59,9 @@ export function SettingsView({ fetchFn }: Props = {}) {
         <>
           <CompensationDisplayPicker
             initialValue={state.view['compensation.display_default']}
+          />
+          <ResumeExtractionModePicker
+            initialValue={state.view['resume.extraction_mode']}
           />
           <FinancialsToggle
             initialValue={state.view['audit.financials_enabled']}

@@ -7,9 +7,9 @@ interface ResumeDropzoneProps {
   readonly disabled?: boolean;
 }
 
-// Add-Talent intake (phase 1) — the résumé dropzone. A résumé is REQUIRED to
+// Add-Talent intake (phase 1) — the resume dropzone. A resume is REQUIRED to
 // create a talent (no manual-entry fallback): every manual add starts here.
-// The assurances stated here are REAL: ADR-0015 secure résumé-text storage,
+// The assurances stated here are REAL: ADR-0015 secure resume-text storage,
 // server-side SSN-shaped redaction (D4), and the stated-facts-only /
 // no-scoring parse posture (R10).
 export function ResumeDropzone({
@@ -43,7 +43,7 @@ export function ResumeDropzone({
         <div className="rc-dropzone__ic" aria-hidden="true">
           <Icons.IconUpload />
         </div>
-        <h2>Drop a résumé to start</h2>
+        <h2>Drop a resume to start</h2>
         <p>
           We’ll parse it and pre-fill the profile in seconds. PDF or Word —
           you’ll review and complete every field before saving.
@@ -77,7 +77,7 @@ export function ResumeDropzone({
         <div className="rc-dropzone__meta">
           <span>
             <Icons.IconCheck />
-            Résumé text stored securely (ADR-0015)
+            Resume text stored securely (ADR-0015)
           </span>
           <span>
             <Icons.IconCheck />

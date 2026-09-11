@@ -91,7 +91,7 @@ export async function listTalentAttachments(
 }
 
 // B6 — mint a short-lived presigned GET URL to view/download an attachment
-// (e.g. a résumé). The URL is fetched on demand (per click), never stored.
+// (e.g. a resume). The URL is fetched on demand (per click), never stored.
 export async function getAttachmentDownloadUrl(
   id: string,
 ): Promise<AttachmentDownloadUrlResponse> {
@@ -122,7 +122,7 @@ export async function updateTalent(
   );
 }
 
-// R5 — the résumé flow (the 3-step: upload-url → presigned PUT → parse).
+// R5 — the resume flow (the 3-step: upload-url → presigned PUT → parse).
 //
 // Step 1: ask the BE for a presigned PUT URL. Scope: attachment:create
 // (NOT talent:create — Gate-5 surfaced this; the recruiter holds both
@@ -159,7 +159,7 @@ export async function putResumeToStorage(
   if (!response.ok) {
     throw new ApiError(
       response.status,
-      `Résumé upload failed: ${response.status}`,
+      `Resume upload failed: ${response.status}`,
     );
   }
 }

@@ -153,6 +153,27 @@ export function isMetricGoalMap(value: unknown): value is MetricGoalMap {
   );
 }
 
+// resume.extraction_mode — how Add-Talent résumé parsing populates the form and
+// produces skills / work-history evidence. 'deterministic' (default) = the
+// no-LLM heuristic parser (ADR-0015, libs/resume-parse). 'governed_llm' = the
+// governed extraction via libs/ai-draft (declared consumer) that STRUCTURES the
+// explicitly-present résumé facts into skills + work-history evidence.
+//
+// This is a TENANT-level feature authorization (the tenant admin opts in) and
+// is the SOLE gate for the LLM path — no per-talent consent is required for
+// résumé extraction. DEFAULT 'deterministic': the LLM path is opt-in per tenant.
+export type ResumeExtractionMode = 'deterministic' | 'governed_llm';
+
+const RESUME_EXTRACTION_MODE_VALUES: readonly ResumeExtractionMode[] =
+  Object.freeze(['deterministic', 'governed_llm']);
+
+export function isResumeExtractionMode(value: unknown): value is ResumeExtractionMode {
+  return (
+    typeof value === 'string' &&
+    (RESUME_EXTRACTION_MODE_VALUES as readonly string[]).includes(value)
+  );
+}
+
 // The closed-set registry. S2 lights up the first key; S3+ register
 // additional keys here with NO migration (the pattern-B win).
 //
@@ -168,6 +189,14 @@ export const KNOWN_SETTINGS = {
     key: 'audit.financials_enabled',
     default: false,
     validate: isBoolean,
+  },
+  // Résumé extraction mode (deterministic parser vs governed-LLM). Tenant
+  // opts into the LLM path in Settings; default is the deterministic parser.
+  // The sole gate for LLM résumé extraction — no per-talent consent required.
+  'resume.extraction_mode': {
+    key: 'resume.extraction_mode',
+    default: 'deterministic' as ResumeExtractionMode,
+    validate: isResumeExtractionMode,
   },
   // Tenant-default KPI targets (My Desk goal-progress bars). The out-of-box
   // default ships real targets so the bars render for every tenant; a tenant

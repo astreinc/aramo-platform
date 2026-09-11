@@ -27,10 +27,10 @@ interface ConfirmStepProps {
 //    are NOT rendered here — those read TalentJobExamination (Core, a later
 //    by-product). A ghosted RESERVED seam states the integration instead.
 //  - §10: the evidence package endpoint exposes JSONB summaries, NOT a discrete
-//    résumé-version / references-count — so the mockup's "v3 · pinned /
+//    resume-version / references-count — so the mockup's "v3 · pinned /
 //    References (2)" framing is dropped; the gate shows the backed truth (the
 //    package + examination are pinned to this submittal). CARRY: discrete
-//    résumé-version + references-count.
+//    resume-version + references-count.
 //
 // The three attestation strings are LOCKED copy, reconciled to canonical
 // vocab per F2 (talent; "submittal", not the legacy nouns).

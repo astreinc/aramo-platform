@@ -61,8 +61,8 @@ export interface TalentRecordView {
   readonly entered_by_id: string | null;
   readonly created_at: string;
   readonly updated_at: string;
-  // Search PR-2 — the résumé-content-match excerpt (ts_headline over the
-  // REDACTED résumé text). Present ONLY on items returned by the ?resume_q=
+  // Search PR-2 — the resume-content-match excerpt (ts_headline over the
+  // REDACTED resume text). Present ONLY on items returned by the ?resume_q=
   // content-search path; absent on every other read (the BE omits it).
   // Optional so name-search / LIST responses mirror unchanged.
   readonly resume_snippet?: string | null;
@@ -145,7 +145,7 @@ export interface AttachmentListResponse {
 
 // B6 — hand-mirrored from libs/object-storage PresignedGetResult. The
 // GET /v1/attachments/:id/download-url response: a short-lived presigned GET
-// URL for the stored file (résumé view/download) + its expiry instant.
+// URL for the stored file (resume view/download) + its expiry instant.
 export interface AttachmentDownloadUrlResponse {
   readonly presigned_url: string;
   readonly expires_at: string;
@@ -304,7 +304,7 @@ export interface TalentRecordPrefill {
   readonly key_skills?: string;
   readonly current_employer?: string;
   readonly web_site?: string;
-  readonly title?: string; // B1 — résumé-proposed professional title
+  readonly title?: string; // B1 — resume-proposed professional title
 }
 
 export interface ParseResumeResult {

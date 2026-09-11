@@ -58,7 +58,7 @@ function makeFile(name = 'resume.pdf', type = 'application/pdf'): File {
   return new File(['%PDF-1.4 stub'], name, { type });
 }
 
-// The full résumé-flow handler (presign → S3 PUT → parse → create → attach).
+// The full resume-flow handler (presign → S3 PUT → parse → create → attach).
 function resumePlan(
   parseStatus: 'parsed' | 'partial' | 'failed',
   prefill: Record<string, unknown>,
@@ -108,10 +108,10 @@ function fillRequired() {
   fireEvent.change(screen.getByLabelText('Desired pay'), { target: { value: '$80/hr' } });
 }
 
-// Attach a résumé on the MANUAL path (the rail's required uploader). Resolves
-// once the storage_key lands and the rail swaps to the attached-résumé card.
+// Attach a resume on the MANUAL path (the rail's required uploader). Resolves
+// once the storage_key lands and the rail swaps to the attached-resume card.
 async function attachResumeManual() {
-  fireEvent.change(screen.getByLabelText('Attach résumé'), {
+  fireEvent.change(screen.getByLabelText('Attach resume'), {
     target: { files: [makeFile()] },
   });
   await waitFor(() =>
@@ -143,7 +143,7 @@ describe('TalentCreateView — intake + manual path', () => {
     expect(screen.getByLabelText('First name')).toBeInTheDocument();
   });
 
-  it('manual create requires the full field set + résumé, then POSTs talent + attaches, NO consent grant', async () => {
+  it('manual create requires the full field set + resume, then POSTs talent + attaches, NO consent grant', async () => {
     const calls = installFetch((req) => {
       if (req.url.includes('/v1/talent-records/resume-upload-url') && req.method === 'POST') {
         return {
@@ -176,7 +176,7 @@ describe('TalentCreateView — intake + manual path', () => {
     await waitFor(() =>
       expect(screen.getByText(/added to your talent/i)).toBeInTheDocument(),
     );
-    // Résumé is mandatory on the manual path → the attachment POST fires.
+    // Resume is mandatory on the manual path → the attachment POST fires.
     expect(calls.find((c) => c.url === '/v1/attachments' && c.method === 'POST')).toBeDefined();
     // Consent grants are DEFERRED — never fired (keying HALT).
     noConsentGrant(calls);
@@ -187,7 +187,7 @@ describe('TalentCreateView — intake + manual path', () => {
 });
 
 describe('TalentCreateView — save gate', () => {
-  it('Create is disabled until name, required fields, résumé and attestation are all satisfied', async () => {
+  it('Create is disabled until name, required fields, resume and attestation are all satisfied', async () => {
     installFetch((req) => {
       if (req.url.includes('/v1/talent-records/resume-upload-url') && req.method === 'POST') {
         return {
@@ -211,9 +211,9 @@ describe('TalentCreateView — save gate', () => {
     fillName();
     expect(create()).toBeDisabled(); // name only
     fillRequired();
-    expect(create()).toBeDisabled(); // required fields ok, no résumé/attestation
+    expect(create()).toBeDisabled(); // required fields ok, no resume/attestation
     await attachResumeManual();
-    expect(create()).toBeDisabled(); // résumé ok, not attested
+    expect(create()).toBeDisabled(); // resume ok, not attested
     signAttestation();
     expect(create()).toBeEnabled(); // all gates satisfied
   });
@@ -230,7 +230,7 @@ describe('TalentCreateView — save gate', () => {
   });
 });
 
-describe('TalentCreateView — résumé path (rulings 1+2+3)', () => {
+describe('TalentCreateView — resume path (rulings 1+2+3)', () => {
   it("'parsed': prefill populates + provenance chip; create+attach fires; no consent grant", async () => {
     const calls = installFetch(
       resumePlan('parsed', { first_name: 'Ada', last_name: 'Lovelace', email1: 'ada@example.com' }),
@@ -241,8 +241,8 @@ describe('TalentCreateView — résumé path (rulings 1+2+3)', () => {
       expect((screen.getByLabelText('First name') as HTMLInputElement).value).toBe('Ada'),
     );
     expect((screen.getByLabelText('Email') as HTMLInputElement).value).toBe('ada@example.com');
-    // Provenance: the prefilled fields carry a résumé chip.
-    expect(screen.getAllByText('résumé').length).toBeGreaterThan(0);
+    // Provenance: the prefilled fields carry a resume chip.
+    expect(screen.getAllByText('resume').length).toBeGreaterThan(0);
     fillRequired();
     signAttestation();
     fireEvent.click(screen.getByRole('button', { name: /create talent/i }));
@@ -300,7 +300,7 @@ describe('TalentCreateView — résumé path (rulings 1+2+3)', () => {
     });
     renderAt();
     fireEvent.change(screen.getByTestId('resume-file-input'), { target: { files: [makeFile('scan.pdf')] } });
-    await waitFor(() => expect(screen.getByText(/couldn’t read this résumé/i)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/couldn’t read this resume/i)).toBeInTheDocument());
     fillName();
     fillRequired();
     signAttestation();

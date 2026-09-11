@@ -13,9 +13,18 @@ export type CompensationDisplayDefault = 'spread' | 'markup' | 'both';
 export const COMPENSATION_DISPLAY_DEFAULT_VALUES: readonly CompensationDisplayDefault[] =
   Object.freeze(['spread', 'markup', 'both']);
 
+// Résumé extraction mode (Add Talent). 'deterministic' = the no-LLM heuristic
+// parser (default); 'governed_llm' = governed extraction via libs/ai-draft.
+// Tenant-level feature opt-in; the sole gate for the LLM path.
+export type ResumeExtractionMode = 'deterministic' | 'governed_llm';
+
+export const RESUME_EXTRACTION_MODE_VALUES: readonly ResumeExtractionMode[] =
+  Object.freeze(['deterministic', 'governed_llm']);
+
 export interface TenantSettingsView {
   readonly 'compensation.display_default': CompensationDisplayDefault;
   readonly 'audit.financials_enabled': boolean;
+  readonly 'resume.extraction_mode': ResumeExtractionMode;
 }
 
 // Per-key value type — keeps the call-site precise without a generic.

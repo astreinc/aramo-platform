@@ -734,7 +734,7 @@ function ProfileTab({
       <Card>
         <div className="talent-detail__ctitle">Work history</div>
         <p className="talent-detail__empty">
-          No structured work history yet. Résumé-derived history capture is
+          No structured work history yet. Resume-derived history capture is
           coming soon.
         </p>
       </Card>
@@ -827,7 +827,7 @@ function DocumentsCard({ talentId }: { talentId: string }) {
                     {a.file_name}
                   </button>
                   <span className="talent-detail__doc-meta">
-                    {a.is_resume ? 'Résumé · ' : ''}
+                    {a.is_resume ? 'Resume · ' : ''}
                     {bytes(a.size_bytes)}
                     {a.mime !== null ? ` · ${a.mime}` : ''}
                   </span>
