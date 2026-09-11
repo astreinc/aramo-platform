@@ -50,10 +50,6 @@ const ENTITLEMENT_INIT = resolve(
   ROOT,
   'libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql',
 );
-const TALENT_INIT = resolve(
-  ROOT,
-  'libs/talent/prisma/migrations/20260516085014_init_talent_model/migration.sql',
-);
 const COMPANY_INIT = resolve(
   ROOT,
   'libs/company/prisma/migrations/20260601160000_init_company_model/migration.sql',
@@ -163,7 +159,6 @@ const TALENT_RECORD_TITLE_COUNTRY = resolve(
 
 const MIGRATIONS = [
   ENTITLEMENT_INIT,
-  TALENT_INIT,
   COMPANY_INIT,
   COMPANY_FIELD_EXPANSION,
   COMPANY_ADDRESS_PLACE_REF,

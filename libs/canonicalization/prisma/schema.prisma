@@ -37,8 +37,8 @@ generator client {
 datasource db {
   provider = "postgresql"
   // Fix-Slice-Final-Drop — the multi-schema client is down to 2 schemas.
-  // The talent + talent_evidence followers were dropped with the husk (the
-  // mint is retired; canonicalize no longer follows those schemas). Order:
+  // The talent + talent_evidence followers were dropped; canonicalize no
+  // longer follows those schemas. Order:
   //   - canonicalization: OWNED (OutboxEvent table).
   //   - ingestion: FOLLOWED (RawPayloadReference + ResolutionMethod enum).
   schemas  = ["canonicalization", "ingestion"]
@@ -78,7 +78,7 @@ model OutboxEvent {
 // Source of truth: libs/ingestion/prisma/schema.prisma.
 // The follower mirrors the source bit-identically (follower-drift tripwire).
 // resolved_subject_id is the live L2 anchor; resolved_talent_id was dropped
-// with the husk (Fix-Slice-Final-Drop).
+// (Fix-Slice-Final-Drop).
 // ===========================================================================
 
 enum ResolutionMethod {

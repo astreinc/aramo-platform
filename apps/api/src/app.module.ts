@@ -225,8 +225,8 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     // service-layer owner validation on the `talent` owner_type path).
     // The reverse direction is UUID-only at the schema level, so
     // TalentRecordModule does NOT import AttachmentModule — no cycle.
-    // Renamed from `libs/talent` to avoid collision with the pre-existing
-    // Core libs/talent (tenant-AGNOSTIC identity, PR-10 baseline).
+    // TalentRecordModule is the recruiter-facing ATS talent record (the ATS
+    // system of record / person key).
     TalentRecordModule,
     AttachmentModule,
     // Tasks backend — the last core recruiter surface (the actionable,
@@ -340,11 +340,10 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     // (company / contact / requisition / talent_record) via each
     // target lib's createForImport surface; reverts via the additive
     // import_batch_id back-reference column. THE non-negotiable
-    // boundary: this lib does NOT import @aramo/talent (the Core lib)
-    // — importing target_entity 'talent_record' creates TalentRecord
-    // rows with core_talent_id NULL; canonicalization is M6-owned
-    // (T2). The integration spec proves it via bit-identical talent.*
-    // row-counts pre/post.
+    // boundary: the import engine performs no identity resolution —
+    // importing target_entity 'talent_record' creates TalentRecord rows
+    // only; canonicalization is M6-owned (T2). The integration spec proves
+    // the boundary at the import layer.
     ImportModule,
     // T8-CONNECTOR-A — connector-connection management routes (Settings →
     // Integrations) + the dormant connector-execution worker (no schedule).

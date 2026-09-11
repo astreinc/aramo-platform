@@ -43,9 +43,9 @@
 //     contract follows it. (An internal-provenance column for the
 //     import engine's revert path; recruiter-facing exports don't
 //     carry it.)
-//   - 4e-rest: `core_talent_id` was dropped from talent_record (the
-//     Core-Talent link is retired). The record's cluster linkage
-//     (cluster_id) is a cross-tenant id and is NOT exported — it is
+//   - 4e-rest: the former identity-link column was dropped from
+//     talent_record (the link is now cluster-only). The record's cluster
+//     linkage (cluster_id) is a cross-tenant id and is NOT exported — it is
 //     never rendered to a tenant-visible surface.
 //
 // The catalog is the single source of truth for the column-selection
@@ -179,9 +179,9 @@ const TALENT_RECORD_COLUMNS: readonly string[] = [
   'best_time_to_call',
   'owner_id',
   'entered_by_id',
-  // 4e-rest — `core_talent_id` was dropped (Core-Talent link retired). The
-  // cluster linkage is a cross-tenant id and is NOT exported (never rendered
-  // to any tenant-visible surface).
+  // 4e-rest — the former identity-link column was dropped (the link is now
+  // cluster-only). The cluster linkage is a cross-tenant id and is NOT exported
+  // (never rendered to any tenant-visible surface).
   'created_at',
   'updated_at',
 ];

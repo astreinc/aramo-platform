@@ -35,14 +35,12 @@ import {
 // === Boundaries ===
 //
 // THE non-negotiable boundary (directive §0): importing target_entity =
-// 'talent_record' creates `talent_record.TalentRecord` rows with
-// `core_talent_id` NULL. The engine NEVER calls Core Talent's
-// createTalent / createOverlay — canonicalization is M6-owned (T2).
+// 'talent_record' creates `talent_record.TalentRecord` rows only and never
+// performs identity resolution — that is canonicalization's job (M6/T2).
 // Structural proof: this service imports ONLY @aramo/company,
-// @aramo/contact, @aramo/requisition, @aramo/talent-record. It does
-// NOT import @aramo/talent (the Core lib). The integration spec proves
-// the boundary by `talent.*` bit-identical row-counts pre/post (the
-// A5b-2 boundary-proof pattern, replayed at the import layer).
+// @aramo/contact, @aramo/requisition, @aramo/talent-record — no identity-
+// resolution dependency. The integration spec proves the boundary at the
+// import layer (the A5b-2 boundary-proof pattern).
 //
 // === Partial-commit semantics ([GATE-5 PREMISE] — Lead reviews) ===
 //
@@ -648,9 +646,8 @@ export class ImportService {
       case 'talent_record':
         await this.talentRecordRepository.createForImport({
           ...base,
-          // THE non-negotiable boundary. createForImport sets
-          // core_talent_id NULL unconditionally — the engine never
-          // crosses into Core.
+          // THE non-negotiable boundary. createForImport performs no
+          // identity resolution — that is canonicalization's job.
           input: args.mapped as never,
         });
         return;

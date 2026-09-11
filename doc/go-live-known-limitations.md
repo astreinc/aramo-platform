@@ -168,8 +168,7 @@ that would surface it — loudly, at boot — but the fix is to wire the handout
   (2) **Attachment rows orphan** on talent-delete — `Attachment` references the
   talent by `owner_id` (cross-schema UUID, **no FK** per Architecture §7.3), so
   the cascade does not reach them; (3) the **ADR-0007 anonymization state
-  machine is not built** — `is_anonymized` is a hardcoded `false` placeholder,
-  and the Core Talent identity is not anonymized by ATS-side delete.
+  machine is not built** — `is_anonymized` is a hardcoded `false` placeholder.
 - **Risk:** **a verified right-to-be-forgotten request cannot be fully honored
   by the product alone.** Résumé text purges automatically, but the résumé
   *file* in S3 and its attachment metadata persist. Manual operator action is
@@ -214,30 +213,23 @@ that would surface it — loudly, at boot — but the fix is to wire the handout
   PUT → object lands → parse → create+attach), and migrate the principal from
   an IAM user to an instance/task role when a compute platform lands in IaC.
 
-### Consent capture: UI captured at create, grant deferred (Core-keying)
+### Consent capture: UI captured at create, grant not yet fired at create
 - **Date:** 2026-06-17 · **Branch:** `feat/add-talent-rebuild-resume-s3`
 - **Present:** the Add-Talent flow captures the real 5-scope consent model
   (`profile_storage`, `resume_processing`, `matching`, `contacting`,
   `cross_tenant_visibility` — the `libs/consent` `CONSENT_SCOPES` enum) plus the
   R7 attestation, and **gates the save** on the two required scopes + the
   attestation. The grant endpoint (`POST /v1/consent/grant`) exists and is real.
-- **NOT enforced:** the grant is **NOT fired at create**. `POST /v1/consent/grant`
-  keys on a **Core `talent_id`** (`@IsUUID`); a freshly-created ATS
-  `TalentRecord` has a nullable `core_talent_id` that is unset at create.
-  Minting a thin Core Talent + overlay at ATS-create to populate it was
-  evaluated and **rejected** — it would break the locked LINK-NOT-CREATE
-  invariant (`ats-batch4b-talent-link.integration.spec.ts`: bit-identical
-  `talent.*` row-counts under ATS ops) and Proof 6 (the single authorized
-  `.talent.create(` call site lives in canonicalization only). Firing the grant
-  keyed to the ATS record id instead would be a **wrong-key write** (consent-
-  data corruption) and is explicitly not done.
+- **NOT enforced:** the grant is **NOT fired at create**. There is no keying
+  blocker — the consent ledger (`consent.TalentConsentEvent`) is keyed on
+  `talent_record_id`, which is the `TalentRecord.id` present the moment the
+  record is created. Wiring the `POST /v1/consent/grant` call into the create
+  path is a pending product decision.
 - **Risk:** low for data integrity (no bad rows written); moderate for
   completeness — operator-captured consent intent is held with the record but
-  not yet persisted as consent events until the Core identity is provisioned.
-- **Close criteria:** provision the Core Talent identity through the authorized
-  canonicalization/ingestion seam (NOT the ATS adapter), then fire the 5-scope
-  grants keyed to the resulting `core_talent_id`. Closing this also closes the
-  engagement-composer `findOverlayByTenant` overlay carry.
+  not yet persisted as consent events.
+- **Close criteria:** wire the 5-scope `POST /v1/consent/grant` call into the
+  Add-Talent create path, keyed on the new `talent_record_id`.
 
 ### Work history & education capture: deferred (seam)
 - **Date:** 2026-06-17 · **Branch:** `feat/add-talent-rebuild-resume-s3`

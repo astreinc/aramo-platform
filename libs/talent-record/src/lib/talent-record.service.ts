@@ -5,14 +5,11 @@ import { TalentRecordRepository } from './talent-record.repository.js';
 
 // TalentRecordService — talent-record-side application surface.
 //
-// 4e-rest-b re-home: findSelfProfile moved here from libs/talent's
-// TalentService. It reads the talent's OWN TalentRecord (the ATS heart),
-// tenant-scoped, and projects the R10-filtered portal self-profile — replacing
-// the old Core Talent+overlay reader. This removes the portal → libs/talent
-// edge (the re-home is acyclic: talent-record does not import portal).
+// findSelfProfile reads the talent's OWN TalentRecord (the ATS heart),
+// tenant-scoped, and projects the R10-filtered portal self-profile.
 //
-// The projection carries NO lifecycle_status (a Core `Talent` field with no
-// TalentRecord equivalent); tenant_status is the profile's status field.
+// The projection carries NO lifecycle_status (a field with no TalentRecord
+// equivalent); tenant_status is the profile's status field.
 @Injectable()
 export class TalentRecordService {
   constructor(

@@ -196,7 +196,7 @@ async function main(): Promise<void> {
       createActivity: async ({ tenantId, createdById, subjectType, subjectId, notes }) =>
         requireId(await activity.create({ tenant_id: tenantId, created_by_id: createdById, input: { type: 'note', subject_type: subjectType, subject_id: subjectId, notes } })),
       // Bound to the live CreateSelectionInput: caller supplies id + event_id
-      // (UUIDs); examination_id null (no Core dependency). Returns
+      // (UUIDs); examination_id null (no examination dependency). Returns
       // CreateSelectionResult { selection, event }.
       createSelection: async ({ tenantId, talentId, requisitionId }) => {
         const res = await selection.createSelection({

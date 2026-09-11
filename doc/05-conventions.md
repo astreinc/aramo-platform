@@ -139,7 +139,7 @@ Cross-schema references use UUID without FK:
 model TalentJobExamination {
   @@schema("examination")
   
-  talent_id String  // UUID reference to talent.Talent; no FK constraint
+  talent_id String  // UUID reference to talent_record.TalentRecord; no FK constraint
   tenant_id String  // UUID
   
   ...

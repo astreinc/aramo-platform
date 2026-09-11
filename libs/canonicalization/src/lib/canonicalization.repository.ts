@@ -20,18 +20,16 @@ import { PrismaService } from './prisma/prisma.service.js';
 // + Aramo-T2-3-Resolution-Trigger-Gate5-Prompt-v1_0.
 //
 // Surface (closed, single method):
-//   canonicalize({ payload_id, core_talent_id?, source_channel,
-//                  resolution_method?, authContext })
+//   canonicalize({ payload_id, source_channel, authContext, requestId })
 //     → CanonicalizeResult
 //
-// Semantics (T2-3 RESOLVE + retained T2-2a test affordances):
-//   - core_talent_id OMITTED (production path) → run the inline resolver.
+// Semantics (T2-3 RESOLVE): the production path runs the inline resolver.
 //     Step 4b (ADR-0016) splits resolution into two anchors:
-//       * PER-TENANT CORE HUSK (resolved_talent_id): a WITHIN-TENANT verified-
-//         email match (the findFirst is tenant-filtered). Hit → reuse that
-//         tenant's husk; miss → CREATE-NEW husk. resolution_method =
-//         verified_email_match | new_identity. The husk no longer crosses
-//         tenants (Core is now per-tenant, en route to retirement).
+//       * WITHIN-TENANT SUBJECT (resolved_subject_id): a verified-email
+//         SubjectAnchor match on talent_trust (the findFirst is tenant-
+//         filtered). Hit → reuse that tenant's ResolutionSubject; miss →
+//         mint a new subject + record its anchor. resolution_method =
+//         confirmed_anchor_match | new_identity.
 //       * CROSS-TENANT CLUSTER (resolved_cluster_id): a salted one-way
 //         fingerprint of the verified email, computed tenant-side, resolves a
 //         PII-free identity_index.PersonCluster (I14 — no raw email crosses the
@@ -39,11 +37,6 @@ import { PrismaService } from './prisma/prisma.service.js';
 //     DETERMINISTIC, exact, oldest-first within the tenant; no fuzzy
 //     auto-merge. An UNverified email does NOT resolve (held as evidence,
 //     not an identity key) and yields no fingerprint.
-//   - core_talent_id = <UUID> (test/internal) → ASSOCIATE: validate the
-//     supplied id; create overlay if absent; populate evidence; record.
-//     resolution_method defaults to 'caller_supplied'.
-//   - core_talent_id = null (test/internal) → force CREATE-NEW (skip
-//     resolver). resolution_method defaults to 'new_identity'.
 //
 // Boundary re-frame (T2-3 vs T2-2a): the resolver is now IN Core
 // canonicalization (the A5b-2 deferral vindicated; T2-1 ruled this is
@@ -59,8 +52,8 @@ import { PrismaService } from './prisma/prisma.service.js';
 // in ONE Prisma $transaction at READ COMMITTED with a SELECT … FOR UPDATE
 // lock on the RawPayloadReference row. A partial canonicalization is a
 // corrupt identity — saga is forbidden; a mid-tx failure rolls back
-// EVERYTHING (Talent / overlay / evidence / outbox event /
-// resolved_talent_id). Proof 4 (atomicity) is load-bearing.
+// EVERYTHING (evidence / outbox event / the resolved_subject_id +
+// resolved_cluster_id decision). Proof 4 (atomicity) is load-bearing.
 //
 // R-boundary: identity + contact-method evidence ONLY. No tier / score /
 // rank / match (R10). The populated evidence models map 1:1 to spec
@@ -101,8 +94,8 @@ export interface CanonicalizeInput {
 
 export interface CanonicalizeResult {
   // Fix-Slice-2 — the within-tenant L2 ResolutionSubject id this arrival
-  // resolved to (was the Core husk talent_id). The husk is retired; canonicalize
-  // resolves the arrival's subject via the verified-email SubjectAnchor.
+  // resolved to. canonicalize resolves the arrival's subject via the
+  // verified-email SubjectAnchor.
   subject_id: string;
   tenant_id: string;
   resolution_method: ResolutionMethodValue;
@@ -326,13 +319,10 @@ export class CanonicalizationRepository {
         }
 
         // Step 3 (Fix-Slice-2 §4.2/§4.3) — WITHIN-TENANT IDENTITY → L2
-        // ResolutionSubject. The husk mint (`tx.talent.create`) + overlay +
-        // husk-keyed TalentContactMethod writes are RETIRED. The arrival's
-        // subject is resolved through the built TR-2a-1 verified-email
-        // SubjectAnchor (hit → verified_email_match; miss → new subject +
-        // record anchor → new_identity), and its per-arrival contact evidence
-        // attaches on L2 — re-homing the husk's function, same semantic, new
-        // substrate. Runs on talent-trust's OWN client (cross-connection,
+        // ResolutionSubject. The arrival's subject is resolved through the
+        // built TR-2a-1 verified-email SubjectAnchor (hit → reuse the subject;
+        // miss → new subject + record anchor), and its per-arrival contact
+        // evidence attaches on L2. Runs on talent-trust's OWN client (cross-connection,
         // orphan-safe on rollback; the subject re-resolves idempotently on
         // retry via the email anchor / SOURCED_TALENT @@unique).
         const arrival = await this.talentTrust.recordSourcedArrival({
@@ -360,8 +350,7 @@ export class CanonicalizationRepository {
         // Step 5 — record the decision on the RawPayloadReference row. The LAST
         // write before the outbox emission; the idempotency anchor (the next
         // canonicalize on this payload short-circuits at Step 2 on a non-null
-        // resolved_subject_id). resolved_talent_id is intentionally left NULL
-        // (the husk is retired; the column drops in the final slice).
+        // resolved_subject_id).
         await tx.rawPayloadReference.update({
           where: { id: payload.id },
           data: {
@@ -374,7 +363,7 @@ export class CanonicalizationRepository {
         // Step 6 — write the outbox event IN THE SAME TRANSACTION (T2-2a
         // writes, T2-2b drains). The event commits atomically with the state
         // change; rollback leaves no orphan event row (atomicity proof 4). The
-        // payload now carries the L2 subject id (was the husk talent_id).
+        // payload now carries the L2 subject id.
         const outboxEventId = uuidv7();
         await tx.outboxEvent.create({
           data: {

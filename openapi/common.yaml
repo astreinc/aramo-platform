@@ -1485,15 +1485,11 @@ components:
         at 0) rather than a transition-time 409. The code is retained in
         the registry for compatibility.
         PR-A5b-2 adds TALENT_LINK_INVALID (HTTP 422) for the
-        TalentRecord ↔ identity linker's cross-schema validation
-        refusal. Failure modes share the code (distinguished by
-        details.reason): 'core_talent_not_found' (the given
-        core_talent_id does not resolve in `talent.Talent`) and, when a
-        cluster_id is supplied, 'cluster_not_found' (the given
+        TalentRecord ↔ PersonCluster linker's cross-schema validation
+        refusal, with details.reason='cluster_not_found' (the given
         cluster_id does not resolve in `identity_index.PersonCluster`).
-        (ADR-0016 step 4d COLLAPSED the former 'tenant_overlay_missing'
-        reason: the in-tenant gate is now the TalentRecord existing in
-        the tenant, surfaced as 404 NOT_FOUND.) Mirrors the M5 PR-3
+        The in-tenant gate is the TalentRecord existing in the tenant,
+        surfaced as 404 NOT_FOUND. Mirrors the M5 PR-3
         SELECTION_REFERENCE_NOT_FOUND cross-schema-validator precedent.
         The linker is ASSOCIATE-ONLY (no resolution, no creation); this
         code is the refusal point when the caller's chosen id doesn't
@@ -1522,11 +1518,7 @@ components:
         the canonicalize service's RawPayloadReference lookup refusal.
         Mirrors the A3 not-found info-leak-closing precedent: cross-
         tenant access is ABSORBED into not-found (no enumeration of
-        other-tenant payload ids). The companion 'core_talent_not_found'
-        case (caller passed a core_talent_id that does not resolve in
-        `talent.Talent`) reuses the existing NOT_FOUND code with
-        details.reason='core_talent_not_found' per the Directive §5
-        "or reuse NOT_FOUND" option.
+        other-tenant payload ids).
         A8-3a adds two codes for the object-storage substrate (the
         first live S3 backing for the dormant A4 Attachment.storage_key
         + M2 RawPayloadReference.storage_ref patterns).

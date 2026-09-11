@@ -151,7 +151,7 @@ describe('ClientTalentRestriction — Company.off_limits isolation + no talent d
   });
 
   it('never reads a matching / scoring / Core / Portal surface (R5)', () => {
-    for (const forbidden of ['@aramo/matching', '@aramo/pipeline', '@aramo/portal', '@aramo/talent']) {
+    for (const forbidden of ['@aramo/matching', '@aramo/pipeline', '@aramo/portal']) {
       expect(src).not.toContain(forbidden);
     }
   });

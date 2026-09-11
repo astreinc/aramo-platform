@@ -201,9 +201,9 @@ repeat jobs by jobId).
 Per PR-11 audit Axis E Lead-Q-E1=(b): PR-11 scans **5 critical pairs**
 only:
 
-1. `consent."TalentConsentEvent".talent_id` ↔ `talent."Talent".id`
-2. `engagement."TalentJobEngagement".talent_id` ↔ `talent."Talent".id`
-3. `examination."TalentJobExamination".talent_id` ↔ `talent."Talent".id`
+1. `consent."TalentConsentEvent".talent_record_id` ↔ `talent_record."TalentRecord".id`
+2. `selection."TalentSelection".talent_id` ↔ `talent_record."TalentRecord".id`
+3. `examination."TalentJobExamination".talent_id` ↔ `talent_record."TalentRecord".id`
 4. `examination."TalentJobExamination".job_id` ↔ `job_domain."Job".id`
 5. `examination."TalentJobExamination".golden_profile_id` ↔ `job_domain."GoldenProfile".id`
 

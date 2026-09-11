@@ -8,7 +8,7 @@ import { IsUUID } from 'class-validator';
 // `findClusterByFingerprint` reached from here, no `resolveIdentity`) in the
 // link path is the structural guarantee.
 //
-// 4e-rest: the Core-Talent link (core_talent_id) was dropped; cluster_id (the
+// 4e-rest: the former identity-link column was dropped; cluster_id (the
 // PERSON_CLUSTER pointer in identity_index) is now the REQUIRED link input.
 // This is operation INPUT, inside the trust wall — allowed to name the
 // cross-tenant id (unlike the tenant-visible read surfaces, which never do).

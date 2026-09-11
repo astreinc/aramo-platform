@@ -5,8 +5,8 @@
 // ats-batch3-talent-record-attachment.integration.spec.ts asserts this
 // structurally at runtime.
 //
-// 4e-rest: `core_talent_id` was DROPPED from this view (the Core-Talent
-// link is retired). The record's cluster linkage (cluster_id) is a
+// 4e-rest: the former identity-link column was DROPPED from this view (the
+// link is now cluster-only). The record's cluster linkage (cluster_id) is a
 // cross-tenant id and is DELIBERATELY NOT exposed on this or any other
 // tenant-visible surface — link STATE is read via GET /:id/link
 // (TalentLinkView.is_linked), never as a raw id here.

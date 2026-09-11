@@ -63,8 +63,8 @@ export class TalentRecordEnrichmentService {
         talent_record_ids: ids,
         visible_requisition_ids: ctx.visible_requisition_ids,
       }),
-      // Step-5 consent re-key: consent is now keyed by TalentRecord.id (i.id) —
-      // no Core hop / core_talent_id filter. items.length > 0 guarded above.
+      // Consent is keyed by TalentRecord.id (i.id) — a direct lookup, no
+      // indirection. items.length > 0 guarded above.
       this.consent.findContactingConsentSummaryForTalentIds({
         tenant_id: ctx.tenant_id,
         talent_record_ids: ids,

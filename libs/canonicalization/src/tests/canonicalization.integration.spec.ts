@@ -20,8 +20,8 @@ import { CanonicalizationTriggerProcessor } from '../lib/canonicalization-trigge
 
 // Fix-Slice-2 — canonicalization integration spec (Canonicalization Re-Route,
 // Fork B → L2). Real Postgres 17 via testcontainers; ARAMO_RUN_INTEGRATION=1
-// gated. REWRITTEN from the husk-semantic Proofs 1–4 + T2-3 proofs (Amendment
-// v1.3) to the §7 behavior: canonicalize mints NO Core husk; it resolves the
+// gated. REWRITTEN from the legacy-semantic Proofs 1–4 + T2-3 proofs (Amendment
+// v1.3) to the §7 behavior: canonicalize mints NO legacy person-entity row; it resolves the
 // arrival's within-tenant ResolutionSubject via the verified-email SubjectAnchor
 // (v1.2 — verified_email_match / new_identity), attaches per-arrival contact
 // EvidenceRecords on L2, writes resolved_subject_id, and emits a subject-keyed
@@ -257,8 +257,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(result.outbox_event_id).not.toBeNull();
       // email anchor evidence + profile_url evidence.
       expect(result.contact_evidence_written).toBe(2);
-      // The husk substrate is gone platform-wide (Proof-6, tripwires spec); the
-      // talent.Talent table no longer exists to query here.
+      // The legacy person-entity substrate is gone platform-wide (Proof-6,
+      // tripwires spec); there is no such table to query here.
 
       // The ResolutionSubject exists and is what resolved_subject_id points at.
       const subj = await dbClient.query(

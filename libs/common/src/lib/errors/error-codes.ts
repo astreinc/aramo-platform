@@ -186,23 +186,18 @@
 // doc/governance/history/Aramo-Architecture-Change-History.md.
 //
 // PR-A5b-2 adds TALENT_LINK_INVALID (HTTP 422) for the TalentRecord ↔
-// Core-Talent linker's cross-schema validation refusal. Two failure
-// modes share the code (distinguished by details.reason):
-//   - 'core_talent_not_found' — the given core_talent_id does not
-//     resolve to a row in `talent.Talent` (the Core identity does not
-//     exist).
-//   - 'tenant_overlay_missing' — the Core Talent exists, but no
-//     TalentTenantOverlay exists for (talent_id, request.tenant_id);
-//     the requesting tenant has no relationship to the identity, so
-//     the link is rejected.
+// PersonCluster linker's cross-schema validation refusal
+// (distinguished by details.reason):
+//   - 'cluster_not_found' — the given cluster_id does not resolve to a
+//     PersonCluster in identity_index; the link is rejected.
 // 422 (Unprocessable) fits — the request is well-formed (the id is a
 // valid UUID), but the referenced data is invalid for domain reasons.
 // Mirrors the M5 PR-3 SELECTION_REFERENCE_NOT_FOUND (422) and M4
 // PR-4 EXAMINATION_PINNED_OUTDATED precedents for cross-schema
-// validator rejections. The linker is ASSOCIATE-ONLY: it never
-// resolves identity (no findTalentByEmail surface) and never creates
-// Core rows — this code is the refusal point when the caller's chosen
-// id doesn't validate. Total: 30 codes.
+// validator rejections. The linker is ASSOCIATE-ONLY: it sets the
+// ATS-side cluster pointer, never resolves or creates identity — this
+// code is the refusal point when the caller's chosen id doesn't
+// validate. Total: 30 codes.
 //
 // PR-A6 adds SAVED_LIST_ITEM_TYPE_MISMATCH (HTTP 422) for the saved-list
 // homogeneity invariant: a SavedList's `item_type` (fixed at creation)
@@ -247,13 +242,7 @@
 // A3 not-found info-leak-closing precedent: cross-tenant access is
 // ABSORBED into not-found (no enumeration of other-tenant payload ids).
 // 404 fits the semantic — the payload either does not exist or is not
-// visible to the calling tenant, indistinguishably. The
-// 'core_talent_not_found' case (caller passed a core_talent_id that
-// doesn't resolve in `talent.Talent`) reuses the existing NOT_FOUND code
-// (HTTP 404) with details.reason='core_talent_not_found' per the
-// Directive §5 "or reuse NOT_FOUND — confirm" option; this is the
-// closest fit to the PR-A5b-2 TALENT_LINK_INVALID detail-reason discriminator
-// pattern. Total: 35 codes.
+// visible to the calling tenant, indistinguishably. Total: 35 codes.
 
 export const ERROR_CODES = [
   'AUTH_REQUIRED',
@@ -288,7 +277,7 @@ export const ERROR_CODES = [
   'TENANT_CAPABILITY_NOT_ENTITLED',  // PR-A1b — EntitlementGuard refusal when the tenant lacks the @RequireCapability the route demands (distinct from scope-axis INSUFFICIENT_PERMISSIONS per Ruling 1)
   'INVALID_PIPELINE_TRANSITION',  // PR-A5a — pipeline state-machine canTransition guard rejected an illegal status change; the load-bearing refusal of A5a (mirrors SUBMITTAL_STATE_INVALID / SELECTION_STATE_INVALID at the ATS-domain layer)
   'REQUISITION_NO_OPENINGS',  // RESERVED, no longer emitted — T4-B2 §7 retired the pipeline-transition over-capacity refusal (pipeline no longer decrements capacity; stored openings_available dropped in §6; over-capacity is now a representable DERIVED state, not a 409). Kept in the registry for compatibility (still referenced by the ats-web pipeline error-message map).
-  'TALENT_LINK_INVALID',  // PR-A5b-2 — TalentRecord-to-Core-Talent linker cross-schema validator refusal; details.reason ∈ {'core_talent_not_found','tenant_overlay_missing'} (the keystone's ASSOCIATE-NOT-RESOLVE refusal point)
+  'TALENT_LINK_INVALID',  // PR-A5b-2 — TalentRecord-to-PersonCluster linker cross-schema validator refusal; details.reason = 'cluster_not_found' (the keystone's ASSOCIATE-NOT-RESOLVE refusal point)
   'SAVED_LIST_ITEM_TYPE_MISMATCH',  // PR-A6 — saved-list add-entry homogeneity-invariant refusal: entry's item_type differs from parent SavedList.item_type (the typed-polymorphism A4-shape integrity check at the list-side)
   'IMPORT_THRESHOLD_EXCEEDED',  // PR-A8-1 — import batch's failure_count exceeded the configured threshold; the entire batch was rejected (no rows persisted) — the recruiter inspects details.{failure_count,row_count,threshold_pct}, fixes, re-imports
   'IMPORT_ALREADY_REVERTED',  // PR-A8-1 — POST /v1/imports/:id/revert refused: batch already in terminal state (reverted | rejected) — re-revert is a no-op rejection (the SUBMITTAL_ALREADY_CONFIRMED 409 precedent)

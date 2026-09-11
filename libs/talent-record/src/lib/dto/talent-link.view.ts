@@ -4,7 +4,7 @@
 // endpoints. Carries the minimum honest surface — the tenant-local
 // talent_record_id + a boolean is_linked.
 //
-// 4e-rest: the Core-Talent link (core_talent_id) was dropped; the link is
+// 4e-rest: the former identity-link column was dropped; the link is
 // now the PERSON_CLUSTER pointer (identity_index). cluster_id is a
 // cross-tenant id and is DELIBERATELY NOT echoed here — the view exposes
 // only WHETHER the record is linked, not the cross-tenant cluster id.

@@ -44,12 +44,9 @@ const __authzTestResolver = new ConfigurableTestResolver();
 //   E) Reversion — POST /:id/revert on a committed batch → 'reverted';
 //      the batch's rows removed (by import_batch_id); non-batch rows
 //      untouched. Re-revert → 409 IMPORT_ALREADY_REVERTED.
-//   F) THE non-negotiable boundary (load-bearing): importing
-//      target_entity='talent_record' leaves talent.Talent +
-//      talent.TalentTenantOverlay row-counts BIT-IDENTICAL pre/post the
-//      import. The A5b-2 boundary-proof pattern, replayed at the import
-//      layer. (4e-rest: the former core_talent_id-NULL leg was excised —
-//      the column was dropped.)
+//   F) Current architecture (positive): importing target_entity='talent_record'
+//      lands rows in talent_record.TalentRecord — the ATS system of record.
+//      There is no separate Core entity to cross into.
 //
 // Skipped unless ARAMO_RUN_INTEGRATION=1.
 
@@ -60,10 +57,6 @@ const ROOT = resolve(__dirname, '../../../..');
 const ENTITLEMENT_INIT = resolve(
   ROOT,
   'libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql',
-);
-const TALENT_INIT = resolve(
-  ROOT,
-  'libs/talent/prisma/migrations/20260516085014_init_talent_model/migration.sql',
 );
 const COMPANY_INIT = resolve(
   ROOT,
@@ -175,7 +168,6 @@ const TALENT_RECORD_TITLE_COUNTRY = resolve(
 
 const MIGRATIONS = [
   ENTITLEMENT_INIT,
-  TALENT_INIT,
   COMPANY_INIT,
   COMPANY_FIELD_EXPANSION,
   COMPANY_ADDRESS_PLACE_REF,
@@ -270,20 +262,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       return builder.sign(privateKey);
     }
 
-    async function countTalentRows(): Promise<number> {
-      const r = await setupClient.query<{ c: string }>(
-        `SELECT COUNT(*)::text AS c FROM talent."Talent"`,
-      );
-      return Number(r.rows[0]?.c ?? '0');
-    }
-
-    async function countOverlayRows(): Promise<number> {
-      const r = await setupClient.query<{ c: string }>(
-        `SELECT COUNT(*)::text AS c FROM talent."TalentTenantOverlay"`,
-      );
-      return Number(r.rows[0]?.c ?? '0');
-    }
-
     async function readImportBatchId(
       table: string,
       schema: string,
@@ -305,11 +283,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       return Number(r.rows[0]?.c ?? '0');
     }
 
-    // 4e-rest: the countCoreTalentLinks helper + its assertion were EXCISED —
-    // core_talent_id was dropped, so "no imported record carries a non-NULL
-    // core_talent_id" is an obsolete (uncompilable) invariant. The engine
-    // never wrote the column; the remaining Talent/overlay row-count proof
-    // below still asserts the import engine never crosses into Core.
+    // The import engine writes only talent_record.TalentRecord rows; the
+    // positive proof below asserts the imported rows land in the ATS system
+    // of record.
 
     beforeAll(async () => {
       container = await new PostgreSqlContainer('postgres:17').start();
@@ -756,15 +732,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     });
 
     // -------------------------------------------------------------------------
-    // F) THE non-negotiable boundary — talent_record imports do NOT touch
-    // Core. Bit-identical talent.* row-counts pre/post. The A5b-2 boundary
-    // proof, replayed at the import layer.
+    // F) Current architecture (positive): importing target_entity='talent_record'
+    // lands rows in talent_record.TalentRecord — the ATS system of record. There
+    // is no separate Core entity to cross into; the import engine writes the ATS
+    // heart directly.
     // -------------------------------------------------------------------------
 
-    it('Boundary proof: importing talent_record leaves talent.Talent + talent.TalentTenantOverlay row-counts bit-identical pre/post', async () => {
-      const talentBefore = await countTalentRows();
-      const overlayBefore = await countOverlayRows();
-
+    it('importing talent_record creates ATS TalentRecord rows attributed to the batch', async () => {
       // Admission invariant — a talent_record import row needs name + email +
       // cell phone, or the engine skips it. These 8 rows are all complete.
       const rows = Array.from({ length: 8 }, (_, i) => ({
@@ -796,13 +770,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(batch.status).toBe('committed');
       expect(batch.success_count).toBe(8);
 
-      // 8 new TalentRecord rows attributed to the batch.
+      // 8 new TalentRecord rows (the ATS system of record) attributed to the batch.
       expect(await countTalentRecordsForBatch(batch.id)).toBe(8);
-
-      // BIT-IDENTICAL: Core Talent + overlay row-counts unchanged.
-      // The engine never crossed into Core.
-      expect(await countTalentRows()).toBe(talentBefore);
-      expect(await countOverlayRows()).toBe(overlayBefore);
     });
 
     // TalentRecord Admission Invariant — an import row missing a required

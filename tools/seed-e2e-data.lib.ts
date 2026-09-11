@@ -315,9 +315,8 @@ export async function seed(
     await ports.createActivity({ tenantId: ctx.tenantId, createdById: ctx.recruiterUserId, subjectType: 'talent_record', subjectId: required(talentId, key), notes: `${ctx.tag} Logged a screening note` });
   }
 
-  // Selection is BEST-EFFORT: it requires a Core Talent OVERLAY
-  // (findOverlayByTenant), which the ATS TalentRecord seed does not create.
-  // A missing overlay must NOT fail the whole (core-complete) seed — skip + report.
+  // Selection is BEST-EFFORT: a missing prerequisite must NOT fail the whole
+  // (core-complete) seed — skip + report.
   let selectionIds: string[] = [];
   let selectionSkipped: string | undefined;
   try {

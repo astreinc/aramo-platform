@@ -29,10 +29,9 @@ import { PrismaService } from './prisma/prisma.service.js';
 // saved-list shape: the engine reaches forward to write its target's
 // rows; the target lib remains ignorant of the engine.
 //
-// THE non-negotiable boundary (directive §0): @aramo/talent (the Core
-// lib) is NOT imported here. Structural proof that the engine never
-// crosses into Core. The integration spec asserts bit-identical
-// talent.* row-counts pre/post.
+// THE non-negotiable boundary (directive §0): the import engine performs no
+// identity resolution — it creates ATS rows only. The integration spec
+// asserts this boundary at the import layer.
 @Module({
   imports: [
     AuthModule,

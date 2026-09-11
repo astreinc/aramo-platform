@@ -112,11 +112,10 @@ describe('field-catalog (PR-A8-4)', () => {
       expect(cols).toContain('last_name');
     });
 
-    it('talent_record does NOT export core_talent_id (dropped in 4e-rest)', () => {
-      // 4e-rest retired the Core-Talent link; the cluster linkage
-      // (cluster_id) is a cross-tenant id and is never exported (never
-      // rendered to a tenant-visible surface).
-      expect(getDefaultColumns('talent_record')).not.toContain('core_talent_id');
+    it('talent_record does NOT export the cluster linkage (cluster_id)', () => {
+      // cluster_id is a cross-tenant identity-index id — never exported, never
+      // rendered to a tenant-visible surface.
+      expect(getDefaultColumns('talent_record')).not.toContain('cluster_id');
     });
 
     it('requisition exports the assignment-keyed columns the A3 predicate needs', () => {

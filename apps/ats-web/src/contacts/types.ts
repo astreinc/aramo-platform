@@ -16,7 +16,7 @@
 // company); the route encodes it in the URL (R6' /companies/:companyId/
 // contacts/new). It is structurally absent from UpdateContactRequest
 // — a contact's company anchor cannot change (same pattern as R5's
-// core_talent_id-locked-out PATCH DTO).
+// identity-link-locked-out PATCH DTO).
 //
 // reports_to_id (the self-link): the BE has ZERO validation here. The
 // FE owns: (a) picker source = the company's contacts, (b) exclude-

@@ -267,8 +267,8 @@ residual identifiers — they are the forensic proof the erasure was performed.
 
 **Deferred / out of scope:**
 
-- **Core Talent identity** (if `core_talent_id` was ever linked) — anonymization
-  is the deferred ADR-0007 state machine; not erased here.
+- **Record anonymization** (the ADR-0007 anonymization state machine) — the
+  `is_anonymized` disposition is not yet built; not applied here.
 
 ---
 

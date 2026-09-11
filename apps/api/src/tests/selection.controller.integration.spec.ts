@@ -63,7 +63,6 @@ const EXAM_LIVE_LIST = resolve(ROOT, 'libs/examination/prisma/migrations/2026052
 const JOB_DOMAIN_INIT = resolve(ROOT, 'libs/job-domain/prisma/migrations/20260519100000_init_job_domain_model/migration.sql');
 // T1-a — the ATS requisition schema (Pattern-A validation now reads it).
 const REQUISITION_INIT = resolve(ROOT, 'libs/requisition/prisma/migrations/20260602100000_init_requisition_model/migration.sql');
-const TALENT_INIT = resolve(ROOT, 'libs/talent/prisma/migrations/20260516085014_init_talent_model/migration.sql');
 const TALENT_EVIDENCE_INIT = resolve(ROOT, 'libs/talent-evidence/prisma/migrations/20260519170000_init_talent_evidence_model/migration.sql');
 const TALENT_EVIDENCE_TR7 = resolve(ROOT, 'libs/talent-evidence/prisma/migrations/20260714120000_tr7_b1_education_certification/migration.sql');
 const EVIDENCE_INIT = resolve(ROOT, 'libs/evidence/prisma/migrations/20260522090000_init_evidence_model/migration.sql');
@@ -153,7 +152,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         EXAM_LIVE_LIST,
         JOB_DOMAIN_INIT,
         REQUISITION_INIT,
-        TALENT_INIT,
         TALENT_EVIDENCE_INIT,
         TALENT_EVIDENCE_TR7,
         EVIDENCE_INIT,
@@ -185,20 +183,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // TENANT_A only; TENANT_B has no TalentRecord → Pattern C refusal 422.
       await applyTalentRecordMigrations(setupClient);
       await seedTalentRecord(setupClient, { id: TALENT_A, tenant_id: TENANT_A });
-
-      // Seed Talent + overlay (TENANT_A only — TENANT_B has no overlay for
-      // Pattern C refusal test).
-      await setupClient.query(
-        `INSERT INTO talent."Talent" (id, lifecycle_status, updated_at)
-         VALUES ($1, 'active', NOW())`,
-        [TALENT_A],
-      );
-      await setupClient.query(
-        `INSERT INTO talent."TalentTenantOverlay"
-           (id, talent_id, tenant_id, source_channel, tenant_status, updated_at)
-         VALUES ($1, $2, $3, 'self_signup', 'active', NOW())`,
-        ['00000000-0000-7fff-8fff-000000000001', TALENT_A, TENANT_A],
-      );
 
       // Seed Job + Requisition (TENANT_A).
       await setupClient.query(
