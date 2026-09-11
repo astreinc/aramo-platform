@@ -24,6 +24,7 @@ import { AppModule } from '../app.module.js';
 
 import { ConfigurableTestResolver } from './support/test-auth-harness.js';
 import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
+import { validTalentCreateBody } from './talent-record-fixtures.js';
 
 // HF-AUTH-1 — compact tokens carry no scopes; guard resolves via this resolver.
 const __authzTestResolver = new ConfigurableTestResolver();
@@ -98,6 +99,11 @@ const TALENT_RECORD_WORK_AUTH = resolve(
 const TALENT_RECORD_SUPERSESSION = resolve(
   ROOT,
   'libs/talent-record/prisma/migrations/20260706210000_tr2a_b3a_talent_record_supersession/migration.sql',
+);
+// B1+B2 — title + country columns (regenerated client projects them).
+const TALENT_RECORD_TITLE_COUNTRY = resolve(
+  ROOT,
+  'libs/talent-record/prisma/migrations/20260910130000_add_talent_title_and_country/migration.sql',
 );
 
 const ISSUER = 'Aramo Core Auth';
@@ -194,6 +200,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         TALENT_RECORD_OVERLAY_FOLD,
   TALENT_RECORD_WORK_AUTH,
   TALENT_RECORD_SUPERSESSION,
+  TALENT_RECORD_TITLE_COUNTRY,
         ATTACHMENT_INIT,
       ]) {
         await setupClient.query(readFileSync(p, 'utf8'));
@@ -332,11 +339,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           Authorization: `Bearer ${recruiterJwt_Ats_SiteA}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          first_name: 'Delete',
-          last_name: 'Divergence',
-          site_id: SITE_A,
-        }),
+        body: JSON.stringify(
+          validTalentCreateBody({
+            first_name: 'Delete',
+            last_name: 'Divergence',
+            site_id: SITE_A,
+          }),
+        ),
       });
       const rec = (await createRes.json()) as { id: string };
 
@@ -373,11 +382,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           Authorization: `Bearer ${recruiterJwt_Ats_SiteA}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          first_name: 'Owner',
-          last_name: 'Subject',
-          site_id: SITE_A,
-        }),
+        body: JSON.stringify(
+          validTalentCreateBody({
+            first_name: 'Owner',
+            last_name: 'Subject',
+            site_id: SITE_A,
+          }),
+        ),
       });
       const talent = (await tRes.json()) as { id: string };
 
@@ -492,7 +503,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           Authorization: `Bearer ${recruiterJwt_Ats_SiteA}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ first_name: 'A', last_name: 'One', site_id: SITE_A }),
+        body: JSON.stringify(
+          validTalentCreateBody({ first_name: 'A', last_name: 'One', site_id: SITE_A }),
+        ),
       });
       const tAJson = (await tA.json()) as { id: string };
       const tB = await fetch(`http://127.0.0.1:${port}/v1/talent-records?site_id=${SITE_A}`, {
@@ -501,7 +514,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           Authorization: `Bearer ${recruiterJwt_Ats_SiteA}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ first_name: 'B', last_name: 'Two', site_id: SITE_A }),
+        body: JSON.stringify(
+          validTalentCreateBody({ first_name: 'B', last_name: 'Two', site_id: SITE_A }),
+        ),
       });
       const tBJson = (await tB.json()) as { id: string };
 
@@ -554,11 +569,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           Authorization: `Bearer ${recruiterJwt_Ats_SiteA}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          first_name: 'Detach',
-          last_name: 'Subject',
-          site_id: SITE_A,
-        }),
+        body: JSON.stringify(
+          validTalentCreateBody({
+            first_name: 'Detach',
+            last_name: 'Subject',
+            site_id: SITE_A,
+          }),
+        ),
       });
       const talent = (await tRes.json()) as { id: string };
 
@@ -608,11 +625,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           Authorization: `Bearer ${recruiterJwt_Ats_SiteA}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          first_name: 'R10',
-          last_name: 'Check',
-          site_id: SITE_A,
-        }),
+        body: JSON.stringify(
+          validTalentCreateBody({
+            first_name: 'R10',
+            last_name: 'Check',
+            site_id: SITE_A,
+          }),
+        ),
       });
       expect(createRes.status).toBe(201);
       const rec = (await createRes.json()) as Record<string, unknown>;
@@ -631,6 +650,70 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           ).toBe(false);
         }
       }
+    });
+
+    // -------------------------------------------------------------------------
+    // D) TalentRecord Admission Invariant — the manual-create path MUST refuse
+    //    a record that lacks the identity/contact anchors (first_name,
+    //    last_name, primary email, cell phone), and MUST refuse a duplicate
+    //    primary email. Structural proof of the admission boundary.
+    // -------------------------------------------------------------------------
+    it('Admission invariant: manual create without email1 → 422; without phone_cell → 422', async () => {
+      const noEmail = await fetch(`http://127.0.0.1:${port}/v1/talent-records?site_id=${SITE_A}`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${recruiterJwt_Ats_SiteA}`,
+          'Content-Type': 'application/json',
+        },
+        // Deliberately omit email1 — the invariant must reject this.
+        body: JSON.stringify({ first_name: 'No', last_name: 'Email', phone_cell: '+15125550001', site_id: SITE_A }),
+      });
+      expect(noEmail.status).toBe(422);
+      const noEmailBody = (await noEmail.json()) as { error: { code: string } };
+      expect(noEmailBody.error?.code).toBe('VALIDATION_ERROR');
+
+      const noPhone = await fetch(`http://127.0.0.1:${port}/v1/talent-records?site_id=${SITE_A}`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${recruiterJwt_Ats_SiteA}`,
+          'Content-Type': 'application/json',
+        },
+        // Deliberately omit phone_cell — the invariant must reject this.
+        body: JSON.stringify({ first_name: 'No', last_name: 'Phone', email1: 'no.phone@example.test', site_id: SITE_A }),
+      });
+      expect(noPhone.status).toBe(422);
+      const noPhoneBody = (await noPhone.json()) as { error: { code: string } };
+      expect(noPhoneBody.error?.code).toBe('VALIDATION_ERROR');
+    });
+
+    it('Admission invariant: manual create with a duplicate primary email → 409 TALENT_RECORD_DUPLICATE', async () => {
+      const dupEmail = `dup.anchor.${SITE_A}@example.test`;
+      const first = await fetch(`http://127.0.0.1:${port}/v1/talent-records?site_id=${SITE_A}`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${recruiterJwt_Ats_SiteA}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(
+          validTalentCreateBody({ first_name: 'First', last_name: 'Anchor', email1: dupEmail, site_id: SITE_A }),
+        ),
+      });
+      expect(first.status).toBe(201);
+
+      const second = await fetch(`http://127.0.0.1:${port}/v1/talent-records?site_id=${SITE_A}`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${recruiterJwt_Ats_SiteA}`,
+          'Content-Type': 'application/json',
+        },
+        // Same primary email (different casing to prove case-insensitive dedup).
+        body: JSON.stringify(
+          validTalentCreateBody({ first_name: 'Second', last_name: 'Anchor', email1: dupEmail.toUpperCase(), site_id: SITE_A }),
+        ),
+      });
+      expect(second.status).toBe(409);
+      const secondBody = (await second.json()) as { error: { code: string } };
+      expect(secondBody.error?.code).toBe('TALENT_RECORD_DUPLICATE');
     });
   },
 );

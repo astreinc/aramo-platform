@@ -7,19 +7,28 @@ import type {
 } from './stated-fields.js';
 
 export interface CreateTalentRecordRequestDto {
+  // TalentRecord Admission Invariant: a TalentRecord is a genuine, ATS-operable
+  // profile and MUST NOT be created without the minimum identity + contact
+  // anchors — first_name, last_name, a primary email, and a primary (cell)
+  // phone. These four are REQUIRED on EVERY creation path (manual, governed
+  // promotion, import); incomplete person data stays in the pre-Talent
+  // staging/identity substrate and never crosses this boundary. The repository
+  // enforces the invariant structurally (assertAdmissible) so no caller can
+  // bypass it via the DTO type alone.
   first_name: string;
   last_name: string;
   site_id?: string;
-  email1?: string;
+  email1: string;
   email2?: string;
   phone_home?: string;
-  phone_cell?: string;
+  phone_cell: string;
   phone_work?: string;
   address?: string;
   address2?: string;
   city?: string;
   state?: string;
   zip?: string;
+  country?: string; // B2 — ISO-3166 alpha-2 (FE defaults 'US' on manual create)
   source?: string;
   key_skills?: string;
   current_employer?: string;
@@ -31,6 +40,7 @@ export interface CreateTalentRecordRequestDto {
   notes?: string;
   web_site?: string;
   best_time_to_call?: string;
+  title?: string; // B1 — professional title (most-recent role)
   // Talent-stated categorical fields (stated-fields amendment §4). Validated
   // against the closed vocabulary by the repository guard (interface DTO — the
   // @IsIn intent honored via the module's manual-guard idiom).

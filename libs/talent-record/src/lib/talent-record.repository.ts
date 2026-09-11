@@ -60,6 +60,35 @@ function assertStatedFields(
   }
 }
 
+// TalentRecord Admission Invariant (structural enforcement). A TalentRecord
+// represents a genuine, ATS-operable profile and MUST NOT be created unless the
+// minimum identity + contact anchors are present: first_name, last_name, a
+// primary email, and a primary (cell) phone. This guard is the NON-BYPASSABLE
+// boundary — it runs inside every creation method (create = manual + governed
+// promotion; createForImport = import engine), so no caller can admit an
+// incomplete record. Incomplete/discovered/imported/webhook-arrived person data
+// MUST remain in the pre-Talent staging/identity/evidence substrate and cross
+// this boundary only through a governed admission/promotion decision (the
+// promotion gate defers; the import engine skips) — never as a half-formed row.
+function assertAdmissible(
+  input: { first_name?: string; last_name?: string; email1?: string; phone_cell?: string },
+  requestId: string,
+): void {
+  const missing: string[] = [];
+  if ((input.first_name ?? '').trim() === '') missing.push('first_name');
+  if ((input.last_name ?? '').trim() === '') missing.push('last_name');
+  if ((input.email1 ?? '').trim() === '') missing.push('email1');
+  if ((input.phone_cell ?? '').trim() === '') missing.push('phone_cell');
+  if (missing.length > 0) {
+    throw new AramoError(
+      'VALIDATION_ERROR',
+      'A TalentRecord requires a name, a primary email, and a cell phone (admission invariant).',
+      422,
+      { requestId, details: { missing } },
+    );
+  }
+}
+
 // TalentRecordRepository — write + read surface for TalentRecord.
 // Reference CRUD (no metering, no event log, no state machine).
 //
@@ -86,6 +115,7 @@ interface TalentRecordRow {
   city: string | null;
   state: string | null;
   zip: string | null;
+  country: string; // B2 — NOT NULL DEFAULT 'US'
   source: string | null;
   key_skills: string | null;
   current_employer: string | null;
@@ -97,6 +127,7 @@ interface TalentRecordRow {
   notes: string | null;
   web_site: string | null;
   best_time_to_call: string | null;
+  title: string | null; // B1
   availability_status: AvailabilityStatus | null;
   engagement_type: EngagementType | null;
   work_authorization: WorkAuthorization | null;
@@ -148,6 +179,7 @@ function projectView(row: TalentRecordRow): TalentRecordView {
     city: row.city,
     state: row.state,
     zip: row.zip,
+    country: row.country,
     source: row.source,
     key_skills: row.key_skills,
     current_employer: row.current_employer,
@@ -160,6 +192,7 @@ function projectView(row: TalentRecordRow): TalentRecordView {
     notes: row.notes,
     web_site: row.web_site,
     best_time_to_call: row.best_time_to_call,
+    title: row.title,
     availability_status: row.availability_status,
     engagement_type: row.engagement_type,
     work_authorization: row.work_authorization,
@@ -182,7 +215,19 @@ function projectDetailView(row: TalentRecordRow): TalentRecordView {
     superseded_by_record_id: row.superseded_by_record_id,
     superseded_at:
       row.superseded_at === null ? null : row.superseded_at.toISOString(),
+    recruiting_ready: computeRecruitingReady(row),
   };
+}
+
+// B5 — recruiting-readiness predicate. A DERIVED boolean (never a number, R10)
+// over the record's OWN state: a live record with at least one contact channel
+// and a stated work authorization is ready to recruit. Detail-read only.
+function computeRecruitingReady(row: TalentRecordRow): boolean {
+  const live = row.record_status !== 'superseded';
+  const hasContact =
+    (row.email1 ?? '') !== '' || (row.phone_cell ?? '') !== '';
+  const hasWorkAuthorization = row.work_authorization !== null;
+  return live && hasContact && hasWorkAuthorization;
 }
 
 // Search PR-2 — raw-SQL row from searchByResumeText. tr.* yields the snake-
@@ -216,6 +261,7 @@ function projectSearchRow(row: RawSearchRow): TalentRecordView {
     city: row.city,
     state: row.state,
     zip: row.zip,
+    country: row.country,
     source: row.source,
     key_skills: row.key_skills,
     current_employer: row.current_employer,
@@ -227,6 +273,7 @@ function projectSearchRow(row: RawSearchRow): TalentRecordView {
     notes: row.notes,
     web_site: row.web_site,
     best_time_to_call: row.best_time_to_call,
+    title: row.title,
     availability_status: row.availability_status,
     engagement_type: row.engagement_type,
     work_authorization: row.work_authorization,
@@ -387,6 +434,7 @@ export class TalentRecordRepository {
     tenant_status?: string;
   }): Promise<TalentRecordView> {
     const { tenant_id, entered_by_id, input } = args;
+    assertAdmissible(input, args.requestId ?? '');
     assertStatedFields(input, args.requestId ?? '');
     const row = await this.prisma.talentRecord.create({
       data: {
@@ -404,6 +452,7 @@ export class TalentRecordRepository {
         city: input.city ?? null,
         state: input.state ?? null,
         zip: input.zip ?? null,
+        country: input.country ?? 'US',
         source: input.source ?? null,
         key_skills: input.key_skills ?? null,
         current_employer: input.current_employer ?? null,
@@ -418,6 +467,7 @@ export class TalentRecordRepository {
         notes: input.notes ?? null,
         web_site: input.web_site ?? null,
         best_time_to_call: input.best_time_to_call ?? null,
+        title: input.title ?? null,
         availability_status: input.availability_status ?? null,
         engagement_type: input.engagement_type ?? null,
         work_authorization: input.work_authorization ?? null,
@@ -427,6 +477,27 @@ export class TalentRecordRepository {
       },
     });
     return projectView(row as TalentRecordRow);
+  }
+
+  // B3/B4 — manual-create dedup lookup. Returns the id of an ACTIVE (live)
+  // TalentRecord in the tenant whose primary email matches (case-insensitive),
+  // or null. Email is the primary identity anchor; the controller refuses a
+  // manual create that would duplicate it. (Phone dedup needs a normalized
+  // column — deferred.)
+  async findActiveByEmail(args: {
+    tenant_id: string;
+    email: string;
+  }): Promise<{ id: string } | null> {
+    const email = args.email.trim();
+    if (email === '') return null;
+    return this.prisma.talentRecord.findFirst({
+      where: {
+        tenant_id: args.tenant_id,
+        record_status: 'live',
+        email1: { equals: email, mode: 'insensitive' },
+      },
+      select: { id: true },
+    });
   }
 
   // PR-A8-1 — import-engine create. Mirrors create(); attributes the
@@ -444,6 +515,10 @@ export class TalentRecordRepository {
     input: CreateTalentRecordRequestDto;
   }): Promise<TalentRecordView> {
     const { tenant_id, entered_by_id, import_batch_id, input } = args;
+    // Admission invariant backstop — the import engine pre-skips incomplete rows
+    // (REQUIRED_FIELDS.talent_record), but the boundary is enforced here too so
+    // no import path can admit a record missing a name/email/phone.
+    assertAdmissible(input, import_batch_id);
     const row = await this.prisma.talentRecord.create({
       data: {
         tenant_id,
@@ -460,6 +535,7 @@ export class TalentRecordRepository {
         city: input.city ?? null,
         state: input.state ?? null,
         zip: input.zip ?? null,
+        country: input.country ?? 'US',
         source: input.source ?? null,
         key_skills: input.key_skills ?? null,
         current_employer: input.current_employer ?? null,
@@ -474,6 +550,7 @@ export class TalentRecordRepository {
         notes: input.notes ?? null,
         web_site: input.web_site ?? null,
         best_time_to_call: input.best_time_to_call ?? null,
+        title: input.title ?? null,
         owner_id: input.owner_id ?? entered_by_id,
         entered_by_id,
         // core_talent_id is OMITTED — defaults to NULL. THE boundary.
@@ -835,6 +912,7 @@ export class TalentRecordRepository {
     if (i.city !== undefined) data['city'] = i.city;
     if (i.state !== undefined) data['state'] = i.state;
     if (i.zip !== undefined) data['zip'] = i.zip;
+    if (i.country !== undefined) data['country'] = i.country;
     if (i.source !== undefined) data['source'] = i.source;
     if (i.key_skills !== undefined) data['key_skills'] = i.key_skills;
     if (i.current_employer !== undefined) data['current_employer'] = i.current_employer;
@@ -846,6 +924,7 @@ export class TalentRecordRepository {
     if (i.notes !== undefined) data['notes'] = i.notes;
     if (i.web_site !== undefined) data['web_site'] = i.web_site;
     if (i.best_time_to_call !== undefined) data['best_time_to_call'] = i.best_time_to_call;
+    if (i.title !== undefined) data['title'] = i.title;
     if (i.availability_status !== undefined) data['availability_status'] = i.availability_status;
     if (i.engagement_type !== undefined) data['engagement_type'] = i.engagement_type;
     if (i.work_authorization !== undefined) data['work_authorization'] = i.work_authorization;

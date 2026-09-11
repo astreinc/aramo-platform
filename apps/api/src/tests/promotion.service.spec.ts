@@ -152,7 +152,11 @@ describe('PromotionService.promoteSubject — create branch', () => {
         { ref_type: 'SOURCED_TALENT', ref_id: PAYLOAD_ID, link_source: 'canonicalization' },
         { ref_type: 'PERSON_CLUSTER', ref_id: CLUSTER_ID, link_source: 'canonicalization' },
       ],
-      evidence: [ev('FULL_NAME', { first_name: 'Ada', last_name: 'Lovelace' })],
+      evidence: [
+        ev('FULL_NAME', { first_name: 'Ada', last_name: 'Lovelace' }),
+        ev('EMAIL', { normalized_value: 'ada@example.com' }),
+        ev('PHONE', { value: '+15551230000' }),
+      ],
     });
 
     const result = await service.promoteSubject(sourcedRef);
@@ -171,7 +175,11 @@ describe('PromotionService.promoteSubject — create branch', () => {
   it('TR-2b B1 PR-2: a subject WITHOUT a PERSON_CLUSTER ref → cluster_id left NULL (setLink not called)', async () => {
     const { service, create, setLink } = makeService({
       refs: [{ ref_type: 'SOURCED_TALENT', ref_id: PAYLOAD_ID, link_source: 'canonicalization' }],
-      evidence: [ev('FULL_NAME', { first_name: 'Ada', last_name: 'Lovelace' })],
+      evidence: [
+        ev('FULL_NAME', { first_name: 'Ada', last_name: 'Lovelace' }),
+        ev('EMAIL', { normalized_value: 'ada@example.com' }),
+        ev('PHONE', { value: '+15551230000' }),
+      ],
     });
 
     const result = await service.promoteSubject(sourcedRef);
@@ -232,6 +240,36 @@ describe('PromotionService.promoteSubject — create branch', () => {
     });
     const result = await service.promoteSubject(sourcedRef);
     expect(result).toEqual({ status: 'deferred_no_basis' });
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  // TalentRecord Admission Invariant — the governed promotion gate guarantees
+  // the contact anchors. A subject with a live name + valid basis but WITHOUT a
+  // primary email (or without a cell phone) is NOT admissible; it stays in
+  // staging (deferred), never minted as a half-formed record.
+  it('deferred_incomplete_contact: name + basis but NO email → defer, no record created', async () => {
+    const { service, create } = makeService({
+      evidence: [
+        ev('FULL_NAME', { first_name: 'Alan', last_name: 'Turing' }),
+        ev('PHONE', { value: '+15551234567' }),
+        // No EMAIL evidence — the admission invariant must defer.
+      ],
+    });
+    const result = await service.promoteSubject(sourcedRef);
+    expect(result).toEqual({ status: 'deferred_incomplete_contact' });
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it('deferred_incomplete_contact: name + basis + email but NO phone → defer, no record created', async () => {
+    const { service, create } = makeService({
+      evidence: [
+        ev('FULL_NAME', { first_name: 'Alan', last_name: 'Turing' }),
+        ev('EMAIL', { normalized_value: 'alan@example.com' }),
+        // No PHONE evidence — the admission invariant must defer.
+      ],
+    });
+    const result = await service.promoteSubject(sourcedRef);
+    expect(result).toEqual({ status: 'deferred_incomplete_contact' });
     expect(create).not.toHaveBeenCalled();
   });
 

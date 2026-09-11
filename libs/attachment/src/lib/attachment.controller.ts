@@ -19,7 +19,10 @@ import {
   RolesGuard,
 } from '@aramo/authorization';
 import { EntitlementGuard, RequireCapability } from '@aramo/entitlement';
-import { ObjectStorageService } from '@aramo/object-storage';
+import {
+  ObjectStorageService,
+  type PresignedGetResult,
+} from '@aramo/object-storage';
 import { ResumeTextService } from '@aramo/talent-record';
 
 import type { AttachmentOwnerType } from './dto/attachment-owner-type.js';
@@ -119,6 +122,37 @@ export class AttachmentController {
       );
     }
     return view;
+  }
+
+  // B6 — a short-lived presigned GET so a recruiter can view/download the
+  // stored file (résumé). Reuses the existing object-storage presigned-GET
+  // surface (signs locally; expiry-capped). Tenant-scoped lookup first → 404
+  // if the attachment isn't in the caller's tenant; only then a URL is minted.
+  @Get(':id/download-url')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('attachment:read')
+  @RequireSiteMatch()
+  async downloadUrl(
+    @AuthContext() authContext: AuthContextType,
+    @Param('id') id: string,
+    @RequestId() requestId: string,
+  ): Promise<PresignedGetResult> {
+    const view = await this.repo.findById({
+      tenant_id: authContext.tenant_id,
+      id,
+    });
+    if (view === null) {
+      throw new AramoError(
+        'NOT_FOUND',
+        'Attachment not found in tenant',
+        404,
+        { requestId, details: { id } },
+      );
+    }
+    return this.objectStorage.createPresignedGet({
+      storage_key: view.storage_key,
+      requestId,
+    });
   }
 
   @Post()

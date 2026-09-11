@@ -250,6 +250,39 @@ export class TalentRecordController {
     @Body() body: CreateTalentRecordRequestDto,
     @RequestId() requestId: string,
   ): Promise<TalentRecordView> {
+    // B3/B4 — the MANUAL create path requires a primary email + cell phone (the
+    // identity/dedup anchors) and refuses a duplicate primary email. This gate
+    // lives on the HTTP handler, so the promotion/sourcing path (which calls
+    // repo.create directly with tenant_status='sourced') is unaffected. No DB
+    // NOT-NULL constraint — server + FE validation only (PO ruling).
+    const email1 = (body.email1 ?? '').trim();
+    const phoneCell = (body.phone_cell ?? '').trim();
+    if (email1 === '' || phoneCell === '') {
+      throw new AramoError(
+        'VALIDATION_ERROR',
+        'A primary email and a cell phone are required to create a talent.',
+        422,
+        {
+          requestId,
+          details: {
+            email1: email1 === '' ? 'required' : undefined,
+            phone_cell: phoneCell === '' ? 'required' : undefined,
+          },
+        },
+      );
+    }
+    const duplicate = await this.repo.findActiveByEmail({
+      tenant_id: authContext.tenant_id,
+      email: email1,
+    });
+    if (duplicate !== null) {
+      throw new AramoError(
+        'TALENT_RECORD_DUPLICATE',
+        'A talent with this primary email already exists in your tenant.',
+        409,
+        { requestId, details: { email1, existing_id: duplicate.id } },
+      );
+    }
     return this.repo.create({
       tenant_id: authContext.tenant_id,
       entered_by_id: authContext.sub,

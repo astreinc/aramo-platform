@@ -228,6 +228,11 @@ const TALENT_RECORD_SUPERSESSION = resolve(
   ROOT,
   'libs/talent-record/prisma/migrations/20260706210000_tr2a_b3a_talent_record_supersession/migration.sql',
 );
+// B1+B2 — title + country columns (regenerated client projects them).
+const TALENT_RECORD_TITLE_COUNTRY = resolve(
+  ROOT,
+  'libs/talent-record/prisma/migrations/20260910130000_add_talent_title_and_country/migration.sql',
+);
 // Requisition-expander enrichment (LOCKED Aramo-Requisition-Expander-Talent-
 // Rate-Columns v1.0) — the GET /v1/pipelines enrichment composer reads
 // consent."TalentConsentEvent" (scope='contacting') to gate contact-channel
@@ -268,6 +273,7 @@ const MIGRATIONS = [
   TALENT_RECORD_OVERLAY_FOLD,
   TALENT_RECORD_WORK_AUTH,
   TALENT_RECORD_SUPERSESSION,
+  TALENT_RECORD_TITLE_COUNTRY,
   ACTIVITY_INIT,
   PIPELINE_INIT,
   PIPELINE_E6,

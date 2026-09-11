@@ -1,6 +1,7 @@
 import { ApiError, apiClient } from '@aramo/fe-foundation';
 
 import type {
+  AttachmentDownloadUrlResponse,
   AttachmentListResponse,
   AttachmentView,
   CreateAttachmentRequest,
@@ -86,6 +87,16 @@ export async function listTalentAttachments(
   });
   return apiClient.get<AttachmentListResponse>(
     `/v1/attachments?${params.toString()}`,
+  );
+}
+
+// B6 — mint a short-lived presigned GET URL to view/download an attachment
+// (e.g. a résumé). The URL is fetched on demand (per click), never stored.
+export async function getAttachmentDownloadUrl(
+  id: string,
+): Promise<AttachmentDownloadUrlResponse> {
+  return apiClient.get<AttachmentDownloadUrlResponse>(
+    `/v1/attachments/${encodeURIComponent(id)}/download-url`,
   );
 }
 

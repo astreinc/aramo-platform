@@ -167,6 +167,11 @@ const TALENT_RECORD_SUPERSESSION = resolve(
   ROOT,
   'libs/talent-record/prisma/migrations/20260706210000_tr2a_b3a_talent_record_supersession/migration.sql',
 );
+// B1+B2 — title + country columns (regenerated client projects them).
+const TALENT_RECORD_TITLE_COUNTRY = resolve(
+  ROOT,
+  'libs/talent-record/prisma/migrations/20260910130000_add_talent_title_and_country/migration.sql',
+);
 
 const MIGRATIONS = [
   ENTITLEMENT_INIT,
@@ -190,6 +195,7 @@ const MIGRATIONS = [
   TALENT_RECORD_OVERLAY_FOLD,
   TALENT_RECORD_WORK_AUTH,
   TALENT_RECORD_SUPERSESSION,
+  TALENT_RECORD_TITLE_COUNTRY,
   resolve(ROOT, 'libs/requisition/prisma/migrations/20260803120000_recruiting_status_supersession/migration.sql'),
   resolve(ROOT, 'libs/requisition/prisma/migrations/20260907120000_add_requisition_postal_code/migration.sql'),
 ];
@@ -759,10 +765,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const talentBefore = await countTalentRows();
       const overlayBefore = await countOverlayRows();
 
+      // Admission invariant — a talent_record import row needs name + email +
+      // cell phone, or the engine skips it. These 8 rows are all complete.
       const rows = Array.from({ length: 8 }, (_, i) => ({
         First: `Boundary${i + 1}`,
         Last: 'Proof',
         Email: `boundary${i + 1}@example.com`,
+        Phone: `+1555123${String(1000 + i).padStart(4, '0')}`,
       }));
 
       const res = await fetch(
@@ -777,7 +786,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
             target_entity: 'talent_record',
             source_filename: 'boundary.csv',
             site_id: SITE_A,
-            mapping: { First: 'first_name', Last: 'last_name', Email: 'email1' },
+            mapping: { First: 'first_name', Last: 'last_name', Email: 'email1', Phone: 'phone_cell' },
             rows,
           }),
         },
@@ -794,6 +803,60 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // The engine never crossed into Core.
       expect(await countTalentRows()).toBe(talentBefore);
       expect(await countOverlayRows()).toBe(overlayBefore);
+    });
+
+    // TalentRecord Admission Invariant — an import row missing a required
+    // contact anchor (primary email OR cell phone) is SKIPPED, never admitted
+    // as a half-formed record. Only the complete row becomes a TalentRecord.
+    it('Admission invariant: talent_record rows missing email1 / phone_cell are skipped, not admitted', async () => {
+      const rows = [
+        { First: 'Complete', Last: 'Row', Email: 'complete.row@example.com', Phone: '+15551239001' },
+        { First: 'NoPhone', Last: 'Row', Email: 'nophone.row@example.com', Phone: null },
+        { First: 'NoEmail', Last: 'Row', Email: null, Phone: '+15551239003' },
+      ];
+      const res = await fetch(`http://127.0.0.1:${port}/v1/imports?site_id=${SITE_A}`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${recruiterJwt}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          target_entity: 'talent_record',
+          source_filename: 'admission.csv',
+          site_id: SITE_A,
+          mapping: { First: 'first_name', Last: 'last_name', Email: 'email1', Phone: 'phone_cell' },
+          rows,
+        }),
+      });
+      expect(res.status).toBe(201);
+      const batch = (await res.json()) as {
+        id: string;
+        status: string;
+        row_count: number;
+        success_count: number;
+        failure_count: number;
+      };
+      expect(batch.row_count).toBe(3);
+      expect(batch.success_count).toBe(1);
+      expect(batch.failure_count).toBe(2);
+      // Only the complete row was admitted.
+      expect(await countTalentRecordsForBatch(batch.id)).toBe(1);
+
+      const failsRes = await fetch(
+        `http://127.0.0.1:${port}/v1/imports/${batch.id}/failures?site_id=${SITE_A}`,
+        { headers: { Authorization: `Bearer ${recruiterJwt}` } },
+      );
+      expect(failsRes.status).toBe(200);
+      const fails = (await failsRes.json()) as {
+        items: Array<{ offending_fields: string[]; failure_reason: string }>;
+      };
+      expect(fails.items.length).toBe(2);
+      for (const item of fails.items) {
+        expect(item.failure_reason).toMatch(/missing required field/i);
+      }
+      const offending = fails.items.flatMap((i) => i.offending_fields);
+      expect(offending).toContain('phone_cell');
+      expect(offending).toContain('email1');
     });
 
     // -------------------------------------------------------------------------

@@ -27,6 +27,7 @@ import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
 import { publishLifecyclePackage } from './publish-lifecycle-package.js';
 import { placementCapacityMigrations } from './support/placement-capacity-migrations.js';
 import { establishOpenRequisition } from './support/establish-open-requisition.js';
+import { validTalentCreateBody } from './talent-record-fixtures.js';
 
 // HF-AUTH-1 — compact tokens carry no scopes; guard resolves via this resolver.
 const __authzTestResolver = new ConfigurableTestResolver();
@@ -308,6 +309,11 @@ const TALENT_RECORD_SUPERSESSION = resolve(
   ROOT,
   'libs/talent-record/prisma/migrations/20260706210000_tr2a_b3a_talent_record_supersession/migration.sql',
 );
+// B1+B2 — title + country columns (regenerated client projects them).
+const TALENT_RECORD_TITLE_COUNTRY = resolve(
+  ROOT,
+  'libs/talent-record/prisma/migrations/20260910130000_add_talent_title_and_country/migration.sql',
+);
 
 // === SEAM-EXCLUSION — the L2-E-re-expressed proof (Q3) ===
 //
@@ -455,6 +461,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         TALENT_RECORD_OVERLAY_FOLD,
         TALENT_RECORD_WORK_AUTH,
         TALENT_RECORD_SUPERSESSION,
+        TALENT_RECORD_TITLE_COUNTRY,
         ACTIVITY_INIT,
         ACTIVITY_REDACTION,
         PIPELINE_INIT,
@@ -623,16 +630,16 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         email1: 'c@x.example',
         site_id: SITE_A,
       });
-      await postJson('/v1/talent-records', tenantAdminJwt, {
+      await postJson('/v1/talent-records', tenantAdminJwt, validTalentCreateBody({
         first_name: 'T',
         last_name: 'One',
         site_id: SITE_A,
-      });
-      await postJson('/v1/talent-records', tenantAdminJwt, {
+      }));
+      await postJson('/v1/talent-records', tenantAdminJwt, validTalentCreateBody({
         first_name: 'T',
         last_name: 'Two',
         site_id: SITE_A,
-      });
+      }));
 
       // L1-A — these reporting fixtures need OPEN requisitions (add-talent runs
       // against reqAssigned below). A human HTTP create now lands 'draft'; use
@@ -658,11 +665,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       );
 
       // Create a pipeline on the assigned req (talent_record_id can be any).
-      const aTalent = await postJson('/v1/talent-records', tenantAdminJwt, {
+      const aTalent = await postJson('/v1/talent-records', tenantAdminJwt, validTalentCreateBody({
         first_name: 'Pipe',
         last_name: 'Subject',
         site_id: SITE_A,
-      });
+      }));
       await postJson('/v1/pipelines', recruiterJwt, {
         requisition_id: reqAssigned.id,
         talent_record_id: aTalent.id,

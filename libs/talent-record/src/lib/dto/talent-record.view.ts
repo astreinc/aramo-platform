@@ -32,6 +32,7 @@ export interface TalentRecordView {
   city: string | null;
   state: string | null;
   zip: string | null;
+  country: string; // B2 — ISO-3166 alpha-2, defaults 'US' for all talent
   source: string | null;
   key_skills: string | null;
   current_employer: string | null;
@@ -43,6 +44,7 @@ export interface TalentRecordView {
   notes: string | null;
   web_site: string | null;
   best_time_to_call: string | null;
+  title: string | null; // B1 — professional title (most-recent role); résumé-proposed
   // Talent-stated categorical fields (stated-fields amendment §4). Closed
   // vocabularies; null = not captured (availability also has an explicit
   // 'unknown' member — distinct from null at the data layer).
@@ -85,4 +87,11 @@ export interface TalentRecordView {
   record_status?: 'live' | 'superseded';
   superseded_by_record_id?: string | null;
   superseded_at?: string | null;
+
+  // B5 — recruiting-readiness. A DERIVED boolean (never a number, R10) composed
+  // on the record-DETAIL read from the record's own state (contact presence,
+  // work authorization, live record_status). Present ONLY on findById;
+  // OMITTED on list/search so those stay byte-identical. "Recruiting ready" in the
+  // Talent-Detail header badge derives from this.
+  recruiting_ready?: boolean;
 }

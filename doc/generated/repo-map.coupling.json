@@ -439,6 +439,12 @@
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/ats-a8-2-suggest-mapping.integration.spec.ts",
       "status": "excluded",
+      "to": "libs/talent-record/prisma/migrations/20260910130000_add_talent_title_and_country/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/ats-a8-2-suggest-mapping.integration.spec.ts",
+      "status": "excluded",
       "to": "libs/talent/prisma/migrations/20260516085014_init_talent_model/migration.sql"
     },
     {
@@ -653,6 +659,12 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/ats-batch3-talent-record-attachment.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/talent-record/prisma/migrations/20260910130000_add_talent_title_and_country/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/ats-batch4a-pipeline-activity.integration.spec.ts",
       "status": "excluded",
       "to": "libs/activity/prisma/migrations/20260602140000_init_activity_model/migration.sql"
@@ -851,6 +863,12 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/ats-batch4a-pipeline-activity.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/talent-record/prisma/migrations/20260910130000_add_talent_title_and_country/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/ats-batch4b-talent-link.integration.spec.ts",
       "status": "excluded",
       "to": "libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql"
@@ -908,6 +926,12 @@
       "from": "apps/api/src/tests/ats-batch4b-talent-link.integration.spec.ts",
       "status": "excluded",
       "to": "libs/talent-record/prisma/migrations/20260706210000_tr2a_b3a_talent_record_supersession/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/ats-batch4b-talent-link.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/talent-record/prisma/migrations/20260910130000_add_talent_title_and_country/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -1118,6 +1142,12 @@
       "from": "apps/api/src/tests/ats-batch5-calendar-saved-list.integration.spec.ts",
       "status": "excluded",
       "to": "libs/talent-record/prisma/migrations/20260706210000_tr2a_b3a_talent_record_supersession/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/ats-batch5-calendar-saved-list.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/talent-record/prisma/migrations/20260910130000_add_talent_title_and_country/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -1463,6 +1493,12 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/ats-batch6-reporting-dashboard.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/talent-record/prisma/migrations/20260910130000_add_talent_title_and_country/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/ats-batch7-import-engine.integration.spec.ts",
       "status": "excluded",
       "to": "libs/company/prisma/migrations/20260601160000_init_company_model/migration.sql"
@@ -1610,6 +1646,12 @@
       "from": "apps/api/src/tests/ats-batch7-import-engine.integration.spec.ts",
       "status": "excluded",
       "to": "libs/talent-record/prisma/migrations/20260706210000_tr2a_b3a_talent_record_supersession/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/ats-batch7-import-engine.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/talent-record/prisma/migrations/20260910130000_add_talent_title_and_country/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -1904,6 +1946,12 @@
       "from": "apps/api/src/tests/ats-batch8-pr-a8-4-export.integration.spec.ts",
       "status": "excluded",
       "to": "libs/talent-record/prisma/migrations/20260706210000_tr2a_b3a_talent_record_supersession/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/ats-batch8-pr-a8-4-export.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/talent-record/prisma/migrations/20260910130000_add_talent_title_and_country/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -3416,6 +3464,12 @@
       "from": "apps/api/src/tests/examine-live-list.integration.spec.ts",
       "status": "excluded",
       "to": "libs/talent-record/prisma/migrations/20260706210000_tr2a_b3a_talent_record_supersession/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/examine-live-list.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/talent-record/prisma/migrations/20260910130000_add_talent_title_and_country/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -5407,6 +5461,12 @@
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/requisition-closed-live-list.integration.spec.ts",
       "status": "excluded",
+      "to": "libs/talent-record/prisma/migrations/20260910130000_add_talent_title_and_country/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/requisition-closed-live-list.integration.spec.ts",
+      "status": "excluded",
       "to": "libs/talent-trust/prisma/migrations/20260628000000_init_talent_trust/migration.sql"
     },
     {
@@ -7343,6 +7403,12 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/talent-record-fixtures.ts",
+      "status": "excluded",
+      "to": "libs/talent-record/prisma/migrations/20260910130000_add_talent_title_and_country/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/tr12-b1-proposals.integration.spec.ts",
       "status": "excluded",
       "to": "libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql"
@@ -7538,6 +7604,12 @@
       "from": "apps/api/src/tests/tr12-b2-queue.integration.spec.ts",
       "status": "excluded",
       "to": "libs/talent-record/prisma/migrations/20260706210000_tr2a_b3a_talent_record_supersession/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/tr12-b2-queue.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/talent-record/prisma/migrations/20260910130000_add_talent_title_and_country/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -8276,6 +8348,12 @@
       "from": "apps/api/src/tests/tr2a-b3b-reconcile.integration.spec.ts",
       "status": "excluded",
       "to": "libs/talent-record/prisma/migrations/20260706210000_tr2a_b3a_talent_record_supersession/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/tr2a-b3b-reconcile.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/talent-record/prisma/migrations/20260910130000_add_talent_title_and_country/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -9139,6 +9217,12 @@
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/tr6-b1-maintenance.integration.spec.ts",
       "status": "excluded",
+      "to": "libs/talent-record/prisma/migrations/20260910130000_add_talent_title_and_country/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/tr6-b1-maintenance.integration.spec.ts",
+      "status": "excluded",
       "to": "libs/talent-trust/prisma/migrations/20260628000000_init_talent_trust/migration.sql"
     },
     {
@@ -9572,6 +9656,12 @@
       "from": "apps/api/src/tests/tr9-b1-reference-attestation.integration.spec.ts",
       "status": "excluded",
       "to": "libs/talent-record/prisma/migrations/20260706210000_tr2a_b3a_talent_record_supersession/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/tr9-b1-reference-attestation.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/talent-record/prisma/migrations/20260910130000_add_talent_title_and_country/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -11626,6 +11716,11 @@
       "from": "doc/auth-reconcile-spine-recon.md",
       "status": "unscoped",
       "to": "tools/local-run-link.sh"
+    },
+    {
+      "from": "doc/backlog/talent-skills-and-work-history-evidence-directive-DRAFT.md",
+      "status": "unscoped",
+      "to": "apps/api/src/app.module.ts"
     },
     {
       "from": "doc/directives/00-DIRECTIVE-STANDARD.md",
@@ -17038,6 +17133,11 @@
       "from": "pact/provider/src/verify-api.ts",
       "status": "unscoped",
       "to": "libs/talent-record/prisma/migrations/20260706210000_tr2a_b3a_talent_record_supersession/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "libs/talent-record/prisma/migrations/20260910130000_add_talent_title_and_country/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",

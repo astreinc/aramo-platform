@@ -238,6 +238,9 @@ const TALENT_RECORD_MIGRATIONS = [
   // is the TR-2a↔Pact coupling point — whichever of the TR-2a track / a
   // concurrent pact-consumer track lands SECOND rebases this list onto the other.
   'libs/talent-record/prisma/migrations/20260706210000_tr2a_b3a_talent_record_supersession/migration.sql',
+  // B1+B2 — title + country columns (regenerated client projects them; the
+  // provider schema must carry them or every TalentRecord read 500s).
+  'libs/talent-record/prisma/migrations/20260910130000_add_talent_title_and_country/migration.sql',
 ].map((p) => resolve(ROOT, p));
 // PR-A1b §4 sweep — entitlement schema applied for the pact verifier so
 // the portal-thin pact interactions (5 interactions traversing the now

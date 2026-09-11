@@ -25,6 +25,7 @@ export interface UpdateTalentRecordRequestDto {
   city?: string | null;
   state?: string | null;
   zip?: string | null;
+  country?: string; // B2 — non-null column (defaults 'US'); cannot be cleared to null
   source?: string | null;
   key_skills?: string | null;
   current_employer?: string | null;
@@ -36,6 +37,7 @@ export interface UpdateTalentRecordRequestDto {
   notes?: string | null;
   web_site?: string | null;
   best_time_to_call?: string | null;
+  title?: string | null; // B1
   // Talent-stated categorical fields (stated-fields amendment §4). Nullable to
   // allow clearing back to "not stated". Closed-vocabulary guard in the repo.
   availability_status?: AvailabilityStatus | null;

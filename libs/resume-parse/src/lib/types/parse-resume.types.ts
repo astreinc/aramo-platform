@@ -30,6 +30,10 @@ export interface TalentRecordPrefill {
   key_skills?: string;
   current_employer?: string;
   web_site?: string;
+  // B1 — professional title (most-recent role). Optional; the extractor
+  // proposes it only when a role line is confidently isolated (never a noisy
+  // guess). Absent otherwise; the recruiter fills it on review.
+  title?: string;
 }
 
 /**
