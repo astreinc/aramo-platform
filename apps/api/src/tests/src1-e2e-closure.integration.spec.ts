@@ -284,7 +284,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           created_by: 'src1-pr3-test',
         });
       await recordAnchor('FULL_NAME', { first_name: 'Ada', last_name: 'Lovelace' });
-      await recordAnchor('EMAIL', { normalized_value: 'ada@example.com' });
+      // canonical claim shape for EMAIL/PHONE is { value } (the normalized identifier).
+      await recordAnchor('EMAIL', { value: 'ada@example.com' });
       await recordAnchor('PHONE', { value: '4155550100' });
 
       // ---- 7. promoteSubject → TalentRecord ----

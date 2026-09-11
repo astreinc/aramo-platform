@@ -809,11 +809,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     // contact anchor (primary email OR cell phone) is SKIPPED, never admitted
     // as a half-formed record. Only the complete row becomes a TalentRecord.
     it('Admission invariant: talent_record rows missing email1 / phone_cell are skipped, not admitted', async () => {
-      // 8 complete + 2 incomplete (20% failure) stays UNDER the import reject
-      // threshold, so the batch partially-commits: the 8 admissible rows become
-      // TalentRecords and the 2 incomplete rows are skipped as per-row failures.
+      // 28 complete + 2 incomplete (≈6.7% failure) stays UNDER the import reject
+      // threshold (IMPORT_FAILURE_THRESHOLD_PCT default 10%), so the batch
+      // partially-commits: the 28 admissible rows become TalentRecords and the
+      // 2 incomplete rows are skipped as per-row failures.
       const rows: Array<Record<string, string | null>> = [
-        ...Array.from({ length: 8 }, (_, i) => ({
+        ...Array.from({ length: 28 }, (_, i) => ({
           First: `Complete${i + 1}`,
           Last: 'Row',
           Email: `complete.row.${i + 1}@example.com`,
@@ -844,11 +845,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         success_count: number;
         failure_count: number;
       };
-      expect(batch.row_count).toBe(10);
-      expect(batch.success_count).toBe(8);
+      expect(batch.row_count).toBe(30);
+      expect(batch.success_count).toBe(28);
       expect(batch.failure_count).toBe(2);
-      // Only the 8 complete rows were admitted; the 2 incomplete rows skipped.
-      expect(await countTalentRecordsForBatch(batch.id)).toBe(8);
+      // Only the 28 complete rows were admitted; the 2 incomplete rows skipped.
+      expect(await countTalentRecordsForBatch(batch.id)).toBe(28);
 
       const failsRes = await fetch(
         `http://127.0.0.1:${port}/v1/imports/${batch.id}/failures?site_id=${SITE_A}`,
