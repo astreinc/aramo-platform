@@ -19,8 +19,10 @@ export interface IntakeState {
   phone_home: string;
   phone_work: string;
   web_site: string;
+  best_time_to_call: string;
   title: string;
   address: string;
+  address2: string;
   city: string;
   state: string;
   zip: string;
@@ -51,8 +53,10 @@ export const INTAKE_TEXT_KEYS: ReadonlyArray<
   'phone_home',
   'phone_work',
   'web_site',
+  'best_time_to_call',
   'title',
   'address',
+  'address2',
   'city',
   'state',
   'zip',
@@ -82,6 +86,7 @@ const PREFILL_TEXT_KEYS: ReadonlyArray<keyof IntakeState> = [
   'web_site',
   'title',
   'address',
+  'address2',
   'city',
   'state',
   'zip',
@@ -98,8 +103,10 @@ export function emptyIntakeState(): IntakeState {
     phone_home: '',
     phone_work: '',
     web_site: '',
+    best_time_to_call: '',
     title: '',
     address: '',
+    address2: '',
     city: '',
     state: '',
     zip: '',

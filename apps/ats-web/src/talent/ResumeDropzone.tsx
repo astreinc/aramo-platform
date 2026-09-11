@@ -4,18 +4,16 @@ import { Icons } from '../ui';
 
 interface ResumeDropzoneProps {
   readonly onFile: (file: File) => void;
-  readonly onManual: () => void;
   readonly disabled?: boolean;
 }
 
-// Add-Talent intake (phase 1) — the résumé dropzone. Mockup parity, minus the
-// fabricated "duplicate-checked" assurance (no dedup exists — see the dedup
-// ReservedSeam). The assurances stated here are REAL: ADR-0015 secure résumé-
-// text storage, server-side SSN-shaped redaction (D4), and the stated-facts-
-// only / no-scoring parse posture (R10).
+// Add-Talent intake (phase 1) — the résumé dropzone. A résumé is REQUIRED to
+// create a talent (no manual-entry fallback): every manual add starts here.
+// The assurances stated here are REAL: ADR-0015 secure résumé-text storage,
+// server-side SSN-shaped redaction (D4), and the stated-facts-only /
+// no-scoring parse posture (R10).
 export function ResumeDropzone({
   onFile,
-  onManual,
   disabled = false,
 }: ResumeDropzoneProps) {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -91,17 +89,6 @@ export function ResumeDropzone({
           </span>
         </div>
       </div>
-      <p className="rc-dropwrap__manual">
-        No résumé handy?{' '}
-        <button
-          type="button"
-          className="rc-link-action"
-          disabled={disabled}
-          onClick={onManual}
-        >
-          Enter details manually
-        </button>
-      </p>
     </div>
   );
 }

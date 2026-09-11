@@ -1,12 +1,11 @@
 import { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-import { AttestCheckbox, Icons, InlineAlert, PageHeader, ReservedSeam } from '../ui';
+import { Icons, InlineAlert, PageHeader, ReservedSeam } from '../ui';
 
 import { ResumeDropzone } from './ResumeDropzone';
 import { ParseProgress } from './ParseProgress';
 import { IntakeForm } from './IntakeForm';
-import { ConsentCapture } from './ConsentCapture';
 import {
   createAttachment,
   createTalent,
@@ -26,12 +25,6 @@ import {
   provenanceAfterEdit,
   type IntakeState,
 } from './intake-fields';
-import {
-  defaultConsentState,
-  requiredConsentGranted,
-  type ConsentScope,
-  type ConsentState,
-} from './consent';
 import type { Provenance, ProvenanceMap } from './provenance';
 import type { TalentRecordView } from './types';
 
@@ -46,19 +39,13 @@ import type { TalentRecordView } from './types';
 //     the orphan-pending tag). Attach fires in ALL parse branches; attach is
 //     soft-fail (talent is still created).
 //   • Provenance chips: REAL signal only (résumé / edited).
-//   • Consent capture: the real 5-scope model + attestation gate the save.
 //
 // SEAMS (no backend → no fabrication):
-//   • Duplicate detection — ReservedSeam ("coming soon"). No dedup endpoint.
-//   • Work history & education — ReservedSeam (IntakeForm). No parse, no store.
-//   • Match insight — already a ReservedSeam in the design system (R10).
+//   • Work history & education — captured AFTER creation as structured
+//     evidence (not free text) — surfaced on the Talent record.
 //
-// DEFERRED (product decision):
-//   • POST /v1/consent/grant is NOT fired at create. There is no keying
-//     blocker — the consent ledger keys on talent_record_id, which the new
-//     record has at create. Consent is captured + gates the save; wiring the
-//     grant call into the create path is a pending product decision. See
-//     doc/go-live-known-limitations.md + ./consent.ts.
+// Consent / contact permissions are governed SEPARATELY from profile creation
+// (not captured here) — see doc/backlog/add-talent-consent-capture.md.
 
 type Phase = 'intake' | 'parsing' | 'form' | 'success';
 
@@ -68,9 +55,6 @@ interface ResumeState {
   readonly storage_key?: string;
   readonly error?: string;
 }
-
-const ATTEST_TEXT =
-  'I attest that consent to represent this person has been obtained and recorded. Manual add is an audited exception.';
 
 export function TalentCreateView() {
   const navigate = useNavigate();
@@ -82,8 +66,6 @@ export function TalentCreateView() {
   const [skills, setSkills] = useState<string[]>([]);
   const [skillsFromResume, setSkillsFromResume] = useState(false);
 
-  const [consent, setConsent] = useState<ConsentState>(defaultConsentState);
-  const [attested, setAttested] = useState(false);
 
   const [startedAt, setStartedAt] = useState<number | null>(null);
   const [elapsedMs, setElapsedMs] = useState(0);
@@ -118,9 +100,6 @@ export function TalentCreateView() {
   function onRemoveSkill(index: number): void {
     setSkills((prev) => prev.filter((_, i) => i !== index));
   }
-  function onConsentToggle(scope: ConsentScope): void {
-    setConsent((c) => ({ ...c, [scope]: !c[scope] }));
-  }
 
   // ── Résumé flow (the real 3-step) ───────────────────────────────────────
   async function handleFile(file: File): Promise<void> {
@@ -139,19 +118,21 @@ export function TalentCreateView() {
       storage_key = presign.storage_key;
       presigned_url = presign.presigned_url;
     } catch (err) {
-      // Upload-url failed before any S3 object exists — drop to the manual
-      // form with a note; no storage_key, so nothing attaches.
+      // Upload-url failed before any S3 object exists. A résumé is REQUIRED to
+      // create a talent (no manual-entry fallback), so stay on the intake
+      // screen with the error surfaced for retry.
       setResume({ status: 'error', file, error: uploadErrorMessage(err) });
-      setPhase('form');
+      setPhase('intake');
       return;
     }
 
     try {
       await putResumeToStorage(presigned_url, file, contentType);
     } catch (err) {
-      // The presigned PUT failed: no committed object. Manual form, no attach.
+      // The presigned PUT failed: no committed object. Résumé is required, so
+      // stay on intake with the error for retry (no manual-entry fallback).
       setResume({ status: 'error', file, error: uploadErrorMessage(err) });
-      setPhase('form');
+      setPhase('intake');
       return;
     }
 
@@ -173,12 +154,6 @@ export function TalentCreateView() {
     setPhase('form');
   }
 
-  function startManual(): void {
-    beginTimer();
-    setResume({ status: 'ready' });
-    setPhase('form');
-  }
-
   function resetAll(): void {
     setPhase('intake');
     setResume({ status: 'ready' });
@@ -186,8 +161,6 @@ export function TalentCreateView() {
     setProvenance({});
     setSkills([]);
     setSkillsFromResume(false);
-    setConsent(defaultConsentState());
-    setAttested(false);
     setStartedAt(null);
     setElapsedMs(0);
     setSubmitting(false);
@@ -208,7 +181,6 @@ export function TalentCreateView() {
   const workAuthOk = fields.work_authorization !== '';
   const rateOk = fields.desired_pay.trim() !== '';
   const resumeOk = resume.storage_key !== undefined;
-  const consentOk = requiredConsentGranted(consent);
   const canCreate =
     nameOk &&
     emailOk &&
@@ -218,28 +190,7 @@ export function TalentCreateView() {
     workAuthOk &&
     rateOk &&
     resumeOk &&
-    consentOk &&
-    attested &&
     !submitting;
-
-  // Attach-only résumé upload for the manual path (no re-parse, so manual
-  // entries are preserved). The 3-step create pipeline's prefill path
-  // (handleFile) still runs when a résumé is dropped at intake.
-  async function attachResumeOnly(file: File): Promise<void> {
-    beginTimer();
-    setResume({ status: 'uploading', file });
-    const contentType = file.type === '' ? 'application/octet-stream' : file.type;
-    try {
-      const presign = await requestResumeUploadUrl({
-        filename: file.name,
-        content_type: contentType,
-      });
-      await putResumeToStorage(presign.presigned_url, file, contentType);
-      setResume({ status: 'ready', file, storage_key: presign.storage_key });
-    } catch (err) {
-      setResume({ status: 'error', file, error: uploadErrorMessage(err) });
-    }
-  }
 
   async function onCreate(): Promise<void> {
     if (!canCreate) return;
@@ -274,8 +225,6 @@ export function TalentCreateView() {
       }
     }
 
-    // Consent grant is DEFERRED (keying HALT) — NOT fired here. See consent.ts.
-
     if (startedAt !== null) setElapsedMs(Date.now() - startedAt);
     setCreated(record);
     setSubmitting(false);
@@ -299,11 +248,11 @@ export function TalentCreateView() {
     <section className="rc-addtalent">
       <PageHeader
         title="New talent"
-        description="Add a person to your shared tenant talent pool — drop a résumé and review, or enter details manually."
+        description="Add a person to your shared tenant talent pool — start with a résumé, then review and complete every field."
       />
 
       {phase === 'intake' ? (
-        <ResumeDropzone onFile={handleFile} onManual={startManual} />
+        <ResumeDropzone onFile={handleFile} />
       ) : null}
 
       {phase === 'parsing' && resume.file !== undefined ? (
@@ -334,40 +283,26 @@ export function TalentCreateView() {
           </div>
 
           <aside className="rc-editgrid__rail">
-            {resume.file !== undefined && resume.storage_key !== undefined ? (
+            {/* The form phase is reached only after a résumé upload committed
+                (résumé is required), so the attached-résumé card always shows. */}
+            {resume.file !== undefined ? (
               <ResumeCard fileName={resume.file.name} sizeBytes={resume.file.size} />
-            ) : (
-              <ResumeRequiredCard
-                status={resume.status}
-                fileName={resume.file?.name}
-                onFile={(f) => void attachResumeOnly(f)}
-                disabled={submitting}
-              />
-            )}
+            ) : null}
 
             <ReservedSeam title="Duplicate check" tag="Coming soon">
               Aramo surfaces likely-duplicate people for you to decide — it never
               silently merges. Duplicate detection arrives soon.
             </ReservedSeam>
 
-            <ConsentCapture
-              value={consent}
-              onToggle={onConsentToggle}
-              disabled={submitting}
-            />
-
-            <section className="rc-sidecard rc-attestcard" aria-label="Attestation">
+            <section className="rc-sidecard" aria-label="Contact permissions">
               <h3 className="rc-sidecard__h">
                 <Icons.IconShield />
-                Attestation
+                Contact permissions
               </h3>
-              <AttestCheckbox
-                checked={attested}
-                onChange={setAttested}
-                disabled={submitting}
-              >
-                {ATTEST_TEXT}
-              </AttestCheckbox>
+              <p className="rc-consent__note">
+                Contact permissions are governed separately from profile
+                creation. Provenance is recorded automatically.
+              </p>
             </section>
 
             <SaveBar
@@ -379,8 +314,6 @@ export function TalentCreateView() {
                 { ok: workAuthOk, label: 'Work authorization' },
                 { ok: rateOk, label: 'Desired rate' },
                 { ok: resumeOk, label: 'Résumé attached' },
-                { ok: consentOk, label: 'Required consent captured' },
-                { ok: attested, label: 'Attestation signed' },
               ]}
               canCreate={canCreate}
               submitting={submitting}
@@ -405,10 +338,8 @@ function ParseBanner({
   if (resume.status === 'error') {
     return (
       <InlineAlert variant="error">
-        We couldn’t read this résumé
-        {resume.storage_key !== undefined
-          ? ' — enter the details manually; the file will still be attached when you save.'
-          : '. Enter the details manually.'}
+        We couldn’t auto-read this résumé — review and complete the fields
+        below; the résumé is attached and saved with the record.
       </InlineAlert>
     );
   }
@@ -461,50 +392,6 @@ function ResumeCard({
           (D4). Résumé text purges on delete (ADR-0015 cascade).
         </span>
       </p>
-    </section>
-  );
-}
-
-// ── Right-rail résumé-required uploader (manual path) ────────────────────────
-function ResumeRequiredCard({
-  status,
-  fileName,
-  onFile,
-  disabled,
-}: {
-  readonly status: ResumeState['status'];
-  readonly fileName?: string;
-  readonly onFile: (file: File) => void;
-  readonly disabled: boolean;
-}) {
-  return (
-    <section className="rc-sidecard rc-resumecard" aria-label="Résumé">
-      <h3 className="rc-sidecard__h">
-        <Icons.IconFile />
-        Résumé <span className="rc-ifield__req">*</span>
-      </h3>
-      <p className="rc-resumecard__fm">
-        {status === 'uploading'
-          ? `Uploading${fileName !== undefined ? ` ${fileName}` : ''}…`
-          : status === 'error'
-            ? 'Upload failed — try again.'
-            : 'A résumé is required to create a talent manually.'}
-      </p>
-      <label className="rc-btn rc-btn--ghost" style={{ cursor: 'pointer' }}>
-        <Icons.IconFile />
-        {status === 'uploading' ? 'Uploading…' : 'Attach résumé'}
-        <input
-          type="file"
-          accept=".pdf,.doc,.docx"
-          aria-label="Attach résumé"
-          hidden
-          disabled={disabled || status === 'uploading'}
-          onChange={(ev) => {
-            const f = ev.target.files?.[0];
-            if (f !== undefined) onFile(f);
-          }}
-        />
-      </label>
     </section>
   );
 }
@@ -580,7 +467,7 @@ function SuccessScreen({
         <Icons.IconCheck />
       </div>
       <h2>{name} added to your talent</h2>
-      <p>Profile created, résumé attached and queued for indexing, consent recorded with the record.</p>
+      <p>Profile created, résumé attached and queued for indexing.</p>
       {elapsedMs > 0 ? (
         <div className="rc-success__big mono">{(elapsedMs / 1000).toFixed(1)}s</div>
       ) : null}
