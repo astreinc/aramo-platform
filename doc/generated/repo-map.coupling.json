@@ -10063,7 +10063,7 @@
     {
       "from": "apps/ats-web/src/talent/TalentCreateView.tsx",
       "status": "production",
-      "to": "doc/go-live-known-limitations.md"
+      "to": "doc/backlog/add-talent-consent-capture.md"
     },
     {
       "from": "apps/ats-web/src/talent/consent.ts",
@@ -11627,6 +11627,21 @@
       "from": "doc/auth-reconcile-spine-recon.md",
       "status": "unscoped",
       "to": "tools/local-run-link.sh"
+    },
+    {
+      "from": "doc/backlog/add-talent-consent-capture.md",
+      "status": "unscoped",
+      "to": "apps/ats-web/src/talent/consent.ts"
+    },
+    {
+      "from": "doc/backlog/adr-0015-decision6-email-phone-extraction-amendment-request.md",
+      "status": "unscoped",
+      "to": "doc/backlog/governed-llm-recruiter-skill-extraction-directive-request.md"
+    },
+    {
+      "from": "doc/backlog/adr-0015-decision6-email-phone-extraction-amendment-request.md",
+      "status": "unscoped",
+      "to": "libs/ai-draft/src/lib/redaction.ts"
     },
     {
       "from": "doc/backlog/talent-skills-and-work-history-evidence-directive-DRAFT.md",

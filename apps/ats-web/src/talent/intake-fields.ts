@@ -1,4 +1,9 @@
-import type { CreateTalentRecordRequest, TalentRecordPrefill } from './types';
+import type {
+  CreateTalentRecordRequest,
+  ResumeExtractionMode,
+  TalentRecordPrefill,
+  WorkHistoryDraft,
+} from './types';
 import type { Provenance, ProvenanceMap } from './provenance';
 
 // The Add-Talent intake field model + body construction.
@@ -19,8 +24,10 @@ export interface IntakeState {
   phone_home: string;
   phone_work: string;
   web_site: string;
+  best_time_to_call: string;
   title: string;
   address: string;
+  address2: string;
   city: string;
   state: string;
   zip: string;
@@ -33,12 +40,16 @@ export interface IntakeState {
   desired_pay: string;
   source: string;
   notes: string;
+  // R5 §2 — key_skills is FREE TEXT (a textarea the recruiter reviews/corrects),
+  // NOT a structured skill picker. The canonical TalentSkillEvidence is Core-only
+  // and NOT recruiter-facing (R5 §0/§6/§8).
+  key_skills: string;
   can_relocate: boolean;
   is_hot: boolean;
 }
 
 // The string-valued keys (everything except the two booleans) — the set that
-// carries résumé provenance + the omit-vs-empty discipline.
+// carries resume provenance + the omit-vs-empty discipline.
 export const INTAKE_TEXT_KEYS: ReadonlyArray<
   Exclude<keyof IntakeState, 'can_relocate' | 'is_hot'>
 > = [
@@ -51,8 +62,10 @@ export const INTAKE_TEXT_KEYS: ReadonlyArray<
   'phone_home',
   'phone_work',
   'web_site',
+  'best_time_to_call',
   'title',
   'address',
+  'address2',
   'city',
   'state',
   'zip',
@@ -65,11 +78,18 @@ export const INTAKE_TEXT_KEYS: ReadonlyArray<
   'desired_pay',
   'source',
   'notes',
+  'key_skills',
 ];
 
-// The résumé prefill only ever populates these keys (the parser's stated-fact
-// surface — libs/resume-parse field-extractor). `key_skills` is handled
-// separately as chips.
+// The resume prefill populates these keys (the parser's stated-fact surface —
+// libs/resume-parse field-extractor). `key_skills` is DELIBERATELY EXCLUDED:
+// the deterministic section extractor (extractSection over SKILLS_HEADER_RE)
+// over-captures on real résumés with no clean section boundary — it swallows
+// the entire body (skills + work experience) into one blob. Auto-filling that
+// is worse than empty. key_skills stays a free-text field the recruiter fills
+// (R5 §2); clean, structured skill extraction is the governed-LLM surface,
+// gated on a filed directive (ADR-0015 v1.3 is scoped to the Core scoring
+// layer, not the recruiter form — see the HALT note).
 const PREFILL_TEXT_KEYS: ReadonlyArray<keyof IntakeState> = [
   'first_name',
   'last_name',
@@ -82,9 +102,13 @@ const PREFILL_TEXT_KEYS: ReadonlyArray<keyof IntakeState> = [
   'web_site',
   'title',
   'address',
+  'address2',
   'city',
   'state',
   'zip',
+  // Governed-LLM draft may propose country (grounded). Deterministic parser
+  // never populates it — harmless when absent.
+  'country',
 ];
 
 export function emptyIntakeState(): IntakeState {
@@ -98,8 +122,10 @@ export function emptyIntakeState(): IntakeState {
     phone_home: '',
     phone_work: '',
     web_site: '',
+    best_time_to_call: '',
     title: '',
     address: '',
+    address2: '',
     city: '',
     state: '',
     zip: '',
@@ -112,65 +138,57 @@ export function emptyIntakeState(): IntakeState {
     desired_pay: '',
     source: '',
     notes: '',
+    key_skills: '',
     can_relocate: false,
     is_hot: false,
   };
 }
 
-// Free-text skills <-> chips. Stored as the free-text `key_skills` string;
-// rendered as chips for parity. Splitting is display-only (no per-skill
-// model — the canonical evidence model is Core-only).
-export function parseSkills(raw: string | undefined): string[] {
-  if (raw === undefined || raw === null) return [];
-  const out: string[] = [];
-  for (const part of raw.split(/[,\n]/)) {
-    const s = part.trim();
-    if (s !== '' && !out.includes(s)) out.push(s);
-  }
-  return out;
-}
-
-export function serializeSkills(skills: readonly string[]): string {
-  return skills.join(', ');
-}
-
 export interface PrefillApplication {
   readonly state: IntakeState;
   readonly provenance: ProvenanceMap;
-  readonly skills: string[];
-  readonly skillsFromResume: boolean;
 }
 
-// Apply a résumé prefill onto a fresh/empty state. Only keys present in the
-// prefill are populated, each tagged provenance 'resume'. Skills come from
-// the free-text key_skills. (Applied once, on a clean intake — the recruiter
-// then edits; edits flip provenance to 'edited' in the view.)
+// Apply a resume prefill onto a fresh/empty state. Only keys present in the
+// prefill are populated, each tagged provenance 'resume' (key_skills included —
+// the raw free-text section, per R5 §2). Applied once on a clean intake — the
+// recruiter then edits; edits flip provenance to 'edited' in the view.
 export function applyPrefill(
   base: IntakeState,
   prefill: TalentRecordPrefill,
+  mode: ResumeExtractionMode,
 ): PrefillApplication {
   const state: IntakeState = { ...base };
   const provenance: ProvenanceMap = {};
+  // MODE IS EXCLUSIVE — the prefill came from exactly one extractor; the
+  // provenance chip is honest about which (§16).
+  const source: Provenance = mode === 'governed_llm' ? 'governed_llm' : 'deterministic';
   for (const key of PREFILL_TEXT_KEYS) {
     const v = (prefill as Record<string, unknown>)[key];
     if (typeof v === 'string' && v !== '') {
       (state as unknown as Record<string, string>)[key] = v;
-      provenance[key] = 'resume';
+      provenance[key] = source;
     }
   }
-  const skills = parseSkills(prefill.key_skills);
-  return {
-    state,
-    provenance,
-    skills,
-    skillsFromResume: skills.length > 0,
-  };
+  // key_skills is applied ONLY in governed mode. The deterministic parser's
+  // key_skills over-captures the résumé body (garbage — deliberately not
+  // prefilled); the governed extractor returns clean, grounded skills that flow
+  // into the R5 §2 free-text field.
+  if (
+    mode === 'governed_llm' &&
+    typeof prefill.key_skills === 'string' &&
+    prefill.key_skills !== ''
+  ) {
+    state.key_skills = prefill.key_skills;
+    provenance['key_skills'] = source;
+  }
+  return { state, provenance };
 }
 
-// Mark a field 'edited' if it previously came from the résumé. A field with
+// Mark a field 'edited' if it previously came from the resume. A field with
 // no prior provenance (recruiter-entered) carries none.
 export function provenanceAfterEdit(prev: Provenance | undefined): Provenance | undefined {
-  if (prev === 'resume' || prev === 'edited') return 'edited';
+  if (prev === 'governed_llm' || prev === 'deterministic' || prev === 'edited') return 'edited';
   return undefined;
 }
 
@@ -178,7 +196,7 @@ export function provenanceAfterEdit(prev: Provenance | undefined): Provenance | 
 // Optional strings omitted when empty (the BE treats absent as "not set").
 export function buildCreateBody(
   state: IntakeState,
-  skills: readonly string[],
+  workHistory: readonly WorkHistoryDraft[] = [],
 ): CreateTalentRecordRequest {
   const body: Record<string, unknown> = {
     first_name: state.first_name.trim(),
@@ -187,11 +205,17 @@ export function buildCreateBody(
   for (const key of INTAKE_TEXT_KEYS) {
     if (key === 'first_name' || key === 'last_name') continue;
     const v = state[key];
+    // key_skills is free text (R5 §2) — preserve interior newlines/commas; only
+    // trim the outer whitespace, same as every other text field.
     if (typeof v === 'string' && v.trim() !== '') body[key] = v.trim();
   }
-  const keySkills = serializeSkills(skills);
-  if (keySkills !== '') body['key_skills'] = keySkills;
   if (state.can_relocate) body['can_relocate'] = true;
   if (state.is_hot) body['is_hot'] = true;
+  // Reviewed work-history — only entries with the required employer + role
+  // (the recruiter may have cleared a row). Persisted as TalentWorkHistoryEntry.
+  const wh = workHistory.filter(
+    (e) => e.employer_name.trim() !== '' && e.role_title.trim() !== '',
+  );
+  if (wh.length > 0) body['work_history'] = wh;
   return body as unknown as CreateTalentRecordRequest;
 }

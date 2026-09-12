@@ -12,9 +12,9 @@ interface ParseProgressProps {
 // presigned PUT upload, then the deterministic parse-to-prefill call). No
 // fabricated steps: the mockup's "Redacting SSN" / "Checking for duplicates"
 // steps are dropped — SSN redaction happens server-side on the async
-// résumé-text re-extract (not this synchronous call), and there is no dedup.
+// resume-text re-extract (not this synchronous call), and there is no dedup.
 const STEPS: ReadonlyArray<{ phase: ParsePhase; label: string }> = [
-  { phase: 'uploading', label: 'Uploading résumé' },
+  { phase: 'uploading', label: 'Uploading resume' },
   { phase: 'parsing', label: 'Extracting stated facts' },
 ];
 

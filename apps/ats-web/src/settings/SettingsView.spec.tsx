@@ -1,10 +1,22 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '@aramo/fe-foundation';
 import { ToastProvider } from '@aramo/fe-foundation';
 
 import { SettingsView } from './SettingsView';
 import type { TenantSettingsView } from './types';
+
+// SettingsView now renders multiple pickers, each with its own "Save changes"
+// button. These tests target the Compensation-display picker specifically, so
+// scope the button lookup to that card (the résumé-extraction picker also has
+// a "Save changes").
+function compSaveButton(): HTMLButtonElement {
+  const card = screen.getByText('Compensation display').closest('.rc-card');
+  if (card === null) throw new Error('Compensation display card not found');
+  return within(card as HTMLElement).getByRole('button', {
+    name: /save changes/i,
+  }) as HTMLButtonElement;
+}
 
 const baseView: TenantSettingsView = {
   'compensation.display_default': 'both',
@@ -83,7 +95,7 @@ describe('SettingsView', () => {
       ),
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /save changes/i }));
+    fireEvent.click(compSaveButton());
 
     await waitFor(() =>
       expect(
@@ -124,7 +136,7 @@ describe('SettingsView', () => {
     );
 
     fireEvent.click(screen.getByLabelText('Bill markup'));
-    fireEvent.click(screen.getByRole('button', { name: /save changes/i }));
+    fireEvent.click(compSaveButton());
 
     await waitFor(() =>
       expect(
@@ -133,7 +145,7 @@ describe('SettingsView', () => {
     );
     // Save button returns to disabled when clean.
     expect(
-      (screen.getByRole('button', { name: /save changes/i }) as HTMLButtonElement)
+      (compSaveButton())
         .disabled,
     ).toBe(true);
     // (Unused) saveFn left for the test-seam pattern; the round-trip
@@ -160,7 +172,7 @@ describe('SettingsView', () => {
         { status: 500, headers: { 'Content-Type': 'application/json' } },
       ),
     );
-    fireEvent.click(screen.getByRole('button', { name: /save changes/i }));
+    fireEvent.click(compSaveButton());
 
     // T10-B2/F-018 — an unmapped backend message ('oops', code INTERNAL) is
     // never surfaced; the safe generic fallback is shown instead.

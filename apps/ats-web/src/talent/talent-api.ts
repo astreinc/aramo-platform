@@ -7,16 +7,17 @@ import type {
   CreateAttachmentRequest,
   CreateTalentRecordRequest,
   DraftFromResumeRequest,
+  DraftFromResumeResult,
   EmailSlot,
   EmailVerificationRequestResult,
   EmailVerificationStatusResponse,
-  ParseResumeResult,
   PresignedPutResult,
   ResumeUploadUrlRequest,
   TalentRecordListResponse,
   TalentRecordView,
   TalentSearchPage,
   UpdateTalentRecordRequest,
+  WorkHistoryView,
 } from './types';
 
 // The Talent LIST is the POOL-OPEN surface: GET /v1/talent-records is
@@ -67,6 +68,44 @@ export async function searchTalent(
   );
 }
 
+// Proactive duplicate-check — the Add-Talent "Possible existing Talent" card.
+// A TalentRecord can never be duplicated on primary email (the create-time 409
+// is the hard backstop); this lets the recruiter SEE the collision before
+// pressing Create. Keyed on email1 (the authoritative dedup anchor), tenant-
+// wide. Returns { match } where match is the existing record's display fields
+// or null.
+export interface TalentDuplicateMatch {
+  readonly id: string;
+  readonly first_name: string;
+  readonly last_name: string;
+  readonly title: string | null;
+  readonly city: string | null;
+  readonly state: string | null;
+}
+
+export interface TalentDuplicateCheckResponse {
+  readonly match: TalentDuplicateMatch | null;
+}
+
+export async function checkTalentDuplicate(
+  email: string,
+): Promise<TalentDuplicateCheckResponse> {
+  const params = new URLSearchParams({ email });
+  return apiClient.get<TalentDuplicateCheckResponse>(
+    `/v1/talent-records/duplicate-check?${params.toString()}`,
+  );
+}
+
+// Talent-detail work-history (LOCKED scope expansion). Returns the persisted
+// declared work-history rows for a talent.
+export async function getTalentWorkHistory(
+  id: string,
+): Promise<{ work_history: readonly WorkHistoryView[] }> {
+  return apiClient.get<{ work_history: readonly WorkHistoryView[] }>(
+    `/v1/talent-records/${encodeURIComponent(id)}/work-history`,
+  );
+}
+
 // R3 — the talent DETAIL endpoint (the Identity tab + the dependency
 // for the other tabs' header). Returns the full TalentRecordView.
 export async function getTalent(id: string): Promise<TalentRecordView> {
@@ -91,7 +130,7 @@ export async function listTalentAttachments(
 }
 
 // B6 — mint a short-lived presigned GET URL to view/download an attachment
-// (e.g. a résumé). The URL is fetched on demand (per click), never stored.
+// (e.g. a resume). The URL is fetched on demand (per click), never stored.
 export async function getAttachmentDownloadUrl(
   id: string,
 ): Promise<AttachmentDownloadUrlResponse> {
@@ -122,7 +161,7 @@ export async function updateTalent(
   );
 }
 
-// R5 — the résumé flow (the 3-step: upload-url → presigned PUT → parse).
+// R5 — the resume flow (the 3-step: upload-url → presigned PUT → parse).
 //
 // Step 1: ask the BE for a presigned PUT URL. Scope: attachment:create
 // (NOT talent:create — Gate-5 surfaced this; the recruiter holds both
@@ -159,7 +198,7 @@ export async function putResumeToStorage(
   if (!response.ok) {
     throw new ApiError(
       response.status,
-      `Résumé upload failed: ${response.status}`,
+      `Resume upload failed: ${response.status}`,
     );
   }
 }
@@ -170,8 +209,8 @@ export async function putResumeToStorage(
 // — a 'failed' status is a normal 200 response with empty prefill.
 export async function parseDraftFromResume(
   body: DraftFromResumeRequest,
-): Promise<ParseResumeResult> {
-  return apiClient.post<ParseResumeResult>(
+): Promise<DraftFromResumeResult> {
+  return apiClient.post<DraftFromResumeResult>(
     '/v1/talent-records/draft-from-resume',
     body,
   );

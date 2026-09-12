@@ -38,7 +38,7 @@ export interface ConsentScopeDef {
   readonly key: ConsentScope;
   readonly label: string;
   readonly summary: string;
-  // Required scopes gate the save (the talent cannot be stored + its résumé
+  // Required scopes gate the save (the talent cannot be stored + its resume
   // cannot be indexed without them — the two operations the Add-Talent flow
   // actually performs).
   readonly required: boolean;
@@ -62,8 +62,8 @@ export const CONSENT_SCOPE_DEFS: readonly ConsentScopeDef[] = [
   },
   {
     key: 'resume_processing',
-    label: 'Process résumé',
-    summary: 'Extract and index résumé text for search.',
+    label: 'Process resume',
+    summary: 'Extract and index resume text for search.',
     required: true,
     defaultOn: true,
   },

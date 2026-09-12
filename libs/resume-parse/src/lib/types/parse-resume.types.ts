@@ -34,6 +34,10 @@ export interface TalentRecordPrefill {
   // proposes it only when a role line is confidently isolated (never a noisy
   // guess). Absent otherwise; the recruiter fills it on review.
   title?: string;
+  // Governed-LLM draft path (LOCKED: Add-Talent Governed-LLM Resume Extraction).
+  // The deterministic parser does not populate country; the governed extractor
+  // may propose it (grounded). Optional — additive, backward-compatible.
+  country?: string;
 }
 
 /**

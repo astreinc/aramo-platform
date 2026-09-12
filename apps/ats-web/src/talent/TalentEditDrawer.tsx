@@ -28,8 +28,8 @@ import type { TalentRecordView, UpdateTalentRecordRequest } from './types';
 // against the TM-L4 Talent Profile directive + the talent-record PATCH DTO:
 //
 //   EDITABLE   first/last name, city, state, work authorization, engagement
-//              type, availability, desired rate, available-from, and RÉSUMÉ
-//              (replace — reuses the create-side résumé pipeline).
+//              type, availability, desired rate, available-from, and RESUME
+//              (replace — reuses the create-side resume pipeline).
 //   READ-ONLY  Primary email + phone — used for identity resolution / dedup;
 //              displayed, never edited here (agreed with PO).
 //   REQUIRED   names, city, state, work authorization (a choice — NOT_DISCLOSED
@@ -331,23 +331,23 @@ export function TalentEditDrawer({ talent, onClose, onSaved }: Props) {
             </div>
           </DrawerSection>
 
-          <DrawerSection label="RÉSUMÉ">
+          <DrawerSection label="RESUME">
             <div className="talent-detail__resume-row">
               <div className="talent-detail__resume-info">
                 {resumeStatus === 'done'
-                  ? `New résumé attached${resumeName !== null ? ` · ${resumeName}` : ''}`
+                  ? `New resume attached${resumeName !== null ? ` · ${resumeName}` : ''}`
                   : resumeStatus === 'uploading'
                     ? 'Uploading…'
                     : resumeStatus === 'error'
                       ? 'Upload failed — try again.'
-                      : 'Replace the résumé on file. The previous version stays in Documents.'}
+                      : 'Replace the resume on file. The previous version stays in Documents.'}
               </div>
               <label className="tc-button tc-button--secondary tc-button--sm talent-detail__resume-btn">
                 Replace
                 <input
                   type="file"
                   accept=".pdf,.doc,.docx"
-                  aria-label="Replace résumé"
+                  aria-label="Replace resume"
                   hidden
                   onChange={(e) => onReplaceResume(e.target.files?.[0])}
                 />

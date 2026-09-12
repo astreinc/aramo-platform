@@ -43,12 +43,12 @@ import { sectionErrorMessage } from './error-messages';
 // banner. One call erroring does not kill the others (allSettled isolation).
 //
 // SEARCH PR-2 WIRING (Ruling 1) — the Talent section fires TWO calls: the
-// PR-1 name ?q= AND the PR-2 résumé ?resume_q=, as SEPARATE entries in the
+// PR-1 name ?q= AND the PR-2 resume ?resume_q=, as SEPARATE entries in the
 // fan-out (NOT ?q=&?resume_q= together — the BE ANDs those → near-empty).
 // The two talent results MERGE + DEDUPE by talent id (a talent matching by
-// name OR résumé appears once); a résumé-match carries its `resume_snippet`
+// name OR resume appears once); a resume-match carries its `resume_snippet`
 // excerpt (Ruling 2). allSettled isolation holds PER CALL (Ruling 4): if the
-// name call errors but the résumé call succeeds (or vice versa), the Talent
+// name call errors but the resume call succeeds (or vice versa), the Talent
 // section still renders the surviving call's rows — it errors only if BOTH
 // talent calls fail.
 
@@ -60,8 +60,8 @@ interface ResultRow {
   readonly secondary: string | null;
   // Absent → a non-linking display row (R-CONTACTS).
   readonly to?: string;
-  // Search PR-2 (Ruling 2) — set on a résumé-content match; rendered inline
-  // as "Matched in résumé: …". Absent on name-only matches.
+  // Search PR-2 (Ruling 2) — set on a resume-content match; rendered inline
+  // as "Matched in resume: …". Absent on name-only matches.
   readonly snippet?: string | null;
 }
 
@@ -70,7 +70,7 @@ interface SectionConfig {
   readonly label: string;
   readonly scope: string;
   // One or more fan-out calls feeding this section. Talent has TWO (name +
-  // résumé, Ruling 1); the other entities have one. The section's rows are
+  // resume, Ruling 1); the other entities have one. The section's rows are
   // the merged+deduped union of its calls' fulfilled results.
   readonly runs: ReadonlyArray<(q: string) => Promise<readonly ResultRow[]>>;
 }
@@ -89,10 +89,10 @@ function talentRow(t: TalentRecordView): ResultRow {
   };
 }
 
-// Search PR-2 — a résumé-content match row. Same talent row, plus the
+// Search PR-2 — a resume-content match row. Same talent row, plus the
 // `resume_snippet` excerpt (Ruling 2). The <mark> markers ts_headline emits
 // are stripped to plain text (rendered as text, not HTML — no XSS surface
-// from résumé-derived content).
+// from resume-derived content).
 function talentResumeRow(t: TalentRecordView): ResultRow {
   const raw = t.resume_snippet ?? null;
   return {
@@ -103,8 +103,8 @@ function talentResumeRow(t: TalentRecordView): ResultRow {
 
 // Merge + dedupe rows by key (Ruling 1). First occurrence wins for the base
 // row (name call is ordered first → keeps its `to`/secondary); a later
-// occurrence carrying a snippet UPGRADES the kept row so a name+résumé match
-// shows ONCE, with its résumé snippet.
+// occurrence carrying a snippet UPGRADES the kept row so a name+resume match
+// shows ONCE, with its resume snippet.
 function dedupeRows(rows: readonly ResultRow[]): ResultRow[] {
   const byKey = new Map<string, ResultRow>();
   for (const row of rows) {
@@ -148,7 +148,7 @@ const SECTIONS: readonly SectionConfig[] = [
     key: 'talent',
     label: 'Talent',
     scope: 'talent:search',
-    // Ruling 1 — TWO calls: name ?q= AND résumé ?resume_q= (merged + deduped).
+    // Ruling 1 — TWO calls: name ?q= AND resume ?resume_q= (merged + deduped).
     runs: [
       (q) => searchTalent(q).then((r) => r.items.map(talentRow)),
       (q) => searchTalentByResume(q).then((r) => r.items.map(talentResumeRow)),
@@ -364,9 +364,9 @@ function SearchSection({
                 <span className="search-section__secondary"> — {row.secondary}</span>
               ) : null}
               {row.snippet != null && row.snippet !== '' ? (
-                // Search PR-2 (Ruling 2) — résumé-content match excerpt.
+                // Search PR-2 (Ruling 2) — resume-content match excerpt.
                 <span className="search-section__snippet" data-testid="resume-snippet">
-                  {' '}· Matched in résumé: {row.snippet}
+                  {' '}· Matched in resume: {row.snippet}
                 </span>
               ) : null}
             </li>

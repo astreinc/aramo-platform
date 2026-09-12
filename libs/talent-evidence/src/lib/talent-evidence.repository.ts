@@ -442,6 +442,40 @@ export class TalentEvidenceRepository {
     });
   }
 
+  // Talent-detail work-history read (LOCKED scope expansion): the declared
+  // work-history rows for a talent, most-recent first (ongoing roles — null
+  // end_date — sort first under DESC/NULLS-FIRST). Display projection only.
+  async findWorkHistoryByTalent(args: {
+    tenant_id: string;
+    talent_id: string;
+  }): Promise<
+    Array<{
+      id: string;
+      employer_name: string;
+      role_title: string;
+      start_date: Date | null;
+      end_date: Date | null;
+      employment_type: string | null;
+      description_text: string | null;
+      source: TalentWorkHistorySourceValue;
+    }>
+  > {
+    return this.prisma.talentWorkHistoryEntry.findMany({
+      where: { tenant_id: args.tenant_id, talent_id: args.talent_id },
+      select: {
+        id: true,
+        employer_name: true,
+        role_title: true,
+        start_date: true,
+        end_date: true,
+        employment_type: true,
+        description_text: true,
+        source: true,
+      },
+      orderBy: [{ end_date: 'desc' }, { start_date: 'desc' }],
+    });
+  }
+
   // Gate-1 G1-B — exists/count guard for the examine endpoint's LAZY extraction
   // (run extraction only when the talent has NO declared skill evidence). The
   // idempotency guard is this exists-check, NOT an upsert: re-running extraction

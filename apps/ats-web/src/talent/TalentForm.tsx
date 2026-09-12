@@ -10,7 +10,7 @@ import type {
 
 // R5 — the shared talent CREATE/EDIT composite. The route wrappers
 // (TalentCreateView / TalentEditView) handle params + pre-fetch + the
-// résumé section + the create/attach orchestration; this component
+// resume section + the create/attach orchestration; this component
 // owns the field-by-field form state + the buildCreateBody / buildPatchBody
 // construction (R4 omit-vs-null discipline).
 //
@@ -112,7 +112,7 @@ function stateFromInitial(initial: TalentRecordView): FormState {
   };
 }
 
-// Apply a résumé prefill — only overwrites keys present in the prefill
+// Apply a resume prefill — only overwrites keys present in the prefill
 // (a 'failed' parse with an empty prefill is a no-op). The recruiter's
 // existing entries on other fields are preserved.
 function applyPrefill(state: FormState, prefill: TalentRecordPrefill): FormState {
@@ -191,7 +191,7 @@ interface CommonProps {
 interface CreateProps extends CommonProps {
   readonly mode: 'create';
   readonly onSubmit: (body: CreateTalentRecordRequest) => Promise<void>;
-  // The current résumé prefill (parent threads this from the upload
+  // The current resume prefill (parent threads this from the upload
   // section). When it changes (non-shallow), the form merges new fields
   // in WITHOUT overwriting recruiter edits to other fields.
   readonly prefill?: TalentRecordPrefill;

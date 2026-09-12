@@ -14,8 +14,8 @@ import type {
 // (the R3 detail's GET), then hands it to TalentForm which builds the
 // PATCH body with true PATCH semantics (R4 omit-vs-null).
 //
-// NO résumé upload in EDIT — replacing a résumé is a separate later
-// feature (R5 scopes the résumé to CREATE-side).
+// NO resume upload in EDIT — replacing a resume is a separate later
+// feature (R5 scopes the resume to CREATE-side).
 
 export function TalentEditView() {
   const { talentId } = useParams<{ talentId: string }>();

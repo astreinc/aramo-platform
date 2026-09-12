@@ -61,8 +61,8 @@ export interface TalentRecordView {
   readonly entered_by_id: string | null;
   readonly created_at: string;
   readonly updated_at: string;
-  // Search PR-2 — the résumé-content-match excerpt (ts_headline over the
-  // REDACTED résumé text). Present ONLY on items returned by the ?resume_q=
+  // Search PR-2 — the resume-content-match excerpt (ts_headline over the
+  // REDACTED resume text). Present ONLY on items returned by the ?resume_q=
   // content-search path; absent on every other read (the BE omits it).
   // Optional so name-search / LIST responses mirror unchanged.
   readonly resume_snippet?: string | null;
@@ -145,7 +145,7 @@ export interface AttachmentListResponse {
 
 // B6 — hand-mirrored from libs/object-storage PresignedGetResult. The
 // GET /v1/attachments/:id/download-url response: a short-lived presigned GET
-// URL for the stored file (résumé view/download) + its expiry instant.
+// URL for the stored file (resume view/download) + its expiry instant.
 export interface AttachmentDownloadUrlResponse {
   readonly presigned_url: string;
   readonly expires_at: string;
@@ -230,6 +230,9 @@ export interface CreateTalentRecordRequest {
   readonly best_time_to_call?: string;
   readonly title?: string; // B1 — professional title
   readonly owner_id?: string;
+  // Reviewed work-history entries persisted at create as TalentWorkHistoryEntry
+  // (source='resume'). Recruiter-editable; declared, not verified.
+  readonly work_history?: readonly WorkHistoryDraft[];
 }
 
 // Hand-mirrored from libs/talent-record/src/lib/dto/update-talent-record-
@@ -304,12 +307,54 @@ export interface TalentRecordPrefill {
   readonly key_skills?: string;
   readonly current_employer?: string;
   readonly web_site?: string;
-  readonly title?: string; // B1 — résumé-proposed professional title
+  readonly title?: string; // B1 — resume-proposed professional title
+  readonly country?: string; // governed-LLM draft — resume-proposed country
 }
 
 export interface ParseResumeResult {
   readonly prefill: TalentRecordPrefill;
   readonly parse_status: ParseStatus;
+}
+
+// Add-Talent governed-LLM résumé extraction (LOCKED). Hand-mirrors
+// libs/talent-record DraftFromResumeResponse. MODE IS EXCLUSIVE: `mode` is the
+// tenant's sole extractor for this résumé; `warning` (governed mode only) is
+// set when the LLM could not run/produce — the form opens with an empty/partial
+// prefill + a retry affordance (NO silent deterministic fallback).
+export type ResumeExtractionMode = 'governed_llm' | 'deterministic';
+
+// One reviewable work-history entry (governed_llm draft). Declared 'from
+// résumé', recruiter-editable; NOT verified. Hand-mirrors the BE
+// ResumeDraftWorkHistory / persists as TalentWorkHistoryEntry (source='resume').
+export interface WorkHistoryDraft {
+  readonly employer_name: string;
+  readonly role_title: string;
+  readonly start_date?: string;
+  readonly end_date?: string;
+  readonly employment_type?: string;
+  readonly description?: string;
+}
+
+export interface DraftFromResumeResult {
+  readonly mode: ResumeExtractionMode;
+  readonly prefill: TalentRecordPrefill;
+  readonly parse_status: ParseStatus;
+  readonly warning?: string;
+  readonly work_history?: readonly WorkHistoryDraft[];
+}
+
+// Talent-detail work-history read. Hand-mirrors BE TalentWorkHistoryView.
+// `verified` is false for declared 'from resume' rows (ADR-0015 v1.3 §4.3).
+export interface WorkHistoryView {
+  readonly id: string;
+  readonly employer_name: string;
+  readonly role_title: string;
+  readonly start_date: string | null;
+  readonly end_date: string | null;
+  readonly employment_type: string | null;
+  readonly description: string | null;
+  readonly source: string;
+  readonly verified: boolean;
 }
 
 // Hand-mirrored from libs/talent-record/src/lib/dto/resume-upload-url-

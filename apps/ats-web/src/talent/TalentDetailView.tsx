@@ -40,6 +40,7 @@ import type { TalentConsentStateResponse } from '../consent/types';
 import { getDossier, type DossierHead } from './dossier-api';
 import { TrustPanel } from './components/TrustPanel';
 import { RecordReferenceForm } from './RecordReferenceForm';
+import { WorkHistoryPanel } from './WorkHistoryPanel';
 import { TalentEditDrawer } from './TalentEditDrawer';
 import {
   getAttachmentDownloadUrl,
@@ -388,6 +389,7 @@ export function TalentDetailView({ sessionOverride }: TalentDetailViewProps) {
       label: 'Trust & Evidence',
       content: (
         <>
+          <WorkHistoryPanel talentId={talent.id} />
           <TrustPanel talentId={talent.id} canResolve={scopes.includes('identity:resolve')} />
           {canEdit && <RecordReferenceForm recordId={talent.id} />}
         </>
@@ -734,7 +736,7 @@ function ProfileTab({
       <Card>
         <div className="talent-detail__ctitle">Work history</div>
         <p className="talent-detail__empty">
-          No structured work history yet. Résumé-derived history capture is
+          No structured work history yet. Resume-derived history capture is
           coming soon.
         </p>
       </Card>
@@ -827,7 +829,7 @@ function DocumentsCard({ talentId }: { talentId: string }) {
                     {a.file_name}
                   </button>
                   <span className="talent-detail__doc-meta">
-                    {a.is_resume ? 'Résumé · ' : ''}
+                    {a.is_resume ? 'Resume · ' : ''}
                     {bytes(a.size_bytes)}
                     {a.mime !== null ? ` · ${a.mime}` : ''}
                   </span>

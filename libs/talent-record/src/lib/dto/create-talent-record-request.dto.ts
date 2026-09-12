@@ -1,5 +1,7 @@
 // CreateTalentRecordRequestDto — POST /v1/talent-records payload.
 // tenant_id derived from AuthContext.tenant_id (never the body).
+import type { ResumeDraftWorkHistory } from '@aramo/talent-extraction';
+
 import type {
   AvailabilityStatus,
   EngagementType,
@@ -48,4 +50,9 @@ export interface CreateTalentRecordRequestDto {
   engagement_type?: EngagementType;
   work_authorization?: WorkAuthorization;
   owner_id?: string;
+  // Reviewed work-history (LOCKED scope expansion). Persisted AFTER the record
+  // is created as TalentWorkHistoryEntry (source='resume') — NOT a TalentRecord
+  // scalar; the repository ignores it and the controller writes it post-create.
+  // Declared, recruiter-edited; not verified.
+  work_history?: ResumeDraftWorkHistory[];
 }

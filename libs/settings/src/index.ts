@@ -16,6 +16,7 @@ export type {
   SettingValueOf,
   CompensationDisplayDefault,
   MetricGoalMap,
+  ResumeExtractionMode,
 } from './lib/known-settings.js';
 
 export type { TenantSettingsView } from './lib/dto/tenant-settings.view.js';

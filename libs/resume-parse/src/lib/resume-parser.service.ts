@@ -48,6 +48,19 @@ export class ResumeParserService {
     return this.parseBytes(buffer, input);
   }
 
+  // Add-Talent governed-LLM path (LOCKED: "Governed-LLM Resume Extraction" —
+  // MODE IS EXCLUSIVE). Returns ONLY the extracted plain text (single fetch +
+  // single extraction) — NO deterministic field extraction runs, because in
+  // governed mode the LLM is the sole extractor. This lib stays NO-LLM: the
+  // text is the same deterministic magic-byte extraction, handed to
+  // @aramo/talent-extraction (a permitted LLM consumer) which redacts PII
+  // before the model. Returns null on a parse failure (non-blocking). PII floor
+  // (§17): callers MUST NOT log the returned text — in-process use only.
+  async extractTextFromStorageKey(input: ParseResumeInput): Promise<string | null> {
+    const buffer = await this.fetchBytes(input);
+    return extractResumeText(buffer);
+  }
+
   // SRC-2 PR-1 — the presigned-GET + fetch, factored out for reuse (do not
   // duplicate the fetch). Throws OBJECT_STORAGE_UPLOAD_FAILED (502) on a missing
   // key / presign / network failure — the caller maps that to transient_retry.

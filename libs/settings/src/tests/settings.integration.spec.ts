@@ -232,12 +232,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         },
       });
       const view = await svc.getAll(TENANT_A);
-      // S4 added audit.financials_enabled (boolean, default false) to the
-      // closed-set registry; getAll materializes every known-key with its
-      // row-value-or-default, so the view shape grew by one entry.
+      // S4 added audit.financials_enabled; the Add-Talent governed-LLM slice
+      // added resume.extraction_mode (default 'deterministic'). getAll
+      // materializes every known view-key with its row-value-or-default.
       expect(view).toEqual({
         'compensation.display_default': 'markup',
         'audit.financials_enabled': false,
+        'resume.extraction_mode': 'deterministic',
       });
     });
   },
