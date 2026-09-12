@@ -29,10 +29,19 @@ import {
 import {
   ResumeParserService,
   type ParseResumeResult,
+  type ParseStatus,
+  type TalentRecordPrefill,
 } from '@aramo/resume-parse';
+import { TenantSettingService } from '@aramo/settings';
+import {
+  TalentExtractionService,
+  type TalentWorkHistoryView,
+} from '@aramo/talent-extraction';
 
 import type { CreateTalentRecordRequestDto } from './dto/create-talent-record-request.dto.js';
 import type { DraftFromResumeRequestDto } from './dto/draft-from-resume-request.dto.js';
+import type { DraftFromResumeResponse } from './dto/draft-from-resume.response.js';
+import type { TalentDuplicateCheckResponse } from './dto/talent-duplicate-check.view.js';
 import { LinkTalentRecordRequestDto } from './dto/link-talent-record-request.dto.js';
 import type { ResumeUploadUrlRequestDto } from './dto/resume-upload-url-request.dto.js';
 import type { TalentLinkView } from './dto/talent-link.view.js';
@@ -96,6 +105,10 @@ export class TalentRecordController {
     private readonly linkService: TalentLinkService,
     private readonly objectStorage: ObjectStorageService,
     private readonly resumeParser: ResumeParserService,
+    // Add-Talent governed-LLM résumé extraction (LOCKED). Consumed ONLY by the
+    // draft-from-resume handler; the mode resolver + the governed extractor.
+    private readonly tenantSetting: TenantSettingService,
+    private readonly talentExtraction: TalentExtractionService,
   ) {}
 
   // Search PR-1/PR-2 — the LIST route gates on talent:read (route-static).
@@ -217,6 +230,47 @@ export class TalentRecordController {
     return { items };
   }
 
+  // Proactive duplicate check for the Add-Talent flow. Declared BEFORE
+  // @Get(':id') so the literal segment isn't captured as an id param. NO
+  // @RequireSiteMatch(): primary-email uniqueness is tenant-wide (mirrors the
+  // create-time 409, which also queries tenant-wide), so a collision in any
+  // site must surface here. `talent:read` — the same pool-open read scope the
+  // list + detail use; the projection exposes nothing the list doesn't.
+  @Get('duplicate-check')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('talent:read')
+  async duplicateCheck(
+    @AuthContext() authContext: AuthContextType,
+    @Query('email') email: string | undefined,
+  ): Promise<TalentDuplicateCheckResponse> {
+    const trimmed = (email ?? '').trim();
+    if (trimmed === '') return { match: null };
+    const match = await this.repo.findDuplicateByEmail({
+      tenant_id: authContext.tenant_id,
+      email: trimmed,
+    });
+    return { match };
+  }
+
+  // Talent-detail work-history (LOCKED scope expansion — "display what we
+  // created"). Returns the persisted declared work-history for the talent
+  // (source='resume', verified:false). talent:read + site-match, like the
+  // detail read. Delegated to the already-injected TalentExtractionService.
+  @Get(':id/work-history')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('talent:read')
+  @RequireSiteMatch()
+  async workHistory(
+    @AuthContext() authContext: AuthContextType,
+    @Param('id') id: string,
+  ): Promise<{ work_history: TalentWorkHistoryView[] }> {
+    const work_history = await this.talentExtraction.listDeclaredWorkHistory({
+      talent_id: id,
+      tenant_id: authContext.tenant_id,
+    });
+    return { work_history };
+  }
+
   @Get(':id')
   @HttpCode(HttpStatus.OK)
   @RequireScopes('talent:read')
@@ -283,12 +337,32 @@ export class TalentRecordController {
         { requestId, details: { email1, existing_id: duplicate.id } },
       );
     }
-    return this.repo.create({
+    const created = await this.repo.create({
       tenant_id: authContext.tenant_id,
       entered_by_id: authContext.sub,
       input: body,
       requestId,
     });
+
+    // Reviewed work-history (LOCKED scope expansion) — persist AFTER the record
+    // exists, as declared TalentWorkHistoryEntry (source='resume'). BEST-EFFORT:
+    // the talent IS created; a work-history write hiccup must not fail the
+    // create (mirrors the attach-on-create soft-fail). Reuses the already-
+    // injected TalentExtractionService (no new cross-lib edge).
+    if (Array.isArray(body.work_history) && body.work_history.length > 0) {
+      try {
+        await this.talentExtraction.persistDeclaredWorkHistory({
+          talent_id: created.id,
+          tenant_id: authContext.tenant_id,
+          entries: body.work_history,
+        });
+      } catch {
+        // Non-fatal: the record is created; the recruiter can add work history
+        // on the Talent record. (No PII in logs — §17.)
+      }
+    }
+
+    return created;
   }
 
   @Patch(':id')
@@ -464,10 +538,10 @@ export class TalentRecordController {
   @RequireScopes('talent:read')
   @RequireSiteMatch()
   async draftFromResume(
-    @AuthContext() _authContext: AuthContextType,
+    @AuthContext() authContext: AuthContextType,
     @Body() body: DraftFromResumeRequestDto,
     @RequestId() requestId: string,
-  ): Promise<ParseResumeResult> {
+  ): Promise<DraftFromResumeResponse> {
     if (typeof body.storage_key !== 'string' || body.storage_key.length === 0) {
       throw new AramoError(
         'VALIDATION_ERROR',
@@ -477,13 +551,99 @@ export class TalentRecordController {
       );
     }
 
-    // The parser NEVER throws on parse failure -- it returns
-    // { prefill: {}, parse_status: 'failed' }. The recruiter can still
-    // proceed to E3 (manual create) -- parse-failure-is-non-blocking
-    // (the proof §4.4 invariant).
-    return this.resumeParser.parseFromStorageKey({
+    // MODE IS EXCLUSIVE (LOCKED). The tenant setting selects the SOLE résumé
+    // extractor SERVER-side (§14 — never trust the FE). Unknown/absent → the
+    // setting's default ('deterministic'); the LLM is never silently enabled.
+    const mode = await this.tenantSetting.get(
+      authContext.tenant_id,
+      'resume.extraction_mode',
+    );
+
+    if (mode === 'governed_llm') {
+      return this.draftGovernedLlm(body.storage_key, authContext.tenant_id, requestId);
+    }
+
+    // deterministic — the existing parser ONLY; NO LLM call. Parse failure is
+    // non-blocking: returns { prefill: {}, parse_status: 'failed' } (proof §4.4).
+    const result: ParseResumeResult = await this.resumeParser.parseFromStorageKey({
       storage_key: body.storage_key,
       requestId,
     });
+    return {
+      mode: 'deterministic',
+      prefill: result.prefill,
+      parse_status: result.parse_status,
+    };
+  }
+
+  // Governed-LLM draft (MODE IS EXCLUSIVE): the governed LLM is the ONLY
+  // extractor — the deterministic parser does NOT contribute values. On ANY
+  // failure (text-extraction failed, provider unavailable, malformed output,
+  // zero grounded fields) the form opens with an EMPTY/partial prefill + a
+  // warning + retry — NEVER a silent fallback to the deterministic parser (§15).
+  private async draftGovernedLlm(
+    storage_key: string,
+    tenant_id: string,
+    requestId: string,
+  ): Promise<DraftFromResumeResponse> {
+    const RETRY_WARNING =
+      'We couldn’t read this résumé. Please retry, or enter the details manually.';
+
+    let text: string | null;
+    try {
+      text = await this.resumeParser.extractTextFromStorageKey({ storage_key, requestId });
+    } catch {
+      // Fetch/extract error — non-blocking; empty prefill + retry.
+      return { mode: 'governed_llm', prefill: {}, parse_status: 'failed', warning: RETRY_WARNING };
+    }
+    if (text === null || text.trim() === '') {
+      return { mode: 'governed_llm', prefill: {}, parse_status: 'failed', warning: RETRY_WARNING };
+    }
+
+    let proposal;
+    try {
+      proposal = await this.talentExtraction.extractResumeDraft({ tenant_id, resume_text: text });
+    } catch {
+      // LLM provider unavailable / error — non-blocking; empty prefill + retry.
+      // NO deterministic fallback: the tenant chose governed_llm (§15).
+      return {
+        mode: 'governed_llm',
+        prefill: {},
+        parse_status: 'partial',
+        warning:
+          'Résumé extraction is temporarily unavailable. Please retry, or enter the details manually.',
+      };
+    }
+
+    // Map the grounded proposal onto the recruiter-facing prefill. Email/phone
+    // are absent by design (redacted before the model — held for the ADR-0015
+    // Decision-6 amendment); the recruiter enters them.
+    const prefill: TalentRecordPrefill = {};
+    if (proposal.first_name !== undefined) prefill.first_name = proposal.first_name;
+    if (proposal.last_name !== undefined) prefill.last_name = proposal.last_name;
+    if (proposal.address !== undefined) prefill.address = proposal.address;
+    if (proposal.city !== undefined) prefill.city = proposal.city;
+    if (proposal.state !== undefined) prefill.state = proposal.state;
+    if (proposal.zip !== undefined) prefill.zip = proposal.zip;
+    if (proposal.country !== undefined) prefill.country = proposal.country;
+    if (proposal.current_employer !== undefined) prefill.current_employer = proposal.current_employer;
+    if (proposal.title !== undefined) prefill.title = proposal.title;
+    // Clean skills → the free-text key_skills field (R5 §2 / §13 — no chip
+    // picker, no structured skill model here).
+    if (proposal.skills.length > 0) prefill.key_skills = proposal.skills.join(', ');
+
+    const hasIdentity = prefill.first_name !== undefined || prefill.last_name !== undefined;
+    const hasAny = Object.keys(prefill).length > 0 || proposal.work_history.length > 0;
+    const parse_status: ParseStatus = hasIdentity ? 'parsed' : 'partial';
+    return {
+      mode: 'governed_llm',
+      prefill,
+      parse_status,
+      // Reviewable work-history (declared 'from résumé', recruiter-editable).
+      ...(proposal.work_history.length > 0 ? { work_history: proposal.work_history } : {}),
+      ...(hasAny
+        ? {}
+        : { warning: 'No details could be read from this résumé. Please enter them manually.' }),
+    };
   }
 }

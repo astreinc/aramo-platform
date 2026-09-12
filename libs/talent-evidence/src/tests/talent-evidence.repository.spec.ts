@@ -58,6 +58,9 @@ describe('TalentEvidenceRepository — surface', () => {
         // endpoint's exists-check gates lazy extraction).
         'findTalentSkillEvidenceByTalent',
         'countTalentSkillEvidenceByTalent',
+        // Talent-detail work-history read (LOCKED scope expansion — Add-Talent
+        // Governed-LLM extraction; declared 'from résumé' rows for display).
+        'findWorkHistoryByTalent',
         // TR-2a-B3b (DDR-3 §4) — the reconcile re-point of talent_id across all
         // seven talent_evidence holders (loser→survivor, idempotent).
         'repointTalentRecordRefs',

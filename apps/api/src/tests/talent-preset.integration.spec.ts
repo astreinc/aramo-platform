@@ -50,6 +50,9 @@ function controllerWith(repo: { searchPaged: ReturnType<typeof vi.fn> }) {
     {} as never,
     {} as never,
     {} as never,
+    // tenantSetting + talentExtraction — unused by the paged list() path.
+    {} as never,
+    {} as never,
   );
 }
 

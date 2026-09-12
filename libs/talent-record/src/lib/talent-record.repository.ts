@@ -500,6 +500,43 @@ export class TalentRecordRepository {
     });
   }
 
+  // Proactive duplicate-check projection. Same tenant-wide, live-only,
+  // case-insensitive email1 predicate as findActiveByEmail (the create-time
+  // 409 backstop) — but returns the display fields the Add-Talent
+  // "Possible existing Talent" card renders (name · title · city/state), so
+  // the recruiter sees WHO the collision is with before ever pressing Create.
+  // Tenant-wide (no site filter) to mirror the 409: an email that already
+  // exists anywhere in the tenant is a duplicate regardless of site.
+  async findDuplicateByEmail(args: {
+    tenant_id: string;
+    email: string;
+  }): Promise<{
+    id: string;
+    first_name: string;
+    last_name: string;
+    title: string | null;
+    city: string | null;
+    state: string | null;
+  } | null> {
+    const email = args.email.trim();
+    if (email === '') return null;
+    return this.prisma.talentRecord.findFirst({
+      where: {
+        tenant_id: args.tenant_id,
+        record_status: 'live',
+        email1: { equals: email, mode: 'insensitive' },
+      },
+      select: {
+        id: true,
+        first_name: true,
+        last_name: true,
+        title: true,
+        city: true,
+        state: true,
+      },
+    });
+  }
+
   // PR-A8-1 — import-engine create. Mirrors create(); attributes the
   // row to the import batch for reversion. THE non-negotiable boundary
   // (directive §0): the engine creates `TalentRecord` rows only and never

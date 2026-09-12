@@ -6,6 +6,8 @@ import { EntitlementModule } from '@aramo/entitlement';
 import { IdentityIndexModule } from '@aramo/identity-index';
 import { ObjectStorageModule } from '@aramo/object-storage';
 import { ResumeParseModule } from '@aramo/resume-parse';
+import { SettingsModule } from '@aramo/settings';
+import { TalentExtractionModule } from '@aramo/talent-extraction';
 
 import { PrismaService } from './prisma/prisma.service.js';
 import { TalentRecordController } from './talent-record.controller.js';
@@ -44,6 +46,13 @@ import { ResumeTextService } from './resume-text/resume-text.service.js';
     IdentityIndexModule,
     ObjectStorageModule,
     ResumeParseModule,
+    // Add-Talent governed-LLM résumé extraction (LOCKED). SettingsModule →
+    // TenantSettingService (the resume.extraction_mode mode resolver);
+    // TalentExtractionModule → TalentExtractionService.extractResumeDraft (the
+    // governed LLM draft extractor, an ats→cip edge — permitted). Both are
+    // consumed ONLY by the draft-from-resume handler.
+    SettingsModule,
+    TalentExtractionModule,
   ],
   controllers: [TalentRecordController],
   providers: [

@@ -43,25 +43,8 @@ export function ResumeDropzone({
         <div className="rc-dropzone__ic" aria-hidden="true">
           <Icons.IconUpload />
         </div>
-        <h2>Drop a resume to start</h2>
-        <p>
-          We’ll parse it and pre-fill the profile in seconds. PDF or Word —
-          you’ll review and complete every field before saving.
-        </p>
-        <div className="rc-dropzone__btns">
-          <button
-            type="button"
-            className="rc-btn rc-btn--primary rc-btn--lg"
-            disabled={disabled}
-            onClick={(e) => {
-              e.stopPropagation();
-              inputRef.current?.click();
-            }}
-          >
-            <Icons.IconUpload />
-            Browse files
-          </button>
-        </div>
+        <h2>Upload resume</h2>
+        <p>Drag &amp; drop or click to browse · PDF, DOCX</p>
         <input
           ref={inputRef}
           type="file"

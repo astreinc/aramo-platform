@@ -566,6 +566,14 @@
     },
     {
       "method": "GET",
+      "path": "/v1/talent-records/duplicate-check"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/talent-records/*/work-history"
+    },
+    {
+      "method": "GET",
       "path": "/v1/talent-records"
     },
     {

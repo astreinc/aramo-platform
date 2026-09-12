@@ -1,6 +1,5 @@
-import { useState, type ReactNode } from 'react';
+import { type ReactNode } from 'react';
 
-import { Icons } from '../ui';
 import { AddressTypeahead } from '../companies/AddressTypeahead';
 
 import {
@@ -11,19 +10,29 @@ import {
   WORK_AUTHORIZATION_LABELS,
   WORK_AUTHORIZATION_VALUES,
 } from './stated-fields';
-import { ProvenanceChip, type Provenance, type ProvenanceMap } from './provenance';
+import {
+  ProvenanceChip,
+  isResumeSourced,
+  type Provenance,
+  type ProvenanceMap,
+} from './provenance';
 import type { IntakeState } from './intake-fields';
+import type { WorkHistoryDraft } from './types';
 
 interface IntakeFormProps {
   readonly values: IntakeState;
   readonly provenance: ProvenanceMap;
-  readonly skills: readonly string[];
-  readonly skillsFromResume: boolean;
+  readonly workHistory: readonly WorkHistoryDraft[];
   readonly disabled?: boolean;
   readonly onField: (key: keyof IntakeState, value: string) => void;
   readonly onToggle: (key: 'can_relocate' | 'is_hot') => void;
-  readonly onAddSkill: (skill: string) => void;
-  readonly onRemoveSkill: (index: number) => void;
+  readonly onWorkHistoryField: (
+    index: number,
+    key: keyof WorkHistoryDraft,
+    value: string,
+  ) => void;
+  readonly onAddWorkHistory: () => void;
+  readonly onRemoveWorkHistory: (index: number) => void;
 }
 
 // The Step-2 "Review & create" body — the resume-first Add-Talent field form,
@@ -39,17 +48,17 @@ interface IntakeFormProps {
 export function IntakeForm({
   values,
   provenance,
-  skills,
-  skillsFromResume,
+  workHistory,
   disabled = false,
   onField,
   onToggle,
-  onAddSkill,
-  onRemoveSkill,
+  onWorkHistoryField,
+  onAddWorkHistory,
+  onRemoveWorkHistory,
 }: IntakeFormProps) {
   // A section is tagged "FROM RESUME" when the resume parse populated any of
   // its fields (real provenance signal, not a static badge).
-  const parsed = skillsFromResume || Object.values(provenance).includes('resume');
+  const parsed = Object.values(provenance).some(isResumeSourced);
 
   function field(
     key: keyof IntakeState,
@@ -57,7 +66,7 @@ export function IntakeForm({
     opts: { type?: string; required?: boolean; full?: boolean; placeholder?: string } = {},
   ) {
     const prov = provenance[key as string] as Provenance | undefined;
-    const flagged = prov === 'resume';
+    const flagged = isResumeSourced(prov);
     return (
       <label className={`rc-secfield${opts.full ? ' rc-secfield--full' : ''}`}>
         <span className="rc-secfield__lb">
@@ -207,17 +216,25 @@ export function IntakeForm({
         {toggle('is_hot', 'Hot talent')}
       </Section>
 
-      <Section label="Skills" tag={parsed ? 'FROM RESUME' : undefined}>
+      <Section label="Skills" tag={parsed ? 'FROM RESUME' : undefined} full>
         <div className="rc-secfield rc-secfield--full">
-          <SkillsEditor
-            skills={skills}
+          <span className="rc-secfield__lb">
+            <span>Key skills</span>
+            <ProvenanceChip prov={provenance['key_skills'] as Provenance | undefined} />
+          </span>
+          <textarea
+            className="rc-secinput rc-secinput--area"
+            value={values.key_skills}
+            aria-label="Key skills"
+            placeholder="e.g. C#, ASP.NET Core, Azure SQL, Kubernetes…"
+            rows={4}
             disabled={disabled}
-            onAdd={onAddSkill}
-            onRemove={onRemoveSkill}
+            onChange={(ev) => onField('key_skills', ev.target.value)}
           />
           <p className="rc-secnote">
-            Stored as free text. Canonical skill evidence is produced later by the
-            Skills Taxonomy — no rating is applied here.
+            Free text — review and correct. Auto-filled from the résumé when governed
+            extraction is enabled for your tenant; otherwise enter the key skills
+            manually. Canonical structured skill evidence is produced separately.
           </p>
         </div>
       </Section>
@@ -255,7 +272,21 @@ export function IntakeForm({
         </div>
       </Section>
 
-      <Section label="Employment · education · certifications" tag="AFTER CREATION">
+      <Section
+        label="Work history"
+        tag={workHistory.length > 0 ? 'FROM RESUME' : undefined}
+        full
+      >
+        <WorkHistoryEditor
+          entries={workHistory}
+          disabled={disabled}
+          onField={onWorkHistoryField}
+          onAdd={onAddWorkHistory}
+          onRemove={onRemoveWorkHistory}
+        />
+      </Section>
+
+      <Section label="Education · certifications" tag="AFTER CREATION" full>
         <div className="rc-secfield rc-secfield--full">
           <p className="rc-secnote">
             Added on the Talent record after creation as structured records with
@@ -270,14 +301,16 @@ export function IntakeForm({
 function Section({
   label,
   tag,
+  full = false,
   children,
 }: {
   readonly label: string;
   readonly tag?: string;
+  readonly full?: boolean;
   readonly children: ReactNode;
 }) {
   return (
-    <section className="rc-seccard">
+    <section className={`rc-seccard${full ? ' rc-seccard--full' : ''}`}>
       <div className="rc-seccard__hd">
         <span className="rc-seccard__lb">{label}</span>
         {tag !== undefined ? <span className="rc-seccard__tag">{tag}</span> : null}
@@ -287,64 +320,112 @@ function Section({
   );
 }
 
-interface SkillsEditorProps {
-  readonly skills: readonly string[];
+// Work-History review card — the recruiter edits the extracted rows before
+// create (LOCKED scope expansion). Declared 'from résumé', NOT verified; the
+// green VERIFIED badge appears only later on the Detail once verification runs.
+function WorkHistoryEditor({
+  entries,
+  disabled,
+  onField,
+  onAdd,
+  onRemove,
+}: {
+  readonly entries: readonly WorkHistoryDraft[];
   readonly disabled: boolean;
-  readonly onAdd: (skill: string) => void;
+  readonly onField: (index: number, key: keyof WorkHistoryDraft, value: string) => void;
+  readonly onAdd: () => void;
   readonly onRemove: (index: number) => void;
-}
-
-function SkillsEditor({ skills, disabled, onAdd, onRemove }: SkillsEditorProps) {
-  const [draft, setDraft] = useState('');
-  function commit() {
-    const s = draft.trim();
-    if (s !== '') onAdd(s);
-    setDraft('');
-  }
+}) {
   return (
-    <div className="rc-skills">
-      <ul className="rc-skills__list">
-        {skills.map((s, i) => (
-          <li key={`${s}-${i}`} className="rc-skill">
-            {s}
+    <div className="rc-secfield rc-secfield--full">
+      {entries.length === 0 ? (
+        <p className="rc-secnote">
+          No roles yet — add one, or roles appear here when parsed from a résumé.
+        </p>
+      ) : null}
+      {entries.map((e, i) => (
+        <div className="rc-wh__row" key={i}>
+          <div className="rc-wh__grid">
+            <label className="rc-secfield">
+              <span className="rc-secfield__lb">
+                <span>Role title<span className="rc-secfield__req"> *</span></span>
+              </span>
+              <input
+                className="rc-secinput"
+                value={e.role_title}
+                aria-label={`Role title ${i + 1}`}
+                disabled={disabled}
+                onChange={(ev) => onField(i, 'role_title', ev.target.value)}
+              />
+            </label>
+            <label className="rc-secfield">
+              <span className="rc-secfield__lb">
+                <span>Employer<span className="rc-secfield__req"> *</span></span>
+              </span>
+              <input
+                className="rc-secinput"
+                value={e.employer_name}
+                aria-label={`Employer ${i + 1}`}
+                disabled={disabled}
+                onChange={(ev) => onField(i, 'employer_name', ev.target.value)}
+              />
+            </label>
+            <label className="rc-secfield">
+              <span className="rc-secfield__lb"><span>Start</span></span>
+              <input
+                className="rc-secinput"
+                value={e.start_date ?? ''}
+                aria-label={`Start date ${i + 1}`}
+                placeholder="e.g. 2022"
+                disabled={disabled}
+                onChange={(ev) => onField(i, 'start_date', ev.target.value)}
+              />
+            </label>
+            <label className="rc-secfield">
+              <span className="rc-secfield__lb"><span>End</span></span>
+              <input
+                className="rc-secinput"
+                value={e.end_date ?? ''}
+                aria-label={`End date ${i + 1}`}
+                placeholder="e.g. present"
+                disabled={disabled}
+                onChange={(ev) => onField(i, 'end_date', ev.target.value)}
+              />
+            </label>
+          </div>
+          <label className="rc-secfield rc-secfield--full">
+            <span className="rc-secfield__lb"><span>Description</span></span>
+            <textarea
+              className="rc-secinput rc-secinput--area"
+              value={e.description ?? ''}
+              aria-label={`Description ${i + 1}`}
+              rows={2}
+              disabled={disabled}
+              onChange={(ev) => onField(i, 'description', ev.target.value)}
+            />
+          </label>
+          <div className="rc-wh__rowfoot">
             <button
               type="button"
-              aria-label={`Remove ${s}`}
-              className="rc-skill__x"
+              className="rc-wh__remove"
               disabled={disabled}
               onClick={() => onRemove(i)}
             >
-              <Icons.IconX />
+              Remove
             </button>
-          </li>
-        ))}
-      </ul>
-      <div className="rc-skills__add">
-        <input
-          className="rc-secinput"
-          type="text"
-          value={draft}
-          aria-label="Add a skill"
-          placeholder="Add a skill"
-          disabled={disabled}
-          onChange={(ev) => setDraft(ev.target.value)}
-          onKeyDown={(ev) => {
-            if (ev.key === 'Enter') {
-              ev.preventDefault();
-              commit();
-            }
-          }}
-        />
-        <button
-          type="button"
-          className="rc-skills__addbtn"
-          disabled={disabled || draft.trim() === ''}
-          onClick={commit}
-        >
-          <Icons.IconPlus />
-          Add
+          </div>
+        </div>
+      ))}
+      <div className="rc-wh__addrow">
+        <button type="button" className="rc-btn" disabled={disabled} onClick={onAdd}>
+          + Add role
         </button>
       </div>
+      <p className="rc-secnote">
+        From résumé — review and correct. Saved as declared work history (not
+        verified) when you create.
+      </p>
     </div>
   );
 }
+

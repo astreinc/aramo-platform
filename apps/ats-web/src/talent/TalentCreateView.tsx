@@ -1,18 +1,21 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ApiError } from '@aramo/fe-foundation';
 
+import { useMe } from '../shell/me-api';
 import { Icons, InlineAlert, PageHeader } from '../ui';
 
 import { ResumeDropzone } from './ResumeDropzone';
 import { ParseProgress } from './ParseProgress';
 import { IntakeForm } from './IntakeForm';
 import {
+  checkTalentDuplicate,
   createAttachment,
   createTalent,
   parseDraftFromResume,
   putResumeToStorage,
   requestResumeUploadUrl,
+  type TalentDuplicateMatch,
 } from './talent-api';
 import {
   attachErrorMessage,
@@ -27,7 +30,7 @@ import {
   type IntakeState,
 } from './intake-fields';
 import type { Provenance, ProvenanceMap } from './provenance';
-import type { TalentRecordView } from './types';
+import type { TalentRecordView, WorkHistoryDraft } from './types';
 
 // R5 (rebuild) — the Add-Talent surface, rebuilt to enterprise-mockup parity.
 //
@@ -59,14 +62,28 @@ interface ResumeState {
 
 export function TalentCreateView() {
   const navigate = useNavigate();
+  const me = useMe();
+  // Header provenance preview — "source is recorded automatically" is literal:
+  // this previews the manual-add provenance that will be stamped (the current
+  // recruiter + today), mirroring the prototype's example parenthetical.
+  const authorName = me?.user.display_name ?? me?.user.email ?? 'you';
+  const addedToday = new Date().toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+  const headerDescription = `Resume-first creation · source is recorded automatically ("Added manually by ${authorName} · ${addedToday}")`;
   const [phase, setPhase] = useState<Phase>('intake');
   const [resume, setResume] = useState<ResumeState>({ status: 'ready' });
 
   const [fields, setFields] = useState<IntakeState>(emptyIntakeState);
   const [provenance, setProvenance] = useState<ProvenanceMap>({});
-  const [skills, setSkills] = useState<string[]>([]);
-  const [skillsFromResume, setSkillsFromResume] = useState(false);
-
+  // Governed-LLM extraction warning (non-blocking) — set when the tenant is on
+  // governed_llm and the LLM could not run/produce (§15).
+  const [parseWarning, setParseWarning] = useState<string | null>(null);
+  // Reviewable work-history (governed_llm) — extracted 'from résumé', recruiter-
+  // editable, persisted at create as TalentWorkHistoryEntry (source='resume').
+  const [workHistory, setWorkHistory] = useState<WorkHistoryDraft[]>([]);
 
   const [startedAt, setStartedAt] = useState<number | null>(null);
   const [elapsedMs, setElapsedMs] = useState(0);
@@ -74,15 +91,45 @@ export function TalentCreateView() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [attachWarning, setAttachWarning] = useState<string | null>(null);
-  // Delta-2 — the duplicate-match card. Populated REACTIVELY from the real
-  // 409 TALENT_RECORD_DUPLICATE (admission-invariant dedup: an active talent in
-  // the tenant already has this primary email). existing_id links to it.
-  const [duplicate, setDuplicate] = useState<{ existing_id?: string } | null>(null);
+  // Delta-2 — the "Possible existing Talent" card. Populated PROACTIVELY: the
+  // effect below checks the entered/parsed primary email against the tenant's
+  // live records (email1 is the authoritative dedup anchor) BEFORE Create is
+  // pressed, and Create is blocked while a match stands. The create-time 409
+  // TALENT_RECORD_DUPLICATE remains the hard backstop for the check→create
+  // race. A TalentRecord can never be duplicated on primary email.
+  const [duplicate, setDuplicate] = useState<TalentDuplicateMatch | null>(null);
   const [created, setCreated] = useState<TalentRecordView | null>(null);
 
   const beginTimer = useCallback(() => {
     setStartedAt((prev) => prev ?? Date.now());
   }, []);
+
+  // Proactive duplicate check — debounced on the primary email. Fires whenever
+  // the email is a valid shape (after parse prefills it AND on manual entry);
+  // clears the card when the email is empty/invalid or no longer collides.
+  const email1 = fields.email1.trim();
+  useEffect(() => {
+    if (!/\S+@\S+\.\S+/.test(email1)) {
+      setDuplicate(null);
+      return;
+    }
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      checkTalentDuplicate(email1)
+        .then((res) => {
+          if (!cancelled) setDuplicate(res.match);
+        })
+        .catch(() => {
+          // Network/permission failure — never block create on a check error;
+          // the create-time 409 is the authoritative backstop.
+          if (!cancelled) setDuplicate(null);
+        });
+    }, 400);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [email1]);
 
   // ── Field editing ──────────────────────────────────────────────────────
   function onField(key: keyof IntakeState, value: string): void {
@@ -99,17 +146,24 @@ export function TalentCreateView() {
   function onToggle(key: 'can_relocate' | 'is_hot'): void {
     setFields((s) => ({ ...s, [key]: !s[key] }));
   }
-  function onAddSkill(skill: string): void {
-    setSkills((prev) => (prev.includes(skill) ? prev : [...prev, skill]));
+  // Work-history review-card editing (recruiter corrects the extracted rows).
+  function onWorkHistoryField(index: number, key: keyof WorkHistoryDraft, value: string): void {
+    setWorkHistory((prev) =>
+      prev.map((e, i) => (i === index ? { ...e, [key]: value } : e)),
+    );
   }
-  function onRemoveSkill(index: number): void {
-    setSkills((prev) => prev.filter((_, i) => i !== index));
+  function onAddWorkHistory(): void {
+    setWorkHistory((prev) => [...prev, { employer_name: '', role_title: '' }]);
+  }
+  function onRemoveWorkHistory(index: number): void {
+    setWorkHistory((prev) => prev.filter((_, i) => i !== index));
   }
 
   // ── Resume flow (the real 3-step) ───────────────────────────────────────
   async function handleFile(file: File): Promise<void> {
     beginTimer();
     setPhase('parsing');
+    setParseWarning(null);
     setResume({ status: 'uploading', file });
     const contentType = file.type === '' ? 'application/octet-stream' : file.type;
 
@@ -144,11 +198,14 @@ export function TalentCreateView() {
     setResume({ status: 'parsing', file, storage_key });
     try {
       const result = await parseDraftFromResume({ storage_key });
-      const applied = applyPrefill(emptyIntakeState(), result.prefill);
+      const applied = applyPrefill(emptyIntakeState(), result.prefill, result.mode);
       setFields(applied.state);
       setProvenance(applied.provenance);
-      setSkills(applied.skills);
-      setSkillsFromResume(applied.skillsFromResume);
+      setWorkHistory(result.work_history ? [...result.work_history] : []);
+      // Governed-mode warning (LLM unavailable / unreadable / zero fields) is
+      // NON-BLOCKING (§15): the form opens for review + manual entry; the
+      // recruiter can go Back and re-upload to retry. No silent mode fallback.
+      setParseWarning(result.warning ?? null);
       setResume({ status: 'ready', file, storage_key });
     } catch (err) {
       // Parse network failure (the BE never throws on parse FAILURE — a
@@ -164,8 +221,8 @@ export function TalentCreateView() {
     setResume({ status: 'ready' });
     setFields(emptyIntakeState());
     setProvenance({});
-    setSkills([]);
-    setSkillsFromResume(false);
+    setParseWarning(null);
+    setWorkHistory([]);
     setStartedAt(null);
     setElapsedMs(0);
     setSubmitting(false);
@@ -196,6 +253,7 @@ export function TalentCreateView() {
     workAuthOk &&
     rateOk &&
     resumeOk &&
+    duplicate === null &&
     !submitting;
 
   async function onCreate(): Promise<void> {
@@ -203,19 +261,35 @@ export function TalentCreateView() {
     setSubmitting(true);
     setSubmitError(null);
     setAttachWarning(null);
-    setDuplicate(null);
 
     let record: TalentRecordView;
     try {
-      record = await createTalent(buildCreateBody(fields, skills));
+      record = await createTalent(buildCreateBody(fields, workHistory));
     } catch (err) {
-      // A duplicate primary email is refused server-side (admission invariant).
-      // Surface the duplicate-match card rather than a generic error so the
-      // recruiter can review the existing talent or use a different email —
-      // never a silent merge.
+      // Backstop: the proactive check should already show the card + block
+      // Create, but a record can appear between check and create. On the 409
+      // re-fetch the existing record's display fields (accurate WHO) so the
+      // card surfaces rather than a generic error — never a silent merge.
       if (err instanceof ApiError && err.code === 'TALENT_RECORD_DUPLICATE') {
         const existing = err.details?.['existing_id'];
-        setDuplicate({ existing_id: typeof existing === 'string' ? existing : undefined });
+        const existingId = typeof existing === 'string' ? existing : undefined;
+        const fallback: TalentDuplicateMatch | null =
+          existingId === undefined
+            ? null
+            : {
+                id: existingId,
+                first_name: fields.first_name,
+                last_name: fields.last_name,
+                title: fields.title === '' ? null : fields.title,
+                city: fields.city === '' ? null : fields.city,
+                state: fields.state === '' ? null : fields.state,
+              };
+        try {
+          const res = await checkTalentDuplicate(email1);
+          setDuplicate(res.match ?? fallback);
+        } catch {
+          setDuplicate(fallback);
+        }
       } else {
         setSubmitError(createErrorMessage(err));
       }
@@ -262,15 +336,35 @@ export function TalentCreateView() {
 
   return (
     <section className="rc-addtalent">
-      <PageHeader
-        title="New talent"
-        description="Add a person to your shared tenant talent pool — start with a resume, then review and complete every field."
-      />
+      <PageHeader title="Add talent" description={headerDescription} />
 
       {phase === 'intake' ? (
         <div className="rc-stepwrap">
-          <div className="rc-stepeyebrow">Step 1 of 2 · Source</div>
+          <div className="rc-stepintro">
+            <div className="rc-stepeyebrow">Step 1 of 2 · Source</div>
+            <h2 className="rc-steptitle">Start with the resume</h2>
+            <p className="rc-stepdesc">
+              Aramo parses it, runs the identity check, and proposes values for
+              your review — nothing is created until you confirm.
+            </p>
+          </div>
           <ResumeDropzone onFile={handleFile} />
+          <p className="rc-stepreq">
+            A resume is required to create a Talent record.
+          </p>
+          <div className="rc-stepcancel">
+            <button
+              type="button"
+              className="rc-btn"
+              onClick={() => navigate('/talent')}
+            >
+              Cancel
+            </button>
+            <p className="rc-stepcancel__note">
+              Contact permissions are governed separately from profile creation ·
+              provenance is recorded automatically.
+            </p>
+          </div>
         </div>
       ) : null}
 
@@ -295,14 +389,18 @@ export function TalentCreateView() {
               </button>
               <span className="rc-stepeyebrow">Step 2 of 2 · Review &amp; create</span>
             </div>
-            <ParseBanner resume={resume} skillsFromResume={skillsFromResume} />
+            <ParseBanner resume={resume} />
+            {parseWarning !== null ? (
+              <div className="rc-warnnote" role="status">
+                {parseWarning}
+              </div>
+            ) : null}
             {duplicate !== null ? (
               <DupMatchCard
-                name={`${fields.first_name} ${fields.last_name}`.trim()}
-                email={fields.email1}
-                existingId={duplicate.existing_id}
+                match={duplicate}
+                email={email1}
                 onReview={(id) => navigate(`/talent/${id}`)}
-                onDifferent={() => setDuplicate(null)}
+                onDifferent={() => onField('email1', '')}
               />
             ) : null}
             {submitError !== null ? (
@@ -311,13 +409,13 @@ export function TalentCreateView() {
             <IntakeForm
               values={fields}
               provenance={provenance}
-              skills={skills}
-              skillsFromResume={skillsFromResume}
+              workHistory={workHistory}
               disabled={submitting}
               onField={onField}
               onToggle={onToggle}
-              onAddSkill={onAddSkill}
-              onRemoveSkill={onRemoveSkill}
+              onWorkHistoryField={onWorkHistoryField}
+              onAddWorkHistory={onAddWorkHistory}
+              onRemoveWorkHistory={onRemoveWorkHistory}
             />
           </div>
 
@@ -328,18 +426,7 @@ export function TalentCreateView() {
               <ResumeCard fileName={resume.file.name} sizeBytes={resume.file.size} />
             ) : null}
 
-            <section className="rc-sidecard" aria-label="Contact permissions">
-              <h3 className="rc-sidecard__h">
-                <Icons.IconShield />
-                Contact permissions
-              </h3>
-              <p className="rc-consent__note">
-                Contact permissions are governed separately from profile
-                creation. Provenance is recorded automatically.
-              </p>
-            </section>
-
-            <SaveBar
+            <RequirementList
               gates={[
                 { ok: nameOk, label: 'First and last name' },
                 { ok: emailOk, label: 'Email address' },
@@ -349,12 +436,39 @@ export function TalentCreateView() {
                 { ok: rateOk, label: 'Desired rate' },
                 { ok: resumeOk, label: 'Resume attached' },
               ]}
-              canCreate={canCreate}
-              submitting={submitting}
-              onCreate={onCreate}
-              onCancel={() => navigate('/talent')}
             />
           </aside>
+        </div>
+      ) : null}
+
+      {/* Step-2 footer — the create/cancel action bar. Step 1 carries its own
+          centered Cancel + note under the dropzone (no action bar there, since
+          nothing can be created until the form is reached). */}
+      {phase === 'form' ? (
+        <div className="rc-addfoot">
+          <div className="rc-addfoot__actions">
+            <button
+              type="button"
+              className="rc-btn rc-btn--primary"
+              disabled={!canCreate || submitting}
+              onClick={onCreate}
+            >
+              <Icons.IconCheck />
+              {submitting ? 'Creating…' : 'Create talent'}
+            </button>
+            <button
+              type="button"
+              className="rc-btn"
+              disabled={submitting}
+              onClick={() => navigate('/talent')}
+            >
+              Cancel
+            </button>
+          </div>
+          <p className="rc-addfoot__note">
+            Contact permissions are governed separately from profile creation ·
+            provenance is recorded automatically.
+          </p>
         </div>
       ) : null}
     </section>
@@ -362,13 +476,7 @@ export function TalentCreateView() {
 }
 
 // ── Parse banner ───────────────────────────────────────────────────────────
-function ParseBanner({
-  resume,
-  skillsFromResume,
-}: {
-  readonly resume: ResumeState;
-  readonly skillsFromResume: boolean;
-}) {
+function ParseBanner({ resume }: { readonly resume: ResumeState }) {
   if (resume.status === 'error') {
     return (
       <InlineAlert variant="error">
@@ -382,8 +490,7 @@ function ParseBanner({
       <div className="rc-parsedpill">
         <Icons.IconCheck />
         <span>
-          Parsed from {resume.file.name} — review the proposed values below
-          {skillsFromResume ? ' (skills included)' : ''}.
+          Parsed from {resume.file.name} — review the proposed values below.
         </span>
       </div>
     );
@@ -399,18 +506,17 @@ function ParseBanner({
 // person" does not apply to an EXACT-email match — the server enforces primary
 // email uniqueness — so the second action changes the email instead.)
 function DupMatchCard({
-  name,
+  match,
   email,
-  existingId,
   onReview,
   onDifferent,
 }: {
-  readonly name: string;
+  readonly match: TalentDuplicateMatch;
   readonly email: string;
-  readonly existingId?: string;
   readonly onReview: (id: string) => void;
   readonly onDifferent: () => void;
 }) {
+  const name = `${match.first_name} ${match.last_name}`.trim();
   const initials =
     name
       .split(/\s+/)
@@ -419,6 +525,9 @@ function DupMatchCard({
       .join('')
       .slice(0, 2)
       .toUpperCase() || '—';
+  // The existing record's context line: title · city, state (whatever is set).
+  const location = [match.city, match.state].filter((v) => v && v.trim() !== '').join(', ');
+  const context = [match.title ?? '', location].filter((v) => v.trim() !== '').join(' · ');
   return (
     <div className="rc-dupcard" role="alert">
       <div className="rc-dupcard__hd">
@@ -432,27 +541,27 @@ function DupMatchCard({
         <span className="rc-dupcard__av">{initials}</span>
         <span className="rc-dupcard__who">
           <span className="rc-dupcard__nm">{name === '' ? 'This person' : name}</span>
+          {context !== '' ? <span className="rc-dupcard__ctx">{context}</span> : null}
           <span className="rc-dupcard__sig">
             Matched signal: Email{email !== '' ? ` · ${email}` : ''}
           </span>
         </span>
         <span className="rc-dupcard__acts">
-          {existingId !== undefined ? (
-            <button
-              type="button"
-              className="rc-dupcard__review"
-              onClick={() => onReview(existingId)}
-            >
-              Review existing Talent
-            </button>
-          ) : null}
+          <button
+            type="button"
+            className="rc-dupcard__review"
+            onClick={() => onReview(match.id)}
+          >
+            Review existing Talent
+          </button>
           <button type="button" className="rc-dupcard__diff" onClick={onDifferent}>
             Use a different email
           </button>
         </span>
       </div>
       <div className="rc-dupcard__foot">
-        No silent merge — identity resolution is a human decision.
+        No silent merge — identity resolution is a human decision. This primary
+        email already exists in your tenant, so Create is blocked.
       </div>
     </div>
   );
@@ -494,44 +603,23 @@ function ResumeCard({
   );
 }
 
-// ── Save-gate bar ────────────────────────────────────────────────────────────
-function SaveBar({
+// ── Requirement checklist ────────────────────────────────────────────────────
+// The rail-side "what's still needed to create" list. The Create / Cancel
+// actions live in the persistent footer (rc-addfoot), so this component is a
+// read-only checklist mirroring the footer's disabled state.
+function RequirementList({
   gates,
-  canCreate,
-  submitting,
-  onCreate,
-  onCancel,
 }: {
   readonly gates: ReadonlyArray<{ ok: boolean; label: string }>;
-  readonly canCreate: boolean;
-  readonly submitting: boolean;
-  readonly onCreate: () => void;
-  readonly onCancel: () => void;
 }) {
   return (
-    <section className="rc-savebar">
+    <section className="rc-savebar" aria-label="Required to create">
+      <h3 className="rc-savebar__h">Required to create</h3>
       <ul className="rc-savebar__gates">
         {gates.map((g) => (
           <GateRow key={g.label} ok={g.ok} label={g.label} />
         ))}
       </ul>
-      <button
-        type="button"
-        className="rc-btn rc-btn--primary"
-        disabled={!canCreate}
-        onClick={onCreate}
-      >
-        <Icons.IconCheck />
-        {submitting ? 'Creating…' : 'Create talent'}
-      </button>
-      <button
-        type="button"
-        className="rc-btn rc-btn--ghost"
-        disabled={submitting}
-        onClick={onCancel}
-      >
-        Cancel
-      </button>
     </section>
   );
 }

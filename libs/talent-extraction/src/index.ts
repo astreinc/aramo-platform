@@ -28,4 +28,9 @@ export type {
   ExtractedSkill,
   ExtractedWorkHistory,
   ExtractionCompletion,
+  // Add-Talent governed-LLM DRAFT extraction (pre-create intake proposal).
+  ResumeDraftInput,
+  ResumeDraftProposal,
+  ResumeDraftWorkHistory,
+  TalentWorkHistoryView,
 } from './lib/dto/extraction.dto.js';

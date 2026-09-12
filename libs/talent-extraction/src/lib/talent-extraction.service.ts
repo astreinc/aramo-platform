@@ -12,6 +12,14 @@ import type {
   ExtractedSkill,
   ExtractedWorkHistory,
   ExtractionCompletion,
+  ResumeDraftCompletion,
+  ResumeDraftIdentity,
+  ResumeDraftInput,
+  ResumeDraftLocation,
+  ResumeDraftProfessional,
+  ResumeDraftProposal,
+  ResumeDraftWorkHistory,
+  TalentWorkHistoryView,
 } from './dto/extraction.dto.js';
 import { deriveSkillId } from './skill-id.js';
 import {
@@ -43,6 +51,24 @@ const SYSTEM_MESSAGE =
   'stated. For every item, include a "source_excerpt" copied VERBATIM from the ' +
   'provided text that contains the claim. Respond with STRICT JSON only, no prose, ' +
   'no code fences.';
+
+// ── Résumé-draft (pre-create) extraction — Add-Talent governed-LLM proposal ──
+// Prompt VERSION identifier (the substrate has none natively — Q13; introduce
+// the smallest appropriate constant in the consumer). Bump on any change to
+// DRAFT_SYSTEM_MESSAGE / buildDraftPrompt.
+const RESUME_DRAFT_PROMPT_VERSION = 'resume-draft/v1';
+const RESUME_DRAFT_MAX_TOKENS = 2048;
+
+const DRAFT_SYSTEM_MESSAGE =
+  'You are a résumé-structuring assistant for a talent-intake form. Extract ONLY ' +
+  'facts EXPLICITLY present in the provided résumé text: the identity, location, ' +
+  'current employer/title, and skills of the person the résumé is about. Do NOT ' +
+  'infer, enrich, normalize, or add anything not literally stated. Distinguish ' +
+  'the résumé owner from any other people named (references, hiring managers, ' +
+  'client contacts), and their location from employer/client/school locations. ' +
+  'For every group, include a "source_excerpt" copied VERBATIM from the text. ' +
+  'Omit any field not clearly present rather than guessing. Do NOT output email ' +
+  'or phone. Respond with STRICT JSON only, no prose, no code fences.';
 
 @Injectable()
 export class TalentExtractionService {
@@ -406,6 +432,231 @@ export class TalentExtractionService {
   async listTenantIdsWithEvidence(): Promise<string[]> {
     return this.evidence.listTenantIdsWithEvidence();
   }
+
+  // Add-Talent governed-LLM DRAFT extraction (pre-create). Structures a résumé
+  // into a reviewable intake proposal — identity (name), location, current
+  // employer/title, and clean skills — via the SAME governed @aramo/ai-draft
+  // surface. It PERSISTS NOTHING, writes no evidence/trust, and needs no
+  // talent_id: the model+validate stage is TalentRecord-independent. Every
+  // returned value is constrained-to-source (verbatim excerpt in the résumé);
+  // ungrounded items are dropped + counted. Email/phone are never requested
+  // (redacted by AiDraftService before the model — the deterministic parser
+  // supplies contact anchors). The recruiter reviews/edits every value before
+  // create (LOCKED §7/§22). NOTE: extractDeclaredEvidence (the persisted Core
+  // evidence path) is intentionally NOT touched by this method.
+  async extractResumeDraft(input: ResumeDraftInput): Promise<ResumeDraftProposal> {
+    const sourceText = buildDraftSourceText(input);
+    // Nothing to structure → no-op, no LLM call.
+    if (sourceText.trim() === '') {
+      return { skills: [], work_history: [], rejected_count: 0 };
+    }
+
+    const draft = await this.aiDraft.generateDraft({
+      tenant_id: input.tenant_id,
+      prompt: buildDraftPrompt(sourceText),
+      max_tokens: RESUME_DRAFT_MAX_TOKENS,
+      system_message: DRAFT_SYSTEM_MESSAGE,
+    });
+
+    const parsed = parseDraftCompletion(draft.completion);
+    const corpus = normalizeForMatch(sourceText);
+    const proposal: ResumeDraftProposal = { skills: [], work_history: [], rejected_count: 0 };
+    let rejected = 0;
+
+    // Identity — grounded; NEVER fabricate a missing component (§9). Each name
+    // part must itself appear in the source (guards against a hallucinated name
+    // riding a real excerpt).
+    if (parsed.identity !== undefined) {
+      if (isExcerptInSource(parsed.identity.source_excerpt, corpus)) {
+        const fn = (parsed.identity.first_name ?? '').trim();
+        const ln = (parsed.identity.last_name ?? '').trim();
+        if (fn !== '' && corpus.includes(normalizeForMatch(fn))) proposal.first_name = fn;
+        if (ln !== '' && corpus.includes(normalizeForMatch(ln))) proposal.last_name = ln;
+      } else {
+        rejected += 1;
+      }
+    }
+
+    // Location — grounded; distinguished from employer/school/reference (§11).
+    if (parsed.location !== undefined) {
+      if (isExcerptInSource(parsed.location.source_excerpt, corpus)) {
+        const loc = parsed.location;
+        const address = (loc.address ?? '').trim();
+        const city = (loc.city ?? '').trim();
+        const state = (loc.state ?? '').trim();
+        const zip = (loc.zip ?? '').trim();
+        const country = (loc.country ?? '').trim();
+        if (address !== '' && corpus.includes(normalizeForMatch(address))) proposal.address = address;
+        if (city !== '' && corpus.includes(normalizeForMatch(city))) proposal.city = city;
+        if (state !== '' && corpus.includes(normalizeForMatch(state))) proposal.state = state;
+        if (zip !== '' && corpus.includes(normalizeForMatch(zip))) proposal.zip = zip;
+        if (country !== '' && corpus.includes(normalizeForMatch(country))) proposal.country = country;
+      } else {
+        rejected += 1;
+      }
+    }
+
+    // Professional — current employer + most-recent title, grounded.
+    if (parsed.professional !== undefined) {
+      if (isExcerptInSource(parsed.professional.source_excerpt, corpus)) {
+        const emp = (parsed.professional.current_employer ?? '').trim();
+        const ttl = (parsed.professional.title ?? '').trim();
+        if (emp !== '' && corpus.includes(normalizeForMatch(emp))) proposal.current_employer = emp;
+        if (ttl !== '' && corpus.includes(normalizeForMatch(ttl))) proposal.title = ttl;
+      } else {
+        rejected += 1;
+      }
+    }
+
+    // Skills — grounded, atomic, de-duplicated (§12). No inferred/related tech.
+    // STRONGER than the evidence path's isSourced: the skill's surface_form must
+    // ITSELF appear in the résumé (not merely a real excerpt) — this is what
+    // rejects a hallucinated skill (§8/§12: "a skill absent from the résumé is
+    // rejected"), since a fabricated skill can still cite a real excerpt.
+    const seen = new Set<string>();
+    const skills: string[] = [];
+    for (const skill of parsed.skills) {
+      const sf = skill.surface_form.trim();
+      if (
+        sf === '' ||
+        !isExcerptInSource(skill.source_excerpt, corpus) ||
+        !corpus.includes(normalizeForMatch(sf))
+      ) {
+        rejected += 1;
+        continue;
+      }
+      const key = sf.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      skills.push(sf);
+    }
+    proposal.skills = skills;
+
+    // Work history — grounded (employer + role non-empty, verbatim excerpt in
+    // source). Declared (source='resume'), NOT verified; the recruiter reviews
+    // + edits before create. Dates/description only when the model returned a
+    // string (never fabricated).
+    const workHistory: ResumeDraftWorkHistory[] = [];
+    for (const wh of parsed.work_history) {
+      const employer = wh.employer_name.trim();
+      const role = wh.role_title.trim();
+      if (employer === '' || role === '' || !isExcerptInSource(wh.source_excerpt, corpus)) {
+        rejected += 1;
+        continue;
+      }
+      workHistory.push({
+        employer_name: employer,
+        role_title: role,
+        ...(typeof wh.start_date === 'string' && wh.start_date.trim() !== ''
+          ? { start_date: wh.start_date.trim() }
+          : {}),
+        ...(typeof wh.end_date === 'string' && wh.end_date.trim() !== ''
+          ? { end_date: wh.end_date.trim() }
+          : {}),
+        ...(typeof wh.employment_type === 'string' && wh.employment_type.trim() !== ''
+          ? { employment_type: wh.employment_type.trim() }
+          : {}),
+        ...(typeof wh.description === 'string' && wh.description.trim() !== ''
+          ? { description: wh.description.trim() }
+          : {}),
+      });
+    }
+    proposal.work_history = workHistory;
+    proposal.rejected_count = rejected;
+
+    // PII-floor log (§17): counts + operational metadata only — never content.
+    this.logger.log({
+      event: 'resume_draft.extracted',
+      tenant_id: input.tenant_id,
+      prompt_version: RESUME_DRAFT_PROMPT_VERSION,
+      model_used: draft.model_used,
+      skills_count: skills.length,
+      work_history_count: workHistory.length,
+      has_identity: proposal.first_name !== undefined || proposal.last_name !== undefined,
+      has_location: proposal.city !== undefined || proposal.state !== undefined,
+      rejected_count: rejected,
+    });
+
+    return proposal;
+  }
+
+  // Persist recruiter-REVIEWED work-history at Add-Talent create time (LOCKED
+  // scope expansion). Writes each entry as a declared TalentWorkHistoryEntry
+  // (source='resume') keyed to the freshly-created talent. These are DECLARED,
+  // NOT verified (ADR-0015 v1.3 §4.3) — no trust/verification state is set.
+  // Reuses this service's TalentEvidenceRepository (no new cross-lib edge from
+  // talent-record). Rows missing the required employer/role are skipped. Free-
+  // text dates persist only when they parse to a real calendar date ('present'
+  // → no end_date = ongoing). Returns the created ids.
+  async persistDeclaredWorkHistory(input: {
+    talent_id: string;
+    tenant_id: string;
+    entries: readonly ResumeDraftWorkHistory[];
+  }): Promise<string[]> {
+    const ids: string[] = [];
+    const createdAt = new Date();
+    for (const e of input.entries) {
+      const employer = e.employer_name.trim();
+      const role = e.role_title.trim();
+      if (employer === '' || role === '') continue;
+      const start = parseWorkHistoryDate(e.start_date);
+      const end = parseWorkHistoryDate(e.end_date);
+      const id = uuidv7();
+      await this.evidence.createTalentWorkHistoryEntry({
+        id,
+        talent_id: input.talent_id,
+        tenant_id: input.tenant_id,
+        employer_name: employer,
+        role_title: role,
+        source: 'resume',
+        ...(start !== null ? { start_date: start } : {}),
+        ...(end !== null ? { end_date: end } : {}),
+        ...(typeof e.employment_type === 'string' && e.employment_type.trim() !== ''
+          ? { employment_type: e.employment_type.trim() }
+          : {}),
+        ...(typeof e.description === 'string' && e.description.trim() !== ''
+          ? { description_text: e.description.trim() }
+          : {}),
+        created_at: createdAt,
+      });
+      ids.push(id);
+    }
+    return ids;
+  }
+
+  // Talent-detail read: the persisted work-history for a talent (LOCKED scope
+  // expansion — "display what we created"). Declared rows; `verified:false`
+  // (these are 'from résumé', not independently verified — ADR-0015 v1.3 §4.3).
+  async listDeclaredWorkHistory(input: {
+    talent_id: string;
+    tenant_id: string;
+  }): Promise<TalentWorkHistoryView[]> {
+    const rows = await this.evidence.findWorkHistoryByTalent({
+      tenant_id: input.tenant_id,
+      talent_id: input.talent_id,
+    });
+    return rows.map((r) => ({
+      id: r.id,
+      employer_name: r.employer_name,
+      role_title: r.role_title,
+      start_date: r.start_date !== null ? r.start_date.toISOString().slice(0, 10) : null,
+      end_date: r.end_date !== null ? r.end_date.toISOString().slice(0, 10) : null,
+      employment_type: r.employment_type,
+      description: r.description_text,
+      source: r.source,
+      // DECLARED, not verified — the recruiter reviewed it, but no independent
+      // verification ran. The green VERIFIED badge is a later, separate signal.
+      verified: false,
+    }));
+  }
+}
+
+// A free-text résumé date ('2022', 'Dec 2021', 'present') → a calendar Date, or
+// null when it does not parse (e.g. 'present' → ongoing, no end_date).
+function parseWorkHistoryDate(value: string | undefined): Date | null {
+  if (typeof value !== 'string' || value.trim() === '') return null;
+  const d = new Date(value.trim());
+  return Number.isNaN(d.getTime()) ? null : d;
 }
 
 // ── deterministic helpers (the tested core) ──────────────────────────────────
@@ -520,4 +771,104 @@ function isExcerptInSource(excerpt: string, corpus: string): boolean {
 function isSourced(surfaceForm: string, excerpt: string, corpus: string): boolean {
   if (surfaceForm.trim() === '') return false;
   return isExcerptInSource(excerpt, corpus);
+}
+
+// ── résumé-draft helpers (pre-create proposal) ───────────────────────────────
+
+function buildDraftSourceText(input: ResumeDraftInput): string {
+  return [input.resume_text ?? '', input.key_skills ?? '']
+    .filter((s) => s.trim() !== '')
+    .join('\n');
+}
+
+function buildDraftPrompt(sourceText: string): string {
+  return (
+    'Extract the following from the résumé text below, as STRICT JSON of shape ' +
+    '{"identity":{"first_name"?:string,"last_name"?:string,"source_excerpt":string},' +
+    '"location":{"address"?:string,"city"?:string,"state"?:string,"zip"?:string,' +
+    '"country"?:string,"source_excerpt":string},' +
+    '"professional":{"current_employer"?:string,"title"?:string,"source_excerpt":string},' +
+    '"skills":[{"surface_form":string,"source_excerpt":string}],' +
+    '"work_history":[{"employer_name":string,"role_title":string,"source_excerpt":string,' +
+    '"start_date"?:string,"end_date"?:string,"employment_type"?:string,"description"?:string}]}. ' +
+    'Rules: (1) identity, location and professional describe ONLY the person the ' +
+    'résumé is about — never references, hiring managers or client contacts, and ' +
+    'never employer/client/school locations. (2) Skills: list each skill or ' +
+    'technology EXACTLY as written, atomic and de-duplicated; do NOT add related ' +
+    'or implied technologies. (3) work_history: one entry per role the résumé ' +
+    'states, with the employer and role title EXACTLY as written; include ' +
+    'start_date/end_date/description ONLY when explicitly present. (4) Do NOT ' +
+    'infer citizenship, work authorization, visa, compensation, availability, ' +
+    'relocation, or years of experience. (5) Omit any field not clearly present ' +
+    'rather than guessing. (6) Every source_excerpt MUST be copied verbatim ' +
+    'from the text below.\n\n---\n' +
+    sourceText +
+    '\n---'
+  );
+}
+
+// Strip optional ```json fences and parse; a malformed completion yields an
+// empty proposal (deterministic — never throws on bad model output).
+export function parseDraftCompletion(completion: string): ResumeDraftCompletion {
+  const empty: ResumeDraftCompletion = { skills: [], work_history: [] };
+  const stripped = completion
+    .replace(/^\s*```(?:json)?/i, '')
+    .replace(/```\s*$/i, '')
+    .trim();
+  let raw: unknown;
+  try {
+    raw = JSON.parse(stripped);
+  } catch {
+    return empty;
+  }
+  if (typeof raw !== 'object' || raw === null) return empty;
+  const obj = raw as Record<string, unknown>;
+  const out: ResumeDraftCompletion = { skills: [], work_history: [] };
+  if (isResumeDraftIdentityShape(obj['identity'])) out.identity = obj['identity'];
+  if (isResumeDraftLocationShape(obj['location'])) out.location = obj['location'];
+  if (isResumeDraftProfessionalShape(obj['professional'])) out.professional = obj['professional'];
+  out.skills = Array.isArray(obj['skills'])
+    ? (obj['skills'] as unknown[]).filter(isSkillShape)
+    : [];
+  out.work_history = Array.isArray(obj['work_history'])
+    ? (obj['work_history'] as unknown[]).filter(isWorkHistoryShape)
+    : [];
+  return out;
+}
+
+function isOptionalString(v: unknown): boolean {
+  return v === undefined || typeof v === 'string';
+}
+
+function isResumeDraftIdentityShape(v: unknown): v is ResumeDraftIdentity {
+  if (typeof v !== 'object' || v === null) return false;
+  const o = v as Record<string, unknown>;
+  return (
+    typeof o['source_excerpt'] === 'string' &&
+    isOptionalString(o['first_name']) &&
+    isOptionalString(o['last_name'])
+  );
+}
+
+function isResumeDraftLocationShape(v: unknown): v is ResumeDraftLocation {
+  if (typeof v !== 'object' || v === null) return false;
+  const o = v as Record<string, unknown>;
+  return (
+    typeof o['source_excerpt'] === 'string' &&
+    isOptionalString(o['address']) &&
+    isOptionalString(o['city']) &&
+    isOptionalString(o['state']) &&
+    isOptionalString(o['zip']) &&
+    isOptionalString(o['country'])
+  );
+}
+
+function isResumeDraftProfessionalShape(v: unknown): v is ResumeDraftProfessional {
+  if (typeof v !== 'object' || v === null) return false;
+  const o = v as Record<string, unknown>;
+  return (
+    typeof o['source_excerpt'] === 'string' &&
+    isOptionalString(o['current_employer']) &&
+    isOptionalString(o['title'])
+  );
 }

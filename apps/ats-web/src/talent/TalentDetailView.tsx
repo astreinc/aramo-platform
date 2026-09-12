@@ -40,6 +40,7 @@ import type { TalentConsentStateResponse } from '../consent/types';
 import { getDossier, type DossierHead } from './dossier-api';
 import { TrustPanel } from './components/TrustPanel';
 import { RecordReferenceForm } from './RecordReferenceForm';
+import { WorkHistoryPanel } from './WorkHistoryPanel';
 import { TalentEditDrawer } from './TalentEditDrawer';
 import {
   getAttachmentDownloadUrl,
@@ -388,6 +389,7 @@ export function TalentDetailView({ sessionOverride }: TalentDetailViewProps) {
       label: 'Trust & Evidence',
       content: (
         <>
+          <WorkHistoryPanel talentId={talent.id} />
           <TrustPanel talentId={talent.id} canResolve={scopes.includes('identity:resolve')} />
           {canEdit && <RecordReferenceForm recordId={talent.id} />}
         </>

@@ -7,16 +7,17 @@ import type {
   CreateAttachmentRequest,
   CreateTalentRecordRequest,
   DraftFromResumeRequest,
+  DraftFromResumeResult,
   EmailSlot,
   EmailVerificationRequestResult,
   EmailVerificationStatusResponse,
-  ParseResumeResult,
   PresignedPutResult,
   ResumeUploadUrlRequest,
   TalentRecordListResponse,
   TalentRecordView,
   TalentSearchPage,
   UpdateTalentRecordRequest,
+  WorkHistoryView,
 } from './types';
 
 // The Talent LIST is the POOL-OPEN surface: GET /v1/talent-records is
@@ -64,6 +65,44 @@ export async function searchTalent(
 ): Promise<TalentSearchPage> {
   return apiClient.get<TalentSearchPage>(
     `/v1/talent-records?${params.toString()}`,
+  );
+}
+
+// Proactive duplicate-check — the Add-Talent "Possible existing Talent" card.
+// A TalentRecord can never be duplicated on primary email (the create-time 409
+// is the hard backstop); this lets the recruiter SEE the collision before
+// pressing Create. Keyed on email1 (the authoritative dedup anchor), tenant-
+// wide. Returns { match } where match is the existing record's display fields
+// or null.
+export interface TalentDuplicateMatch {
+  readonly id: string;
+  readonly first_name: string;
+  readonly last_name: string;
+  readonly title: string | null;
+  readonly city: string | null;
+  readonly state: string | null;
+}
+
+export interface TalentDuplicateCheckResponse {
+  readonly match: TalentDuplicateMatch | null;
+}
+
+export async function checkTalentDuplicate(
+  email: string,
+): Promise<TalentDuplicateCheckResponse> {
+  const params = new URLSearchParams({ email });
+  return apiClient.get<TalentDuplicateCheckResponse>(
+    `/v1/talent-records/duplicate-check?${params.toString()}`,
+  );
+}
+
+// Talent-detail work-history (LOCKED scope expansion). Returns the persisted
+// declared work-history rows for a talent.
+export async function getTalentWorkHistory(
+  id: string,
+): Promise<{ work_history: readonly WorkHistoryView[] }> {
+  return apiClient.get<{ work_history: readonly WorkHistoryView[] }>(
+    `/v1/talent-records/${encodeURIComponent(id)}/work-history`,
   );
 }
 
@@ -170,8 +209,8 @@ export async function putResumeToStorage(
 // — a 'failed' status is a normal 200 response with empty prefill.
 export async function parseDraftFromResume(
   body: DraftFromResumeRequest,
-): Promise<ParseResumeResult> {
-  return apiClient.post<ParseResumeResult>(
+): Promise<DraftFromResumeResult> {
+  return apiClient.post<DraftFromResumeResult>(
     '/v1/talent-records/draft-from-resume',
     body,
   );

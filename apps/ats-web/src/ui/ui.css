@@ -2812,13 +2812,17 @@ button.rc-link-action {
 
 /* ── Dropzone ── */
 
-.rc-dropwrap { max-width: 720px; margin: 10px auto; }
+.rc-dropwrap { width: 100%; max-width: 100%; margin: 10px auto; }
 
 .rc-dropzone {
   border: 2px dashed var(--line-2);
   border-radius: var(--r-lg);
   background: linear-gradient(180deg, #fff, var(--surface-2));
-  padding: 46px 32px;
+  padding: 64px 40px;
+  min-height: 300px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
   text-align: center;
   cursor: pointer;
   transition: border-color 0.15s, background 0.15s;
@@ -2959,15 +2963,71 @@ select.rc-input { appearance: none; padding-right: 28px; }
 
 /* ── Step-2 section-card grid (résumé-first Add-Talent, prototype parity) ── */
 
+/* Masonry via CSS multicol — cards stack tightly within each column instead
+   of being locked to grid row-heights (which left a gap under the shorter of
+   two paired cards). Responsive: as many ~360px columns as fit, 1 when narrow. */
 .rc-secgrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 400px), 1fr));
-  gap: 14px;
+  column-width: 360px;
+  column-gap: 14px;
 }
 
 .rc-seccard {
   background: var(--surface); border: 1px solid var(--line);
-  border-radius: 12px; padding: 15px 18px; align-self: start;
+  border-radius: 12px; padding: 15px 18px;
+  break-inside: avoid;
+  margin-bottom: 14px;
+}
+
+/* A card that should span the full width (all columns) — e.g. Skills, whose
+   chips read best edge-to-edge, and the long after-creation cards. A
+   column-spanning element resets the multicol flow, so it needs its own top
+   spacing to match the inter-card rhythm (otherwise it butts against the
+   preceding column row). */
+.rc-seccard--full { column-span: all; margin-top: 14px; }
+
+/* The first full-span card follows the field cards directly — keep the gap
+   consistent, not doubled. */
+.rc-secgrid > .rc-seccard--full:first-child { margin-top: 0; }
+
+/* Work-History review card rows (editable, 'from résumé'). */
+.rc-wh__row {
+  border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px;
+  margin-bottom: 10px; background: var(--surface-2, #fafbfc);
+}
+.rc-wh__grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
+  gap: 10px 13px; margin-bottom: 10px;
+}
+.rc-wh__rowfoot { display: flex; justify-content: flex-end; margin-top: 8px; }
+.rc-wh__remove {
+  border: 1px solid var(--line-2); background: var(--surface); color: var(--muted);
+  border-radius: 8px; padding: 5px 12px; font: inherit; font-size: 0.72rem;
+  font-weight: 600; cursor: pointer;
+}
+.rc-wh__remove:hover:not(:disabled) { color: var(--danger, #b4232a); border-color: var(--danger, #b4232a); }
+.rc-wh__remove:disabled { opacity: 0.5; cursor: default; }
+.rc-wh__addrow { margin: 4px 0 8px; }
+
+/* Talent-detail Work-History list (declared 'From resume' until verified). */
+.rc-whd-list { list-style: none; margin: 10px 0 0; padding: 0; }
+.rc-whd-item { padding: 12px 0; border-top: 1px solid var(--line); }
+.rc-whd-item:first-child { border-top: none; }
+.rc-whd-item__hd { display: flex; align-items: center; gap: 10px; }
+.rc-whd-item__role { font-weight: 700; color: var(--ink, #1a2230); font-size: 0.9rem; }
+.rc-whd-badge {
+  border: 1px solid var(--line-2); background: var(--surface-2, #fafbfc); color: var(--muted);
+  border-radius: 10px; padding: 1px 9px; font-size: 0.62rem; font-weight: 700;
+  letter-spacing: 0.03em; text-transform: uppercase;
+}
+.rc-whd-badge--verified { border-color: #cbe5d5; background: #e6f2ea; color: #1f7a4d; }
+.rc-whd-item__sub { color: var(--muted); font-size: 0.82rem; margin-top: 2px; }
+.rc-whd-item__desc { color: var(--muted); font-size: 0.82rem; margin: 6px 0 0; line-height: 1.5; }
+
+/* Non-blocking governed-extraction warning (LLM unavailable / unreadable). */
+.rc-warnnote {
+  border: 1px solid #f0dfb7; background: #faefd8aa; color: #946011;
+  border-radius: 10px; padding: 10px 14px; margin-bottom: 14px;
+  font-size: 0.8rem; line-height: 1.45;
 }
 
 .rc-seccard__hd { display: flex; align-items: center; gap: 8px; margin-bottom: 11px; }
@@ -3017,7 +3077,18 @@ select.rc-secinput { appearance: none; padding-right: 28px; }
 
 /* ── 2-step framing (Source → Review & create) ── */
 
-.rc-stepwrap { max-width: 640px; margin: 24px auto 0; }
+.rc-stepwrap { width: 100%; max-width: 1040px; margin: 24px auto 0; }
+
+/* Step-1 Cancel + governance note — centered directly below the dropzone. */
+.rc-stepcancel {
+  display: flex; flex-direction: column; align-items: center; gap: 12px;
+  margin-top: 22px; text-align: center;
+}
+
+.rc-stepcancel__note {
+  margin: 0; max-width: 620px; font-size: 0.75rem; color: var(--faint);
+  line-height: 1.45;
+}
 
 .rc-stepeyebrow {
   font-size: 0.6875rem; font-weight: 700; letter-spacing: 0.07em;
@@ -3047,6 +3118,32 @@ select.rc-secinput { appearance: none; padding-right: 28px; }
 
 .rc-parsedpill svg { width: 13px; height: 13px; flex: none; }
 
+/* ── Step-1 intro (prototype-aligned) ── */
+
+.rc-stepintro { text-align: center; margin-bottom: 18px; }
+
+.rc-stepintro .rc-stepeyebrow { margin-bottom: 8px; }
+
+.rc-steptitle { font-size: 1.15rem; font-weight: 700; color: var(--ink, #1a2230); margin: 0 0 6px; }
+
+.rc-stepdesc { font-size: 0.85rem; color: var(--muted); margin: 0 auto; max-width: 460px; line-height: 1.5; }
+
+.rc-stepreq { text-align: center; font-size: 0.78rem; color: var(--muted); margin: 14px 0 0; }
+
+/* ── Persistent footer (Create / Cancel / governance note) ── */
+
+.rc-addfoot {
+  position: sticky; bottom: 0; z-index: 5;
+  display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
+  margin-top: 28px; padding: 14px 18px;
+  border-top: 1px solid var(--line-2, #e5e8ee);
+  background: var(--surface, #fff);
+}
+
+.rc-addfoot__actions { display: flex; align-items: center; gap: 10px; }
+
+.rc-addfoot__note { font-size: 0.75rem; color: var(--faint, #8b94a3); margin: 0; flex: 1 1 260px; line-height: 1.45; }
+
 /* ── Duplicate-match card (Delta 2) ── */
 
 .rc-dupcard {
@@ -3071,6 +3168,8 @@ select.rc-secinput { appearance: none; padding-right: 28px; }
 .rc-dupcard__who { flex: 1; min-width: 200px; display: flex; flex-direction: column; }
 
 .rc-dupcard__nm { font-size: 0.8rem; font-weight: 700; color: var(--ink); }
+
+.rc-dupcard__ctx { font-size: 0.72rem; color: var(--muted); }
 
 .rc-dupcard__sig { font-size: 0.72rem; color: var(--muted); }
 
@@ -3234,6 +3333,11 @@ select.rc-secinput { appearance: none; padding-right: 28px; }
   background: var(--surface); border: 1px solid var(--line);
   border-radius: var(--r-lg); box-shadow: var(--sh-3);
   padding: 13px 14px; display: flex; flex-direction: column; gap: 9px;
+}
+
+.rc-savebar__h {
+  font-size: 0.68rem; font-weight: 700; letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--faint); margin: 0 0 4px;
 }
 
 .rc-savebar__gates { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }

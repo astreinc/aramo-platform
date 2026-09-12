@@ -2005,6 +2005,24 @@
       { "project": "submittal-eligibility", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/talent-record/src/tests/create-work-history.spec.ts",
+        "project": "talent-record",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/talent-record/src/tests/draft-from-resume-mode.spec.ts",
+        "project": "talent-record",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/talent-record/src/tests/duplicate-check-pr.spec.ts",
+        "project": "talent-record",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/talent-record/src/tests/search-pr1.spec.ts",
         "project": "talent-record",
         "status": "excluded"
@@ -2012,6 +2030,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/talent-record/src/tests/search-pr2-resume.spec.ts",
+        "project": "talent-record",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/talent-record/src/tests/work-history-read.spec.ts",
         "project": "talent-record",
         "status": "excluded"
       },
@@ -5250,7 +5274,8 @@
         "status": "excluded"
       },
       { "project": "api", "status": "production" },
-      { "project": "reporting", "status": "production" }
+      { "project": "reporting", "status": "production" },
+      { "project": "talent-record", "status": "production" }
     ],
     "@aramo/skills-taxonomy": [{ "project": "api", "status": "production" }],
     "@aramo/sourced-talent": [
@@ -5365,7 +5390,8 @@
         "project": "api",
         "status": "excluded"
       },
-      { "project": "api", "status": "production" }
+      { "project": "api", "status": "production" },
+      { "project": "talent-record", "status": "production" }
     ],
     "@aramo/talent-reconcile": [{ "project": "api", "status": "production" }],
     "@aramo/talent-record": [
