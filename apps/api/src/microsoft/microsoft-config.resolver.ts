@@ -8,6 +8,8 @@ import {
 } from '@aramo/integration';
 import { MICROSOFT_PROVIDER_KEY } from '@aramo/microsoft-graph';
 
+import { MicrosoftProviderNotConfiguredError } from './microsoft-provider-not-configured.error.js';
+
 // COMM-C2B — resolves the tenant's Microsoft connection + confidential-client
 // config for the composition root. Microsoft-specific config (client_id,
 // authority) lives ONLY here (R20). The client secret is read from the connector
@@ -91,6 +93,12 @@ export class MicrosoftConfigResolver {
 
     if (input.client_secret !== undefined && input.client_secret.length > 0) {
       // Write-only: raw secret → Secrets Manager only (rotates/replaces on update).
+      // Ordering note: the connection row is created above BEFORE this secret
+      // write (the SM secret id is derived from the connection_id, so the row must
+      // exist first). If this write fails (e.g. a Secrets Manager IAM denial), the
+      // config row is left without a secret_ref — that is NOT masked anymore (the
+      // controller surfaces the real error as 500), and it SELF-HEALS on the next
+      // save, which takes the updateConnection path (no duplicate row).
       await this.connections.setCredential({
         tenant_id: tenantId,
         id: connection.id,
@@ -113,7 +121,7 @@ export class MicrosoftConfigResolver {
     }
     const conn = await this.connections.findConnectionByProviderKey(tenantId, MICROSOFT_PROVIDER_KEY);
     if (conn === null) {
-      throw new Error('no microsoft connection configured for tenant');
+      throw new MicrosoftProviderNotConfiguredError('no microsoft connection configured for tenant');
     }
     return conn.id;
   }

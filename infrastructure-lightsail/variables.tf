@@ -111,3 +111,21 @@ variable "backup_prefix" {
   type        = string
   default     = "box/pg"
 }
+
+variable "manage_api_secrets_policy" {
+  description = "If true, attach the Secrets Manager read/write inline policy to the pre-existing API IAM user (COMM-C2B connector app-credential + per-recruiter delegated token custody). The user itself and its access key are provisioned out-of-band (never in TF state)."
+  type        = bool
+  default     = true
+}
+
+variable "api_iam_user_name" {
+  description = "Name of the pre-existing IAM user the API container authenticates as (its static access key is supplied out-of-band via the box env, never in TF state). The Secrets Manager inline policy is attached to this user by name."
+  type        = string
+  default     = "aramo-api-prod"
+}
+
+variable "secrets_env" {
+  description = "ARAMO_ENV segment used in the aramo/<env>/... Secrets Manager id namespace; scopes the API's SM policy to this environment's connector + delegated secrets."
+  type        = string
+  default     = "prod"
+}
