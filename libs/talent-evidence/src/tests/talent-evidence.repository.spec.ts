@@ -61,6 +61,12 @@ describe('TalentEvidenceRepository — surface', () => {
         // Talent-detail work-history read (LOCKED scope expansion — Add-Talent
         // Governed-LLM extraction; declared 'from résumé' rows for display).
         'findWorkHistoryByTalent',
+        // Full-profile EDIT (LOCKED scope expansion) — the ONE sanctioned mutation
+        // on the work-history surface: a bounded REPLACE-SET (atomic delete of the
+        // talent's source='resume' rows + recreate of the reviewed set). A conscious
+        // departure from create+find, named 'replace' (not update/delete) because it
+        // is a whole-set swap, not an arbitrary column mutation.
+        'replaceWorkHistoryForTalent',
         // TR-2a-B3b (DDR-3 §4) — the reconcile re-point of talent_id across all
         // seven talent_evidence holders (loser→survivor, idempotent).
         'repointTalentRecordRefs',

@@ -520,6 +520,56 @@ export class TalentEvidenceRepository {
     return (row as TalentWorkHistoryEntryRow | null) ?? null;
   }
 
+  // Recruiter-declared work-history EDIT (LOCKED scope expansion — the Add-Talent
+  // full-profile edit). REPLACE-SET semantics: the reviewed set BECOMES the
+  // talent's declared ('resume'-sourced) work-history — the prior resume-sourced
+  // rows are removed and the submitted set recreated, ATOMICALLY (one
+  // transaction, so a mid-write failure rolls the delete back — never a half
+  // state). Scoped to source='resume' so it NEVER touches rows from other source
+  // channels. This is the ONE sanctioned MUTATION on the otherwise create+find
+  // work-history surface — enumerated in the repository-surface spec as a
+  // conscious addition ('replace' is deliberately not a forbidden prefix there,
+  // unlike update/delete, because it is a bounded whole-set swap, not an
+  // arbitrary column mutation). Returns the created row ids (in submit order).
+  async replaceWorkHistoryForTalent(input: {
+    tenant_id: string;
+    talent_id: string;
+    entries: readonly CreateTalentWorkHistoryEntryInput[];
+  }): Promise<string[]> {
+    return this.prisma.$transaction(async (tx) => {
+      await tx.talentWorkHistoryEntry.deleteMany({
+        where: {
+          tenant_id: input.tenant_id,
+          talent_id: input.talent_id,
+          source: 'resume',
+        },
+      });
+      const ids: string[] = [];
+      for (const e of input.entries) {
+        await tx.talentWorkHistoryEntry.create({
+          data: {
+            id: e.id,
+            talent_id: e.talent_id,
+            tenant_id: e.tenant_id,
+            employer_name: e.employer_name,
+            role_title: e.role_title,
+            start_date: e.start_date,
+            end_date: e.end_date,
+            location: e.location,
+            employment_type: e.employment_type,
+            description_text: e.description_text,
+            source: e.source,
+            source_document_id: e.source_document_id,
+            is_authoritative: e.is_authoritative,
+            created_at: e.created_at,
+          },
+        });
+        ids.push(e.id);
+      }
+      return ids;
+    });
+  }
+
   // ---- TR-7 B1 — education + certification typed rows (the WorkHistory precedent) --
 
   async createTalentEducationEntry(

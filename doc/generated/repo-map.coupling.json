@@ -11649,6 +11649,26 @@
       "to": "apps/api/src/app.module.ts"
     },
     {
+      "from": "doc/backlog/work-history-edit-audit-and-provenance.md",
+      "status": "unscoped",
+      "to": "libs/talent-evidence/src/lib/talent-evidence.repository.ts"
+    },
+    {
+      "from": "doc/backlog/work-history-edit-audit-and-provenance.md",
+      "status": "unscoped",
+      "to": "libs/talent-evidence/src/tests/talent-evidence.repository.spec.ts"
+    },
+    {
+      "from": "doc/backlog/work-history-edit-audit-and-provenance.md",
+      "status": "unscoped",
+      "to": "libs/talent-extraction/src/lib/talent-extraction.service.ts"
+    },
+    {
+      "from": "doc/backlog/work-history-edit-audit-and-provenance.md",
+      "status": "unscoped",
+      "to": "libs/talent-record/src/lib/talent-record.controller.ts"
+    },
+    {
       "from": "doc/directives/00-DIRECTIVE-STANDARD.md",
       "status": "unscoped",
       "to": "doc/02-claude-code-discipline.md"

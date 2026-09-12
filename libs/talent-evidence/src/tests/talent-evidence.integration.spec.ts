@@ -218,6 +218,61 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(readWh?.source).toBe('resume');
     });
 
+    it('replaceWorkHistoryForTalent swaps the source=resume set atomically, preserving non-resume rows (full-profile EDIT)', async () => {
+      const RTAL = '00000000-0000-7000-8000-0000000000e9';
+      // Two resume-sourced rows + one non-resume (manual) row for the same talent.
+      await repo.createTalentWorkHistoryEntry({
+        id: '00000000-0000-7000-8000-0000000000e1',
+        talent_id: RTAL,
+        tenant_id: TENANT,
+        employer_name: 'OldCo A',
+        role_title: 'Engineer',
+        source: 'resume',
+        created_at: new Date('2026-05-19T11:05:00Z'),
+      });
+      await repo.createTalentWorkHistoryEntry({
+        id: '00000000-0000-7000-8000-0000000000e2',
+        talent_id: RTAL,
+        tenant_id: TENANT,
+        employer_name: 'OldCo B',
+        role_title: 'Engineer',
+        source: 'resume',
+        created_at: new Date('2026-05-19T11:05:00Z'),
+      });
+      await repo.createTalentWorkHistoryEntry({
+        id: '00000000-0000-7000-8000-0000000000e3',
+        talent_id: RTAL,
+        tenant_id: TENANT,
+        employer_name: 'ManualCo',
+        role_title: 'Advisor',
+        source: 'manual',
+        created_at: new Date('2026-05-19T11:05:00Z'),
+      });
+
+      // Replace the resume set with a single new row.
+      const ids = await repo.replaceWorkHistoryForTalent({
+        tenant_id: TENANT,
+        talent_id: RTAL,
+        entries: [
+          {
+            id: '00000000-0000-7000-8000-0000000000e4',
+            talent_id: RTAL,
+            tenant_id: TENANT,
+            employer_name: 'NewCo',
+            role_title: 'Staff Engineer',
+            source: 'resume',
+            created_at: new Date('2026-06-01T09:00:00Z'),
+          },
+        ],
+      });
+      expect(ids).toEqual(['00000000-0000-7000-8000-0000000000e4']);
+
+      const rows = await repo.findWorkHistoryByTalent({ tenant_id: TENANT, talent_id: RTAL });
+      const employers = rows.map((r) => r.employer_name).sort();
+      // Both old resume rows gone; the new resume row + the untouched manual row remain.
+      expect(employers).toEqual(['ManualCo', 'NewCo']);
+    });
+
     it('persists TalentContactMethod with the §2.2 6-value type enum and 4-value verification enum (§2.2 #4)', async () => {
       const created = await repo.createTalentContactMethod({
         id: '00000000-0000-7000-8000-0000000000cc',
