@@ -235,28 +235,42 @@ describe('TalentListView (server-side faceted workspace — Segment 4d)', () => 
     );
   });
 
-  it('renders the backed columns: name link, skill chips +overflow, location, rate', async () => {
+  it('renders the backed columns: name + title, contact (email/phone), location, rate', async () => {
     mockServer({
       talent: [
         makeTalent('tal-1', 'Ada', 'Lovelace', {
           city: 'London',
           state: 'UK',
           current_pay: '$120/hr',
-          key_skills: 'Rust, Distributed Systems, AWS, Kafka',
+          email1: 'ada@analytical.test',
+          phone_cell: '(555) 010-0001',
+          title: 'Principal Engineer',
           is_hot: true,
         }),
       ],
     });
     renderInRouter(<TalentListView />);
     await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument());
-    expect(screen.getAllByText('Rust').length).toBeGreaterThan(0);
-    expect(screen.getByText('+1')).toBeInTheDocument();
+    // Talent cell subline = title (skills are not a list column).
+    expect(screen.getByText('Principal Engineer')).toBeInTheDocument();
+    // Contact column = email + phone.
+    expect(screen.getByText('ada@analytical.test')).toBeInTheDocument();
+    expect(screen.getByText('(555) 010-0001')).toBeInTheDocument();
     expect(screen.getByText('London, UK')).toBeInTheDocument();
     expect(screen.getByText('$120/hr')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Ada Lovelace/ })).toHaveAttribute(
       'href',
       '/talent/tal-1',
     );
+  });
+
+  it('defaults the currency to $ for a rate stated without a symbol', async () => {
+    mockServer({
+      talent: [makeTalent('tal-1', 'Ada', 'Lovelace', { current_pay: '95/hr' })],
+    });
+    renderInRouter(<TalentListView />);
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument());
+    expect(screen.getByText('$95/hr')).toBeInTheDocument();
   });
 
   it('resolves the Owner column via the roster probe', async () => {

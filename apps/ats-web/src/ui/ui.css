@@ -1730,6 +1730,124 @@ button.rc-link-action {
   background: var(--ok-tint); border-radius: var(--r-sm); padding: 8px 12px;
 }
 
+/* ── Talent roster rebuild (prototype parity) ──────────────────────────────
+   Horizontal filter-pill bar (replaces the left facet rail) + a polished
+   full-width roster table. Filter pills reuse the proven rc-hmenu <details>
+   dropdown pattern (as Columns/Sort do); only the pill trigger + left-aligned,
+   wider popover body are new. */
+
+.rc-fbar {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--r-lg); padding: 9px 12px; margin-bottom: 14px;
+}
+
+.rc-fbar__reset {
+  margin-left: auto; border: none; background: none; cursor: pointer;
+  font-size: .78rem; font-weight: 600; color: var(--brand-strong); white-space: nowrap;
+}
+
+/* pill trigger — the rc-view pill look, as a <summary> */
+.rc-fpill > summary {
+  display: inline-flex; align-items: center; gap: 7px; white-space: nowrap;
+  font-size: .82rem; font-weight: 600; color: var(--muted);
+  background: var(--surface); border: 1px solid var(--line-2);
+  padding: 6px 13px; border-radius: 20px;
+}
+
+.rc-fpill > summary:hover { border-color: var(--brand-accent); color: var(--ink); }
+
+.rc-fpill[open] > summary,
+.rc-fpill--active > summary { border-color: var(--brand); background: var(--brand-tint); color: var(--brand-strong); }
+
+.rc-fpill__ct {
+  font-family: var(--font-mono); font-size: .64rem; background: var(--brand); color: #fff;
+  border-radius: 10px; padding: 1px 6px; line-height: 1.4;
+}
+
+.rc-fpill__chev { width: 11px; height: 11px; transition: transform .12s; }
+
+.rc-fpill[open] .rc-fpill__chev { transform: rotate(180deg); }
+
+/* popover body — left-aligned, wider variant of rc-hmenu__body */
+.rc-fpill .rc-hmenu__body { left: 0; right: auto; min-width: 230px; max-width: 300px; padding: 12px 14px; }
+
+.rc-fpop__search {
+  display: flex; align-items: center; gap: 8px; border: 1px solid var(--line-2);
+  border-radius: 8px; padding: 6px 10px; margin-bottom: 10px;
+}
+
+.rc-fpop__search input { border: none; outline: none; flex: 1; min-width: 0; font-size: .82rem; background: transparent; color: var(--ink); }
+
+.rc-fpop__search svg { width: 13px; height: 13px; color: var(--faint); flex: none; }
+
+.rc-fpop__done { border: none; background: none; padding: 0; margin-top: 10px; font-size: .78rem; font-weight: 600; color: var(--brand-strong); cursor: pointer; }
+
+/* roster table — the prototype's card-wrapped, full-width table */
+.rc-tablewrap { overflow-x: auto; }
+
+.rc-table { width: 100%; border-collapse: collapse; min-width: 1080px; }
+
+.rc-table thead th {
+  text-align: left; padding: 11px 12px; border-bottom: 1px solid var(--line);
+  font-size: .64rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--faint); white-space: nowrap;
+}
+
+.rc-table tbody td { padding: 12px; border-bottom: 1px solid var(--line); vertical-align: middle; font-size: .82rem; color: var(--ink-2, var(--ink)); }
+
+.rc-table tbody tr:last-child td { border-bottom: none; }
+
+.rc-table--compact thead th { padding: 8px 12px; }
+
+.rc-table--compact tbody td { padding: 8px 12px; }
+
+.rc-row--clickable { cursor: pointer; }
+
+.rc-row--clickable:hover { background: var(--surface-2); }
+
+.rc-row--sel { background: var(--brand-tint); }
+
+.rc-row--active { box-shadow: inset 3px 0 0 var(--brand); }
+
+.rc-th-sort { border: none; background: none; padding: 0; font: inherit; color: inherit; cursor: pointer; letter-spacing: inherit; text-transform: inherit; }
+
+.rc-th-sort:hover { color: var(--brand-strong); }
+
+/* name cell — avatar + name + "title · skills +N" subline */
+.rc-ent { display: inline-flex; align-items: center; gap: 10px; min-width: 0; }
+
+.rc-ent__nm { display: flex; align-items: center; gap: 6px; font-size: .85rem; font-weight: 700; color: var(--ink); }
+
+.rc-ent__rl, .rc-ent__sub { display: block; font-size: .74rem; color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 260px; }
+
+.rc-ent__flame { width: 13px; height: 13px; color: var(--hot); }
+
+/* contact cell — email + phone (mono) */
+.rc-contact__em { display: block; font-size: .8rem; color: var(--ink-2, var(--ink)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 220px; }
+
+.rc-contact__ph { display: block; font-family: var(--font-mono); font-size: .74rem; color: var(--faint); white-space: nowrap; margin-top: 2px; }
+
+/* availability as colored text (a stated status, never inferred ordering) */
+.rc-avail { font-size: .82rem; white-space: nowrap; }
+
+.rc-avail--good { color: var(--ok); font-weight: 700; }
+
+.rc-avail--warn { color: var(--warn); font-weight: 600; }
+
+.rc-avail--mut { color: var(--muted); }
+
+.rc-moreopps { margin-left: 5px; font-family: var(--font-mono); font-size: .68rem; color: var(--faint); }
+
+.rc-lastcell__owner { display: block; font-size: .7rem; color: var(--faint); }
+
+.rc-num { font-family: var(--font-mono); font-size: .8rem; color: var(--ink-2, var(--ink)); white-space: nowrap; }
+
+/* roster footer — "Showing N of M" + load-more, prototype card foot */
+.rc-pageft { display: flex; align-items: center; gap: 12px; padding: 11px 4px 0; flex-wrap: wrap; font-size: .8rem; color: var(--muted); }
+
+.rc-pageft__n { font-weight: 700; color: var(--ink); }
+
 /* the work grid already overrides .rc-work to 2-col below; facet rail width */
 
 .rc-work { grid-template-columns: 248px 1fr; }

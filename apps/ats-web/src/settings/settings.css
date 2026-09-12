@@ -99,9 +99,15 @@
   padding: 24px 28px 70px;
   max-width: 920px;
   width: 100%;
+  /* Uniform vertical rhythm between the header and every panel/card, across ALL
+     settings pages. Previously each panel self-spaced (e.g. .set-seam had its own
+     margin) while live panels had none — a container gap makes every section
+     consistent. Panels must NOT add their own bottom margin (it would double). */
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
 }
 .set-head {
-  margin-bottom: 20px;
   display: flex;
   align-items: flex-end;
   gap: 14px;
@@ -145,10 +151,12 @@
   min-width: 0;
 }
 .set-row__t {
+  display: block;
   font-size: 0.88rem;
   font-weight: 600;
 }
 .set-row__s {
+  display: block;
   font-size: 0.78rem;
   color: var(--muted);
   margin-top: 2px;
@@ -223,8 +231,45 @@
     rgba(31, 78, 140, 0.02) 16px
   );
   padding: 22px 20px;
-  margin-bottom: 18px;
 }
+/* ── Engagement policy (prototype parity) ── */
+.eng-head { display: flex; align-items: flex-start; gap: 14px; flex-wrap: wrap; }
+.eng-head__main { min-width: 240px; flex: 1; }
+.eng-notice {
+  background: var(--surface); border: 1px solid var(--line); border-left: 3px solid var(--warn);
+  border-radius: 11px; padding: 13px 16px; font-size: 0.8rem; color: var(--muted); line-height: 1.5;
+}
+.eng-card {
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 18px 20px;
+}
+.eng-card__t { font-size: 0.86rem; font-weight: 700; }
+.eng-card__sub { font-size: 0.76rem; color: var(--faint); margin: 3px 0 14px; line-height: 1.4; }
+.eng-ev { display: flex; align-items: center; gap: 14px; padding: 12px 0; border-top: 1px solid var(--line); flex-wrap: wrap; }
+.eng-ev__ic { width: 34px; height: 34px; border-radius: 9px; background: var(--brand-tint); color: var(--brand-strong); display: grid; place-items: center; flex: none; }
+.eng-ev__ic svg { width: 16px; height: 16px; }
+.eng-ev__main { flex: 1; min-width: 180px; }
+.eng-ev__lb { display: block; font-size: 0.84rem; font-weight: 600; }
+.eng-ev__desc { display: block; font-size: 0.76rem; color: var(--muted); margin-top: 1px; line-height: 1.4; }
+.eng-tog { width: 38px; height: 22px; border-radius: 12px; border: none; background: var(--line-2); cursor: pointer; position: relative; flex: none; padding: 0; }
+.eng-tog--on { background: var(--brand); }
+.eng-tog:disabled { opacity: 0.45; cursor: not-allowed; }
+.eng-tog__knob { position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(15, 25, 40, 0.3); transition: left 0.15s ease; }
+.eng-tog--on .eng-tog__knob { left: 18px; }
+.eng-strength { display: flex; align-items: center; gap: 8px; margin: 2px 0 6px 48px; font-size: 0.78rem; color: var(--muted); flex-wrap: wrap; }
+.eng-modes { display: flex; flex-direction: column; gap: 9px; }
+.eng-mode { display: flex; align-items: flex-start; gap: 11px; text-align: left; border: 1.5px solid var(--line); background: var(--surface); border-radius: 10px; padding: 11px 14px; cursor: pointer; font-family: inherit; width: 100%; }
+.eng-mode:hover:not(:disabled) { border-color: var(--brand-accent); }
+.eng-mode--on { border-color: var(--brand); background: var(--brand-tint); }
+.eng-mode:disabled { cursor: default; }
+.eng-mode__dot { width: 15px; height: 15px; border-radius: 50%; border: 1.5px solid var(--line-2); background: #fff; display: grid; place-items: center; margin-top: 1px; flex: none; box-sizing: border-box; }
+.eng-mode--on .eng-mode__dot { border-color: var(--brand); }
+.eng-mode__dot span { width: 7px; height: 7px; border-radius: 50%; background: transparent; }
+.eng-mode--on .eng-mode__dot span { background: var(--brand); }
+.eng-mode__lb { display: block; font-size: 0.82rem; font-weight: 600; color: var(--ink); }
+.eng-mode__desc { display: block; font-size: 0.74rem; color: var(--muted); margin-top: 1px; line-height: 1.4; }
+.eng-foot { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.eng-foot__note { font-size: 0.72rem; color: var(--faint); }
+
 .set-seam__head {
   display: flex;
   align-items: center;

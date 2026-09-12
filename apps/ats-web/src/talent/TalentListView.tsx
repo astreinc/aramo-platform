@@ -22,14 +22,15 @@ import { addTalentToPipeline } from '../pipeline/pipeline-api';
 import { listRequisitions } from '../requisitions/requisitions-api';
 import type { RequisitionView } from '../requisitions/types';
 import { resolveUserNames } from '../users/users-api';
-import { Avatar, Card, Icons, StagePill, StatusPill, Tag, type PillTone } from '../ui';
+import { Avatar, Card, Icons, StagePill, StatusPill, type PillTone } from '../ui';
 import type { PipelineStatus } from '../pipeline/types';
 
 import { BulkBar } from './components/BulkBar';
-import { FacetRail } from './components/FacetRail';
+import { FilterBar } from './components/FilterBar';
 import { TalentTriageDrawer } from './components/TalentTriageDrawer';
 import { TokenSearch } from './components/TokenSearch';
 import { searchTalent, updateTalent } from './talent-api';
+import { useDetailsAutoClose } from './use-details-auto-close';
 import { listErrorMessage, updateErrorMessage } from './error-messages';
 import {
   EMPTY_FACETS,
@@ -40,7 +41,6 @@ import {
   fullName,
   locationOf,
   parseQuery,
-  skillsOf,
   statedRate,
   AVAILABILITY_LABELS,
   CONSENT_LABELS,
@@ -64,24 +64,25 @@ import type { CrossFacets, NativeFacets, TalentRecordView } from './types';
 type Density = 'comfortable' | 'compact';
 
 interface ColsState {
-  readonly skills: boolean;
+  readonly contact: boolean;
   readonly stage: boolean;
   readonly availability: boolean;
   readonly location: boolean;
   readonly rate: boolean;
   readonly consent: boolean;
   readonly lastActivity: boolean;
-  readonly owner: boolean;
 }
+// Talent roster columns (PO-specified): Talent (name + title) · Contact · Location ·
+// Rate · Recruiting activity · Availability · Permission · Last activity. Owner
+// merges into the Last-activity cell (prototype); skills are not shown in the list.
 const COLUMN_OPTIONS: readonly [keyof ColsState, string][] = [
-  ['skills', 'Skills'],
-  ['stage', 'Stage'],
-  ['availability', 'Availability'],
+  ['contact', 'Contact'],
   ['location', 'Location'],
   ['rate', 'Rate'],
-  ['consent', 'Consent'],
+  ['stage', 'Recruiting activity'],
+  ['availability', 'Availability'],
+  ['consent', 'Permission'],
   ['lastActivity', 'Last activity'],
-  ['owner', 'Owner'],
 ];
 // Sort is NATIVE-columns only (server buildOrderBy) — no rate/last-activity (R10
 // / cross-schema). The header Sort menu drives the same sortKey/sortDir as the
@@ -99,8 +100,10 @@ function ColumnsMenu({
   readonly cols: ColsState;
   readonly setCols: Dispatch<SetStateAction<ColsState>>;
 }) {
+  const ref = useRef<HTMLDetailsElement>(null);
+  useDetailsAutoClose(ref);
   return (
-    <details className="rc-hmenu">
+    <details ref={ref} className="rc-hmenu">
       <summary className="rc-hbtn">
         <Icons.IconColumns /> Columns
       </summary>
@@ -130,8 +133,10 @@ function SortMenu({
   readonly sortDir: SortDir;
   readonly onSort: (key: SortKey) => void;
 }) {
+  const ref = useRef<HTMLDetailsElement>(null);
+  useDetailsAutoClose(ref);
   return (
-    <details className="rc-hmenu">
+    <details ref={ref} className="rc-hmenu">
       <summary className="rc-hbtn">
         <Icons.IconSort /> Sort
       </summary>
@@ -155,15 +160,16 @@ function SortMenu({
   );
 }
 
-// Availability pill tones (a talent-stated status, never an inferred ordering; R10-clean).
-const AVAILABILITY_TONE: Record<string, PillTone> = {
-  available_now: 'ok',
-  open_to_offers: 'info',
-  not_looking: 'neutral',
-  unknown: 'neutral',
+// Availability rendered as colored TEXT (prototype) — a talent-stated status,
+// never an inferred ordering (R10-clean).
+const AVAILABILITY_TEXT_TONE: Record<string, 'good' | 'warn' | 'mut'> = {
+  available_now: 'good',
+  open_to_offers: 'mut',
+  not_looking: 'mut',
+  unknown: 'mut',
 };
 
-// Consent summary tones (the contact-consent moat — a stated permission state).
+// Permission (contact-consent) pill tones — a stated permission state.
 const CONSENT_TONE: Record<string, PillTone> = {
   contactable: 'ok',
   expiring_lt_30d: 'warn',
@@ -213,17 +219,19 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
   const [sortDir, setSortDir] = useState<SortDir>('asc');
   const [density, setDensity] = useState<Density>('comfortable');
   const [cols, setCols] = useState<ColsState>({
-    skills: true,
+    contact: true,
     stage: true,
     availability: true,
     location: true,
     rate: true,
     consent: true,
     lastActivity: true,
-    owner: true,
   });
   const [busy, setBusy] = useState(false);
   const [reqDialogOpen, setReqDialogOpen] = useState(false);
+  // Horizontal filter bar (prototype parity) — shown by default; the activebar's
+  // "Filters / Hide filters" toggle collapses it.
+  const [filtersOpen, setFiltersOpen] = useState(true);
   const loadMoreRef = useRef<HTMLButtonElement | null>(null);
 
   const sessionState = useSession();
@@ -235,8 +243,6 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
     session !== null && Array.isArray(session.scopes) && hasScope(session, 'talent:create');
   const canEdit =
     session !== null && Array.isArray(session.scopes) && hasScope(session, 'talent:edit');
-  const isLead =
-    session !== null && Array.isArray(session.scopes) && hasScope(session, 'org:manage');
 
   // Roster probe (Owner column resolution) — one-shot, independent of search.
   useEffect(() => {
@@ -505,15 +511,15 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
 
   const drawerTalent = drawerIndex !== null ? (items[drawerIndex] ?? null) : null;
   const colCount =
-    3 +
-    (cols.skills ? 1 : 0) +
+    2 +
+    (cols.contact ? 1 : 0) +
     (cols.stage ? 1 : 0) +
     (cols.availability ? 1 : 0) +
     (cols.location ? 1 : 0) +
     (cols.rate ? 1 : 0) +
     (cols.consent ? 1 : 0) +
     (cols.lastActivity ? 1 : 0) +
-    (cols.owner ? 1 : 0);
+    1;
 
   return (
     <section className={drawerTalent !== null ? 'rc-talent rc-talent--drawer' : 'rc-talent'}>
@@ -625,6 +631,15 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
             Clear all
           </button>
         ) : null}
+        <button
+          type="button"
+          className={`rc-hbtn${filtersOpen ? ' rc-hbtn--on' : ''}`}
+          style={{ marginLeft: 'auto' }}
+          aria-pressed={filtersOpen}
+          onClick={() => setFiltersOpen((o) => !o)}
+        >
+          <Icons.IconFilter /> {filtersOpen ? 'Hide filters' : 'Filters'}
+        </button>
       </div>
 
       {error !== null ? <InlineAlert variant="error">{error}</InlineAlert> : null}
@@ -637,8 +652,8 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
         {appendNote ?? ''}
       </p>
 
-      <div className="rc-work rc-mt-16">
-        <FacetRail
+      {filtersOpen ? (
+        <FilterBar
           facets={facets}
           skillCounts={skillCounts}
           serverFacets={serverFacets}
@@ -676,10 +691,10 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
             }))
           }
           onReset={resetAll}
-          isLead={isLead}
         />
+      ) : null}
 
-        <Card flush>
+      <Card flush>
           <div className="rc-rtools">
             <span className="rc-rtools__note">
               {selected.size > 0 ? `${selected.size} selected` : `${items.length} talent`}
@@ -723,9 +738,7 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
                         Talent {sortKey === 'name' ? (sortDir === 'asc' ? '↑' : '↓') : ''}
                       </button>
                     </th>
-                    {cols.skills ? <th scope="col">Skills</th> : null}
-                    {cols.stage ? <th scope="col">Stage</th> : null}
-                    {cols.availability ? <th scope="col">Availability</th> : null}
+                    {cols.contact ? <th scope="col">Contact</th> : null}
                     {cols.location ? (
                       <th scope="col">
                         <button
@@ -739,9 +752,10 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
                       </th>
                     ) : null}
                     {cols.rate ? <th scope="col">Rate</th> : null}
-                    {cols.consent ? <th scope="col">Consent</th> : null}
+                    {cols.stage ? <th scope="col">Recruiting activity</th> : null}
+                    {cols.availability ? <th scope="col">Availability</th> : null}
+                    {cols.consent ? <th scope="col">Permission</th> : null}
                     {cols.lastActivity ? <th scope="col">Last activity</th> : null}
-                    {cols.owner ? <th scope="col">Owner</th> : null}
                     <th scope="col" aria-label="Row actions" />
                   </tr>
                 </thead>
@@ -781,25 +795,23 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
                                   {fullName(t)}
                                   {t.is_hot ? <Icons.IconFlame className="rc-ent__flame" /> : null}
                                 </span>
-                                {t.current_employer ? (
-                                  <span className="rc-ent__rl">{t.current_employer}</span>
+                                {(t.title ?? t.current_employer) ? (
+                                  <span className="rc-ent__sub">{t.title ?? t.current_employer}</span>
                                 ) : null}
                               </span>
                             </span>
                           </Link>
                         </td>
-                        {cols.skills ? (
+                        {cols.contact ? (
                           <td>
-                            <span className="rc-tags">
-                              {skillsOf(t).slice(0, 3).map((s) => (
-                                <Tag key={s}>{s}</Tag>
-                              ))}
-                              {skillsOf(t).length > 3 ? (
-                                <span className="rc-tag rc-tag--more">+{skillsOf(t).length - 3}</span>
-                              ) : null}
-                            </span>
+                            <span className="rc-contact__em">{t.email1 ?? '—'}</span>
+                            {t.phone_cell ? (
+                              <span className="rc-contact__ph">{t.phone_cell}</span>
+                            ) : null}
                           </td>
                         ) : null}
+                        {cols.location ? <td>{locationOf(t)}</td> : null}
+                        {cols.rate ? <td className="rc-num">{statedRate(t)}</td> : null}
                         {cols.stage ? (
                           <td>
                             {t.current_stage == null ? (
@@ -816,14 +828,14 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
                             {t.availability_status === null ? (
                               <span className="rc-consent-stub">—</span>
                             ) : (
-                              <StatusPill tone={AVAILABILITY_TONE[t.availability_status] ?? 'neutral'} dot>
+                              <span
+                                className={`rc-avail rc-avail--${AVAILABILITY_TEXT_TONE[t.availability_status] ?? 'mut'}`}
+                              >
                                 {AVAILABILITY_LABELS[t.availability_status]}
-                              </StatusPill>
+                              </span>
                             )}
                           </td>
                         ) : null}
-                        {cols.location ? <td>{locationOf(t)}</td> : null}
-                        {cols.rate ? <td className="num">{statedRate(t)}</td> : null}
                         {cols.consent ? (
                           <td>
                             {t.consent_summary === undefined || t.consent_summary === null ? (
@@ -836,10 +848,14 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
                           </td>
                         ) : null}
                         {cols.lastActivity ? (
-                          <td className="lastcell">{relativeActivity(t.last_activity_at)}</td>
-                        ) : null}
-                        {cols.owner ? (
-                          <td>{t.owner_id ? (userNames[t.owner_id] ?? '—') : '—'}</td>
+                          <td className="lastcell">
+                            {relativeActivity(t.last_activity_at)}
+                            {t.owner_id ? (
+                              <span className="rc-lastcell__owner">
+                                {userNames[t.owner_id] ?? '—'}
+                              </span>
+                            ) : null}
+                          </td>
                         ) : null}
                         <td>
                           <div className="rc-rowq">
@@ -881,7 +897,6 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
             consent-governed flow.
           </p>
         </Card>
-      </div>
 
       <BulkBar
         count={selected.size}
