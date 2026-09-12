@@ -4568,6 +4568,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/microsoft-error-mapping.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/microsoft-meeting-create.integration.spec.ts",
         "project": "api",
         "status": "excluded"

@@ -155,6 +155,48 @@ resource "aws_iam_user_policy" "backup" {
   })
 }
 
+# --- Aramo API principal: Secrets Manager read/write (COMM-C2B) --------------
+# The API container authenticates as the pre-existing `aramo-api-prod` IAM user
+# (its static access key is provided out-of-band and must NEVER live in
+# Terraform state — same rule as the backup user above, so the user resource is
+# intentionally NOT managed here). Terraform manages ONLY this inline policy,
+# attached to that user BY NAME, so the Secrets Manager grant lands on
+# `terraform apply` with no manual IAM step and no user import.
+#
+# Scope: the two secret-id namespaces the code writes — the connector app
+# credential (aramo/<env>/connector/*) and the per-recruiter delegated tokens
+# (aramo/<env>/msgraph-delegated/*). CreateSecret is needed for the first write;
+# Put/Get for rotation + read-back on the OAuth callback. The default
+# aws/secretsmanager KMS key needs no kms:* — a self-managed CMK would add
+# kms:GenerateDataKey + kms:Decrypt on that key.
+data "aws_caller_identity" "current" {}
+
+resource "aws_iam_user_policy" "api_secrets" {
+  count = var.manage_api_secrets_policy ? 1 : 0
+  name  = "aramo-${var.secrets_env}-secrets-rw"
+  user  = var.api_iam_user_name
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "AramoConnectorAndDelegatedSecrets"
+        Effect = "Allow"
+        Action = [
+          "secretsmanager:CreateSecret",
+          "secretsmanager:PutSecretValue",
+          "secretsmanager:GetSecretValue",
+          "secretsmanager:DescribeSecret",
+        ]
+        Resource = [
+          "arn:aws:secretsmanager:${var.aws_region}:${data.aws_caller_identity.current.account_id}:secret:aramo/${var.secrets_env}/connector/*",
+          "arn:aws:secretsmanager:${var.aws_region}:${data.aws_caller_identity.current.account_id}:secret:aramo/${var.secrets_env}/msgraph-delegated/*",
+        ]
+      }
+    ]
+  })
+}
+
 # Front-door wildcard-TLS DNS-01 principal (ADR-0023 / PR-0c). Same
 # state-secret rule as the backup user: NO access keys in Terraform —
 # generate out-of-band per doc/runbooks/frontdoor-pr0-apply.md.

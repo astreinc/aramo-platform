@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Logger, Post, Query, UseGuards } from '@nestjs/common';
 import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
 import { AramoError, RequestId } from '@aramo/common';
 import { RequireScopes, RolesGuard } from '@aramo/authorization';
@@ -14,6 +14,7 @@ import {
   SendMicrosoftEmailRequestDto,
 } from './dto/microsoft.dto.js';
 import { EmailConsentDeniedError } from './email-consent-gate.port.js';
+import { MicrosoftProviderNotConfiguredError } from './microsoft-provider-not-configured.error.js';
 import {
   MicrosoftAuthorizationOrchestrator,
   type MicrosoftProviderStatusView,
@@ -33,6 +34,8 @@ import { MicrosoftMeetingService } from './microsoft-meeting.service.js';
 @UseGuards(JwtAuthGuard, EntitlementGuard, RolesGuard)
 @RequireCapability('ats')
 export class MicrosoftAuthorizationController {
+  private readonly logger = new Logger(MicrosoftAuthorizationController.name);
+
   constructor(
     private readonly orchestrator: MicrosoftAuthorizationOrchestrator,
     private readonly email: MicrosoftEmailService,
@@ -180,10 +183,24 @@ export class MicrosoftAuthorizationController {
     if (err instanceof MicrosoftReauthRequiredError || err instanceof MicrosoftIdentityNotBoundError) {
       return new AramoError('MICROSOFT_REAUTHORIZATION_REQUIRED', 'microsoft identity requires (re)authorization', 409, { requestId });
     }
+    if (err instanceof MicrosoftProviderNotConfiguredError) {
+      // The tenant genuinely has no usable connection — an expected 409, not a failure.
+      return new AramoError('MICROSOFT_PROVIDER_NOT_CONFIGURED', err.message, 409, { requestId });
+    }
     if (err instanceof AramoError) {
       return err;
     }
-    // Unconfigured provider / no usable connection.
-    return new AramoError('MICROSOFT_PROVIDER_NOT_CONFIGURED', 'no usable microsoft provider connection for tenant', 409, { requestId });
+    // Anything else is an UNEXPECTED / infrastructure failure — e.g. a Secrets
+    // Manager AccessDeniedException when persisting the client secret. It must NOT
+    // be masked as a misleading "provider not configured" 409 (that hid a real
+    // IAM gap and produced zero logs). Log the true cause (name + message carry
+    // no secret VALUES — the client secret is never in these errors) and surface
+    // it as a 500 via the registry's INTERNAL_ERROR catch-all.
+    this.logger.error(
+      `microsoft operation failed [${requestId}]: ${
+        err instanceof Error ? `${err.name}: ${err.message}` : String(err)
+      }`,
+    );
+    return new AramoError('INTERNAL_ERROR', 'microsoft operation failed', 500, { requestId });
   }
 }
