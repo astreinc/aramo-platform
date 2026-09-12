@@ -2,6 +2,8 @@ import type {
   CreateTalentRecordRequest,
   ResumeExtractionMode,
   TalentRecordPrefill,
+  TalentRecordView,
+  UpdateTalentRecordRequest,
   WorkHistoryDraft,
 } from './types';
 import type { Provenance, ProvenanceMap } from './provenance';
@@ -190,6 +192,104 @@ export function applyPrefill(
 export function provenanceAfterEdit(prev: Provenance | undefined): Provenance | undefined {
   if (prev === 'governed_llm' || prev === 'deterministic' || prev === 'edited') return 'edited';
   return undefined;
+}
+
+// Full-profile EDIT — pre-fill the intake state from an existing record. Every
+// IntakeState key maps 1:1 to a TalentRecordView field; nullable strings
+// collapse to '' (the form's empty sentinel); the select fields collapse null →
+// '' ("Not stated"). country is non-null on the record.
+export function stateFromTalent(t: TalentRecordView): IntakeState {
+  return {
+    first_name: t.first_name,
+    last_name: t.last_name,
+    current_employer: t.current_employer ?? '',
+    email1: t.email1 ?? '',
+    email2: t.email2 ?? '',
+    phone_cell: t.phone_cell ?? '',
+    phone_home: t.phone_home ?? '',
+    phone_work: t.phone_work ?? '',
+    web_site: t.web_site ?? '',
+    best_time_to_call: t.best_time_to_call ?? '',
+    title: t.title ?? '',
+    address: t.address ?? '',
+    address2: t.address2 ?? '',
+    city: t.city ?? '',
+    state: t.state ?? '',
+    zip: t.zip ?? '',
+    country: t.country,
+    availability_status: t.availability_status ?? '',
+    engagement_type: t.engagement_type ?? '',
+    work_authorization: t.work_authorization ?? '',
+    date_available: t.date_available ?? '',
+    current_pay: t.current_pay ?? '',
+    desired_pay: t.desired_pay ?? '',
+    source: t.source ?? '',
+    notes: t.notes ?? '',
+    key_skills: t.key_skills ?? '',
+    can_relocate: t.can_relocate,
+    is_hot: t.is_hot,
+  };
+}
+
+// Build the PATCH /v1/talent-records/:id body for the full-profile edit. TRUE
+// PATCH semantics (R4 omit-vs-null): omitted → unchanged; explicit null → cleared.
+//   - email1 + phone_cell are NEVER sent — identity/dedup anchors, read-only.
+//   - country is non-null: sent only when changed to a non-empty value.
+//   - the select fields clear to null on ''.
+//   - work_history: pass the reviewed set ONLY when the recruiter touched it
+//     (replace-set). Omit it (undefined) when untouched so the BE leaves the
+//     declared work-history alone (avoids needless row re-mint on every save).
+export function buildPatchBody(
+  state: IntakeState,
+  initial: TalentRecordView,
+  workHistory?: readonly WorkHistoryDraft[],
+): UpdateTalentRecordRequest {
+  const body: Record<string, unknown> = {};
+  if (state.first_name.trim() !== initial.first_name) body['first_name'] = state.first_name.trim();
+  if (state.last_name.trim() !== initial.last_name) body['last_name'] = state.last_name.trim();
+  if (state.can_relocate !== initial.can_relocate) body['can_relocate'] = state.can_relocate;
+  if (state.is_hot !== initial.is_hot) body['is_hot'] = state.is_hot;
+
+  // country — non-null column; no clear-to-null. Send only a non-empty change.
+  if (state.country.trim() !== '' && state.country.trim() !== initial.country) {
+    body['country'] = state.country.trim();
+  }
+
+  // Nullable strings — '' → null (explicit clear); else send the change.
+  // email1/phone_cell EXCLUDED (identity anchors, locked in the form).
+  const initialAsRecord = initial as unknown as Record<string, unknown>;
+  const nullable: ReadonlyArray<keyof IntakeState> = [
+    'email2', 'phone_home', 'phone_work',
+    'address', 'address2', 'city', 'state', 'zip',
+    'source', 'key_skills', 'current_employer', 'current_pay',
+    'desired_pay', 'date_available', 'notes', 'web_site',
+    'best_time_to_call', 'title',
+  ];
+  for (const k of nullable) {
+    const initVal = (initialAsRecord[k] as string | null) ?? '';
+    const cur = state[k] as string;
+    if (cur !== initVal) body[k] = cur === '' ? null : cur;
+  }
+
+  // Select fields (closed vocabularies) — '' → null (clears to "not stated").
+  const selects: ReadonlyArray<keyof IntakeState> = [
+    'availability_status', 'engagement_type', 'work_authorization',
+  ];
+  for (const k of selects) {
+    const initVal = (initialAsRecord[k] as string | null) ?? '';
+    const cur = state[k] as string;
+    if (cur !== initVal) body[k] = cur === '' ? null : cur;
+  }
+
+  // Work-history replace-set — only when the recruiter edited it. Keep only the
+  // entries with the required employer + role (mirrors buildCreateBody).
+  if (workHistory !== undefined) {
+    body['work_history'] = workHistory.filter(
+      (e) => e.employer_name.trim() !== '' && e.role_title.trim() !== '',
+    );
+  }
+
+  return body as unknown as UpdateTalentRecordRequest;
 }
 
 // Build the POST /v1/talent-records body. Required: first/last name.

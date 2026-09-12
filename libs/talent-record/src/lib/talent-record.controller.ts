@@ -375,12 +375,31 @@ export class TalentRecordController {
     @Body() body: UpdateTalentRecordRequestDto,
     @RequestId() requestId: string,
   ): Promise<TalentRecordView> {
-    return this.repo.update({
+    // Scalar PATCH first (the repo allowlist-walk ignores work_history — it is
+    // not a TalentRecord column). The returned view is the record's scalar shape.
+    const updated = await this.repo.update({
       tenant_id: authContext.tenant_id,
       id,
       input: body,
       requestId,
     });
+
+    // Full-profile EDIT (LOCKED scope expansion): when the edit carries a
+    // work_history array, REPLACE the talent's declared work-history with the
+    // reviewed set (replace-set — the reviewed set BECOMES the record's declared
+    // work history; an empty array clears it). ABSENT work_history = scalar-only
+    // PATCH (e.g. the quick-edit drawer) → work-history untouched. Unlike the
+    // create path's best-effort persist, an edit failure PROPAGATES: the recruiter
+    // explicitly edited these rows and must see a failure, not a silent loss.
+    if (Array.isArray(body.work_history)) {
+      await this.talentExtraction.replaceDeclaredWorkHistory({
+        talent_id: id,
+        tenant_id: authContext.tenant_id,
+        entries: body.work_history,
+      });
+    }
+
+    return updated;
   }
 
   @Delete(':id')

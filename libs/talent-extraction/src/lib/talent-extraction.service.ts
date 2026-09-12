@@ -1,7 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { v7 as uuidv7 } from 'uuid';
 import { AiDraftService } from '@aramo/ai-draft';
-import { TalentEvidenceRepository } from '@aramo/talent-evidence';
+import {
+  TalentEvidenceRepository,
+  type CreateTalentWorkHistoryEntryInput,
+} from '@aramo/talent-evidence';
 import { TalentTrustService } from '@aramo/talent-trust';
 
 import type {
@@ -622,6 +625,51 @@ export class TalentExtractionService {
       ids.push(id);
     }
     return ids;
+  }
+
+  // Full-profile EDIT (LOCKED scope expansion) — REPLACE the talent's declared
+  // ('resume'-sourced) work-history with the recruiter-reviewed set. Mirrors
+  // persistDeclaredWorkHistory's mapping (employer/role required; free-text dates
+  // parsed; 'present' → no end_date = ongoing), then hands the full set to the
+  // repository's ATOMIC replace (delete the prior resume rows + recreate). An
+  // empty/all-invalid set clears the declared work-history. These stay DECLARED,
+  // NOT verified (ADR-0015 v1.3 §4.3). Returns the created ids.
+  async replaceDeclaredWorkHistory(input: {
+    talent_id: string;
+    tenant_id: string;
+    entries: readonly ResumeDraftWorkHistory[];
+  }): Promise<string[]> {
+    const createdAt = new Date();
+    const rows: CreateTalentWorkHistoryEntryInput[] = [];
+    for (const e of input.entries) {
+      const employer = e.employer_name.trim();
+      const role = e.role_title.trim();
+      if (employer === '' || role === '') continue;
+      const start = parseWorkHistoryDate(e.start_date);
+      const end = parseWorkHistoryDate(e.end_date);
+      rows.push({
+        id: uuidv7(),
+        talent_id: input.talent_id,
+        tenant_id: input.tenant_id,
+        employer_name: employer,
+        role_title: role,
+        source: 'resume' as const,
+        ...(start !== null ? { start_date: start } : {}),
+        ...(end !== null ? { end_date: end } : {}),
+        ...(typeof e.employment_type === 'string' && e.employment_type.trim() !== ''
+          ? { employment_type: e.employment_type.trim() }
+          : {}),
+        ...(typeof e.description === 'string' && e.description.trim() !== ''
+          ? { description_text: e.description.trim() }
+          : {}),
+        created_at: createdAt,
+      });
+    }
+    return this.evidence.replaceWorkHistoryForTalent({
+      tenant_id: input.tenant_id,
+      talent_id: input.talent_id,
+      entries: rows,
+    });
   }
 
   // Talent-detail read: the persisted work-history for a talent (LOCKED scope

@@ -276,6 +276,11 @@ export interface UpdateTalentRecordRequest {
   readonly availability_status?: AvailabilityStatus | null;
   readonly engagement_type?: EngagementType | null;
   readonly owner_id?: string | null;
+  // Full-profile edit (LOCKED scope expansion). REPLACE-SET: when present, the
+  // reviewed set BECOMES the talent's declared work history (the BE replaces the
+  // prior 'resume'-sourced rows). OMITTED = work-history untouched (scalar-only
+  // PATCH — e.g. the quick-edit drawer). An empty array clears it.
+  readonly work_history?: readonly WorkHistoryDraft[];
 }
 
 // Hand-mirrored from libs/resume-parse/src/lib/types/parse-resume.types.ts.

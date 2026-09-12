@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { InlineAlert } from '@aramo/fe-foundation';
+import { Button, InlineAlert } from '@aramo/fe-foundation';
 
 import { fetchAssignableUsers, type AssignableUser } from '../users/users-api';
 
@@ -105,9 +105,14 @@ export function TasksPanel({ ownerType, ownerId, canWrite }: TasksPanelProps) {
       {error !== null ? <InlineAlert variant="error">{error}</InlineAlert> : null}
       {canWrite ? (
         <p className="tasks-panel__toolbar">
-          <button type="button" onClick={() => setDialog({ mode: 'create' })} data-testid="task-new">
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => setDialog({ mode: 'create' })}
+            data-testid="task-new"
+          >
             New task
-          </button>
+          </Button>
         </p>
       ) : null}
       <TaskList

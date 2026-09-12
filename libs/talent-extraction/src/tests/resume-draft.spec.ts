@@ -141,3 +141,63 @@ describe('extractResumeDraft — grounding, dedupe, failure', () => {
     ).rejects.toThrow('provider unavailable');
   });
 });
+
+// Full-profile EDIT (LOCKED scope expansion) — replace-set of declared
+// work-history. Proves the mapping (employer/role required; free-text dates
+// parsed; 'present' → ongoing) + the delegation to the repository's atomic
+// replace. No model call — this path is model-independent.
+describe('replaceDeclaredWorkHistory — replace-set mapping + delegation', () => {
+  const TALENT = '01900000-0000-7000-8000-0000000000aa';
+
+  function makeService(): {
+    svc: TalentExtractionService;
+    replaceWorkHistoryForTalent: ReturnType<typeof vi.fn>;
+  } {
+    const replaceWorkHistoryForTalent = vi.fn().mockResolvedValue(['wh-a', 'wh-b']);
+    const svc = new TalentExtractionService(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      {} as any,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      { replaceWorkHistoryForTalent } as any,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      {} as any,
+    );
+    return { svc, replaceWorkHistoryForTalent };
+  }
+
+  it('maps valid rows, drops rows missing employer/role, parses dates, tags source=resume', async () => {
+    const { svc, replaceWorkHistoryForTalent } = makeService();
+    await svc.replaceDeclaredWorkHistory({
+      talent_id: TALENT,
+      tenant_id: TENANT,
+      entries: [
+        { employer_name: 'Northstar', role_title: 'Cloud Engineer', start_date: '2022-01-01', end_date: 'present' },
+        { employer_name: '   ', role_title: 'No Employer' }, // dropped (empty employer)
+        { employer_name: 'Acme', role_title: '  ' }, // dropped (empty role)
+      ],
+    });
+    expect(replaceWorkHistoryForTalent).toHaveBeenCalledOnce();
+    const arg = replaceWorkHistoryForTalent.mock.calls[0][0];
+    expect(arg.tenant_id).toBe(TENANT);
+    expect(arg.talent_id).toBe(TALENT);
+    expect(arg.entries).toHaveLength(1);
+    const [row] = arg.entries;
+    expect(row.employer_name).toBe('Northstar');
+    expect(row.role_title).toBe('Cloud Engineer');
+    expect(row.source).toBe('resume');
+    expect(row.start_date).toBeInstanceOf(Date);
+    // 'present' is not a calendar date → no end_date (ongoing).
+    expect(row.end_date).toBeUndefined();
+    expect(typeof row.id).toBe('string');
+  });
+
+  it('an empty set clears the declared work-history (replace with [])', async () => {
+    const { svc, replaceWorkHistoryForTalent } = makeService();
+    await svc.replaceDeclaredWorkHistory({ talent_id: TALENT, tenant_id: TENANT, entries: [] });
+    expect(replaceWorkHistoryForTalent).toHaveBeenCalledWith({
+      tenant_id: TENANT,
+      talent_id: TALENT,
+      entries: [],
+    });
+  });
+});

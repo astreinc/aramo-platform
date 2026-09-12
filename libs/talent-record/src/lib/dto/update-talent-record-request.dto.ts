@@ -5,6 +5,8 @@
 // POST/DELETE /v1/talent-records/:id/link routes (which run the cluster-exists
 // gate). The allowlist-walk in TalentRecordRepository.update structurally
 // prevents any free-form column update from setting the link.
+import type { ResumeDraftWorkHistory } from '@aramo/talent-extraction';
+
 import type {
   AvailabilityStatus,
   EngagementType,
@@ -43,4 +45,12 @@ export interface UpdateTalentRecordRequestDto {
   engagement_type?: EngagementType | null;
   work_authorization?: WorkAuthorization | null;
   owner_id?: string | null;
+  // Full-profile edit (LOCKED scope expansion). REPLACE-SET semantics: when
+  // present, the reviewed set BECOMES the talent's declared ('resume'-sourced)
+  // work-history — the controller replaces the prior rows via
+  // TalentExtractionService.replaceDeclaredWorkHistory (NOT a TalentRecord
+  // scalar; the repository allowlist-walk ignores it). An empty array clears the
+  // declared set; ABSENT (undefined) leaves work-history untouched (scalar-only
+  // PATCH — e.g. the quick-edit drawer). Declared, recruiter-edited; not verified.
+  work_history?: ResumeDraftWorkHistory[];
 }

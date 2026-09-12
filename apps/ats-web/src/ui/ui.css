@@ -6,6 +6,19 @@
   gap: 16px;
   flex-wrap: wrap;
   margin-bottom: 4px;
+  /* Sticky Tier-2 (platform-wide standard): every list + detail page renders its
+     header band (title row · scope/mode tabs · subtitle · views) inside
+     .rc-viewhead, so this ONE rule freezes the band just under the sticky
+     .rc-topbar (top:0, z-index:5, ~56px) as the page scrolls. The canvas
+     background hides page content scrolling behind it; z-index sits below the
+     topbar and above the content. Vertical padding + a hairline divider delineate
+     the band once it is stuck. */
+  position: sticky;
+  top: 56px;
+  z-index: 4;
+  background: var(--canvas);
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
 }
 
 .rc-viewhead__actions {
@@ -3227,6 +3240,14 @@ select.rc-secinput { appearance: none; padding-right: 28px; }
 .rc-prov--resume { color: var(--brand); background: var(--brand-tint); }
 
 .rc-prov--edited { color: var(--muted); background: var(--surface-2); }
+
+/* Full-profile EDIT — the email/phone "identity anchor" read-only badge. */
+.rc-secfield__lock {
+  display: inline-flex; align-items: center; gap: 3px;
+  font-size: 0.6rem; font-weight: 700; letter-spacing: 0.02em; text-transform: uppercase;
+  border-radius: 20px; padding: 2px 7px;
+  color: var(--muted); background: var(--surface-2);
+}
 
 /* ── Skills chips ── */
 

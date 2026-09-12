@@ -24,6 +24,10 @@ interface IntakeFormProps {
   readonly provenance: ProvenanceMap;
   readonly workHistory: readonly WorkHistoryDraft[];
   readonly disabled?: boolean;
+  // Full-profile EDIT: keys rendered display-only (read-only). Email + phone are
+  // the identity/dedup anchors (email is required + the primary key; email+phone
+  // together identify a talent) — they are shown, never edited, on the edit form.
+  readonly lockedFields?: ReadonlySet<keyof IntakeState>;
   readonly onField: (key: keyof IntakeState, value: string) => void;
   readonly onToggle: (key: 'can_relocate' | 'is_hot') => void;
   readonly onWorkHistoryField: (
@@ -50,6 +54,7 @@ export function IntakeForm({
   provenance,
   workHistory,
   disabled = false,
+  lockedFields,
   onField,
   onToggle,
   onWorkHistoryField,
@@ -67,6 +72,7 @@ export function IntakeForm({
   ) {
     const prov = provenance[key as string] as Provenance | undefined;
     const flagged = isResumeSourced(prov);
+    const locked = lockedFields?.has(key) ?? false;
     return (
       <label className={`rc-secfield${opts.full ? ' rc-secfield--full' : ''}`}>
         <span className="rc-secfield__lb">
@@ -74,7 +80,7 @@ export function IntakeForm({
             {label}
             {opts.required ? <span className="rc-secfield__req"> *</span> : null}
           </span>
-          <ProvenanceChip prov={prov} />
+          {locked ? <span className="rc-secfield__lock">Identity anchor</span> : <ProvenanceChip prov={prov} />}
         </span>
         <input
           className={`rc-secinput${flagged ? ' rc-secinput--prov' : ''}`}
@@ -83,9 +89,13 @@ export function IntakeForm({
           placeholder={opts.placeholder}
           aria-label={label}
           required={opts.required}
-          disabled={disabled}
+          disabled={disabled || locked}
+          readOnly={locked}
           onChange={(ev) => onField(key, ev.target.value)}
         />
+        {locked ? (
+          <p className="rc-secnote">Used to identify this talent — not editable here.</p>
+        ) : null}
       </label>
     );
   }
