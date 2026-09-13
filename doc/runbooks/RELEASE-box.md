@@ -137,9 +137,12 @@ is the one genuinely unrecoverable scenario. (Skip only if RUN_MIGRATE=no.)
 ```
 bash deploy/migrate-prod.sh
 ```
-**GATE:** applies the expected migration(s) OR reports already-applied (N==M) — **both are fine**
-(a prior interrupted run may have applied them). Ends clean. On ERROR, **STOP** — do NOT build/
-recreate on a half-migrated DB.
+**GATE (pending-set, orphan-immune):** applies the expected migration(s) OR reports them
+already-applied — **both are fine** (a prior interrupted run may have applied them). The gate
+passes iff **zero on-disk migrations remain unapplied** (`db:sync:local pending — 0 …`). It does
+NOT compare recorded-vs-on-disk counts, so an orphan ledger row (a migration deleted from disk but
+still recorded — e.g. a retired net-zero pair) can never false-FATAL the deploy; only a genuinely
+unapplied on-disk migration blocks. On ERROR, **STOP** — do NOT build/recreate on a half-migrated DB.
 
 ### STEP 4 — SEED (only if RUN_SEED=yes)
 > ⚠ **ORDER (v2.3):** STAGE C runs the policy seed from the **built api image**, so
@@ -220,7 +223,9 @@ contains TARGET_SHA's code:
 
 ### STEP 9 — SMOKE / PROOF (per NOTES)
 ```
-curl -sI https://astre.aramo.ai | head -2        → still HTTP/2 200 (front door healthy)
+curl -sI https://astre.aramo.ai | head -2        → HTTP 200 (front door healthy; the front
+                                                    door may answer HTTP/1.1 or HTTP/2 — the
+                                                    health signal is the 200, not the version)
 ```
 Plus the deploy-specific proof from NOTES — verify the thing this batch actually changed (a new
 endpoint, a routing change, a UI element). Prove the *change*, not just that the app is up.

@@ -96,17 +96,19 @@ run_runner() {
     bash tools/db-sync-local.sh ${1:-}
 }
 
-# THE GATE. db:sync:local --status prints:
-#   'db:sync:local status — N/M migrations recorded as applied'
-# Returns 0 iff exactly-one N/M pair is found AND N == M (zero pending).
-# Anything else (no fraction, partial apply N<M, garbage/error text) → 1.
+# THE GATE — PENDING-SET based (orphan-immune). db:sync:local --status prints:
+#   'db:sync:local pending — K on-disk migration(s) not yet applied'
+# Returns 0 iff K is found AND K == 0 (every on-disk migration is applied).
+# It deliberately does NOT compare recorded-vs-on-disk counts: an orphan ledger
+# row (a migration deleted from disk but still recorded — e.g. a retired
+# net-zero pair) makes recorded > on-disk and would false-FATAL a count gate,
+# even though nothing is actually pending. Only a genuinely unapplied on-disk
+# migration (K > 0) must block. Missing/garbage 'pending' line → 1 (fail closed).
 gate_passes() {
-  local status="$1" frac n m
-  frac="$(printf '%s' "$status" | grep -oE '[0-9]+/[0-9]+' | head -n1)" || true
-  [ -n "$frac" ] || return 1
-  n="${frac%/*}"
-  m="${frac#*/}"
-  [ "$n" -eq "$m" ] 2>/dev/null
+  local status="$1" pending
+  pending="$(printf '%s' "$status" | sed -nE 's/^db:sync:local pending — ([0-9]+) on-disk.*/\1/p' | head -n1)"
+  [ -n "$pending" ] || return 1
+  [ "$pending" -eq 0 ] 2>/dev/null
 }
 
 # --- main -----------------------------------------------------------------
@@ -134,9 +136,9 @@ main() {
   echo "[migrate] post-apply status: ${status}"
 
   if gate_passes "$status"; then
-    echo "[migrate] OK — schema in sync (N==M). Safe to build + recreate containers."
+    echo "[migrate] OK — zero pending on-disk migrations. Safe to build + recreate containers."
   else
-    echo "[migrate] FATAL: pending migrations remain after apply (status not N/N)." >&2
+    echo "[migrate] FATAL: pending on-disk migrations remain after apply (see status above)." >&2
     # The on_exit trap prints the "containers NOT recreated" reassurance.
     exit 1
   fi
