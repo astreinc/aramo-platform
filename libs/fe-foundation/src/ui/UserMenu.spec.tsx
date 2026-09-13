@@ -55,7 +55,7 @@ describe('UserMenu', () => {
     );
   });
 
-  it('omits the Settings link when no href is given (non-admin)', () => {
+  it('omits the admin Settings link when no href is given (non-admin)', () => {
     renderMenu({ settingsHref: undefined });
     fireEvent.click(screen.getByRole('button', { name: /Account/ }));
     expect(
@@ -63,6 +63,22 @@ describe('UserMenu', () => {
     ).not.toBeInTheDocument();
     // Sign out is always available.
     expect(screen.getByRole('menuitem', { name: 'Sign out' })).toBeInTheDocument();
+  });
+
+  it('renders the "My Settings" (personal) link when its href is given', () => {
+    renderMenu({ mySettingsHref: '/settings/me' });
+    fireEvent.click(screen.getByRole('button', { name: /Account/ }));
+    expect(screen.getByRole('menuitem', { name: 'My Settings' })).toHaveAttribute(
+      'href',
+      '/settings/me',
+    );
+  });
+
+  it('a non-admin still gets "My Settings" (personal) even without admin Settings', () => {
+    renderMenu({ settingsHref: undefined, mySettingsHref: '/settings/me' });
+    fireEvent.click(screen.getByRole('button', { name: /Account/ }));
+    expect(screen.queryByRole('menuitem', { name: 'Settings' })).not.toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: 'My Settings' })).toBeInTheDocument();
   });
 
   it('fires onSignOut and closes when Sign out is clicked', () => {

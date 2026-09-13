@@ -40,6 +40,7 @@ import { ReportingLanding } from './reporting/ReportingLanding';
 import { SearchView } from './search/SearchView';
 import { SourcingPoolView } from './sourcing/SourcingPoolView';
 import { SettingsView } from './settings/SettingsView';
+import { MySettingsView } from './settings/MySettingsView';
 import { SettingsShell } from './settings/SettingsShell';
 import { TenantProfileSection } from './settings/sections/TenantProfileSection';
 import { BranchesSection } from './settings/sections/BranchesSection';
@@ -121,6 +122,11 @@ export function App() {
                         SearchView does per-section scope-gating internally,
                         so no per-route requireScope here. */}
                     <Route path="search" element={<SearchView />} />
+                    {/* My Settings — PERSONAL settings, any signed-in user (NOT
+                        admin-gated; distinct from /admin/settings). Reached from
+                        the top-right account menu. Hosts the per-user Microsoft
+                        mailbox connect (Connected accounts). */}
+                    <Route path="settings/me" element={<MySettingsView />} />
                     <Route
                       path="tasks"
                       element={

@@ -48,6 +48,9 @@ import { useMe } from './me-api';
 // access (it lives under the tenant:admin:* admin surface), so the link is
 // shown only to a principal who can reach it.
 const SETTINGS_PROFILE_PATH = '/admin/settings/profile';
+// Personal settings — every signed-in user (NOT admin-gated). The account menu's
+// "My Settings" entry; distinct from the admin "Settings" above.
+const MY_SETTINGS_PATH = '/settings/me';
 
 // RecruiterShell — Phase 2A. The app-layer chrome that REPLACES the frozen
 // fe-foundation Shell (non-consumption, Lead-approved). Composes AppShell +
@@ -168,8 +171,18 @@ function RecruiterShellInner({
   // the role line joins ALL roles ("Tenant Admin · Recruiter"); both the menu
   // and the rail footer read from the SAME source (no more consumer_type label).
   const displayName = me ? me.user.display_name ?? me.user.email : null;
+  // FULL role line (all roles) — for the roomy top-right account menu.
   const roleLine =
     me && me.roles.length > 0 ? me.roles.join(' · ') : null;
+  // CONDENSED role for the narrow rail footer: primary role + "+N" when a user
+  // holds several (e.g. "Lead Recruiter +2"), so multi-role users don't clip/
+  // crowd the block. The full list stays in the account menu (roleLine).
+  const railRole =
+    me && me.roles.length > 0
+      ? me.roles.length === 1
+        ? me.roles[0]
+        : `${me.roles[0]} +${me.roles.length - 1}`
+      : null;
   // Rail footer: real identity once loaded; neutral placeholders while in
   // flight so the chrome (avatar slot + logout) never collapses.
   const railName = displayName ?? '—';
@@ -225,7 +238,7 @@ function RecruiterShellInner({
           <RailUser
             initials={railInitials}
             name={railName}
-            role={roleLine ?? undefined}
+            role={railRole ?? undefined}
           />
           <button
             type="button"
@@ -269,6 +282,7 @@ function RecruiterShellInner({
         settingsHref={
           hasAdminScope(session) ? SETTINGS_PROFILE_PATH : undefined
         }
+        mySettingsHref={MY_SETTINGS_PATH}
       />
     </TopBar>
   );

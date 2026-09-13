@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 
 import {
   createMicrosoftMeeting as defaultCreateMeeting,
   getMicrosoftBindingStatus as defaultLoadStatus,
   sendMicrosoftEmail as defaultSendEmail,
-  startMicrosoftAuthorize as defaultStartAuthorize,
   type CreateMeetingInput,
   type MicrosoftBindingStatus,
   type MicrosoftEmailSendResult,
@@ -24,10 +24,8 @@ export interface MicrosoftRecruiterActionsProps {
   readonly pipelineId?: string;
   readonly toEmail?: string;
   readonly loadStatusFn?: () => Promise<MicrosoftBindingStatus>;
-  readonly startAuthorizeFn?: () => Promise<{ authorize_url: string }>;
   readonly sendEmailFn?: (input: SendEmailInput) => Promise<MicrosoftEmailSendResult>;
   readonly createMeetingFn?: (input: CreateMeetingInput) => Promise<MicrosoftMeetingResult>;
-  readonly onNavigate?: (url: string) => void;
 }
 
 function newKey(prefix: string): string {
@@ -36,7 +34,6 @@ function newKey(prefix: string): string {
 
 export function MicrosoftRecruiterActions(props: MicrosoftRecruiterActionsProps): JSX.Element {
   const load = props.loadStatusFn ?? defaultLoadStatus;
-  const startAuthorize = props.startAuthorizeFn ?? defaultStartAuthorize;
   const sendEmail = props.sendEmailFn ?? defaultSendEmail;
   const createMeeting = props.createMeetingFn ?? defaultCreateMeeting;
 
@@ -58,14 +55,6 @@ export function MicrosoftRecruiterActions(props: MicrosoftRecruiterActionsProps)
       live = false;
     };
   }, [load]);
-
-  const onAuthorize = useCallback(() => {
-    startAuthorize()
-      .then(({ authorize_url }) => {
-        if (props.onNavigate) props.onNavigate(authorize_url);
-      })
-      .catch(() => setError('microsoft_authorize_failed'));
-  }, [startAuthorize, props]);
 
   const onSendEmail = useCallback(() => {
     setError(null);
@@ -106,10 +95,14 @@ export function MicrosoftRecruiterActions(props: MicrosoftRecruiterActionsProps)
   if (status.needs_reauthorization) {
     return (
       <div data-testid="microsoft-reauth-required">
-        <p>Connect your Microsoft account to send email and create Teams meetings.</p>
-        <button type="button" data-testid="microsoft-authorize-button" onClick={onAuthorize}>
-          Authorize Microsoft
-        </button>
+        <p>
+          Connect your Microsoft account to send email and create Teams meetings.
+        </p>
+        {/* The per-user mailbox connect lives in My Settings → Connected
+            accounts (personal setting), not on the Talent panel. */}
+        <Link to="/settings/me" data-testid="microsoft-connect-link">
+          Connect your account in My Settings →
+        </Link>
       </div>
     );
   }
