@@ -49,11 +49,25 @@ mig_list() {
 if [ "$MODE" = "--status" ]; then
   if [ "$(q -c "SELECT to_regclass('public._local_migrations') IS NOT NULL;")" = "t" ]; then
     rec="$(q -c "SELECT count(*) FROM public._local_migrations;")"
+    recorded_names="$(q -c "SELECT name FROM public._local_migrations;")"
   else
     rec=0
+    recorded_names=""
   fi
   tot="$(mig_list | wc -l | tr -d ' ')"
+  # PENDING = on-disk migration dirs NOT recorded in the ledger. This — NOT
+  # rec-vs-tot — is the real "safe to build/recreate" signal. Orphan ledger rows
+  # (recorded but no longer on disk — e.g. a retired net-zero migration deleted
+  # from code) are harmless and must never block a deploy; only an on-disk
+  # migration missing from the ledger is a genuine unapplied migration. Membership
+  # is an exact match on the relative dir path (the ledger key), read-only.
+  pending=0
+  while IFS= read -r d; do
+    [ -n "$d" ] || continue
+    printf '%s\n' "$recorded_names" | grep -qxF -- "$d" || pending=$((pending + 1))
+  done < <(mig_list)
   echo "db:sync:local status — ${rec}/${tot} migrations recorded as applied"
+  echo "db:sync:local pending — ${pending} on-disk migration(s) not yet applied"
   exit 0
 fi
 

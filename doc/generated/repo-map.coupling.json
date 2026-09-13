@@ -18186,6 +18186,7 @@
         { "kind": "prose", "path": "deploy/seed-prod.sh" },
         { "kind": "prose", "path": "scripts/audit-check.sh" },
         { "kind": "prose", "path": "scripts/verify-vocabulary.sh" },
+        { "kind": "prose", "path": "tools/db-sync-local.sh" },
         { "kind": "nx-target", "path": "tools/local-run-link.sh" },
         { "kind": "prose", "path": "tools/local-run-link.sh" },
         { "kind": "nx-target", "path": "tools/local-stack.sh" },

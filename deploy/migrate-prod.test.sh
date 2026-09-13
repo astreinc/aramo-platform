@@ -2,8 +2,11 @@
 # Unit-check the migration GATE parse (no docker, no DB). Sources
 # migrate-prod.sh — whose main() is guarded behind BASH_SOURCE==$0, so sourcing
 # reaches gate_passes() without running anything — and exercises gate_passes()
-# on sample db:sync:local --status strings: N==M must PASS (proceed), anything
-# else (N<M partial apply, no fraction, error text, empty) must FAIL (abort).
+# on sample db:sync:local --status strings. The gate is PENDING-SET based: it
+# reads the 'pending — K on-disk migration(s) not yet applied' line and PASSES
+# iff K == 0. Orphan ledger rows (recorded > on-disk) must NOT false-fail; only
+# a genuinely unapplied on-disk migration (K>0), or a missing/garbage pending
+# line, must FAIL (abort, fail-closed).
 #
 # Run:  bash deploy/migrate-prod.test.sh   (exit 0 = all cases correct)
 
@@ -28,31 +31,32 @@ check() {
   fi
 }
 
-# --- the deploy-safe case: zero pending → gate PASSES (0) -----------------
-check "in-sync 56/56 → proceed" 0 \
-  "db:sync:local status — 56/56 migrations recorded as applied"
-check "fresh provision 0/0 → proceed" 0 \
-  "db:sync:local status — 0/0 migrations recorded as applied"
-check "extra noise around the fraction → proceed" 0 \
-  "noise 12/12 migrations recorded as applied noise"
+# --- deploy-safe: zero pending → gate PASSES (0) --------------------------
+check "in-sync, zero pending → proceed" 0 \
+  $'db:sync:local status — 56/56 migrations recorded as applied\ndb:sync:local pending — 0 on-disk migration(s) not yet applied'
+check "fresh provision, zero pending → proceed" 0 \
+  $'db:sync:local status — 0/0 migrations recorded as applied\ndb:sync:local pending — 0 on-disk migration(s) not yet applied'
+# THE regression this fix closes: orphan ledger rows (recorded > on-disk, from a
+# migration deleted-from-disk but still recorded) but ZERO pending must PROCEED.
+# The old count gate (N==M) false-FATALed this exact case — 197 != 195 — even
+# though nothing was actually unapplied.
+check "orphan drift 197/195 but 0 pending → proceed" 0 \
+  $'db:sync:local status — 197/195 migrations recorded as applied\ndb:sync:local pending — 0 on-disk migration(s) not yet applied'
 
-# --- the incident cases: pending remain → gate FAILS (1), deploy aborts ---
-check "one pending (apply failed at last) 55/56 → abort" 1 \
-  "db:sync:local status — 55/56 migrations recorded as applied"
-check "many pending (apply never ran) 40/56 → abort" 1 \
-  "db:sync:local status — 40/56 migrations recorded as applied"
-# Hardening over the directive's illustrative backreference grep '([0-9]+)/\1':
-# that regex FALSE-PASSES "10/100" (it matches the "10/10" prefix). Numeric
-# -eq comparison (10 != 100) correctly ABORTS.
-check "10/100 (substring trap) → abort" 1 \
-  "db:sync:local status — 10/100 migrations recorded as applied"
+# --- incident cases: pending remain → gate FAILS (1), deploy aborts -------
+check "one pending (apply failed at last) → abort" 1 \
+  $'db:sync:local status — 55/56 migrations recorded as applied\ndb:sync:local pending — 1 on-disk migration(s) not yet applied'
+check "many pending (apply never ran) → abort" 1 \
+  $'db:sync:local status — 40/56 migrations recorded as applied\ndb:sync:local pending — 16 on-disk migration(s) not yet applied'
 
-# --- malformed / error output → gate FAILS (1), never a false-proceed -----
+# --- malformed / missing pending line → gate FAILS (1), never false-proceed
 check "empty output → abort" 1 ""
-check "connection error, no fraction → abort" 1 \
+check "connection error, no pending line → abort" 1 \
   "psql: error: connection to server failed"
-check "single number, no fraction → abort" 1 \
-  "db:sync:local status — 56 migrations"
+# A stale db:sync:local that emits only the old N/M line (no pending line) must
+# FAIL CLOSED — never infer "in sync" from the count alone.
+check "old status line only, no pending line → abort" 1 \
+  "db:sync:local status — 56/56 migrations recorded as applied"
 
 echo ""
 echo "gate parse: ${pass} passed, ${fail} failed"
