@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
 
 import { Avatar } from './Avatar';
-import { IconChevronDown, IconLogout, IconShield } from './icons';
+import { IconChevronDown, IconLogout, IconShield, IconSliders } from './icons';
 
 // Aramo-Identity-Me-Endpoint-UserMenu-Directive-v1_0 — the top-right account
 // menu (the M365 pattern). A net-new chrome atom (no frozen primitive expresses
@@ -27,8 +27,10 @@ interface UserMenuProps {
   readonly roleLine: string | null;
   /** The shared session sign-out (always available, independent of /me). */
   readonly onSignOut: () => void;
-  /** Settings/profile target — present ONLY when the caller can reach it. */
+  /** Admin "Settings" (tenant/workspace admin) — present ONLY when the caller can reach it. */
   readonly settingsHref?: string;
+  /** "My Settings" (personal, every user) — present for any signed-in user. */
+  readonly mySettingsHref?: string;
 }
 
 export function UserMenu({
@@ -37,6 +39,7 @@ export function UserMenu({
   roleLine,
   onSignOut,
   settingsHref,
+  mySettingsHref,
 }: UserMenuProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -90,6 +93,17 @@ export function UserMenu({
             >
               <IconShield />
               <span>Settings</span>
+            </RouterLink>
+          ) : null}
+          {mySettingsHref ? (
+            <RouterLink
+              to={mySettingsHref}
+              role="menuitem"
+              className="rc-usermenu__item"
+              onClick={() => setOpen(false)}
+            >
+              <IconSliders />
+              <span>My Settings</span>
             </RouterLink>
           ) : null}
           <button

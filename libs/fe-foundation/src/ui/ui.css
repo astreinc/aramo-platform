@@ -320,6 +320,18 @@
   color: var(--rail-strong);
   font-weight: 500;
   line-height: 1.2;
+  /* Flex child in .rc-rail__user — must be allowed to shrink so the name/role
+     truncate with an ellipsis instead of clipping/overflowing the narrow rail
+     (long emails-as-name and multi-role lines). */
+  min-width: 0;
+  flex: 1;
+}
+
+.rc-rail__whoname {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .rc-rail__who small {
@@ -327,6 +339,9 @@
   color: var(--rail-text);
   font-size: 0.7rem;
   font-weight: 400;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .rc-main {

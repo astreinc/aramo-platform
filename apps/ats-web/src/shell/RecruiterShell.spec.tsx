@@ -204,22 +204,31 @@ describe('RecruiterShell', () => {
     expect(
       await screen.findByText('Astre Consulting Services Inc'),
     ).toBeInTheDocument();
-    // Rail footer now shows the real name + joined role line — NOT "Recruiter".
+    // Rail footer shows the real name + a CONDENSED role (primary + "+N") so a
+    // multi-role user doesn't clip; the FULL role line lives in the account menu.
     expect(screen.getByText('Purush Pichaimuthu')).toBeInTheDocument();
-    expect(screen.getByText('Tenant Admin · Recruiter')).toBeInTheDocument();
+    expect(screen.getByText('Tenant Admin +1')).toBeInTheDocument();
+    expect(screen.queryByText('Tenant Admin · Recruiter')).not.toBeInTheDocument();
   });
 
-  it('surfaces name, email, and role line in the top-right user menu', async () => {
+  it('surfaces name, email, full role line and My Settings in the top-right user menu', async () => {
     vi.spyOn(apiClient, 'get').mockResolvedValue(ME);
     renderShell(makeSession(['talent:read', 'tenant:admin:settings']));
     fireEvent.click(
       await screen.findByRole('button', { name: 'Account: Purush Pichaimuthu' }),
     );
     expect(screen.getByText('purush@astreinc.com')).toBeInTheDocument();
-    // Admin → the Settings link to the profile route is present.
+    // The FULL joined role line lives in the roomy account menu.
+    expect(screen.getByText('Tenant Admin · Recruiter')).toBeInTheDocument();
+    // Admin → the admin Settings link to the profile route is present.
     expect(screen.getByRole('menuitem', { name: 'Settings' })).toHaveAttribute(
       'href',
       '/admin/settings/profile',
+    );
+    // Every user gets personal "My Settings".
+    expect(screen.getByRole('menuitem', { name: 'My Settings' })).toHaveAttribute(
+      'href',
+      '/settings/me',
     );
   });
 

@@ -351,8 +351,10 @@ export function RailUser({ initials, name, role }: RailUserProps) {
         {initials}
       </div>
       <div className="rc-rail__who">
-        {name}
-        {role != null ? <small>{role}</small> : null}
+        <span className="rc-rail__whoname" title={name}>
+          {name}
+        </span>
+        {role != null ? <small title={role}>{role}</small> : null}
       </div>
     </div>
   );
