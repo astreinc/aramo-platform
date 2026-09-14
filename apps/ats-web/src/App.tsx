@@ -575,6 +575,15 @@ export function App() {
                                 path="settings/engagement-policy"
                                 element={<EngagementPolicySection />}
                               />
+                              {/* Recruiting settings — the linked home for the
+                                  recruiting-behaviour defaults (Compensation
+                                  display + Résumé extraction). Renders the
+                                  existing SettingsView; the bare /admin/settings
+                                  route above stays for back-compat. */}
+                              <Route
+                                path="settings/recruiting"
+                                element={<SettingsView />}
+                              />
                               <Route
                                 path="settings/localization"
                                 element={<LocalizationSection />}
