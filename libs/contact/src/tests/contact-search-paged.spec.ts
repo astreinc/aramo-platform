@@ -48,6 +48,7 @@ function makeReq(seeAll = false): Request {
 
 const noCompanyNames = {
   findNamesByIds: vi.fn().mockResolvedValue(new Map<string, string>()),
+  findRelationshipTypesByIds: vi.fn().mockResolvedValue(new Map<string, string[]>()),
 } as unknown as CompanyRepository;
 
 describe('Contact ?paged=true (controller param parsing)', () => {

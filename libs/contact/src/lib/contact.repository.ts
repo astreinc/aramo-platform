@@ -48,6 +48,7 @@ interface ContactRow {
   is_hot: boolean;
   notes: string | null;
   left_company: boolean;
+  is_primary: boolean;
   reports_to_id: string | null;
   owner_id: string | null;
   entered_by_id: string | null;
@@ -58,10 +59,14 @@ interface ContactRow {
   last_activity_at: Date | null;
 }
 
-// company_name is read-time enrichment (cross-schema, UUID-only resolution),
-// not a Contact column — defaults to null and is filled by the caller from a
-// batch CompanyRepository.findNamesByIds lookup.
-function projectView(row: ContactRow, companyName: string | null = null): ContactView {
+// company_name + relationship_types are read-time enrichment (cross-schema,
+// UUID-only resolution), not Contact columns — filled by the caller from batch
+// CompanyRepository lookups (findNamesByIds / findRelationshipTypesByIds).
+function projectView(
+  row: ContactRow,
+  companyName: string | null = null,
+  relationshipTypes: string[] = [],
+): ContactView {
   return {
     id: row.id,
     tenant_id: row.tenant_id,
@@ -84,6 +89,7 @@ function projectView(row: ContactRow, companyName: string | null = null): Contac
     is_hot: row.is_hot,
     notes: row.notes,
     left_company: row.left_company,
+    is_primary: row.is_primary,
     reports_to_id: row.reports_to_id,
     owner_id: row.owner_id,
     entered_by_id: row.entered_by_id,
@@ -94,6 +100,7 @@ function projectView(row: ContactRow, companyName: string | null = null): Contac
     last_activity_at:
       row.last_activity_at !== null ? row.last_activity_at.toISOString() : null,
     company_name: companyName,
+    relationship_types: relationshipTypes,
   };
 }
 
@@ -278,34 +285,53 @@ export class ContactRepository {
       );
     }
 
-    const row = await this.prisma.contact.create({
-      data: {
-        tenant_id: args.tenant_id,
-        site_id: args.input.site_id ?? null,
-        company_id: args.input.company_id,
-        company_department_id: args.input.company_department_id ?? null,
-        first_name: args.input.first_name,
-        last_name: args.input.last_name,
-        title: args.input.title ?? null,
-        email1: args.input.email1 ?? null,
-        email2: args.input.email2 ?? null,
-        phone_work: args.input.phone_work ?? null,
-        phone_cell: args.input.phone_cell ?? null,
-        phone_other: args.input.phone_other ?? null,
-        address: args.input.address ?? null,
-        address2: args.input.address2 ?? null,
-        city: args.input.city ?? null,
-        state: args.input.state ?? null,
-        zip: args.input.zip ?? null,
-        is_hot: args.input.is_hot ?? false,
-        notes: args.input.notes ?? null,
-        reports_to_id: args.input.reports_to_id ?? null,
-        owner_id: args.input.owner_id ?? args.entered_by_id,
-        entered_by_id: args.entered_by_id,
-        relationship_role: args.input.relationship_role ?? null,
-        preference: args.input.preference ?? null,
-      },
-    });
+    const data = {
+      tenant_id: args.tenant_id,
+      site_id: args.input.site_id ?? null,
+      company_id: args.input.company_id,
+      company_department_id: args.input.company_department_id ?? null,
+      first_name: args.input.first_name,
+      last_name: args.input.last_name,
+      title: args.input.title ?? null,
+      email1: args.input.email1 ?? null,
+      email2: args.input.email2 ?? null,
+      phone_work: args.input.phone_work ?? null,
+      phone_cell: args.input.phone_cell ?? null,
+      phone_other: args.input.phone_other ?? null,
+      address: args.input.address ?? null,
+      address2: args.input.address2 ?? null,
+      city: args.input.city ?? null,
+      state: args.input.state ?? null,
+      zip: args.input.zip ?? null,
+      is_hot: args.input.is_hot ?? false,
+      notes: args.input.notes ?? null,
+      is_primary: args.input.is_primary ?? false,
+      reports_to_id: args.input.reports_to_id ?? null,
+      owner_id: args.input.owner_id ?? args.entered_by_id,
+      entered_by_id: args.entered_by_id,
+      relationship_role: args.input.relationship_role ?? null,
+      preference: args.input.preference ?? null,
+    };
+    // Primary invariant — at most one primary per (tenant, company). When this
+    // create claims primary, demote any prior primary in the SAME transaction
+    // (nicer than surfacing the partial-unique-index P2002 to the caller); the
+    // index remains the hard backstop against races.
+    const row =
+      data.is_primary === true
+        ? await this.prisma.$transaction(async (tx) => {
+            // Demote any prior primary for this company (nicer than surfacing
+            // the partial-unique-index P2002); the index is the hard backstop.
+            await tx.contact.updateMany({
+              where: {
+                tenant_id: args.tenant_id,
+                company_id: data.company_id,
+                is_primary: true,
+              },
+              data: { is_primary: false },
+            });
+            return tx.contact.create({ data });
+          })
+        : await this.prisma.contact.create({ data });
     return projectView(row as ContactRow);
   }
 
@@ -430,14 +456,20 @@ export class ContactRepository {
         return null;
       }
     }
-    // Detail enrichment — resolve the company display name (cross-schema).
-    const names = await this.companyRepository.findNamesByIds({
-      tenant_id: args.tenant_id,
-      ids: [(row as ContactRow).company_id],
-    });
+    // Detail enrichment — resolve the company display name + relationship
+    // type(s) (cross-schema, batched even for the single id).
+    const cid = (row as ContactRow).company_id;
+    const [names, relTypes] = await Promise.all([
+      this.companyRepository.findNamesByIds({ tenant_id: args.tenant_id, ids: [cid] }),
+      this.companyRepository.findRelationshipTypesByIds({
+        tenant_id: args.tenant_id,
+        ids: [cid],
+      }),
+    ]);
     return projectView(
       row as ContactRow,
-      names.get((row as ContactRow).company_id) ?? null,
+      names.get(cid) ?? null,
+      relTypes.get(cid) ?? [],
     );
   }
 
@@ -488,7 +520,14 @@ export class ContactRepository {
       orderBy: { created_at: 'desc' },
       take: limit,
     });
-    return (rows as ContactRow[]).map((r) => projectView(r));
+    // Relationship-type enrichment (cross-schema, batched over the id set).
+    const relTypes = await this.companyRepository.findRelationshipTypesByIds({
+      tenant_id: args.tenant_id,
+      ids: [...new Set((rows as ContactRow[]).map((r) => r.company_id))],
+    });
+    return (rows as ContactRow[]).map((r) =>
+      projectView(r, null, relTypes.get(r.company_id) ?? []),
+    );
   }
 
   // Contact-spec amendment v1.0 — native server-side faceted search + keyset
@@ -528,15 +567,25 @@ export class ContactRepository {
     const next_cursor =
       hasMore && last !== undefined ? encodeCursor(last.id) : null;
 
-    // Cross-schema enrichment — batch-resolve each row's company display name
-    // (one query over the page's distinct company_ids).
-    const names = await this.companyRepository.findNamesByIds({
-      tenant_id: query.tenant_id,
-      ids: [...new Set(pageRows.map((r) => r.company_id))],
-    });
+    // Cross-schema enrichment — batch-resolve each row's company display name +
+    // relationship type(s) (one query each over the page's distinct company_ids).
+    const ids = [...new Set(pageRows.map((r) => r.company_id))];
+    const [names, relTypes] = await Promise.all([
+      this.companyRepository.findNamesByIds({ tenant_id: query.tenant_id, ids }),
+      this.companyRepository.findRelationshipTypesByIds({
+        tenant_id: query.tenant_id,
+        ids,
+      }),
+    ]);
 
     return {
-      items: pageRows.map((r) => projectView(r, names.get(r.company_id) ?? null)),
+      items: pageRows.map((r) =>
+        projectView(
+          r,
+          names.get(r.company_id) ?? null,
+          relTypes.get(r.company_id) ?? [],
+        ),
+      ),
       next_cursor,
       facets,
       total,
@@ -643,32 +692,48 @@ export class ContactRepository {
         { requestId: args.requestId, details: { id: args.id } },
       );
     }
-    const row = await this.prisma.contact.update({
-      where: { id: args.id },
-      data: {
-        ...(args.input.relationship_role === undefined ? {} : { relationship_role: args.input.relationship_role }),
-        ...(args.input.preference === undefined ? {} : { preference: args.input.preference }),
-        ...(args.input.company_department_id === undefined ? {} : { company_department_id: args.input.company_department_id }),
-        ...(args.input.first_name === undefined ? {} : { first_name: args.input.first_name }),
-        ...(args.input.last_name === undefined ? {} : { last_name: args.input.last_name }),
-        ...(args.input.title === undefined ? {} : { title: args.input.title }),
-        ...(args.input.email1 === undefined ? {} : { email1: args.input.email1 }),
-        ...(args.input.email2 === undefined ? {} : { email2: args.input.email2 }),
-        ...(args.input.phone_work === undefined ? {} : { phone_work: args.input.phone_work }),
-        ...(args.input.phone_cell === undefined ? {} : { phone_cell: args.input.phone_cell }),
-        ...(args.input.phone_other === undefined ? {} : { phone_other: args.input.phone_other }),
-        ...(args.input.address === undefined ? {} : { address: args.input.address }),
-        ...(args.input.address2 === undefined ? {} : { address2: args.input.address2 }),
-        ...(args.input.city === undefined ? {} : { city: args.input.city }),
-        ...(args.input.state === undefined ? {} : { state: args.input.state }),
-        ...(args.input.zip === undefined ? {} : { zip: args.input.zip }),
-        ...(args.input.is_hot === undefined ? {} : { is_hot: args.input.is_hot }),
-        ...(args.input.notes === undefined ? {} : { notes: args.input.notes }),
-        ...(args.input.left_company === undefined ? {} : { left_company: args.input.left_company }),
-        ...(args.input.reports_to_id === undefined ? {} : { reports_to_id: args.input.reports_to_id }),
-        ...(args.input.owner_id === undefined ? {} : { owner_id: args.input.owner_id }),
-      },
-    });
+    const data = {
+      ...(args.input.relationship_role === undefined ? {} : { relationship_role: args.input.relationship_role }),
+      ...(args.input.preference === undefined ? {} : { preference: args.input.preference }),
+      ...(args.input.company_department_id === undefined ? {} : { company_department_id: args.input.company_department_id }),
+      ...(args.input.first_name === undefined ? {} : { first_name: args.input.first_name }),
+      ...(args.input.last_name === undefined ? {} : { last_name: args.input.last_name }),
+      ...(args.input.title === undefined ? {} : { title: args.input.title }),
+      ...(args.input.email1 === undefined ? {} : { email1: args.input.email1 }),
+      ...(args.input.email2 === undefined ? {} : { email2: args.input.email2 }),
+      ...(args.input.phone_work === undefined ? {} : { phone_work: args.input.phone_work }),
+      ...(args.input.phone_cell === undefined ? {} : { phone_cell: args.input.phone_cell }),
+      ...(args.input.phone_other === undefined ? {} : { phone_other: args.input.phone_other }),
+      ...(args.input.address === undefined ? {} : { address: args.input.address }),
+      ...(args.input.address2 === undefined ? {} : { address2: args.input.address2 }),
+      ...(args.input.city === undefined ? {} : { city: args.input.city }),
+      ...(args.input.state === undefined ? {} : { state: args.input.state }),
+      ...(args.input.zip === undefined ? {} : { zip: args.input.zip }),
+      ...(args.input.is_hot === undefined ? {} : { is_hot: args.input.is_hot }),
+      ...(args.input.notes === undefined ? {} : { notes: args.input.notes }),
+      ...(args.input.left_company === undefined ? {} : { left_company: args.input.left_company }),
+      ...(args.input.is_primary === undefined ? {} : { is_primary: args.input.is_primary }),
+      ...(args.input.reports_to_id === undefined ? {} : { reports_to_id: args.input.reports_to_id }),
+      ...(args.input.owner_id === undefined ? {} : { owner_id: args.input.owner_id }),
+    };
+    // Primary invariant — promoting THIS contact demotes any prior primary for
+    // its company in the same transaction (company_id is immutable, taken from
+    // the existing row). Demotion (is_primary:false) needs no transaction.
+    const row =
+      args.input.is_primary === true
+        ? await this.prisma.$transaction(async (tx) => {
+            await tx.contact.updateMany({
+              where: {
+                tenant_id: args.tenant_id,
+                company_id: existing.company_id,
+                is_primary: true,
+                id: { not: args.id },
+              },
+              data: { is_primary: false },
+            });
+            return tx.contact.update({ where: { id: args.id }, data });
+          })
+        : await this.prisma.contact.update({ where: { id: args.id }, data });
     return projectView(row as ContactRow);
   }
 

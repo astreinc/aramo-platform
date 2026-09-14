@@ -601,6 +601,10 @@ const CONTACT_LIST_SURFACE_MIGRATION = resolve(
   ROOT,
   'libs/contact/prisma/migrations/20260618120000_add_contact_list_surface_fields/migration.sql',
 );
+const CONTACT_PRIMARY_FLAG_MIGRATION = resolve(
+  ROOT,
+  'libs/contact/prisma/migrations/20260914120000_add_contact_primary_flag/migration.sql',
+);
 // PC-5b — ats-web Gate-2a desk (requisition spine + profile-confirm +
 // assignments). Requisition init CREATEs the schema + Requisition +
 // RequisitionAssignment + the RecruitingStatus enum; the additive ALTERs add
@@ -1824,6 +1828,16 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         `INSERT INTO company."Company" (id, tenant_id, name)
          VALUES ($1,$2,$3) ON CONFLICT (id) DO NOTHING`,
         [params.id, TENANT_ID, params.name],
+      );
+      // Company Party/Role (ADR-0032, R7) — every seeded pact company is an
+      // ACTIVE CLIENT: this satisfies the CLIENT-workflow create guard and makes
+      // the paged-list relationship_type/relationship_status facets non-empty.
+      await c.query(
+        `INSERT INTO company."CompanyRelationship"
+           (id, tenant_id, company_id, type, status)
+         VALUES (gen_random_uuid(), $1, $2, 'CLIENT', 'ACTIVE')
+         ON CONFLICT (tenant_id, company_id, type) DO NOTHING`,
+        [TENANT_ID, params.id],
       );
     }
 
@@ -3241,6 +3255,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         CONTACT_INIT_MIGRATION,
         CONTACT_IMPORT_BATCH_MIGRATION,
         CONTACT_LIST_SURFACE_MIGRATION,
+        CONTACT_PRIMARY_FLAG_MIGRATION,
         // PC-5b — requisition spine (Requisition + RequisitionAssignment +
         // the comp/job-module/rate-type columns RequisitionView reads). init
         // CREATEs the schema + enum; all FKs intra-schema. job_domain (for
@@ -6390,7 +6405,16 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
 
       // -- create: no pre-existing requisition (the endpoint mints it).
       'an ats-web recruiter can create requisitions': async () => {
-        await withClient((c) => resetAllRows(c));
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          // Company Party/Role (ADR-0032, R7) — requisition create is a CLIENT
+          // workflow; seed the target company as an ACTIVE CLIENT so the
+          // fail-closed guard admits the create.
+          await seedAtsWebCompany(c, {
+            id: ATSW_REQ_COMPANY_ID,
+            name: 'Acme Corp',
+          });
+        });
       },
 
       // -- requisition + one assignment (assignments-list, assignment-delete).

@@ -3623,12 +3623,6 @@
       },
       {
         "excludedBy": "src/**/*.spec.tsx",
-        "from": "apps/ats-web/src/contacts/ContactDetailView.spec.tsx",
-        "project": "aramo-ats-web",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/ats-web/src/contacts/ContactsListView.spec.tsx",
         "project": "aramo-ats-web",
         "status": "excluded"

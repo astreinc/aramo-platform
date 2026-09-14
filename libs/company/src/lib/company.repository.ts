@@ -664,6 +664,35 @@ export class CompanyRepository {
     return out;
   }
 
+  // Batch relationship-type resolution for cross-schema enrichment (the contact
+  // list/detail surfaces each contact's company relationship type(s)). Mirrors
+  // findNamesByIds: one set-based query over the id set, tenant-scoped, never
+  // per-row. Returns company_id → sorted ACTIVE relationship types
+  // (CLIENT|VENDOR|PARTNER). A company may hold several, so the value is an
+  // array; companies with no ACTIVE relationship are simply absent.
+  async findRelationshipTypesByIds(args: {
+    tenant_id: string;
+    ids: readonly string[];
+  }): Promise<Map<string, string[]>> {
+    if (args.ids.length === 0) return new Map();
+    const rows = await this.prisma.companyRelationship.findMany({
+      where: {
+        tenant_id: args.tenant_id,
+        company_id: { in: [...args.ids] },
+        status: 'ACTIVE',
+      },
+      select: { company_id: true, type: true },
+    });
+    const out = new Map<string, string[]>();
+    for (const r of rows as Array<{ company_id: string; type: string }>) {
+      const list = out.get(r.company_id) ?? [];
+      list.push(r.type);
+      out.set(r.company_id, list);
+    }
+    for (const [k, v] of out) out.set(k, [...v].sort());
+    return out;
+  }
+
   // AUTHZ-D4b — visibility-scoped read paths. The cascade applies
   // `id IN visibility.visible_client_ids` (or unrestricted when
   // see_all_company). All queries are query-layer (DDR D6).

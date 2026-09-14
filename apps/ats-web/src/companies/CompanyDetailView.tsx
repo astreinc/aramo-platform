@@ -346,7 +346,7 @@ export function CompanyDetailView({ sessionOverride }: CompanyDetailViewProps) {
         <div className="rc-dhead__actions">
           {canCreateContact ? (
             <Link
-              to={`/companies/${company.id}/contacts/new`}
+              to={`/contacts/new?company_id=${company.id}`}
               className="rc-hbtn"
             >
               <Icons.IconContacts /> Add contact
@@ -595,7 +595,7 @@ function OverviewPanel({
                       {canEditContact ? (
                         <>
                           {' · '}
-                          <Link to={`/contacts/${c.id}/edit`}>Edit</Link>
+                          <Link to={`/contacts?edit=${c.id}`}>Edit</Link>
                         </>
                       ) : null}
                     </div>
@@ -661,7 +661,7 @@ function ContactsPanel({
           {canCreate ? (
             <div className="rc-card__head-actions">
               <Link
-                to={`/companies/${companyId}/contacts/new`}
+                to={`/contacts/new?company_id=${companyId}`}
                 className="rc-hbtn"
               >
                 <Icons.IconPlus /> Add contact
@@ -687,7 +687,7 @@ function ContactsPanel({
                   </div>
                 </div>
                 {canEdit ? (
-                  <Link to={`/contacts/${c.id}/edit`} className="rc-link-action">
+                  <Link to={`/contacts?edit=${c.id}`} className="rc-link-action">
                     Edit
                   </Link>
                 ) : null}

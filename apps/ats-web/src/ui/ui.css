@@ -1819,6 +1819,25 @@ button.rc-link-action {
 
 .rc-ent__nm { display: flex; align-items: center; gap: 6px; font-size: .85rem; font-weight: 700; color: var(--ink); }
 
+/* Contacts list opens a drawer (no detail page), so the name is a <button>, not
+   an <a>. Reset the button chrome so it renders identically to the anchor-based
+   name on the Talent/Requisition/Company lists — inherit the parent .rc-ent__nm
+   weight/color/size; underline on hover for the click affordance. */
+button.rc-link-strong {
+  appearance: none;
+  -webkit-appearance: none;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+button.rc-link-strong:hover { text-decoration: underline; }
+
 .rc-ent__rl, .rc-ent__sub { display: block; font-size: .74rem; color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 260px; }
 
 .rc-ent__flame { width: 13px; height: 13px; color: var(--hot); }
@@ -2239,6 +2258,16 @@ button.rc-link-action {
 }
 
 .rc-cocard:hover { border-color: var(--brand-accent); box-shadow: var(--sh-2); }
+
+/* The cold-call card is a <button> (opens the drawer) — strip button-default
+   font/appearance so it keeps only the .rc-cocard card styling, full width. */
+button.rc-cocard {
+  appearance: none;
+  -webkit-appearance: none;
+  font: inherit;
+  color: inherit;
+  width: 100%;
+}
 
 .rc-cocard__top { display: flex; align-items: center; gap: 11px; }
 

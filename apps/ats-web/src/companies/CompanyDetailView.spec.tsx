@@ -435,6 +435,9 @@ describe('CompanyDetailView (account hub)', () => {
       expect(screen.getByRole('heading', { name: /Acme Corp/i })).toBeInTheDocument(),
     );
     const links = screen.getAllByRole('link', { name: /add contact/i });
-    expect(links[0]).toHaveAttribute('href', '/companies/co-1/contacts/new');
+    // Contacts prototype parity — "Add contact" now opens the Contacts create
+    // drawer with the company pre-selected (the standalone per-company create
+    // route is retired).
+    expect(links[0]).toHaveAttribute('href', '/contacts/new?company_id=co-1');
   });
 });

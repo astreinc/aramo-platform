@@ -17,6 +17,9 @@ export interface UpdateContactRequestDto {
   is_hot?: boolean;
   notes?: string | null;
   left_company?: boolean;
+  // Contacts prototype parity — promote/demote primary. true promotes (and
+  // demotes any prior primary for the company, transactional); false demotes.
+  is_primary?: boolean;
   reports_to_id?: string | null;
   owner_id?: string | null;
   // Contact-spec amendment v1.0 — closed-vocab (validated app-layer via

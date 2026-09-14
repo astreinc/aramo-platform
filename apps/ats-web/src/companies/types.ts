@@ -128,6 +128,9 @@ export interface ContactView {
   readonly is_hot: boolean;
   readonly notes: string | null;
   readonly left_company: boolean;
+  // Contacts prototype parity — the primary contact for the company (≤1 per
+  // company, partial-unique-index enforced backend-side).
+  readonly is_primary: boolean;
   readonly reports_to_id: string | null;
   readonly owner_id: string | null;
   readonly entered_by_id: string | null;
@@ -141,6 +144,9 @@ export interface ContactView {
   readonly preference: string | null;
   readonly last_activity_at: string | null;
   readonly company_name: string | null;
+  // Read-time enrichment — the ACTIVE relationship types (CLIENT|VENDOR|PARTNER)
+  // the contact's company holds. A company may hold several, so this is a set.
+  readonly relationship_types: string[];
 }
 
 export interface ContactListResponse {

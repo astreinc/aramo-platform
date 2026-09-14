@@ -50,6 +50,10 @@ export interface CreateContactRequest {
   readonly is_hot?: boolean;
   readonly notes?: string;
   readonly reports_to_id?: string;
+  // Contacts prototype parity — owner picker (BE accepts owner_id; defaults to
+  // entered_by_id when omitted) + PRIMARY-for-company flag.
+  readonly owner_id?: string;
+  readonly is_primary?: boolean;
   // Contact-spec amendment v1.0 — closed-vocab (BE validates @IsIn).
   readonly relationship_role?: string;
   readonly preference?: string;
@@ -76,6 +80,9 @@ export interface UpdateContactRequest {
   readonly is_hot?: boolean;
   readonly notes?: string | null;
   readonly left_company?: boolean;
+  // Contacts prototype parity — promote/demote primary (true demotes any prior
+  // primary for the company, transactional BE-side).
+  readonly is_primary?: boolean;
   readonly reports_to_id?: string | null;
   // owner_id — enables the list's bulk "Assign to me" (reassign the owner to
   // the acting recruiter). Contact-spec amendment v1.0 closed-vocab fields too.

@@ -343,6 +343,12 @@
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/ats-a8-2-suggest-mapping.integration.spec.ts",
       "status": "excluded",
+      "to": "libs/contact/prisma/migrations/20260914120000_add_contact_primary_flag/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/ats-a8-2-suggest-mapping.integration.spec.ts",
+      "status": "excluded",
       "to": "libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql"
     },
     {
@@ -500,6 +506,12 @@
       "from": "apps/api/src/tests/ats-batch1-gating.integration.spec.ts",
       "status": "excluded",
       "to": "libs/contact/prisma/migrations/20260618120000_add_contact_list_surface_fields/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/ats-batch1-gating.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/contact/prisma/migrations/20260914120000_add_contact_primary_flag/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -1003,6 +1015,12 @@
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/ats-batch5-calendar-saved-list.integration.spec.ts",
       "status": "excluded",
+      "to": "libs/contact/prisma/migrations/20260914120000_add_contact_primary_flag/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/ats-batch5-calendar-saved-list.integration.spec.ts",
+      "status": "excluded",
       "to": "libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql"
     },
     {
@@ -1232,6 +1250,12 @@
       "from": "apps/api/src/tests/ats-batch6-reporting-dashboard.integration.spec.ts",
       "status": "excluded",
       "to": "libs/contact/prisma/migrations/20260618120000_add_contact_list_surface_fields/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/ats-batch6-reporting-dashboard.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/contact/prisma/migrations/20260914120000_add_contact_primary_flag/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -1567,6 +1591,12 @@
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/ats-batch7-import-engine.integration.spec.ts",
       "status": "excluded",
+      "to": "libs/contact/prisma/migrations/20260914120000_add_contact_primary_flag/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/ats-batch7-import-engine.integration.spec.ts",
+      "status": "excluded",
       "to": "libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql"
     },
     {
@@ -1736,6 +1766,12 @@
       "from": "apps/api/src/tests/ats-batch8-pr-a8-4-export.integration.spec.ts",
       "status": "excluded",
       "to": "libs/contact/prisma/migrations/20260618120000_add_contact_list_surface_fields/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/ats-batch8-pr-a8-4-export.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/contact/prisma/migrations/20260914120000_add_contact_primary_flag/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -16567,6 +16603,11 @@
       "from": "pact/provider/src/verify-api.ts",
       "status": "unscoped",
       "to": "libs/contact/prisma/migrations/20260618120000_add_contact_list_surface_fields/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "libs/contact/prisma/migrations/20260914120000_add_contact_primary_flag/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",
