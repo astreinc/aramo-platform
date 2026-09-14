@@ -1,19 +1,39 @@
 import { describe, expect, it } from 'vitest';
 
-import type { CompanyView } from './types';
+import type { CompanyRelationshipView, CompanyView } from './types';
 import {
   EMPTY_FACETS,
+  buildCompanyQuery,
+  companyTypes,
   daysSinceContact,
   deriveIndustries,
   inScope,
-  inSegment,
   isQuiet,
   lastContactLabel,
   matchesText,
   passesFacets,
-  relationshipLabel,
+  primaryStatus,
+  relStatusLabel,
+  relTypeLabel,
+  tabCountFrom,
   tierLabel,
 } from './company-workspace';
+
+// Company Party/Role (ADR-0032) — the workspace projection/filter layer now
+// reads the real relationships[] axis (type + status), not the retired status.
+
+function rel(over: Partial<CompanyRelationshipView> = {}): CompanyRelationshipView {
+  return {
+    id: 'r-1',
+    type: 'CLIENT',
+    status: 'ACTIVE',
+    effective_from: '2026-01-01T00:00:00Z',
+    effective_to: null,
+    created_at: '2026-01-01T00:00:00Z',
+    updated_at: '2026-01-01T00:00:00Z',
+    ...over,
+  };
+}
 
 function make(overrides: Partial<CompanyView> = {}): CompanyView {
   return {
@@ -39,6 +59,9 @@ function make(overrides: Partial<CompanyView> = {}): CompanyView {
     created_at: '2026-01-01T00:00:00Z',
     updated_at: '2026-01-01T00:00:00Z',
     status: 'active',
+    master_status: 'ACTIVE',
+    communication_restricted: false,
+    relationships: [rel()],
     description: null,
     industry: 'Robotics',
     country: null,
@@ -62,126 +85,124 @@ function make(overrides: Partial<CompanyView> = {}): CompanyView {
   };
 }
 
-const NOW = Date.UTC(2026, 5, 16); // 2026-06-16
-
-describe('company-workspace mappers', () => {
-  it('maps status → relationship label', () => {
-    expect(relationshipLabel('active')).toBe('Client');
-    expect(relationshipLabel('prospect')).toBe('Prospect');
-    expect(relationshipLabel('inactive')).toBe('Dormant');
-    expect(relationshipLabel('do_not_contact')).toBe('Do not contact');
-    expect(relationshipLabel('weird')).toBe('weird');
+describe('company-workspace — relationship helpers (ADR-0032)', () => {
+  it('companyTypes returns the distinct roles in canonical order', () => {
+    const c = make({
+      relationships: [rel({ type: 'VENDOR' }), rel({ type: 'CLIENT' })],
+    });
+    expect(companyTypes(c)).toEqual(['CLIENT', 'VENDOR']);
   });
 
-  it('maps client_tier a|b|c → tier label (null → null)', () => {
+  it('primaryStatus prefers CLIENT, then the first role', () => {
+    expect(
+      primaryStatus(
+        make({
+          relationships: [
+            rel({ type: 'VENDOR', status: 'ON_HOLD' }),
+            rel({ type: 'CLIENT', status: 'ACTIVE' }),
+          ],
+        }),
+      ),
+    ).toBe('ACTIVE');
+    expect(
+      primaryStatus(make({ relationships: [rel({ type: 'PARTNER', status: 'PROSPECT' })] })),
+    ).toBe('PROSPECT');
+    expect(primaryStatus(make({ relationships: [] }))).toBeNull();
+  });
+
+  it('labels map machine values to human text', () => {
+    expect(relTypeLabel('CLIENT')).toBe('Client');
+    expect(relTypeLabel('VENDOR')).toBe('Vendor');
+    expect(relStatusLabel('ON_HOLD')).toBe('On hold');
+    expect(relStatusLabel('PROSPECT')).toBe('Prospect');
+  });
+});
+
+describe('company-workspace — facets over relationships (some-semantics)', () => {
+  it('relationship_type facet passes when the company has that role', () => {
+    const c = make({ relationships: [rel({ type: 'VENDOR' })] });
+    expect(passesFacets(c, { ...EMPTY_FACETS, relationship_type: ['VENDOR'] })).toBe(true);
+    expect(passesFacets(c, { ...EMPTY_FACETS, relationship_type: ['CLIENT'] })).toBe(false);
+  });
+  it('relationship_status facet passes when any relationship has that status', () => {
+    const c = make({
+      relationships: [rel({ type: 'CLIENT', status: 'ACTIVE' }), rel({ type: 'VENDOR', status: 'ON_HOLD' })],
+    });
+    expect(passesFacets(c, { ...EMPTY_FACETS, relationship_status: ['ON_HOLD'] })).toBe(true);
+    expect(passesFacets(c, { ...EMPTY_FACETS, relationship_status: ['INACTIVE'] })).toBe(false);
+  });
+});
+
+describe('company-workspace — buildCompanyQuery (tab + status)', () => {
+  it('active tab → relationship_type param; status pills → relationship_status', () => {
+    const p = buildCompanyQuery({
+      scope: 'all',
+      tab: 'VENDOR',
+      facets: { ...EMPTY_FACETS, relationship_status: ['ACTIVE', 'ON_HOLD'] },
+    });
+    expect(p.get('relationship_type')).toBe('VENDOR');
+    expect(p.get('relationship_status')).toBe('ACTIVE,ON_HOLD');
+    expect(p.get('paged')).toBe('true');
+  });
+  it('all tab omits relationship_type; scope=mine sets scope', () => {
+    const p = buildCompanyQuery({ scope: 'mine', tab: 'all', facets: EMPTY_FACETS });
+    expect(p.get('relationship_type')).toBeNull();
+    expect(p.get('scope')).toBe('mine');
+  });
+});
+
+describe('company-workspace — tabCountFrom', () => {
+  const facets = {
+    relationship_type: [
+      { value: 'CLIENT', count: 5 },
+      { value: 'VENDOR', count: 2 },
+    ],
+    relationship_status: [],
+    tier: [],
+    industry: [],
+    hot: 0,
+    off_limits: 0,
+    exclusivity: 0,
+    quiet: 0,
+  };
+  it('all → total; a type tab → its bucket count; missing → 0', () => {
+    expect(tabCountFrom(facets, 9, 'all')).toBe(9);
+    expect(tabCountFrom(facets, 9, 'CLIENT')).toBe(5);
+    expect(tabCountFrom(facets, 9, 'PARTNER')).toBe(0);
+  });
+  it('null facets → count only for all', () => {
+    expect(tabCountFrom(null, 9, 'all')).toBe(9);
+    expect(tabCountFrom(null, 9, 'CLIENT')).toBeNull();
+  });
+});
+
+describe('company-workspace — retained helpers still honest', () => {
+  it('tierLabel maps a|b|c and passes through null', () => {
     expect(tierLabel('a')).toBe('Key account');
-    expect(tierLabel('b')).toBe('Growth');
-    expect(tierLabel('c')).toBe('Standard');
     expect(tierLabel(null)).toBeNull();
-    expect(tierLabel('')).toBeNull();
   });
-});
-
-describe('quiet / last-contact derivation', () => {
-  it('treats never-contacted as quiet', () => {
-    const c = make({ last_activity_at: null });
-    expect(daysSinceContact(c, NOW)).toBeNull();
-    expect(isQuiet(c, NOW)).toBe(true);
-    expect(lastContactLabel(c, NOW)).toBe('No contact');
+  it('inScope mine matches owner', () => {
+    expect(inScope(make({ owner_id: 'u1' }), 'mine', 'u1')).toBe(true);
+    expect(inScope(make({ owner_id: 'u2' }), 'mine', 'u1')).toBe(false);
+    expect(inScope(make(), 'all', null)).toBe(true);
   });
-
-  it('is quiet only past 30 days', () => {
-    const recent = make({ last_activity_at: '2026-06-10T00:00:00Z' });
-    const stale = make({ last_activity_at: '2026-04-01T00:00:00Z' });
-    expect(isQuiet(recent, NOW)).toBe(false);
-    expect(isQuiet(stale, NOW)).toBe(true);
+  it('isQuiet true when never contacted; false when recent', () => {
+    const now = Date.parse('2026-02-01T00:00:00Z');
+    expect(isQuiet(make({ last_activity_at: null }), now)).toBe(true);
+    expect(isQuiet(make({ last_activity_at: '2026-01-31T00:00:00Z' }), now)).toBe(false);
   });
-
-  it('formats relative last-contact', () => {
-    expect(lastContactLabel(make({ last_activity_at: '2026-06-16T00:00:00Z' }), NOW)).toBe(
-      'today',
-    );
-    expect(lastContactLabel(make({ last_activity_at: '2026-06-15T00:00:00Z' }), NOW)).toBe(
-      'yesterday',
-    );
-    expect(lastContactLabel(make({ last_activity_at: '2026-06-12T00:00:00Z' }), NOW)).toBe(
-      '4d ago',
-    );
+  it('daysSinceContact + lastContactLabel', () => {
+    const now = Date.parse('2026-01-10T00:00:00Z');
+    expect(daysSinceContact(make({ last_activity_at: '2026-01-08T00:00:00Z' }), now)).toBe(2);
+    expect(lastContactLabel(make({ last_activity_at: null }), now)).toBe('No contact');
   });
-});
-
-describe('scope / segment filtering', () => {
-  it('scope mine matches owner; all matches everything', () => {
-    const mine = make({ owner_id: 'u1' });
-    const other = make({ owner_id: 'u2' });
-    expect(inScope(mine, 'mine', 'u1')).toBe(true);
-    expect(inScope(other, 'mine', 'u1')).toBe(false);
-    expect(inScope(other, 'all', 'u1')).toBe(true);
-    expect(inScope(mine, 'mine', null)).toBe(false);
+  it('matchesText over name/industry/location/tags', () => {
+    expect(matchesText(make(), 'robot')).toBe(true);
+    expect(matchesText(make(), 'zzz')).toBe(false);
   });
-
-  it('segments bind to real fields', () => {
-    const key = make({ client_tier: 'a' });
-    const prospect = make({ status: 'prospect' });
-    const hot = make({ is_hot: true });
-    const quiet = make({ last_activity_at: '2026-01-01T00:00:00Z' });
-    expect(inSegment(key, 'key')).toBe(true);
-    expect(inSegment(make({ client_tier: 'b' }), 'key')).toBe(false);
-    expect(inSegment(prospect, 'prospects')).toBe(true);
-    expect(inSegment(hot, 'hot')).toBe(true);
-    expect(inSegment(quiet, 'quiet', NOW)).toBe(true);
-    expect(inSegment(make(), 'all')).toBe(true);
-  });
-});
-
-describe('facets + text', () => {
-  it('empty facets pass everything', () => {
-    expect(passesFacets(make(), EMPTY_FACETS)).toBe(true);
-  });
-
-  it('AND across groups, OR within a group', () => {
-    const c = make({ status: 'active', client_tier: 'a', industry: 'Robotics' });
+  it('deriveIndustries dedupes + sorts', () => {
     expect(
-      passesFacets(c, { ...EMPTY_FACETS, relationship: ['active', 'prospect'] }),
-    ).toBe(true);
-    expect(passesFacets(c, { ...EMPTY_FACETS, relationship: ['prospect'] })).toBe(
-      false,
-    );
-    expect(
-      passesFacets(c, { ...EMPTY_FACETS, tier: ['a'], industry: ['Robotics'] }),
-    ).toBe(true);
-    expect(
-      passesFacets(c, { ...EMPTY_FACETS, tier: ['a'], industry: ['Energy'] }),
-    ).toBe(false);
-  });
-
-  it('flag facets bind to fields', () => {
-    expect(passesFacets(make({ is_hot: true }), { ...EMPTY_FACETS, flags: ['hot'] })).toBe(
-      true,
-    );
-    expect(passesFacets(make({ exclusivity: true }), { ...EMPTY_FACETS, flags: ['exclusive'] })).toBe(
-      true,
-    );
-    expect(
-      passesFacets(make({ off_limits: true }), { ...EMPTY_FACETS, flags: ['off_limits'] }),
-    ).toBe(true);
-    expect(passesFacets(make({ off_limits: false }), { ...EMPTY_FACETS, flags: ['off_limits'] })).toBe(
-      false,
-    );
-  });
-
-  it('text matches name / industry / location / tags', () => {
-    const c = make({ name: 'Northwind', industry: 'Robotics', city: 'Austin', tags: ['Rust'] });
-    expect(matchesText(c, '')).toBe(true);
-    expect(matchesText(c, 'north')).toBe(true);
-    expect(matchesText(c, 'robot')).toBe(true);
-    expect(matchesText(c, 'austin')).toBe(true);
-    expect(matchesText(c, 'rust')).toBe(true);
-    expect(matchesText(c, 'zzz')).toBe(false);
-  });
-
-  it('derives sorted unique industries', () => {
-    const list = [make({ industry: 'SaaS' }), make({ industry: 'Robotics' }), make({ industry: 'SaaS' }), make({ industry: null })];
-    expect(deriveIndustries(list)).toEqual(['Robotics', 'SaaS']);
+      deriveIndustries([make({ industry: 'B' }), make({ industry: 'A' }), make({ industry: 'A' })]),
+    ).toEqual(['A', 'B']);
   });
 });

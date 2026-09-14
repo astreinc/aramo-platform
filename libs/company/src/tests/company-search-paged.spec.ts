@@ -51,7 +51,9 @@ describe('Phase 2 — company ?paged=true (controller param parsing)', () => {
     const qp = {
       paged: 'true',
       scope: 'mine',
-      status: 'active,prospect',
+      // Company Party/Role (ADR-0032, VR5) — relationship_type/status replace status.
+      relationship_type: 'CLIENT,VENDOR',
+      relationship_status: 'ACTIVE,PROSPECT',
       client_tier: 'a',
       industry: 'Robotics',
       is_hot: 'true',
@@ -77,7 +79,8 @@ describe('Phase 2 — company ?paged=true (controller param parsing)', () => {
     expect(query).toMatchObject({
       tenant_id: TENANT_ID,
       owner_id: ACTOR_ID, // scope=mine derives owner server-side (not trusted)
-      status: ['active', 'prospect'],
+      relationship_type: ['CLIENT', 'VENDOR'],
+      relationship_status: ['ACTIVE', 'PROSPECT'],
       client_tier: ['a'],
       industry: ['Robotics'],
       is_hot: true,
@@ -117,18 +120,25 @@ describe('Phase 2 — searchPaged WHERE + facet construction (repo)', () => {
     const findMany = vi.fn().mockResolvedValue([]);
     const groupBy = vi.fn().mockResolvedValue([]);
     const count = vi.fn().mockResolvedValue(0);
-    const prisma = { company: { findMany, groupBy, count } };
-    return { prisma, findMany, groupBy, count };
+    // Company Party/Role (ADR-0032, VR5) — computeFacets groups the type/status
+    // buckets over CompanyRelationship (not Company.status).
+    const relGroupBy = vi.fn().mockResolvedValue([]);
+    const prisma = {
+      company: { findMany, groupBy, count },
+      companyRelationship: { groupBy: relGroupBy },
+    };
+    return { prisma, findMany, groupBy, count, relGroupBy };
   }
 
-  it('item where = base (visibility-AND) + the facet selections; facets over base only', async () => {
-    const { prisma, findMany, count } = mockPrisma();
+  it('item where = base (visibility-AND) + relationship selection (some-semantics); facets over base only', async () => {
+    const { prisma, findMany, count, relGroupBy } = mockPrisma();
     const repo = new CompanyRepository(prisma as never);
     await repo.searchPaged(
       {
         tenant_id: TENANT_ID,
         owner_id: ACTOR_ID,
-        status: ['prospect'],
+        relationship_type: ['VENDOR'],
+        relationship_status: ['ACTIVE'],
         is_hot: true,
         quiet: true,
       },
@@ -139,13 +149,19 @@ describe('Phase 2 — searchPaged WHERE + facet construction (repo)', () => {
     expect(itemWhere.tenant_id).toBe(TENANT_ID);
     expect(itemWhere.owner_id).toBe(ACTOR_ID);
     expect(itemWhere.id).toEqual({ in: [VISIBLE_A, VISIBLE_B] });
-    // selection predicates
-    expect(itemWhere.status).toEqual({ in: ['prospect'] });
+    // relationship selection — some-relationship over CompanyRelationship
+    expect(itemWhere.relationships).toEqual({
+      some: { type: { in: ['VENDOR'] }, status: { in: ['ACTIVE'] } },
+    });
     expect(itemWhere.is_hot).toBe(true);
     expect(Array.isArray(itemWhere.OR)).toBe(true); // quiet → last_activity OR
-    // total count uses the BASE where (no status/is_hot/quiet selection)
+    // type/status facets group over CompanyRelationship (relation-filtered)
+    expect(relGroupBy).toHaveBeenCalled();
+    const relByType = relGroupBy.mock.calls.find((c) => c[0].by?.[0] === 'type');
+    expect(relByType?.[0].where).toEqual({ company: { is: expect.anything() } });
+    // total count uses the BASE where (no relationship/is_hot/quiet selection)
     const totalWhere = count.mock.calls.find(
-      (c) => c[0].where.status === undefined && c[0].where.is_hot === undefined,
+      (c) => c[0].where.relationships === undefined && c[0].where.is_hot === undefined,
     )?.[0].where;
     expect(totalWhere).toBeDefined();
     expect(totalWhere.id).toEqual({ in: [VISIBLE_A, VISIBLE_B] });

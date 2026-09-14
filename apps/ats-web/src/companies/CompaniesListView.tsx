@@ -11,8 +11,7 @@ import { resolveUserNames } from '../users/users-api';
 import { Avatar, Card, Icons, StatusPill, Tag } from '../ui';
 
 import { CompanyBulkBar } from './components/CompanyBulkBar';
-import { CompanyDrawer } from './components/CompanyDrawer';
-import { CompanyFacetRail } from './components/CompanyFacetRail';
+import { CompanyEditDrawer } from './components/CompanyEditDrawer';
 import {
   getCompanyMetrics,
   searchCompanies,
@@ -22,24 +21,32 @@ import { listErrorMessage } from './error-messages';
 import type { CompanyView } from './types';
 import {
   EMPTY_FACETS,
-  RELATIONSHIP_LABELS,
-  RELATIONSHIP_TONES,
-  SEGMENTS,
+  RELATIONSHIP_TABS,
+  REL_STATUS_LABELS,
+  REL_STATUS_TONES,
   TIER_LABELS,
   buildCompanyQuery,
   lastContactLabel,
   locationOf,
   matchesText,
-  relationshipLabel,
-  segmentCountFrom,
+  relStatusLabel,
+  relTypeLabel,
+  tabCountFrom,
   tierLabel,
   type CompanyFacets,
   type CompanyMetrics,
   type FacetFlag,
   type FacetState,
+  type RelationshipTab,
   type ScopeMode,
-  type SegmentKey,
 } from './company-workspace';
+
+// Company Party/Role (ADR-0032, Slice B) — the list leads with relationship
+// TYPE tabs (All / Clients / Vendors / Partners) and a relationship STATUS
+// filter, reading the real relationships[] axis. The old status-derived
+// "relationship" facet + the left FacetRail are retired (prototype uses the
+// tab + inline pills; no left rail).
+const REL_STATUS_ORDER = ['PROSPECT', 'ACTIVE', 'ON_HOLD', 'INACTIVE'] as const;
 
 // Companies workspace — Phase 2: SERVER-SIDE pagination + facets. The list now
 // pages via a keyset cursor (?paged=true) and renders server-computed facet +
@@ -60,9 +67,17 @@ type ViewMode = 'table' | 'cards';
 
 interface CompaniesListViewProps {
   readonly sessionOverride?: Session;
+  // Company Party/Role (ADR-0032, R6) — /companies/new resolves to this
+  // workspace with the create drawer already open.
+  readonly initialCreate?: boolean;
 }
 
-export function CompaniesListView({ sessionOverride }: CompaniesListViewProps = {}) {
+type EditState = { readonly mode: 'create' | 'edit'; readonly company: CompanyView | null };
+
+export function CompaniesListView({
+  sessionOverride,
+  initialCreate = false,
+}: CompaniesListViewProps = {}) {
   const [items, setItems] = useState<readonly CompanyView[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [facets, setFacets] = useState<CompanyFacets | null>(null);
@@ -76,13 +91,15 @@ export function CompaniesListView({ sessionOverride }: CompaniesListViewProps = 
   );
 
   const [scope, setScope] = useState<ScopeMode>('all');
-  const [segment, setSegment] = useState<SegmentKey>('all');
+  const [tab, setTab] = useState<RelationshipTab>('all');
   const [facetState, setFacetState] = useState<FacetState>(EMPTY_FACETS);
   const [query, setQuery] = useState('');
   const [vmode, setVmode] = useState<ViewMode>('table');
 
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
-  const [drawerIndex, setDrawerIndex] = useState<number | null>(null);
+  const [editState, setEditState] = useState<EditState | null>(
+    initialCreate ? { mode: 'create', company: null } : null,
+  );
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const loadMoreRef = useRef<HTMLButtonElement | null>(null);
@@ -100,6 +117,10 @@ export function CompaniesListView({ sessionOverride }: CompaniesListViewProps = 
     session !== null &&
     Array.isArray(session.scopes) &&
     hasScope(session, 'company:edit');
+  const canSeeCommercial =
+    session !== null &&
+    Array.isArray(session.scopes) &&
+    hasScope(session, 'company:read_commercial');
 
   // Owner-name resolution — one-shot admin-gated probe (graceful 403 fallback).
   useEffect(() => {
@@ -116,7 +137,7 @@ export function CompaniesListView({ sessionOverride }: CompaniesListViewProps = 
     async (cursor: string | null, append: boolean) => {
       const params = buildCompanyQuery({
         scope,
-        segment,
+        tab,
         facets: facetState,
         cursor,
         pageSize: PAGE_SIZE,
@@ -145,7 +166,7 @@ export function CompaniesListView({ sessionOverride }: CompaniesListViewProps = 
         else setLoading(false);
       }
     },
-    [scope, segment, facetState],
+    [scope, tab, facetState],
   );
 
   // Debounced refetch on any server-filter change; resets page + selection.
@@ -154,7 +175,6 @@ export function CompaniesListView({ sessionOverride }: CompaniesListViewProps = 
     const handle = setTimeout(() => {
       if (cancelled) return;
       setSelected(new Set());
-      setDrawerIndex(null);
       void fetchPage(null, false);
     }, 150);
     return () => {
@@ -198,7 +218,10 @@ export function CompaniesListView({ sessionOverride }: CompaniesListViewProps = 
     [items, query],
   );
 
-  const toggleStr = (key: 'relationship' | 'tier' | 'industry', value: string) =>
+  const toggleStr = (
+    key: 'relationship_type' | 'relationship_status' | 'tier' | 'industry',
+    value: string,
+  ) =>
     setFacetState((f) => {
       const arr = f[key];
       return {
@@ -219,7 +242,7 @@ export function CompaniesListView({ sessionOverride }: CompaniesListViewProps = 
   const resetAll = () => {
     setFacetState(EMPTY_FACETS);
     setScope('all');
-    setSegment('all');
+    setTab('all');
     setQuery('');
   };
 
@@ -258,17 +281,17 @@ export function CompaniesListView({ sessionOverride }: CompaniesListViewProps = 
   const chips: { k: string; label: string; clear: () => void }[] = [];
   if (scope === 'mine')
     chips.push({ k: 'Scope', label: 'My accounts', clear: () => setScope('all') });
-  if (segment !== 'all')
+  if (tab !== 'all')
     chips.push({
-      k: 'View',
-      label: SEGMENTS.find((s) => s.key === segment)?.label ?? segment,
-      clear: () => setSegment('all'),
+      k: 'Tab',
+      label: RELATIONSHIP_TABS.find((t) => t.key === tab)?.label ?? tab,
+      clear: () => setTab('all'),
     });
-  for (const r of facetState.relationship)
+  for (const s of facetState.relationship_status)
     chips.push({
-      k: 'Relationship',
-      label: RELATIONSHIP_LABELS[r] ?? r,
-      clear: () => toggleStr('relationship', r),
+      k: 'Status',
+      label: REL_STATUS_LABELS[s] ?? s,
+      clear: () => toggleStr('relationship_status', s),
     });
   for (const t of facetState.tier)
     chips.push({
@@ -282,13 +305,27 @@ export function CompaniesListView({ sessionOverride }: CompaniesListViewProps = 
     chips.push({ k: 'Flag', label: FLAG_LABELS[f], clear: () => toggleFlag(f) });
 
   const hasActiveQuery = chips.length > 0 || query.trim() !== '';
-  const drawerCompany = drawerIndex !== null ? (visible[drawerIndex] ?? null) : null;
+  // Company Party/Role (ADR-0032) — relationship-breakdown headline from the
+  // server type facets (stable base-where counts).
+  const relCount = (t: string): number =>
+    facets?.relationship_type?.find((b) => b.value === t)?.count ?? 0;
+  const headline =
+    facets !== null && facets.relationship_type !== undefined
+      ? `${total} ${total === 1 ? 'company' : 'companies'} · ${relCount('CLIENT')} client, ${relCount('VENDOR')} vendor, ${relCount('PARTNER')} partner relationships`
+      : null;
+  const editingId = editState?.company?.id ?? null;
+  const openEdit = (c: CompanyView) => setEditState({ mode: 'edit', company: c });
+  const openCreate = () => setEditState({ mode: 'create', company: null });
+  const onSaved = () => {
+    setEditState(null);
+    void fetchPage(null, false);
+  };
   const ownerName = (c: CompanyView): string =>
     c.owner_id ? (userNames[c.owner_id] ?? '—') : '—';
 
   return (
     <section
-      className={drawerCompany !== null ? 'rc-talent rc-talent--drawer' : 'rc-talent'}
+      className={editState !== null ? 'rc-talent rc-talent--drawer' : 'rc-talent'}
     >
       <div className="rc-viewhead">
         <div>
@@ -313,10 +350,13 @@ export function CompaniesListView({ sessionOverride }: CompaniesListViewProps = 
               </button>
             </div>
           </div>
+          {headline !== null ? (
+            <p className="rc-sub rc-sub--count">{headline}</p>
+          ) : null}
           <p className="rc-sub">
             <Icons.IconShield className="rc-sub__icon" aria-hidden="true" />
-            Your visible clients — the accounts you can see through assignments,
-            reports, or pod-client teams.
+            Your visible companies — the organizations you can see through
+            assignments, reports, or pod-client teams.
           </p>
         </div>
         <div className="rc-viewhead__actions">
@@ -339,30 +379,54 @@ export function CompaniesListView({ sessionOverride }: CompaniesListViewProps = 
             </button>
           </div>
           {canCreate ? (
-            <Link to="/companies/new" className="rc-hbtn rc-hbtn--primary">
+            <button
+              type="button"
+              className="rc-hbtn rc-hbtn--primary"
+              onClick={openCreate}
+              data-testid="company-new"
+            >
               <Icons.IconPlus /> New company
-            </Link>
+            </button>
           ) : null}
         </div>
       </div>
 
-      {/* segments bar — one active at a time, with server-derived counts. */}
-      <div className="rc-views" role="group" aria-label="Views">
-        <span className="rc-views__lbl">Views</span>
-        {SEGMENTS.map((s) => {
-          const count = segmentCountFrom(facets, total, s.key);
+      {/* Relationship TYPE tabs (ADR-0032) — All / Clients / Vendors / Partners,
+          with server-derived distinct-company counts. */}
+      <div className="rc-views" role="group" aria-label="Relationship">
+        {RELATIONSHIP_TABS.map((t) => {
+          const count = tabCountFrom(facets, total, t.key);
           return (
             <button
-              key={s.key}
+              key={t.key}
               type="button"
-              className={`rc-view${segment === s.key ? ' on' : ''}`}
-              aria-pressed={segment === s.key}
-              onClick={() => setSegment(s.key)}
+              className={`rc-view${tab === t.key ? ' on' : ''}`}
+              aria-pressed={tab === t.key}
+              onClick={() => setTab(t.key)}
             >
-              {s.label}
+              {t.label}
               {count !== null ? (
                 <span className="rc-view__ct num">{count}</span>
               ) : null}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Relationship STATUS filter pills (lifecycle within the active tab). */}
+      <div className="rc-views" role="group" aria-label="Status">
+        <span className="rc-views__lbl">Status</span>
+        {REL_STATUS_ORDER.map((s) => {
+          const on = facetState.relationship_status.includes(s);
+          return (
+            <button
+              key={s}
+              type="button"
+              className={`rc-view${on ? ' on' : ''}`}
+              aria-pressed={on}
+              onClick={() => toggleStr('relationship_status', s)}
+            >
+              {relStatusLabel(s)}
             </button>
           );
         })}
@@ -412,17 +476,7 @@ export function CompaniesListView({ sessionOverride }: CompaniesListViewProps = 
         </p>
       ) : null}
 
-      <div className="rc-work rc-mt-16">
-        <CompanyFacetRail
-          facets={facets}
-          selected={facetState}
-          onToggleRelationship={(v) => toggleStr('relationship', v)}
-          onToggleTier={(v) => toggleStr('tier', v)}
-          onToggleIndustry={(v) => toggleStr('industry', v)}
-          onToggleFlag={(v) => toggleFlag(v)}
-          onReset={resetAll}
-        />
-
+      <div className="rc-mt-16">
         <Card flush>
           <div className="rc-rtools">
             <span className="rc-rtools__note">
@@ -442,12 +496,12 @@ export function CompaniesListView({ sessionOverride }: CompaniesListViewProps = 
             </p>
           ) : vmode === 'cards' ? (
             <div className="rc-cocards">
-              {visible.map((c, i) => (
+              {visible.map((c) => (
                 <CompanyCard
                   key={c.id}
                   company={c}
                   metrics={metricsById[c.id] ?? null}
-                  onOpen={() => setDrawerIndex(i)}
+                  onOpen={() => openEdit(c)}
                 />
               ))}
             </div>
@@ -473,7 +527,7 @@ export function CompaniesListView({ sessionOverride }: CompaniesListViewProps = 
                       />
                     </th>
                     <th scope="col">Company</th>
-                    <th scope="col">Relationship</th>
+                    <th scope="col">Relationships</th>
                     <th scope="col">Open reqs</th>
                     <th scope="col">Active</th>
                     <th scope="col">Owner</th>
@@ -482,7 +536,7 @@ export function CompaniesListView({ sessionOverride }: CompaniesListViewProps = 
                   </tr>
                 </thead>
                 <tbody>
-                  {visible.map((c, i) => {
+                  {visible.map((c) => {
                     const tier = tierLabel(c.client_tier);
                     const subtitle = [c.industry, tier, locationOf(c)]
                       .filter((s) => s !== null && s !== '' && s !== '—')
@@ -491,14 +545,14 @@ export function CompaniesListView({ sessionOverride }: CompaniesListViewProps = 
                     return (
                       <tr
                         key={c.id}
-                        className={`rc-row--clickable${selected.has(c.id) ? ' rc-row--sel' : ''}${drawerIndex === i ? ' rc-row--active' : ''}`}
+                        className={`rc-row--clickable${selected.has(c.id) ? ' rc-row--sel' : ''}${editingId === c.id ? ' rc-row--active' : ''}`}
                         onClick={(e) => {
                           if (
                             e.target instanceof Element &&
                             e.target.closest('a,button,input,label')
                           )
                             return;
-                          setDrawerIndex(i);
+                          openEdit(c);
                         }}
                       >
                         <td>
@@ -528,12 +582,24 @@ export function CompaniesListView({ sessionOverride }: CompaniesListViewProps = 
                           </Link>
                         </td>
                         <td>
-                          <StatusPill
-                            tone={RELATIONSHIP_TONES[c.status] ?? 'neutral'}
-                            dot
-                          >
-                            {relationshipLabel(c.status)}
-                          </StatusPill>
+                          <span className="rc-relpills">
+                            {(c.relationships ?? []).length === 0 ? (
+                              <span className="rc-consent-stub">—</span>
+                            ) : (
+                              (c.relationships ?? []).map((r) => (
+                                <StatusPill
+                                  key={r.id}
+                                  tone={REL_STATUS_TONES[r.status] ?? 'neutral'}
+                                  dot
+                                >
+                                  {relTypeLabel(r.type)} · {relStatusLabel(r.status)}
+                                </StatusPill>
+                              ))
+                            )}
+                            {c.communication_restricted ? (
+                              <StatusPill tone="danger">Do not contact</StatusPill>
+                            ) : null}
+                          </span>
                         </td>
                         <td className="num">
                           {m !== undefined ? (
@@ -555,9 +621,9 @@ export function CompaniesListView({ sessionOverride }: CompaniesListViewProps = 
                           <div className="rc-rowq">
                             <button
                               type="button"
-                              title="Preview"
-                              aria-label={`Preview ${c.name}`}
-                              onClick={() => setDrawerIndex(i)}
+                              title="Quick edit"
+                              aria-label={`Quick edit ${c.name}`}
+                              onClick={() => openEdit(c)}
                             >
                               <Icons.IconOpen />
                             </button>
@@ -600,22 +666,15 @@ export function CompaniesListView({ sessionOverride }: CompaniesListViewProps = 
         onClear={() => setSelected(new Set())}
       />
 
-      <CompanyDrawer
-        company={drawerCompany}
-        metrics={drawerCompany !== null ? (metricsById[drawerCompany.id] ?? null) : null}
-        index={drawerIndex ?? 0}
-        total={visible.length}
-        ownerNames={userNames}
-        onClose={() => setDrawerIndex(null)}
-        onPrev={() =>
-          setDrawerIndex((i) => (i === null ? null : Math.max(0, i - 1)))
-        }
-        onNext={() =>
-          setDrawerIndex((i) =>
-            i === null ? null : Math.min(visible.length - 1, i + 1),
-          )
-        }
-      />
+      {editState !== null ? (
+        <CompanyEditDrawer
+          mode={editState.mode}
+          company={editState.company}
+          canSeeCommercial={canSeeCommercial}
+          onClose={() => setEditState(null)}
+          onSaved={onSaved}
+        />
+      ) : null}
     </section>
   );
 }
@@ -644,9 +703,14 @@ function CompanyCard({
         </div>
       </div>
       <div className="rc-cocard__meta">
-        <StatusPill tone={RELATIONSHIP_TONES[company.status] ?? 'neutral'} dot>
-          {relationshipLabel(company.status)}
-        </StatusPill>
+        {(company.relationships ?? []).map((r) => (
+          <StatusPill key={r.id} tone={REL_STATUS_TONES[r.status] ?? 'neutral'} dot>
+            {relTypeLabel(r.type)} · {relStatusLabel(r.status)}
+          </StatusPill>
+        ))}
+        {company.communication_restricted ? (
+          <StatusPill tone="danger">Do not contact</StatusPill>
+        ) : null}
         {tier !== null ? <Tag>{tier}</Tag> : null}
       </div>
       <div className="rc-cocard__foot">

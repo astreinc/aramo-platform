@@ -24,6 +24,7 @@ import { AppModule } from '../app.module.js';
 
 import { ConfigurableTestResolver } from './support/test-auth-harness.js';
 import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
+import { ensureClientCompany, ensureVendorOnlyCompany } from './seed-client-company.js';
 import { publishLifecyclePackage } from './publish-lifecycle-package.js';
 import { placementCapacityMigrations } from './support/placement-capacity-migrations.js';
 import { establishOpenRequisition } from './support/establish-open-requisition.js';
@@ -200,6 +201,9 @@ const COMPANY_ID = 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa';
 const FILTER_COMPANY_X = 'bbbbbbbb-bbbb-7bbb-8bbb-bbbbbbbbbbbb';
 const FILTER_COMPANY_Y = 'cccccccc-cccc-7ccc-8ccc-cccccccccccc';
 const FOREIGN_COMPANY = 'dddddddd-dddd-7ddd-8ddd-dddddddddddd';
+// R7 negative probe — a company that EXISTS with only a VENDOR relationship
+// (no CLIENT). Requisition create against it must fail-closed.
+const VENDOR_ONLY_COMPANY = 'eeeeeeee-eeee-7eee-8eee-eeeeeeeeeeee';
 
 describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
   'PR-A3 ATS Batch 2 — requisition + assignment-visibility proofs (real Postgres 17)',
@@ -280,6 +284,19 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
          VALUES ($1::uuid, 'ats')
          ON CONFLICT (tenant_id, capability) DO NOTHING`,
         [TENANT_ATS],
+      );
+
+      // Company Party/Role (ADR-0032, R7) — the requisitions created below
+      // reference synthetic company_ids; seed each as an ACTIVE CLIENT so the
+      // fail-closed CLIENT-workflow create guard admits them.
+      for (const cid of [COMPANY_ID, FILTER_COMPANY_X, FILTER_COMPANY_Y]) {
+        await ensureClientCompany((s) => setupClient.query(s), TENANT_ATS, cid);
+      }
+      // R7 negative probe: a VENDOR-only company (exists, but no CLIENT).
+      await ensureVendorOnlyCompany(
+        (s) => setupClient.query(s),
+        TENANT_ATS,
+        VENDOR_ONLY_COMPANY,
       );
 
       const kp = await generateKeyPair(ALG);
@@ -433,6 +450,43 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         },
       );
       expect(adminRes.status).toBe(204);
+    });
+
+    it('R7 CLIENT-workflow invariant: create against a non-CLIENT (VENDOR-only) company → 400 VALIDATION_ERROR; a CLIENT company → 201', async () => {
+      // Company Party/Role (ADR-0032, R7) — requisition create is a CLIENT
+      // workflow. The fail-closed guard (COMPANY_CLIENT_CHECK_PORT → apps/api
+      // adapter → CompanyRepository.hasClientRelationship) rejects a company
+      // that has no CLIENT relationship, even though the company row exists.
+      const rejected = await fetch(`http://127.0.0.1:${port}/v1/requisitions?site_id=${SITE_A}`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${tenantAdminJwt_Ats_SiteA}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          title: 'Should be rejected — vendor-only company',
+          company_id: VENDOR_ONLY_COMPANY,
+          site_id: SITE_A,
+        }),
+      });
+      expect(rejected.status).toBe(400);
+      const rejectedBody = (await rejected.json()) as { error: { code: string } };
+      expect(rejectedBody.error?.code).toBe('VALIDATION_ERROR');
+
+      // Positive control: the SAME request against a CLIENT company is admitted.
+      const admitted = await fetch(`http://127.0.0.1:${port}/v1/requisitions?site_id=${SITE_A}`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${tenantAdminJwt_Ats_SiteA}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          title: 'Should be admitted — client company',
+          company_id: COMPANY_ID,
+          site_id: SITE_A,
+        }),
+      });
+      expect(admitted.status).toBe(201);
     });
 
     // -------------------------------------------------------------------------

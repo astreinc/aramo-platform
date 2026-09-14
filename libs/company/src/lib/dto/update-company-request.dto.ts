@@ -3,8 +3,18 @@
 // All fields optional (partial-update semantics). Identity fields
 // (id / tenant_id / site_id) are not editable here — tenant move and
 // site move are out of scope for a reference-CRUD update endpoint.
+import type { CompanyRelationshipInput } from './create-company-request.dto';
+
 export interface UpdateCompanyRequestDto {
   name?: string;
+  // Company Party/Role (ADR-0032). Relationship-aware clients (Slice B) send
+  // `relationships` to upsert/transition roles (reactivation reuses the row
+  // per §6). The A1 bridge also SYNCS the CLIENT relationship status when a
+  // legacy `status` PATCH arrives (do_not_contact preserves the existing
+  // status + sets communication_restricted; never invents INACTIVE — §5).
+  relationships?: CompanyRelationshipInput[];
+  communication_restricted?: boolean;
+  master_status?: string; // ACTIVE|ARCHIVED
   address?: string | null;
   address2?: string | null;
   city?: string | null;

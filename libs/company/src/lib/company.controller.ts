@@ -111,7 +111,12 @@ export class CompanyController {
         const parts = v.split(',').map((s) => s.trim()).filter((s) => s !== '');
         return parts.length > 0 ? parts : undefined;
       };
-      const status = csv(qp['status']);
+      // Company Party/Role (ADR-0032, VR5) — relationship_type/status replace
+      // the retiring `status` param. Back-compat: a legacy `status=` still maps
+      // to relationship_status so a pre-cutover caller keeps filtering by
+      // lifecycle during the A1+B window (harmless; removed with the column).
+      const relationshipType = csv(qp['relationship_type']);
+      const relationshipStatus = csv(qp['relationship_status']) ?? csv(qp['status']);
       const clientTier = csv(qp['client_tier']);
       const industry = csv(qp['industry']);
       const pageSize = qp['page_size'] ? Number(qp['page_size']) : undefined;
@@ -122,7 +127,8 @@ export class CompanyController {
         // scope=mine narrows to the actor's own accounts (owner derived
         // server-side from the JWT — never trusted from the client).
         ...(scope === 'mine' ? { owner_id: authContext.sub } : {}),
-        ...(status === undefined ? {} : { status }),
+        ...(relationshipType === undefined ? {} : { relationship_type: relationshipType }),
+        ...(relationshipStatus === undefined ? {} : { relationship_status: relationshipStatus }),
         ...(clientTier === undefined ? {} : { client_tier: clientTier }),
         ...(industry === undefined ? {} : { industry }),
         ...(qp['is_hot'] === 'true' ? { is_hot: true } : {}),
@@ -185,6 +191,7 @@ export class CompanyController {
   async create(
     @AuthContext() authContext: AuthContextType,
     @Body() body: CreateCompanyRequestDto,
+    @RequestId() requestId: string,
   ): Promise<CompanyView> {
     return this.companyRepository.create({
       tenant_id: authContext.tenant_id,
@@ -192,6 +199,8 @@ export class CompanyController {
       input: body,
       // Company-Fields v1.1 — commercial fields stripped for non-holders.
       scopes: authContext.scopes,
+      // Company Party/Role (ADR-0032) — for the do_not_contact reject envelope.
+      requestId,
     });
   }
 

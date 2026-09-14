@@ -22,6 +22,17 @@ const ACME = {
   tenant_id: 't',
   site_id: null,
   name: 'Acme Corp',
+  // Company Party/Role (ADR-0032, R7) — the requisition client picker shows
+  // only companies with a CLIENT relationship, so the mock must carry one.
+  relationships: [
+    {
+      id: 'rel-1', type: 'CLIENT', status: 'ACTIVE',
+      effective_from: null, effective_to: null,
+      created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+    },
+  ],
+  master_status: 'ACTIVE',
+  communication_restricted: false,
   address: null,
   address2: null,
   city: null,

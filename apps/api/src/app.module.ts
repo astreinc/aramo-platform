@@ -58,6 +58,7 @@ import { TalentRecordModule, ResumeReindexModule } from '@aramo/talent-record';
 import { TalentTrustModule } from '@aramo/talent-trust';
 import { TaskModule } from '@aramo/task';
 
+import { CompanyClientCheckModule } from './company-client-check/company-client-check.module.js';
 import { SubmittedHistoryModule } from './reporting-adapters/submitted-history.module.js';
 import { InterviewHistoryModule } from './reporting-adapters/interview-history.module.js';
 import { SubmitTalentModule } from './submit-talent/submit-talent.module.js';
@@ -218,6 +219,11 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     // all). Leaf import set: AuthModule + AuthorizationModule +
     // EntitlementModule only (no @aramo/company / @aramo/contact).
     RequisitionModule,
+    // Company Party/Role (ADR-0032, R7) — @Global adapter binding the
+    // requisition CompanyClientCheckPort to CompanyRepository. Imported AFTER
+    // both CompanyModule and RequisitionModule so the token is available to the
+    // requisition controller wherever it resolves.
+    CompanyClientCheckModule,
     // PR-A4 Gate 5 — third ATS-domain batch: talent-record + attachment.
     // TalentRecordModule is imported BEFORE AttachmentModule because
     // AttachmentModule depends on it (attachment -> talent-record edge;

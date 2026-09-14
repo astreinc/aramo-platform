@@ -319,6 +319,12 @@
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/ats-a8-2-suggest-mapping.integration.spec.ts",
       "status": "excluded",
+      "to": "libs/company/prisma/migrations/20260913120000_company_party_role_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/ats-a8-2-suggest-mapping.integration.spec.ts",
+      "status": "excluded",
       "to": "libs/contact/prisma/migrations/20260601160000_init_contact_model/migration.sql"
     },
     {
@@ -470,6 +476,12 @@
       "from": "apps/api/src/tests/ats-batch1-gating.integration.spec.ts",
       "status": "excluded",
       "to": "libs/company/prisma/migrations/20260616000000_add_company_off_limits/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/ats-batch1-gating.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/company/prisma/migrations/20260913120000_company_party_role_model/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -967,6 +979,12 @@
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/ats-batch5-calendar-saved-list.integration.spec.ts",
       "status": "excluded",
+      "to": "libs/company/prisma/migrations/20260913120000_company_party_role_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/ats-batch5-calendar-saved-list.integration.spec.ts",
+      "status": "excluded",
       "to": "libs/contact/prisma/migrations/20260601160000_init_contact_model/migration.sql"
     },
     {
@@ -1184,6 +1202,12 @@
       "from": "apps/api/src/tests/ats-batch6-reporting-dashboard.integration.spec.ts",
       "status": "excluded",
       "to": "libs/company/prisma/migrations/20260616000000_add_company_off_limits/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/ats-batch6-reporting-dashboard.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/company/prisma/migrations/20260913120000_company_party_role_model/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -1519,6 +1543,12 @@
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/ats-batch7-import-engine.integration.spec.ts",
       "status": "excluded",
+      "to": "libs/company/prisma/migrations/20260913120000_company_party_role_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/ats-batch7-import-engine.integration.spec.ts",
+      "status": "excluded",
       "to": "libs/contact/prisma/migrations/20260601160000_init_contact_model/migration.sql"
     },
     {
@@ -1676,6 +1706,12 @@
       "from": "apps/api/src/tests/ats-batch8-pr-a8-4-export.integration.spec.ts",
       "status": "excluded",
       "to": "libs/company/prisma/migrations/20260616000000_add_company_off_limits/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/ats-batch8-pr-a8-4-export.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/company/prisma/migrations/20260913120000_company_party_role_model/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -1981,6 +2017,12 @@
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/auth-hardening-d1-recruiter-context.integration.spec.ts",
       "status": "excluded",
+      "to": "libs/company/prisma/migrations/20260913120000_company_party_role_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/auth-hardening-d1-recruiter-context.integration.spec.ts",
+      "status": "excluded",
       "to": "libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql"
     },
     {
@@ -2203,6 +2245,12 @@
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/auth-hardening-d4-assignable-users.integration.spec.ts",
       "status": "excluded",
+      "to": "libs/company/prisma/migrations/20260913120000_company_party_role_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/auth-hardening-d4-assignable-users.integration.spec.ts",
+      "status": "excluded",
       "to": "libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql"
     },
     {
@@ -2383,6 +2431,12 @@
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/authz-d4a-team-models.integration.spec.ts",
       "status": "excluded",
+      "to": "libs/company/prisma/migrations/20260913120000_company_party_role_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/authz-d4a-team-models.integration.spec.ts",
+      "status": "excluded",
       "to": "libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql"
     },
     {
@@ -2486,6 +2540,12 @@
       "from": "apps/api/src/tests/authz-d4b-visibility-matrix.integration.spec.ts",
       "status": "excluded",
       "to": "libs/company/prisma/migrations/20260616000000_add_company_off_limits/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/authz-d4b-visibility-matrix.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/company/prisma/migrations/20260913120000_company_party_role_model/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -3650,6 +3710,12 @@
       "from": "apps/api/src/tests/l1b-write-visibility.integration.spec.ts",
       "status": "excluded",
       "to": "libs/company/prisma/migrations/20260616000000_add_company_off_limits/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/l1b-write-visibility.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/company/prisma/migrations/20260913120000_company_party_role_model/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -9740,11 +9806,6 @@
       "from": "apps/ats-web/src/companies/company-workspace.ts",
       "status": "production",
       "to": "libs/company/src/lib/dto/company-search.dto.ts"
-    },
-    {
-      "from": "apps/ats-web/src/companies/company-workspace.ts",
-      "status": "production",
-      "to": "libs/reporting/src/lib/dto/report.view.ts"
     },
     {
       "from": "apps/ats-web/src/companies/types.ts",
@@ -16471,6 +16532,11 @@
       "from": "pact/provider/src/verify-api.ts",
       "status": "unscoped",
       "to": "libs/company/prisma/migrations/20260616000000_add_company_off_limits/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "libs/company/prisma/migrations/20260913120000_company_party_role_model/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",

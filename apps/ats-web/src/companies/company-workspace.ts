@@ -1,39 +1,87 @@
-import type { CompanyView } from './types';
+import type { CompanyRelationshipView, CompanyView } from './types';
 
 // Companies workspace — the pure projection/filter layer behind the faceted
-// CompaniesListView (mirrors talent-workspace.ts). Everything here is a pure
-// function over the LOADED CompanyView set: GET /v1/companies is non-paged
-// (capped 50), so segments / facets / counts are CLIENT-SIDE, honestly bounded
-// by the cap banner. No @aramo/* edge; binds only to real CompanyView fields.
+// CompaniesListView. Everything here is a pure function over the LOADED
+// CompanyView set. No @aramo/* edge; binds only to real CompanyView fields.
 //
-// Field mapping (mockup → real field):
-//   relationship ← status   (active→Client · prospect→Prospect ·
-//                            inactive→Dormant · do_not_contact→Do-not-contact;
-//                            "lead" is NOT a BE status, so it is not modelled)
-//   tier         ← client_tier (a→Key · b→Growth · c→Standard; null→untiered)
-//   hot          ← is_hot
+// Company Party/Role (ADR-0032): the relationship dimension is now the real
+// `relationships[]` (CLIENT|VENDOR|PARTNER × PROSPECT|ACTIVE|ON_HOLD|INACTIVE),
+// NOT the retiring `status` column. Tabs = relationship TYPE; the status pill =
+// relationship STATUS.
+//   tier   ← client_tier (a→Key · b→Growth · c→Standard; null→untiered)
+//   hot    ← is_hot
 //   industry / location / owner ← industry / city+state / owner_id
-// Health/risk rating, revenue, fill-rate, placements, off-limits and multi-
-// person team are NOT backend fields — omitted (never fabricated). "Quiet 30d+"
-// is the one derived signal (from last_activity_at), and it is honest.
 
-// ── Relationship (status) ──
-export const RELATIONSHIP_LABELS: Record<string, string> = {
-  active: 'Client',
-  prospect: 'Prospect',
-  inactive: 'Dormant',
-  do_not_contact: 'Do not contact',
+// ── Relationship TYPE (the tabs) ──
+export const REL_TYPE_ORDER = ['CLIENT', 'VENDOR', 'PARTNER'] as const;
+export const REL_TYPE_LABELS: Record<string, string> = {
+  CLIENT: 'Client',
+  VENDOR: 'Vendor',
+  PARTNER: 'Partner',
 };
 export type RelationshipTone = 'ok' | 'info' | 'neutral' | 'danger';
-export const RELATIONSHIP_TONES: Record<string, RelationshipTone> = {
-  active: 'ok',
-  prospect: 'info',
-  inactive: 'neutral',
-  do_not_contact: 'danger',
+export const REL_TYPE_TONES: Record<string, RelationshipTone> = {
+  CLIENT: 'info',
+  VENDOR: 'danger', // orange family in the prototype
+  PARTNER: 'ok', // green family
 };
-export function relationshipLabel(status: string): string {
-  return RELATIONSHIP_LABELS[status] ?? status;
+export function relTypeLabel(type: string): string {
+  return REL_TYPE_LABELS[type] ?? type;
 }
+
+// ── Relationship STATUS (the lifecycle pill) ──
+export const REL_STATUS_LABELS: Record<string, string> = {
+  PROSPECT: 'Prospect',
+  ACTIVE: 'Active',
+  ON_HOLD: 'On hold',
+  INACTIVE: 'Inactive',
+};
+export const REL_STATUS_TONES: Record<string, RelationshipTone> = {
+  ACTIVE: 'ok',
+  PROSPECT: 'info',
+  ON_HOLD: 'info',
+  INACTIVE: 'neutral',
+};
+export function relStatusLabel(status: string): string {
+  return REL_STATUS_LABELS[status] ?? status;
+}
+
+// ── Relationship helpers over a company's relationships[] ──
+export function companyTypes(c: CompanyView): readonly string[] {
+  const seen = new Set((c.relationships ?? []).map((r) => r.type));
+  return REL_TYPE_ORDER.filter((t) => seen.has(t));
+}
+export function hasType(c: CompanyView, type: string): boolean {
+  return (c.relationships ?? []).some((r) => r.type === type);
+}
+// The representative relationship for a single-status display (Status column):
+// CLIENT wins, then VENDOR, then PARTNER, else the first.
+export function primaryRelationship(
+  c: CompanyView,
+): CompanyRelationshipView | null {
+  const rels = c.relationships ?? [];
+  for (const t of REL_TYPE_ORDER) {
+    const found = rels.find((r) => r.type === t);
+    if (found !== undefined) return found;
+  }
+  return rels[0] ?? null;
+}
+export function primaryStatus(c: CompanyView): string | null {
+  return primaryRelationship(c)?.status ?? null;
+}
+// The status of a company's relationship of a given type (null if absent).
+export function relStatusFor(c: CompanyView, type: string): string | null {
+  return (c.relationships ?? []).find((r) => r.type === type)?.status ?? null;
+}
+
+// ── Relationship TYPE tabs (All / Clients / Vendors / Partners) ──
+export type RelationshipTab = 'all' | 'CLIENT' | 'VENDOR' | 'PARTNER';
+export const RELATIONSHIP_TABS: readonly { key: RelationshipTab; label: string }[] = [
+  { key: 'all', label: 'All companies' },
+  { key: 'CLIENT', label: 'Clients' },
+  { key: 'VENDOR', label: 'Vendors' },
+  { key: 'PARTNER', label: 'Partners' },
+];
 
 // ── Tier (client_tier) ──
 export const TIER_LABELS: Record<string, string> = {
@@ -58,7 +106,6 @@ export function locationOf(c: CompanyView): string {
 
 export const QUIET_DAYS = 30;
 
-// Whole-days since the last logged contact. Returns null when never contacted.
 export function daysSinceContact(
   c: CompanyView,
   now: number = Date.now(),
@@ -69,8 +116,6 @@ export function daysSinceContact(
   return Math.max(0, Math.floor((now - then) / 86_400_000));
 }
 
-// "Quiet" = no contact in QUIET_DAYS or never contacted (the honest derived
-// signal; NOT an account-health judgement, which the BE cannot back).
 export function isQuiet(c: CompanyView, now: number = Date.now()): boolean {
   const d = daysSinceContact(c, now);
   return d === null || d >= QUIET_DAYS;
@@ -89,10 +134,8 @@ export function lastContactLabel(
   return w < 5 ? `${w}w ago` : `${Math.floor(d / 30)}mo ago`;
 }
 
-// ── Scope (client-side; only owner is modelled, so My/All only — there is no
-// team-of-companies signal, so the mockup's "Team" tab is intentionally absent). ──
+// ── Scope (only owner is modelled → My/All). ──
 export type ScopeMode = 'mine' | 'all';
-
 export function inScope(
   c: CompanyView,
   scope: ScopeMode,
@@ -102,45 +145,18 @@ export function inScope(
   return myId !== null && c.owner_id === myId;
 }
 
-// ── Segments (the "Views" bar; one active at a time, 'all' = none). ──
-export type SegmentKey = 'all' | 'key' | 'prospects' | 'quiet' | 'hot';
-export const SEGMENTS: readonly { key: SegmentKey; label: string }[] = [
-  { key: 'all', label: 'All accounts' },
-  { key: 'key', label: 'Key accounts' },
-  { key: 'prospects', label: 'Prospects to chase' },
-  { key: 'quiet', label: 'Quiet 30d+' },
-  { key: 'hot', label: 'Hot clients' },
-];
-
-export function inSegment(
-  c: CompanyView,
-  seg: SegmentKey,
-  now: number = Date.now(),
-): boolean {
-  switch (seg) {
-    case 'all':
-      return true;
-    case 'key':
-      return c.client_tier === 'a';
-    case 'prospects':
-      return c.status === 'prospect';
-    case 'quiet':
-      return isQuiet(c, now);
-    case 'hot':
-      return c.is_hot;
-  }
-}
-
-// ── Facets (left rail; AND across groups, OR within a group). ──
+// ── Facets (horizontal filter pills; AND across groups). ──
 export type FacetFlag = 'hot' | 'quiet' | 'exclusive' | 'off_limits';
 export interface FacetState {
-  readonly relationship: readonly string[]; // status values
+  readonly relationship_type: readonly string[]; // CLIENT|VENDOR|PARTNER (from the tab)
+  readonly relationship_status: readonly string[]; // PROSPECT|ACTIVE|ON_HOLD|INACTIVE
   readonly tier: readonly string[]; // a|b|c
   readonly industry: readonly string[];
   readonly flags: readonly FacetFlag[];
 }
 export const EMPTY_FACETS: FacetState = {
-  relationship: [],
+  relationship_type: [],
+  relationship_status: [],
   tier: [],
   industry: [],
   flags: [],
@@ -159,12 +175,24 @@ function flagHolds(c: CompanyView, flag: FacetFlag, now: number): boolean {
   }
 }
 
+// Client-side facet pass (secondary filter over the loaded page). Relationship
+// type/status apply some-relationship semantics matching the BE.
 export function passesFacets(
   c: CompanyView,
   facets: FacetState,
   now: number = Date.now(),
 ): boolean {
-  if (facets.relationship.length > 0 && !facets.relationship.includes(c.status))
+  if (
+    facets.relationship_type.length > 0 &&
+    !facets.relationship_type.some((t) => hasType(c, t))
+  )
+    return false;
+  if (
+    facets.relationship_status.length > 0 &&
+    !(c.relationships ?? []).some((r) =>
+      facets.relationship_status.includes(r.status),
+    )
+  )
     return false;
   if (
     facets.tier.length > 0 &&
@@ -182,9 +210,6 @@ export function passesFacets(
   return true;
 }
 
-// Free-text quick filter — name / industry / city / state / tags (client-side,
-// over the loaded set; the BE ?q= name search is a separate capability not used
-// here so the experience stays consistent with the client-side facets).
 export function matchesText(c: CompanyView, query: string): boolean {
   const q = query.trim().toLowerCase();
   if (q === '') return true;
@@ -220,15 +245,17 @@ export function countWhere(
   return n;
 }
 
-// ── Phase 2 — server-side paged contract (hand-mirrored from
-// libs/company/src/lib/dto/company-search.dto.ts; flat shapes — no drift spec). ──
+// ── Server-side paged contract (hand-mirrored from
+// libs/company/src/lib/dto/company-search.dto.ts). ──
 export interface CompanyFacetBucket {
   readonly value: string;
   readonly count: number;
 }
 export interface CompanyFacets {
-  readonly relationship: readonly CompanyFacetBucket[]; // status
-  readonly tier: readonly CompanyFacetBucket[]; // client_tier
+  // Company Party/Role (ADR-0032, VR5) — real relationship dimensions.
+  readonly relationship_type: readonly CompanyFacetBucket[]; // CLIENT|VENDOR|PARTNER
+  readonly relationship_status: readonly CompanyFacetBucket[]; // PROSPECT|ACTIVE|ON_HOLD|INACTIVE
+  readonly tier: readonly CompanyFacetBucket[];
   readonly industry: readonly CompanyFacetBucket[];
   readonly hot: number;
   readonly off_limits: number;
@@ -242,12 +269,10 @@ export interface CompanySearchPage {
   readonly total: number;
 }
 
-// Translate the workspace state (scope + one segment + facet selections) into the
-// server query params. The in-list TEXT box stays client-side (it filters the
-// loaded page; it does NOT send ?q=, so the surface never needs company:search).
+// Translate workspace state (scope + tab + facet pills) into server query params.
 export interface BuildQueryInput {
   readonly scope: ScopeMode;
-  readonly segment: SegmentKey;
+  readonly tab: RelationshipTab;
   readonly facets: FacetState;
   readonly cursor?: string | null;
   readonly pageSize?: number;
@@ -256,20 +281,18 @@ export function buildCompanyQuery(i: BuildQueryInput): URLSearchParams {
   const p = new URLSearchParams();
   p.set('paged', 'true');
   if (i.scope === 'mine') p.set('scope', 'mine');
-  // relationship = facet selection ∪ the prospects segment.
-  const status = new Set(i.facets.relationship);
-  if (i.segment === 'prospects') status.add('prospect');
-  if (status.size > 0) p.set('status', [...status].join(','));
-  // tier = facet selection ∪ the key-accounts segment.
+  // relationship_type = the active tab ∪ any explicit type-facet selection.
+  const types = new Set(i.facets.relationship_type);
+  if (i.tab !== 'all') types.add(i.tab);
+  if (types.size > 0) p.set('relationship_type', [...types].join(','));
+  if (i.facets.relationship_status.length > 0)
+    p.set('relationship_status', i.facets.relationship_status.join(','));
   const tier = new Set(i.facets.tier);
-  if (i.segment === 'key') tier.add('a');
   if (tier.size > 0) p.set('client_tier', [...tier].join(','));
   if (i.facets.industry.length > 0)
     p.set('industry', i.facets.industry.join(','));
-  if (i.facets.flags.includes('hot') || i.segment === 'hot')
-    p.set('is_hot', 'true');
-  if (i.facets.flags.includes('quiet') || i.segment === 'quiet')
-    p.set('quiet', 'true');
+  if (i.facets.flags.includes('hot')) p.set('is_hot', 'true');
+  if (i.facets.flags.includes('quiet')) p.set('quiet', 'true');
   if (i.facets.flags.includes('off_limits')) p.set('off_limits', 'true');
   if (i.facets.flags.includes('exclusive')) p.set('exclusivity', 'true');
   if (i.cursor != null && i.cursor !== '') p.set('cursor', i.cursor);
@@ -277,8 +300,22 @@ export function buildCompanyQuery(i: BuildQueryInput): URLSearchParams {
   return p;
 }
 
-// ── Phase 3 — per-company metrics (hand-mirrored from
-// libs/reporting/src/lib/dto/report.view.ts CompanyMetricsView). ──
+// Tab count badges, derived from the server facets (stable; base-where).
+export function tabCountFrom(
+  facets: CompanyFacets | null | undefined,
+  total: number,
+  tab: RelationshipTab,
+): number | null {
+  if (facets === null || facets === undefined) {
+    return tab === 'all' ? total : null;
+  }
+  if (tab === 'all') return total;
+  // Tolerate a facets payload without the relationship_type dimension (older /
+  // legacy {items}-only responses) — drop the badge rather than throw.
+  return facets.relationship_type?.find((b) => b.value === tab)?.count ?? 0;
+}
+
+// ── Per-company metrics (hand-mirrored from CompanyMetricsView). ──
 export interface CompanyMetrics {
   readonly company_id: string;
   readonly open_reqs: number;
@@ -286,22 +323,19 @@ export interface CompanyMetrics {
   readonly submitted: number;
   readonly openings: number;
   readonly filled: number;
-  readonly fill_rate: number | null; // percent 0-100, null when no openings
+  readonly fill_rate: number | null;
 }
 export interface CompanyMetricsResponse {
   readonly items: readonly CompanyMetrics[];
 }
 
-// ── Phase 4 — account team + placements (hand-mirrored from the BE views). ──
+// ── Account team + placements (hand-mirrored from the BE views). ──
 export interface CompanyTeam {
   readonly owner_id: string | null;
   readonly member_user_ids: readonly string[];
 }
 export interface CompanyPlacement {
-  // L2-G — the canonical placement id (PlacementProcess established). Always present.
   readonly placement_process_id: string;
-  // Deprecated (L2-G) — the placement spine carries no pipeline id; OPTIONAL for legacy
-  // responses only. New responses omit it.
   readonly pipeline_id?: string;
   readonly talent_record_id: string;
   readonly requisition_id: string;
@@ -311,12 +345,9 @@ export interface CompanyPlacementsResponse {
   readonly items: readonly CompanyPlacement[];
 }
 
-// Account briefing — a deterministic restatement of REAL facts only (counts +
-// fill-rate + last-contact recency). It carries NO evaluative verdict on the
-// account: no health/at-risk/high-value/tier/quality judgement, and no
-// "suggested next move" — those would be an inferred judgment surface the
-// product does not own (R10; the rating disposition is DDR §11). Aramo Core
-// supplies any richer reasoning later, via the ReservedSeam beneath it.
+// Account briefing — a deterministic restatement of REAL facts only. Carries NO
+// evaluative verdict (R10; no health/at-risk/quality judgement, no suggested
+// move). Aramo Core supplies richer reasoning later via the ReservedSeam.
 export function accountBriefing(
   c: CompanyView,
   metrics: CompanyMetrics | null,
@@ -333,29 +364,4 @@ export function accountBriefing(
   ];
   if (metrics.fill_rate !== null) parts.push(`${metrics.fill_rate}% fill rate`);
   return `${c.name}: ${parts.join(' · ')}. Last contact ${last}.`;
-}
-
-// Segment count badges, derived from the server facets (stable; base-where).
-export function segmentCountFrom(
-  facets: CompanyFacets | null | undefined,
-  total: number,
-  key: SegmentKey,
-): number | null {
-  // Tolerate a missing facets payload (e.g. an older API that returns only
-  // {items}) — never throw in render; just drop the count badge.
-  if (facets === null || facets === undefined) {
-    return key === 'all' ? total : null;
-  }
-  switch (key) {
-    case 'all':
-      return total;
-    case 'key':
-      return facets.tier.find((b) => b.value === 'a')?.count ?? 0;
-    case 'prospects':
-      return facets.relationship.find((b) => b.value === 'prospect')?.count ?? 0;
-    case 'quiet':
-      return facets.quiet;
-    case 'hot':
-      return facets.hot;
-  }
 }

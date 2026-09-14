@@ -1,3 +1,15 @@
+// CompanyRelationshipView — a single business relationship (role) the
+// organization plays for the tenant (ADR-0032). Projected inside CompanyView.
+export interface CompanyRelationshipView {
+  id: string;
+  type: string; // CLIENT|VENDOR|PARTNER
+  status: string; // PROSPECT|ACTIVE|ON_HOLD|INACTIVE
+  effective_from: string | null;
+  effective_to: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 // CompanyView — the read-projection DTO returned by GET / LIST.
 //
 // Structurally identical to the Company Prisma model row, with timestamps
@@ -28,6 +40,13 @@ export interface CompanyView {
 
   // Company-Fields v1.1 — un-gated additive fields (always projected).
   status: string;
+  // Company Party/Role (ADR-0032) — additive; `status` is RETAINED during the
+  // A1 expand phase (retired at cutover). master_status = org-record lifecycle;
+  // communication_restricted = the restriction dimension; relationships = the
+  // CLIENT/VENDOR/PARTNER roles this org plays.
+  master_status: string;
+  communication_restricted: boolean;
+  relationships: CompanyRelationshipView[];
   description: string | null;
   industry: string | null;
   country: string | null;

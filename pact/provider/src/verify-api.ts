@@ -585,6 +585,10 @@ const COMPANY_OFF_LIMITS_MIGRATION = resolve(
   ROOT,
   'libs/company/prisma/migrations/20260616000000_add_company_off_limits/migration.sql',
 );
+const COMPANY_PARTY_ROLE_MIGRATION = resolve(
+  ROOT,
+  'libs/company/prisma/migrations/20260913120000_company_party_role_model/migration.sql',
+);
 const CONTACT_INIT_MIGRATION = resolve(
   ROOT,
   'libs/contact/prisma/migrations/20260601160000_init_contact_model/migration.sql',
@@ -3233,6 +3237,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         COMPANY_FIELD_EXPANSION_MIGRATION,
         COMPANY_ADDRESS_PLACE_REF_MIGRATION,
         COMPANY_OFF_LIMITS_MIGRATION,
+        COMPANY_PARTY_ROLE_MIGRATION,
         CONTACT_INIT_MIGRATION,
         CONTACT_IMPORT_BATCH_MIGRATION,
         CONTACT_LIST_SURFACE_MIGRATION,

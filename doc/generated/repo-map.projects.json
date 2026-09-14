@@ -1109,6 +1109,7 @@
     ],
     "@aramo/requisition": [
       "ACTION_TARGET_STATUS",
+      "COMPANY_CLIENT_CHECK_PORT",
       "GATED_RECRUITING_STATUS_VALUES",
       "RATE_PERIOD_VALUES",
       "RATE_TYPE_VALUES",

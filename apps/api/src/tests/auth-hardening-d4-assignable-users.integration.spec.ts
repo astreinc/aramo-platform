@@ -83,6 +83,7 @@ const MIGRATIONS = [
   'libs/company/prisma/migrations/20260611000000_add_company_field_expansion/migration.sql',
   'libs/company/prisma/migrations/20260611120000_add_company_address_place_ref/migration.sql',
   'libs/company/prisma/migrations/20260616000000_add_company_off_limits/migration.sql',
+  'libs/company/prisma/migrations/20260913120000_company_party_role_model/migration.sql',
   'libs/company/prisma/migrations/20260603140100_add_import_batch_id_to_company/migration.sql',
   'libs/company/prisma/migrations/20260604000000_add_authz_assignment_ownership/migration.sql',
 ].map((p) => resolve(ROOT, p));

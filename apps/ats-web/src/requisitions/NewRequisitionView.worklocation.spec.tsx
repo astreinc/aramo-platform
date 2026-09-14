@@ -53,6 +53,9 @@ function makeSession(scopes: string[]): Session {
 
 const ACME = {
   id: 'co-1', tenant_id: 't', site_id: null, name: 'Acme Corp',
+  // Company Party/Role (ADR-0032, R7) — client picker shows CLIENT companies.
+  relationships: [{ id: 'rel-1', type: 'CLIENT', status: 'ACTIVE', effective_from: null, effective_to: null, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' }],
+  master_status: 'ACTIVE', communication_restricted: false,
   address: null, address2: null, city: null, state: null, zip: null,
   phone1: null, phone2: null, fax_number: null, url: null, key_technologies: null,
   notes: null, is_hot: false, billing_contact_id: null, owner_id: null,

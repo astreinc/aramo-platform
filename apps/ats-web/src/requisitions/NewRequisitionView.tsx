@@ -335,15 +335,22 @@ export function NewRequisitionView({ sessionOverride }: NewRequisitionViewProps)
     };
   }, [state.company_id]);
 
+  // Company Party/Role (ADR-0032, R7 / CLIENT-workflow invariant) — a
+  // requisition's company is the CLIENT, so the picker exposes ONLY companies
+  // that hold a CLIENT relationship (a Vendor/Partner-only company is not a
+  // valid requisition client). The BE service guard is authoritative; this
+  // narrows the UI so an invalid pick isn't offered.
   const companyItems: readonly ComboboxItem[] = useMemo(
     () =>
-      companies.map((c) => ({
-        value: c.id,
-        label: c.name,
-        description:
-          [c.city, c.state].filter((v) => v !== null && v !== '').join(', ') ||
-          undefined,
-      })),
+      companies
+        .filter((c) => (c.relationships ?? []).some((r) => r.type === 'CLIENT'))
+        .map((c) => ({
+          value: c.id,
+          label: c.name,
+          description:
+            [c.city, c.state].filter((v) => v !== null && v !== '').join(', ') ||
+            undefined,
+        })),
     [companies],
   );
   const contactItems: readonly ComboboxItem[] = useMemo(

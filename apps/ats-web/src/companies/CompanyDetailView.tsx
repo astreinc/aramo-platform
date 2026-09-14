@@ -32,19 +32,26 @@ import {
   getCompanyTeam,
   getOneCompanyMetrics,
   listContactsForCompany,
+  updateCompany,
 } from './companies-api';
 import {
   contactsErrorMessage,
   detailErrorMessage,
   reqsErrorMessage,
+  updateErrorMessage,
 } from './error-messages';
-import type { CompanyView, ContactView } from './types';
+import type { CompanyView, ContactView, UpdateCompanyRequest } from './types';
+import { CompanyForm } from './CompanyForm';
 import {
-  RELATIONSHIP_TONES,
+  REL_STATUS_TONES,
+  REL_TYPE_TONES,
   accountBriefing,
+  companyTypes,
   lastContactLabel,
   locationOf,
-  relationshipLabel,
+  primaryStatus,
+  relStatusLabel,
+  relTypeLabel,
   tierLabel,
   type CompanyMetrics,
   type CompanyPlacement,
@@ -91,6 +98,12 @@ export function CompanyDetailView({ sessionOverride }: CompanyDetailViewProps) {
     (sessionState.status === 'authenticated' ? sessionState.session : null);
 
   const [company, setCompany] = useState<CompanyView | null>(null);
+  // Company Party/Role (ADR-0032, R6) — "Full Edit Company" makes the hub
+  // editable IN PLACE (all fields, one Save), mirroring the requisition detail
+  // edit affordance — not a separate page, not the quick-edit drawer.
+  const [editOpen, setEditOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [contacts, setContacts] = useState<readonly ContactView[]>([]);
   const [reqs, setReqs] = useState<readonly RequisitionView[]>([]);
   const [activities, setActivities] = useState<readonly ActivityView[]>([]);
@@ -192,6 +205,24 @@ export function CompanyDetailView({ sessionOverride }: CompanyDetailViewProps) {
   if (company === null || session === null) return null;
 
   const canEdit = hasScope(session, 'company:edit');
+  const canSeeCommercial = hasScope(session, 'company:read_commercial');
+
+  // Company Party/Role (ADR-0032, R6) — "Full Edit Company" save. PATCHes the
+  // full field set, refreshes the hub in place, and exits edit mode.
+  async function onFullEdit(body: UpdateCompanyRequest): Promise<void> {
+    if (company === null) return;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const updated = await updateCompany(company.id, body);
+      setCompany(updated);
+      setEditOpen(false);
+    } catch (err) {
+      setSaveError(updateErrorMessage(err));
+    } finally {
+      setSaving(false);
+    }
+  }
   const canCreateContact = hasScope(session, 'contact:create');
   const canCreateReq = hasScope(session, 'requisition:create');
   const canEditContact = hasScope(session, 'contact:edit');
@@ -285,9 +316,19 @@ export function CompanyDetailView({ sessionOverride }: CompanyDetailViewProps) {
                   Hot
                 </StatusPill>
               ) : null}
-              <StatusPill tone={RELATIONSHIP_TONES[company.status] ?? 'neutral'} dot>
-                {relationshipLabel(company.status)}
-              </StatusPill>
+              {companyTypes(company).map((t) => (
+                <StatusPill key={t} tone={REL_TYPE_TONES[t] ?? 'neutral'}>
+                  {relTypeLabel(t)}
+                </StatusPill>
+              ))}
+              {primaryStatus(company) !== null ? (
+                <StatusPill
+                  tone={REL_STATUS_TONES[primaryStatus(company) as string] ?? 'neutral'}
+                  dot
+                >
+                  {relStatusLabel(primaryStatus(company) as string)}
+                </StatusPill>
+              ) : null}
               {tier !== null ? <StatusPill tone="brand">{tier}</StatusPill> : null}
             </h1>
             <div className="rc-dhead__co">
@@ -317,9 +358,14 @@ export function CompanyDetailView({ sessionOverride }: CompanyDetailViewProps) {
             </Link>
           ) : null}
           {canEdit ? (
-            <Link to={`/companies/${company.id}/edit`} className="rc-hbtn">
+            <button
+              type="button"
+              className="rc-hbtn"
+              onClick={() => setEditOpen(true)}
+              data-testid="company-detail-edit"
+            >
               <Icons.IconPencil /> Edit
-            </Link>
+            </button>
           ) : null}
         </div>
       </div>
@@ -334,6 +380,26 @@ export function CompanyDetailView({ sessionOverride }: CompanyDetailViewProps) {
         </div>
       ) : null}
 
+      {editOpen ? (
+        <Card>
+          {saveError !== null ? (
+            <InlineAlert variant="error">{saveError}</InlineAlert>
+          ) : null}
+          <CompanyForm
+            mode="edit"
+            initial={company}
+            onSubmit={onFullEdit}
+            onCancel={() => {
+              setEditOpen(false);
+              setSaveError(null);
+            }}
+            submitting={saving}
+            submitError={saveError}
+            canSeeCommercial={canSeeCommercial}
+          />
+        </Card>
+      ) : (
+        <>
       <div className="rc-metrics rc-metrics--spaced rc-metrics--6">
         <MetricCard
           label="Open reqs"
@@ -390,6 +456,8 @@ export function CompanyDetailView({ sessionOverride }: CompanyDetailViewProps) {
       <div className="rc-mt-16">
         <Tabs items={tabs} ariaLabel="Company sections" initialId="overview" />
       </div>
+        </>
+      )}
     </section>
   );
 }
@@ -554,9 +622,9 @@ function nextSteps(c: CompanyView): string {
       return `Next action scheduled for ${d.toLocaleDateString()}.`;
     }
   }
-  if (c.status === 'prospect')
+  if (primaryStatus(c) === 'PROSPECT')
     return 'Advance the BD conversation and scope a first requisition.';
-  if (c.status === 'inactive')
+  if (primaryStatus(c) === 'INACTIVE')
     return 'Dormant account — consider a re-engagement note.';
   return 'Keep open requisitions moving and confirm upcoming interviews.';
 }

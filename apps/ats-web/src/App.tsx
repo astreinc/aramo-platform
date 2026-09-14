@@ -8,9 +8,7 @@ import { CompanyAssignmentsView } from './assignments/CompanyAssignmentsView';
 import { RequisitionAssignmentsView } from './assignments/RequisitionAssignmentsView';
 import { TeamClientsView } from './assignments/TeamClientsView';
 import { CompaniesListView } from './companies/CompaniesListView';
-import { CompanyCreateView } from './companies/CompanyCreateView';
 import { CompanyDetailView } from './companies/CompanyDetailView';
-import { CompanyEditView } from './companies/CompanyEditView';
 import { ConsentView } from './consent/ConsentView';
 import { ContactCreateView } from './contacts/ContactCreateView';
 import { ContactDetailView } from './contacts/ContactDetailView';
@@ -419,6 +417,10 @@ export function App() {
                         </RouteGuard>
                       }
                     />
+                    {/* Company Party/Role (ADR-0032, R6) — create + edit are the
+                        slide-over drawer in the Companies workspace, not full
+                        pages. /companies/new opens that workspace with the create
+                        drawer open; the standalone edit route is retired. */}
                     <Route
                       path="companies/new"
                       element={
@@ -426,7 +428,7 @@ export function App() {
                           requireScope="company:create"
                           sessionStateOverride={state}
                         >
-                          <CompanyCreateView />
+                          <CompaniesListView initialCreate />
                         </RouteGuard>
                       }
                     />
@@ -438,17 +440,6 @@ export function App() {
                           sessionStateOverride={state}
                         >
                           <CompanyDetailView />
-                        </RouteGuard>
-                      }
-                    />
-                    <Route
-                      path="companies/:companyId/edit"
-                      element={
-                        <RouteGuard
-                          requireScope="company:edit"
-                          sessionStateOverride={state}
-                        >
-                          <CompanyEditView />
                         </RouteGuard>
                       }
                     />

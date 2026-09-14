@@ -43,6 +43,8 @@ function makeCompany(overrides: Partial<CompanyView> = {}): CompanyView {
     created_at: '2023-06-01T00:00:00Z',
     updated_at: '2026-06-01T00:00:00Z',
     status: 'active',
+    relationships: [{ id: 'rel-1', type: 'CLIENT', status: 'ACTIVE', effective_from: '2026-01-01T00:00:00Z', effective_to: null, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' }],
+    master_status: 'ACTIVE', communication_restricted: false,
     description: 'A robotics automation firm.',
     industry: 'Robotics',
     country: null,
@@ -376,7 +378,9 @@ describe('CompanyDetailView (account hub)', () => {
     ).toBeInTheDocument();
   });
 
-  it('renders the header "Edit" link only when company:edit is granted', async () => {
+  it('renders the header "Edit" button (opens the quick-edit drawer) only when company:edit is granted', async () => {
+    // Company Party/Role (ADR-0032, R6) — Edit is now a button opening the
+    // slide-over quick-edit drawer, not a link to a retired /edit page.
     installFetch({ '/v1/companies/co-1': makeCompany() });
     const { unmount } = renderAt(
       '/companies/co-1',
@@ -385,17 +389,37 @@ describe('CompanyDetailView (account hub)', () => {
     await waitFor(() =>
       expect(screen.getByRole('heading', { name: /Acme Corp/i })).toBeInTheDocument(),
     );
-    expect(screen.getByRole('link', { name: /Edit/i })).toHaveAttribute(
-      'href',
-      '/companies/co-1/edit',
-    );
+    expect(screen.getByTestId('company-detail-edit')).toBeInTheDocument();
     unmount();
     installFetch({ '/v1/companies/co-1': makeCompany() });
     renderAt('/companies/co-1', makeSession(['company:read']));
     await waitFor(() =>
       expect(screen.getByRole('heading', { name: /Acme Corp/i })).toBeInTheDocument(),
     );
-    expect(screen.queryByRole('link', { name: /Edit/i })).toBeNull();
+    expect(screen.queryByTestId('company-detail-edit')).toBeNull();
+  });
+
+  it('Edit makes the hub editable in place (Full Edit form appears, read metrics hide)', async () => {
+    // Company Party/Role (ADR-0032, R6) — Full Edit Company = inline edit, not
+    // a drawer and not a separate page.
+    installFetch({
+      '/v1/companies/co-1': makeCompany(),
+      '/v1/companies/co-1/departments': { items: [] },
+      '/v1/contacts': { items: [] },
+    });
+    renderAt('/companies/co-1', makeSession(['company:read', 'company:edit']));
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: /Acme Corp/i })).toBeInTheDocument(),
+    );
+    // read view shows the KPI strip
+    expect(screen.getByText('Open reqs')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('company-detail-edit'));
+    // the full edit form appears in place …
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /save changes/i })).toBeInTheDocument(),
+    );
+    // … and the read KPI strip is gone (same view is now editable)
+    expect(screen.queryByText('Open reqs')).toBeNull();
   });
 
   it('renders the "Add contact" header action when contact:create is granted', async () => {

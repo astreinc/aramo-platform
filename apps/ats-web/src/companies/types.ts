@@ -6,6 +6,18 @@
 // R1 structural-deep-equal drift-spec pattern is not applied (rule of
 // three — that pattern is for mirrored logic, not flat fields).
 
+// Company Party/Role (ADR-0032) — hand-mirrored from
+// libs/company/src/lib/dto/company.view.ts CompanyRelationshipView.
+export interface CompanyRelationshipView {
+  readonly id: string;
+  readonly type: string; // CLIENT|VENDOR|PARTNER
+  readonly status: string; // PROSPECT|ACTIVE|ON_HOLD|INACTIVE
+  readonly effective_from: string | null;
+  readonly effective_to: string | null;
+  readonly created_at: string;
+  readonly updated_at: string;
+}
+
 export interface CompanyView {
   readonly id: string;
   readonly tenant_id: string;
@@ -31,6 +43,11 @@ export interface CompanyView {
 
   // Company-Fields v1.1 — un-gated additive fields.
   readonly status: string;
+  // Company Party/Role (ADR-0032) — additive; `status` retained during A1
+  // expand. relationships[] is the party/role axis the list/detail now read.
+  readonly master_status: string;
+  readonly communication_restricted: boolean;
+  readonly relationships: readonly CompanyRelationshipView[];
   readonly description: string | null;
   readonly industry: string | null;
   readonly country: string | null;
@@ -147,8 +164,22 @@ export interface ContactListResponse {
 // owner_id (ruling F): no GET /v1/users:assignable endpoint today —
 // the form does not surface a picker. Server defaults owner_id to
 // entered_by_id (the creating recruiter).
+// Company Party/Role (ADR-0032) — a relationship declared on a create/update
+// payload. Mirrors libs/company CompanyRelationshipInput.
+export interface CompanyRelationshipInput {
+  readonly type: string; // CLIENT|VENDOR|PARTNER
+  readonly status?: string; // default PROSPECT
+  readonly effective_from?: string | null;
+  readonly effective_to?: string | null;
+}
+
 export interface CreateCompanyRequest {
   readonly name: string;
+  // Company Party/Role (ADR-0032) — relationship-aware create (Amendment 4:
+  // ≥1 required at the UI boundary). When omitted, the BE A1 bridge derives a
+  // CLIENT relationship from `status`.
+  readonly relationships?: readonly CompanyRelationshipInput[];
+  readonly communication_restricted?: boolean;
   readonly address?: string;
   readonly address2?: string;
   readonly city?: string;
@@ -201,6 +232,12 @@ export interface CreateCompanyRequest {
 // stays non-nullable (required field; PATCH may rename but not clear).
 export interface UpdateCompanyRequest {
   readonly name?: string;
+  // Company Party/Role (ADR-0032) — relationship-aware update (upsert/transition
+  // by type; reactivation reuses the row). A legacy `status` PATCH still syncs
+  // the CLIENT relationship via the BE bridge.
+  readonly relationships?: readonly CompanyRelationshipInput[];
+  readonly communication_restricted?: boolean;
+  readonly master_status?: string;
   readonly address?: string | null;
   readonly address2?: string | null;
   readonly city?: string | null;
