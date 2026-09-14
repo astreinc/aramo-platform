@@ -4,21 +4,23 @@ import {
   useSession,
   type Session,
 } from '@aramo/fe-foundation';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 
-import { resolveUserNames } from '../users/users-api';
+import { fetchAssignableUsers, resolveUserNames, type AssignableUser } from '../users/users-api';
 import { Avatar, Card, Icons, StatusPill } from '../ui';
 import type { ContactView } from '../companies/types';
 
-import { ContactFacetRail } from './components/ContactFacetRail';
-import { searchContacts, updateContact } from './contacts-api';
+import { ContactEditDrawer } from './components/ContactEditDrawer';
+import { getContact, searchContacts, updateContact } from './contacts-api';
 import { listErrorMessage } from './error-messages';
 import {
   EMPTY_FACETS,
   FULL_NAME,
   PREFERENCE_LABELS,
+  PREFERENCE_ORDER,
   ROLE_LABELS,
+  ROLE_ORDER,
   ROLE_TONES,
   SEGMENTS,
   buildContactQuery,
@@ -27,6 +29,8 @@ import {
   matchesText,
   preferenceLabel,
   preferenceTone,
+  relationshipTypeLabel,
+  relationshipTypeTone,
   roleLabel,
   segmentCountFrom,
   type ContactFacets,
@@ -38,12 +42,25 @@ import {
 } from './contact-workspace';
 
 // Contacts directory — SERVER-PAGED (?paged=true) faceted list. Scope (My/All),
-// the Directory/Cold-call mode, segments, and the facet rail are server query
+// the Directory/Cold-call mode, segments, and the filters are server query
 // params; the in-list text box filters the LOADED page client-side (never sends
 // ?q=). "My contacts" is enforced SERVER-SIDE (owner_id from the JWT) — NOT a
 // client filter over an all-contacts payload. Every value binds to a real field.
+//
+// Contacts prototype parity — the slide-over edit DRAWER is the ONLY contact
+// surface (there is no detail page): clicking a contact (row or card) opens the
+// edit drawer, "+ New contact" opens the create drawer (also reachable at
+// /contacts/new), and /contacts?edit=<id> deep-links straight to the edit
+// drawer for one contact. The filters live in a TOP bar above the table
+// (Search + Company ▾ + Role ▾ + Communication ▾ + Owner ▾ + flag pills) — the
+// old left facet rail is retired; cold-call mode, segments and bulk-select stay.
 
 const PAGE_SIZE = 50;
+const FLAG_OPTIONS: readonly { value: FacetFlag; label: string }[] = [
+  { value: 'hot', label: 'Hot' },
+  { value: 'quiet', label: 'Going quiet 14d+' },
+  { value: 'former', label: 'Former' },
+];
 const FLAG_LABELS: Record<FacetFlag, string> = {
   hot: 'Hot',
   quiet: 'Going quiet 14d+',
@@ -54,9 +71,20 @@ type ViewMode = 'table' | 'cards';
 
 interface ContactsListViewProps {
   readonly sessionOverride?: Session;
+  // Contacts prototype parity — /contacts/new resolves to this workspace with
+  // the create drawer already open (mirrors /companies/new).
+  readonly initialCreate?: boolean;
 }
 
-export function ContactsListView({ sessionOverride }: ContactsListViewProps = {}) {
+type EditState = {
+  readonly mode: 'create' | 'edit';
+  readonly contact: ContactView | null;
+};
+
+export function ContactsListView({
+  sessionOverride,
+  initialCreate = false,
+}: ContactsListViewProps = {}) {
   const [items, setItems] = useState<readonly ContactView[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [facets, setFacets] = useState<ContactFacets | null>(null);
@@ -65,23 +93,39 @@ export function ContactsListView({ sessionOverride }: ContactsListViewProps = {}
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [userNames, setUserNames] = useState<Record<string, string>>({});
+  const [assignableUsers, setAssignableUsers] = useState<readonly AssignableUser[]>([]);
 
   const [scope, setScope] = useState<ScopeMode>('all');
   const [mode, setMode] = useState<ListMode>('directory');
   const [segment, setSegment] = useState<SegmentKey>('all');
   const [facetState, setFacetState] = useState<FacetState>(EMPTY_FACETS);
+  const [ownerFilter, setOwnerFilter] = useState<string>('');
   const [query, setQuery] = useState('');
   const [vmode, setVmode] = useState<ViewMode>('table');
 
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+  const [editState, setEditState] = useState<EditState | null>(
+    initialCreate ? { mode: 'create', contact: null } : null,
+  );
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+
+  // Deep-link params — create context (?company_id=<id>, pre-selects the
+  // company in the create drawer) + edit deep-link (?edit=<id>, opens the edit
+  // drawer for one contact; the company-detail "open this contact" affordance).
+  const [searchParams] = useSearchParams();
+  const createCompanyId = searchParams.get('company_id') ?? undefined;
+  const editId = searchParams.get('edit');
 
   const sessionState = useSession();
   const session: Session | null =
     sessionOverride ??
     (sessionState.status === 'authenticated' ? sessionState.session : null);
   const myId = session?.sub ?? null;
+  const canCreate =
+    session !== null &&
+    Array.isArray(session.scopes) &&
+    hasScope(session, 'contact:create');
   const canAssign =
     session !== null &&
     Array.isArray(session.scopes) &&
@@ -98,6 +142,17 @@ export function ContactsListView({ sessionOverride }: ContactsListViewProps = {}
     };
   }, []);
 
+  // Owner-filter options — the shared assignable-users picker source.
+  useEffect(() => {
+    let cancelled = false;
+    void fetchAssignableUsers().then((users) => {
+      if (!cancelled) setAssignableUsers(users);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const fetchPage = useCallback(
     async (cursor: string | null, append: boolean) => {
       const params = buildContactQuery({
@@ -105,6 +160,7 @@ export function ContactsListView({ sessionOverride }: ContactsListViewProps = {}
         segment,
         mode,
         facets: facetState,
+        ownerId: ownerFilter,
         cursor,
         pageSize: PAGE_SIZE,
       });
@@ -130,7 +186,7 @@ export function ContactsListView({ sessionOverride }: ContactsListViewProps = {}
         else setLoading(false);
       }
     },
-    [scope, segment, mode, facetState],
+    [scope, segment, mode, facetState, ownerFilter],
   );
 
   // Debounced refetch on any server-filter change; resets page + selection.
@@ -147,13 +203,39 @@ export function ContactsListView({ sessionOverride }: ContactsListViewProps = {}
     };
   }, [fetchPage]);
 
+  // ?edit=<id> deep-link — open the edit drawer for that contact. Prefer the
+  // loaded page; otherwise fetch it (getContact). Guarded so it fires once per
+  // id (an invisible/404 contact silently opens no drawer).
+  const handledEdit = useRef<string | null>(null);
+  useEffect(() => {
+    if (editId === null || editId === '') return;
+    if (handledEdit.current === editId) return;
+    handledEdit.current = editId;
+    const existing = items.find((c) => c.id === editId);
+    if (existing !== undefined) {
+      setEditState({ mode: 'edit', contact: existing });
+      return;
+    }
+    let cancelled = false;
+    void getContact(editId)
+      .then((c) => {
+        if (!cancelled) setEditState({ mode: 'edit', contact: c });
+      })
+      .catch(() => {
+        /* invisible / 404 → no drawer */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [editId, items]);
+
   // The text box filters the LOADED page (client-side; no ?q=).
   const visible = useMemo(
     () => items.filter((c) => matchesText(c, query)),
     [items, query],
   );
 
-  // company_id → name, from the loaded page (for the facet rail labels).
+  // company_id → name, from the loaded page (for the filter labels).
   const companyNames = useMemo(() => {
     const m: Record<string, string> = {};
     for (const c of items)
@@ -161,6 +243,11 @@ export function ContactsListView({ sessionOverride }: ContactsListViewProps = {}
     return m;
   }, [items]);
 
+  // Single-select set for a top-bar dropdown ('' clears the dimension).
+  const setStr = (key: 'role' | 'preference' | 'company', value: string) =>
+    setFacetState((f) => ({ ...f, [key]: value === '' ? [] : [value] }));
+  const strValue = (key: 'role' | 'preference' | 'company'): string =>
+    facetState[key][0] ?? '';
   const toggleStr = (key: 'role' | 'preference' | 'company', value: string) =>
     setFacetState((f) => {
       const arr = f[key];
@@ -183,6 +270,7 @@ export function ContactsListView({ sessionOverride }: ContactsListViewProps = {}
     setFacetState(EMPTY_FACETS);
     setScope('all');
     setSegment('all');
+    setOwnerFilter('');
     setQuery('');
   };
 
@@ -217,10 +305,21 @@ export function ContactsListView({ sessionOverride }: ContactsListViewProps = {}
     }
   };
 
+  const ownerName = (c: ContactView): string =>
+    c.owner_id ? (userNames[c.owner_id] ?? '—') : '—';
+  const ownerFilterLabel = (id: string): string =>
+    id === myId ? 'Me' : (userNames[id] ?? 'Owner');
+
   // ── active filter chips ──
   const chips: { k: string; label: string; clear: () => void }[] = [];
   if (scope === 'mine')
     chips.push({ k: 'Scope', label: 'My contacts', clear: () => setScope('all') });
+  if (ownerFilter !== '')
+    chips.push({
+      k: 'Owner',
+      label: ownerFilterLabel(ownerFilter),
+      clear: () => setOwnerFilter(''),
+    });
   if (segment !== 'all')
     chips.push({
       k: 'View',
@@ -249,12 +348,51 @@ export function ContactsListView({ sessionOverride }: ContactsListViewProps = {}
     chips.push({ k: 'Flag', label: FLAG_LABELS[f], clear: () => toggleFlag(f) });
 
   const hasActiveQuery = chips.length > 0 || query.trim() !== '';
-  const ownerName = (c: ContactView): string =>
-    c.owner_id ? (userNames[c.owner_id] ?? '—') : '—';
   const isCold = mode === 'cold';
 
+  // Contacts prototype headline — "{n} contacts across {m} companies · {p}
+  // primary". n from the server total; m from the server company facet (the
+  // distinct-company base count); p from the loaded page (no primary facet
+  // exists — best-effort, exact when the page holds every row).
+  const companyCount =
+    facets?.company.length ?? new Set(items.map((c) => c.company_id)).size;
+  const primaryCount = items.filter((c) => c.is_primary).length;
+  const headline = `${total} ${total === 1 ? 'contact' : 'contacts'} across ${companyCount} ${companyCount === 1 ? 'company' : 'companies'} · ${primaryCount} primary`;
+
+  // ── drawer wiring (row/card click → edit; "+ New contact" → create) ──
+  const editingId = editState?.contact?.id ?? null;
+  const openEdit = (c: ContactView) => setEditState({ mode: 'edit', contact: c });
+  const openCreate = () => setEditState({ mode: 'create', contact: null });
+  const onSaved = () => {
+    setEditState(null);
+    void fetchPage(null, false);
+  };
+
+  // Owner-filter select options — Me / each assignable user.
+  const ownerOptions = useMemo(() => {
+    const opts: { value: string; label: string }[] = [];
+    if (myId !== null) opts.push({ value: myId, label: 'Me' });
+    for (const u of assignableUsers) {
+      if (u.user_id === myId) continue;
+      opts.push({ value: u.user_id, label: u.display_name ?? u.user_id });
+    }
+    return opts;
+  }, [assignableUsers, myId]);
+
+  // Company-filter options — the distinct companies in the server base set.
+  const companyOptions = useMemo(
+    () =>
+      (facets?.company ?? []).map((b) => ({
+        value: b.value,
+        label: companyNames[b.value] ?? 'Company',
+      })),
+    [facets, companyNames],
+  );
+
   return (
-    <section className="rc-talent">
+    <section
+      className={editState !== null ? 'rc-talent rc-talent--drawer' : 'rc-talent'}
+    >
       <div className="rc-viewhead">
         <div>
           <div className="rc-titlerow">
@@ -278,6 +416,7 @@ export function ContactsListView({ sessionOverride }: ContactsListViewProps = {}
               </button>
             </div>
           </div>
+          {!isCold ? <p className="rc-sub rc-sub--count">{headline}</p> : null}
           <p className="rc-sub">
             <Icons.IconShield className="rc-sub__icon" aria-hidden="true" />
             {isCold
@@ -324,6 +463,16 @@ export function ContactsListView({ sessionOverride }: ContactsListViewProps = {}
               </button>
             </div>
           ) : null}
+          {canCreate ? (
+            <button
+              type="button"
+              className="rc-hbtn rc-hbtn--primary"
+              onClick={openCreate}
+              data-testid="contact-new"
+            >
+              <Icons.IconUserPlus /> New contact
+            </button>
+          ) : null}
         </div>
       </div>
 
@@ -362,6 +511,72 @@ export function ContactsListView({ sessionOverride }: ContactsListViewProps = {}
         />
       </div>
 
+      {/* Contacts prototype parity — the TOP filter bar (replaces the left facet
+          rail): Company ▾ · Role ▾ · Communication ▾ · Owner ▾ + flag pills. */}
+      {!isCold ? (
+        <div className="rc-views" role="group" aria-label="Filters">
+          <span className="rc-views__lbl">Filters</span>
+          <select
+            className="rc-view"
+            aria-label="Filter by company"
+            value={strValue('company')}
+            onChange={(e) => setStr('company', e.target.value)}
+          >
+            <option value="">Company: all</option>
+            {companyOptions.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+          <select
+            className="rc-view"
+            aria-label="Filter by role"
+            value={strValue('role')}
+            onChange={(e) => setStr('role', e.target.value)}
+          >
+            <option value="">Role: all</option>
+            {ROLE_ORDER.map((r) => (
+              <option key={r} value={r}>{ROLE_LABELS[r] ?? r}</option>
+            ))}
+          </select>
+          <select
+            className="rc-view"
+            aria-label="Filter by communication"
+            value={strValue('preference')}
+            onChange={(e) => setStr('preference', e.target.value)}
+          >
+            <option value="">Communication: all</option>
+            {PREFERENCE_ORDER.map((p) => (
+              <option key={p} value={p}>{PREFERENCE_LABELS[p] ?? p}</option>
+            ))}
+          </select>
+          <select
+            className="rc-view"
+            aria-label="Filter by owner"
+            value={ownerFilter}
+            onChange={(e) => setOwnerFilter(e.target.value)}
+          >
+            <option value="">Owner: anyone</option>
+            {ownerOptions.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+          {FLAG_OPTIONS.map((f) => {
+            const on = facetState.flags.includes(f.value);
+            return (
+              <button
+                key={f.value}
+                type="button"
+                className={`rc-view${on ? ' on' : ''}`}
+                aria-pressed={on}
+                onClick={() => toggleFlag(f.value)}
+              >
+                {f.label}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+
       <div className="rc-activebar">
         <span className="rc-activebar__count num">
           {visible.length}
@@ -394,20 +609,7 @@ export function ContactsListView({ sessionOverride }: ContactsListViewProps = {}
         </p>
       ) : null}
 
-      <div className="rc-work rc-mt-16">
-        {!isCold ? (
-          <ContactFacetRail
-            facets={facets}
-            selected={facetState}
-            companyNames={companyNames}
-            onToggleRole={(v) => toggleStr('role', v)}
-            onTogglePreference={(v) => toggleStr('preference', v)}
-            onToggleCompany={(v) => toggleStr('company', v)}
-            onToggleFlag={(v) => toggleFlag(v)}
-            onReset={resetAll}
-          />
-        ) : null}
-
+      <div className="rc-mt-16">
         <Card flush>
           <div className="rc-rtools">
             <span className="rc-rtools__note">
@@ -430,7 +632,7 @@ export function ContactsListView({ sessionOverride }: ContactsListViewProps = {}
           ) : !isCold && vmode === 'cards' ? (
             <div className="rc-cocards">
               {visible.map((c) => (
-                <ContactCard key={c.id} contact={c} />
+                <ContactCard key={c.id} contact={c} onOpen={() => openEdit(c)} />
               ))}
             </div>
           ) : (
@@ -465,7 +667,8 @@ export function ContactsListView({ sessionOverride }: ContactsListViewProps = {}
                       </th>
                       <th scope="col">Contact</th>
                       <th scope="col">Company</th>
-                      <th scope="col">Role</th>
+                      <th scope="col">Email</th>
+                      <th scope="col">Phone</th>
                       <th scope="col">Owner</th>
                       <th scope="col">Last contact</th>
                     </tr>
@@ -473,21 +676,32 @@ export function ContactsListView({ sessionOverride }: ContactsListViewProps = {}
                 </thead>
                 <tbody>
                   {visible.map((c) => {
-                    const role = roleLabel(c.relationship_role);
                     if (isCold) {
                       return (
-                        <tr key={c.id} className="rc-row--clickable">
+                        <tr
+                          key={c.id}
+                          className="rc-row--clickable"
+                          onClick={(e) => {
+                            if (
+                              e.target instanceof Element &&
+                              e.target.closest('a,button,input,label')
+                            )
+                              return;
+                            openEdit(c);
+                          }}
+                        >
                           <td>{c.company_name ?? '—'}</td>
                           <td>
-                            <Link
-                              to={`/contacts/${c.id}`}
-                              className="rc-link-strong"
-                            >
-                              <span className="rc-ent">
-                                <Avatar name={FULL_NAME(c)} size="sm" />
-                                <span className="rc-ent__nm">{FULL_NAME(c)}</span>
-                              </span>
-                            </Link>
+                            <span className="rc-ent">
+                              <Avatar name={FULL_NAME(c)} size="sm" />
+                              <button
+                                type="button"
+                                className="rc-link-strong"
+                                onClick={() => openEdit(c)}
+                              >
+                                {FULL_NAME(c)}
+                              </button>
+                            </span>
                           </td>
                           <td>{c.title ?? '—'}</td>
                           <td className="mono">{c.phone_work ?? '—'}</td>
@@ -498,7 +712,15 @@ export function ContactsListView({ sessionOverride }: ContactsListViewProps = {}
                     return (
                       <tr
                         key={c.id}
-                        className={`rc-row--clickable${selected.has(c.id) ? ' rc-row--sel' : ''}`}
+                        className={`rc-row--clickable${selected.has(c.id) ? ' rc-row--sel' : ''}${editingId === c.id ? ' rc-row--active' : ''}`}
+                        onClick={(e) => {
+                          if (
+                            e.target instanceof Element &&
+                            e.target.closest('a,button,input,label')
+                          )
+                            return;
+                          openEdit(c);
+                        }}
                       >
                         <td>
                           <input
@@ -509,41 +731,46 @@ export function ContactsListView({ sessionOverride }: ContactsListViewProps = {}
                           />
                         </td>
                         <td>
-                          <Link
-                            to={`/contacts/${c.id}`}
-                            className="rc-link-strong"
-                          >
-                            <span className="rc-ent">
-                              <Avatar name={FULL_NAME(c)} size="sm" />
-                              <span>
-                                <span className="rc-ent__nm">
+                          <span className="rc-ent">
+                            <Avatar name={FULL_NAME(c)} size="sm" />
+                            <span>
+                              <span className="rc-ent__nm">
+                                <button
+                                  type="button"
+                                  className="rc-link-strong"
+                                  onClick={() => openEdit(c)}
+                                >
                                   {FULL_NAME(c)}
-                                  {c.is_hot ? (
-                                    <Icons.IconFlame className="rc-ent__flame" />
-                                  ) : null}
-                                </span>
-                                <span className="rc-ent__rl">
-                                  {[c.title, c.left_company ? 'former' : null]
-                                    .filter((s) => s !== null && s !== '')
-                                    .join(' · ') || '—'}
-                                </span>
+                                </button>
+                                {c.is_primary ? (
+                                  <StatusPill tone="brand">Primary</StatusPill>
+                                ) : null}
+                                {c.is_hot ? (
+                                  <Icons.IconFlame className="rc-ent__flame" />
+                                ) : null}
+                              </span>
+                              <span className="rc-ent__rl">
+                                {[c.title, c.left_company ? 'former' : null]
+                                  .filter((s) => s !== null && s !== '')
+                                  .join(' · ') || '—'}
                               </span>
                             </span>
-                          </Link>
+                          </span>
                         </td>
-                        <td>{c.company_name ?? '—'}</td>
                         <td>
-                          {role !== null ? (
-                            <StatusPill
-                              tone={ROLE_TONES[c.relationship_role ?? ''] ?? 'neutral'}
-                              dot
-                            >
-                              {role}
-                            </StatusPill>
-                          ) : (
-                            <span className="rc-consent-stub">—</span>
-                          )}
+                          <span className="rc-relpills">
+                            <span className="rc-relpills__co">
+                              {c.company_name ?? '—'}
+                            </span>
+                            {(c.relationship_types ?? []).map((t) => (
+                              <StatusPill key={t} tone={relationshipTypeTone(t)} dot>
+                                {relationshipTypeLabel(t)}
+                              </StatusPill>
+                            ))}
+                          </span>
                         </td>
+                        <td>{c.email1 ?? '—'}</td>
+                        <td className="mono">{c.phone_work ?? c.phone_cell ?? '—'}</td>
                         <td>{ownerName(c)}</td>
                         <td className="lastcell">
                           {lastContactLabel(c)}
@@ -626,20 +853,37 @@ export function ContactsListView({ sessionOverride }: ContactsListViewProps = {}
           </button>
         </div>
       ) : null}
+
+      {editState !== null ? (
+        <ContactEditDrawer
+          mode={editState.mode}
+          contact={editState.contact}
+          initialCompanyId={editState.mode === 'create' ? createCompanyId : undefined}
+          onClose={() => setEditState(null)}
+          onSaved={onSaved}
+        />
+      ) : null}
     </section>
   );
 }
 
-// ── Card (Cards view mode) — same data as the row, no fabricated stats. ──
-function ContactCard({ contact }: { readonly contact: ContactView }) {
+// ── Card (Cards view mode) — same data as the row; click opens the drawer. ──
+function ContactCard({
+  contact,
+  onOpen,
+}: {
+  readonly contact: ContactView;
+  readonly onOpen: () => void;
+}) {
   const role = roleLabel(contact.relationship_role);
   return (
-    <Link to={`/contacts/${contact.id}`} className="rc-cocard">
+    <button type="button" className="rc-cocard" onClick={onOpen}>
       <div className="rc-cocard__top">
         <Avatar name={FULL_NAME(contact)} size="md" />
         <div className="rc-cocard__id">
           <span className="rc-ent__nm">
             {FULL_NAME(contact)}
+            {contact.is_primary ? <StatusPill tone="brand">Primary</StatusPill> : null}
             {contact.is_hot ? <Icons.IconFlame className="rc-ent__flame" /> : null}
           </span>
           <span className="rc-ent__rl">{contact.title ?? '—'}</span>
@@ -654,6 +898,11 @@ function ContactCard({ contact }: { readonly contact: ContactView }) {
             {role}
           </StatusPill>
         ) : null}
+        {(contact.relationship_types ?? []).map((t) => (
+          <StatusPill key={t} tone={relationshipTypeTone(t)} dot>
+            {relationshipTypeLabel(t)}
+          </StatusPill>
+        ))}
         {!isContactable(contact) ? (
           <StatusPill tone="danger">Do not contact</StatusPill>
         ) : (
@@ -672,6 +921,6 @@ function ContactCard({ contact }: { readonly contact: ContactView }) {
           {lastContactLabel(contact)}
         </span>
       </div>
-    </Link>
+    </button>
   );
 }

@@ -5,6 +5,7 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  Inject,
   Param,
   Patch,
   Post,
@@ -32,6 +33,10 @@ import type { AssignRequisitionRequestDto } from './dto/assign-requisition-reque
 // L1-A — imported as a VALUE (decorated class) so the global ValidationPipe
 // enforces @IsIn(status) + rejects unknown props at the controller boundary.
 import { CreateRequisitionRequestDto } from './dto/create-requisition-request.dto.js';
+import {
+  COMPANY_CLIENT_CHECK_PORT,
+  type CompanyClientCheckPort,
+} from './ports/company-client-check.port.js';
 import { resolveCreateModeFromActorKind } from './establishment-authorization-gate.js';
 import type {
   IntakeDraftRequestDto,
@@ -89,6 +94,12 @@ export class RequisitionController {
     // stored openings_available column and its writers remain. Trailing param so
     // existing construction sites are undisturbed.
     private readonly capacity: CapacityProjectionRepository,
+    // Company Party/Role (ADR-0032, R7) — the CLIENT-workflow guard port. The
+    // adapter is supplied by apps/api at composition (a @Global provider),
+    // keeping requisition decoupled from @aramo/company. Trailing param so
+    // existing DI construction is undisturbed; hand-wired specs provide a fake.
+    @Inject(COMPANY_CLIENT_CHECK_PORT)
+    private readonly companyClientCheck: CompanyClientCheckPort,
   ) {}
 
   // -------------------------------------------------------------------------
@@ -196,6 +207,29 @@ export class RequisitionController {
     validateCompensationInput(body, requestId);
     // Requisition Record Spec Amendment v1.0 — rate_type closed-set guard.
     validateRateType(body, requestId);
+    // Company Party/Role (ADR-0032, R7 / CLIENT-workflow invariant) — a
+    // requisition's company MUST possess a CLIENT relationship. Authoritative
+    // fail-closed guard via the decoupled port (the FE picker only narrows the
+    // UI). company_id is create-time only (not in the update DTO), so update
+    // needs no equivalent check.
+    const isClient = await this.companyClientCheck.isClientCompany({
+      tenant_id: authContext.tenant_id,
+      company_id: body.company_id,
+    });
+    if (!isClient) {
+      throw new AramoError(
+        'VALIDATION_ERROR',
+        'A requisition must reference a CLIENT company — the selected company has no CLIENT relationship.',
+        400,
+        {
+          requestId,
+          details: {
+            company_id: body.company_id,
+            reason: 'requisition_company_not_client',
+          },
+        },
+      );
+    }
     // D-AUTHZ-COMP-WRITE-1 — the WRITE-side floor lives at the
     // repository (the deepest layer all 3 write paths traverse); the
     // controller threads the AuthContext.scopes through. The gate

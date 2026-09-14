@@ -24,6 +24,7 @@ import { AppModule } from '../app.module.js';
 
 import { ConfigurableTestResolver } from './support/test-auth-harness.js';
 import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
+import { ensureClientCompany } from './seed-client-company.js';
 import { placementCapacityMigrations } from './support/placement-capacity-migrations.js';
 
 // HF-AUTH-1 — compact tokens carry no scopes; guard resolves via this resolver.
@@ -219,6 +220,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       }
 
       await ensureWriteFreezeTenant((s) => setupClient.query(s), TENANT);
+      // Company Party/Role (ADR-0032, R7) — the bookmarked requisitions
+      // reference a synthetic company_id; seed it as an ACTIVE CLIENT so the
+      // fail-closed CLIENT-workflow create guard admits the setup creates.
+      await ensureClientCompany((s) => setupClient.query(s), TENANT, COMPANY_ID);
       await setupClient.query(
         `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability)
          VALUES ($1::uuid, 'ats')

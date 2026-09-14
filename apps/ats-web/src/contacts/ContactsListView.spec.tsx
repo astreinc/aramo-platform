@@ -33,6 +33,7 @@ function makeContact(
     created_at: '2026-06-01T00:00:00Z', updated_at: '2026-06-01T00:00:00Z',
     relationship_role: null, preference: null,
     last_activity_at: null, company_name: 'Acme Corp',
+    is_primary: false, relationship_types: [],
     ...overrides,
   };
 }
@@ -65,7 +66,13 @@ function installFetch(all: readonly ContactView[], status = 200) {
   lastContactsUrl = '';
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
     const url = typeof input === 'string' ? input : (input as Request).url;
-    if (url.includes('/v1/tenant/users')) {
+    // Directory (owner names) + assignable-users (owner filter) + companies
+    // (the create-drawer company select) — all incidental to the list; return
+    // empty so they never disturb the captured contacts URL.
+    if (
+      url.includes('/v1/tenant/') ||
+      (url.includes('/v1/companies') && !url.includes('/v1/contacts'))
+    ) {
       return new Response(JSON.stringify({ items: [] }), {
         status: 200, headers: { 'Content-Type': 'application/json' },
       });
@@ -73,6 +80,15 @@ function installFetch(all: readonly ContactView[], status = 200) {
     if (status !== 200) {
       return new Response(JSON.stringify({ message: 'forbidden' }), {
         status, headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    // Single-contact GET (/v1/contacts/<id>) — the ?edit=<id> deep-link fetch.
+    const single = url.match(/\/v1\/contacts\/([^?/]+)/);
+    if (single !== null) {
+      const found = all.find((c) => c.id === single[1]);
+      return new Response(JSON.stringify(found ?? { message: 'not found' }), {
+        status: found !== undefined ? 200 : 404,
+        headers: { 'Content-Type': 'application/json' },
       });
     }
     lastContactsUrl = url;
@@ -123,7 +139,10 @@ describe('ContactsListView (server-paged)', () => {
     expect(screen.getByText(/your client contacts/i)).toBeInTheDocument();
   });
 
-  it('renders role + company from real fields', async () => {
+  it('renders name + title + company from real fields', async () => {
+    // The directory table follows the prototype's columns (Contact / Company /
+    // Email / Phone / Owner / Last activity) — role is a filter facet, not a
+    // column, so the row shows the title beneath the name and the company name.
     installFetch([
       makeContact('ct-1', 'Dana', 'Okafor', {
         title: 'VP Engineering', relationship_role: 'decision_maker',
@@ -133,7 +152,7 @@ describe('ContactsListView (server-paged)', () => {
     renderInRouter(<ContactsListView />);
     await waitFor(() => expect(screen.getByText('Dana Okafor')).toBeInTheDocument());
     const table = screen.getByRole('table');
-    expect(within(table).getByText('Decision maker')).toBeInTheDocument();
+    expect(within(table).getByText('VP Engineering')).toBeInTheDocument();
     expect(within(table).getByText('Northwind Robotics')).toBeInTheDocument();
   });
 
@@ -147,12 +166,17 @@ describe('ContactsListView (server-paged)', () => {
     );
   });
 
-  it('the name cell links to the contact detail at /contacts/:id', async () => {
+  it('the name is a button that opens the drawer — there is NO detail-page link', async () => {
     installFetch([makeContact('ct-42', 'Dana', 'Okafor')]);
-    renderInRouter(<ContactsListView />);
+    renderInRouter(
+      <ContactsListView sessionOverride={makeSession(['contact:read', 'contact:edit'])} />,
+    );
     await waitFor(() => expect(screen.getByText('Dana Okafor')).toBeInTheDocument());
-    expect(screen.getByRole('link', { name: /Dana Okafor/i })).toHaveAttribute(
-      'href', '/contacts/ct-42',
+    // no navigation link to a detail page (the drawer is the only surface)
+    expect(screen.queryByRole('link', { name: /Dana Okafor/i })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /Dana Okafor/i }));
+    await waitFor(() =>
+      expect(screen.getByTestId('contact-edit-drawer')).toBeInTheDocument(),
     );
   });
 
@@ -185,17 +209,32 @@ describe('ContactsListView (server-paged)', () => {
     expect(lastContactsUrl).toContain('relationship_role=');
   });
 
-  it('the Communication facet refetches and filters server-side', async () => {
+  it('the top-bar Communication filter refetches and filters server-side', async () => {
     installFetch([
       makeContact('ct-1', 'Open', 'Line', { preference: 'contactable' }),
       makeContact('ct-2', 'No', 'Calls', { preference: 'do_not_contact' }),
     ]);
     renderInRouter(<ContactsListView />);
     await waitFor(() => expect(screen.getByText('Open Line')).toBeInTheDocument());
-    const facets = screen.getByRole('complementary', { name: 'Filters' });
-    fireEvent.click(within(facets).getByText('Do not contact'));
+    // the facet moved from the left rail to the top-bar select
+    fireEvent.change(screen.getByLabelText('Filter by communication'), {
+      target: { value: 'do_not_contact' },
+    });
     await waitFor(() => expect(screen.queryByText('Open Line')).toBeNull());
     expect(screen.getByText('No Calls')).toBeInTheDocument();
+    expect(lastContactsUrl).toContain('preference=do_not_contact');
+  });
+
+  it('renders the top filter bar (Company / Role / Communication / Owner) — no left rail', async () => {
+    installFetch([makeContact('ct-1', 'Dana', 'Okafor')]);
+    renderInRouter(<ContactsListView />);
+    await waitFor(() => expect(screen.getByText('Dana Okafor')).toBeInTheDocument());
+    expect(screen.getByLabelText('Filter by company')).toBeInTheDocument();
+    expect(screen.getByLabelText('Filter by role')).toBeInTheDocument();
+    expect(screen.getByLabelText('Filter by communication')).toBeInTheDocument();
+    expect(screen.getByLabelText('Filter by owner')).toBeInTheDocument();
+    // the left facet rail is retired
+    expect(screen.queryByRole('complementary', { name: 'Filters' })).toBeNull();
   });
 
   it('Cold-call mode switches to the queue columns and sends cold_callable', async () => {
@@ -242,5 +281,93 @@ describe('ContactsListView (server-paged)', () => {
     renderInRouter(<ContactsListView />);
     await waitFor(() => expect(screen.getByText('Legacy Contact')).toBeInTheDocument());
     expect(screen.getByRole('button', { name: /all contacts/i })).toBeInTheDocument();
+  });
+
+  it('shows Email + Phone columns, the PRIMARY badge and company relationship pills', async () => {
+    installFetch([
+      makeContact('ct-1', 'Elena', 'Vasquez', {
+        email1: 'elena@northwind.test',
+        phone_work: '(571) 555-0140',
+        is_primary: true,
+        relationship_types: ['CLIENT'],
+        company_name: 'Northwind Systems',
+      }),
+    ]);
+    renderInRouter(<ContactsListView />);
+    await waitFor(() => expect(screen.getByText('Elena Vasquez')).toBeInTheDocument());
+    const table = screen.getByRole('table');
+    expect(within(table).getByText('Email')).toBeInTheDocument();
+    expect(within(table).getByText('Phone')).toBeInTheDocument();
+    expect(within(table).getByText('elena@northwind.test')).toBeInTheDocument();
+    expect(within(table).getByText('(571) 555-0140')).toBeInTheDocument();
+    // PRIMARY badge + the company's ACTIVE relationship type (Client)
+    expect(within(table).getByText('Primary')).toBeInTheDocument();
+    expect(within(table).getByText('Client')).toBeInTheDocument();
+  });
+
+  it('clicking a row opens the edit drawer (not a navigation)', async () => {
+    installFetch([
+      makeContact('ct-1', 'Dana', 'Okafor', { email1: 'dana@nw.test' }),
+    ]);
+    renderInRouter(
+      <ContactsListView sessionOverride={makeSession(['contact:read', 'contact:edit'])} />,
+    );
+    await waitFor(() => expect(screen.getByText('Dana Okafor')).toBeInTheDocument());
+    // Click a non-button cell (the email) → the drawer opens; there is no
+    // navigation (the drawer is the only contact surface).
+    fireEvent.click(screen.getByText('dana@nw.test'));
+    await waitFor(() =>
+      expect(screen.getByTestId('contact-edit-drawer')).toBeInTheDocument(),
+    );
+    expect(screen.getByTestId('contact-edit-badge')).toHaveTextContent(/editing/i);
+    // no "open full record" link — the detail page is gone
+    expect(screen.queryByTestId('contact-open-full-record')).toBeNull();
+  });
+
+  it('the "+ New contact" button opens the create drawer', async () => {
+    installFetch([]);
+    renderInRouter(
+      <ContactsListView sessionOverride={makeSession(['contact:read', 'contact:create'])} />,
+    );
+    await waitFor(() => expect(screen.getByTestId('contact-new')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('contact-new'));
+    await waitFor(() =>
+      expect(screen.getByTestId('contact-edit-drawer')).toBeInTheDocument(),
+    );
+    const drawer = screen.getByTestId('contact-edit-drawer');
+    expect(within(drawer).getByText('New contact')).toBeInTheDocument();
+    // no EDITING badge / full-record link on create
+    expect(screen.queryByTestId('contact-edit-badge')).toBeNull();
+  });
+
+  it('the Owner filter narrows to a specific owner_id server-side', async () => {
+    installFetch([makeContact('ct-1', 'Mine', 'Owner', { owner_id: 'u1' })]);
+    renderInRouter(
+      <ContactsListView sessionOverride={makeSession(['contact:read'])} />,
+    );
+    await waitFor(() => expect(screen.getByText('Mine Owner')).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText('Filter by owner'), {
+      target: { value: 'u1' },
+    });
+    await waitFor(() => expect(lastContactsUrl).toContain('owner_id=u1'));
+  });
+
+  it('the ?edit=<id> deep-link opens the edit drawer for that contact', async () => {
+    installFetch([
+      makeContact('ct-9', 'Deep', 'Link', { company_name: 'Northwind Systems' }),
+    ]);
+    render(
+      <MemoryRouter initialEntries={['/contacts?edit=ct-9']}>
+        <ContactsListView
+          sessionOverride={makeSession(['contact:read', 'contact:edit'])}
+        />
+      </MemoryRouter>,
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId('contact-edit-drawer')).toBeInTheDocument(),
+    );
+    expect(screen.getByTestId('contact-edit-badge')).toHaveTextContent(/editing/i);
+    const drawer = screen.getByTestId('contact-edit-drawer');
+    expect(within(drawer).getByText('Deep Link')).toBeInTheDocument();
   });
 });

@@ -88,11 +88,21 @@ export class ContactController {
       const preference = csv(qp['preference']);
       const companyIds = csv(qp['company_id']);
       const pageSize = qp['page_size'] ? Number(qp['page_size']) : undefined;
+      // Owner filter — scope=mine derives owner_id SERVER-SIDE from the JWT and
+      // wins; otherwise an explicit ?owner_id= narrows to that owner. Either way
+      // it only NARROWS within the actor's already-resolved visible set (the
+      // visibility filter is ANDed downstream), so it never widens access.
+      const ownerFilter =
+        scope === 'mine'
+          ? authContext.sub
+          : qp['owner_id']?.trim()
+            ? qp['owner_id'].trim()
+            : undefined;
       const query: ContactSearchQuery = {
         tenant_id: authContext.tenant_id,
         ...(siteIdFromQuery === undefined ? {} : { site_id: siteIdFromQuery }),
         ...(searchTerm === undefined ? {} : { q: searchTerm }),
-        ...(scope === 'mine' ? { owner_id: authContext.sub } : {}),
+        ...(ownerFilter === undefined ? {} : { owner_id: ownerFilter }),
         ...(relationshipRole === undefined ? {} : { relationship_role: relationshipRole }),
         ...(preference === undefined ? {} : { preference }),
         ...(companyIds === undefined ? {} : { company_id: companyIds }),

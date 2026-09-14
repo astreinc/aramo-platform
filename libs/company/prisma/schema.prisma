@@ -69,6 +69,16 @@ model Company {
   // String-not-enum per R5; closed-vocab values documented inline).
   // Identity / lifecycle.
   status      String  @default("active") // prospect|active|inactive|do_not_contact
+  // Company Party/Role model (ADR-0032). master_status = the org-RECORD
+  // lifecycle, distinct from the (retiring) `status` and from relationship
+  // lifecycle. Party/role columns use UPPERCASE closed-vocab strings to stay
+  // visually distinct from the legacy lowercase `status`; CHECKs live in the
+  // migration SQL (R4: no native pg enum). MERGED deferred (R5).
+  master_status String @default("ACTIVE") // ACTIVE|ARCHIVED
+  // communication_restricted — the restriction dimension pulled OUT of
+  // lifecycle (was the do_not_contact status value). Bounded v1 surface;
+  // full governed consent/restriction integration deferred.
+  communication_restricted Boolean @default(false)
   description String?
   industry    String?
   // Address completion (the existing address block has no country).
@@ -143,6 +153,10 @@ model Company {
   user_assignments  UserClientAssignment[]
   team_ownerships   TeamClientOwnership[]
 
+  // Company Party/Role (ADR-0032) — the business relationships (roles) this
+  // organization plays for the tenant.
+  relationships CompanyRelationship[]
+
   // Indexes — canonical tenant-axis filter + site-axis filter + name lookup.
   @@index([tenant_id, name])
   @@index([tenant_id, site_id])
@@ -150,6 +164,10 @@ model Company {
   @@index([tenant_id, import_batch_id])
   // Company-Fields v1.1 — status is the new primary list filter (R5).
   @@index([tenant_id, status])
+  // Company Party/Role (ADR-0032, Amendment 1) — composite-FK target so a
+  // CompanyRelationship's (tenant_id, company_id) can reference this row
+  // and never cross a tenant boundary.
+  @@unique([tenant_id, id])
 
   @@schema("company")
 }
@@ -261,6 +279,50 @@ model TeamClientOwnership {
 
   // One ownership per (team, company) — re-add is idempotent.
   @@unique([team_id, company_id])
+
+  @@schema("company")
+}
+
+// CompanyRelationship — Company Party/Role model (ADR-0032 /
+// Aramo-Company-PartyRole-Model-Correction-Directive-v1.0). A Company is the
+// neutral organization master; the roles it plays for this tenant
+// (CLIENT | VENDOR | PARTNER) are independently lifecycle-managed
+// relationships. One organization, many roles — never duplicate org rows per
+// role. Type/status are UPPERCASE closed-vocab strings (R4: CHECK-constrained,
+// no native pg enum); the CHECK constraints + the effective-window CHECK live
+// in the migration SQL.
+//
+// v1 scope: exactly one relationship per (tenant, company, type) — history is
+// deferred, so REACTIVATION reuses the same row (status=ACTIVE,
+// effective_from=now, effective_to=NULL); never INSERT a 2nd row of the same
+// type (it would collide with the unique constraint). Removal is a lifecycle
+// transition to INACTIVE (+ effective_to), NOT a hard delete.
+model CompanyRelationship {
+  id        String @id @default(uuid()) @db.Uuid
+  tenant_id String @db.Uuid
+
+  // Intra-schema COMPOSITE FK to Company (Amendment 1 — tenant integrity: a
+  // Tenant-A relationship can never reference a Tenant-B company). Targets
+  // Company @@unique([tenant_id, id]).
+  company_id String  @db.Uuid
+  company    Company @relation(fields: [tenant_id, company_id], references: [tenant_id, id], onDelete: Cascade)
+
+  // The role played + its lifecycle (CHECK-constrained in the migration).
+  type   String // CLIENT|VENDOR|PARTNER
+  status String // PROSPECT|ACTIVE|ON_HOLD|INACTIVE
+
+  // Current/latest relationship episode (NOT full history — deferred).
+  effective_from DateTime? @db.Timestamptz
+  effective_to   DateTime? @db.Timestamptz
+
+  created_at DateTime @default(now()) @db.Timestamptz
+  updated_at DateTime @default(now()) @updatedAt @db.Timestamptz
+
+  // Read paths.
+  @@index([tenant_id, company_id])
+  @@index([tenant_id, type, status])
+  // One relationship per type per company (v1) — reactivation reuses the row.
+  @@unique([tenant_id, company_id, type])
 
   @@schema("company")
 }

@@ -62,6 +62,13 @@ model Contact {
   notes        String?
   left_company Boolean @default(false)
 
+  // Contacts prototype parity (Contacts.dc.html) — the PRIMARY contact for a
+  // company. At most one primary per (tenant, company) is enforced by a partial
+  // unique index (WHERE is_primary = true) in the migration; the repo demotes
+  // any prior primary on promote. Non-nullable default false so it never
+  // participates in NULL-comparison semantics (CLAUDE.md "NULL = NULL is not TRUE").
+  is_primary Boolean @default(false)
+
   // Contact-spec amendment v1.0 (LOCKED) — list/detail surface fields.
   // String + application-layer @IsIn closed vocab (NO Prisma enum, per the
   // platform's String+@IsIn convention). All nullable (unclassified).

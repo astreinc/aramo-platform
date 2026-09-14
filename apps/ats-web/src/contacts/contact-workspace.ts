@@ -14,8 +14,12 @@ import type { ContactView } from '../companies/types';
 //   communication     ← preference (contactable | limited | do_not_contact)
 //   company           ← company_id (+ company_name enrichment)
 //   hot               ← is_hot · former ← left_company · quiet ← last_activity_at
-// The mockup's "primary contact" flag, per-contact "open reqs", and Department
-// facet are NOT backend fields → omitted (never faked).
+//   primary           ← is_primary (≤1 primary contact per company; real
+//                        backend field, partial-unique-index enforced)
+//   relationship types← relationship_types (the ACTIVE company relationship
+//                        types the contact's company holds: CLIENT|VENDOR|PARTNER)
+// The mockup's per-contact "open reqs" and the Department facet are NOT backend
+// fields → omitted (never faked).
 
 export const FULL_NAME = (c: ContactView): string =>
   `${c.first_name} ${c.last_name}`.trim();
@@ -49,6 +53,30 @@ export const ROLE_TONES: Record<string, RoleTone> = {
 export function roleLabel(role: string | null | undefined): string | null {
   if (role === null || role === undefined || role === '') return null;
   return ROLE_LABELS[role] ?? role;
+}
+
+// ── Company relationship type (inherited from the contact's company) ──
+// A contact belongs to a company; the company's ACTIVE relationship types
+// (CLIENT|VENDOR|PARTNER) ride the read payload as relationship_types[]. The
+// list shows them as small pills beside the company name — a contact inherits
+// its company's relationship context. Tones align with the Companies surface
+// (client = info/blue, vendor = danger/orange, partner = ok/green).
+export type RelTypeTone = 'info' | 'danger' | 'ok' | 'neutral';
+export const RELATIONSHIP_TYPE_LABELS: Record<string, string> = {
+  CLIENT: 'Client',
+  VENDOR: 'Vendor',
+  PARTNER: 'Partner',
+};
+export const RELATIONSHIP_TYPE_TONES: Record<string, RelTypeTone> = {
+  CLIENT: 'info',
+  VENDOR: 'danger',
+  PARTNER: 'ok',
+};
+export function relationshipTypeLabel(type: string): string {
+  return RELATIONSHIP_TYPE_LABELS[type] ?? type;
+}
+export function relationshipTypeTone(type: string): RelTypeTone {
+  return RELATIONSHIP_TYPE_TONES[type] ?? 'neutral';
 }
 
 // ── Communication preference ──
@@ -177,6 +205,10 @@ export interface BuildQueryInput {
   readonly segment: SegmentKey;
   readonly mode: ListMode;
   readonly facets: FacetState;
+  // Owner filter (the prototype's "Owner ▾" pill) — a specific owner_id the
+  // server filters on. Distinct from scope=mine (which resolves the JWT
+  // subject); this is "show me contacts owned by <person>". Empty → no filter.
+  readonly ownerId?: string | null;
   readonly cursor?: string | null;
   readonly pageSize?: number;
 }
@@ -185,6 +217,8 @@ export function buildContactQuery(i: BuildQueryInput): URLSearchParams {
   p.set('paged', 'true');
   // scope=mine → server owner predicate (the "My contacts" scope tab).
   if (i.scope === 'mine') p.set('scope', 'mine');
+  // owner_id → the server owner filter (the top-bar "Owner ▾" pill).
+  if (i.ownerId != null && i.ownerId !== '') p.set('owner_id', i.ownerId);
 
   // Cold-call mode = a distinct REAL server filter + sort.
   if (i.mode === 'cold') {

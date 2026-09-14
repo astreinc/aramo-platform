@@ -22,7 +22,12 @@ export interface CompanyFacetBucket {
 }
 
 export interface CompanyFacets {
-  readonly relationship: readonly CompanyFacetBucket[]; // status
+  // Company Party/Role (ADR-0032, VR5) — the fake `relationship` facet (which
+  // was a groupBy on the retiring Company.status) is replaced by the REAL
+  // relationship dimensions over CompanyRelationship: type buckets back the
+  // Client/Vendor/Partner tabs; status buckets back the in-tab lifecycle pills.
+  readonly relationship_type: readonly CompanyFacetBucket[]; // CLIENT|VENDOR|PARTNER
+  readonly relationship_status: readonly CompanyFacetBucket[]; // PROSPECT|ACTIVE|ON_HOLD|INACTIVE
   readonly tier: readonly CompanyFacetBucket[]; // client_tier
   readonly industry: readonly CompanyFacetBucket[];
   readonly hot: number;
@@ -37,7 +42,14 @@ export interface CompanySearchQuery {
   // filters (all native, single-schema)
   readonly q?: string; // name ILIKE
   readonly owner_id?: string; // scope=mine → the actor's own accounts
-  readonly status?: readonly string[]; // relationship
+  // Company Party/Role (ADR-0032, VR5/Amendment 6) — relationship-specific
+  // filtering over CompanyRelationship. relationship_type = the tab
+  // (Clients/Vendors/Partners); relationship_status = the in-tab lifecycle
+  // pills. A company matches when it has ≥1 relationship satisfying BOTH
+  // (some-relationship semantics): `Clients + Active` = a CLIENT relationship
+  // that is ACTIVE; `All + Active` = any relationship that is ACTIVE.
+  readonly relationship_type?: readonly string[];
+  readonly relationship_status?: readonly string[];
   readonly client_tier?: readonly string[];
   readonly industry?: readonly string[];
   readonly is_hot?: boolean;

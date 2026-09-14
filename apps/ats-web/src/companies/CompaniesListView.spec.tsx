@@ -5,7 +5,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Session } from '@aramo/fe-foundation';
 
 import { CompaniesListView } from './CompaniesListView';
-import type { CompanyView } from './types';
+import type { CompanyRelationshipView, CompanyView } from './types';
+
+// Company Party/Role (ADR-0032, Slice B) — the list leads with relationship
+// TYPE tabs (All / Clients / Vendors / Partners) + a relationship STATUS
+// filter, and each company renders "Type · Status" pills from relationships[].
+// Row/name click opens the slide-over quick-edit drawer (the read-only preview
+// + the left FacetRail are retired).
 
 function renderInRouter(ui: ReactElement) {
   return render(<MemoryRouter>{ui}</MemoryRouter>);
@@ -13,6 +19,18 @@ function renderInRouter(ui: ReactElement) {
 
 function makeSession(scopes: string[]): Session {
   return { sub: 'u1', consumer_type: 'recruiter', tenant_id: 't', scopes, iat: 0, exp: 0 };
+}
+
+function rel(type: string, status: string): CompanyRelationshipView {
+  return {
+    id: `rel-${type}`,
+    type,
+    status,
+    effective_from: '2026-01-01T00:00:00Z',
+    effective_to: null,
+    created_at: '2026-01-01T00:00:00Z',
+    updated_at: '2026-01-01T00:00:00Z',
+  };
 }
 
 function makeCompany(
@@ -27,7 +45,10 @@ function makeCompany(
     key_technologies: null, notes: null, is_hot: false,
     billing_contact_id: null, owner_id: null, entered_by_id: null,
     created_at: '2026-06-01T00:00:00Z', updated_at: '2026-06-01T00:00:00Z',
-    status: 'active', description: null, industry: null, country: null,
+    status: 'active',
+    relationships: [rel('CLIENT', 'ACTIVE')],
+    master_status: 'ACTIVE', communication_restricted: false, description: null,
+    industry: null, country: null,
     employee_count_band: null, annual_revenue_band: null, founded_year: null,
     ownership_type: null, registration_number: null, source: null,
     client_tier: null, supplier_status: null, exclusivity: false,
@@ -38,24 +59,24 @@ function makeCompany(
   };
 }
 
-// Server-aware fetch mock: parses the ?paged query and replicates the server's
-// base/selection split — facets + total over the BASE (scope) set; items over
-// the BASE + facet/segment selections. The roster probe (/v1/tenant/users)
-// returns an empty available roster.
+// Server-aware fetch mock — facets over the BASE (scope) set; items narrowed by
+// the relationship_type/status selections (some-relationship semantics).
 function buildFacets(base: readonly CompanyView[]) {
-  const tally = (key: keyof CompanyView) => {
-    const m = new Map<string, number>();
-    for (const c of base) {
-      const v = c[key];
-      if (v === null || v === undefined || v === '') continue;
-      m.set(String(v), (m.get(String(v)) ?? 0) + 1);
+  const typeTally = new Map<string, number>();
+  const statusTally = new Map<string, number>();
+  for (const c of base) {
+    for (const r of c.relationships) {
+      typeTally.set(r.type, (typeTally.get(r.type) ?? 0) + 1);
+      statusTally.set(r.status, (statusTally.get(r.status) ?? 0) + 1);
     }
-    return [...m.entries()].map(([value, count]) => ({ value, count }));
-  };
+  }
+  const toBuckets = (m: Map<string, number>) =>
+    [...m.entries()].map(([value, count]) => ({ value, count }));
   return {
-    relationship: tally('status'),
-    tier: tally('client_tier'),
-    industry: tally('industry'),
+    relationship_type: toBuckets(typeTally),
+    relationship_status: toBuckets(statusTally),
+    tier: [],
+    industry: [],
     hot: base.filter((c) => c.is_hot).length,
     off_limits: base.filter((c) => c.off_limits).length,
     exclusivity: base.filter((c) => c.exclusivity).length,
@@ -71,14 +92,7 @@ function installFetch(all: readonly CompanyView[], status = 200) {
         status, headers: { 'Content-Type': 'application/json' },
       });
     }
-    if (url.includes('/v1/tenant/users')) {
-      return new Response(JSON.stringify({ items: [] }), {
-        status: 200, headers: { 'Content-Type': 'application/json' },
-      });
-    }
-    if (url.includes('/v1/reports/company-metrics')) {
-      // Phase 3 — metrics are best-effort; an empty set leaves the Open reqs /
-      // Active columns at "—" (the list assertions don't depend on the numbers).
+    if (url.includes('/v1/tenant/users') || url.includes('/v1/reports/')) {
       return new Response(JSON.stringify({ items: [] }), {
         status: 200, headers: { 'Content-Type': 'application/json' },
       });
@@ -86,18 +100,14 @@ function installFetch(all: readonly CompanyView[], status = 200) {
     const u = new URL(url, 'http://x');
     const scope = u.searchParams.get('scope');
     const base = all.filter((c) => (scope === 'mine' ? c.owner_id === 'u1' : true));
-    const statusSel = u.searchParams.get('status')?.split(',') ?? [];
-    const tierSel = u.searchParams.get('client_tier')?.split(',') ?? [];
+    const typeSel = u.searchParams.get('relationship_type')?.split(',') ?? [];
+    const statusSel = u.searchParams.get('relationship_status')?.split(',') ?? [];
     const isHot = u.searchParams.get('is_hot') === 'true';
-    const quiet = u.searchParams.get('quiet') === 'true';
-    const offLimits = u.searchParams.get('off_limits') === 'true';
     const items = base.filter(
       (c) =>
-        (statusSel.length === 0 || statusSel.includes(c.status)) &&
-        (tierSel.length === 0 || (c.client_tier !== null && tierSel.includes(c.client_tier))) &&
-        (!isHot || c.is_hot) &&
-        (!quiet || c.last_activity_at === null) &&
-        (!offLimits || c.off_limits),
+        (typeSel.length === 0 || c.relationships.some((r) => typeSel.includes(r.type))) &&
+        (statusSel.length === 0 || c.relationships.some((r) => statusSel.includes(r.status))) &&
+        (!isHot || c.is_hot),
     );
     return new Response(
       JSON.stringify({ items, next_cursor: null, facets: buildFacets(base), total: base.length }),
@@ -106,34 +116,36 @@ function installFetch(all: readonly CompanyView[], status = 200) {
   });
 }
 
-describe('CompaniesListView (server-paged)', () => {
+describe('CompaniesListView (server-paged, party/role)', () => {
   afterEach(() => vi.restoreAllMocks());
 
-  it('frames the list as the recruiter\'s VISIBLE clients', async () => {
+  it('frames the list as the recruiter\'s VISIBLE companies', async () => {
     installFetch([]);
     renderInRouter(<CompaniesListView />);
     await waitFor(() =>
       expect(screen.getByText(/no companies visible to you yet/i)).toBeInTheDocument(),
     );
     expect(screen.getByRole('heading', { name: 'Companies' })).toBeInTheDocument();
-    expect(screen.getByText(/your visible clients/i)).toBeInTheDocument();
+    expect(screen.getByText(/your visible companies/i)).toBeInTheDocument();
   });
 
-  it('renders relationship / tier / industry from real fields', async () => {
+  it('renders "Type · Status" relationship pills + industry/tier/location', async () => {
     installFetch([
       makeCompany('co-1', 'Acme Corp', {
         city: 'San Francisco', state: 'CA', industry: 'Robotics',
-        client_tier: 'a', is_hot: true,
+        client_tier: 'a',
+        relationships: [rel('CLIENT', 'ACTIVE'), rel('VENDOR', 'INACTIVE')],
       }),
     ]);
     renderInRouter(<CompaniesListView />);
     await waitFor(() => expect(screen.getByText('Acme Corp')).toBeInTheDocument());
     const table = screen.getByRole('table');
-    // industry · tier · location now render as one company-cell subtitle node.
     expect(within(table).getByText(/Robotics/)).toBeInTheDocument();
     expect(within(table).getByText(/Key account/)).toBeInTheDocument();
     expect(within(table).getByText(/San Francisco, CA/)).toBeInTheDocument();
-    expect(within(table).getByText('Client')).toBeInTheDocument();
+    // both roles shown with their own status
+    expect(within(table).getByText('Client · Active')).toBeInTheDocument();
+    expect(within(table).getByText('Vendor · Inactive')).toBeInTheDocument();
   });
 
   it('surfaces a permission message when the BE returns 403', async () => {
@@ -155,7 +167,7 @@ describe('CompaniesListView (server-paged)', () => {
     );
   });
 
-  it('renders "New company" only when the session holds company:create', async () => {
+  it('renders the "New company" button only when the session holds company:create', async () => {
     installFetch([]);
     const { unmount } = renderInRouter(
       <CompaniesListView sessionOverride={makeSession(['company:create'])} />,
@@ -163,40 +175,49 @@ describe('CompaniesListView (server-paged)', () => {
     await waitFor(() =>
       expect(screen.getByText(/no companies visible to you yet/i)).toBeInTheDocument(),
     );
-    expect(screen.getByRole('link', { name: /new company/i })).toHaveAttribute(
-      'href', '/companies/new',
-    );
+    expect(screen.getByTestId('company-new')).toBeInTheDocument();
     unmount();
     installFetch([]);
     renderInRouter(<CompaniesListView sessionOverride={makeSession(['company:read'])} />);
     await waitFor(() =>
       expect(screen.getByText(/no companies visible to you yet/i)).toBeInTheDocument(),
     );
-    expect(screen.queryByRole('link', { name: /new company/i })).toBeNull();
+    expect(screen.queryByTestId('company-new')).toBeNull();
   });
 
-  it('the Hot clients segment refetches and filters server-side', async () => {
-    installFetch([
-      makeCompany('co-1', 'Hot Co', { is_hot: true }),
-      makeCompany('co-2', 'Cool Co', { is_hot: false }),
-    ]);
-    renderInRouter(<CompaniesListView />);
-    await waitFor(() => expect(screen.getByText('Hot Co')).toBeInTheDocument());
-    fireEvent.click(screen.getByRole('button', { name: /hot clients/i }));
-    await waitFor(() => expect(screen.queryByText('Cool Co')).toBeNull());
-    expect(screen.getByText('Hot Co')).toBeInTheDocument();
+  it('the "New company" button opens the create drawer', async () => {
+    installFetch([]);
+    renderInRouter(<CompaniesListView sessionOverride={makeSession(['company:create'])} />);
+    await waitFor(() =>
+      expect(screen.getByText(/no companies visible to you yet/i)).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByTestId('company-new'));
+    await waitFor(() =>
+      expect(screen.getByTestId('company-edit-drawer')).toBeInTheDocument(),
+    );
   });
 
-  it('the relationship facet refetches and filters server-side', async () => {
+  it('a relationship-type TAB refetches and filters server-side', async () => {
     installFetch([
-      makeCompany('co-1', 'Client Co', { status: 'active' }),
-      makeCompany('co-2', 'Prospect Co', { status: 'prospect' }),
+      makeCompany('co-1', 'Client Co', { relationships: [rel('CLIENT', 'ACTIVE')] }),
+      makeCompany('co-2', 'Vendor Co', { relationships: [rel('VENDOR', 'ACTIVE')] }),
     ]);
     renderInRouter(<CompaniesListView />);
     await waitFor(() => expect(screen.getByText('Client Co')).toBeInTheDocument());
-    const facets = screen.getByRole('complementary', { name: 'Filters' });
-    fireEvent.click(within(facets).getByText('Prospect'));
+    fireEvent.click(screen.getByRole('button', { name: /Vendors/i }));
     await waitFor(() => expect(screen.queryByText('Client Co')).toBeNull());
+    expect(screen.getByText('Vendor Co')).toBeInTheDocument();
+  });
+
+  it('the relationship STATUS filter refetches and filters server-side', async () => {
+    installFetch([
+      makeCompany('co-1', 'Active Co', { relationships: [rel('CLIENT', 'ACTIVE')] }),
+      makeCompany('co-2', 'Prospect Co', { relationships: [rel('CLIENT', 'PROSPECT')] }),
+    ]);
+    renderInRouter(<CompaniesListView />);
+    await waitFor(() => expect(screen.getByText('Active Co')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: 'Prospect' }));
+    await waitFor(() => expect(screen.queryByText('Active Co')).toBeNull());
     expect(screen.getByText('Prospect Co')).toBeInTheDocument();
   });
 
@@ -210,33 +231,29 @@ describe('CompaniesListView (server-paged)', () => {
     expect(screen.getByText('Acme Corp')).toBeInTheDocument();
   });
 
-  it('opens the preview drawer from a row', async () => {
+  it('opens the quick-edit drawer from a row', async () => {
     installFetch([makeCompany('co-1', 'Acme Corp')]);
     renderInRouter(<CompaniesListView />);
     await waitFor(() => expect(screen.getByText('Acme Corp')).toBeInTheDocument());
-    fireEvent.click(screen.getByRole('button', { name: /preview Acme Corp/i }));
+    fireEvent.click(screen.getByRole('button', { name: /quick edit Acme Corp/i }));
     await waitFor(() =>
-      expect(
-        screen.getByRole('dialog', { name: /Acme Corp — preview/i }),
-      ).toBeInTheDocument(),
+      expect(screen.getByTestId('company-edit-drawer')).toBeInTheDocument(),
     );
-    expect(screen.getByRole('link', { name: /open account/i })).toHaveAttribute(
+    // edit mode → "Open full record" points at the hub
+    expect(screen.getByTestId('company-open-full-record')).toHaveAttribute(
       'href', '/companies/co-1',
     );
   });
 
   it('renders (no blank/crash) when the API returns the legacy {items}-only shape', async () => {
-    // Regression: a non-paged response has no facets/total/next_cursor. The
-    // segment badges must NOT throw on undefined facets (was a blank page).
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const url = typeof input === 'string' ? input : (input as Request).url;
       if (url.includes('/v1/tenant/users') || url.includes('/v1/reports/')) {
         return new Response(JSON.stringify({ items: [] }), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
+          status: 200, headers: { 'Content-Type': 'application/json' },
         });
       }
-      // legacy companies list — ONLY { items } (no facets/total/next_cursor)
+      // legacy list — ONLY { items } (no facets/total/next_cursor)
       return new Response(
         JSON.stringify({ items: [makeCompany('co-1', 'Legacy Co')] }),
         { status: 200, headers: { 'Content-Type': 'application/json' } },
@@ -244,8 +261,8 @@ describe('CompaniesListView (server-paged)', () => {
     });
     renderInRouter(<CompaniesListView />);
     await waitFor(() => expect(screen.getByText('Legacy Co')).toBeInTheDocument());
-    // segments still render (badge counts simply absent), no crash
-    expect(screen.getByRole('button', { name: /all accounts/i })).toBeInTheDocument();
+    // tabs still render (badge counts simply absent), no crash
+    expect(screen.getByRole('button', { name: /all companies/i })).toBeInTheDocument();
   });
 
   it('shows the "N of M" count from the server total', async () => {

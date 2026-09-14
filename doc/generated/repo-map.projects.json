@@ -1109,6 +1109,7 @@
     ],
     "@aramo/requisition": [
       "ACTION_TARGET_STATUS",
+      "COMPANY_CLIENT_CHECK_PORT",
       "GATED_RECRUITING_STATUS_VALUES",
       "RATE_PERIOD_VALUES",
       "RATE_TYPE_VALUES",
@@ -3617,12 +3618,6 @@
       {
         "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/ats-web/src/components/InlineEditField.spec.tsx",
-        "project": "aramo-ats-web",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/**/*.spec.tsx",
-        "from": "apps/ats-web/src/contacts/ContactDetailView.spec.tsx",
         "project": "aramo-ats-web",
         "status": "excluded"
       },

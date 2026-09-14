@@ -9,6 +9,7 @@ import {
 } from '@aramo/fe-foundation';
 
 import { AddressTypeahead } from './AddressTypeahead';
+import { companyTypes, relStatusFor } from './company-workspace';
 import {
   createCompanyDepartment,
   deleteCompanyDepartment,
@@ -108,6 +109,17 @@ interface FormState
     CommercialFormState {
   // EDIT-only (ruling B). Empty string represents "no selection / null".
   billing_contact_id: string;
+  // Company Party/Role (ADR-0032) — the relationship (role) selection. Each
+  // role is an independent checkbox with its OWN status ("active client AND
+  // inactive vendor at the same time"). ≥1 role on create (VR8/Amendment 4).
+  // communication_restricted is the company-wide do-not-contact flag (§5).
+  rel_client: boolean;
+  rel_client_status: string; // PROSPECT|ACTIVE|ON_HOLD|INACTIVE
+  rel_vendor: boolean;
+  rel_vendor_status: string;
+  rel_partner: boolean;
+  rel_partner_status: string;
+  communication_restricted: boolean;
 }
 
 // Company-Fields v1.1 — dropdown option sets (FE constraint only; the BE
@@ -117,12 +129,27 @@ interface Opt {
   readonly value: string;
   readonly label: string;
 }
-const STATUS_OPTS: readonly Opt[] = [
-  { value: 'prospect', label: 'Prospect' },
-  { value: 'active', label: 'Active' },
-  { value: 'inactive', label: 'Inactive' },
-  { value: 'do_not_contact', label: 'Do Not Contact' },
+// Company Party/Role (ADR-0032) — relationship lifecycle vocabulary (replaces
+// the retired STATUS_OPTS; do_not_contact is now communication_restricted).
+const REL_STATUS_OPTS: readonly Opt[] = [
+  { value: 'PROSPECT', label: 'Prospect' },
+  { value: 'ACTIVE', label: 'Active' },
+  { value: 'ON_HOLD', label: 'On hold' },
+  { value: 'INACTIVE', label: 'Inactive' },
 ];
+
+// The selected relationships (each checked role with its OWN status) → the
+// array sent to the BE (per-relationship status; ADR-0032).
+function selectedRelationships(
+  state: FormState,
+): Array<{ type: string; status: string }> {
+  const out: Array<{ type: string; status: string }> = [];
+  if (state.rel_client) out.push({ type: 'CLIENT', status: state.rel_client_status });
+  if (state.rel_vendor) out.push({ type: 'VENDOR', status: state.rel_vendor_status });
+  if (state.rel_partner) out.push({ type: 'PARTNER', status: state.rel_partner_status });
+  return out;
+}
+
 const OWNERSHIP_OPTS: readonly Opt[] = [
   { value: 'private', label: 'Private' },
   { value: 'public', label: 'Public' },
@@ -223,6 +250,13 @@ function emptyState(): FormState {
     address_provider_place_id: '',
     address_provider: '',
     billing_contact_id: '',
+    rel_client: true,
+    rel_client_status: 'PROSPECT',
+    rel_vendor: false,
+    rel_vendor_status: 'PROSPECT',
+    rel_partner: false,
+    rel_partner_status: 'PROSPECT',
+    communication_restricted: false,
     ...EMPTY_EXPANDED,
     ...EMPTY_COMMERCIAL,
   };
@@ -246,6 +280,16 @@ function stateFromInitial(initial: CompanyView): FormState {
     address_provider_place_id: initial.address_provider_place_id ?? '',
     address_provider: initial.address_provider ?? '',
     billing_contact_id: initial.billing_contact_id ?? '',
+    // Company Party/Role (ADR-0032) — seed each role's checkbox + its OWN
+    // status from the existing relationships[]; communication_restricted from
+    // the record. (primaryStatus retained for a sensible default on unset.)
+    rel_client: companyTypes(initial).includes('CLIENT'),
+    rel_client_status: relStatusFor(initial, 'CLIENT') ?? 'ACTIVE',
+    rel_vendor: companyTypes(initial).includes('VENDOR'),
+    rel_vendor_status: relStatusFor(initial, 'VENDOR') ?? 'PROSPECT',
+    rel_partner: companyTypes(initial).includes('PARTNER'),
+    rel_partner_status: relStatusFor(initial, 'PARTNER') ?? 'PROSPECT',
+    communication_restricted: initial.communication_restricted,
     // Expanded un-gated.
     status: initial.status ?? 'active',
     description: initial.description ?? '',
@@ -322,11 +366,12 @@ function buildCreateBody(
     const v = state[k];
     if (typeof v === 'string' && v.trim() !== '') body[k] = v.trim();
   }
-  // status defaults to 'active' (DB default) — send only when changed away
-  // from it, so a plain create stays a minimal body.
-  if (state.status.trim() !== '' && state.status !== 'active') {
-    body['status'] = state.status;
-  }
+  // Company Party/Role (ADR-0032, VR8) — send the explicitly-selected roles,
+  // each with its OWN status (do NOT rely on the BE status→CLIENT bridge for a
+  // UI create).
+  const rels = selectedRelationships(state);
+  if (rels.length > 0) body['relationships'] = rels;
+  if (state.communication_restricted) body['communication_restricted'] = true;
   if (state.is_hot) body['is_hot'] = true;
   if (state.exclusivity) body['exclusivity'] = true;
   if (state.off_limits) body['off_limits'] = true;
@@ -380,9 +425,26 @@ function buildPatchBody(
   }
 
   const initialAsRecord = initial as unknown as Record<string, unknown>;
-  // status is non-nullable (defaulted) — diff but never clear-to-null.
-  if (state.status !== (initial.status ?? 'active')) {
-    body['status'] = state.status;
+  // Company Party/Role (ADR-0032) — relationship diff. Checked roles upsert to
+  // rel_status; a previously-present role that is now unchecked transitions to
+  // INACTIVE (Amendment 3 — a lifecycle transition, not a hard delete). Sent
+  // only when the role set or the status actually changed.
+  const selected = selectedRelationships(state); // checked roles + own status
+  const selectedTypes = selected.map((r) => r.type);
+  const initTypes = [...companyTypes(initial)];
+  const initPairs = initTypes
+    .map((t) => `${t}:${relStatusFor(initial, t) ?? ''}`)
+    .sort();
+  const selPairs = selected.map((r) => `${r.type}:${r.status}`).sort();
+  const removed = initTypes.filter((t) => !selectedTypes.includes(t));
+  if (JSON.stringify(initPairs) !== JSON.stringify(selPairs) || removed.length > 0) {
+    const rels: Array<{ type: string; status: string }> = [...selected];
+    // Amendment 3 — a de-selected (was-present) role transitions to INACTIVE.
+    for (const t of removed) rels.push({ type: t, status: 'INACTIVE' });
+    body['relationships'] = rels;
+  }
+  if (state.communication_restricted !== initial.communication_restricted) {
+    body['communication_restricted'] = state.communication_restricted;
   }
   for (const k of UNGATED_STRING_FIELDS) {
     const initVal = initialAsRecord[k] ?? '';
@@ -483,7 +545,7 @@ export function CompanyForm(props: CompanyFormProps) {
     listContactsForCompany(initialCompanyId)
       .then((res) => {
         if (cancelled) return;
-        setContacts(res.items);
+        setContacts(res.items ?? []);
       })
       .catch(() => {
         if (cancelled) return;
@@ -690,14 +752,86 @@ export function CompanyForm(props: CompanyFormProps) {
         {/* Company-Fields v1.1 — Profile / lifecycle. */}
         <fieldset className="company-form__profile" disabled={submitting}>
           <legend>Profile</legend>
-          <FormField label="Status">
-            <select
-              value={state.status}
-              onChange={(ev) => set('status', ev.target.value)}
-              aria-label="Status"
-            >
-              {renderOptions(STATUS_OPTS, false)}
-            </select>
+          <FormField label="Relationships">
+            <div className="company-form__rel" role="group" aria-label="Relationships">
+              <div className="company-form__relrow">
+                <label className="company-form__check">
+                  <input
+                    type="checkbox"
+                    checked={state.rel_client}
+                    onChange={(e) => set('rel_client', e.target.checked)}
+                  />{' '}
+                  <span>
+                    Client
+                    <small>Owns requisitions · receives submittals · placements</small>
+                  </span>
+                </label>
+                <select
+                  value={state.rel_client_status}
+                  onChange={(e) => set('rel_client_status', e.target.value)}
+                  aria-label="Client status"
+                  disabled={!state.rel_client}
+                >
+                  {renderOptions(REL_STATUS_OPTS, false)}
+                </select>
+              </div>
+              <div className="company-form__relrow">
+                <label className="company-form__check">
+                  <input
+                    type="checkbox"
+                    checked={state.rel_vendor}
+                    onChange={(e) => set('rel_vendor', e.target.checked)}
+                  />{' '}
+                  <span>
+                    Vendor
+                    <small>Supplies talent · staffing supplier</small>
+                  </span>
+                </label>
+                <select
+                  value={state.rel_vendor_status}
+                  onChange={(e) => set('rel_vendor_status', e.target.value)}
+                  aria-label="Vendor status"
+                  disabled={!state.rel_vendor}
+                >
+                  {renderOptions(REL_STATUS_OPTS, false)}
+                </select>
+              </div>
+              <div className="company-form__relrow">
+                <label className="company-form__check">
+                  <input
+                    type="checkbox"
+                    checked={state.rel_partner}
+                    onChange={(e) => set('rel_partner', e.target.checked)}
+                  />{' '}
+                  <span>
+                    Partner
+                    <small>Strategic · referral · integration</small>
+                  </span>
+                </label>
+                <select
+                  value={state.rel_partner_status}
+                  onChange={(e) => set('rel_partner_status', e.target.value)}
+                  aria-label="Partner status"
+                  disabled={!state.rel_partner}
+                >
+                  {renderOptions(REL_STATUS_OPTS, false)}
+                </select>
+              </div>
+            </div>
+            <p className="company-form__hint">
+              Each relationship carries its own status — a company can be an
+              active client and an inactive vendor at the same time.
+            </p>
+          </FormField>
+          <FormField label="Do not contact">
+            <label className="company-form__check">
+              <input
+                type="checkbox"
+                checked={state.communication_restricted}
+                onChange={(e) => set('communication_restricted', e.target.checked)}
+              />{' '}
+              Company-wide — overrides all relationships
+            </label>
           </FormField>
           <FormField label="Industry">
             <input
@@ -907,7 +1041,7 @@ function DepartmentsEditor({
 
   function refresh(): void {
     listCompanyDepartments(companyId)
-      .then((res) => setDepartments(res.items))
+      .then((res) => setDepartments(res.items ?? []))
       .catch(() => setError('Could not load departments.'));
   }
 
@@ -915,7 +1049,7 @@ function DepartmentsEditor({
     let cancelled = false;
     listCompanyDepartments(companyId)
       .then((res) => {
-        if (!cancelled) setDepartments(res.items);
+        if (!cancelled) setDepartments(res.items ?? []);
       })
       .catch(() => {
         if (!cancelled) setError('Could not load departments.');

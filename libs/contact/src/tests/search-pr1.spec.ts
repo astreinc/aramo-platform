@@ -83,7 +83,10 @@ describe('Search PR-1 — contact ?q= WHERE construction (repo) — visibility-A
   it('q builds an OR over first_name/last_name, ANDed with the D4b company-axis filter', async () => {
     const { ContactRepository: Repo } = await import('../lib/contact.repository.js');
     const findMany = vi.fn().mockResolvedValue([]);
-    const repo = new Repo({ contact: { findMany } } as never, {} as never);
+    const repo = new Repo(
+      { contact: { findMany } } as never,
+      { findRelationshipTypesByIds: vi.fn().mockResolvedValue(new Map()) } as never,
+    );
     await repo.listForActor({
       tenant_id: TENANT_ID,
       visibility: makeVisibility(),
@@ -102,7 +105,10 @@ describe('Search PR-1 — contact ?q= WHERE construction (repo) — visibility-A
   it('no q → no OR key; the visibility predicate is unchanged', async () => {
     const { ContactRepository: Repo } = await import('../lib/contact.repository.js');
     const findMany = vi.fn().mockResolvedValue([]);
-    const repo = new Repo({ contact: { findMany } } as never, {} as never);
+    const repo = new Repo(
+      { contact: { findMany } } as never,
+      { findRelationshipTypesByIds: vi.fn().mockResolvedValue(new Map()) } as never,
+    );
     await repo.listForActor({ tenant_id: TENANT_ID, visibility: makeVisibility() });
     const where = findMany.mock.calls[0][0].where;
     expect(where.OR).toBeUndefined();

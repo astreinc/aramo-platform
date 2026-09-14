@@ -1,9 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { AramoError, type VisibilityContextShape } from '@aramo/common';
 
-import type { CompanyView } from './dto/company.view.js';
+import type { CompanyView, CompanyRelationshipView } from './dto/company.view.js';
 import { stripUnscopedCommercialFields } from './commercial-write-strip.js';
-import type { CreateCompanyRequestDto } from './dto/create-company-request.dto.js';
+import type {
+  CreateCompanyRequestDto,
+  CompanyRelationshipInput,
+} from './dto/create-company-request.dto.js';
 import type { UpdateCompanyRequestDto } from './dto/update-company-request.dto.js';
 import {
   QUIET_DAYS,
@@ -21,6 +24,150 @@ import { PrismaService } from './prisma/prisma.service.js';
 // (no float drift — the compensation pattern). Typed structurally so the
 // repo needn't import the generated Prisma.Decimal.
 type DecimalLike = { toString(): string };
+
+// Company Party/Role (ADR-0032) — the relationship row shape as returned by
+// Prisma when `relationships` is included on a Company read.
+interface CompanyRelationshipRow {
+  id: string;
+  type: string;
+  status: string;
+  effective_from: Date | null;
+  effective_to: Date | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
+// Read include for the relationship child — ordered so the projected view is
+// stable across reads.
+const RELATIONSHIP_INCLUDE = {
+  relationships: { orderBy: { type: 'asc' } },
+} as const;
+
+function projectRelationship(r: CompanyRelationshipRow): CompanyRelationshipView {
+  return {
+    id: r.id,
+    type: r.type,
+    status: r.status,
+    effective_from: r.effective_from !== null ? r.effective_from.toISOString() : null,
+    effective_to: r.effective_to !== null ? r.effective_to.toISOString() : null,
+    created_at: r.created_at.toISOString(),
+    updated_at: r.updated_at.toISOString(),
+  };
+}
+
+// Legacy Company.status → relationship status (UPPERCASE). Returns null for
+// do_not_contact (a communication restriction, NOT a relationship lifecycle
+// state — §5/§R1): the caller rejects a legacy create and preserves status on
+// a legacy update. An omitted status defaults to the column default ('active').
+export function legacyStatusToRelStatus(status: string | undefined): string | null {
+  const s = status ?? 'active';
+  if (s === 'prospect') return 'PROSPECT';
+  if (s === 'active') return 'ACTIVE';
+  if (s === 'inactive') return 'INACTIVE';
+  return null; // do_not_contact or any unmapped value
+}
+
+// A relationship input → the nested-create shape. tenant_id/company_id are the
+// composite-relation scalars and are populated by Prisma from the parent, so
+// they are NOT set here. status defaults to PROSPECT for a newly-declared
+// relationship; effective_from defaults to now (current episode).
+function relInputToCreate(r: CompanyRelationshipInput): {
+  type: string;
+  status: string;
+  effective_from: Date;
+  effective_to: Date | null;
+} {
+  return {
+    type: r.type,
+    status: r.status ?? 'PROSPECT',
+    effective_from: r.effective_from == null ? new Date() : new Date(r.effective_from),
+    effective_to: r.effective_to == null ? null : new Date(r.effective_to),
+  };
+}
+
+// Company Party/Role (ADR-0032) — the relationships to nested-create with a new
+// Company. Relationship-aware clients (Slice B) send `relationships` explicitly
+// (Amendment 4: ≥1 at the UI boundary). When OMITTED, the A1 compatibility
+// bridge derives a single CLIENT relationship from the legacy `status`; a
+// legacy create with status=do_not_contact is REJECTED (§5) — the restriction
+// is a communication flag, not a relationship lifecycle state.
+export function buildCreateRelationships(
+  input: CreateCompanyRequestDto,
+  requestId?: string,
+): Array<{ type: string; status: string; effective_from: Date; effective_to: Date | null }> {
+  if (input.relationships !== undefined && input.relationships.length > 0) {
+    return input.relationships.map(relInputToCreate);
+  }
+  const relStatus = legacyStatusToRelStatus(input.status);
+  if (relStatus === null) {
+    throw new AramoError(
+      'VALIDATION_ERROR',
+      'A company cannot be created with status=do_not_contact and no explicit relationship — do_not_contact is a communication restriction, not a relationship lifecycle state. Set communication_restricted and declare a relationship instead.',
+      400,
+      { requestId: requestId ?? 'company-create-validation', details: { status: input.status } },
+    );
+  }
+  return [
+    { type: 'CLIENT', status: relStatus, effective_from: new Date(), effective_to: null },
+  ];
+}
+
+// Company Party/Role (ADR-0032) — the nested `relationships.upsert` set for an
+// update. Two sources: (a) explicit relationship-aware writes (Slice B) — upsert
+// each by (tenant, company, type), reusing the row on reactivation (§6); (b) the
+// A1 bridge — a legacy `status` PATCH syncs the CLIENT relationship's status.
+// A do_not_contact status PATCH produces NO relationship change (the existing
+// lifecycle status is preserved; the restriction is carried on the company via
+// communication_restricted — §5). `where` uses the compound unique; `create`
+// omits the relation scalars (Prisma sets them from the parent). On update we
+// only touch effective_* when the caller explicitly supplied them, so a
+// status-only change never resets the episode window.
+export function buildUpdateRelationshipUpserts(
+  input: UpdateCompanyRequestDto,
+  tenant_id: string,
+  company_id: string,
+): Array<{
+  where: { tenant_id_company_id_type: { tenant_id: string; company_id: string; type: string } };
+  update: { status: string; effective_from?: Date; effective_to?: Date | null };
+  create: { type: string; status: string; effective_from: Date; effective_to: Date | null };
+}> {
+  const key = (type: string) => ({
+    tenant_id_company_id_type: { tenant_id, company_id, type },
+  });
+  if (input.relationships !== undefined) {
+    return input.relationships.map((r) => {
+      const c = relInputToCreate(r);
+      return {
+        where: key(c.type),
+        update: {
+          status: c.status,
+          ...(r.effective_from !== undefined ? { effective_from: c.effective_from } : {}),
+          ...(r.effective_to !== undefined ? { effective_to: c.effective_to } : {}),
+        },
+        create: {
+          type: c.type,
+          status: c.status,
+          effective_from: c.effective_from,
+          effective_to: c.effective_to,
+        },
+      };
+    });
+  }
+  if (input.status !== undefined) {
+    const relStatus = legacyStatusToRelStatus(input.status);
+    if (relStatus !== null) {
+      return [
+        {
+          where: key('CLIENT'),
+          update: { status: relStatus },
+          create: { type: 'CLIENT', status: relStatus, effective_from: new Date(), effective_to: null },
+        },
+      ];
+    }
+    // do_not_contact — preserve the existing relationship status (no entry).
+  }
+  return [];
+}
 
 // CompanyRepository — write + read surface for Company. Reference-CRUD
 // per Ruling 7 (no metering, no event log, no state machine).
@@ -54,6 +201,9 @@ interface CompanyRow {
   updated_at: Date;
   // Company-Fields v1.1 — un-gated.
   status: string;
+  // Company Party/Role (ADR-0032).
+  master_status: string;
+  communication_restricted: boolean;
   description: string | null;
   industry: string | null;
   country: string | null;
@@ -81,6 +231,8 @@ interface CompanyRow {
   payment_terms: string | null;
   credit_status: string | null;
   default_currency: string | null;
+  // Company Party/Role (ADR-0032) — present when the read includes it.
+  relationships?: CompanyRelationshipRow[];
 }
 
 function projectView(row: CompanyRow): CompanyView {
@@ -108,6 +260,10 @@ function projectView(row: CompanyRow): CompanyView {
     updated_at: row.updated_at.toISOString(),
     // Company-Fields v1.1 — un-gated.
     status: row.status,
+    // Company Party/Role (ADR-0032) — additive; status retained (A1 expand).
+    master_status: row.master_status,
+    communication_restricted: row.communication_restricted,
+    relationships: (row.relationships ?? []).map(projectRelationship),
     description: row.description,
     industry: row.industry,
     country: row.country,
@@ -276,8 +432,21 @@ function buildSelectionWhere(
   q: CompanySearchQuery,
 ): Record<string, unknown> {
   const where: Record<string, unknown> = { ...base };
-  if (q.status !== undefined && q.status.length > 0)
-    where['status'] = { in: [...q.status] };
+  // Company Party/Role (ADR-0032, VR5/Amendment 6) — relationship filter over
+  // CompanyRelationship. A company matches when it has ≥1 relationship
+  // satisfying BOTH the selected type(s) AND status(es) (some-relationship
+  // semantics): `Clients + Active` → a CLIENT relationship that is ACTIVE;
+  // `All + Active` → any relationship that is ACTIVE.
+  const relType = q.relationship_type;
+  const relStatus = q.relationship_status;
+  if ((relType !== undefined && relType.length > 0) || (relStatus !== undefined && relStatus.length > 0)) {
+    where['relationships'] = {
+      some: {
+        ...(relType !== undefined && relType.length > 0 ? { type: { in: [...relType] } } : {}),
+        ...(relStatus !== undefined && relStatus.length > 0 ? { status: { in: [...relStatus] } } : {}),
+      },
+    };
+  }
   if (q.client_tier !== undefined && q.client_tier.length > 0)
     where['client_tier'] = { in: [...q.client_tier] };
   if (q.industry !== undefined && q.industry.length > 0)
@@ -336,11 +505,18 @@ export class CompanyRepository {
     // Company-Fields v1.1 — the actor's scopes; commercial fields are
     // stripped from the input when company:read_commercial is absent.
     scopes: readonly string[];
+    // Company Party/Role (ADR-0032) — optional, for the do_not_contact
+    // legacy-create rejection error envelope (§5). Threaded by the controller.
+    requestId?: string;
   }): Promise<CompanyView> {
     const { tenant_id, entered_by_id } = args;
     const input = normalizeNewTypedFields(
       stripUnscopedCommercialFields(args.input, args.scopes),
     );
+    // Company Party/Role (ADR-0032) — derive/collect the relationships to
+    // nested-create (A1 bridge or explicit); rejects a do_not_contact legacy
+    // create before any write.
+    const relCreate = buildCreateRelationships(input, args.requestId);
     const row = await this.prisma.company.create({
       data: {
         tenant_id,
@@ -362,7 +538,12 @@ export class CompanyRepository {
         owner_id: input.owner_id ?? entered_by_id,
         entered_by_id,
         ...additiveCreateData(input),
+        ...(input.communication_restricted === undefined
+          ? {}
+          : { communication_restricted: input.communication_restricted }),
+        relationships: { create: relCreate },
       },
+      include: RELATIONSHIP_INCLUDE,
     });
     return projectView(row as CompanyRow);
   }
@@ -376,9 +557,14 @@ export class CompanyRepository {
     entered_by_id: string;
     import_batch_id: string;
     input: CreateCompanyRequestDto;
+    requestId?: string;
   }): Promise<CompanyView> {
     const { tenant_id, entered_by_id, import_batch_id } = args;
     const input = normalizeNewTypedFields(args.input);
+    // Company Party/Role (ADR-0032) — an imported company is NOT roleless: it
+    // gets the same bridge-derived CLIENT relationship as a legacy create (a
+    // do_not_contact import row is rejected, same as the free create path).
+    const relCreate = buildCreateRelationships(input, args.requestId);
     const row = await this.prisma.company.create({
       data: {
         tenant_id,
@@ -405,7 +591,9 @@ export class CompanyRepository {
         // concern), so additiveCreateData writes null/default for them here —
         // no commercial bypass of the gate via import.
         ...additiveCreateData(input),
+        relationships: { create: relCreate },
       },
+      include: RELATIONSHIP_INCLUDE,
     });
     return projectView(row as CompanyRow);
   }
@@ -433,6 +621,7 @@ export class CompanyRepository {
   }): Promise<CompanyView | null> {
     const row = await this.prisma.company.findFirst({
       where: { tenant_id: args.tenant_id, id: args.id },
+      include: RELATIONSHIP_INCLUDE,
     });
     return row === null ? null : projectView(row as CompanyRow);
   }
@@ -450,6 +639,7 @@ export class CompanyRepository {
       },
       orderBy: { created_at: 'desc' },
       take: limit,
+      include: RELATIONSHIP_INCLUDE,
     });
     return (rows as CompanyRow[]).map(projectView);
   }
@@ -471,6 +661,35 @@ export class CompanyRepository {
     for (const r of rows as Array<{ id: string; name: string }>) {
       out.set(r.id, r.name);
     }
+    return out;
+  }
+
+  // Batch relationship-type resolution for cross-schema enrichment (the contact
+  // list/detail surfaces each contact's company relationship type(s)). Mirrors
+  // findNamesByIds: one set-based query over the id set, tenant-scoped, never
+  // per-row. Returns company_id → sorted ACTIVE relationship types
+  // (CLIENT|VENDOR|PARTNER). A company may hold several, so the value is an
+  // array; companies with no ACTIVE relationship are simply absent.
+  async findRelationshipTypesByIds(args: {
+    tenant_id: string;
+    ids: readonly string[];
+  }): Promise<Map<string, string[]>> {
+    if (args.ids.length === 0) return new Map();
+    const rows = await this.prisma.companyRelationship.findMany({
+      where: {
+        tenant_id: args.tenant_id,
+        company_id: { in: [...args.ids] },
+        status: 'ACTIVE',
+      },
+      select: { company_id: true, type: true },
+    });
+    const out = new Map<string, string[]>();
+    for (const r of rows as Array<{ company_id: string; type: string }>) {
+      const list = out.get(r.company_id) ?? [];
+      list.push(r.type);
+      out.set(r.company_id, list);
+    }
+    for (const [k, v] of out) out.set(k, [...v].sort());
     return out;
   }
 
@@ -519,6 +738,7 @@ export class CompanyRepository {
       where,
       orderBy: { created_at: 'desc' },
       take: limit,
+      include: RELATIONSHIP_INCLUDE,
     });
     return (rows as CompanyRow[]).map(projectView);
   }
@@ -542,6 +762,7 @@ export class CompanyRepository {
         where: itemWhere,
         orderBy,
         take: pageSize + 1,
+        include: RELATIONSHIP_INCLUDE,
         ...(query.cursor != null && query.cursor !== ''
           ? { cursor: { id: decodeCursor(query.cursor) }, skip: 1 }
           : {}),
@@ -567,11 +788,24 @@ export class CompanyRepository {
   private async computeFacets(
     baseWhere: Record<string, unknown>,
   ): Promise<CompanyFacets> {
-    const [statusG, tierG, industryG, hot, offLimits, exclusivity, quiet] =
+    // Company Party/Role (ADR-0032, VR5) — the tab counts (type) + in-tab
+    // lifecycle counts (status) group over CompanyRelationship, filtered to the
+    // relationships whose company is in the visible base set. type counts are
+    // exact distinct-company counts (UNIQUE(company,type) → ≤1 row per type per
+    // company). status counts are relationship-row counts (a multi-role company
+    // contributes to each of its relationships' statuses) — acceptable for the
+    // secondary in-tab pills; the tabs are the load-bearing axis.
+    const relWhere = { company: { is: baseWhere } };
+    const [typeG, statusG, tierG, industryG, hot, offLimits, exclusivity, quiet] =
       await Promise.all([
-        this.prisma.company.groupBy({
+        this.prisma.companyRelationship.groupBy({
+          by: ['type'],
+          where: relWhere,
+          _count: { _all: true },
+        }),
+        this.prisma.companyRelationship.groupBy({
           by: ['status'],
-          where: baseWhere,
+          where: relWhere,
           _count: { _all: true },
         }),
         this.prisma.company.groupBy({
@@ -600,7 +834,8 @@ export class CompanyRepository {
         }),
       ]);
     return {
-      relationship: toCompanyBuckets(statusG as CompanyGroupRow[], 'status'),
+      relationship_type: toCompanyBuckets(typeG as CompanyGroupRow[], 'type'),
+      relationship_status: toCompanyBuckets(statusG as CompanyGroupRow[], 'status'),
       tier: toCompanyBuckets(tierG as CompanyGroupRow[], 'client_tier', {
         dropNullOrEmpty: true,
       }),
@@ -612,6 +847,24 @@ export class CompanyRepository {
       exclusivity,
       quiet,
     };
+  }
+
+  // Company Party/Role (ADR-0032, R7) — the CLIENT-workflow invariant read.
+  // True iff the company (in tenant) holds a CLIENT relationship. Backs the
+  // requisition CompanyClientCheckPort adapter (a requisition's company must
+  // be a CLIENT). Tenant-scoped; a cross-tenant company_id returns false.
+  async hasClientRelationship(args: {
+    tenant_id: string;
+    company_id: string;
+  }): Promise<boolean> {
+    const count = await this.prisma.companyRelationship.count({
+      where: {
+        tenant_id: args.tenant_id,
+        company_id: args.company_id,
+        type: 'CLIENT',
+      },
+    });
+    return count > 0;
   }
 
   // PR-A7 — tenant-scoped count for the reporting aggregator.
@@ -653,6 +906,14 @@ export class CompanyRepository {
     const input = normalizeNewTypedFields(
       stripUnscopedCommercialFields(args.input, args.scopes),
     );
+    // Company Party/Role (ADR-0032) — nested relationship upserts (explicit
+    // relationship-aware writes, or the A1 legacy status→CLIENT sync). Applied
+    // atomically as part of the single company.update.
+    const relUpserts = buildUpdateRelationshipUpserts(
+      input,
+      args.tenant_id,
+      args.id,
+    );
     const row = await this.prisma.company.update({
       where: { id: args.id },
       data: {
@@ -673,6 +934,15 @@ export class CompanyRepository {
         ...(input.owner_id === undefined ? {} : { owner_id: input.owner_id }),
         // Company-Fields v1.1 — un-gated additive (present-key-only; null clears).
         ...(input.status === undefined ? {} : { status: input.status }),
+        // Company Party/Role (ADR-0032). master_status present-key-only. A
+        // do_not_contact legacy status PATCH sets the restriction flag (§5)
+        // unless the caller explicitly set communication_restricted.
+        ...(input.master_status === undefined ? {} : { master_status: input.master_status }),
+        ...(input.communication_restricted !== undefined
+          ? { communication_restricted: input.communication_restricted }
+          : input.status === 'do_not_contact'
+            ? { communication_restricted: true }
+            : {}),
         ...(input.description === undefined ? {} : { description: input.description }),
         ...(input.industry === undefined ? {} : { industry: input.industry }),
         ...(input.country === undefined ? {} : { country: input.country }),
@@ -700,7 +970,9 @@ export class CompanyRepository {
         ...(input.payment_terms === undefined ? {} : { payment_terms: input.payment_terms }),
         ...(input.credit_status === undefined ? {} : { credit_status: input.credit_status }),
         ...(input.default_currency === undefined ? {} : { default_currency: input.default_currency }),
+        ...(relUpserts.length > 0 ? { relationships: { upsert: relUpserts } } : {}),
       },
+      include: RELATIONSHIP_INCLUDE,
     });
     return projectView(row as CompanyRow);
   }

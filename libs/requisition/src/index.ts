@@ -1,5 +1,11 @@
 export { RequisitionModule } from './lib/requisition.module.js';
 export { RequisitionController } from './lib/requisition.controller.js';
+// Company Party/Role (ADR-0032, R7) — the CLIENT-check port + token (adapter
+// supplied by apps/api at composition).
+export {
+  COMPANY_CLIENT_CHECK_PORT,
+  type CompanyClientCheckPort,
+} from './lib/ports/company-client-check.port.js';
 export {
   RequisitionRepository,
   type PublishableRequisitionRow,

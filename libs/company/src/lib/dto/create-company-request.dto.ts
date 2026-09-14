@@ -4,9 +4,27 @@
 // at the controller layer (cross-tenant write defense per Architecture §7.2).
 // site_id, when provided, is matched against AuthContext.site_id by the
 // RolesGuard via @RequireSiteMatch (query/path resolution).
+// CompanyRelationshipInput — a relationship (role) declared on a create/update
+// payload (ADR-0032). Relationship-aware clients (Slice B FE) send these; the
+// A1 legacy bridge derives a CLIENT relationship from `status` when omitted.
+// `status` defaults to PROSPECT for a newly-declared relationship when absent.
+export interface CompanyRelationshipInput {
+  type: string; // CLIENT|VENDOR|PARTNER
+  status?: string; // PROSPECT|ACTIVE|ON_HOLD|INACTIVE (default PROSPECT)
+  effective_from?: string | null;
+  effective_to?: string | null;
+}
+
 export interface CreateCompanyRequestDto {
   name: string;
   site_id?: string;
+  // Company Party/Role (ADR-0032). When provided, these declare the org's
+  // roles explicitly (Amendment 4 requires ≥1 at the UI boundary). When
+  // OMITTED, the A1 compatibility bridge derives a CLIENT relationship from
+  // `status` (a legacy create); a legacy create with status=do_not_contact is
+  // REJECTED (§5 — no relationship lifecycle can be established).
+  relationships?: CompanyRelationshipInput[];
+  communication_restricted?: boolean;
   address?: string;
   address2?: string;
   city?: string;

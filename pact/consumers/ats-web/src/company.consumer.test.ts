@@ -122,7 +122,8 @@ describe('ats-web → GET /v1/companies', () => {
           items: [companyView(COMPANY_ID)],
           next_cursor: null,
           facets: {
-            relationship: like([]),
+            relationship_type: like([]),
+            relationship_status: like([]),
             tier: like([]),
             industry: like([]),
             hot: like(0),

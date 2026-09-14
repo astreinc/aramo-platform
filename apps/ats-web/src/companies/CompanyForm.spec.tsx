@@ -34,6 +34,8 @@ function makeCompany(overrides: Partial<CompanyView> = {}): CompanyView {
     // Company-Fields v1.1 — un-gated additive (default-equivalent values so a
     // no-change EDIT still produces an empty PATCH).
     status: 'active',
+    relationships: [{ id: 'rel-1', type: 'CLIENT', status: 'ACTIVE', effective_from: '2026-01-01T00:00:00Z', effective_to: null, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' }],
+    master_status: 'ACTIVE', communication_restricted: false,
     description: null,
     industry: null,
     country: null,
@@ -199,10 +201,16 @@ describe('CompanyForm — CREATE (ruling B: billing_contact_id absent)', () => {
     fireEvent.click(screen.getByRole('button', { name: /create company/i }));
     await waitFor(() => expect(onSubmit).toHaveBeenCalled());
     const body = onSubmit.mock.calls[0]?.[0] as Record<string, unknown>;
-    // Company-Fields v1.1 — country defaults to 'US' (the directive default),
-    // so it rides along on every create; status stays at its DB default
-    // ('active') so it is NOT sent.
-    expect(body).toEqual({ name: 'NewCo', phone1: '555-1234', country: 'US' });
+    // Company-Fields v1.1 — country defaults to 'US' (directive default), rides
+    // along. Company Party/Role (ADR-0032, VR8) — a create sends the explicit
+    // relationships (default role CLIENT / status PROSPECT); the legacy `status`
+    // column is NOT sent.
+    expect(body).toEqual({
+      name: 'NewCo',
+      phone1: '555-1234',
+      country: 'US',
+      relationships: [{ type: 'CLIENT', status: 'PROSPECT' }],
+    });
     expect(body).not.toHaveProperty('billing_contact_id');
     expect(body).not.toHaveProperty('address');
     expect(body).not.toHaveProperty('is_hot');

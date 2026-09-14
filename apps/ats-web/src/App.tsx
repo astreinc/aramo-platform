@@ -8,13 +8,8 @@ import { CompanyAssignmentsView } from './assignments/CompanyAssignmentsView';
 import { RequisitionAssignmentsView } from './assignments/RequisitionAssignmentsView';
 import { TeamClientsView } from './assignments/TeamClientsView';
 import { CompaniesListView } from './companies/CompaniesListView';
-import { CompanyCreateView } from './companies/CompanyCreateView';
 import { CompanyDetailView } from './companies/CompanyDetailView';
-import { CompanyEditView } from './companies/CompanyEditView';
 import { ConsentView } from './consent/ConsentView';
-import { ContactCreateView } from './contacts/ContactCreateView';
-import { ContactDetailView } from './contacts/ContactDetailView';
-import { ContactEditView } from './contacts/ContactEditView';
 import { ContactsListView } from './contacts/ContactsListView';
 import { SelectionDetailView } from './selection/SelectionDetailView';
 import { IdentityAdvisoriesView } from './identity-advisories/IdentityAdvisoriesView';
@@ -419,6 +414,10 @@ export function App() {
                         </RouteGuard>
                       }
                     />
+                    {/* Company Party/Role (ADR-0032, R6) — create + edit are the
+                        slide-over drawer in the Companies workspace, not full
+                        pages. /companies/new opens that workspace with the create
+                        drawer open; the standalone edit route is retired. */}
                     <Route
                       path="companies/new"
                       element={
@@ -426,7 +425,7 @@ export function App() {
                           requireScope="company:create"
                           sessionStateOverride={state}
                         >
-                          <CompanyCreateView />
+                          <CompaniesListView initialCreate />
                         </RouteGuard>
                       }
                     />
@@ -442,17 +441,6 @@ export function App() {
                       }
                     />
                     <Route
-                      path="companies/:companyId/edit"
-                      element={
-                        <RouteGuard
-                          requireScope="company:edit"
-                          sessionStateOverride={state}
-                        >
-                          <CompanyEditView />
-                        </RouteGuard>
-                      }
-                    />
-                    <Route
                       path="contacts"
                       element={
                         <RouteGuard
@@ -463,36 +451,21 @@ export function App() {
                         </RouteGuard>
                       }
                     />
+                    {/* Contacts prototype parity — the slide-over drawer is the
+                        ONLY contact surface. /contacts/new opens the workspace
+                        with the create drawer (an optional ?company_id=
+                        pre-selects the company); /contacts?edit=<id> opens the
+                        edit drawer for a specific contact (the company-detail
+                        deep-link). There is no standalone contact detail/create/
+                        edit page. */}
                     <Route
-                      path="contacts/:contactId"
-                      element={
-                        <RouteGuard
-                          requireScope="contact:read"
-                          sessionStateOverride={state}
-                        >
-                          <ContactDetailView />
-                        </RouteGuard>
-                      }
-                    />
-                    <Route
-                      path="companies/:companyId/contacts/new"
+                      path="contacts/new"
                       element={
                         <RouteGuard
                           requireScope="contact:create"
                           sessionStateOverride={state}
                         >
-                          <ContactCreateView />
-                        </RouteGuard>
-                      }
-                    />
-                    <Route
-                      path="contacts/:contactId/edit"
-                      element={
-                        <RouteGuard
-                          requireScope="contact:edit"
-                          sessionStateOverride={state}
-                        >
-                          <ContactEditView />
+                          <ContactsListView initialCreate />
                         </RouteGuard>
                       }
                     />

@@ -95,10 +95,22 @@ const TENANT_A = '11111111-1111-7111-8111-111111111111';
 // (Pre-existing gap: this binding was missing on main and libs/outbox-publisher
 // is absent from the CI integration ROOTs, so the boot failure went unrun —
 // registered as an E1-c finding.)
+//
+// COMPANY_CLIENT_CHECK_PORT (ADR-0032, R7) is the SAME shape of gap: the
+// requisition-create CLIENT-workflow guard binds this port ONLY at the apps/api
+// composition root via a @Global adapter. RequisitionController is pulled into
+// this graph transitively (OutboxPublisherModule → RequisitionModule), so the
+// publisher spec must supply its own stub or the graph cannot boot. Bound by the
+// bare string token (value of COMPANY_CLIENT_CHECK_PORT) so this leaf lib grows
+// no @aramo/company edge; the publisher never creates requisitions, so an
+// always-client stub suffices.
 @Global()
 @Module({
-  providers: [{ provide: 'REQUISITION_STATE_READER', useValue: { isActive: async () => true } }],
-  exports: ['REQUISITION_STATE_READER'],
+  providers: [
+    { provide: 'REQUISITION_STATE_READER', useValue: { isActive: async () => true } },
+    { provide: 'COMPANY_CLIENT_CHECK_PORT', useValue: { isClientCompany: async () => true } },
+  ],
+  exports: ['REQUISITION_STATE_READER', 'COMPANY_CLIENT_CHECK_PORT'],
 })
 class StubRequisitionStateReaderModule {}
 

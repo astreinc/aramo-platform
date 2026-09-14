@@ -21,6 +21,9 @@ export interface ContactView {
   is_hot: boolean;
   notes: string | null;
   left_company: boolean;
+  // Contacts prototype parity — the primary contact for the company (at most
+  // one per (tenant, company), partial-unique-index enforced).
+  is_primary: boolean;
   reports_to_id: string | null;
   owner_id: string | null;
   entered_by_id: string | null;
@@ -35,4 +38,9 @@ export interface ContactView {
   // Populated on the paged list + detail reads; null when the company row is
   // not resolvable in-tenant. NOT a stored column.
   company_name: string | null;
+  // Read-time enrichment — the ACTIVE relationship types (CLIENT|VENDOR|PARTNER)
+  // the contact's company holds, resolved via CompanyRepository. A company may
+  // hold several simultaneously, so this is a set, not a scalar. Empty array
+  // when none resolvable. NOT a stored column.
+  relationship_types: string[];
 }

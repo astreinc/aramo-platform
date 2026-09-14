@@ -21,6 +21,9 @@ export interface CreateContactRequestDto {
   zip?: string;
   is_hot?: boolean;
   notes?: string;
+  // Contacts prototype parity — mark this contact primary for its company.
+  // Promote demotes any prior primary (repo, transactional). Default false.
+  is_primary?: boolean;
   reports_to_id?: string;
   owner_id?: string;
   // Contact-spec amendment v1.0 — closed-vocab (validated app-layer via

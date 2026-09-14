@@ -66,6 +66,10 @@ const COMPANY_OFF_LIMITS = resolve(
   ROOT,
   'libs/company/prisma/migrations/20260616000000_add_company_off_limits/migration.sql',
 );
+const COMPANY_PARTY_ROLE = resolve(
+  ROOT,
+  'libs/company/prisma/migrations/20260913120000_company_party_role_model/migration.sql',
+);
 const CONTACT_INIT = resolve(
   ROOT,
   'libs/contact/prisma/migrations/20260601160000_init_contact_model/migration.sql',
@@ -97,6 +101,10 @@ const CONTACT_IMPORT_BACK_REF = resolve(
 const CONTACT_LIST_SURFACE_FIELDS = resolve(
   ROOT,
   'libs/contact/prisma/migrations/20260618120000_add_contact_list_surface_fields/migration.sql',
+);
+const CONTACT_PRIMARY_FLAG = resolve(
+  ROOT,
+  'libs/contact/prisma/migrations/20260914120000_add_contact_primary_flag/migration.sql',
 );
 const REQUISITION_IMPORT_BACK_REF = resolve(
   ROOT,
@@ -163,6 +171,7 @@ const MIGRATIONS = [
   COMPANY_FIELD_EXPANSION,
   COMPANY_ADDRESS_PLACE_REF,
   COMPANY_OFF_LIMITS,
+  COMPANY_PARTY_ROLE,
   CONTACT_INIT,
   REQUISITION_INIT,
   TALENT_RECORD_INIT,
@@ -171,6 +180,7 @@ const MIGRATIONS = [
   COMPANY_IMPORT_BACK_REF,
   CONTACT_IMPORT_BACK_REF,
   CONTACT_LIST_SURFACE_FIELDS,
+  CONTACT_PRIMARY_FLAG,
   REQUISITION_IMPORT_BACK_REF,
   REQUISITION_COMPENSATION_FIELDS, REQUISITION_JOB_MODULE_FIELDS, REQUISITION_RATE_TYPE_SUBK, REQUISITION_PUBLISH_SURFACE_MIGRATION,
   TALENT_RECORD_IMPORT_BACK_REF,

@@ -43,11 +43,6 @@
       "status": "unscoped",
       "to": "scripts/audit-check.sh"
     },
-    {
-      "from": ".github/workflows/ci.yml",
-      "status": "unscoped",
-      "to": "ci/config/api-surface-manifest.json"
-    },
     { "from": ".github/workflows/ci.yml", "status": "unscoped", "to": "ci/integration-roots.json" },
     {
       "from": ".github/workflows/ci.yml",
@@ -63,6 +58,11 @@
       "from": ".github/workflows/ci.yml",
       "status": "unscoped",
       "to": "ci/scripts/release-manifest.ts"
+    },
+    {
+      "from": ".github/workflows/ci.yml",
+      "status": "unscoped",
+      "to": "ci/scripts/run-integration.ts"
     },
     {
       "from": ".github/workflows/ci.yml",
@@ -319,6 +319,12 @@
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/ats-a8-2-suggest-mapping.integration.spec.ts",
       "status": "excluded",
+      "to": "libs/company/prisma/migrations/20260913120000_company_party_role_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/ats-a8-2-suggest-mapping.integration.spec.ts",
+      "status": "excluded",
       "to": "libs/contact/prisma/migrations/20260601160000_init_contact_model/migration.sql"
     },
     {
@@ -332,6 +338,12 @@
       "from": "apps/api/src/tests/ats-a8-2-suggest-mapping.integration.spec.ts",
       "status": "excluded",
       "to": "libs/contact/prisma/migrations/20260618120000_add_contact_list_surface_fields/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/ats-a8-2-suggest-mapping.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/contact/prisma/migrations/20260914120000_add_contact_primary_flag/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -475,6 +487,12 @@
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/ats-batch1-gating.integration.spec.ts",
       "status": "excluded",
+      "to": "libs/company/prisma/migrations/20260913120000_company_party_role_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/ats-batch1-gating.integration.spec.ts",
+      "status": "excluded",
       "to": "libs/contact/prisma/migrations/20260601160000_init_contact_model/migration.sql"
     },
     {
@@ -488,6 +506,12 @@
       "from": "apps/api/src/tests/ats-batch1-gating.integration.spec.ts",
       "status": "excluded",
       "to": "libs/contact/prisma/migrations/20260618120000_add_contact_list_surface_fields/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/ats-batch1-gating.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/contact/prisma/migrations/20260914120000_add_contact_primary_flag/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -967,6 +991,12 @@
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/ats-batch5-calendar-saved-list.integration.spec.ts",
       "status": "excluded",
+      "to": "libs/company/prisma/migrations/20260913120000_company_party_role_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/ats-batch5-calendar-saved-list.integration.spec.ts",
+      "status": "excluded",
       "to": "libs/contact/prisma/migrations/20260601160000_init_contact_model/migration.sql"
     },
     {
@@ -980,6 +1010,12 @@
       "from": "apps/api/src/tests/ats-batch5-calendar-saved-list.integration.spec.ts",
       "status": "excluded",
       "to": "libs/contact/prisma/migrations/20260618120000_add_contact_list_surface_fields/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/ats-batch5-calendar-saved-list.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/contact/prisma/migrations/20260914120000_add_contact_primary_flag/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -1189,6 +1225,12 @@
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/ats-batch6-reporting-dashboard.integration.spec.ts",
       "status": "excluded",
+      "to": "libs/company/prisma/migrations/20260913120000_company_party_role_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/ats-batch6-reporting-dashboard.integration.spec.ts",
+      "status": "excluded",
       "to": "libs/consent/prisma/migrations/20260429164414_initial_consent_schema/migration.sql"
     },
     {
@@ -1208,6 +1250,12 @@
       "from": "apps/api/src/tests/ats-batch6-reporting-dashboard.integration.spec.ts",
       "status": "excluded",
       "to": "libs/contact/prisma/migrations/20260618120000_add_contact_list_surface_fields/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/ats-batch6-reporting-dashboard.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/contact/prisma/migrations/20260914120000_add_contact_primary_flag/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -1519,6 +1567,12 @@
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/ats-batch7-import-engine.integration.spec.ts",
       "status": "excluded",
+      "to": "libs/company/prisma/migrations/20260913120000_company_party_role_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/ats-batch7-import-engine.integration.spec.ts",
+      "status": "excluded",
       "to": "libs/contact/prisma/migrations/20260601160000_init_contact_model/migration.sql"
     },
     {
@@ -1532,6 +1586,12 @@
       "from": "apps/api/src/tests/ats-batch7-import-engine.integration.spec.ts",
       "status": "excluded",
       "to": "libs/contact/prisma/migrations/20260618120000_add_contact_list_surface_fields/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/ats-batch7-import-engine.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/contact/prisma/migrations/20260914120000_add_contact_primary_flag/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -1681,6 +1741,12 @@
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/ats-batch8-pr-a8-4-export.integration.spec.ts",
       "status": "excluded",
+      "to": "libs/company/prisma/migrations/20260913120000_company_party_role_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/ats-batch8-pr-a8-4-export.integration.spec.ts",
+      "status": "excluded",
       "to": "libs/consent/prisma/migrations/20260429164414_initial_consent_schema/migration.sql"
     },
     {
@@ -1700,6 +1766,12 @@
       "from": "apps/api/src/tests/ats-batch8-pr-a8-4-export.integration.spec.ts",
       "status": "excluded",
       "to": "libs/contact/prisma/migrations/20260618120000_add_contact_list_surface_fields/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/ats-batch8-pr-a8-4-export.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/contact/prisma/migrations/20260914120000_add_contact_primary_flag/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -1981,6 +2053,12 @@
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/auth-hardening-d1-recruiter-context.integration.spec.ts",
       "status": "excluded",
+      "to": "libs/company/prisma/migrations/20260913120000_company_party_role_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/auth-hardening-d1-recruiter-context.integration.spec.ts",
+      "status": "excluded",
       "to": "libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql"
     },
     {
@@ -2203,6 +2281,12 @@
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/auth-hardening-d4-assignable-users.integration.spec.ts",
       "status": "excluded",
+      "to": "libs/company/prisma/migrations/20260913120000_company_party_role_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/auth-hardening-d4-assignable-users.integration.spec.ts",
+      "status": "excluded",
       "to": "libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql"
     },
     {
@@ -2383,6 +2467,12 @@
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/authz-d4a-team-models.integration.spec.ts",
       "status": "excluded",
+      "to": "libs/company/prisma/migrations/20260913120000_company_party_role_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/authz-d4a-team-models.integration.spec.ts",
+      "status": "excluded",
       "to": "libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql"
     },
     {
@@ -2486,6 +2576,12 @@
       "from": "apps/api/src/tests/authz-d4b-visibility-matrix.integration.spec.ts",
       "status": "excluded",
       "to": "libs/company/prisma/migrations/20260616000000_add_company_off_limits/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/authz-d4b-visibility-matrix.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/company/prisma/migrations/20260913120000_company_party_role_model/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -3650,6 +3746,12 @@
       "from": "apps/api/src/tests/l1b-write-visibility.integration.spec.ts",
       "status": "excluded",
       "to": "libs/company/prisma/migrations/20260616000000_add_company_off_limits/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/l1b-write-visibility.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/company/prisma/migrations/20260913120000_company_party_role_model/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -9740,11 +9842,6 @@
       "from": "apps/ats-web/src/companies/company-workspace.ts",
       "status": "production",
       "to": "libs/company/src/lib/dto/company-search.dto.ts"
-    },
-    {
-      "from": "apps/ats-web/src/companies/company-workspace.ts",
-      "status": "production",
-      "to": "libs/reporting/src/lib/dto/report.view.ts"
     },
     {
       "from": "apps/ats-web/src/companies/types.ts",
@@ -16475,6 +16572,11 @@
     {
       "from": "pact/provider/src/verify-api.ts",
       "status": "unscoped",
+      "to": "libs/company/prisma/migrations/20260913120000_company_party_role_model/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
       "to": "libs/consent/prisma/migrations/20260429164414_initial_consent_schema/migration.sql"
     },
     {
@@ -16501,6 +16603,11 @@
       "from": "pact/provider/src/verify-api.ts",
       "status": "unscoped",
       "to": "libs/contact/prisma/migrations/20260618120000_add_contact_list_surface_fields/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "libs/contact/prisma/migrations/20260914120000_add_contact_primary_flag/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",
@@ -18153,6 +18260,7 @@
         { "kind": "prose", "path": ".github/workflows/ci.yml" },
         { "kind": "npm-run", "path": "ci/scripts/prepush.ts" },
         { "kind": "prose", "path": "ci/scripts/prepush.ts" },
+        { "kind": "prose", "path": "ci/scripts/verify-aggregate-gate.ts" },
         { "kind": "prose", "path": "ci/scripts/verify-ats-refusal.ts" }
       ]
     },
@@ -18218,12 +18326,17 @@
       "references": [
         { "kind": "npm-run", "path": ".github/workflows/ci.yml" },
         { "kind": "prose", "path": ".github/workflows/ci.yml" },
+        { "kind": "prose", "path": "ci/scripts/verify-aggregate-gate.ts" },
         { "kind": "prose", "path": "ci/scripts/verify-dead-error-codes.ts" }
       ]
     },
     {
       "name": "dead-error-codes:self-test",
-      "references": [{ "kind": "npm-run", "path": ".github/workflows/ci.yml" }]
+      "references": [
+        { "kind": "npm-run", "path": ".github/workflows/ci.yml" },
+        { "kind": "prose", "path": ".github/workflows/ci.yml" },
+        { "kind": "prose", "path": "ci/scripts/verify-aggregate-gate.ts" }
+      ]
     },
     {
       "name": "env:passthrough-check",
@@ -18242,6 +18355,7 @@
         { "kind": "prose", "path": "ci/scripts/generate-repo-map.ts" },
         { "kind": "npm-run", "path": "ci/scripts/prepush.ts" },
         { "kind": "prose", "path": "ci/scripts/prepush.ts" },
+        { "kind": "prose", "path": "ci/scripts/verify-aggregate-gate.ts" },
         { "kind": "prose", "path": "ci/scripts/verify-error-codes.ts" }
       ]
     },
@@ -18266,7 +18380,8 @@
         { "kind": "npm-run", "path": ".github/workflows/ci.yml" },
         { "kind": "prose", "path": ".github/workflows/ci.yml" },
         { "kind": "npm-run", "path": "ci/scripts/prepush.ts" },
-        { "kind": "prose", "path": "ci/scripts/prepush.ts" }
+        { "kind": "prose", "path": "ci/scripts/prepush.ts" },
+        { "kind": "prose", "path": "ci/scripts/verify-aggregate-gate.ts" }
       ]
     },
     {
@@ -18276,6 +18391,7 @@
         { "kind": "prose", "path": ".github/workflows/ci.yml" },
         { "kind": "npm-run", "path": "ci/scripts/prepush.ts" },
         { "kind": "prose", "path": "ci/scripts/prepush.ts" },
+        { "kind": "prose", "path": "ci/scripts/verify-aggregate-gate.ts" },
         { "kind": "prose", "path": "ci/scripts/verify-ingestion-refusal.ts" }
       ]
     },
@@ -18319,7 +18435,8 @@
         { "kind": "prose", "path": "ci/scripts/compare-spec-to-openapi.ts" },
         { "kind": "prose", "path": "ci/scripts/generate-repo-map.ts" },
         { "kind": "npm-run", "path": "ci/scripts/prepush.ts" },
-        { "kind": "prose", "path": "ci/scripts/prepush.ts" }
+        { "kind": "prose", "path": "ci/scripts/prepush.ts" },
+        { "kind": "prose", "path": "ci/scripts/verify-aggregate-gate.ts" }
       ]
     },
     {
@@ -18328,7 +18445,8 @@
         { "kind": "npm-run", "path": ".github/workflows/ci.yml" },
         { "kind": "prose", "path": ".github/workflows/ci.yml" },
         { "kind": "npm-run", "path": "ci/scripts/prepush.ts" },
-        { "kind": "prose", "path": "ci/scripts/prepush.ts" }
+        { "kind": "prose", "path": "ci/scripts/prepush.ts" },
+        { "kind": "prose", "path": "ci/scripts/verify-aggregate-gate.ts" }
       ]
     },
     {
@@ -18337,7 +18455,8 @@
         { "kind": "npm-run", "path": ".github/workflows/ci.yml" },
         { "kind": "prose", "path": ".github/workflows/ci.yml" },
         { "kind": "npm-run", "path": "ci/scripts/prepush.ts" },
-        { "kind": "prose", "path": "ci/scripts/prepush.ts" }
+        { "kind": "prose", "path": "ci/scripts/prepush.ts" },
+        { "kind": "prose", "path": "ci/scripts/verify-aggregate-gate.ts" }
       ]
     },
     {
@@ -18345,12 +18464,17 @@
       "references": [
         { "kind": "npm-run", "path": ".github/workflows/ci.yml" },
         { "kind": "prose", "path": ".github/workflows/ci.yml" },
+        { "kind": "prose", "path": "ci/scripts/verify-aggregate-gate.ts" },
         { "kind": "prose", "path": "ci/scripts/verify-orphan-scopes.ts" }
       ]
     },
     {
       "name": "orphan-scopes:self-test",
-      "references": [{ "kind": "npm-run", "path": ".github/workflows/ci.yml" }]
+      "references": [
+        { "kind": "npm-run", "path": ".github/workflows/ci.yml" },
+        { "kind": "prose", "path": ".github/workflows/ci.yml" },
+        { "kind": "prose", "path": "ci/scripts/verify-aggregate-gate.ts" }
+      ]
     },
     {
       "name": "pact:consumer",
@@ -18376,12 +18500,17 @@
         { "kind": "npm-run", "path": ".github/workflows/ci.yml" },
         { "kind": "prose", "path": ".github/workflows/ci.yml" },
         { "kind": "npm-run", "path": "ci/scripts/prepush.ts" },
-        { "kind": "prose", "path": "ci/scripts/prepush.ts" }
+        { "kind": "prose", "path": "ci/scripts/prepush.ts" },
+        { "kind": "prose", "path": "ci/scripts/verify-aggregate-gate.ts" }
       ]
     },
     {
       "name": "pipeline:write-authority:self-test",
-      "references": [{ "kind": "npm-run", "path": ".github/workflows/ci.yml" }]
+      "references": [
+        { "kind": "npm-run", "path": ".github/workflows/ci.yml" },
+        { "kind": "prose", "path": ".github/workflows/ci.yml" },
+        { "kind": "prose", "path": "ci/scripts/verify-aggregate-gate.ts" }
+      ]
     },
     {
       "name": "placement:sql:check",
@@ -18408,6 +18537,7 @@
         { "kind": "prose", "path": ".github/workflows/ci.yml" },
         { "kind": "npm-run", "path": "ci/scripts/prepush.ts" },
         { "kind": "prose", "path": "ci/scripts/prepush.ts" },
+        { "kind": "prose", "path": "ci/scripts/verify-aggregate-gate.ts" },
         { "kind": "prose", "path": "ci/scripts/verify-portal-refusal.ts" }
       ]
     },
@@ -18423,7 +18553,6 @@
     {
       "name": "prisma:generate",
       "references": [
-        { "kind": "npm-run", "path": ".github/workflows/ci.yml" },
         { "kind": "npm-run", "path": "deploy/nginx/Dockerfile" },
         { "kind": "prose", "path": "deploy/nginx/Dockerfile" },
         { "kind": "prose", "path": "deploy/nginx/README.md" },
@@ -18471,6 +18600,7 @@
         { "kind": "prose", "path": ".github/workflows/ci.yml" },
         { "kind": "npm-run", "path": "ci/scripts/prepush.ts" },
         { "kind": "prose", "path": "ci/scripts/prepush.ts" },
+        { "kind": "prose", "path": "ci/scripts/verify-aggregate-gate.ts" },
         { "kind": "prose", "path": "ci/scripts/verify-repo-map.ts" },
         { "kind": "prose", "path": "scripts/verify-vocabulary.sh" }
       ]
@@ -18556,7 +18686,8 @@
         { "kind": "prose", "path": "ci/scripts/check-version-sync.ts" },
         { "kind": "prose", "path": "ci/scripts/generate-repo-map.ts" },
         { "kind": "npm-run", "path": "ci/scripts/prepush.ts" },
-        { "kind": "prose", "path": "ci/scripts/prepush.ts" }
+        { "kind": "prose", "path": "ci/scripts/prepush.ts" },
+        { "kind": "prose", "path": "ci/scripts/verify-aggregate-gate.ts" }
       ]
     }
   ],
