@@ -43,11 +43,6 @@
       "status": "unscoped",
       "to": "scripts/audit-check.sh"
     },
-    {
-      "from": ".github/workflows/ci.yml",
-      "status": "unscoped",
-      "to": "ci/config/api-surface-manifest.json"
-    },
     { "from": ".github/workflows/ci.yml", "status": "unscoped", "to": "ci/integration-roots.json" },
     {
       "from": ".github/workflows/ci.yml",
@@ -63,6 +58,11 @@
       "from": ".github/workflows/ci.yml",
       "status": "unscoped",
       "to": "ci/scripts/release-manifest.ts"
+    },
+    {
+      "from": ".github/workflows/ci.yml",
+      "status": "unscoped",
+      "to": "ci/scripts/run-integration.ts"
     },
     {
       "from": ".github/workflows/ci.yml",
@@ -18260,6 +18260,7 @@
         { "kind": "prose", "path": ".github/workflows/ci.yml" },
         { "kind": "npm-run", "path": "ci/scripts/prepush.ts" },
         { "kind": "prose", "path": "ci/scripts/prepush.ts" },
+        { "kind": "prose", "path": "ci/scripts/verify-aggregate-gate.ts" },
         { "kind": "prose", "path": "ci/scripts/verify-ats-refusal.ts" }
       ]
     },
@@ -18325,12 +18326,17 @@
       "references": [
         { "kind": "npm-run", "path": ".github/workflows/ci.yml" },
         { "kind": "prose", "path": ".github/workflows/ci.yml" },
+        { "kind": "prose", "path": "ci/scripts/verify-aggregate-gate.ts" },
         { "kind": "prose", "path": "ci/scripts/verify-dead-error-codes.ts" }
       ]
     },
     {
       "name": "dead-error-codes:self-test",
-      "references": [{ "kind": "npm-run", "path": ".github/workflows/ci.yml" }]
+      "references": [
+        { "kind": "npm-run", "path": ".github/workflows/ci.yml" },
+        { "kind": "prose", "path": ".github/workflows/ci.yml" },
+        { "kind": "prose", "path": "ci/scripts/verify-aggregate-gate.ts" }
+      ]
     },
     {
       "name": "env:passthrough-check",
@@ -18349,6 +18355,7 @@
         { "kind": "prose", "path": "ci/scripts/generate-repo-map.ts" },
         { "kind": "npm-run", "path": "ci/scripts/prepush.ts" },
         { "kind": "prose", "path": "ci/scripts/prepush.ts" },
+        { "kind": "prose", "path": "ci/scripts/verify-aggregate-gate.ts" },
         { "kind": "prose", "path": "ci/scripts/verify-error-codes.ts" }
       ]
     },
@@ -18373,7 +18380,8 @@
         { "kind": "npm-run", "path": ".github/workflows/ci.yml" },
         { "kind": "prose", "path": ".github/workflows/ci.yml" },
         { "kind": "npm-run", "path": "ci/scripts/prepush.ts" },
-        { "kind": "prose", "path": "ci/scripts/prepush.ts" }
+        { "kind": "prose", "path": "ci/scripts/prepush.ts" },
+        { "kind": "prose", "path": "ci/scripts/verify-aggregate-gate.ts" }
       ]
     },
     {
@@ -18383,6 +18391,7 @@
         { "kind": "prose", "path": ".github/workflows/ci.yml" },
         { "kind": "npm-run", "path": "ci/scripts/prepush.ts" },
         { "kind": "prose", "path": "ci/scripts/prepush.ts" },
+        { "kind": "prose", "path": "ci/scripts/verify-aggregate-gate.ts" },
         { "kind": "prose", "path": "ci/scripts/verify-ingestion-refusal.ts" }
       ]
     },
@@ -18426,7 +18435,8 @@
         { "kind": "prose", "path": "ci/scripts/compare-spec-to-openapi.ts" },
         { "kind": "prose", "path": "ci/scripts/generate-repo-map.ts" },
         { "kind": "npm-run", "path": "ci/scripts/prepush.ts" },
-        { "kind": "prose", "path": "ci/scripts/prepush.ts" }
+        { "kind": "prose", "path": "ci/scripts/prepush.ts" },
+        { "kind": "prose", "path": "ci/scripts/verify-aggregate-gate.ts" }
       ]
     },
     {
@@ -18435,7 +18445,8 @@
         { "kind": "npm-run", "path": ".github/workflows/ci.yml" },
         { "kind": "prose", "path": ".github/workflows/ci.yml" },
         { "kind": "npm-run", "path": "ci/scripts/prepush.ts" },
-        { "kind": "prose", "path": "ci/scripts/prepush.ts" }
+        { "kind": "prose", "path": "ci/scripts/prepush.ts" },
+        { "kind": "prose", "path": "ci/scripts/verify-aggregate-gate.ts" }
       ]
     },
     {
@@ -18444,7 +18455,8 @@
         { "kind": "npm-run", "path": ".github/workflows/ci.yml" },
         { "kind": "prose", "path": ".github/workflows/ci.yml" },
         { "kind": "npm-run", "path": "ci/scripts/prepush.ts" },
-        { "kind": "prose", "path": "ci/scripts/prepush.ts" }
+        { "kind": "prose", "path": "ci/scripts/prepush.ts" },
+        { "kind": "prose", "path": "ci/scripts/verify-aggregate-gate.ts" }
       ]
     },
     {
@@ -18452,12 +18464,17 @@
       "references": [
         { "kind": "npm-run", "path": ".github/workflows/ci.yml" },
         { "kind": "prose", "path": ".github/workflows/ci.yml" },
+        { "kind": "prose", "path": "ci/scripts/verify-aggregate-gate.ts" },
         { "kind": "prose", "path": "ci/scripts/verify-orphan-scopes.ts" }
       ]
     },
     {
       "name": "orphan-scopes:self-test",
-      "references": [{ "kind": "npm-run", "path": ".github/workflows/ci.yml" }]
+      "references": [
+        { "kind": "npm-run", "path": ".github/workflows/ci.yml" },
+        { "kind": "prose", "path": ".github/workflows/ci.yml" },
+        { "kind": "prose", "path": "ci/scripts/verify-aggregate-gate.ts" }
+      ]
     },
     {
       "name": "pact:consumer",
@@ -18483,12 +18500,17 @@
         { "kind": "npm-run", "path": ".github/workflows/ci.yml" },
         { "kind": "prose", "path": ".github/workflows/ci.yml" },
         { "kind": "npm-run", "path": "ci/scripts/prepush.ts" },
-        { "kind": "prose", "path": "ci/scripts/prepush.ts" }
+        { "kind": "prose", "path": "ci/scripts/prepush.ts" },
+        { "kind": "prose", "path": "ci/scripts/verify-aggregate-gate.ts" }
       ]
     },
     {
       "name": "pipeline:write-authority:self-test",
-      "references": [{ "kind": "npm-run", "path": ".github/workflows/ci.yml" }]
+      "references": [
+        { "kind": "npm-run", "path": ".github/workflows/ci.yml" },
+        { "kind": "prose", "path": ".github/workflows/ci.yml" },
+        { "kind": "prose", "path": "ci/scripts/verify-aggregate-gate.ts" }
+      ]
     },
     {
       "name": "placement:sql:check",
@@ -18515,6 +18537,7 @@
         { "kind": "prose", "path": ".github/workflows/ci.yml" },
         { "kind": "npm-run", "path": "ci/scripts/prepush.ts" },
         { "kind": "prose", "path": "ci/scripts/prepush.ts" },
+        { "kind": "prose", "path": "ci/scripts/verify-aggregate-gate.ts" },
         { "kind": "prose", "path": "ci/scripts/verify-portal-refusal.ts" }
       ]
     },
@@ -18530,7 +18553,6 @@
     {
       "name": "prisma:generate",
       "references": [
-        { "kind": "npm-run", "path": ".github/workflows/ci.yml" },
         { "kind": "npm-run", "path": "deploy/nginx/Dockerfile" },
         { "kind": "prose", "path": "deploy/nginx/Dockerfile" },
         { "kind": "prose", "path": "deploy/nginx/README.md" },
@@ -18578,6 +18600,7 @@
         { "kind": "prose", "path": ".github/workflows/ci.yml" },
         { "kind": "npm-run", "path": "ci/scripts/prepush.ts" },
         { "kind": "prose", "path": "ci/scripts/prepush.ts" },
+        { "kind": "prose", "path": "ci/scripts/verify-aggregate-gate.ts" },
         { "kind": "prose", "path": "ci/scripts/verify-repo-map.ts" },
         { "kind": "prose", "path": "scripts/verify-vocabulary.sh" }
       ]
@@ -18663,7 +18686,8 @@
         { "kind": "prose", "path": "ci/scripts/check-version-sync.ts" },
         { "kind": "prose", "path": "ci/scripts/generate-repo-map.ts" },
         { "kind": "npm-run", "path": "ci/scripts/prepush.ts" },
-        { "kind": "prose", "path": "ci/scripts/prepush.ts" }
+        { "kind": "prose", "path": "ci/scripts/prepush.ts" },
+        { "kind": "prose", "path": "ci/scripts/verify-aggregate-gate.ts" }
       ]
     }
   ],
