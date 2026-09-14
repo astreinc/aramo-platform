@@ -11741,6 +11741,16 @@
       "to": "libs/ai-draft/src/lib/redaction.ts"
     },
     {
+      "from": "doc/backlog/manual-create-consent-policy-directive-DRAFT.md",
+      "status": "unscoped",
+      "to": "doc/backlog/add-talent-consent-capture.md"
+    },
+    {
+      "from": "doc/backlog/manual-create-consent-policy-directive-DRAFT.md",
+      "status": "unscoped",
+      "to": "libs/contact/prisma/schema.prisma"
+    },
+    {
       "from": "doc/backlog/talent-skills-and-work-history-evidence-directive-DRAFT.md",
       "status": "unscoped",
       "to": "apps/api/src/app.module.ts"

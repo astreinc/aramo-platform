@@ -1,9 +1,25 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { TalentEditDrawer } from './TalentEditDrawer';
 import type { TalentRecordView } from './types';
+
+// The drawer reads `talent:edit:contact` off the session via the FE `hasScope`
+// helper (useSession). Mock useSession only; keep the rest of the barrel real
+// (Button/InlineAlert/hasScope come through @aramo/fe-foundation).
+const useSession = vi.fn();
+vi.mock('@aramo/fe-foundation', async (orig) => ({
+  ...(await orig<Record<string, unknown>>()),
+  useSession: () => useSession(),
+}));
+
+function withScopes(scopes: string[]): void {
+  useSession.mockReturnValue({
+    status: 'authenticated',
+    session: { sub: 'u1', consumer_type: 'recruiter', tenant_id: 't', scopes, iat: 0, exp: 0 },
+  });
+}
 
 function makeTalent(overrides: Partial<TalentRecordView> = {}): TalentRecordView {
   return {
@@ -75,6 +91,11 @@ function renderDrawer(
   return { onSaved, onClose };
 }
 
+beforeEach(() => {
+  // Default: no contact-edit scope (recruiter tier) — preserves the
+  // read-only-when-present behavior the pre-existing cases assert.
+  useSession.mockReturnValue({ status: 'unauthenticated' });
+});
 afterEach(() => vi.restoreAllMocks());
 
 describe('TalentEditDrawer', () => {
@@ -189,5 +210,66 @@ describe('TalentEditDrawer', () => {
     renderDrawer(makeTalent());
     const link = screen.getByRole('link', { name: /Edit full profile/ });
     expect(link).toHaveAttribute('href', '/talent/tal-1/edit');
+  });
+
+  describe('contact-anchor edit gate (talent:edit:contact)', () => {
+    it('WITHOUT the scope: a PRESENT email + phone render read-only (today\'s behavior)', () => {
+      // Default beforeEach = unauthenticated → canEditContact false.
+      installFetch({});
+      renderDrawer(makeTalent());
+      expect(screen.getByText('ada@example.com')).toBeInTheDocument();
+      expect(screen.getByText('555-0100')).toBeInTheDocument();
+      // No editable Email/Phone control exists.
+      expect(screen.queryByLabelText(/^Email/)).toBeNull();
+      expect(screen.queryByLabelText(/^Phone/)).toBeNull();
+      expect(screen.getAllByText('read-only').length).toBeGreaterThanOrEqual(2);
+    });
+
+    it('WITH the scope: a PRESENT email + phone render as EDITABLE inputs and a changed value is PATCHed', async () => {
+      withScopes(['talent:edit', 'talent:edit:contact']);
+      const fetchSpy = installFetch({ '/v1/talent-records/tal-1': makeTalent() });
+      renderDrawer(makeTalent());
+      // Present values are now editable controls pre-filled with the record value.
+      const email = screen.getByLabelText(/Email/) as HTMLInputElement;
+      const phone = screen.getByLabelText(/Phone/) as HTMLInputElement;
+      expect(email.value).toBe('ada@example.com');
+      expect(phone.value).toBe('555-0100');
+      // No read-only affordance in the CONTACT section when privileged.
+      expect(screen.queryByText('read-only')).toBeNull();
+      // Change the email; leave the phone unchanged.
+      fireEvent.change(email, { target: { value: 'ada.new@example.com' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+      await waitFor(() => {
+        const patch = fetchSpy.mock.calls.find(
+          (c) =>
+            String(c[0]).includes('/v1/talent-records/tal-1') &&
+            (c[1] as RequestInit)?.method === 'PATCH',
+        );
+        expect(patch).toBeDefined();
+        const body = JSON.parse(String((patch?.[1] as RequestInit).body)) as Record<string, unknown>;
+        // Changed anchor is sent; the UNCHANGED phone is NOT re-sent.
+        expect(body.email1).toBe('ada.new@example.com');
+        expect(body).not.toHaveProperty('phone_cell');
+      });
+    });
+
+    it('WITH the scope: a blanked present anchor is OMITTED from the PATCH (backend rejects blank)', async () => {
+      withScopes(['talent:edit', 'talent:edit:contact']);
+      const fetchSpy = installFetch({ '/v1/talent-records/tal-1': makeTalent() });
+      renderDrawer(makeTalent());
+      fireEvent.change(screen.getByLabelText(/Phone/), { target: { value: '' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+      await waitFor(() => {
+        const patch = fetchSpy.mock.calls.find(
+          (c) =>
+            String(c[0]).includes('/v1/talent-records/tal-1') &&
+            (c[1] as RequestInit)?.method === 'PATCH',
+        );
+        expect(patch).toBeDefined();
+        const body = JSON.parse(String((patch?.[1] as RequestInit).body)) as Record<string, unknown>;
+        expect(body).not.toHaveProperty('phone_cell');
+        expect(body).not.toHaveProperty('email1');
+      });
+    });
   });
 });

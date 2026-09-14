@@ -64,6 +64,7 @@ export const CLASSIFICATIONS: Record<string, Classification> = {
   'requisition:approve': { cls: 'SERVICE_ENFORCED', reason: 'approval-authorization-gate.ts:37 scopes.includes(REQUISITION_APPROVE)' },
   'engagement:policy:override': { cls: 'SERVICE_ENFORCED', reason: 'COMM PART A — conditional override capability WITHIN the submittal:approve-guarded submit route; enforced imperatively via authContext.scopes.includes(engagement:policy:override) (submit-talent.controller.ts:111) + the Engagement domain decision, not a dedicated @RequireScopes route' },
   'talent:search': { cls: 'SERVICE_ENFORCED', reason: 'talent-record.controller.ts:153 scopes.includes(talent:search)' },
+  'talent:edit:contact': { cls: 'SERVICE_ENFORCED', reason: 'contact-anchor edit-gate WITHIN the talent:edit-guarded PATCH — enforced imperatively via authContext.scopes.includes(talent:edit:contact) on the email1/phone_cell fields (talent-record.controller.ts update()), tenant_admin/tenant_owner only; not a dedicated @RequireScopes route' },
   'company:search': { cls: 'SERVICE_ENFORCED', reason: 'company.controller.ts:96 scopes.includes(company:search)' },
   'requisition:search': { cls: 'SERVICE_ENFORCED', reason: 'requisition.controller.ts:120 scopes.includes(requisition:search)' },
   'contact:search': { cls: 'SERVICE_ENFORCED', reason: 'contact.controller.ts:65 scopes.includes(contact:search)' },

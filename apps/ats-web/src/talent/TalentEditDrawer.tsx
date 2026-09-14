@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { hasScope, useSession, type Session } from '@aramo/fe-foundation';
 
 import { Button, InlineAlert } from '../ui';
 import { formatPhone } from '../format/phone';
@@ -80,18 +81,36 @@ export function TalentEditDrawer({ talent, onClose, onSaved }: Props) {
   const [resumeStatus, setResumeStatus] = useState<ResumeStatus>('idle');
   const [resumeName, setResumeName] = useState<string | null>(null);
 
+  // Contact-anchor edit authority — mirrors the backend `talent:edit:contact`
+  // gate (tenant_admin/tenant_owner only). When held, email/phone are editable
+  // even when already present (a DATA CORRECTION); otherwise they stay read-only
+  // once set. Read the scope at the session boundary via the FE helper.
+  const sessionState = useSession();
+  const session: Session | null =
+    sessionState.status === 'authenticated' ? sessionState.session : null;
+  const canEditContact =
+    session !== null &&
+    Array.isArray(session.scopes) &&
+    hasScope(session, 'talent:edit:contact');
+
   const phone = talent.phone_cell ?? talent.phone_home ?? talent.phone_work;
-  // "Present" = already on the record → locked. Missing → the recruiter may
-  // enter it. Any stored phone slot counts as present.
+  // "Present" = already on the record → locked (unless canEditContact). Missing →
+  // the recruiter may enter it. Any stored phone slot counts as present.
   const emailPresent = (talent.email1 ?? '') !== '';
   const phonePresent =
     (talent.phone_cell ?? '') !== '' ||
     (talent.phone_home ?? '') !== '' ||
     (talent.phone_work ?? '') !== '';
 
-  // FE-required set (manual-path parity). DB stays nullable.
+  // An editable control renders when the anchor is missing OR the actor holds
+  // the contact-edit scope. A privileged actor edits phone_cell specifically.
+  const emailEditable = !emailPresent || canEditContact;
+  const phoneEditable = !phonePresent || canEditContact;
+
+  // FE-required set (manual-path parity). DB stays nullable. Format-check any
+  // editable, non-empty email (missing-anchor entry OR privileged correction).
   const emailFormatBad =
-    !emailPresent && email1.trim() !== '' && !/\S+@\S+\.\S+/.test(email1.trim());
+    emailEditable && email1.trim() !== '' && !/\S+@\S+\.\S+/.test(email1.trim());
   const errors = {
     firstName: firstName.trim() === '',
     lastName: lastName.trim() === '',
@@ -124,12 +143,25 @@ export function TalentEditDrawer({ talent, onClose, onSaved }: Props) {
       availability_status:
         availability === '' ? null : (availability as AvailabilityStatus),
       date_available: availableFrom === '' ? null : availableFrom,
-      // Email / phone are patched ONLY when they were missing and the recruiter
-      // supplied one — a present (locked) value is never re-sent.
-      ...(!emailPresent && email1.trim() !== '' ? { email1: email1.trim() } : {}),
-      ...(!phonePresent && phoneCell.trim() !== ''
-        ? { phone_cell: phoneCell.trim() }
-        : {}),
+      // Contact anchors. WITH talent:edit:contact: send email1/phone_cell when
+      // the field CHANGED from the initial value and is non-empty (the backend
+      // rejects a blanked anchor, so a cleared field is omitted, never sent).
+      // WITHOUT the scope: today's behavior — send only when the anchor was
+      // MISSING and the recruiter supplied one (a present value is never re-sent).
+      ...(canEditContact
+        ? email1.trim() !== '' && email1.trim() !== (talent.email1 ?? '')
+          ? { email1: email1.trim() }
+          : {}
+        : !emailPresent && email1.trim() !== ''
+          ? { email1: email1.trim() }
+          : {}),
+      ...(canEditContact
+        ? phoneCell.trim() !== '' && phoneCell.trim() !== (talent.phone_cell ?? '')
+          ? { phone_cell: phoneCell.trim() }
+          : {}
+        : !phonePresent && phoneCell.trim() !== ''
+          ? { phone_cell: phoneCell.trim() }
+          : {}),
     };
     updateTalent(talent.id, patch)
       .then((updated) => {
@@ -223,12 +255,7 @@ export function TalentEditDrawer({ talent, onClose, onSaved }: Props) {
 
           <DrawerSection label="CONTACT">
             <div className="talent-detail__refgrid">
-              {emailPresent ? (
-                <div className="talent-detail__field">
-                  <span>Email <em className="talent-detail__ro">read-only</em></span>
-                  <div className="talent-detail__ro-value">{talent.email1}</div>
-                </div>
-              ) : (
+              {emailEditable ? (
                 <label className={`talent-detail__field${err(errors.emailFormat)}`}>
                   <span>Email</span>
                   <input
@@ -238,13 +265,13 @@ export function TalentEditDrawer({ talent, onClose, onSaved }: Props) {
                     onChange={(e) => setEmail1(e.target.value)}
                   />
                 </label>
-              )}
-              {phonePresent ? (
-                <div className="talent-detail__field">
-                  <span>Phone <em className="talent-detail__ro">read-only</em></span>
-                  <div className="talent-detail__ro-value">{formatPhone(phone)}</div>
-                </div>
               ) : (
+                <div className="talent-detail__field">
+                  <span>Email <em className="talent-detail__ro">read-only</em></span>
+                  <div className="talent-detail__ro-value">{talent.email1}</div>
+                </div>
+              )}
+              {phoneEditable ? (
                 <label className="talent-detail__field">
                   <span>Phone</span>
                   <input
@@ -254,11 +281,17 @@ export function TalentEditDrawer({ talent, onClose, onSaved }: Props) {
                     onChange={(e) => setPhoneCell(e.target.value)}
                   />
                 </label>
+              ) : (
+                <div className="talent-detail__field">
+                  <span>Phone <em className="talent-detail__ro">read-only</em></span>
+                  <div className="talent-detail__ro-value">{formatPhone(phone)}</div>
+                </div>
               )}
             </div>
             <p className="talent-detail__note" style={{ marginTop: 8 }}>
-              Email and phone anchor identity resolution and de-duplication. They
-              can be entered while unset; once saved they become read-only.
+              {canEditContact
+                ? 'Email and phone anchor identity resolution and de-duplication. As an administrator you may correct them here; changes are versioned and logged and an anchor cannot be blanked.'
+                : 'Email and phone anchor identity resolution and de-duplication. They can be entered while unset; once saved they become read-only.'}
             </p>
           </DrawerSection>
 
