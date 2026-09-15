@@ -121,10 +121,13 @@ const RESUME_DRAFT_SCHEMA_NAME = 'resume-draft-extraction/v3';
 // EXTRACTION_MAX_TOKENS (8192) — unrelated ceilings are NOT raised.
 const RESUME_DRAFT_V3_MAX_TOKENS = 16384;
 
-// HF2 R12 — schema cardinality CEILINGS (safety, not product limits). Set high
-// vs normal résumé density. Enforced in BOTH the provider schema (maxItems) and
-// the consumer (defensive re-clamp); overflow is surfaced (status=partial +
-// overflow flag), NEVER silently dropped — the WorkExperience source_refs still
+// HF2 R12 — cardinality CEILINGS (safety, not product limits). Set high vs
+// normal résumé density. Enforced in the CONSUMER (deterministic re-clamp via
+// cap() + overflow flag) — NOT in the provider json_schema: Anthropic's native
+// structured output rejects `maxItems` on arrays ("property 'maxItems' is not
+// supported"), which 400s the whole call, so the ceilings live only in code.
+// overflow is surfaced (status=partial + overflow flag), NEVER silently dropped
+// — the WorkExperience source_refs still
 // span all blocks, so complete evidence stays retrievable from the source-map.
 const MAX_WORK_HISTORY = 20;
 const MAX_SKILL_USAGE_PER_EXP = 30;
@@ -152,7 +155,9 @@ const DRAFT_SYSTEM_MESSAGE =
   'whose text states it (e.g. ["B004"]). Do NOT copy or quote block text — ' +
   'reference by id only. Do NOT infer, enrich, normalize, expand one skill into ' +
   'related technologies, assign proficiency, or derive years/versions from dates, ' +
-  'titles, or employers. Omit anything not clearly stated. Distinguish the résumé ' +
+  'titles, or employers. Every schema property must be PRESENT, but for anything ' +
+  'the résumé does not clearly state return an empty string "" (or an empty list ' +
+  '[] for a list) — NEVER a guess. Empty means "not stated". Distinguish the résumé ' +
   'owner from other people named, and their location from employer/school ' +
   'locations. Do NOT output email or phone. Per work_history entry: (1) an ' +
   'optional "experience_summary" — ONE short factual sentence, at most 600 ' +
@@ -170,11 +175,26 @@ const DRAFT_SYSTEM_MESSAGE =
   '"certifications" that are explicitly stated. Structured facts + refs only — no ' +
   'copied résumé prose.';
 
-const ACTIVITY_SCHEMA = { type: 'string', enum: [...ACTIVITY_VOCAB] } as const;
+// Transport enums include '' so a REQUIRED property can still say "not stated"
+// without the model inventing a value — '' normalizes to absent (stripTransport-
+// Empties) before grounding. (Native structured output requires every property
+// present; Aramo keeps these fields SEMANTICALLY optional — the transport/domain
+// split.)
+const ACTIVITY_SCHEMA = { type: 'string', enum: [...ACTIVITY_VOCAB, ''] } as const;
+const BASIS_SCHEMA = { type: 'string', enum: ['EXPLICIT', 'WORK_EXPERIENCE_CONTEXT', 'UNKNOWN', ''] } as const;
 const REFS_SCHEMA = { type: 'array', items: { type: 'string' } } as const;
 
 // Native JSON-schema for constrained decoding (§12/R2/R22). Compact facts +
-// source_refs; NO source_excerpt; cardinality CEILINGS via maxItems (R12).
+// source_refs; NO source_excerpt. NO `maxItems`/array-size keywords — native
+// structured output rejects them (400); cardinality ceilings (R12) are enforced
+// in the consumer via cap(), not the schema.
+// TRANSPORT schema (provider-facing). Native structured output requires EVERY
+// property present (optional-parameter limit is 24; an all-optional schema over-
+// runs it) and rejects `maxItems`. So: every property is in `required`, arrays
+// carry no maxItems, and "not stated" is transported as '' (scalars) / [] (lists)
+// — never omitted. stripTransportEmpties() converts those empties back to absent
+// BEFORE grounding, so the SEMANTIC v3 contract (fields genuinely optional) is
+// unchanged and provider-required presence never becomes domain-required data.
 const RESUME_DRAFT_SCHEMA: Record<string, unknown> = {
   type: 'object',
   additionalProperties: false,
@@ -182,7 +202,7 @@ const RESUME_DRAFT_SCHEMA: Record<string, unknown> = {
     identity: {
       type: 'object', additionalProperties: false,
       properties: { first_name: { type: 'string' }, last_name: { type: 'string' }, source_refs: REFS_SCHEMA },
-      required: ['source_refs'],
+      required: ['first_name', 'last_name', 'source_refs'],
     },
     location: {
       type: 'object', additionalProperties: false,
@@ -190,12 +210,12 @@ const RESUME_DRAFT_SCHEMA: Record<string, unknown> = {
         address: { type: 'string' }, city: { type: 'string' }, state: { type: 'string' },
         zip: { type: 'string' }, country: { type: 'string' }, source_refs: REFS_SCHEMA,
       },
-      required: ['source_refs'],
+      required: ['address', 'city', 'state', 'zip', 'country', 'source_refs'],
     },
     professional: {
       type: 'object', additionalProperties: false,
       properties: { current_employer: { type: 'string' }, title: { type: 'string' }, source_refs: REFS_SCHEMA },
-      required: ['source_refs'],
+      required: ['current_employer', 'title', 'source_refs'],
     },
     skills: {
       type: 'array',
@@ -207,7 +227,6 @@ const RESUME_DRAFT_SCHEMA: Record<string, unknown> = {
     },
     work_history: {
       type: 'array',
-      maxItems: MAX_WORK_HISTORY,
       items: {
         type: 'object', additionalProperties: false,
         properties: {
@@ -220,7 +239,7 @@ const RESUME_DRAFT_SCHEMA: Record<string, unknown> = {
           experience_summary: { type: 'string', maxLength: WORK_SUMMARY_MAX_CHARS },
           source_refs: REFS_SCHEMA,
           skill_usage: {
-            type: 'array', maxItems: MAX_SKILL_USAGE_PER_EXP,
+            type: 'array',
             items: {
               type: 'object', additionalProperties: false,
               properties: {
@@ -229,14 +248,14 @@ const RESUME_DRAFT_SCHEMA: Record<string, unknown> = {
                 activity: ACTIVITY_SCHEMA,
                 usage_start: { type: 'string' },
                 usage_end: { type: 'string' },
-                usage_period_basis: { type: 'string', enum: ['EXPLICIT', 'WORK_EXPERIENCE_CONTEXT', 'UNKNOWN'] },
+                usage_period_basis: BASIS_SCHEMA,
                 source_refs: REFS_SCHEMA,
               },
-              required: ['surface_form', 'source_refs'],
+              required: ['surface_form', 'version', 'activity', 'usage_start', 'usage_end', 'usage_period_basis', 'source_refs'],
             },
           },
           projects: {
-            type: 'array', maxItems: MAX_PROJECTS_PER_EXP,
+            type: 'array',
             items: {
               type: 'object', additionalProperties: false,
               properties: {
@@ -247,11 +266,11 @@ const RESUME_DRAFT_SCHEMA: Record<string, unknown> = {
                 end_date: { type: 'string' },
                 source_refs: REFS_SCHEMA,
               },
-              required: ['source_refs'],
+              required: ['project_name', 'context', 'domain', 'start_date', 'end_date', 'source_refs'],
             },
           },
           assertions: {
-            type: 'array', maxItems: MAX_ASSERTIONS_PER_EXP,
+            type: 'array',
             items: {
               type: 'object', additionalProperties: false,
               properties: {
@@ -260,15 +279,18 @@ const RESUME_DRAFT_SCHEMA: Record<string, unknown> = {
                 metric: { type: 'string' },
                 source_refs: REFS_SCHEMA,
               },
-              required: ['type', 'statement', 'source_refs'],
+              required: ['type', 'statement', 'metric', 'source_refs'],
             },
           },
         },
-        required: ['employer_name', 'role_title', 'source_refs'],
+        required: [
+          'employer_name', 'role_title', 'start_date', 'end_date', 'employment_type',
+          'location', 'experience_summary', 'source_refs', 'skill_usage', 'projects', 'assertions',
+        ],
       },
     },
     education: {
-      type: 'array', maxItems: MAX_EDUCATION,
+      type: 'array',
       items: {
         type: 'object', additionalProperties: false,
         properties: {
@@ -278,11 +300,11 @@ const RESUME_DRAFT_SCHEMA: Record<string, unknown> = {
           conferred_date: { type: 'string' },
           source_refs: REFS_SCHEMA,
         },
-        required: ['institution_name', 'degree_name', 'source_refs'],
+        required: ['institution_name', 'degree_name', 'field_of_study', 'conferred_date', 'source_refs'],
       },
     },
     certifications: {
-      type: 'array', maxItems: MAX_CERTIFICATIONS,
+      type: 'array',
       items: {
         type: 'object', additionalProperties: false,
         properties: {
@@ -294,11 +316,11 @@ const RESUME_DRAFT_SCHEMA: Record<string, unknown> = {
           version_or_level: { type: 'string' },
           source_refs: REFS_SCHEMA,
         },
-        required: ['certification_name', 'source_refs'],
+        required: ['certification_name', 'issuer_name', 'credential_ref', 'issued_date', 'expiry_date', 'version_or_level', 'source_refs'],
       },
     },
   },
-  required: ['skills', 'work_history', 'education', 'certifications'],
+  required: ['identity', 'location', 'professional', 'skills', 'work_history', 'education', 'certifications'],
 };
 
 @Injectable()
@@ -722,6 +744,12 @@ export class TalentExtractionService {
       max_tokens: RESUME_DRAFT_V3_MAX_TOKENS,
       json_schema: RESUME_DRAFT_SCHEMA,
       schema_name: RESUME_DRAFT_SCHEMA_NAME,
+      // FORCED_TOOL transport (compatibility hotfix): the v3 schema is too large
+      // for strict constrained-decoding grammar compilation, so this path uses a
+      // single forced tool whose input_schema IS the v3 schema. Schema-GUIDED,
+      // not grammar-CONSTRAINED — parseDraftStructured + stripTransportEmpties +
+      // grounding remain the authoritative trust boundary. CI keeps STRICT.
+      transport: 'FORCED_TOOL',
     });
 
     if (outcome.kind !== 'ok') {
@@ -740,7 +768,14 @@ export class TalentExtractionService {
       return { status, proposal: emptyProposal() };
     }
 
-    const parsed = parseDraftStructured(outcome.parsed);
+    // Transport → semantic normalization (compatibility hotfix): the provider
+    // schema requires every property present, transporting "not stated" as ''/[]
+    // (native structured output caps optional params at 24 + rejects maxItems).
+    // Strip those transport empties back to absent BEFORE grounding so provider-
+    // required presence never becomes domain-required data — the semantic v3
+    // contract (genuinely-optional facts) is unchanged, and an '' field never
+    // grounds, persists, or demands source evidence.
+    const parsed = parseDraftStructured(stripTransportEmpties(outcome.parsed));
     // Block index for ref resolution (§5): id → RAW block text (grounding corpus).
     const blockIndex = new Map<string, string>(
       source_map.blocks.map((b) => [b.block_id, b.text] as const),
@@ -1842,6 +1877,30 @@ function isStringArray(v: unknown): v is string[] {
 // Shape-guard the provider's parsed output into the compact completion. Native
 // constrained decoding (§12) should already guarantee the schema; this is the
 // defensive deterministic floor (never throws; off-shape groups are dropped).
+// Compatibility-hotfix normalization (transport → semantic). The provider
+// TRANSPORT schema requires every property present and transports "not stated"
+// as '' (scalars). Convert those transport empties back to ABSENT (drop ''-valued
+// keys) so the downstream semantic pipeline sees exactly the shape a genuinely-
+// optional schema would produce — provider-required presence never becomes
+// domain-required data. Arrays are preserved verbatim (an empty [] stays [] =
+// "no items"; source_refs entries are untouched); nested objects recurse; every
+// non-empty scalar is kept as-is. Pure; returns a fresh structure.
+function stripTransportEmpties(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(stripTransportEmpties);
+  if (value !== null && typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      if (typeof v === 'string') {
+        if (v !== '') out[k] = v; // '' → absent (the transport "not stated")
+      } else {
+        out[k] = stripTransportEmpties(v);
+      }
+    }
+    return out;
+  }
+  return value;
+}
+
 function parseDraftStructured(parsedUnknown: unknown): ResumeDraftCompletion {
   const out: ResumeDraftCompletion = {
     skills: [],

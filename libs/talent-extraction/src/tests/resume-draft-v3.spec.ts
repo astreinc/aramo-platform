@@ -266,22 +266,54 @@ describe('extractResumeDraft v3 — experience intelligence', () => {
     expect(s).not.toContain('\n');
   });
 
-  it('C: schema declares cardinality ceilings + activity enum + no source_excerpt', async () => {
+  // PROVIDER-SCHEMA CONFORMANCE (compatibility hotfix) — a PERMANENT assertion on
+  // the ACTUAL schema handed to generateStructured. Native structured output has
+  // two limits that mocked tests can't see and that each 400 the whole call:
+  //   (1) `maxItems` on arrays is unsupported;
+  //   (2) optional parameters (properties not in `required`) are capped at 24.
+  // The transport schema therefore carries ZERO maxItems and ZERO optional
+  // properties (all-required + '' / [] transport empties). This test is the
+  // regression wall for both, since CI mocks the provider.
+  it('C: provider schema is structured-output-conformant (0 maxItems, 0 optional props) + enum/maxLength/no source_excerpt', async () => {
     const generateStructured = vi.fn().mockResolvedValue(ok({}));
     const svc = new TalentExtractionService(
       { generateDraft: vi.fn() } as never, {} as never, {} as never,
       { generateStructured, providerKey: () => 'anthropic' } as never,
     );
     await svc.extractResumeDraft({ tenant_id: TENANT, source_map: mapOf([{ id: 'B001', text: 'x' }]) });
-    const schema = generateStructured.mock.calls[0][0].json_schema;
+    const request = generateStructured.mock.calls[0][0];
+    // The v3 résumé-draft path uses the FORCED_TOOL transport (the schema is too
+    // large for strict constrained-decoding grammar compilation).
+    expect(request.transport).toBe('FORCED_TOOL');
+    const schema = request.json_schema;
     expect(JSON.stringify(schema)).not.toContain('source_excerpt');
-    expect(schema.properties.work_history.maxItems).toBe(20);
-    expect(schema.properties.work_history.items.properties.skill_usage.maxItems).toBe(30);
-    expect(schema.properties.work_history.items.properties.projects.maxItems).toBe(10);
-    expect(schema.properties.education.maxItems).toBe(10);
-    expect(schema.properties.certifications.maxItems).toBe(20);
+    const c = schemaConformance(schema);
+    expect(c.maxItemsCount).toBe(0);
+    expect(c.optionalPropCount).toBe(0); // every object property is in `required`
+    // Supported keywords remain: string maxLength + the governed activity enum.
     expect(schema.properties.work_history.items.properties.experience_summary.maxLength).toBe(600);
-    // Governed activity enum present (R13).
     expect(schema.properties.work_history.items.properties.skill_usage.items.properties.activity.enum).toContain('DEVELOP');
   });
 });
+
+// Recursively tally the two structured-output-incompatible constructs on the
+// ACTUAL provider schema: any `maxItems` key, and any object property absent from
+// its object's `required` array (an "optional parameter"). Both must be 0.
+function schemaConformance(node: unknown): { maxItemsCount: number; optionalPropCount: number } {
+  let maxItemsCount = 0;
+  let optionalPropCount = 0;
+  const walk = (n: unknown): void => {
+    if (Array.isArray(n)) { n.forEach(walk); return; }
+    if (n === null || typeof n !== 'object') return;
+    const o = n as Record<string, unknown>;
+    if ('maxItems' in o) maxItemsCount += 1;
+    if (o['type'] === 'object' && o['properties'] && typeof o['properties'] === 'object') {
+      const props = Object.keys(o['properties'] as Record<string, unknown>);
+      const required = new Set(Array.isArray(o['required']) ? (o['required'] as string[]) : []);
+      for (const p of props) if (!required.has(p)) optionalPropCount += 1;
+    }
+    for (const v of Object.values(o)) walk(v);
+  };
+  walk(node);
+  return { maxItemsCount, optionalPropCount };
+}

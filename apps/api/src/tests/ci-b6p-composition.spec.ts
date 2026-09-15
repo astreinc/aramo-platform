@@ -138,6 +138,21 @@ describe('CI-B6P AnthropicConversationIntelligenceAdapter', () => {
     expect(payload['requisition_context']).toEqual({ role: 'engineer' });
   });
 
+  // HF2 hotfix boundary — Conversation Intelligence MUST keep native STRICT
+  // constrained decoding; only the HF2 résumé-draft path uses FORCED_TOOL. This
+  // guards against the shared adapter being accidentally moved to tool-use.
+  it('uses STRICT native structured output — NEVER the FORCED_TOOL transport', async () => {
+    let captured: StructuredGenerationRequest | null = null;
+    const a = adapterWith(async (req) => {
+      captured = req;
+      return { kind: 'ok', parsed: { ok: 1 }, transport: { model_used: 'claude-sonnet-4-6', input_tokens: 1, output_tokens: 1, provider_request_id: 'rid' } };
+    });
+    await a.generateStructuredAnalysis(MODEL_INPUT);
+    const req = captured as unknown as StructuredGenerationRequest;
+    expect(req.transport).not.toBe('FORCED_TOOL');
+    expect(req.transport ?? 'STRICT_JSON_SCHEMA').toBe('STRICT_JSON_SCHEMA');
+  });
+
   it('maps retryable/terminal provider outcomes to the B6 taxonomy', async () => {
     const retry = await adapterWith(async () => ({ kind: 'retryable', category: 'rate_limited' })).generateStructuredAnalysis(MODEL_INPUT);
     expect(retry).toEqual({ kind: 'retryable_failure', error_code: CI_PROCESSING_ERROR_CODES.MODEL_RATE_LIMITED });
