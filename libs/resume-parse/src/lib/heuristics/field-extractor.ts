@@ -17,6 +17,12 @@ const PHONE_RE = /(?:\+?1[-.\s]?)?\(?(\d{3})\)?[-.\s]?(\d{3})[-.\s]?(\d{4})/g;
 const URL_RE = /(https?:\/\/[^\s)<>]+)/g;
 const ZIP_RE = /\b(\d{5}(?:-\d{4})?)\b/;
 const US_STATE_RE = /\b(A[KLRZ]|C[AOT]|D[CE]|FL|GA|HI|I[ADLN]|K[SY]|LA|M[ADEINOST]|N[CDEHJMVY]|O[HKR]|PA|RI|S[CD]|T[NX]|UT|V[AT]|W[AIVY])\b/;
+// HF2 R17 — "City, ST" (optionally followed by a ZIP): capture the city token(s)
+// immediately preceding a 2-letter state abbreviation. 1–3 capitalized words
+// keeps it anchored to a genuine "City, ST" cluster (not prose like "skilled in
+// Java, VA-based team"). Deterministic + local — this NEVER reaches the model.
+const CITY_STATE_RE =
+  /\b([A-Z][A-Za-z.'-]+(?:\s+[A-Z][A-Za-z.'-]+){0,2}),\s*(A[KLRZ]|C[AOT]|D[CE]|FL|GA|HI|I[ADLN]|K[SY]|LA|M[ADEINOST]|N[CDEHJMVY]|O[HKR]|PA|RI|S[CD]|T[NX]|UT|V[AT]|W[AIVY])\b(?:\s+\d{5}(?:-\d{4})?)?/;
 
 const SKILLS_HEADER_RE = /^[\s]*(skills?|technical\s+skills?|core\s+competencies|competencies)\s*:?\s*$/im;
 const EXPERIENCE_HEADER_RE = /^[\s]*(experience|employment(?:\s+history)?|work\s+history|professional\s+experience)\s*:?\s*$/im;
@@ -172,6 +178,51 @@ function extractState(text: string): string | undefined {
   return m === null ? undefined : m[1];
 }
 
+// HF2 R17 — deterministic local city extraction (the confirmed gap: email /
+// phone / state / ZIP were already local; city was model-only). The city is the
+// token(s) before a "City, ST" cluster.
+function extractCity(text: string): string | undefined {
+  const m = text.match(CITY_STATE_RE);
+  const city = m?.[1]?.trim();
+  return city === undefined || city.length === 0 ? undefined : city;
+}
+
+// HF2 R17 — the LOCAL, deterministic contact + location fields. Extracted from
+// the RAW résumé text (NO LLM), so email/phone never depend on — and never reach
+// — the model, and city/state/ZIP are not hostage to whether the model returns a
+// location. The governed-LLM draft path merges these BEFORE returning the
+// prefill; the model input is separately PII-redacted (redactPii) at the
+// provider boundary. City/state/ZIP here take precedence; the model's grounded
+// location is only a fallback for whatever local extraction missed.
+export interface ResumeContactFields {
+  email1?: string;
+  email2?: string;
+  phone_cell?: string;
+  phone_home?: string;
+  phone_work?: string;
+  city?: string;
+  state?: string;
+  zip?: string;
+}
+
+export function extractContact(text: string): ResumeContactFields {
+  const emails = extractEmails(text);
+  const phones = extractPhones(text);
+  const out: ResumeContactFields = {};
+  if (emails[0] !== undefined) out.email1 = emails[0];
+  if (emails[1] !== undefined) out.email2 = emails[1];
+  if (phones[0] !== undefined) out.phone_cell = phones[0];
+  if (phones[1] !== undefined) out.phone_home = phones[1];
+  if (phones[2] !== undefined) out.phone_work = phones[2];
+  const city = extractCity(text);
+  if (city !== undefined) out.city = city;
+  const state = extractState(text);
+  if (state !== undefined) out.state = state;
+  const zip = extractZip(text);
+  if (zip !== undefined) out.zip = zip;
+  return out;
+}
+
 /**
  * Run the heuristic field-extraction over plain text. Pure function
  * (no IO; no LLM; no AsyncIterables).
@@ -198,6 +249,9 @@ export function extractFields(text: string): TalentRecordPrefill {
   if (zip !== undefined) prefill.zip = zip;
   const state = extractState(text);
   if (state !== undefined) prefill.state = state;
+  // HF2 R17 — city is now locally extracted too (was the confirmed gap).
+  const city = extractCity(text);
+  if (city !== undefined) prefill.city = city;
 
   const skills = extractKeySkills(text);
   if (skills !== undefined) prefill.key_skills = skills;

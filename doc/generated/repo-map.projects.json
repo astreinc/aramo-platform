@@ -1143,6 +1143,7 @@
       "ResumeParseModule",
       "ResumeParserService",
       "buildResumeSourceMap",
+      "extractContact",
       "extractResumeText"
     ],
     "@aramo/saved-list": [
@@ -1223,6 +1224,7 @@
       "TalentExtractionModule",
       "TalentExtractionService",
       "deriveSkillId",
+      "mapAssertionToClaim",
       "mapSkillToClaim",
       "mapWorkHistoryToClaim",
       "normalizeSkillSurfaceForm"

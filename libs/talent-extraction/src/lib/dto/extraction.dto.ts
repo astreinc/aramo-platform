@@ -145,13 +145,104 @@ export interface ResumeDraftSkillFact {
   source_refs: string[];
 }
 
+// ── HF2 v3 — nested intelligence facts (shared by model-completion + grounded
+// proposal; dates stay strings end-to-end, persistence parses them). Every one
+// carries its OWN source_refs so grounding validates it INDEPENDENTLY (R-boundary:
+// one bad nested fact must not destroy an otherwise-valid WorkExperience). ──
+
+// HF2 P4 ruling — the two grounding classes. A resolving source_ref proves the
+// cited block EXISTS; it does NOT prove a model-written paraphrase is
+// semantically supported. So Aramo distinguishes:
+//   DIRECT_FACT — a value locally substring-grounded against its source block
+//     (skill surface_form, version, employer, role_title, dates, education,
+//     certification, a NAMED project, a grounded metric).
+//   SOURCE_ASSOCIATED_INTERPRETATION — a model-produced compact interpretation
+//     carrying valid source_refs; résumé-DERIVED, NOT independently verified and
+//     NOT value-validated (experience_summary, assertion.statement,
+//     project.context, activity classification). The refs still resolve and
+//     invented metrics/named-projects are still rejected — but downstream (Vector
+//     / KG / matching) MUST treat these as interpretations, not verified facts.
+export type GroundingClass = 'DIRECT_FACT' | 'SOURCE_ASSOCIATED_INTERPRETATION';
+
+// R3/R16 — a time-aware, per-experience skill usage. surface_form + version are
+// DIRECT_FACT (substring-grounded); `activity` is a SOURCE_ASSOCIATED_
+// INTERPRETATION (a governed classification, not verbatim text).
+// usage_period_basis distinguishes EXPLICIT (résumé stated the skill's own
+// dates → usage_start/end carried) from WORK_EXPERIENCE_CONTEXT (dates NOT
+// carried here; Aramo resolves the effective interval from the parent
+// WorkExperience at derivation time — P4 ruling) from UNKNOWN.
+export interface ResumeDraftSkillUsage {
+  surface_form: string;
+  version?: string;
+  activity?: string;
+  usage_start?: string;
+  usage_end?: string;
+  usage_period_basis?: string;
+  source_refs: string[];
+}
+
+// R6 — a project/initiative within a role. project_name (when present) is a
+// DIRECT_FACT (grounded, never invented — NULLABLE when unnamed); `context` is a
+// SOURCE_ASSOCIATED_INTERPRETATION.
+export interface ResumeDraftProject {
+  project_name?: string;
+  context?: string;
+  domain?: string;
+  start_date?: string;
+  end_date?: string;
+  source_refs: string[];
+}
+
+// R7 — an atomic activity/accomplishment claim (routed to EvidenceRecord at
+// create, P5). `type`(governed classification) + `statement`(paraphrase) are a
+// SOURCE_ASSOCIATED_INTERPRETATION — hence grounding_class is carried explicitly
+// so persistence/Vector/KG never mistake it for a verified fact. `metric` is a
+// DIRECT_FACT: kept ONLY when it substring-grounds (never invented, R17).
+export interface ResumeDraftAssertion {
+  type: string;
+  statement: string;
+  metric?: string;
+  // Consumer-SET on every grounded proposal assertion (the model never returns
+  // it); always SOURCE_ASSOCIATED_INTERPRETATION. Optional on the interface only
+  // because the transient model-completion shape omits it.
+  grounding_class?: GroundingClass;
+  source_refs: string[];
+}
+
+// R8/R18 — declared education fact with HF1-style provenance.
+export interface ResumeDraftEducation {
+  institution_name: string;
+  degree_name: string;
+  field_of_study?: string;
+  conferred_date?: string;
+  source_refs: string[];
+}
+
+// R8/R19 — declared certification fact with HF1-style provenance.
+export interface ResumeDraftCertification {
+  certification_name: string;
+  issuer_name?: string;
+  credential_ref?: string;
+  issued_date?: string;
+  expiry_date?: string;
+  version_or_level?: string;
+  source_refs: string[];
+}
+
 export interface ResumeDraftWorkHistoryFact {
   employer_name: string;
   role_title: string;
   start_date?: string;
   end_date?: string;
   employment_type?: string;
+  location?: string;
+  // HF2 R10 — recruiter-facing summary (≤600, provider + consumer capped).
+  experience_summary?: string;
   source_refs: string[];
+  // HF2 nested intelligence (optional in model output — a role may state none).
+  skill_usage?: ResumeDraftSkillUsage[];
+  projects?: ResumeDraftProject[];
+  assertions?: ResumeDraftAssertion[];
 }
 
 export interface ResumeDraftCompletion {
@@ -160,6 +251,10 @@ export interface ResumeDraftCompletion {
   professional?: ResumeDraftProfessional;
   skills: ResumeDraftSkillFact[];
   work_history: ResumeDraftWorkHistoryFact[];
+  // HF2 R8/R18/R19 — declared education + certification, now IN the Add-Talent
+  // draft path (were previously only on the separate examine path).
+  education: ResumeDraftEducation[];
+  certifications: ResumeDraftCertification[];
 }
 
 // HF1 R7 — a grounded, structured skill carrying its durable source provenance.
@@ -191,8 +286,16 @@ export interface ResumeDraftWorkHistory {
   start_date?: string;
   end_date?: string;
   employment_type?: string;
+  location?: string;
+  // `description` retained for the recruiter EDIT path; HF2 populates the bounded
+  // `experience_summary` (≤600, R10) as the recruiter-facing role summary.
   description?: string;
+  experience_summary?: string;
   source_refs?: string[];
+  // HF2 nested intelligence (grounded, carried to the persistence seam in P6).
+  skill_usage?: ResumeDraftSkillUsage[];
+  projects?: ResumeDraftProject[];
+  assertions?: ResumeDraftAssertion[];
 }
 
 // Talent-detail work-history read (LOCKED scope expansion). What was persisted,
@@ -230,9 +333,17 @@ export interface ResumeDraftProposal {
   // structured list + refs survive through the API for durable persistence.
   skills: ResumeDraftSkill[];
   // Reviewable, grounded work-history entries (declared, source='resume'),
-  // each carrying its source_refs (§16/R8).
+  // each carrying its source_refs (§16/R8) + nested skill_usage/projects/assertions.
   work_history: ResumeDraftWorkHistory[];
+  // HF2 R8/R18/R19 — declared education + certification (grounded).
+  education: ResumeDraftEducation[];
+  certifications: ResumeDraftCertification[];
   rejected_count: number;
+  // HF2 R12 — TRUE when any array hit its cardinality ceiling and overflow was
+  // truncated. Overflow is never silent: the caller surfaces it (status→partial +
+  // this flag). The WorkExperience source_refs still span all blocks, so the
+  // complete source evidence remains retrievable from the source-map.
+  overflow: boolean;
   // HF1 §16 — provenance anchors (which corpus these refs resolve against).
   source_map_version: string;
   resume_text_hash: string;

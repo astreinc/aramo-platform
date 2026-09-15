@@ -30,7 +30,13 @@ import {
   type IntakeState,
 } from './intake-fields';
 import type { Provenance, ProvenanceMap } from './provenance';
-import type { SkillDraft, TalentRecordView, WorkHistoryDraft } from './types';
+import type {
+  CertificationDraft,
+  EducationDraft,
+  SkillDraft,
+  TalentRecordView,
+  WorkHistoryDraft,
+} from './types';
 
 // R5 (rebuild) — the Add-Talent surface, rebuilt to enterprise-mockup parity.
 //
@@ -88,6 +94,12 @@ export function TalentCreateView() {
   // carried from the draft into the create request (durable evidence provenance;
   // the free-text key_skills field remains the recruiter-facing surface).
   const [resumeSkills, setResumeSkills] = useState<readonly SkillDraft[]>([]);
+  // HF2 R8/R18/R19 — grounded education + certifications carried from the draft
+  // into the create request (persisted at create as declared evidence).
+  const [resumeEducation, setResumeEducation] = useState<readonly EducationDraft[]>([]);
+  const [resumeCertifications, setResumeCertifications] = useState<
+    readonly CertificationDraft[]
+  >([]);
   const [resumeProvenance, setResumeProvenance] = useState<{
     source_map_version?: string;
     resume_text_hash?: string;
@@ -213,6 +225,8 @@ export function TalentCreateView() {
       // HF1 — carry structured skills + corpus provenance for durable evidence
       // persistence at create (the free-text key_skills field is set via prefill).
       setResumeSkills(result.skills ? [...result.skills] : []);
+      setResumeEducation(result.education ? [...result.education] : []);
+      setResumeCertifications(result.certifications ? [...result.certifications] : []);
       setResumeProvenance({
         source_map_version: result.source_map_version,
         resume_text_hash: result.resume_text_hash,
@@ -239,6 +253,8 @@ export function TalentCreateView() {
     setParseWarning(null);
     setWorkHistory([]);
     setResumeSkills([]);
+    setResumeEducation([]);
+    setResumeCertifications([]);
     setResumeProvenance({});
     setStartedAt(null);
     setElapsedMs(0);
@@ -297,7 +313,12 @@ export function TalentCreateView() {
     let record: TalentRecordView;
     try {
       record = await createTalent(
-        buildCreateBody(fields, workHistory, { skills: resumeSkills, resumeDocument }),
+        buildCreateBody(fields, workHistory, {
+          skills: resumeSkills,
+          resumeDocument,
+          education: resumeEducation,
+          certifications: resumeCertifications,
+        }),
       );
     } catch (err) {
       // Backstop: the proactive check should already show the card + block
@@ -444,6 +465,8 @@ export function TalentCreateView() {
               values={fields}
               provenance={provenance}
               workHistory={workHistory}
+              education={resumeEducation}
+              certifications={resumeCertifications}
               disabled={submitting}
               onField={onField}
               onToggle={onToggle}
