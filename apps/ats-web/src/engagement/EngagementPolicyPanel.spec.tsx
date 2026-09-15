@@ -74,7 +74,14 @@ describe('EngagementPolicyPanel (COMM-C3 admin)', () => {
     const publishFn = vi.fn().mockResolvedValue(undefined);
     panel({ governed: false, effective: null }, publishFn);
     fireEvent.click(await screen.findByTestId('engagement-policy-email-toggle'));
-    expect(screen.getByTestId('engagement-policy-email-toggle')).toHaveAttribute('aria-checked', 'true');
+    // The toggle's aria-checked flips on a React state update; await it (the
+    // click's re-render may not have flushed synchronously under load — CI flake).
+    await waitFor(() =>
+      expect(screen.getByTestId('engagement-policy-email-toggle')).toHaveAttribute(
+        'aria-checked',
+        'true',
+      ),
+    );
     expect(publishFn).not.toHaveBeenCalled();
   });
 

@@ -33,8 +33,18 @@ describe('AuditLogView', () => {
       next_cursor: null,
     } satisfies AuditQueryResult));
     render(<AuditLogView fetchFn={fetchFn} />);
-    expect(await screen.findByText('Signed in')).toBeInTheDocument();
-    expect(screen.getByText('Assigned role(s): recruiter')).toBeInTheDocument();
+    // Wait for the async ROWS to populate by anchoring on a row-only detail
+    // string ('Assigned role(s): recruiter' appears only in a row — never in the
+    // static filter dropdown). The prior anchor 'Signed in' was ambiguous: it is
+    // ALSO the filter dropdown's label for identity.session.issued, so a query
+    // for it resolved against the dropdown BEFORE the rows loaded — passing
+    // without actually awaiting the trail (the CI flake).
+    expect(await screen.findByText('Assigned role(s): recruiter')).toBeInTheDocument();
+    // 'Signed in' matches the dropdown option, the event label, AND the row
+    // detail — scope to the detail span so the assertion is unambiguous.
+    expect(
+      screen.getByText('Signed in', { selector: '.rc-audit-detail' }),
+    ).toBeInTheDocument();
     expect(screen.getAllByText('Priya Nair').length).toBe(2);
     // Category pills (readable label, not raw event_type).
     expect(screen.getByText('Access')).toBeInTheDocument();
