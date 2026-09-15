@@ -45,7 +45,13 @@ import {
 // Scoring stays deterministic + LLM-free (matching/examination); this lib only
 // PRODUCES declared evidence. The parse/validate/persist path below is fully
 // deterministic and unit-tested against a mocked generateDraft completion.
-const EXTRACTION_MAX_TOKENS = 2048;
+// A résumé's full structured extraction (identity + location + professional +
+// every skill + every work-history entry, each carrying a VERBATIM
+// source_excerpt) routinely exceeds 2048 output tokens for a real 1–2 page
+// résumé. At 2048 the completion truncated mid-JSON (stop_reason=max_tokens) →
+// JSON.parse failed → an empty extraction surfaced as "no details could be
+// read". 8192 gives ~4x headroom for the excerpt-heavy output.
+const EXTRACTION_MAX_TOKENS = 8192;
 
 const SYSTEM_MESSAGE =
   'You are a résumé-structuring assistant. Extract ONLY skills, work-history ' +
@@ -60,7 +66,11 @@ const SYSTEM_MESSAGE =
 // the smallest appropriate constant in the consumer). Bump on any change to
 // DRAFT_SYSTEM_MESSAGE / buildDraftPrompt.
 const RESUME_DRAFT_PROMPT_VERSION = 'resume-draft/v1';
-const RESUME_DRAFT_MAX_TOKENS = 2048;
+// See EXTRACTION_MAX_TOKENS: the Add-Talent résumé draft (identity + location +
+// professional + all skills + all work-history, each with a verbatim excerpt)
+// truncated at 2048 (stop_reason=max_tokens) → empty draft. 8192 fits a real
+// résumé's excerpt-heavy JSON.
+const RESUME_DRAFT_MAX_TOKENS = 8192;
 
 const DRAFT_SYSTEM_MESSAGE =
   'You are a résumé-structuring assistant for a talent-intake form. Extract ONLY ' +
