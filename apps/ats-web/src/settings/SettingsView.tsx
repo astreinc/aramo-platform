@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 
-import { InlineAlert, PageHeader, safeErrorMessage } from '../ui';
+import { InlineAlert, safeErrorMessage } from '../ui';
 
 import { CompensationDisplayPicker } from './CompensationDisplayPicker';
 import { ResumeExtractionModePicker } from './ResumeExtractionModePicker';
 import { FinancialsToggle } from './FinancialsToggle';
+import { SettingsSection } from './components';
 import { fetchTenantSettings } from './settings-api';
 import type { TenantSettingsView } from './types';
 
@@ -47,8 +48,10 @@ export function SettingsView({ fetchFn }: Props = {}) {
   }, [fetcher]);
 
   return (
-    <section className="rc-stack">
-      <PageHeader title="Settings" description="Tenant-wide configuration" />
+    <SettingsSection
+      title="Recruiting settings"
+      description="Defaults that govern recruiting behaviour — how Add Talent reads résumés and how compensation is displayed."
+    >
       {state.status === 'loading' && (
         <p className="rc-muted-line">Loading settings…</p>
       )}
@@ -68,6 +71,6 @@ export function SettingsView({ fetchFn }: Props = {}) {
           />
         </>
       )}
-    </section>
+    </SettingsSection>
   );
 }

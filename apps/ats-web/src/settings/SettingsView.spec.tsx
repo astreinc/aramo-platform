@@ -43,8 +43,8 @@ describe('SettingsView', () => {
   it('renders the page header and the two controls after GET resolves', async () => {
     renderView();
 
-    expect(screen.getByText('Settings')).toBeInTheDocument();
-    expect(screen.getByText('Tenant-wide configuration')).toBeInTheDocument();
+    expect(screen.getByText('Recruiting settings')).toBeInTheDocument();
+    expect(screen.getByText(/govern recruiting behaviour/i)).toBeInTheDocument();
 
     await waitFor(() =>
       expect(
