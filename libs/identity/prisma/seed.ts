@@ -387,6 +387,9 @@ export const SEED_IDS = {
     // WL-B2 (R6/R14) — DEDICATED address-lookup scope. Next free scope suffix
     // after the 0xfc engagement:policy:override max (append-don't-renumber): 0xfd.
     'address:lookup': '01900000-0000-7000-8000-0000000000fd',
+    // Talent contact-anchor edit (owner/admin data correction). Next free scope
+    // suffix after 0xfd (append-don't-renumber): 0xfe.
+    'talent:edit:contact': '01900000-0000-7000-8000-0000000000fe',
   },
   // RoleScope ids — one per (role,scope) assignment. Hardcoded sequence
   // 0x30..0x39 (10 assignments: 6 tenant_admin + 4 recruiter; the 3
@@ -2213,6 +2216,29 @@ const ENGAGEMENT_OVERRIDE_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() 
   return map;
 })();
 
+// Talent contact-anchor edit — owner/admin-only data-correction authority.
+// talent:edit:contact -> tenant_admin + tenant_owner ONLY (scope-based authority,
+// never a role-name check; mirrors ENGAGEMENT_OVERRIDE precedent — a dedicated
+// disjoint bundle, NOT an edit to the base role blocks).
+export const TALENT_CONTACT_EDIT_SEED_BUNDLES: ReadonlyArray<
+  readonly [string, readonly string[]]
+> = [
+  ['tenant_admin', ['talent:edit:contact']],
+  ['tenant_owner', ['talent:edit:contact']],
+];
+const TALENT_CONTACT_EDIT_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
+  const map: Record<string, string> = {};
+  let i = 0x1110;
+  for (const [role, scopes] of TALENT_CONTACT_EDIT_SEED_BUNDLES) {
+    for (const scope of scopes) {
+      map[`${role}:${scope}`] =
+        `01900000-0000-7000-8000-${i.toString(16).padStart(12, '0')}`;
+      i++;
+    }
+  }
+  return map;
+})();
+
 // Requisition Approval sub-workflow — APPROVE/REJECT authority role-matrix.
 // requisition:approve granted to account_manager + tenant_admin + tenant_owner
 // (the manager tier, mirroring requisition:edit:financials); a recruiter holding
@@ -2595,6 +2621,7 @@ export async function runIdentitySeed(
   await upsertScope(prisma, SEED_IDS.scopes['talent:read'], 'talent:read', 'Read a talent record (assigned by default)');
   await upsertScope(prisma, SEED_IDS.scopes['talent:create'], 'talent:create', 'Create a talent record');
   await upsertScope(prisma, SEED_IDS.scopes['talent:edit'], 'talent:edit', 'Edit a talent record');
+  await upsertScope(prisma, SEED_IDS.scopes['talent:edit:contact'], 'talent:edit:contact', 'Edit a talent record contact anchor (email1/phone_cell) — tenant_admin + tenant_owner only, for data correction. NO scope.created audit event (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['talent:delete'], 'talent:delete', 'Delete a talent record (tenant_admin only — Ruling 1)');
   await upsertScope(prisma, SEED_IDS.scopes['talent:search'], 'talent:search', 'Search the talent index (Constrained Talent Access)');
   await upsertScope(prisma, SEED_IDS.scopes['talent:source'], 'talent:source', 'Promote a sourced L2 subject into an ATS talent record (sourcer)');
@@ -3374,6 +3401,25 @@ export async function runIdentitySeed(
       const rsId = ENGAGEMENT_OVERRIDE_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
       if (rsId === undefined) {
         throw new Error(`COMM Engagement-Policy-Override-Role-Matrix: Missing generated RoleScope id for ${roleKey}:${scopeKey}`);
+      }
+      const scope_id = scopeIdForKey(scopeKey);
+      await prisma.roleScope.upsert({
+        where: { role_id_scope_id: { role_id, scope_id } },
+        update: {},
+        create: { id: rsId, role_id, scope_id },
+      });
+    }
+  }
+
+  // Talent contact-anchor edit grants (2 rows; range 0x1110+).
+  // talent:edit:contact -> tenant_admin + tenant_owner ONLY (data-correction of
+  // email1/phone_cell identity anchors; scope-based authority).
+  for (const [roleKey, scopeKeys] of TALENT_CONTACT_EDIT_SEED_BUNDLES) {
+    const role_id = roleIdForKey(roleKey);
+    for (const scopeKey of scopeKeys) {
+      const rsId = TALENT_CONTACT_EDIT_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
+      if (rsId === undefined) {
+        throw new Error(`Talent-Contact-Edit-Role-Matrix: Missing generated RoleScope id for ${roleKey}:${scopeKey}`);
       }
       const scope_id = scopeIdForKey(scopeKey);
       await prisma.roleScope.upsert({
