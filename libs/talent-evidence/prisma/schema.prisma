@@ -212,6 +212,23 @@ model TalentSkillEvidence {
   source_map_version String?
   resume_text_hash   String?
 
+  // HF2 R3/R16 — time-aware, per-experience skill USAGE (ADD-not-rename; this
+  // row becomes the canonical SkillUsage evidence). All ADDITIVE + NULLABLE.
+  //   work_experience_id → the TalentWorkHistoryEntry this usage belongs to.
+  //   version → ONLY when the résumé explicitly states it (e.g. "17"); never inferred.
+  //   usage_start/usage_end → the interval; NULL when unknown (never invented).
+  //   usage_period_basis → 'EXPLICIT' (résumé stated the skill dates) vs
+  //     'WORK_EXPERIENCE_CONTEXT' (dates inherited from the enclosing role) vs
+  //     'UNKNOWN'. This distinction stays queryable (R3) and feeds the derived
+  //     years intelligence (R14) which must not conflate the two.
+  //   activity_context → compact governed activity token(s) (R13), e.g. 'DEVELOP'.
+  work_experience_id String?                  @db.Uuid
+  version            String?
+  usage_start        DateTime?                @db.Date
+  usage_end          DateTime?                @db.Date
+  usage_period_basis String?
+  activity_context   String?
+
   created_at        DateTime                  @db.Timestamptz
 
   // Tenant-scoped + (tenant, talent) lookup; (tenant, talent, skill) supports
@@ -219,6 +236,7 @@ model TalentSkillEvidence {
   @@index([tenant_id])
   @@index([tenant_id, talent_id])
   @@index([tenant_id, talent_id, skill_id])
+  @@index([tenant_id, work_experience_id])
   @@schema("talent_evidence")
 }
 
@@ -253,6 +271,17 @@ model TalentWorkHistoryEntry {
   source_map_version  String?
   resume_text_hash    String?
 
+  // HF2 R2 — canonical Work Experience extension (ADD-not-rename). company_id is
+  // the DEFERRED cross-domain seam (R4): a nullable UUID ref to the ats-side
+  // Company, populated only by a future governed org-resolution increment; the
+  // WALL forbids talent-evidence(cip)→company(ats) imports, so this stays a bare
+  // UUID. employer_name (above) always preserves the raw résumé evidence.
+  company_id          String?                 @db.Uuid
+  // HF2 R10 — bounded (≤600 chars, app-enforced) recruiter-facing summary of the
+  // role's stated responsibility/context blocks. A PROJECTION for readability —
+  // never the evidence model; grounded to this entry's source_refs.
+  experience_summary  String?
+
   is_authoritative    Boolean?
   created_at          DateTime                @db.Timestamptz
 
@@ -278,6 +307,14 @@ model TalentEducationEntry {
   // The verbatim source excerpt the extraction copied (constrained-to-source).
   evidence_text    String?
   source           TalentEducationSource
+
+  // HF2 R8 — HF1-style provenance so Add-Talent-extracted education carries its
+  // source refs (ADDITIVE + NULLABLE; no backfill).
+  source_document_id String?             @db.Uuid
+  source_refs        String[]
+  source_map_version String?
+  resume_text_hash   String?
+
   created_at       DateTime              @db.Timestamptz
 
   @@index([tenant_id])
@@ -301,10 +338,48 @@ model TalentCertificationEntry {
 
   evidence_text      String?
   source             TalentCertificationSource
+
+  // HF2 R8 — HF1-style provenance (ADDITIVE + NULLABLE; no backfill).
+  source_document_id String?                   @db.Uuid
+  source_refs        String[]
+  source_map_version String?
+  resume_text_hash   String?
+
   created_at         DateTime                  @db.Timestamptz
 
   @@index([tenant_id])
   @@index([tenant_id, talent_id])
+  @@schema("talent_evidence")
+}
+
+// HF2 R6 — first-class Project Experience. A single employer/role may span
+// multiple materially different initiatives; flattening them into one
+// WorkExperience loses matching context. Child of TalentWorkHistoryEntry
+// (work_experience_id, UUID-only per §7.3). project_name is NULLABLE — many
+// résumés describe initiatives without naming them; NEVER invent a name.
+// Provenance mirrors HF1 (source_refs spanning the initiative's blocks).
+model TalentProjectExperience {
+  id                 String    @id @db.Uuid
+  talent_id          String    @db.Uuid
+  tenant_id          String    @db.Uuid
+  work_experience_id String    @db.Uuid
+
+  project_name       String?
+  context_summary    String?
+  domain             String?
+  start_date         DateTime? @db.Date
+  end_date           DateTime? @db.Date
+
+  source_document_id String?   @db.Uuid
+  source_refs        String[]
+  source_map_version String?
+  resume_text_hash   String?
+
+  created_at         DateTime  @db.Timestamptz
+
+  @@index([tenant_id])
+  @@index([tenant_id, talent_id])
+  @@index([tenant_id, work_experience_id])
   @@schema("talent_evidence")
 }
 

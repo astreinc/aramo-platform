@@ -458,6 +458,36 @@ export function attesterDescriptorKey(attesterCanonical: Record<string, unknown>
   return `nameco:${norm(name)}|${norm(company)}`;
 }
 
+// EXPERIENCE_CLAIM (HF2 R1/R7): a résumé-derived atomic activity/accomplishment
+// assertion (the compact activity classification + the paraphrased statement +
+// an optional grounded metric). `statement_raw` is required; `activity_type_raw`
+// (the governed activity token) required; `metric_raw` optional. `grounding_class`
+// travels through UNTOUCHED so later Vector/KG projections know this is a
+// SOURCE_ASSOCIATED_INTERPRETATION, not a value-verified fact. `work_experience_ref`
+// (the owning WorkExperience id) travels through for KG edges. This type is
+// DELIBERATELY ABSENT from AUTHORITATIVE_ASSERTION_TYPES — a résumé-derived
+// interpretation MUST NOT elevate any trust band (elevation is a later, verified
+// act by amendment, never by drift — same discipline as ATTESTATION/DEGREE).
+const experienceClaimShape: ClaimShape = (p) => {
+  const errors: string[] = [];
+  if (!nonEmptyString(p['statement_raw'])) errors.push('statement_raw must be a non-empty string');
+  if (!nonEmptyString(p['activity_type_raw'])) errors.push('activity_type_raw must be a non-empty string');
+  if (!optionalString(p['metric_raw'])) errors.push('metric_raw must be a string when present');
+  if (errors.length > 0) return { ok: false, errors };
+  const canonical: Record<string, unknown> = {
+    activity_type_raw: (p['activity_type_raw'] as string).trim(),
+    statement_raw: (p['statement_raw'] as string).trim(),
+    // Provenance/interpretation markers pass through untouched.
+    grounding_class:
+      p['grounding_class'] === 'DIRECT_FACT' || p['grounding_class'] === 'SOURCE_ASSOCIATED_INTERPRETATION'
+        ? p['grounding_class']
+        : 'SOURCE_ASSOCIATED_INTERPRETATION',
+  };
+  if (nonEmptyString(p['metric_raw'])) canonical['metric_raw'] = (p['metric_raw'] as string).trim();
+  if (nonEmptyString(p['work_experience_ref'])) canonical['work_experience_ref'] = (p['work_experience_ref'] as string).trim();
+  return { ok: true, canonical };
+};
+
 // The registry: assertion_type → its canonical shape. Membership here IS the
 // "registered" predicate the write gate checks. Adding a type is a DDR-amendment-
 // level act (like AUTHORITATIVE_ASSERTION_TYPES), never a silent extension.
@@ -488,6 +518,10 @@ export const CANONICAL_CLAIM_SHAPES: Record<string, ClaimShape> = {
   // attestation is THIRD_PARTY_UNVERIFIED and MUST NOT elevate. The verified-
   // attester elevation is TR-9-B, by amendment, never by drift.
   ATTESTATION: attestationShape,
+  // HF2 R1/R7 — résumé-derived experience assertion. Registered for payload
+  // comparability; DELIBERATELY ABSENT from AUTHORITATIVE_ASSERTION_TYPES (a
+  // source-associated interpretation MUST NOT elevate a trust band).
+  EXPERIENCE_CLAIM: experienceClaimShape,
 };
 
 export function isRegisteredAssertionType(assertionType: string): boolean {

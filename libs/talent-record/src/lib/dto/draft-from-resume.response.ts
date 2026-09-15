@@ -1,6 +1,8 @@
 import type { ResumeExtractionMode } from '@aramo/settings';
 import type { ParseStatus, TalentRecordPrefill } from '@aramo/resume-parse';
 import type {
+  ResumeDraftCertification,
+  ResumeDraftEducation,
   ResumeDraftSkill,
   ResumeDraftStatus,
   ResumeDraftWorkHistory,
@@ -40,6 +42,11 @@ export interface DraftFromResumeResponse {
   // the free-text prefill.key_skills; this preserves skill-level provenance
   // through the API for durable persistence.
   skills?: ResumeDraftSkill[];
+  // HF2 R8/R18/R19 — reviewable, grounded education + certifications (governed_llm
+  // mode only; declared 'from résumé', NOT verified). The recruiter reviews these
+  // in the review card; on create they persist as declared evidence with provenance.
+  education?: ResumeDraftEducation[];
+  certifications?: ResumeDraftCertification[];
   // HF1 §16 — the provenance anchors the FE carries back into the create request
   // (resume_document.source_map_version / resume_text_hash) so the persisted
   // evidence records which corpus its source_refs resolve against.

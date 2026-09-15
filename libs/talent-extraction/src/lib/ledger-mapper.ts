@@ -15,17 +15,26 @@
 // same namespace as the producer's deriveSkillId (B1 parity), so the ledger
 // skill_id is byte-identical to the typed row's skill_id.
 
+import { v5 as uuidv5 } from 'uuid';
+
+// HF2 — fixed namespace for deterministic EXPERIENCE_CLAIM idempotence keys.
+// Do NOT change (re-keys every derived assertion id).
+const ARAMO_EXPERIENCE_CLAIM_NAMESPACE = 'a5f1c0de-e401-4c1a-9b00-5ec0de5ec0de';
+
 export interface LedgerClaim {
-  assertion_type: 'EMPLOYMENT' | 'SKILL' | 'DEGREE' | 'CERTIFICATION';
+  assertion_type: 'EMPLOYMENT' | 'SKILL' | 'DEGREE' | 'CERTIFICATION' | 'EXPERIENCE_CLAIM';
   // The recordEvidence input payload; the write gate canonicalizes it (adds
   // employer_norm / ISO dates / skill_id, preserves raw).
   payload: Record<string, unknown>;
   // Stable provenance key: the talent_evidence row id backs the ledger's
   // source_ref and the idempotence existence check (source_ref → the typed row).
+  // For EXPERIENCE_CLAIM (HF2) there is no typed row — the key is a DETERMINISTIC
+  // content id (uuidv5 of work_experience_id|type|statement) so re-create is
+  // idempotent; store='resume_extraction' marks the non-typed origin.
   source_ref: {
     talent_evidence_id: string;
-    kind: 'work_history' | 'skill' | 'education' | 'certification';
-    store: 'talent_evidence';
+    kind: 'work_history' | 'skill' | 'education' | 'certification' | 'experience_claim';
+    store: 'talent_evidence' | 'resume_extraction';
   };
 }
 
@@ -121,5 +130,34 @@ export function mapCertificationToClaim(row: {
     assertion_type: 'CERTIFICATION',
     payload,
     source_ref: { talent_evidence_id: row.id, kind: 'certification', store: 'talent_evidence' },
+  };
+}
+
+// HF2 R1/R7 — map a résumé-derived experience ASSERTION (activity/accomplishment)
+// to an EXPERIENCE_CLAIM ledger claim. Unlike the typed-row mappers above, an
+// assertion has NO backing talent_evidence row, so the idempotence key is a
+// DETERMINISTIC content id (uuidv5 over work_experience_id|type|statement). The
+// grounding_class travels through UNTOUCHED (source-associated interpretation),
+// so later Vector/KG projections never mistake it for a verified fact.
+export function mapAssertionToClaim(
+  assertion: { type: string; statement: string; metric?: string; grounding_class?: string },
+  workExperienceId: string,
+): LedgerClaim {
+  const type = assertion.type.trim();
+  const statement = assertion.statement.trim();
+  const key = uuidv5(`${workExperienceId}|${type}|${statement}`, ARAMO_EXPERIENCE_CLAIM_NAMESPACE);
+  const payload: Record<string, unknown> = {
+    activity_type_raw: type,
+    statement_raw: statement,
+    grounding_class: assertion.grounding_class ?? 'SOURCE_ASSOCIATED_INTERPRETATION',
+    work_experience_ref: workExperienceId,
+  };
+  if (typeof assertion.metric === 'string' && assertion.metric.trim() !== '') {
+    payload['metric_raw'] = assertion.metric.trim();
+  }
+  return {
+    assertion_type: 'EXPERIENCE_CLAIM',
+    payload,
+    source_ref: { talent_evidence_id: key, kind: 'experience_claim', store: 'resume_extraction' },
   };
 }

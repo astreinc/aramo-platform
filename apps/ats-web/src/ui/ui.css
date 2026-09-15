@@ -3203,6 +3203,36 @@ select.rc-input { appearance: none; padding-right: 28px; }
 .rc-wh__remove:disabled { opacity: 0.5; cursor: default; }
 .rc-wh__addrow { margin: 4px 0 8px; }
 
+/* HF2 §29 — per-role Experience Intelligence review (read-only preview + the
+   optionally-expandable skills-used / projects). */
+.rc-wh__intel { margin-top: 8px; display: flex; flex-direction: column; gap: 8px; }
+.rc-wh__preview {
+  margin: 0; font-size: 0.82rem; line-height: 1.5; color: var(--text, #1a1f2b);
+  padding: 8px 10px; background: var(--surface, #fff); border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.rc-wh__disc { font-size: 0.76rem; }
+.rc-wh__disc > summary {
+  cursor: pointer; font-weight: 600; color: var(--muted); padding: 2px 0;
+  list-style: revert;
+}
+.rc-wh__disc[open] > summary { color: var(--text, #1a1f2b); }
+.rc-wh__chips { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.rc-wh__chip {
+  font-size: 0.72rem; padding: 3px 9px; border-radius: 999px;
+  background: var(--surface-2, #f1f3f6); border: 1px solid var(--line); color: var(--text, #1a1f2b);
+}
+.rc-wh__projlist { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.rc-wh__proj { font-size: 0.76rem; line-height: 1.45; }
+.rc-wh__projname { font-weight: 600; }
+.rc-wh__projctx { color: var(--muted); }
+
+/* HF2 §29 — résumé-derived Education + Certifications review (declared). */
+.rc-edu__list, .rc-cert__list { list-style: none; margin: 0 0 8px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.rc-edu__item, .rc-cert__item { font-size: 0.82rem; line-height: 1.45; }
+.rc-edu__degree, .rc-cert__name { font-weight: 600; }
+.rc-edu__inst, .rc-edu__field, .rc-edu__date, .rc-cert__issuer { color: var(--muted); }
+
 /* Talent-detail Work-History list (declared 'From resume' until verified). */
 .rc-whd-list { list-style: none; margin: 10px 0 0; padding: 0; }
 .rc-whd-item { padding: 12px 0; border-top: 1px solid var(--line); }
