@@ -31,6 +31,11 @@ import type {
   ResumeDraftResult,
   ResumeDraftSkill,
   ResumeDraftSkillFact,
+  ResumeDraftSkillUsage,
+  ResumeDraftProject,
+  ResumeDraftAssertion,
+  ResumeDraftEducation,
+  ResumeDraftCertification,
   ResumeProvenance,
   ResumeDraftStatus,
   ResumeDraftWorkHistory,
@@ -44,7 +49,22 @@ import {
   mapEducationToClaim,
   mapSkillToClaim,
   mapWorkHistoryToClaim,
+  mapAssertionToClaim,
 } from './ledger-mapper.js';
+// HF2 R14/R27 — canonical strict date normalization + interval-union skill
+// timeline. Duration derivation consumes ONLY normalized ResumeDate values
+// (never a loose new Date(freeform)); unknown/ambiguous → null (contributes
+// nothing), and the derived precision is carried so a year-only span is never
+// presented as exact.
+import {
+  parseResumeDate,
+  isOngoingDateToken,
+  type ResumeDate,
+} from './resume-date.js';
+import {
+  deriveSkillTimeline,
+  type SkillUsageInterval,
+} from './skill-usage-timeline.js';
 
 // Gate-1 G1-A — TalentExtractionService.
 //
@@ -86,97 +106,199 @@ const SYSTEM_MESSAGE =
 // Prompt/schema VERSION identifier. v2 = the HF1 compact source-ref contract
 // (v1 = the retired verbatim-excerpt contract). Bump on any change to
 // DRAFT_SYSTEM_MESSAGE / RESUME_DRAFT_SCHEMA.
-const RESUME_DRAFT_PROMPT_VERSION = 'resume-draft/v2';
-const RESUME_DRAFT_SCHEMA_NAME = 'resume-draft-extraction/v2';
-// §11/R11 — max_tokens is an INERT OPERATIONAL SAFETY BOUNDARY, not the fix. The
-// architecture (facts + refs, no copied prose) is what bounds the output; a
-// truncation now surfaces as an EXPLICIT provider_truncated failure (§13), never
-// a silent empty draft. Not tuned in this increment (R11).
-const RESUME_DRAFT_MAX_TOKENS = 8192;
+// HF2 Talent-Experience-Intelligence extraction. v3 = the nested experience
+// contract (skill_usage/version/activity/basis + projects + assertions +
+// education + certifications), bumped from the HF1 v2 flat-fact contract.
+const RESUME_DRAFT_PROMPT_VERSION = 'resume-draft/v3';
+const RESUME_DRAFT_SCHEMA_NAME = 'resume-draft-extraction/v3';
+// HF2 P4 ruling (b) — the v3 draft path's SINGLE-CALL output ceiling. Raised
+// 8192→16384 for THIS path ONLY (not a global bump): v3's richer Talent-
+// Intelligence output legitimately reaches ~9K tokens on heavy enterprise
+// résumés (measured), so 8192 would knowingly fail valid senior résumés. This
+// is not the HF1 excerpt-bloat regime — output stays facts+refs. Truly extreme
+// résumés still return provider_truncated (explicit, observable). One call only —
+// no retry cascade, no second extraction (§26/R11). The examine path keeps
+// EXTRACTION_MAX_TOKENS (8192) — unrelated ceilings are NOT raised.
+const RESUME_DRAFT_V3_MAX_TOKENS = 16384;
+
+// HF2 R12 — schema cardinality CEILINGS (safety, not product limits). Set high
+// vs normal résumé density. Enforced in BOTH the provider schema (maxItems) and
+// the consumer (defensive re-clamp); overflow is surfaced (status=partial +
+// overflow flag), NEVER silently dropped — the WorkExperience source_refs still
+// span all blocks, so complete evidence stays retrievable from the source-map.
+const MAX_WORK_HISTORY = 20;
+const MAX_SKILL_USAGE_PER_EXP = 30;
+const MAX_PROJECTS_PER_EXP = 10;
+const MAX_ASSERTIONS_PER_EXP = 30; // ≈20 activity + 10 accomplishment (unified list)
+const MAX_EDUCATION = 10;
+const MAX_CERTIFICATIONS = 20;
+// HF2 R10 — recruiter-facing per-role summary hard cap.
+const WORK_SUMMARY_MAX_CHARS = 600;
+
+// HF2 R13 — the compact GOVERNED activity vocabulary (closed enum, verified
+// vocab-guard-clean). Constrains skill_usage.activity + assertion.type so the
+// model classifies rather than invents free prose.
+const ACTIVITY_VOCAB = [
+  'DEVELOP', 'DESIGN', 'ARCHITECT', 'IMPLEMENT', 'INTEGRATE', 'MIGRATE',
+  'DEPLOY', 'ADMINISTER', 'TEST', 'AUTOMATE', 'SUPPORT', 'LEAD', 'ANALYZE',
+  'BUILD', 'OTHER',
+] as const;
 
 const DRAFT_SYSTEM_MESSAGE =
-  'You structure a résumé into facts for a talent-intake form. The résumé is ' +
-  'given as numbered source blocks, each line prefixed with a block id like ' +
-  '"[B004]". Return ONLY facts EXPLICITLY present about the person the résumé is ' +
-  'about: their name, location, current employer/title, skills, and work history. ' +
-  'For every fact you return, set "source_refs" to the list of block ids whose ' +
-  'text states that fact (e.g. ["B004"]). Do NOT copy or quote the block text — ' +
-  'reference it by id only. Do NOT infer, enrich, or normalize; omit any field ' +
-  'not clearly stated rather than guessing. Distinguish the résumé owner from ' +
-  'other people named (references, managers, client contacts) and their location ' +
-  'from employer/school locations. List each skill exactly as written, atomic and ' +
-  'de-duplicated. Do NOT output email or phone. Do NOT output job descriptions, ' +
-  'responsibilities, or résumé prose — structured facts only.';
+  'You structure a résumé into governed evidence for a talent-intake form. The ' +
+  'résumé is given as numbered source blocks, each line prefixed with a block id ' +
+  'like "[B004]". Return ONLY facts EXPLICITLY present about the person the résumé ' +
+  'is about. For EVERY fact and nested item set "source_refs" to the block ids ' +
+  'whose text states it (e.g. ["B004"]). Do NOT copy or quote block text — ' +
+  'reference by id only. Do NOT infer, enrich, normalize, expand one skill into ' +
+  'related technologies, assign proficiency, or derive years/versions from dates, ' +
+  'titles, or employers. Omit anything not clearly stated. Distinguish the résumé ' +
+  'owner from other people named, and their location from employer/school ' +
+  'locations. Do NOT output email or phone. Per work_history entry: (1) an ' +
+  'optional "experience_summary" — ONE short factual sentence, at most 600 ' +
+  'characters, of what the role was, drawn only from that entry’s blocks, never ' +
+  'a copied responsibility list; (2) "skill_usage": each skill used IN THAT ROLE ' +
+  'with its surface_form exactly as written, an optional "version" ONLY if the ' +
+  'résumé states it, a compact "activity" from the allowed set, and ' +
+  '"usage_period_basis" = EXPLICIT when the résumé states the skill’s own dates, ' +
+  'WORK_EXPERIENCE_CONTEXT when only the role dates cover it, or UNKNOWN; (3) ' +
+  '"projects": distinct initiatives — "project_name" only if the résumé names one ' +
+  '(else omit it, never invent), plus optional context/domain; (4) "assertions": ' +
+  'atomic activities/accomplishments, each a short "statement" with a "type" from ' +
+  'the allowed set and a "metric" ONLY if a measurable outcome is explicitly ' +
+  'stated (never invent a number). Also return top-level "education" and ' +
+  '"certifications" that are explicitly stated. Structured facts + refs only — no ' +
+  'copied résumé prose.';
 
-// Native JSON-schema for constrained decoding (§12/R2). Compact: facts +
-// source_refs; NO source_excerpt; NO work-history description (R3/R4).
+const ACTIVITY_SCHEMA = { type: 'string', enum: [...ACTIVITY_VOCAB] } as const;
+const REFS_SCHEMA = { type: 'array', items: { type: 'string' } } as const;
+
+// Native JSON-schema for constrained decoding (§12/R2/R22). Compact facts +
+// source_refs; NO source_excerpt; cardinality CEILINGS via maxItems (R12).
 const RESUME_DRAFT_SCHEMA: Record<string, unknown> = {
   type: 'object',
   additionalProperties: false,
   properties: {
     identity: {
-      type: 'object',
-      additionalProperties: false,
-      properties: {
-        first_name: { type: 'string' },
-        last_name: { type: 'string' },
-        source_refs: { type: 'array', items: { type: 'string' } },
-      },
+      type: 'object', additionalProperties: false,
+      properties: { first_name: { type: 'string' }, last_name: { type: 'string' }, source_refs: REFS_SCHEMA },
       required: ['source_refs'],
     },
     location: {
-      type: 'object',
-      additionalProperties: false,
+      type: 'object', additionalProperties: false,
       properties: {
-        address: { type: 'string' },
-        city: { type: 'string' },
-        state: { type: 'string' },
-        zip: { type: 'string' },
-        country: { type: 'string' },
-        source_refs: { type: 'array', items: { type: 'string' } },
+        address: { type: 'string' }, city: { type: 'string' }, state: { type: 'string' },
+        zip: { type: 'string' }, country: { type: 'string' }, source_refs: REFS_SCHEMA,
       },
       required: ['source_refs'],
     },
     professional: {
-      type: 'object',
-      additionalProperties: false,
-      properties: {
-        current_employer: { type: 'string' },
-        title: { type: 'string' },
-        source_refs: { type: 'array', items: { type: 'string' } },
-      },
+      type: 'object', additionalProperties: false,
+      properties: { current_employer: { type: 'string' }, title: { type: 'string' }, source_refs: REFS_SCHEMA },
       required: ['source_refs'],
     },
     skills: {
       type: 'array',
       items: {
-        type: 'object',
-        additionalProperties: false,
-        properties: {
-          surface_form: { type: 'string' },
-          source_refs: { type: 'array', items: { type: 'string' } },
-        },
+        type: 'object', additionalProperties: false,
+        properties: { surface_form: { type: 'string' }, source_refs: REFS_SCHEMA },
         required: ['surface_form', 'source_refs'],
       },
     },
     work_history: {
       type: 'array',
+      maxItems: MAX_WORK_HISTORY,
       items: {
-        type: 'object',
-        additionalProperties: false,
+        type: 'object', additionalProperties: false,
         properties: {
           employer_name: { type: 'string' },
           role_title: { type: 'string' },
           start_date: { type: 'string' },
           end_date: { type: 'string' },
           employment_type: { type: 'string' },
-          source_refs: { type: 'array', items: { type: 'string' } },
+          location: { type: 'string' },
+          experience_summary: { type: 'string', maxLength: WORK_SUMMARY_MAX_CHARS },
+          source_refs: REFS_SCHEMA,
+          skill_usage: {
+            type: 'array', maxItems: MAX_SKILL_USAGE_PER_EXP,
+            items: {
+              type: 'object', additionalProperties: false,
+              properties: {
+                surface_form: { type: 'string' },
+                version: { type: 'string' },
+                activity: ACTIVITY_SCHEMA,
+                usage_start: { type: 'string' },
+                usage_end: { type: 'string' },
+                usage_period_basis: { type: 'string', enum: ['EXPLICIT', 'WORK_EXPERIENCE_CONTEXT', 'UNKNOWN'] },
+                source_refs: REFS_SCHEMA,
+              },
+              required: ['surface_form', 'source_refs'],
+            },
+          },
+          projects: {
+            type: 'array', maxItems: MAX_PROJECTS_PER_EXP,
+            items: {
+              type: 'object', additionalProperties: false,
+              properties: {
+                project_name: { type: 'string' },
+                context: { type: 'string' },
+                domain: { type: 'string' },
+                start_date: { type: 'string' },
+                end_date: { type: 'string' },
+                source_refs: REFS_SCHEMA,
+              },
+              required: ['source_refs'],
+            },
+          },
+          assertions: {
+            type: 'array', maxItems: MAX_ASSERTIONS_PER_EXP,
+            items: {
+              type: 'object', additionalProperties: false,
+              properties: {
+                type: ACTIVITY_SCHEMA,
+                statement: { type: 'string' },
+                metric: { type: 'string' },
+                source_refs: REFS_SCHEMA,
+              },
+              required: ['type', 'statement', 'source_refs'],
+            },
+          },
         },
         required: ['employer_name', 'role_title', 'source_refs'],
       },
     },
+    education: {
+      type: 'array', maxItems: MAX_EDUCATION,
+      items: {
+        type: 'object', additionalProperties: false,
+        properties: {
+          institution_name: { type: 'string' },
+          degree_name: { type: 'string' },
+          field_of_study: { type: 'string' },
+          conferred_date: { type: 'string' },
+          source_refs: REFS_SCHEMA,
+        },
+        required: ['institution_name', 'degree_name', 'source_refs'],
+      },
+    },
+    certifications: {
+      type: 'array', maxItems: MAX_CERTIFICATIONS,
+      items: {
+        type: 'object', additionalProperties: false,
+        properties: {
+          certification_name: { type: 'string' },
+          issuer_name: { type: 'string' },
+          credential_ref: { type: 'string' },
+          issued_date: { type: 'string' },
+          expiry_date: { type: 'string' },
+          version_or_level: { type: 'string' },
+          source_refs: REFS_SCHEMA,
+        },
+        required: ['certification_name', 'source_refs'],
+      },
+    },
   },
-  required: ['skills', 'work_history'],
+  required: ['skills', 'work_history', 'education', 'certifications'],
 };
 
 @Injectable()
@@ -564,7 +686,10 @@ export class TalentExtractionService {
     const emptyProposal = (): ResumeDraftProposal => ({
       skills: [],
       work_history: [],
+      education: [],
+      certifications: [],
       rejected_count: 0,
+      overflow: false,
       source_map_version: source_map.version,
       resume_text_hash: source_map.text_hash,
     });
@@ -594,7 +719,7 @@ export class TalentExtractionService {
       model: ARAMO_AI_DRAFT_MODEL,
       system: DRAFT_SYSTEM_MESSAGE,
       user_content: userContent,
-      max_tokens: RESUME_DRAFT_MAX_TOKENS,
+      max_tokens: RESUME_DRAFT_V3_MAX_TOKENS,
       json_schema: RESUME_DRAFT_SCHEMA,
       schema_name: RESUME_DRAFT_SCHEMA_NAME,
     });
@@ -695,11 +820,20 @@ export class TalentExtractionService {
       proposal.skills.push({ surface_form: sf, source_refs: refs });
     }
 
+    // R12 — cardinality CEILINGS, enforced NON-SILENTLY: truncate overflow +
+    // flag it (never drop quietly). The WorkExperience source_refs still span all
+    // blocks, so complete evidence stays retrievable from the source-map.
+    let overflow = false;
+    const cap = <T,>(arr: readonly T[], max: number): T[] => {
+      if (arr.length > max) overflow = true;
+      return arr.slice(0, max);
+    };
+
     // Work history — employer AND role must both ground against the entry's refs
-    // (§5). Declared (source='resume'), NOT verified. Dates/employment_type only
-    // when the model returned a string. NO description (R4). source_refs carried
-    // through to the persistence seam (§16/R8).
-    for (const wh of parsed.work_history) {
+    // (§5). Nested intelligence (summary/skill_usage/projects/assertions) is
+    // grounded INDEPENDENTLY per item so one bad nested fact never destroys the
+    // WorkExperience or its siblings (R-boundary). Declared, NOT verified.
+    for (const wh of cap(parsed.work_history, MAX_WORK_HISTORY)) {
       const employer = wh.employer_name.trim();
       const role = wh.role_title.trim();
       if (
@@ -713,9 +847,122 @@ export class TalentExtractionService {
       }
       const refs = dedupeRefs(wh.source_refs);
       sourceRefCount += refs.length;
+      const location = (wh.location ?? '').trim();
+
+      // skill_usage — surface_form + version are DIRECT_FACTs (substring-grounded
+      // against the usage's OWN refs — the cross-role leakage guard: a skill only
+      // attaches where its refs resolve + support it). `activity` is a
+      // SOURCE_ASSOCIATED_INTERPRETATION (governed classification, carried, not
+      // value-validated). usage dates: carried ONLY when the basis is EXPLICIT;
+      // for WORK_EXPERIENCE_CONTEXT the model must not manufacture skill dates —
+      // they are NULLED here and Aramo resolves the effective interval from the
+      // parent WorkExperience at derivation time (P4 ruling; keeps stated evidence
+      // separate from derived temporal intelligence).
+      const skillUsage: ResumeDraftSkillUsage[] = [];
+      for (const su of cap(wh.skill_usage ?? [], MAX_SKILL_USAGE_PER_EXP)) {
+        const sf = su.surface_form.trim();
+        if (sf === '' || !groundValue(sf, su.source_refs, blockIndex)) {
+          rejected += 1;
+          continue;
+        }
+        const suRefs = dedupeRefs(su.source_refs);
+        sourceRefCount += suRefs.length;
+        const version = (su.version ?? '').trim();
+        const basis = (su.usage_period_basis ?? '').trim();
+        const explicitDates = basis === 'EXPLICIT';
+        skillUsage.push({
+          surface_form: sf,
+          ...(version !== '' && groundValue(version, su.source_refs, blockIndex)
+            ? { version }
+            : {}),
+          ...(typeof su.activity === 'string' && su.activity.trim() !== ''
+            ? { activity: su.activity.trim() }
+            : {}),
+          // Dates carried ONLY for EXPLICIT basis (stated skill dates); dropped
+          // for WORK_EXPERIENCE_CONTEXT/UNKNOWN (resolved from the parent role).
+          ...(explicitDates && typeof su.usage_start === 'string' && su.usage_start.trim() !== ''
+            ? { usage_start: su.usage_start.trim() }
+            : {}),
+          ...(explicitDates && typeof su.usage_end === 'string' && su.usage_end.trim() !== ''
+            ? { usage_end: su.usage_end.trim() }
+            : {}),
+          ...(basis !== '' ? { usage_period_basis: basis } : {}),
+          source_refs: suRefs,
+        });
+      }
+
+      // projects — refs must resolve; project_name (when present) is a DIRECT_FACT
+      // (substring-grounded, never invented, R6); `context` is a
+      // SOURCE_ASSOCIATED_INTERPRETATION (carried with valid refs, NOT validated).
+      const projects: ResumeDraftProject[] = [];
+      for (const pj of cap(wh.projects ?? [], MAX_PROJECTS_PER_EXP)) {
+        if (!refsResolve(pj.source_refs, blockIndex)) {
+          rejected += 1;
+          continue;
+        }
+        const name = (pj.project_name ?? '').trim();
+        // A named project must be supported; an unnamed initiative is allowed.
+        if (name !== '' && !groundValue(name, pj.source_refs, blockIndex)) {
+          rejected += 1;
+          continue;
+        }
+        const pjRefs = dedupeRefs(pj.source_refs);
+        sourceRefCount += pjRefs.length;
+        projects.push({
+          ...(name !== '' ? { project_name: name } : {}),
+          ...(typeof pj.context === 'string' && pj.context.trim() !== ''
+            ? { context: capWorkSummary(pj.context) }
+            : {}),
+          ...(typeof pj.domain === 'string' && pj.domain.trim() !== ''
+            ? { domain: pj.domain.trim() }
+            : {}),
+          ...(typeof pj.start_date === 'string' && pj.start_date.trim() !== ''
+            ? { start_date: pj.start_date.trim() }
+            : {}),
+          ...(typeof pj.end_date === 'string' && pj.end_date.trim() !== ''
+            ? { end_date: pj.end_date.trim() }
+            : {}),
+          source_refs: pjRefs,
+        });
+      }
+
+      // assertions — a SOURCE_ASSOCIATED_INTERPRETATION: refs must resolve, but
+      // `type`(governed classification) + `statement`(paraphrase) are NOT value-
+      // validated, so grounding_class is stamped explicitly. `metric` is a
+      // DIRECT_FACT kept ONLY when it substring-grounds (never invented, R17).
+      const assertions: ResumeDraftAssertion[] = [];
+      for (const a of cap(wh.assertions ?? [], MAX_ASSERTIONS_PER_EXP)) {
+        const statement = a.statement.trim();
+        const type = a.type.trim();
+        if (statement === '' || type === '' || !refsResolve(a.source_refs, blockIndex)) {
+          rejected += 1;
+          continue;
+        }
+        const aRefs = dedupeRefs(a.source_refs);
+        sourceRefCount += aRefs.length;
+        const metric = (a.metric ?? '').trim();
+        assertions.push({
+          type,
+          statement: capWorkSummary(statement),
+          ...(metric !== '' && groundValue(metric, a.source_refs, blockIndex)
+            ? { metric }
+            : {}),
+          grounding_class: 'SOURCE_ASSOCIATED_INTERPRETATION',
+          source_refs: aRefs,
+        });
+      }
+
+      // experience_summary — rides the fact-grounded entry (refs valid by
+      // construction); hard-capped to 600 (R10).
+      const summary =
+        typeof wh.experience_summary === 'string' ? capWorkSummary(wh.experience_summary) : '';
+
       proposal.work_history.push({
         employer_name: employer,
         role_title: role,
+        ...(location !== '' && groundValue(location, wh.source_refs, blockIndex)
+          ? { location }
+          : {}),
         ...(typeof wh.start_date === 'string' && wh.start_date.trim() !== ''
           ? { start_date: wh.start_date.trim() }
           : {}),
@@ -725,16 +972,80 @@ export class TalentExtractionService {
         ...(typeof wh.employment_type === 'string' && wh.employment_type.trim() !== ''
           ? { employment_type: wh.employment_type.trim() }
           : {}),
+        ...(summary !== '' ? { experience_summary: summary } : {}),
         source_refs: refs,
+        ...(skillUsage.length > 0 ? { skill_usage: skillUsage } : {}),
+        ...(projects.length > 0 ? { projects } : {}),
+        ...(assertions.length > 0 ? { assertions } : {}),
+      });
+    }
+
+    // Education — institution + degree must both ground (§5); source_refs carried.
+    for (const ed of cap(parsed.education, MAX_EDUCATION)) {
+      const inst = ed.institution_name.trim();
+      const degree = ed.degree_name.trim();
+      if (
+        inst === '' ||
+        degree === '' ||
+        !groundValue(inst, ed.source_refs, blockIndex) ||
+        !groundValue(degree, ed.source_refs, blockIndex)
+      ) {
+        rejected += 1;
+        continue;
+      }
+      const edRefs = dedupeRefs(ed.source_refs);
+      sourceRefCount += edRefs.length;
+      proposal.education.push({
+        institution_name: inst,
+        degree_name: degree,
+        ...(typeof ed.field_of_study === 'string' && ed.field_of_study.trim() !== ''
+          ? { field_of_study: ed.field_of_study.trim() }
+          : {}),
+        ...(typeof ed.conferred_date === 'string' && ed.conferred_date.trim() !== ''
+          ? { conferred_date: ed.conferred_date.trim() }
+          : {}),
+        source_refs: edRefs,
+      });
+    }
+
+    // Certifications — certification_name must ground (§5); source_refs carried.
+    for (const ct of cap(parsed.certifications, MAX_CERTIFICATIONS)) {
+      const name = ct.certification_name.trim();
+      if (name === '' || !groundValue(name, ct.source_refs, blockIndex)) {
+        rejected += 1;
+        continue;
+      }
+      const ctRefs = dedupeRefs(ct.source_refs);
+      sourceRefCount += ctRefs.length;
+      proposal.certifications.push({
+        certification_name: name,
+        ...(typeof ct.issuer_name === 'string' && ct.issuer_name.trim() !== ''
+          ? { issuer_name: ct.issuer_name.trim() }
+          : {}),
+        ...(typeof ct.credential_ref === 'string' && ct.credential_ref.trim() !== ''
+          ? { credential_ref: ct.credential_ref.trim() }
+          : {}),
+        ...(typeof ct.issued_date === 'string' && ct.issued_date.trim() !== ''
+          ? { issued_date: ct.issued_date.trim() }
+          : {}),
+        ...(typeof ct.expiry_date === 'string' && ct.expiry_date.trim() !== ''
+          ? { expiry_date: ct.expiry_date.trim() }
+          : {}),
+        ...(typeof ct.version_or_level === 'string' && ct.version_or_level.trim() !== ''
+          ? { version_or_level: ct.version_or_level.trim() }
+          : {}),
+        source_refs: ctRefs,
       });
     }
 
     proposal.rejected_count = rejected;
+    proposal.overflow = overflow;
 
     const factCount = countFacts(proposal);
-    // success = grounded facts AND nothing rejected; partial = something was
-    // rejected OR nothing grounded (honest — never a masked failure, §13).
-    const status: ResumeDraftStatus = factCount > 0 && rejected === 0 ? 'success' : 'partial';
+    // success = grounded facts, nothing rejected, no overflow; else partial —
+    // R12: overflow is a visible partial/incomplete condition, never silent.
+    const status: ResumeDraftStatus =
+      factCount > 0 && rejected === 0 && !overflow ? 'success' : 'partial';
 
     // PII-floor instrumentation (§17): counts + token/byte metrics only, never
     // content. `completion_bytes` is the structured payload size — the metric the
@@ -755,6 +1066,12 @@ export class TalentExtractionService {
       source_ref_count: sourceRefCount,
       skills_count: proposal.skills.length,
       work_history_count: proposal.work_history.length,
+      skill_usage_count: proposal.work_history.reduce((n, w) => n + (w.skill_usage?.length ?? 0), 0),
+      project_count: proposal.work_history.reduce((n, w) => n + (w.projects?.length ?? 0), 0),
+      assertion_count: proposal.work_history.reduce((n, w) => n + (w.assertions?.length ?? 0), 0),
+      education_count: proposal.education.length,
+      certification_count: proposal.certifications.length,
+      overflow: proposal.overflow,
       rejected_count: rejected,
       redacted_span_count_input: redactedSpanCountInput,
     });
@@ -787,9 +1104,11 @@ export class TalentExtractionService {
       if (employer === '' || role === '') continue;
       const start = parseWorkHistoryDate(e.start_date);
       const end = parseWorkHistoryDate(e.end_date);
-      const id = uuidv7();
+      const workExperienceId = uuidv7();
+      const summary =
+        typeof e.experience_summary === 'string' ? capWorkSummary(e.experience_summary) : '';
       await this.evidence.createTalentWorkHistoryEntry({
-        id,
+        id: workExperienceId,
         talent_id: input.talent_id,
         tenant_id: input.tenant_id,
         employer_name: employer,
@@ -800,16 +1119,176 @@ export class TalentExtractionService {
         ...(typeof e.employment_type === 'string' && e.employment_type.trim() !== ''
           ? { employment_type: e.employment_type.trim() }
           : {}),
+        ...(typeof e.location === 'string' && e.location.trim() !== ''
+          ? { location: e.location.trim() }
+          : {}),
         ...(typeof e.description === 'string' && e.description.trim() !== ''
           ? { description_text: e.description.trim() }
           : {}),
+        // HF2 R10 — the bounded recruiter-facing role summary (≤600). company_id
+        // stays NULL: company RESOLUTION is out of scope (the null column is the
+        // forward seam; THE WALL forbids importing company here, ADR-0029/I15).
+        ...(summary !== '' ? { experience_summary: summary } : {}),
         // HF1 provenance — per-entry source_refs + the shared document/corpus anchors.
         ...provenanceFields(e.source_refs, input.provenance),
         created_at: createdAt,
       });
-      ids.push(id);
+      ids.push(workExperienceId);
+
+      // HF2 R3/R16 — the role's time-aware SkillUsage evidence (each row keyed to
+      // this WorkExperience). Declared, NOT scored (source='declared'; no
+      // confidence). usage_start/end persist ONLY when the résumé stated the
+      // skill's OWN dates (EXPLICIT); WORK_EXPERIENCE_CONTEXT leaves them NULL
+      // (never manufactured — P4 ruling), the derivation resolves the interval
+      // from this role instead.
+      await this.persistRoleSkillUsage({
+        talent_id: input.talent_id,
+        tenant_id: input.tenant_id,
+        work_experience_id: workExperienceId,
+        skill_usage: e.skill_usage ?? [],
+        provenance: input.provenance,
+        createdAt,
+      });
+
+      // HF2 R6 — named/unnamed projects within the role.
+      await this.persistRoleProjects({
+        talent_id: input.talent_id,
+        tenant_id: input.tenant_id,
+        work_experience_id: workExperienceId,
+        projects: e.projects ?? [],
+        provenance: input.provenance,
+        createdAt,
+      });
+
+      // HF2 R1/R7 — activity/accomplishment assertions → EvidenceRecord ledger
+      // (EXPERIENCE_CLAIM, deterministic, non-authoritative — P5).
+      if (Array.isArray(e.assertions) && e.assertions.length > 0) {
+        await this.persistExperienceAssertions({
+          talent_id: input.talent_id,
+          tenant_id: input.tenant_id,
+          work_experience_id: workExperienceId,
+          assertions: e.assertions,
+        });
+      }
     }
+
+    // HF2 R14 — the derived skill-years snapshot (union, not sum), computed ONLY
+    // on normalized dates (R27). Best-effort: a snapshot hiccup must not fail the
+    // evidence writes above (the controller's create path is already soft-fail).
+    await this.persistDerivedSkillSnapshot({
+      talent_id: input.talent_id,
+      tenant_id: input.tenant_id,
+      entries: input.entries,
+      createdAt,
+    });
+
     return ids;
+  }
+
+  // HF2 R3/R16 — persist one role's SkillUsage rows. version + usage dates are
+  // DIRECT_FACT (carried only when the model grounded them); activity_context is
+  // the governed activity token (SOURCE_ASSOCIATED_INTERPRETATION). Deterministic.
+  private async persistRoleSkillUsage(input: {
+    talent_id: string;
+    tenant_id: string;
+    work_experience_id: string;
+    skill_usage: readonly ResumeDraftSkillUsage[];
+    provenance?: ResumeProvenance;
+    createdAt: Date;
+  }): Promise<void> {
+    for (const su of input.skill_usage) {
+      const surface = su.surface_form.trim();
+      if (surface === '') continue;
+      // usage_start/end stored ONLY at EXPLICIT basis AND when strictly parseable
+      // (a year-only "2021" anchors to its month edge; ambiguous text → NULL,
+      // never a fabricated day — R27). WORK_EXPERIENCE_CONTEXT keeps them NULL.
+      const explicit = su.usage_period_basis === 'EXPLICIT';
+      const usageStart = explicit ? resumeDateToDbDate(su.usage_start, 'start') : null;
+      const usageEnd = explicit ? resumeDateToDbDate(su.usage_end, 'end') : null;
+      await this.evidence.createTalentSkillEvidence({
+        id: uuidv7(),
+        talent_id: input.talent_id,
+        tenant_id: input.tenant_id,
+        skill_id: deriveSkillId(surface),
+        surface_form: surface,
+        source: 'declared',
+        work_experience_id: input.work_experience_id,
+        ...(typeof su.version === 'string' && su.version.trim() !== ''
+          ? { version: su.version.trim() }
+          : {}),
+        ...(usageStart !== null ? { usage_start: usageStart } : {}),
+        ...(usageEnd !== null ? { usage_end: usageEnd } : {}),
+        ...(typeof su.usage_period_basis === 'string' && su.usage_period_basis.trim() !== ''
+          ? { usage_period_basis: su.usage_period_basis.trim() }
+          : {}),
+        ...(typeof su.activity === 'string' && su.activity.trim() !== ''
+          ? { activity_context: su.activity.trim() }
+          : {}),
+        ...provenanceFields(su.source_refs, input.provenance),
+        created_at: input.createdAt,
+      });
+    }
+  }
+
+  // HF2 R6 — persist one role's ProjectExperience rows. project_name (when named)
+  // is DIRECT_FACT; context_summary/domain are SOURCE_ASSOCIATED_INTERPRETATION.
+  private async persistRoleProjects(input: {
+    talent_id: string;
+    tenant_id: string;
+    work_experience_id: string;
+    projects: readonly ResumeDraftProject[];
+    provenance?: ResumeProvenance;
+    createdAt: Date;
+  }): Promise<void> {
+    for (const pj of input.projects) {
+      const name = typeof pj.project_name === 'string' ? pj.project_name.trim() : '';
+      const context = typeof pj.context === 'string' ? capWorkSummary(pj.context) : '';
+      const domain = typeof pj.domain === 'string' ? pj.domain.trim() : '';
+      // A project with neither a name nor any context is empty noise — skip it.
+      if (name === '' && context === '' && domain === '') continue;
+      const pStart = resumeDateToDbDate(pj.start_date, 'start');
+      const pEnd = resumeDateToDbDate(pj.end_date, 'end');
+      await this.evidence.createTalentProjectExperience({
+        id: uuidv7(),
+        talent_id: input.talent_id,
+        tenant_id: input.tenant_id,
+        work_experience_id: input.work_experience_id,
+        ...(name !== '' ? { project_name: name } : {}),
+        ...(context !== '' ? { context_summary: context } : {}),
+        ...(domain !== '' ? { domain } : {}),
+        ...(pStart !== null ? { start_date: pStart } : {}),
+        ...(pEnd !== null ? { end_date: pEnd } : {}),
+        ...provenanceFields(pj.source_refs, input.provenance),
+        created_at: input.createdAt,
+      });
+    }
+  }
+
+  // HF2 R14 — derive + persist the union-based skill-years snapshot. Declared,
+  // NOT scored (skill_confidence_scores = {} — R3); estimated years are the
+  // interval-UNION per skill (concurrent roles counted once), carrying the
+  // COARSEST input precision so a year-only estimate is never presented as exact.
+  private async persistDerivedSkillSnapshot(input: {
+    talent_id: string;
+    tenant_id: string;
+    entries: readonly ResumeDraftWorkHistory[];
+    createdAt: Date;
+  }): Promise<void> {
+    const derived = deriveResumeSkillYears(input.entries, dateToResumeDate(input.createdAt));
+    // Nothing datable → no snapshot (avoid an all-null row).
+    if (derived.overall_years === null && Object.keys(derived.by_skill).length === 0) return;
+    await this.evidence.createTalentDerivedSnapshot({
+      id: uuidv7(),
+      talent_id: input.talent_id,
+      tenant_id: input.tenant_id,
+      // R3 — declared, not scored: no confidence is computed on this path.
+      skill_confidence_scores: {},
+      ...(derived.overall_years !== null
+        ? { estimated_years_experience_overall: derived.overall_years }
+        : {}),
+      estimated_years_experience_by_skill: derived.by_skill,
+      computed_at: input.createdAt,
+    });
   }
 
   // HF1 Gate-6 R1 — create the résumé's TalentDocument AFTER confirmed Talent
@@ -881,6 +1360,118 @@ export class TalentExtractionService {
       ids.push(id);
     }
     return ids;
+  }
+
+  // HF2 R8/R18 — persist recruiter-reviewed résumé EDUCATION as declared
+  // TalentEducationEntry WITH durable provenance. institution+degree required
+  // (a row missing either is dropped, not guessed). Dates strict-parsed (R27) —
+  // ambiguous → NULL, never fabricated. DECLARED, not verified. Returns ids.
+  async persistDeclaredEducation(input: {
+    talent_id: string;
+    tenant_id: string;
+    education: readonly ResumeDraftEducation[];
+    provenance?: ResumeProvenance;
+  }): Promise<string[]> {
+    const ids: string[] = [];
+    const createdAt = new Date();
+    for (const ed of input.education) {
+      const institution = ed.institution_name.trim();
+      const degree = ed.degree_name.trim();
+      if (institution === '' || degree === '') continue;
+      const conferred = resumeDateToDbDate(ed.conferred_date, 'end');
+      const id = uuidv7();
+      await this.evidence.createTalentEducationEntry({
+        id,
+        talent_id: input.talent_id,
+        tenant_id: input.tenant_id,
+        institution_name: institution,
+        degree_name: degree,
+        source: 'resume',
+        ...(typeof ed.field_of_study === 'string' && ed.field_of_study.trim() !== ''
+          ? { field_of_study: ed.field_of_study.trim() }
+          : {}),
+        ...(conferred !== null ? { conferred_date: conferred } : {}),
+        ...provenanceFields(ed.source_refs, input.provenance),
+        created_at: createdAt,
+      });
+      ids.push(id);
+    }
+    return ids;
+  }
+
+  // HF2 R8/R19 — persist recruiter-reviewed résumé CERTIFICATIONS as declared
+  // TalentCertificationEntry WITH provenance. name required; issued/expiry
+  // strict-parsed (R27). DECLARED, not verified. Returns ids.
+  async persistDeclaredCertifications(input: {
+    talent_id: string;
+    tenant_id: string;
+    certifications: readonly ResumeDraftCertification[];
+    provenance?: ResumeProvenance;
+  }): Promise<string[]> {
+    const ids: string[] = [];
+    const createdAt = new Date();
+    for (const c of input.certifications) {
+      const name = c.certification_name.trim();
+      if (name === '') continue;
+      const issued = resumeDateToDbDate(c.issued_date, 'start');
+      const expiry = resumeDateToDbDate(c.expiry_date, 'end');
+      const id = uuidv7();
+      await this.evidence.createTalentCertificationEntry({
+        id,
+        talent_id: input.talent_id,
+        tenant_id: input.tenant_id,
+        certification_name: name,
+        source: 'resume',
+        ...(typeof c.issuer_name === 'string' && c.issuer_name.trim() !== ''
+          ? { issuer_name: c.issuer_name.trim() }
+          : {}),
+        ...(typeof c.credential_ref === 'string' && c.credential_ref.trim() !== ''
+          ? { credential_ref: c.credential_ref.trim() }
+          : {}),
+        ...(issued !== null ? { issued_date: issued } : {}),
+        ...(expiry !== null ? { expiry_date: expiry } : {}),
+        ...provenanceFields(c.source_refs, input.provenance),
+        created_at: createdAt,
+      });
+      ids.push(id);
+    }
+    return ids;
+  }
+
+  // HF2 R1/R7 — route a WorkExperience's résumé-derived ASSERTIONS (activities /
+  // accomplishments) into the talent-trust EvidenceRecord ledger as EXPERIENCE_
+  // CLAIM rows. Reuses the SAME governed write surface as the declared-claim
+  // reconcile (recordDeclaredClaimIfAbsent: THIRD_PARTY_UNVERIFIED / DOCUMENT /
+  // ai_derived; NON-authoritative — cannot elevate a trust band). DETERMINISTIC
+  // — no AI call (R6/§26); the source_ref is a content id so a re-create is
+  // idempotent. grounding_class rides the payload (SOURCE_ASSOCIATED_
+  // INTERPRETATION) for later Vector/KG projection. Returns the count written.
+  async persistExperienceAssertions(input: {
+    talent_id: string;
+    tenant_id: string;
+    work_experience_id: string;
+    assertions: readonly ResumeDraftAssertion[];
+  }): Promise<number> {
+    const subjectRef = {
+      tenant_id: input.tenant_id,
+      ref_type: 'ATS_TALENT_RECORD' as const,
+      ref_id: input.talent_id,
+      link_source: 'talent-extraction',
+    };
+    let written = 0;
+    for (const a of input.assertions) {
+      if (a.statement.trim() === '' || a.type.trim() === '') continue;
+      const claim = mapAssertionToClaim(a, input.work_experience_id);
+      const result = await this.trust.recordDeclaredClaimIfAbsent({
+        subjectRef,
+        assertion_type: claim.assertion_type,
+        assertion_payload: claim.payload,
+        source_ref: claim.source_ref,
+        created_by: 'talent-extraction',
+      });
+      if (result.written) written += 1;
+    }
+    return written;
   }
 
   // Full-profile EDIT (LOCKED scope expansion) — REPLACE the talent's declared
@@ -980,12 +1571,135 @@ function provenanceFields(
   };
 }
 
-// A free-text résumé date ('2022', 'Dec 2021', 'present') → a calendar Date, or
-// null when it does not parse (e.g. 'present' → ongoing, no end_date).
+// A free-text résumé date ('2022', 'Dec 2021', 'present') → a calendar Date for
+// @db.Date STORAGE, or null when it is not confidence-safe. R27: NO loose
+// `new Date(freeform)` — the strict parser recognizes a closed shape set and
+// REFUSES everything else (→ null), so a stored value is never fabricated from
+// ambiguous text. A coarse date anchors to its 'start' edge for storage (a
+// year-only "2021" → 2021-01-01); the precision loss is intentional at the
+// storage boundary and is NEVER what the duration math consumes — that path
+// takes the precision-carrying ResumeDate directly (deriveResumeSkillYears).
 function parseWorkHistoryDate(value: string | undefined): Date | null {
+  return resumeDateToDbDate(value, 'start');
+}
+
+// Strict freeform → @db.Date. Ongoing tokens ('present') and unparseable text
+// yield null (no end_date = ongoing). `edge` anchors a coarse date's boundary
+// (YEAR start→Jan-1, end→Dec-1) WITHOUT ever inventing a day beyond the edge
+// convention. UTC midnight keeps @db.Date free of timezone drift.
+function resumeDateToDbDate(
+  value: string | undefined,
+  edge: 'start' | 'end',
+): Date | null {
   if (typeof value !== 'string' || value.trim() === '') return null;
-  const d = new Date(value.trim());
-  return Number.isNaN(d.getTime()) ? null : d;
+  const d = parseResumeDate(value);
+  if (d === null) return null;
+  const month = d.month ?? (edge === 'start' ? 1 : 12);
+  const day = d.day ?? 1;
+  return new Date(Date.UTC(d.year, month - 1, day));
+}
+
+// "Now" as an EXACT ResumeDate (a precisely-known instant — NOT a parsed
+// freeform string, so it is R27-safe). Used as the asOf edge for ongoing spans.
+function dateToResumeDate(d: Date): ResumeDate {
+  return {
+    year: d.getUTCFullYear(),
+    month: d.getUTCMonth() + 1,
+    day: d.getUTCDate(),
+    precision: 'EXACT',
+  };
+}
+
+// HF2 R14 — the PURE derivation (no DB, unit-tested): résumé work-history →
+// union-based skill-years. For each SkillUsage the interval is EXPLICIT (the
+// résumé stated the skill's own dates) or inherited from the enclosing role
+// (WORK_EXPERIENCE_CONTEXT / unknown basis); ongoing is an explicit 'present'
+// token on either the usage end or the role end. Per skill_id the intervals are
+// UNIONED (concurrent roles counted once — never summed), carrying the coarsest
+// precision. `overall_years` is the union of ALL role spans (career length).
+export interface DerivedSkillYear {
+  skill_id: string;
+  surface_form: string;
+  supported_months: number;
+  years: number;
+  precision: string | null;
+  current: boolean;
+}
+export interface DerivedResumeSkillYears {
+  overall_years: number | null;
+  by_skill: Record<string, DerivedSkillYear>;
+}
+
+function monthsToYears(months: number): number {
+  return Math.round((months / 12) * 10) / 10;
+}
+
+export function deriveResumeSkillYears(
+  entries: readonly ResumeDraftWorkHistory[],
+  asOf: ResumeDate,
+): DerivedResumeSkillYears {
+  const roleIntervals: SkillUsageInterval[] = [];
+  const bySkill = new Map<string, { surface_form: string; intervals: SkillUsageInterval[] }>();
+
+  for (const e of entries) {
+    if (e.employer_name.trim() === '' || e.role_title.trim() === '') continue;
+    const roleStart = strictOrNull(e.start_date);
+    const roleOngoing = isOngoingToken(e.end_date);
+    const roleEnd = roleOngoing ? null : strictOrNull(e.end_date);
+    const roleInterval: SkillUsageInterval = {
+      start: roleStart,
+      end: roleEnd,
+      ongoing: roleOngoing,
+    };
+    if (roleStart !== null) roleIntervals.push(roleInterval);
+
+    for (const su of e.skill_usage ?? []) {
+      const surface = su.surface_form.trim();
+      if (surface === '') continue;
+      const explicit = su.usage_period_basis === 'EXPLICIT';
+      const suStart = explicit ? strictOrNull(su.usage_start) : null;
+      const interval: SkillUsageInterval =
+        explicit && suStart !== null
+          ? {
+              start: suStart,
+              end: isOngoingToken(su.usage_end) ? null : strictOrNull(su.usage_end),
+              ongoing: isOngoingToken(su.usage_end),
+            }
+          : roleInterval; // WORK_EXPERIENCE_CONTEXT / unknown → inherit the role span
+      const id = deriveSkillId(surface);
+      const bucket = bySkill.get(id) ?? { surface_form: surface, intervals: [] };
+      bucket.intervals.push(interval);
+      bySkill.set(id, bucket);
+    }
+  }
+
+  const by_skill: Record<string, DerivedSkillYear> = {};
+  for (const [skill_id, bucket] of bySkill) {
+    const t = deriveSkillTimeline(bucket.intervals, asOf);
+    by_skill[skill_id] = {
+      skill_id,
+      surface_form: bucket.surface_form,
+      supported_months: t.supported_months,
+      years: monthsToYears(t.supported_months),
+      precision: t.precision,
+      current: t.current_usage,
+    };
+  }
+
+  const overall = deriveSkillTimeline(roleIntervals, asOf);
+  const overall_years =
+    roleIntervals.length > 0 ? monthsToYears(overall.supported_months) : null;
+
+  return { overall_years, by_skill };
+}
+
+function strictOrNull(value: string | undefined): ResumeDate | null {
+  if (typeof value !== 'string' || value.trim() === '') return null;
+  return parseResumeDate(value);
+}
+
+function isOngoingToken(value: string | undefined): boolean {
+  return typeof value === 'string' && isOngoingDateToken(value);
 }
 
 // ── deterministic helpers (the tested core) ──────────────────────────────────
@@ -1129,7 +1843,12 @@ function isStringArray(v: unknown): v is string[] {
 // constrained decoding (§12) should already guarantee the schema; this is the
 // defensive deterministic floor (never throws; off-shape groups are dropped).
 function parseDraftStructured(parsedUnknown: unknown): ResumeDraftCompletion {
-  const out: ResumeDraftCompletion = { skills: [], work_history: [] };
+  const out: ResumeDraftCompletion = {
+    skills: [],
+    work_history: [],
+    education: [],
+    certifications: [],
+  };
   if (typeof parsedUnknown !== 'object' || parsedUnknown === null) return out;
   const obj = parsedUnknown as Record<string, unknown>;
   if (isResumeDraftIdentityShape(obj['identity'])) out.identity = obj['identity'];
@@ -1140,6 +1859,12 @@ function parseDraftStructured(parsedUnknown: unknown): ResumeDraftCompletion {
     : [];
   out.work_history = Array.isArray(obj['work_history'])
     ? (obj['work_history'] as unknown[]).filter(isWorkHistoryFactShape)
+    : [];
+  out.education = Array.isArray(obj['education'])
+    ? (obj['education'] as unknown[]).filter(isEducationFactShape)
+    : [];
+  out.certifications = Array.isArray(obj['certifications'])
+    ? (obj['certifications'] as unknown[]).filter(isCertificationFactShape)
     : [];
   return out;
 }
@@ -1183,13 +1908,88 @@ function isSkillFactShape(v: unknown): v is ResumeDraftSkillFact {
   return typeof o['surface_form'] === 'string' && isStringArray(o['source_refs']);
 }
 
+// Nested-array items are shape-checked defensively when present; a malformed
+// nested item is filtered out (never crashes the whole extraction).
+function isNestedArray(v: unknown, guard: (x: unknown) => boolean): boolean {
+  return v === undefined || (Array.isArray(v) && v.every(guard));
+}
+
 function isWorkHistoryFactShape(v: unknown): v is ResumeDraftWorkHistoryFact {
   if (typeof v !== 'object' || v === null) return false;
   const o = v as Record<string, unknown>;
   return (
     typeof o['employer_name'] === 'string' &&
     typeof o['role_title'] === 'string' &&
-    isStringArray(o['source_refs'])
+    isOptionalString(o['experience_summary']) &&
+    isOptionalString(o['location']) &&
+    isStringArray(o['source_refs']) &&
+    isNestedArray(o['skill_usage'], isSkillUsageFactShape) &&
+    isNestedArray(o['projects'], isProjectFactShape) &&
+    isNestedArray(o['assertions'], isAssertionFactShape)
+  );
+}
+
+function isSkillUsageFactShape(v: unknown): v is ResumeDraftSkillUsage {
+  if (typeof v !== 'object' || v === null) return false;
+  const o = v as Record<string, unknown>;
+  return (
+    typeof o['surface_form'] === 'string' &&
+    isStringArray(o['source_refs']) &&
+    isOptionalString(o['version']) &&
+    isOptionalString(o['activity']) &&
+    isOptionalString(o['usage_start']) &&
+    isOptionalString(o['usage_end']) &&
+    isOptionalString(o['usage_period_basis'])
+  );
+}
+
+function isProjectFactShape(v: unknown): v is ResumeDraftProject {
+  if (typeof v !== 'object' || v === null) return false;
+  const o = v as Record<string, unknown>;
+  return (
+    isStringArray(o['source_refs']) &&
+    isOptionalString(o['project_name']) &&
+    isOptionalString(o['context']) &&
+    isOptionalString(o['domain']) &&
+    isOptionalString(o['start_date']) &&
+    isOptionalString(o['end_date'])
+  );
+}
+
+function isAssertionFactShape(v: unknown): v is ResumeDraftAssertion {
+  if (typeof v !== 'object' || v === null) return false;
+  const o = v as Record<string, unknown>;
+  return (
+    typeof o['type'] === 'string' &&
+    typeof o['statement'] === 'string' &&
+    isStringArray(o['source_refs']) &&
+    isOptionalString(o['metric'])
+  );
+}
+
+function isEducationFactShape(v: unknown): v is ResumeDraftEducation {
+  if (typeof v !== 'object' || v === null) return false;
+  const o = v as Record<string, unknown>;
+  return (
+    typeof o['institution_name'] === 'string' &&
+    typeof o['degree_name'] === 'string' &&
+    isStringArray(o['source_refs']) &&
+    isOptionalString(o['field_of_study']) &&
+    isOptionalString(o['conferred_date'])
+  );
+}
+
+function isCertificationFactShape(v: unknown): v is ResumeDraftCertification {
+  if (typeof v !== 'object' || v === null) return false;
+  const o = v as Record<string, unknown>;
+  return (
+    typeof o['certification_name'] === 'string' &&
+    isStringArray(o['source_refs']) &&
+    isOptionalString(o['issuer_name']) &&
+    isOptionalString(o['credential_ref']) &&
+    isOptionalString(o['issued_date']) &&
+    isOptionalString(o['expiry_date']) &&
+    isOptionalString(o['version_or_level'])
   );
 }
 
@@ -1213,6 +2013,26 @@ function groundValue(
     texts.push(normalizeForMatch(blockText));
   }
   return texts.join(' ').includes(normalizeForMatch(v));
+}
+
+// HF2 R5 — REF-VALIDITY only (for paraphrase facts like project context /
+// assertion statements that cannot be verbatim-substring-grounded): at least one
+// ref, and EVERY ref resolves to a real block in THIS map (rejects nonexistent /
+// cross-résumé refs). The identifying value (skill surface_form, project name,
+// employer/role, institution/degree, cert name) is additionally substring-ground
+// via groundValue; a paraphrase rides its already-ref-valid parent.
+function refsResolve(refs: unknown, blockIndex: Map<string, string>): boolean {
+  if (!isStringArray(refs) || refs.length === 0) return false;
+  return refs.every((id) => blockIndex.get(id) !== undefined);
+}
+
+// HF2 R10 — clamp a recruiter-facing summary/context to ONE line, ≤600 chars
+// (defensive re-clamp behind the provider maxLength). Keeps output bounded (§11).
+function capWorkSummary(raw: string): string {
+  const oneLine = raw.replace(/\s+/g, ' ').trim();
+  return oneLine.length > WORK_SUMMARY_MAX_CHARS
+    ? oneLine.slice(0, WORK_SUMMARY_MAX_CHARS).trim()
+    : oneLine;
 }
 
 // Unique refs, original order preserved.
@@ -1245,5 +2065,11 @@ function countFacts(proposal: ResumeDraftProposal): number {
   for (const k of scalarKeys) {
     if (typeof proposal[k] === 'string' && (proposal[k] as string) !== '') n += 1;
   }
-  return n + proposal.skills.length + proposal.work_history.length;
+  return (
+    n +
+    proposal.skills.length +
+    proposal.work_history.length +
+    proposal.education.length +
+    proposal.certifications.length
+  );
 }

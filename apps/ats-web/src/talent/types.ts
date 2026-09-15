@@ -233,6 +233,10 @@ export interface CreateTalentRecordRequest {
   // Reviewed work-history entries persisted at create as TalentWorkHistoryEntry
   // (source='resume'). Recruiter-editable; declared, not verified.
   readonly work_history?: readonly WorkHistoryDraft[];
+  // HF2 R8/R18/R19 — reviewed education + certifications persisted at create as
+  // declared TalentEducationEntry / TalentCertificationEntry (with provenance).
+  readonly education?: readonly EducationDraft[];
+  readonly certifications?: readonly CertificationDraft[];
 }
 
 // Hand-mirrored from libs/talent-record/src/lib/dto/update-talent-record-
@@ -349,14 +353,66 @@ export interface SkillDraft {
 //     the FE review state (read-only carry; survives to the create request).
 //   - `description` is RETAINED for the recruiter-driven EDIT path; HF1
 //     extraction never populates it (R4 — no résumé prose).
+// HF2 — nested Experience Intelligence carried (read-only) through the FE review
+// state so it survives to the create request and the BE persistence seam. The
+// recruiter reviews (and may expand) but does not edit atomic claims at create
+// (§29 — "the complete intelligence structure may persist without making every
+// atomic claim editable during initial creation").
+export interface SkillUsageDraft {
+  readonly surface_form: string;
+  readonly version?: string;
+  readonly activity?: string;
+  readonly usage_start?: string;
+  readonly usage_end?: string;
+  readonly usage_period_basis?: string;
+  readonly source_refs?: readonly string[];
+}
+export interface ProjectDraft {
+  readonly project_name?: string;
+  readonly context?: string;
+  readonly domain?: string;
+  readonly start_date?: string;
+  readonly end_date?: string;
+  readonly source_refs?: readonly string[];
+}
+export interface AssertionDraft {
+  readonly type: string;
+  readonly statement: string;
+  readonly metric?: string;
+  readonly grounding_class?: string;
+  readonly source_refs?: readonly string[];
+}
+export interface EducationDraft {
+  readonly institution_name: string;
+  readonly degree_name: string;
+  readonly field_of_study?: string;
+  readonly conferred_date?: string;
+  readonly source_refs?: readonly string[];
+}
+export interface CertificationDraft {
+  readonly certification_name: string;
+  readonly issuer_name?: string;
+  readonly credential_ref?: string;
+  readonly issued_date?: string;
+  readonly expiry_date?: string;
+  readonly source_refs?: readonly string[];
+}
+
 export interface WorkHistoryDraft {
   readonly employer_name: string;
   readonly role_title: string;
   readonly start_date?: string;
   readonly end_date?: string;
   readonly employment_type?: string;
+  readonly location?: string;
   readonly description?: string;
+  // HF2 R10 — concise recruiter-facing role summary (≤600). Read-only preview.
+  readonly experience_summary?: string;
   readonly source_refs?: readonly string[];
+  // HF2 nested intelligence — read-only carry (persisted at create).
+  readonly skill_usage?: readonly SkillUsageDraft[];
+  readonly projects?: readonly ProjectDraft[];
+  readonly assertions?: readonly AssertionDraft[];
 }
 
 export interface DraftFromResumeResult {
@@ -369,6 +425,9 @@ export interface DraftFromResumeResult {
   readonly work_history?: readonly WorkHistoryDraft[];
   // HF1 R7 — structured skills + source_refs (the form uses prefill.key_skills).
   readonly skills?: readonly SkillDraft[];
+  // HF2 R8/R18/R19 — grounded education + certifications carried to review.
+  readonly education?: readonly EducationDraft[];
+  readonly certifications?: readonly CertificationDraft[];
   // HF1 §16 — corpus provenance carried back into the create request.
   readonly source_map_version?: string;
   readonly resume_text_hash?: string;

@@ -66,6 +66,7 @@ const REQUISITION_INIT = resolve(ROOT, 'libs/requisition/prisma/migrations/20260
 const TALENT_EVIDENCE_INIT = resolve(ROOT, 'libs/talent-evidence/prisma/migrations/20260519170000_init_talent_evidence_model/migration.sql');
 const TALENT_EVIDENCE_TR7 = resolve(ROOT, 'libs/talent-evidence/prisma/migrations/20260714120000_tr7_b1_education_certification/migration.sql');
 const TALENT_EVIDENCE_HF1 = resolve(ROOT, 'libs/talent-evidence/prisma/migrations/20260915120000_hf1_resume_provenance/migration.sql');
+const TALENT_EVIDENCE_HF2 = resolve(ROOT, 'libs/talent-evidence/prisma/migrations/20260915170000_hf2_experience_intelligence/migration.sql');
 const EVIDENCE_INIT = resolve(ROOT, 'libs/evidence/prisma/migrations/20260522090000_init_evidence_model/migration.sql');
 const SUBMITTAL_INIT = resolve(ROOT, 'libs/submittal/prisma/migrations/20260523120000_init_submittal_model/migration.sql');
 const SUBMITTAL_REVOKE = resolve(ROOT, 'libs/submittal/prisma/migrations/20260523200000_add_submittal_revoke/migration.sql');
@@ -156,6 +157,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         TALENT_EVIDENCE_INIT,
         TALENT_EVIDENCE_TR7,
         TALENT_EVIDENCE_HF1,
+        TALENT_EVIDENCE_HF2,
         EVIDENCE_INIT,
         SUBMITTAL_INIT,
         SUBMITTAL_REVOKE,

@@ -118,3 +118,59 @@ describe('routeDeclaredEvidenceToLedger — loud fail then exactly-once on retry
     expect([...written].sort()).toEqual(['s1', 's2']);
   });
 });
+
+// HF2 R1/R7 — persistExperienceAssertions routes activities/accomplishments to
+// the EvidenceRecord ledger as EXPERIENCE_CLAIM, deterministically (no AI call),
+// idempotent via the content source_ref, grounding_class carried.
+describe('persistExperienceAssertions — EXPERIENCE_CLAIM routing (HF2)', () => {
+  it('writes each assertion as EXPERIENCE_CLAIM; no model call; carries grounding_class', async () => {
+    const seen = new Set<string>();
+    const generateStructured = vi.fn();
+    const generateDraft = vi.fn();
+    const record = vi.fn(async (input: { assertion_type: string; assertion_payload: { grounding_class?: string }; source_ref: { talent_evidence_id: string } }) => {
+      if (seen.has(input.source_ref.talent_evidence_id)) return { written: false };
+      seen.add(input.source_ref.talent_evidence_id);
+      return { written: true, evidence_id: 'ev' };
+    });
+    const svc = new TalentExtractionService(
+      { generateDraft } as never,
+      {} as never,
+      { recordDeclaredClaimIfAbsent: record } as never,
+      { generateStructured, providerKey: () => 'anthropic' } as never,
+    );
+    const written = await svc.persistExperienceAssertions({
+      tenant_id: 't', talent_id: 'tr', work_experience_id: 'we-1',
+      assertions: [
+        { type: 'DEVELOP', statement: 'Built Java services', source_refs: ['B003'], grounding_class: 'SOURCE_ASSOCIATED_INTERPRETATION' },
+        { type: 'DEPLOY', statement: 'Deployed to EKS', source_refs: ['B004'], grounding_class: 'SOURCE_ASSOCIATED_INTERPRETATION' },
+      ],
+    });
+    expect(written).toBe(2);
+    expect(record).toHaveBeenCalledTimes(2);
+    expect(record.mock.calls[0][0].assertion_type).toBe('EXPERIENCE_CLAIM');
+    expect(record.mock.calls[0][0].assertion_payload.grounding_class).toBe('SOURCE_ASSOCIATED_INTERPRETATION');
+    // Deterministic (R6/§26): no AI surface invoked by the persistence path.
+    expect(generateStructured).not.toHaveBeenCalled();
+    expect(generateDraft).not.toHaveBeenCalled();
+  });
+
+  it('is idempotent — a re-run of the same assertions writes nothing new', async () => {
+    const seen = new Set<string>();
+    const record = vi.fn(async (input: { source_ref: { talent_evidence_id: string } }) => {
+      if (seen.has(input.source_ref.talent_evidence_id)) return { written: false };
+      seen.add(input.source_ref.talent_evidence_id);
+      return { written: true, evidence_id: 'ev' };
+    });
+    const svc = new TalentExtractionService(
+      { generateDraft: vi.fn() } as never, {} as never,
+      { recordDeclaredClaimIfAbsent: record } as never,
+      { generateStructured: vi.fn(), providerKey: () => 'anthropic' } as never,
+    );
+    const args = {
+      tenant_id: 't', talent_id: 'tr', work_experience_id: 'we-1',
+      assertions: [{ type: 'DEVELOP', statement: 'Built services', source_refs: ['B003'] }],
+    };
+    expect(await svc.persistExperienceAssertions(args)).toBe(1);
+    expect(await svc.persistExperienceAssertions(args)).toBe(0); // idempotent
+  });
+});

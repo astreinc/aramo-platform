@@ -19,6 +19,7 @@ export {
 export {
   mapWorkHistoryToClaim,
   mapSkillToClaim,
+  mapAssertionToClaim,
   type LedgerClaim,
 } from './lib/ledger-mapper.js';
 
@@ -35,6 +36,13 @@ export type {
   ResumeDraftStatus,
   ResumeDraftSkill,
   ResumeDraftWorkHistory,
+  // HF2 v3 nested intelligence facts.
+  ResumeDraftSkillUsage,
+  ResumeDraftProject,
+  ResumeDraftAssertion,
+  ResumeDraftEducation,
+  ResumeDraftCertification,
+  GroundingClass,
   ResumeProvenance,
   ResumeSourceMap,
   SourceMapBlock,

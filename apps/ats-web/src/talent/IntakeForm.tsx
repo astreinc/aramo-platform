@@ -17,12 +17,21 @@ import {
   type ProvenanceMap,
 } from './provenance';
 import type { IntakeState } from './intake-fields';
-import type { WorkHistoryDraft } from './types';
+import type {
+  CertificationDraft,
+  EducationDraft,
+  WorkHistoryDraft,
+} from './types';
 
 interface IntakeFormProps {
   readonly values: IntakeState;
   readonly provenance: ProvenanceMap;
   readonly workHistory: readonly WorkHistoryDraft[];
+  // HF2 — grounded education + certifications from the résumé draft (read-only
+  // review; persisted at create as declared evidence). Optional (absent on the
+  // manual-add / edit paths).
+  readonly education?: readonly EducationDraft[];
+  readonly certifications?: readonly CertificationDraft[];
   readonly disabled?: boolean;
   // Full-profile EDIT: keys rendered display-only (read-only). Email + phone are
   // the identity/dedup anchors (email is required + the primary key; email+phone
@@ -53,6 +62,8 @@ export function IntakeForm({
   values,
   provenance,
   workHistory,
+  education = [],
+  certifications = [],
   disabled = false,
   lockedFields,
   onField,
@@ -296,13 +307,12 @@ export function IntakeForm({
         />
       </Section>
 
-      <Section label="Education · certifications" tag="AFTER CREATION" full>
-        <div className="rc-secfield rc-secfield--full">
-          <p className="rc-secnote">
-            Added on the Talent record after creation as structured records with
-            evidence — not free text.
-          </p>
-        </div>
+      <Section
+        label="Education · certifications"
+        tag={education.length > 0 || certifications.length > 0 ? 'FROM RESUME' : 'AFTER CREATION'}
+        full
+      >
+        <EducationCertificationsReview education={education} certifications={certifications} />
       </Section>
     </div>
   );
@@ -414,6 +424,7 @@ function WorkHistoryEditor({
               onChange={(ev) => onField(i, 'description', ev.target.value)}
             />
           </label>
+          <ExperienceIntelligence entry={e} index={i} />
           <div className="rc-wh__rowfoot">
             <button
               type="button"
@@ -434,6 +445,122 @@ function WorkHistoryEditor({
       <p className="rc-secnote">
         From résumé — review and correct. Saved as declared work history (not
         verified) when you create.
+      </p>
+    </div>
+  );
+}
+
+// HF2 §29 — the recruiter-facing Experience Intelligence for one role: a concise
+// experience preview (read-only), plus optionally-expandable "skills used" and
+// "projects / context". These persist as structured evidence at create; they are
+// NOT atomic-editable during initial review (§29 — the recruiter reviews, and
+// corrects the top-level role fields; the intelligence structure persists as-is).
+function ExperienceIntelligence({
+  entry,
+  index,
+}: {
+  readonly entry: WorkHistoryDraft;
+  readonly index: number;
+}) {
+  const summary = entry.experience_summary?.trim() ?? '';
+  const skills = entry.skill_usage ?? [];
+  const projects = entry.projects ?? [];
+  if (summary === '' && skills.length === 0 && projects.length === 0) return null;
+  return (
+    <div className="rc-wh__intel">
+      {summary !== '' ? (
+        <p className="rc-wh__preview" aria-label={`Experience preview ${index + 1}`}>
+          {summary}
+        </p>
+      ) : null}
+      {skills.length > 0 ? (
+        <details className="rc-wh__disc">
+          <summary>Skills used ({skills.length})</summary>
+          <ul className="rc-wh__chips">
+            {skills.map((s, si) => (
+              <li className="rc-wh__chip" key={si}>
+                {s.surface_form}
+                {s.version !== undefined && s.version !== '' ? ` · v${s.version}` : ''}
+              </li>
+            ))}
+          </ul>
+        </details>
+      ) : null}
+      {projects.length > 0 ? (
+        <details className="rc-wh__disc">
+          <summary>Projects / context ({projects.length})</summary>
+          <ul className="rc-wh__projlist">
+            {projects.map((p, pi) => (
+              <li className="rc-wh__proj" key={pi}>
+                {p.project_name !== undefined && p.project_name !== '' ? (
+                  <span className="rc-wh__projname">{p.project_name}</span>
+                ) : null}
+                {p.context !== undefined && p.context !== '' ? (
+                  <span className="rc-wh__projctx"> — {p.context}</span>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </details>
+      ) : null}
+    </div>
+  );
+}
+
+// HF2 §29 — the résumé-derived Education + Certifications review. When the
+// governed draft produced them they are shown read-only (declared 'from résumé';
+// persisted as structured evidence at create). Absent (manual add / no draft) →
+// the prior "captured after creation" note stands.
+function EducationCertificationsReview({
+  education,
+  certifications,
+}: {
+  readonly education: readonly EducationDraft[];
+  readonly certifications: readonly CertificationDraft[];
+}) {
+  if (education.length === 0 && certifications.length === 0) {
+    return (
+      <div className="rc-secfield rc-secfield--full">
+        <p className="rc-secnote">
+          Added on the Talent record after creation as structured records with
+          evidence — not free text.
+        </p>
+      </div>
+    );
+  }
+  return (
+    <div className="rc-secfield rc-secfield--full">
+      {education.length > 0 ? (
+        <ul className="rc-edu__list" aria-label="Education from résumé">
+          {education.map((ed, i) => (
+            <li className="rc-edu__item" key={i}>
+              <span className="rc-edu__degree">{ed.degree_name}</span>
+              {ed.field_of_study !== undefined && ed.field_of_study !== '' ? (
+                <span className="rc-edu__field">, {ed.field_of_study}</span>
+              ) : null}
+              <span className="rc-edu__inst"> — {ed.institution_name}</span>
+              {ed.conferred_date !== undefined && ed.conferred_date !== '' ? (
+                <span className="rc-edu__date"> ({ed.conferred_date})</span>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {certifications.length > 0 ? (
+        <ul className="rc-cert__list" aria-label="Certifications from résumé">
+          {certifications.map((c, i) => (
+            <li className="rc-cert__item" key={i}>
+              <span className="rc-cert__name">{c.certification_name}</span>
+              {c.issuer_name !== undefined && c.issuer_name !== '' ? (
+                <span className="rc-cert__issuer"> — {c.issuer_name}</span>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      <p className="rc-secnote">
+        From résumé — saved as declared education / certifications (not verified)
+        when you create.
       </p>
     </div>
   );

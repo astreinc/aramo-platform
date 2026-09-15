@@ -1,5 +1,7 @@
 import type {
+  CertificationDraft,
   CreateTalentRecordRequest,
+  EducationDraft,
   ResumeExtractionMode,
   SkillDraft,
   TalentRecordPrefill,
@@ -315,6 +317,9 @@ export function buildCreateBody(
   extras: {
     readonly skills?: readonly SkillDraft[];
     readonly resumeDocument?: ResumeDocumentCarry;
+    // HF2 R8/R18/R19 — grounded education + certifications carried from review.
+    readonly education?: readonly EducationDraft[];
+    readonly certifications?: readonly CertificationDraft[];
   } = {},
 ): CreateTalentRecordRequest {
   const body: Record<string, unknown> = {
@@ -340,5 +345,12 @@ export function buildCreateBody(
   // HF1 — structured skills + refs (durable provenance) and the résumé document.
   if (extras.skills !== undefined && extras.skills.length > 0) body['skills'] = extras.skills;
   if (extras.resumeDocument !== undefined) body['resume_document'] = extras.resumeDocument;
+  // HF2 — grounded education + certifications (persisted as declared evidence).
+  if (extras.education !== undefined && extras.education.length > 0) {
+    body['education'] = extras.education;
+  }
+  if (extras.certifications !== undefined && extras.certifications.length > 0) {
+    body['certifications'] = extras.certifications;
+  }
   return body as unknown as CreateTalentRecordRequest;
 }

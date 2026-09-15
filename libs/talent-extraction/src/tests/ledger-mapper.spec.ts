@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { deriveSkillIdCanonical, validateClaimShape } from '@aramo/talent-trust';
 
 import {
+  mapAssertionToClaim,
   mapCertificationToClaim,
   mapEducationToClaim,
   mapSkillToClaim,
@@ -174,6 +175,33 @@ describe('D1 — the producer never reads examination results (structural)', () 
       .join('\n');
 
   const files = ['../lib/talent-extraction.service.ts', '../lib/ledger-mapper.ts'];
+
+  it('HF2 mapAssertionToClaim → EXPERIENCE_CLAIM conforms to the T4-B1 shape + carries grounding_class', () => {
+    const claim = mapAssertionToClaim(
+      { type: 'DEVELOP', statement: 'Built Java services', metric: '40%', grounding_class: 'SOURCE_ASSOCIATED_INTERPRETATION' },
+      'we-123',
+    );
+    expect(claim.assertion_type).toBe('EXPERIENCE_CLAIM');
+    expect(claim.source_ref.kind).toBe('experience_claim');
+    expect(claim.source_ref.store).toBe('resume_extraction');
+    // Output conforms to the trust write-gate shape (never fires on this path).
+    const v = validateClaimShape('EXPERIENCE_CLAIM', claim.payload);
+    expect(v.ok).toBe(true);
+    if (v.ok) {
+      expect(v.canonical['grounding_class']).toBe('SOURCE_ASSOCIATED_INTERPRETATION');
+      expect(v.canonical['work_experience_ref']).toBe('we-123');
+      expect(v.canonical['metric_raw']).toBe('40%');
+    }
+  });
+
+  it('HF2 mapAssertionToClaim source_ref key is DETERMINISTIC (idempotent re-create)', () => {
+    const a = { type: 'DEPLOY', statement: 'Deployed to EKS' };
+    const k1 = mapAssertionToClaim(a, 'we-1').source_ref.talent_evidence_id;
+    const k2 = mapAssertionToClaim(a, 'we-1').source_ref.talent_evidence_id;
+    const k3 = mapAssertionToClaim(a, 'we-2').source_ref.talent_evidence_id; // different role
+    expect(k1).toBe(k2);
+    expect(k1).not.toBe(k3);
+  });
 
   it('imports and names no examination substrate', () => {
     for (const rel of files) {

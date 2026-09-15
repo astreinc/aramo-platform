@@ -77,6 +77,11 @@ describe('TalentEvidenceRepository — surface', () => {
         'findTalentEducationEntryById',
         'createTalentCertificationEntry',
         'findTalentCertificationEntryById',
+        // HF2 R6 — TalentProjectExperience (first-class project child of a
+        // WorkExperience): create + by-id find + a by-talent display read.
+        'createTalentProjectExperience',
+        'findTalentProjectExperienceById',
+        'findProjectExperienceByTalent',
         ...TR4_B2_LEDGER_READS,
       ].sort(),
     );

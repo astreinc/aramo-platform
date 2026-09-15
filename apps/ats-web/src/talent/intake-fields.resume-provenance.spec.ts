@@ -60,4 +60,45 @@ describe('buildCreateBody — résumé source_refs survive to the create request
     };
     expect(body.work_history).toBeUndefined();
   });
+
+  // HF2 P7 — the nested Experience Intelligence + education/certifications must
+  // SURVIVE the draft → create body (else they never reach the BE persistence).
+  it('carries nested work-history intelligence + education + certifications', () => {
+    const state = { ...emptyIntakeState(), first_name: 'Sarah', last_name: 'Nolan' };
+    const workHistory: WorkHistoryDraft[] = [
+      {
+        employer_name: 'Northstar',
+        role_title: 'Cloud Engineer',
+        experience_summary: 'Led platform migration.',
+        source_refs: ['B004'],
+        skill_usage: [{ surface_form: 'Kubernetes', version: '1.27', source_refs: ['B004'] }],
+        projects: [{ project_name: 'Atlas', context: 'cutover', source_refs: ['B004'] }],
+        assertions: [{ type: 'DEPLOY', statement: 'Deployed to 40 clusters', source_refs: ['B004'] }],
+      },
+    ];
+    const body = buildCreateBody(state, workHistory, {
+      education: [
+        { institution_name: 'MIT', degree_name: 'BSc', field_of_study: 'CS', source_refs: ['B010'] },
+      ],
+      certifications: [{ certification_name: 'CKA', issuer_name: 'CNCF', source_refs: ['B011'] }],
+    }) as unknown as {
+      work_history?: Array<{
+        experience_summary?: string;
+        skill_usage?: unknown[];
+        projects?: unknown[];
+        assertions?: unknown[];
+      }>;
+      education?: Array<{ institution_name: string }>;
+      certifications?: Array<{ certification_name: string }>;
+    };
+    const wh = body.work_history?.[0];
+    expect(wh?.experience_summary).toBe('Led platform migration.');
+    expect(wh?.skill_usage).toHaveLength(1);
+    expect(wh?.projects).toHaveLength(1);
+    expect(wh?.assertions).toHaveLength(1);
+    expect(body.education).toHaveLength(1);
+    expect(body.education?.[0]?.institution_name).toBe('MIT');
+    expect(body.certifications).toHaveLength(1);
+    expect(body.certifications?.[0]?.certification_name).toBe('CKA');
+  });
 });

@@ -40,6 +40,11 @@ const HF1_MIGRATION_PATH = resolve(
   __dirname,
   '../../prisma/migrations/20260915120000_hf1_resume_provenance/migration.sql',
 );
+// HF2 Talent-Experience-Intelligence columns/tables (SEPARATE resolve const).
+const HF2_MIGRATION_PATH = resolve(
+  __dirname,
+  '../../prisma/migrations/20260915170000_hf2_experience_intelligence/migration.sql',
+);
 
 // All test UUIDs use hex-only characters per RFC 4122. Tags chosen for
 // mnemonic clarity within the hex set: 1=tenant, 2=skill, 3=source-record,
@@ -66,6 +71,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const migrationSql = readFileSync(MIGRATION_PATH, 'utf8');
       const tr7MigrationSql = readFileSync(TR7_MIGRATION_PATH, 'utf8');
       const hf1MigrationSql = readFileSync(HF1_MIGRATION_PATH, 'utf8');
+      const hf2MigrationSql = readFileSync(HF2_MIGRATION_PATH, 'utf8');
 
       const setupClient = new PrismaService(url);
       await setupClient.$connect();
@@ -73,6 +79,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         ...migrationSql.split(';'),
         ...tr7MigrationSql.split(';'),
         ...hf1MigrationSql.split(';'),
+        ...hf2MigrationSql.split(';'),
       ]) {
         const trimmed = stmt.trim();
         if (trimmed.length === 0) continue;

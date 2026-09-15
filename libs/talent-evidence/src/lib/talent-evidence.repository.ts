@@ -110,6 +110,13 @@ export interface CreateTalentSkillEvidenceInput {
   source_refs?: string[];
   source_map_version?: string;
   resume_text_hash?: string;
+  // HF2 R3/R16 — time-aware per-experience skill usage (additive nullable).
+  work_experience_id?: string;
+  version?: string;
+  usage_start?: Date;
+  usage_end?: Date;
+  usage_period_basis?: string;
+  activity_context?: string;
   created_at: Date;
 }
 
@@ -129,6 +136,12 @@ export interface TalentSkillEvidenceRow {
   source_refs: string[];
   source_map_version: string | null;
   resume_text_hash: string | null;
+  work_experience_id: string | null;
+  version: string | null;
+  usage_start: Date | null;
+  usage_end: Date | null;
+  usage_period_basis: string | null;
+  activity_context: string | null;
   created_at: Date;
 }
 
@@ -151,6 +164,9 @@ export interface CreateTalentWorkHistoryEntryInput {
   source_refs?: string[];
   source_map_version?: string;
   resume_text_hash?: string;
+  // HF2 R2/R10 — WorkExperience extension (additive nullable).
+  company_id?: string;
+  experience_summary?: string;
   is_authoritative?: boolean;
   created_at: Date;
 }
@@ -171,6 +187,8 @@ export interface TalentWorkHistoryEntryRow {
   source_refs: string[];
   source_map_version: string | null;
   resume_text_hash: string | null;
+  company_id: string | null;
+  experience_summary: string | null;
   is_authoritative: boolean | null;
   created_at: Date;
 }
@@ -187,6 +205,11 @@ export interface CreateTalentEducationEntryInput {
   conferred_date?: Date;
   evidence_text?: string;
   source: TalentEducationSourceValue;
+  // HF2 R8 — HF1-style provenance (additive nullable).
+  source_document_id?: string;
+  source_refs?: string[];
+  source_map_version?: string;
+  resume_text_hash?: string;
   created_at: Date;
 }
 
@@ -200,6 +223,10 @@ export interface TalentEducationEntryRow {
   conferred_date: Date | null;
   evidence_text: string | null;
   source: TalentEducationSourceValue;
+  source_document_id: string | null;
+  source_refs: string[];
+  source_map_version: string | null;
+  resume_text_hash: string | null;
   created_at: Date;
 }
 
@@ -214,6 +241,11 @@ export interface CreateTalentCertificationEntryInput {
   expiry_date?: Date;
   evidence_text?: string;
   source: TalentCertificationSourceValue;
+  // HF2 R8 — HF1-style provenance (additive nullable).
+  source_document_id?: string;
+  source_refs?: string[];
+  source_map_version?: string;
+  resume_text_hash?: string;
   created_at: Date;
 }
 
@@ -228,6 +260,46 @@ export interface TalentCertificationEntryRow {
   expiry_date: Date | null;
   evidence_text: string | null;
   source: TalentCertificationSourceValue;
+  source_document_id: string | null;
+  source_refs: string[];
+  source_map_version: string | null;
+  resume_text_hash: string | null;
+  created_at: Date;
+}
+
+// ---- HF2 R6 — TalentProjectExperience (child of a WorkExperience) --------
+
+export interface CreateTalentProjectExperienceInput {
+  id: string;
+  talent_id: string;
+  tenant_id: string;
+  work_experience_id: string;
+  project_name?: string;
+  context_summary?: string;
+  domain?: string;
+  start_date?: Date;
+  end_date?: Date;
+  source_document_id?: string;
+  source_refs?: string[];
+  source_map_version?: string;
+  resume_text_hash?: string;
+  created_at: Date;
+}
+
+export interface TalentProjectExperienceRow {
+  id: string;
+  talent_id: string;
+  tenant_id: string;
+  work_experience_id: string;
+  project_name: string | null;
+  context_summary: string | null;
+  domain: string | null;
+  start_date: Date | null;
+  end_date: Date | null;
+  source_document_id: string | null;
+  source_refs: string[];
+  source_map_version: string | null;
+  resume_text_hash: string | null;
   created_at: Date;
 }
 
@@ -430,6 +502,12 @@ export class TalentEvidenceRepository {
         source_refs: input.source_refs ?? [],
         source_map_version: input.source_map_version,
         resume_text_hash: input.resume_text_hash,
+        work_experience_id: input.work_experience_id,
+        version: input.version,
+        usage_start: input.usage_start,
+        usage_end: input.usage_end,
+        usage_period_basis: input.usage_period_basis,
+        activity_context: input.activity_context,
         created_at: input.created_at,
       },
     });
@@ -532,6 +610,8 @@ export class TalentEvidenceRepository {
         source_refs: input.source_refs ?? [],
         source_map_version: input.source_map_version,
         resume_text_hash: input.resume_text_hash,
+        company_id: input.company_id,
+        experience_summary: input.experience_summary,
         is_authoritative: input.is_authoritative,
         created_at: input.created_at,
       },
@@ -587,6 +667,8 @@ export class TalentEvidenceRepository {
             source_refs: e.source_refs ?? [],
             source_map_version: e.source_map_version,
             resume_text_hash: e.resume_text_hash,
+            company_id: e.company_id,
+            experience_summary: e.experience_summary,
             is_authoritative: e.is_authoritative,
             created_at: e.created_at,
           },
@@ -613,6 +695,10 @@ export class TalentEvidenceRepository {
         conferred_date: input.conferred_date,
         evidence_text: input.evidence_text,
         source: input.source,
+        source_document_id: input.source_document_id,
+        source_refs: input.source_refs ?? [],
+        source_map_version: input.source_map_version,
+        resume_text_hash: input.resume_text_hash,
         created_at: input.created_at,
       },
     });
@@ -639,6 +725,10 @@ export class TalentEvidenceRepository {
         expiry_date: input.expiry_date,
         evidence_text: input.evidence_text,
         source: input.source,
+        source_document_id: input.source_document_id,
+        source_refs: input.source_refs ?? [],
+        source_map_version: input.source_map_version,
+        resume_text_hash: input.resume_text_hash,
         created_at: input.created_at,
       },
     });
@@ -648,6 +738,49 @@ export class TalentEvidenceRepository {
   async findTalentCertificationEntryById(id: string): Promise<TalentCertificationEntryRow | null> {
     const row = await this.prisma.talentCertificationEntry.findUnique({ where: { id } });
     return (row as TalentCertificationEntryRow | null) ?? null;
+  }
+
+  // ---- HF2 R6 — TalentProjectExperience (child of a WorkExperience) --------
+
+  async createTalentProjectExperience(
+    input: CreateTalentProjectExperienceInput,
+  ): Promise<TalentProjectExperienceRow> {
+    const created = await this.prisma.talentProjectExperience.create({
+      data: {
+        id: input.id,
+        talent_id: input.talent_id,
+        tenant_id: input.tenant_id,
+        work_experience_id: input.work_experience_id,
+        project_name: input.project_name,
+        context_summary: input.context_summary,
+        domain: input.domain,
+        start_date: input.start_date,
+        end_date: input.end_date,
+        source_document_id: input.source_document_id,
+        source_refs: input.source_refs ?? [],
+        source_map_version: input.source_map_version,
+        resume_text_hash: input.resume_text_hash,
+        created_at: input.created_at,
+      },
+    });
+    return created as TalentProjectExperienceRow;
+  }
+
+  async findTalentProjectExperienceById(id: string): Promise<TalentProjectExperienceRow | null> {
+    const row = await this.prisma.talentProjectExperience.findUnique({ where: { id } });
+    return (row as TalentProjectExperienceRow | null) ?? null;
+  }
+
+  // By-talent project read (display projection). Tenant-scoped.
+  async findProjectExperienceByTalent(args: {
+    tenant_id: string;
+    talent_id: string;
+  }): Promise<TalentProjectExperienceRow[]> {
+    const rows = await this.prisma.talentProjectExperience.findMany({
+      where: { tenant_id: args.tenant_id, talent_id: args.talent_id },
+      orderBy: [{ end_date: 'desc' }, { start_date: 'desc' }],
+    });
+    return rows as TalentProjectExperienceRow[];
   }
 
   // ---- TR-4 B2 ledger-routing reads (the dual-write + backfill source) --------

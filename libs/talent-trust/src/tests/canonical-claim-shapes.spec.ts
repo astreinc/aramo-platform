@@ -7,6 +7,7 @@ import {
   parseToIsoDateOrNull,
   validateClaimShape,
 } from '../lib/canonical-claim-shapes.js';
+import { AUTHORITATIVE_ASSERTION_TYPES } from '../lib/vocab.js';
 
 // TR-4 B1 (§5 a/b) — the canonical claim-shape registry, pure. Proves the
 // registered/unregistered posture, the never-guessed date table, employer
@@ -67,7 +68,32 @@ describe('validateClaimShape — registered vs unregistered posture (§5a)', () 
       'SKILL',
       // TR-4 B3 — the consistency detector's CONTINUITY gap signal.
       'TIMELINE_GAP',
-    ]);
+      // HF2 R1/R7 — résumé-derived experience assertion (registered for
+      // comparability; NOT in AUTHORITATIVE_ASSERTION_TYPES — must not elevate).
+      'EXPERIENCE_CLAIM',
+    ].sort());
+  });
+
+  it('HF2 EXPERIENCE_CLAIM: validates required fields, carries grounding_class, is NON-authoritative', () => {
+    expect(isRegisteredAssertionType('EXPERIENCE_CLAIM')).toBe(true);
+    const bad = validateClaimShape('EXPERIENCE_CLAIM', { statement_raw: 'Built services' }); // no activity_type_raw
+    expect(bad.ok).toBe(false);
+    const good = validateClaimShape('EXPERIENCE_CLAIM', {
+      activity_type_raw: 'DEVELOP',
+      statement_raw: 'Built Java services',
+      metric_raw: '40%',
+      grounding_class: 'SOURCE_ASSOCIATED_INTERPRETATION',
+      work_experience_ref: 'we-1',
+    });
+    expect(good.ok).toBe(true);
+    if (good.ok) {
+      expect(good.canonical['grounding_class']).toBe('SOURCE_ASSOCIATED_INTERPRETATION');
+      expect(good.canonical['work_experience_ref']).toBe('we-1');
+    }
+    // NON-authoritative: absent from every dimension's AUTHORITATIVE set.
+    for (const types of Object.values(AUTHORITATIVE_ASSERTION_TYPES)) {
+      expect(types).not.toContain('EXPERIENCE_CLAIM');
+    }
   });
 });
 

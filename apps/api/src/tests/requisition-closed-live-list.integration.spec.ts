@@ -101,6 +101,7 @@ const MIGRATIONS = [
   'libs/talent-evidence/prisma/migrations/20260519170000_init_talent_evidence_model/migration.sql',
   'libs/talent-evidence/prisma/migrations/20260714120000_tr7_b1_education_certification/migration.sql',
   'libs/talent-evidence/prisma/migrations/20260915120000_hf1_resume_provenance/migration.sql',
+  'libs/talent-evidence/prisma/migrations/20260915170000_hf2_experience_intelligence/migration.sql',
   // talent-trust
   'libs/talent-trust/prisma/migrations/20260628000000_init_talent_trust/migration.sql',
   'libs/talent-trust/prisma/migrations/20260703120000_tr2a1_subject_anchor/migration.sql',

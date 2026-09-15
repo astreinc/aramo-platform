@@ -14,7 +14,11 @@ function emptyProposal() {
   return {
     skills: [],
     work_history: [],
+    // HF2 v3 — education + certifications are now required proposal arrays.
+    education: [],
+    certifications: [],
     rejected_count: 0,
+    overflow: false,
     source_map_version: 'resume-source-map/v1',
     resume_text_hash: 'h',
   };
@@ -81,7 +85,10 @@ describe('draft-from-resume — exclusive mode resolver', () => {
           work_history: [
             { employer_name: 'Northstar', role_title: 'Engineer', source_refs: ['B004'] },
           ],
+          education: [],
+          certifications: [],
           rejected_count: 0,
+          overflow: false,
           source_map_version: 'resume-source-map/v1',
           resume_text_hash: 'h',
         },
@@ -103,12 +110,46 @@ describe('draft-from-resume — exclusive mode resolver', () => {
       { surface_form: 'C#', source_refs: ['B003'] },
       { surface_form: 'Azure SQL', source_refs: ['B003'] },
     ]);
-    // Email/phone are NEVER LLM-proposed (redacted; held for the amendment).
+    // Email/phone are NEVER LLM-proposed; they come only from local extraction
+    // (R17) — this sample text carries none, so they stay absent.
     expect(res.prefill.email1).toBeUndefined();
     expect(res.prefill.phone_cell).toBeUndefined();
     expect(extractTextFromStorageKey).toHaveBeenCalledOnce();
     expect(extractResumeDraft).toHaveBeenCalledOnce();
     expect(parseFromStorageKey).not.toHaveBeenCalled();
+  });
+
+  // HF2 R17 — the governed path runs the LOCAL contact extractor over the raw
+  // text: email/phone/city/state/ZIP fill the prefill deterministically (the LLM
+  // never sees email/phone — redaction happens inside extractResumeDraft, proven
+  // in resume-draft.spec.ts). city/state/ZIP are local-first, not model-only.
+  it('governed_llm → local contact extraction fills email/phone/city/state/ZIP (R17)', async () => {
+    const { ctl } = makeController({
+      mode: 'governed_llm',
+      text: 'Jane Doe\njane@example.com\n703-555-1212\nMcLean, VA 22102\nSkills: Go',
+      result: {
+        status: 'success',
+        proposal: {
+          first_name: 'Jane',
+          last_name: 'Doe',
+          // The model returns NO location here — proving city/state/ZIP are local.
+          skills: [{ surface_form: 'Go', source_refs: ['B002'] }],
+          work_history: [],
+          education: [],
+          certifications: [],
+          rejected_count: 0,
+          overflow: false,
+          source_map_version: 'resume-source-map/v1',
+          resume_text_hash: 'h',
+        },
+      },
+    });
+    const res = await ctl.draftFromResume(AUTH, { storage_key: 'k' }, 'rq-1');
+    expect(res.prefill.email1).toBe('jane@example.com');
+    expect(res.prefill.phone_cell).toBe('703-555-1212');
+    expect(res.prefill.city).toBe('McLean');
+    expect(res.prefill.state).toBe('VA');
+    expect(res.prefill.zip).toBe('22102');
   });
 
   it('governed_llm + provider_truncated → explicit failed status + distinct warning (§13/R9)', async () => {

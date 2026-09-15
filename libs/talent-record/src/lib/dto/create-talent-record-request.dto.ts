@@ -1,6 +1,8 @@
 // CreateTalentRecordRequestDto — POST /v1/talent-records payload.
 // tenant_id derived from AuthContext.tenant_id (never the body).
 import type {
+  ResumeDraftCertification,
+  ResumeDraftEducation,
   ResumeDraftSkill,
   ResumeDraftWorkHistory,
 } from '@aramo/talent-extraction';
@@ -63,6 +65,12 @@ export interface CreateTalentRecordRequestDto {
   // Persisted post-create as declared TalentSkillEvidence WITH provenance (the
   // free-text key_skills scalar is retained separately). Repository ignores it.
   skills?: ResumeDraftSkill[];
+  // HF2 R8/R18/R19 — reviewed résumé education + certifications (grounded,
+  // recruiter-edited). Persisted post-create as declared TalentEducationEntry /
+  // TalentCertificationEntry WITH provenance; the repository ignores them (the
+  // controller writes them post-create, like work_history/skills).
+  education?: ResumeDraftEducation[];
+  certifications?: ResumeDraftCertification[];
   // HF1 Gate-6 R1 — the résumé document + corpus provenance, carried from the
   // draft. Present only on the résumé-first create path; when present the
   // controller creates the résumé TalentDocument AFTER the record and stamps
