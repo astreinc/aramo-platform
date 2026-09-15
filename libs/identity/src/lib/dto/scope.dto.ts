@@ -47,10 +47,11 @@ export const SEED_SCOPE_KEYS = [
   'portal:dispute:read',
   'portal:dispute:write',
   // PR-A1a-2 ATS expansion (27 scopes; Ruling 1 uniform divergence).
-  // talent domain (6)
+  // talent domain (7)
   'talent:read',                // recruiter+ (assigned)
   'talent:create',              // recruiter+
   'talent:edit',                // recruiter+
+  'talent:edit:contact',        // tenant_admin + tenant_owner ONLY — edit identity/dedup anchors (email1/phone_cell) for data correction (mirrors engagement:policy:override precedent)
   'talent:delete',              // tenant_admin only (Ruling 1 destructive)
   'talent:search',              // recruiter+ (Constrained Talent Access per A1a audit)
   'talent:source',              // sourcer+ — promote a sourced L2 subject into an ATS TalentRecord (Promotion-Trigger slice-A)
