@@ -1,18 +1,32 @@
-# Aramo Core CI — CI-Velocity lanes (Aramo-CI-Velocity-Directive-v1_0-LOCKED §PR-2).
+# Aramo Core CI — CI-Velocity lanes (Aramo-CI-Velocity-Directive-v1_0-LOCKED §PR-2;
+# CI-Velocity-2 PR-throughput slice).
 #
 # THREE lanes, ONE workflow:
-#   • pull_request  — the FAST lane: nx `affected` for test/lint/build + affected
-#                     integration roots; terraform + docker path-filtered; the
-#                     cheap walls stay UNCONDITIONAL required checks (byte-for-byte).
-#   • merge_group   — the FULL gate: run-many --all unit/lint/build + full serial
-#                     integration + full pact + all walls, on the queued merge
-#                     result before it lands on main. deployment-gate requires it.
-#   • schedule      — nightly full-serial drift run on main (never blocks a PR).
+#   • pull_request  — the FAST lane: nx `affected` for test/lint/build; a dynamic
+#                     integration MATRIX over only the affected registry roots
+#                     (each root on its own runner, fanning into the stable
+#                     `tests:integration` gate); docker images built only for the
+#                     nx-affected deployables; the cheap governance walls collapse
+#                     into ONE `static-governance` job (one `npm ci`, one runner).
+#   • merge_group   — the FULL gate: run-many --all unit/lint/build + EVERY
+#                     integration root (matrix) + full pact + all governed walls +
+#                     ALL docker images, on the queued merge result before it lands
+#                     on main. deployment-gate requires it.
+#   • schedule      — nightly full drift run on main (never blocks a PR).
 #
 # Invariant: no job is skipped-to-blocked. Affected/path-filtered work NO-OPS
 # INTERNALLY (exits 0) when not applicable, so every required check still reports
 # success/failure — never "skipped" — keeping branch protection + deployment-gate
-# valid. Walls are NEVER affected-scoped (Charter).
+# valid. Walls are NEVER affected-scoped (Charter). deployment-gate is the SOLE
+# branch-protection required check; every governed job is (transitively) a member
+# of its `needs`.
+#
+# Integration isolation: the harness-hardening invariant (one Postgres container
+# per box, --no-file-parallelism) is preserved in every mode — each matrix leg is
+# its OWN runner running exactly one registry root serially. Root SELECTION stays
+# registry-driven (ci/integration-roots.json is the sole source; the discovery job
+# derives the matrix from it via ci/scripts/run-integration.ts — no embedded list,
+# no frozen count).
 
 name: ci
 
@@ -22,15 +36,21 @@ on:
   pull_request:
   merge_group:
   schedule:
-    - cron: '0 7 * * *' # nightly full-serial drift detector (07:00 UTC)
+    - cron: '0 7 * * *' # nightly full drift detector (07:00 UTC)
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  # Path-filter helper (PR lane only). Non-PR events run everything full, so its
-  # outputs are read solely under `github.event_name == 'pull_request'` guards.
+  # Path + affected helper (PR lane only). Non-PR events run everything full, so
+  # its outputs are read solely under `github.event_name == 'pull_request'`
+  # guards. On a PR it computes the docker image set from the Nx project graph:
+  #   image affected  ⇔  a global dep changed (package-lock/package.json/
+  #                       tsconfig.base) OR the app is nx-affected (its own source
+  #                       or ANY transitive lib dependency changed) OR its
+  #                       Dockerfile changed.
+  # nginx is not an Nx project — it stays path-filtered to deploy/nginx/.
   changes:
     name: changes
     runs-on: ubuntu-latest
@@ -39,6 +59,12 @@ jobs:
       docker: ${{ steps.dockerjson.outputs.json }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # nx affected needs history (PR lane)
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
       - uses: dorny/paths-filter@v3
         id: filter
         if: github.event_name == 'pull_request'
@@ -46,37 +72,48 @@ jobs:
           filters: |
             terraform:
               - 'infrastructure/**'
-            api:
-              - 'apps/api/**'
-              - 'libs/**'
+            global:
               - 'package.json'
               - 'package-lock.json'
               - 'tsconfig.base.json'
-            auth-service:
-              - 'apps/auth-service/**'
-              - 'libs/**'
-              - 'package.json'
-              - 'package-lock.json'
-              - 'tsconfig.base.json'
-            platform-admin:
-              - 'apps/platform-admin/**'
-              - 'libs/**'
-              - 'package.json'
-              - 'package-lock.json'
-              - 'tsconfig.base.json'
+            api_dockerfile:
+              - 'apps/api/Dockerfile'
+            auth_dockerfile:
+              - 'apps/auth-service/Dockerfile'
+            padmin_dockerfile:
+              - 'apps/platform-admin/Dockerfile'
             nginx:
               - 'deploy/nginx/**'
+      - name: Install (PR lane only — nx affected needs the project graph)
+        if: github.event_name == 'pull_request'
+        run: npm ci || npm ci || npm ci # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
+      - uses: nrwl/nx-set-shas@v4
+        if: github.event_name == 'pull_request'
       - id: dockerjson
         run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            printf 'json={"api":"%s","auth-service":"%s","platform-admin":"%s","nginx":"%s"}\n' \
-              "${{ steps.filter.outputs.api }}" \
-              "${{ steps.filter.outputs.auth-service }}" \
-              "${{ steps.filter.outputs.platform-admin }}" \
-              "${{ steps.filter.outputs.nginx }}" >> "$GITHUB_OUTPUT"
-          else
+          set -euo pipefail
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            # merge_group / push / schedule — ALL images build (full release set).
             echo 'json={"api":"true","auth-service":"true","platform-admin":"true","nginx":"true"}' >> "$GITHUB_OUTPUT"
+            exit 0
           fi
+          # PR fast lane — sound, dependency-aware affected detection.
+          if [ "${{ steps.filter.outputs.global }}" = "true" ]; then
+            # A global dependency changed → conservatively rebuild every app image.
+            api=true; auth=true; padmin=true
+            echo "::notice::global dependency changed — all app images affected."
+          else
+            AFFECTED_JSON=$(npx nx show projects --affected --type app --base="$NX_BASE" --head="$NX_HEAD" --json)
+            echo "nx-affected apps: $AFFECTED_JSON"
+            aff() { echo "$AFFECTED_JSON" | grep -q "\"$1\""; }
+            # image affected = nx-affected (transitive libs included) OR its Dockerfile changed.
+            if aff api || [ "${{ steps.filter.outputs.api_dockerfile }}" = "true" ]; then api=true; else api=false; fi
+            if aff auth-service || [ "${{ steps.filter.outputs.auth_dockerfile }}" = "true" ]; then auth=true; else auth=false; fi
+            if aff platform-admin || [ "${{ steps.filter.outputs.padmin_dockerfile }}" = "true" ]; then padmin=true; else padmin=false; fi
+          fi
+          nginx="${{ steps.filter.outputs.nginx }}"; nginx="${nginx:-false}"
+          printf 'json={"api":"%s","auth-service":"%s","platform-admin":"%s","nginx":"%s"}\n' \
+            "$api" "$auth" "$padmin" "$nginx" >> "$GITHUB_OUTPUT"
 
   install:
     name: install
@@ -115,6 +152,15 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci || npm ci || npm ci # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
+      # Nx local task cache — restore prior task results (nx re-validates every
+      # task hash, so a restored cache can only produce identical outputs).
+      - name: Nx cache (lint)
+        uses: actions/cache@v4
+        with:
+          path: .nx/cache
+          key: nx-lint-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            nx-lint-${{ runner.os }}-
       - uses: nrwl/nx-set-shas@v4
         if: github.event_name == 'pull_request'
       - name: lint (affected on PR, all otherwise)
@@ -138,7 +184,14 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci || npm ci || npm ci # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
-      - run: npm run prisma:generate
+      - uses: ./.github/actions/prisma-generate
+      - name: Nx cache (build)
+        uses: actions/cache@v4
+        with:
+          path: .nx/cache
+          key: nx-build-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            nx-build-${{ runner.os }}-
       - uses: nrwl/nx-set-shas@v4
         if: github.event_name == 'pull_request'
       - name: build (affected on PR, all otherwise)
@@ -150,9 +203,8 @@ jobs:
           fi
 
   # Builds every deployable image through its real Dockerfile — the artifact that
-  # actually ships. On a PR the images are PATH-FILTERED to their contexts (the
-  # standalone nginx front-door image skips unless deploy/nginx changed; the app
-  # images rebuild on any apps/libs change since they bundle the monorepo). On
+  # actually ships. On a PR the images are AFFECTED-FILTERED via the `changes` job
+  # (nx project graph for the app images; deploy/nginx path filter for nginx). On
   # merge_group / push / schedule ALL images build. On push to main they are also
   # pushed SHA-tagged + :latest to GHCR (deploy provenance).
   docker-build:
@@ -258,24 +310,13 @@ jobs:
             --cache-from type=gha,scope=${{ matrix.name }} \
             -f ${{ matrix.dockerfile }} -t aramo/${{ matrix.name }}:local .
           bash ci/scripts/service-boot-smoke.sh aramo/${{ matrix.name }}:local ${{ matrix.name }}
-      - name: No-op (context unchanged on PR)
+      - name: No-op (image unaffected on PR)
         if: ${{ fromJSON(needs.changes.outputs.docker)[matrix.name] != 'true' }}
-        run: echo "::notice::${{ matrix.name }} image context unchanged on this PR — build skipped (merge queue rebuilds it)."
+        run: echo "::notice::${{ matrix.name }} image unaffected on this PR — build skipped (merge queue rebuilds it)."
 
   # GLH-2-B (GLH-2 Release Integrity, R4) — release-manifest generation-logic gate. Runs the
   # generator/validator selftest on every event so the fail-closed logic cannot regress.
-  release-manifest-check:
-    name: release-manifest:check
-    runs-on: ubuntu-latest
-    needs: install
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v6
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-      - run: npm ci || npm ci || npm ci # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
-      - run: npm run release-manifest:selftest
+  # Folded into `static-governance` on all lanes (see that job).
 
   # GLH-2-B (GLH-2 Release Integrity, R2/R3/R4) — on the governed release build (push→main),
   # fan in the per-component immutable digests, generate + validate ONE release manifest
@@ -329,7 +370,14 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci || npm ci || npm ci # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
-      - run: npm run prisma:generate
+      - uses: ./.github/actions/prisma-generate
+      - name: Nx cache (test)
+        uses: actions/cache@v4
+        with:
+          path: .nx/cache
+          key: nx-test-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            nx-test-${{ runner.os }}-
       - uses: nrwl/nx-set-shas@v4
         if: github.event_name == 'pull_request'
       - name: test:unit (affected on PR, all otherwise)
@@ -340,8 +388,26 @@ jobs:
             npx nx run-many -t test --all
           fi
 
-  openapi-validate:
-    name: openapi:validate
+  # ---------------------------------------------------------------------------
+  # static-governance — CONSOLIDATED cheap governance walls (CI-Velocity-2 §PR-2).
+  #
+  # These deterministic static checks each ran ~1s–15s but paid a full `npm ci`
+  # (~70s) on a dedicated runner. They now share ONE checkout + ONE `npm ci` on
+  # ONE runner, each as its own NAMED step so a failure names the exact wall.
+  # `if: ${{ !cancelled() }}` on every check step means one red does NOT mask the
+  # others — every wall still reports independently (stronger visibility than the
+  # prior parallel jobs, which stopped at their own first failure). The job fails
+  # if ANY step fails; it is a member of deployment-gate.needs, so every folded
+  # wall still gates the merge exactly as before. Self-tests run before their
+  # check (unchanged), keeping each guard non-vacuous.
+  #
+  # NOT folded (kept as standalone jobs by governance): build, verify-vocabulary,
+  # env-passthrough-check, contract-parity-check, aggregate-gate-check — the five
+  # GLH-1 REQUIRED_AGGREGATE_MEMBERS that verify-aggregate-gate.ts pins as distinct
+  # job IDs inside deployment-gate.needs.
+  # ---------------------------------------------------------------------------
+  static-governance:
+    name: static-governance
     runs-on: ubuntu-latest
     needs: install
     steps:
@@ -351,10 +417,70 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci || npm ci || npm ci # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
-      - run: npm run openapi:validate
+      - name: openapi:validate
+        if: ${{ !cancelled() }}
+        run: npm run openapi:validate
+      - name: openapi:lint
+        if: ${{ !cancelled() }}
+        run: npm run openapi:lint
+      - name: openapi:drift-check
+        if: ${{ !cancelled() }}
+        run: npm run openapi:drift-check
+      - name: portal:refusal-check
+        if: ${{ !cancelled() }}
+        run: npm run portal:refusal-check
+      - name: ats:refusal-check
+        if: ${{ !cancelled() }}
+        run: npm run ats:refusal-check
+      - name: ingestion:refusal-check
+        if: ${{ !cancelled() }}
+        run: npm run ingestion:refusal-check
+      - name: frontdoor:conf-check
+        if: ${{ !cancelled() }}
+        run: node --import jiti/register ci/scripts/verify-frontdoor-conf.ts
+      - name: version:sync-check
+        if: ${{ !cancelled() }}
+        run: npm run version:sync-check
+      - name: error-codes:check
+        if: ${{ !cancelled() }}
+        run: npm run error-codes:check
+      - name: orphan-scopes:self-test
+        if: ${{ !cancelled() }}
+        run: npm run orphan-scopes:self-test
+      - name: orphan-scopes:check
+        if: ${{ !cancelled() }}
+        run: npm run orphan-scopes:check
+      - name: dead-error-codes:self-test
+        if: ${{ !cancelled() }}
+        run: npm run dead-error-codes:self-test
+      - name: dead-error-codes:check
+        if: ${{ !cancelled() }}
+        run: npm run dead-error-codes:check
+      - name: pipeline:write-authority:self-test
+        if: ${{ !cancelled() }}
+        run: npm run pipeline:write-authority:self-test
+      - name: pipeline:write-authority:check
+        if: ${{ !cancelled() }}
+        run: npm run pipeline:write-authority:check
+      - name: integration-roots:check
+        if: ${{ !cancelled() }}
+        run: npm run tests:integration:check
+      - name: repo-map:check
+        if: ${{ !cancelled() }}
+        run: npm run repo-map:check
+      - name: release-manifest:check
+        if: ${{ !cancelled() }}
+        run: npm run release-manifest:selftest
 
-  openapi-lint:
-    name: openapi:lint
+  # identity-index:privacy-wall is deliberately NOT folded into static-governance.
+  # Its LOCKED directives (Aramo-TR2b-DDR §I14 line 83; Aramo-TR2b-B1 line 41) mandate a
+  # "first-class named CI gate … visible in the required-checks list, not folded" — a
+  # visibility rationale that exceeds CI execution topology, so the CI-Velocity-2 governed-
+  # aggregate equivalence amendment (which is topology-only) does not cover it. It stays a
+  # standalone job in deployment-gate.needs, honoring TR2b literally. (identity_index carries
+  # a hard privacy invariant: no tenant_id, no PII, ever.)
+  identity-index-privacy-wall:
+    name: identity-index:privacy-wall
     runs-on: ubuntu-latest
     needs: install
     steps:
@@ -364,20 +490,7 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci || npm ci || npm ci # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
-      - run: npm run openapi:lint
-
-  lint-nx-boundaries:
-    name: lint:nx-boundaries
-    runs-on: ubuntu-latest
-    needs: install
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v6
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-      - run: npm ci || npm ci || npm ci # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
-      - run: npm run lint:nx-boundaries
+      - run: npm run identity-index:privacy-wall
 
   verify-vocabulary:
     name: verify:vocabulary
@@ -395,209 +508,11 @@ jobs:
       - run: bash scripts/verify-vocabulary.sh
 
   # ---------------------------------------------------------------------------
-  # Refusal enforcement + drift detection. Scripts live in ci/scripts/. These
-  # walls are UNCONDITIONAL required checks on every lane (never affected-scoped).
+  # GLH-1 REQUIRED_AGGREGATE_MEMBERS kept as standalone jobs (verify-aggregate-gate.ts
+  # pins these exact job IDs into deployment-gate.needs). Unconditional walls.
   # ---------------------------------------------------------------------------
 
-  openapi-drift-check:
-    name: openapi:drift-check
-    runs-on: ubuntu-latest
-    needs: install
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v6
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-      - run: npm ci || npm ci || npm ci # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
-      - run: npm run openapi:drift-check
-
-  portal-refusal-check:
-    name: portal:refusal-check
-    runs-on: ubuntu-latest
-    needs: install
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v6
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-      - run: npm ci || npm ci || npm ci # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
-      - run: npm run portal:refusal-check
-
-  ats-refusal-check:
-    name: ats:refusal-check
-    runs-on: ubuntu-latest
-    needs: install
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v6
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-      - run: npm ci || npm ci || npm ci # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
-      - run: npm run ats:refusal-check
-
-  ingestion-refusal-check:
-    name: ingestion:refusal-check
-    runs-on: ubuntu-latest
-    needs: install
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v6
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-      - run: npm ci || npm ci || npm ci # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
-      - run: npm run ingestion:refusal-check
-
-  # Front-Door PR-2 (Ruling 6) — the nginx front-door conf-semantics wall
-  # (constant/conf parity, R14 negatives, header contract, wildcard-only cert,
-  # inertness invariant). Always-run wall (refusal-check family). Invoked directly
-  # (no package.json script) to hold the directive's exact 9-file delta.
-  frontdoor-conf-check:
-    name: frontdoor:conf-check
-    runs-on: ubuntu-latest
-    needs: install
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v6
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-      - run: npm ci || npm ci || npm ci # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
-      - run: node --import jiti/register ci/scripts/verify-frontdoor-conf.ts
-
-  version-sync-check:
-    name: version:sync-check
-    runs-on: ubuntu-latest
-    needs: install
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v6
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-      - run: npm ci || npm ci || npm ci # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
-      - run: npm run version:sync-check
-
-  error-codes-check:
-    name: error-codes:check
-    runs-on: ubuntu-latest
-    needs: install
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v6
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-      - run: npm ci || npm ci || npm ci # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
-      - run: npm run error-codes:check
-
-  # HYG-3 — orphan-scope guard. Every seeded scope must be literally enforced OR
-  # machine-classified (DYNAMICALLY_ENFORCED / SERVICE_ENFORCED / ACTIVE_RESERVED /
-  # COMPATIBILITY_RESERVED / EXIT_HYG / CATALOG_ONLY_ZERO_GRANT) with a reason.
-  # The self-test runs FIRST — it proves the guard fails on an injected unexplained
-  # orphan and passes on a classified one, so a green check means the invariant is
-  # actually protected, not merely that the script ran.
-  orphan-scopes-check:
-    name: orphan-scopes:check
-    runs-on: ubuntu-latest
-    needs: install
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v6
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-      - run: npm ci || npm ci || npm ci # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
-      - run: npm run orphan-scopes:self-test
-      - run: npm run orphan-scopes:check
-
-  # HYG-3 — dead-error-code guard. Every registered error code must be emitted
-  # somewhere reachable OR machine-classified COMPATIBILITY_RESERVED with a reason.
-  # Self-test runs first (proves the invariant is protected).
-  dead-error-codes-check:
-    name: dead-error-codes:check
-    runs-on: ubuntu-latest
-    needs: install
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v6
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-      - run: npm ci || npm ci || npm ci # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
-      - run: npm run dead-error-codes:self-test
-      - run: npm run dead-error-codes:check
-
-  # L3-A — Pipeline write-authority guard (Client-Consideration authority contract).
-  # The Pipeline aggregate is written ONLY by its owner (libs/pipeline / the
-  # system-gated PipelineRepository); the client-consideration domains reference a
-  # Pipeline episode by UUID and must never mirror its status (the retired
-  # Submittal→Pipeline.submitted mirror is the precedent this forbids).
-  # Self-test runs first (proves the detectors are non-vacuous).
-  pipeline-write-authority-check:
-    name: pipeline:write-authority:check
-    runs-on: ubuntu-latest
-    needs: install
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v6
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-      - run: npm ci || npm ci || npm ci # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
-      - run: npm run pipeline:write-authority:self-test
-      - run: npm run pipeline:write-authority:check
-
-  # PR-B (Dev Execution Model v1.4 §12) — default-deny integration-root coverage
-  # guard. Proves ci/integration-roots.json covers every integration-bearing
-  # project and that no runner embeds a divergent root list. Cheap + static, so
-  # it is its own unconditional wall (always runs; never affected-scoped).
-  integration-roots-check:
-    name: integration-roots:check
-    runs-on: ubuntu-latest
-    needs: install
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v6
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-      - run: npm ci || npm ci || npm ci # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
-      - run: npm run tests:integration:check
-
-  repo-map-check:
-    name: repo-map:check
-    runs-on: ubuntu-latest
-    needs: install
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v6
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-      - run: npm ci || npm ci || npm ci # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
-      - run: npm run repo-map:check
-
-  placement-sql-check:
-    name: placement:sql:check
-    runs-on: ubuntu-latest
-    needs: install
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v6
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-      - run: npm ci || npm ci || npm ci # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
-      - run: npm run placement:sql:check
-
-  # GLH-1 (ATS Go-Live Hardening Charter v1.5) D — production env-passthrough parity.
-  # A var a container REQUIRES dropped from its compose passthrough, or a passthrough var
-  # absent from the .env.prod.example operator contract, is caught (D-AUTH-PLATFORM-HOSTS-1
-  # defect class). Config-only (compose + env-example); unconditional wall.
+  # GLH-1 D — production env-passthrough parity.
   env-passthrough-check:
     name: env:passthrough-check
     runs-on: ubuntu-latest
@@ -611,11 +526,7 @@ jobs:
       - run: npm ci || npm ci || npm ci # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
       - run: npm run env:passthrough-check
 
-  # GLH-1-C (ATS Go-Live Hardening Charter v1.5) — governed API contract-parity.
-  # Ratified taxonomy (XP/AP/SS/AD/PZ governed, IZ exempt) via ci/config/api-surface-manifest.json.
-  # Every governed live route must have an OpenAPI op or a transitionalUndocumented entry; every
-  # OpenAPI op must have a live handler; every live route must be classified (default-deny).
-  # Config+source only; unconditional wall.
+  # GLH-1-C — governed API contract-parity (route <-> OpenAPI).
   contract-parity-check:
     name: contract-parity:check
     runs-on: ubuntu-latest
@@ -645,8 +556,10 @@ jobs:
       - run: npm ci || npm ci || npm ci # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
       - run: npm run aggregate-gate:check
 
-  identity-index-privacy-wall:
-    name: identity-index:privacy-wall
+  # Placement generated-SQL parity wall (standalone; unchanged — currently not a
+  # deployment-gate member, preserved as-is to avoid changing gating semantics).
+  placement-sql-check:
+    name: placement:sql:check
     runs-on: ubuntu-latest
     needs: install
     steps:
@@ -656,7 +569,20 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci || npm ci || npm ci # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
-      - run: npm run identity-index:privacy-wall
+      - run: npm run placement:sql:check
+
+  lint-nx-boundaries:
+    name: lint:nx-boundaries
+    runs-on: ubuntu-latest
+    needs: install
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci || npm ci || npm ci # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
+      - run: npm run lint:nx-boundaries
 
   pact-consumer:
     name: pact:consumer
@@ -703,7 +629,7 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci || npm ci || npm ci # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
-      - run: npm run prisma:generate
+      - uses: ./.github/actions/prisma-generate
       - name: Download pact files
         uses: actions/download-artifact@v4
         with:
@@ -711,31 +637,117 @@ jobs:
           path: pact/pacts/
       - run: npm run pact:provider
 
-  # Integration: SERIAL always (harness hardening). On a PR, only the AFFECTED
-  # roots run (ci-integration.sh reads nx affected); on merge_group / push /
-  # schedule, EVERY root runs. The root set is derived at runtime from the
-  # canonical registry ci/integration-roots.json — never a frozen count here. An
-  # affected-empty PR runs no roots → exits 0 (success, not skipped).
-  tests-integration:
-    name: tests:integration
+  # ---------------------------------------------------------------------------
+  # Integration — a DYNAMIC MATRIX over the affected (PR) / all (else) registry
+  # roots. Discovery derives the matrix from the sole canonical registry
+  # (ci/integration-roots.json) via ci/scripts/run-integration.ts (CI_EMIT_MATRIX);
+  # each matrix leg runs EXACTLY ONE root on its OWN runner (CI_ROOT), serially
+  # with --no-file-parallelism — so the one-Postgres-per-box harness-hardening
+  # invariant holds per leg while roots run in PARALLEL across legs. The stable
+  # `tests:integration` job fans them in and is the member deployment-gate needs.
+  # An affected-empty PR yields an empty matrix → the run job is skipped → the
+  # fan-in reports SUCCESS (not skipped).
+  # ---------------------------------------------------------------------------
+  integration-discovery:
+    name: integration-discovery
     runs-on: ubuntu-latest
     needs: install
+    outputs:
+      matrix: ${{ steps.emit.outputs.matrix }}
+      has_roots: ${{ steps.emit.outputs.has_roots }}
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 0 # nx affected needs history (PR lane)
       - uses: actions/setup-node@v6
         with:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci || npm ci || npm ci # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
-      - run: npm run prisma:generate
       - uses: nrwl/nx-set-shas@v4
         if: github.event_name == 'pull_request'
-      - name: integration (affected serial on PR, full serial otherwise)
+      - name: Emit affected (PR) / full (else) integration matrix
+        id: emit
         env:
+          CI_EMIT_MATRIX: '1'
           CI_AFFECTED: ${{ github.event_name == 'pull_request' && '1' || '0' }}
+        run: node --import jiti/register ci/scripts/run-integration.ts
+
+  integration:
+    name: integration (${{ matrix.project }})
+    runs-on: ubuntu-latest
+    needs: [install, integration-discovery]
+    if: ${{ needs.integration-discovery.outputs.has_roots == 'true' }}
+    strategy:
+      fail-fast: false
+      # Bounded burst (CI-Velocity-2 R2, Architect-ruled): the full lane otherwise
+      # makes every registry leg simultaneously eligible, worsening runner-queue
+      # contention. Measured distribution — apps/api ≈ 659 s dominates, the remaining
+      # leaf legs sum to ≈ 583 s (median ≈ 7.6 s) — makes apps/api the hard floor;
+      # K=8 lands within ~7% of the unconstrained floor while capping the integration
+      # runner burst, leaving headroom for build/test/docker/pact. K=4 is slower than
+      # the old serial job (per-leg setup overhead dominates); K>8 buys ~nothing (api-bound).
+      max-parallel: 8
+      matrix: ${{ fromJSON(needs.integration-discovery.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci || npm ci || npm ci # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
+      - uses: ./.github/actions/prisma-generate
+      # CI-Velocity-2 harness fix (diagnosed root cause of settings/skills-taxonomy failing
+      # under per-leg execution): Testcontainers pulls its base image in beforeAll; under the
+      # matrix each leg pulls independently, and the contaminated-main run hit Docker Hub
+      # HTTP 500s (transient), leaving the container undefined → teardown "$disconnect/close"
+      # on undefined. This best-effort pre-pull with backoff warms the small common base
+      # images so beforeAll finds them cached; combined with max-parallel: 8 (which caps the
+      # concurrent-pull burst) it removes the observed failure. Best-effort by design — if a
+      # pull ultimately fails, Testcontainers still retries on demand, so this never masks a
+      # real test failure. (localstack/localstack:3 is large and used by a single root, so it
+      # is intentionally left to on-demand pull rather than warmed in every leg.)
+      - name: Pre-warm Testcontainers base images (absorb Docker Hub transient 5xx)
+        run: |
+          for img in postgres:17 postgres:17-alpine redis:7; do
+            for i in 1 2 3 4 5; do
+              if docker pull "$img"; then break; fi
+              echo "::warning::docker pull $img attempt $i failed (suspected Docker Hub transient 5xx); backing off"
+              sleep $((i * 6))
+            done
+          done
+      - name: integration root (serial, one Postgres on this box)
+        env:
+          CI_ROOT: ${{ matrix.root }}
         run: bash ci/scripts/ci-integration.sh
+
+  # Stable fan-in gate. Name + job ID unchanged (`tests:integration` /
+  # tests-integration) so branch protection + deployment-gate.needs are unaffected.
+  # always() so it never reports "skipped": PASS when every leg is green OR the
+  # matrix was empty (no affected roots); FAIL if discovery failed or any leg failed.
+  tests-integration:
+    name: tests:integration
+    runs-on: ubuntu-latest
+    needs: [integration-discovery, integration]
+    if: always()
+    steps:
+      - name: Aggregate integration matrix result
+        run: |
+          set -euo pipefail
+          D='${{ needs.integration-discovery.result }}'
+          R='${{ needs.integration.result }}'
+          echo "discovery=$D  integration-matrix=$R  has_roots=${{ needs.integration-discovery.outputs.has_roots }}"
+          if [ "$D" != "success" ]; then
+            echo "::error::integration discovery did not succeed (result=$D)."
+            exit 1
+          fi
+          # R is 'skipped' when the affected set was empty (expected PASS), 'success'
+          # when every leg was green, or 'failure'/'cancelled' when a root failed.
+          if [ "$R" = "failure" ] || [ "$R" = "cancelled" ]; then
+            echo "::error::one or more integration roots failed (matrix result=$R)."
+            exit 1
+          fi
+          echo "All affected integration roots passed (or none were affected)."
 
   # ---------------------------------------------------------------------------
   # Terraform IaC gates — PATH-FILTERED to infrastructure/ on a PR (no-op when
@@ -846,6 +858,12 @@ jobs:
   # a PR it aggregates the fast lane (affected/path-filtered jobs report success
   # even when they no-op internally — no "skipped" ever reaches this grep).
   # Override-label discipline (Plan v1.5 §4 Stage 4) preserved.
+  #
+  # CI-Velocity-2 membership note: the 16 cheap governance walls that formerly
+  # appeared here individually now gate via the single `static-governance` member
+  # (each is a named step inside it); the integration matrix gates via the stable
+  # `tests-integration` fan-in. The five GLH-1 REQUIRED_AGGREGATE_MEMBERS remain
+  # explicit members (verify-aggregate-gate.ts enforces their presence).
   # ---------------------------------------------------------------------------
   deployment-gate:
     name: deployment-gate
@@ -857,26 +875,12 @@ jobs:
       - env-passthrough-check # GLH-1 D — prod env-passthrough parity
       - contract-parity-check # GLH-1-C — governed API route<->OpenAPI parity
       - aggregate-gate-check # GLH-1 A+B — pins the above INTO this needs list
-      - release-manifest-check # GLH-2-B — release-manifest generator/validator logic gate
-      - openapi-validate
-      - openapi-lint
-      - openapi-drift-check
-      - portal-refusal-check
-      - ats-refusal-check
-      - ingestion-refusal-check
-      - frontdoor-conf-check
-      - version-sync-check
-      - error-codes-check
-      - orphan-scopes-check
-      - dead-error-codes-check
-      - pipeline-write-authority-check
-      - integration-roots-check
-      - repo-map-check
-      - identity-index-privacy-wall
+      - static-governance # CI-Velocity-2 — consolidated cheap governance walls (named steps)
+      - identity-index-privacy-wall # TR2b-DDR/B1 — kept standalone (visibility rationale, not folded)
       - pact-consumer
       - pact-provider
       - test-unit
-      - tests-integration
+      - tests-integration # stable fan-in over the affected/full integration matrix
       - lint-nx-boundaries
       - docker-build
       - terraform-fmt
