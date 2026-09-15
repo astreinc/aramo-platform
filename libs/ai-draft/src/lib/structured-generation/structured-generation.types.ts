@@ -14,6 +14,10 @@ export type StructuredGenerationErrorCategory =
   | 'timeout'
   | 'network'
   | 'malformed_output'
+  // Output truncated at max_tokens (stop_reason=max_tokens) — the JSON is
+  // incomplete. Distinct from malformed_output so a consumer can surface an
+  // explicit "provider truncated" state (HF1 §13/R9) vs. a schema/parse miss.
+  | 'truncated'
   | 'transport'
   // terminal
   | 'auth_config'

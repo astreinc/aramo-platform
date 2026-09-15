@@ -30,7 +30,7 @@ import {
   type IntakeState,
 } from './intake-fields';
 import type { Provenance, ProvenanceMap } from './provenance';
-import type { TalentRecordView, WorkHistoryDraft } from './types';
+import type { SkillDraft, TalentRecordView, WorkHistoryDraft } from './types';
 
 // R5 (rebuild) — the Add-Talent surface, rebuilt to enterprise-mockup parity.
 //
@@ -84,6 +84,14 @@ export function TalentCreateView() {
   // Reviewable work-history (governed_llm) — extracted 'from résumé', recruiter-
   // editable, persisted at create as TalentWorkHistoryEntry (source='resume').
   const [workHistory, setWorkHistory] = useState<WorkHistoryDraft[]>([]);
+  // HF1 Gate-6 — structured skills + source_refs and the corpus provenance
+  // carried from the draft into the create request (durable evidence provenance;
+  // the free-text key_skills field remains the recruiter-facing surface).
+  const [resumeSkills, setResumeSkills] = useState<readonly SkillDraft[]>([]);
+  const [resumeProvenance, setResumeProvenance] = useState<{
+    source_map_version?: string;
+    resume_text_hash?: string;
+  }>({});
 
   const [startedAt, setStartedAt] = useState<number | null>(null);
   const [elapsedMs, setElapsedMs] = useState(0);
@@ -202,6 +210,13 @@ export function TalentCreateView() {
       setFields(applied.state);
       setProvenance(applied.provenance);
       setWorkHistory(result.work_history ? [...result.work_history] : []);
+      // HF1 — carry structured skills + corpus provenance for durable evidence
+      // persistence at create (the free-text key_skills field is set via prefill).
+      setResumeSkills(result.skills ? [...result.skills] : []);
+      setResumeProvenance({
+        source_map_version: result.source_map_version,
+        resume_text_hash: result.resume_text_hash,
+      });
       // Governed-mode warning (LLM unavailable / unreadable / zero fields) is
       // NON-BLOCKING (§15): the form opens for review + manual entry; the
       // recruiter can go Back and re-upload to retry. No silent mode fallback.
@@ -223,6 +238,8 @@ export function TalentCreateView() {
     setProvenance({});
     setParseWarning(null);
     setWorkHistory([]);
+    setResumeSkills([]);
+    setResumeProvenance({});
     setStartedAt(null);
     setElapsedMs(0);
     setSubmitting(false);
@@ -262,9 +279,26 @@ export function TalentCreateView() {
     setSubmitError(null);
     setAttachWarning(null);
 
+    // HF1 Gate-6 — the résumé document + corpus provenance, carried into the
+    // create request so the BE creates the résumé TalentDocument AFTER confirmed
+    // creation and stamps durable provenance onto the persisted evidence.
+    const resumeDocument =
+      resume.file !== undefined && resume.storage_key !== undefined
+        ? {
+            storage_key: resume.storage_key,
+            file_name: resume.file.name,
+            mime_type: resume.file.type === '' ? 'application/octet-stream' : resume.file.type,
+            size_bytes: resume.file.size,
+            source_map_version: resumeProvenance.source_map_version,
+            resume_text_hash: resumeProvenance.resume_text_hash,
+          }
+        : undefined;
+
     let record: TalentRecordView;
     try {
-      record = await createTalent(buildCreateBody(fields, workHistory));
+      record = await createTalent(
+        buildCreateBody(fields, workHistory, { skills: resumeSkills, resumeDocument }),
+      );
     } catch (err) {
       // Backstop: the proactive check should already show the card + block
       // Create, but a record can appear between check and create. On the 409

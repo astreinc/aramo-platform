@@ -10,17 +10,30 @@ import { TalentRecordController } from '../lib/talent-record.controller.js';
 const TENANT = '01900000-0000-7000-8000-000000000001';
 const AUTH = { sub: 'me', tenant_id: TENANT, scopes: ['talent:read'] } as unknown as AuthContextType;
 
+function emptyProposal() {
+  return {
+    skills: [],
+    work_history: [],
+    rejected_count: 0,
+    source_map_version: 'resume-source-map/v1',
+    resume_text_hash: 'h',
+  };
+}
+
 function makeController(opts: {
   mode: 'governed_llm' | 'deterministic';
   text?: string | null;
-  proposal?: unknown;
+  // HF1 — extractResumeDraft returns { status, proposal }.
+  result?: unknown;
   proposalThrows?: boolean;
   deterministicResult?: unknown;
 }) {
   const tenantSetting = { get: vi.fn().mockResolvedValue(opts.mode) };
   const extractResumeDraft = opts.proposalThrows
     ? vi.fn().mockRejectedValue(new Error('provider unavailable'))
-    : vi.fn().mockResolvedValue(opts.proposal ?? { skills: [], work_history: [], rejected_count: 0 });
+    : vi
+        .fn()
+        .mockResolvedValue(opts.result ?? { status: 'partial', proposal: emptyProposal() });
   const talentExtraction = { extractResumeDraft };
   const parseFromStorageKey = vi
     .fn()
@@ -52,30 +65,77 @@ describe('draft-from-resume — exclusive mode resolver', () => {
     ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
   });
 
-  it('governed_llm → LLM is the SOLE extractor (deterministic parser NOT called)', async () => {
+  it('governed_llm → LLM is the SOLE extractor; key_skills from surface_forms; source_refs + status carried', async () => {
     const { ctl, extractResumeDraft, parseFromStorageKey, extractTextFromStorageKey } = makeController({
       mode: 'governed_llm',
       text: 'Sarah Nolan — Cloud Engineer, Austin TX. Skills: C#, Azure SQL',
-      proposal: {
-        first_name: 'Sarah',
-        last_name: 'Nolan',
-        skills: ['C#', 'Azure SQL'],
-        work_history: [{ employer_name: 'Northstar', role_title: 'Engineer' }],
-        rejected_count: 0,
+      result: {
+        status: 'success',
+        proposal: {
+          first_name: 'Sarah',
+          last_name: 'Nolan',
+          skills: [
+            { surface_form: 'C#', source_refs: ['B003'] },
+            { surface_form: 'Azure SQL', source_refs: ['B003'] },
+          ],
+          work_history: [
+            { employer_name: 'Northstar', role_title: 'Engineer', source_refs: ['B004'] },
+          ],
+          rejected_count: 0,
+          source_map_version: 'resume-source-map/v1',
+          resume_text_hash: 'h',
+        },
       },
     });
     const res = await ctl.draftFromResume(AUTH, { storage_key: 'k' }, 'rq-1');
     expect(res.mode).toBe('governed_llm');
+    expect(res.extraction_status).toBe('success');
     expect(res.prefill.first_name).toBe('Sarah');
+    // key_skills derived from the structured surface_forms (R7).
     expect(res.prefill.key_skills).toBe('C#, Azure SQL');
-    // Work-history rides the response for the review card (declared, editable).
-    expect(res.work_history).toEqual([{ employer_name: 'Northstar', role_title: 'Engineer' }]);
+    // Work-history rides the response carrying source_refs; NEVER a description (R4).
+    expect(res.work_history).toEqual([
+      { employer_name: 'Northstar', role_title: 'Engineer', source_refs: ['B004'] },
+    ]);
+    expect(res.work_history?.[0]).not.toHaveProperty('description');
+    // Structured skills + refs carried for durable provenance (R7).
+    expect(res.skills).toEqual([
+      { surface_form: 'C#', source_refs: ['B003'] },
+      { surface_form: 'Azure SQL', source_refs: ['B003'] },
+    ]);
     // Email/phone are NEVER LLM-proposed (redacted; held for the amendment).
     expect(res.prefill.email1).toBeUndefined();
     expect(res.prefill.phone_cell).toBeUndefined();
     expect(extractTextFromStorageKey).toHaveBeenCalledOnce();
     expect(extractResumeDraft).toHaveBeenCalledOnce();
     expect(parseFromStorageKey).not.toHaveBeenCalled();
+  });
+
+  it('governed_llm + provider_truncated → explicit failed status + distinct warning (§13/R9)', async () => {
+    const { ctl, parseFromStorageKey } = makeController({
+      mode: 'governed_llm',
+      text: 'a very long resume',
+      result: { status: 'provider_truncated', proposal: emptyProposal() },
+    });
+    const res = await ctl.draftFromResume(AUTH, { storage_key: 'k' }, 'rq-1');
+    expect(res.extraction_status).toBe('provider_truncated');
+    expect(res.parse_status).toBe('failed');
+    expect(res.prefill).toEqual({});
+    expect(res.warning).toMatch(/too long/i);
+    // A technical failure NEVER falls back to the deterministic parser (§15).
+    expect(parseFromStorageKey).not.toHaveBeenCalled();
+  });
+
+  it('governed_llm + invalid_structured_output → explicit failed status + retry warning', async () => {
+    const { ctl } = makeController({
+      mode: 'governed_llm',
+      text: 'resume',
+      result: { status: 'invalid_structured_output', proposal: emptyProposal() },
+    });
+    const res = await ctl.draftFromResume(AUTH, { storage_key: 'k' }, 'rq-1');
+    expect(res.extraction_status).toBe('invalid_structured_output');
+    expect(res.parse_status).toBe('failed');
+    expect(res.warning).toBeDefined();
   });
 
   it('deterministic → parser is the SOLE extractor (NO LLM call)', async () => {

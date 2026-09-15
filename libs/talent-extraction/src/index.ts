@@ -28,9 +28,15 @@ export type {
   ExtractedSkill,
   ExtractedWorkHistory,
   ExtractionCompletion,
-  // Add-Talent governed-LLM DRAFT extraction (pre-create intake proposal).
+  // Add-Talent governed-LLM DRAFT extraction (HF1 durable fact extraction).
   ResumeDraftInput,
   ResumeDraftProposal,
+  ResumeDraftResult,
+  ResumeDraftStatus,
+  ResumeDraftSkill,
   ResumeDraftWorkHistory,
+  ResumeProvenance,
+  ResumeSourceMap,
+  SourceMapBlock,
   TalentWorkHistoryView,
 } from './lib/dto/extraction.dto.js';

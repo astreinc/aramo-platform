@@ -36,6 +36,8 @@ function makeService(opts: {
     aiDraft as never,
     evidence as never,
     trust as never,
+    // HF1 — structured-generation port; the ledger path never invokes it.
+    {} as never,
   );
   return { service, record };
 }
@@ -97,6 +99,7 @@ describe('routeDeclaredEvidenceToLedger — loud fail then exactly-once on retry
       { generateDraft: vi.fn() } as never,
       evidence as never,
       trust as never,
+      {} as never,
     );
 
     // Run 1 — s1 writes, s2 throws → the whole call rejects LOUDLY.

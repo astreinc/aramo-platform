@@ -28,6 +28,7 @@ import {
 } from '@aramo/object-storage';
 import {
   ResumeParserService,
+  buildResumeSourceMap,
   type ParseResumeResult,
   type ParseStatus,
   type TalentRecordPrefill,
@@ -35,6 +36,7 @@ import {
 import { TenantSettingService } from '@aramo/settings';
 import {
   TalentExtractionService,
+  type ResumeDraftStatus,
   type TalentWorkHistoryView,
 } from '@aramo/talent-extraction';
 
@@ -344,22 +346,58 @@ export class TalentRecordController {
       requestId,
     });
 
-    // Reviewed work-history (LOCKED scope expansion) — persist AFTER the record
-    // exists, as declared TalentWorkHistoryEntry (source='resume'). BEST-EFFORT:
-    // the talent IS created; a work-history write hiccup must not fail the
-    // create (mirrors the attach-on-create soft-fail). Reuses the already-
-    // injected TalentExtractionService (no new cross-lib edge).
-    if (Array.isArray(body.work_history) && body.work_history.length > 0) {
-      try {
+    // HF1 Gate-6 confirmed-create provenance sequence (deterministic; NO AI call
+    // — Ruling 3). Order per the ruling flow: record → (résumé TalentDocument) →
+    // work-history evidence + skill evidence, each stamped with durable
+    // provenance (source_document_id + source_refs + source_map_version +
+    // resume_text_hash). BEST-EFFORT: the talent IS created; a provenance/evidence
+    // write hiccup must not fail the create (mirrors the attach-on-create
+    // soft-fail). Reuses the already-injected TalentExtractionService (no new edge).
+    try {
+      // R1 — create/link the résumé TalentDocument ONLY here, after confirmed
+      // creation (never at draft/proposal time). Its id anchors the evidence.
+      let sourceDocumentId: string | undefined;
+      const rd = body.resume_document;
+      if (rd !== undefined && typeof rd.storage_key === 'string' && rd.storage_key !== '') {
+        sourceDocumentId = await this.talentExtraction.createResumeDocument({
+          talent_id: created.id,
+          tenant_id: authContext.tenant_id,
+          uploaded_by_actor_id: authContext.sub,
+          storage_key: rd.storage_key,
+          filename: rd.file_name,
+          mime_type: rd.mime_type,
+          size_bytes: rd.size_bytes,
+        });
+      }
+      const provenance = {
+        ...(sourceDocumentId !== undefined ? { source_document_id: sourceDocumentId } : {}),
+        ...(rd?.source_map_version !== undefined
+          ? { source_map_version: rd.source_map_version }
+          : {}),
+        ...(rd?.resume_text_hash !== undefined ? { resume_text_hash: rd.resume_text_hash } : {}),
+      };
+
+      if (Array.isArray(body.work_history) && body.work_history.length > 0) {
         await this.talentExtraction.persistDeclaredWorkHistory({
           talent_id: created.id,
           tenant_id: authContext.tenant_id,
           entries: body.work_history,
+          provenance,
         });
-      } catch {
-        // Non-fatal: the record is created; the recruiter can add work history
-        // on the Talent record. (No PII in logs — §17.)
       }
+      // R2 — persist résumé skills as declared evidence WITH provenance (the
+      // key_skills scalar is retained by repo.create above — this is additive).
+      if (Array.isArray(body.skills) && body.skills.length > 0) {
+        await this.talentExtraction.persistDeclaredSkills({
+          talent_id: created.id,
+          tenant_id: authContext.tenant_id,
+          skills: body.skills,
+          provenance,
+        });
+      }
+    } catch {
+      // Non-fatal: the record is created; the recruiter can add evidence on the
+      // Talent record. (No PII in logs — §17.)
     }
 
     return created;
@@ -636,10 +674,12 @@ export class TalentRecordController {
   }
 
   // Governed-LLM draft (MODE IS EXCLUSIVE): the governed LLM is the ONLY
-  // extractor — the deterministic parser does NOT contribute values. On ANY
-  // failure (text-extraction failed, provider unavailable, malformed output,
-  // zero grounded fields) the form opens with an EMPTY/partial prefill + a
-  // warning + retry — NEVER a silent fallback to the deterministic parser (§15).
+  // extractor — the deterministic parser does NOT contribute values. HF1: build
+  // the Aramo-owned source-map here (resume-parse owns text→blocks, R1) and pass
+  // it BY VALUE into talent-extraction, which returns an EXPLICIT status (§13/R9).
+  // A technical failure (truncation / off-schema / provider error) surfaces as a
+  // distinct warning — NEVER a silent fallback to the deterministic parser (§15),
+  // and NEVER a masked "successful extraction with zero facts".
   private async draftGovernedLlm(
     storage_key: string,
     tenant_id: string,
@@ -659,24 +699,63 @@ export class TalentRecordController {
       return { mode: 'governed_llm', prefill: {}, parse_status: 'failed', warning: RETRY_WARNING };
     }
 
-    let proposal;
+    // HF1 §3/R1 — the canonical source-map (version + text hash + ordered blocks),
+    // built by the bytes→text owner and handed by value to the grounding lib.
+    const source_map = buildResumeSourceMap(text);
+
+    let result;
     try {
-      proposal = await this.talentExtraction.extractResumeDraft({ tenant_id, resume_text: text });
+      result = await this.talentExtraction.extractResumeDraft({ tenant_id, source_map });
     } catch {
-      // LLM provider unavailable / error — non-blocking; empty prefill + retry.
-      // NO deterministic fallback: the tenant chose governed_llm (§15).
+      // Defensive: the structured path maps provider errors to a status and does
+      // not throw, but an unexpected throw still degrades to a retry affordance.
       return {
         mode: 'governed_llm',
         prefill: {},
         parse_status: 'partial',
+        extraction_status: 'provider_failure',
         warning:
           'Résumé extraction is temporarily unavailable. Please retry, or enter the details manually.',
       };
     }
 
-    // Map the grounded proposal onto the recruiter-facing prefill. Email/phone
-    // are absent by design (redacted before the model — held for the ADR-0015
-    // Decision-6 amendment); the recruiter enters them.
+    const { status, proposal } = result;
+
+    // Explicit technical-failure states (§13/R9): distinct, honest warnings —
+    // never a masked empty draft. No prefill is offered on a technical failure.
+    if (status === 'provider_truncated') {
+      return {
+        mode: 'governed_llm',
+        prefill: {},
+        parse_status: 'failed',
+        extraction_status: status,
+        warning:
+          'This résumé was too long to read in a single pass. Please retry, or enter the details manually.',
+      };
+    }
+    if (status === 'invalid_structured_output') {
+      return {
+        mode: 'governed_llm',
+        prefill: {},
+        parse_status: 'failed',
+        extraction_status: status,
+        warning: RETRY_WARNING,
+      };
+    }
+    if (status === 'provider_failure') {
+      return {
+        mode: 'governed_llm',
+        prefill: {},
+        parse_status: 'partial',
+        extraction_status: status,
+        warning:
+          'Résumé extraction is temporarily unavailable. Please retry, or enter the details manually.',
+      };
+    }
+
+    // success | partial — map the grounded proposal onto the recruiter-facing
+    // prefill. Email/phone are absent by design (redacted before the model —
+    // ADR-0015 Decision-6 / §17); the recruiter enters them.
     const prefill: TalentRecordPrefill = {};
     if (proposal.first_name !== undefined) prefill.first_name = proposal.first_name;
     if (proposal.last_name !== undefined) prefill.last_name = proposal.last_name;
@@ -687,9 +766,12 @@ export class TalentRecordController {
     if (proposal.country !== undefined) prefill.country = proposal.country;
     if (proposal.current_employer !== undefined) prefill.current_employer = proposal.current_employer;
     if (proposal.title !== undefined) prefill.title = proposal.title;
-    // Clean skills → the free-text key_skills field (R5 §2 / §13 — no chip
-    // picker, no structured skill model here).
-    if (proposal.skills.length > 0) prefill.key_skills = proposal.skills.join(', ');
+    // Clean skills → the free-text key_skills field (the recruiter-facing R5 §2
+    // surface). The STRUCTURED skills + their source_refs are carried separately
+    // (below) for durable provenance (R7).
+    if (proposal.skills.length > 0) {
+      prefill.key_skills = proposal.skills.map((s) => s.surface_form).join(', ');
+    }
 
     const hasIdentity = prefill.first_name !== undefined || prefill.last_name !== undefined;
     const hasAny = Object.keys(prefill).length > 0 || proposal.work_history.length > 0;
@@ -698,8 +780,16 @@ export class TalentRecordController {
       mode: 'governed_llm',
       prefill,
       parse_status,
-      // Reviewable work-history (declared 'from résumé', recruiter-editable).
+      extraction_status: status,
+      // Reviewable work-history (declared 'from résumé', recruiter-editable),
+      // each carrying its source_refs (§16/R8).
       ...(proposal.work_history.length > 0 ? { work_history: proposal.work_history } : {}),
+      // R7 — structured skills + source_refs carried through the API (the FE form
+      // uses the free-text key_skills; these preserve durable skill provenance).
+      ...(proposal.skills.length > 0 ? { skills: proposal.skills } : {}),
+      // §16 — provenance anchors the FE carries back into the create request.
+      source_map_version: proposal.source_map_version,
+      resume_text_hash: proposal.resume_text_hash,
       ...(hasAny
         ? {}
         : { warning: 'No details could be read from this résumé. Please enter them manually.' }),

@@ -51,10 +51,13 @@ describe('create — work-history persistence', () => {
     const res = await ctl.create(AUTH, BODY as never, 'rq-1');
     expect(res.id).toBe('tal-new');
     expect(create).toHaveBeenCalledOnce();
+    // HF1 Gate-6 — the call now carries a provenance object; with no
+    // resume_document on this body it resolves to empty (NULL/empty provenance).
     expect(persistDeclaredWorkHistory).toHaveBeenCalledWith({
       talent_id: 'tal-new',
       tenant_id: TENANT,
       entries: BODY.work_history,
+      provenance: {},
     });
   });
 

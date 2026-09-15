@@ -90,6 +90,10 @@ const TALENT_EVIDENCE_TR7_MIGRATION = resolve(
   ROOT,
   'libs/talent-evidence/prisma/migrations/20260714120000_tr7_b1_education_certification/migration.sql',
 );
+const TALENT_EVIDENCE_HF1_MIGRATION = resolve(
+  ROOT,
+  'libs/talent-evidence/prisma/migrations/20260915120000_hf1_resume_provenance/migration.sql',
+);
 const EVIDENCE_INIT_MIGRATION = resolve(
   ROOT,
   'libs/evidence/prisma/migrations/20260522090000_init_evidence_model/migration.sql',
@@ -256,6 +260,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         REQUISITION_INIT_MIGRATION,
         TALENT_EVIDENCE_INIT_MIGRATION,
         TALENT_EVIDENCE_TR7_MIGRATION,
+        TALENT_EVIDENCE_HF1_MIGRATION,
         EVIDENCE_INIT_MIGRATION,
         SUBMITTAL_INIT_MIGRATION,
         SUBMITTAL_REVOKE_MIGRATION,

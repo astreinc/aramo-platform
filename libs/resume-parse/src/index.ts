@@ -11,3 +11,11 @@ export type {
   ParseStatus,
   TalentRecordPrefill,
 } from './lib/types/parse-resume.types.js';
+// HF1 §3 / R1 — the canonical résumé source-map. Built here (the bytes→text
+// owner), passed BY VALUE through the controller into talent-extraction for
+// ref-grounding; talent-extraction never imports this lib.
+export {
+  RESUME_SOURCE_MAP_VERSION,
+  buildResumeSourceMap,
+} from './lib/source-map.js';
+export type { ResumeSourceMap, SourceMapBlock } from './lib/source-map.js';

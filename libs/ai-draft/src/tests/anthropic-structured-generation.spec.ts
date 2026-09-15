@@ -105,9 +105,9 @@ describe('AnthropicStructuredGenerationService', () => {
     if (out.kind === 'ok') expect(out.parsed).toEqual({ kept: 1 });
   });
 
-  it('truncation (stop_reason=max_tokens) → retryable malformed_output', async () => {
+  it('truncation (stop_reason=max_tokens) → retryable truncated (HF1 §13/R9)', async () => {
     createImpl = async () => message({ stop_reason: 'max_tokens', content: [{ type: 'text', text: '{"a":' }] });
-    expect(await service(okSecret).generateStructured(REQ)).toEqual({ kind: 'retryable', category: 'malformed_output' });
+    expect(await service(okSecret).generateStructured(REQ)).toEqual({ kind: 'retryable', category: 'truncated' });
   });
 
   it('empty text → terminal empty_output', async () => {

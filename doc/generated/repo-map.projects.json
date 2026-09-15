@@ -88,7 +88,8 @@
       "AiDraftModule",
       "AiDraftService",
       "AnthropicStructuredGenerationService",
-      "STRUCTURED_GENERATION_PROVIDER"
+      "STRUCTURED_GENERATION_PROVIDER",
+      "redactPii"
     ],
     "@aramo/api": ["AppModule"],
     "@aramo/attachment": [
@@ -1137,7 +1138,13 @@
       "resolveExternalIdentity",
       "validateExternalReqId"
     ],
-    "@aramo/resume-parse": ["ResumeParseModule", "ResumeParserService", "extractResumeText"],
+    "@aramo/resume-parse": [
+      "RESUME_SOURCE_MAP_VERSION",
+      "ResumeParseModule",
+      "ResumeParserService",
+      "buildResumeSourceMap",
+      "extractResumeText"
+    ],
     "@aramo/saved-list": [
       "SAVED_LIST_ITEM_TYPE_VALUES",
       "SavedListController",
@@ -2004,6 +2011,12 @@
       },
       { "project": "submittal", "status": "production" },
       { "project": "submittal-eligibility", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/talent-record/src/tests/create-resume-provenance.spec.ts",
+        "project": "talent-record",
+        "status": "excluded"
+      },
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/talent-record/src/tests/create-work-history.spec.ts",

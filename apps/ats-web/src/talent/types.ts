@@ -328,9 +328,27 @@ export interface ParseResumeResult {
 // prefill + a retry affordance (NO silent deterministic fallback).
 export type ResumeExtractionMode = 'governed_llm' | 'deterministic';
 
+// HF1 §13/R9 — the explicit governed-LLM extraction outcome.
+export type ResumeDraftStatus =
+  | 'success'
+  | 'partial'
+  | 'provider_truncated'
+  | 'invalid_structured_output'
+  | 'provider_failure';
+
+// HF1 R7 — a grounded, structured skill with durable source provenance.
+export interface SkillDraft {
+  readonly surface_form: string;
+  readonly source_refs: readonly string[];
+}
+
 // One reviewable work-history entry (governed_llm draft). Declared 'from
 // résumé', recruiter-editable; NOT verified. Hand-mirrors the BE
 // ResumeDraftWorkHistory / persists as TalentWorkHistoryEntry (source='resume').
+//   - `source_refs` (HF1 §16/R8): durable block-level provenance carried through
+//     the FE review state (read-only carry; survives to the create request).
+//   - `description` is RETAINED for the recruiter-driven EDIT path; HF1
+//     extraction never populates it (R4 — no résumé prose).
 export interface WorkHistoryDraft {
   readonly employer_name: string;
   readonly role_title: string;
@@ -338,6 +356,7 @@ export interface WorkHistoryDraft {
   readonly end_date?: string;
   readonly employment_type?: string;
   readonly description?: string;
+  readonly source_refs?: readonly string[];
 }
 
 export interface DraftFromResumeResult {
@@ -345,7 +364,14 @@ export interface DraftFromResumeResult {
   readonly prefill: TalentRecordPrefill;
   readonly parse_status: ParseStatus;
   readonly warning?: string;
+  // HF1 §13/R9 — distinguishes a technical failure from an honest partial/empty.
+  readonly extraction_status?: ResumeDraftStatus;
   readonly work_history?: readonly WorkHistoryDraft[];
+  // HF1 R7 — structured skills + source_refs (the form uses prefill.key_skills).
+  readonly skills?: readonly SkillDraft[];
+  // HF1 §16 — corpus provenance carried back into the create request.
+  readonly source_map_version?: string;
+  readonly resume_text_hash?: string;
 }
 
 // Talent-detail work-history read. Hand-mirrors BE TalentWorkHistoryView.
