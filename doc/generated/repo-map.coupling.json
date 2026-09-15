@@ -16103,9 +16103,20 @@
       "to": "libs/skills-taxonomy/tsconfig.lib.json"
     },
     {
-      "from": "libs/skills-taxonomy/src/lib/skill-canonicalization.processor.ts",
+      "from": "libs/skills-taxonomy/src/lib/normalize-skill-name.ts",
       "status": "production",
-      "to": "libs/skills-taxonomy/prisma/schema.prisma"
+      "to": "libs/skills-taxonomy/src/tests/normalize-skill-name.spec.ts"
+    },
+    {
+      "from": "libs/skills-taxonomy/src/lib/normalize-skill-name.ts",
+      "status": "production",
+      "to": "libs/talent-extraction/src/lib/skill-id.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/skills-taxonomy/src/tests/normalize-skill-name.spec.ts",
+      "status": "excluded",
+      "to": "libs/talent-extraction/src/lib/skill-id.ts"
     },
     {
       "from": "libs/sourced-talent/prisma/schema.prisma",

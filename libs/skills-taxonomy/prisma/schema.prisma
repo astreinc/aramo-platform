@@ -4,8 +4,11 @@
 // doc/05-conventions.md "Database Conventions". Cross-schema references
 // elsewhere in the program are UUID-only without FK constraints.
 //
-// PR-1 scaffolding only: this file declares the datasource and generator
-// configuration. Zero models exist yet.
+// SKILL-TAX-1A: the canonical Skill registry (Skill + SkillAuditEvent) now
+// exists. This schema is PLATFORM-GLOBAL — there is NO tenant_id on Skill;
+// one canonical Skill per technology serves the whole platform (Ruling #1).
+// Aliases, versions, relationships and canonicalization resolution logic are
+// later SKILL-TAX-1 phases (1B/1C); category/domain are deferred.
 
 generator client {
   provider = "prisma-client-js"
@@ -14,4 +17,141 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+  schemas  = ["skills_taxonomy"]
+}
+
+// -------------------------------------------------------------------------
+// Skill — the canonical technology identity master (platform-global).
+// -------------------------------------------------------------------------
+model Skill {
+  // UUID v7 generated app-side (Postgres 17 has no native uuidv7()). OPAQUE and
+  // externally stable: NOT derived from the name, so a canonical rename never
+  // changes identity. DISTINCT keyspace from the legacy deterministic
+  // TalentSkillEvidence.skill_id (deriveSkillId UUIDv5) — the two reconcile
+  // ADDITIVELY downstream (1D/1G); this build never re-keys the legacy id.
+  id              String   @id @db.Uuid
+
+  // Canonical display name, e.g. "Kubernetes", "PostgreSQL".
+  canonical_name  String   @unique
+  // trim -> lowercase -> collapse-whitespace lookup key. The LOAD-BEARING
+  // collision authority: "Kubernetes" == "kubernetes" == "  Kubernetes ".
+  normalized_name String   @unique
+  description     String?
+
+  // Lifecycle vocabulary — String + DB CHECK (active|inactive) + typed TS
+  // union (Ruling #2). The CHECK lives in the init migration.
+  status          String   @default("active")
+
+  created_at      DateTime @default(now()) @db.Timestamptz
+  updated_at      DateTime @updatedAt @db.Timestamptz
+  // Governance provenance — the platform actor that created / last mutated.
+  created_by      String?  @db.Uuid
+  updated_by      String?  @db.Uuid
+
+  @@index([status])
+  @@schema("skills_taxonomy")
+}
+
+// -------------------------------------------------------------------------
+// SkillAuditEvent — append-only master-data audit stream. Modeled on
+// identity.IdentityAuditEvent: no shared audit component exists to reuse
+// (libs/audit is an empty scaffold), so this follows the per-domain
+// append-only event-table convention. Platform-global mutations write
+// tenant_id = NULL; the nullable column is a seam for future tenant-scoped
+// alias/mapping audits.
+// -------------------------------------------------------------------------
+model SkillAuditEvent {
+  id            String   @id @db.Uuid
+  tenant_id     String?  @db.Uuid
+  actor_id      String?  @db.Uuid
+  actor_type    String
+  // Closed governed vocabulary — String + DB CHECK. The CHECK seeds the FULL
+  // currently-authorized SKILL-TAX-1 audit set so 1B-1F add no CHECK
+  // migration; 1A EMITS only SKILL_CREATED / SKILL_UPDATED / SKILL_DEACTIVATED.
+  event_type    String
+  subject_id    String   @db.Uuid
+  event_payload Json
+  created_at    DateTime @default(now()) @db.Timestamptz
+
+  @@index([subject_id, created_at(sort: Desc), id(sort: Desc)])
+  @@index([created_at(sort: Desc), id(sort: Desc)])
+  @@schema("skills_taxonomy")
+}
+
+// -------------------------------------------------------------------------
+// SkillAlias — governed alias -> canonical Skill mapping (SKILL-TAX-1B).
+// Platform-global (no tenant_id in 1B; the tenant-specific alias seam is a
+// later ADD-not-rename). normalized_alias is globally UNIQUE: one alias
+// resolves to exactly one canonical Skill (ambiguity handling is 1C).
+// skill_id is a UUID-only cross-row reference, no FK (Architecture §7.3).
+// -------------------------------------------------------------------------
+model SkillAlias {
+  id               String   @id @db.Uuid
+  skill_id         String   @db.Uuid
+  alias            String
+  normalized_alias String   @unique
+  // Governed vocabulary (String + DB CHECK): ABBREVIATION | COMMON_NAME |
+  // LEGACY_NAME | VENDOR_VARIANT | SPELLING_VARIANT.
+  alias_type       String
+  status           String   @default("active")
+  created_at       DateTime @default(now()) @db.Timestamptz
+  updated_at       DateTime @updatedAt @db.Timestamptz
+  created_by       String?  @db.Uuid
+  updated_by       String?  @db.Uuid
+
+  @@index([skill_id])
+  @@index([status])
+  @@schema("skills_taxonomy")
+}
+
+// -------------------------------------------------------------------------
+// SkillVersion — governed version of a canonical Skill (SKILL-TAX-1B).
+// Platform-global. (skill_id, normalized_version) is UNIQUE — a skill carries
+// each version once. Release lifecycle (released/deprecated/eol/current) is a
+// later minimal seam (§31); 1B tracks only the record's active|inactive status.
+// -------------------------------------------------------------------------
+model SkillVersion {
+  id                 String   @id @db.Uuid
+  skill_id           String   @db.Uuid
+  version            String
+  normalized_version String
+  version_family     String?
+  status             String   @default("active")
+  created_at         DateTime @default(now()) @db.Timestamptz
+  updated_at         DateTime @updatedAt @db.Timestamptz
+  created_by         String?  @db.Uuid
+  updated_by         String?  @db.Uuid
+
+  @@unique([skill_id, normalized_version])
+  @@index([skill_id])
+  @@schema("skills_taxonomy")
+}
+
+// -------------------------------------------------------------------------
+// SkillRelationship — how canonical skills relate to other canonical skills
+// (SKILL-TAX-1C). Platform-global. relationship_type + directionality + source
+// are governed String+CHECK vocabularies. Symmetric edges are stored ONCE in a
+// canonical orientation (smaller source_skill_id) so A~B and B~A do not
+// duplicate. A relationship NEVER creates Talent evidence (§10) — this table is
+// pure taxonomy, structurally isolated from any Talent-evidence schema.
+// -------------------------------------------------------------------------
+model SkillRelationship {
+  id                String   @id @db.Uuid
+  source_skill_id   String   @db.Uuid
+  target_skill_id   String   @db.Uuid
+  relationship_type String
+  directionality    String
+  status            String   @default("active")
+  // Provenance (§32) — governed source vocabulary + optional free-text ref.
+  source            String
+  source_ref        String?
+  created_at        DateTime @default(now()) @db.Timestamptz
+  updated_at        DateTime @updatedAt @db.Timestamptz
+  created_by        String?  @db.Uuid
+  updated_by        String?  @db.Uuid
+
+  @@unique([source_skill_id, target_skill_id, relationship_type])
+  @@index([source_skill_id])
+  @@index([target_skill_id])
+  @@schema("skills_taxonomy")
 }

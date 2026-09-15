@@ -1184,9 +1184,26 @@
       "isMetricGoalMap"
     ],
     "@aramo/skills-taxonomy": [
+      "PrismaService",
       "SKILL_CANONICALIZATION_QUEUE_NAME",
+      "SkillAliasConflictError",
+      "SkillAliasRepository",
       "SkillCanonicalizationProcessor",
-      "SkillsTaxonomyModule"
+      "SkillCanonicalizationService",
+      "SkillConflictError",
+      "SkillNotFoundError",
+      "SkillRegistryService",
+      "SkillRelationshipConflictError",
+      "SkillRelationshipRepository",
+      "SkillRepository",
+      "SkillValidationError",
+      "SkillVersionConflictError",
+      "SkillVersionRepository",
+      "SkillsTaxonomyModule",
+      "directionalityOf",
+      "isSymmetric",
+      "normalizeSkillName",
+      "normalizeVersion"
     ],
     "@aramo/sourced-talent": ["PrismaService", "SourcedTalentModule", "SourcedTalentRepository"],
     "@aramo/submittal": [
