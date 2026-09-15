@@ -375,6 +375,46 @@ export class TalentRecordController {
     @Body() body: UpdateTalentRecordRequestDto,
     @RequestId() requestId: string,
   ): Promise<TalentRecordView> {
+    // Contact-anchor edit gate (Talent Admission Invariant + data-correction).
+    // email1/phone_cell are identity/dedup anchors — mandatory at create and, by
+    // default, immutable afterward. Editing them for DATA CORRECTION is authorized
+    // ONLY for tenant_admin + tenant_owner via the dedicated `talent:edit:contact`
+    // scope (never a role-name check); `talent:edit` alone (recruiter+) must not.
+    // Editable ≠ nullable: a correction may not blank an anchor (would violate the
+    // admission invariant, which the update() repo path does not itself re-assert).
+    if (body.email1 !== undefined || body.phone_cell !== undefined) {
+      if (!authContext.scopes.includes('talent:edit:contact')) {
+        throw new AramoError(
+          'INSUFFICIENT_PERMISSIONS',
+          'editing a talent contact anchor (email/phone) requires talent:edit:contact (tenant_admin/tenant_owner)',
+          403,
+          {
+            requestId,
+            details: { required_scope: 'talent:edit:contact' },
+          },
+        );
+      }
+    }
+    if (body.email1 !== undefined && (body.email1 === null || body.email1.trim() === '')) {
+      throw new AramoError(
+        'VALIDATION_ERROR',
+        'email1 is a required contact anchor and cannot be cleared',
+        400,
+        { requestId, details: { field: 'email1' } },
+      );
+    }
+    if (
+      body.phone_cell !== undefined &&
+      (body.phone_cell === null || body.phone_cell.trim() === '')
+    ) {
+      throw new AramoError(
+        'VALIDATION_ERROR',
+        'phone_cell is a required contact anchor and cannot be cleared',
+        400,
+        { requestId, details: { field: 'phone_cell' } },
+      );
+    }
+
     // Scalar PATCH first (the repo allowlist-walk ignores work_history — it is
     // not a TalentRecord column). The returned view is the record's scalar shape.
     const updated = await this.repo.update({

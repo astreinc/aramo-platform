@@ -182,6 +182,19 @@ export const SETTINGS_NAV: readonly NavGroup[] = [
         match: '/admin/settings/engagement-policy',
         status: 'live',
       },
+      {
+        // Recruiting-behaviour defaults (Compensation display + Résumé
+        // extraction). Home for the previously-unlinked SettingsView; two of
+        // its controls directly govern recruiting/Add-Talent behaviour. The
+        // financial-auditor grant is an authorization control and moves to
+        // Roles & permissions in a follow-up.
+        key: 'recruiting-settings',
+        label: 'Recruiting settings',
+        icon: <IconSliders />,
+        to: '/admin/settings/recruiting',
+        match: '/admin/settings/recruiting',
+        status: 'live',
+      },
     ],
   },
   {
