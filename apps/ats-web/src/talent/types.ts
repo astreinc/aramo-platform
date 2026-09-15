@@ -369,6 +369,9 @@ export interface DraftFromResumeResult {
   readonly work_history?: readonly WorkHistoryDraft[];
   // HF1 R7 — structured skills + source_refs (the form uses prefill.key_skills).
   readonly skills?: readonly SkillDraft[];
+  // HF1 §16 — corpus provenance carried back into the create request.
+  readonly source_map_version?: string;
+  readonly resume_text_hash?: string;
 }
 
 // Talent-detail work-history read. Hand-mirrors BE TalentWorkHistoryView.

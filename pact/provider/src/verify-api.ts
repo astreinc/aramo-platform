@@ -354,6 +354,10 @@ const TALENT_EVIDENCE_TR7_MIGRATION = resolve(
   ROOT,
   'libs/talent-evidence/prisma/migrations/20260714120000_tr7_b1_education_certification/migration.sql',
 );
+const TALENT_EVIDENCE_HF1_MIGRATION = resolve(
+  ROOT,
+  'libs/talent-evidence/prisma/migrations/20260915120000_hf1_resume_provenance/migration.sql',
+);
 // M5 PR-1 + PR-2 — selection schema migrations: TalentSelection
 // init + TalentSelectionEvent event-log + absolute-immutability trigger.
 // Required for M5 PR-4 selection-* pact interactions.
@@ -3141,6 +3145,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         // can build the evidence package + persist the workflow record.
         TALENT_EVIDENCE_INIT_MIGRATION,
         TALENT_EVIDENCE_TR7_MIGRATION,
+        TALENT_EVIDENCE_HF1_MIGRATION,
         EVIDENCE_INIT_MIGRATION,
         SUBMITTAL_INIT_MIGRATION,
         // M4 PR-7 §4.9 — submittal-revoke schema extension (enum +

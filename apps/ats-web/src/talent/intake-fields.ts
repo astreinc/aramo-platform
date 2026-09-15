@@ -1,6 +1,7 @@
 import type {
   CreateTalentRecordRequest,
   ResumeExtractionMode,
+  SkillDraft,
   TalentRecordPrefill,
   TalentRecordView,
   UpdateTalentRecordRequest,
@@ -292,11 +293,29 @@ export function buildPatchBody(
   return body as unknown as UpdateTalentRecordRequest;
 }
 
+// HF1 §16/R1 — the résumé document + corpus provenance carried from the draft
+// into the create request (only on the résumé-first path).
+export interface ResumeDocumentCarry {
+  readonly storage_key: string;
+  readonly file_name: string;
+  readonly mime_type: string;
+  readonly size_bytes: number;
+  readonly source_map_version?: string;
+  readonly resume_text_hash?: string;
+}
+
 // Build the POST /v1/talent-records body. Required: first/last name.
 // Optional strings omitted when empty (the BE treats absent as "not set").
 export function buildCreateBody(
   state: IntakeState,
   workHistory: readonly WorkHistoryDraft[] = [],
+  // HF1 Gate-6 carry (R2/R8): structured skills + source_refs, and the résumé
+  // document/corpus provenance. The BE persists declared skill + work-history
+  // evidence WITH provenance; the free-text key_skills scalar (above) is retained.
+  extras: {
+    readonly skills?: readonly SkillDraft[];
+    readonly resumeDocument?: ResumeDocumentCarry;
+  } = {},
 ): CreateTalentRecordRequest {
   const body: Record<string, unknown> = {
     first_name: state.first_name.trim(),
@@ -312,10 +331,14 @@ export function buildCreateBody(
   if (state.can_relocate) body['can_relocate'] = true;
   if (state.is_hot) body['is_hot'] = true;
   // Reviewed work-history — only entries with the required employer + role
-  // (the recruiter may have cleared a row). Persisted as TalentWorkHistoryEntry.
+  // (the recruiter may have cleared a row). Persisted as TalentWorkHistoryEntry
+  // WITH its source_refs (carried on each entry).
   const wh = workHistory.filter(
     (e) => e.employer_name.trim() !== '' && e.role_title.trim() !== '',
   );
   if (wh.length > 0) body['work_history'] = wh;
+  // HF1 — structured skills + refs (durable provenance) and the résumé document.
+  if (extras.skills !== undefined && extras.skills.length > 0) body['skills'] = extras.skills;
+  if (extras.resumeDocument !== undefined) body['resume_document'] = extras.resumeDocument;
   return body as unknown as CreateTalentRecordRequest;
 }

@@ -40,4 +40,9 @@ export interface DraftFromResumeResponse {
   // the free-text prefill.key_skills; this preserves skill-level provenance
   // through the API for durable persistence.
   skills?: ResumeDraftSkill[];
+  // HF1 §16 — the provenance anchors the FE carries back into the create request
+  // (resume_document.source_map_version / resume_text_hash) so the persisted
+  // evidence records which corpus its source_refs resolve against.
+  source_map_version?: string;
+  resume_text_hash?: string;
 }

@@ -35,6 +35,7 @@ export type {
   ResumeDraftStatus,
   ResumeDraftSkill,
   ResumeDraftWorkHistory,
+  ResumeProvenance,
   ResumeSourceMap,
   SourceMapBlock,
   TalentWorkHistoryView,

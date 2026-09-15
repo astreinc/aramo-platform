@@ -201,6 +201,17 @@ model TalentSkillEvidence {
   proficiency_claim String?
   years_claimed     Float?
   confidence_score  Float?
+
+  // HF1 durable-fact-extraction provenance (Gate-6 ruling R1/R2). All ADDITIVE
+  // + NULLABLE — pre-HF1 rows keep working; NO backfill. Populated ONLY on the
+  // confirmed-create résumé path (deterministic; no AI). source_document_id →
+  // the résumé TalentDocument; source_refs = source-map block ids; the version +
+  // text hash anchor which corpus the refs resolve against.
+  source_document_id String?                  @db.Uuid
+  source_refs        String[]
+  source_map_version String?
+  resume_text_hash   String?
+
   created_at        DateTime                  @db.Timestamptz
 
   // Tenant-scoped + (tenant, talent) lookup; (tenant, talent, skill) supports
@@ -234,6 +245,13 @@ model TalentWorkHistoryEntry {
   // an uploaded document). UUID-only per §7.3, applied uniformly even for
   // same-lib references.
   source_document_id  String?                 @db.Uuid
+
+  // HF1 durable-fact-extraction provenance (Gate-6 ruling R1/R8). ADDITIVE +
+  // NULLABLE — pre-HF1 rows keep working; NO backfill. source_refs = source-map
+  // block ids; version + text hash anchor the corpus the refs resolve against.
+  source_refs         String[]
+  source_map_version  String?
+  resume_text_hash    String?
 
   is_authoritative    Boolean?
   created_at          DateTime                @db.Timestamptz

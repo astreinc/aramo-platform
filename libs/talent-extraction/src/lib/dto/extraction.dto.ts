@@ -169,6 +169,16 @@ export interface ResumeDraftSkill {
   source_refs: string[];
 }
 
+// HF1 §16/R1/R8 — the shared durable-provenance anchors for résumé-derived
+// evidence persisted at confirmed-create time: the résumé TalentDocument id and
+// which source-map corpus (version + text hash) the per-item source_refs resolve
+// against. All optional — absent ⇒ rows persist with NULL/empty provenance.
+export interface ResumeProvenance {
+  source_document_id?: string;
+  source_map_version?: string;
+  resume_text_hash?: string;
+}
+
 // One reviewable work-history entry in the proposal (grounded, editable). Maps
 // to a TalentWorkHistoryEntry (source='resume') on create.
 //   - `source_refs` (HF1 §16/R8): durable block-level provenance, carried

@@ -31,6 +31,7 @@ import type {
   ResumeDraftResult,
   ResumeDraftSkill,
   ResumeDraftSkillFact,
+  ResumeProvenance,
   ResumeDraftStatus,
   ResumeDraftWorkHistory,
   ResumeDraftWorkHistoryFact,
@@ -773,6 +774,10 @@ export class TalentExtractionService {
     talent_id: string;
     tenant_id: string;
     entries: readonly ResumeDraftWorkHistory[];
+    // HF1 durable provenance (Gate-6 R8) — the résumé TalentDocument + the corpus
+    // the entry's source_refs resolve against. All optional; when absent the rows
+    // persist with NULL/empty provenance (unchanged pre-HF1 behavior).
+    provenance?: ResumeProvenance;
   }): Promise<string[]> {
     const ids: string[] = [];
     const createdAt = new Date();
@@ -798,6 +803,79 @@ export class TalentExtractionService {
         ...(typeof e.description === 'string' && e.description.trim() !== ''
           ? { description_text: e.description.trim() }
           : {}),
+        // HF1 provenance — per-entry source_refs + the shared document/corpus anchors.
+        ...provenanceFields(e.source_refs, input.provenance),
+        created_at: createdAt,
+      });
+      ids.push(id);
+    }
+    return ids;
+  }
+
+  // HF1 Gate-6 R1 — create the résumé's TalentDocument AFTER confirmed Talent
+  // creation (never at draft/proposal time — the review-before-create contract).
+  // Deterministic; the returned id becomes source_document_id on the evidence
+  // rows. Reuses this service's TalentEvidenceRepository (no new cross-lib edge).
+  async createResumeDocument(input: {
+    talent_id: string;
+    tenant_id: string;
+    uploaded_by_actor_id: string;
+    storage_key: string;
+    filename: string;
+    mime_type: string;
+    size_bytes: number;
+  }): Promise<string> {
+    const id = uuidv7();
+    await this.evidence.createTalentDocument({
+      id,
+      talent_id: input.talent_id,
+      tenant_id: input.tenant_id,
+      uploaded_by_actor_id: input.uploaded_by_actor_id,
+      uploaded_at: new Date(),
+      document_type: 'resume',
+      filename: input.filename,
+      file_storage_ref: input.storage_key,
+      mime_type: input.mime_type,
+      size_bytes: input.size_bytes,
+      // The governed extraction ran off this document's text — 'parsed'.
+      parse_status: 'parsed',
+      consent_scope_at_upload: [],
+      retention_policy: 'default',
+      is_active: true,
+    });
+    return id;
+  }
+
+  // HF1 Gate-6 R2 — persist recruiter-reviewed résumé SKILLS as declared
+  // TalentSkillEvidence at create time, WITH durable source provenance. Closes
+  // the recon discrepancy (skills previously collapsed to the key_skills scalar
+  // only — that scalar is RETAINED separately by the caller). DECLARED, NOT
+  // scored/verified: confidence_score stays NULL, no inference/enrichment.
+  // Deterministic — no AI call (R3). De-duplicated by surface_form. Returns ids.
+  async persistDeclaredSkills(input: {
+    talent_id: string;
+    tenant_id: string;
+    skills: readonly ResumeDraftSkill[];
+    provenance?: ResumeProvenance;
+  }): Promise<string[]> {
+    const ids: string[] = [];
+    const createdAt = new Date();
+    const seen = new Set<string>();
+    for (const s of input.skills) {
+      const surface = s.surface_form.trim();
+      if (surface === '') continue;
+      const key = surface.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const id = uuidv7();
+      await this.evidence.createTalentSkillEvidence({
+        id,
+        talent_id: input.talent_id,
+        tenant_id: input.tenant_id,
+        skill_id: deriveSkillId(surface),
+        surface_form: surface,
+        source: 'declared',
+        ...provenanceFields(s.source_refs, input.provenance),
         created_at: createdAt,
       });
       ids.push(id);
@@ -875,6 +953,31 @@ export class TalentExtractionService {
       verified: false,
     }));
   }
+}
+
+// HF1 Gate-6 — build the durable-provenance write fields for one evidence row:
+// per-item source_refs (de-duplicated, omitted when empty) + the shared
+// document/corpus anchors (omitted when absent). Keeps NULL/empty provenance for
+// the pre-HF1 path (no provenance passed).
+function provenanceFields(
+  refs: string[] | undefined,
+  prov: ResumeProvenance | undefined,
+): {
+  source_refs?: string[];
+  source_document_id?: string;
+  source_map_version?: string;
+  resume_text_hash?: string;
+} {
+  return {
+    ...(Array.isArray(refs) && refs.length > 0 ? { source_refs: dedupeRefs(refs) } : {}),
+    ...(prov?.source_document_id !== undefined
+      ? { source_document_id: prov.source_document_id }
+      : {}),
+    ...(prov?.source_map_version !== undefined
+      ? { source_map_version: prov.source_map_version }
+      : {}),
+    ...(prov?.resume_text_hash !== undefined ? { resume_text_hash: prov.resume_text_hash } : {}),
+  };
 }
 
 // A free-text résumé date ('2022', 'Dec 2021', 'present') → a calendar Date, or

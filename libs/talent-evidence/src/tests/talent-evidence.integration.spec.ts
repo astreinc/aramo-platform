@@ -34,6 +34,12 @@ const TR7_MIGRATION_PATH = resolve(
   __dirname,
   '../../prisma/migrations/20260714120000_tr7_b1_education_certification/migration.sql',
 );
+// HF1 durable-fact-extraction provenance columns (SEPARATE resolve const — never
+// a 2nd resolve() arg, which would ENOTDIR). Applied after the TR-7 migration.
+const HF1_MIGRATION_PATH = resolve(
+  __dirname,
+  '../../prisma/migrations/20260915120000_hf1_resume_provenance/migration.sql',
+);
 
 // All test UUIDs use hex-only characters per RFC 4122. Tags chosen for
 // mnemonic clarity within the hex set: 1=tenant, 2=skill, 3=source-record,
@@ -59,10 +65,15 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const url = container.getConnectionUri();
       const migrationSql = readFileSync(MIGRATION_PATH, 'utf8');
       const tr7MigrationSql = readFileSync(TR7_MIGRATION_PATH, 'utf8');
+      const hf1MigrationSql = readFileSync(HF1_MIGRATION_PATH, 'utf8');
 
       const setupClient = new PrismaService(url);
       await setupClient.$connect();
-      for (const stmt of [...migrationSql.split(';'), ...tr7MigrationSql.split(';')]) {
+      for (const stmt of [
+        ...migrationSql.split(';'),
+        ...tr7MigrationSql.split(';'),
+        ...hf1MigrationSql.split(';'),
+      ]) {
         const trimmed = stmt.trim();
         if (trimmed.length === 0) continue;
         await setupClient.$executeRawUnsafe(trimmed);
@@ -216,6 +227,63 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const readWh = await repo.findTalentWorkHistoryEntryById(wh.id);
       expect(readWh?.source_document_id).toBe(DOC_ID);
       expect(readWh?.source).toBe('resume');
+    });
+
+    it('HF1: persists + reads back durable résumé provenance on WH + skill evidence (Gate-6 R1/R2/R8)', async () => {
+      const wh = await repo.createTalentWorkHistoryEntry({
+        id: '00000000-0000-7000-8000-0000000000fa',
+        talent_id: TALENT,
+        tenant_id: TENANT,
+        employer_name: 'Northstar Systems',
+        role_title: 'Cloud Engineer',
+        source: 'resume',
+        source_document_id: DOC_ID,
+        source_refs: ['B004', 'B005'],
+        source_map_version: 'resume-source-map/v1',
+        resume_text_hash: 'abc123',
+        created_at: new Date('2026-09-15T10:00:00Z'),
+      });
+      const readWh = await repo.findTalentWorkHistoryEntryById(wh.id);
+      expect(readWh?.source_document_id).toBe(DOC_ID);
+      expect(readWh?.source_refs).toEqual(['B004', 'B005']);
+      expect(readWh?.source_map_version).toBe('resume-source-map/v1');
+      expect(readWh?.resume_text_hash).toBe('abc123');
+
+      const sk = await repo.createTalentSkillEvidence({
+        id: '00000000-0000-7000-8000-0000000000fb',
+        talent_id: TALENT,
+        tenant_id: TENANT,
+        skill_id: SKILL,
+        surface_form: 'C#',
+        source: 'declared',
+        source_document_id: DOC_ID,
+        source_refs: ['B003'],
+        source_map_version: 'resume-source-map/v1',
+        resume_text_hash: 'abc123',
+        created_at: new Date('2026-09-15T10:00:00Z'),
+      });
+      const readSk = await repo.findTalentSkillEvidenceById(sk.id);
+      expect(readSk?.source_document_id).toBe(DOC_ID);
+      expect(readSk?.source_refs).toEqual(['B003']);
+      expect(readSk?.source_map_version).toBe('resume-source-map/v1');
+      expect(readSk?.resume_text_hash).toBe('abc123');
+    });
+
+    it('HF1: pre-HF1 rows (no provenance) still persist — empty refs, NULL anchors (Gate-6 step 10)', async () => {
+      const wh = await repo.createTalentWorkHistoryEntry({
+        id: '00000000-0000-7000-8000-0000000000fc',
+        talent_id: TALENT,
+        tenant_id: TENANT,
+        employer_name: 'LegacyCo',
+        role_title: 'Engineer',
+        source: 'manual',
+        created_at: new Date('2026-09-15T10:00:00Z'),
+      });
+      const readWh = await repo.findTalentWorkHistoryEntryById(wh.id);
+      expect(readWh?.source_refs).toEqual([]); // DB default ARRAY[]
+      expect(readWh?.source_document_id).toBeNull();
+      expect(readWh?.source_map_version).toBeNull();
+      expect(readWh?.resume_text_hash).toBeNull();
     });
 
     it('replaceWorkHistoryForTalent swaps the source=resume set atomically, preserving non-resume rows (full-profile EDIT)', async () => {

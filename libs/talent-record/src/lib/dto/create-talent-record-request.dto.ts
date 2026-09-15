@@ -1,6 +1,9 @@
 // CreateTalentRecordRequestDto — POST /v1/talent-records payload.
 // tenant_id derived from AuthContext.tenant_id (never the body).
-import type { ResumeDraftWorkHistory } from '@aramo/talent-extraction';
+import type {
+  ResumeDraftSkill,
+  ResumeDraftWorkHistory,
+} from '@aramo/talent-extraction';
 
 import type {
   AvailabilityStatus,
@@ -53,6 +56,23 @@ export interface CreateTalentRecordRequestDto {
   // Reviewed work-history (LOCKED scope expansion). Persisted AFTER the record
   // is created as TalentWorkHistoryEntry (source='resume') — NOT a TalentRecord
   // scalar; the repository ignores it and the controller writes it post-create.
-  // Declared, recruiter-edited; not verified.
+  // Declared, recruiter-edited; not verified. Each entry may carry source_refs
+  // (HF1 §16/R8) — durable block-level provenance persisted with the row.
   work_history?: ResumeDraftWorkHistory[];
+  // HF1 Gate-6 R2 — reviewed résumé skills as structured facts + source_refs.
+  // Persisted post-create as declared TalentSkillEvidence WITH provenance (the
+  // free-text key_skills scalar is retained separately). Repository ignores it.
+  skills?: ResumeDraftSkill[];
+  // HF1 Gate-6 R1 — the résumé document + corpus provenance, carried from the
+  // draft. Present only on the résumé-first create path; when present the
+  // controller creates the résumé TalentDocument AFTER the record and stamps
+  // source_document_id + source_map_version + resume_text_hash onto the evidence.
+  resume_document?: {
+    storage_key: string;
+    file_name: string;
+    mime_type: string;
+    size_bytes: number;
+    source_map_version?: string;
+    resume_text_hash?: string;
+  };
 }

@@ -346,22 +346,58 @@ export class TalentRecordController {
       requestId,
     });
 
-    // Reviewed work-history (LOCKED scope expansion) — persist AFTER the record
-    // exists, as declared TalentWorkHistoryEntry (source='resume'). BEST-EFFORT:
-    // the talent IS created; a work-history write hiccup must not fail the
-    // create (mirrors the attach-on-create soft-fail). Reuses the already-
-    // injected TalentExtractionService (no new cross-lib edge).
-    if (Array.isArray(body.work_history) && body.work_history.length > 0) {
-      try {
+    // HF1 Gate-6 confirmed-create provenance sequence (deterministic; NO AI call
+    // — Ruling 3). Order per the ruling flow: record → (résumé TalentDocument) →
+    // work-history evidence + skill evidence, each stamped with durable
+    // provenance (source_document_id + source_refs + source_map_version +
+    // resume_text_hash). BEST-EFFORT: the talent IS created; a provenance/evidence
+    // write hiccup must not fail the create (mirrors the attach-on-create
+    // soft-fail). Reuses the already-injected TalentExtractionService (no new edge).
+    try {
+      // R1 — create/link the résumé TalentDocument ONLY here, after confirmed
+      // creation (never at draft/proposal time). Its id anchors the evidence.
+      let sourceDocumentId: string | undefined;
+      const rd = body.resume_document;
+      if (rd !== undefined && typeof rd.storage_key === 'string' && rd.storage_key !== '') {
+        sourceDocumentId = await this.talentExtraction.createResumeDocument({
+          talent_id: created.id,
+          tenant_id: authContext.tenant_id,
+          uploaded_by_actor_id: authContext.sub,
+          storage_key: rd.storage_key,
+          filename: rd.file_name,
+          mime_type: rd.mime_type,
+          size_bytes: rd.size_bytes,
+        });
+      }
+      const provenance = {
+        ...(sourceDocumentId !== undefined ? { source_document_id: sourceDocumentId } : {}),
+        ...(rd?.source_map_version !== undefined
+          ? { source_map_version: rd.source_map_version }
+          : {}),
+        ...(rd?.resume_text_hash !== undefined ? { resume_text_hash: rd.resume_text_hash } : {}),
+      };
+
+      if (Array.isArray(body.work_history) && body.work_history.length > 0) {
         await this.talentExtraction.persistDeclaredWorkHistory({
           talent_id: created.id,
           tenant_id: authContext.tenant_id,
           entries: body.work_history,
+          provenance,
         });
-      } catch {
-        // Non-fatal: the record is created; the recruiter can add work history
-        // on the Talent record. (No PII in logs — §17.)
       }
+      // R2 — persist résumé skills as declared evidence WITH provenance (the
+      // key_skills scalar is retained by repo.create above — this is additive).
+      if (Array.isArray(body.skills) && body.skills.length > 0) {
+        await this.talentExtraction.persistDeclaredSkills({
+          talent_id: created.id,
+          tenant_id: authContext.tenant_id,
+          skills: body.skills,
+          provenance,
+        });
+      }
+    } catch {
+      // Non-fatal: the record is created; the recruiter can add evidence on the
+      // Talent record. (No PII in logs — §17.)
     }
 
     return created;
@@ -751,6 +787,9 @@ export class TalentRecordController {
       // R7 — structured skills + source_refs carried through the API (the FE form
       // uses the free-text key_skills; these preserve durable skill provenance).
       ...(proposal.skills.length > 0 ? { skills: proposal.skills } : {}),
+      // §16 — provenance anchors the FE carries back into the create request.
+      source_map_version: proposal.source_map_version,
+      resume_text_hash: proposal.resume_text_hash,
       ...(hasAny
         ? {}
         : { warning: 'No details could be read from this résumé. Please enter them manually.' }),

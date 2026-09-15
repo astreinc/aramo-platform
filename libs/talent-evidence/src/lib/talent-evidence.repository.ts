@@ -104,6 +104,12 @@ export interface CreateTalentSkillEvidenceInput {
   proficiency_claim?: string;
   years_claimed?: number;
   confidence_score?: number;
+  // HF1 provenance (Gate-6 R1/R2) — additive nullable; populated only on the
+  // confirmed-create résumé path. source_refs defaults to [] when unknown.
+  source_document_id?: string;
+  source_refs?: string[];
+  source_map_version?: string;
+  resume_text_hash?: string;
   created_at: Date;
 }
 
@@ -119,6 +125,10 @@ export interface TalentSkillEvidenceRow {
   proficiency_claim: string | null;
   years_claimed: number | null;
   confidence_score: number | null;
+  source_document_id: string | null;
+  source_refs: string[];
+  source_map_version: string | null;
+  resume_text_hash: string | null;
   created_at: Date;
 }
 
@@ -137,6 +147,10 @@ export interface CreateTalentWorkHistoryEntryInput {
   description_text?: string;
   source: TalentWorkHistorySourceValue;
   source_document_id?: string;
+  // HF1 provenance (Gate-6 R1/R8) — additive nullable; source_refs defaults to [].
+  source_refs?: string[];
+  source_map_version?: string;
+  resume_text_hash?: string;
   is_authoritative?: boolean;
   created_at: Date;
 }
@@ -154,6 +168,9 @@ export interface TalentWorkHistoryEntryRow {
   description_text: string | null;
   source: TalentWorkHistorySourceValue;
   source_document_id: string | null;
+  source_refs: string[];
+  source_map_version: string | null;
+  resume_text_hash: string | null;
   is_authoritative: boolean | null;
   created_at: Date;
 }
@@ -409,6 +426,10 @@ export class TalentEvidenceRepository {
         proficiency_claim: input.proficiency_claim,
         years_claimed: input.years_claimed,
         confidence_score: input.confidence_score,
+        source_document_id: input.source_document_id,
+        source_refs: input.source_refs ?? [],
+        source_map_version: input.source_map_version,
+        resume_text_hash: input.resume_text_hash,
         created_at: input.created_at,
       },
     });
@@ -508,6 +529,9 @@ export class TalentEvidenceRepository {
         description_text: input.description_text,
         source: input.source,
         source_document_id: input.source_document_id,
+        source_refs: input.source_refs ?? [],
+        source_map_version: input.source_map_version,
+        resume_text_hash: input.resume_text_hash,
         is_authoritative: input.is_authoritative,
         created_at: input.created_at,
       },
@@ -560,6 +584,9 @@ export class TalentEvidenceRepository {
             description_text: e.description_text,
             source: e.source,
             source_document_id: e.source_document_id,
+            source_refs: e.source_refs ?? [],
+            source_map_version: e.source_map_version,
+            resume_text_hash: e.resume_text_hash,
             is_authoritative: e.is_authoritative,
             created_at: e.created_at,
           },

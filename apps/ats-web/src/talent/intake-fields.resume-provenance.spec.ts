@@ -29,6 +29,27 @@ describe('buildCreateBody — résumé source_refs survive to the create request
     expect(body.work_history?.[0]).not.toHaveProperty('description');
   });
 
+  it('carries structured skills + résumé document provenance into the create body', () => {
+    const state = { ...emptyIntakeState(), first_name: 'Sarah', last_name: 'Nolan' };
+    const body = buildCreateBody(state, [], {
+      skills: [{ surface_form: 'C#', source_refs: ['B003'] }],
+      resumeDocument: {
+        storage_key: 's3/resume.pdf',
+        file_name: 'resume.pdf',
+        mime_type: 'application/pdf',
+        size_bytes: 42,
+        source_map_version: 'resume-source-map/v1',
+        resume_text_hash: 'hash-9',
+      },
+    }) as unknown as {
+      skills?: Array<{ surface_form: string; source_refs: string[] }>;
+      resume_document?: { storage_key: string; source_map_version?: string };
+    };
+    expect(body.skills).toEqual([{ surface_form: 'C#', source_refs: ['B003'] }]);
+    expect(body.resume_document?.storage_key).toBe('s3/resume.pdf');
+    expect(body.resume_document?.source_map_version).toBe('resume-source-map/v1');
+  });
+
   it('still drops entries missing the required employer/role', () => {
     const state = { ...emptyIntakeState(), first_name: 'A', last_name: 'B' };
     const workHistory: WorkHistoryDraft[] = [
