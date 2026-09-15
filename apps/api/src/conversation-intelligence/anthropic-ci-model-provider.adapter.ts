@@ -107,6 +107,7 @@ function mapCategoryToErrorCode(category: StructuredGenerationErrorCategory): st
     case 'auth_config':
       return CI_PROCESSING_ERROR_CODES.MODEL_PROVIDER_UNAVAILABLE;
     case 'malformed_output':
+    case 'truncated':
     case 'empty_output':
       return CI_PROCESSING_ERROR_CODES.MODEL_OUTPUT_INVALID;
     case 'invalid_request':

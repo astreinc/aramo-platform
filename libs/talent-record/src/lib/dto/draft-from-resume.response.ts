@@ -1,6 +1,10 @@
 import type { ResumeExtractionMode } from '@aramo/settings';
 import type { ParseStatus, TalentRecordPrefill } from '@aramo/resume-parse';
-import type { ResumeDraftWorkHistory } from '@aramo/talent-extraction';
+import type {
+  ResumeDraftSkill,
+  ResumeDraftStatus,
+  ResumeDraftWorkHistory,
+} from '@aramo/talent-extraction';
 
 // POST /v1/talent-records/draft-from-resume response (LOCKED: "Add Talent —
 // Governed LLM Resume Extraction + Deterministic Fallback").
@@ -22,8 +26,18 @@ export interface DraftFromResumeResponse {
   prefill: TalentRecordPrefill;
   parse_status: ParseStatus;
   warning?: string;
+  // HF1 §13/R9 — the explicit governed-LLM extraction outcome (governed_llm mode
+  // only). Lets the FE distinguish a technical failure (provider_truncated /
+  // invalid_structured_output / provider_failure) from an honest partial/empty
+  // result — a technical failure never masquerades as a successful empty draft.
+  extraction_status?: ResumeDraftStatus;
   // Reviewable, grounded work-history entries (governed_llm mode only; declared
-  // 'from résumé', NOT verified). The recruiter edits these in the review card;
-  // on create they persist as TalentWorkHistoryEntry (source='resume').
+  // 'from résumé', NOT verified), each carrying its source_refs (§16/R8). The
+  // recruiter edits these in the review card; on create they persist as
+  // TalentWorkHistoryEntry (source='resume').
   work_history?: ResumeDraftWorkHistory[];
+  // HF1 R7 — structured, grounded skills with durable source_refs. The form uses
+  // the free-text prefill.key_skills; this preserves skill-level provenance
+  // through the API for durable persistence.
+  skills?: ResumeDraftSkill[];
 }

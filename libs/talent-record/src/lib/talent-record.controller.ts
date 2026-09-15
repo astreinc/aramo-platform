@@ -28,6 +28,7 @@ import {
 } from '@aramo/object-storage';
 import {
   ResumeParserService,
+  buildResumeSourceMap,
   type ParseResumeResult,
   type ParseStatus,
   type TalentRecordPrefill,
@@ -35,6 +36,7 @@ import {
 import { TenantSettingService } from '@aramo/settings';
 import {
   TalentExtractionService,
+  type ResumeDraftStatus,
   type TalentWorkHistoryView,
 } from '@aramo/talent-extraction';
 
@@ -636,10 +638,12 @@ export class TalentRecordController {
   }
 
   // Governed-LLM draft (MODE IS EXCLUSIVE): the governed LLM is the ONLY
-  // extractor — the deterministic parser does NOT contribute values. On ANY
-  // failure (text-extraction failed, provider unavailable, malformed output,
-  // zero grounded fields) the form opens with an EMPTY/partial prefill + a
-  // warning + retry — NEVER a silent fallback to the deterministic parser (§15).
+  // extractor — the deterministic parser does NOT contribute values. HF1: build
+  // the Aramo-owned source-map here (resume-parse owns text→blocks, R1) and pass
+  // it BY VALUE into talent-extraction, which returns an EXPLICIT status (§13/R9).
+  // A technical failure (truncation / off-schema / provider error) surfaces as a
+  // distinct warning — NEVER a silent fallback to the deterministic parser (§15),
+  // and NEVER a masked "successful extraction with zero facts".
   private async draftGovernedLlm(
     storage_key: string,
     tenant_id: string,
@@ -659,24 +663,63 @@ export class TalentRecordController {
       return { mode: 'governed_llm', prefill: {}, parse_status: 'failed', warning: RETRY_WARNING };
     }
 
-    let proposal;
+    // HF1 §3/R1 — the canonical source-map (version + text hash + ordered blocks),
+    // built by the bytes→text owner and handed by value to the grounding lib.
+    const source_map = buildResumeSourceMap(text);
+
+    let result;
     try {
-      proposal = await this.talentExtraction.extractResumeDraft({ tenant_id, resume_text: text });
+      result = await this.talentExtraction.extractResumeDraft({ tenant_id, source_map });
     } catch {
-      // LLM provider unavailable / error — non-blocking; empty prefill + retry.
-      // NO deterministic fallback: the tenant chose governed_llm (§15).
+      // Defensive: the structured path maps provider errors to a status and does
+      // not throw, but an unexpected throw still degrades to a retry affordance.
       return {
         mode: 'governed_llm',
         prefill: {},
         parse_status: 'partial',
+        extraction_status: 'provider_failure',
         warning:
           'Résumé extraction is temporarily unavailable. Please retry, or enter the details manually.',
       };
     }
 
-    // Map the grounded proposal onto the recruiter-facing prefill. Email/phone
-    // are absent by design (redacted before the model — held for the ADR-0015
-    // Decision-6 amendment); the recruiter enters them.
+    const { status, proposal } = result;
+
+    // Explicit technical-failure states (§13/R9): distinct, honest warnings —
+    // never a masked empty draft. No prefill is offered on a technical failure.
+    if (status === 'provider_truncated') {
+      return {
+        mode: 'governed_llm',
+        prefill: {},
+        parse_status: 'failed',
+        extraction_status: status,
+        warning:
+          'This résumé was too long to read in a single pass. Please retry, or enter the details manually.',
+      };
+    }
+    if (status === 'invalid_structured_output') {
+      return {
+        mode: 'governed_llm',
+        prefill: {},
+        parse_status: 'failed',
+        extraction_status: status,
+        warning: RETRY_WARNING,
+      };
+    }
+    if (status === 'provider_failure') {
+      return {
+        mode: 'governed_llm',
+        prefill: {},
+        parse_status: 'partial',
+        extraction_status: status,
+        warning:
+          'Résumé extraction is temporarily unavailable. Please retry, or enter the details manually.',
+      };
+    }
+
+    // success | partial — map the grounded proposal onto the recruiter-facing
+    // prefill. Email/phone are absent by design (redacted before the model —
+    // ADR-0015 Decision-6 / §17); the recruiter enters them.
     const prefill: TalentRecordPrefill = {};
     if (proposal.first_name !== undefined) prefill.first_name = proposal.first_name;
     if (proposal.last_name !== undefined) prefill.last_name = proposal.last_name;
@@ -687,9 +730,12 @@ export class TalentRecordController {
     if (proposal.country !== undefined) prefill.country = proposal.country;
     if (proposal.current_employer !== undefined) prefill.current_employer = proposal.current_employer;
     if (proposal.title !== undefined) prefill.title = proposal.title;
-    // Clean skills → the free-text key_skills field (R5 §2 / §13 — no chip
-    // picker, no structured skill model here).
-    if (proposal.skills.length > 0) prefill.key_skills = proposal.skills.join(', ');
+    // Clean skills → the free-text key_skills field (the recruiter-facing R5 §2
+    // surface). The STRUCTURED skills + their source_refs are carried separately
+    // (below) for durable provenance (R7).
+    if (proposal.skills.length > 0) {
+      prefill.key_skills = proposal.skills.map((s) => s.surface_form).join(', ');
+    }
 
     const hasIdentity = prefill.first_name !== undefined || prefill.last_name !== undefined;
     const hasAny = Object.keys(prefill).length > 0 || proposal.work_history.length > 0;
@@ -698,8 +744,13 @@ export class TalentRecordController {
       mode: 'governed_llm',
       prefill,
       parse_status,
-      // Reviewable work-history (declared 'from résumé', recruiter-editable).
+      extraction_status: status,
+      // Reviewable work-history (declared 'from résumé', recruiter-editable),
+      // each carrying its source_refs (§16/R8).
       ...(proposal.work_history.length > 0 ? { work_history: proposal.work_history } : {}),
+      // R7 — structured skills + source_refs carried through the API (the FE form
+      // uses the free-text key_skills; these preserve durable skill provenance).
+      ...(proposal.skills.length > 0 ? { skills: proposal.skills } : {}),
       ...(hasAny
         ? {}
         : { warning: 'No details could be read from this résumé. Please enter them manually.' }),

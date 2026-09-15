@@ -1,6 +1,12 @@
 export { AiDraftModule } from './lib/ai-draft.module.js';
 export { AiDraftService } from './lib/ai-draft.service.js';
 
+// HF1 §17 / R10 — the SAME local PII redaction used by AiDraftService, exported
+// so the structured-generation résumé path (which calls the provider port
+// directly, not generateDraft) preserves the EXACT email/phone/SSN/CC/routing
+// redaction boundary before any text reaches the model.
+export { redactPii } from './lib/redaction.js';
+
 export type { GenerateDraftInput } from './lib/dto/generate-draft-input.dto.js';
 export type { GenerateDraftResult } from './lib/dto/generate-draft-result.dto.js';
 export type { AiDraftEventView } from './lib/dto/ai-draft-event.view.js';

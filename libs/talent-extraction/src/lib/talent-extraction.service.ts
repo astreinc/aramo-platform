@@ -1,6 +1,13 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { v7 as uuidv7 } from 'uuid';
-import { AiDraftService } from '@aramo/ai-draft';
+import {
+  AiDraftService,
+  ARAMO_AI_DRAFT_MODEL,
+  redactPii,
+  STRUCTURED_GENERATION_PROVIDER,
+  type StructuredGenerationErrorCategory,
+  type StructuredGenerationProvider,
+} from '@aramo/ai-draft';
 import {
   TalentEvidenceRepository,
   type CreateTalentWorkHistoryEntryInput,
@@ -21,7 +28,13 @@ import type {
   ResumeDraftLocation,
   ResumeDraftProfessional,
   ResumeDraftProposal,
+  ResumeDraftResult,
+  ResumeDraftSkill,
+  ResumeDraftSkillFact,
+  ResumeDraftStatus,
   ResumeDraftWorkHistory,
+  ResumeDraftWorkHistoryFact,
+  ResumeSourceMap,
   TalentWorkHistoryView,
 } from './dto/extraction.dto.js';
 import { deriveSkillId } from './skill-id.js';
@@ -61,27 +74,109 @@ const SYSTEM_MESSAGE =
   'provided text that contains the claim. Respond with STRICT JSON only, no prose, ' +
   'no code fences.';
 
-// ── Résumé-draft (pre-create) extraction — Add-Talent governed-LLM proposal ──
-// Prompt VERSION identifier (the substrate has none natively — Q13; introduce
-// the smallest appropriate constant in the consumer). Bump on any change to
-// DRAFT_SYSTEM_MESSAGE / buildDraftPrompt.
-const RESUME_DRAFT_PROMPT_VERSION = 'resume-draft/v1';
-// See EXTRACTION_MAX_TOKENS: the Add-Talent résumé draft (identity + location +
-// professional + all skills + all work-history, each with a verbatim excerpt)
-// truncated at 2048 (stop_reason=max_tokens) → empty draft. 8192 fits a real
-// résumé's excerpt-heavy JSON.
+// ── Résumé-draft (pre-create) extraction — HF1 durable fact extraction ───────
+// HF1 (Durable-Fact-Extraction-Directive v1.0). SINGLE-READ, FACT-ONLY,
+// SOURCE-REFERENCED: the model reads a block-annotated résumé ONCE and returns
+// the structured Add-Talent facts PLUS compact `source_refs` (block ids) — never
+// copied prose, never a `source_excerpt`, never work-history `description` (R3/R4).
+// Output is STRUCTURALLY BOUNDED (§11): it grows with the number of facts, not
+// the length of the résumé.
+//
+// Prompt/schema VERSION identifier. v2 = the HF1 compact source-ref contract
+// (v1 = the retired verbatim-excerpt contract). Bump on any change to
+// DRAFT_SYSTEM_MESSAGE / RESUME_DRAFT_SCHEMA.
+const RESUME_DRAFT_PROMPT_VERSION = 'resume-draft/v2';
+const RESUME_DRAFT_SCHEMA_NAME = 'resume-draft-extraction/v2';
+// §11/R11 — max_tokens is an INERT OPERATIONAL SAFETY BOUNDARY, not the fix. The
+// architecture (facts + refs, no copied prose) is what bounds the output; a
+// truncation now surfaces as an EXPLICIT provider_truncated failure (§13), never
+// a silent empty draft. Not tuned in this increment (R11).
 const RESUME_DRAFT_MAX_TOKENS = 8192;
 
 const DRAFT_SYSTEM_MESSAGE =
-  'You are a résumé-structuring assistant for a talent-intake form. Extract ONLY ' +
-  'facts EXPLICITLY present in the provided résumé text: the identity, location, ' +
-  'current employer/title, and skills of the person the résumé is about. Do NOT ' +
-  'infer, enrich, normalize, or add anything not literally stated. Distinguish ' +
-  'the résumé owner from any other people named (references, hiring managers, ' +
-  'client contacts), and their location from employer/client/school locations. ' +
-  'For every group, include a "source_excerpt" copied VERBATIM from the text. ' +
-  'Omit any field not clearly present rather than guessing. Do NOT output email ' +
-  'or phone. Respond with STRICT JSON only, no prose, no code fences.';
+  'You structure a résumé into facts for a talent-intake form. The résumé is ' +
+  'given as numbered source blocks, each line prefixed with a block id like ' +
+  '"[B004]". Return ONLY facts EXPLICITLY present about the person the résumé is ' +
+  'about: their name, location, current employer/title, skills, and work history. ' +
+  'For every fact you return, set "source_refs" to the list of block ids whose ' +
+  'text states that fact (e.g. ["B004"]). Do NOT copy or quote the block text — ' +
+  'reference it by id only. Do NOT infer, enrich, or normalize; omit any field ' +
+  'not clearly stated rather than guessing. Distinguish the résumé owner from ' +
+  'other people named (references, managers, client contacts) and their location ' +
+  'from employer/school locations. List each skill exactly as written, atomic and ' +
+  'de-duplicated. Do NOT output email or phone. Do NOT output job descriptions, ' +
+  'responsibilities, or résumé prose — structured facts only.';
+
+// Native JSON-schema for constrained decoding (§12/R2). Compact: facts +
+// source_refs; NO source_excerpt; NO work-history description (R3/R4).
+const RESUME_DRAFT_SCHEMA: Record<string, unknown> = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    identity: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        first_name: { type: 'string' },
+        last_name: { type: 'string' },
+        source_refs: { type: 'array', items: { type: 'string' } },
+      },
+      required: ['source_refs'],
+    },
+    location: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        address: { type: 'string' },
+        city: { type: 'string' },
+        state: { type: 'string' },
+        zip: { type: 'string' },
+        country: { type: 'string' },
+        source_refs: { type: 'array', items: { type: 'string' } },
+      },
+      required: ['source_refs'],
+    },
+    professional: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        current_employer: { type: 'string' },
+        title: { type: 'string' },
+        source_refs: { type: 'array', items: { type: 'string' } },
+      },
+      required: ['source_refs'],
+    },
+    skills: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          surface_form: { type: 'string' },
+          source_refs: { type: 'array', items: { type: 'string' } },
+        },
+        required: ['surface_form', 'source_refs'],
+      },
+    },
+    work_history: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          employer_name: { type: 'string' },
+          role_title: { type: 'string' },
+          start_date: { type: 'string' },
+          end_date: { type: 'string' },
+          employment_type: { type: 'string' },
+          source_refs: { type: 'array', items: { type: 'string' } },
+        },
+        required: ['employer_name', 'role_title', 'source_refs'],
+      },
+    },
+  },
+  required: ['skills', 'work_history'],
+};
 
 @Injectable()
 export class TalentExtractionService {
@@ -92,6 +187,11 @@ export class TalentExtractionService {
     private readonly evidence: TalentEvidenceRepository,
     // TR-4 B2 — the NEW edge: the producer owns its ledger write (DDR §3).
     private readonly trust: TalentTrustService,
+    // HF1 §12/R2 — the native JSON-schema structured-generation port (the B6P
+    // surface on @aramo/ai-draft). The Add-Talent résumé draft path uses THIS
+    // (not the free-text generateDraft); the examine path keeps generateDraft.
+    @Inject(STRUCTURED_GENERATION_PROVIDER)
+    private readonly structuredGen: StructuredGenerationProvider,
   ) {}
 
   async extractDeclaredEvidence(
@@ -446,118 +546,173 @@ export class TalentExtractionService {
     return this.evidence.listTenantIdsWithEvidence();
   }
 
-  // Add-Talent governed-LLM DRAFT extraction (pre-create). Structures a résumé
-  // into a reviewable intake proposal — identity (name), location, current
-  // employer/title, and clean skills — via the SAME governed @aramo/ai-draft
-  // surface. It PERSISTS NOTHING, writes no evidence/trust, and needs no
-  // talent_id: the model+validate stage is TalentRecord-independent. Every
-  // returned value is constrained-to-source (verbatim excerpt in the résumé);
-  // ungrounded items are dropped + counted. Email/phone are never requested
-  // (redacted by AiDraftService before the model — the deterministic parser
-  // supplies contact anchors). The recruiter reviews/edits every value before
-  // create (LOCKED §7/§22). NOTE: extractDeclaredEvidence (the persisted Core
-  // evidence path) is intentionally NOT touched by this method.
-  async extractResumeDraft(input: ResumeDraftInput): Promise<ResumeDraftProposal> {
-    const sourceText = buildDraftSourceText(input);
-    // Nothing to structure → no-op, no LLM call.
-    if (sourceText.trim() === '') {
-      return { skills: [], work_history: [], rejected_count: 0 };
-    }
-
-    const draft = await this.aiDraft.generateDraft({
-      tenant_id: input.tenant_id,
-      prompt: buildDraftPrompt(sourceText),
-      max_tokens: RESUME_DRAFT_MAX_TOKENS,
-      system_message: DRAFT_SYSTEM_MESSAGE,
+  // Add-Talent governed-LLM DRAFT extraction (HF1 durable fact extraction).
+  //
+  // ONE governed model call (R6): a block-annotated, REDACTED (R10) rendering of
+  // the Aramo-owned source-map → native JSON-schema structured output (R2) →
+  // facts + source_refs. Grounding (R5) resolves each ref against the source-map
+  // and validates the fact value locally — a ref to a nonexistent block, a ref
+  // whose block text does not contain the value, or an unsupported fact is
+  // REJECTED; valid facts survive the rejection of invalid ones (per-fact, §14).
+  // PERSISTS NOTHING; writes no evidence/trust. Returns an EXPLICIT status (§13):
+  // a technical failure (truncation / off-schema / provider error) NEVER
+  // masquerades as a successful empty draft. NOTE: extractDeclaredEvidence (the
+  // persisted Core evidence path) is intentionally NOT touched by this method.
+  async extractResumeDraft(input: ResumeDraftInput): Promise<ResumeDraftResult> {
+    const { source_map } = input;
+    const emptyProposal = (): ResumeDraftProposal => ({
+      skills: [],
+      work_history: [],
+      rejected_count: 0,
+      source_map_version: source_map.version,
+      resume_text_hash: source_map.text_hash,
     });
 
-    const parsed = parseDraftCompletion(draft.completion);
-    const corpus = normalizeForMatch(sourceText);
-    const proposal: ResumeDraftProposal = { skills: [], work_history: [], rejected_count: 0 };
+    // Nothing to structure → no model call; an honest 'partial' (NOT a failure,
+    // NOT a success): there were no source blocks to extract from.
+    if (source_map.blocks.length === 0) {
+      return { status: 'partial', proposal: emptyProposal() };
+    }
+
+    // Render the block-annotated, REDACTED model input (§17/R10 — email / phone /
+    // SSN / CC / routing never reach the model). Grounding below uses the RAW
+    // block text (the Aramo-owned corpus); redaction only removes PII we never
+    // extract, so no legitimate fact is lost.
+    let redactedSpanCountInput = 0;
+    const userContent = source_map.blocks
+      .map((b) => {
+        const { redactedText, spanCount } = redactPii(b.text);
+        redactedSpanCountInput += spanCount;
+        return `[${b.block_id}] ${redactedText}`;
+      })
+      .join('\n');
+
+    // ONE native structured-output call (R2/R6). No retry (R6) — a truncation or
+    // off-schema result is surfaced as an explicit failure status.
+    const outcome = await this.structuredGen.generateStructured({
+      model: ARAMO_AI_DRAFT_MODEL,
+      system: DRAFT_SYSTEM_MESSAGE,
+      user_content: userContent,
+      max_tokens: RESUME_DRAFT_MAX_TOKENS,
+      json_schema: RESUME_DRAFT_SCHEMA,
+      schema_name: RESUME_DRAFT_SCHEMA_NAME,
+    });
+
+    if (outcome.kind !== 'ok') {
+      const status = mapOutcomeToFailure(outcome.category);
+      this.logger.log({
+        event: 'resume_draft.failed',
+        tenant_id: input.tenant_id,
+        prompt_version: RESUME_DRAFT_PROMPT_VERSION,
+        schema_name: RESUME_DRAFT_SCHEMA_NAME,
+        source_map_version: source_map.version,
+        status,
+        model_call_count: 1,
+        input_chars: userContent.length,
+        redacted_span_count_input: redactedSpanCountInput,
+      });
+      return { status, proposal: emptyProposal() };
+    }
+
+    const parsed = parseDraftStructured(outcome.parsed);
+    // Block index for ref resolution (§5): id → RAW block text (grounding corpus).
+    const blockIndex = new Map<string, string>(
+      source_map.blocks.map((b) => [b.block_id, b.text] as const),
+    );
+
+    const proposal = emptyProposal();
     let rejected = 0;
+    let sourceRefCount = 0;
 
-    // Identity — grounded; NEVER fabricate a missing component (§9). Each name
-    // part must itself appear in the source (guards against a hallucinated name
-    // riding a real excerpt).
+    // Identity — each name part validated INDEPENDENTLY against the group's refs
+    // (§9/§14 — a fabricated surname riding a real ref is dropped on its own).
     if (parsed.identity !== undefined) {
-      if (isExcerptInSource(parsed.identity.source_excerpt, corpus)) {
-        const fn = (parsed.identity.first_name ?? '').trim();
-        const ln = (parsed.identity.last_name ?? '').trim();
-        if (fn !== '' && corpus.includes(normalizeForMatch(fn))) proposal.first_name = fn;
-        if (ln !== '' && corpus.includes(normalizeForMatch(ln))) proposal.last_name = ln;
-      } else {
-        rejected += 1;
+      const refs = parsed.identity.source_refs;
+      const fn = (parsed.identity.first_name ?? '').trim();
+      const ln = (parsed.identity.last_name ?? '').trim();
+      if (fn !== '') {
+        if (groundValue(fn, refs, blockIndex)) proposal.first_name = fn;
+        else rejected += 1;
+      }
+      if (ln !== '') {
+        if (groundValue(ln, refs, blockIndex)) proposal.last_name = ln;
+        else rejected += 1;
       }
     }
 
-    // Location — grounded; distinguished from employer/school/reference (§11).
+    // Location — per-field grounding; distinguished from employer/school (§11).
     if (parsed.location !== undefined) {
-      if (isExcerptInSource(parsed.location.source_excerpt, corpus)) {
-        const loc = parsed.location;
-        const address = (loc.address ?? '').trim();
-        const city = (loc.city ?? '').trim();
-        const state = (loc.state ?? '').trim();
-        const zip = (loc.zip ?? '').trim();
-        const country = (loc.country ?? '').trim();
-        if (address !== '' && corpus.includes(normalizeForMatch(address))) proposal.address = address;
-        if (city !== '' && corpus.includes(normalizeForMatch(city))) proposal.city = city;
-        if (state !== '' && corpus.includes(normalizeForMatch(state))) proposal.state = state;
-        if (zip !== '' && corpus.includes(normalizeForMatch(zip))) proposal.zip = zip;
-        if (country !== '' && corpus.includes(normalizeForMatch(country))) proposal.country = country;
-      } else {
-        rejected += 1;
+      const refs = parsed.location.source_refs;
+      const loc = parsed.location;
+      const fields: Array<[keyof ResumeDraftLocation, string]> = [
+        ['address', (loc.address ?? '').trim()],
+        ['city', (loc.city ?? '').trim()],
+        ['state', (loc.state ?? '').trim()],
+        ['zip', (loc.zip ?? '').trim()],
+        ['country', (loc.country ?? '').trim()],
+      ];
+      for (const [key, value] of fields) {
+        if (value === '') continue;
+        if (groundValue(value, refs, blockIndex)) {
+          (proposal as unknown as Record<string, unknown>)[key as string] = value;
+        } else {
+          rejected += 1;
+        }
       }
     }
 
-    // Professional — current employer + most-recent title, grounded.
+    // Professional — current employer + most-recent title, per-field grounded.
     if (parsed.professional !== undefined) {
-      if (isExcerptInSource(parsed.professional.source_excerpt, corpus)) {
-        const emp = (parsed.professional.current_employer ?? '').trim();
-        const ttl = (parsed.professional.title ?? '').trim();
-        if (emp !== '' && corpus.includes(normalizeForMatch(emp))) proposal.current_employer = emp;
-        if (ttl !== '' && corpus.includes(normalizeForMatch(ttl))) proposal.title = ttl;
-      } else {
-        rejected += 1;
+      const refs = parsed.professional.source_refs;
+      const emp = (parsed.professional.current_employer ?? '').trim();
+      const ttl = (parsed.professional.title ?? '').trim();
+      if (emp !== '') {
+        if (groundValue(emp, refs, blockIndex)) proposal.current_employer = emp;
+        else rejected += 1;
+      }
+      if (ttl !== '') {
+        if (groundValue(ttl, refs, blockIndex)) proposal.title = ttl;
+        else rejected += 1;
       }
     }
 
-    // Skills — grounded, atomic, de-duplicated (§12). No inferred/related tech.
-    // STRONGER than the evidence path's isSourced: the skill's surface_form must
-    // ITSELF appear in the résumé (not merely a real excerpt) — this is what
-    // rejects a hallucinated skill (§8/§12: "a skill absent from the résumé is
-    // rejected"), since a fabricated skill can still cite a real excerpt.
+    // Skills — grounded, atomic, de-duplicated (§12). The surface_form must be
+    // supported by its cited blocks; a hallucinated skill is rejected. Structured
+    // skills + their refs are CARRIED (R7 — not reduced to key_skills here).
     const seen = new Set<string>();
-    const skills: string[] = [];
     for (const skill of parsed.skills) {
       const sf = skill.surface_form.trim();
-      if (
-        sf === '' ||
-        !isExcerptInSource(skill.source_excerpt, corpus) ||
-        !corpus.includes(normalizeForMatch(sf))
-      ) {
+      if (sf === '' || !groundValue(sf, skill.source_refs, blockIndex)) {
         rejected += 1;
         continue;
       }
       const key = sf.toLowerCase();
       if (seen.has(key)) continue;
       seen.add(key);
-      skills.push(sf);
+      const refs = dedupeRefs(skill.source_refs);
+      sourceRefCount += refs.length;
+      proposal.skills.push({ surface_form: sf, source_refs: refs });
     }
-    proposal.skills = skills;
 
-    // Work history — grounded (employer + role non-empty, verbatim excerpt in
-    // source). Declared (source='resume'), NOT verified; the recruiter reviews
-    // + edits before create. Dates/description only when the model returned a
-    // string (never fabricated).
-    const workHistory: ResumeDraftWorkHistory[] = [];
+    // Work history — employer AND role must both ground against the entry's refs
+    // (§5). Declared (source='resume'), NOT verified. Dates/employment_type only
+    // when the model returned a string. NO description (R4). source_refs carried
+    // through to the persistence seam (§16/R8).
     for (const wh of parsed.work_history) {
       const employer = wh.employer_name.trim();
       const role = wh.role_title.trim();
-      if (employer === '' || role === '' || !isExcerptInSource(wh.source_excerpt, corpus)) {
+      if (
+        employer === '' ||
+        role === '' ||
+        !groundValue(employer, wh.source_refs, blockIndex) ||
+        !groundValue(role, wh.source_refs, blockIndex)
+      ) {
         rejected += 1;
         continue;
       }
-      workHistory.push({
+      const refs = dedupeRefs(wh.source_refs);
+      sourceRefCount += refs.length;
+      proposal.work_history.push({
         employer_name: employer,
         role_title: role,
         ...(typeof wh.start_date === 'string' && wh.start_date.trim() !== ''
@@ -569,28 +724,41 @@ export class TalentExtractionService {
         ...(typeof wh.employment_type === 'string' && wh.employment_type.trim() !== ''
           ? { employment_type: wh.employment_type.trim() }
           : {}),
-        ...(typeof wh.description === 'string' && wh.description.trim() !== ''
-          ? { description: wh.description.trim() }
-          : {}),
+        source_refs: refs,
       });
     }
-    proposal.work_history = workHistory;
+
     proposal.rejected_count = rejected;
 
-    // PII-floor log (§17): counts + operational metadata only — never content.
+    const factCount = countFacts(proposal);
+    // success = grounded facts AND nothing rejected; partial = something was
+    // rejected OR nothing grounded (honest — never a masked failure, §13).
+    const status: ResumeDraftStatus = factCount > 0 && rejected === 0 ? 'success' : 'partial';
+
+    // PII-floor instrumentation (§17): counts + token/byte metrics only, never
+    // content. `completion_bytes` is the structured payload size — the metric the
+    // HF1 before/after table tracks (§25): it now grows with facts, not prose.
     this.logger.log({
       event: 'resume_draft.extracted',
       tenant_id: input.tenant_id,
       prompt_version: RESUME_DRAFT_PROMPT_VERSION,
-      model_used: draft.model_used,
-      skills_count: skills.length,
-      work_history_count: workHistory.length,
-      has_identity: proposal.first_name !== undefined || proposal.last_name !== undefined,
-      has_location: proposal.city !== undefined || proposal.state !== undefined,
+      schema_name: RESUME_DRAFT_SCHEMA_NAME,
+      source_map_version: source_map.version,
+      status,
+      model_call_count: 1,
+      input_chars: userContent.length,
+      input_tokens: outcome.transport.input_tokens,
+      output_tokens: outcome.transport.output_tokens,
+      completion_bytes: Buffer.byteLength(JSON.stringify(outcome.parsed), 'utf8'),
+      fact_count: factCount,
+      source_ref_count: sourceRefCount,
+      skills_count: proposal.skills.length,
+      work_history_count: proposal.work_history.length,
       rejected_count: rejected,
+      redacted_span_count_input: redactedSpanCountInput,
     });
 
-    return proposal;
+    return { status, proposal };
   }
 
   // Persist recruiter-REVIEWED work-history at Add-Talent create time (LOCKED
@@ -831,78 +999,53 @@ function isSourced(surfaceForm: string, excerpt: string, corpus: string): boolea
   return isExcerptInSource(excerpt, corpus);
 }
 
-// ── résumé-draft helpers (pre-create proposal) ───────────────────────────────
+// ── résumé-draft helpers (HF1 durable fact extraction) ───────────────────────
 
-function buildDraftSourceText(input: ResumeDraftInput): string {
-  return [input.resume_text ?? '', input.key_skills ?? '']
-    .filter((s) => s.trim() !== '')
-    .join('\n');
-}
-
-function buildDraftPrompt(sourceText: string): string {
-  return (
-    'Extract the following from the résumé text below, as STRICT JSON of shape ' +
-    '{"identity":{"first_name"?:string,"last_name"?:string,"source_excerpt":string},' +
-    '"location":{"address"?:string,"city"?:string,"state"?:string,"zip"?:string,' +
-    '"country"?:string,"source_excerpt":string},' +
-    '"professional":{"current_employer"?:string,"title"?:string,"source_excerpt":string},' +
-    '"skills":[{"surface_form":string,"source_excerpt":string}],' +
-    '"work_history":[{"employer_name":string,"role_title":string,"source_excerpt":string,' +
-    '"start_date"?:string,"end_date"?:string,"employment_type"?:string,"description"?:string}]}. ' +
-    'Rules: (1) identity, location and professional describe ONLY the person the ' +
-    'résumé is about — never references, hiring managers or client contacts, and ' +
-    'never employer/client/school locations. (2) Skills: list each skill or ' +
-    'technology EXACTLY as written, atomic and de-duplicated; do NOT add related ' +
-    'or implied technologies. (3) work_history: one entry per role the résumé ' +
-    'states, with the employer and role title EXACTLY as written; include ' +
-    'start_date/end_date/description ONLY when explicitly present. (4) Do NOT ' +
-    'infer citizenship, work authorization, visa, compensation, availability, ' +
-    'relocation, or years of experience. (5) Omit any field not clearly present ' +
-    'rather than guessing. (6) Every source_excerpt MUST be copied verbatim ' +
-    'from the text below.\n\n---\n' +
-    sourceText +
-    '\n---'
-  );
-}
-
-// Strip optional ```json fences and parse; a malformed completion yields an
-// empty proposal (deterministic — never throws on bad model output).
-export function parseDraftCompletion(completion: string): ResumeDraftCompletion {
-  const empty: ResumeDraftCompletion = { skills: [], work_history: [] };
-  const stripped = completion
-    .replace(/^\s*```(?:json)?/i, '')
-    .replace(/```\s*$/i, '')
-    .trim();
-  let raw: unknown;
-  try {
-    raw = JSON.parse(stripped);
-  } catch {
-    return empty;
+// Map the provider-neutral outcome category → the explicit §13/R9 failure state.
+function mapOutcomeToFailure(
+  category: StructuredGenerationErrorCategory,
+): ResumeDraftStatus {
+  if (category === 'truncated') return 'provider_truncated';
+  if (category === 'malformed_output' || category === 'empty_output') {
+    return 'invalid_structured_output';
   }
-  if (typeof raw !== 'object' || raw === null) return empty;
-  const obj = raw as Record<string, unknown>;
-  const out: ResumeDraftCompletion = { skills: [], work_history: [] };
-  if (isResumeDraftIdentityShape(obj['identity'])) out.identity = obj['identity'];
-  if (isResumeDraftLocationShape(obj['location'])) out.location = obj['location'];
-  if (isResumeDraftProfessionalShape(obj['professional'])) out.professional = obj['professional'];
-  out.skills = Array.isArray(obj['skills'])
-    ? (obj['skills'] as unknown[]).filter(isSkillShape)
-    : [];
-  out.work_history = Array.isArray(obj['work_history'])
-    ? (obj['work_history'] as unknown[]).filter(isWorkHistoryShape)
-    : [];
-  return out;
+  // rate_limited | server_error | timeout | network | transport | auth_config |
+  // invalid_request → a provider/transport/config failure.
+  return 'provider_failure';
 }
 
 function isOptionalString(v: unknown): boolean {
   return v === undefined || typeof v === 'string';
 }
 
+function isStringArray(v: unknown): v is string[] {
+  return Array.isArray(v) && v.every((x) => typeof x === 'string');
+}
+
+// Shape-guard the provider's parsed output into the compact completion. Native
+// constrained decoding (§12) should already guarantee the schema; this is the
+// defensive deterministic floor (never throws; off-shape groups are dropped).
+function parseDraftStructured(parsedUnknown: unknown): ResumeDraftCompletion {
+  const out: ResumeDraftCompletion = { skills: [], work_history: [] };
+  if (typeof parsedUnknown !== 'object' || parsedUnknown === null) return out;
+  const obj = parsedUnknown as Record<string, unknown>;
+  if (isResumeDraftIdentityShape(obj['identity'])) out.identity = obj['identity'];
+  if (isResumeDraftLocationShape(obj['location'])) out.location = obj['location'];
+  if (isResumeDraftProfessionalShape(obj['professional'])) out.professional = obj['professional'];
+  out.skills = Array.isArray(obj['skills'])
+    ? (obj['skills'] as unknown[]).filter(isSkillFactShape)
+    : [];
+  out.work_history = Array.isArray(obj['work_history'])
+    ? (obj['work_history'] as unknown[]).filter(isWorkHistoryFactShape)
+    : [];
+  return out;
+}
+
 function isResumeDraftIdentityShape(v: unknown): v is ResumeDraftIdentity {
   if (typeof v !== 'object' || v === null) return false;
   const o = v as Record<string, unknown>;
   return (
-    typeof o['source_excerpt'] === 'string' &&
+    isStringArray(o['source_refs']) &&
     isOptionalString(o['first_name']) &&
     isOptionalString(o['last_name'])
   );
@@ -912,7 +1055,7 @@ function isResumeDraftLocationShape(v: unknown): v is ResumeDraftLocation {
   if (typeof v !== 'object' || v === null) return false;
   const o = v as Record<string, unknown>;
   return (
-    typeof o['source_excerpt'] === 'string' &&
+    isStringArray(o['source_refs']) &&
     isOptionalString(o['address']) &&
     isOptionalString(o['city']) &&
     isOptionalString(o['state']) &&
@@ -925,8 +1068,79 @@ function isResumeDraftProfessionalShape(v: unknown): v is ResumeDraftProfessiona
   if (typeof v !== 'object' || v === null) return false;
   const o = v as Record<string, unknown>;
   return (
-    typeof o['source_excerpt'] === 'string' &&
+    isStringArray(o['source_refs']) &&
     isOptionalString(o['current_employer']) &&
     isOptionalString(o['title'])
   );
+}
+
+function isSkillFactShape(v: unknown): v is ResumeDraftSkillFact {
+  if (typeof v !== 'object' || v === null) return false;
+  const o = v as Record<string, unknown>;
+  return typeof o['surface_form'] === 'string' && isStringArray(o['source_refs']);
+}
+
+function isWorkHistoryFactShape(v: unknown): v is ResumeDraftWorkHistoryFact {
+  if (typeof v !== 'object' || v === null) return false;
+  const o = v as Record<string, unknown>;
+  return (
+    typeof o['employer_name'] === 'string' &&
+    typeof o['role_title'] === 'string' &&
+    isStringArray(o['source_refs'])
+  );
+}
+
+// HF1 §5/R5 — GROUND a value against the source-map. A fact is supported ONLY
+// when: it cites at least one ref; EVERY cited ref resolves to a real block in
+// THIS map (a nonexistent ref, or a ref minted against a different résumé, fails
+// here); AND the value text occurs within the union of those blocks' RAW text.
+// The model's reference alone is never proof.
+function groundValue(
+  value: string,
+  refs: unknown,
+  blockIndex: Map<string, string>,
+): boolean {
+  const v = value.trim();
+  if (v === '') return false;
+  if (!isStringArray(refs) || refs.length === 0) return false;
+  const texts: string[] = [];
+  for (const id of refs) {
+    const blockText = blockIndex.get(id);
+    if (blockText === undefined) return false; // nonexistent / cross-résumé ref
+    texts.push(normalizeForMatch(blockText));
+  }
+  return texts.join(' ').includes(normalizeForMatch(v));
+}
+
+// Unique refs, original order preserved.
+function dedupeRefs(refs: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const r of refs) {
+    if (seen.has(r)) continue;
+    seen.add(r);
+    out.push(r);
+  }
+  return out;
+}
+
+// Count grounded facts for instrumentation (§25): populated scalar fields +
+// grounded skills + grounded work-history entries.
+function countFacts(proposal: ResumeDraftProposal): number {
+  const scalarKeys: Array<keyof ResumeDraftProposal> = [
+    'first_name',
+    'last_name',
+    'address',
+    'city',
+    'state',
+    'zip',
+    'country',
+    'current_employer',
+    'title',
+  ];
+  let n = 0;
+  for (const k of scalarKeys) {
+    if (typeof proposal[k] === 'string' && (proposal[k] as string) !== '') n += 1;
+  }
+  return n + proposal.skills.length + proposal.work_history.length;
 }

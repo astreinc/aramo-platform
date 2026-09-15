@@ -73,9 +73,11 @@ export class AnthropicStructuredGenerationService implements StructuredGeneratio
       return this.mapError(err);
     }
 
-    // Truncated generation → the JSON is incomplete; retry (bounded).
+    // Truncated generation → the JSON is incomplete. Distinct `truncated`
+    // category (HF1 §13/R9) so a consumer can surface an explicit
+    // "provider truncated" failure state separate from a schema/parse miss.
     if (message.stop_reason === 'max_tokens') {
-      return { kind: 'retryable', category: 'malformed_output' };
+      return { kind: 'retryable', category: 'truncated' };
     }
 
     // Keep ONLY text content; discard any thinking/redacted-thinking or other
