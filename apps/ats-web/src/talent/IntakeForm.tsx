@@ -413,18 +413,23 @@ function WorkHistoryEditor({
               />
             </label>
           </div>
+          {/* HF2 — the role's Work experience is the grounded, editable
+              experience_summary (≤600, R10). Replaces the legacy free-text
+              "Description" box: one editable field, pre-filled from the résumé,
+              persisted to experience_summary on create. */}
           <label className="rc-secfield rc-secfield--full">
-            <span className="rc-secfield__lb"><span>Description</span></span>
+            <span className="rc-secfield__lb"><span>Work experience</span></span>
             <textarea
               className="rc-secinput rc-secinput--area"
-              value={e.description ?? ''}
-              aria-label={`Description ${i + 1}`}
-              rows={2}
+              value={e.experience_summary ?? ''}
+              aria-label={`Work experience ${i + 1}`}
+              rows={3}
+              maxLength={600}
               disabled={disabled}
-              onChange={(ev) => onField(i, 'description', ev.target.value)}
+              onChange={(ev) => onField(i, 'experience_summary', ev.target.value)}
             />
           </label>
-          <ExperienceIntelligence entry={e} index={i} />
+          <ExperienceIntelligence entry={e} />
           <div className="rc-wh__rowfoot">
             <button
               type="button"
@@ -455,24 +460,15 @@ function WorkHistoryEditor({
 // "projects / context". These persist as structured evidence at create; they are
 // NOT atomic-editable during initial review (§29 — the recruiter reviews, and
 // corrects the top-level role fields; the intelligence structure persists as-is).
-function ExperienceIntelligence({
-  entry,
-  index,
-}: {
-  readonly entry: WorkHistoryDraft;
-  readonly index: number;
-}) {
-  const summary = entry.experience_summary?.trim() ?? '';
+function ExperienceIntelligence({ entry }: { readonly entry: WorkHistoryDraft }) {
+  // NOTE: experience_summary is now the editable "Work experience" field above,
+  // so it is NOT repeated here as read-only. This surfaces only the expandable
+  // supporting intelligence (skills used / projects) for recruiter review.
   const skills = entry.skill_usage ?? [];
   const projects = entry.projects ?? [];
-  if (summary === '' && skills.length === 0 && projects.length === 0) return null;
+  if (skills.length === 0 && projects.length === 0) return null;
   return (
     <div className="rc-wh__intel">
-      {summary !== '' ? (
-        <p className="rc-wh__preview" aria-label={`Experience preview ${index + 1}`}>
-          {summary}
-        </p>
-      ) : null}
       {skills.length > 0 ? (
         <details className="rc-wh__disc">
           <summary>Skills used ({skills.length})</summary>

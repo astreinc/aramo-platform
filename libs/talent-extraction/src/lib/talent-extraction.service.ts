@@ -726,11 +726,19 @@ export class TalentExtractionService {
     // SSN / CC / routing never reach the model). Grounding below uses the RAW
     // block text (the Aramo-owned corpus); redaction only removes PII we never
     // extract, so no legitimate fact is lost.
+    // Redact PII from the model input AND capture the masked email/phone values
+    // in the SAME pass (no second scan): what we redact from the model is exactly
+    // what we keep for the recruiter prefill. Email/phone are never sent to the
+    // model; they flow to the prefill only, via the captured contact below.
     let redactedSpanCountInput = 0;
+    const capturedEmails: string[] = [];
+    const capturedPhones: string[] = [];
     const userContent = source_map.blocks
       .map((b) => {
-        const { redactedText, spanCount } = redactPii(b.text);
+        const { redactedText, spanCount, emails, phones } = redactPii(b.text);
         redactedSpanCountInput += spanCount;
+        for (const e of emails) if (!capturedEmails.includes(e)) capturedEmails.push(e);
+        for (const p of phones) if (!capturedPhones.includes(p)) capturedPhones.push(p);
         return `[${b.block_id}] ${redactedText}`;
       })
       .join('\n');
@@ -1111,7 +1119,9 @@ export class TalentExtractionService {
       redacted_span_count_input: redactedSpanCountInput,
     });
 
-    return { status, proposal };
+    // `contact` carries the email/phone captured during redaction (never sent to
+    // the model) — the controller merges them into the recruiter prefill.
+    return { status, proposal, contact: { emails: capturedEmails, phones: capturedPhones } };
   }
 
   // Persist recruiter-REVIEWED work-history at Add-Talent create time (LOCKED

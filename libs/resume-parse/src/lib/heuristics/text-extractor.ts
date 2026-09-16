@@ -1,3 +1,4 @@
+import JSZip from 'jszip';
 import mammoth from 'mammoth';
 // @ts-expect-error -- pdf-parse ships CJS without TS types; the runtime
 // surface is `(buffer) => Promise<{ text: string, ... }>`. We import the
@@ -64,7 +65,14 @@ export async function extractResumeText(buffer: Buffer): Promise<string | null> 
   if (format === 'docx') {
     try {
       const result = await mammoth.extractRawText({ buffer });
-      const text = result.value;
+      const body = result.value;
+      // mammoth reads word/document.xml ONLY — it drops HEADER/FOOTER parts.
+      // Many résumés put the contact block (name, email, phone, City/ST ZIP) in
+      // the Word header, so it would never reach extraction. Pull header/footer
+      // text and PREPEND the header (so the contact block lands at the top for
+      // the name heuristic + source-map block 0 + local email/phone extraction).
+      const aux = await extractDocxHeaderFooterText(buffer);
+      const text = aux !== '' ? `${aux}\n\n${body}` : body;
       return text.length === 0 ? null : text;
     } catch {
       return null;
@@ -72,4 +80,60 @@ export async function extractResumeText(buffer: Buffer): Promise<string | null> 
   }
 
   return null;
+}
+
+// Extract plain text from a DOCX's header/footer parts (word/header*.xml,
+// word/footer*.xml) — which mammoth does not read. Headers first (the contact
+// block), then footers; identical parts (a header repeated for first/odd/even
+// pages) are de-duplicated. Best-effort: any failure yields '' (the body text
+// still returns). Deterministic, no LLM.
+async function extractDocxHeaderFooterText(buffer: Buffer): Promise<string> {
+  try {
+    const zip = await JSZip.loadAsync(buffer);
+    const names = Object.keys(zip.files).filter((n) =>
+      /^word\/(header|footer)\d*\.xml$/.test(n),
+    );
+    const headers = names.filter((n) => n.includes('header')).sort();
+    const footers = names.filter((n) => n.includes('footer')).sort();
+    const seen = new Set<string>();
+    const parts: string[] = [];
+    for (const name of [...headers, ...footers]) {
+      const file = zip.file(name);
+      if (file === null) continue;
+      const xml = await file.async('string');
+      const t = docxXmlRunsToText(xml);
+      if (t !== '' && !seen.has(t)) {
+        seen.add(t);
+        parts.push(t);
+      }
+    }
+    return parts.join('\n');
+  } catch {
+    return '';
+  }
+}
+
+// Turn WordprocessingML runs into plain text: one line per paragraph (<w:p>),
+// concatenating that paragraph's <w:t> run text. Tabs (<w:tab/>) → spaces so
+// "Name<tab>City, ST" stays on one line. XML entities decoded.
+function docxXmlRunsToText(xml: string): string {
+  const lines: string[] = [];
+  for (const para of xml.split(/<\/w:p>/)) {
+    const withTabs = para.replace(/<w:tab\b[^>]*\/>/g, ' ');
+    const runs = [...withTabs.matchAll(/<w:t\b[^>]*>([\s\S]*?)<\/w:t>/g)].map((m) =>
+      decodeXmlEntities(m[1] ?? ''),
+    );
+    const line = runs.join('').replace(/[ \t]+/g, ' ').trim();
+    if (line !== '') lines.push(line);
+  }
+  return lines.join('\n');
+}
+
+function decodeXmlEntities(s: string): string {
+  return s
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/&amp;/g, '&');
 }

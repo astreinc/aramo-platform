@@ -29,7 +29,6 @@ import {
 import {
   ResumeParserService,
   buildResumeSourceMap,
-  extractContact,
   type ParseResumeResult,
   type ParseStatus,
   type TalentRecordPrefill,
@@ -738,7 +737,7 @@ export class TalentRecordController {
       };
     }
 
-    const { status, proposal } = result;
+    const { status, proposal, contact } = result;
 
     // Explicit technical-failure states (§13/R9): distinct, honest warnings —
     // never a masked empty draft. No prefill is offered on a technical failure.
@@ -772,36 +771,27 @@ export class TalentRecordController {
       };
     }
 
-    // HF2 R17 — LOCAL, deterministic contact + location extraction over the RAW
-    // résumé text. This is the authorized hybrid path: contact/location is local
-    // (email/phone never derive from — nor reach — the model; the model input was
-    // separately PII-redacted at the provider boundary in extractResumeDraft),
-    // while Talent Intelligence stays governed-LLM. city/state/ZIP are local-first
-    // (never hostage to whether the model returns a location), with the model's
-    // grounded location only a fallback for whatever local missed.
-    const contact = extractContact(text);
-
-    // success | partial — map the grounded proposal onto the recruiter-facing
-    // prefill. Email/phone come ONLY from the local extractor (they are redacted
-    // before the model — ADR-0015 Decision-6 / §17), never from the proposal.
+    // Everything the model IS allowed to see — name, address, city, state, ZIP,
+    // country — comes from the GROUNDED LLM proposal.
     const prefill: TalentRecordPrefill = {};
     if (proposal.first_name !== undefined) prefill.first_name = proposal.first_name;
     if (proposal.last_name !== undefined) prefill.last_name = proposal.last_name;
     if (proposal.address !== undefined) prefill.address = proposal.address;
+    if (proposal.city !== undefined) prefill.city = proposal.city;
+    if (proposal.state !== undefined) prefill.state = proposal.state;
+    if (proposal.zip !== undefined) prefill.zip = proposal.zip;
     if (proposal.country !== undefined) prefill.country = proposal.country;
-    // Local contact (email/phone) — deterministic, LLM never saw these.
-    if (contact.email1 !== undefined) prefill.email1 = contact.email1;
-    if (contact.email2 !== undefined) prefill.email2 = contact.email2;
-    if (contact.phone_cell !== undefined) prefill.phone_cell = contact.phone_cell;
-    if (contact.phone_home !== undefined) prefill.phone_home = contact.phone_home;
-    if (contact.phone_work !== undefined) prefill.phone_work = contact.phone_work;
-    // Location — local-first, model-grounded as fallback (R17: not model-only).
-    const city = contact.city ?? proposal.city;
-    if (city !== undefined) prefill.city = city;
-    const state = contact.state ?? proposal.state;
-    if (state !== undefined) prefill.state = state;
-    const zip = contact.zip ?? proposal.zip;
-    if (zip !== undefined) prefill.zip = zip;
+    // HF2 R17 — email/phone were CAPTURED during model-input redaction (never
+    // sent to the model; ADR-0015 Decision-6 / §17) and returned on the result —
+    // no second scan. First email → email1, second → email2; phones → cell/
+    // home/work in order.
+    const emails = contact?.emails ?? [];
+    const phones = contact?.phones ?? [];
+    if (emails[0] !== undefined) prefill.email1 = emails[0];
+    if (emails[1] !== undefined) prefill.email2 = emails[1];
+    if (phones[0] !== undefined) prefill.phone_cell = phones[0];
+    if (phones[1] !== undefined) prefill.phone_home = phones[1];
+    if (phones[2] !== undefined) prefill.phone_work = phones[2];
     if (proposal.current_employer !== undefined) prefill.current_employer = proposal.current_employer;
     if (proposal.title !== undefined) prefill.title = proposal.title;
     // Clean skills → the free-text key_skills field (the recruiter-facing R5 §2
