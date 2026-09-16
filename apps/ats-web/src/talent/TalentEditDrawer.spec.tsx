@@ -140,8 +140,8 @@ describe('TalentEditDrawer', () => {
   it('blocks save when a required field is empty (no PATCH fired)', async () => {
     const fetchSpy = installFetch({ '/v1/talent-records/tal-1': makeTalent() });
     const { onSaved } = renderDrawer(makeTalent());
-    // Clear a required field (desired rate).
-    fireEvent.change(screen.getByLabelText(/Desired rate/), { target: { value: '' } });
+    // Clear a still-required field (city).
+    fireEvent.change(screen.getByLabelText(/City/), { target: { value: '' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
     // No PATCH, no onSaved.
     const patch = fetchSpy.mock.calls.find(
@@ -151,24 +151,25 @@ describe('TalentEditDrawer', () => {
     expect(onSaved).not.toHaveBeenCalled();
   });
 
-  it('requires a work-authorization CHOICE but accepts NOT_DISCLOSED', async () => {
+  it('work authorization + desired rate are OPTIONAL — save proceeds, empties clear to null', async () => {
     const fetchSpy = installFetch({ '/v1/talent-records/tal-1': makeTalent() });
     renderDrawer(makeTalent({ work_authorization: null }));
-    // Unset work auth → blocked.
-    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
-    expect(
-      fetchSpy.mock.calls.find((c) => (c[1] as RequestInit | undefined)?.method === 'PATCH'),
-    ).toBeUndefined();
-    // NOT_DISCLOSED is a valid explicit choice → save proceeds.
-    fireEvent.change(screen.getByLabelText(/Work authorization/), {
-      target: { value: 'NOT_DISCLOSED' },
-    });
+    // Work auth unset AND desired rate cleared → save STILL proceeds (parity
+    // with Add-Talent; these are optional).
+    fireEvent.change(screen.getByLabelText(/Desired rate/), { target: { value: '' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
     await waitFor(() =>
       expect(
         fetchSpy.mock.calls.find((c) => (c[1] as RequestInit | undefined)?.method === 'PATCH'),
       ).toBeDefined(),
     );
+    const patch = fetchSpy.mock.calls.find(
+      (c) => (c[1] as RequestInit | undefined)?.method === 'PATCH',
+    )!;
+    const body = JSON.parse((patch[1] as RequestInit).body as string) as Record<string, unknown>;
+    // Empty → null ("not stated"), never an empty string.
+    expect(body['work_authorization']).toBeNull();
+    expect(body['desired_pay']).toBeNull();
   });
 
   it('lets the recruiter ENTER email + phone when the record is missing them, then PATCHes the values', async () => {
