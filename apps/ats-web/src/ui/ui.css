@@ -3515,6 +3515,20 @@ select.rc-secinput { appearance: none; padding-right: 28px; }
   border: 1px solid var(--line); border-radius: var(--r-md);
   background: var(--surface, #fff); margin-top: 6px;
 }
+/* DOCX rendered to HTML (mammoth) — a scrollable document surface. */
+.rc-rpreview__docx {
+  width: 100%; height: calc(100vh - 300px); min-height: 480px; overflow: auto;
+  border: 1px solid var(--line); border-radius: var(--r-md);
+  background: #fff; padding: 22px 26px; margin-top: 6px;
+  font-size: 0.85rem; line-height: 1.55; color: #1a1f2b;
+}
+.rc-rpreview__docx h1, .rc-rpreview__docx h2, .rc-rpreview__docx h3 { margin: 0.6em 0 0.3em; line-height: 1.3; }
+.rc-rpreview__docx p { margin: 0 0 0.5em; }
+.rc-rpreview__docx ul, .rc-rpreview__docx ol { margin: 0 0 0.6em 1.2em; }
+.rc-rpreview__docx table { border-collapse: collapse; margin: 0.4em 0; }
+.rc-rpreview__docx td, .rc-rpreview__docx th { border: 1px solid var(--line); padding: 3px 7px; }
+.rc-rpreview__ovdocx { flex: 1 1 auto; overflow: auto; background: #fff; border-radius: var(--r-md); padding: 32px 40px; line-height: 1.55; }
+
 /* Full-screen overlay for reading fine print. */
 .rc-rpreview__overlay {
   position: fixed; inset: 0; z-index: 60; background: rgba(15, 20, 30, 0.72);
