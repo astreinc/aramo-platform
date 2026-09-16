@@ -45,6 +45,11 @@ const HF2_MIGRATION_PATH = resolve(
   __dirname,
   '../../prisma/migrations/20260915170000_hf2_experience_intelligence/migration.sql',
 );
+// SKILL-TAX-1G additive canonical columns (SEPARATE resolve const; applied after HF2).
+const G1G_MIGRATION_PATH = resolve(
+  __dirname,
+  '../../prisma/migrations/20260915180000_skill_tax_1g_canonical_reconciliation/migration.sql',
+);
 
 // All test UUIDs use hex-only characters per RFC 4122. Tags chosen for
 // mnemonic clarity within the hex set: 1=tenant, 2=skill, 3=source-record,
@@ -72,6 +77,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const tr7MigrationSql = readFileSync(TR7_MIGRATION_PATH, 'utf8');
       const hf1MigrationSql = readFileSync(HF1_MIGRATION_PATH, 'utf8');
       const hf2MigrationSql = readFileSync(HF2_MIGRATION_PATH, 'utf8');
+      const g1gMigrationSql = readFileSync(G1G_MIGRATION_PATH, 'utf8');
 
       const setupClient = new PrismaService(url);
       await setupClient.$connect();
@@ -80,6 +86,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         ...tr7MigrationSql.split(';'),
         ...hf1MigrationSql.split(';'),
         ...hf2MigrationSql.split(';'),
+        ...g1gMigrationSql.split(';'),
       ]) {
         const trimmed = stmt.trim();
         if (trimmed.length === 0) continue;

@@ -1235,7 +1235,14 @@
       "isSubmittalPolicyReason",
       "isSubmittalWindowStatus"
     ],
-    "@aramo/talent-evidence": ["PrismaService", "TalentEvidenceModule", "TalentEvidenceRepository"],
+    "@aramo/talent-evidence": [
+      "PrismaService",
+      "TalentEvidenceModule",
+      "TalentEvidenceRepository",
+      "TalentSkillCanonicalizationModule",
+      "TalentSkillCanonicalizationService",
+      "aggregateCanonicalYears"
+    ],
     "@aramo/talent-extraction": [
       "ARAMO_SKILL_NAMESPACE",
       "TalentExtractionModule",
@@ -5322,7 +5329,16 @@
       { "project": "reporting", "status": "production" },
       { "project": "talent-record", "status": "production" }
     ],
-    "@aramo/skills-taxonomy": [{ "project": "api", "status": "production" }],
+    "@aramo/skills-taxonomy": [
+      { "project": "api", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/talent-evidence/src/tests/talent-skill-canonicalization.integration.spec.ts",
+        "project": "talent-evidence",
+        "status": "excluded"
+      },
+      { "project": "talent-evidence", "status": "production" }
+    ],
     "@aramo/sourced-talent": [
       {
         "excludedBy": "src/tests/**/*",

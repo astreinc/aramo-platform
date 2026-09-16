@@ -90,6 +90,7 @@ const TALENT_EVIDENCE_HF1_MIGRATION_PATH = resolve(
 const TALENT_EVIDENCE_HF2_MIGRATION_PATH = resolve(
   __dirname,
   '../../../talent-evidence/prisma/migrations/20260915170000_hf2_experience_intelligence/migration.sql',
+  '../../../talent-evidence/prisma/migrations/20260915180000_skill_tax_1g_canonical_reconciliation/migration.sql',
 );
 
 const TENANT_A = '11111111-1111-7111-8111-111111111111';

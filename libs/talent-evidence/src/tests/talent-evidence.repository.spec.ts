@@ -33,6 +33,19 @@ describe('TalentEvidenceRepository — surface', () => {
     'listCertificationForLedger',
   ];
 
+  // SKILL-TAX-1G — the canonical reconciliation surface: bounded tenant/talent
+  // -scoped reads of durable evidence + the two guarded canonical writes (the
+  // additive evidence columns + the additive derived-snapshot projection). Each
+  // is single-purpose; enumerated so the closed-surface guard treats them as a
+  // conscious addition, not an open query surface.
+  const SKILL_TAX_1G_RECON_METHODS = [
+    'listSkillEvidenceForCanonicalization',
+    'updateSkillEvidenceCanonical',
+    'listCanonicalUsageForTalent',
+    'findLatestDerivedSnapshot',
+    'updateDerivedSnapshotCanonicalYears',
+  ];
+
   it('exposes the 14 create/find methods + the Gate-1 by-talent reads + the TR-4 B2 ledger reads', () => {
     const methods = Object.getOwnPropertyNames(TalentEvidenceRepository.prototype)
       .filter((m) => m !== 'constructor')
@@ -83,6 +96,7 @@ describe('TalentEvidenceRepository — surface', () => {
         'findTalentProjectExperienceById',
         'findProjectExperienceByTalent',
         ...TR4_B2_LEDGER_READS,
+        ...SKILL_TAX_1G_RECON_METHODS,
       ].sort(),
     );
   });
@@ -102,7 +116,8 @@ describe('TalentEvidenceRepository — surface', () => {
     const offending = methods.filter(
       (m) =>
         forbiddenPrefixes.some((p) => m.toLowerCase().startsWith(p.toLowerCase())) &&
-        !TR4_B2_LEDGER_READS.includes(m),
+        !TR4_B2_LEDGER_READS.includes(m) &&
+        !SKILL_TAX_1G_RECON_METHODS.includes(m),
     );
     // Only the consciously-enumerated B2 ledger reads may carry a list-shaped name;
     // any NEW list/query method forces an explicit addition to the allowlist above.
