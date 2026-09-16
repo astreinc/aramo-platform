@@ -3106,7 +3106,7 @@ button.rc-cocard {
 
 /* ── Two-column edit grid ── */
 
-.rc-editgrid { display: grid; grid-template-columns: 1fr 340px; gap: 20px; align-items: start; }
+.rc-editgrid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(440px, 42%); gap: 20px; align-items: start; }
 
 .rc-editgrid__main { min-width: 0; }
 
@@ -3499,10 +3499,35 @@ select.rc-secinput { appearance: none; padding-right: 28px; }
 
 .rc-sidecard__h svg { width: 15px; height: 15px; color: var(--brand); }
 
-/* HF2 — résumé preview pane (right rail of the review screen). */
+/* HF2 — résumé preview pane (right rail of the review screen). Tall + sticky so
+   the recruiter can read the source while validating the form side-by-side. */
+.rc-rpreview { flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0; }
+.rc-rpreview__hdrow { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.rc-rpreview__expand {
+  border: 1px solid var(--line-2); background: var(--surface); color: var(--muted);
+  border-radius: 8px; padding: 4px 10px; font: inherit; font-size: 0.72rem; font-weight: 600; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 5px;
+}
+.rc-rpreview__expand:hover { color: var(--brand); border-color: var(--brand); }
 .rc-rpreview__frame {
-  width: 100%; height: 640px; border: 1px solid var(--line); border-radius: var(--r-md);
-  background: var(--surface, #fff); margin-top: 4px;
+  width: 100%; height: calc(100vh - 300px); min-height: 480px;
+  border: 1px solid var(--line); border-radius: var(--r-md);
+  background: var(--surface, #fff); margin-top: 6px;
+}
+/* Full-screen overlay for reading fine print. */
+.rc-rpreview__overlay {
+  position: fixed; inset: 0; z-index: 60; background: rgba(15, 20, 30, 0.72);
+  display: flex; flex-direction: column; padding: 24px;
+}
+.rc-rpreview__ovbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.rc-rpreview__ovtitle { color: #fff; font-weight: 600; font-size: 0.9rem; }
+.rc-rpreview__ovframe { flex: 1 1 auto; width: 100%; border: none; border-radius: var(--r-md); background: #fff; }
+.rc-rpreview__ovclose {
+  border: 1px solid rgba(255,255,255,0.4); background: transparent; color: #fff;
+  border-radius: 8px; padding: 6px 14px; font: inherit; font-size: 0.8rem; font-weight: 600; cursor: pointer;
+}
+@media (max-width: 980px) {
+  .rc-rpreview__frame { height: 70vh; }
 }
 
 .rc-resumecard__file { display: flex; align-items: center; gap: 11px; }

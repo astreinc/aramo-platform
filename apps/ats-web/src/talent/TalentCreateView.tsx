@@ -673,20 +673,41 @@ function ResumeCard({
 // natively) show a note (the file still saves with the record).
 function ResumePreview({ file }: { readonly file: File }) {
   const [url, setUrl] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState(false);
   useEffect(() => {
     const objectUrl = URL.createObjectURL(file);
     setUrl(objectUrl);
     return () => URL.revokeObjectURL(objectUrl);
   }, [file]);
+  // Close the full-screen overlay on Escape.
+  useEffect(() => {
+    if (!expanded) return;
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') setExpanded(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [expanded]);
   const isPdf =
     file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
   const ext = file.name.split('.').pop()?.toUpperCase() ?? 'file';
   return (
     <section className="rc-sidecard rc-rpreview" aria-label="Résumé preview">
-      <h3 className="rc-sidecard__h">
-        <Icons.IconFile />
-        Résumé preview
-      </h3>
+      <div className="rc-rpreview__hdrow">
+        <h3 className="rc-sidecard__h">
+          <Icons.IconFile />
+          Résumé preview
+        </h3>
+        {url !== null && isPdf ? (
+          <button
+            type="button"
+            className="rc-rpreview__expand"
+            onClick={() => setExpanded(true)}
+          >
+            Expand
+          </button>
+        ) : null}
+      </div>
       {url !== null && isPdf ? (
         <iframe className="rc-rpreview__frame" title="Résumé preview" src={url} />
       ) : (
@@ -695,6 +716,26 @@ function ResumePreview({ file }: { readonly file: File }) {
           attached résumé is saved with the record.
         </p>
       )}
+      {expanded && url !== null ? (
+        <div
+          className="rc-rpreview__overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Résumé full preview"
+        >
+          <div className="rc-rpreview__ovbar">
+            <span className="rc-rpreview__ovtitle">{file.name}</span>
+            <button
+              type="button"
+              className="rc-rpreview__ovclose"
+              onClick={() => setExpanded(false)}
+            >
+              Close
+            </button>
+          </div>
+          <iframe className="rc-rpreview__ovframe" title="Résumé full preview" src={url} />
+        </div>
+      ) : null}
     </section>
   );
 }
