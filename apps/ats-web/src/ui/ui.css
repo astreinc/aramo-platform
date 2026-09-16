@@ -3499,6 +3499,12 @@ select.rc-secinput { appearance: none; padding-right: 28px; }
 
 .rc-sidecard__h svg { width: 15px; height: 15px; color: var(--brand); }
 
+/* HF2 — résumé preview pane (right rail of the review screen). */
+.rc-rpreview__frame {
+  width: 100%; height: 640px; border: 1px solid var(--line); border-radius: var(--r-md);
+  background: var(--surface, #fff); margin-top: 4px;
+}
+
 .rc-resumecard__file { display: flex; align-items: center; gap: 11px; }
 
 .rc-resumecard__fic {

@@ -224,7 +224,7 @@ export function IntakeForm({
           'Work authorization',
           WORK_AUTHORIZATION_VALUES,
           WORK_AUTHORIZATION_LABELS,
-          true,
+          false,
         )}
       </Section>
 
@@ -232,7 +232,7 @@ export function IntakeForm({
         {select('availability_status', 'Availability', AVAILABILITY_STATUS_VALUES, AVAILABILITY_LABELS)}
         {field('date_available', 'Available from', { type: 'date' })}
         {select('engagement_type', 'Engagement type', ENGAGEMENT_TYPE_VALUES, ENGAGEMENT_LABELS)}
-        {field('desired_pay', 'Desired rate', { required: true, placeholder: '$/hr' })}
+        {field('desired_pay', 'Desired rate', { placeholder: '$/hr · optional' })}
         {field('current_pay', 'Current pay', { placeholder: 'e.g. $72/hr' })}
         {toggle('is_hot', 'Hot talent')}
       </Section>

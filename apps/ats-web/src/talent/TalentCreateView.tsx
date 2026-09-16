@@ -274,8 +274,9 @@ export function TalentCreateView() {
   const phoneOk = fields.phone_cell.trim() !== '';
   const cityOk = fields.city.trim() !== '';
   const stateOk = fields.state.trim() !== '';
-  const workAuthOk = fields.work_authorization !== '';
-  const rateOk = fields.desired_pay.trim() !== '';
+  // Work authorization + desired rate are OPTIONAL (PO ruling): the résumé often
+  // does not state them, and they are captured later on the Talent record. They
+  // are NOT part of the create gate or the required checklist.
   const resumeOk = resume.storage_key !== undefined;
   const canCreate =
     nameOk &&
@@ -283,8 +284,6 @@ export function TalentCreateView() {
     phoneOk &&
     cityOk &&
     stateOk &&
-    workAuthOk &&
-    rateOk &&
     resumeOk &&
     duplicate === null &&
     !submitting;
@@ -489,11 +488,17 @@ export function TalentCreateView() {
                 { ok: emailOk, label: 'Email address' },
                 { ok: phoneOk, label: 'Phone number' },
                 { ok: cityOk && stateOk, label: 'City and state' },
-                { ok: workAuthOk, label: 'Work authorization' },
-                { ok: rateOk, label: 'Desired rate' },
                 { ok: resumeOk, label: 'Resume attached' },
               ]}
             />
+            <p className="rc-secnote">
+              Work authorization and desired rate are optional — capture them
+              later if the résumé doesn’t state them.
+            </p>
+            {/* Résumé preview alongside the form so the recruiter can check the
+                proposed values against the source while reviewing. Rendered from
+                the file already in memory (no server round-trip). */}
+            {resume.file !== undefined ? <ResumePreview file={resume.file} /> : null}
           </aside>
         </div>
       ) : null}
@@ -656,6 +661,40 @@ function ResumeCard({
           (D4). Resume text purges on delete (ADR-0015 cascade).
         </span>
       </p>
+    </section>
+  );
+}
+
+// ── Résumé preview ───────────────────────────────────────────────────────────
+// Renders the attached résumé alongside the review form so the recruiter can
+// cross-check the proposed values against the source. Uses the selected File
+// already in memory (object URL) — no server round-trip, no presigned URL.
+// PDFs render inline; other types (e.g. .docx, which browsers can't render
+// natively) show a note (the file still saves with the record).
+function ResumePreview({ file }: { readonly file: File }) {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    const objectUrl = URL.createObjectURL(file);
+    setUrl(objectUrl);
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [file]);
+  const isPdf =
+    file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+  const ext = file.name.split('.').pop()?.toUpperCase() ?? 'file';
+  return (
+    <section className="rc-sidecard rc-rpreview" aria-label="Résumé preview">
+      <h3 className="rc-sidecard__h">
+        <Icons.IconFile />
+        Résumé preview
+      </h3>
+      {url !== null && isPdf ? (
+        <iframe className="rc-rpreview__frame" title="Résumé preview" src={url} />
+      ) : (
+        <p className="rc-secnote">
+          Inline preview isn’t available for a .{ext.toLowerCase()} file — the
+          attached résumé is saved with the record.
+        </p>
+      )}
     </section>
   );
 }
