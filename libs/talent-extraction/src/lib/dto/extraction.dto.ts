@@ -355,6 +355,10 @@ export interface ResumeDraftProposal {
 export interface ResumeDraftResult {
   status: ResumeDraftStatus;
   proposal: ResumeDraftProposal;
+  // HF2 R17 — email/phone CAPTURED during model-input redaction (never sent to
+  // the model; ADR-0015 Decision-6 / §17). The controller merges these into the
+  // recruiter prefill. Absent on the pre-model failure paths (empty prefill).
+  contact?: { emails: string[]; phones: string[] };
 }
 
 // What TalentExtractionService persisted (declared evidence rows). Ids of the

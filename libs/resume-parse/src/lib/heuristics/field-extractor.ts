@@ -17,12 +17,20 @@ const PHONE_RE = /(?:\+?1[-.\s]?)?\(?(\d{3})\)?[-.\s]?(\d{3})[-.\s]?(\d{4})/g;
 const URL_RE = /(https?:\/\/[^\s)<>]+)/g;
 const ZIP_RE = /\b(\d{5}(?:-\d{4})?)\b/;
 const US_STATE_RE = /\b(A[KLRZ]|C[AOT]|D[CE]|FL|GA|HI|I[ADLN]|K[SY]|LA|M[ADEINOST]|N[CDEHJMVY]|O[HKR]|PA|RI|S[CD]|T[NX]|UT|V[AT]|W[AIVY])\b/;
-// HF2 R17 — "City, ST" (optionally followed by a ZIP): capture the city token(s)
-// immediately preceding a 2-letter state abbreviation. 1–3 capitalized words
-// keeps it anchored to a genuine "City, ST" cluster (not prose like "skilled in
-// Java, VA-based team"). Deterministic + local — this NEVER reaches the model.
+// HF2 R17 — a CONSERVATIVE "City, ST[ ZIP]" contact-line matcher. Captures
+// city (group 1), state (group 2), ZIP (group 3, optional) from ONE match so
+// they stay consistent. Hardened against body/skill-list false positives (the
+// bug that yielded city="Testing\n\nWindows XP", state="MS" from "...Windows XP,
+// MS SQL Server..."):
+//   • horizontal whitespace only ([ \t]) between city words — NEVER spans a
+//     newline, so "Testing\n\nWindows XP" can't form a city;
+//   • the match must END the line or be followed by a separator (|·•) — a mid-
+//     line skills list ("Windows XP, MS SQL Server 2005, QC, …") does NOT end at
+//     ", MS", so it no longer matches;
+//   • 1–3 capitalized words for the city.
+// Multiline (/m). Deterministic + local — NEVER reaches the model.
 const CITY_STATE_RE =
-  /\b([A-Z][A-Za-z.'-]+(?:\s+[A-Z][A-Za-z.'-]+){0,2}),\s*(A[KLRZ]|C[AOT]|D[CE]|FL|GA|HI|I[ADLN]|K[SY]|LA|M[ADEINOST]|N[CDEHJMVY]|O[HKR]|PA|RI|S[CD]|T[NX]|UT|V[AT]|W[AIVY])\b(?:\s+\d{5}(?:-\d{4})?)?/;
+  /(?:^|[ \t(])([A-Z][A-Za-z.'-]+(?:[ \t]+[A-Z][A-Za-z.'-]+){0,2}),[ \t]*(A[KLRZ]|C[AOT]|D[CE]|FL|GA|HI|I[ADLN]|K[SY]|LA|M[ADEINOST]|N[CDEHJMVY]|O[HKR]|PA|RI|S[CD]|T[NX]|UT|V[AT]|W[AIVY])(?:[ \t]+(\d{5}(?:-\d{4})?))?(?=[ \t]*(?:$|[|·•]))/m;
 
 const SKILLS_HEADER_RE = /^[\s]*(skills?|technical\s+skills?|core\s+competencies|competencies)\s*:?\s*$/im;
 const EXPERIENCE_HEADER_RE = /^[\s]*(experience|employment(?:\s+history)?|work\s+history|professional\s+experience)\s*:?\s*$/im;
@@ -178,50 +186,31 @@ function extractState(text: string): string | undefined {
   return m === null ? undefined : m[1];
 }
 
-// HF2 R17 — deterministic local city extraction (the confirmed gap: email /
-// phone / state / ZIP were already local; city was model-only). The city is the
-// token(s) before a "City, ST" cluster.
-function extractCity(text: string): string | undefined {
+// HF2 R17 — parse a single conservative "City, ST[ ZIP]" contact line into its
+// parts. All three come from ONE anchored match, so a false state/zip can never
+// be scavenged from unrelated body text ("MS SQL", a bare 5-digit run).
+function parseCityStateZip(text: string): { city?: string; state?: string; zip?: string } {
   const m = text.match(CITY_STATE_RE);
-  const city = m?.[1]?.trim();
-  return city === undefined || city.length === 0 ? undefined : city;
-}
-
-// HF2 R17 — the LOCAL, deterministic contact + location fields. Extracted from
-// the RAW résumé text (NO LLM), so email/phone never depend on — and never reach
-// — the model, and city/state/ZIP are not hostage to whether the model returns a
-// location. The governed-LLM draft path merges these BEFORE returning the
-// prefill; the model input is separately PII-redacted (redactPii) at the
-// provider boundary. City/state/ZIP here take precedence; the model's grounded
-// location is only a fallback for whatever local extraction missed.
-export interface ResumeContactFields {
-  email1?: string;
-  email2?: string;
-  phone_cell?: string;
-  phone_home?: string;
-  phone_work?: string;
-  city?: string;
-  state?: string;
-  zip?: string;
-}
-
-export function extractContact(text: string): ResumeContactFields {
-  const emails = extractEmails(text);
-  const phones = extractPhones(text);
-  const out: ResumeContactFields = {};
-  if (emails[0] !== undefined) out.email1 = emails[0];
-  if (emails[1] !== undefined) out.email2 = emails[1];
-  if (phones[0] !== undefined) out.phone_cell = phones[0];
-  if (phones[1] !== undefined) out.phone_home = phones[1];
-  if (phones[2] !== undefined) out.phone_work = phones[2];
-  const city = extractCity(text);
-  if (city !== undefined) out.city = city;
-  const state = extractState(text);
-  if (state !== undefined) out.state = state;
-  const zip = extractZip(text);
-  if (zip !== undefined) out.zip = zip;
+  if (m === null) return {};
+  const out: { city?: string; state?: string; zip?: string } = {};
+  const city = m[1]?.trim();
+  if (city !== undefined && city.length > 0) out.city = city;
+  if (m[2] !== undefined) out.state = m[2];
+  if (m[3] !== undefined) out.zip = m[3];
   return out;
 }
+
+function extractCity(text: string): string | undefined {
+  return parseCityStateZip(text).city;
+}
+
+// HF2 R17 — NOTE: email/phone for the governed résumé-draft path are NOT
+// extracted here. They are captured upstream during model-input redaction (the
+// redaction utility returns the masked values) and merged into the recruiter
+// prefill by the controller — one scan, and exactly what is redacted is what is
+// kept. City/state/ZIP that the governed path is allowed to see are produced by
+// the governed extractor (grounded). This deterministic extractor remains only
+// for the parser fallback (extractFields) below.
 
 /**
  * Run the heuristic field-extraction over plain text. Pure function

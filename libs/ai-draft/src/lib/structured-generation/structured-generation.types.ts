@@ -32,6 +32,18 @@ export interface StructuredGenerationTransport {
   readonly provider_request_id?: string;
 }
 
+// Transport mechanism for the structured call.
+//   STRICT_JSON_SCHEMA — native structured output (output_config.format,
+//     constrained decoding, directive §8). The DEFAULT for all consumers.
+//   FORCED_TOOL — schema-guided function-calling (one forced tool whose
+//     input_schema IS the JSON Schema). Used ONLY where the schema is too large
+//     for strict grammar compilation (HF2 v3 résumé draft). Schema-GUIDED, not
+//     grammar-CONSTRAINED → the consumer's shape validation/grounding is the
+//     trust boundary. There is NO implicit fallback between the two: a consumer
+//     explicitly opts into FORCED_TOOL; a strict failure never silently retries
+//     as a tool call.
+export type StructuredGenerationTransportMode = 'STRICT_JSON_SCHEMA' | 'FORCED_TOOL';
+
 export interface StructuredGenerationRequest {
   /** Exact provider model id (allowlisted by the caller — never request-derived). */
   readonly model: string;
@@ -40,10 +52,12 @@ export interface StructuredGenerationRequest {
   /** The evidence payload (already minimized by the caller). */
   readonly user_content: string;
   readonly max_tokens: number;
-  /** Provider-native JSON Schema for constrained decoding. */
+  /** Provider-native JSON Schema (constrained-decoding grammar / tool input_schema). */
   readonly json_schema: Record<string, unknown>;
   /** Stable schema name for provenance/telemetry. */
   readonly schema_name: string;
+  /** Transport mechanism. Omitted ⇒ STRICT_JSON_SCHEMA (the safe default). */
+  readonly transport?: StructuredGenerationTransportMode;
 }
 
 export type StructuredGenerationOutcome =

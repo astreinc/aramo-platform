@@ -17,22 +17,46 @@ const PHONE_RE = /(?<!\d)(?:\+?1[-. ]?)?\(?\d{3}\)?[-. ]?\d{3}[-. ]?\d{4}(?!\d)/
 const CC_RE = /\b\d{13,19}\b/g;
 const ROUTING_RE = /\b\d{9}\b/g;
 
-export function redactPii(text: string): { redactedText: string; spanCount: number } {
+// The redaction result. `emails`/`phones` are the CAPTURED raw values that were
+// masked out of `redactedText` — returned so a caller can reuse them (e.g. merge
+// email/phone into a recruiter prefill) WITHOUT re-scanning the text a second
+// time. Invariant: exactly what is redacted from the model input is what is
+// captured here, so the two can never disagree. Normalized to the prefill form
+// (email lowercased; phone as ddd-ddd-ddd d from the trailing 10 digits),
+// de-duplicated, in first-seen order.
+export interface RedactionResult {
+  readonly redactedText: string;
+  readonly spanCount: number;
+  readonly emails: string[];
+  readonly phones: string[];
+}
+
+export function redactPii(text: string): RedactionResult {
   let redactedText = text;
   let spanCount = 0;
+  const emails: string[] = [];
+  const phones: string[] = [];
 
   redactedText = redactedText.replace(SSN_RE, () => {
     spanCount += 1;
     return '[REDACTED:SSN]';
   });
 
-  redactedText = redactedText.replace(EMAIL_RE, () => {
+  redactedText = redactedText.replace(EMAIL_RE, (match) => {
     spanCount += 1;
+    const norm = match.toLowerCase();
+    if (!emails.includes(norm)) emails.push(norm);
     return '[REDACTED:EMAIL]';
   });
 
-  redactedText = redactedText.replace(PHONE_RE, () => {
+  redactedText = redactedText.replace(PHONE_RE, (match) => {
     spanCount += 1;
+    const digits = match.replace(/\D/g, '');
+    const ten = digits.length >= 10 ? digits.slice(-10) : digits;
+    if (ten.length === 10) {
+      const norm = `${ten.slice(0, 3)}-${ten.slice(3, 6)}-${ten.slice(6)}`;
+      if (!phones.includes(norm)) phones.push(norm);
+    }
     return '[REDACTED:PHONE]';
   });
 
@@ -52,7 +76,7 @@ export function redactPii(text: string): { redactedText: string; spanCount: numb
     return match;
   });
 
-  return { redactedText, spanCount };
+  return { redactedText, spanCount, emails, phones };
 }
 
 export function luhnCheck(digits: string): boolean {

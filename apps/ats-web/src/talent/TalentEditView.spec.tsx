@@ -120,7 +120,7 @@ afterEach(() => {
 });
 
 describe('TalentEditView', () => {
-  it('pre-fills the Step-2 form; email + phone are read-only identity anchors; no resume upload', async () => {
+  it('pre-fills the Step-2 form; email + phone are read-only anchors; shows the résumé preview + Replace (Add-Talent parity)', async () => {
     installFetch(routeHandler);
     renderAt();
     await waitFor(() =>
@@ -136,8 +136,11 @@ describe('TalentEditView', () => {
     expect(email.readOnly).toBe(true);
     const phone = screen.getByLabelText('Mobile') as HTMLInputElement;
     expect(phone.readOnly).toBe(true);
-    // NO resume upload section in EDIT.
-    expect(screen.queryByTestId('resume-upload-section')).toBeNull();
+    // Design parity with Add-Talent: the résumé preview panel + Replace control
+    // are present (the résumé fetch 404s in this default mock → the panel shows
+    // its no-résumé fallback, which still offers Replace).
+    await waitFor(() => expect(screen.getByText('Résumé preview')).toBeInTheDocument());
+    expect(screen.getByRole('button', { name: /Replace/ })).toBeInTheDocument();
   });
 
   it('submits a PATCH (true PATCH — only changed scalar) and navigates to detail; work_history omitted when untouched', async () => {

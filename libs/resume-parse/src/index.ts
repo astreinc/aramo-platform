@@ -5,11 +5,6 @@ export { ResumeParserService } from './lib/resume-parser.service.js';
 // against the retained S3 file. The E2 parse service (parseFromStorageKey) is
 // UNCHANGED — this only widens the barrel.
 export { extractResumeText } from './lib/heuristics/text-extractor.js';
-// HF2 R17 — the LOCAL, deterministic contact + location extractor (email /
-// phone / city / state / ZIP). Reused by the governed-LLM draft path so contact
-// is local (never model-derived), while the model input is separately redacted.
-export { extractContact } from './lib/heuristics/field-extractor.js';
-export type { ResumeContactFields } from './lib/heuristics/field-extractor.js';
 export type {
   ParseResumeInput,
   ParseResumeResult,

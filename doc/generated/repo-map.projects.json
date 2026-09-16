@@ -1143,7 +1143,6 @@
       "ResumeParseModule",
       "ResumeParserService",
       "buildResumeSourceMap",
-      "extractContact",
       "extractResumeText"
     ],
     "@aramo/saved-list": [

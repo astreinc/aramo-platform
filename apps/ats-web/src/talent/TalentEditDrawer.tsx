@@ -111,13 +111,13 @@ export function TalentEditDrawer({ talent, onClose, onSaved }: Props) {
   // editable, non-empty email (missing-anchor entry OR privileged correction).
   const emailFormatBad =
     emailEditable && email1.trim() !== '' && !/\S+@\S+\.\S+/.test(email1.trim());
+  // Work authorization + desired rate are OPTIONAL (parity with Add-Talent, PO
+  // ruling) — they are NOT part of the save gate; empty clears to "not stated".
   const errors = {
     firstName: firstName.trim() === '',
     lastName: lastName.trim() === '',
     city: city.trim() === '',
     state: state.trim() === '',
-    workAuth: workAuth === '',
-    desiredPay: desiredPay.trim() === '',
     emailFormat: emailFormatBad,
   };
   const hasErrors = Object.values(errors).some(Boolean);
@@ -136,8 +136,9 @@ export function TalentEditDrawer({ talent, onClose, onSaved }: Props) {
       city: city.trim(),
       state: state.trim(),
       country: country.trim() === '' ? 'US' : country.trim(), // B2 (non-null; default US)
-      work_authorization: workAuth as WorkAuthorization,
-      desired_pay: desiredPay.trim(),
+      // Optional — empty clears to "not stated" (null), never an empty string.
+      work_authorization: workAuth === '' ? null : (workAuth as WorkAuthorization),
+      desired_pay: desiredPay.trim() === '' ? null : desiredPay.trim(),
       // Optional talent-stated selects — empty clears to "not stated".
       engagement_type: engagement === '' ? null : (engagement as EngagementType),
       availability_status:
@@ -313,8 +314,8 @@ export function TalentEditDrawer({ talent, onClose, onSaved }: Props) {
                   onChange={(e) => setCountry(e.target.value)}
                 />
               </label>
-              <label className={`talent-detail__field${err(errors.workAuth)}`}>
-                <span>Work authorization *</span>
+              <label className="talent-detail__field">
+                <span>Work authorization</span>
                 <select value={workAuth} onChange={(e) => setWorkAuth(e.target.value)}>
                   <option value="">Select…</option>
                   {WORK_AUTHORIZATION_VALUES.map((v) => (
@@ -336,8 +337,8 @@ export function TalentEditDrawer({ talent, onClose, onSaved }: Props) {
 
           <DrawerSection label="RATES & AVAILABILITY">
             <div className="talent-detail__refgrid">
-              <label className={`talent-detail__field${err(errors.desiredPay)}`}>
-                <span>Desired rate *</span>
+              <label className="talent-detail__field">
+                <span>Desired rate</span>
                 <input
                   value={desiredPay}
                   onChange={(e) => setDesiredPay(e.target.value)}

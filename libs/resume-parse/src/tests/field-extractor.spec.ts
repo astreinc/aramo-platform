@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  extractContact,
   extractFields,
   meetsMinimalIdentity,
 } from '../lib/heuristics/field-extractor.js';
@@ -150,34 +149,23 @@ Acme Corp 2022-Present
   // HF2 R17 — the LOCAL, deterministic contact + location extractor. City was the
   // confirmed gap (email/phone/state/ZIP were already local). This path NEVER
   // reaches the model; the model input is redacted separately at the provider.
-  describe('extractContact — local contact + location (R17)', () => {
-    const RESUME = `Jane Doe
-jane@example.com
-703-555-1212
-McLean, VA 22102`;
-
-    it('extracts email, phone, city, state, ZIP from the raw résumé', () => {
-      const c = extractContact(RESUME);
-      expect(c.email1).toBe('jane@example.com');
-      expect(c.phone_cell).toBe('703-555-1212');
-      expect(c.city).toBe('McLean');
-      expect(c.state).toBe('VA');
-      expect(c.zip).toBe('22102');
+  // The deterministic-parser fallback (extractFields, NO model) parses city
+  // locally — with the hardened, line-anchored regex that no longer false-matches
+  // skill lists (the "Testing\n\nWindows XP / MS" bug).
+  describe('extractFields — local city (deterministic fallback, hardened regex)', () => {
+    it('parses a real "City, ST ZIP" contact line', () => {
+      expect(extractFields('Jane Doe\nMcLean, VA 22102\njane@example.com').city).toBe('McLean');
+      expect(extractFields('San Francisco, CA 94103').city).toBe('San Francisco');
     });
 
-    it('extractFields also yields the locally-parsed city (was model-only)', () => {
-      expect(extractFields(RESUME).city).toBe('McLean');
-    });
-
-    it('multi-word city ("San Francisco, CA") parses', () => {
-      expect(extractContact('San Francisco, CA 94103').city).toBe('San Francisco');
-    });
-
-    it('absent contact → fields omitted (never empty string)', () => {
-      const c = extractContact('Just some prose with no contact block.');
-      expect(c.email1).toBeUndefined();
-      expect(c.city).toBeUndefined();
-      expect(Object.prototype.hasOwnProperty.call(c, 'email1')).toBe(false);
+    it('does NOT false-match a mid-line skills list as a city (regression)', () => {
+      const body = [
+        'Career Objective',
+        'Skilled in Automation testing, Windows 10, Testing',
+        'Windows XP, MS SQL Server 2005, Microsoft TFS, VB, SQL Server 2000',
+        'Worked in Retail and Banking domains.',
+      ].join('\n');
+      expect(extractFields(body).city).toBeUndefined();
     });
   });
 });

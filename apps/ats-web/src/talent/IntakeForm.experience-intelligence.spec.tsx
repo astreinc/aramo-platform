@@ -36,7 +36,7 @@ function renderForm(opts: {
 }
 
 describe('IntakeForm — HF2 Experience Intelligence review (§29)', () => {
-  it('renders the concise experience preview + expandable skills-used and projects', () => {
+  it('binds experience_summary into the editable "Work experience" field + expandable skills/projects', () => {
     renderForm({
       workHistory: [
         {
@@ -48,8 +48,10 @@ describe('IntakeForm — HF2 Experience Intelligence review (§29)', () => {
         },
       ],
     });
-    expect(screen.getByText('Led the platform migration end to end.')).toBeInTheDocument();
-    // Expandable disclosures present, labelled with counts.
+    // The summary is now the EDITABLE Work experience field (not read-only text).
+    const field = screen.getByLabelText('Work experience 1') as HTMLTextAreaElement;
+    expect(field.value).toBe('Led the platform migration end to end.');
+    // Supporting intelligence remains expandable.
     expect(screen.getByText('Skills used (1)')).toBeInTheDocument();
     expect(screen.getByText(/Kubernetes/)).toBeInTheDocument();
     expect(screen.getByText('Projects / context (1)')).toBeInTheDocument();

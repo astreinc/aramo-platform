@@ -8,6 +8,7 @@ import { Icons, InlineAlert, PageHeader } from '../ui';
 import { ResumeDropzone } from './ResumeDropzone';
 import { ParseProgress } from './ParseProgress';
 import { IntakeForm } from './IntakeForm';
+import { ResumePreview } from './ResumePreview';
 import {
   checkTalentDuplicate,
   createAttachment,
@@ -274,8 +275,9 @@ export function TalentCreateView() {
   const phoneOk = fields.phone_cell.trim() !== '';
   const cityOk = fields.city.trim() !== '';
   const stateOk = fields.state.trim() !== '';
-  const workAuthOk = fields.work_authorization !== '';
-  const rateOk = fields.desired_pay.trim() !== '';
+  // Work authorization + desired rate are OPTIONAL (PO ruling): the résumé often
+  // does not state them, and they are captured later on the Talent record. They
+  // are NOT part of the create gate or the required checklist.
   const resumeOk = resume.storage_key !== undefined;
   const canCreate =
     nameOk &&
@@ -283,8 +285,6 @@ export function TalentCreateView() {
     phoneOk &&
     cityOk &&
     stateOk &&
-    workAuthOk &&
-    rateOk &&
     resumeOk &&
     duplicate === null &&
     !submitting;
@@ -489,11 +489,19 @@ export function TalentCreateView() {
                 { ok: emailOk, label: 'Email address' },
                 { ok: phoneOk, label: 'Phone number' },
                 { ok: cityOk && stateOk, label: 'City and state' },
-                { ok: workAuthOk, label: 'Work authorization' },
-                { ok: rateOk, label: 'Desired rate' },
                 { ok: resumeOk, label: 'Resume attached' },
               ]}
             />
+            <p className="rc-secnote">
+              Work authorization and desired rate are optional — capture them
+              later if the résumé doesn’t state them.
+            </p>
+            {/* Résumé preview alongside the form so the recruiter can check the
+                proposed values against the source while reviewing. Rendered from
+                the file already in memory (no server round-trip). */}
+            {resume.file !== undefined ? (
+              <ResumePreview file={resume.file} fileName={resume.file.name} mime={resume.file.type} />
+            ) : null}
           </aside>
         </div>
       ) : null}

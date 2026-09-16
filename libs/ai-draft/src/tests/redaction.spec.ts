@@ -5,6 +5,26 @@ import { redactPii, luhnCheck, abaCheck } from '../lib/redaction.js';
 // M5 PR-5 §4.15 — redaction unit spec. Five PII patterns + Luhn / ABA
 // validation gates per directive Ruling 6.
 
+describe('redactPii — capture (HF2 R17: reuse masked values, no second scan)', () => {
+  it('captures + normalizes the redacted email/phone (deduped, ordered)', () => {
+    const r = redactPii('Contact: Jane.Doe@Example.COM, alt jane@work.io  Cell (703) 555-1212');
+    // Text is redacted (never sent to the model)...
+    expect(r.redactedText).not.toContain('@Example.COM');
+    expect(r.redactedText).toContain('[REDACTED:EMAIL]');
+    expect(r.redactedText).toContain('[REDACTED:PHONE]');
+    // ...and the SAME values are captured for the prefill: email lowercased,
+    // phone normalized to ddd-ddd-dddd.
+    expect(r.emails).toEqual(['jane.doe@example.com', 'jane@work.io']);
+    expect(r.phones).toEqual(['703-555-1212']);
+  });
+
+  it('no PII → empty capture arrays', () => {
+    const r = redactPii('Just some prose, no contact.');
+    expect(r.emails).toEqual([]);
+    expect(r.phones).toEqual([]);
+  });
+});
+
 describe('redactPii', () => {
   it('redacts a US SSN', () => {
     const r = redactPii('SSN 123-45-6789 is here');

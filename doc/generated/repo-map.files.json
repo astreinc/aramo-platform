@@ -888,6 +888,7 @@
     "apps/ats-web/src/talent/RecordReferenceForm.spec.tsx",
     "apps/ats-web/src/talent/RecordReferenceForm.tsx",
     "apps/ats-web/src/talent/ResumeDropzone.tsx",
+    "apps/ats-web/src/talent/ResumePreview.tsx",
     "apps/ats-web/src/talent/TalentCreateView.spec.tsx",
     "apps/ats-web/src/talent/TalentCreateView.tsx",
     "apps/ats-web/src/talent/TalentDetailView.spec.tsx",

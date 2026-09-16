@@ -119,20 +119,24 @@ describe('draft-from-resume — exclusive mode resolver', () => {
     expect(parseFromStorageKey).not.toHaveBeenCalled();
   });
 
-  // HF2 R17 — the governed path runs the LOCAL contact extractor over the raw
-  // text: email/phone/city/state/ZIP fill the prefill deterministically (the LLM
-  // never sees email/phone — redaction happens inside extractResumeDraft, proven
-  // in resume-draft.spec.ts). city/state/ZIP are local-first, not model-only.
-  it('governed_llm → local contact extraction fills email/phone/city/state/ZIP (R17)', async () => {
+  // HF2 R17 — the hybrid split: EMAIL/PHONE arrive on result.contact (captured
+  // during model-input redaction inside extractResumeDraft — the model never
+  // sees them); CITY/STATE/ZIP come from the GROUNDED LLM proposal.
+  it('governed_llm → email/phone from result.contact, city/state/ZIP from the proposal (R17)', async () => {
     const { ctl } = makeController({
       mode: 'governed_llm',
-      text: 'Jane Doe\njane@example.com\n703-555-1212\nMcLean, VA 22102\nSkills: Go',
+      text: 'Jane Doe\nMcLean, VA 22102\nSkills: Go',
       result: {
         status: 'success',
+        // Captured during redaction (never sent to the model).
+        contact: { emails: ['jane@example.com'], phones: ['703-555-1212'] },
         proposal: {
           first_name: 'Jane',
           last_name: 'Doe',
-          // The model returns NO location here — proving city/state/ZIP are local.
+          // Location comes from the model (grounded), NOT a local regex.
+          city: 'McLean',
+          state: 'VA',
+          zip: '22102',
           skills: [{ surface_form: 'Go', source_refs: ['B002'] }],
           work_history: [],
           education: [],
@@ -145,8 +149,10 @@ describe('draft-from-resume — exclusive mode resolver', () => {
       },
     });
     const res = await ctl.draftFromResume(AUTH, { storage_key: 'k' }, 'rq-1');
+    // Email/phone: from result.contact (redaction capture).
     expect(res.prefill.email1).toBe('jane@example.com');
     expect(res.prefill.phone_cell).toBe('703-555-1212');
+    // City/state/ZIP: from the LLM proposal.
     expect(res.prefill.city).toBe('McLean');
     expect(res.prefill.state).toBe('VA');
     expect(res.prefill.zip).toBe('22102');
