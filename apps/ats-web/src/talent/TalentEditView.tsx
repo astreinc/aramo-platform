@@ -1,10 +1,20 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 
 import { Icons, InlineAlert, PageHeader } from '../ui';
 
 import { IntakeForm } from './IntakeForm';
-import { getTalent, getTalentWorkHistory, updateTalent } from './talent-api';
+import { ResumePreview } from './ResumePreview';
+import {
+  createAttachment,
+  getAttachmentDownloadUrl,
+  getTalent,
+  getTalentWorkHistory,
+  listTalentAttachments,
+  putResumeToStorage,
+  requestResumeUploadUrl,
+  updateTalent,
+} from './talent-api';
 import { detailErrorMessage, updateErrorMessage } from './error-messages';
 import {
   buildPatchBody,
@@ -28,7 +38,9 @@ import type { TalentRecordView, WorkHistoryDraft, WorkHistoryView } from './type
 // declared work history (BE replaces the prior 'resume'-sourced rows). Sent only
 // when the recruiter touched the work-history section (else left untouched).
 //
-// NO resume upload in EDIT — replacing a resume is a separate later feature.
+// Résumé: the full edit shows the stored résumé in a preview pane (Create-style
+// layout) and supports REPLACE (upload a new résumé → new attachment, is_resume;
+// the prior version stays in Documents). Same upload pipeline as Add-Talent.
 
 const LOCKED_FIELDS = new Set<keyof IntakeState>(['email1', 'phone_cell']);
 
@@ -144,18 +156,27 @@ export function TalentEditView() {
 
       {submitError !== null ? <InlineAlert variant="error">{submitError}</InlineAlert> : null}
 
-      <IntakeForm
-        values={fields}
-        provenance={{}}
-        workHistory={workHistory}
-        disabled={submitting}
-        lockedFields={LOCKED_FIELDS}
-        onField={onField}
-        onToggle={onToggle}
-        onWorkHistoryField={onWorkHistoryField}
-        onAddWorkHistory={onAddWorkHistory}
-        onRemoveWorkHistory={onRemoveWorkHistory}
-      />
+      {/* Same two-column layout as Add-Talent: form on the left, résumé preview
+          (+ replace) on the right so the recruiter validates against the source. */}
+      <div className="rc-editgrid">
+        <div className="rc-editgrid__main">
+          <IntakeForm
+            values={fields}
+            provenance={{}}
+            workHistory={workHistory}
+            disabled={submitting}
+            lockedFields={LOCKED_FIELDS}
+            onField={onField}
+            onToggle={onToggle}
+            onWorkHistoryField={onWorkHistoryField}
+            onAddWorkHistory={onAddWorkHistory}
+            onRemoveWorkHistory={onRemoveWorkHistory}
+          />
+        </div>
+        <aside className="rc-editgrid__rail">
+          <EditResumePanel talentId={talent.id} disabled={submitting} />
+        </aside>
+      </div>
 
       <div className="rc-addfoot">
         <div className="rc-addfoot__actions">
@@ -181,6 +202,128 @@ export function TalentEditView() {
           Email and phone are identity anchors and are managed separately · provenance is recorded automatically.
         </p>
       </div>
+    </section>
+  );
+}
+
+// Résumé preview + Replace for the full edit. Shows the stored résumé (presigned
+// GET) and — mirroring the quick-edit drawer — lets the recruiter REPLACE it:
+// upload a new file (same pipeline as Add-Talent) → a new is_resume attachment
+// (the prior version stays in Documents). Replace is applied immediately (not
+// gated on "Save changes"); the newly-uploaded file previews from memory.
+function EditResumePanel({
+  talentId,
+  disabled,
+}: {
+  readonly talentId: string;
+  readonly disabled: boolean;
+}) {
+  const [current, setCurrent] = useState<{ fileName: string; mime: string | null } | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [replacedFile, setReplacedFile] = useState<File | null>(null);
+  const [status, setStatus] = useState<'idle' | 'uploading' | 'done' | 'error'>('idle');
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    listTalentAttachments(talentId)
+      .then((res) => {
+        if (cancelled) return undefined;
+        // Current résumé = the most-recently-uploaded is_resume attachment.
+        const resumes = res.items.filter((a) => a.is_resume);
+        const latest = resumes[resumes.length - 1];
+        if (latest === undefined) return undefined;
+        setCurrent({ fileName: latest.file_name, mime: latest.mime });
+        return getAttachmentDownloadUrl(latest.id).then((r) => {
+          if (!cancelled) setPreviewUrl(r.presigned_url);
+        });
+      })
+      .catch(() => {
+        /* preview is best-effort — a fetch failure just leaves it empty */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [talentId]);
+
+  const onReplace = (file: File | undefined): void => {
+    if (file === undefined) return;
+    setStatus('uploading');
+    const contentType = file.type === '' ? 'application/octet-stream' : file.type;
+    requestResumeUploadUrl({ filename: file.name, content_type: contentType })
+      .then((presign) =>
+        putResumeToStorage(presign.presigned_url, file, contentType).then(() =>
+          createAttachment({
+            owner_type: 'talent',
+            owner_id: talentId,
+            file_name: file.name,
+            mime: contentType,
+            size_bytes: file.size,
+            storage_key: presign.storage_key,
+            is_resume: true,
+          }),
+        ),
+      )
+      .then(() => {
+        setReplacedFile(file);
+        setStatus('done');
+      })
+      .catch(() => setStatus('error'));
+  };
+
+  const action = (
+    <>
+      <input
+        ref={inputRef}
+        type="file"
+        accept=".pdf,.doc,.docx,application/pdf"
+        hidden
+        onChange={(e) => onReplace(e.target.files?.[0])}
+      />
+      {status === 'done' ? <span className="rc-secnote">Replaced ✓</span> : null}
+      {status === 'error' ? <span className="rc-secnote">Upload failed</span> : null}
+      <button
+        type="button"
+        className="rc-rpreview__expand"
+        disabled={disabled || status === 'uploading'}
+        onClick={() => inputRef.current?.click()}
+      >
+        {status === 'uploading' ? 'Uploading…' : 'Replace'}
+      </button>
+    </>
+  );
+
+  if (replacedFile !== null) {
+    return (
+      <ResumePreview
+        file={replacedFile}
+        fileName={replacedFile.name}
+        mime={replacedFile.type}
+        action={action}
+      />
+    );
+  }
+  if (current !== null) {
+    return (
+      <ResumePreview
+        src={previewUrl}
+        fileName={current.fileName}
+        mime={current.mime}
+        action={action}
+      />
+    );
+  }
+  // No résumé on file — still offer Replace (= attach one).
+  return (
+    <section className="rc-sidecard rc-rpreview" aria-label="Résumé preview">
+      <div className="rc-rpreview__hdrow">
+        <h3 className="rc-sidecard__h">
+          <Icons.IconFile />
+          Résumé preview
+        </h3>
+        <div className="rc-rpreview__hdactions">{action}</div>
+      </div>
+      <p className="rc-secnote">No résumé on file — use Replace to attach one.</p>
     </section>
   );
 }

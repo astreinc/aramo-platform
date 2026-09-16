@@ -8,6 +8,7 @@ import { Icons, InlineAlert, PageHeader } from '../ui';
 import { ResumeDropzone } from './ResumeDropzone';
 import { ParseProgress } from './ParseProgress';
 import { IntakeForm } from './IntakeForm';
+import { ResumePreview } from './ResumePreview';
 import {
   checkTalentDuplicate,
   createAttachment,
@@ -498,7 +499,9 @@ export function TalentCreateView() {
             {/* Résumé preview alongside the form so the recruiter can check the
                 proposed values against the source while reviewing. Rendered from
                 the file already in memory (no server round-trip). */}
-            {resume.file !== undefined ? <ResumePreview file={resume.file} /> : null}
+            {resume.file !== undefined ? (
+              <ResumePreview file={resume.file} fileName={resume.file.name} mime={resume.file.type} />
+            ) : null}
           </aside>
         </div>
       ) : null}
@@ -661,81 +664,6 @@ function ResumeCard({
           (D4). Resume text purges on delete (ADR-0015 cascade).
         </span>
       </p>
-    </section>
-  );
-}
-
-// ── Résumé preview ───────────────────────────────────────────────────────────
-// Renders the attached résumé alongside the review form so the recruiter can
-// cross-check the proposed values against the source. Uses the selected File
-// already in memory (object URL) — no server round-trip, no presigned URL.
-// PDFs render inline; other types (e.g. .docx, which browsers can't render
-// natively) show a note (the file still saves with the record).
-function ResumePreview({ file }: { readonly file: File }) {
-  const [url, setUrl] = useState<string | null>(null);
-  const [expanded, setExpanded] = useState(false);
-  useEffect(() => {
-    const objectUrl = URL.createObjectURL(file);
-    setUrl(objectUrl);
-    return () => URL.revokeObjectURL(objectUrl);
-  }, [file]);
-  // Close the full-screen overlay on Escape.
-  useEffect(() => {
-    if (!expanded) return;
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') setExpanded(false);
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [expanded]);
-  const isPdf =
-    file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
-  const ext = file.name.split('.').pop()?.toUpperCase() ?? 'file';
-  return (
-    <section className="rc-sidecard rc-rpreview" aria-label="Résumé preview">
-      <div className="rc-rpreview__hdrow">
-        <h3 className="rc-sidecard__h">
-          <Icons.IconFile />
-          Résumé preview
-        </h3>
-        {url !== null && isPdf ? (
-          <button
-            type="button"
-            className="rc-rpreview__expand"
-            onClick={() => setExpanded(true)}
-          >
-            Expand
-          </button>
-        ) : null}
-      </div>
-      {url !== null && isPdf ? (
-        <iframe className="rc-rpreview__frame" title="Résumé preview" src={url} />
-      ) : (
-        <p className="rc-secnote">
-          Inline preview isn’t available for a .{ext.toLowerCase()} file — the
-          attached résumé is saved with the record.
-        </p>
-      )}
-      {expanded && url !== null ? (
-        <div
-          className="rc-rpreview__overlay"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Résumé full preview"
-        >
-          <div className="rc-rpreview__ovbar">
-            <span className="rc-rpreview__ovtitle">{file.name}</span>
-            <button
-              type="button"
-              className="rc-rpreview__ovclose"
-              onClick={() => setExpanded(false)}
-            >
-              Close
-            </button>
-          </div>
-          <iframe className="rc-rpreview__ovframe" title="Résumé full preview" src={url} />
-        </div>
-      ) : null}
     </section>
   );
 }

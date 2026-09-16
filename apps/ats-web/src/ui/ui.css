@@ -3503,6 +3503,7 @@ select.rc-secinput { appearance: none; padding-right: 28px; }
    the recruiter can read the source while validating the form side-by-side. */
 .rc-rpreview { flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0; }
 .rc-rpreview__hdrow { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.rc-rpreview__hdactions { display: inline-flex; align-items: center; gap: 8px; }
 .rc-rpreview__expand {
   border: 1px solid var(--line-2); background: var(--surface); color: var(--muted);
   border-radius: 8px; padding: 4px 10px; font: inherit; font-size: 0.72rem; font-weight: 600; cursor: pointer;
