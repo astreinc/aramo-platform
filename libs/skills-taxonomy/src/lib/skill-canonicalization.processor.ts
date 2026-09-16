@@ -4,30 +4,49 @@ import type { Job } from 'bullmq';
 import { type AramoLogger, RedisConnectionConfig } from '@aramo/common';
 
 import { SKILL_CANONICALIZATION_QUEUE_NAME } from './skill-canonicalization.queue.constants.js';
+import {
+  SkillCanonicalizationService,
+  type CanonicalizationResult,
+} from './skill-canonicalization.service.js';
 
 // M5 PR-11 §4.5 — skill-canonicalization BullMQ processor.
 //
-// NO-OP FRAMEWORK at PR-11 per audit Axis F Lead-Q-F1=(c) disposition +
-// ADR-0018 Decision 8. Meaningful canonicalization logic is deferred to
-// the Skills Taxonomy workstream (M6/M7) because libs/skills-taxonomy
-// currently has zero models (PR-1 scaffold only;
-// libs/skills-taxonomy/prisma/schema.prisma:1-18) and SkillTaxonomy
-// schema is unbuilt; surface forms are stored opaquely in
-// libs/job-domain.GoldenProfile.skills (Json) +
-// libs/ingestion.IngestionRecord.skill_surface_forms (Json).
+// SKILL-TAX-1C wires this processor (the M6/M7 execution seam the recon told us
+// to fill, not park) to the deterministic SkillCanonicalizationService. The
+// processor RESOLVES a batch of stated surface forms (+ optional explicit
+// versions) to canonical Skill/version identities and returns the results.
 //
-// The processor ships now to honor D-ENT-READY-1 G7's 4-job structural
-// binding ("the four Aramo Core BullMQ jobs ... implemented explicitly,
-// each in the milestone owning its domain; not left implicit") — full
-// deferral would close Track A item 6 WITHOUT all 4 jobs structurally
-// present, violating the verbatim binding.
+// It is READ-ONLY at this phase: it persists NO downstream evidence. The
+// batch-reconciliation TARGETS (IngestionRecord.skill_surface_forms and,
+// post-HF2, TalentSkillEvidence) are cross-lib and are wired in SKILL-TAX-1D/1G
+// — wiring them here now would cross the scope:ats boundary or depend on
+// unmerged HF2 substrate. Because it only resolves, the job is deterministic,
+// idempotent (re-running writes nothing), non-inferential, and safe on unknown
+// skills (they return UNRESOLVED, the job still completes). It NEVER emits a
+// related skill as a result.
 //
-// Lifecycle mirrors libs/matching pattern (ADR-0018 Decision 1).
+// Lifecycle mirrors libs/matching pattern (ADR-0018 Decision 1). The scaffold
+// mechanics the recon required are preserved: manualRegistration +
+// BullRegistrar.register() in onApplicationBootstrap; existing queue/cron
+// topology unchanged; no new queue or processor.
+
+export interface SkillCanonicalizationScanItem {
+  surfaceForm: string;
+  explicitVersion?: string | null;
+}
 
 export interface SkillCanonicalizationScanInput {
-  // Reserved for future per-tenant or scope overrides. Empty at PR-11.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  reserved?: unknown;
+  // The surface forms to resolve this run. Empty/absent => the job completes
+  // with zero resolutions (the cron may enqueue an empty scan until 1D/1G feed
+  // it real batches).
+  items?: SkillCanonicalizationScanItem[];
+}
+
+export interface SkillCanonicalizationScanResult {
+  total: number;
+  resolved: number;
+  unresolved: number;
+  results: CanonicalizationResult[];
 }
 
 @Processor(SKILL_CANONICALIZATION_QUEUE_NAME, {
@@ -41,25 +60,42 @@ export class SkillCanonicalizationProcessor
   constructor(
     private readonly registrar: BullRegistrar,
     private readonly redisConfig: RedisConnectionConfig,
+    private readonly canonicalization: SkillCanonicalizationService,
     @Inject('SkillCanonicalizationProcessorLogger')
     private readonly logger: AramoLogger,
   ) {
     super();
   }
 
-  async process(job: Job<SkillCanonicalizationScanInput>): Promise<void> {
+  async process(
+    job: Job<SkillCanonicalizationScanInput>,
+  ): Promise<SkillCanonicalizationScanResult> {
+    const items = job.data?.items ?? [];
+    const results: CanonicalizationResult[] = [];
+    for (const item of items) {
+      // Deterministic, read-only resolution. No persistence, no inference.
+      results.push(
+        await this.canonicalization.resolve({
+          surfaceForm: item.surfaceForm,
+          explicitVersion: item.explicitVersion ?? null,
+        }),
+      );
+    }
+    const resolved = results.filter((r) => r.status === 'RESOLVED').length;
+    const summary: SkillCanonicalizationScanResult = {
+      total: results.length,
+      resolved,
+      unresolved: results.length - resolved,
+      results,
+    };
     this.logger.log({
-      event: 'skill_canonicalization_no_op_invoked',
+      event: 'skill_canonicalization_scan_completed',
       job_id: job.id ?? null,
-      // The structural-only intent is captured in the log to make any
-      // production "why is this empty?" investigation immediate.
-      note:
-        'Skill canonicalization job invoked; no-op at PR-11. ' +
-        'Meaningful canonicalization deferred to Skills Taxonomy ' +
-        'workstream (M6/M7) per ADR-0018 Decision 8 — libs/skills-taxonomy ' +
-        'currently has zero models; SkillTaxonomy schema unbuilt.',
+      total: summary.total,
+      resolved: summary.resolved,
+      unresolved: summary.unresolved,
     });
-    return Promise.resolve();
+    return summary;
   }
 
   onApplicationBootstrap(): void {

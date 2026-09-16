@@ -6,6 +6,13 @@ import {
   RedisConnectionConfig,
 } from '@aramo/common';
 
+import { PrismaService } from './prisma/prisma.service.js';
+import { SkillRepository } from './skill.repository.js';
+import { SkillAliasRepository } from './skill-alias.repository.js';
+import { SkillVersionRepository } from './skill-version.repository.js';
+import { SkillRelationshipRepository } from './skill-relationship.repository.js';
+import { SkillRegistryService } from './skill-registry.service.js';
+import { SkillCanonicalizationService } from './skill-canonicalization.service.js';
 import { SkillCanonicalizationProcessor } from './skill-canonicalization.processor.js';
 import { SKILL_CANONICALIZATION_QUEUE_NAME } from './skill-canonicalization.queue.constants.js';
 
@@ -13,9 +20,11 @@ import { SKILL_CANONICALIZATION_QUEUE_NAME } from './skill-canonicalization.queu
 // processor + queue registration (Architecture v2.1 §9.2 / Plan v1.5
 // §M5 Track A item 6 binding; doc/01 §13 anchor).
 //
-// PR-11 ships a NO-OP framework (ADR-0018 Decision 8): the processor
-// logs invocation + returns. Meaningful canonicalization logic is
-// deferred to the Skills Taxonomy workstream (M6/M7).
+// SKILL-TAX-1A adds the canonical Skill registry surface — PrismaService +
+// SkillRepository + SkillRegistryService (internal only; no controller / HTTP
+// / scope in 1A). The skill-canonicalization BullMQ processor remains a NO-OP
+// (ADR-0018 Decision 8): its resolution logic is deferred to SKILL-TAX-1C and
+// is deliberately NOT wired to the new registry yet.
 //
 // BullModule.forRootAsync mirrors libs/matching pattern (ADR-0018
 // Decision 1). Mirrors libs/consent's PR-11 wiring (consent.module.ts
@@ -56,11 +65,27 @@ import { SKILL_CANONICALIZATION_QUEUE_NAME } from './skill-canonicalization.queu
     BullModule.registerQueue({ name: SKILL_CANONICALIZATION_QUEUE_NAME }),
   ],
   providers: [
+    PrismaService,
+    SkillRepository,
+    SkillAliasRepository,
+    SkillVersionRepository,
+    SkillRelationshipRepository,
+    SkillRegistryService,
+    SkillCanonicalizationService,
     SkillCanonicalizationProcessor,
     {
       provide: 'SkillCanonicalizationProcessorLogger',
       useFactory: () => createAramoLogger(SkillCanonicalizationProcessor.name),
     },
+  ],
+  exports: [
+    SkillRegistryService,
+    SkillCanonicalizationService,
+    SkillRepository,
+    SkillAliasRepository,
+    SkillVersionRepository,
+    SkillRelationshipRepository,
+    PrismaService,
   ],
 })
 export class SkillsTaxonomyModule {}
