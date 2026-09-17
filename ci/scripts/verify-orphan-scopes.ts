@@ -52,6 +52,11 @@ export const CLASSIFICATIONS: Record<string, Classification> = {
   'identity:user:read': { cls: 'ACTIVE_RESERVED', reason: 'Lead-ratified auditor/compliance bundle (E2 §182); read surface deferred to Reporting/Audit DDR' },
   'identity:tenant:read': { cls: 'ACTIVE_RESERVED', reason: 'same auditor/compliance bundle' },
   'examination:read': { cls: 'ACTIVE_RESERVED', reason: 'examination-read gate reserved by the OpenAPI contract (x-required-scope on 5 routes; PR-A1a-2 §48); no live handler yet' },
+  // SKILL-TAX-1F-A — the two platform taxonomy-governance scopes are seeded now
+  // (foundation slice B0) but their consuming @RequireScopes handlers land in
+  // 1F-B (the platform-governed admin API). Reserved to super_admin only.
+  'platform:skill:read': { cls: 'ACTIVE_RESERVED', reason: 'SKILL-TAX-1F-A governance scope; consuming @RequireScopes handler deferred to 1F-B (platform-governed taxonomy admin API); super_admin only' },
+  'platform:skill:manage': { cls: 'ACTIVE_RESERVED', reason: 'SKILL-TAX-1F-A governance scope; consuming @RequireScopes handler deferred to 1F-B (platform-governed taxonomy admin API); super_admin only' },
   // --- EXIT_HYG (owning-lane ruling required) ---
   'consent:read': { cls: 'EXIT_HYG', reason: 'live internal ConsentController surface; keep-or-gate is a Consent/Portal-lane ruling (Dead-Residue Ledger)' },
   'consent:write': { cls: 'EXIT_HYG', reason: 'same' },
