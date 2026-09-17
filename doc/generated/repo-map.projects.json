@@ -1,5 +1,5 @@
 {
-  "aliasTotals": { "apps": 2, "libs": 68, "total": 70 },
+  "aliasTotals": { "apps": 2, "libs": 69, "total": 71 },
   "aliases": {
     "@aramo/activity": "libs/activity/src/index.ts",
     "@aramo/ai-draft": "libs/ai-draft/src/index.ts",
@@ -12,6 +12,7 @@
     "@aramo/auth-storage": "libs/auth-storage/src/index.ts",
     "@aramo/authorization": "libs/authorization/src/index.ts",
     "@aramo/calendar": "libs/calendar/src/index.ts",
+    "@aramo/canonical-reconcile": "libs/canonical-reconcile/src/index.ts",
     "@aramo/canonicalization": "libs/canonicalization/src/index.ts",
     "@aramo/client-selection": "libs/client-selection/src/index.ts",
     "@aramo/client-talent-restriction": "libs/client-talent-restriction/src/index.ts",
@@ -178,6 +179,16 @@
       "CalendarPrismaService",
       "CalendarRepository",
       "isCalendarEventType"
+    ],
+    "@aramo/canonical-reconcile": [
+      "CANONICAL_RECONCILE_BACKSTOP_BATCH",
+      "CANONICAL_RECONCILE_BACKSTOP_INTERVAL_MS",
+      "CANONICAL_RECONCILE_BACKSTOP_JOB",
+      "CANONICAL_RECONCILE_BACKSTOP_JOB_ID",
+      "CANONICAL_RECONCILE_JOB",
+      "CANONICAL_RECONCILE_QUEUE_NAME",
+      "CanonicalReconcileModule",
+      "CanonicalReconcileProducer"
     ],
     "@aramo/canonicalization": [
       "CANONICALIZATION_TRIGGER_BATCH_SIZE",
@@ -1240,6 +1251,7 @@
     ],
     "@aramo/talent-evidence": [
       "PrismaService",
+      "TalentCanonicalCoverageRepository",
       "TalentEvidenceModule",
       "TalentEvidenceRepository",
       "TalentSkillCanonicalizationModule",
@@ -2402,6 +2414,17 @@
       { "project": "api", "status": "production" },
       { "project": "reporting", "status": "production" }
     ],
+    "@aramo/canonical-reconcile": [
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/canonical-reconcile-activation.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      { "project": "api", "status": "production" },
+      { "project": "requisition", "status": "production" },
+      { "project": "talent-record", "status": "production" }
+    ],
     "@aramo/canonicalization": [
       {
         "excludedBy": "src/tests/**/*",
@@ -2651,6 +2674,7 @@
       },
       { "project": "authorization", "status": "production" },
       { "project": "calendar", "status": "production" },
+      { "project": "canonical-reconcile", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/canonicalization/src/tests/canonicalization.integration.spec.ts",
@@ -4514,6 +4538,12 @@
       { "project": "api", "status": "production" }
     ],
     "@aramo/job-domain": [
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/canonical-reconcile-activation.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
       { "project": "api", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
@@ -5129,6 +5159,12 @@
       { "from": "tools/seed-e2e-data.ts", "project": "(unscoped)", "status": "unscoped" },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/canonical-reconcile-activation.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/cb-d2-r-reconciliation-drain.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -5342,6 +5378,12 @@
       { "project": "talent-record", "status": "production" }
     ],
     "@aramo/skills-taxonomy": [
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/canonical-reconcile-activation.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
       { "project": "api", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
@@ -5417,6 +5459,12 @@
       { "project": "requisition", "status": "production" }
     ],
     "@aramo/talent-evidence": [
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/canonical-reconcile-activation.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/tr4-b2-claims-routing.integration.spec.ts",
@@ -5802,6 +5850,13 @@
       "root": "libs/calendar",
       "sourceRoot": "libs/calendar/src",
       "tags": ["scope:ats"],
+      "targets": ["build", "lint", "test"]
+    },
+    {
+      "name": "canonical-reconcile",
+      "root": "libs/canonical-reconcile",
+      "sourceRoot": "libs/canonical-reconcile/src",
+      "tags": ["scope:cip"],
       "targets": ["build", "lint", "test"]
     },
     {

@@ -82,6 +82,7 @@
       "@aramo/selection": ["libs/selection/src/index.ts"],
       "@aramo/settings": ["libs/settings/src/index.ts"],
       "@aramo/skills-taxonomy": ["libs/skills-taxonomy/src/index.ts"],
+      "@aramo/canonical-reconcile": ["libs/canonical-reconcile/src/index.ts"],
       "@aramo/sourced-talent": ["libs/sourced-talent/src/index.ts"],
       "@aramo/submittal": ["libs/submittal/src/index.ts"],
       "@aramo/submittal-eligibility": ["libs/submittal-eligibility/src/index.ts"],

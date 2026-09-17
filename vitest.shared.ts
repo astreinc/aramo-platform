@@ -204,6 +204,7 @@ export default defineConfig({
       // the settings-tenant-get integration spec.
       '@aramo/settings': resolve(root, 'libs/settings/src/index.ts'),
       '@aramo/skills-taxonomy': resolve(root, 'libs/skills-taxonomy/src/index.ts'),
+      '@aramo/canonical-reconcile': resolve(root, 'libs/canonical-reconcile/src/index.ts'),
       // Fix-Slice-1 — sourced-talent L1 staging leaf (scope:cip). Mirrors the
       // tsconfig.base.json @aramo/sourced-talent path so vitest runtime resolves
       // the public surface. No consumer imports it yet (substrate-only slice);

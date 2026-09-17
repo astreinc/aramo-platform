@@ -4,6 +4,7 @@ import { AuthModule } from '@aramo/auth';
 import { AuthorizationModule } from '@aramo/authorization';
 import { EntitlementModule } from '@aramo/entitlement';
 import { JobDomainModule } from '@aramo/job-domain';
+import { CanonicalReconcileModule } from '@aramo/canonical-reconcile';
 import { PlacementCapacityModule } from '@aramo/placement';
 import { SubmittalEligibilityModule } from '@aramo/submittal-eligibility';
 import {
@@ -47,6 +48,8 @@ import { RequisitionRepository } from './requisition.repository.js';
     EntitlementModule,
     AiDraftModule,
     JobDomainModule,
+    // SKILL-TAX Canonical Reconciliation Activation — best-effort producer.
+    CanonicalReconcileModule,
     // Track 4 / T4-B1 — PULL the placement-owned capacity projection (§4). Leaf
     // w.r.t. requisition: placement has NO edge back (verified zero-outgoing),
     // so lint:nx-boundaries stays acyclic. Read-only exposure; nothing removed.

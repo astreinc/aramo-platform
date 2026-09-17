@@ -83,6 +83,7 @@ import { OfferExpiryModule } from './offer/offer-expiry.module.js';
 // CI-B6P — the production Conversation Intelligence processing worker
 // (Anthropic structured-output adapter; DARK by default — CI_PROCESSING_ENABLED).
 import { CiProcessingModule } from './conversation-intelligence/ci-processing.module.js';
+import { CanonicalReconciliationModule } from './canonical-reconciliation/canonical-reconciliation.module.js';
 import { ReconciliationDrainModule } from './requisition-integration/reconciliation-drain.module.js';
 import { PlacementLifecycleOrchestratorModule } from './placement-pipeline-orchestration/placement-lifecycle-orchestrator.module.js';
 import { PreStartOrchestratorModule } from './pre-start-requirement/pre-start-orchestrator.module.js';
@@ -395,6 +396,10 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     // (internal; consumes the read-only SkillCanonicalizationService + reads
     // authored GoldenProfile skills). No new scope/route; no matching change.
     RequisitionSkillCanonicalizationModule,
+    // SKILL-TAX Canonical Reconciliation Activation — dedicated queue processor +
+    // Talent backstop + coverage telemetry that drive the 1G/1D reconcile workers
+    // from real write paths. Internal; no HTTP surface/scope; no matching change.
+    CanonicalReconciliationModule,
     SubmittalModule,
     SubmitTalentModule,
     ClientSelectionOrchestrationModule,

@@ -8,6 +8,7 @@ import { ObjectStorageModule } from '@aramo/object-storage';
 import { ResumeParseModule } from '@aramo/resume-parse';
 import { SettingsModule } from '@aramo/settings';
 import { TalentExtractionModule } from '@aramo/talent-extraction';
+import { CanonicalReconcileModule } from '@aramo/canonical-reconcile';
 
 import { PrismaService } from './prisma/prisma.service.js';
 import { TalentRecordController } from './talent-record.controller.js';
@@ -55,6 +56,8 @@ import { ResumeSourceAuthorizer } from './resume-extraction/resume-source-author
     // consumed ONLY by the draft-from-resume handler.
     SettingsModule,
     TalentExtractionModule,
+    // SKILL-TAX Canonical Reconciliation Activation — the best-effort producer.
+    CanonicalReconcileModule,
   ],
   controllers: [TalentRecordController],
   providers: [

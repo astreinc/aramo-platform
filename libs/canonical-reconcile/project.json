@@ -1,0 +1,30 @@
+{
+  "name": "canonical-reconcile",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/canonical-reconcile/src",
+  "projectType": "library",
+  "tags": ["scope:cip"],
+  "targets": {
+    "build": {
+      "executor": "@nx/js:tsc",
+      "outputs": ["{options.outputPath}"],
+      "options": {
+        "outputPath": "dist/libs/canonical-reconcile",
+        "main": "libs/canonical-reconcile/src/index.ts",
+        "tsConfig": "libs/canonical-reconcile/tsconfig.lib.json"
+      }
+    },
+    "lint": {
+      "executor": "@nx/eslint:lint",
+      "options": {
+        "lintFilePatterns": ["libs/canonical-reconcile/**/*.ts"]
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "vitest run --passWithNoTests --root libs/canonical-reconcile"
+      }
+    }
+  }
+}
