@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { AuthModule } from '@aramo/auth';
 import { ConsentModule } from '@aramo/consent';
 
+import { CanonicalMatchShadowRepository } from './canonical-match-shadow.repository.js';
 import { ExaminationRepository } from './examination.repository.js';
 import { MatchListController } from './match-list.controller.js';
 import { OverrideController } from './override.controller.js';
@@ -31,7 +32,10 @@ import { PrismaService } from './prisma/prisma.service.js';
 @Module({
   imports: [AuthModule, ConsentModule],
   controllers: [MatchListController, OverrideController],
-  providers: [PrismaService, ExaminationRepository],
-  exports: [ExaminationRepository],
+  // SKILL-TAX-1E — the append-only shadow-observation repo is provided + exported
+  // so the apps/api comparator (the only place that may read requisition scope:ats
+  // alongside talent-evidence scope:cip) can persist dark observations.
+  providers: [PrismaService, ExaminationRepository, CanonicalMatchShadowRepository],
+  exports: [ExaminationRepository, CanonicalMatchShadowRepository],
 })
 export class ExaminationModule {}

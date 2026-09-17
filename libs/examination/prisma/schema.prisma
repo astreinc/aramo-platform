@@ -207,3 +207,37 @@ model ExaminationOverride {
   @@index([tenant_id, created_by])
   @@schema("examination")
 }
+
+// CanonicalMatchShadowObservation — SKILL-TAX-1E.
+//
+// Append-only, DARK telemetry: written ONLY when the shadow flag is on
+// (SKILL_CANONICAL_SHADOW_ENABLED), by the apps/api comparator AFTER the
+// authoritative examine has persisted. It records the parallel CANONICAL view of
+// the critical-skill match (match_class = the PO-accepted §45-v1 7-class taxonomy)
+// so we can observe canonical-vs-name divergence WITHOUT changing the authoritative
+// name/text matcher. It is NEVER read by matching and NEVER appears on any API
+// response (additionalProperties:false on the examine response is preserved).
+//
+// match_class = governed vocab (String col + DB CHECK + TS union CanonicalMatchClass,
+// per directive §5 closed-vocab rule). No FK — UUID-only cross/same-schema refs
+// (Architecture §7.3). Absolute-immutability trigger (migration) rejects every
+// UPDATE (append-only; mirrors ExaminationOverride, NOT a column-scoped OLD=NEW
+// trigger — safe with the nullable columns here).
+model CanonicalMatchShadowObservation {
+  id                             String   @id @db.Uuid
+  tenant_id                      String   @db.Uuid
+  examination_id                 String   @db.Uuid
+  talent_id                      String   @db.Uuid
+  golden_profile_id              String   @db.Uuid
+  requisition_id                 String   @db.Uuid
+  match_class                    String
+  requisition_surface_form       String?
+  requisition_canonical_skill_id String?  @db.Uuid
+  talent_canonical_skill_id      String?  @db.Uuid
+  observed_at                    DateTime @default(now()) @db.Timestamptz
+
+  // Tenant-scoped per-examination lookup + coverage-by-class aggregate.
+  @@index([tenant_id, examination_id])
+  @@index([tenant_id, match_class])
+  @@schema("examination")
+}

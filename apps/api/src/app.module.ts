@@ -2,6 +2,7 @@ import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { APP_INTERCEPTOR } from '@nestjs/core';
 import {
   CommonModule,
+  createAramoLogger,
   CrossSchemaConsistencyModule,
   ReleaseIdentityService,
   RequestIdMiddleware,
@@ -116,6 +117,8 @@ import { VerificationProposalController } from './talent-identity/verification-p
 import { SourcingService } from './talent-identity/sourcing.service.js';
 import { DossierService } from './talent-identity/dossier.service.js';
 import { ExamineController } from './controllers/examine.controller.js';
+import { CanonicalMatchShadowConfig } from './examinations/canonical-match-shadow.config.js';
+import { CanonicalMatchShadowComparator } from './examinations/canonical-match-shadow.comparator.js';
 import { TenantSettingsController } from './controllers/tenant-settings.controller.js';
 import { AssignableUsersController } from './controllers/assignable-users.controller.js';
 import { MeController } from './controllers/me.controller.js';
@@ -620,6 +623,18 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     IndeedApplyController,
   ],
   providers: [
+    // SKILL-TAX-1E — canonical SHADOW-matching (dark/observe-only). Config +
+    // comparator + logger registered at the app boundary (like ExamineController),
+    // because the comparator is the only place that legally reads requisition
+    // (scope:ats) alongside talent-evidence (scope:cip). Its deps
+    // (RequisitionSkillRequirementRepository, TalentCanonicalCoverageRepository,
+    // CanonicalMatchShadowRepository) come from modules already imported above.
+    CanonicalMatchShadowConfig,
+    CanonicalMatchShadowComparator,
+    {
+      provide: 'CanonicalMatchShadowLogger',
+      useFactory: () => createAramoLogger(CanonicalMatchShadowComparator.name),
+    },
     // GLH-2-A (GLH-2 Release Integrity, R9) — the running-release identity service
     // backing GET /version (the build-stamped source revision).
     ReleaseIdentityService,

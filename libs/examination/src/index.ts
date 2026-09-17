@@ -26,6 +26,23 @@ export type {
 } from './lib/dto/create-override-request.dto.js';
 export { PrismaService } from './lib/prisma/prisma.service.js';
 
+// SKILL-TAX-1E — canonical SHADOW matching (dark/observe-only). Pure taxonomy +
+// classifier and the append-only observation repository. NEVER on a response.
+export {
+  CANONICAL_MATCH_CLASSES,
+  classifyCriticalSkill,
+  computeSourceSetDivergence,
+  computeShadowObservations,
+} from './lib/canonical-match-shadow.taxonomy.js';
+export type {
+  CanonicalMatchClass,
+  NormalizedTalentSkill,
+  NormalizedCriticalRequirement,
+  ShadowObservation,
+} from './lib/canonical-match-shadow.taxonomy.js';
+export { CanonicalMatchShadowRepository } from './lib/canonical-match-shadow.repository.js';
+export type { PersistObservationsInput } from './lib/canonical-match-shadow.repository.js';
+
 // M3 PR-6 — Reasoning + evidence linkage (TalentJobExaminationFull)
 // typed projection. Project-only (§2 Ruling 2); read-only.
 export {
