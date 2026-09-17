@@ -14,6 +14,15 @@ export interface CanonicalCoverage {
   unattempted: number;
 }
 
+// The canonical view of one talent skill-evidence row (surface + 1G canonical
+// resolution). Consumed by the SKILL-TAX-1E shadow comparator.
+export interface TalentCanonicalSkillRow {
+  surface_form: string;
+  canonical_skill_id: string | null;
+  canonicalization_status: string | null;
+  canonicalization_method: string | null;
+}
+
 @Injectable()
 export class TalentCanonicalCoverageRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -33,6 +42,25 @@ export class TalentCanonicalCoverageRepository {
       take: args.limit,
     });
     return rows;
+  }
+
+  // SKILL-TAX-1E — the talent's canonical skill view for one talent (surface_form
+  // + 1G canonical resolution). Bounded, tenant/talent-scoped, single-purpose read;
+  // the shadow comparator normalizes surface_form with the authoritative normalizer
+  // to pair against requisition critical requirements.
+  async listCanonicalSkillsForTalent(args: {
+    tenant_id: string;
+    talent_id: string;
+  }): Promise<TalentCanonicalSkillRow[]> {
+    return this.prisma.talentSkillEvidence.findMany({
+      where: { tenant_id: args.tenant_id, talent_id: args.talent_id },
+      select: {
+        surface_form: true,
+        canonical_skill_id: true,
+        canonicalization_status: true,
+        canonicalization_method: true,
+      },
+    });
   }
 
   // Coverage telemetry (queryable, no new table): eligible = attempted rows.

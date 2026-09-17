@@ -72,6 +72,10 @@ function make(opts: {
       .mockResolvedValue({ skills_written: 0, work_history_written: 0, skipped: 0 }),
   };
   const matchingService = { evaluateAndPersist };
+  // SKILL-TAX-1E — the shadow comparator is best-effort/dark; a no-op stub keeps
+  // this unit focused on the authoritative mint (the comparator is unit-tested
+  // separately in canonical-match-shadow.comparator.spec.ts).
+  const canonicalMatchShadow = { observe: vi.fn().mockResolvedValue(0) };
   const ctl = new ExamineController(
     talentRecordRepository as never,
     requisitionRepository as never,
@@ -79,8 +83,9 @@ function make(opts: {
     talentEvidenceRepository as never,
     talentExtractionService as never,
     matchingService as never,
+    canonicalMatchShadow as never,
   );
-  return { ctl, extract, evaluateAndPersist, talentEvidenceRepository, talentRecordRepository };
+  return { ctl, extract, evaluateAndPersist, talentEvidenceRepository, talentRecordRepository, canonicalMatchShadow };
 }
 
 describe('ExamineController — mint + lazy/idempotent orchestration', () => {

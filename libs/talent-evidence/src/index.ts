@@ -16,6 +16,7 @@ export {
 export {
   TalentCanonicalCoverageRepository,
   type CanonicalCoverage,
+  type TalentCanonicalSkillRow,
 } from './lib/talent-canonical-coverage.repository.js';
 export type {
   // TalentSkillEvidence (Group 2 §2.2 #16)

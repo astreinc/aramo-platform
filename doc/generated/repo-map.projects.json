@@ -529,11 +529,16 @@
     "@aramo/events": ["EventsModule"],
     "@aramo/evidence": ["EvidenceModule", "EvidenceRepository", "PrismaService"],
     "@aramo/examination": [
+      "CANONICAL_MATCH_CLASSES",
+      "CanonicalMatchShadowRepository",
       "CreateOverrideRequestDto",
       "ExaminationModule",
       "ExaminationRepository",
       "PrismaService",
       "REQUISITION_STATE_READER",
+      "classifyCriticalSkill",
+      "computeShadowObservations",
+      "computeSourceSetDivergence",
       "projectFullView",
       "projectSummaryView"
     ],
@@ -3514,6 +3519,12 @@
       { "project": "submittal", "status": "production" }
     ],
     "@aramo/examination": [
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/canonical-match-shadow.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
       { "project": "api", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
@@ -5159,6 +5170,12 @@
       { "from": "tools/seed-e2e-data.ts", "project": "(unscoped)", "status": "unscoped" },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/canonical-match-shadow.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/canonical-reconcile-activation.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -5459,6 +5476,12 @@
       { "project": "requisition", "status": "production" }
     ],
     "@aramo/talent-evidence": [
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/canonical-match-shadow.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/canonical-reconcile-activation.integration.spec.ts",

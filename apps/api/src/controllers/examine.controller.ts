@@ -21,6 +21,7 @@ import {
   newExaminationId,
   type GoldenConstraints,
 } from '../matching-derivation/derive-matching-input.js';
+import { CanonicalMatchShadowComparator } from '../examinations/canonical-match-shadow.comparator.js';
 
 // Gate-1 G1-B — the pairing-level EXAMINE endpoint. POST /v1/examinations
 // { talent_id, requisition_id } MINTS a TalentJobExamination for the (talent,
@@ -68,6 +69,9 @@ export class ExamineController {
     private readonly talentEvidenceRepository: TalentEvidenceRepository,
     private readonly talentExtractionService: TalentExtractionService,
     private readonly matchingService: MatchingService,
+    // SKILL-TAX-1E — dark/observe-only canonical shadow comparator. Runs AFTER
+    // the authoritative mint; best-effort + isolated (cannot fail this request).
+    private readonly canonicalMatchShadow: CanonicalMatchShadowComparator,
   ) {}
 
   @Post()
@@ -197,6 +201,20 @@ export class ExamineController {
 
     // Step 6 — SYNC mint (evaluateAndPersist → ExaminationRepository.createSnapshot).
     const examination = await this.matchingService.evaluateAndPersist(input);
+
+    // Step 6b — SKILL-TAX-1E canonical SHADOW observation (dark by default;
+    // best-effort + isolated). Computed AFTER the authoritative mint from the
+    // SAME critical_skills; it observes canonical-vs-name divergence and persists
+    // an append-only shadow row. It NEVER changes `examination`, the snapshot, or
+    // the response below, and its failure is swallowed inside the comparator.
+    await this.canonicalMatchShadow.observe({
+      tenant_id,
+      examination_id: examination.id,
+      talent_id,
+      golden_profile_id: golden.id,
+      requisition_id,
+      golden_critical_skill_names: golden.critical_skills,
+    });
 
     return {
       examination_id: examination.id,
