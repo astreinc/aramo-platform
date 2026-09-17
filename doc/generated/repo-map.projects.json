@@ -1122,6 +1122,9 @@
       "RequisitionModule",
       "RequisitionPrismaService",
       "RequisitionRepository",
+      "RequisitionSkillCanonicalizationModule",
+      "RequisitionSkillCanonicalizationService",
+      "RequisitionSkillRequirementRepository",
       "RequisitionTransitionPolicyService",
       "SELECTABLE_RECRUITING_STATUS_VALUES",
       "SetPriorityPolicyService",
@@ -4527,6 +4530,12 @@
         "project": "requisition",
         "status": "excluded"
       },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/requisition/src/tests/requisition-skill-canonicalization.integration.spec.ts",
+        "project": "requisition",
+        "status": "excluded"
+      },
       { "project": "requisition", "status": "production" }
     ],
     "@aramo/mailer": [
@@ -5330,6 +5339,13 @@
     ],
     "@aramo/skills-taxonomy": [
       { "project": "api", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/requisition/src/tests/requisition-skill-canonicalization.integration.spec.ts",
+        "project": "requisition",
+        "status": "excluded"
+      },
+      { "project": "requisition", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/talent-evidence/src/tests/talent-skill-canonicalization.integration.spec.ts",

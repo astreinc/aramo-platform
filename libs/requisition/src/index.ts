@@ -12,6 +12,18 @@ export {
 } from './lib/requisition.repository.js';
 export { RequisitionAssignmentRepository } from './lib/requisition-assignment.repository.js';
 export { PrismaService as RequisitionPrismaService } from './lib/prisma/prisma.service.js';
+// SKILL-TAX-1D — requisition canonical skill seam (internal; no HTTP/scope/UI).
+export { RequisitionSkillCanonicalizationModule } from './lib/requisition-skill-canonicalization.module.js';
+export {
+  RequisitionSkillCanonicalizationService,
+  type ReconcileRequisitionResult,
+} from './lib/requisition-skill-canonicalization.service.js';
+export {
+  RequisitionSkillRequirementRepository,
+  type RequisitionSkillRequirementRow,
+  type RequirementType,
+  type CreateRequirementInput,
+} from './lib/requisition-skill-requirement.repository.js';
 // T1-e — the governed-transition policy gate (a RequisitionRepository ctor dep).
 // Exported so integration specs that construct the repository directly can wire
 // a REAL instance (backed by @aramo/policy-store's PolicyStore).
