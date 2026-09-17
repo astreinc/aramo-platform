@@ -164,3 +164,51 @@ describe('computeReconcilePlan — key_skills append (union)', () => {
     expect(plan.patch.key_skills).toBeUndefined();
   });
 });
+
+// TALENT-INTEL-1 (TI-1C §step-6) — RIGHT_TO_WORK → work_authorization projection.
+// A DELIBERATE, ruling-authorized change: work_authorization moves from
+// "never touched (talent-stated)" to fill-null + contradiction from an EXPLICIT
+// declared RIGHT_TO_WORK assertion (the TalentWorkAuthorization typed row routed
+// to the ledger). Explicit evidence only — no inference; never a silent overwrite.
+describe('computeReconcilePlan — RIGHT_TO_WORK → work_authorization (TI-1C)', () => {
+  it('fills null work_authorization from a declared RIGHT_TO_WORK assertion + provenance', () => {
+    const plan = computeReconcilePlan(rec(), [
+      ev('RIGHT_TO_WORK', { work_authorization_status_raw: 'US_CITIZEN', requires_sponsorship: false }, { id: 'w1' }),
+    ]);
+    expect(plan.patch).toEqual({ work_authorization: 'US_CITIZEN' });
+    expect(plan.provenance).toEqual(
+      expect.arrayContaining([{ field_name: 'work_authorization', evidence_id: 'w1' }]),
+    );
+    expect(plan.contradictions).toEqual([]);
+  });
+
+  it('occupied-same → aligns provenance, no overwrite, no contradiction', () => {
+    const plan = computeReconcilePlan(rec({ work_authorization: 'US_CITIZEN' }), [
+      ev('RIGHT_TO_WORK', { work_authorization_status_raw: 'US_CITIZEN', requires_sponsorship: false }, { id: 'w1' }),
+    ]);
+    expect(plan.patch).toEqual({});
+    expect(plan.provenance).toEqual(
+      expect.arrayContaining([{ field_name: 'work_authorization', evidence_id: 'w1' }]),
+    );
+    expect(plan.contradictions).toEqual([]);
+  });
+
+  it('occupied-differing → pending contradiction, NEVER overwrites', () => {
+    const plan = computeReconcilePlan(rec({ work_authorization: 'US_CITIZEN' }), [
+      ev('RIGHT_TO_WORK', { work_authorization_status_raw: 'VISA_HOLDER', requires_sponsorship: true }, { id: 'w1' }),
+    ]);
+    expect(plan.patch).toEqual({});
+    expect(plan.contradictions).toEqual([{ field_name: 'work_authorization', new_evidence_id: 'w1' }]);
+  });
+
+  it('a non-VALID RIGHT_TO_WORK does not project', () => {
+    const plan = computeReconcilePlan(rec(), [
+      ev(
+        'RIGHT_TO_WORK',
+        { work_authorization_status_raw: 'US_CITIZEN', requires_sponsorship: false },
+        { id: 'w1', status: 'SUPERSEDED' },
+      ),
+    ]);
+    expect(plan.patch).toEqual({});
+  });
+});

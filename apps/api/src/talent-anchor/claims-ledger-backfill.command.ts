@@ -41,6 +41,8 @@ async function main(): Promise<void> {
     let grandWork = 0;
     let grandEducation = 0;
     let grandCertification = 0;
+    // TALENT-INTEL-1 TI-1C — declared work-authorization → RIGHT_TO_WORK.
+    let grandRightToWork = 0;
     let grandSkipped = 0;
     for (const tenantId of tenantIds) {
       const result = await extraction.backfillLedgerForTenant(tenantId);
@@ -48,18 +50,20 @@ async function main(): Promise<void> {
       grandWork += result.work_history_written;
       grandEducation += result.education_written;
       grandCertification += result.certification_written;
+      grandRightToWork += result.work_authorization_written;
       grandSkipped += result.skipped;
       logger.log(
         `claims-ledger backfill tenant=${tenantId}: ${result.talents} talent(s), ` +
           `${result.skills_written} skill + ${result.work_history_written} employment + ` +
-          `${result.education_written} degree + ${result.certification_written} certification evidence written, ` +
+          `${result.education_written} degree + ${result.certification_written} certification + ` +
+          `${result.work_authorization_written} right-to-work evidence written, ` +
           `${result.skipped} already present`,
       );
     }
     logger.log(
       `claims-ledger backfill complete: ${grandSkills} skill + ${grandWork} employment + ` +
-        `${grandEducation} degree + ${grandCertification} certification written, ${grandSkipped} skipped ` +
-        `across ${tenantIds.length} tenant(s)`,
+        `${grandEducation} degree + ${grandCertification} certification + ${grandRightToWork} right-to-work written, ` +
+        `${grandSkipped} skipped across ${tenantIds.length} tenant(s)`,
     );
   } finally {
     await ctx.close();

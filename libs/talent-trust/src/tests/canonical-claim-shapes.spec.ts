@@ -40,13 +40,54 @@ describe('validateClaimShape — registered vs unregistered posture (§5a)', () 
   });
 
   it('an UNREGISTERED type with any object passes through untouched (admission open)', () => {
-    // DEGREE/CERTIFICATION are now registered (TR-7 B1); use a genuinely
-    // unregistered type to exercise the passthrough posture.
-    expect(isRegisteredAssertionType('RIGHT_TO_WORK')).toBe(false);
+    // DEGREE/CERTIFICATION (TR-7 B1) and RIGHT_TO_WORK (TALENT-INTEL-1 TI-1C) are
+    // now registered; use a genuinely unregistered type to exercise passthrough.
+    expect(isRegisteredAssertionType('FUTURE_UNREGISTERED_TYPE')).toBe(false);
     const payload = { anything: 'goes', nested: { x: 1 } };
-    const r = validateClaimShape('RIGHT_TO_WORK', payload);
+    const r = validateClaimShape('FUTURE_UNREGISTERED_TYPE', payload);
     expect(r.ok).toBe(true);
     expect(r.canonical).toEqual(payload);
+  });
+
+  // TALENT-INTEL-1 (TI-1C §step-1) — RIGHT_TO_WORK gains a canonical shape for
+  // payload comparability (dedup/contradiction). It REUSES the existing
+  // RIGHT_TO_WORK vocab type — NOT a parallel type. Unlike EXPERIENCE_CLAIM,
+  // RIGHT_TO_WORK IS in AUTHORITATIVE_ASSERTION_TYPES.ELIGIBILITY: registering a
+  // shape does NOT change that; elevation stays gated on source_class (a
+  // THIRD_PARTY_UNVERIFIED declared right-to-work cannot elevate — band test).
+  // The payload is derived from the TalentWorkAuthorization row only: status +
+  // requires_sponsorship are NOT-NULL columns (required); visa_type is nullable
+  // and authorized_to_work_in is an array (both optional — never synthesized).
+  it('RIGHT_TO_WORK: registered; requires status + requires_sponsorship; visa/authorized_in optional', () => {
+    expect(isRegisteredAssertionType('RIGHT_TO_WORK')).toBe(true);
+    const bad = validateClaimShape('RIGHT_TO_WORK', { visa_type_raw: 'H-1B' }); // no status/sponsorship
+    expect(bad.ok).toBe(false);
+    const good = validateClaimShape('RIGHT_TO_WORK', {
+      work_authorization_status_raw: 'VISA_HOLDER',
+      requires_sponsorship: true,
+      visa_type_raw: 'H-1B',
+      authorized_to_work_in: ['US'],
+    });
+    expect(good.ok).toBe(true);
+    if (good.ok) {
+      expect(good.canonical['work_authorization_status_raw']).toBe('VISA_HOLDER');
+      expect(good.canonical['requires_sponsorship']).toBe(true);
+      expect(good.canonical['visa_type_raw']).toBe('H-1B');
+      expect(good.canonical['authorized_to_work_in']).toEqual(['US']);
+    }
+    // A minimal valid claim: only the two NOT-NULL columns; optionals absent.
+    const minimal = validateClaimShape('RIGHT_TO_WORK', {
+      work_authorization_status_raw: 'US_CITIZEN',
+      requires_sponsorship: false,
+    });
+    expect(minimal.ok).toBe(true);
+    if (minimal.ok) {
+      expect(minimal.canonical['visa_type_raw']).toBeUndefined();
+      expect(minimal.canonical['authorized_to_work_in']).toBeUndefined();
+    }
+    // REGISTERED and present in the ELIGIBILITY authoritative set (elevation
+    // gated on source_class, proven in band-derivation.spec).
+    expect(AUTHORITATIVE_ASSERTION_TYPES.ELIGIBILITY).toContain('RIGHT_TO_WORK');
   });
 
   it('the registry membership IS the registered predicate', () => {
@@ -71,6 +112,10 @@ describe('validateClaimShape — registered vs unregistered posture (§5a)', () 
       // HF2 R1/R7 — résumé-derived experience assertion (registered for
       // comparability; NOT in AUTHORITATIVE_ASSERTION_TYPES — must not elevate).
       'EXPERIENCE_CLAIM',
+      // TALENT-INTEL-1 TI-1C — declared right-to-work, registered for payload
+      // comparability. IN AUTHORITATIVE_ASSERTION_TYPES.ELIGIBILITY; elevation
+      // gated on source_class (a THIRD_PARTY_UNVERIFIED declared claim can't elevate).
+      'RIGHT_TO_WORK',
     ].sort());
   });
 
