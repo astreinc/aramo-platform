@@ -41,7 +41,7 @@ import { PipelineModule } from '@aramo/pipeline';
 import { ClientSelectionModule } from '@aramo/client-selection';
 import { PortalModule } from '@aramo/portal';
 import { ReportingModule } from '@aramo/reporting';
-import { RequisitionModule } from '@aramo/requisition';
+import { RequisitionModule, RequisitionSkillCanonicalizationModule } from '@aramo/requisition';
 import { SavedListModule } from '@aramo/saved-list';
 import { SettingsModule } from '@aramo/settings';
 import { SkillsTaxonomyModule } from '@aramo/skills-taxonomy';
@@ -391,6 +391,10 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     // (internal; consumes the read-only SkillCanonicalizationService). No new
     // scope/route; production triggering is separately gated.
     TalentSkillCanonicalizationModule,
+    // SKILL-TAX-1D — requisition skill canonical-reconciliation orchestrator
+    // (internal; consumes the read-only SkillCanonicalizationService + reads
+    // authored GoldenProfile skills). No new scope/route; no matching change.
+    RequisitionSkillCanonicalizationModule,
     SubmittalModule,
     SubmitTalentModule,
     ClientSelectionOrchestrationModule,

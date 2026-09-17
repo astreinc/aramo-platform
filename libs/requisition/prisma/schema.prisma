@@ -522,3 +522,49 @@ model RequisitionLifecycleEvent {
   @@index([tenant_id, correlation_id], map: "RequisitionLifecycleEvent_tenant_correlation_idx")
   @@schema("requisition")
 }
+
+// -------------------------------------------------------------------------
+// RequisitionSkillRequirement — SKILL-TAX-1D. The typed CANONICAL seam DERIVED
+// from the authored GoldenProfile skills (required/preferred/critical). This is
+// additive intelligence: GoldenProfile remains the authored source of truth and
+// its skill text is preserved verbatim in raw_surface_form; these rows are
+// re-derived deterministically by a requisition-side re-runnable worker that
+// resolves each surface form through skills-taxonomy's read-only
+// SkillCanonicalizationService.
+//
+// Symmetric with the Talent side (1G TalentSkillEvidence canonical columns).
+// canonical_skill_id / canonical_version_id reference the platform-global
+// skills_taxonomy.Skill / SkillVersion by UUID — NO cross-schema FK (§7.3).
+// canonical_version_id populates ONLY from an explicitly authored version;
+// never inferred (GoldenProfile authoring carries no version today, so it stays
+// NULL). status/method carry the engine outcome explicitly (governed CHECK), so
+// an UNRESOLVED requirement (canonical_skill_id NULL) is a valid, explainable
+// row that self-heals on a later re-run once an alias/version/merge lands.
+// NOTHING here is read by the authoritative name-keyed matcher (1D changes no
+// matching authority); a future 1E shadow reads these in parallel.
+// -------------------------------------------------------------------------
+model RequisitionSkillRequirement {
+  id                      String    @id @db.Uuid
+  tenant_id               String    @db.Uuid
+  requisition_id          String    @db.Uuid
+  golden_profile_id       String    @db.Uuid
+  // required | preferred | critical (CHECK in the 1D migration).
+  requirement_type        String
+  // Preserved authored GoldenProfile skill text (never rewritten).
+  raw_surface_form        String
+  // Authored version only; never inferred. NULL today (GoldenProfile has none).
+  version_requirement     String?
+  canonical_skill_id      String?   @db.Uuid
+  canonical_version_id    String?   @db.Uuid
+  canonicalization_status String?
+  canonicalization_method String?
+  canonicalized_at        DateTime? @db.Timestamptz
+  created_at              DateTime  @default(now()) @db.Timestamptz
+  updated_at              DateTime  @updatedAt @db.Timestamptz
+
+  // One derived row per (profile, requirement_type, authored surface form).
+  @@unique([tenant_id, golden_profile_id, requirement_type, raw_surface_form])
+  @@index([tenant_id, requisition_id])
+  @@index([tenant_id, canonical_skill_id])
+  @@schema("requisition")
+}
