@@ -33,7 +33,7 @@ describe('TalentEvidenceRepository — surface', () => {
     'listCertificationForLedger',
   ];
 
-  it('exposes the 14 create/find methods + the Gate-1 by-talent reads + the TR-4 B2 ledger reads', () => {
+  it('exposes the 14 create/find methods + the Gate-1 by-talent reads + the TR-4 B2 ledger reads + the TI-1A résumé-edition methods', () => {
     const methods = Object.getOwnPropertyNames(TalentEvidenceRepository.prototype)
       .filter((m) => m !== 'constructor')
       .sort();
@@ -82,6 +82,14 @@ describe('TalentEvidenceRepository — surface', () => {
         'createTalentProjectExperience',
         'findTalentProjectExperienceById',
         'findProjectExperienceByTalent',
+        // TALENT-INTEL-1 (TI-1A §5) — résumé-edition substrate: the edition
+        // companion to TalentDocument (create + by-id + by-talent list) and the
+        // separate default/presentation selection (upsert + find).
+        'createTalentResumeEdition',
+        'findTalentResumeEditionById',
+        'findResumeEditionsByTalent',
+        'setDefaultResumeEdition',
+        'findDefaultResumeEdition',
         ...TR4_B2_LEDGER_READS,
       ].sort(),
     );
