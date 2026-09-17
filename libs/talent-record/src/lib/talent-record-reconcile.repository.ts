@@ -47,6 +47,19 @@ export interface PendingContradictionRow {
   status: string;
 }
 
+// TALENT-INTEL-1 TI-1D-A — TalentProfileFieldState closed vocabularies, enforced
+// by the writer (TS union), not a DB CHECK (talent_record String-vocab precedent).
+export type TalentProfileValueState = 'UNKNOWN' | 'SET' | 'EXPLICITLY_CLEARED';
+export type TalentProfileSourceType = 'MANUAL' | 'RESUME' | 'RECONCILED' | 'IMPORT';
+export type TalentProfileProjectionPolicy = 'AUTO' | 'HOLD';
+
+export interface TalentProfileFieldStateRow {
+  field_key: string;
+  value_state: TalentProfileValueState;
+  source_type: TalentProfileSourceType;
+  projection_policy: TalentProfileProjectionPolicy;
+}
+
 // Slice-B2 — a pending contradiction joined to the incumbent EvidenceRecord the
 // field currently projects (talent_record_field_provenance). incumbent_evidence_id
 // is null ONLY if the create/null-fill provenance invariant was violated (B2
@@ -207,6 +220,87 @@ export class TalentRecordReconcileRepository {
       new_evidence_id: r.new_evidence_id,
       status: r.status,
     }));
+  }
+
+  // TALENT-INTEL-1 TI-1D-A — the reconcile service loads a talent's per-field
+  // control states and passes them to computeReconcilePlan so an intentional
+  // recruiter state (EXPLICITLY_CLEARED / HOLD) is never auto-projected over.
+  async listProfileFieldStates(
+    talentRecordId: string,
+  ): Promise<TalentProfileFieldStateRow[]> {
+    const rows = await this.prisma.talentProfileFieldState.findMany({
+      where: { talent_record_id: talentRecordId },
+      select: {
+        field_key: true,
+        value_state: true,
+        source_type: true,
+        projection_policy: true,
+      },
+      orderBy: { field_key: 'asc' },
+    });
+    return rows.map((r) => ({
+      field_key: r.field_key,
+      value_state: r.value_state as TalentProfileValueState,
+      source_type: r.source_type as TalentProfileSourceType,
+      projection_policy: r.projection_policy as TalentProfileProjectionPolicy,
+    }));
+  }
+
+  // Upsert a field's control state (one row per tenant+record+field). The edit
+  // endpoint calls this on an explicit clear/hold; value_state + projection_policy
+  // capture "what the field is" and "whether automation may project" independently.
+  async upsertProfileFieldState(args: {
+    tenant_id: string;
+    talent_record_id: string;
+    field_key: string;
+    value_state: TalentProfileValueState;
+    source_type: TalentProfileSourceType;
+    projection_policy: TalentProfileProjectionPolicy;
+  }): Promise<void> {
+    await this.prisma.talentProfileFieldState.upsert({
+      where: {
+        tenant_id_talent_record_id_field_key: {
+          tenant_id: args.tenant_id,
+          talent_record_id: args.talent_record_id,
+          field_key: args.field_key,
+        },
+      },
+      create: {
+        tenant_id: args.tenant_id,
+        talent_record_id: args.talent_record_id,
+        field_key: args.field_key,
+        value_state: args.value_state,
+        source_type: args.source_type,
+        projection_policy: args.projection_policy,
+      },
+      update: {
+        value_state: args.value_state,
+        source_type: args.source_type,
+        projection_policy: args.projection_policy,
+      },
+    });
+  }
+
+  // Set a field's projection_policy (AUTO | HOLD) — the field_controls mutation
+  // carried on the PATCH update body. It ONLY changes projection_policy; it NEVER
+  // mutates value_state (PO ruling §3 — "what the field is" stays separate from
+  // "whether automation may project") and never repopulates/clears the field
+  // itself. updateMany over EXISTING rows only (no create): releasing a hold on a
+  // field with no control state is a no-op.
+  async setProjectionPolicy(args: {
+    tenant_id: string;
+    talent_record_id: string;
+    field_key: string;
+    projection_policy: TalentProfileProjectionPolicy;
+  }): Promise<void> {
+    await this.prisma.talentProfileFieldState.updateMany({
+      where: {
+        tenant_id: args.tenant_id,
+        talent_record_id: args.talent_record_id,
+        field_key: args.field_key,
+      },
+      data: { projection_policy: args.projection_policy },
+    });
   }
 }
 

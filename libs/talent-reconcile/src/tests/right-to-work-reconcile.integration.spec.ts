@@ -149,5 +149,69 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const contras = await repo.listPendingContradictions(id);
       expect(contras.some((r) => r.field_name === 'work_authorization')).toBe(true);
     });
+
+    // TI-1D-A end-to-end (real DB): an EXPLICITLY_CLEARED + HOLD field-state must
+    // block automatic refill of a NULL slot, but still record a contradiction —
+    // exercising the TalentProfileFieldState table + repo upsert/list + the
+    // reconcile-plan gate together.
+    it('EXPLICITLY_CLEARED + HOLD field-state → reconcile does NOT refill; records a contradiction', async () => {
+      const id = await seedRecord(null); // work_authorization null (empty slot)
+      await repo.upsertProfileFieldState({
+        tenant_id: TENANT,
+        talent_record_id: id,
+        field_key: 'work_authorization',
+        value_state: 'EXPLICITLY_CLEARED',
+        source_type: 'MANUAL',
+        projection_policy: 'HOLD',
+      });
+
+      const stateRows = await repo.listProfileFieldStates(id);
+      const fieldStates = new Map(
+        stateRows.map((s) => [
+          s.field_key,
+          { value_state: s.value_state, projection_policy: s.projection_policy },
+        ]),
+      );
+      const evId = uuidv7();
+      const plan = computeReconcilePlan(await view(id), [rightToWork('US_CITIZEN', evId)], fieldStates);
+
+      // Blocked: no refill of the recruiter-cleared slot, but not silent.
+      expect(plan.patch).toEqual({});
+      expect(plan.contradictions).toEqual([{ field_name: 'work_authorization', new_evidence_id: evId }]);
+
+      await repo.applyEnrichment({ tenant_id: TENANT, talent_record_id: id, patch: plan.patch });
+      const row = await prisma.talentRecord.findUnique({ where: { id } });
+      expect(row?.work_authorization).toBeNull(); // stayed cleared
+    });
+
+    it('setProjectionPolicy AUTO releases a hold and does NOT mutate value_state', async () => {
+      const id = await seedRecord(null);
+      await repo.upsertProfileFieldState({
+        tenant_id: TENANT,
+        talent_record_id: id,
+        field_key: 'work_authorization',
+        value_state: 'EXPLICITLY_CLEARED',
+        source_type: 'MANUAL',
+        projection_policy: 'HOLD',
+      });
+
+      await repo.setProjectionPolicy({
+        tenant_id: TENANT,
+        talent_record_id: id,
+        field_key: 'work_authorization',
+        projection_policy: 'AUTO',
+      });
+
+      const [state] = await repo.listProfileFieldStates(id);
+      expect(state?.projection_policy).toBe('AUTO'); // hold released
+      expect(state?.value_state).toBe('EXPLICITLY_CLEARED'); // value_state untouched
+
+      // Still not auto-refilled: EXPLICITLY_CLEARED blocks even under AUTO.
+      const fieldStates = new Map([
+        ['work_authorization', { value_state: state!.value_state, projection_policy: state!.projection_policy }],
+      ]);
+      const plan = computeReconcilePlan(await view(id), [rightToWork('US_CITIZEN', uuidv7())], fieldStates);
+      expect(plan.patch).toEqual({});
+    });
   },
 );

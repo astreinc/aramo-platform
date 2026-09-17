@@ -36,7 +36,10 @@ function make(parts: {
     : vi.fn().mockResolvedValue(undefined);
   const upsertFieldProvenance = vi.fn().mockResolvedValue(undefined);
   const recordPendingContradiction = vi.fn().mockResolvedValue(undefined);
-  const reconcileRepo = { applyEnrichment, upsertFieldProvenance, recordPendingContradiction } as never;
+  // TI-1D-A — reconcileSubject now loads per-field control state; default none
+  // (every field UNKNOWN + AUTO = pre-TI-1D-A behavior) unless a test overrides.
+  const listProfileFieldStates = vi.fn().mockResolvedValue(parts.fieldStates ?? []);
+  const reconcileRepo = { applyEnrichment, upsertFieldProvenance, recordPendingContradiction, listProfileFieldStates } as never;
 
   const logger = { log: vi.fn(), warn: vi.fn(), debug: vi.fn() } as never;
   const service = new TalentReconcileService(trust, talentRecords, reconcileRepo, logger);

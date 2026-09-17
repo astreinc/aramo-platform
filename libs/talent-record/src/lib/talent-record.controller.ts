@@ -54,6 +54,7 @@ import { ResumeExtractionOrchestrator } from './resume-extraction/resume-extract
 import { ResumeSourceAuthorizer } from './resume-extraction/resume-source-authorizer.js';
 import { TalentLinkService } from './talent-link.service.js';
 import { TalentRecordRepository } from './talent-record.repository.js';
+import { TalentRecordReconcileRepository } from './talent-record-reconcile.repository.js';
 
 const SORT_KEYS: readonly TalentSortKey[] = [
   'name',
@@ -96,6 +97,20 @@ function splitCsv(value: string | undefined): string[] | undefined {
 // NO assignment filter: TalentRecord is tenant + site scoped; visible to
 // all entitled + scoped recruiters in the tenant. (Unlike requisition,
 // which gates per-row by RequisitionAssignment.)
+// TALENT-INTEL-1 TI-1D-A — the reconcile-covered fields a recruiter can
+// explicitly clear (so the clear/HOLD must be recorded as field-state to stop
+// automatic reconcile refilling it). The contact anchors email1/phone_cell are
+// admission-immutable and NOT clearable, so they are deliberately excluded.
+const RECONCILE_COVERED_CLEARABLE_FIELDS = [
+  'web_site',
+  'work_authorization',
+  'address',
+  'address2',
+  'city',
+  'state',
+  'zip',
+] as const;
+
 @Controller('v1/talent-records')
 @UseGuards(JwtAuthGuard, EntitlementGuard, RolesGuard)
 @RequireCapability('ats')
@@ -116,6 +131,9 @@ export class TalentRecordController {
     // before any object access.
     private readonly resumeOrchestrator: ResumeExtractionOrchestrator,
     private readonly resumeAuthorizer: ResumeSourceAuthorizer,
+    // TALENT-INTEL-1 TI-1D-A — per-field control state (explicit-clear / HOLD)
+    // written on manual edit so automatic reconcile never undoes recruiter intent.
+    private readonly reconcileRepo: TalentRecordReconcileRepository,
   ) {}
 
   // Search PR-1/PR-2 — the LIST route gates on talent:read (route-static).
@@ -498,6 +516,55 @@ export class TalentRecordController {
         tenant_id: authContext.tenant_id,
         entries: body.work_history,
       });
+    }
+
+    // TALENT-INTEL-1 TI-1D-A — record per-field control state for each
+    // reconcile-covered field this edit touched, so automatic reconcile never
+    // undoes recruiter intent. A field PRESENT in the body and empty/null is an
+    // EXPLICIT CLEAR (value_state=EXPLICITLY_CLEARED, projection_policy=HOLD); a
+    // present non-empty value is a manual SET (value_state=SET, policy=AUTO —
+    // occupied fields are never overwritten by reconcile anyway, and this keeps
+    // the state accurate + re-opens a previously-cleared field). ABSENT fields
+    // are untouched. source_type=MANUAL marks recruiter authorship.
+    const bodyRec = body as unknown as Record<string, unknown>;
+    for (const field of RECONCILE_COVERED_CLEARABLE_FIELDS) {
+      const v = bodyRec[field];
+      if (v === undefined) continue;
+      const cleared = v === null || (typeof v === 'string' && v.trim() === '');
+      await this.reconcileRepo.upsertProfileFieldState({
+        tenant_id: authContext.tenant_id,
+        talent_record_id: id,
+        field_key: field,
+        value_state: cleared ? 'EXPLICITLY_CLEARED' : 'SET',
+        source_type: 'MANUAL',
+        projection_policy: cleared ? 'HOLD' : 'AUTO',
+      });
+    }
+
+    // TALENT-INTEL-1 TI-1D-A — field_controls: projection_policy transitions on
+    // the SAME PATCH surface (PO ruling — no separate route). The canonical use
+    // is releasing a hold (projection_policy AUTO) so automatic reconcile may
+    // manage the field again. It ONLY changes projection_policy — it NEVER
+    // mutates value_state and never repopulates/clears the field itself, so a
+    // field left EXPLICITLY_CLEARED stays non-refilled until an explicit edit
+    // changes it. Tenant/auth/audit ride the normal talent-update path.
+    if (body.field_controls !== undefined) {
+      for (const [field, control] of Object.entries(body.field_controls)) {
+        if (!RECONCILE_COVERED_CLEARABLE_FIELDS.includes(field as never)) {
+          throw new AramoError(
+            'VALIDATION_ERROR',
+            'field_controls key is not a reconcile-covered field',
+            422,
+            { requestId, details: { field: 'field_controls', value: field } },
+          );
+        }
+        await this.reconcileRepo.setProjectionPolicy({
+          tenant_id: authContext.tenant_id,
+          talent_record_id: id,
+          field_key: field,
+          projection_policy: control.projection_policy,
+        });
+      }
     }
 
     return updated;

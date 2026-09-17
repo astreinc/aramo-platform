@@ -62,7 +62,18 @@ export class TalentReconcileService {
 
       // ALL of the subject's declared evidence (the L2 history to project from).
       const evidence = await this.trust.getEvidence(subjectRef);
-      const plan = computeReconcilePlan(record, evidence);
+      // TALENT-INTEL-1 TI-1D-A — the per-field control state gates automatic
+      // projection: EXPLICITLY_CLEARED / HOLD slots are not auto-refilled (a
+      // differing evidence still records a contradiction). Absence = UNKNOWN +
+      // AUTO (pre-TI-1D-A behavior), so unenrolled fields are unchanged.
+      const fieldStateRows = await this.reconcileRepo.listProfileFieldStates(talent_record_id);
+      const fieldStates = new Map(
+        fieldStateRows.map((s) => [
+          s.field_key,
+          { value_state: s.value_state, projection_policy: s.projection_policy },
+        ]),
+      );
+      const plan = computeReconcilePlan(record, evidence, fieldStates);
 
       // Enrich the flat row (fill-null + append) — only the computed patch.
       await this.reconcileRepo.applyEnrichment({ tenant_id, talent_record_id, patch: plan.patch });

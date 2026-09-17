@@ -27,6 +27,16 @@ export interface ReconcilePlan {
   contradictions: Array<{ field_name: string; new_evidence_id: string }>;
 }
 
+// TALENT-INTEL-1 (TI-1D-A) — the minimal per-field control state the plan needs
+// to gate AUTOMATIC projection (fill-null). The durable home is
+// TalentProfileFieldState (talent_record schema); this is the projection-relevant
+// slice passed in by the reconcile service, keyed by field_key. ABSENCE of a
+// field's state = UNKNOWN + AUTO (backward-compatible: existing fill-null).
+export interface FieldProjectionState {
+  value_state: string; // 'UNKNOWN' | 'SET' | 'EXPLICITLY_CLEARED'
+  projection_policy: string; // 'AUTO' | 'HOLD'
+}
+
 // Single-slot fill-null contact fields, keyed to the pipeline's real
 // assertion_types (recon §1). current_employer/email2/phone_home/phone_work have
 // no evidence writer today → deliberately omitted (no speculative slots).
@@ -68,6 +78,9 @@ const ADDRESS_SUB: ReadonlyArray<{
 export function computeReconcilePlan(
   record: TalentRecordView,
   evidence: EvidenceRecordRow[],
+  // TI-1D-A — per-field control state (field_key → state). Default empty:
+  // every field is UNKNOWN + AUTO, i.e. exactly the pre-TI-1D-A behavior.
+  fieldStates: ReadonlyMap<string, FieldProjectionState> = new Map(),
 ): ReconcilePlan {
   const plan: ReconcilePlan = { patch: {}, provenance: [], contradictions: [] };
   const newest = newestByType(evidence);
@@ -77,7 +90,7 @@ export function computeReconcilePlan(
     if (ev === undefined) continue;
     const value = m.extract(payloadOf(ev));
     if (value === undefined) continue;
-    fillNull(plan, m.field, currentOf(record, m.recordField), value, ev.id);
+    fillNull(plan, m.field, currentOf(record, m.recordField), value, ev.id, fieldStates.get(m.field));
   }
 
   const addr = newest.get('ADDRESS');
@@ -86,7 +99,7 @@ export function computeReconcilePlan(
     for (const s of ADDRESS_SUB) {
       const value = str(p[s.key]);
       if (value === undefined) continue;
-      fillNull(plan, s.field, currentOf(record, s.recordField), value, addr.id);
+      fillNull(plan, s.field, currentOf(record, s.recordField), value, addr.id, fieldStates.get(s.field));
     }
   }
 
@@ -128,8 +141,23 @@ function fillNull(
   current: string | null,
   value: string,
   evidenceId: string,
+  // TI-1D-A — the field's control state (undefined = UNKNOWN + AUTO).
+  fieldState?: FieldProjectionState,
 ): void {
   if (current === null) {
+    // TI-1D-A explicit-clear / HOLD protection: automatic projection into an
+    // empty slot is BLOCKED when the recruiter has explicitly cleared the field
+    // (value_state=EXPLICITLY_CLEARED — blocks even under AUTO) or held it
+    // (projection_policy=HOLD — blocks any value_state). We never REFILL such a
+    // slot — but we never silently suppress either: the differing evidence is
+    // recorded as a pending contradiction for human review (PO ruling §2).
+    if (
+      fieldState !== undefined &&
+      (fieldState.value_state === 'EXPLICITLY_CLEARED' || fieldState.projection_policy === 'HOLD')
+    ) {
+      plan.contradictions.push({ field_name: field, new_evidence_id: evidenceId });
+      return;
+    }
     (plan.patch as Record<string, string>)[field] = value;
     plan.provenance.push({ field_name: field, evidence_id: evidenceId });
   } else if (current === value) {

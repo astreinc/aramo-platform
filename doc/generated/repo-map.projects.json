@@ -2081,6 +2081,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/talent-record/src/tests/talent-profile-field-state.spec.ts",
+        "project": "talent-record",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/talent-record/src/tests/update-contact-gate.spec.ts",
         "project": "talent-record",
         "status": "excluded"

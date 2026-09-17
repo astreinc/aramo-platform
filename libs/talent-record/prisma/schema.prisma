@@ -173,6 +173,9 @@ model TalentRecord {
   // consumes. Neither is on the flat row (keeps `current` a cheap single read).
   field_provenance         TalentRecordFieldProvenance[]
   reconcile_contradictions TalentRecordReconcileContradiction[]
+  // TALENT-INTEL-1 TI-1D-A — per-field control state (explicit-clear / HOLD)
+  // gating automatic reconcile projection. Same-schema child, Cascade purge.
+  profile_field_state      TalentProfileFieldState[]
 
   // Indexes — every query path leads with tenant_id; (last, first)
   // serves the dominant "search by name" recruiter query path.
@@ -315,5 +318,45 @@ model TalentRecordReconcileContradiction {
   @@unique([talent_record_id, field_name, new_evidence_id])
   @@index([tenant_id, status])
   @@map("talent_record_reconcile_contradiction")
+  @@schema("talent_record")
+}
+
+// TALENT-INTEL-1 TI-1D-A — per-field CONTROL state that gates AUTOMATIC
+// reconcile projection (explicit-clear / HOLD protection). It records the
+// recruiter's intent for a field, NOT the field's value: the current value
+// stays solely on the flat TalentRecord row (TalentRecord remains the sole
+// operational projection). Same-schema child of TalentRecord (Cascade purge).
+//
+// CONTROL-ONLY at TI-1D-A (PO ruling): value_state + source_type +
+// projection_policy. The generalized columns (source_evidence_id,
+// resolution_status, resolution_reason, proposed_value) are DELIBERATELY absent
+// — they arrive in TI-1D-B by additive migration when a durable
+// provenance/resolution reader + read API first make them meaningful ("no
+// speculative slots"). Closed vocabularies are enforced by the WRITER (TS
+// union), not a DB CHECK — the talent_record String-vocabulary precedent.
+model TalentProfileFieldState {
+  id               String @id @default(uuid()) @db.Uuid
+  tenant_id        String @db.Uuid
+  talent_record_id String @db.Uuid
+  // The TalentRecord column this control state governs (e.g. work_authorization,
+  // web_site, city). Same field_key space as TalentRecordFieldProvenance.field_name.
+  field_key        String
+  // UNKNOWN | SET | EXPLICITLY_CLEARED — what the field represents. Distinct from
+  // projection_policy: "what the field is" vs "whether automation may project".
+  value_state       String
+  // MANUAL | RESUME | RECONCILED | IMPORT — who authored the current state.
+  source_type       String
+  // AUTO | HOLD — whether automatic reconcile may project into this field.
+  // Releasing a hold flips HOLD→AUTO ONLY; it never mutates value_state.
+  projection_policy String
+
+  updated_at DateTime @default(now()) @updatedAt @db.Timestamptz
+
+  talent_record TalentRecord @relation(fields: [talent_record_id], references: [id], onDelete: Cascade)
+
+  // One control row per (tenant, record, field).
+  @@unique([tenant_id, talent_record_id, field_key])
+  @@index([tenant_id, talent_record_id])
+  @@map("talent_profile_field_state")
   @@schema("talent_record")
 }

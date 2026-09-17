@@ -45,6 +45,8 @@ describe('GET :id/work-history', () => {
       // TI-1B — resumeOrchestrator + resumeAuthorizer (unused on this path).
       {} as never,
       {} as never,
+      // TI-1D-A — reconcileRepo (field-state writes; no-op fake on this path).
+      { upsertProfileFieldState: async () => undefined, releaseProjectionHold: async () => undefined, listProfileFieldStates: async () => [] } as never,
     );
     const res = await ctl.workHistory(AUTH, 'tal-1');
     expect(res).toEqual({ work_history: rows });
