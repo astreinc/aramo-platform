@@ -4,6 +4,7 @@ import { SkillsTaxonomyModule } from '@aramo/skills-taxonomy';
 import { PrismaService } from './prisma/prisma.service.js';
 import { TalentEvidenceRepository } from './talent-evidence.repository.js';
 import { TalentSkillCanonicalizationService } from './talent-skill-canonicalization.service.js';
+import { TalentCanonicalCoverageRepository } from './talent-canonical-coverage.repository.js';
 
 // SKILL-TAX-1G — Talent skill canonical-reconciliation orchestrator module.
 //
@@ -17,7 +18,12 @@ import { TalentSkillCanonicalizationService } from './talent-skill-canonicalizat
 // per the 1G ruling — not wired to an automatic cron here.
 @Module({
   imports: [SkillsTaxonomyModule],
-  providers: [PrismaService, TalentEvidenceRepository, TalentSkillCanonicalizationService],
-  exports: [TalentSkillCanonicalizationService],
+  providers: [
+    PrismaService,
+    TalentEvidenceRepository,
+    TalentSkillCanonicalizationService,
+    TalentCanonicalCoverageRepository,
+  ],
+  exports: [TalentSkillCanonicalizationService, TalentCanonicalCoverageRepository],
 })
 export class TalentSkillCanonicalizationModule {}

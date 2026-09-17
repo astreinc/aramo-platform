@@ -13,6 +13,10 @@ export {
   type CanonicalUsageRow,
   type CanonicalSkillYears,
 } from './lib/canonical-skill-timeline.js';
+export {
+  TalentCanonicalCoverageRepository,
+  type CanonicalCoverage,
+} from './lib/talent-canonical-coverage.repository.js';
 export type {
   // TalentSkillEvidence (Group 2 §2.2 #16)
   CreateTalentSkillEvidenceInput,

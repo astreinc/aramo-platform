@@ -17,6 +17,7 @@
       "@aramo/auth-core": ["../../dist/libs/auth-core/src/index.d.ts"],
       "@aramo/authorization": ["../../dist/libs/authorization/src/index.d.ts"],
       "@aramo/calendar": ["../../dist/libs/calendar/src/index.d.ts"],
+      "@aramo/canonical-reconcile": ["../../dist/libs/canonical-reconcile/src/index.d.ts"],
       "@aramo/canonicalization": ["../../dist/libs/canonicalization/src/index.d.ts"],
       "@aramo/cold-ingest-extraction": ["../../dist/libs/cold-ingest-extraction/src/index.d.ts"],
       "@aramo/client-talent-restriction": ["../../dist/libs/client-talent-restriction/src/index.d.ts"],

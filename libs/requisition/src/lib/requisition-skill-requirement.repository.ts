@@ -99,4 +99,19 @@ export class RequisitionSkillRequirementRepository {
   async deleteById(id: string): Promise<void> {
     await this.prisma.requisitionSkillRequirement.delete({ where: { id } });
   }
+
+  // SKILL-TAX Canonical Reconciliation Activation — coverage telemetry (read-only
+  // aggregate, no new table). eligible = all derived rows.
+  async coverage(): Promise<{ total: number; resolved: number; unresolved: number }> {
+    const [total, resolved, unresolved] = await Promise.all([
+      this.prisma.requisitionSkillRequirement.count(),
+      this.prisma.requisitionSkillRequirement.count({
+        where: { canonicalization_status: 'RESOLVED' },
+      }),
+      this.prisma.requisitionSkillRequirement.count({
+        where: { canonicalization_status: 'UNRESOLVED' },
+      }),
+    ]);
+    return { total, resolved, unresolved };
+  }
 }
