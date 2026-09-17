@@ -45,8 +45,14 @@ const HF2_MIGRATION_PATH = resolve(
   __dirname,
   '../../prisma/migrations/20260915170000_hf2_experience_intelligence/migration.sql',
 );
+// SKILL-TAX-1G additive canonical columns (SEPARATE resolve const; applied after HF2).
+const G1G_MIGRATION_PATH = resolve(
+  __dirname,
+  '../../prisma/migrations/20260915180000_skill_tax_1g_canonical_reconciliation/migration.sql',
+);
 // SEPARATE resolve() const (never a 2nd resolve() arg → ENOTDIR). TALENT-INTEL-1
-// TI-1A résumé-edition substrate; applied after HF2.
+// TI-1A résumé-edition substrate; applied after HF2 / SKILL-TAX-1G (independent
+// additive new tables).
 const TI1A_MIGRATION_PATH = resolve(
   __dirname,
   '../../prisma/migrations/20260916120000_talent_intel_1a_resume_edition/migration.sql',
@@ -78,6 +84,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const tr7MigrationSql = readFileSync(TR7_MIGRATION_PATH, 'utf8');
       const hf1MigrationSql = readFileSync(HF1_MIGRATION_PATH, 'utf8');
       const hf2MigrationSql = readFileSync(HF2_MIGRATION_PATH, 'utf8');
+      const g1gMigrationSql = readFileSync(G1G_MIGRATION_PATH, 'utf8');
       const ti1aMigrationSql = readFileSync(TI1A_MIGRATION_PATH, 'utf8');
 
       const setupClient = new PrismaService(url);
@@ -87,6 +94,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         ...tr7MigrationSql.split(';'),
         ...hf1MigrationSql.split(';'),
         ...hf2MigrationSql.split(';'),
+        ...g1gMigrationSql.split(';'),
         ...ti1aMigrationSql.split(';'),
       ]) {
         const trimmed = stmt.trim();
