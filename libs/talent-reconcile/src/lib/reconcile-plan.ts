@@ -24,7 +24,14 @@ import type { EvidenceRecordRow } from '@aramo/talent-trust';
 export interface ReconcilePlan {
   patch: EnrichmentPatch;
   provenance: Array<{ field_name: string; evidence_id: string }>;
-  contradictions: Array<{ field_name: string; new_evidence_id: string }>;
+  // TALENT-INTEL-1 (TI-1D-B) — a contradiction carries the proposed_value: the
+  // value reconcile WOULD have projected but did not (occupied-differing, or a
+  // recruiter EXPLICITLY_CLEARED / HOLD slot). The reconcile service records it
+  // onto the field's TalentProfileFieldState PENDING_REVIEW summary so the
+  // field-state read API can surface it WITHOUT reaching into raw EvidenceRecord
+  // payloads (ruling rail: no raw evidence payloads in that API). proposed_value
+  // is never Talent truth — TalentRecord remains the only current operational value.
+  contradictions: Array<{ field_name: string; new_evidence_id: string; proposed_value: string }>;
 }
 
 // TALENT-INTEL-1 (TI-1D-A) — the minimal per-field control state the plan needs
@@ -155,7 +162,7 @@ function fillNull(
       fieldState !== undefined &&
       (fieldState.value_state === 'EXPLICITLY_CLEARED' || fieldState.projection_policy === 'HOLD')
     ) {
-      plan.contradictions.push({ field_name: field, new_evidence_id: evidenceId });
+      plan.contradictions.push({ field_name: field, new_evidence_id: evidenceId, proposed_value: value });
       return;
     }
     (plan.patch as Record<string, string>)[field] = value;
@@ -166,7 +173,7 @@ function fillNull(
     plan.provenance.push({ field_name: field, evidence_id: evidenceId });
   } else {
     // Occupied + newer-differing → NOT overwritten; recorded for B2.
-    plan.contradictions.push({ field_name: field, new_evidence_id: evidenceId });
+    plan.contradictions.push({ field_name: field, new_evidence_id: evidenceId, proposed_value: value });
   }
 }
 
@@ -181,7 +188,7 @@ function identityStable(
   if (current === value) {
     plan.provenance.push({ field_name: field, evidence_id: evidenceId });
   } else {
-    plan.contradictions.push({ field_name: field, new_evidence_id: evidenceId });
+    plan.contradictions.push({ field_name: field, new_evidence_id: evidenceId, proposed_value: value });
   }
 }
 

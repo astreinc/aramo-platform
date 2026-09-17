@@ -17607,12 +17607,27 @@
     {
       "from": "pact/provider/src/verify-api.ts",
       "status": "unscoped",
+      "to": "libs/talent-record/prisma/migrations/20260705130000_add_reconcile_projection_tables/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
       "to": "libs/talent-record/prisma/migrations/20260706210000_tr2a_b3a_talent_record_supersession/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",
       "status": "unscoped",
       "to": "libs/talent-record/prisma/migrations/20260910130000_add_talent_title_and_country/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "libs/talent-record/prisma/migrations/20260917120000_talent_intel_1d_a_profile_field_state/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "libs/talent-record/prisma/migrations/20260918120000_talent_intel_1d_b_field_resolution/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",

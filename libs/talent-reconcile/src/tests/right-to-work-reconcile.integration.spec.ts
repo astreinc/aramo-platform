@@ -132,7 +132,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // No overwrite of the talent-stated value.
       expect(plan.patch).toEqual({});
       expect(plan.contradictions).toEqual([
-        { field_name: 'work_authorization', new_evidence_id: evId },
+        { field_name: 'work_authorization', new_evidence_id: evId, proposed_value: 'VISA_HOLDER' },
       ]);
 
       for (const c of plan.contradictions) {
@@ -177,7 +177,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       // Blocked: no refill of the recruiter-cleared slot, but not silent.
       expect(plan.patch).toEqual({});
-      expect(plan.contradictions).toEqual([{ field_name: 'work_authorization', new_evidence_id: evId }]);
+      expect(plan.contradictions).toEqual([
+        { field_name: 'work_authorization', new_evidence_id: evId, proposed_value: 'US_CITIZEN' },
+      ]);
 
       await repo.applyEnrichment({ tenant_id: TENANT, talent_record_id: id, patch: plan.patch });
       const row = await prisma.talentRecord.findUnique({ where: { id } });
@@ -212,6 +214,166 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       ]);
       const plan = computeReconcilePlan(await view(id), [rightToWork('US_CITIZEN', uuidv7())], fieldStates);
       expect(plan.patch).toEqual({});
+    });
+
+    // TALENT-INTEL-1 TI-1D-B — the field-state READ MODEL joins the per-field
+    // control state with the field→evidence provenance (TalentRecordFieldProvenance
+    // stays the SOLE evidence-linkage authority — no source_evidence_id duplication).
+    it('getFieldStateReadModel joins control state with provenance (evidence linkage read-through)', async () => {
+      const id = await seedRecord('US_CITIZEN');
+      await repo.upsertProfileFieldState({
+        tenant_id: TENANT,
+        talent_record_id: id,
+        field_key: 'work_authorization',
+        value_state: 'SET',
+        source_type: 'MANUAL',
+        projection_policy: 'AUTO',
+      });
+      const evId = uuidv7();
+      await repo.upsertFieldProvenance({
+        tenant_id: TENANT,
+        talent_record_id: id,
+        field_name: 'work_authorization',
+        evidence_id: evId,
+      });
+
+      const model = await repo.getFieldStateReadModel(id);
+      const wa = model.find((r) => r.field_key === 'work_authorization');
+      expect(wa).toEqual({
+        field_key: 'work_authorization',
+        value_state: 'SET',
+        source_type: 'MANUAL',
+        projection_policy: 'AUTO',
+        resolution_status: 'NONE',
+        resolution_reason: null,
+        proposed_value: null,
+        provenance: { evidence_id: evId },
+      });
+    });
+
+    // A field with provenance but NO explicit control row still appears — reconcile
+    // projected it, so it reads as UNKNOWN / RECONCILED / AUTO with the evidence linkage.
+    it('getFieldStateReadModel surfaces a provenance-only field with default control state', async () => {
+      const id = await seedRecord(null);
+      const evId = uuidv7();
+      await repo.upsertFieldProvenance({
+        tenant_id: TENANT,
+        talent_record_id: id,
+        field_name: 'email1',
+        evidence_id: evId,
+      });
+      const model = await repo.getFieldStateReadModel(id);
+      const email = model.find((r) => r.field_key === 'email1');
+      expect(email).toEqual({
+        field_key: 'email1',
+        value_state: 'UNKNOWN',
+        source_type: 'RECONCILED',
+        projection_policy: 'AUTO',
+        resolution_status: 'NONE',
+        resolution_reason: null,
+        proposed_value: null,
+        provenance: { evidence_id: evId },
+      });
+    });
+
+    // markFieldPendingReview sets the resolution SUMMARY (PENDING_REVIEW +
+    // EVIDENCE_CONFLICT + proposed_value) WITHOUT disturbing the recruiter's
+    // EXPLICITLY_CLEARED / HOLD control (value_state + projection_policy preserved).
+    it('markFieldPendingReview records PENDING_REVIEW + proposed_value, preserving an EXPLICITLY_CLEARED + HOLD control', async () => {
+      const id = await seedRecord(null);
+      await repo.upsertProfileFieldState({
+        tenant_id: TENANT,
+        talent_record_id: id,
+        field_key: 'work_authorization',
+        value_state: 'EXPLICITLY_CLEARED',
+        source_type: 'MANUAL',
+        projection_policy: 'HOLD',
+      });
+
+      await repo.markFieldPendingReview({
+        tenant_id: TENANT,
+        talent_record_id: id,
+        field_key: 'work_authorization',
+        proposed_value: 'US_CITIZEN',
+      });
+
+      const model = await repo.getFieldStateReadModel(id);
+      const wa = model.find((r) => r.field_key === 'work_authorization');
+      expect(wa).toEqual({
+        field_key: 'work_authorization',
+        value_state: 'EXPLICITLY_CLEARED', // control preserved
+        source_type: 'MANUAL',
+        projection_policy: 'HOLD', // control preserved
+        resolution_status: 'PENDING_REVIEW',
+        resolution_reason: 'EVIDENCE_CONFLICT',
+        proposed_value: 'US_CITIZEN',
+        provenance: null,
+      });
+    });
+
+    // markFieldPendingReview on a field with NO prior control row creates one
+    // (UNKNOWN / RECONCILED / AUTO) carrying the pending-review summary.
+    it('markFieldPendingReview creates a default control row when none exists', async () => {
+      const id = await seedRecord(null);
+      await repo.markFieldPendingReview({
+        tenant_id: TENANT,
+        talent_record_id: id,
+        field_key: 'city',
+        proposed_value: 'London',
+      });
+      const model = await repo.getFieldStateReadModel(id);
+      const city = model.find((r) => r.field_key === 'city');
+      expect(city).toEqual({
+        field_key: 'city',
+        value_state: 'UNKNOWN',
+        source_type: 'RECONCILED',
+        projection_policy: 'AUTO',
+        resolution_status: 'PENDING_REVIEW',
+        resolution_reason: 'EVIDENCE_CONFLICT',
+        proposed_value: 'London',
+        provenance: null,
+      });
+    });
+
+    // resolveFieldReview flips PENDING_REVIEW → RESOLVED, clears proposed_value, and
+    // NEVER mutates value_state / projection_policy (the control stays as the
+    // recruiter left it). proposed_value is populated ONLY while PENDING_REVIEW.
+    it('resolveFieldReview → RESOLVED, clears proposed_value, control untouched', async () => {
+      const id = await seedRecord(null);
+      await repo.upsertProfileFieldState({
+        tenant_id: TENANT,
+        talent_record_id: id,
+        field_key: 'work_authorization',
+        value_state: 'EXPLICITLY_CLEARED',
+        source_type: 'MANUAL',
+        projection_policy: 'HOLD',
+      });
+      await repo.markFieldPendingReview({
+        tenant_id: TENANT,
+        talent_record_id: id,
+        field_key: 'work_authorization',
+        proposed_value: 'US_CITIZEN',
+      });
+
+      await repo.resolveFieldReview({
+        tenant_id: TENANT,
+        talent_record_id: id,
+        field_key: 'work_authorization',
+        resolution_reason: 'KEPT_CURRENT',
+      });
+
+      const model = await repo.getFieldStateReadModel(id);
+      const wa = model.find((r) => r.field_key === 'work_authorization');
+      expect(wa).toEqual({
+        field_key: 'work_authorization',
+        value_state: 'EXPLICITLY_CLEARED', // untouched
+        source_type: 'MANUAL',
+        projection_policy: 'HOLD', // untouched
+        resolution_status: 'RESOLVED',
+        resolution_reason: 'KEPT_CURRENT',
+        proposed_value: null, // cleared on resolve
+        provenance: null,
+      });
     });
   },
 );

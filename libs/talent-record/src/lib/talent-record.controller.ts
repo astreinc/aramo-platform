@@ -46,6 +46,7 @@ import { LinkTalentRecordRequestDto } from './dto/link-talent-record-request.dto
 import type { ResumeUploadUrlRequestDto } from './dto/resume-upload-url-request.dto.js';
 import type { TalentLinkView } from './dto/talent-link.view.js';
 import type { TalentRecordView } from './dto/talent-record.view.js';
+import type { TalentProfileFieldStateResponse } from './dto/talent-profile-field-state.view.js';
 import type {
   TalentSearchPage,
   TalentSearchQuery,
@@ -306,6 +307,52 @@ export class TalentRecordController {
     return { work_history };
   }
 
+  // TALENT-INTEL-1 TI-1D-B — the DEDICATED field-state read surface. Kept SEPARATE
+  // from getById (which stays the operational Talent projection): provenance /
+  // control / review metadata is a distinct read model, not the record body. Each
+  // field carries current_value (read from the canonical getById projection), its
+  // control state, the evidence-linkage provenance (by reference — no raw
+  // EvidenceRecord payload), and the resolution summary. Declared before @Get(':id')
+  // so the literal `field-state` segment is not captured as an :id.
+  @Get(':id/field-state')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('talent:read')
+  @RequireSiteMatch()
+  async getFieldState(
+    @AuthContext() authContext: AuthContextType,
+    @Param('id') id: string,
+    @RequestId() requestId: string,
+  ): Promise<TalentProfileFieldStateResponse> {
+    const view = await this.repo.findById({ tenant_id: authContext.tenant_id, id });
+    if (view === null) {
+      throw new AramoError(
+        'NOT_FOUND',
+        'TalentRecord not found in tenant',
+        404,
+        { requestId, details: { id } },
+      );
+    }
+    const rows = await this.reconcileRepo.getFieldStateReadModel(id);
+    const viewRec = view as unknown as Record<string, unknown>;
+    return {
+      talent_record_id: id,
+      fields: rows.map((r) => {
+        const cur = viewRec[r.field_key];
+        return {
+          field_key: r.field_key,
+          current_value: typeof cur === 'string' && cur.length > 0 ? cur : null,
+          value_state: r.value_state,
+          source_type: r.source_type,
+          projection_policy: r.projection_policy,
+          provenance: r.provenance,
+          proposed_value: r.proposed_value,
+          resolution_status: r.resolution_status,
+          resolution_reason: r.resolution_reason,
+        };
+      }),
+    };
+  }
+
   @Get(':id')
   @HttpCode(HttpStatus.OK)
   @RequireScopes('talent:read')
@@ -509,6 +556,34 @@ export class TalentRecordController {
       );
     }
 
+    // TALENT-INTEL-1 TI-1D-B — the resolution reason (below) compares the PATCH
+    // RESULT against the PRE-PATCH incumbent value, so capture both the incumbent
+    // current values and the open reviews BEFORE the scalar mutation. Only when the
+    // edit touches a reconcile-covered field (no cost on unrelated PATCHes).
+    const bodyRec = body as unknown as Record<string, unknown>;
+    const touchesCovered = RECONCILE_COVERED_CLEARABLE_FIELDS.some(
+      (f) => bodyRec[f] !== undefined,
+    );
+    const preCurrent = new Map<string, string | null>();
+    const priorReview = new Map<string, { resolution_status: string; proposed_value: string | null }>();
+    if (touchesCovered) {
+      const [preView, states] = await Promise.all([
+        this.repo.findById({ tenant_id: authContext.tenant_id, id }),
+        this.reconcileRepo.getFieldStateReadModel(id),
+      ]);
+      const preRec = (preView ?? {}) as unknown as Record<string, unknown>;
+      for (const f of RECONCILE_COVERED_CLEARABLE_FIELDS) {
+        const cv = preRec[f];
+        preCurrent.set(f, typeof cv === 'string' && cv.length > 0 ? cv : null);
+      }
+      for (const s of states) {
+        priorReview.set(s.field_key, {
+          resolution_status: s.resolution_status,
+          proposed_value: s.proposed_value,
+        });
+      }
+    }
+
     // Scalar PATCH first (the repo allowlist-walk ignores work_history — it is
     // not a TalentRecord column). The returned view is the record's scalar shape.
     const updated = await this.repo.update({
@@ -541,7 +616,6 @@ export class TalentRecordController {
     // occupied fields are never overwritten by reconcile anyway, and this keeps
     // the state accurate + re-opens a previously-cleared field). ABSENT fields
     // are untouched. source_type=MANUAL marks recruiter authorship.
-    const bodyRec = body as unknown as Record<string, unknown>;
     for (const field of RECONCILE_COVERED_CLEARABLE_FIELDS) {
       const v = bodyRec[field];
       if (v === undefined) continue;
@@ -554,6 +628,30 @@ export class TalentRecordController {
         source_type: 'MANUAL',
         projection_policy: cleared ? 'HOLD' : 'AUTO',
       });
+      // TI-1D-B — a manual edit of a field with an OPEN review RESOLVES it and
+      // clears proposed_value. Reason keys off the PRE-PATCH incumbent (Gate-6
+      // ruling): the result value == the evidence proposal → ACCEPTED_PROPOSED; the
+      // result == the incumbent (a deliberate re-save, incl. was-null-stays-null) →
+      // KEPT_CURRENT; anything else the recruiter authors (a third value, OR
+      // clearing a previously-populated field) → MANUAL_CONFIRMATION. field_controls
+      // release-hold does NOT resolve (it only flips projection_policy).
+      const prior = priorReview.get(field);
+      if (prior?.resolution_status === 'PENDING_REVIEW') {
+        const resultValue = cleared || typeof v !== 'string' ? null : v;
+        const incumbent = preCurrent.get(field) ?? null;
+        const resolution_reason =
+          resultValue !== null && resultValue === prior.proposed_value
+            ? 'ACCEPTED_PROPOSED'
+            : resultValue === incumbent
+              ? 'KEPT_CURRENT'
+              : 'MANUAL_CONFIRMATION';
+        await this.reconcileRepo.resolveFieldReview({
+          tenant_id: authContext.tenant_id,
+          talent_record_id: id,
+          field_key: field,
+          resolution_reason,
+        });
+      }
     }
 
     // TALENT-INTEL-1 TI-1D-A — field_controls: projection_policy transitions on

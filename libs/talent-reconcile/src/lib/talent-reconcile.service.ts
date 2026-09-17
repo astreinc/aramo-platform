@@ -88,13 +88,23 @@ export class TalentReconcileService {
         });
       }
 
-      // Occupied + newer-differing → recorded for B2 (never acted on here).
+      // Occupied + newer-differing → recorded for B2 (never acted on here). The
+      // append-only lifecycle row is TalentRecordReconcileContradiction; TI-1D-B
+      // additionally opens the field's CURRENT resolution summary (PENDING_REVIEW +
+      // the proposed_value reconcile declined to project) so the field-state read
+      // API can surface it. The two are complementary — history vs current summary.
       for (const c of plan.contradictions) {
         await this.reconcileRepo.recordPendingContradiction({
           tenant_id,
           talent_record_id,
           field_name: c.field_name,
           new_evidence_id: c.new_evidence_id,
+        });
+        await this.reconcileRepo.markFieldPendingReview({
+          tenant_id,
+          talent_record_id,
+          field_key: c.field_name,
+          proposed_value: c.proposed_value,
         });
       }
 
