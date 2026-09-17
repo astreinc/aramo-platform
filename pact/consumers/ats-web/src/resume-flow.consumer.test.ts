@@ -53,7 +53,16 @@ describe('ats-web → POST /v1/talent-records/resume-upload-url', () => {
 
 describe('ats-web → POST /v1/talent-records/draft-from-resume', () => {
   it('returns 200 with a parsed prefill', async () => {
-    const BODY = { storage_key: 'resumes/pact-seed.pdf' };
+    // TALENT-INTEL-1 TI-1B (ruling 15) — draft-from-resume now authorizes the
+    // storage_key BEFORE any object access: it must be an Aramo-convention (A8-3a)
+    // résumé key inside the AUTHENTICATED tenant's namespace
+    // ({tenant_uuid}/talent/{uuid}/resume/{uuid}-{name}). The provider verifies as
+    // TENANT_ID (11111111-…), so the contract's key is tenant-bound to it — a raw
+    // non-conventional key is now (correctly) refused with 403.
+    const BODY = {
+      storage_key:
+        '11111111-1111-7111-8111-111111111111/talent/0190a000-0000-7000-8000-00000000a001/resume/0190a000-0000-7000-8000-00000000b001-pact-seed.pdf',
+    };
     await provider
       .addInteraction()
       .given('an ats-web recruiter can start a resume flow')

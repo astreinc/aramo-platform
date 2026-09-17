@@ -43,6 +43,13 @@ export type {
   TalentDocumentTypeValue,
   TalentDocumentParseStatusValue,
   TalentDocumentRetentionPolicyValue,
+  // TalentResumeEdition / TalentResumeDefault (TALENT-INTEL-1 §5)
+  CreateTalentResumeEditionInput,
+  TalentResumeEditionRow,
+  TalentResumeEditionPurposeValue,
+  TalentResumeEditionLifecycleValue,
+  SetTalentResumeDefaultInput,
+  TalentResumeDefaultRow,
   // TalentDerivedSnapshot (Group 2 §2.2 #17)
   CreateTalentDerivedSnapshotInput,
   TalentDerivedSnapshotRow,

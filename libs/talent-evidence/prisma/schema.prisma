@@ -520,3 +520,91 @@ model TalentDerivedSnapshot {
   @@index([tenant_id, talent_id])
   @@schema("talent_evidence")
 }
+
+// ── TALENT-INTEL-1 §5 / Gate-5 rulings 1, 2, 18 ──────────────────────────────
+// A résumé-specific EVIDENCE-CONTEXT companion to TalentDocument (the canonical
+// evidence-document identity). Layering (ruling 1): Attachment = file/access
+// artifact; TalentDocument = evidence-document identity; TalentResumeEdition =
+// résumé edition semantics (purpose/context/content-hash/lineage). ADDITIVE:
+// NO change to the HF2 evidence rows — evidence still anchors on
+// source_document_id → TalentDocument → (this) edition; no source_edition_id
+// duplication (ruling 1 correction). No extraction, no backfill in this slice.
+
+enum TalentResumeEditionPurpose {
+  GENERAL
+  ROLE_FAMILY
+  REQUISITION
+  CLIENT_SUBMITTAL
+  USER_DEFINED
+
+  @@schema("talent_evidence")
+}
+
+// The edition's OWN lifecycle — NOT default-selection (modeled separately in
+// TalentResumeDefault) and NOT the validity of the evidence it grounded
+// (rulings 2/5: a later edition never invalidates earlier evidence).
+// `retracted` is set ONLY by an explicit retraction (§35), never by omission
+// from a newer résumé.
+enum TalentResumeEditionLifecycle {
+  active
+  retracted
+  archived
+
+  @@schema("talent_evidence")
+}
+
+model TalentResumeEdition {
+  id                       String                       @id @db.Uuid
+  tenant_id                String                       @db.Uuid
+  talent_id                String                       @db.Uuid
+
+  // 1:1 companion to the canonical evidence-document identity (same schema).
+  // UNIQUE — one edition row per TalentDocument (ruling 1). UUID-only, no FK.
+  talent_document_id       String                       @unique @db.Uuid
+
+  // File/access artifact seam (attachment schema). UUID-only, no FK (THE WALL /
+  // §7.3). Optional — an edition may exist before/without a mirrored Attachment.
+  attachment_id            String?                      @db.Uuid
+
+  // Content identity for idempotent re-extraction (§25 / ruling 12): the hash of
+  // the résumé text/bytes. A NEW content_hash is the re-extraction trigger key.
+  content_hash             String
+
+  // Résumé-specific context (ruling 18). Requisition/client refs are UUID-only,
+  // no FK (cross-domain seams).
+  purpose                  TalentResumeEditionPurpose   @default(GENERAL)
+  label                    String?
+  requisition_id           String?                      @db.Uuid
+  client_context_id        String?                      @db.Uuid
+
+  // Lineage seam: an edition tailored/derived from a prior edition.
+  derived_from_edition_id  String?                      @db.Uuid
+
+  lifecycle_status         TalentResumeEditionLifecycle @default(active)
+
+  created_at               DateTime                     @db.Timestamptz
+  // Uploader actor (identity domain forward ref). UUID-only, no FK.
+  created_by               String                       @db.Uuid
+
+  @@index([tenant_id])
+  @@index([tenant_id, talent_id])
+  @@index([tenant_id, talent_id, purpose])
+  @@schema("talent_evidence")
+}
+
+// Default/presentation résumé selection — modeled SEPARATELY from evidence
+// validity (rulings 2/10): "default" = show/use by default, NOT "other editions
+// obsolete". UNIQUE(tenant_id, talent_id) enforces exactly one default per
+// Talent. resume_edition_id is UUID-only, no FK.
+model TalentResumeDefault {
+  id                 String   @id @db.Uuid
+  tenant_id          String   @db.Uuid
+  talent_id          String   @db.Uuid
+  resume_edition_id  String   @db.Uuid
+  set_at             DateTime @db.Timestamptz
+  set_by             String   @db.Uuid
+
+  @@unique([tenant_id, talent_id])
+  @@index([tenant_id])
+  @@schema("talent_evidence")
+}

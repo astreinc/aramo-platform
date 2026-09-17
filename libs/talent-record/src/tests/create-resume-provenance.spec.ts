@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from 'vitest';
 import type { AuthContextType } from '@aramo/auth';
 
 import { TalentRecordController } from '../lib/talent-record.controller.js';
+import { ResumeExtractionOrchestrator } from '../lib/resume-extraction/resume-extraction.orchestrator.js';
+import { ResumeSourceAuthorizer } from '../lib/resume-extraction/resume-source-authorizer.js';
 
 // HF1 Gate-6 confirmed-create provenance sequence (rulings R1/R2/R8) + the
 // review-before-create contract. POSITIVE: a résumé-first create creates the
@@ -33,6 +35,13 @@ function makeController(extra: Record<string, unknown> = {}) {
     parseFromStorageKey: vi.fn().mockResolvedValue({ prefill: {}, parse_status: 'partial' }),
     extractTextFromStorageKey: vi.fn().mockResolvedValue(null),
   };
+  // TI-1B — real authorizer + orchestrator over the fake parser/extraction.
+  const authorizer = new ResumeSourceAuthorizer();
+  const orchestrator = new ResumeExtractionOrchestrator(
+    authorizer,
+    resumeParser as never,
+    talentExtraction as never,
+  );
   const ctl = new TalentRecordController(
     repo as never,
     {} as never,
@@ -40,6 +49,8 @@ function makeController(extra: Record<string, unknown> = {}) {
     resumeParser as never,
     tenantSetting as never,
     talentExtraction as never,
+    orchestrator,
+    authorizer,
   );
   return { ctl, createResumeDocument, persistDeclaredWorkHistory, persistDeclaredSkills, extractResumeDraft };
 }
@@ -139,7 +150,10 @@ describe('draft/review — NOTHING is persisted before Create (review-before-cre
     const { ctl, createResumeDocument, persistDeclaredWorkHistory, persistDeclaredSkills } =
       makeController();
     // deterministic mode (default) → parseFromStorageKey path; no persistence.
-    await ctl.draftFromResume(READ_AUTH, { storage_key: 'k' }, 'rq-1');
+    // TI-1B — a VALID Aramo résumé key under the authenticated tenant (the
+    // authorizer now guards the deterministic path too).
+    const validKey = `${TENANT}/talent/01900000-0000-7000-8000-0000000000aa/resume/01900000-0000-7000-8000-0000000000bb-Resume.pdf`;
+    await ctl.draftFromResume(READ_AUTH, { storage_key: validKey }, 'rq-1');
     expect(createResumeDocument).not.toHaveBeenCalled();
     expect(persistDeclaredWorkHistory).not.toHaveBeenCalled();
     expect(persistDeclaredSkills).not.toHaveBeenCalled();

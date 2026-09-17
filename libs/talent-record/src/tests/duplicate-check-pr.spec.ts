@@ -44,6 +44,9 @@ function makeController(): {
     {} as any,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     {} as any,
+    // TI-1B — resumeOrchestrator + resumeAuthorizer (unused on this path).
+    {} as never,
+    {} as never,
   );
   return { ctl, repo };
 }

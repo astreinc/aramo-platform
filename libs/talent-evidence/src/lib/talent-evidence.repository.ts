@@ -417,6 +417,70 @@ export interface TalentDocumentRow {
   is_active: boolean;
 }
 
+// ---- TalentResumeEdition / TalentResumeDefault (TALENT-INTEL-1 §5) ----------
+
+export type TalentResumeEditionPurposeValue =
+  | 'GENERAL'
+  | 'ROLE_FAMILY'
+  | 'REQUISITION'
+  | 'CLIENT_SUBMITTAL'
+  | 'USER_DEFINED';
+
+export type TalentResumeEditionLifecycleValue = 'active' | 'retracted' | 'archived';
+
+export interface CreateTalentResumeEditionInput {
+  id: string;
+  tenant_id: string;
+  talent_id: string;
+  talent_document_id: string;
+  content_hash: string;
+  created_at: Date;
+  created_by: string;
+  // Optional context / lineage (all NULLABLE).
+  attachment_id?: string;
+  purpose?: TalentResumeEditionPurposeValue; // omitted ⇒ GENERAL (DB default)
+  label?: string;
+  requisition_id?: string;
+  client_context_id?: string;
+  derived_from_edition_id?: string;
+  lifecycle_status?: TalentResumeEditionLifecycleValue; // omitted ⇒ active
+}
+
+export interface TalentResumeEditionRow {
+  id: string;
+  tenant_id: string;
+  talent_id: string;
+  talent_document_id: string;
+  attachment_id: string | null;
+  content_hash: string;
+  purpose: TalentResumeEditionPurposeValue;
+  label: string | null;
+  requisition_id: string | null;
+  client_context_id: string | null;
+  derived_from_edition_id: string | null;
+  lifecycle_status: TalentResumeEditionLifecycleValue;
+  created_at: Date;
+  created_by: string;
+}
+
+export interface SetTalentResumeDefaultInput {
+  id: string;
+  tenant_id: string;
+  talent_id: string;
+  resume_edition_id: string;
+  set_at: Date;
+  set_by: string;
+}
+
+export interface TalentResumeDefaultRow {
+  id: string;
+  tenant_id: string;
+  talent_id: string;
+  resume_edition_id: string;
+  set_at: Date;
+  set_by: string;
+}
+
 // ---- TalentDerivedSnapshot (Group 2 §2.2 #17) --------------------------
 
 export interface CreateTalentDerivedSnapshotInput {
@@ -1125,6 +1189,96 @@ export class TalentEvidenceRepository {
   async findTalentDocumentById(id: string): Promise<TalentDocumentRow | null> {
     const row = await this.prisma.talentDocument.findUnique({ where: { id } });
     return (row as TalentDocumentRow | null) ?? null;
+  }
+
+  // ---- TalentResumeEdition / TalentResumeDefault (TALENT-INTEL-1 §5) --------
+
+  async createTalentResumeEdition(
+    input: CreateTalentResumeEditionInput,
+  ): Promise<TalentResumeEditionRow> {
+    const created = await this.prisma.talentResumeEdition.create({
+      data: {
+        id: input.id,
+        tenant_id: input.tenant_id,
+        talent_id: input.talent_id,
+        talent_document_id: input.talent_document_id,
+        content_hash: input.content_hash,
+        created_at: input.created_at,
+        created_by: input.created_by,
+        attachment_id: input.attachment_id,
+        purpose: input.purpose,
+        label: input.label,
+        requisition_id: input.requisition_id,
+        client_context_id: input.client_context_id,
+        derived_from_edition_id: input.derived_from_edition_id,
+        lifecycle_status: input.lifecycle_status,
+      },
+    });
+    return created as TalentResumeEditionRow;
+  }
+
+  async findTalentResumeEditionById(
+    id: string,
+  ): Promise<TalentResumeEditionRow | null> {
+    const row = await this.prisma.talentResumeEdition.findUnique({ where: { id } });
+    return (row as TalentResumeEditionRow | null) ?? null;
+  }
+
+  // All editions for a Talent, newest-first. Multiple editions may be
+  // simultaneously valid (ruling 2) — this returns them ALL, ordered by upload;
+  // it never treats the newest as the sole truth.
+  async findResumeEditionsByTalent(args: {
+    tenant_id: string;
+    talent_id: string;
+  }): Promise<TalentResumeEditionRow[]> {
+    const rows = await this.prisma.talentResumeEdition.findMany({
+      where: { tenant_id: args.tenant_id, talent_id: args.talent_id },
+      orderBy: { created_at: 'desc' },
+    });
+    return rows as TalentResumeEditionRow[];
+  }
+
+  // Set (or move) the Talent's default/presentation résumé — SEPARATE from
+  // evidence validity (rulings 2/10). Idempotent per (tenant_id, talent_id):
+  // the upsert enforces exactly one default per Talent and never touches any
+  // edition's lifecycle or the evidence it grounded.
+  async setDefaultResumeEdition(
+    input: SetTalentResumeDefaultInput,
+  ): Promise<TalentResumeDefaultRow> {
+    const row = await this.prisma.talentResumeDefault.upsert({
+      where: {
+        tenant_id_talent_id: {
+          tenant_id: input.tenant_id,
+          talent_id: input.talent_id,
+        },
+      },
+      create: {
+        id: input.id,
+        tenant_id: input.tenant_id,
+        talent_id: input.talent_id,
+        resume_edition_id: input.resume_edition_id,
+        set_at: input.set_at,
+        set_by: input.set_by,
+      },
+      update: {
+        resume_edition_id: input.resume_edition_id,
+        set_at: input.set_at,
+        set_by: input.set_by,
+      },
+    });
+    return row as TalentResumeDefaultRow;
+  }
+
+  async findDefaultResumeEdition(args: {
+    tenant_id: string;
+    talent_id: string;
+  }): Promise<TalentResumeDefaultRow | null> {
+    const row = await this.prisma.talentResumeDefault.findUnique({
+      where: {
+        tenant_id_talent_id: { tenant_id: args.tenant_id, talent_id: args.talent_id },
+      },
+    });
+    return (row as TalentResumeDefaultRow | null) ?? null;
   }
 
   // ---- TalentDerivedSnapshot -----------------------------------------

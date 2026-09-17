@@ -50,6 +50,13 @@ const G1G_MIGRATION_PATH = resolve(
   __dirname,
   '../../prisma/migrations/20260915180000_skill_tax_1g_canonical_reconciliation/migration.sql',
 );
+// SEPARATE resolve() const (never a 2nd resolve() arg → ENOTDIR). TALENT-INTEL-1
+// TI-1A résumé-edition substrate; applied after HF2 / SKILL-TAX-1G (independent
+// additive new tables).
+const TI1A_MIGRATION_PATH = resolve(
+  __dirname,
+  '../../prisma/migrations/20260916120000_talent_intel_1a_resume_edition/migration.sql',
+);
 
 // All test UUIDs use hex-only characters per RFC 4122. Tags chosen for
 // mnemonic clarity within the hex set: 1=tenant, 2=skill, 3=source-record,
@@ -78,6 +85,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const hf1MigrationSql = readFileSync(HF1_MIGRATION_PATH, 'utf8');
       const hf2MigrationSql = readFileSync(HF2_MIGRATION_PATH, 'utf8');
       const g1gMigrationSql = readFileSync(G1G_MIGRATION_PATH, 'utf8');
+      const ti1aMigrationSql = readFileSync(TI1A_MIGRATION_PATH, 'utf8');
 
       const setupClient = new PrismaService(url);
       await setupClient.$connect();
@@ -87,6 +95,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         ...hf1MigrationSql.split(';'),
         ...hf2MigrationSql.split(';'),
         ...g1gMigrationSql.split(';'),
+        ...ti1aMigrationSql.split(';'),
       ]) {
         const trimmed = stmt.trim();
         if (trimmed.length === 0) continue;
@@ -500,6 +509,83 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // a structurally-valid closed-list value but is unresolvable until M5.
       const client = prisma as unknown as Record<string, unknown>;
       expect(client['talentSelectionEvent']).toBeUndefined();
+    });
+
+    it('TALENT-INTEL-1 §5 (TI-1A) — résumé editions coexist; default is separate; document_id is UNIQUE', async () => {
+      const DOCA = '4a000000-0000-7000-8000-000000000001';
+      const DOCB = '4b000000-0000-7000-8000-000000000002';
+      const EDA = 'ed000000-0000-7000-8000-00000000000a';
+      const EDB = 'ed000000-0000-7000-8000-00000000000b';
+
+      const a = await repo.createTalentResumeEdition({
+        id: EDA,
+        tenant_id: TENANT,
+        talent_id: TALENT,
+        talent_document_id: DOCA,
+        content_hash: 'hash-a',
+        purpose: 'CLIENT_SUBMITTAL',
+        label: 'GenAI submittal',
+        requisition_id: '99999999-9999-7999-8999-999999999999',
+        created_at: new Date(),
+        created_by: ACTOR,
+      });
+      expect(a.purpose).toBe('CLIENT_SUBMITTAL');
+      expect(a.lifecycle_status).toBe('active'); // DB default
+      expect(a.attachment_id).toBeNull();
+
+      const b = await repo.createTalentResumeEdition({
+        id: EDB,
+        tenant_id: TENANT,
+        talent_id: TALENT,
+        talent_document_id: DOCB,
+        content_hash: 'hash-b',
+        created_at: new Date(),
+        created_by: ACTOR,
+      });
+      expect(b.purpose).toBe('GENERAL'); // omitted → DB default
+
+      // Ruling 2 — multiple editions coexist (the newest is NOT the sole truth).
+      const editions = await repo.findResumeEditionsByTalent({
+        tenant_id: TENANT,
+        talent_id: TALENT,
+      });
+      expect(editions.map((e) => e.id).sort()).toEqual([EDA, EDB].sort());
+
+      // Ruling 1 — one edition per document (UNIQUE talent_document_id).
+      await expect(
+        repo.createTalentResumeEdition({
+          id: 'ed000000-0000-7000-8000-00000000000c',
+          tenant_id: TENANT,
+          talent_id: TALENT,
+          talent_document_id: DOCA,
+          content_hash: 'dup',
+          created_at: new Date(),
+          created_by: ACTOR,
+        }),
+      ).rejects.toThrow();
+
+      // Default-selection is SEPARATE from evidence validity (rulings 2/10) and
+      // idempotent per (tenant, talent): setting it again MOVES the default and
+      // never touches any edition's lifecycle.
+      await repo.setDefaultResumeEdition({
+        id: 'de000000-0000-7000-8000-00000000000a',
+        tenant_id: TENANT,
+        talent_id: TALENT,
+        resume_edition_id: EDA,
+        set_at: new Date(),
+        set_by: ACTOR,
+      });
+      await repo.setDefaultResumeEdition({
+        id: 'de000000-0000-7000-8000-00000000000b',
+        tenant_id: TENANT,
+        talent_id: TALENT,
+        resume_edition_id: EDB,
+        set_at: new Date(),
+        set_by: ACTOR,
+      });
+      const def = await repo.findDefaultResumeEdition({ tenant_id: TENANT, talent_id: TALENT });
+      expect(def?.resume_edition_id).toBe(EDB);
+      expect((await repo.findTalentResumeEditionById(EDA))?.lifecycle_status).toBe('active');
     });
   },
 );
