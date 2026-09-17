@@ -31,7 +31,7 @@ import { RequisitionSkillCanonicalizationService } from '../lib/requisition-skil
 //
 // MIGRATIONS: skills_taxonomy(init/alias-version/relationship) + job_domain(init)
 // + requisition(init + 1D).
-const SKILLS = ['20260915140000_init_skill_registry', '20260915150000_skill_alias_version', '20260915160000_skill_relationship'].map(
+const SKILLS = ['20260915140000_init_skill_registry', '20260915150000_skill_alias_version', '20260915160000_skill_relationship', '20260917210000_skill_tax_1f_governance'].map(
   (n) => resolve(__dirname, `../../../skills-taxonomy/prisma/migrations/${n}/migration.sql`),
 );
 const JOB = [resolve(__dirname, '../../../job-domain/prisma/migrations/20260519100000_init_job_domain_model/migration.sql')];

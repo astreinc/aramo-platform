@@ -32,6 +32,8 @@ const SKILLS_MIGRATIONS = [
   '20260915140000_init_skill_registry',
   '20260915150000_skill_alias_version',
   '20260915160000_skill_relationship',
+  // SKILL-TAX-1F-A — Skill.merged_into_skill_id (regen client SELECTs it). Split-safe.
+  '20260917210000_skill_tax_1f_governance',
 ].map((n) => resolve(__dirname, `../../../skills-taxonomy/prisma/migrations/${n}/migration.sql`));
 const TE_MIGRATIONS = [
   '20260519170000_init_talent_evidence_model',

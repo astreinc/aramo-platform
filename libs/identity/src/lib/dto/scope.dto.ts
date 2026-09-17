@@ -133,6 +133,13 @@ export const SEED_SCOPE_KEYS = [
   // catalog, so SEED_SCOPE_KEYS drifted 1 below the id-map. Now reconciled;
   // the scope-catalog parity guard no longer needs an exemption.
   'platform:tenant:lifecycle:manage',  // super_admin only — suspend/reactivate/offboard/close operator endpoints
+  // SKILL-TAX-1F — platform taxonomy-governance scopes (platform:* namespace;
+  // super_admin only). read = registry views + unresolved review queue; manage =
+  // all canonical mutations (create/update/deactivate/merge, alias/version/
+  // relationship, canonicalization override, and ratifying AI-proposed entries).
+  // NO tenant role holds either; NO platform role holds any tenant scope.
+  'platform:skill:read',        // super_admin only — read canonical taxonomy + review queue
+  'platform:skill:manage',      // super_admin only — mutate canonical taxonomy
   // AUTHZ-D5 — 6 compensation:view:* scopes (the field-masking scope
   // family). The FINAL authorization PR — field-level masking of the
   // requisition read DTO's compensation surface (D4b masked WHICH
@@ -426,6 +433,9 @@ export const PLATFORM_SCOPE_KEYS = [
   // suspend/reactivate/start-offboarding/close operator endpoints. super_admin
   // holds it; finer-grained platform roles are a future seed-only addition.
   'platform:tenant:lifecycle:manage',
+  // SKILL-TAX-1F — platform taxonomy-governance scopes (super_admin only).
+  'platform:skill:read',
+  'platform:skill:manage',
 ] as const;
 export type PlatformScopeKey = (typeof PLATFORM_SCOPE_KEYS)[number];
 
