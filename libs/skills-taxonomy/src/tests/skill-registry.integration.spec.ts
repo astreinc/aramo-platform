@@ -19,10 +19,13 @@ import {
 //
 // MIGRATIONS list:
 //   - 20260915140000_init_skill_registry (Skill + SkillAuditEvent)
-const MIGRATION_PATH = resolve(
-  __dirname,
-  '../../prisma/migrations/20260915140000_init_skill_registry/migration.sql',
-);
+//   - 20260917210000_skill_tax_1f_governance (Skill.merged_into_skill_id — SKILL-TAX-1F-A;
+//     the regenerated client SELECTs this column on every Skill read). Split-safe
+//     (no dollar-quoted body); the audit-trigger migration is NOT applied here.
+const MIGRATION_PATHS = [
+  '20260915140000_init_skill_registry',
+  '20260917210000_skill_tax_1f_governance',
+].map((n) => resolve(__dirname, `../../prisma/migrations/${n}/migration.sql`));
 
 const ACTOR = { id: '55555555-5555-7555-8555-555555555555', type: 'platform_admin' };
 
@@ -37,14 +40,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     beforeAll(async () => {
       container = await new PostgreSqlContainer('postgres:17').start();
       const url = container.getConnectionUri();
-      const migrationSql = readFileSync(MIGRATION_PATH, 'utf8');
-
       const setupClient = new PrismaService(url);
       await setupClient.$connect();
-      for (const stmt of migrationSql.split(';')) {
-        const trimmed = stmt.trim();
-        if (trimmed.length === 0) continue;
-        await setupClient.$executeRawUnsafe(trimmed);
+      for (const path of MIGRATION_PATHS) {
+        for (const stmt of readFileSync(path, 'utf8').split(';')) {
+          const trimmed = stmt.trim();
+          if (trimmed.length === 0) continue;
+          await setupClient.$executeRawUnsafe(trimmed);
+        }
       }
       await setupClient.$disconnect();
 

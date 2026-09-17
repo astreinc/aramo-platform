@@ -264,6 +264,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'placement:terminate',
         'placement:transition',
         'platform:admin:invite',
+        'platform:skill:manage',
+        'platform:skill:read',
         'platform:tenant:lifecycle:manage',
         'platform:tenant:provision',
         'platform:tenant:read',
@@ -423,7 +425,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Track7/T7-P3: +3 placement:permanent:terms:write grants (account_manager/tenant_admin/tenant_owner) -> 565.
       // Track8/T8-CONNECTOR-A: +4 integration:read/write grants (tenant_admin/tenant_owner ×2) -> 569.
       // L8-B1: +3 submittal-policy:write grants -> 572; +3 requisition:approve grants (account_manager/tenant_admin/tenant_owner) -> 575.
-      expect(roleScopes).toBe(639); // talent:edit:contact: +2 grants (× tenant_admin/tenant_owner, range 0x1110+) → 637+2=639. WL-B2: +6 grants (address:lookup × tenant_admin/recruiter [ROLE_SCOPE_ASSIGNMENTS] + tenant_owner/account_manager/recruiting_manager/lead_recruiter [ADDRESS_LOOKUP_SEED_BUNDLES, range 0x1100+]) → 631+6=637. COMM PART A: +2 grants (engagement:policy:override × tenant_admin/tenant_owner, range 0xf40+) → 629+2=631. COMM-C2B: +8 grants (communication:email:send + communication:meeting:create × recruiter/AM/tenant_admin/tenant_owner, range 0xf30+) → 621+8=629. COMM-C3: +4 grants (engagement:policy:read + engagement:policy:write × tenant_admin/tenant_owner) → 617+4=621. L6-0: −6 grants (assignment:create + assignment:update × account_manager/tenant_admin/tenant_owner removed as grounded-dead ACTIVE_RESERVED) → 623−6=617. L4/P5: +8 grants (offer:read + offer:read:financial × recruiter/AM/tenant_admin/tenant_owner) → 615+8=623. L2-I (D1): +2 grants (integration:pipeline-mapping:write × tenant_admin/tenant_owner, range 0xf10+) → 613+2=615. L2-F: +12 client-selection grants (create/read/transition × recruiter/AM/tenant_admin/tenant_owner) → 593+12. HYG-1: 605 − 12 removed grants (pipeline:remove ×2, pipeline:add-activity ×7, submittal-policy:write ×3) → 593
+      expect(roleScopes).toBe(641); // SKILL-TAX-1F-A: +2 grants (super_admin × platform:skill:{read,manage}) → 639+2=641. talent:edit:contact: +2 grants (× tenant_admin/tenant_owner, range 0x1110+) → 637+2=639. WL-B2: +6 grants (address:lookup × tenant_admin/recruiter [ROLE_SCOPE_ASSIGNMENTS] + tenant_owner/account_manager/recruiting_manager/lead_recruiter [ADDRESS_LOOKUP_SEED_BUNDLES, range 0x1100+]) → 631+6=637. COMM PART A: +2 grants (engagement:policy:override × tenant_admin/tenant_owner, range 0xf40+) → 629+2=631. COMM-C2B: +8 grants (communication:email:send + communication:meeting:create × recruiter/AM/tenant_admin/tenant_owner, range 0xf30+) → 621+8=629. COMM-C3: +4 grants (engagement:policy:read + engagement:policy:write × tenant_admin/tenant_owner) → 617+4=621. L6-0: −6 grants (assignment:create + assignment:update × account_manager/tenant_admin/tenant_owner removed as grounded-dead ACTIVE_RESERVED) → 623−6=617. L4/P5: +8 grants (offer:read + offer:read:financial × recruiter/AM/tenant_admin/tenant_owner) → 615+8=623. L2-I (D1): +2 grants (integration:pipeline-mapping:write × tenant_admin/tenant_owner, range 0xf10+) → 613+2=615. L2-F: +12 client-selection grants (create/read/transition × recruiter/AM/tenant_admin/tenant_owner) → 593+12. HYG-1: 605 − 12 removed grants (pipeline:remove ×2, pipeline:add-activity ×7, submittal-policy:write ×3) → 593
 
       const utmRole = await prisma.userTenantMembershipRole.findUnique({
         where: { id: SEED_IDS.membership_role_admin },
@@ -536,6 +538,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       });
       expect(platformScopes.map((s) => s.key).sort()).toEqual([
         'platform:admin:invite',
+        'platform:skill:manage',
+        'platform:skill:read',
         'platform:tenant:lifecycle:manage',
         'platform:tenant:provision',
         'platform:tenant:read',
@@ -551,6 +555,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         .sort();
       expect(superAdminScopes).toEqual([
         'platform:admin:invite',
+        'platform:skill:manage',
+        'platform:skill:read',
         'platform:tenant:lifecycle:manage',
         'platform:tenant:provision',
         'platform:tenant:read',

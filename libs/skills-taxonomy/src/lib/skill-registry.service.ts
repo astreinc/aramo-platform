@@ -215,6 +215,39 @@ export class SkillRegistryService {
     return this.skills.findById(id);
   }
 
+  // SKILL-TAX-1F — SOFT merge duplicate canonical Skills (loser → winner). Validates
+  // both exist, are distinct, and the winner is a live merge target (active + not
+  // itself already merged away). The loser keeps its id + goes inactive + points at
+  // the winner (SKILL_MERGED). Reference repointing on source evidence is a separate
+  // domain-owned correction step (never re-keys raw surface_form / legacy skill_id).
+  async mergeSkill(loserId: string, winnerId: string, actor?: SkillActor): Promise<SkillRow> {
+    if (loserId === winnerId) {
+      throw new SkillValidationError('cannot merge a Skill into itself');
+    }
+    const [loser, winner] = await Promise.all([
+      this.skills.findById(loserId),
+      this.skills.findById(winnerId),
+    ]);
+    if (loser === null) throw new SkillNotFoundError(loserId);
+    if (winner === null) throw new SkillNotFoundError(winnerId);
+    if (winner.status !== 'active' || winner.merged_into_skill_id !== null) {
+      throw new SkillValidationError('merge winner must be an active, non-merged Skill');
+    }
+    return this.skills.mergeSkill(loserId, winnerId, actor);
+  }
+
+  // SKILL-TAX-1F — record an explicit human canonicalization override/correction
+  // decision against a subject Skill (governance ledger; Ruling 6). Audit-only.
+  async recordCanonicalizationOverride(input: {
+    subjectId: string;
+    actor?: SkillActor;
+    payload: Record<string, string | null>;
+  }): Promise<void> {
+    const subject = await this.skills.findById(input.subjectId);
+    if (subject === null) throw new SkillNotFoundError(input.subjectId);
+    await this.skills.recordCanonicalizationOverride(input);
+  }
+
   // Exact canonical lookup by any surface form (normalized). A direct registry
   // lookup, NOT canonicalization inference — returns a Skill only when the
   // normalized surface form already equals a canonical/normalized name.

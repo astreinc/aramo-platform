@@ -169,6 +169,9 @@ export const SEED_IDS = {
     'platform:admin:invite': '01900000-0000-7000-8000-00000000008b',
     // Platform-Console Increment-2 PR-1 — tenant lifecycle management scope.
     'platform:tenant:lifecycle:manage': '01900000-0000-7000-8000-0000000000f0',
+    // SKILL-TAX-1F-A — platform taxonomy-governance scopes (super_admin only).
+    'platform:skill:read': '01900000-0000-7000-8000-000000000320',
+    'platform:skill:manage': '01900000-0000-7000-8000-000000000321',
     // AUTHZ-D4a — 4 team-model scopes (Amendment §4/§6; Lead Gate-5 ruling 2
     // narrows company:read:all to TA+TO only — mirrors requisition:read:all).
     'company:assign': '01900000-0000-7000-8000-00000000008c',
@@ -491,6 +494,10 @@ export const SEED_IDS = {
     super_admin_platform_tenant_read: '01900000-0000-7000-8000-000000000301',
     super_admin_platform_admin_invite: '01900000-0000-7000-8000-000000000302',
     super_admin_platform_tenant_lifecycle_manage: '01900000-0000-7000-8000-000000000307',
+    // SKILL-TAX-1F-A — super_admin RoleScope rows for the 2 taxonomy-governance
+    // scopes (0x303..0x3ff platform range is free per the note above).
+    super_admin_platform_skill_read: '01900000-0000-7000-8000-000000000310',
+    super_admin_platform_skill_manage: '01900000-0000-7000-8000-000000000311',
     // AUTHZ-D4a — 4 RoleScope rows for tenant_admin's new team-model
     // scopes (the other bundle holders go through AUTHZ1_ROLE_SCOPE_ROW_IDS
     // since they live in AUTHZ1_BUNDLES).
@@ -733,6 +740,9 @@ export const ROLE_SCOPE_ASSIGNMENTS = {
     'platform:tenant:read',
     'platform:admin:invite',
     'platform:tenant:lifecycle:manage',
+    // SKILL-TAX-1F-A — taxonomy governance (read + manage).
+    'platform:skill:read',
+    'platform:skill:manage',
   ],
 } as const;
 
@@ -837,6 +847,11 @@ const ROLE_SCOPE_ROW_IDS: Record<string, string> = {
     SEED_IDS.role_scopes.super_admin_platform_admin_invite,
   'super_admin:platform:tenant:lifecycle:manage':
     SEED_IDS.role_scopes.super_admin_platform_tenant_lifecycle_manage,
+  // SKILL-TAX-1F-A — super_admin grants for the 2 taxonomy-governance scopes.
+  'super_admin:platform:skill:read':
+    SEED_IDS.role_scopes.super_admin_platform_skill_read,
+  'super_admin:platform:skill:manage':
+    SEED_IDS.role_scopes.super_admin_platform_skill_manage,
   // AUTHZ-D4a — 4 new tenant_admin RoleScope rows for the team-model scopes.
   'tenant_admin:company:assign': SEED_IDS.role_scopes.tenant_admin_company_assign,
   'tenant_admin:org:manage': SEED_IDS.role_scopes.tenant_admin_org_manage,
@@ -2670,6 +2685,8 @@ export async function runIdentitySeed(
   await upsertScope(prisma, SEED_IDS.scopes['platform:tenant:read'], 'platform:tenant:read', 'Platform-tier: list/read tenants for the platform-admin view (super_admin only)');
   await upsertScope(prisma, SEED_IDS.scopes['platform:admin:invite'], 'platform:admin:invite', 'Platform-tier: invite another platform admin against the platform Cognito pool (super_admin only)');
   await upsertScope(prisma, SEED_IDS.scopes['platform:tenant:lifecycle:manage'], 'platform:tenant:lifecycle:manage', 'Platform-tier: manage tenant lifecycle — suspend/reactivate/offboard/close (super_admin only)');
+  await upsertScope(prisma, SEED_IDS.scopes['platform:skill:read'], 'platform:skill:read', 'Platform-tier: read canonical Skills taxonomy + unresolved review queue (super_admin only)');
+  await upsertScope(prisma, SEED_IDS.scopes['platform:skill:manage'], 'platform:skill:manage', 'Platform-tier: mutate canonical Skills taxonomy — create/update/deactivate/merge, alias/version/relationship, override, ratify AI proposals (super_admin only)');
   // AUTHZ-D4a — 4 team-model scopes (Amendment §4/§6). Lead Gate-5 ruling 2
   // narrowed company:read:all to TA+TO only (mirrors requisition:read:all).
   await upsertScope(prisma, SEED_IDS.scopes['company:assign'], 'company:assign', 'Assign / unassign a user to a client (account_manager + tenant_admin + tenant_owner; mirrors requisition:assign as the AM act)');

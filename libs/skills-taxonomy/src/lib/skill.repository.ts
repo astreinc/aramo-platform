@@ -43,6 +43,8 @@ export interface SkillRow {
   updated_at: Date;
   created_by: string | null;
   updated_by: string | null;
+  // SKILL-TAX-1F — set on the LOSER of a soft merge (winner id); NULL otherwise.
+  merged_into_skill_id: string | null;
 }
 
 export interface SkillActor {
@@ -164,6 +166,57 @@ export class SkillRepository {
       }),
     ]);
     return skill as SkillRow;
+  }
+
+  // SKILL-TAX-1F — SOFT merge. The loser keeps its id (permanently addressable),
+  // goes status='inactive', and points at the winner via merged_into_skill_id. The
+  // loser is NEVER hard-deleted and source evidence is NEVER re-keyed here (targeted
+  // canonical_skill_id repointing is a separate, domain-owned correction step).
+  // Emits SKILL_MERGED against the loser. Caller guarantees loser != winner and both
+  // exist (SkillRegistryService validates).
+  async mergeSkill(loserId: string, winnerId: string, actor?: SkillActor): Promise<SkillRow> {
+    const { actorId, actorType } = resolveActor(actor);
+    const [loser] = await this.prisma.$transaction([
+      this.prisma.skill.update({
+        where: { id: loserId },
+        data: { status: 'inactive', merged_into_skill_id: winnerId, updated_by: actorId },
+      }),
+      this.prisma.skillAuditEvent.create({
+        data: {
+          id: uuidv7(),
+          tenant_id: null,
+          actor_id: actorId,
+          actor_type: actorType,
+          event_type: 'SKILL_MERGED' satisfies SkillAuditEventType,
+          subject_id: loserId,
+          event_payload: { merged_into_skill_id: winnerId, status: 'inactive' },
+        },
+      }),
+    ]);
+    return loser as SkillRow;
+  }
+
+  // SKILL-TAX-1F — record an explicit human canonicalization correction/override
+  // against a subject Skill (Ruling 6). Append-only audit ONLY; the actual mapping
+  // change (add alias, merge, etc.) is performed by its own governed method — this
+  // records WHY/who for the governance ledger. payload must be JSON-safe.
+  async recordCanonicalizationOverride(input: {
+    subjectId: string;
+    actor?: SkillActor;
+    payload: Record<string, string | null>;
+  }): Promise<void> {
+    const { actorId, actorType } = resolveActor(input.actor);
+    await this.prisma.skillAuditEvent.create({
+      data: {
+        id: uuidv7(),
+        tenant_id: null,
+        actor_id: actorId,
+        actor_type: actorType,
+        event_type: 'CANONICALIZATION_OVERRIDDEN' satisfies SkillAuditEventType,
+        subject_id: input.subjectId,
+        event_payload: input.payload,
+      },
+    });
   }
 
   async findById(id: string): Promise<SkillRow | null> {

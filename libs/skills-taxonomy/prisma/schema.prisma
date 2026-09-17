@@ -48,7 +48,15 @@ model Skill {
   created_by      String?  @db.Uuid
   updated_by      String?  @db.Uuid
 
+  // SKILL-TAX-1F — soft-merge pointer. When a duplicate canonical Skill is merged
+  // into a winner, the LOSER row keeps its id (permanently addressable for audit /
+  // history — never hard-deleted, never re-keyed), sets status='inactive', and
+  // points here at the winner's id. UUID-only reference, NO FK (Architecture §7.3).
+  // NULL for every non-merged Skill.
+  merged_into_skill_id String? @db.Uuid
+
   @@index([status])
+  @@index([merged_into_skill_id])
   @@schema("skills_taxonomy")
 }
 
