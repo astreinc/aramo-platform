@@ -98,6 +98,7 @@
       "AttachmentModule",
       "AttachmentPrismaService",
       "AttachmentRepository",
+      "AttachmentResumeResolver",
       "isAttachmentOwnerType"
     ],
     "@aramo/audit": ["AuditModule"],
@@ -1261,10 +1262,13 @@
     ],
     "@aramo/talent-record": [
       "LinkTalentRecordRequestDto",
+      "RESUME_ATTACHMENT_RESOLVER",
       "RESUME_REINDEX_BATCH_SIZE",
       "RESUME_REINDEX_QUEUE_NAME",
+      "ResumeExtractionOrchestrator",
       "ResumeReindexModule",
       "ResumeReindexProcessor",
+      "ResumeSourceAuthorizer",
       "ResumeTextService",
       "TalentLinkService",
       "TalentRecordController",

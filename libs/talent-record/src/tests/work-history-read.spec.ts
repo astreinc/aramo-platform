@@ -42,6 +42,9 @@ describe('GET :id/work-history', () => {
       {} as any,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       { listDeclaredWorkHistory } as any,
+      // TI-1B — resumeOrchestrator + resumeAuthorizer (unused on this path).
+      {} as never,
+      {} as never,
     );
     const res = await ctl.workHistory(AUTH, 'tal-1');
     expect(res).toEqual({ work_history: rows });

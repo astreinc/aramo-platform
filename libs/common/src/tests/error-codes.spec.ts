@@ -85,6 +85,8 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       'TALENT_RECORD_SUPERSEDED',
       // B3/B4 — manual-create dedup refusal (duplicate primary email).
       'TALENT_RECORD_DUPLICATE',
+      // TALENT-INTEL-1 (TI-1B) — résumé-extraction source authorization refusal.
+      'RESUME_SOURCE_UNAUTHORIZED',
       // TR-6 B2 — 6 advisory-resolution domain refusal codes (replacing the
       // AramoExceptionFilter status-collapse on the advisory surface only).
       'ADVISORY_NOT_PENDING',

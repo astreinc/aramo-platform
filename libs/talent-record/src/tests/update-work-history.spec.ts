@@ -31,6 +31,9 @@ function makeController(opts: { replaceThrows?: boolean } = {}) {
     {} as any,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     talentExtraction as any,
+    // TI-1B — resumeOrchestrator + resumeAuthorizer (unused on this path).
+    {} as never,
+    {} as never,
   );
   return { ctl, update, replaceDeclaredWorkHistory };
 }

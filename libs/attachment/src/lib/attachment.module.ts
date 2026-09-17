@@ -7,6 +7,7 @@ import { TalentRecordModule } from '@aramo/talent-record';
 
 import { AttachmentController } from './attachment.controller.js';
 import { AttachmentRepository } from './attachment.repository.js';
+import { AttachmentResumeResolver } from './attachment-resume-resolver.js';
 import { PrismaService } from './prisma/prisma.service.js';
 
 // AttachmentModule — PR-A4 Gate 5 ATS Batch 3.
@@ -35,7 +36,12 @@ import { PrismaService } from './prisma/prisma.service.js';
     TalentRecordModule,
   ],
   controllers: [AttachmentController],
-  providers: [PrismaService, AttachmentRepository],
-  exports: [AttachmentRepository],
+  // TALENT-INTEL-1 (TI-1B) — AttachmentResumeResolver is the concrete
+  // ResumeAttachmentResolver port impl (EDIT/re-extraction ownership seam). It
+  // is provided + exported here; the composition layer that owns the EDIT
+  // consumer binds it to talent-record's RESUME_ATTACHMENT_RESOLVER token
+  // (`{ provide: RESUME_ATTACHMENT_RESOLVER, useExisting: AttachmentResumeResolver }`).
+  providers: [PrismaService, AttachmentRepository, AttachmentResumeResolver],
+  exports: [AttachmentRepository, AttachmentResumeResolver],
 })
 export class AttachmentModule {}

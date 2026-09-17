@@ -2,12 +2,24 @@ import { describe, expect, it, vi } from 'vitest';
 import type { AuthContextType } from '@aramo/auth';
 
 import { TalentRecordController } from '../lib/talent-record.controller.js';
+import { ResumeExtractionOrchestrator } from '../lib/resume-extraction/resume-extraction.orchestrator.js';
+import { ResumeSourceAuthorizer } from '../lib/resume-extraction/resume-source-authorizer.js';
 
 // Add-Talent draft-from-resume — MODE IS EXCLUSIVE (LOCKED). The tenant setting
 // selects the SOLE extractor server-side; the other extractor is never invoked.
 // LLM failure → empty prefill + warning + retry, NEVER a deterministic fallback.
+//
+// TALENT-INTEL-1 (TI-1B) — the governed orchestration now lives in
+// ResumeExtractionOrchestrator; this spec drives the controller through a REAL
+// orchestrator + authorizer over the same fake parser/extraction, so the
+// end-to-end routing + the ruling-15 authorization both hold. Every request
+// uses a VALID Aramo résumé key under the authenticated tenant (a raw 'k' would
+// now be refused pre-fetch by the authorizer — proven separately).
 
 const TENANT = '01900000-0000-7000-8000-000000000001';
+const DRAFT = '01900000-0000-7000-8000-0000000000aa';
+const FILE_UUID = '01900000-0000-7000-8000-0000000000bb';
+const VALID_KEY = `${TENANT}/talent/${DRAFT}/resume/${FILE_UUID}-Resume.pdf`;
 const AUTH = { sub: 'me', tenant_id: TENANT, scopes: ['talent:read'] } as unknown as AuthContextType;
 
 function emptyProposal() {
@@ -44,6 +56,16 @@ function makeController(opts: {
     .mockResolvedValue(opts.deterministicResult ?? { prefill: {}, parse_status: 'partial' });
   const extractTextFromStorageKey = vi.fn().mockResolvedValue(opts.text ?? null);
   const resumeParser = { parseFromStorageKey, extractTextFromStorageKey };
+  // TI-1B — a REAL authorizer (no ATTACHMENT resolver: this is the CREATE path)
+  // and a REAL orchestrator over the fake parser/extraction.
+  const authorizer = new ResumeSourceAuthorizer();
+  const orchestrator = new ResumeExtractionOrchestrator(
+    authorizer,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    resumeParser as any,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    talentExtraction as any,
+  );
   const ctl = new TalentRecordController(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     {} as any,
@@ -57,6 +79,8 @@ function makeController(opts: {
     tenantSetting as any,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     talentExtraction as any,
+    orchestrator,
+    authorizer,
   );
   return { ctl, tenantSetting, extractResumeDraft, parseFromStorageKey, extractTextFromStorageKey };
 }
@@ -94,7 +118,7 @@ describe('draft-from-resume — exclusive mode resolver', () => {
         },
       },
     });
-    const res = await ctl.draftFromResume(AUTH, { storage_key: 'k' }, 'rq-1');
+    const res = await ctl.draftFromResume(AUTH, { storage_key: VALID_KEY }, 'rq-1');
     expect(res.mode).toBe('governed_llm');
     expect(res.extraction_status).toBe('success');
     expect(res.prefill.first_name).toBe('Sarah');
@@ -148,7 +172,7 @@ describe('draft-from-resume — exclusive mode resolver', () => {
         },
       },
     });
-    const res = await ctl.draftFromResume(AUTH, { storage_key: 'k' }, 'rq-1');
+    const res = await ctl.draftFromResume(AUTH, { storage_key: VALID_KEY }, 'rq-1');
     // Email/phone: from result.contact (redaction capture).
     expect(res.prefill.email1).toBe('jane@example.com');
     expect(res.prefill.phone_cell).toBe('703-555-1212');
@@ -164,7 +188,7 @@ describe('draft-from-resume — exclusive mode resolver', () => {
       text: 'a very long resume',
       result: { status: 'provider_truncated', proposal: emptyProposal() },
     });
-    const res = await ctl.draftFromResume(AUTH, { storage_key: 'k' }, 'rq-1');
+    const res = await ctl.draftFromResume(AUTH, { storage_key: VALID_KEY }, 'rq-1');
     expect(res.extraction_status).toBe('provider_truncated');
     expect(res.parse_status).toBe('failed');
     expect(res.prefill).toEqual({});
@@ -179,7 +203,7 @@ describe('draft-from-resume — exclusive mode resolver', () => {
       text: 'resume',
       result: { status: 'invalid_structured_output', proposal: emptyProposal() },
     });
-    const res = await ctl.draftFromResume(AUTH, { storage_key: 'k' }, 'rq-1');
+    const res = await ctl.draftFromResume(AUTH, { storage_key: VALID_KEY }, 'rq-1');
     expect(res.extraction_status).toBe('invalid_structured_output');
     expect(res.parse_status).toBe('failed');
     expect(res.warning).toBeDefined();
@@ -190,7 +214,7 @@ describe('draft-from-resume — exclusive mode resolver', () => {
       mode: 'deterministic',
       deterministicResult: { prefill: { first_name: 'Deter', email1: 'd@x.com' }, parse_status: 'parsed' },
     });
-    const res = await ctl.draftFromResume(AUTH, { storage_key: 'k' }, 'rq-1');
+    const res = await ctl.draftFromResume(AUTH, { storage_key: VALID_KEY }, 'rq-1');
     expect(res.mode).toBe('deterministic');
     expect(res.prefill.first_name).toBe('Deter');
     expect(parseFromStorageKey).toHaveBeenCalledOnce();
@@ -200,7 +224,7 @@ describe('draft-from-resume — exclusive mode resolver', () => {
 
   it('governed_llm + unreadable résumé (null text) → empty prefill + warning, LLM NOT called', async () => {
     const { ctl, extractResumeDraft } = makeController({ mode: 'governed_llm', text: null });
-    const res = await ctl.draftFromResume(AUTH, { storage_key: 'k' }, 'rq-1');
+    const res = await ctl.draftFromResume(AUTH, { storage_key: VALID_KEY }, 'rq-1');
     expect(res.mode).toBe('governed_llm');
     expect(res.prefill).toEqual({});
     expect(res.parse_status).toBe('failed');
@@ -214,7 +238,7 @@ describe('draft-from-resume — exclusive mode resolver', () => {
       text: 'some resume text',
       proposalThrows: true,
     });
-    const res = await ctl.draftFromResume(AUTH, { storage_key: 'k' }, 'rq-1');
+    const res = await ctl.draftFromResume(AUTH, { storage_key: VALID_KEY }, 'rq-1');
     expect(res.mode).toBe('governed_llm');
     expect(res.prefill).toEqual({});
     expect(res.warning).toBeDefined();

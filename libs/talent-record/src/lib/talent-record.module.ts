@@ -16,6 +16,8 @@ import { TalentRecordReconcileRepository } from './talent-record-reconcile.repos
 import { TalentRecordService } from './talent-record.service.js';
 import { TalentLinkService } from './talent-link.service.js';
 import { ResumeTextService } from './resume-text/resume-text.service.js';
+import { ResumeExtractionOrchestrator } from './resume-extraction/resume-extraction.orchestrator.js';
+import { ResumeSourceAuthorizer } from './resume-extraction/resume-source-authorizer.js';
 
 // TalentRecordModule — PR-A4 Gate 5 ATS Batch 3.
 //
@@ -74,6 +76,13 @@ import { ResumeTextService } from './resume-text/resume-text.service.js';
       provide: 'ResumeTextServiceLogger',
       useFactory: () => createAramoLogger(ResumeTextService.name),
     },
+    // TALENT-INTEL-1 (TI-1B) — the shared governed-LLM extraction orchestrator
+    // + its authorization seam. The ATTACHMENT (EDIT) resolver port is
+    // dependency-inverted and OPTIONAL here: the CREATE path (the only live
+    // consumer) needs no resolver; the concrete AttachmentResumeResolver is
+    // bound by the composition layer that owns the EDIT re-extraction consumer.
+    ResumeSourceAuthorizer,
+    ResumeExtractionOrchestrator,
   ],
   exports: [
     TalentRecordRepository,

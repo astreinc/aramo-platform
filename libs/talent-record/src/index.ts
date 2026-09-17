@@ -48,3 +48,17 @@ export type {
   TalentLinkView,
 } from './lib/dto/index.js';
 export { LinkTalentRecordRequestDto } from './lib/dto/link-talent-record-request.dto.js';
+
+// TALENT-INTEL-1 (TI-1B) — the shared résumé-extraction orchestrator + its
+// authorization seam, and the dependency-inversion PORT for the ATTACHMENT
+// (EDIT/re-extraction) source form. `libs/attachment` (which already depends on
+// talent-record) implements ResumeAttachmentResolver and binds it to the
+// RESUME_ATTACHMENT_RESOLVER token; talent-record never imports attachment.
+export { ResumeExtractionOrchestrator } from './lib/resume-extraction/resume-extraction.orchestrator.js';
+export { ResumeSourceAuthorizer } from './lib/resume-extraction/resume-source-authorizer.js';
+export {
+  RESUME_ATTACHMENT_RESOLVER,
+  type ResumeAttachmentResolver,
+  type ResumeExtractionSource,
+  type AuthorizedExtractionContext,
+} from './lib/resume-extraction/resume-source.types.js';
