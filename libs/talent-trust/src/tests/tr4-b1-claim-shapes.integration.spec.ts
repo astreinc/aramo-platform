@@ -147,7 +147,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const ev = await service.recordEvidence({
         subjectRef: refFor(uuidv7()),
         dimension: 'CLAIMS',
-        assertion_type: 'RIGHT_TO_WORK', // not in CANONICAL_CLAIM_SHAPES (DEGREE is now registered — TR-7 B1)
+        assertion_type: 'FUTURE_UNREGISTERED_TYPE', // genuinely unregistered — RIGHT_TO_WORK is now registered (TALENT-INTEL-1 TI-1C); DEGREE registered TR-7 B1
         assertion_payload: { whatever: 'free form', nested: { x: 1 } },
         source_class: 'SELF',
         method: 'SELF_DECLARED',
@@ -229,13 +229,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const ref = refFor(uuidv7());
       const incumbent = await service.recordEvidence({
         subjectRef: ref, dimension: 'ELIGIBILITY', assertion_type: 'RIGHT_TO_WORK',
-        assertion_payload: { status: 'authorized' }, source_class: 'AUTHORITATIVE_ISSUER',
+        assertion_payload: { work_authorization_status_raw: 'US_CITIZEN', requires_sponsorship: false }, source_class: 'AUTHORITATIVE_ISSUER',
         method: 'DOCUMENT', source_ref: { issuer: 'USCIS' }, portability_class: 'TENANT_ONLY',
         decay_profile: 'SLOW', created_by: 'tr4-test',
       });
       const challenger = await service.recordEvidence({
         subjectRef: ref, dimension: 'ELIGIBILITY', assertion_type: 'RIGHT_TO_WORK',
-        assertion_payload: { status: 'not_authorized' }, source_class: 'THIRD_PARTY_VERIFIED',
+        assertion_payload: { work_authorization_status_raw: 'REQUIRES_SPONSORSHIP', requires_sponsorship: true }, source_class: 'THIRD_PARTY_VERIFIED',
         method: 'DOCUMENT', source_ref: { issuer: 'vendor' }, portability_class: 'TENANT_ONLY',
         decay_profile: 'SLOW', created_by: 'tr4-test',
       });
@@ -264,13 +264,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const ref = refFor(uuidv7());
       const incumbent = await service.recordEvidence({
         subjectRef: ref, dimension: 'ELIGIBILITY', assertion_type: 'RIGHT_TO_WORK',
-        assertion_payload: { status: 'authorized' }, source_class: 'AUTHORITATIVE_ISSUER',
+        assertion_payload: { work_authorization_status_raw: 'US_CITIZEN', requires_sponsorship: false }, source_class: 'AUTHORITATIVE_ISSUER',
         method: 'DOCUMENT', source_ref: { issuer: 'USCIS' }, portability_class: 'TENANT_ONLY',
         decay_profile: 'SLOW', created_by: 'tr4-test',
       });
       const challenger = await service.recordEvidence({
         subjectRef: ref, dimension: 'ELIGIBILITY', assertion_type: 'RIGHT_TO_WORK',
-        assertion_payload: { status: 'not_authorized' }, source_class: 'THIRD_PARTY_VERIFIED',
+        assertion_payload: { work_authorization_status_raw: 'REQUIRES_SPONSORSHIP', requires_sponsorship: true }, source_class: 'THIRD_PARTY_VERIFIED',
         method: 'DOCUMENT', source_ref: { issuer: 'vendor' }, portability_class: 'TENANT_ONLY',
         decay_profile: 'SLOW', created_by: 'tr4-test',
       });

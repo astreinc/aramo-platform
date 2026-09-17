@@ -31,6 +31,10 @@ describe('TalentEvidenceRepository — surface', () => {
     // tenant-scoped, single-purpose shape as the TR-4 B2 reads above.
     'listEducationForLedger',
     'listCertificationForLedger',
+    // TALENT-INTEL-1 (TI-1C) — the declared work-authorization ledger read: the
+    // RIGHT_TO_WORK routing consumes this bounded, tenant-scoped, single-purpose
+    // read (same shape as the credential reads above).
+    'listWorkAuthorizationForLedger',
   ];
 
   // SKILL-TAX-1G — the canonical reconciliation surface: bounded tenant/talent

@@ -22,7 +22,14 @@ import { v5 as uuidv5 } from 'uuid';
 const ARAMO_EXPERIENCE_CLAIM_NAMESPACE = 'a5f1c0de-e401-4c1a-9b00-5ec0de5ec0de';
 
 export interface LedgerClaim {
-  assertion_type: 'EMPLOYMENT' | 'SKILL' | 'DEGREE' | 'CERTIFICATION' | 'EXPERIENCE_CLAIM';
+  assertion_type:
+    | 'EMPLOYMENT'
+    | 'SKILL'
+    | 'DEGREE'
+    | 'CERTIFICATION'
+    | 'EXPERIENCE_CLAIM'
+    // TALENT-INTEL-1 TI-1C — declared work-authorization → RIGHT_TO_WORK.
+    | 'RIGHT_TO_WORK';
   // The recordEvidence input payload; the write gate canonicalizes it (adds
   // employer_norm / ISO dates / skill_id, preserves raw).
   payload: Record<string, unknown>;
@@ -33,7 +40,14 @@ export interface LedgerClaim {
   // idempotent; store='resume_extraction' marks the non-typed origin.
   source_ref: {
     talent_evidence_id: string;
-    kind: 'work_history' | 'skill' | 'education' | 'certification' | 'experience_claim';
+    kind:
+      | 'work_history'
+      | 'skill'
+      | 'education'
+      | 'certification'
+      | 'experience_claim'
+      // TALENT-INTEL-1 TI-1C — the TalentWorkAuthorization typed row.
+      | 'work_authorization';
     store: 'talent_evidence' | 'resume_extraction';
   };
 }
@@ -130,6 +144,37 @@ export function mapCertificationToClaim(row: {
     assertion_type: 'CERTIFICATION',
     payload,
     source_ref: { talent_evidence_id: row.id, kind: 'certification', store: 'talent_evidence' },
+  };
+}
+
+// TALENT-INTEL-1 (TI-1C §step-4) — map a typed TalentWorkAuthorization row to a
+// RIGHT_TO_WORK ledger claim. status + requires_sponsorship are NOT-NULL columns
+// so the required RIGHT_TO_WORK fields are always present (the write gate never
+// fires on this path — a property, like the mappers above). visa_type (nullable)
+// and authorized_to_work_in (array) are carried ONLY when present — never
+// synthesized. The routed claim is written at THIRD_PARTY_UNVERIFIED (declared),
+// so it cannot elevate the ELIGIBILITY band (proven in band-derivation.spec).
+export function mapWorkAuthorizationToClaim(row: {
+  id: string;
+  work_authorization_status: string;
+  authorized_to_work_in: string[];
+  visa_type: string | null;
+  requires_sponsorship: boolean;
+}): LedgerClaim {
+  const payload: Record<string, unknown> = {
+    work_authorization_status_raw: row.work_authorization_status,
+    requires_sponsorship: row.requires_sponsorship,
+  };
+  if (row.visa_type !== null && row.visa_type.trim() !== '') {
+    payload['visa_type_raw'] = row.visa_type;
+  }
+  if (row.authorized_to_work_in.length > 0) {
+    payload['authorized_to_work_in'] = row.authorized_to_work_in;
+  }
+  return {
+    assertion_type: 'RIGHT_TO_WORK',
+    payload,
+    source_ref: { talent_evidence_id: row.id, kind: 'work_authorization', store: 'talent_evidence' },
   };
 }
 

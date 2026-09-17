@@ -17,6 +17,14 @@ function makeService(opts: {
     end_date: Date | null;
     employment_type: string | null;
   }>;
+  // TALENT-INTEL-1 TI-1C — declared work-authorization rows (default empty).
+  workAuth?: Array<{
+    id: string;
+    work_authorization_status: string;
+    authorized_to_work_in: string[];
+    visa_type: string | null;
+    requires_sponsorship: boolean;
+  }>;
   record: (input: { assertion_type: string; source_ref: { talent_evidence_id: string } }) => Promise<{
     written: boolean;
     evidence_id?: string;
@@ -28,6 +36,8 @@ function makeService(opts: {
     // TR-7 B1 — the two new credential reads (empty for these control-flow cases).
     listEducationForLedger: vi.fn().mockResolvedValue([]),
     listCertificationForLedger: vi.fn().mockResolvedValue([]),
+    // TALENT-INTEL-1 TI-1C — the declared work-authorization read.
+    listWorkAuthorizationForLedger: vi.fn().mockResolvedValue(opts.workAuth ?? []),
   };
   const record = vi.fn(opts.record);
   const trust = { recordDeclaredClaimIfAbsent: record };
@@ -56,7 +66,7 @@ describe('routeDeclaredEvidenceToLedger — idempotence (§5c)', () => {
       record: () => Promise.resolve({ written: false }),
     });
     const r = await service.routeDeclaredEvidenceToLedger({ tenant_id: 't', talent_id: 'tr' });
-    expect(r).toEqual({ skills_written: 0, work_history_written: 0, education_written: 0, certification_written: 0, skipped: 2 });
+    expect(r).toEqual({ skills_written: 0, work_history_written: 0, education_written: 0, certification_written: 0, work_authorization_written: 0, skipped: 2 });
     expect(record).toHaveBeenCalledTimes(2);
   });
 
@@ -67,7 +77,49 @@ describe('routeDeclaredEvidenceToLedger — idempotence (§5c)', () => {
       record: (input) => Promise.resolve({ written: input.source_ref.talent_evidence_id === 's2' }),
     });
     const r = await service.routeDeclaredEvidenceToLedger({ tenant_id: 't', talent_id: 'tr' });
-    expect(r).toEqual({ skills_written: 1, work_history_written: 0, education_written: 0, certification_written: 0, skipped: 1 });
+    expect(r).toEqual({ skills_written: 1, work_history_written: 0, education_written: 0, certification_written: 0, work_authorization_written: 0, skipped: 1 });
+  });
+});
+
+// TALENT-INTEL-1 (TI-1C §step-5) — declared work-authorization rows route to the
+// ledger as RIGHT_TO_WORK claims, deterministically + idempotently (writes only
+// rows lacking a ledger counterpart; source_ref keys the typed row). The route is
+// via recordDeclaredClaimIfAbsent (THIRD_PARTY_UNVERIFIED — cannot elevate).
+describe('routeDeclaredEvidenceToLedger — RIGHT_TO_WORK routing (TI-1C)', () => {
+  const WORK_AUTH = [
+    {
+      id: 'wa1',
+      work_authorization_status: 'VISA_HOLDER',
+      authorized_to_work_in: ['US'],
+      visa_type: 'H-1B',
+      requires_sponsorship: true,
+    },
+  ];
+
+  it('routes a declared work-authorization row as a RIGHT_TO_WORK claim (writes 1)', async () => {
+    const { service, record } = makeService({
+      skills: [],
+      work: [],
+      workAuth: WORK_AUTH,
+      record: () => Promise.resolve({ written: true }),
+    });
+    const r = await service.routeDeclaredEvidenceToLedger({ tenant_id: 't', talent_id: 'tr' });
+    expect(r.work_authorization_written).toBe(1);
+    expect(record).toHaveBeenCalledTimes(1);
+    const call = record.mock.calls[0][0];
+    expect(call.assertion_type).toBe('RIGHT_TO_WORK');
+    expect(call.source_ref.talent_evidence_id).toBe('wa1');
+  });
+
+  it('is idempotent — an already-present work-authorization row writes zero', async () => {
+    const { service } = makeService({
+      skills: [],
+      work: [],
+      workAuth: WORK_AUTH,
+      record: () => Promise.resolve({ written: false }),
+    });
+    const r = await service.routeDeclaredEvidenceToLedger({ tenant_id: 't', talent_id: 'tr' });
+    expect(r).toEqual({ skills_written: 0, work_history_written: 0, education_written: 0, certification_written: 0, work_authorization_written: 0, skipped: 1 });
   });
 });
 
@@ -93,6 +145,7 @@ describe('routeDeclaredEvidenceToLedger — loud fail then exactly-once on retry
       listWorkHistoryForLedger: vi.fn().mockResolvedValue([]),
       listEducationForLedger: vi.fn().mockResolvedValue([]),
       listCertificationForLedger: vi.fn().mockResolvedValue([]),
+      listWorkAuthorizationForLedger: vi.fn().mockResolvedValue([]),
     };
     const trust = { recordDeclaredClaimIfAbsent: vi.fn(record) };
     const service = new TalentExtractionService(
@@ -112,7 +165,7 @@ describe('routeDeclaredEvidenceToLedger — loud fail then exactly-once on retry
     // Retry — s1 already present (skip), s2 now writes → exactly once.
     failNext = false;
     const r = await service.routeDeclaredEvidenceToLedger({ tenant_id: 't', talent_id: 'tr' });
-    expect(r).toEqual({ skills_written: 1, work_history_written: 0, education_written: 0, certification_written: 0, skipped: 1 });
+    expect(r).toEqual({ skills_written: 1, work_history_written: 0, education_written: 0, certification_written: 0, work_authorization_written: 0, skipped: 1 });
     expect(written.has('s2')).toBe(true);
     // s1 was written exactly once (run 1), s2 exactly once (retry).
     expect([...written].sort()).toEqual(['s1', 's2']);

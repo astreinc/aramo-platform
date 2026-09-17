@@ -3220,6 +3220,7 @@
     "libs/talent-reconcile/src/tests/contradiction-detection.service.spec.ts",
     "libs/talent-reconcile/src/tests/no-llm-boundary.spec.ts",
     "libs/talent-reconcile/src/tests/reconcile-plan.spec.ts",
+    "libs/talent-reconcile/src/tests/right-to-work-reconcile.integration.spec.ts",
     "libs/talent-reconcile/src/tests/talent-reconcile.processor.spec.ts",
     "libs/talent-reconcile/src/tests/talent-reconcile.service.spec.ts",
     "libs/talent-reconcile/tsconfig.json",

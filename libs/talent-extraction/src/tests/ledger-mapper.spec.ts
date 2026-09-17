@@ -9,6 +9,7 @@ import {
   mapCertificationToClaim,
   mapEducationToClaim,
   mapSkillToClaim,
+  mapWorkAuthorizationToClaim,
   mapWorkHistoryToClaim,
 } from '../lib/ledger-mapper.js';
 import { deriveSkillId } from '../lib/skill-id.js';
@@ -125,6 +126,44 @@ describe('mapEducationToClaim — output always conforms (property)', () => {
       }
     }
     expect(n).toBeGreaterThan(0);
+  });
+});
+
+// TALENT-INTEL-1 (TI-1C §step-4) — the work-authorization mapper: every typed
+// TalentWorkAuthorization row maps to a RIGHT_TO_WORK claim whose payload
+// conforms to the registry (the write gate provably never fires on this path).
+// status + requires_sponsorship are NOT-NULL columns (always present); visa_type
+// (nullable) and authorized_to_work_in (array) are carried only when present —
+// never synthesized. source_ref keys the typed row for idempotent routing.
+describe('mapWorkAuthorizationToClaim — output conforms to RIGHT_TO_WORK (property)', () => {
+  it('conforms for every typed-row combination; keys source_ref by the row id', () => {
+    const visas: Array<string | null> = [null, '', 'H-1B'];
+    const arrays: string[][] = [[], ['US'], ['US', 'CA']];
+    const sponsor = [true, false];
+    let n = 0;
+    for (const v of visas) {
+      for (const a of arrays) {
+        for (const s of sponsor) {
+          const id = `00000000-0000-7000-8000-0000000000d${n % 10}`;
+          const claim = mapWorkAuthorizationToClaim({
+            id,
+            work_authorization_status: 'VISA_HOLDER',
+            authorized_to_work_in: a,
+            visa_type: v,
+            requires_sponsorship: s,
+          });
+          const r = validateClaimShape('RIGHT_TO_WORK', claim.payload);
+          expect(r.ok).toBe(true);
+          expect(claim.assertion_type).toBe('RIGHT_TO_WORK');
+          expect(claim.source_ref.kind).toBe('work_authorization');
+          expect(claim.source_ref.talent_evidence_id).toBe(id);
+          expect(r.canonical?.['work_authorization_status_raw']).toBe('VISA_HOLDER');
+          expect(r.canonical?.['requires_sponsorship']).toBe(s);
+          n += 1;
+        }
+      }
+    }
+    expect(n).toBe(18);
   });
 });
 
