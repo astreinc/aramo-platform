@@ -1,8 +1,9 @@
 import { randomUUID } from 'node:crypto';
 
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { AramoError, type VisibilityContextShape } from '@aramo/common';
 import { AiDraftService } from '@aramo/ai-draft';
+import { CanonicalReconcileProducer } from '@aramo/canonical-reconcile';
 import {
   JobDomainRepository,
   goldenProfileContentFromStorage,
@@ -50,6 +51,12 @@ export class RequisitionProfileService {
     private readonly aiDraftService: AiDraftService,
     private readonly requisitionRepository: RequisitionRepository,
     private readonly jobDomainRepository: JobDomainRepository,
+    // SKILL-TAX Canonical Reconciliation Activation — best-effort enqueue after a
+    // successful confirmProfile (Redis-gated + never throws; confirmation is
+    // never coupled to canonicalization execution). @Optional so the hand-wired
+    // unit-test `new RequisitionProfileService(...)` sites keep compiling;
+    // production wires CanonicalReconcileModule (proven by the apps/api DI-boot).
+    @Optional() private readonly canonicalReconcile?: CanonicalReconcileProducer,
   ) {}
 
   // GET /v1/requisitions/:id/profile — PR-A2 P3 the first-class profile
@@ -224,6 +231,14 @@ export class RequisitionProfileService {
         critical_skills: storage.critical_skills,
       });
       if (updated !== null) {
+        // Enqueue AFTER the GoldenProfile skills persisted (best-effort). A
+        // re-confirm with edited skills re-fires here; the worker reconciles +
+        // deletes de-authored requirement rows.
+        await this.canonicalReconcile?.enqueueRequisition(
+          args.tenant_id,
+          args.requisition_id,
+          view.golden_profile_id,
+        );
         // Already stamped; the link is unchanged.
         return view;
       }
@@ -272,6 +287,12 @@ export class RequisitionProfileService {
       golden_profile_id: goldenProfileId,
       requestId: args.requestId,
     });
+    // Enqueue AFTER the mint + stamp committed (best-effort).
+    await this.canonicalReconcile?.enqueueRequisition(
+      args.tenant_id,
+      args.requisition_id,
+      goldenProfileId,
+    );
     return stamped;
   }
 }

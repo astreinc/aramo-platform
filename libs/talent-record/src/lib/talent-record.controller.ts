@@ -5,6 +5,7 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  Optional,
   Param,
   Patch,
   Post,
@@ -15,6 +16,7 @@ import {
 import type { Request } from 'express';
 import { v7 as uuidv7 } from 'uuid';
 import { AramoError, RequestId } from '@aramo/common';
+import { CanonicalReconcileProducer } from '@aramo/canonical-reconcile';
 import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
 import {
   RequireScopes,
@@ -116,6 +118,13 @@ export class TalentRecordController {
     // before any object access.
     private readonly resumeOrchestrator: ResumeExtractionOrchestrator,
     private readonly resumeAuthorizer: ResumeSourceAuthorizer,
+    // SKILL-TAX Canonical Reconciliation Activation — best-effort enqueue on the
+    // confirmed CREATE evidence flow (Redis-gated + never throws; the backstop
+    // recovers a missed enqueue). NOT triggered from matching. @Optional so the
+    // many hand-wired unit-test `new TalentRecordController(...)` sites that do
+    // not exercise enqueue keep compiling; production wires CanonicalReconcileModule
+    // (proven by the apps/api DI-boot), so the confirmed-create path always fires it.
+    @Optional() private readonly canonicalReconcile?: CanonicalReconcileProducer,
   ) {}
 
   // Search PR-1/PR-2 — the LIST route gates on talent:read (route-static).
@@ -422,6 +431,11 @@ export class TalentRecordController {
       // Non-fatal: the record is created; the recruiter can add evidence on the
       // Talent record. (No PII in logs — §17.)
     }
+
+    // SKILL-TAX Canonical Reconciliation Activation — enqueue AFTER the confirmed
+    // -create evidence block. Best-effort + Redis-gated: a missed/failed enqueue
+    // never fails the create (the backstop recovers eligible unreconciled rows).
+    await this.canonicalReconcile?.enqueueTalent(authContext.tenant_id, created.id);
 
     return created;
   }

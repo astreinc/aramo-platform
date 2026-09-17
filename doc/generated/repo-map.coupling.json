@@ -2747,6 +2747,12 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/canonical-reconcile-activation.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/job-domain/prisma/migrations/20260519100000_init_job_domain_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/cb-d2-r-reconciliation-drain.integration.spec.ts",
       "status": "excluded",
       "to": "apps/api/src/requisition-integration/external-lifecycle-reconciler.ts"
@@ -14370,6 +14376,16 @@
       "to": "libs/calendar/tsconfig.lib.json"
     },
     {
+      "from": "libs/canonical-reconcile/project.json",
+      "status": "unscoped",
+      "to": "libs/canonical-reconcile/src/index.ts"
+    },
+    {
+      "from": "libs/canonical-reconcile/project.json",
+      "status": "unscoped",
+      "to": "libs/canonical-reconcile/tsconfig.lib.json"
+    },
+    {
       "from": "libs/canonicalization/prisma/migrations/20260603160000_init_canonicalization_schema/migration.sql",
       "status": "unscoped",
       "to": "libs/canonicalization/prisma/schema.prisma"
@@ -18386,6 +18402,11 @@
     {
       "from": "tsconfig.base.json",
       "status": "unscoped",
+      "to": "libs/canonical-reconcile/src/index.ts"
+    },
+    {
+      "from": "tsconfig.base.json",
+      "status": "unscoped",
       "to": "libs/canonicalization/src/index.ts"
     },
     {
@@ -18545,6 +18566,11 @@
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/auth/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/authorization/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/calendar/src/index.ts" },
+    {
+      "from": "vitest.shared.ts",
+      "status": "unscoped",
+      "to": "libs/canonical-reconcile/src/index.ts"
+    },
     {
       "from": "vitest.shared.ts",
       "status": "unscoped",

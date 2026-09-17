@@ -25,6 +25,6 @@ import { RequisitionSkillCanonicalizationService } from './requisition-skill-can
     RequisitionSkillRequirementRepository,
     RequisitionSkillCanonicalizationService,
   ],
-  exports: [RequisitionSkillCanonicalizationService],
+  exports: [RequisitionSkillCanonicalizationService, RequisitionSkillRequirementRepository],
 })
 export class RequisitionSkillCanonicalizationModule {}
