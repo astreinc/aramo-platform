@@ -5592,6 +5592,12 @@
         "project": "talent-reconcile",
         "status": "excluded"
       },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/talent-reconcile/src/tests/right-to-work-reconcile.integration.spec.ts",
+        "project": "talent-reconcile",
+        "status": "excluded"
+      },
       { "project": "talent-reconcile", "status": "production" }
     ],
     "@aramo/talent-trust": [
@@ -5711,6 +5717,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/talent-reconcile/src/tests/reconcile-plan.spec.ts",
+        "project": "talent-reconcile",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/talent-reconcile/src/tests/right-to-work-reconcile.integration.spec.ts",
         "project": "talent-reconcile",
         "status": "excluded"
       },

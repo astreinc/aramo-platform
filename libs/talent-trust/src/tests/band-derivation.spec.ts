@@ -53,6 +53,38 @@ function ev(
   };
 }
 
+// TALENT-INTEL-1 (TI-1C §step-2) — the routing guarantee: a DECLARED
+// (talent-stated) work-authorization routed to the ledger as a
+// THIRD_PARTY_UNVERIFIED RIGHT_TO_WORK assertion must NOT elevate the
+// ELIGIBILITY band. Elevation stays gated on source_class (isAuthoritative /
+// ≥ AUTHORITATIVE_ISSUER), so registering a canonical shape for RIGHT_TO_WORK
+// (for payload comparability) does not change trust governance: only a future
+// AUTHORITATIVE_ISSUER-class assertion elevates.
+describe('ELIGIBILITY / RIGHT_TO_WORK — elevation gated on source_class (TI-1C)', () => {
+  it('a THIRD_PARTY_UNVERIFIED declared right-to-work does NOT elevate (stays SELF_ASSERTED)', () => {
+    const s = deriveTrustState(
+      [
+        ev({
+          dimension: 'ELIGIBILITY',
+          source_class: 'THIRD_PARTY_UNVERIFIED',
+          method: 'DOCUMENT',
+          source_ref: { kind: 'work_authorization', talent_evidence_id: 'wa-1' },
+        }),
+      ],
+      NOW,
+    );
+    expect(s.eligibility_band).toBe('SELF_ASSERTED');
+  });
+
+  it('an AUTHORITATIVE_ISSUER right-to-work DOES elevate (governance preserved — RIGHT_TO_WORK is authoritative for ELIGIBILITY)', () => {
+    const s = deriveTrustState(
+      [ev({ dimension: 'ELIGIBILITY', source_class: 'AUTHORITATIVE_ISSUER', method: 'API_REGISTRY' })],
+      NOW,
+    );
+    expect(s.eligibility_band).toBe('AUTHORITATIVE');
+  });
+});
+
 describe('deriveTrustState — thinness flags (TR-5 B2 §4)', () => {
   it('single_source_only: one first-hand independence group → true; a second independent source → false', () => {
     const oneSource = deriveTrustState(

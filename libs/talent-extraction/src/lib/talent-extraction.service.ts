@@ -47,6 +47,7 @@ import { deriveSkillId } from './skill-id.js';
 import {
   mapCertificationToClaim,
   mapEducationToClaim,
+  mapWorkAuthorizationToClaim,
   mapSkillToClaim,
   mapWorkHistoryToClaim,
   mapAssertionToClaim,
@@ -540,6 +541,8 @@ export class TalentExtractionService {
     work_history_written: number;
     education_written: number;
     certification_written: number;
+    // TALENT-INTEL-1 TI-1C — declared work-authorization → RIGHT_TO_WORK.
+    work_authorization_written: number;
     skipped: number;
   }> {
     // talent_id IS the ATS TalentRecord.id (ATS-as-heart) — the subject resolves
@@ -555,6 +558,7 @@ export class TalentExtractionService {
     let work_history_written = 0;
     let education_written = 0;
     let certification_written = 0;
+    let work_authorization_written = 0;
     let skipped = 0;
 
     const skills = await this.evidence.listSkillEvidenceForLedger({
@@ -625,11 +629,33 @@ export class TalentExtractionService {
       else skipped += 1;
     }
 
+    // TALENT-INTEL-1 (TI-1C §step-5) — route declared work-authorization rows as
+    // RIGHT_TO_WORK claims. Same idempotent posture: recordDeclaredClaimIfAbsent
+    // writes only rows lacking a ledger counterpart (source_ref = the typed row),
+    // at THIRD_PARTY_UNVERIFIED — a declared claim that cannot elevate ELIGIBILITY.
+    const workAuthorizations = await this.evidence.listWorkAuthorizationForLedger({
+      tenant_id: input.tenant_id,
+      talent_id: input.talent_id,
+    });
+    for (const row of workAuthorizations) {
+      const claim = mapWorkAuthorizationToClaim(row);
+      const result = await this.trust.recordDeclaredClaimIfAbsent({
+        subjectRef,
+        assertion_type: claim.assertion_type,
+        assertion_payload: claim.payload,
+        source_ref: claim.source_ref,
+        created_by: 'talent-extraction',
+      });
+      if (result.written) work_authorization_written += 1;
+      else skipped += 1;
+    }
+
     if (
       skills_written > 0 ||
       work_history_written > 0 ||
       education_written > 0 ||
-      certification_written > 0
+      certification_written > 0 ||
+      work_authorization_written > 0
     ) {
       this.logger.log({
         event: 'talent_claims_routed_to_ledger',
@@ -639,6 +665,7 @@ export class TalentExtractionService {
         work_history_written,
         education_written,
         certification_written,
+        work_authorization_written,
         skipped,
       });
     }
@@ -647,6 +674,7 @@ export class TalentExtractionService {
       work_history_written,
       education_written,
       certification_written,
+      work_authorization_written,
       skipped,
     };
   }
@@ -660,6 +688,8 @@ export class TalentExtractionService {
     work_history_written: number;
     education_written: number;
     certification_written: number;
+    // TALENT-INTEL-1 TI-1C — declared work-authorization → RIGHT_TO_WORK.
+    work_authorization_written: number;
     skipped: number;
   }> {
     const talentIds = await this.evidence.listTalentIdsWithEvidenceByTenant(tenant_id);
@@ -667,6 +697,7 @@ export class TalentExtractionService {
     let work_history_written = 0;
     let education_written = 0;
     let certification_written = 0;
+    let work_authorization_written = 0;
     let skipped = 0;
     for (const talent_id of talentIds) {
       const r = await this.routeDeclaredEvidenceToLedger({ tenant_id, talent_id });
@@ -674,6 +705,7 @@ export class TalentExtractionService {
       work_history_written += r.work_history_written;
       education_written += r.education_written;
       certification_written += r.certification_written;
+      work_authorization_written += r.work_authorization_written;
       skipped += r.skipped;
     }
     return {
@@ -682,6 +714,7 @@ export class TalentExtractionService {
       work_history_written,
       education_written,
       certification_written,
+      work_authorization_written,
       skipped,
     };
   }

@@ -999,6 +999,35 @@ export class TalentEvidenceRepository {
     });
   }
 
+  // TALENT-INTEL-1 (TI-1C) — the declared work-authorization ledger read. The
+  // RIGHT_TO_WORK routing consumes these typed rows and writes the rows lacking a
+  // ledger counterpart (idempotent, source_ref = the row id). Bounded, tenant-
+  // scoped, single-purpose — the same shape as the credential reads above.
+  async listWorkAuthorizationForLedger(args: {
+    tenant_id: string;
+    talent_id: string;
+  }): Promise<
+    Array<{
+      id: string;
+      work_authorization_status: string;
+      authorized_to_work_in: string[];
+      visa_type: string | null;
+      requires_sponsorship: boolean;
+    }>
+  > {
+    return this.prisma.talentWorkAuthorization.findMany({
+      where: { tenant_id: args.tenant_id, talent_id: args.talent_id },
+      select: {
+        id: true,
+        work_authorization_status: true,
+        authorized_to_work_in: true,
+        visa_type: true,
+        requires_sponsorship: true,
+      },
+      orderBy: { id: 'asc' },
+    });
+  }
+
   // Backfill enumeration: the distinct talent_ids that own ANY typed skill,
   // work-history, education, or certification evidence in a tenant (the union — a
   // talent may have only one kind).

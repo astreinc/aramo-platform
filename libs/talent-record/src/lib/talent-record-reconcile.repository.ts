@@ -30,6 +30,10 @@ export interface EnrichmentPatch {
   web_site?: string;
   current_employer?: string;
   key_skills?: string;
+  // TALENT-INTEL-1 TI-1C — declared work-authorization status, fill-null +
+  // contradiction from an EXPLICIT RIGHT_TO_WORK assertion (never a silent
+  // overwrite of a talent-stated value). Explicit evidence only, no inference.
+  work_authorization?: string;
 }
 
 export interface FieldProvenanceRow {

@@ -488,6 +488,52 @@ const experienceClaimShape: ClaimShape = (p) => {
   return { ok: true, canonical };
 };
 
+// RIGHT_TO_WORK (TALENT-INTEL-1 TI-1C): a DECLARED work-authorization claim,
+// canonicalized for payload comparability (dedup / contradiction). Payload is
+// derived ONLY from the TalentWorkAuthorization typed row — nothing synthesized:
+//   work_authorization_status (NOT-NULL enum) → work_authorization_status_raw (REQUIRED)
+//   requires_sponsorship       (NOT-NULL bool) → requires_sponsorship          (REQUIRED)
+//   visa_type                  (nullable)      → visa_type_raw                 (optional)
+//   authorized_to_work_in      (String[])      → authorized_to_work_in         (optional)
+// Registered HERE for comparability. RIGHT_TO_WORK IS listed in
+// AUTHORITATIVE_ASSERTION_TYPES.ELIGIBILITY (vocab.ts), but registering a shape
+// does NOT alter elevation: band-derivation gates on isAuthoritative(source_class)
+// AND registry membership together, so a THIRD_PARTY_UNVERIFIED declared
+// right-to-work (the routed talent-stated row) canNOT elevate the ELIGIBILITY
+// band — only a future AUTHORITATIVE_ISSUER-class assertion can (band test).
+const rightToWorkShape: ClaimShape = (p) => {
+  const errors: string[] = [];
+  if (!nonEmptyString(p['work_authorization_status_raw'])) {
+    errors.push('work_authorization_status_raw must be a non-empty string');
+  }
+  if (typeof p['requires_sponsorship'] !== 'boolean') {
+    errors.push('requires_sponsorship must be a boolean');
+  }
+  if (!optionalString(p['visa_type_raw'])) {
+    errors.push('visa_type_raw must be a string when present');
+  }
+  const authorizedIn = p['authorized_to_work_in'];
+  if (
+    authorizedIn !== undefined &&
+    !(Array.isArray(authorizedIn) && authorizedIn.every((x) => typeof x === 'string'))
+  ) {
+    errors.push('authorized_to_work_in must be a string[] when present');
+  }
+  if (errors.length > 0) return { ok: false, errors };
+
+  const canonical: Record<string, unknown> = {
+    work_authorization_status_raw: (p['work_authorization_status_raw'] as string).trim(),
+    requires_sponsorship: p['requires_sponsorship'] as boolean,
+  };
+  if (nonEmptyString(p['visa_type_raw'])) {
+    canonical['visa_type_raw'] = (p['visa_type_raw'] as string).trim();
+  }
+  if (Array.isArray(authorizedIn) && authorizedIn.length > 0) {
+    canonical['authorized_to_work_in'] = authorizedIn as string[];
+  }
+  return { ok: true, canonical };
+};
+
 // The registry: assertion_type → its canonical shape. Membership here IS the
 // "registered" predicate the write gate checks. Adding a type is a DDR-amendment-
 // level act (like AUTHORITATIVE_ASSERTION_TYPES), never a silent extension.
@@ -522,6 +568,10 @@ export const CANONICAL_CLAIM_SHAPES: Record<string, ClaimShape> = {
   // comparability; DELIBERATELY ABSENT from AUTHORITATIVE_ASSERTION_TYPES (a
   // source-associated interpretation MUST NOT elevate a trust band).
   EXPERIENCE_CLAIM: experienceClaimShape,
+  // TALENT-INTEL-1 TI-1C — declared right-to-work, registered for payload
+  // comparability. In AUTHORITATIVE_ASSERTION_TYPES.ELIGIBILITY; elevation gated
+  // on source_class (a THIRD_PARTY_UNVERIFIED declared claim cannot elevate).
+  RIGHT_TO_WORK: rightToWorkShape,
 };
 
 export function isRegisteredAssertionType(assertionType: string): boolean {

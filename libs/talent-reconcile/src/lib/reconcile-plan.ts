@@ -15,8 +15,11 @@ import type { EvidenceRecordRow } from '@aramo/talent-trust';
 //     SKILL-evidence writer exists; never a contradiction — additive).
 //   - identity-stable (first_name/last_name from FULL_NAME): never enriched;
 //     same → provenance align; differing → pending contradiction.
-//   - talent-stated / recruiter-owned / provenance fields: never touched (absent
-//     from every map below).
+//   - work_authorization (TALENT-INTEL-1 TI-1C): fill-null + contradiction from an
+//     EXPLICIT RIGHT_TO_WORK assertion ONLY (a declared TalentWorkAuthorization row
+//     routed to the ledger) — never inferred, never a silent overwrite.
+//   - other talent-stated / recruiter-owned / provenance fields: never touched
+//     (absent from every map below).
 
 export interface ReconcilePlan {
   patch: EnrichmentPatch;
@@ -40,6 +43,12 @@ const SINGLE_SLOT: ReadonlyArray<{
   { field: 'email1', recordField: 'email1', assertionType: 'EMAIL', extract: (p) => str(p['normalized_value']) ?? str(p['value']) },
   { field: 'web_site', recordField: 'web_site', assertionType: 'PROFILE_URL', extract: (p) => str(p['value']) ?? str(p['normalized_value']) },
   { field: 'phone_cell', recordField: 'phone_cell', assertionType: 'PHONE', extract: (p) => str(p['value']) },
+  // TALENT-INTEL-1 (TI-1C) — declared work-authorization. A DELIBERATE,
+  // ruling-authorized move of work_authorization from "never touched" to
+  // fill-null + contradiction, sourced ONLY from an EXPLICIT RIGHT_TO_WORK
+  // assertion (the TalentWorkAuthorization typed row routed to the ledger). No
+  // inference; occupied-differing records a pending contradiction, never overwrites.
+  { field: 'work_authorization', recordField: 'work_authorization', assertionType: 'RIGHT_TO_WORK', extract: (p) => str(p['work_authorization_status_raw']) },
 ];
 
 // ADDRESS carries several sub-fields on ONE EvidenceRecord — each fills its own

@@ -172,6 +172,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         work_history_written: 1,
         education_written: 0,
         certification_written: 0,
+        // TALENT-INTEL-1 TI-1C — no work-authorization row seeded in this case.
+        work_authorization_written: 0,
         skipped: 0,
       });
 
@@ -229,6 +231,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         work_history_written: 0,
         education_written: 0,
         certification_written: 0,
+        // TALENT-INTEL-1 TI-1C — no work-authorization row seeded in this case.
+        work_authorization_written: 0,
         skipped: 2,
       });
       expect(await ledgerCount(talent)).toBe(2); // no duplicates
