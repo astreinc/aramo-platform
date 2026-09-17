@@ -350,6 +350,18 @@ model TalentProfileFieldState {
   // Releasing a hold flips HOLD→AUTO ONLY; it never mutates value_state.
   projection_policy String
 
+  // TALENT-INTEL-1 TI-1D-B — the CURRENT field-resolution SUMMARY (not history;
+  // the append-only lifecycle stays in TalentRecordReconcileContradiction).
+  // resolution_status: NONE | PENDING_REVIEW | RESOLVED.
+  resolution_status String  @default("NONE")
+  // EVIDENCE_CONFLICT | ACCEPTED_PROPOSED | KEPT_CURRENT | MANUAL_CONFIRMATION.
+  // Null until a review is opened. Writer-enforced vocab (no DB CHECK).
+  resolution_reason String?
+  // The value reconcile WOULD have projected, surfaced for human review. Populated
+  // ONLY while resolution_status=PENDING_REVIEW; cleared on resolve. NEVER Talent
+  // truth — TalentRecord remains the only current operational value.
+  proposed_value    String?
+
   updated_at DateTime @default(now()) @updatedAt @db.Timestamptz
 
   talent_record TalentRecord @relation(fields: [talent_record_id], references: [id], onDelete: Cascade)

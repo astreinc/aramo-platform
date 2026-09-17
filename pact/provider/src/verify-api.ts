@@ -231,6 +231,10 @@ const TALENT_RECORD_MIGRATIONS = [
   'libs/talent-record/prisma/migrations/20260701120000_drop_core_talent_id/migration.sql',
   // Gate-1 G1-A — adds work_authorization (regenerated client projects it).
   'libs/talent-record/prisma/migrations/20260702120000_add_work_authorization_to_talent_record/migration.sql',
+  // Promotion Gate Slice-B1 — the reconcile projection tables
+  // (talent_record_field_provenance + talent_record_reconcile_contradiction). The
+  // TI-1D-B field-state read model JOINS field_provenance for evidence linkage.
+  'libs/talent-record/prisma/migrations/20260705130000_add_reconcile_projection_tables/migration.sql',
   // TR-2a-B3a (DDR-3 §3) — adds record_status / superseded_by_record_id /
   // superseded_at (the regenerated client projects them; the provider schema
   // must carry them or every TalentRecord read 500s). COUPLING FLAG: this file
@@ -240,6 +244,12 @@ const TALENT_RECORD_MIGRATIONS = [
   // B1+B2 — title + country columns (regenerated client projects them; the
   // provider schema must carry them or every TalentRecord read 500s).
   'libs/talent-record/prisma/migrations/20260910130000_add_talent_title_and_country/migration.sql',
+  // TALENT-INTEL-1 TI-1D-A — talent_profile_field_state table (control state). The
+  // TI-1D-B field-state read pact SELECTs it; the provider schema must carry it.
+  'libs/talent-record/prisma/migrations/20260917120000_talent_intel_1d_a_profile_field_state/migration.sql',
+  // TALENT-INTEL-1 TI-1D-B — resolution_status / resolution_reason / proposed_value
+  // columns; the field-state read model projects them (500s without this migration).
+  'libs/talent-record/prisma/migrations/20260918120000_talent_intel_1d_b_field_resolution/migration.sql',
 ].map((p) => resolve(ROOT, p));
 // PR-A1b §4 sweep — entitlement schema applied for the pact verifier so
 // the portal-thin pact interactions (5 interactions traversing the now
@@ -2110,6 +2120,9 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     const ATSW_PROMOTED_SUBJECT_ID = '00000000-0000-7000-8000-5b1000000003';
     const ATSW_PROMOTED_ARRIVAL_ID = '00000000-0000-7000-8000-a44000000002';
     const ATSW_PROMOTED_TALENT_ID = '00000000-0000-7000-8000-7a0000000013';
+    // TALENT-INTEL-1 TI-1D-B — field-state read model fixture ids.
+    const ATSW_FIELD_STATE_ID = '00000000-0000-7000-8000-7a0000000015';
+    const ATSW_FIELD_STATE_EV_ID = '00000000-0000-7000-8000-7a0000000016';
     const ATSW_DEFER_SUBJECT_ID = '00000000-0000-7000-8000-5b1000000004';
     const ATSW_DEFER_SUBJECT_B_ID = '00000000-0000-7000-8000-5b1000000005';
     const ATSW_DEFER_ARRIVAL_ID = '00000000-0000-7000-8000-a44000000003';
@@ -6675,6 +6688,44 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
                SET record_status = 'superseded', superseded_by_record_id = $2, superseded_at = NOW()
              WHERE id = $1`,
             [ATSW_DETAIL_SUPERSEDED_ID, ATSW_SUPERSEDED_BY_ID],
+          );
+        });
+      },
+
+      // TALENT-INTEL-1 TI-1D-B — the field-state read model: a live record with
+      // one occupied field carrying a control state + evidence provenance (city,
+      // NONE) and one recruiter-cleared field with an OPEN review (work_authorization
+      // EXPLICITLY_CLEARED + HOLD, PENDING_REVIEW / EVIDENCE_CONFLICT, proposed
+      // US_CITIZEN). getFieldStateReadModel joins field_state ⋃ provenance; the
+      // controller merges current_value from the canonical getById projection.
+      'an ats-web recruiter and a talent record with field-state exist': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedAtsWebTalentRecord(c, {
+            id: ATSW_FIELD_STATE_ID,
+            firstName: 'Ada',
+            lastName: 'Lovelace',
+          });
+          await c.query(
+            `UPDATE talent_record."TalentRecord" SET city = 'London', work_authorization = NULL WHERE id = $1`,
+            [ATSW_FIELD_STATE_ID],
+          );
+          await c.query(
+            `INSERT INTO talent_record.talent_profile_field_state
+               (id, tenant_id, talent_record_id, field_key, value_state, source_type,
+                projection_policy, resolution_status, resolution_reason, proposed_value)
+             VALUES
+               ('00000000-0000-7000-8000-7b0000000001'::uuid, $2::uuid, $1::uuid, 'city',
+                'SET', 'RECONCILED', 'AUTO', 'NONE', NULL, NULL),
+               ('00000000-0000-7000-8000-7b0000000002'::uuid, $2::uuid, $1::uuid, 'work_authorization',
+                'EXPLICITLY_CLEARED', 'MANUAL', 'HOLD', 'PENDING_REVIEW', 'EVIDENCE_CONFLICT', 'US_CITIZEN')`,
+            [ATSW_FIELD_STATE_ID, TENANT_ID],
+          );
+          await c.query(
+            `INSERT INTO talent_record.talent_record_field_provenance
+               (id, tenant_id, talent_record_id, field_name, evidence_id)
+             VALUES ('00000000-0000-7000-8000-7b0000000003'::uuid, $2::uuid, $1::uuid, 'city', $3::uuid)`,
+            [ATSW_FIELD_STATE_ID, TENANT_ID, ATSW_FIELD_STATE_EV_ID],
           );
         });
       },

@@ -92,7 +92,12 @@ describe('computeReconcilePlan — fill-null contact', () => {
       ev('EMAIL', { normalized_value: 'new@x.com' }, { id: 'e2' }),
     ]);
     expect(plan.patch).toEqual({});
-    expect(plan.contradictions).toEqual([{ field_name: 'email1', new_evidence_id: 'e2' }]);
+    // TI-1D-B — a contradiction now carries the proposed_value (the evidence value
+    // reconcile would have written) so the field-state PENDING_REVIEW summary can
+    // surface it without a raw EvidenceRecord re-read.
+    expect(plan.contradictions).toEqual([
+      { field_name: 'email1', new_evidence_id: 'e2', proposed_value: 'new@x.com' },
+    ]);
     expect(plan.provenance).toEqual([]);
   });
 });
@@ -105,7 +110,9 @@ describe('computeReconcilePlan — identity-stable + newest + VALID filter', () 
     // first_name matches (align), last_name differs (pending contradiction); never a patch.
     expect(plan.patch.first_name).toBeUndefined();
     expect(plan.patch.last_name).toBeUndefined();
-    expect(plan.contradictions).toEqual([{ field_name: 'last_name', new_evidence_id: 'n1' }]);
+    expect(plan.contradictions).toEqual([
+      { field_name: 'last_name', new_evidence_id: 'n1', proposed_value: 'Lovelace' },
+    ]);
     expect(plan.provenance).toEqual([{ field_name: 'first_name', evidence_id: 'n1' }]);
   });
 
@@ -198,7 +205,9 @@ describe('computeReconcilePlan — RIGHT_TO_WORK → work_authorization (TI-1C)'
       ev('RIGHT_TO_WORK', { work_authorization_status_raw: 'VISA_HOLDER', requires_sponsorship: true }, { id: 'w1' }),
     ]);
     expect(plan.patch).toEqual({});
-    expect(plan.contradictions).toEqual([{ field_name: 'work_authorization', new_evidence_id: 'w1' }]);
+    expect(plan.contradictions).toEqual([
+      { field_name: 'work_authorization', new_evidence_id: 'w1', proposed_value: 'VISA_HOLDER' },
+    ]);
   });
 
   it('a non-VALID RIGHT_TO_WORK does not project', () => {
@@ -241,13 +250,17 @@ describe('computeReconcilePlan — TI-1D-A explicit-clear / HOLD field-state pro
   it('EXPLICITLY_CLEARED + AUTO → does NOT refill; records a contradiction (evidence disagrees with the clear)', () => {
     const plan = computeReconcilePlan(rec(), [rtw('US_CITIZEN')], fs('EXPLICITLY_CLEARED', 'AUTO'));
     expect(plan.patch).toEqual({});
-    expect(plan.contradictions).toEqual([{ field_name: 'work_authorization', new_evidence_id: 'rtw-1' }]);
+    expect(plan.contradictions).toEqual([
+      { field_name: 'work_authorization', new_evidence_id: 'rtw-1', proposed_value: 'US_CITIZEN' },
+    ]);
   });
 
   it('any state + HOLD → does NOT project automatically; records a contradiction', () => {
     const plan = computeReconcilePlan(rec(), [rtw('US_CITIZEN')], fs('UNKNOWN', 'HOLD'));
     expect(plan.patch).toEqual({});
-    expect(plan.contradictions).toEqual([{ field_name: 'work_authorization', new_evidence_id: 'rtw-1' }]);
+    expect(plan.contradictions).toEqual([
+      { field_name: 'work_authorization', new_evidence_id: 'rtw-1', proposed_value: 'US_CITIZEN' },
+    ]);
   });
 
   it('release hold (EXPLICITLY_CLEARED + AUTO) still does NOT refill — release flips policy only, value_state still blocks', () => {

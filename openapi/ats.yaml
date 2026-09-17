@@ -1870,6 +1870,42 @@ paths:
           $ref: 'common.yaml#/components/responses/NotFound'
       security:
         - BearerAuth: []
+  /v1/talent-records/{id}/field-state:
+    get:
+      operationId: getTalentRecordFieldState
+      summary: The per-field control + resolution read model for a talent record (TALENT-INTEL-1 TI-1D-B).
+      description: |
+        A DEDICATED read surface, kept separate from getById (which stays the
+        operational talent projection). Per governed field: the current_value
+        (read from the canonical record), the control state (value_state /
+        source_type / projection_policy), the evidence-linkage provenance (by
+        reference only — never a raw evidence payload), and the current resolution
+        summary (resolution_status / resolution_reason / proposed_value).
+        proposed_value is a review-only value, never talent truth, populated only
+        while resolution_status is PENDING_REVIEW. Gated: capability ats + scope
+        talent:read.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: The per-field control + resolution read model.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TalentProfileFieldStateResponse'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
 
   /v1/placements:
     get:
@@ -5120,6 +5156,70 @@ components:
         opaque reference and never documented. Paired with the `x-zm-request-timestamp` header.
 
   schemas:
+    # ── TALENT-INTEL-1 TI-1D-B — field-state read model ──
+    TalentProfileFieldStateResponse:
+      type: object
+      additionalProperties: false
+      required: [talent_record_id, fields]
+      properties:
+        talent_record_id:
+          type: string
+          format: uuid
+        fields:
+          type: array
+          items:
+            $ref: '#/components/schemas/TalentProfileFieldStateItem'
+    TalentProfileFieldStateItem:
+      type: object
+      additionalProperties: false
+      required:
+        - field_key
+        - current_value
+        - value_state
+        - source_type
+        - projection_policy
+        - provenance
+        - proposed_value
+        - resolution_status
+        - resolution_reason
+      properties:
+        field_key:
+          type: string
+        # The current operational value from the canonical talent projection; null
+        # when the slot is empty. proposed_value is NEVER this.
+        current_value:
+          type: [string, 'null']
+        value_state:
+          type: string
+          enum: [UNKNOWN, SET, EXPLICITLY_CLEARED]
+        source_type:
+          type: string
+          enum: [MANUAL, RESUME, RECONCILED, IMPORT]
+        projection_policy:
+          type: string
+          enum: [AUTO, HOLD]
+        # Evidence-linkage provenance by reference only (never a raw evidence
+        # payload); null when the field has no projected provenance.
+        provenance:
+          oneOf:
+            - type: 'null'
+            - type: object
+              additionalProperties: false
+              required: [evidence_id]
+              properties:
+                evidence_id:
+                  type: string
+                  format: uuid
+        # Review-only value reconcile declined to project; populated only while
+        # resolution_status is PENDING_REVIEW, cleared on resolve. Never talent truth.
+        proposed_value:
+          type: [string, 'null']
+        resolution_status:
+          type: string
+          enum: [NONE, PENDING_REVIEW, RESOLVED]
+        resolution_reason:
+          type: [string, 'null']
+          enum: [EVIDENCE_CONFLICT, ACCEPTED_PROPOSED, KEPT_CURRENT, MANUAL_CONFIRMATION, null]
     # ── Talent Detail Backend Enablement (B6) ──
     AttachmentDownloadUrl:
       type: object

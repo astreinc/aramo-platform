@@ -53,11 +53,38 @@ export type TalentProfileValueState = 'UNKNOWN' | 'SET' | 'EXPLICITLY_CLEARED';
 export type TalentProfileSourceType = 'MANUAL' | 'RESUME' | 'RECONCILED' | 'IMPORT';
 export type TalentProfileProjectionPolicy = 'AUTO' | 'HOLD';
 
+// TALENT-INTEL-1 TI-1D-B — the field-resolution SUMMARY vocabularies (current
+// state, not history). Writer-enforced (no DB CHECK).
+export type TalentProfileResolutionStatus = 'NONE' | 'PENDING_REVIEW' | 'RESOLVED';
+export type TalentProfileResolutionReason =
+  | 'EVIDENCE_CONFLICT'
+  | 'ACCEPTED_PROPOSED'
+  | 'KEPT_CURRENT'
+  | 'MANUAL_CONFIRMATION';
+
 export interface TalentProfileFieldStateRow {
   field_key: string;
   value_state: TalentProfileValueState;
   source_type: TalentProfileSourceType;
   projection_policy: TalentProfileProjectionPolicy;
+}
+
+// TALENT-INTEL-1 TI-1D-B — the field-state READ MODEL row: the per-field control
+// state + resolution summary, joined to the field→evidence provenance
+// (TalentRecordFieldProvenance stays the SOLE evidence-linkage authority — no
+// source_evidence_id duplication). current_value is NOT here: the controller reads
+// it from the canonical getById TalentRecord projection and merges it in, so this
+// repo stays free of TalentRecord column coupling. No raw EvidenceRecord payload —
+// only the evidence_id reference (ruling rail).
+export interface TalentProfileFieldStateReadRow {
+  field_key: string;
+  value_state: TalentProfileValueState;
+  source_type: TalentProfileSourceType;
+  projection_policy: TalentProfileProjectionPolicy;
+  resolution_status: TalentProfileResolutionStatus;
+  resolution_reason: TalentProfileResolutionReason | null;
+  proposed_value: string | null;
+  provenance: { evidence_id: string } | null;
 }
 
 // Slice-B2 — a pending contradiction joined to the incumbent EvidenceRecord the
@@ -300,6 +327,137 @@ export class TalentRecordReconcileRepository {
         field_key: args.field_key,
       },
       data: { projection_policy: args.projection_policy },
+    });
+  }
+
+  // TALENT-INTEL-1 TI-1D-B — the field-state READ MODEL: the union of a record's
+  // per-field control states and its field→evidence provenance rows, one merged
+  // row per field_key. A field with a control row but no provenance reads
+  // provenance=null; a field with provenance but no control row reads the default
+  // control (UNKNOWN / RECONCILED / AUTO / NONE) — reconcile projected it, so its
+  // linkage is real even without an explicit recruiter control. current_value is
+  // added by the controller from the canonical getById projection.
+  async getFieldStateReadModel(
+    talentRecordId: string,
+  ): Promise<TalentProfileFieldStateReadRow[]> {
+    const [stateRows, provenanceRows] = await Promise.all([
+      this.prisma.talentProfileFieldState.findMany({
+        where: { talent_record_id: talentRecordId },
+        select: {
+          field_key: true,
+          value_state: true,
+          source_type: true,
+          projection_policy: true,
+          resolution_status: true,
+          resolution_reason: true,
+          proposed_value: true,
+        },
+      }),
+      this.prisma.talentRecordFieldProvenance.findMany({
+        where: { talent_record_id: talentRecordId },
+        select: { field_name: true, evidence_id: true },
+      }),
+    ]);
+
+    const provenanceByField = new Map(
+      provenanceRows.map((p) => [p.field_name, p.evidence_id]),
+    );
+    const byField = new Map<string, TalentProfileFieldStateReadRow>();
+
+    for (const s of stateRows) {
+      const evidenceId = provenanceByField.get(s.field_key);
+      byField.set(s.field_key, {
+        field_key: s.field_key,
+        value_state: s.value_state as TalentProfileValueState,
+        source_type: s.source_type as TalentProfileSourceType,
+        projection_policy: s.projection_policy as TalentProfileProjectionPolicy,
+        resolution_status: s.resolution_status as TalentProfileResolutionStatus,
+        resolution_reason:
+          (s.resolution_reason as TalentProfileResolutionReason | null) ?? null,
+        proposed_value: s.proposed_value ?? null,
+        provenance: evidenceId !== undefined ? { evidence_id: evidenceId } : null,
+      });
+    }
+
+    // Provenance-only fields (reconcile projected, no explicit control): default
+    // control state, real evidence linkage.
+    for (const p of provenanceRows) {
+      if (byField.has(p.field_name)) continue;
+      byField.set(p.field_name, {
+        field_key: p.field_name,
+        value_state: 'UNKNOWN',
+        source_type: 'RECONCILED',
+        projection_policy: 'AUTO',
+        resolution_status: 'NONE',
+        resolution_reason: null,
+        proposed_value: null,
+        provenance: { evidence_id: p.evidence_id },
+      });
+    }
+
+    return [...byField.values()].sort((a, b) => a.field_key.localeCompare(b.field_key));
+  }
+
+  // TALENT-INTEL-1 TI-1D-B — record the PENDING_REVIEW resolution summary for a
+  // field when reconcile finds evidence it may NOT project (occupied-differing, or
+  // an EXPLICITLY_CLEARED / HOLD slot). Sets ONLY the resolution columns +
+  // proposed_value; on an EXISTING row it NEVER touches value_state / source_type /
+  // projection_policy (a recruiter EXPLICITLY_CLEARED / HOLD control is preserved).
+  // On create (no prior control row) the field reads UNKNOWN / RECONCILED / AUTO.
+  async markFieldPendingReview(args: {
+    tenant_id: string;
+    talent_record_id: string;
+    field_key: string;
+    proposed_value: string;
+  }): Promise<void> {
+    await this.prisma.talentProfileFieldState.upsert({
+      where: {
+        tenant_id_talent_record_id_field_key: {
+          tenant_id: args.tenant_id,
+          talent_record_id: args.talent_record_id,
+          field_key: args.field_key,
+        },
+      },
+      create: {
+        tenant_id: args.tenant_id,
+        talent_record_id: args.talent_record_id,
+        field_key: args.field_key,
+        value_state: 'UNKNOWN',
+        source_type: 'RECONCILED',
+        projection_policy: 'AUTO',
+        resolution_status: 'PENDING_REVIEW',
+        resolution_reason: 'EVIDENCE_CONFLICT',
+        proposed_value: args.proposed_value,
+      },
+      update: {
+        resolution_status: 'PENDING_REVIEW',
+        resolution_reason: 'EVIDENCE_CONFLICT',
+        proposed_value: args.proposed_value,
+      },
+    });
+  }
+
+  // TALENT-INTEL-1 TI-1D-B — resolve a field's pending review: RESOLVED + the
+  // recruiter's reason, and CLEAR proposed_value (populated only while
+  // PENDING_REVIEW). updateMany over EXISTING rows only (resolving a field with no
+  // control row is a no-op); NEVER mutates value_state / projection_policy.
+  async resolveFieldReview(args: {
+    tenant_id: string;
+    talent_record_id: string;
+    field_key: string;
+    resolution_reason: TalentProfileResolutionReason;
+  }): Promise<void> {
+    await this.prisma.talentProfileFieldState.updateMany({
+      where: {
+        tenant_id: args.tenant_id,
+        talent_record_id: args.talent_record_id,
+        field_key: args.field_key,
+      },
+      data: {
+        resolution_status: 'RESOLVED',
+        resolution_reason: args.resolution_reason,
+        proposed_value: null,
+      },
     });
   }
 }

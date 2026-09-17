@@ -39,11 +39,15 @@ function make(parts: {
   // TI-1D-A — reconcileSubject now loads per-field control state; default none
   // (every field UNKNOWN + AUTO = pre-TI-1D-A behavior) unless a test overrides.
   const listProfileFieldStates = vi.fn().mockResolvedValue(parts.fieldStates ?? []);
-  const reconcileRepo = { applyEnrichment, upsertFieldProvenance, recordPendingContradiction, listProfileFieldStates } as never;
+  // TI-1D-B — reconcile also records the PENDING_REVIEW resolution summary
+  // (+ proposed_value) for each contradiction, so the field-state read API can
+  // surface it. Stubbed here; called once per contradiction.
+  const markFieldPendingReview = vi.fn().mockResolvedValue(undefined);
+  const reconcileRepo = { applyEnrichment, upsertFieldProvenance, recordPendingContradiction, listProfileFieldStates, markFieldPendingReview } as never;
 
   const logger = { log: vi.fn(), warn: vi.fn(), debug: vi.fn() } as never;
   const service = new TalentReconcileService(trust, talentRecords, reconcileRepo, logger);
-  return { service, findById, getEvidence, markReconciled, bumpReconcileAttempt, applyEnrichment, upsertFieldProvenance, recordPendingContradiction };
+  return { service, findById, getEvidence, markReconciled, bumpReconcileAttempt, applyEnrichment, upsertFieldProvenance, recordPendingContradiction, markFieldPendingReview };
 }
 
 describe('TalentReconcileService.reconcileSubject', () => {
@@ -64,7 +68,7 @@ describe('TalentReconcileService.reconcileSubject', () => {
   });
 
   it('records a pending contradiction for occupied+differing, does not overwrite', async () => {
-    const { service, applyEnrichment, recordPendingContradiction, markReconciled } = make({
+    const { service, applyEnrichment, recordPendingContradiction, markFieldPendingReview, markReconciled } = make({
       record: { first_name: 'Alan', last_name: 'Turing', email1: 'old@x.com', phone_cell: null, web_site: null, address: null, address2: null, city: null, state: null, zip: null, key_skills: null },
       evidence: [{ id: 'e2', assertion_type: 'EMAIL', assertion_payload: { normalized_value: 'new@x.com' }, current_status: 'VALID', collected_at: new Date('2026-07-04'), created_at: new Date('2026-07-04') }],
     });
@@ -75,6 +79,11 @@ describe('TalentReconcileService.reconcileSubject', () => {
     expect(applyEnrichment).toHaveBeenCalledWith(expect.objectContaining({ patch: {} }));
     expect(recordPendingContradiction).toHaveBeenCalledWith(
       expect.objectContaining({ field_name: 'email1', new_evidence_id: 'e2' }),
+    );
+    // TI-1D-B — the contradiction also opens a PENDING_REVIEW carrying the
+    // proposed_value (the value reconcile declined to project).
+    expect(markFieldPendingReview).toHaveBeenCalledWith(
+      expect.objectContaining({ tenant_id: 'ten-1', talent_record_id: 'rec-1', field_key: 'email1', proposed_value: 'new@x.com' }),
     );
     expect(markReconciled).toHaveBeenCalledWith('subj-1');
   });
