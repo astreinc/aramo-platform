@@ -229,6 +229,21 @@ model TalentSkillEvidence {
   usage_period_basis String?
   activity_context   String?
 
+  // SKILL-TAX-1G — canonical reconciliation (ADD-not-rename, all NULLABLE, NO SQL
+  // backfill). Resolved from surface_form (+ explicit version) by an
+  // application-level worker via skills-taxonomy's SkillCanonicalizationService.
+  // The legacy deterministic skill_id above is a DISTINCT keyspace and is NEVER
+  // re-keyed. canonical_version_id populates ONLY when `version` is stated AND the
+  // registry carries that SkillVersion — never inferred. status/method carry the
+  // engine outcome explicitly (governed String+CHECK; see the 1G migration), so a
+  // NULL canonical_skill_id + status='UNRESOLVED' is a valid, explainable state,
+  // and re-resolution later (e.g. an alias added) can flip it to RESOLVED.
+  canonical_skill_id      String?              @db.Uuid
+  canonical_version_id    String?              @db.Uuid
+  canonicalization_status String?
+  canonicalization_method String?
+  canonicalized_at        DateTime?            @db.Timestamptz
+
   created_at        DateTime                  @db.Timestamptz
 
   // Tenant-scoped + (tenant, talent) lookup; (tenant, talent, skill) supports
@@ -237,6 +252,8 @@ model TalentSkillEvidence {
   @@index([tenant_id, talent_id])
   @@index([tenant_id, talent_id, skill_id])
   @@index([tenant_id, work_experience_id])
+  // Canonical aggregation: union usage intervals per canonical skill for a talent.
+  @@index([tenant_id, talent_id, canonical_skill_id])
   @@schema("talent_evidence")
 }
 
@@ -481,6 +498,12 @@ model TalentDerivedSnapshot {
   skill_confidence_scores             Json
   estimated_years_experience_overall  Float?
   estimated_years_experience_by_skill Json?
+  // SKILL-TAX-1G — canonical (interval-union) supported-years keyed by
+  // canonical_skill_id. ADDITIVE: the legacy estimated_years_experience_by_skill
+  // above (keyed by the surface-derived skill_id, written by HF2 extraction) is
+  // preserved UNCHANGED for compatibility. Computed post-canonicalization by
+  // union of usage intervals — never by summing per-surface totals.
+  estimated_years_experience_by_canonical_skill Json?
   skill_domains                       Json?
   career_trajectory_pattern           String?
   intent_signal                       Json?

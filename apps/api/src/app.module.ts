@@ -45,6 +45,7 @@ import { RequisitionModule } from '@aramo/requisition';
 import { SavedListModule } from '@aramo/saved-list';
 import { SettingsModule } from '@aramo/settings';
 import { SkillsTaxonomyModule } from '@aramo/skills-taxonomy';
+import { TalentSkillCanonicalizationModule } from '@aramo/talent-evidence';
 import { SubmittalModule } from '@aramo/submittal';
 import { ClientTalentRestrictionModule } from '@aramo/client-talent-restriction';
 // TR-2a-B3b — EvidenceModule + ExaminationModule imported so the record-reconcile
@@ -386,6 +387,10 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     // skill-canonicalization queue + no-op processor (Architecture v2.1
     // §9.2 / Plan v1.5 §M5 Track A item 6 binding).
     SkillsTaxonomyModule,
+    // SKILL-TAX-1G — Talent skill canonical-reconciliation orchestrator
+    // (internal; consumes the read-only SkillCanonicalizationService). No new
+    // scope/route; production triggering is separately gated.
+    TalentSkillCanonicalizationModule,
     SubmittalModule,
     SubmitTalentModule,
     ClientSelectionOrchestrationModule,

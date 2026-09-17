@@ -1,6 +1,18 @@
 export { TalentEvidenceModule } from './lib/talent-evidence.module.js';
 export { TalentEvidenceRepository } from './lib/talent-evidence.repository.js';
 export { PrismaService } from './lib/prisma/prisma.service.js';
+
+// SKILL-TAX-1G — canonical reconciliation orchestrator (internal; no HTTP/scope).
+export { TalentSkillCanonicalizationModule } from './lib/talent-skill-canonicalization.module.js';
+export {
+  TalentSkillCanonicalizationService,
+  type ReconcileTalentResult,
+} from './lib/talent-skill-canonicalization.service.js';
+export {
+  aggregateCanonicalYears,
+  type CanonicalUsageRow,
+  type CanonicalSkillYears,
+} from './lib/canonical-skill-timeline.js';
 export type {
   // TalentSkillEvidence (Group 2 §2.2 #16)
   CreateTalentSkillEvidenceInput,

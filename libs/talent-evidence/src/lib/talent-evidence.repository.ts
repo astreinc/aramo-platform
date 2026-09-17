@@ -426,6 +426,9 @@ export interface CreateTalentDerivedSnapshotInput {
   skill_confidence_scores: JsonInput;
   estimated_years_experience_overall?: number;
   estimated_years_experience_by_skill?: JsonInput;
+  // SKILL-TAX-1G — canonical (interval-union) supported-years, keyed by
+  // canonical_skill_id. Additive; the legacy by_skill field is preserved.
+  estimated_years_experience_by_canonical_skill?: JsonInput;
   skill_domains?: JsonInput;
   career_trajectory_pattern?: string;
   intent_signal?: JsonInput;
@@ -446,6 +449,7 @@ export interface TalentDerivedSnapshotRow {
   skill_confidence_scores: unknown;
   estimated_years_experience_overall: number | null;
   estimated_years_experience_by_skill: unknown;
+  estimated_years_experience_by_canonical_skill: unknown;
   skill_domains: unknown;
   career_trajectory_pattern: string | null;
   intent_signal: unknown;
@@ -585,6 +589,56 @@ export class TalentEvidenceRepository {
   }): Promise<number> {
     return this.prisma.talentSkillEvidence.count({
       where: { tenant_id: args.tenant_id, talent_id: args.talent_id },
+    });
+  }
+
+  // ---- SKILL-TAX-1G canonical reconciliation (persistence only) ----------
+  // These read the durable raw evidence (surface_form + explicit version) and
+  // write the additive canonical columns. The legacy skill_id is never touched.
+
+  async listSkillEvidenceForCanonicalization(args: {
+    tenant_id: string;
+    talent_id: string;
+  }): Promise<Array<{ id: string; surface_form: string; version: string | null }>> {
+    return this.prisma.talentSkillEvidence.findMany({
+      where: { tenant_id: args.tenant_id, talent_id: args.talent_id },
+      select: { id: true, surface_form: true, version: true },
+      orderBy: { id: 'asc' },
+    });
+  }
+
+  async updateSkillEvidenceCanonical(
+    id: string,
+    fields: {
+      canonical_skill_id: string | null;
+      canonical_version_id: string | null;
+      canonicalization_status: string | null;
+      canonicalization_method: string | null;
+      canonicalized_at: Date;
+    },
+  ): Promise<void> {
+    await this.prisma.talentSkillEvidence.update({
+      where: { id },
+      data: {
+        canonical_skill_id: fields.canonical_skill_id,
+        canonical_version_id: fields.canonical_version_id,
+        canonicalization_status: fields.canonicalization_status,
+        canonicalization_method: fields.canonicalization_method,
+        canonicalized_at: fields.canonicalized_at,
+      },
+    });
+  }
+
+  // Canonical usage intervals for the interval-union projection (§19).
+  async listCanonicalUsageForTalent(args: {
+    tenant_id: string;
+    talent_id: string;
+  }): Promise<
+    Array<{ canonical_skill_id: string | null; usage_start: Date | null; usage_end: Date | null }>
+  > {
+    return this.prisma.talentSkillEvidence.findMany({
+      where: { tenant_id: args.tenant_id, talent_id: args.talent_id },
+      select: { canonical_skill_id: true, usage_start: true, usage_end: true },
     });
   }
 
@@ -1086,6 +1140,8 @@ export class TalentEvidenceRepository {
         skill_confidence_scores: input.skill_confidence_scores as never,
         estimated_years_experience_overall: input.estimated_years_experience_overall,
         estimated_years_experience_by_skill: input.estimated_years_experience_by_skill as never,
+        estimated_years_experience_by_canonical_skill:
+          input.estimated_years_experience_by_canonical_skill as never,
         skill_domains: input.skill_domains as never,
         career_trajectory_pattern: input.career_trajectory_pattern,
         intent_signal: input.intent_signal as never,
@@ -1107,6 +1163,28 @@ export class TalentEvidenceRepository {
   ): Promise<TalentDerivedSnapshotRow | null> {
     const row = await this.prisma.talentDerivedSnapshot.findUnique({ where: { id } });
     return (row as TalentDerivedSnapshotRow | null) ?? null;
+  }
+
+  // SKILL-TAX-1G — the latest derived snapshot for a talent (the canonical
+  // interval-union years projection attaches to it; NULL when none exists yet —
+  // 1G never fabricates a snapshot).
+  async findLatestDerivedSnapshot(args: {
+    tenant_id: string;
+    talent_id: string;
+  }): Promise<{ id: string } | null> {
+    const row = await this.prisma.talentDerivedSnapshot.findFirst({
+      where: { tenant_id: args.tenant_id, talent_id: args.talent_id },
+      orderBy: { computed_at: 'desc' },
+      select: { id: true },
+    });
+    return row ?? null;
+  }
+
+  async updateDerivedSnapshotCanonicalYears(id: string, canonicalYears: unknown): Promise<void> {
+    await this.prisma.talentDerivedSnapshot.update({
+      where: { id },
+      data: { estimated_years_experience_by_canonical_skill: canonicalYears as never },
+    });
   }
 
   // ---- Resolution re-point (TR-2a-B3b) -------------------------------
