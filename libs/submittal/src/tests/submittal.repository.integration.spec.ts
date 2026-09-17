@@ -132,6 +132,9 @@ const TALENT_EVIDENCE_HF1_PATH = resolve(
 const TALENT_EVIDENCE_HF2_PATH = resolve(
   __dirname,
   '../../../talent-evidence/prisma/migrations/20260915170000_hf2_experience_intelligence/migration.sql',
+);
+const TALENT_EVIDENCE_1G_PATH = resolve(
+  __dirname,
   '../../../talent-evidence/prisma/migrations/20260915180000_skill_tax_1g_canonical_reconciliation/migration.sql',
 );
 const EVIDENCE_INIT_PATH = resolve(
@@ -202,6 +205,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         readFileSync(TALENT_EVIDENCE_TR7_PATH, 'utf8'),
         readFileSync(TALENT_EVIDENCE_HF1_PATH, 'utf8'),
         readFileSync(TALENT_EVIDENCE_HF2_PATH, 'utf8'),
+        readFileSync(TALENT_EVIDENCE_1G_PATH, 'utf8'),
         readFileSync(EVIDENCE_INIT_PATH, 'utf8'),
         readFileSync(SUBMITTAL_MIGRATION_PATH, 'utf8'),
         // M4 PR-7 — submittal-revoke schema extension. Applied after
