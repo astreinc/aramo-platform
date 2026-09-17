@@ -8,6 +8,11 @@ export {
   type FieldProvenanceRow,
   type PendingContradictionRow,
   type PendingContradictionForResolution,
+  // TALENT-INTEL-1 TI-1D-A — per-field control state (explicit-clear / HOLD).
+  type TalentProfileFieldStateRow,
+  type TalentProfileValueState,
+  type TalentProfileSourceType,
+  type TalentProfileProjectionPolicy,
 } from './lib/talent-record-reconcile.repository.js';
 export { TalentRecordService } from './lib/talent-record.service.js';
 export type { PortalProfileProjection } from './lib/dto/portal-profile-projection.dto.js';

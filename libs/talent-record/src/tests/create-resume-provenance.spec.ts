@@ -51,6 +51,8 @@ function makeController(extra: Record<string, unknown> = {}) {
     talentExtraction as never,
     orchestrator,
     authorizer,
+    // TI-1D-A — reconcileRepo (field-state writes; no-op fake on this path).
+    { upsertProfileFieldState: async () => undefined, releaseProjectionHold: async () => undefined, listProfileFieldStates: async () => [] } as never,
   );
   return { ctl, createResumeDocument, persistDeclaredWorkHistory, persistDeclaredSkills, extractResumeDraft };
 }

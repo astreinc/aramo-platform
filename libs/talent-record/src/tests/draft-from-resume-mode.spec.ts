@@ -81,6 +81,8 @@ function makeController(opts: {
     talentExtraction as any,
     orchestrator,
     authorizer,
+    // TI-1D-A — reconcileRepo (field-state writes; no-op fake on this path).
+    { upsertProfileFieldState: async () => undefined, releaseProjectionHold: async () => undefined, listProfileFieldStates: async () => [] } as never,
   );
   return { ctl, tenantSetting, extractResumeDraft, parseFromStorageKey, extractTextFromStorageKey };
 }

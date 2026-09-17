@@ -53,4 +53,12 @@ export interface UpdateTalentRecordRequestDto {
   // declared set; ABSENT (undefined) leaves work-history untouched (scalar-only
   // PATCH — e.g. the quick-edit drawer). Declared, recruiter-edited; not verified.
   work_history?: ResumeDraftWorkHistory[];
+  // TALENT-INTEL-1 TI-1D-A — per-field projection-policy controls, keyed by the
+  // TalentRecord field. The canonical use is releasing a hold
+  // ({ field: { projection_policy: 'AUTO' } }) so automatic reconcile may manage
+  // the field again. ONLY projection_policy changes — value_state is untouched
+  // and the field value is neither repopulated nor cleared. Keys must be
+  // reconcile-covered fields (the controller rejects others with 422). NOT a
+  // TalentRecord scalar — the repository allowlist-walk ignores it.
+  field_controls?: Record<string, { projection_policy: 'AUTO' | 'HOLD' }>;
 }

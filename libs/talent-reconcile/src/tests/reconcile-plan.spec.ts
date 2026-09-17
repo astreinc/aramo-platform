@@ -212,3 +212,46 @@ describe('computeReconcilePlan — RIGHT_TO_WORK → work_authorization (TI-1C)'
     expect(plan.patch).toEqual({});
   });
 });
+
+// TALENT-INTEL-1 (TI-1D-A §explicit-clear protection) — the field-state matrix.
+// computeReconcilePlan takes a per-field state map; fill-null is GATED so an
+// intentional recruiter state is never silently undone by automatic reconcile:
+//   UNKNOWN + AUTO           → may fill (default / backward-compatible)
+//   SET + AUTO               → existing occupied semantics (align / contradiction)
+//   EXPLICITLY_CLEARED + AUTO→ do NOT refill (value_state blocks even under AUTO)
+//   any + HOLD               → do NOT project automatically
+//   cleared/held + differing evidence → STILL record a contradiction (never silent)
+describe('computeReconcilePlan — TI-1D-A explicit-clear / HOLD field-state protection', () => {
+  const rtw = (status: string) =>
+    ev('RIGHT_TO_WORK', { work_authorization_status_raw: status, requires_sponsorship: false }, { id: 'rtw-1' });
+  const fs = (value_state: string, projection_policy: string) =>
+    new Map([['work_authorization', { value_state, projection_policy }]]);
+
+  it('UNKNOWN + AUTO → fill-null enriches', () => {
+    const plan = computeReconcilePlan(rec(), [rtw('US_CITIZEN')], fs('UNKNOWN', 'AUTO'));
+    expect(plan.patch).toEqual({ work_authorization: 'US_CITIZEN' });
+    expect(plan.contradictions).toEqual([]);
+  });
+
+  it('no field-state row → fill-null enriches (backward-compatible default)', () => {
+    const plan = computeReconcilePlan(rec(), [rtw('US_CITIZEN')]);
+    expect(plan.patch).toEqual({ work_authorization: 'US_CITIZEN' });
+  });
+
+  it('EXPLICITLY_CLEARED + AUTO → does NOT refill; records a contradiction (evidence disagrees with the clear)', () => {
+    const plan = computeReconcilePlan(rec(), [rtw('US_CITIZEN')], fs('EXPLICITLY_CLEARED', 'AUTO'));
+    expect(plan.patch).toEqual({});
+    expect(plan.contradictions).toEqual([{ field_name: 'work_authorization', new_evidence_id: 'rtw-1' }]);
+  });
+
+  it('any state + HOLD → does NOT project automatically; records a contradiction', () => {
+    const plan = computeReconcilePlan(rec(), [rtw('US_CITIZEN')], fs('UNKNOWN', 'HOLD'));
+    expect(plan.patch).toEqual({});
+    expect(plan.contradictions).toEqual([{ field_name: 'work_authorization', new_evidence_id: 'rtw-1' }]);
+  });
+
+  it('release hold (EXPLICITLY_CLEARED + AUTO) still does NOT refill — release flips policy only, value_state still blocks', () => {
+    const plan = computeReconcilePlan(rec(), [rtw('US_CITIZEN')], fs('EXPLICITLY_CLEARED', 'AUTO'));
+    expect(plan.patch).toEqual({});
+  });
+});

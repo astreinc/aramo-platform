@@ -34,6 +34,8 @@ function makeController(opts: { persistThrows?: boolean } = {}) {
     // TI-1B — resumeOrchestrator + resumeAuthorizer (unused on this path).
     {} as never,
     {} as never,
+    // TI-1D-A — reconcileRepo (field-state writes; no-op fake on this path).
+    { upsertProfileFieldState: async () => undefined, releaseProjectionHold: async () => undefined, listProfileFieldStates: async () => [] } as never,
   );
   return { ctl, create, persistDeclaredWorkHistory };
 }
