@@ -44,6 +44,7 @@ import {
   OverrideSkillDto,
   RejectProposalDto,
   ReviewQueueQueryDto,
+  SkillChildListQueryDto,
   UpdateSkillDto,
   UpdateVersionDto,
 } from './dto/skill-governance.dto.js';
@@ -86,6 +87,64 @@ export class SkillGovernanceController {
     this.assertPlatform(auth, requestId);
     const skills = await this.registry.listSkills({ includeInactive: query.include_inactive === 'true' });
     return { skills: skills.map(toSkillView) };
+  }
+
+  // SKILL-TAX-1F-B3 — governance detail reads. A console skill-detail page fetches the
+  // skill plus its aliases / versions / relationships as separate reads. All reuse the
+  // existing registry read primitives (no new domain logic, no mutation).
+
+  @Get('skills/:id')
+  @RequireScopes('platform:skill:read')
+  async getSkill(
+    @Param('id', ParseUUIDPipe) id: string,
+    @AuthContext() auth: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<SkillView> {
+    this.assertPlatform(auth, requestId);
+    const skill = await this.registry.getSkillById(id);
+    if (skill === null) {
+      throw new AramoError('NOT_FOUND', 'Skill not found', 404, { requestId });
+    }
+    return toSkillView(skill);
+  }
+
+  @Get('skills/:id/aliases')
+  @RequireScopes('platform:skill:read')
+  async listSkillAliases(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() query: SkillChildListQueryDto,
+    @AuthContext() auth: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<{ aliases: AliasView[] }> {
+    this.assertPlatform(auth, requestId);
+    const aliases = await this.registry.listAliases(id, {
+      includeInactive: query.include_inactive === 'true',
+    });
+    return { aliases: aliases.map(toAliasView) };
+  }
+
+  @Get('skills/:id/versions')
+  @RequireScopes('platform:skill:read')
+  async listSkillVersions(
+    @Param('id', ParseUUIDPipe) id: string,
+    @AuthContext() auth: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<{ versions: VersionView[] }> {
+    this.assertPlatform(auth, requestId);
+    const versions = await this.registry.listVersions(id);
+    return { versions: versions.map(toVersionView) };
+  }
+
+  @Get('skills/:id/relationships')
+  @RequireScopes('platform:skill:read')
+  async listSkillRelationships(
+    @Param('id', ParseUUIDPipe) id: string,
+    @AuthContext() auth: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<{ relationships: RelationshipView[] }> {
+    this.assertPlatform(auth, requestId);
+    const relationships = await this.registry.listRelationships(id);
+    return { relationships: relationships.map(toRelationshipView) };
   }
 
   @Post('skills')
