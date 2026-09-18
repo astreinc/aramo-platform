@@ -17,6 +17,7 @@ export {
   TalentCanonicalCoverageRepository,
   type CanonicalCoverage,
   type TalentCanonicalSkillRow,
+  type UnresolvedSurfaceAggregate,
 } from './lib/talent-canonical-coverage.repository.js';
 // SKILL-TAX-1F-B1 — Talent-side canonical correction (repoint + affected discovery).
 export {

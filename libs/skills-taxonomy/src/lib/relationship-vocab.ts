@@ -21,6 +21,32 @@ export type SkillRelationshipSource =
   | 'IMPORTED_TAXONOMY'
   | 'AI_RECOMMENDED';
 
+const RELATIONSHIP_TYPES: ReadonlySet<string> = new Set<SkillRelationshipType>([
+  'RELATED_TO',
+  'COMPATIBLE_WITH',
+  'PARENT_OF',
+  'BUILT_ON',
+  'REQUIRES',
+  'SUPERSEDES',
+]);
+
+const RELATIONSHIP_SOURCES: ReadonlySet<string> = new Set<SkillRelationshipSource>([
+  'VENDOR_DOC',
+  'ADMIN_CURATED',
+  'IMPORTED_TAXONOMY',
+  'AI_RECOMMENDED',
+]);
+
+// Narrowing guards over the closed vocab — used at governed input boundaries
+// (e.g. accepting an AI proposal whose payload carries untyped strings).
+export function isRelationshipType(v: unknown): v is SkillRelationshipType {
+  return typeof v === 'string' && RELATIONSHIP_TYPES.has(v);
+}
+
+export function isRelationshipSource(v: unknown): v is SkillRelationshipSource {
+  return typeof v === 'string' && RELATIONSHIP_SOURCES.has(v);
+}
+
 const SYMMETRIC_TYPES: ReadonlySet<SkillRelationshipType> = new Set([
   'RELATED_TO',
   'COMPATIBLE_WITH',

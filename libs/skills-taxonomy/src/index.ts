@@ -20,6 +20,14 @@ export {
 } from './lib/skill.repository.js';
 // SKILL-TAX-1F-B1 — the durable correction/propagation work ledger repository.
 export {
+  SkillGovernanceProposalRepository,
+  type SkillGovernanceProposalRow,
+  type ProposalType,
+  type ProposalStatus,
+  type ProposalSource,
+  type CreateProposalInput,
+} from './lib/skill-governance-proposal.repository.js';
+export {
   SkillCorrectionTaskRepository,
   type SkillCorrectionTaskRow,
   type CorrectionType,
@@ -41,6 +49,8 @@ export {
 export {
   isSymmetric,
   directionalityOf,
+  isRelationshipType,
+  isRelationshipSource,
   type SkillRelationshipType,
   type RelationshipDirectionality,
   type SkillRelationshipSource,
@@ -59,6 +69,14 @@ export {
   type AddVersionInput,
   type AddRelationshipInput,
 } from './lib/skill-registry.service.js';
+// SKILL-TAX-1F-B2 — human-ratification governance service (AI proposal accept/reject).
+export {
+  SkillGovernanceService,
+  ProposalNotFoundError,
+  ProposalNotPendingError,
+  ProposalPayloadError,
+  ProposalApplyConflictError,
+} from './lib/skill-governance.service.js';
 export {
   SkillCanonicalizationService,
   type CanonicalizationInput,

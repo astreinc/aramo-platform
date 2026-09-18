@@ -23,6 +23,7 @@ export {
   type RequisitionSkillRequirementRow,
   type RequirementType,
   type CreateRequirementInput,
+  type UnresolvedRequirementSurfaceAggregate,
 } from './lib/requisition-skill-requirement.repository.js';
 // T1-e — the governed-transition policy gate (a RequisitionRepository ctor dep).
 // Exported so integration specs that construct the repository directly can wire

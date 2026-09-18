@@ -42,43 +42,70 @@ function resolveActor(actor?: SkillActor): { actorId: string | null; actorType: 
   return { actorId: actor?.id ?? null, actorType: actor?.type ?? 'system' };
 }
 
+// SKILL-TAX-1F-B2 — the narrow transaction-client surface the composable write
+// primitives need. A Prisma interactive-transaction client satisfies it structurally,
+// so SkillGovernanceService can run addAliasWithin INSIDE the proposal-accept
+// transaction. Deliberately scoped to the skills_taxonomy models this repo already
+// owns — it does NOT widen cross-domain access.
+export type SkillAliasTxClient = Pick<
+  PrismaService,
+  'skillAlias' | 'skillAuditEvent' | 'skillCorrectionTask'
+>;
+
 @Injectable()
 export class SkillAliasRepository {
   constructor(private readonly prisma: PrismaService) {}
 
+  // Public entry — its own transaction. Delegates to the composable primitive.
   async addAlias(input: AddAliasPersistInput): Promise<SkillAliasRow> {
+    return this.prisma.$transaction((tx) => this.addAliasWithin(tx, input));
+  }
+
+  // SKILL-TAX-1F-B2 — the composable canonical write: alias row + ALIAS_ADDED audit +
+  // ALIAS_CORRECTION durable task, on the CALLER'S transaction client. Same canonical
+  // governance logic whether invoked by addAlias or by proposal acceptance — no
+  // duplicate writer, and the correction task stays atomic with the write.
+  async addAliasWithin(tx: SkillAliasTxClient, input: AddAliasPersistInput): Promise<SkillAliasRow> {
     const id = uuidv7();
     const { actorId, actorType } = resolveActor(input.actor);
-    const [alias] = await this.prisma.$transaction([
-      this.prisma.skillAlias.create({
-        data: {
-          id,
-          skill_id: input.skill_id,
+    const alias = await tx.skillAlias.create({
+      data: {
+        id,
+        skill_id: input.skill_id,
+        alias: input.alias,
+        normalized_alias: input.normalized_alias,
+        alias_type: input.alias_type,
+        status: 'active',
+        created_by: actorId,
+        updated_by: actorId,
+      },
+    });
+    await tx.skillAuditEvent.create({
+      data: {
+        id: uuidv7(),
+        tenant_id: null,
+        actor_id: actorId,
+        actor_type: actorType,
+        event_type: 'ALIAS_ADDED',
+        subject_id: input.skill_id,
+        event_payload: {
+          alias_id: id,
           alias: input.alias,
           normalized_alias: input.normalized_alias,
           alias_type: input.alias_type,
-          status: 'active',
-          created_by: actorId,
-          updated_by: actorId,
         },
-      }),
-      this.prisma.skillAuditEvent.create({
-        data: {
-          id: uuidv7(),
-          tenant_id: null,
-          actor_id: actorId,
-          actor_type: actorType,
-          event_type: 'ALIAS_ADDED',
-          subject_id: input.skill_id,
-          event_payload: {
-            alias_id: id,
-            alias: input.alias,
-            normalized_alias: input.normalized_alias,
-            alias_type: input.alias_type,
-          },
-        },
-      }),
-    ]);
+      },
+    });
+    await tx.skillCorrectionTask.create({
+      data: {
+        id: uuidv7(),
+        correction_type: 'ALIAS_CORRECTION',
+        from_canonical_skill_id: null,
+        to_canonical_skill_id: null,
+        surface_form: input.alias,
+        status: 'PENDING',
+      },
+    });
     return alias as SkillAliasRow;
   }
 
@@ -98,6 +125,18 @@ export class SkillAliasRepository {
           event_type: 'ALIAS_REMOVED',
           subject_id: alias.skill_id,
           event_payload: { alias_id: id, normalized_alias: alias.normalized_alias },
+        },
+      });
+      // SKILL-TAX-1F-B2 — removing an alias can un-resolve evidence that resolved via
+      // it, so emit an ALIAS_CORRECTION for the alias surface (atomic; B1 fans it out).
+      await tx.skillCorrectionTask.create({
+        data: {
+          id: uuidv7(),
+          correction_type: 'ALIAS_CORRECTION',
+          from_canonical_skill_id: null,
+          to_canonical_skill_id: null,
+          surface_form: alias.alias,
+          status: 'PENDING',
         },
       });
       return alias;

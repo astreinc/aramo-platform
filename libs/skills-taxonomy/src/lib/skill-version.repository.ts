@@ -76,6 +76,10 @@ export class SkillVersionRepository {
           },
         },
       }),
+      // SKILL-TAX-1F-B2 — a version add can change version-specific resolution, so
+      // emit an OVERRIDE_CORRECTION keyed by the owning canonical Skill (re-reconcile
+      // only; B1 fans it out). Atomic with the write.
+      this.versionCorrectionTaskOp(input.skill_id),
     ]);
     return version as SkillVersionRow;
   }
@@ -99,7 +103,33 @@ export class SkillVersionRepository {
           event_payload: { version_id: id, changed: data },
         },
       });
+      // SKILL-TAX-1F-B2 — version update → OVERRIDE_CORRECTION keyed by owning Skill.
+      await tx.skillCorrectionTask.create({
+        data: {
+          id: uuidv7(),
+          correction_type: 'OVERRIDE_CORRECTION',
+          from_canonical_skill_id: version.skill_id,
+          to_canonical_skill_id: null,
+          surface_form: null,
+          status: 'PENDING',
+        },
+      });
       return version;
+    });
+  }
+
+  // SKILL-TAX-1F-B2 — OVERRIDE_CORRECTION task op keyed by the owning canonical Skill
+  // (re-reconcile only). Atomic inside the version mutation transaction.
+  private versionCorrectionTaskOp(skillId: string) {
+    return this.prisma.skillCorrectionTask.create({
+      data: {
+        id: uuidv7(),
+        correction_type: 'OVERRIDE_CORRECTION',
+        from_canonical_skill_id: skillId,
+        to_canonical_skill_id: null,
+        surface_form: null,
+        status: 'PENDING',
+      },
     });
   }
 

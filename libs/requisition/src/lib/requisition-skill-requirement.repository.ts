@@ -48,6 +48,18 @@ export interface CanonicalUpdateInput {
   canonicalized_at: Date;
 }
 
+// SKILL-TAX-1F-B2 — one UNRESOLVED requirement surface form aggregated within the
+// requisition domain, carrying its INTERNAL distinct tenant membership. The platform
+// review queue (apps/api) unions this membership with the talent domain's to compute
+// an exact, counts-only cross-domain tenant_count; the tenant ids NEVER leave the
+// service. Raw raw_surface_form (never normalized here — the governance service
+// applies the authoritative normalizer to merge across domains).
+export interface UnresolvedRequirementSurfaceAggregate {
+  surface_form: string;
+  occurrence_count: number;
+  tenant_ids: string[];
+}
+
 @Injectable()
 export class RequisitionSkillRequirementRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -113,6 +125,40 @@ export class RequisitionSkillRequirementRepository {
       }),
     ]);
     return { total, resolved, unresolved };
+  }
+
+  // SKILL-TAX-1F-B2 — UNRESOLVED requirement-surface aggregates for the platform
+  // review queue. GROUP BY the raw raw_surface_form; carry distinct tenant membership
+  // for the governance service to union across domains (ids stay internal). Ordered
+  // (occurrence_count DESC, surface_form ASC), hard-capped by scanLimit (caller logs a
+  // truncating cap). Optional case-insensitive substring pre-filter. Domain-local raw
+  // SQL against this schema only.
+  async listUnresolvedSurfaceAggregates(args: {
+    scanLimit: number;
+    surfaceSearch?: string | null;
+  }): Promise<UnresolvedRequirementSurfaceAggregate[]> {
+    const search = args.surfaceSearch && args.surfaceSearch.trim().length > 0
+      ? `%${args.surfaceSearch.trim()}%`
+      : null;
+    const rows = await this.prisma.$queryRaw<
+      Array<{ surface_form: string; occurrence_count: number; tenant_ids: string[] }>
+    >`
+      SELECT
+        raw_surface_form AS surface_form,
+        COUNT(*)::int AS occurrence_count,
+        array_agg(DISTINCT tenant_id::text) AS tenant_ids
+      FROM requisition."RequisitionSkillRequirement"
+      WHERE canonicalization_status = 'UNRESOLVED'
+        AND (${search}::text IS NULL OR raw_surface_form ILIKE ${search}::text)
+      GROUP BY raw_surface_form
+      ORDER BY occurrence_count DESC, surface_form ASC
+      LIMIT ${args.scanLimit}
+    `;
+    return rows.map((r) => ({
+      surface_form: r.surface_form,
+      occurrence_count: Number(r.occurrence_count),
+      tenant_ids: r.tenant_ids,
+    }));
   }
 
   // SKILL-TAX-1F-B1 — MERGE repoint on the requisition side. Every requirement row

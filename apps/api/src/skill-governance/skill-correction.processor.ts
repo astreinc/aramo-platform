@@ -113,17 +113,42 @@ export class SkillCorrectionProcessor {
       await this.enqueue(talents, goldenProfiles);
       return;
     }
-    // ALIAS_CORRECTION / OVERRIDE_CORRECTION — re-reconcile the affected surface only.
-    const surface = task.surface_form;
-    if (surface === null) {
-      throw new Error(`${task.correction_type} task missing surface_form`);
+    if (task.correction_type === 'ALIAS_CORRECTION') {
+      // Alias add/remove — re-reconcile the affected surface only, no repoint.
+      const surface = task.surface_form;
+      if (surface === null || surface.length === 0) {
+        throw new Error('ALIAS_CORRECTION task missing surface_form');
+      }
+      await this.enqueueBySelectors({ surfaceForms: [surface] });
+      return;
     }
-    const talents = await this.talentCorrection.findAffectedTalents({
-      surfaceForms: [surface],
-      limit: FANOUT_LIMIT,
+    // OVERRIDE_CORRECTION — the general correction. Discover by from_canonical_skill_id
+    // AND/OR governed surface_form (canonical_name change / deactivate / reactivate /
+    // version target by canonical id; a form-specific override targets the surface).
+    // No repoint UNLESS the correction explicitly carries a replacement canonical id
+    // (to_canonical_skill_id). A task with NEITHER usable key is a silent no-op → FAIL.
+    const from = task.from_canonical_skill_id;
+    const surface = task.surface_form !== null && task.surface_form.length > 0 ? task.surface_form : null;
+    if (from === null && surface === null) {
+      throw new Error('OVERRIDE_CORRECTION task has neither surface_form nor from_canonical_skill_id');
+    }
+    if (from !== null && task.to_canonical_skill_id !== null) {
+      await this.talentCorrection.repointCanonicalSkillId(from, task.to_canonical_skill_id);
+      await this.requisitionRequirements.repointCanonicalSkillId(from, task.to_canonical_skill_id);
+    }
+    await this.enqueueBySelectors({
+      ...(from !== null ? { canonicalSkillIds: [from] } : {}),
+      ...(surface !== null ? { surfaceForms: [surface] } : {}),
     });
+  }
+
+  private async enqueueBySelectors(selectors: {
+    canonicalSkillIds?: readonly string[];
+    surfaceForms?: readonly string[];
+  }): Promise<void> {
+    const talents = await this.talentCorrection.findAffectedTalents({ ...selectors, limit: FANOUT_LIMIT });
     const goldenProfiles = await this.requisitionRequirements.findAffectedGoldenProfiles({
-      surfaceForms: [surface],
+      ...selectors,
       limit: FANOUT_LIMIT,
     });
     await this.enqueue(talents, goldenProfiles);

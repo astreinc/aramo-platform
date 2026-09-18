@@ -26,6 +26,9 @@ const MIGRATIONS = [
   resolve(__dirname, '../../prisma/migrations/20260915150000_skill_alias_version/migration.sql'),
   // SKILL-TAX-1F-A — Skill.merged_into_skill_id (regen client SELECTs it). Split-safe.
   resolve(__dirname, '../../prisma/migrations/20260917210000_skill_tax_1f_governance/migration.sql'),
+  // SKILL-TAX-1F-B2 — addAlias/addVersion now write a SkillCorrectionTask atomically;
+  // its table is created here (regen client INSERTs it → curated list must include it).
+  resolve(__dirname, '../../prisma/migrations/20260918120000_skill_tax_1f_b_governance_proposal_correction/migration.sql'),
 ];
 
 const ACTOR = { id: '55555555-5555-7555-8555-555555555555', type: 'platform_admin' };

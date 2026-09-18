@@ -35,6 +35,15 @@ tags:
       is deliberately separate from lifecycle power).
   - name: Platform Admins
     description: Platform-administrator invitation (the sentinel platform tenant).
+  - name: Platform Skill Governance
+    description: |
+      SKILL-TAX-1F-B2 — the canonical skills-taxonomy administration surface and
+      the AI-proposal ratification console. Reads require `platform:skill:read`;
+      every mutation and every accept/reject decision requires
+      `platform:skill:manage`. Every operation is platform-tier: a tenant-tier
+      token is refused with 403 `INSUFFICIENT_PERMISSIONS` (DDR §13.1 tripwire).
+      The taxonomy is platform-global — these routes carry NO tenant scoping and
+      NO PII; the review queue is counts-only (never a tenant id in a response).
 
 paths:
   /platform/dashboard:
@@ -543,6 +552,650 @@ paths:
               schema:
                 $ref: 'common.yaml#/components/schemas/ErrorResponse'
 
+  # ---- SKILL-TAX-1F-B2 — Platform Skill Governance ------------------------
+  /platform/skills:
+    get:
+      operationId: listPlatformSkills
+      tags: [Platform Skill Governance]
+      summary: List canonical skills.
+      description: 'Platform-global canonical Skill registry (active by default). Requires `platform:skill:read`.'
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - name: include_inactive
+          in: query
+          required: false
+          description: When `true`, also return inactive (deactivated / merged-away) skills.
+          schema:
+            type: string
+            enum: ['true', 'false']
+      responses:
+        '200':
+          description: The canonical skill list.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkillListResponse'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+    post:
+      operationId: createPlatformSkill
+      tags: [Platform Skill Governance]
+      summary: Create a canonical skill.
+      description: 'Mint a canonical Skill (normalized_name uniqueness enforced). Requires `platform:skill:manage`.'
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSkillRequest'
+      responses:
+        '201':
+          description: The created skill.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkillView'
+        '400':
+          $ref: '#/components/responses/SkillValidation'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '409':
+          $ref: '#/components/responses/SkillConflict'
+
+  /platform/skills/{id}:
+    patch:
+      operationId: updatePlatformSkill
+      tags: [Platform Skill Governance]
+      summary: Update a canonical skill's name/description.
+      description: 'A canonical_name change re-derives normalized_name and enqueues an OVERRIDE_CORRECTION. Requires `platform:skill:manage`.'
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SkillIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateSkillRequest'
+      responses:
+        '200':
+          description: The updated skill.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkillView'
+        '400':
+          $ref: '#/components/responses/SkillValidation'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          $ref: '#/components/responses/SkillNotFound'
+        '409':
+          $ref: '#/components/responses/SkillConflict'
+
+  /platform/skills/{id}/deactivate:
+    post:
+      operationId: deactivatePlatformSkill
+      tags: [Platform Skill Governance]
+      summary: Deactivate a canonical skill.
+      description: 'Sets status inactive + enqueues an OVERRIDE_CORRECTION. Requires `platform:skill:manage`.'
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SkillIdParam'
+      responses:
+        '200':
+          description: The deactivated skill.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkillView'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          $ref: '#/components/responses/SkillNotFound'
+
+  /platform/skills/{id}/reactivate:
+    post:
+      operationId: reactivatePlatformSkill
+      tags: [Platform Skill Governance]
+      summary: Reactivate a canonical skill.
+      description: 'Sets status active (modeled as SKILL_UPDATED) + enqueues an OVERRIDE_CORRECTION. Requires `platform:skill:manage`.'
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SkillIdParam'
+      responses:
+        '200':
+          description: The reactivated skill.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkillView'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          $ref: '#/components/responses/SkillNotFound'
+
+  /platform/skills/{loserId}/merge:
+    post:
+      operationId: mergePlatformSkill
+      tags: [Platform Skill Governance]
+      summary: Soft-merge a duplicate skill into a winner.
+      description: |
+        SOFT merge — the loser keeps its id, goes inactive, and points at the
+        winner (`merged_into_skill_id`); a durable SKILL_MERGE correction task is
+        enqueued for the B1 engine to repoint downstream references. Requires
+        `platform:skill:manage`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - name: loserId
+          in: path
+          required: true
+          description: The UUID of the skill being merged away (the loser).
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MergeSkillRequest'
+      responses:
+        '200':
+          description: The (now inactive) loser skill.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkillView'
+        '400':
+          $ref: '#/components/responses/SkillValidation'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          $ref: '#/components/responses/SkillNotFound'
+
+  /platform/skills/{id}/override:
+    post:
+      operationId: overridePlatformSkill
+      tags: [Platform Skill Governance]
+      summary: Record a canonicalization override/correction.
+      description: |
+        Records a CANONICALIZATION_OVERRIDDEN audit event + an OVERRIDE_CORRECTION
+        durable task keyed by this skill (and, when supplied, a governed
+        `surface_form`). Requires `platform:skill:manage`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SkillIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OverrideSkillRequest'
+      responses:
+        '200':
+          description: Override recorded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkillOkResponse'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          $ref: '#/components/responses/SkillNotFound'
+
+  /platform/skills/{id}/aliases:
+    post:
+      operationId: addPlatformSkillAlias
+      tags: [Platform Skill Governance]
+      summary: Add a governed alias to a skill.
+      description: 'Adds an alias (normalized_alias uniqueness enforced) + enqueues an ALIAS_CORRECTION. Requires `platform:skill:manage`.'
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SkillIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddAliasRequest'
+      responses:
+        '201':
+          description: The created alias.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AliasView'
+        '400':
+          $ref: '#/components/responses/SkillValidation'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          $ref: '#/components/responses/SkillNotFound'
+        '409':
+          $ref: '#/components/responses/SkillConflict'
+
+  /platform/skills/{id}/aliases/{aliasId}:
+    delete:
+      operationId: removePlatformSkillAlias
+      tags: [Platform Skill Governance]
+      summary: Soft-remove an alias.
+      description: 'A SOFT status flip (never a delete) + enqueues an ALIAS_CORRECTION. Requires `platform:skill:manage`.'
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SkillIdParam'
+        - name: aliasId
+          in: path
+          required: true
+          description: The alias UUID.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: The (now inactive) alias.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AliasView'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          $ref: '#/components/responses/SkillNotFound'
+
+  /platform/skills/{id}/versions:
+    post:
+      operationId: addPlatformSkillVersion
+      tags: [Platform Skill Governance]
+      summary: Add a governed version to a skill.
+      description: 'Adds a version ((skill_id, normalized_version) unique) + enqueues an OVERRIDE_CORRECTION. Requires `platform:skill:manage`.'
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SkillIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddVersionRequest'
+      responses:
+        '201':
+          description: The created version.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VersionView'
+        '400':
+          $ref: '#/components/responses/SkillValidation'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          $ref: '#/components/responses/SkillNotFound'
+        '409':
+          $ref: '#/components/responses/SkillConflict'
+
+  /platform/skills/{id}/versions/{versionId}:
+    patch:
+      operationId: updatePlatformSkillVersion
+      tags: [Platform Skill Governance]
+      summary: Update a version's family/status.
+      description: 'Updates version_family/status + enqueues an OVERRIDE_CORRECTION. Requires `platform:skill:manage`.'
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SkillIdParam'
+        - name: versionId
+          in: path
+          required: true
+          description: The version UUID.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateVersionRequest'
+      responses:
+        '200':
+          description: The updated version.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VersionView'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          $ref: '#/components/responses/SkillNotFound'
+
+  /platform/skills/{id}/relationships:
+    post:
+      operationId: addPlatformSkillRelationship
+      tags: [Platform Skill Governance]
+      summary: Add a canonical-to-canonical relationship edge.
+      description: 'Adds a governed relationship edge (taxonomy intelligence; emits NO correction task). Requires `platform:skill:manage`.'
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SkillIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddRelationshipRequest'
+      responses:
+        '201':
+          description: The created relationship edge.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RelationshipView'
+        '400':
+          $ref: '#/components/responses/SkillValidation'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          $ref: '#/components/responses/SkillNotFound'
+        '409':
+          $ref: '#/components/responses/SkillConflict'
+
+  /platform/skills/{id}/relationships/{relationshipId}:
+    delete:
+      operationId: removePlatformSkillRelationship
+      tags: [Platform Skill Governance]
+      summary: Soft-remove a relationship edge.
+      description: 'A SOFT status flip (never a delete). Requires `platform:skill:manage`.'
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SkillIdParam'
+        - name: relationshipId
+          in: path
+          required: true
+          description: The relationship edge UUID.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: The (now inactive) relationship edge.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RelationshipView'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          $ref: '#/components/responses/SkillNotFound'
+
+  /platform/skill-review-queue:
+    get:
+      operationId: listPlatformSkillReviewQueue
+      tags: [Platform Skill Governance]
+      summary: The unresolved-surface governance work queue (counts-only).
+      description: |
+        UNRESOLVED surface forms across the Talent + requisition domains, merged by
+        the authoritative normalized form. Each row is counts-only
+        (`occurrence_count`, exact cross-domain `tenant_count`) — NEVER a tenant id.
+        Live keyset pagination (order `occurrence_count DESC, surface_form ASC`); the
+        opaque `next_cursor` pins the filter set. Requires `platform:skill:read`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - name: source_domain
+          in: query
+          required: false
+          description: Restrict to one L3 domain; omit for both.
+          schema:
+            type: string
+            enum: [talent, requisition]
+        - name: min_occurrence
+          in: query
+          required: false
+          description: Only surfaces whose merged occurrence_count is at least this.
+          schema:
+            type: integer
+            minimum: 0
+        - name: surface_search
+          in: query
+          required: false
+          description: Case-insensitive substring pre-filter on the surface form.
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          description: Page size (default 50, max 200).
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+        - name: cursor
+          in: query
+          required: false
+          description: Opaque continuation cursor from a prior page's next_cursor.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: A page of review-queue rows.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewQueueResponse'
+        '400':
+          $ref: '#/components/responses/SkillValidation'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+
+  /platform/skill-proposals:
+    get:
+      operationId: listPlatformSkillProposals
+      tags: [Platform Skill Governance]
+      summary: List AI skill-governance proposals.
+      description: 'Newest-first; optional status filter. Requires `platform:skill:read`.'
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/ProposalStatus'
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+      responses:
+        '200':
+          description: The proposal list.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProposalListResponse'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+    post:
+      operationId: createPlatformSkillProposal
+      tags: [Platform Skill Governance]
+      summary: Create an AI skill-governance proposal (PENDING only).
+      description: 'Creates a PENDING proposal — ZERO canonical mutation until accepted. Requires `platform:skill:manage`.'
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateProposalRequest'
+      responses:
+        '201':
+          description: The created PENDING proposal.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProposalView'
+        '400':
+          $ref: '#/components/responses/SkillValidation'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+
+  /platform/skill-proposals/{id}:
+    get:
+      operationId: getPlatformSkillProposal
+      tags: [Platform Skill Governance]
+      summary: Read one proposal.
+      description: 'Requires `platform:skill:read`.'
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ProposalIdParam'
+      responses:
+        '200':
+          description: The proposal.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProposalView'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          $ref: '#/components/responses/SkillNotFound'
+
+  /platform/skill-proposals/{id}/accept:
+    post:
+      operationId: acceptPlatformSkillProposal
+      tags: [Platform Skill Governance]
+      summary: Accept a PENDING proposal (applies the canonical write).
+      description: |
+        One atomic taxonomy transaction: reuses the canonical registry write
+        primitive to materialize the alias/relationship, then marks the proposal
+        ACCEPTED with `applied_entity_id`. A non-PENDING proposal is refused 409
+        (`SKILL_PROPOSAL_NOT_PENDING`) and mutates nothing. Requires
+        `platform:skill:manage`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ProposalIdParam'
+      responses:
+        '200':
+          description: The ACCEPTED proposal.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProposalView'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          $ref: '#/components/responses/SkillNotFound'
+        '409':
+          $ref: '#/components/responses/SkillProposalNotPending'
+        '422':
+          $ref: '#/components/responses/SkillProposalPayloadInvalid'
+
+  /platform/skill-proposals/{id}/reject:
+    post:
+      operationId: rejectPlatformSkillProposal
+      tags: [Platform Skill Governance]
+      summary: Reject a PENDING proposal (terminal).
+      description: 'Terminal REJECTED transition (CAS on PENDING). A non-PENDING proposal is refused 409. Requires `platform:skill:manage`.'
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ProposalIdParam'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RejectProposalRequest'
+      responses:
+        '200':
+          description: The REJECTED proposal.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProposalView'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          $ref: '#/components/responses/SkillNotFound'
+        '409':
+          $ref: '#/components/responses/SkillProposalNotPending'
+
 components:
   securitySchemes:
     # Duplicated byte-for-byte from openapi/common.yaml per locked invariant 4
@@ -563,6 +1216,22 @@ components:
       in: path
       required: true
       description: The tenant's UUID.
+      schema:
+        type: string
+        format: uuid
+    SkillIdParam:
+      name: id
+      in: path
+      required: true
+      description: The canonical Skill UUID.
+      schema:
+        type: string
+        format: uuid
+    ProposalIdParam:
+      name: id
+      in: path
+      required: true
+      description: The SkillGovernanceProposal UUID.
       schema:
         type: string
         format: uuid
@@ -606,6 +1275,39 @@ components:
         reason requirement was unmet (`reason_code_required` /
         `reason_text_required` / `retention_policy_code_required` /
         `close_at_required`).
+      content:
+        application/json:
+          schema:
+            $ref: 'common.yaml#/components/schemas/ErrorResponse'
+    SkillValidation:
+      description: '`VALIDATION_ERROR` — a request-shape or lifecycle invariant was violated.'
+      content:
+        application/json:
+          schema:
+            $ref: 'common.yaml#/components/schemas/ErrorResponse'
+    SkillNotFound:
+      description: '`NOT_FOUND` — no such skill / alias / version / relationship / proposal.'
+      content:
+        application/json:
+          schema:
+            $ref: 'common.yaml#/components/schemas/ErrorResponse'
+    SkillConflict:
+      description: |
+        `SKILL_CONFLICT` — a governed canonical write refused on a uniqueness
+        constraint (`details.constraint` discriminates normalized_name /
+        canonical_name / normalized_alias / normalized_version / source_target_type).
+      content:
+        application/json:
+          schema:
+            $ref: 'common.yaml#/components/schemas/ErrorResponse'
+    SkillProposalNotPending:
+      description: '`SKILL_PROPOSAL_NOT_PENDING` — accept/reject addressed a non-PENDING (terminal) proposal.'
+      content:
+        application/json:
+          schema:
+            $ref: 'common.yaml#/components/schemas/ErrorResponse'
+    SkillProposalPayloadInvalid:
+      description: '`SKILL_PROPOSAL_PAYLOAD_INVALID` — the accepted proposal payload is not a valid spec for its type.'
       content:
         application/json:
           schema:
@@ -1018,3 +1720,310 @@ components:
           format: email
         display_name:
           type: string
+
+    # ---- SKILL-TAX-1F-B2 — Platform Skill Governance schemas --------------
+    SkillStatus:
+      type: string
+      enum: [active, inactive]
+    ProposalType:
+      type: string
+      enum: [ALIAS, RELATIONSHIP]
+    ProposalSource:
+      type: string
+      enum: [AI_RECOMMENDED]
+    ProposalStatus:
+      type: string
+      enum: [PENDING, ACCEPTED, REJECTED]
+    SkillAliasType:
+      type: string
+      enum: [ABBREVIATION, COMMON_NAME, LEGACY_NAME, VENDOR_VARIANT, SPELLING_VARIANT]
+    SkillRelationshipType:
+      type: string
+      enum: [RELATED_TO, COMPATIBLE_WITH, PARENT_OF, BUILT_ON, REQUIRES, SUPERSEDES]
+    SkillRelationshipSource:
+      type: string
+      enum: [VENDOR_DOC, ADMIN_CURATED, IMPORTED_TAXONOMY, AI_RECOMMENDED]
+
+    SkillView:
+      type: object
+      additionalProperties: false
+      required: [id, canonical_name, normalized_name, description, status, merged_into_skill_id, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        canonical_name:
+          type: string
+        normalized_name:
+          type: string
+        description:
+          type: [string, 'null']
+        status:
+          $ref: '#/components/schemas/SkillStatus'
+        merged_into_skill_id:
+          type: [string, 'null']
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    SkillListResponse:
+      type: object
+      additionalProperties: false
+      required: [skills]
+      properties:
+        skills:
+          type: array
+          items:
+            $ref: '#/components/schemas/SkillView'
+    CreateSkillRequest:
+      type: object
+      additionalProperties: false
+      required: [canonical_name]
+      properties:
+        canonical_name:
+          type: string
+          maxLength: 200
+        description:
+          type: [string, 'null']
+          maxLength: 2000
+    UpdateSkillRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        canonical_name:
+          type: string
+          maxLength: 200
+        description:
+          type: [string, 'null']
+          maxLength: 2000
+    MergeSkillRequest:
+      type: object
+      additionalProperties: false
+      required: [winner_skill_id]
+      properties:
+        winner_skill_id:
+          type: string
+          format: uuid
+    OverrideSkillRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        surface_form:
+          type: [string, 'null']
+          maxLength: 200
+        reason:
+          type: [string, 'null']
+          maxLength: 2000
+    SkillOkResponse:
+      type: object
+      additionalProperties: false
+      required: [ok]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+
+    AliasView:
+      type: object
+      additionalProperties: false
+      required: [id, skill_id, alias, normalized_alias, alias_type, status]
+      properties:
+        id:
+          type: string
+          format: uuid
+        skill_id:
+          type: string
+          format: uuid
+        alias:
+          type: string
+        normalized_alias:
+          type: string
+        alias_type:
+          $ref: '#/components/schemas/SkillAliasType'
+        status:
+          $ref: '#/components/schemas/SkillStatus'
+    AddAliasRequest:
+      type: object
+      additionalProperties: false
+      required: [alias, alias_type]
+      properties:
+        alias:
+          type: string
+          maxLength: 200
+        alias_type:
+          $ref: '#/components/schemas/SkillAliasType'
+
+    VersionView:
+      type: object
+      additionalProperties: false
+      required: [id, skill_id, version, normalized_version, version_family, status]
+      properties:
+        id:
+          type: string
+          format: uuid
+        skill_id:
+          type: string
+          format: uuid
+        version:
+          type: string
+        normalized_version:
+          type: string
+        version_family:
+          type: [string, 'null']
+        status:
+          $ref: '#/components/schemas/SkillStatus'
+    AddVersionRequest:
+      type: object
+      additionalProperties: false
+      required: [version]
+      properties:
+        version:
+          type: string
+          maxLength: 100
+        version_family:
+          type: [string, 'null']
+          maxLength: 100
+    UpdateVersionRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        version_family:
+          type: [string, 'null']
+          maxLength: 100
+        status:
+          $ref: '#/components/schemas/SkillStatus'
+
+    RelationshipView:
+      type: object
+      additionalProperties: false
+      required: [id, source_skill_id, target_skill_id, relationship_type, directionality, status, source, source_ref]
+      properties:
+        id:
+          type: string
+          format: uuid
+        source_skill_id:
+          type: string
+          format: uuid
+        target_skill_id:
+          type: string
+          format: uuid
+        relationship_type:
+          $ref: '#/components/schemas/SkillRelationshipType'
+        directionality:
+          type: string
+          enum: [DIRECTED, SYMMETRIC]
+        status:
+          $ref: '#/components/schemas/SkillStatus'
+        source:
+          $ref: '#/components/schemas/SkillRelationshipSource'
+        source_ref:
+          type: [string, 'null']
+    AddRelationshipRequest:
+      type: object
+      additionalProperties: false
+      required: [target_skill_id, relationship_type, source]
+      properties:
+        target_skill_id:
+          type: string
+          format: uuid
+        relationship_type:
+          $ref: '#/components/schemas/SkillRelationshipType'
+        source:
+          $ref: '#/components/schemas/SkillRelationshipSource'
+        source_ref:
+          type: [string, 'null']
+          maxLength: 500
+
+    ReviewQueueRow:
+      type: object
+      additionalProperties: false
+      required: [surface_form, occurrence_count, tenant_count]
+      description: A counts-only unresolved-surface row — NEVER carries a tenant id.
+      properties:
+        surface_form:
+          type: string
+          description: The authoritative normalized surface form (the merge + ordering key).
+        occurrence_count:
+          type: integer
+        tenant_count:
+          type: integer
+          description: Exact distinct tenants across the in-scope domains (ids discarded).
+    ReviewQueueResponse:
+      type: object
+      additionalProperties: false
+      required: [rows, next_cursor]
+      properties:
+        rows:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReviewQueueRow'
+        next_cursor:
+          type: [string, 'null']
+          description: Opaque continuation cursor, or null on the last page.
+
+    ProposalView:
+      type: object
+      additionalProperties: false
+      required: [id, proposal_type, source, status, payload, proposed_by, proposed_at, decided_by, decided_at, decision_reason, applied_entity_id]
+      properties:
+        id:
+          type: string
+          format: uuid
+        proposal_type:
+          $ref: '#/components/schemas/ProposalType'
+        source:
+          $ref: '#/components/schemas/ProposalSource'
+        status:
+          $ref: '#/components/schemas/ProposalStatus'
+        payload:
+          type: object
+          additionalProperties: true
+          description: The proposed spec (validated for the type at accept time).
+        proposed_by:
+          type: [string, 'null']
+          format: uuid
+        proposed_at:
+          type: string
+          format: date-time
+        decided_by:
+          type: [string, 'null']
+          format: uuid
+        decided_at:
+          type: [string, 'null']
+          format: date-time
+        decision_reason:
+          type: [string, 'null']
+        applied_entity_id:
+          type: [string, 'null']
+          format: uuid
+    ProposalListResponse:
+      type: object
+      additionalProperties: false
+      required: [proposals]
+      properties:
+        proposals:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProposalView'
+    CreateProposalRequest:
+      type: object
+      additionalProperties: false
+      required: [proposal_type, source, payload]
+      properties:
+        proposal_type:
+          $ref: '#/components/schemas/ProposalType'
+        source:
+          $ref: '#/components/schemas/ProposalSource'
+        payload:
+          type: object
+          additionalProperties: true
+    RejectProposalRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        reason:
+          type: [string, 'null']
+          maxLength: 2000
