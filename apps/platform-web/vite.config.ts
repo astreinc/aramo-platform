@@ -12,9 +12,11 @@ const root = resolve(fileURLToPath(import.meta.url), '..');
 //   - port 4202 (ats-web is 4201), host 'localhost' (Inc-1 lesson: the printed
 //     dev URL must match AUTH_PUBLIC_BASE_URL / the derived callback host so the
 //     host-only PKCE cookie is present at the callback).
-//   - proxy /auth → auth-service (3001) and /platform → platform-admin
-//     (127.0.0.1:3002, IPv4-pinned — Inc-1 lesson). NO /v1 proxy: platform-web
-//     talks ONLY to auth + platform-admin (A4), never apps/api.
+//   - proxy /auth → auth-service (3001). The /platform provider map is edge-owned
+//     (SKILL-TAX-1F-C): /platform/skill* → apps/api (:3000, owns the governance
+//     surface); every other /platform/* → platform-admin (:3002, IPv4-pinned). The
+//     app addresses only the /auth + /platform namespaces, never apps/api DIRECTLY
+//     (R14 revised). Still NO /v1 proxy: the tenant api surface is unreachable here.
 export default defineConfig({
   root,
   plugins: [react()],
@@ -33,6 +35,26 @@ export default defineConfig({
         // derives the registered :4202 callback (PR-3.1 host-derived auth base);
         // rewriting to :3001 would emit an unregistered callback Cognito rejects.
         changeOrigin: false,
+        secure: false,
+      },
+      // SKILL-TAX-1F-C — edge-owned /platform provider map. The skill-governance
+      // paths (/platform/skill*) are owned by apps/api (:3000) — it bridges cip+ats,
+      // which scope:platform cannot import. Listed BEFORE '/platform' so Vite routes
+      // these specific prefixes to the api; every other /platform/* falls to admin.
+      // Still NO /v1 proxy: the tenant api surface is unreachable from this app.
+      '/platform/skills': {
+        target: 'http://127.0.0.1:3000', // apps/api (owns the governance surface)
+        changeOrigin: true,
+        secure: false,
+      },
+      '/platform/skill-review-queue': {
+        target: 'http://127.0.0.1:3000',
+        changeOrigin: true,
+        secure: false,
+      },
+      '/platform/skill-proposals': {
+        target: 'http://127.0.0.1:3000',
+        changeOrigin: true,
         secure: false,
       },
       '/platform': {

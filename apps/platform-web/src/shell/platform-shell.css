@@ -132,3 +132,20 @@
   flex-wrap: wrap;
   margin: 14px 0;
 }
+
+/* SKILL-TAX-1F-C1 — canonical skill status pill (active/inactive state marker). */
+.pw-skill-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  border: 1px solid var(--rc-border, #d0d5dd);
+  color: var(--rc-fg-muted, #475467);
+  background: var(--rc-surface-2, #f2f4f7);
+}
+.pw-skill-badge[data-active='true'] {
+  color: #067647;
+  border-color: #abefc6;
+  background: #ecfdf3;
+}

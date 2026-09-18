@@ -10,7 +10,9 @@ import {
   ShellBrand,
   TopBar,
   UserMenu,
+  hasScope,
   logout,
+  useSession,
   type BreadcrumbItem,
 } from '@aramo/fe-foundation';
 
@@ -28,6 +30,16 @@ function crumbsFor(pathname: string): BreadcrumbItem[] {
   if (pathname === '/' || pathname === '') {
     return [{ label: 'Dashboard' }];
   }
+  // SKILL-TAX-1F-C1 — the skills governance section hangs off Dashboard, mirroring
+  // the tenants crumb trail.
+  if (pathname.startsWith('/skills')) {
+    const crumbs: BreadcrumbItem[] = [
+      { label: 'Dashboard', href: '/' },
+      { label: 'Skills', href: '/skills' },
+    ];
+    if (/^\/skills\/[^/]+/.exec(pathname)) crumbs.push({ label: 'Detail' });
+    return crumbs;
+  }
   const crumbs: BreadcrumbItem[] = [
     { label: 'Dashboard', href: '/' },
     { label: 'Tenants', href: '/tenants' },
@@ -43,6 +55,13 @@ function crumbsFor(pathname: string): BreadcrumbItem[] {
 
 export function PlatformShell({ children }: { readonly children: ReactNode }) {
   const { pathname } = useLocation();
+  const sessionState = useSession();
+  // Gate the Skills nav item on platform:skill:read (the section is otherwise
+  // reachable only via URL, where the route renders a ForbiddenState). Server-side
+  // enforcement is authoritative; this just hides the entry point.
+  const canReadSkills =
+    sessionState.status === 'authenticated' &&
+    hasScope(sessionState.session, 'platform:skill:read');
   const handleSignOut = (): void => {
     void logout();
   };
@@ -59,6 +78,9 @@ export function PlatformShell({ children }: { readonly children: ReactNode }) {
         label="Tenants"
         icon={<Icons.IconBuilding />}
       />
+      {canReadSkills ? (
+        <RailNavItem to="/skills" label="Skills" icon={<Icons.IconTag />} />
+      ) : null}
     </Rail>
   );
 

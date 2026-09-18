@@ -109,6 +109,24 @@ server {
     proxy_buffers           8 32k;
     proxy_busy_buffers_size 64k;
   }
+  # SKILL-TAX-1F-C — the /platform provider map (edge-owned routing). The
+  # skill-governance surface (/platform/skill*) is owned by apps/api — it bridges
+  # scope:cip + scope:ats, which the scope:platform apps/platform-admin cannot
+  # import — so the edge routes exactly those governed paths to api:3000. The
+  # frontend addresses only the /platform namespace; which backend owns a given
+  # /platform route is an edge concern (R14 revised: platform-web never addresses
+  # apps/api DIRECTLY; it consumes only the /auth + /platform namespaces). nginx
+  # longest-prefix match sends /platform/skills*, /platform/skill-review-queue*, and
+  # /platform/skill-proposals* here; every other /platform/* falls to platform-admin.
+  location /platform/skills {
+    proxy_pass http://api:3000;
+  }
+  location /platform/skill-review-queue {
+    proxy_pass http://api:3000;
+  }
+  location /platform/skill-proposals {
+    proxy_pass http://api:3000;
+  }
   location /platform/ {
     proxy_pass http://platform-admin:3002;
   }
@@ -116,10 +134,11 @@ server {
     proxy_pass http://auth-service:3001;
   }
 
-  # NO `/v1` location of any kind — DELIBERATE (R14). The platform host cannot
-  # reach the tenant api even by misconfiguration: there is simply no proxy_pass
-  # to api:3000 here, so a stray /v1/* request falls through to the SPA fallback
-  # (index.html), never to tenant data — exactly as under the retired front door.
+  # NO `/v1` location of any kind — DELIBERATE (R14 negative control). The platform
+  # host reaches api:3000 ONLY for the governed /platform/skill* namespace above; the
+  # TENANT `/v1/*` surface remains unreachable from this host by construction (no
+  # /v1 proxy_pass here), so a stray /v1/* request falls through to the SPA fallback
+  # (index.html), never to tenant data.
 
   location / {
     root /srv/admin;
