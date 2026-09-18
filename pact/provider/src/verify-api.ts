@@ -383,6 +383,41 @@ const TALENT_EVIDENCE_TI1A_MIGRATION = resolve(
   ROOT,
   'libs/talent-evidence/prisma/migrations/20260916120000_talent_intel_1a_resume_edition/migration.sql',
 );
+// SKILL-TAX-1F-B2 — the canonical skills-taxonomy schema (Skill + Alias + Version +
+// Relationship + AuditEvent) and the 1F governance substrate (merged_into +
+// append-only audit trigger + SkillGovernanceProposal + SkillCorrectionTask). Applied
+// in filename order so the platform-governance-consumer state handlers can seed
+// skills_taxonomy rows (create-skill, PENDING proposal).
+const SKILLS_TAXONOMY_INIT_MIGRATION = resolve(
+  ROOT,
+  'libs/skills-taxonomy/prisma/migrations/20260915140000_init_skill_registry/migration.sql',
+);
+const SKILLS_TAXONOMY_ALIAS_VERSION_MIGRATION = resolve(
+  ROOT,
+  'libs/skills-taxonomy/prisma/migrations/20260915150000_skill_alias_version/migration.sql',
+);
+const SKILLS_TAXONOMY_RELATIONSHIP_MIGRATION = resolve(
+  ROOT,
+  'libs/skills-taxonomy/prisma/migrations/20260915160000_skill_relationship/migration.sql',
+);
+const SKILLS_TAXONOMY_1F_GOVERNANCE_MIGRATION = resolve(
+  ROOT,
+  'libs/skills-taxonomy/prisma/migrations/20260917210000_skill_tax_1f_governance/migration.sql',
+);
+const SKILLS_TAXONOMY_1F_AUDIT_APPEND_ONLY_MIGRATION = resolve(
+  ROOT,
+  'libs/skills-taxonomy/prisma/migrations/20260917211000_skill_tax_1f_audit_append_only/migration.sql',
+);
+const SKILLS_TAXONOMY_1F_B_PROPOSAL_CORRECTION_MIGRATION = resolve(
+  ROOT,
+  'libs/skills-taxonomy/prisma/migrations/20260918120000_skill_tax_1f_b_governance_proposal_correction/migration.sql',
+);
+// SKILL-TAX-1D — the derived RequisitionSkillRequirement table (requisition schema),
+// needed by the review-queue state handler to seed an UNRESOLVED requirement surface.
+const REQUISITION_SKILL_REQUIREMENT_MIGRATION = resolve(
+  ROOT,
+  'libs/requisition/prisma/migrations/20260917120000_skill_tax_1d_requisition_skill_requirement/migration.sql',
+);
 // M5 PR-1 + PR-2 — selection schema migrations: TalentSelection
 // init + TalentSelectionEvent event-log + absolute-immutability trigger.
 // Required for M5 PR-4 selection-* pact interactions.
@@ -918,6 +953,11 @@ const REQUISITION_IMPORT_PACT = resolve(
   ROOT,
   'pact/pacts/requisition-import-consumer-aramo-core.json',
 );
+// SKILL-TAX-1F-B2 — platform skill-governance console consumer.
+const PLATFORM_GOVERNANCE_PACT = resolve(
+  ROOT,
+  'pact/pacts/platform-governance-consumer-aramo-core.json',
+);
 
 const ISSUER = 'Aramo Core Auth';
 const AUDIENCE = 'aramo-pact-provider-api-audience';
@@ -925,6 +965,14 @@ const ALG = 'RS256';
 
 const RECRUITER_ID = '00000000-0000-0000-0000-0000000000bb';
 const TENANT_ID = '11111111-1111-7111-8111-111111111111';
+// SKILL-TAX-1F-B2 — the platform-tier principal + the platform tenant sentinel
+// (libs/auth PLATFORM_TENANT_SENTINEL_ID) for the platform-governance-consumer pact.
+const PLATFORM_ADMIN_ID = '01900000-0000-7000-8000-0000000ac001';
+const PLATFORM_TENANT_SENTINEL_ID = '01900000-0000-7000-8000-000000000100';
+// SKILL-TAX-1F-B2 — ids the platform-governance-consumer pact addresses (the accept
+// interaction targets PLATFORM_PROPOSAL_ID; its payload references PLATFORM_SKILL_ID).
+const PLATFORM_SKILL_ID = '01900000-0000-7000-8000-0000000ab001';
+const PLATFORM_PROPOSAL_ID = '01900000-0000-7000-8000-0000000ab002';
 // M3 PR-9 §4.8 — portal-thin pact uses TALENT_SUB as the talent id; the
 // portal JWT's `sub` claim carries this value, and the GET /v1/portal/*
 // endpoints derive talent_id from authContext.sub. Must match the
@@ -1155,6 +1203,11 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     // assignment:commercials:read, for the margin compound-gate 403 refusal pact
     // (§15: reporting access is not sufficient; the commercial scope is required).
     let reportOnlyJwt: string;
+    // SKILL-TAX-1F-B2 — a PLATFORM-tier session (consumer_type=platform, tenant_id =
+    // the platform sentinel) holding platform:skill:read + platform:skill:manage, for
+    // the platform-governance-consumer happy-path interactions. A tenant-tier token
+    // (accessJwt) is rewritten onto the tripwire 403 interaction instead.
+    let platformJwt: string;
     // HF-AUTH-1 — the version-keyed configurable resolver bound over AppModule
     // (MODE A). Each token below is minted with an authz_version returned by
     // grant(...), which registers that token's scopes for server-side resolution.
@@ -3219,6 +3272,14 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         TALENT_EVIDENCE_HF2_MIGRATION,
         TALENT_EVIDENCE_1G_MIGRATION,
         TALENT_EVIDENCE_TI1A_MIGRATION,
+        // SKILL-TAX-1F-B2 — canonical skills-taxonomy schema + 1F governance substrate
+        // (platform-governance-consumer state handlers seed these tables).
+        SKILLS_TAXONOMY_INIT_MIGRATION,
+        SKILLS_TAXONOMY_ALIAS_VERSION_MIGRATION,
+        SKILLS_TAXONOMY_RELATIONSHIP_MIGRATION,
+        SKILLS_TAXONOMY_1F_GOVERNANCE_MIGRATION,
+        SKILLS_TAXONOMY_1F_AUDIT_APPEND_ONLY_MIGRATION,
+        SKILLS_TAXONOMY_1F_B_PROPOSAL_CORRECTION_MIGRATION,
         EVIDENCE_INIT_MIGRATION,
         SUBMITTAL_INIT_MIGRATION,
         // M4 PR-7 §4.9 — submittal-revoke schema extension (enum +
@@ -3450,6 +3511,10 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         REQUISITION_EXTERNAL_IDENTITY_MIGRATION,
         // WL-B1 — canonical postal_code column (additive, applied last).
         REQUISITION_POSTAL_CODE_MIGRATION,
+        // SKILL-TAX-1D — derived RequisitionSkillRequirement table (needs the base
+        // requisition schema above; the review-queue state handler seeds an
+        // UNRESOLVED requirement surface here).
+        REQUISITION_SKILL_REQUIREMENT_MIGRATION,
       ]) {
         await setup.query(readFileSync(migrationPath, 'utf8'));
       }
@@ -3830,6 +3895,27 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         authz_version: pactAuthzResolver.grant(TENANT_ID, RECRUITER_ID, [
           'report:read',
           'requisition:read',
+        ]),
+      })
+        .setProtectedHeader({ alg: ALG })
+        .setIssuedAt()
+        .setIssuer(ISSUER)
+        .setAudience(AUDIENCE)
+        .setExpirationTime('1h')
+        .sign(privateKey);
+
+      // SKILL-TAX-1F-B2 — the platform-tier governance session. consumer_type=platform
+      // + tenant_id = the platform sentinel (never a real tenant) + platform:skill:*
+      // scopes. Satisfies JwtAuthGuard + RolesGuard + the per-route
+      // consumer_type==='platform' assertion on the SkillGovernanceController.
+      platformJwt = await new SignJWT({
+        sub: PLATFORM_ADMIN_ID,
+        consumer_type: 'platform',
+        actor_kind: 'user',
+        tenant_id: PLATFORM_TENANT_SENTINEL_ID,
+        authz_version: pactAuthzResolver.grant(PLATFORM_TENANT_SENTINEL_ID, PLATFORM_ADMIN_ID, [
+          'platform:skill:read',
+          'platform:skill:manage',
         ]),
       })
         .setProtectedHeader({ alg: ALG })
@@ -4305,6 +4391,71 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     }
 
     const stateHandlers: Record<string, () => Promise<void>> = {
+      // ===== SKILL-TAX-1F-B2 platform skill-governance pacts =====
+      // The canonical taxonomy is platform-global (no tenant scope). TRUNCATE the
+      // skills_taxonomy tables (bypasses the SkillAuditEvent BEFORE-DELETE append-only
+      // trigger, which a DELETE would trip) so each interaction starts from a known
+      // empty registry.
+      'a platform operator may govern the canonical skills taxonomy': async () => {
+        await withClient(async (c) => {
+          await c.query(
+            'TRUNCATE TABLE skills_taxonomy."SkillAuditEvent", skills_taxonomy."SkillCorrectionTask", skills_taxonomy."SkillRelationship", skills_taxonomy."SkillVersion", skills_taxonomy."SkillAlias", skills_taxonomy."SkillGovernanceProposal", skills_taxonomy."Skill" CASCADE',
+          );
+        });
+      },
+      'the skill review queue has an unresolved surface with cross-domain occurrences': async () => {
+        await withClient(async (c) => {
+          await c.query('TRUNCATE TABLE talent_evidence."TalentSkillEvidence" CASCADE');
+          await c.query('TRUNCATE TABLE requisition."RequisitionSkillRequirement" CASCADE');
+          // One UNRESOLVED talent evidence row (tenant A) + one UNRESOLVED requisition
+          // requirement row (tenant B), both normalizing to the same surface → the
+          // service merges them: occurrence_count = 2, exact tenant_count = 2.
+          await c.query(
+            `INSERT INTO talent_evidence."TalentSkillEvidence"
+               (id, talent_id, tenant_id, skill_id, surface_form, source, canonicalization_status, source_refs, created_at)
+             VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, 'Kubernetes', 'declared', 'UNRESOLVED', ARRAY[]::text[], now())`,
+            [
+              '01900000-0000-7000-8000-0000000ad001',
+              '01900000-0000-7000-8000-0000000ad002',
+              '11111111-1111-7111-8111-111111111111',
+              '01900000-0000-7000-8000-0000000ad003',
+            ],
+          );
+          await c.query(
+            `INSERT INTO requisition."RequisitionSkillRequirement"
+               (id, tenant_id, requisition_id, golden_profile_id, requirement_type, raw_surface_form, canonicalization_status, created_at, updated_at)
+             VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, 'required', 'kubernetes', 'UNRESOLVED', now(), now())`,
+            [
+              '01900000-0000-7000-8000-0000000ae001',
+              '22222222-2222-7222-8222-222222222222',
+              '01900000-0000-7000-8000-0000000ae002',
+              '01900000-0000-7000-8000-0000000ae003',
+            ],
+          );
+        });
+      },
+      'a PENDING alias proposal exists for a canonical skill': async () => {
+        await withClient(async (c) => {
+          await c.query(
+            'TRUNCATE TABLE skills_taxonomy."SkillAuditEvent", skills_taxonomy."SkillCorrectionTask", skills_taxonomy."SkillRelationship", skills_taxonomy."SkillVersion", skills_taxonomy."SkillAlias", skills_taxonomy."SkillGovernanceProposal", skills_taxonomy."Skill" CASCADE',
+          );
+          await c.query(
+            `INSERT INTO skills_taxonomy."Skill"
+               (id, canonical_name, normalized_name, status, created_at, updated_at)
+             VALUES ($1::uuid, 'Kubernetes', 'kubernetes', 'active', now(), now())`,
+            [PLATFORM_SKILL_ID],
+          );
+          await c.query(
+            `INSERT INTO skills_taxonomy."SkillGovernanceProposal"
+               (id, proposal_type, source, status, payload, proposed_at)
+             VALUES ($1::uuid, 'ALIAS', 'AI_RECOMMENDED', 'PENDING', $2::jsonb, now())`,
+            [
+              PLATFORM_PROPOSAL_ID,
+              JSON.stringify({ skill_id: PLATFORM_SKILL_ID, alias: 'K8s', alias_type: 'ABBREVIATION' }),
+            ],
+          );
+        });
+      },
       // ===== Track 7 / T7-P5 permanent-placement pacts (ats-web permanent-placement.consumer) =====
       // Deterministic T7 states for the ats-web permanent-placement + guarantee-terms +
       // guarantee-exposure interactions. Each seeds via the helpers above after resetAllRows.
@@ -8047,12 +8198,22 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         // rewrite to reportOnlyJwt (report:read but NOT assignment:commercials:read).
         // RolesGuard on GET /v1/reports/margin returns 403 INSUFFICIENT_PERMISSIONS.
         req.headers['authorization'] = `Bearer ${reportOnlyJwt}`;
+      } else if (
+        typeof authHeader === 'string' &&
+        authHeader === 'Bearer eyJfake.platform.token'
+      ) {
+        // SKILL-TAX-1F-B2 — the platform-governance happy-path interactions ship a
+        // fake platform token → rewrite to platformJwt (consumer_type=platform +
+        // platform:skill:read/manage). The tenant-tier tripwire interaction keeps
+        // 'Bearer eyJfake.token' (recruiter → accessJwt) so the controller's
+        // consumer_type==='platform' assertion returns 403.
+        req.headers['authorization'] = `Bearer ${platformJwt}`;
       }
       next();
     }
 
     it(
-      'verifies all interactions from the 5 aramo-core pacts',
+      'verifies all interactions from the 6 aramo-core pacts',
       async () => {
         const verifier = new Verifier({
           providerBaseUrl: `http://127.0.0.1:${port}`,
@@ -8062,6 +8223,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
             PORTAL_THIN_PACT,
             ATS_WEB_PACT,
             REQUISITION_IMPORT_PACT,
+            PLATFORM_GOVERNANCE_PACT,
           ],
           stateHandlers,
           requestFilter: requestFilter as never,

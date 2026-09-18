@@ -117,7 +117,13 @@ export class SkillRepository {
     if (input.normalized_name !== undefined) data['normalized_name'] = input.normalized_name;
     if (input.description !== undefined) data['description'] = input.description;
 
-    const [skill] = await this.prisma.$transaction([
+    // SKILL-TAX-1F-B2 — a canonical-name (⇒ normalized_name) change alters
+    // canonicalization results for already-stored evidence keyed to this Skill, so
+    // it emits an OVERRIDE_CORRECTION targeting this canonical id (re-reconcile only;
+    // the B1 engine owns propagation). Metadata-only edits (description) emit no task.
+    const emitsCorrection =
+      input.canonical_name !== undefined || input.normalized_name !== undefined;
+    const result = await this.prisma.$transaction([
       this.prisma.skill.update({ where: { id }, data }),
       this.prisma.skillAuditEvent.create({
         data: {
@@ -130,8 +136,26 @@ export class SkillRepository {
           event_payload: { changed: data },
         },
       }),
+      ...(emitsCorrection ? [this.overrideCorrectionTaskOp(id)] : []),
     ]);
-    return skill as SkillRow;
+    return result[0] as SkillRow;
+  }
+
+  // SKILL-TAX-1F-B2 — the OVERRIDE_CORRECTION durable task op, keyed by the affected
+  // canonical Skill id (and/or a governed surface form). Created ATOMICALLY inside the
+  // governance mutation's transaction; the B1 processor fans it out (re-reconcile only,
+  // no repoint — there is no winner). Used by canonical-name / deactivate / reactivate.
+  private overrideCorrectionTaskOp(fromCanonicalSkillId: string, surfaceForm: string | null = null) {
+    return this.prisma.skillCorrectionTask.create({
+      data: {
+        id: uuidv7(),
+        correction_type: 'OVERRIDE_CORRECTION',
+        from_canonical_skill_id: fromCanonicalSkillId,
+        to_canonical_skill_id: null,
+        surface_form: surfaceForm,
+        status: 'PENDING',
+      },
+    });
   }
 
   async deactivateSkill(id: string, actor?: SkillActor): Promise<SkillRow> {
@@ -151,7 +175,10 @@ export class SkillRepository {
     actor?: SkillActor,
   ): Promise<SkillRow> {
     const { actorId, actorType } = resolveActor(actor);
-    const [skill] = await this.prisma.$transaction([
+    // SKILL-TAX-1F-B2 — deactivate/reactivate change how evidence already resolved to
+    // this canonical Skill should be treated, so both emit an OVERRIDE_CORRECTION
+    // keyed by this canonical id (re-reconcile only; B1 owns propagation).
+    const result = await this.prisma.$transaction([
       this.prisma.skill.update({ where: { id }, data: { status, updated_by: actorId } }),
       this.prisma.skillAuditEvent.create({
         data: {
@@ -164,8 +191,9 @@ export class SkillRepository {
           event_payload: { status },
         },
       }),
+      this.overrideCorrectionTaskOp(id),
     ]);
-    return skill as SkillRow;
+    return result[0] as SkillRow;
   }
 
   // SKILL-TAX-1F — SOFT merge. The loser keeps its id (permanently addressable),
@@ -212,26 +240,32 @@ export class SkillRepository {
   }
 
   // SKILL-TAX-1F — record an explicit human canonicalization correction/override
-  // against a subject Skill (Ruling 6). Append-only audit ONLY; the actual mapping
-  // change (add alias, merge, etc.) is performed by its own governed method — this
-  // records WHY/who for the governance ledger. payload must be JSON-safe.
+  // against a subject Skill (Ruling 6). Emits CANONICALIZATION_OVERRIDDEN + (1F-B2)
+  // an OVERRIDE_CORRECTION durable task ATOMICALLY, keyed by the subject canonical id
+  // and — when the payload targets a particular form — the governed surface_form. The
+  // B1 engine fans it out (re-reconcile only unless a replacement id is carried, which
+  // a manual override never does). payload must be JSON-safe.
   async recordCanonicalizationOverride(input: {
     subjectId: string;
     actor?: SkillActor;
     payload: Record<string, string | null>;
   }): Promise<void> {
     const { actorId, actorType } = resolveActor(input.actor);
-    await this.prisma.skillAuditEvent.create({
-      data: {
-        id: uuidv7(),
-        tenant_id: null,
-        actor_id: actorId,
-        actor_type: actorType,
-        event_type: 'CANONICALIZATION_OVERRIDDEN' satisfies SkillAuditEventType,
-        subject_id: input.subjectId,
-        event_payload: input.payload,
-      },
-    });
+    const surfaceForm = input.payload['surface_form'] ?? null;
+    await this.prisma.$transaction([
+      this.prisma.skillAuditEvent.create({
+        data: {
+          id: uuidv7(),
+          tenant_id: null,
+          actor_id: actorId,
+          actor_type: actorType,
+          event_type: 'CANONICALIZATION_OVERRIDDEN' satisfies SkillAuditEventType,
+          subject_id: input.subjectId,
+          event_payload: input.payload,
+        },
+      }),
+      this.overrideCorrectionTaskOp(input.subjectId, surfaceForm),
+    ]);
   }
 
   async findById(id: string): Promise<SkillRow | null> {

@@ -239,6 +239,10 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       'OFFER_CLIENT_SELECTION_NOT_SELECTED',
       'CLIENT_SELECTION_WITHDRAW_REASON_INVALID',
       'COMMERCIAL_PROPOSAL_STAGE_CONFLICT',
+      // SKILL-TAX-1F-B2 — 3 platform skill-governance codes (appended in order).
+      'SKILL_CONFLICT',
+      'SKILL_PROPOSAL_NOT_PENDING',
+      'SKILL_PROPOSAL_PAYLOAD_INVALID',
     ]);
   });
 });

@@ -753,6 +753,25 @@ export const ERROR_CODES = [
   // separation. Fail-closed at the application boundary; details.reason discriminates
   // `margin_approver_is_client_approver` | `client_approver_is_applier`.
   'COMMERCIAL_PROPOSAL_STAGE_CONFLICT',
+  // SKILL-TAX-1F-B2 — the platform skill-governance HTTP surface (3 codes).
+  // SKILL_CONFLICT (409): a governed canonical write refused on a uniqueness
+  // constraint — a duplicate normalized/canonical Skill name, an alias whose
+  // normalized surface already maps to a Skill, or a duplicate relationship edge.
+  // ONE code, details.constraint discriminates
+  // (normalized_name | canonical_name | normalized_alias | source_target_type).
+  // Exact-name translation of the partial-unique-index violation, never a generic
+  // P2002 catch. Distinct from the tenant-tier conflicts — this is platform-global.
+  'SKILL_CONFLICT',
+  // SKILL_PROPOSAL_NOT_PENDING (409): accept/reject addressed a SkillGovernanceProposal
+  // that is not PENDING (already ACCEPTED/REJECTED — terminal, no reopen). Mirrors
+  // PROPOSAL_NOT_OPEN at the skill-governance proposal surface (a DISTINCT domain: the
+  // canonical skills taxonomy, not the verification proposal machinery).
+  'SKILL_PROPOSAL_NOT_PENDING',
+  // SKILL_PROPOSAL_PAYLOAD_INVALID (422): an accepted proposal's stored payload does
+  // not carry a valid spec for its proposal_type (missing/invalid alias or
+  // relationship fields) — the canonical write cannot be materialized. A stored-state
+  // refusal (422), distinct from a request-shape VALIDATION_ERROR (400).
+  'SKILL_PROPOSAL_PAYLOAD_INVALID',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];
