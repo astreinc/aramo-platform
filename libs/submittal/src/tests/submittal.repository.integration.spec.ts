@@ -101,6 +101,10 @@ const SUBMITTAL_T2P1_MIGRATION_PATH_L8B1_LINK = resolve(
   __dirname,
   '../../prisma/migrations/20260822130000_l8b1_submittal_pipeline_link/migration.sql',
 );
+const SUBMITTAL_TI1DD_RESUME_EDITION_MIGRATION_PATH = resolve(
+  __dirname,
+  '../../prisma/migrations/20260920130000_talent_intel_1d_d_submittal_resume_edition/migration.sql',
+);
 // PR-A1c §4 — metering schema required because every metered submittal
 // transition (confirm / markReady / confirmAts /
 // revokeSubmittal) now emits a UsageEvent INSERT inside the existing
@@ -230,6 +234,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         // T2-P1 — relocate Submittal persistence selection -> submittal schema.
         readFileSync(SUBMITTAL_T2P1_MIGRATION_PATH, 'utf8'),
         readFileSync(SUBMITTAL_T2P1_MIGRATION_PATH_L8B1_LINK, 'utf8'),
+        // TI-1D-D — resume_edition_id snapshot column + trigger rewrite.
+        readFileSync(SUBMITTAL_TI1DD_RESUME_EDITION_MIGRATION_PATH, 'utf8'),
         // PR-A1c §4 — metering schema (in-tx UsageEvent INSERT).
         readFileSync(METERING_INIT_MIGRATION_PATH, 'utf8'),
       ];

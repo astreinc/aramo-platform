@@ -26,6 +26,7 @@ const MIGRATIONS = [
   '20260527000000_rename_submittal_state_canonical',
   '20260812120000_t2p1_relocate_submittal_to_submittal_schema',
   '20260822130000_l8b1_submittal_pipeline_link',
+  '20260920130000_talent_intel_1d_d_submittal_resume_edition',
 ].map((d) => resolve(__dirname, `../../prisma/migrations/${d}/migration.sql`));
 
 const TENANT = '11111111-1111-7111-8111-111111111111';
