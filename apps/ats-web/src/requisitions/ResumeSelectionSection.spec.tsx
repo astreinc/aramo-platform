@@ -2,12 +2,13 @@ import '@testing-library/jest-dom/vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { ResumeSelectionSection } from './ResumeSelectionSection';
 import {
   getPipelineResumeEdition,
   setPipelineResumeEdition,
 } from '../pipeline/pipeline-api';
 import type { PipelineResumeEditionView } from '../pipeline/types';
+
+import { ResumeSelectionSection } from './ResumeSelectionSection';
 
 vi.mock('../pipeline/pipeline-api', () => ({
   getPipelineResumeEdition: vi.fn(),
