@@ -164,6 +164,152 @@ describe('platform-governance-consumer → /platform/* skill governance', () => 
         expect(json.error.code).toBe('INSUFFICIENT_PERMISSIONS');
       });
   });
+
+  // SKILL-TAX-1F-B3 — governance detail reads (skill + aliases + versions + relationships).
+  it('GET /platform/skills/{id} → 200 SkillView (detail overview)', async () => {
+    await provider
+      .addInteraction()
+      .given('a canonical skill with an alias, a version, and a relationship exists')
+      .uponReceiving('a read-one-skill request')
+      .withRequest('GET', `/platform/skills/${SKILL_ID}`, (b) => {
+        b.headers({ Authorization: like(PLATFORM_BEARER) });
+      })
+      .willRespondWith(200, (b) => {
+        b.headers({ 'X-Request-ID': uuid(REQUEST_ID) }).jsonBody({
+          id: uuid(SKILL_ID),
+          canonical_name: like('Kubernetes'),
+          normalized_name: like('kubernetes'),
+          description: null,
+          status: like('active'),
+          merged_into_skill_id: null,
+          created_at: regex(ISO_TIMESTAMP, '2026-09-18T00:00:01Z'),
+          updated_at: regex(ISO_TIMESTAMP, '2026-09-18T00:00:01Z'),
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/platform/skills/${SKILL_ID}`, {
+          headers: { Authorization: PLATFORM_BEARER },
+        });
+        expect(res.status).toBe(200);
+        const json = (await res.json()) as { id: string };
+        expect(json.id).toBe(SKILL_ID);
+      });
+  });
+
+  it('GET /platform/skills/{id} → 404 for an unknown skill', async () => {
+    const missing = '01900000-0000-7000-8000-0000000abfff';
+    await provider
+      .addInteraction()
+      .given('a platform operator may govern the canonical skills taxonomy')
+      .uponReceiving('a read-one-skill request for an unknown id')
+      .withRequest('GET', `/platform/skills/${missing}`, (b) => {
+        b.headers({ Authorization: like(PLATFORM_BEARER) });
+      })
+      .willRespondWith(404, (b) => {
+        b.jsonBody({ error: { code: like('NOT_FOUND'), message: like('Skill not found') } });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/platform/skills/${missing}`, {
+          headers: { Authorization: PLATFORM_BEARER },
+        });
+        expect(res.status).toBe(404);
+        const json = (await res.json()) as { error: { code: string } };
+        expect(json.error.code).toBe('NOT_FOUND');
+      });
+  });
+
+  it('GET /platform/skills/{id}/aliases → 200 { aliases: [...] }', async () => {
+    await provider
+      .addInteraction()
+      .given('a canonical skill with an alias, a version, and a relationship exists')
+      .uponReceiving('a list-skill-aliases request')
+      .withRequest('GET', `/platform/skills/${SKILL_ID}/aliases`, (b) => {
+        b.headers({ Authorization: like(PLATFORM_BEARER) });
+      })
+      .willRespondWith(200, (b) => {
+        b.headers({ 'X-Request-ID': uuid(REQUEST_ID) }).jsonBody({
+          aliases: eachLike({
+            id: uuid(ALIAS_ID),
+            skill_id: uuid(SKILL_ID),
+            alias: like('K8s'),
+            normalized_alias: like('k8s'),
+            alias_type: like('ABBREVIATION'),
+            status: like('active'),
+          }),
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/platform/skills/${SKILL_ID}/aliases`, {
+          headers: { Authorization: PLATFORM_BEARER },
+        });
+        expect(res.status).toBe(200);
+        const json = (await res.json()) as { aliases: Array<{ skill_id: string }> };
+        expect(Array.isArray(json.aliases)).toBe(true);
+        expect(json.aliases[0]!.skill_id).toBe(SKILL_ID);
+      });
+  });
+
+  it('GET /platform/skills/{id}/versions → 200 { versions: [...] }', async () => {
+    await provider
+      .addInteraction()
+      .given('a canonical skill with an alias, a version, and a relationship exists')
+      .uponReceiving('a list-skill-versions request')
+      .withRequest('GET', `/platform/skills/${SKILL_ID}/versions`, (b) => {
+        b.headers({ Authorization: like(PLATFORM_BEARER) });
+      })
+      .willRespondWith(200, (b) => {
+        b.headers({ 'X-Request-ID': uuid(REQUEST_ID) }).jsonBody({
+          versions: eachLike({
+            id: uuid('01900000-0000-7000-8000-0000000ac010'),
+            skill_id: uuid(SKILL_ID),
+            version: like('1.29'),
+            normalized_version: like('1.29'),
+            version_family: null,
+            status: like('active'),
+          }),
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/platform/skills/${SKILL_ID}/versions`, {
+          headers: { Authorization: PLATFORM_BEARER },
+        });
+        expect(res.status).toBe(200);
+        const json = (await res.json()) as { versions: Array<{ skill_id: string }> };
+        expect(json.versions[0]!.skill_id).toBe(SKILL_ID);
+      });
+  });
+
+  it('GET /platform/skills/{id}/relationships → 200 { relationships: [...] }', async () => {
+    await provider
+      .addInteraction()
+      .given('a canonical skill with an alias, a version, and a relationship exists')
+      .uponReceiving('a list-skill-relationships request')
+      .withRequest('GET', `/platform/skills/${SKILL_ID}/relationships`, (b) => {
+        b.headers({ Authorization: like(PLATFORM_BEARER) });
+      })
+      .willRespondWith(200, (b) => {
+        b.headers({ 'X-Request-ID': uuid(REQUEST_ID) }).jsonBody({
+          relationships: eachLike({
+            id: uuid('01900000-0000-7000-8000-0000000ac020'),
+            source_skill_id: uuid(SKILL_ID),
+            target_skill_id: uuid('01900000-0000-7000-8000-0000000ac021'),
+            relationship_type: like('BUILT_ON'),
+            directionality: like('DIRECTED'),
+            status: like('active'),
+            source: like('ADMIN_CURATED'),
+            source_ref: null,
+          }),
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/platform/skills/${SKILL_ID}/relationships`, {
+          headers: { Authorization: PLATFORM_BEARER },
+        });
+        expect(res.status).toBe(200);
+        const json = (await res.json()) as { relationships: Array<{ source_skill_id: string }> };
+        expect(json.relationships[0]!.source_skill_id).toBe(SKILL_ID);
+      });
+  });
 });
 
 beforeAll(() => undefined);

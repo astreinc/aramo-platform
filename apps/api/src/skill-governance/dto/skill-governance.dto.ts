@@ -77,6 +77,13 @@ export class ListSkillsQueryDto {
   @IsOptional() @IsIn(['true', 'false']) include_inactive?: 'true' | 'false';
 }
 
+// SKILL-TAX-1F-B3 — a skill's child-collection list (aliases) may optionally include
+// soft-removed (inactive) rows for the governance detail view. Versions/relationships
+// carry no toggle (versions list all; relationships list active edges).
+export class SkillChildListQueryDto {
+  @IsOptional() @IsIn(['true', 'false']) include_inactive?: 'true' | 'false';
+}
+
 export class ListProposalsQueryDto {
   @IsOptional() @IsIn(['PENDING', 'ACCEPTED', 'REJECTED']) status?: 'PENDING' | 'ACCEPTED' | 'REJECTED';
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) limit?: number;

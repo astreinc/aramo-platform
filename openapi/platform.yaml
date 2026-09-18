@@ -612,6 +612,29 @@ paths:
           $ref: '#/components/responses/SkillConflict'
 
   /platform/skills/{id}:
+    get:
+      operationId: getPlatformSkill
+      tags: [Platform Skill Governance]
+      summary: Read one canonical skill.
+      description: 'The skill-detail overview read. Requires `platform:skill:read`.'
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SkillIdParam'
+      responses:
+        '200':
+          description: The canonical skill.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkillView'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          $ref: '#/components/responses/SkillNotFound'
     patch:
       operationId: updatePlatformSkill
       tags: [Platform Skill Governance]
@@ -774,6 +797,34 @@ paths:
           $ref: '#/components/responses/SkillNotFound'
 
   /platform/skills/{id}/aliases:
+    get:
+      operationId: listPlatformSkillAliases
+      tags: [Platform Skill Governance]
+      summary: List a skill's aliases.
+      description: 'Active aliases by default; `include_inactive=true` also returns soft-removed ones. Requires `platform:skill:read`.'
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SkillIdParam'
+        - name: include_inactive
+          in: query
+          required: false
+          description: When `true`, also return soft-removed (inactive) aliases.
+          schema:
+            type: string
+            enum: ['true', 'false']
+      responses:
+        '200':
+          description: The skill's aliases.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AliasListResponse'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
     post:
       operationId: addPlatformSkillAlias
       tags: [Platform Skill Governance]
@@ -841,6 +892,27 @@ paths:
           $ref: '#/components/responses/SkillNotFound'
 
   /platform/skills/{id}/versions:
+    get:
+      operationId: listPlatformSkillVersions
+      tags: [Platform Skill Governance]
+      summary: List a skill's versions.
+      description: 'Requires `platform:skill:read`.'
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SkillIdParam'
+      responses:
+        '200':
+          description: The skill's versions.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VersionListResponse'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
     post:
       operationId: addPlatformSkillVersion
       tags: [Platform Skill Governance]
@@ -914,6 +986,27 @@ paths:
           $ref: '#/components/responses/SkillNotFound'
 
   /platform/skills/{id}/relationships:
+    get:
+      operationId: listPlatformSkillRelationships
+      tags: [Platform Skill Governance]
+      summary: List a skill's active relationship edges.
+      description: 'Active canonical-to-canonical edges touching this skill (either orientation). Requires `platform:skill:read`.'
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SkillIdParam'
+      responses:
+        '200':
+          description: The skill's relationship edges.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RelationshipListResponse'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
     post:
       operationId: addPlatformSkillRelationship
       tags: [Platform Skill Governance]
@@ -1845,6 +1938,15 @@ components:
           $ref: '#/components/schemas/SkillAliasType'
         status:
           $ref: '#/components/schemas/SkillStatus'
+    AliasListResponse:
+      type: object
+      additionalProperties: false
+      required: [aliases]
+      properties:
+        aliases:
+          type: array
+          items:
+            $ref: '#/components/schemas/AliasView'
     AddAliasRequest:
       type: object
       additionalProperties: false
@@ -1875,6 +1977,15 @@ components:
           type: [string, 'null']
         status:
           $ref: '#/components/schemas/SkillStatus'
+    VersionListResponse:
+      type: object
+      additionalProperties: false
+      required: [versions]
+      properties:
+        versions:
+          type: array
+          items:
+            $ref: '#/components/schemas/VersionView'
     AddVersionRequest:
       type: object
       additionalProperties: false
@@ -1921,6 +2032,15 @@ components:
           $ref: '#/components/schemas/SkillRelationshipSource'
         source_ref:
           type: [string, 'null']
+    RelationshipListResponse:
+      type: object
+      additionalProperties: false
+      required: [relationships]
+      properties:
+        relationships:
+          type: array
+          items:
+            $ref: '#/components/schemas/RelationshipView'
     AddRelationshipRequest:
       type: object
       additionalProperties: false
