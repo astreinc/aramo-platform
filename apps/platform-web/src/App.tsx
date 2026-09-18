@@ -1,5 +1,12 @@
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
-import { RouteGuard, SignedOut, ToastProvider, useSession } from '@aramo/fe-foundation';
+import {
+  ForbiddenState,
+  RouteGuard,
+  SignedOut,
+  ToastProvider,
+  hasScope,
+  useSession,
+} from '@aramo/fe-foundation';
 
 import { LoginPage } from './LoginPage';
 import { PlatformShell } from './shell/PlatformShell';
@@ -7,6 +14,8 @@ import { DashboardView } from './dashboard/DashboardView';
 import { TenantsListView } from './tenants/TenantsListView';
 import { TenantDetailView } from './tenants/TenantDetailView';
 import { ProvisionTenantView } from './tenants/ProvisionTenantView';
+import { SkillsRegistryView } from './skills/SkillsRegistryView';
+import { SkillDetailView } from './skills/SkillDetailView';
 
 // The platform console app (Inc-2 PR-2). Single guarded surface: the whole thing
 // requires platform:tenant:read. Unauthenticated → RouteGuard redirects to
@@ -58,6 +67,32 @@ export function App() {
               <Route
                 path="/tenants/:id"
                 element={<TenantDetailView session={state.session} />}
+              />
+              {/* SKILL-TAX-1F-C1 — the platform skill governance console. Reachable
+                  within the platform tier (app-level platform:tenant:read gate) and
+                  additionally gated on platform:skill:read; a platform operator
+                  without the skill scope sees a ForbiddenState rather than a page
+                  that would only 403 at the API. Manage controls gate on
+                  platform:skill:manage inside the views. */}
+              <Route
+                path="/skills"
+                element={
+                  hasScope(state.session, 'platform:skill:read') ? (
+                    <SkillsRegistryView session={state.session} />
+                  ) : (
+                    <ForbiddenState scope="platform:skill:read" />
+                  )
+                }
+              />
+              <Route
+                path="/skills/:id"
+                element={
+                  hasScope(state.session, 'platform:skill:read') ? (
+                    <SkillDetailView session={state.session} />
+                  ) : (
+                    <ForbiddenState scope="platform:skill:read" />
+                  )
+                }
               />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
