@@ -8,6 +8,7 @@ import {
 
 import { PrismaService } from './prisma/prisma.service.js';
 import { SkillRepository } from './skill.repository.js';
+import { SkillCorrectionTaskRepository } from './skill-correction-task.repository.js';
 import { SkillAliasRepository } from './skill-alias.repository.js';
 import { SkillVersionRepository } from './skill-version.repository.js';
 import { SkillRelationshipRepository } from './skill-relationship.repository.js';
@@ -67,6 +68,7 @@ import { SKILL_CANONICALIZATION_QUEUE_NAME } from './skill-canonicalization.queu
   providers: [
     PrismaService,
     SkillRepository,
+    SkillCorrectionTaskRepository,
     SkillAliasRepository,
     SkillVersionRepository,
     SkillRelationshipRepository,
@@ -82,6 +84,7 @@ import { SKILL_CANONICALIZATION_QUEUE_NAME } from './skill-canonicalization.queu
     SkillRegistryService,
     SkillCanonicalizationService,
     SkillRepository,
+    SkillCorrectionTaskRepository,
     SkillAliasRepository,
     SkillVersionRepository,
     SkillRelationshipRepository,

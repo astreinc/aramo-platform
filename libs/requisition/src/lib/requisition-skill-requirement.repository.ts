@@ -114,4 +114,41 @@ export class RequisitionSkillRequirementRepository {
     ]);
     return { total, resolved, unresolved };
   }
+
+  // SKILL-TAX-1F-B1 — MERGE repoint on the requisition side. Every requirement row
+  // still pointing at the loser canonical id moves to the winner. Idempotent (a
+  // re-drain updates 0 rows); canonical ids are platform-global so this is
+  // correctly cross-tenant. Raw raw_surface_form / version_requirement untouched.
+  async repointCanonicalSkillId(fromCanonicalId: string, toCanonicalId: string): Promise<number> {
+    const { count } = await this.prisma.requisitionSkillRequirement.updateMany({
+      where: { canonical_skill_id: fromCanonicalId },
+      data: { canonical_skill_id: toCanonicalId },
+    });
+    return count;
+  }
+
+  // SKILL-TAX-1F-B1 — targeted fan-out discovery: distinct golden profiles whose
+  // requirements reference the affected canonical id(s) OR the corrected surface
+  // form. Bounded by limit; never an unfiltered scan.
+  async findAffectedGoldenProfiles(args: {
+    canonicalSkillIds?: readonly string[];
+    surfaceForms?: readonly string[];
+    limit: number;
+  }): Promise<Array<{ tenant_id: string; requisition_id: string; golden_profile_id: string }>> {
+    const or: Array<Record<string, unknown>> = [];
+    if (args.canonicalSkillIds && args.canonicalSkillIds.length > 0) {
+      or.push({ canonical_skill_id: { in: [...args.canonicalSkillIds] } });
+    }
+    if (args.surfaceForms && args.surfaceForms.length > 0) {
+      or.push({ raw_surface_form: { in: [...args.surfaceForms] } });
+    }
+    if (or.length === 0) return [];
+    return this.prisma.requisitionSkillRequirement.findMany({
+      where: { OR: or },
+      select: { tenant_id: true, requisition_id: true, golden_profile_id: true },
+      distinct: ['tenant_id', 'requisition_id', 'golden_profile_id'],
+      orderBy: [{ tenant_id: 'asc' }, { requisition_id: 'asc' }, { golden_profile_id: 'asc' }],
+      take: args.limit,
+    });
+  }
 }

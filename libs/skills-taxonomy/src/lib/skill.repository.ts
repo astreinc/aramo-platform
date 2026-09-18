@@ -171,9 +171,14 @@ export class SkillRepository {
   // SKILL-TAX-1F — SOFT merge. The loser keeps its id (permanently addressable),
   // goes status='inactive', and points at the winner via merged_into_skill_id. The
   // loser is NEVER hard-deleted and source evidence is NEVER re-keyed here (targeted
-  // canonical_skill_id repointing is a separate, domain-owned correction step).
-  // Emits SKILL_MERGED against the loser. Caller guarantees loser != winner and both
-  // exist (SkillRegistryService validates).
+  // canonical_skill_id repointing is a separate, domain-owned correction step run by
+  // the correction processor). Emits SKILL_MERGED against the loser. Caller
+  // guarantees loser != winner and both exist (SkillRegistryService validates).
+  //
+  // SKILL-TAX-1F-B1 — the SkillCorrectionTask(PENDING) is created in the SAME
+  // transaction as the mutation + audit (Gate-6 ruling): a committed merge always
+  // leaves a durable record of the downstream repoint/reconcile it owes, with no
+  // window where canonical truth changes but no recovery work exists.
   async mergeSkill(loserId: string, winnerId: string, actor?: SkillActor): Promise<SkillRow> {
     const { actorId, actorType } = resolveActor(actor);
     const [loser] = await this.prisma.$transaction([
@@ -190,6 +195,16 @@ export class SkillRepository {
           event_type: 'SKILL_MERGED' satisfies SkillAuditEventType,
           subject_id: loserId,
           event_payload: { merged_into_skill_id: winnerId, status: 'inactive' },
+        },
+      }),
+      this.prisma.skillCorrectionTask.create({
+        data: {
+          id: uuidv7(),
+          correction_type: 'SKILL_MERGE',
+          from_canonical_skill_id: loserId,
+          to_canonical_skill_id: winnerId,
+          surface_form: null,
+          status: 'PENDING',
         },
       }),
     ]);

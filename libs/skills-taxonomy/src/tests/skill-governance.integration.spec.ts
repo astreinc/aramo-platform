@@ -24,6 +24,8 @@ const MIGRATIONS = [
   '20260915160000_skill_relationship',
   '20260917210000_skill_tax_1f_governance',
   '20260917211000_skill_tax_1f_audit_append_only',
+  // SKILL-TAX-1F-B1 — mergeSkill now writes a SkillCorrectionTask atomically.
+  '20260918120000_skill_tax_1f_b_governance_proposal_correction',
 ].map((n) => resolve(__dirname, `../../prisma/migrations/${n}/migration.sql`));
 
 const ACTOR = { id: '55555555-5555-7555-8555-555555555555', type: 'platform_admin' };

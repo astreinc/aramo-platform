@@ -18,6 +18,11 @@ export {
   type CanonicalCoverage,
   type TalentCanonicalSkillRow,
 } from './lib/talent-canonical-coverage.repository.js';
+// SKILL-TAX-1F-B1 — Talent-side canonical correction (repoint + affected discovery).
+export {
+  TalentCanonicalCorrectionRepository,
+  type AffectedTalent,
+} from './lib/talent-canonical-correction.repository.js';
 export type {
   // TalentSkillEvidence (Group 2 §2.2 #16)
   CreateTalentSkillEvidenceInput,
