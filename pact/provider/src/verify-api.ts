@@ -4418,6 +4418,37 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           );
         });
       },
+      // SKILL-TAX-1F-B3 — a canonical skill with one alias + one version + one active
+      // relationship (to a second skill), for the four governance detail-read pacts.
+      'a canonical skill with an alias, a version, and a relationship exists': async () => {
+        await withClient(async (c) => {
+          await c.query(
+            'TRUNCATE TABLE skills_taxonomy."SkillAuditEvent", skills_taxonomy."SkillCorrectionTask", skills_taxonomy."SkillRelationship", skills_taxonomy."SkillVersion", skills_taxonomy."SkillAlias", skills_taxonomy."SkillGovernanceProposal", skills_taxonomy."Skill" CASCADE',
+          );
+          const targetSkillId = '01900000-0000-7000-8000-0000000ac021';
+          await c.query(
+            `INSERT INTO skills_taxonomy."Skill" (id, canonical_name, normalized_name, status, created_at, updated_at)
+             VALUES ($1::uuid, 'Kubernetes', 'kubernetes', 'active', now(), now()),
+                    ($2::uuid, 'Container Runtime', 'container runtime', 'active', now(), now())`,
+            [PLATFORM_SKILL_ID, targetSkillId],
+          );
+          await c.query(
+            `INSERT INTO skills_taxonomy."SkillAlias" (id, skill_id, alias, normalized_alias, alias_type, status, created_at, updated_at)
+             VALUES ($1::uuid, $2::uuid, 'K8s', 'k8s', 'ABBREVIATION', 'active', now(), now())`,
+            ['01900000-0000-7000-8000-0000000ab003', PLATFORM_SKILL_ID],
+          );
+          await c.query(
+            `INSERT INTO skills_taxonomy."SkillVersion" (id, skill_id, version, normalized_version, status, created_at, updated_at)
+             VALUES ($1::uuid, $2::uuid, '1.29', '1.29', 'active', now(), now())`,
+            ['01900000-0000-7000-8000-0000000ac010', PLATFORM_SKILL_ID],
+          );
+          await c.query(
+            `INSERT INTO skills_taxonomy."SkillRelationship" (id, source_skill_id, target_skill_id, relationship_type, directionality, status, source, created_at, updated_at)
+             VALUES ($1::uuid, $2::uuid, $3::uuid, 'BUILT_ON', 'DIRECTED', 'active', 'ADMIN_CURATED', now(), now())`,
+            ['01900000-0000-7000-8000-0000000ac020', PLATFORM_SKILL_ID, targetSkillId],
+          );
+        });
+      },
       // ===== Track 7 / T7-P5 permanent-placement pacts (ats-web permanent-placement.consumer) =====
       // Deterministic T7 states for the ats-web permanent-placement + guarantee-terms +
       // guarantee-exposure interactions. Each seeds via the helpers above after resetAllRows.
