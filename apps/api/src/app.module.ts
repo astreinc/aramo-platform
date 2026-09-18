@@ -85,6 +85,7 @@ import { OfferExpiryModule } from './offer/offer-expiry.module.js';
 // (Anthropic structured-output adapter; DARK by default — CI_PROCESSING_ENABLED).
 import { CiProcessingModule } from './conversation-intelligence/ci-processing.module.js';
 import { CanonicalReconciliationModule } from './canonical-reconciliation/canonical-reconciliation.module.js';
+import { SkillGovernanceModule } from './skill-governance/skill-governance.module.js';
 import { ReconciliationDrainModule } from './requisition-integration/reconciliation-drain.module.js';
 import { PlacementLifecycleOrchestratorModule } from './placement-pipeline-orchestration/placement-lifecycle-orchestrator.module.js';
 import { PreStartOrchestratorModule } from './pre-start-requirement/pre-start-orchestrator.module.js';
@@ -403,6 +404,8 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     // Talent backstop + coverage telemetry that drive the 1G/1D reconcile workers
     // from real write paths. Internal; no HTTP surface/scope; no matching change.
     CanonicalReconciliationModule,
+    // SKILL-TAX-1F-B1 — the durable correction/propagation engine (internal).
+    SkillGovernanceModule,
     SubmittalModule,
     SubmitTalentModule,
     ClientSelectionOrchestrationModule,

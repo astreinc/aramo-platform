@@ -5,6 +5,7 @@ import { PrismaService } from './prisma/prisma.service.js';
 import { TalentEvidenceRepository } from './talent-evidence.repository.js';
 import { TalentSkillCanonicalizationService } from './talent-skill-canonicalization.service.js';
 import { TalentCanonicalCoverageRepository } from './talent-canonical-coverage.repository.js';
+import { TalentCanonicalCorrectionRepository } from './talent-canonical-correction.repository.js';
 
 // SKILL-TAX-1G — Talent skill canonical-reconciliation orchestrator module.
 //
@@ -23,7 +24,12 @@ import { TalentCanonicalCoverageRepository } from './talent-canonical-coverage.r
     TalentEvidenceRepository,
     TalentSkillCanonicalizationService,
     TalentCanonicalCoverageRepository,
+    TalentCanonicalCorrectionRepository,
   ],
-  exports: [TalentSkillCanonicalizationService, TalentCanonicalCoverageRepository],
+  exports: [
+    TalentSkillCanonicalizationService,
+    TalentCanonicalCoverageRepository,
+    TalentCanonicalCorrectionRepository,
+  ],
 })
 export class TalentSkillCanonicalizationModule {}

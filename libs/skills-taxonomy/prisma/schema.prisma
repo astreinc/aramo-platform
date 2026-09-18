@@ -163,3 +163,66 @@ model SkillRelationship {
   @@index([target_skill_id])
   @@schema("skills_taxonomy")
 }
+
+// -------------------------------------------------------------------------
+// SkillGovernanceProposal — SKILL-TAX-1F-B. The AI proposal-only substrate.
+// An AI_RECOMMENDED suggestion (alias or relationship) is NEVER canonical truth:
+// it lands here as PENDING and only a human platform:skill:manage acceptance
+// (status → ACCEPTED) may invoke the canonical registry mutation. Rejection is
+// terminal. Governed vocab (String + DB CHECK). No FK (UUID-only refs, Arch §7.3).
+// -------------------------------------------------------------------------
+model SkillGovernanceProposal {
+  id                String    @id @db.Uuid
+  // What is proposed — ALIAS | RELATIONSHIP (v1). CHECK in migration.
+  proposal_type     String
+  // Origin — AI_RECOMMENDED (v1). CHECK in migration. NEVER autonomously applied.
+  source            String
+  // PENDING | ACCEPTED | REJECTED. CHECK in migration.
+  status            String    @default("PENDING")
+  // The proposed spec (surface_form, skill_id, alias_type / relationship fields).
+  payload           Json
+  proposed_by       String?   @db.Uuid
+  proposed_at       DateTime  @default(now()) @db.Timestamptz
+  // The human decision — actor (platform:skill:manage), instant, reason.
+  decided_by        String?   @db.Uuid
+  decided_at        DateTime? @db.Timestamptz
+  decision_reason   String?
+  // On ACCEPTED: the canonical entity minted by the registry mutation.
+  applied_entity_id String?   @db.Uuid
+
+  @@index([status, proposed_at])
+  @@schema("skills_taxonomy")
+}
+
+// -------------------------------------------------------------------------
+// SkillCorrectionTask — SKILL-TAX-1F-B. The DURABLE correction/propagation
+// work-record (Gate-6 ruling: post-commit propagation must be durable +
+// retryable + observable — Redis enqueue alone is insufficient for a merge
+// requiring downstream reference correction). Created ATOMICALLY with the
+// governance mutation (same transaction) so a committed merge always leaves a
+// durable record of the repoint/reconcile it owes. A separate processor drains
+// PENDING tasks idempotently (repoint → reconcile enqueue), advancing status;
+// failures are retried with a recorded last_error, never silently lost.
+// Governed vocab (String + DB CHECK). No FK (UUID-only refs).
+// -------------------------------------------------------------------------
+model SkillCorrectionTask {
+  id                      String    @id @db.Uuid
+  // SKILL_MERGE | ALIAS_CORRECTION | OVERRIDE_CORRECTION. CHECK in migration.
+  correction_type         String
+  // Merge repoint operands (loser → winner); NULL for non-merge corrections.
+  from_canonical_skill_id String?   @db.Uuid
+  to_canonical_skill_id   String?   @db.Uuid
+  // The affected surface form for alias/override corrections; NULL for merge.
+  surface_form            String?
+  // PENDING | IN_PROGRESS | COMPLETED | FAILED. CHECK in migration.
+  status                  String    @default("PENDING")
+  attempts                Int       @default(0)
+  last_error              String?
+  created_at              DateTime  @default(now()) @db.Timestamptz
+  updated_at              DateTime  @updatedAt @db.Timestamptz
+  completed_at            DateTime? @db.Timestamptz
+
+  // Drain-eligibility scan (status, oldest-first).
+  @@index([status, created_at])
+  @@schema("skills_taxonomy")
+}

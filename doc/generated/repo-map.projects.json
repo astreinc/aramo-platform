@@ -1211,6 +1211,7 @@
       "SkillCanonicalizationProcessor",
       "SkillCanonicalizationService",
       "SkillConflictError",
+      "SkillCorrectionTaskRepository",
       "SkillNotFoundError",
       "SkillRegistryService",
       "SkillRelationshipConflictError",
@@ -1256,6 +1257,7 @@
     ],
     "@aramo/talent-evidence": [
       "PrismaService",
+      "TalentCanonicalCorrectionRepository",
       "TalentCanonicalCoverageRepository",
       "TalentEvidenceModule",
       "TalentEvidenceRepository",
@@ -2429,6 +2431,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/canonical-reconcile-activation.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/skill-correction-engine.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -5254,6 +5262,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/skill-correction-engine.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/support/establish-open-requisition.ts",
         "project": "api",
         "status": "excluded"
@@ -5407,6 +5421,12 @@
         "project": "api",
         "status": "excluded"
       },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/skill-correction-engine.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
       { "project": "api", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
@@ -5491,6 +5511,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/canonical-reconcile-activation.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/skill-correction-engine.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },

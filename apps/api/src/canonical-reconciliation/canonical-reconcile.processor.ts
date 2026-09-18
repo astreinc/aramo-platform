@@ -1,4 +1,4 @@
-import { Inject, type OnApplicationBootstrap } from '@nestjs/common';
+import { Inject, Optional, type OnApplicationBootstrap } from '@nestjs/common';
 import { BullRegistrar, Processor, WorkerHost } from '@nestjs/bullmq';
 import type { Job } from 'bullmq';
 import { type AramoLogger, RedisConnectionConfig } from '@aramo/common';
@@ -10,6 +10,8 @@ import {
   CanonicalReconcileProducer,
   type CanonicalReconcileJobData,
 } from '@aramo/canonical-reconcile';
+
+import { SkillCorrectionProcessor } from '../skill-governance/skill-correction.processor.js';
 
 import { CanonicalReconcileBackstop } from './canonical-reconcile.backstop.js';
 
@@ -33,13 +35,30 @@ export class CanonicalReconcileProcessor extends WorkerHost implements OnApplica
     private readonly backstop: CanonicalReconcileBackstop,
     private readonly producer: CanonicalReconcileProducer,
     @Inject('CanonicalReconcileProcessorLogger') private readonly logger: AramoLogger,
+    // SKILL-TAX-1F-B1 — the durable correction engine drains on the SAME repeatable
+    // backstop tick (reuse, no new queue). @Optional so the DI graph and any
+    // hand-wired construction stay decoupled if the engine module is absent.
+    @Optional() private readonly skillCorrection?: SkillCorrectionProcessor,
   ) {
     super();
   }
 
   async process(job: Job): Promise<unknown> {
     if (job.name === CANONICAL_RECONCILE_BACKSTOP_JOB) {
-      return this.backstop.run();
+      const result = await this.backstop.run();
+      // Drain the durable SkillCorrectionTask ledger best-effort — its own bounded
+      // retry + durable status make a missed tick harmless (re-drained next tick).
+      if (this.skillCorrection !== undefined) {
+        try {
+          await this.skillCorrection.drain();
+        } catch (err) {
+          this.logger.warn({
+            event: 'skill_correction_drain_failed',
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }
+      return result;
     }
     const data = job.data as CanonicalReconcileJobData;
     if (data.kind === 'TALENT') {

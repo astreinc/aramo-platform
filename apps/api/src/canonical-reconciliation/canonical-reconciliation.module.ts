@@ -5,6 +5,8 @@ import { TalentSkillCanonicalizationModule } from '@aramo/talent-evidence';
 import { RequisitionSkillCanonicalizationModule } from '@aramo/requisition';
 import { CanonicalReconcileModule } from '@aramo/canonical-reconcile';
 
+import { SkillGovernanceModule } from '../skill-governance/skill-governance.module.js';
+
 import { CanonicalReconcileConfig } from './canonical-reconcile.config.js';
 import { CanonicalReconcileBackstop } from './canonical-reconcile.backstop.js';
 import { CanonicalReconcileCoverageService } from './canonical-reconcile-coverage.service.js';
@@ -26,6 +28,8 @@ import { CanonicalReconcileProcessor } from './canonical-reconcile.processor.js'
     CanonicalReconcileModule,
     TalentSkillCanonicalizationModule,
     RequisitionSkillCanonicalizationModule,
+    // SKILL-TAX-1F-B1 — provides SkillCorrectionProcessor for the backstop-tick drain.
+    SkillGovernanceModule,
     BullModule.forRootAsync({
       extraOptions: { manualRegistration: true },
       useFactory: (cfg: RedisConnectionConfig) => {

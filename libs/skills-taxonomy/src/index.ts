@@ -18,6 +18,13 @@ export {
   type SkillActor,
   type SkillAuditEventType,
 } from './lib/skill.repository.js';
+// SKILL-TAX-1F-B1 — the durable correction/propagation work ledger repository.
+export {
+  SkillCorrectionTaskRepository,
+  type SkillCorrectionTaskRow,
+  type CorrectionType,
+  type CorrectionStatus,
+} from './lib/skill-correction-task.repository.js';
 export {
   SkillAliasRepository,
   type SkillAliasRow,

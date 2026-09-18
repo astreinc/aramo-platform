@@ -54,6 +54,47 @@ export class CanonicalReconcileProducer {
     );
   }
 
+  // SKILL-TAX-1F-B1 — REQUIRED (non-swallowing) enqueue variants for the durable
+  // correction processor, whose COMPLETED gate demands the reconcile enqueue
+  // actually succeeded. These THROW on a missing Redis or a queue.add failure so
+  // the caller can leave the correction task retryable. The best-effort methods
+  // above are unchanged — existing business-write callers keep their swallow.
+  async enqueueTalentRequired(tenantId: string, talentId: string): Promise<void> {
+    await this.enqueueRequired(
+      { kind: 'TALENT', tenant_id: tenantId, talent_id: talentId },
+      `talent-${talentId}`,
+    );
+  }
+
+  async enqueueRequisitionRequired(
+    tenantId: string,
+    requisitionId: string,
+    goldenProfileId: string,
+  ): Promise<void> {
+    await this.enqueueRequired(
+      {
+        kind: 'REQUISITION',
+        tenant_id: tenantId,
+        requisition_id: requisitionId,
+        golden_profile_id: goldenProfileId,
+      },
+      `requisition-${goldenProfileId}`,
+    );
+  }
+
+  private async enqueueRequired(data: CanonicalReconcileJobData, jobKey: string): Promise<void> {
+    if (!this.redisConfig.isConfigured) {
+      throw new Error('reconcile queue unavailable (REDIS_URL not configured)');
+    }
+    // No try/catch: a queue.add failure PROPAGATES so the correction task is not
+    // falsely completed. Same idempotent jobId as the best-effort path.
+    await this.queue.add(CANONICAL_RECONCILE_JOB, data, {
+      jobId: `${CANONICAL_RECONCILE_JOB}-${jobKey}`,
+      removeOnComplete: true,
+      removeOnFail: 100,
+    });
+  }
+
   private async enqueue(data: CanonicalReconcileJobData, jobKey: string): Promise<void> {
     if (!this.redisConfig.isConfigured) return; // silent no-op without Redis
     try {
