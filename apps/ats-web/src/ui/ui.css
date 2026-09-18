@@ -4686,6 +4686,17 @@ select.rc-secinput { appearance: none; padding-right: 28px; }
 .rc-cdp__note { font-size: 12px; color: var(--muted, #93A0A8); margin: 10px 0 0; }
 .rc-cdp__err { font-size: 12px; color: #B42318; margin: 8px 0 0; }
 
+/* ── TI-1D-D Résumé selection (this position) — the explicit working-selection
+   surface inside the requisition Talent drawer. Preview is inert; only "Use this
+   résumé" issues the governed PUT. ── */
+.rc-cdp__resumes { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.rc-cdp__resume { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.rc-cdp__resumename { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rc-cdp__resumetag { font-size: 10px; font-weight: 700; letter-spacing: 0.04em; color: var(--brand-strong, #022AC0); border: 1px solid var(--brand-strong, #022AC0); border-radius: 6px; padding: 1px 6px; }
+.rc-cdp__resumeprev { font-size: 12px; color: var(--brand-strong, #022AC0); text-decoration: underline; }
+.rc-cdp__resumeuse { font-size: 12px; font-weight: 600; color: #fff; background: var(--brand-strong, #022AC0); border: none; border-radius: 6px; padding: 3px 10px; cursor: pointer; }
+.rc-cdp__resumeuse:disabled { opacity: 0.6; cursor: default; }
+
 /* ── S3 Talent Journey (rc-cjr) — backend-owned journey presentation in the
    drawer. 5-milestone rail + owner-attributed lane + next-step. .dc values. ── */
 .rc-cjr {

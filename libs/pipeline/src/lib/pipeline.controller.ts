@@ -5,8 +5,11 @@ import {
   Headers,
   HttpCode,
   HttpStatus,
+  Inject,
+  Optional,
   Param,
   Post,
+  Put,
   Query,
   Req,
   UseGuards,
@@ -34,6 +37,15 @@ import {
 import { PipelineRepository } from './pipeline.repository.js';
 import { AddTalentPolicyService } from './policy/add-talent-policy.service.js';
 import { resolveAddTalentOutcome } from './policy/override-resolution.js';
+import {
+  RESUME_EDITION_READER,
+  type ResumeEditionReaderPort,
+} from './resume-edition-reader.port.js';
+import type { SetPipelineResumeEditionRequestDto } from './dto/set-pipeline-resume-edition-request.dto.js';
+import {
+  toAvailable,
+  type PipelineResumeEditionView,
+} from './dto/pipeline-resume-edition.view.js';
 
 // PipelineController — PR-A5a Gate 5 ATS Batch 4a (the state machine).
 //
@@ -66,6 +78,12 @@ export class PipelineController {
     private readonly pipelineRepository: PipelineRepository,
     private readonly addTalentPolicy: AddTalentPolicyService,
     private readonly idempotencyService: IdempotencyService,
+    // TALENT-INTEL-1 TI-1D-D — the résumé-edition reader PORT (scope wall: the
+    // concrete adapter reading talent-evidence is bound @Global in apps/api).
+    // @Optional so the many hand-wired PipelineController test sites boot without it.
+    @Optional()
+    @Inject(RESUME_EDITION_READER)
+    private readonly editionReader?: ResumeEditionReaderPort,
   ) {}
 
   @Get()
@@ -115,6 +133,136 @@ export class PipelineController {
       );
     }
     return view;
+  }
+
+  // TALENT-INTEL-1 TI-1D-D — the résumé-edition state for this Talent×requisition.
+  // The Pipeline resolves tenant + talent_record_id + requisition_id, reads the
+  // current working selection (append-only latest), and presents the Talent-global
+  // default (suggestion only) + the active editions. Read-visibility parity: a
+  // non-visible pipeline conceals as 404. NEVER binds on read.
+  @Get(':id/resume-edition')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('pipeline:read')
+  @RequireSiteMatch()
+  async getResumeEdition(
+    @AuthContext() authContext: AuthContextType,
+    @Param('id') id: string,
+    @RequestId() requestId: string,
+    @Req() req: Request,
+  ): Promise<PipelineResumeEditionView> {
+    const visibleReqIds = await req.resolveVisibleRequisitionIds!();
+    const view = await this.pipelineRepository.findByIdForActor({
+      tenant_id: authContext.tenant_id,
+      id,
+      visible_requisition_ids: visibleReqIds,
+    });
+    if (view === null) {
+      throw new AramoError(
+        'NOT_FOUND',
+        'Pipeline not found in tenant (or not visible to actor)',
+        404,
+        { requestId, details: { id } },
+      );
+    }
+    return this.buildResumeEditionView(authContext.tenant_id, id, view.talent_record_id, view.requisition_id);
+  }
+
+  // TALENT-INTEL-1 TI-1D-D — EXPLICITLY select "use this résumé for this
+  // requisition". Inserts a NEW append-only working-selection row (never mutates a
+  // prior selection). Eligibility: the edition must belong to this Talent (the
+  // reader is tenant+talent-scoped) AND be lifecycle=active. New dedicated scope
+  // pipeline:resume:set (NOT change-status). The Talent default is never
+  // auto-bound — only this explicit call creates a binding.
+  @Put(':id/resume-edition')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('pipeline:resume:set')
+  @RequireSiteMatch()
+  async setResumeEdition(
+    @AuthContext() authContext: AuthContextType,
+    @Param('id') id: string,
+    @Body() body: SetPipelineResumeEditionRequestDto,
+    @RequestId() requestId: string,
+    @Req() req: Request,
+  ): Promise<PipelineResumeEditionView> {
+    const visibleReqIds = await req.resolveVisibleRequisitionIds!();
+    const view = await this.pipelineRepository.findByIdForActor({
+      tenant_id: authContext.tenant_id,
+      id,
+      visible_requisition_ids: visibleReqIds,
+    });
+    if (view === null) {
+      throw new AramoError(
+        'NOT_FOUND',
+        'Pipeline not found in tenant (or not visible to actor)',
+        404,
+        { requestId, details: { id } },
+      );
+    }
+    if (this.editionReader === undefined) {
+      throw new AramoError('INTERNAL_ERROR', 'résumé-edition reader is not available', 500, { requestId });
+    }
+    // Eligibility: the edition must belong to this Talent (the reader is
+    // tenant+talent-scoped) and be active. Archived/retracted cannot be newly
+    // selected (historical references elsewhere remain valid).
+    const editions = await this.editionReader.listResumeEditions({
+      tenant_id: authContext.tenant_id,
+      talent_id: view.talent_record_id,
+    });
+    const target = editions.find((e) => e.edition_id === body.resume_edition_id);
+    if (target === undefined) {
+      throw new AramoError(
+        'NOT_FOUND',
+        'résumé edition not found for this talent',
+        404,
+        { requestId, details: { resume_edition_id: body.resume_edition_id } },
+      );
+    }
+    if (target.lifecycle_status !== 'active') {
+      throw new AramoError(
+        'VALIDATION_ERROR',
+        'only an active résumé edition may be selected for a requisition',
+        422,
+        { requestId, details: { resume_edition_id: body.resume_edition_id, lifecycle_status: target.lifecycle_status } },
+      );
+    }
+    await this.pipelineRepository.createRequisitionResumeSelection({
+      tenant_id: authContext.tenant_id,
+      talent_record_id: view.talent_record_id,
+      requisition_id: view.requisition_id,
+      resume_edition_id: body.resume_edition_id,
+      selected_by: authContext.sub,
+      ...(body.note === undefined ? {} : { note: body.note }),
+    });
+    return this.buildResumeEditionView(authContext.tenant_id, id, view.talent_record_id, view.requisition_id);
+  }
+
+  private async buildResumeEditionView(
+    tenantId: string,
+    pipelineId: string,
+    talentRecordId: string,
+    requisitionId: string,
+  ): Promise<PipelineResumeEditionView> {
+    const current = await this.pipelineRepository.getCurrentRequisitionResume({
+      tenant_id: tenantId,
+      talent_record_id: talentRecordId,
+      requisition_id: requisitionId,
+    });
+    const editions = this.editionReader
+      ? await this.editionReader.listResumeEditions({ tenant_id: tenantId, talent_id: talentRecordId })
+      : [];
+    const defaultEdition = editions.find((e) => e.is_default);
+    return {
+      pipeline_id: pipelineId,
+      talent_record_id: talentRecordId,
+      requisition_id: requisitionId,
+      selected_edition_id: current?.resume_edition_id ?? null,
+      selected_at: current?.selected_at.toISOString() ?? null,
+      selected_by: current?.selected_by ?? null,
+      default_edition_id: defaultEdition?.edition_id ?? null,
+      available_editions: editions
+        .filter((e) => e.lifecycle_status === 'active')
+        .map(toAvailable),
+    };
   }
 
   @Get(':id/history')

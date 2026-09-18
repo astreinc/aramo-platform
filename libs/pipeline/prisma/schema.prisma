@@ -289,3 +289,32 @@ model OutboxEvent {
   @@index([published_at, created_at])
   @@schema("pipeline")
 }
+
+// TALENT-INTEL-1 TI-1D-D — the recruiter's WORKING résumé-edition selection for a
+// Talent worked against a requisition (Layer A). APPEND-ONLY history: multiple
+// rows per (tenant, talent_record_id, requisition_id) are permitted; the CURRENT
+// selection is the row with the latest selected_at. Deliberately keyed on
+// (tenant, talent_record_id, requisition_id) — NOT pipeline_id — so it SURVIVES
+// closing/reopening Pipeline episodes. Cross-schema refs (talent_record /
+// job_domain / talent_evidence) are UUID-only, NO FK (§7.3). Distinct from
+// TalentResumeDefault (per-Talent presentation) and from the frozen send-time
+// snapshot TalentSubmittalRecord.resume_edition_id (Layer B). DB append-only
+// enforcement (UPDATE reject + DELETE reject except governed tenant-reset) is in
+// the hand-authored migration, mirroring PipelineStatusHistory.
+model TalentRequisitionResume {
+  id                String @id @default(uuid()) @db.Uuid
+  tenant_id         String @db.Uuid
+  talent_record_id  String @db.Uuid
+  requisition_id    String @db.Uuid
+  // The selected TalentResumeEdition (talent_evidence) — UUID-only, no FK.
+  resume_edition_id String @db.Uuid
+
+  selected_at DateTime @default(now()) @db.Timestamptz
+  selected_by String   @db.Uuid
+  note        String?
+
+  // The "current selection for (tenant, talent, requisition)" lookup is the
+  // MAX(selected_at) row for the triple. Multi-row (append-only), NOT unique.
+  @@index([tenant_id, talent_record_id, requisition_id, selected_at])
+  @@schema("pipeline")
+}

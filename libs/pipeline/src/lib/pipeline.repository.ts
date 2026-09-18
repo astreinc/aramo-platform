@@ -195,6 +195,18 @@ interface PipelineStatusHistoryRow {
   note: string | null;
 }
 
+// TALENT-INTEL-1 TI-1D-D — a working résumé-selection history row (Layer A).
+export interface TalentRequisitionResumeRow {
+  id: string;
+  tenant_id: string;
+  talent_record_id: string;
+  requisition_id: string;
+  resume_edition_id: string;
+  selected_at: Date;
+  selected_by: string;
+  note: string | null;
+}
+
 function projectView(row: PipelineRow): PipelineView {
   return {
     id: row.id,
@@ -1352,6 +1364,50 @@ export class PipelineRepository {
       requisition_id: r.requisition_id as string,
       created_at: r.created_at as Date,
     }));
+  }
+
+  // ── TALENT-INTEL-1 TI-1D-D — requisition résumé selection (append-only) ──────
+
+  // Append a new working-selection row (never mutates a prior row — the table is
+  // DB-append-only). The current selection is the latest selected_at for the triple.
+  async createRequisitionResumeSelection(args: {
+    tenant_id: string;
+    talent_record_id: string;
+    requisition_id: string;
+    resume_edition_id: string;
+    selected_by: string;
+    note?: string;
+  }): Promise<TalentRequisitionResumeRow> {
+    const row = await this.prisma.talentRequisitionResume.create({
+      // id + selected_at use the schema defaults (@default(uuid()) / now()).
+      data: {
+        tenant_id: args.tenant_id,
+        talent_record_id: args.talent_record_id,
+        requisition_id: args.requisition_id,
+        resume_edition_id: args.resume_edition_id,
+        selected_by: args.selected_by,
+        note: args.note,
+      },
+    });
+    return row as TalentRequisitionResumeRow;
+  }
+
+  // The CURRENT working selection for (tenant, talent, requisition) = the latest
+  // selected_at row. Null when the recruiter has never selected an edition for it.
+  async getCurrentRequisitionResume(args: {
+    tenant_id: string;
+    talent_record_id: string;
+    requisition_id: string;
+  }): Promise<TalentRequisitionResumeRow | null> {
+    const row = await this.prisma.talentRequisitionResume.findFirst({
+      where: {
+        tenant_id: args.tenant_id,
+        talent_record_id: args.talent_record_id,
+        requisition_id: args.requisition_id,
+      },
+      orderBy: { selected_at: 'desc' },
+    });
+    return (row as TalentRequisitionResumeRow | null) ?? null;
   }
 
 }

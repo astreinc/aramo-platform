@@ -200,6 +200,35 @@ export class SubmitTalentToClientService {
         );
       }
 
+      // TALENT-INTEL-1 TI-1D-D (Layer B) — the exact résumé edition sent to the
+      // client is the CURRENT explicit working selection (TalentRequisitionResume,
+      // latest selected_at) for (tenant, talent, requisition). REQUIRE it — there
+      // is NO automatic Talent-default fallback (the default is only a suggestion,
+      // never authoritative for a requisition). Ordered AFTER the structural /
+      // requisition-open gates and BEFORE the eligibility/engagement gate (so no
+      // engagement provenance is written on a selection-missing refusal). Resolved
+      // in-tx via raw SQL (no cross-lib injection); snapshotted onto the submittal
+      // at the send transition below and frozen by the immutability trigger —
+      // provable regardless of later selection/default changes.
+      const selectionRows = await tx.$queryRawUnsafe<Array<{ resume_edition_id: string }>>(
+        `SELECT "resume_edition_id" FROM "pipeline"."TalentRequisitionResume"
+           WHERE "tenant_id" = $1::uuid AND "talent_record_id" = $2::uuid AND "requisition_id" = $3::uuid
+           ORDER BY "selected_at" DESC
+           LIMIT 1`,
+        tenant_id,
+        talent_record_id,
+        requisition_id,
+      );
+      const resume_edition_id = selectionRows[0]?.resume_edition_id;
+      if (resume_edition_id === undefined) {
+        throw err(
+          'SUBMITTAL_RESUME_SELECTION_REQUIRED',
+          'A résumé edition must be explicitly selected for this requisition before submitting to the client',
+          422,
+          { submittal_id, requisition_id },
+        );
+      }
+
       // 4 — eligibility gate (deadline / manual override / client restriction). The
       // slot LIMIT is enforced authoritatively by consumeSlot under the policy lock.
       const inputs = await this.readPolicyInputs(tx, tenant_id, requisition_id);
@@ -261,13 +290,15 @@ export class SubmitTalentToClientService {
         );
       }
 
-      // 6 — authoritative submittal write: submitted_to_ats + event + outbox + usage.
+      // 6 — authoritative submittal write: submitted_to_ats + confirmed_at + the
+      // FROZEN résumé-edition snapshot (TI-1D-D) + event + outbox + usage.
       await tx.$executeRawUnsafe(
         `UPDATE "submittal"."TalentSubmittalRecord"
-            SET "state" = 'submitted_to_ats', "confirmed_at" = NOW()
+            SET "state" = 'submitted_to_ats', "confirmed_at" = NOW(), "resume_edition_id" = $3::uuid
           WHERE "id" = $1::uuid AND "tenant_id" = $2::uuid`,
         submittal_id,
         tenant_id,
+        resume_edition_id,
       );
       await tx.$executeRawUnsafe(
         `INSERT INTO "submittal"."TalentSubmittalEvent"
@@ -276,7 +307,7 @@ export class SubmitTalentToClientService {
         input.event_id,
         tenant_id,
         submittal_id,
-        JSON.stringify({ from_state: submittal.state, to_state: 'submitted_to_ats' }),
+        JSON.stringify({ from_state: submittal.state, to_state: 'submitted_to_ats', resume_edition_id }),
       );
       await tx.$executeRawUnsafe(
         `INSERT INTO "submittal"."OutboxEvent"

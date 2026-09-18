@@ -510,6 +510,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         resolve(ROOT, 'libs/submittal/prisma/migrations/20260527000000_rename_submittal_state_canonical/migration.sql'),
         resolve(ROOT, 'libs/submittal/prisma/migrations/20260812120000_t2p1_relocate_submittal_to_submittal_schema/migration.sql'),
         resolve(ROOT, 'libs/submittal/prisma/migrations/20260822130000_l8b1_submittal_pipeline_link/migration.sql'),
+        resolve(ROOT, 'libs/submittal/prisma/migrations/20260920130000_talent_intel_1d_d_submittal_resume_edition/migration.sql'),
       ]) {
         await setupClient.query(readFileSync(p, 'utf8'));
       }

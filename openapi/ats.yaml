@@ -1906,6 +1906,84 @@ paths:
           $ref: 'common.yaml#/components/responses/NotFound'
       security:
         - BearerAuth: []
+  /v1/pipelines/{id}/resume-edition:
+    get:
+      operationId: getPipelineResumeEdition
+      summary: The Requisition-context résumé selection for a pipeline (TI-1D-D).
+      description: |
+        Resolve, through the Pipeline aggregate (tenant + talent_record + requisition),
+        the EXPLICIT working résumé selection for this Talent×requisition. The newest
+        edition is NOT the sole truth and the Talent-global default is a SUGGESTION
+        only — never authoritative for a requisition. Returns the current selection
+        (null when the recruiter has never selected), the default marker, and the
+        active editions eligible for a new selection. Gated: capability ats + scope
+        pipeline:read.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: The Requisition-context résumé-selection state.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PipelineResumeEditionView'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+    put:
+      operationId: setPipelineResumeEdition
+      summary: Set the Requisition-context résumé selection (TI-1D-D).
+      description: |
+        Explicitly select the résumé edition to present for this Talent×requisition.
+        Appends a new append-only working-selection row — NEVER mutates a prior
+        selection (the full selection history is preserved). The chosen edition must
+        belong to the pipeline's Talent (else 404) and be lifecycle=active (else 422);
+        historical selections remain valid even if their edition is later retracted or
+        archived. This does NOT mutate the Talent-global default and does NOT bind at
+        send — the send-time freeze is a separate governed step. Gated: capability ats
+        + scope pipeline:resume:set.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetPipelineResumeEditionRequest'
+      responses:
+        '200':
+          description: The updated Requisition-context résumé-selection state.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PipelineResumeEditionView'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '422':
+          $ref: 'common.yaml#/components/responses/UnprocessableEntity'
+      security:
+        - BearerAuth: []
   /v1/talent-records/{id}/resume-editions:
     get:
       operationId: listTalentResumeEditions
@@ -5267,6 +5345,87 @@ components:
 
   schemas:
     # ── TALENT-INTEL-1 TI-1D-C — résumé editions ──
+    PipelineResumeEditionAvailable:
+      type: object
+      additionalProperties: false
+      required:
+        - edition_id
+        - purpose
+        - label
+        - filename
+        - mime_type
+        - created_at
+        - is_default
+      properties:
+        edition_id:
+          type: string
+          format: uuid
+        purpose:
+          type: string
+          enum: [GENERAL, ROLE_FAMILY, REQUISITION, CLIENT_SUBMITTAL, USER_DEFINED]
+        label:
+          type: [string, 'null']
+        filename:
+          type: string
+        mime_type:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        is_default:
+          type: boolean
+    PipelineResumeEditionView:
+      type: object
+      additionalProperties: false
+      required:
+        - pipeline_id
+        - talent_record_id
+        - requisition_id
+        - selected_edition_id
+        - selected_at
+        - selected_by
+        - default_edition_id
+        - available_editions
+      properties:
+        pipeline_id:
+          type: string
+          format: uuid
+        talent_record_id:
+          type: string
+          format: uuid
+        requisition_id:
+          type: string
+          format: uuid
+        # The EXPLICIT working selection for THIS requisition; null when the
+        # recruiter has never selected (the default is a suggestion, not a binding).
+        selected_edition_id:
+          type: [string, 'null']
+          format: uuid
+        selected_at:
+          type: [string, 'null']
+          format: date-time
+        selected_by:
+          type: [string, 'null']
+          format: uuid
+        # The Talent-global presentation default — a suggestion only.
+        default_edition_id:
+          type: [string, 'null']
+          format: uuid
+        # Editions eligible for a NEW selection (lifecycle=active).
+        available_editions:
+          type: array
+          items:
+            $ref: '#/components/schemas/PipelineResumeEditionAvailable'
+    SetPipelineResumeEditionRequest:
+      type: object
+      additionalProperties: false
+      required: [resume_edition_id]
+      properties:
+        resume_edition_id:
+          type: string
+          format: uuid
+        note:
+          type: string
     TalentResumeEditionView:
       type: object
       additionalProperties: false

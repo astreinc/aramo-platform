@@ -132,6 +132,7 @@ export const SEED_IDS = {
     // add-activity/remove; 0x78 reused for the L2-C pipeline:complete slot)
     'pipeline:add': '01900000-0000-7000-8000-000000000075',
     'pipeline:change-status': '01900000-0000-7000-8000-000000000076',
+    'pipeline:resume:set': '01900000-0000-7000-8000-000000000077',
     'pipeline:complete': '01900000-0000-7000-8000-000000000078',
     // calendar (3)
     'calendar:event-create': '01900000-0000-7000-8000-000000000079',
@@ -2462,6 +2463,44 @@ const ADDRESS_LOOKUP_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
   return map;
 })();
 
+// TI-1D-D — the pipeline:resume:set grant matrix. pipeline:resume:set is the
+// DEDICATED mutation scope for setting a Requisition-context résumé selection
+// (PUT /v1/pipelines/{id}/resume-edition). It is granted to the four
+// pipeline:change-status holders — recruiter + account_manager (active Pipeline
+// workers) and tenant_admin + tenant_owner (operational oversight) — as an
+// EXPLICIT TI-1D-D decision, NOT auto-inherited from pipeline:change-status and
+// NEVER a silent reuse of it (the dedicated scope preserves the architectural
+// distinction). ALL FOUR are seeded HERE via this dedicated bundle (a single
+// self-contained bundle for a mixed base/AUTHZ1 role-set — the COMMERCIAL_SEED /
+// TASK_SEED precedent), so no (role, scope) pair is double-granted. EXCLUDED
+// (fail-closed, no inheritance): super_admin, sourcer, recruiting_manager,
+// lead_recruiter, delivery_manager, back_office, finance, auditor, candidate.
+export const RESUME_SELECT_SEED_BUNDLES: ReadonlyArray<
+  readonly [string, readonly string[]]
+> = [
+  ['tenant_admin', ['pipeline:resume:set']],
+  ['tenant_owner', ['pipeline:resume:set']],
+  ['recruiter', ['pipeline:resume:set']],
+  ['account_manager', ['pipeline:resume:set']],
+];
+
+// Deterministic RoleScope row ids for the 4 pipeline:resume:set grants. Fresh
+// contiguous range 0x1200+ (all prior generated ranges — through TALENT_CONTACT
+// 0x1110+ and ADDRESS_LOOKUP 0x1102+ — stay untouched; append-don't-renumber).
+// The (role, scope) iteration order pins the assignment. DO NOT REORDER.
+const RESUME_SELECT_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
+  const map: Record<string, string> = {};
+  let i = 0x1200;
+  for (const [role, scopes] of RESUME_SELECT_SEED_BUNDLES) {
+    for (const scope of scopes) {
+      map[`${role}:${scope}`] =
+        `01900000-0000-7000-8000-${i.toString(16).padStart(12, '0')}`;
+      i++;
+    }
+  }
+  return map;
+})();
+
 interface IdentityPrismaClient {
   tenant: typeof PrismaClient.prototype.tenant;
   user: typeof PrismaClient.prototype.user;
@@ -2671,6 +2710,7 @@ export async function runIdentitySeed(
   await upsertScope(prisma, SEED_IDS.scopes['attachment:create'], 'attachment:create', 'Attach a file to an owner');
   await upsertScope(prisma, SEED_IDS.scopes['attachment:delete'], 'attachment:delete', 'Detach a file from its owner (recruiter+ via bounded Ruling 1 carve-out — junction/link delete, not entity destruction)');
   await upsertScope(prisma, SEED_IDS.scopes['pipeline:read'], 'pipeline:read', 'Read pipelines / pipeline history');
+  await upsertScope(prisma, SEED_IDS.scopes['pipeline:resume:set'], 'pipeline:resume:set', 'TI-1D-D — set the Requisition-context résumé selection for a pipeline (PUT /v1/pipelines/{id}/resume-edition; appends a TalentRequisitionResume working-selection row, never mutates prior). DEDICATED mutation scope; GRANTED to the four pipeline:change-status holders (recruiter, account_manager, tenant_admin, tenant_owner) via RESUME_SELECT_SEED_BUNDLES as an EXPLICIT TI-1D-D decision — NOT auto-inherited from pipeline:change-status and NOT a reuse of it (the dedicated scope preserves the lifecycle-vs-selection distinction). NO scope.created (scope-seed precedent).');
   // Lane 2 / L2-F (F1) — Client-Selection owner scopes.
   await upsertScope(prisma, SEED_IDS.scopes['client-selection:create'], 'client-selection:create', 'Lane 2 / L2-F (F1) — create a ClientSelectionProcess from a Submittal (POST /v1/client-selection, apps/api create-from-submittal orchestration). GRANTED to recruiter, account_manager, tenant_admin, tenant_owner (the ATS delivery matrix; mirrors placement:create). NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['client-selection:read'], 'client-selection:read', 'Lane 2 / L2-F (F1) — read a ClientSelectionProcess (GET /v1/client-selection/:id). GRANTED to recruiter, account_manager, tenant_admin, tenant_owner. NO scope.created (scope-seed precedent).');
@@ -3564,6 +3604,28 @@ export async function runIdentitySeed(
       if (rsId === undefined) {
         throw new Error(
           `AddressLookup-Role-Matrix: Missing generated RoleScope id for ${roleKey}:${scopeKey}`,
+        );
+      }
+      const scope_id = scopeIdForKey(scopeKey);
+      await prisma.roleScope.upsert({
+        where: { role_id_scope_id: { role_id, scope_id } },
+        update: {},
+        create: { id: rsId, role_id, scope_id },
+      });
+    }
+  }
+
+  // TI-1D-D — pipeline:resume:set grants (range 0x1200+). All four holders
+  // (tenant_admin/tenant_owner/recruiter/account_manager) are seeded HERE via
+  // the dedicated RESUME_SELECT_SEED_BUNDLES — none are in ROLE_SCOPE_ASSIGNMENTS
+  // for this scope, so no (role, scope) pair is double-granted.
+  for (const [roleKey, scopeKeys] of RESUME_SELECT_SEED_BUNDLES) {
+    const role_id = roleIdForKey(roleKey);
+    for (const scopeKey of scopeKeys) {
+      const rsId = RESUME_SELECT_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
+      if (rsId === undefined) {
+        throw new Error(
+          `ResumeSelect-Role-Matrix: Missing generated RoleScope id for ${roleKey}:${scopeKey}`,
         );
       }
       const scope_id = scopeIdForKey(scopeKey);

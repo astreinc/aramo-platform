@@ -84,6 +84,8 @@ const MIGRATIONS = [
   'libs/pipeline/prisma/migrations/20260828150000_l2c_pipeline_disposition/migration.sql',
   'libs/pipeline/prisma/migrations/20260828160000_l2d_pipeline_entry_provenance/migration.sql',
   'libs/pipeline/prisma/migrations/20260831120000_pipeline_canonicalize_status_enum/migration.sql',
+  // TALENT-INTEL-1 TI-1D-D — the working résumé-selection table (Layer A).
+  'libs/pipeline/prisma/migrations/20260920120000_talent_intel_1d_d_requisition_resume/migration.sql',
   'libs/submittal/prisma/migrations/20260523120000_init_submittal_model/migration.sql',
   'libs/submittal/prisma/migrations/20260523200000_add_submittal_revoke/migration.sql',
   'libs/submittal/prisma/migrations/20260526140602_add_submittal_event_log/migration.sql',
@@ -92,6 +94,8 @@ const MIGRATIONS = [
   'libs/submittal/prisma/migrations/20260706240000_tr2a_b3b_reconcile_rekey_exemption/migration.sql',
   'libs/submittal/prisma/migrations/20260812120000_t2p1_relocate_submittal_to_submittal_schema/migration.sql',
   'libs/submittal/prisma/migrations/20260822130000_l8b1_submittal_pipeline_link/migration.sql',
+  // TALENT-INTEL-1 TI-1D-D — resume_edition_id snapshot col + trigger rewrite (Layer B).
+  'libs/submittal/prisma/migrations/20260920130000_talent_intel_1d_d_submittal_resume_edition/migration.sql',
   'libs/client-talent-restriction/prisma/migrations/20260803163000_init_client_talent_restriction_model/migration.sql',
   'libs/submittal-eligibility/prisma/migrations/20260822120000_init_submittal_eligibility_model/migration.sql',
   // COMM-C3 — the engagement gate reads/writes policy_store (StoredPolicyVersion +
@@ -103,6 +107,7 @@ const MIGRATIONS = [
   'libs/communications/prisma/migrations/20260905140000_comm_c2b_meeting_channel/migration.sql',
 ].map(mig);
 
+const TI1DD_EDITION = randomUUID();
 const logger = { log: () => undefined, error: () => undefined, warn: () => undefined } as never;
 
 describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
@@ -170,6 +175,16 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     // (the spec runs against curated migrations, NOT the Nest app, so it cannot
     // use establishOpenRequisition). status defaults to 'open' — the only value
     // the gate admits — so the pre-L1-C fixtures pass the new gate unchanged.
+    // TALENT-INTEL-1 TI-1D-D — seed the explicit working résumé selection the
+    // client-send now requires (append-only; the latest selected_at is current).
+    async function seedRequisitionResume(t: string, talent: string, req: string, edition: string): Promise<void> {
+      await sql.query(
+        `INSERT INTO pipeline."TalentRequisitionResume"
+           (id,tenant_id,talent_record_id,requisition_id,resume_edition_id,selected_by)
+         VALUES ($1,$2,$3,$4,$5,$6)`,
+        [randomUUID(), t, talent, req, edition, randomUUID()],
+      );
+    }
     async function seedRequisition(t: string, req: string, status = 'open'): Promise<void> {
       await sql.query(
         `INSERT INTO requisition."Requisition" (id,tenant_id,title,company_id,status)
@@ -203,6 +218,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await seedRequisition(t, req, 'open'); // L1-C proof 6 — open requisition → the submit SUCCEEDS.
       await seedPipeline(t, pipe, talent, req);
       await seedSubmittal(t, sub, talent, req, pipe);
+      await seedRequisitionResume(t, talent, req, TI1DD_EDITION);
 
       // BEFORE
       expect(await submittalState(sub)).toBe('ready_for_review|false');
@@ -216,6 +232,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       // AUTHORITATIVE fact: the submittal is submitted_to_ats with confirmed_at set.
       expect(await submittalState(sub)).toBe('submitted_to_ats|true');
+      // TI-1D-D — the exact sent edition is frozen on the submittal.
+      expect(await one(`SELECT resume_edition_id::text AS c FROM submittal."TalentSubmittalRecord" WHERE id=$1`, [sub])).toBe(TI1DD_EDITION);
       // L2-E — Pipeline is UNTOUCHED (D-2 episode stays LIVE): status rests at
       // qualifying, NO PipelineStatusHistory row, NO pipeline activity, NO
       // pipeline.state_transition metering event. The submit-to-client signal is
@@ -232,6 +250,24 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(await count('submittal_policy."SubmittalPolicyEvent"', 'requisition_id=$1', [req])).toBe('1');
     });
 
+    // ---- TI-1D-D: client-send requires an explicit résumé selection ------------
+    it('TI-1D-D: no requisition résumé selection → SUBMITTAL_RESUME_SELECTION_REQUIRED, no writes', async () => {
+      const t = randomUUID(), req = randomUUID();
+      const pipe = randomUUID(), sub = randomUUID(), talent = randomUUID();
+      await seedRequisition(t, req, 'open');
+      await seedPipeline(t, pipe, talent, req);
+      await seedSubmittal(t, sub, talent, req, pipe);
+      // Deliberately NO seedRequisitionResume — the default is never an authoritative fallback.
+      await expect(
+        svc.submitToClient({ tenant_id: t, submittal_id: sub, event_id: randomUUID(), actor_id: randomUUID(), requestId: 'ti1dd-noselect' }),
+      ).rejects.toMatchObject({ code: 'SUBMITTAL_RESUME_SELECTION_REQUIRED', statusCode: 422 });
+      // The submittal stays ready_for_review, unsent; no side-effects.
+      expect(await submittalState(sub)).toBe('ready_for_review|false');
+      expect(await one(`SELECT resume_edition_id::text AS c FROM submittal."TalentSubmittalRecord" WHERE id=$1`, [sub])).toBe(null);
+      expect(await count('submittal."TalentSubmittalEvent"', 'submittal_id=$1', [sub])).toBe('0');
+      expect(await count('submittal_policy."SubmittalConsumption"', 'requisition_id=$1', [req])).toBe('0');
+    });
+
     // ---- P2: concurrent limit=1 -------------------------------------------------
     it('P2 concurrent limit=1: exactly one commit, one consumption, one typed refusal', async () => {
       const t = randomUUID(), req = randomUUID();
@@ -243,6 +279,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await seedPipeline(t, pB, tB, req);
       await seedSubmittal(t, sA, tA, req, pA);
       await seedSubmittal(t, sB, tB, req, pB);
+      await seedRequisitionResume(t, tA, req, TI1DD_EDITION);
+      await seedRequisitionResume(t, tB, req, TI1DD_EDITION);
 
       const results = await Promise.allSettled([
         svc.submitToClient({ tenant_id: t, submittal_id: sA, event_id: randomUUID(), actor_id: randomUUID(), requestId: 'p2a' }),
@@ -269,6 +307,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await seedRequisition(t, req, 'open'); // L1-C — the gate admits open; the forced-failure atomicity proof is unchanged.
       await seedPipeline(t, pipe, talent, req);
       await seedSubmittal(t, sub, talent, req, pipe);
+      await seedRequisitionResume(t, talent, req, TI1DD_EDITION);
 
       failFlag.fail = true;
       await expect(
@@ -320,6 +359,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await seedRequisition(t, req, 'open'); // L1-C — the gate admits open; the idempotent-repeat refusal (step 2) is unchanged.
       await seedPipeline(t, pipe, talent, req);
       await seedSubmittal(t, sub, talent, req, pipe);
+      await seedRequisitionResume(t, talent, req, TI1DD_EDITION);
 
       await svc.submitToClient({ tenant_id: t, submittal_id: sub, event_id: randomUUID(), actor_id: randomUUID(), requestId: 'p6-1' });
       // Re-submit the now-submitted_to_ats submittal — the state machine refuses it.
@@ -342,6 +382,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         await seedRequisition(t, req, status);
         await seedPipeline(t, pipe, talent, req);
         await seedSubmittal(t, sub, talent, req, pipe);
+      await seedRequisitionResume(t, talent, req, TI1DD_EDITION);
 
         await expect(
           svc.submitToClient({ tenant_id: t, submittal_id: sub, event_id: randomUUID(), actor_id: randomUUID(), requestId: `l1c-${status}` }),
@@ -363,6 +404,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await seedRequisition(t, req, 'submittals_closed');
       await seedPipeline(t, pipe, talent, req);
       await seedSubmittal(t, sub, talent, req, pipe);
+      await seedRequisitionResume(t, talent, req, TI1DD_EDITION);
 
       // BEFORE — the requisition is submittals_closed.
       expect(await requisitionStatus(req)).toBe('submittals_closed');
@@ -432,6 +474,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await seedRequisition(t, req, 'open');
       await seedPipeline(t, pipe, talent, req);
       await seedSubmittal(t, sub, talent, req, pipe);
+      await seedRequisitionResume(t, talent, req, TI1DD_EDITION);
       return { talent, req, sub };
     }
     const submit = (t: string, sub: string, tag: string) =>

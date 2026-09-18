@@ -435,6 +435,16 @@ const SUBMITTAL_T2P1_L8B1_LINK_MIGRATION = resolve(
   ROOT,
   'libs/submittal/prisma/migrations/20260822130000_l8b1_submittal_pipeline_link/migration.sql',
 );
+// TI-1D-D — the frozen send-time résumé snapshot column (resume_edition_id) +
+// the reject_submittal_record_update trigger rewrite (enumerates resume_edition_id
+// as one-time-pinnable at send, and closes the prior pipeline_id immutability gap).
+// The regenerated submittal Prisma client SELECTs resume_edition_id on every
+// submittal read, so without this migration the submittal pacts 500. Applied
+// AFTER the L8B1 link migration (the last trigger-defining submittal migration).
+const SUBMITTAL_TI1DD_RESUME_EDITION_MIGRATION = resolve(
+  ROOT,
+  'libs/submittal/prisma/migrations/20260920130000_talent_intel_1d_d_submittal_resume_edition/migration.sql',
+);
 const EVIDENCE_RECONCILE_REKEY_MIGRATION = resolve(
   ROOT,
   'libs/evidence/prisma/migrations/20260706240000_tr2a_b3b_reconcile_rekey_exemption/migration.sql',
@@ -554,6 +564,14 @@ const PIPELINE_L2D_PROVENANCE_MIGRATION = resolve(
 const PIPELINE_CANONICALIZE_ENUM_MIGRATION = resolve(
   ROOT,
   'libs/pipeline/prisma/migrations/20260831120000_pipeline_canonicalize_status_enum/migration.sql',
+);
+// TI-1D-D — the TalentRequisitionResume append-only working-selection table (+
+// append-only trigger pair). The regenerated pipeline Prisma client SELECTs it
+// on the GET/PUT /v1/pipelines/{id}/resume-edition routes the ats-web pipeline
+// pact exercises; without this migration those replays 500 (relation absent).
+const PIPELINE_TI1DD_REQUISITION_RESUME_MIGRATION = resolve(
+  ROOT,
+  'libs/pipeline/prisma/migrations/20260920120000_talent_intel_1d_d_requisition_resume/migration.sql',
 );
 // L8-B1 — the submit-to-ats orchestrator touches the submittal_policy schema
 // (RequisitionSubmittalPolicy / SubmittalConsumption / SubmittalPolicyEvent) and
@@ -1228,6 +1246,10 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // submittal_policy consumption/provenance; truncate so a prior interaction's
       // pipeline episode or consumption fact never leaks into the next.
       await c.query('TRUNCATE TABLE pipeline."PipelineStatusHistory" CASCADE');
+      // TI-1D-D — the append-only Requisition-context résumé-selection history.
+      // Must reset like every other pipeline table so a state seeding a fixed-id
+      // selection row can run more than once (duplicate-PK otherwise).
+      await c.query('TRUNCATE TABLE pipeline."TalentRequisitionResume" CASCADE');
       await c.query('TRUNCATE TABLE pipeline."Pipeline" CASCADE');
       await c.query('TRUNCATE TABLE submittal_policy."SubmittalConsumption" CASCADE');
       await c.query('TRUNCATE TABLE submittal_policy."SubmittalPolicyEvent" CASCADE');
@@ -1973,6 +1995,13 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     const ATSW_PIPE_REQ_ID = '00000000-0000-7000-8000-4e9100000001';
     const ATSW_PIPE_FULL_REQ_ID = '00000000-0000-7000-8000-4e9100000002';
     const ATSW_PIPE_HISTORY_ID = '00000000-0000-7000-8000-415700000001';
+    // TI-1D-D — résumé-edition selection fixtures for the pipeline talent
+    // (ATSW_PIPE_TALENT_ID owns the edition so the RESUME_EDITION_READER adapter
+    // resolves it for GET/PUT /v1/pipelines/{id}/resume-edition).
+    const ATSW_PIPE_RE_DOC = '00000000-0000-7000-8000-71be000000d1';
+    const ATSW_PIPE_RE_ED = '00000000-0000-7000-8000-71be000000e1';
+    const ATSW_PIPE_RE_SEL = '00000000-0000-7000-8000-71be000000f1';
+    const ATSW_PIPE_RE_ACTOR = '00000000-0000-7000-8000-71be000000a1';
     // D7 — Offer Lifecycle discovery pact fixtures (offer.consumer.test.ts).
     const ATSW_OFFER_ID = '00000000-0000-7000-8000-0ffe00000001';
     const ATSW_OFFER_SUBMITTAL_ID = '00000000-0000-7000-8000-05b000000001';
@@ -3230,6 +3259,9 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         SUBMITTAL_RECONCILE_REKEY_MIGRATION,
         SUBMITTAL_T2P1_MIGRATION,
         SUBMITTAL_T2P1_L8B1_LINK_MIGRATION,
+        // TI-1D-D — resume_edition_id snapshot column + trigger rewrite. AFTER
+        // the L8B1 link migration (the last submittal-record trigger migration).
+        SUBMITTAL_TI1DD_RESUME_EDITION_MIGRATION,
         EVIDENCE_RECONCILE_REKEY_MIGRATION,
         // M5 PR-6 §4.14 — ai-draft schema for outreach-send state
         // handlers. AiDraftService writes audit-event rows even when
@@ -3282,6 +3314,9 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         PIPELINE_L2C_DISPOSITION_MIGRATION,
         PIPELINE_L2D_PROVENANCE_MIGRATION,
         PIPELINE_CANONICALIZE_ENUM_MIGRATION,
+        // TI-1D-D — TalentRequisitionResume table + append-only triggers, applied
+        // at the end of the pipeline sequence (independent new table).
+        PIPELINE_TI1DD_REQUISITION_RESUME_MIGRATION,
         SUBMITTAL_POLICY_INIT_MIGRATION,
         CLIENT_TALENT_RESTRICTION_INIT_MIGRATION,
         POLICY_STORE_INIT_MIGRATION,
@@ -3612,6 +3647,9 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           'pipeline:read',
           'pipeline:add',
           'pipeline:change-status',
+          // TI-1D-D — the dedicated Requisition-context résumé-selection mutation
+          // scope gates PUT /v1/pipelines/{id}/resume-edition (@RequireScopes).
+          'pipeline:resume:set',
           'activity:read',
           'activity:create',
           // PC-5d — task + attachment RolesGuard @RequireScopes. task:write
@@ -6064,6 +6102,24 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
              VALUES ($1,$2,$3,$4,'qualifying'::pipeline."PipelineStatus")`,
             [readyPipelineId, TENANT_ID, PACT_TALENT_ID, ATSW_SUB_JOB_ID],
           );
+          // TI-1D-D — the send-to-ats transition now REQUIRES an explicit
+          // Requisition-context résumé selection (SUBMITTAL_RESUME_SELECTION_REQUIRED
+          // 422 otherwise, no default fallback). Seed the working selection for the
+          // same (tenant, talent, requisition) so the send freezes it onto the
+          // submittal + event and the happy path returns 200.
+          await c.query(
+            `INSERT INTO pipeline."TalentRequisitionResume"
+               (id, tenant_id, talent_record_id, requisition_id, resume_edition_id, selected_by)
+             VALUES ($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,$6::uuid)`,
+            [
+              '00000000-0000-7000-8000-5b00000000f3',
+              TENANT_ID,
+              PACT_TALENT_ID,
+              ATSW_SUB_JOB_ID,
+              '00000000-0000-7000-8000-5b00000000e3',
+              '00000000-0000-7000-8000-5b00000000a3',
+            ],
+          );
           await seedAtsWebSubmittalChain(c, {
             submittalId: ATSW_SUB_READY_ID,
             state: 'ready_for_review',
@@ -6579,6 +6635,103 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       'an ats-web recruiter can create pipelines': async () => {
         await withClient((c) => resetAllRows(c));
       },
+
+      // TI-1D-D — a pipeline whose talent owns ONE active résumé edition (the
+      // default) AND has an explicit Requisition-context selection pointing at it.
+      // Exercises GET /v1/pipelines/:id/resume-edition (selection + default +
+      // available_editions all populated through the real RESUME_EDITION_READER).
+      'an ats-web recruiter and a pipeline with a resume selection exist':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedAtsWebPipeline(c, {
+              id: ATSW_PIPE_ID,
+              talentRecordId: ATSW_PIPE_TALENT_ID,
+              requisitionId: ATSW_PIPE_REQ_ID,
+            });
+            await seedAtsWebTalentRecord(c, {
+              id: ATSW_PIPE_TALENT_ID,
+              firstName: 'Dana',
+              lastName: 'Rivera',
+            });
+            await c.query(
+              `INSERT INTO talent_evidence."TalentDocument"
+                 (id, talent_id, tenant_id, uploaded_by_actor_id, uploaded_at, document_type,
+                  filename, file_storage_ref, mime_type, size_bytes, parse_status,
+                  consent_scope_at_upload, retention_policy, is_active)
+               VALUES ($2::uuid, $1::uuid, $3::uuid, $3::uuid, '2026-07-01T00:00:00Z',
+                  'resume'::"talent_evidence"."TalentDocumentType", 'dana-general.pdf', 'k/p',
+                  'application/pdf', 1000, 'parsed'::"talent_evidence"."TalentDocumentParseStatus",
+                  ARRAY[]::text[], 'default'::"talent_evidence"."TalentDocumentRetentionPolicy", true)`,
+              [ATSW_PIPE_TALENT_ID, ATSW_PIPE_RE_DOC, TENANT_ID],
+            );
+            await c.query(
+              `INSERT INTO talent_evidence."TalentResumeEdition"
+                 (id, tenant_id, talent_id, talent_document_id, content_hash, purpose, created_at, created_by)
+               VALUES ($2::uuid, $3::uuid, $1::uuid, $4::uuid, 'hash-p',
+                  'GENERAL'::"talent_evidence"."TalentResumeEditionPurpose", '2026-07-01T00:00:00Z', $3::uuid)`,
+              [ATSW_PIPE_TALENT_ID, ATSW_PIPE_RE_ED, TENANT_ID, ATSW_PIPE_RE_DOC],
+            );
+            await c.query(
+              `INSERT INTO talent_evidence."TalentResumeDefault"
+                 (id, tenant_id, talent_id, resume_edition_id, set_at, set_by)
+               VALUES ('00000000-0000-7000-8000-71be000000db'::uuid, $3::uuid, $1::uuid, $2::uuid, NOW(), $3::uuid)`,
+              [ATSW_PIPE_TALENT_ID, ATSW_PIPE_RE_ED, TENANT_ID],
+            );
+            // The explicit working selection (Layer A) for THIS requisition.
+            await c.query(
+              `INSERT INTO pipeline."TalentRequisitionResume"
+                 (id, tenant_id, talent_record_id, requisition_id, resume_edition_id, selected_by)
+               VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, $6::uuid)`,
+              [
+                ATSW_PIPE_RE_SEL,
+                TENANT_ID,
+                ATSW_PIPE_TALENT_ID,
+                ATSW_PIPE_REQ_ID,
+                ATSW_PIPE_RE_ED,
+                ATSW_PIPE_RE_ACTOR,
+              ],
+            );
+          });
+        },
+
+      // TI-1D-D — a pipeline whose talent owns ONE active, selectable résumé
+      // edition but has NO existing selection yet. Exercises PUT
+      // /v1/pipelines/:id/resume-edition (the append-only first selection).
+      'an ats-web recruiter and a pipeline with a selectable resume edition exist':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedAtsWebPipeline(c, {
+              id: ATSW_PIPE_ID,
+              talentRecordId: ATSW_PIPE_TALENT_ID,
+              requisitionId: ATSW_PIPE_REQ_ID,
+            });
+            await seedAtsWebTalentRecord(c, {
+              id: ATSW_PIPE_TALENT_ID,
+              firstName: 'Dana',
+              lastName: 'Rivera',
+            });
+            await c.query(
+              `INSERT INTO talent_evidence."TalentDocument"
+                 (id, talent_id, tenant_id, uploaded_by_actor_id, uploaded_at, document_type,
+                  filename, file_storage_ref, mime_type, size_bytes, parse_status,
+                  consent_scope_at_upload, retention_policy, is_active)
+               VALUES ($2::uuid, $1::uuid, $3::uuid, $3::uuid, '2026-07-01T00:00:00Z',
+                  'resume'::"talent_evidence"."TalentDocumentType", 'dana-general.pdf', 'k/p',
+                  'application/pdf', 1000, 'parsed'::"talent_evidence"."TalentDocumentParseStatus",
+                  ARRAY[]::text[], 'default'::"talent_evidence"."TalentDocumentRetentionPolicy", true)`,
+              [ATSW_PIPE_TALENT_ID, ATSW_PIPE_RE_DOC, TENANT_ID],
+            );
+            await c.query(
+              `INSERT INTO talent_evidence."TalentResumeEdition"
+                 (id, tenant_id, talent_id, talent_document_id, content_hash, purpose, created_at, created_by)
+               VALUES ($2::uuid, $3::uuid, $1::uuid, $4::uuid, 'hash-p',
+                  'GENERAL'::"talent_evidence"."TalentResumeEditionPurpose", '2026-07-01T00:00:00Z', $3::uuid)`,
+              [ATSW_PIPE_TALENT_ID, ATSW_PIPE_RE_ED, TENANT_ID, ATSW_PIPE_RE_DOC],
+            );
+          });
+        },
 
       // Track 4 / T4-B2 §7 — the "no requisition openings -> REQUISITION_NO_OPENINGS
       // 409" provider state was RETIRED alongside its consumer interaction. Pipeline

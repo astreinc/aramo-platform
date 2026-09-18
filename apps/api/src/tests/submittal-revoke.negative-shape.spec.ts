@@ -139,6 +139,10 @@ const SUBMITTAL_T2P1_L8B1_LINK_MIGRATION = resolve(
   ROOT,
   'libs/submittal/prisma/migrations/20260822130000_l8b1_submittal_pipeline_link/migration.sql',
 );
+const SUBMITTAL_TI1DD_RESUME_EDITION_MIGRATION = resolve(
+  ROOT,
+  'libs/submittal/prisma/migrations/20260920130000_talent_intel_1d_d_submittal_resume_edition/migration.sql',
+);
 // PR-A1c §4 — metering schema required (in-tx UsageEvent INSERT in the
 // existing $transaction array; revoke is a metered transition).
 const METERING_INIT_MIGRATION = resolve(
@@ -279,6 +283,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         SUBMITTAL_OUTBOX_MIGRATION,
         SUBMITTAL_T2P1_MIGRATION,
         SUBMITTAL_T2P1_L8B1_LINK_MIGRATION,
+        SUBMITTAL_TI1DD_RESUME_EDITION_MIGRATION,
         METERING_INIT_MIGRATION,
         resolve(ROOT, 'libs/requisition/prisma/migrations/20260803120000_recruiting_status_supersession/migration.sql'),
         resolve(ROOT, 'libs/requisition/prisma/migrations/20260907120000_add_requisition_postal_code/migration.sql'),
