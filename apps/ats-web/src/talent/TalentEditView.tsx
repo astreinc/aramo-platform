@@ -260,7 +260,6 @@ function EditResumePanel({
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [talentId]);
 
   const selected = editions.find((e) => e.edition_id === selectedId) ?? null;

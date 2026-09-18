@@ -117,6 +117,13 @@ describe('ResumeExtractionOrchestrator', () => {
       resolveOwnedResumeStorageKey: vi
         .fn()
         .mockResolvedValue({ storage_key: 'tenantA/talent/tal-1/resume/xyz-CV.pdf' }),
+      // TI-1D-C — the ingestion-metadata resolver (unused on the extraction path).
+      resolveOwnedResume: vi.fn().mockResolvedValue({
+        storage_key: 'tenantA/talent/tal-1/resume/xyz-CV.pdf',
+        filename: 'xyz-CV.pdf',
+        mime_type: 'application/pdf',
+        size_bytes: 1,
+      }),
     };
     const parser = makeParser('résumé text');
     const extraction = makeExtraction({ status: 'success', proposal: proposalWith() });

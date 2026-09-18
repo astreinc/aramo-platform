@@ -1,7 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { v7 as uuidv7 } from 'uuid';
-import { TalentExtractionService } from '@aramo/talent-extraction';
-import type { TalentResumeEditionRow } from '@aramo/talent-evidence';
+import {
+  TalentExtractionService,
+  type TalentResumeEditionRow,
+} from '@aramo/talent-extraction';
 
 // TALENT-INTEL-1 TI-1D-C §A/§B — the shared résumé-edition ingestion composition.
 // Both callers (confirmed-CREATE-from-résumé and existing-Talent new-résumé

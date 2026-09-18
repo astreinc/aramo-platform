@@ -5544,8 +5544,7 @@
         "project": "submittal",
         "status": "excluded"
       },
-      { "project": "talent-extraction", "status": "production" },
-      { "project": "talent-record", "status": "production" }
+      { "project": "talent-extraction", "status": "production" }
     ],
     "@aramo/talent-extraction": [
       {

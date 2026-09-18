@@ -1,4 +1,4 @@
-import type { TalentResumeEditionWithDocumentRow } from '@aramo/talent-evidence';
+import type { TalentResumeEditionWithDocumentRow } from '@aramo/talent-extraction';
 
 // TALENT-INTEL-1 TI-1D-C — the résumé-edition read model. filename / mime_type /
 // uploaded_at are PROJECTED from the mandatory TalentDocument join (file_type ←
