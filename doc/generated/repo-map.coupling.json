@@ -5341,6 +5341,12 @@
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/pre-start-requirement/marker-confinement.spec.ts",
       "status": "excluded",
+      "to": "libs/pipeline/prisma/migrations/20260920120000_talent_intel_1d_d_requisition_resume/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/pre-start-requirement/marker-confinement.spec.ts",
+      "status": "excluded",
       "to": "libs/pipeline/src/tests/pipeline-l2b-durable-episode.integration.spec.ts"
     },
     {

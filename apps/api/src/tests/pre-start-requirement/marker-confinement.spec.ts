@@ -121,6 +121,11 @@ const EXACT_ALLOWLIST = new Set<string>([
   // when its Pipeline is purged.
   'libs/pipeline/prisma/migrations/20260828160000_l2d_pipeline_entry_provenance/migration.sql',
   'libs/pipeline/prisma/migrations/20260831120000_pipeline_canonicalize_status_enum/migration.sql',
+  // TALENT-INTEL-1 / TI-1D-D — the TalentRequisitionResume append-only migration:
+  // its reject-DELETE trigger carries the same exact-value tenant_reset escape
+  // (a governed tenant reset can purge the working-selection history), mirroring
+  // the PipelineStatusHistory / entry-provenance precedent.
+  'libs/pipeline/prisma/migrations/20260920120000_talent_intel_1d_d_requisition_resume/migration.sql',
   // Lane 2 / L2-D — the entry-provenance proof EXERCISES the escape (AC-IMMUT:
   // DELETE permitted only under the exact authorized GUC) via raw set_config.
   'libs/pipeline/src/tests/pipeline-l2d-entry-provenance.integration.spec.ts',
