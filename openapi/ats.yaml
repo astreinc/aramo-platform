@@ -1906,6 +1906,116 @@ paths:
           $ref: 'common.yaml#/components/responses/NotFound'
       security:
         - BearerAuth: []
+  /v1/talent-records/{id}/resume-editions:
+    get:
+      operationId: listTalentResumeEditions
+      summary: The résumé editions for a talent (TALENT-INTEL-1 TI-1D-C).
+      description: |
+        A talent may hold MULTIPLE simultaneously-valid résumé editions; the newest
+        is NOT the sole truth. Each row carries its control identity plus its
+        TalentDocument metadata (filename / mime_type / uploaded_at are PROJECTED
+        from the mandatory TalentDocument, never stored on the edition) and the
+        explicit presentation default marker (is_default). Gated: capability ats +
+        scope talent:read.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: The résumé-edition collection.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TalentResumeEditionsResponse'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+    post:
+      operationId: createTalentResumeEdition
+      summary: Ingest a new résumé edition from an owned attachment (TI-1D-C).
+      description: |
+        Create a new résumé edition for an existing talent from an OWNED résumé
+        attachment. The server owns authorization, extraction, content hashing,
+        TalentDocument creation, and edition creation — NO raw storage key is
+        accepted. This does NOT author work-history/skill evidence (that stays the
+        explicit talent PATCH). The first edition establishes the default; later
+        editions never change it. Gated: capability ats + scope talent:edit.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTalentResumeEditionRequest'
+      responses:
+        '201':
+          description: The created résumé edition.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TalentResumeEditionView'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '422':
+          $ref: 'common.yaml#/components/responses/UnprocessableEntity'
+      security:
+        - BearerAuth: []
+  /v1/talent-records/{id}/resume-editions/default:
+    put:
+      operationId: setTalentResumeEditionDefault
+      summary: Explicitly set the talent's default résumé edition (TI-1D-C).
+      description: |
+        Move the talent's default/presentation résumé edition. The default never
+        changes automatically (no latest==default); this is the only way it moves.
+        Returns the full edition collection with the updated default marker. Gated:
+        capability ats + scope talent:edit.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetTalentResumeEditionDefaultRequest'
+      responses:
+        '200':
+          description: The résumé-edition collection with the updated default.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TalentResumeEditionsResponse'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
 
   /v1/placements:
     get:
@@ -5156,6 +5266,96 @@ components:
         opaque reference and never documented. Paired with the `x-zm-request-timestamp` header.
 
   schemas:
+    # ── TALENT-INTEL-1 TI-1D-C — résumé editions ──
+    TalentResumeEditionView:
+      type: object
+      additionalProperties: false
+      required:
+        - edition_id
+        - talent_document_id
+        - attachment_id
+        - purpose
+        - label
+        - lifecycle_status
+        - created_at
+        - filename
+        - mime_type
+        - uploaded_at
+        - is_default
+      properties:
+        edition_id:
+          type: string
+          format: uuid
+        talent_document_id:
+          type: string
+          format: uuid
+        attachment_id:
+          type: [string, 'null']
+          format: uuid
+        purpose:
+          type: string
+          enum: [GENERAL, ROLE_FAMILY, REQUISITION, CLIENT_SUBMITTAL, USER_DEFINED]
+        label:
+          type: [string, 'null']
+        lifecycle_status:
+          type: string
+          enum: [active, retracted, archived]
+        created_at:
+          type: string
+          format: date-time
+        # Projected from the mandatory TalentDocument (file_type ← mime_type,
+        # ingestion_at ← uploaded_at); never stored on the edition.
+        filename:
+          type: string
+        mime_type:
+          type: string
+        uploaded_at:
+          type: string
+          format: date-time
+        is_default:
+          type: boolean
+    TalentResumeEditionsResponse:
+      type: object
+      additionalProperties: false
+      required: [talent_id, editions]
+      properties:
+        talent_id:
+          type: string
+          format: uuid
+        editions:
+          type: array
+          items:
+            $ref: '#/components/schemas/TalentResumeEditionView'
+    CreateTalentResumeEditionRequest:
+      type: object
+      additionalProperties: false
+      required: [attachment_id]
+      properties:
+        attachment_id:
+          type: string
+          format: uuid
+        purpose:
+          type: string
+          enum: [GENERAL, ROLE_FAMILY, REQUISITION, CLIENT_SUBMITTAL, USER_DEFINED]
+        label:
+          type: string
+        requisition_id:
+          type: string
+          format: uuid
+        client_context_id:
+          type: string
+          format: uuid
+        derived_from_edition_id:
+          type: string
+          format: uuid
+    SetTalentResumeEditionDefaultRequest:
+      type: object
+      additionalProperties: false
+      required: [resume_edition_id]
+      properties:
+        resume_edition_id:
+          type: string
+          format: uuid
     # ── TALENT-INTEL-1 TI-1D-B — field-state read model ──
     TalentProfileFieldStateResponse:
       type: object

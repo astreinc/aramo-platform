@@ -376,6 +376,13 @@ const TALENT_EVIDENCE_1G_MIGRATION = resolve(
   ROOT,
   'libs/talent-evidence/prisma/migrations/20260915180000_skill_tax_1g_canonical_reconciliation/migration.sql',
 );
+// TALENT-INTEL-1 TI-1A résumé-edition substrate (TalentResumeEdition /
+// TalentResumeDefault). Required so the TI-1D-C resume-editions pact interactions
+// (GET/POST/PUT) can read/write editions against the provider DB.
+const TALENT_EVIDENCE_TI1A_MIGRATION = resolve(
+  ROOT,
+  'libs/talent-evidence/prisma/migrations/20260916120000_talent_intel_1a_resume_edition/migration.sql',
+);
 // M5 PR-1 + PR-2 — selection schema migrations: TalentSelection
 // init + TalentSelectionEvent event-log + absolute-immutability trigger.
 // Required for M5 PR-4 selection-* pact interactions.
@@ -1201,6 +1208,12 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // seeds it (nothing reads it).
       // 4e-selection-key — selection.talent_id references TalentRecord.
       await c.query('TRUNCATE TABLE talent_record."TalentRecord" CASCADE');
+      // TALENT-INTEL-1 TI-1D-C — the résumé-edition substrate (talent_evidence,
+      // UUID-only refs → not cascaded by TalentRecord). Truncate so fixed-id
+      // edition/document fixtures don't collide across interactions.
+      await c.query('TRUNCATE TABLE talent_evidence."TalentResumeDefault" CASCADE');
+      await c.query('TRUNCATE TABLE talent_evidence."TalentResumeEdition" CASCADE');
+      await c.query('TRUNCATE TABLE talent_evidence."TalentDocument" CASCADE');
       // M4 PR-3 — submittal-create state handlers seed an examination
       // and trigger buildPackage which writes the evidence package +
       // submittal record. Truncate both tables so prior runs don't leak.
@@ -2123,6 +2136,13 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     // TALENT-INTEL-1 TI-1D-B — field-state read model fixture ids.
     const ATSW_FIELD_STATE_ID = '00000000-0000-7000-8000-7a0000000015';
     const ATSW_FIELD_STATE_EV_ID = '00000000-0000-7000-8000-7a0000000016';
+    // TALENT-INTEL-1 TI-1D-C — résumé-edition fixture ids.
+    const ATSW_RE_TALENT_ID = '00000000-0000-7000-8000-7a0000000017';
+    const ATSW_RE_DOC_A = '00000000-0000-7000-8000-7d0000000001';
+    const ATSW_RE_DOC_B = '00000000-0000-7000-8000-7d0000000002';
+    const ATSW_RE_ED_A = '00000000-0000-7000-8000-7e0000000001';
+    const ATSW_RE_ED_B = '00000000-0000-7000-8000-7e0000000002';
+    const ATSW_RE_ATT_ID = '00000000-0000-7000-8000-7f0000000001';
     const ATSW_DEFER_SUBJECT_ID = '00000000-0000-7000-8000-5b1000000004';
     const ATSW_DEFER_SUBJECT_B_ID = '00000000-0000-7000-8000-5b1000000005';
     const ATSW_DEFER_ARRIVAL_ID = '00000000-0000-7000-8000-a44000000003';
@@ -3169,6 +3189,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         TALENT_EVIDENCE_HF1_MIGRATION,
         TALENT_EVIDENCE_HF2_MIGRATION,
         TALENT_EVIDENCE_1G_MIGRATION,
+        TALENT_EVIDENCE_TI1A_MIGRATION,
         EVIDENCE_INIT_MIGRATION,
         SUBMITTAL_INIT_MIGRATION,
         // M4 PR-7 §4.9 — submittal-revoke schema extension (enum +
@@ -3846,6 +3867,9 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           },
           parse_status: 'parsed' as const,
         }),
+        // TALENT-INTEL-1 TI-1D-C — the resume-editions POST extracts text (for the
+        // deterministic content_hash) via this method. Deterministic stub.
+        extractTextFromStorageKey: async () => 'Grace Hopper résumé — pact-seed text.',
       };
       const mockDeliveryProvider = {
         deliver: async (): Promise<{
@@ -6726,6 +6750,94 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
                (id, tenant_id, talent_record_id, field_name, evidence_id)
              VALUES ('00000000-0000-7000-8000-7b0000000003'::uuid, $2::uuid, $1::uuid, 'city', $3::uuid)`,
             [ATSW_FIELD_STATE_ID, TENANT_ID, ATSW_FIELD_STATE_EV_ID],
+          );
+        });
+      },
+
+      // TALENT-INTEL-1 TI-1D-C — a talent with TWO coexisting résumé editions,
+      // each anchored to a real TalentDocument (filename/mime/uploaded_at are
+      // projected from it); the default is the OLDER edition A (explicit, not
+      // latest-wins). Exercises GET :id/resume-editions.
+      'an ats-web recruiter and a talent with resume editions exist': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedAtsWebTalentRecord(c, { id: ATSW_RE_TALENT_ID, firstName: 'Grace', lastName: 'Hopper' });
+          await c.query(
+            `INSERT INTO talent_evidence."TalentDocument"
+               (id, talent_id, tenant_id, uploaded_by_actor_id, uploaded_at, document_type,
+                filename, file_storage_ref, mime_type, size_bytes, parse_status,
+                consent_scope_at_upload, retention_policy, is_active)
+             VALUES
+               ($2::uuid, $1::uuid, $3::uuid, $3::uuid, '2026-07-01T00:00:00Z',
+                'resume'::"talent_evidence"."TalentDocumentType", 'grace-general.pdf', 'k/a',
+                'application/pdf', 1000, 'parsed'::"talent_evidence"."TalentDocumentParseStatus",
+                ARRAY[]::text[], 'default'::"talent_evidence"."TalentDocumentRetentionPolicy", true),
+               ($4::uuid, $1::uuid, $3::uuid, $3::uuid, '2026-07-05T00:00:00Z',
+                'resume'::"talent_evidence"."TalentDocumentType", 'grace-genai.docx', 'k/b',
+                'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 2000,
+                'parsed'::"talent_evidence"."TalentDocumentParseStatus", ARRAY[]::text[],
+                'default'::"talent_evidence"."TalentDocumentRetentionPolicy", true)`,
+            [ATSW_RE_TALENT_ID, ATSW_RE_DOC_A, TENANT_ID, ATSW_RE_DOC_B],
+          );
+          await c.query(
+            `INSERT INTO talent_evidence."TalentResumeEdition"
+               (id, tenant_id, talent_id, talent_document_id, content_hash, purpose, created_at, created_by)
+             VALUES
+               ($2::uuid, $3::uuid, $1::uuid, $4::uuid, 'hash-a',
+                'GENERAL'::"talent_evidence"."TalentResumeEditionPurpose", '2026-07-01T00:00:00Z', $3::uuid),
+               ($5::uuid, $3::uuid, $1::uuid, $6::uuid, 'hash-b',
+                'CLIENT_SUBMITTAL'::"talent_evidence"."TalentResumeEditionPurpose", '2026-07-05T00:00:00Z', $3::uuid)`,
+            [ATSW_RE_TALENT_ID, ATSW_RE_ED_A, TENANT_ID, ATSW_RE_DOC_A, ATSW_RE_ED_B, ATSW_RE_DOC_B],
+          );
+          await c.query(
+            `INSERT INTO talent_evidence."TalentResumeDefault"
+               (id, tenant_id, talent_id, resume_edition_id, set_at, set_by)
+             VALUES ('00000000-0000-7000-8000-7e00000000da'::uuid, $3::uuid, $1::uuid, $2::uuid, NOW(), $3::uuid)`,
+            [ATSW_RE_TALENT_ID, ATSW_RE_ED_A, TENANT_ID],
+          );
+        });
+      },
+
+      // TALENT-INTEL-1 TI-1D-C — a talent owning a résumé Attachment (is_resume),
+      // for the POST ingestion (the server resolves + extracts + mints doc+edition).
+      'an ats-web recruiter and a talent with an owned resume attachment exist': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedAtsWebTalentRecord(c, { id: ATSW_RE_TALENT_ID, firstName: 'Grace', lastName: 'Hopper' });
+          await c.query(
+            `INSERT INTO attachment."Attachment"
+               (id, tenant_id, owner_type, owner_id, file_name, mime, size_bytes, storage_key, is_resume)
+             VALUES ($1::uuid, $2::uuid, 'talent'::"attachment"."AttachmentOwnerType", $3::uuid,
+                     'grace-new.pdf', 'application/pdf', 4096, 'resumes/grace-new.pdf', true)
+             ON CONFLICT (id) DO NOTHING`,
+            [ATSW_RE_ATT_ID, TENANT_ID, ATSW_RE_TALENT_ID],
+          );
+        });
+      },
+
+      // TALENT-INTEL-1 TI-1D-C — a talent with a single résumé edition (no default
+      // yet), for the PUT default mutation to promote it.
+      'an ats-web recruiter and a talent with a resume edition exist': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedAtsWebTalentRecord(c, { id: ATSW_RE_TALENT_ID, firstName: 'Grace', lastName: 'Hopper' });
+          await c.query(
+            `INSERT INTO talent_evidence."TalentDocument"
+               (id, talent_id, tenant_id, uploaded_by_actor_id, uploaded_at, document_type,
+                filename, file_storage_ref, mime_type, size_bytes, parse_status,
+                consent_scope_at_upload, retention_policy, is_active)
+             VALUES ($2::uuid, $1::uuid, $3::uuid, $3::uuid, '2026-07-01T00:00:00Z',
+                'resume'::"talent_evidence"."TalentDocumentType", 'grace.pdf', 'k/a', 'application/pdf',
+                1000, 'parsed'::"talent_evidence"."TalentDocumentParseStatus", ARRAY[]::text[],
+                'default'::"talent_evidence"."TalentDocumentRetentionPolicy", true)`,
+            [ATSW_RE_TALENT_ID, ATSW_RE_DOC_A, TENANT_ID],
+          );
+          await c.query(
+            `INSERT INTO talent_evidence."TalentResumeEdition"
+               (id, tenant_id, talent_id, talent_document_id, content_hash, purpose, created_at, created_by)
+             VALUES ($2::uuid, $3::uuid, $1::uuid, $4::uuid, 'hash-a',
+                'GENERAL'::"talent_evidence"."TalentResumeEditionPurpose", '2026-07-01T00:00:00Z', $3::uuid)`,
+            [ATSW_RE_TALENT_ID, ATSW_RE_ED_A, TENANT_ID, ATSW_RE_DOC_A],
           );
         });
       },

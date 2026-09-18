@@ -587,5 +587,63 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(def?.resume_edition_id).toBe(EDB);
       expect((await repo.findTalentResumeEditionById(EDA))?.lifecycle_status).toBe('active');
     });
+
+    it('TALENT-INTEL-1 (TI-1D-C) — editions project their TalentDocument metadata + default marker; document lookup is idempotency boundary', async () => {
+      const DOCA = '4c000000-0000-7000-8000-000000000001';
+      const DOCB = '4c000000-0000-7000-8000-000000000002';
+      const EDA = 'ec000000-0000-7000-8000-00000000000a';
+      const EDB = 'ec000000-0000-7000-8000-00000000000b';
+      const TAL = 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaac';
+
+      // Seed the real TalentDocuments the projection joins to (file_type /
+      // ingestion_at are DERIVED from these, never stored on the edition).
+      await repo.createTalentDocument({
+        id: DOCA, talent_id: TAL, tenant_id: TENANT, uploaded_by_actor_id: ACTOR,
+        uploaded_at: new Date('2026-07-01T00:00:00.000Z'), document_type: 'resume',
+        filename: 'alan-general.pdf', file_storage_ref: 'k/a', mime_type: 'application/pdf',
+        size_bytes: 1000, parse_status: 'parsed', consent_scope_at_upload: [],
+        retention_policy: 'default', is_active: true,
+      });
+      await repo.createTalentDocument({
+        id: DOCB, talent_id: TAL, tenant_id: TENANT, uploaded_by_actor_id: ACTOR,
+        uploaded_at: new Date('2026-07-05T00:00:00.000Z'), document_type: 'resume',
+        filename: 'alan-genai.docx', file_storage_ref: 'k/b',
+        mime_type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        size_bytes: 2000, parse_status: 'parsed', consent_scope_at_upload: [],
+        retention_policy: 'default', is_active: true,
+      });
+      await repo.createTalentResumeEdition({
+        id: EDA, tenant_id: TENANT, talent_id: TAL, talent_document_id: DOCA,
+        content_hash: 'hash-a', purpose: 'GENERAL',
+        created_at: new Date('2026-07-01T00:00:00.000Z'), created_by: ACTOR,
+      });
+      await repo.createTalentResumeEdition({
+        id: EDB, tenant_id: TENANT, talent_id: TAL, talent_document_id: DOCB,
+        content_hash: 'hash-b', purpose: 'CLIENT_SUBMITTAL', label: 'GenAI',
+        created_at: new Date('2026-07-05T00:00:00.000Z'), created_by: ACTOR,
+      });
+      await repo.setDefaultResumeEdition({
+        id: 'dc000000-0000-7000-8000-00000000000a', tenant_id: TENANT, talent_id: TAL,
+        resume_edition_id: EDA, set_at: new Date(), set_by: ACTOR,
+      });
+
+      const rows = await repo.findResumeEditionsWithDocumentByTalent({
+        tenant_id: TENANT, talent_id: TAL,
+      });
+      // Newest-first, but default (the OLDER EDA) is authoritative for presentation.
+      expect(rows.map((r) => r.id)).toEqual([EDB, EDA]);
+      const a = rows.find((r) => r.id === EDA)!;
+      const b = rows.find((r) => r.id === EDB)!;
+      expect(a.document_filename).toBe('alan-general.pdf');
+      expect(a.document_mime_type).toBe('application/pdf');
+      expect(a.document_uploaded_at).toEqual(new Date('2026-07-01T00:00:00.000Z'));
+      expect(a.is_default).toBe(true); // the explicit default, NOT the newest
+      expect(b.is_default).toBe(false);
+      expect(b.document_filename).toBe('alan-genai.docx');
+
+      // Idempotency boundary: a document has at most one edition.
+      expect((await repo.findResumeEditionByDocumentId(DOCA))?.id).toBe(EDA);
+      expect(await repo.findResumeEditionByDocumentId('4c000000-0000-7000-8000-0000000000ff')).toBeNull();
+    });
   },
 );

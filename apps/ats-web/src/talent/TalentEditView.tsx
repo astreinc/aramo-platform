@@ -7,12 +7,14 @@ import { IntakeForm } from './IntakeForm';
 import { ResumePreview } from './ResumePreview';
 import {
   createAttachment,
+  createTalentResumeEdition,
   getAttachmentDownloadUrl,
   getTalent,
   getTalentWorkHistory,
-  listTalentAttachments,
+  listTalentResumeEditions,
   putResumeToStorage,
   requestResumeUploadUrl,
+  setTalentResumeEditionDefault,
   updateTalent,
 } from './talent-api';
 import { detailErrorMessage, updateErrorMessage } from './error-messages';
@@ -22,7 +24,12 @@ import {
   stateFromTalent,
   type IntakeState,
 } from './intake-fields';
-import type { TalentRecordView, WorkHistoryDraft, WorkHistoryView } from './types';
+import type {
+  TalentRecordView,
+  TalentResumeEditionView,
+  WorkHistoryDraft,
+  WorkHistoryView,
+} from './types';
 
 // R5 — the talent full-profile EDIT. Reuses the Add-Talent Step-2 layout
 // (IntakeForm), pre-filled from the stored record; saves via PATCH (true PATCH,
@@ -211,6 +218,13 @@ export function TalentEditView() {
 // upload a new file (same pipeline as Add-Talent) → a new is_resume attachment
 // (the prior version stays in Documents). Replace is applied immediately (not
 // gated on "Save changes"); the newly-uploaded file previews from memory.
+// TALENT-INTEL-1 TI-1D-C — the panel now consumes the RÉSUMÉ EDITION collection
+// (no more resumes[length-1] latest-wins). A talent may hold multiple
+// simultaneously-valid editions; the recruiter EXPLICITLY selects which to view
+// and which is the default. Selecting/defaulting is PRESENTATION only — it never
+// changes the talent PATCH provenance and does not make an edition "talent truth".
+// Uploading a new résumé registers a NEW edition (attachment → edition); it does
+// NOT replace prior editions.
 function EditResumePanel({
   talentId,
   disabled,
@@ -218,33 +232,53 @@ function EditResumePanel({
   readonly talentId: string;
   readonly disabled: boolean;
 }) {
-  const [current, setCurrent] = useState<{ fileName: string; mime: string | null } | null>(null);
+  const [editions, setEditions] = useState<readonly TalentResumeEditionView[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [replacedFile, setReplacedFile] = useState<File | null>(null);
   const [status, setStatus] = useState<'idle' | 'uploading' | 'done' | 'error'>('idle');
   const inputRef = useRef<HTMLInputElement | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    listTalentAttachments(talentId)
+  const loadEditions = (): Promise<void> =>
+    listTalentResumeEditions(talentId)
       .then((res) => {
-        if (cancelled) return undefined;
-        // Current résumé = the most-recently-uploaded is_resume attachment.
-        const resumes = res.items.filter((a) => a.is_resume);
-        const latest = resumes[resumes.length - 1];
-        if (latest === undefined) return undefined;
-        setCurrent({ fileName: latest.file_name, mime: latest.mime });
-        return getAttachmentDownloadUrl(latest.id).then((r) => {
-          if (!cancelled) setPreviewUrl(r.presigned_url);
-        });
+        const list = res.editions ?? [];
+        setEditions(list);
+        // Default the SELECTION to the explicit default edition (never "newest").
+        const def = list.find((e) => e.is_default) ?? list[0];
+        setSelectedId((prev) => prev ?? def?.edition_id ?? null);
       })
       .catch(() => {
-        /* preview is best-effort — a fetch failure just leaves it empty */
+        /* best-effort — an empty collection just shows the attach affordance */
       });
+
+  useEffect(() => {
+    let cancelled = false;
+    void loadEditions().then(() => {
+      if (cancelled) return;
+    });
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [talentId]);
+
+  const selected = editions.find((e) => e.edition_id === selectedId) ?? null;
+
+  // Preview the SELECTED edition (via its backing attachment, if any). Best-effort.
+  useEffect(() => {
+    let cancelled = false;
+    setPreviewUrl(null);
+    if (selected === null || selected.attachment_id === null) return undefined;
+    getAttachmentDownloadUrl(selected.attachment_id)
+      .then((r) => {
+        if (!cancelled) setPreviewUrl(r.presigned_url);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [selected]);
 
   const onReplace = (file: File | undefined): void => {
     if (file === undefined) return;
@@ -264,11 +298,22 @@ function EditResumePanel({
           }),
         ),
       )
-      .then(() => {
+      // Register the uploaded attachment as a NEW résumé edition (not a
+      // destructive replace — prior editions remain valid).
+      .then((att) => createTalentResumeEdition(talentId, { attachment_id: att.id }))
+      .then((edition) => {
         setReplacedFile(file);
         setStatus('done');
+        setSelectedId(edition.edition_id);
+        return loadEditions();
       })
       .catch(() => setStatus('error'));
+  };
+
+  const onMakeDefault = (editionId: string): void => {
+    setTalentResumeEditionDefault(talentId, editionId)
+      .then((res) => setEditions(res.editions))
+      .catch(() => undefined);
   };
 
   const action = (
@@ -280,7 +325,7 @@ function EditResumePanel({
         hidden
         onChange={(e) => onReplace(e.target.files?.[0])}
       />
-      {status === 'done' ? <span className="rc-secnote">Replaced ✓</span> : null}
+      {status === 'done' ? <span className="rc-secnote">Added ✓</span> : null}
       {status === 'error' ? <span className="rc-secnote">Upload failed</span> : null}
       <button
         type="button"
@@ -288,12 +333,44 @@ function EditResumePanel({
         disabled={disabled || status === 'uploading'}
         onClick={() => inputRef.current?.click()}
       >
-        {status === 'uploading' ? 'Uploading…' : 'Replace'}
+        {status === 'uploading' ? 'Uploading…' : 'Add résumé'}
       </button>
     </>
   );
 
-  if (replacedFile !== null) {
+  // The edition chooser — explicit selection + default, presentation-only.
+  const chooser =
+    editions.length === 0 ? null : (
+      <ul className="rc-redition-list" aria-label="Résumé editions">
+        {editions.map((e) => (
+          <li key={e.edition_id} className="rc-redition">
+            <button
+              type="button"
+              className="rc-redition__pick"
+              aria-pressed={e.edition_id === selectedId}
+              onClick={() => setSelectedId(e.edition_id)}
+            >
+              {e.filename}
+              {e.label !== null ? ` — ${e.label}` : ''}
+            </button>
+            {e.is_default ? (
+              <span className="rc-secnote rc-redition__default">Default</span>
+            ) : (
+              <button
+                type="button"
+                className="rc-redition__setdefault"
+                disabled={disabled}
+                onClick={() => onMakeDefault(e.edition_id)}
+              >
+                Make default
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+    );
+
+  if (replacedFile !== null && selected === null) {
     return (
       <ResumePreview
         file={replacedFile}
@@ -303,27 +380,30 @@ function EditResumePanel({
       />
     );
   }
-  if (current !== null) {
+  if (selected !== null) {
     return (
-      <ResumePreview
-        src={previewUrl}
-        fileName={current.fileName}
-        mime={current.mime}
-        action={action}
-      />
+      <>
+        <ResumePreview
+          src={previewUrl}
+          fileName={selected.filename}
+          mime={selected.mime_type}
+          action={action}
+        />
+        {chooser}
+      </>
     );
   }
-  // No résumé on file — still offer Replace (= attach one).
+  // No editions yet — still offer to attach one.
   return (
     <section className="rc-sidecard rc-rpreview" aria-label="Résumé preview">
       <div className="rc-rpreview__hdrow">
         <h3 className="rc-sidecard__h">
           <Icons.IconFile />
-          Résumé preview
+          Résumé editions
         </h3>
         <div className="rc-rpreview__hdactions">{action}</div>
       </div>
-      <p className="rc-secnote">No résumé on file — use Replace to attach one.</p>
+      <p className="rc-secnote">No résumé editions yet — use Add résumé to attach one.</p>
     </section>
   );
 }

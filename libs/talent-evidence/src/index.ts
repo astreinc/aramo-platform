@@ -55,6 +55,7 @@ export type {
   TalentResumeEditionLifecycleValue,
   SetTalentResumeDefaultInput,
   TalentResumeDefaultRow,
+  TalentResumeEditionWithDocumentRow,
   // TalentDerivedSnapshot (Group 2 §2.2 #17)
   CreateTalentDerivedSnapshotInput,
   TalentDerivedSnapshotRow,

@@ -2086,6 +2086,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/talent-record/src/tests/resume-editions-routes.spec.ts",
+        "project": "talent-record",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/talent-record/src/tests/search-pr1.spec.ts",
         "project": "talent-record",
         "status": "excluded"
@@ -5313,6 +5319,12 @@
       { "project": "cold-ingest-extraction", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/talent-record/src/tests/resume-editions-routes.spec.ts",
+        "project": "talent-record",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/talent-record/src/tests/search-pr2-resume.spec.ts",
         "project": "talent-record",
         "status": "excluded"
@@ -5532,7 +5544,8 @@
         "project": "submittal",
         "status": "excluded"
       },
-      { "project": "talent-extraction", "status": "production" }
+      { "project": "talent-extraction", "status": "production" },
+      { "project": "talent-record", "status": "production" }
     ],
     "@aramo/talent-extraction": [
       {

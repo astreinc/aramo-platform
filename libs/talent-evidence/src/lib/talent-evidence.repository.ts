@@ -481,6 +481,17 @@ export interface TalentResumeDefaultRow {
   set_by: string;
 }
 
+// TALENT-INTEL-1 TI-1D-C — an edition projected WITH its TalentDocument metadata
+// (file_type/ingestion_at derived from the mandatory talent_document_id join, NOT
+// stored on the edition — ruling E) and its default marker. filename/mime_type/
+// uploaded_at are PROJECTED from TalentDocument, never copied into the edition row.
+export interface TalentResumeEditionWithDocumentRow extends TalentResumeEditionRow {
+  document_filename: string;
+  document_mime_type: string;
+  document_uploaded_at: Date;
+  is_default: boolean;
+}
+
 // ---- TalentDerivedSnapshot (Group 2 §2.2 #17) --------------------------
 
 export interface CreateTalentDerivedSnapshotInput {
@@ -1308,6 +1319,69 @@ export class TalentEvidenceRepository {
       },
     });
     return (row as TalentResumeDefaultRow | null) ?? null;
+  }
+
+  // TALENT-INTEL-1 TI-1D-C — the idempotency lookup for edition ingestion: a
+  // TalentDocument has at most ONE edition (talent_document_id @unique). A retry
+  // for the same document returns the existing edition instead of creating a
+  // second (ruling B — talent_document_id is the edition-creation boundary).
+  async findResumeEditionByDocumentId(
+    talentDocumentId: string,
+  ): Promise<TalentResumeEditionRow | null> {
+    const row = await this.prisma.talentResumeEdition.findUnique({
+      where: { talent_document_id: talentDocumentId },
+    });
+    return (row as TalentResumeEditionRow | null) ?? null;
+  }
+
+  // TALENT-INTEL-1 TI-1D-C — the edition COLLECTION for the read API, each row
+  // projected with its TalentDocument metadata (filename/mime_type/uploaded_at)
+  // and a default marker. Editions and TalentDocuments are same-schema
+  // (talent_evidence), UUID-only-joined (no FK); the default is one-per-Talent
+  // (LEFT JOIN, COALESCE→false when no default set). Newest-first, but the newest
+  // is NOT the sole truth — the default marker is authoritative for presentation.
+  async findResumeEditionsWithDocumentByTalent(args: {
+    tenant_id: string;
+    talent_id: string;
+  }): Promise<TalentResumeEditionWithDocumentRow[]> {
+    const rows = await this.prisma.$queryRawUnsafe<
+      Array<Record<string, unknown>>
+    >(
+      `SELECT e.id, e.tenant_id, e.talent_id, e.talent_document_id, e.attachment_id,
+              e.content_hash, e.purpose, e.label, e.requisition_id, e.client_context_id,
+              e.derived_from_edition_id, e.lifecycle_status, e.created_at, e.created_by,
+              d.filename AS document_filename, d.mime_type AS document_mime_type,
+              d.uploaded_at AS document_uploaded_at,
+              COALESCE(df.resume_edition_id = e.id, false) AS is_default
+         FROM "talent_evidence"."TalentResumeEdition" e
+         JOIN "talent_evidence"."TalentDocument" d ON d.id = e.talent_document_id
+         LEFT JOIN "talent_evidence"."TalentResumeDefault" df
+           ON df.tenant_id = e.tenant_id AND df.talent_id = e.talent_id
+        WHERE e.tenant_id = $1 AND e.talent_id = $2
+        ORDER BY e.created_at DESC`,
+      args.tenant_id,
+      args.talent_id,
+    );
+    return rows.map((r) => ({
+      id: r['id'] as string,
+      tenant_id: r['tenant_id'] as string,
+      talent_id: r['talent_id'] as string,
+      talent_document_id: r['talent_document_id'] as string,
+      attachment_id: (r['attachment_id'] as string | null) ?? null,
+      content_hash: r['content_hash'] as string,
+      purpose: r['purpose'] as TalentResumeEditionPurposeValue,
+      label: (r['label'] as string | null) ?? null,
+      requisition_id: (r['requisition_id'] as string | null) ?? null,
+      client_context_id: (r['client_context_id'] as string | null) ?? null,
+      derived_from_edition_id: (r['derived_from_edition_id'] as string | null) ?? null,
+      lifecycle_status: r['lifecycle_status'] as TalentResumeEditionLifecycleValue,
+      created_at: r['created_at'] as Date,
+      created_by: r['created_by'] as string,
+      document_filename: r['document_filename'] as string,
+      document_mime_type: r['document_mime_type'] as string,
+      document_uploaded_at: r['document_uploaded_at'] as Date,
+      is_default: r['is_default'] === true,
+    }));
   }
 
   // ---- TalentDerivedSnapshot -----------------------------------------
