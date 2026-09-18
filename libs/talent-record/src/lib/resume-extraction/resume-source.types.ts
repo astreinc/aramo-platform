@@ -86,6 +86,25 @@ export interface ResumeAttachmentResolver {
     tenant_id: string;
     requestId: string;
   }): Promise<{ storage_key: string }>;
+
+  /**
+   * TALENT-INTEL-1 TI-1D-C — resolve an owned résumé attachment to the metadata
+   * an edition ingestion needs to mint its TalentDocument (storage_key + filename
+   * + mime_type + size_bytes), AFTER the same tenant + Talent ownership + is_resume
+   * checks as resolveOwnedResumeStorageKey. Throws RESUME_SOURCE_UNAUTHORIZED (403)
+   * on any failure — the client never supplies these authoritative values.
+   */
+  resolveOwnedResume(input: {
+    attachment_id: string;
+    talent_id: string;
+    tenant_id: string;
+    requestId: string;
+  }): Promise<{
+    storage_key: string;
+    filename: string;
+    mime_type: string;
+    size_bytes: number;
+  }>;
 }
 
 /**

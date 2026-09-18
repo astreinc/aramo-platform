@@ -352,6 +352,29 @@ describe('PR-2 — enqueue + async re-extract (R1)', () => {
     );
   });
 
+  // TALENT-INTEL-1 TI-1D-C §D — when the edition-ingestion pipeline knows the
+  // edition that produced this text, enqueueReindex associates it (future writes
+  // only; the plain attachment-commit call omits it and leaves the column null —
+  // no historical sweep). The column means "the edition of the currently-cached
+  // extracted text", NOT the default/authoritative edition.
+  it('enqueueReindex associates the résumé edition when provided (create + update)', async () => {
+    const upsert = vi.fn().mockResolvedValue({});
+    const { service } = makeService({ upsert });
+    await service.enqueueReindex({
+      tenant_id: TENANT_ID,
+      talent_record_id: 'tr-1',
+      attachment_id: 'att-1',
+      storage_key: 'tenant/x/resume.pdf',
+      resume_edition_id: 'ed-1',
+    });
+    expect(upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({ resume_edition_id: 'ed-1' }),
+        update: expect.objectContaining({ resume_edition_id: 'ed-1' }),
+      }),
+    );
+  });
+
   it('#1 (persist) — drain extracts, REDACTS, and persists redacted text (no SSN)', async () => {
     extractMock.mockResolvedValue('Jane Doe SSN 123-45-6789, Kubernetes lead.');
     const findMany = vi.fn().mockResolvedValue([

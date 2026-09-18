@@ -11,6 +11,11 @@ import {
 import {
   TalentEvidenceRepository,
   type CreateTalentWorkHistoryEntryInput,
+  type CreateTalentResumeEditionInput,
+  type SetTalentResumeDefaultInput,
+  type TalentResumeEditionRow,
+  type TalentResumeDefaultRow,
+  type TalentResumeEditionWithDocumentRow,
 } from '@aramo/talent-evidence';
 import { TalentTrustService } from '@aramo/talent-trust';
 
@@ -1401,6 +1406,46 @@ export class TalentExtractionService {
       is_active: true,
     });
     return id;
+  }
+
+  // TALENT-INTEL-1 TI-1D-C — thin résumé-edition passthroughs (reuse this
+  // service's TalentEvidenceRepository; no new cross-lib edge). The composition /
+  // ingestion policy (idempotency, default-if-none) lives in the talent-record
+  // ResumeEditionIngestionService; these only forward to the ledger repo.
+  async createResumeEdition(
+    input: CreateTalentResumeEditionInput,
+  ): Promise<TalentResumeEditionRow> {
+    return this.evidence.createTalentResumeEdition(input);
+  }
+
+  async findResumeEditionByDocument(
+    talentDocumentId: string,
+  ): Promise<TalentResumeEditionRow | null> {
+    return this.evidence.findResumeEditionByDocumentId(talentDocumentId);
+  }
+
+  async findResumeEditionById(id: string): Promise<TalentResumeEditionRow | null> {
+    return this.evidence.findTalentResumeEditionById(id);
+  }
+
+  async listResumeEditionsWithDocument(args: {
+    tenant_id: string;
+    talent_id: string;
+  }): Promise<TalentResumeEditionWithDocumentRow[]> {
+    return this.evidence.findResumeEditionsWithDocumentByTalent(args);
+  }
+
+  async setDefaultResumeEdition(
+    input: SetTalentResumeDefaultInput,
+  ): Promise<TalentResumeDefaultRow> {
+    return this.evidence.setDefaultResumeEdition(input);
+  }
+
+  async getDefaultResumeEdition(args: {
+    tenant_id: string;
+    talent_id: string;
+  }): Promise<TalentResumeDefaultRow | null> {
+    return this.evidence.findDefaultResumeEdition(args);
   }
 
   // HF1 Gate-6 R2 — persist recruiter-reviewed résumé SKILLS as declared

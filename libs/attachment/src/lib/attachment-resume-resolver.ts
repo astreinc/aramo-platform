@@ -31,6 +31,38 @@ export class AttachmentResumeResolver implements ResumeAttachmentResolver {
     tenant_id: string;
     requestId: string;
   }): Promise<{ storage_key: string }> {
+    const row = await this.resolveOwnedRow(input);
+    return { storage_key: row.storage_key };
+  }
+
+  // TALENT-INTEL-1 TI-1D-C — the same tenant + Talent ownership + is_resume gate,
+  // returning the metadata an edition ingestion needs to mint its TalentDocument.
+  async resolveOwnedResume(input: {
+    attachment_id: string;
+    talent_id: string;
+    tenant_id: string;
+    requestId: string;
+  }): Promise<{
+    storage_key: string;
+    filename: string;
+    mime_type: string;
+    size_bytes: number;
+  }> {
+    const row = await this.resolveOwnedRow(input);
+    return {
+      storage_key: row.storage_key,
+      filename: row.file_name,
+      mime_type: row.mime,
+      size_bytes: row.size_bytes,
+    };
+  }
+
+  private async resolveOwnedRow(input: {
+    attachment_id: string;
+    talent_id: string;
+    tenant_id: string;
+    requestId: string;
+  }) {
     const row = await this.attachments.findById({
       tenant_id: input.tenant_id,
       id: input.attachment_id,
@@ -47,7 +79,7 @@ export class AttachmentResumeResolver implements ResumeAttachmentResolver {
       // A non-résumé attachment is not an authorized extraction source.
       throw this.unauthorized(input.requestId, 'not_a_resume_attachment');
     }
-    return { storage_key: row.storage_key };
+    return row;
   }
 
   private unauthorized(requestId: string, reason: string): AramoError {

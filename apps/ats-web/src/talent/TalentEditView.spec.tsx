@@ -94,6 +94,9 @@ function routeHandler(req: { url: string; method: string }) {
   if (req.method === 'GET' && req.url.includes('/work-history')) {
     return { status: 200, body: { work_history: WORK_HISTORY } };
   }
+  if (req.method === 'GET' && req.url.includes('/resume-editions')) {
+    return { status: 200, body: { talent_id: 'tal-42', editions: [] } };
+  }
   if (req.method === 'GET' && req.url.includes('/v1/talent-records/tal-42')) {
     return { status: 200, body: makeTalent() };
   }
@@ -120,7 +123,7 @@ afterEach(() => {
 });
 
 describe('TalentEditView', () => {
-  it('pre-fills the Step-2 form; email + phone are read-only anchors; shows the résumé preview + Replace (Add-Talent parity)', async () => {
+  it('pre-fills the Step-2 form; email + phone are read-only anchors; shows the résumé-editions panel + Add résumé', async () => {
     installFetch(routeHandler);
     renderAt();
     await waitFor(() =>
@@ -136,11 +139,46 @@ describe('TalentEditView', () => {
     expect(email.readOnly).toBe(true);
     const phone = screen.getByLabelText('Mobile') as HTMLInputElement;
     expect(phone.readOnly).toBe(true);
-    // Design parity with Add-Talent: the résumé preview panel + Replace control
-    // are present (the résumé fetch 404s in this default mock → the panel shows
-    // its no-résumé fallback, which still offers Replace).
-    await waitFor(() => expect(screen.getByText('Résumé preview')).toBeInTheDocument());
-    expect(screen.getByRole('button', { name: /Replace/ })).toBeInTheDocument();
+    // TI-1D-C — the résumé-editions panel (the resume-editions fetch 404s in this
+    // default mock → the panel shows its no-editions fallback + Add résumé).
+    await waitFor(() => expect(screen.getByText('Résumé editions')).toBeInTheDocument());
+    expect(screen.getByRole('button', { name: /Add résumé/ })).toBeInTheDocument();
+  });
+
+  it('TI-1D-C — lists editions with the EXPLICIT default (not latest-wins); selecting/defaulting never PATCHes the talent', async () => {
+    const calls = installFetch((req) => {
+      if (req.method === 'GET' && req.url.includes('/resume-editions')) {
+        return {
+          status: 200,
+          body: {
+            talent_id: 'tal-42',
+            editions: [
+              // newest-first; ED_B (newer) is NOT the default.
+              { edition_id: 'ed-b', talent_document_id: 'd-b', attachment_id: null, purpose: 'CLIENT_SUBMITTAL', label: 'GenAI', lifecycle_status: 'active', created_at: '2026-07-05T00:00:00Z', filename: 'genai.docx', mime_type: 'x', uploaded_at: '2026-07-05T00:00:00Z', is_default: false },
+              { edition_id: 'ed-a', talent_document_id: 'd-a', attachment_id: null, purpose: 'GENERAL', label: null, lifecycle_status: 'active', created_at: '2026-07-01T00:00:00Z', filename: 'general.pdf', mime_type: 'y', uploaded_at: '2026-07-01T00:00:00Z', is_default: true },
+            ],
+          },
+        };
+      }
+      if (req.method === 'PUT' && req.url.includes('/resume-editions/default')) {
+        return { status: 200, body: { talent_id: 'tal-42', editions: [] } };
+      }
+      return routeHandler(req);
+    });
+    renderAt();
+    // Both editions are listed; the explicit default (older ED_A) carries "Default",
+    // the newer ED_B offers "Make default" — never latest-wins.
+    await waitFor(() => expect(screen.getByText(/general.pdf/)).toBeInTheDocument());
+    expect(screen.getByText(/genai.docx/)).toBeInTheDocument();
+    const makeDefault = screen.getByRole('button', { name: /Make default/ });
+    fireEvent.click(makeDefault);
+    await waitFor(() => {
+      const put = calls.find((c) => c.method === 'PUT' && c.url.includes('/resume-editions/default'));
+      expect(put?.body).toMatchObject({ resume_edition_id: 'ed-b' });
+    });
+    // Presentation-only: selecting/defaulting an edition NEVER PATCHes the talent
+    // (no silent provenance/truth change).
+    expect(calls.some((c) => c.method === 'PATCH')).toBe(false);
   });
 
   it('submits a PATCH (true PATCH — only changed scalar) and navigates to detail; work_history omitted when untouched', async () => {

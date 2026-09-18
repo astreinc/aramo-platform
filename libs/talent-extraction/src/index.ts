@@ -9,6 +9,14 @@
 
 export { TalentExtractionModule } from './lib/talent-extraction.module.js';
 export { TalentExtractionService } from './lib/talent-extraction.service.js';
+// TALENT-INTEL-1 TI-1D-C — re-export the résumé-edition ledger types so the ATS
+// side (talent-record) names them through THIS sanctioned seam (which already
+// depends on talent-evidence) instead of importing @aramo/talent-evidence directly
+// (a scope:ats → scope:cip module-boundary edge). Type-only re-export.
+export type {
+  TalentResumeEditionRow,
+  TalentResumeEditionWithDocumentRow,
+} from '@aramo/talent-evidence';
 export {
   deriveSkillId,
   normalizeSkillSurfaceForm,

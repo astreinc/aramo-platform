@@ -60,6 +60,7 @@ import { TalentRecordModule, ResumeReindexModule } from '@aramo/talent-record';
 import { TalentTrustModule } from '@aramo/talent-trust';
 import { TaskModule } from '@aramo/task';
 
+import { ResumeAttachmentResolverModule } from './resume-extraction/resume-attachment-resolver.module.js';
 import { CompanyClientCheckModule } from './company-client-check/company-client-check.module.js';
 import { SubmittedHistoryModule } from './reporting-adapters/submitted-history.module.js';
 import { InterviewHistoryModule } from './reporting-adapters/interview-history.module.js';
@@ -241,6 +242,9 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     // system of record / person key).
     TalentRecordModule,
     AttachmentModule,
+    // TALENT-INTEL-1 TI-1D-C — bind RESUME_ATTACHMENT_RESOLVER (talent-record port)
+    // to the concrete AttachmentResumeResolver for the résumé-editions ingestion.
+    ResumeAttachmentResolverModule,
     // Tasks backend — the last core recruiter surface (the actionable,
     // due-dated, assignable to-do).
     //

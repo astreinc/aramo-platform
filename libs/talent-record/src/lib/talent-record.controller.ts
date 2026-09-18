@@ -5,10 +5,12 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  Inject,
   Optional,
   Param,
   Patch,
   Post,
+  Put,
   Query,
   Req,
   UseGuards,
@@ -30,6 +32,7 @@ import {
 } from '@aramo/object-storage';
 import {
   ResumeParserService,
+  buildResumeSourceMap,
   type ParseResumeResult,
 } from '@aramo/resume-parse';
 import { TenantSettingService } from '@aramo/settings';
@@ -55,6 +58,21 @@ import type {
 import type { UpdateTalentRecordRequestDto } from './dto/update-talent-record-request.dto.js';
 import { ResumeExtractionOrchestrator } from './resume-extraction/resume-extraction.orchestrator.js';
 import { ResumeSourceAuthorizer } from './resume-extraction/resume-source-authorizer.js';
+import { ResumeEditionIngestionService } from './resume-extraction/resume-edition-ingestion.service.js';
+import {
+  RESUME_ATTACHMENT_RESOLVER,
+  type ResumeAttachmentResolver,
+} from './resume-extraction/resume-source.types.js';
+import { ResumeTextService } from './resume-text/resume-text.service.js';
+import type {
+  CreateResumeEditionRequestDto,
+  SetDefaultResumeEditionRequestDto,
+} from './dto/resume-edition-request.dto.js';
+import {
+  toResumeEditionView,
+  type TalentResumeEditionView,
+  type TalentResumeEditionsResponse,
+} from './dto/talent-resume-edition.view.js';
 import { TalentLinkService } from './talent-link.service.js';
 import { TalentRecordRepository } from './talent-record.repository.js';
 import { TalentRecordReconcileRepository } from './talent-record-reconcile.repository.js';
@@ -145,6 +163,22 @@ export class TalentRecordController {
     // not exercise enqueue keep compiling; production wires CanonicalReconcileModule
     // (proven by the apps/api DI-boot), so the confirmed-create path always fires it.
     @Optional() private readonly canonicalReconcile?: CanonicalReconcileProducer,
+    // TALENT-INTEL-1 TI-1D-C — the shared résumé-edition ingestion composition.
+    // @Optional (mirrors canonicalReconcile): the many hand-wired unit-test
+    // construction sites boot without it; apps/api wires TalentRecordModule (which
+    // provides it), so the confirmed-create edition companion + the resume-editions
+    // routes always have it in production.
+    @Optional() private readonly editionIngestion?: ResumeEditionIngestionService,
+    // TALENT-INTEL-1 TI-1D-C — the ATTACHMENT resolver port (owned-attachment →
+    // storage_key + metadata, tenant/Talent-checked) for the POST resume-editions
+    // ingestion. @Optional + STRING token (bare-class token collides with
+    // non-strict app.get — a known trap); apps/api binds the concrete
+    // AttachmentResumeResolver at the composition layer.
+    @Optional()
+    @Inject(RESUME_ATTACHMENT_RESOLVER)
+    private readonly resumeResolver?: ResumeAttachmentResolver,
+    // The résumé-text cache writer, to associate the producing edition (§D).
+    @Optional() private readonly resumeText?: ResumeTextService,
   ) {}
 
   // Search PR-1/PR-2 — the LIST route gates on talent:read (route-static).
@@ -353,6 +387,191 @@ export class TalentRecordController {
     };
   }
 
+  // TALENT-INTEL-1 TI-1D-C — the résumé-edition collection for a Talent, each row
+  // projected with its TalentDocument metadata + the presentation default marker.
+  // A Talent may hold MULTIPLE simultaneously-valid editions; the newest is NOT
+  // the sole truth — is_default (explicit, user-set) is authoritative for display.
+  @Get(':id/resume-editions')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('talent:read')
+  @RequireSiteMatch()
+  async listResumeEditions(
+    @AuthContext() authContext: AuthContextType,
+    @Param('id') id: string,
+    @RequestId() requestId: string,
+  ): Promise<TalentResumeEditionsResponse> {
+    const view = await this.repo.findById({ tenant_id: authContext.tenant_id, id });
+    if (view === null) {
+      throw new AramoError('NOT_FOUND', 'TalentRecord not found in tenant', 404, {
+        requestId,
+        details: { id },
+      });
+    }
+    const rows = await this.talentExtraction.listResumeEditionsWithDocument({
+      tenant_id: authContext.tenant_id,
+      talent_id: id,
+    });
+    return { talent_id: id, editions: rows.map(toResumeEditionView) };
+  }
+
+  // TALENT-INTEL-1 TI-1D-C §A/§B/§F — ingest a NEW résumé edition for an EXISTING
+  // Talent from an OWNED attachment. The server owns authorization, extraction,
+  // hashing, TalentDocument creation, and edition creation — NO raw storage_key.
+  // This does NOT author work-history/skill evidence (that stays the explicit
+  // PATCH replace-set — selecting/ingesting an edition never rewrites Talent
+  // evidence provenance). First edition establishes the default; later ones never
+  // change it (no latest==truth).
+  @Post(':id/resume-editions')
+  @HttpCode(HttpStatus.CREATED)
+  @RequireScopes('talent:edit')
+  @RequireSiteMatch()
+  async createResumeEdition(
+    @AuthContext() authContext: AuthContextType,
+    @Param('id') id: string,
+    @Body() body: CreateResumeEditionRequestDto,
+    @RequestId() requestId: string,
+  ): Promise<TalentResumeEditionView> {
+    if (this.resumeResolver === undefined || this.editionIngestion === undefined) {
+      throw new AramoError(
+        'INTERNAL_ERROR',
+        'résumé edition ingestion is not available',
+        500,
+        { requestId },
+      );
+    }
+    // 1. Authorize + resolve the OWNED attachment → storage_key + metadata
+    //    (tenant + Talent ownership + is_resume). Never a client-supplied key.
+    const meta = await this.resumeResolver.resolveOwnedResume({
+      attachment_id: body.attachment_id,
+      talent_id: id,
+      tenant_id: authContext.tenant_id,
+      requestId,
+    });
+    // 2. Deterministic text extraction → the content_hash (source-map text hash,
+    //    the SAME hash the draft flow produces — ruling C). No LLM, no evidence
+    //    authoring here.
+    let text: string | null;
+    try {
+      text = await this.resumeParser.extractTextFromStorageKey({
+        storage_key: meta.storage_key,
+        requestId,
+      });
+    } catch {
+      text = null;
+    }
+    if (text === null || text.trim() === '') {
+      throw new AramoError(
+        'VALIDATION_ERROR',
+        'résumé text could not be extracted for this attachment',
+        422,
+        { requestId, details: { attachment_id: body.attachment_id } },
+      );
+    }
+    const content_hash = buildResumeSourceMap(text).text_hash;
+    // 3. Mint the evidence-document identity for this edition.
+    const talent_document_id = await this.talentExtraction.createResumeDocument({
+      talent_id: id,
+      tenant_id: authContext.tenant_id,
+      uploaded_by_actor_id: authContext.sub,
+      storage_key: meta.storage_key,
+      filename: meta.filename,
+      mime_type: meta.mime_type,
+      size_bytes: meta.size_bytes,
+    });
+    // 4. Mint exactly one companion edition (idempotent on the document; the first
+    //    edition establishes the default).
+    const result = await this.editionIngestion.createEditionForDocument({
+      tenant_id: authContext.tenant_id,
+      talent_id: id,
+      talent_document_id,
+      content_hash,
+      created_by: authContext.sub,
+      attachment_id: body.attachment_id,
+      purpose: body.purpose,
+      label: body.label,
+      requisition_id: body.requisition_id,
+      client_context_id: body.client_context_id,
+      derived_from_edition_id: body.derived_from_edition_id,
+    });
+    // 5. Associate the résumé-text cache with the producing edition (§D;
+    //    best-effort — a cache hiccup never fails the ingestion).
+    try {
+      await this.resumeText?.enqueueReindex({
+        tenant_id: authContext.tenant_id,
+        talent_record_id: id,
+        attachment_id: body.attachment_id,
+        storage_key: meta.storage_key,
+        resume_edition_id: result.edition.id,
+      });
+    } catch {
+      // non-fatal
+    }
+    // 6. Return the created edition projected with its document metadata.
+    const rows = await this.talentExtraction.listResumeEditionsWithDocument({
+      tenant_id: authContext.tenant_id,
+      talent_id: id,
+    });
+    const created = rows.find((r) => r.id === result.edition.id);
+    if (created !== undefined) return toResumeEditionView(created);
+    // Fallback (should not happen — the row was just created): build from parts.
+    return {
+      edition_id: result.edition.id,
+      talent_document_id: result.edition.talent_document_id,
+      attachment_id: result.edition.attachment_id,
+      purpose: result.edition.purpose,
+      label: result.edition.label,
+      lifecycle_status: result.edition.lifecycle_status,
+      created_at: result.edition.created_at.toISOString(),
+      filename: meta.filename,
+      mime_type: meta.mime_type,
+      uploaded_at: result.edition.created_at.toISOString(),
+      is_default: result.is_default,
+    };
+  }
+
+  // TALENT-INTEL-1 TI-1D-C §F — EXPLICITLY set/move the Talent's default résumé
+  // edition. The default never changes automatically (no latest==default); this
+  // is the only way it moves. Validates the edition belongs to this Talent+tenant.
+  @Put(':id/resume-editions/default')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('talent:edit')
+  @RequireSiteMatch()
+  async setDefaultResumeEdition(
+    @AuthContext() authContext: AuthContextType,
+    @Param('id') id: string,
+    @Body() body: SetDefaultResumeEditionRequestDto,
+    @RequestId() requestId: string,
+  ): Promise<TalentResumeEditionsResponse> {
+    const edition = await this.talentExtraction.findResumeEditionById(
+      body.resume_edition_id,
+    );
+    if (
+      edition === null ||
+      edition.tenant_id !== authContext.tenant_id ||
+      edition.talent_id !== id
+    ) {
+      throw new AramoError(
+        'NOT_FOUND',
+        'résumé edition not found for this talent',
+        404,
+        { requestId, details: { resume_edition_id: body.resume_edition_id } },
+      );
+    }
+    await this.talentExtraction.setDefaultResumeEdition({
+      id: uuidv7(),
+      tenant_id: authContext.tenant_id,
+      talent_id: id,
+      resume_edition_id: body.resume_edition_id,
+      set_at: new Date(),
+      set_by: authContext.sub,
+    });
+    const rows = await this.talentExtraction.listResumeEditionsWithDocument({
+      tenant_id: authContext.tenant_id,
+      talent_id: id,
+    });
+    return { talent_id: id, editions: rows.map(toResumeEditionView) };
+  }
+
   @Get(':id')
   @HttpCode(HttpStatus.OK)
   @RequireScopes('talent:read')
@@ -447,6 +666,26 @@ export class TalentRecordController {
           filename: rd.file_name,
           mime_type: rd.mime_type,
           size_bytes: rd.size_bytes,
+        });
+      }
+      // TALENT-INTEL-1 TI-1D-C §A/§B — create the companion TalentResumeEdition
+      // for the just-minted résumé TalentDocument (no second extraction/model call;
+      // content_hash reuses the draft's resume_text_hash — ruling C). First edition
+      // for the Talent also establishes the default; the ingestion service owns
+      // that policy. Best-effort like the rest of this block.
+      if (
+        sourceDocumentId !== undefined &&
+        typeof rd?.resume_text_hash === 'string' &&
+        rd.resume_text_hash !== ''
+      ) {
+        await this.editionIngestion?.createEditionForDocument({
+          tenant_id: authContext.tenant_id,
+          talent_id: created.id,
+          talent_document_id: sourceDocumentId,
+          content_hash: rd.resume_text_hash,
+          created_by: authContext.sub,
+          // Confirmed-create is a raw draft upload (no owned Attachment yet); a
+          // GENERAL first edition. attachment_id stays null.
         });
       }
       const provenance = {

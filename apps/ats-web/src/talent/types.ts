@@ -484,3 +484,32 @@ export interface CreateAttachmentRequest {
   readonly site_id?: string;
   readonly is_resume?: boolean;
 }
+
+// TALENT-INTEL-1 TI-1D-C — résumé editions. A talent may hold MULTIPLE
+// simultaneously-valid editions; is_default is the explicit presentation default
+// (never latest-wins). filename/mime_type/uploaded_at are projected from the
+// backing TalentDocument.
+export interface TalentResumeEditionView {
+  readonly edition_id: string;
+  readonly talent_document_id: string;
+  readonly attachment_id: string | null;
+  readonly purpose: string;
+  readonly label: string | null;
+  readonly lifecycle_status: string;
+  readonly created_at: string;
+  readonly filename: string;
+  readonly mime_type: string;
+  readonly uploaded_at: string;
+  readonly is_default: boolean;
+}
+
+export interface TalentResumeEditionsResponse {
+  readonly talent_id: string;
+  readonly editions: readonly TalentResumeEditionView[];
+}
+
+export interface CreateTalentResumeEditionRequest {
+  readonly attachment_id: string;
+  readonly purpose?: string;
+  readonly label?: string;
+}

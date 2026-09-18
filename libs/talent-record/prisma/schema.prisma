@@ -233,6 +233,14 @@ model TalentResumeText {
   attachment_id String? @db.Uuid
   storage_key   String?
 
+  // TALENT-INTEL-1 TI-1D-C §D — the TalentResumeEdition that produced the
+  // CURRENTLY-cached extracted text. Cross-schema (talent_evidence) → UUID-only,
+  // NO FK. NULLABLE + populated only on future edition-driven writes/re-extracts
+  // (no historical backfill). This is NOT the default/authoritative edition and
+  // NOT Talent truth — the row stays one-per-Talent latest-cache; per-edition
+  // historical text durability is TI-1H.
+  resume_edition_id String? @db.Uuid
+
   // Lifecycle: 'pending' (enqueued at résumé-attachment commit, awaiting
   // the async re-extract) | 'extracted' (text persisted + indexed) |
   // 'failed' (extraction failed; re-enqueue replays). Pending/failed rows

@@ -36,6 +36,10 @@ export interface EnqueueReindexInput {
   talent_record_id: string;
   attachment_id: string;
   storage_key: string;
+  // TALENT-INTEL-1 TI-1D-C §D — the TalentResumeEdition that produced this text,
+  // when the edition-ingestion pipeline knows it. OMITTED by the plain
+  // attachment-commit caller (leaves the column unchanged — no historical sweep).
+  resume_edition_id?: string;
 }
 
 export interface DrainResult {
@@ -66,11 +70,16 @@ export class ResumeTextService {
         attachment_id: input.attachment_id,
         storage_key: input.storage_key,
         status: 'pending',
+        // Undefined ⇒ column stays null (attachment-commit caller); set only when
+        // the edition-ingestion pipeline supplies it.
+        resume_edition_id: input.resume_edition_id,
       },
       update: {
         attachment_id: input.attachment_id,
         storage_key: input.storage_key,
         status: 'pending',
+        // Undefined ⇒ Prisma skips the field (existing association preserved).
+        resume_edition_id: input.resume_edition_id,
       },
     });
     this.logger.log({

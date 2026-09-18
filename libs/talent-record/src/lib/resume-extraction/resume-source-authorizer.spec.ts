@@ -83,6 +83,13 @@ describe('ResumeSourceAuthorizer — ATTACHMENT (EDIT) authorization', () => {
       resolveOwnedResumeStorageKey: vi
         .fn()
         .mockResolvedValue({ storage_key: 'resolved/owned/key' }),
+      // TI-1D-C — the ingestion-metadata resolver (unused on the authorize path).
+      resolveOwnedResume: vi.fn().mockResolvedValue({
+        storage_key: 'resolved/owned/key',
+        filename: 'r.pdf',
+        mime_type: 'application/pdf',
+        size_bytes: 1,
+      }),
     };
     const authorizer = new ResumeSourceAuthorizer(resolver);
     await expect(

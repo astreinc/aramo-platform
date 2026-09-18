@@ -18,6 +18,9 @@ import type {
   TalentSearchPage,
   UpdateTalentRecordRequest,
   WorkHistoryView,
+  CreateTalentResumeEditionRequest,
+  TalentResumeEditionsResponse,
+  TalentResumeEditionView,
 } from './types';
 
 // The Talent LIST is the POOL-OPEN surface: GET /v1/talent-records is
@@ -158,6 +161,37 @@ export async function updateTalent(
   return apiClient.patch<TalentRecordView>(
     `/v1/talent-records/${encodeURIComponent(id)}`,
     body,
+  );
+}
+
+// TALENT-INTEL-1 TI-1D-C — the résumé-edition surface. Selecting/viewing an
+// edition and changing the default are PRESENTATION concerns ONLY; they never
+// alter the talent PATCH provenance or make an edition "talent truth".
+export async function listTalentResumeEditions(
+  id: string,
+): Promise<TalentResumeEditionsResponse> {
+  return apiClient.get<TalentResumeEditionsResponse>(
+    `/v1/talent-records/${encodeURIComponent(id)}/resume-editions`,
+  );
+}
+
+export async function createTalentResumeEdition(
+  id: string,
+  body: CreateTalentResumeEditionRequest,
+): Promise<TalentResumeEditionView> {
+  return apiClient.post<TalentResumeEditionView>(
+    `/v1/talent-records/${encodeURIComponent(id)}/resume-editions`,
+    body,
+  );
+}
+
+export async function setTalentResumeEditionDefault(
+  id: string,
+  resumeEditionId: string,
+): Promise<TalentResumeEditionsResponse> {
+  return apiClient.put<TalentResumeEditionsResponse>(
+    `/v1/talent-records/${encodeURIComponent(id)}/resume-editions/default`,
+    { resume_edition_id: resumeEditionId },
   );
 }
 

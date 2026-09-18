@@ -42,6 +42,12 @@ function makeController(extra: Record<string, unknown> = {}) {
     resumeParser as never,
     talentExtraction as never,
   );
+  // TI-1D-C — the edition-ingestion companion (create-from-résumé mints the
+  // companion edition). Returns is_default true (first edition) by default.
+  const createEditionForDocument = vi
+    .fn()
+    .mockResolvedValue({ edition: { id: 'ed-1' }, is_default: true, created: true });
+  const editionIngestion = { createEditionForDocument };
   const ctl = new TalentRecordController(
     repo as never,
     {} as never,
@@ -53,8 +59,10 @@ function makeController(extra: Record<string, unknown> = {}) {
     authorizer,
     // TI-1D-A — reconcileRepo (field-state writes; no-op fake on this path).
     { upsertProfileFieldState: async () => undefined, releaseProjectionHold: async () => undefined, listProfileFieldStates: async () => [] } as never,
+    undefined, // @Optional canonicalReconcile
+    editionIngestion as never,
   );
-  return { ctl, createResumeDocument, persistDeclaredWorkHistory, persistDeclaredSkills, extractResumeDraft };
+  return { ctl, createResumeDocument, persistDeclaredWorkHistory, persistDeclaredSkills, extractResumeDraft, createEditionForDocument };
 }
 
 describe('create — HF1 confirmed-create provenance (R1/R2/R8)', () => {
@@ -108,6 +116,53 @@ describe('create — HF1 confirmed-create provenance (R1/R2/R8)', () => {
       skills: body.skills,
       provenance: expectedProvenance,
     });
+  });
+
+  // TALENT-INTEL-1 TI-1D-C §A/§B — confirmed-create mints the companion résumé
+  // edition off the SAME TalentDocument + draft hash (no second extraction).
+  it('creates the companion TalentResumeEdition off the minted document id + resume_text_hash', async () => {
+    const { ctl, createEditionForDocument } = makeController();
+    const body = {
+      first_name: 'Ada',
+      last_name: 'Lovelace',
+      email1: 'ada@example.com',
+      phone_cell: '555-0100',
+      resume_document: {
+        storage_key: 's3/resume.pdf',
+        file_name: 'resume.pdf',
+        mime_type: 'application/pdf',
+        size_bytes: 42,
+        source_map_version: 'resume-source-map/v1',
+        resume_text_hash: 'hash-9',
+      },
+    };
+    await ctl.create(CREATE_AUTH, body as never, 'rq-1');
+    expect(createEditionForDocument).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenant_id: TENANT,
+        talent_id: 'tal-new',
+        talent_document_id: 'doc-777', // the just-minted document
+        content_hash: 'hash-9', // reuse the draft hash, no re-hash
+      }),
+    );
+  });
+
+  it('no résumé_text_hash → no companion edition (content_hash is required)', async () => {
+    const { ctl, createEditionForDocument } = makeController();
+    const body = {
+      first_name: 'Ada',
+      last_name: 'Lovelace',
+      email1: 'ada@example.com',
+      phone_cell: '555-0100',
+      resume_document: {
+        storage_key: 's3/resume.pdf',
+        file_name: 'resume.pdf',
+        mime_type: 'application/pdf',
+        size_bytes: 42,
+      },
+    };
+    await ctl.create(CREATE_AUTH, body as never, 'rq-1');
+    expect(createEditionForDocument).not.toHaveBeenCalled();
   });
 
   it('no résumé document → no document created, provenance empty (pre-HF1 body)', async () => {

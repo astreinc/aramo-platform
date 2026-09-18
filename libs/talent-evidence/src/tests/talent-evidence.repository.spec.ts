@@ -50,7 +50,7 @@ describe('TalentEvidenceRepository — surface', () => {
     'updateDerivedSnapshotCanonicalYears',
   ];
 
-  it('exposes the 14 create/find methods + the Gate-1 by-talent reads + the TR-4 B2 ledger reads + the SKILL-TAX-1G reconciliation methods + the TI-1A résumé-edition methods', () => {
+  it('exposes the 14 create/find methods + the Gate-1 by-talent reads + the TR-4 B2 ledger reads + the SKILL-TAX-1G reconciliation methods + the TI-1A/TI-1D-C résumé-edition methods', () => {
     const methods = Object.getOwnPropertyNames(TalentEvidenceRepository.prototype)
       .filter((m) => m !== 'constructor')
       .sort();
@@ -107,6 +107,11 @@ describe('TalentEvidenceRepository — surface', () => {
         'findResumeEditionsByTalent',
         'setDefaultResumeEdition',
         'findDefaultResumeEdition',
+        // TALENT-INTEL-1 (TI-1D-C) — the edition-ingestion idempotency lookup
+        // (one edition per document) + the read-API projection (edition ⋈
+        // TalentDocument metadata + default marker).
+        'findResumeEditionByDocumentId',
+        'findResumeEditionsWithDocumentByTalent',
         ...TR4_B2_LEDGER_READS,
         ...SKILL_TAX_1G_RECON_METHODS,
       ].sort(),

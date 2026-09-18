@@ -19,6 +19,7 @@ import { TalentLinkService } from './talent-link.service.js';
 import { ResumeTextService } from './resume-text/resume-text.service.js';
 import { ResumeExtractionOrchestrator } from './resume-extraction/resume-extraction.orchestrator.js';
 import { ResumeSourceAuthorizer } from './resume-extraction/resume-source-authorizer.js';
+import { ResumeEditionIngestionService } from './resume-extraction/resume-edition-ingestion.service.js';
 
 // TalentRecordModule — PR-A4 Gate 5 ATS Batch 3.
 //
@@ -86,6 +87,10 @@ import { ResumeSourceAuthorizer } from './resume-extraction/resume-source-author
     // bound by the composition layer that owns the EDIT re-extraction consumer.
     ResumeSourceAuthorizer,
     ResumeExtractionOrchestrator,
+    // TALENT-INTEL-1 TI-1D-C — the shared résumé-edition ingestion composition
+    // (document→edition→default policy). Consumed by the confirmed-create block
+    // and the resume-editions routes; exported for the apps/api composition layer.
+    ResumeEditionIngestionService,
   ],
   exports: [
     TalentRecordRepository,
@@ -93,6 +98,7 @@ import { ResumeSourceAuthorizer } from './resume-extraction/resume-source-author
     TalentRecordService,
     TalentLinkService,
     ResumeTextService,
+    ResumeEditionIngestionService,
   ],
 })
 export class TalentRecordModule {}
