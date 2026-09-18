@@ -214,6 +214,10 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   INTERVIEW_ROUND_EXISTS: 409,
   OFFER_CLIENT_SELECTION_NOT_SELECTED: 409,
   CLIENT_SELECTION_WITHDRAW_REASON_INVALID: 422,
+  // SKILL-TAX-1F-B2 — platform skill-governance surface.
+  SKILL_CONFLICT: 409,
+  SKILL_PROPOSAL_NOT_PENDING: 409,
+  SKILL_PROPOSAL_PAYLOAD_INVALID: 422,
 };
 
 // Base error class. Thrown anywhere in the app where a structured response

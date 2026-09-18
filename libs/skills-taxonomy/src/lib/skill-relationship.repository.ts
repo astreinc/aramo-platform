@@ -42,46 +42,67 @@ function resolveActor(actor?: SkillActor): { actorId: string | null; actorType: 
   return { actorId: actor?.id ?? null, actorType: actor?.type ?? 'system' };
 }
 
+// SKILL-TAX-1F-B2 — the narrow transaction-client surface addRelationshipWithin needs.
+// A Prisma interactive-transaction client satisfies it structurally, so
+// SkillGovernanceService can run addRelationshipWithin INSIDE the proposal-accept
+// transaction. Relationships emit NO correction task (a taxonomy edge never alters
+// canonical identity, per the 1F-B2 correction-task matrix) — only the edge + audit.
+export type SkillRelationshipTxClient = Pick<
+  PrismaService,
+  'skillRelationship' | 'skillAuditEvent'
+>;
+
 @Injectable()
 export class SkillRelationshipRepository {
   constructor(private readonly prisma: PrismaService) {}
 
+  // Public entry — its own transaction. Delegates to the composable primitive.
   async addRelationship(input: AddRelationshipPersistInput): Promise<SkillRelationshipRow> {
+    return this.prisma.$transaction((tx) => this.addRelationshipWithin(tx, input));
+  }
+
+  // SKILL-TAX-1F-B2 — the composable canonical write: edge row + RELATIONSHIP_ADDED
+  // audit, on the CALLER'S transaction client. Same canonical governance logic whether
+  // invoked by addRelationship or by proposal acceptance — no duplicate writer. Emits
+  // NO SkillCorrectionTask: relationships are taxonomy intelligence and never change
+  // canonical identity of stored evidence (1F-B2 matrix).
+  async addRelationshipWithin(
+    tx: SkillRelationshipTxClient,
+    input: AddRelationshipPersistInput,
+  ): Promise<SkillRelationshipRow> {
     const id = uuidv7();
     const { actorId, actorType } = resolveActor(input.actor);
-    const [rel] = await this.prisma.$transaction([
-      this.prisma.skillRelationship.create({
-        data: {
-          id,
-          source_skill_id: input.source_skill_id,
+    const rel = await tx.skillRelationship.create({
+      data: {
+        id,
+        source_skill_id: input.source_skill_id,
+        target_skill_id: input.target_skill_id,
+        relationship_type: input.relationship_type,
+        directionality: input.directionality,
+        status: 'active',
+        source: input.source,
+        source_ref: input.source_ref ?? null,
+        created_by: actorId,
+        updated_by: actorId,
+      },
+    });
+    await tx.skillAuditEvent.create({
+      data: {
+        id: uuidv7(),
+        tenant_id: null,
+        actor_id: actorId,
+        actor_type: actorType,
+        event_type: 'RELATIONSHIP_ADDED',
+        subject_id: input.source_skill_id,
+        event_payload: {
+          relationship_id: id,
           target_skill_id: input.target_skill_id,
           relationship_type: input.relationship_type,
           directionality: input.directionality,
-          status: 'active',
           source: input.source,
-          source_ref: input.source_ref ?? null,
-          created_by: actorId,
-          updated_by: actorId,
         },
-      }),
-      this.prisma.skillAuditEvent.create({
-        data: {
-          id: uuidv7(),
-          tenant_id: null,
-          actor_id: actorId,
-          actor_type: actorType,
-          event_type: 'RELATIONSHIP_ADDED',
-          subject_id: input.source_skill_id,
-          event_payload: {
-            relationship_id: id,
-            target_skill_id: input.target_skill_id,
-            relationship_type: input.relationship_type,
-            directionality: input.directionality,
-            source: input.source,
-          },
-        },
-      }),
-    ]);
+      },
+    });
     return rel as SkillRelationshipRow;
   }
 

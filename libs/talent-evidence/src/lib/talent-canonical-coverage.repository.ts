@@ -14,6 +14,18 @@ export interface CanonicalCoverage {
   unattempted: number;
 }
 
+// SKILL-TAX-1F-B2 — one UNRESOLVED surface form aggregated within the Talent
+// domain, carrying its INTERNAL distinct tenant membership. The platform review
+// queue (apps/api) unions this membership with the requisition domain's to compute
+// an exact, counts-only cross-domain tenant_count; the tenant ids NEVER leave the
+// service (never in an HTTP response). Raw surface_form (never normalized here — the
+// governance service applies the authoritative normalizer to merge across domains).
+export interface UnresolvedSurfaceAggregate {
+  surface_form: string;
+  occurrence_count: number;
+  tenant_ids: string[];
+}
+
 // The canonical view of one talent skill-evidence row (surface + 1G canonical
 // resolution). Consumed by the SKILL-TAX-1E shadow comparator.
 export interface TalentCanonicalSkillRow {
@@ -61,6 +73,41 @@ export class TalentCanonicalCoverageRepository {
         canonicalization_method: true,
       },
     });
+  }
+
+  // SKILL-TAX-1F-B2 — UNRESOLVED surface-form aggregates for the platform review
+  // queue. GROUP BY the raw surface_form; carry the distinct tenant membership so the
+  // governance service can union it across domains for an exact tenant_count (the ids
+  // stay internal). Ordered (occurrence_count DESC, surface_form ASC) and hard-capped
+  // by scanLimit — the caller logs when the cap truncates (no silent cap). An optional
+  // case-insensitive substring pre-filter narrows the scan. Domain-local raw SQL
+  // against this schema only (no cross-schema access).
+  async listUnresolvedSurfaceAggregates(args: {
+    scanLimit: number;
+    surfaceSearch?: string | null;
+  }): Promise<UnresolvedSurfaceAggregate[]> {
+    const search = args.surfaceSearch && args.surfaceSearch.trim().length > 0
+      ? `%${args.surfaceSearch.trim()}%`
+      : null;
+    const rows = await this.prisma.$queryRaw<
+      Array<{ surface_form: string; occurrence_count: number; tenant_ids: string[] }>
+    >`
+      SELECT
+        surface_form,
+        COUNT(*)::int AS occurrence_count,
+        array_agg(DISTINCT tenant_id::text) AS tenant_ids
+      FROM talent_evidence."TalentSkillEvidence"
+      WHERE canonicalization_status = 'UNRESOLVED'
+        AND (${search}::text IS NULL OR surface_form ILIKE ${search}::text)
+      GROUP BY surface_form
+      ORDER BY occurrence_count DESC, surface_form ASC
+      LIMIT ${args.scanLimit}
+    `;
+    return rows.map((r) => ({
+      surface_form: r.surface_form,
+      occurrence_count: Number(r.occurrence_count),
+      tenant_ids: r.tenant_ids,
+    }));
   }
 
   // Coverage telemetry (queryable, no new table): eligible = attempted rows.

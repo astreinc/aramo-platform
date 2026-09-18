@@ -25,6 +25,10 @@ import {
 const MIGRATION_PATHS = [
   '20260915140000_init_skill_registry',
   '20260917210000_skill_tax_1f_governance',
+  // SKILL-TAX-1F-B2 — updateSkill / deactivate / reactivate / merge now write a
+  // SkillCorrectionTask atomically; its table is created here (regen client INSERTs it
+  // → curated list must include it).
+  '20260918120000_skill_tax_1f_b_governance_proposal_correction',
 ].map((n) => resolve(__dirname, `../../prisma/migrations/${n}/migration.sql`));
 
 const ACTOR = { id: '55555555-5555-7555-8555-555555555555', type: 'platform_admin' };

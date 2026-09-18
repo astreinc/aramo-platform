@@ -9,10 +9,12 @@ import {
 import { PrismaService } from './prisma/prisma.service.js';
 import { SkillRepository } from './skill.repository.js';
 import { SkillCorrectionTaskRepository } from './skill-correction-task.repository.js';
+import { SkillGovernanceProposalRepository } from './skill-governance-proposal.repository.js';
 import { SkillAliasRepository } from './skill-alias.repository.js';
 import { SkillVersionRepository } from './skill-version.repository.js';
 import { SkillRelationshipRepository } from './skill-relationship.repository.js';
 import { SkillRegistryService } from './skill-registry.service.js';
+import { SkillGovernanceService } from './skill-governance.service.js';
 import { SkillCanonicalizationService } from './skill-canonicalization.service.js';
 import { SkillCanonicalizationProcessor } from './skill-canonicalization.processor.js';
 import { SKILL_CANONICALIZATION_QUEUE_NAME } from './skill-canonicalization.queue.constants.js';
@@ -69,10 +71,12 @@ import { SKILL_CANONICALIZATION_QUEUE_NAME } from './skill-canonicalization.queu
     PrismaService,
     SkillRepository,
     SkillCorrectionTaskRepository,
+    SkillGovernanceProposalRepository,
     SkillAliasRepository,
     SkillVersionRepository,
     SkillRelationshipRepository,
     SkillRegistryService,
+    SkillGovernanceService,
     SkillCanonicalizationService,
     SkillCanonicalizationProcessor,
     {
@@ -82,9 +86,11 @@ import { SKILL_CANONICALIZATION_QUEUE_NAME } from './skill-canonicalization.queu
   ],
   exports: [
     SkillRegistryService,
+    SkillGovernanceService,
     SkillCanonicalizationService,
     SkillRepository,
     SkillCorrectionTaskRepository,
+    SkillGovernanceProposalRepository,
     SkillAliasRepository,
     SkillVersionRepository,
     SkillRelationshipRepository,

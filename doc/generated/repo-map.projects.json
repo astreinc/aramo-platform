@@ -1205,6 +1205,10 @@
     ],
     "@aramo/skills-taxonomy": [
       "PrismaService",
+      "ProposalApplyConflictError",
+      "ProposalNotFoundError",
+      "ProposalNotPendingError",
+      "ProposalPayloadError",
       "SKILL_CANONICALIZATION_QUEUE_NAME",
       "SkillAliasConflictError",
       "SkillAliasRepository",
@@ -1212,6 +1216,8 @@
       "SkillCanonicalizationService",
       "SkillConflictError",
       "SkillCorrectionTaskRepository",
+      "SkillGovernanceProposalRepository",
+      "SkillGovernanceService",
       "SkillNotFoundError",
       "SkillRegistryService",
       "SkillRelationshipConflictError",
@@ -1222,6 +1228,8 @@
       "SkillVersionRepository",
       "SkillsTaxonomyModule",
       "directionalityOf",
+      "isRelationshipSource",
+      "isRelationshipType",
       "isSymmetric",
       "normalizeSkillName",
       "normalizeVersion"
@@ -6196,6 +6204,13 @@
       "sourceRoot": "apps/platform-admin/src",
       "tags": ["scope:platform"],
       "targets": ["build", "lint", "test"]
+    },
+    {
+      "name": "platform-governance-consumer-pact",
+      "root": "pact/consumers/platform-governance-consumer",
+      "sourceRoot": "pact/consumers/platform-governance-consumer/src",
+      "tags": ["pact-consumer"],
+      "targets": ["lint", "pact-test", "test"]
     },
     {
       "name": "platform-trust",
