@@ -60,6 +60,10 @@ const SUBMITTAL_T2P1_MIGRATION_PATH_L8B1_LINK = resolve(
   __dirname,
   '../../prisma/migrations/20260822130000_l8b1_submittal_pipeline_link/migration.sql',
 );
+const SUBMITTAL_TI1DD_RESUME_EDITION_MIGRATION_PATH = resolve(
+  __dirname,
+  '../../prisma/migrations/20260920130000_talent_intel_1d_d_submittal_resume_edition/migration.sql',
+);
 
 const TENANT_A = '11111111-1111-7111-8111-111111111111';
 const TENANT_B = '22222222-2222-7222-8222-222222222222';
@@ -99,6 +103,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         readFileSync(SUBMITTAL_RENAME_MIGRATION_PATH, 'utf8'),
         readFileSync(SUBMITTAL_T2P1_MIGRATION_PATH, 'utf8'),
         readFileSync(SUBMITTAL_T2P1_MIGRATION_PATH_L8B1_LINK, 'utf8'),
+        // TI-1D-D — resume_edition_id snapshot column + trigger rewrite.
+        readFileSync(SUBMITTAL_TI1DD_RESUME_EDITION_MIGRATION_PATH, 'utf8'),
       ];
 
       client = new PrismaService(url);

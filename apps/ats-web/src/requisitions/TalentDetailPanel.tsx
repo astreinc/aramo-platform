@@ -25,6 +25,7 @@ import {
 } from '../talent/stated-fields';
 
 import { TalentJourneySection } from './TalentJourneySection';
+import { ResumeSelectionSection } from './ResumeSelectionSection';
 
 // Inline-edit is gated on talent:edit and writes the REAL talent-record columns
 // via PATCH /v1/talent-records/:id (updateTalent, UpdateTalentRecordRequestDto).
@@ -356,6 +357,16 @@ export function TalentDetailPanel({
               requisitionId={entry.requisition_id}
             />
           </section>
+
+          {/* TI-1D-D — Résumé selection for THIS requisition. Distinguishes the
+              explicit working selection from the Talent-global default (a
+              suggestion only) and the editions available to select. Preview is
+              inert (never binds); only "Use this résumé" issues the governed PUT
+              (pipeline:resume:set). The send-time freeze stays owned by submittal. */}
+          <ResumeSelectionSection
+            pipelineId={entry.id}
+            canSetSelection={scopes.includes('pipeline:resume:set')}
+          />
 
           {/* Offer decision — surfaced ONLY when the journey permits an offer
               (server returns an offer action once ClientSelection is SELECTED) or

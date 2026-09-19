@@ -904,6 +904,7 @@
       "RECRUITER_ACTION_TO_STATUS",
       "RECRUITER_DISPOSITION_AUTHORITIES",
       "REQUISITION_LIFECYCLE_PACKAGE_NAME",
+      "RESUME_EDITION_READER",
       "SYSTEM_COMPLETE_ACTION",
       "VALID_OVERRIDE_REASON_CODES",
       "canTransition",
@@ -2013,6 +2014,12 @@
       { "project": "import", "status": "production" },
       { "project": "ingestion", "status": "production" },
       { "project": "integration", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/pipeline/src/tests/pipeline-resume-edition-routes.spec.ts",
+        "project": "pipeline",
+        "status": "excluded"
+      },
       { "project": "pipeline", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",

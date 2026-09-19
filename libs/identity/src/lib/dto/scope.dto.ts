@@ -90,6 +90,12 @@ export const SEED_SCOPE_KEYS = [
   'attachment:create',          // recruiter+
   'attachment:delete',          // recruiter+ (Ruling 1 carve-out — junction/link delete)
   'pipeline:read',              // recruiter+
+  // TI-1D-D — set the Requisition-context résumé selection (PUT
+  // /v1/pipelines/{id}/resume-edition). DEDICATED mutation scope, EXPLICIT
+  // grant to the four pipeline:change-status holders (recruiter, account_manager,
+  // tenant_admin, tenant_owner) via RESUME_SELECT_SEED_BUNDLES — NOT a reuse of
+  // pipeline:change-status (lifecycle), NOT auto-inherited.
+  'pipeline:resume:set',        // recruiter+ / AM / owner+admin
   // Lane 2 / L2-F (F1) — the Client-Selection owner (enforced in ClientSelectionController +
   // the apps/api create-from-submittal orchestration). GRANTED to the ATS delivery matrix
   // (recruiter, account_manager, tenant_admin, tenant_owner) — mirrors placement:create.

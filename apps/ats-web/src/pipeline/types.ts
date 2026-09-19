@@ -85,6 +85,41 @@ export interface PipelineListResponse {
   readonly items: readonly PipelineView[];
 }
 
+// TI-1D-D — hand-mirrored from libs/pipeline/src/lib/dto/pipeline-resume-edition.view.ts
+// + set-pipeline-resume-edition-request.dto.ts. The Requisition-context résumé
+// selection resolved through the Pipeline aggregate. The newest edition is NOT the
+// sole truth and the Talent-global default is a SUGGESTION only — never
+// authoritative for a requisition.
+export interface PipelineResumeEditionAvailable {
+  readonly edition_id: string;
+  readonly purpose: string;
+  readonly label: string | null;
+  readonly filename: string;
+  readonly mime_type: string;
+  readonly created_at: string;
+  readonly is_default: boolean;
+}
+
+export interface PipelineResumeEditionView {
+  readonly pipeline_id: string;
+  readonly talent_record_id: string;
+  readonly requisition_id: string;
+  // The EXPLICIT working selection for THIS requisition; null when never selected.
+  readonly selected_edition_id: string | null;
+  readonly selected_at: string | null;
+  readonly selected_by: string | null;
+  // The Talent-global presentation default — a suggestion only.
+  readonly default_edition_id: string | null;
+  // Editions eligible for a NEW selection (lifecycle=active).
+  readonly available_editions: readonly PipelineResumeEditionAvailable[];
+}
+
+// PUT body — appends a new append-only working selection; never mutates a prior one.
+export interface SetPipelineResumeEditionRequest {
+  readonly resume_edition_id: string;
+  readonly note?: string;
+}
+
 export interface PipelineStatusHistoryView {
   readonly id: string;
   readonly tenant_id: string;

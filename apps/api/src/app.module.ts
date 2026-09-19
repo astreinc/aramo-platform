@@ -61,6 +61,7 @@ import { TalentTrustModule } from '@aramo/talent-trust';
 import { TaskModule } from '@aramo/task';
 
 import { ResumeAttachmentResolverModule } from './resume-extraction/resume-attachment-resolver.module.js';
+import { ResumeEditionReaderModule } from './resume-extraction/resume-edition-reader.module.js';
 import { CompanyClientCheckModule } from './company-client-check/company-client-check.module.js';
 import { SubmittedHistoryModule } from './reporting-adapters/submitted-history.module.js';
 import { InterviewHistoryModule } from './reporting-adapters/interview-history.module.js';
@@ -245,6 +246,9 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     // TALENT-INTEL-1 TI-1D-C — bind RESUME_ATTACHMENT_RESOLVER (talent-record port)
     // to the concrete AttachmentResumeResolver for the résumé-editions ingestion.
     ResumeAttachmentResolverModule,
+    // TALENT-INTEL-1 TI-1D-D — bind the Pipeline RESUME_EDITION_READER port to the
+    // talent-evidence-backed adapter (résumé-edition selection for a requisition).
+    ResumeEditionReaderModule,
     // Tasks backend — the last core recruiter surface (the actionable,
     // due-dated, assignable to-do).
     //

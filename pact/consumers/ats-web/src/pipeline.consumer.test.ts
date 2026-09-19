@@ -43,6 +43,8 @@ const provider = makeAtsWebProvider();
 const PIPE_ID = '00000000-0000-7000-8000-71be00000001';
 const PIPE_TALENT_ID = '00000000-0000-7000-8000-7a1e00000001';
 const PIPE_REQ_ID = '00000000-0000-7000-8000-4e9100000001';
+// TI-1D-D — the résumé edition the provider seeds for the pipeline talent.
+const PIPE_RE_ED = '00000000-0000-7000-8000-71be000000e1';
 
 function pipelineView(
   id: string | undefined,
@@ -254,6 +256,105 @@ describe('ats-web → POST /v1/pipelines/:id/transition', () => {
   // refuses on over-capacity (over-capacity is a representable DERIVED state, not a
   // pipeline-time gate). The interaction and its provider state are removed from the
   // contract accordingly.
+});
+
+// ======================================================================
+// TI-1D-D — GET /v1/pipelines/:id/resume-edition (Requisition-context selection)
+// ======================================================================
+describe('ats-web → GET /v1/pipelines/:id/resume-edition', () => {
+  it('returns 200 with the current selection, default, and available editions', async () => {
+    await provider
+      .addInteraction()
+      .given('an ats-web recruiter and a pipeline with a resume selection exist')
+      .uponReceiving('a pipeline resume-edition read')
+      .withRequest('GET', `/v1/pipelines/${PIPE_ID}/resume-edition`, (b) => {
+        b.headers({ Cookie: like(ACCESS_COOKIE) });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          pipeline_id: uuid(PIPE_ID),
+          talent_record_id: uuid(PIPE_TALENT_ID),
+          requisition_id: uuid(PIPE_REQ_ID),
+          selected_edition_id: uuid(PIPE_RE_ED),
+          selected_at: regex(ISO_TIMESTAMP, '2026-07-01T00:00:00Z'),
+          selected_by: uuid(),
+          default_edition_id: uuid(PIPE_RE_ED),
+          available_editions: [
+            {
+              edition_id: uuid(PIPE_RE_ED),
+              purpose: like('GENERAL'),
+              label: null,
+              filename: like('dana-general.pdf'),
+              mime_type: like('application/pdf'),
+              created_at: regex(ISO_TIMESTAMP, '2026-07-01T00:00:00Z'),
+              is_default: like(true),
+            },
+          ],
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/pipelines/${PIPE_ID}/resume-edition`, {
+          headers: { Cookie: ACCESS_COOKIE },
+        });
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as {
+          selected_edition_id: string;
+          available_editions: unknown[];
+        };
+        expect(body.selected_edition_id).toBe(PIPE_RE_ED);
+        expect(body.available_editions.length).toBeGreaterThan(0);
+      });
+  });
+});
+
+// ======================================================================
+// TI-1D-D — PUT /v1/pipelines/:id/resume-edition (explicit selection)
+// ======================================================================
+describe('ats-web → PUT /v1/pipelines/:id/resume-edition', () => {
+  it('returns 200 with the appended working selection', async () => {
+    const BODY = { resume_edition_id: PIPE_RE_ED };
+    await provider
+      .addInteraction()
+      .given('an ats-web recruiter and a pipeline with a selectable resume edition exist')
+      .uponReceiving('a pipeline resume-edition selection')
+      .withRequest('PUT', `/v1/pipelines/${PIPE_ID}/resume-edition`, (b) => {
+        b.headers({ Cookie: like(ACCESS_COOKIE), 'Content-Type': 'application/json' }).jsonBody(
+          BODY,
+        );
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          pipeline_id: uuid(PIPE_ID),
+          talent_record_id: uuid(PIPE_TALENT_ID),
+          requisition_id: uuid(PIPE_REQ_ID),
+          selected_edition_id: uuid(PIPE_RE_ED),
+          selected_at: regex(ISO_TIMESTAMP, '2026-07-01T00:00:00Z'),
+          selected_by: uuid(),
+          default_edition_id: null,
+          available_editions: [
+            {
+              edition_id: uuid(PIPE_RE_ED),
+              purpose: like('GENERAL'),
+              label: null,
+              filename: like('dana-general.pdf'),
+              mime_type: like('application/pdf'),
+              created_at: regex(ISO_TIMESTAMP, '2026-07-01T00:00:00Z'),
+              is_default: like(false),
+            },
+          ],
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/pipelines/${PIPE_ID}/resume-edition`, {
+          method: 'PUT',
+          headers: { Cookie: ACCESS_COOKIE, 'Content-Type': 'application/json' },
+          body: JSON.stringify(BODY),
+        });
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as { selected_edition_id: string };
+        expect(body.selected_edition_id).toBe(PIPE_RE_ED);
+      });
+  });
 });
 
 beforeAll(() => undefined);

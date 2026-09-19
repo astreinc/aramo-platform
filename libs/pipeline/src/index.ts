@@ -3,7 +3,13 @@ export { PipelineController } from './lib/pipeline.controller.js';
 export {
   PipelineRepository,
   type CurrentStage,
+  type TalentRequisitionResumeRow,
 } from './lib/pipeline.repository.js';
+export {
+  RESUME_EDITION_READER,
+  type ResumeEditionReaderPort,
+  type ResumeEditionSummary,
+} from './lib/resume-edition-reader.port.js';
 export { PrismaService as PipelinePrismaService } from './lib/prisma/prisma.service.js';
 // Lane 2 / L2-B — the pipeline outbox drain surface, consumed by libs/outbox-publisher.
 export { PipelineOutboxRepository } from './lib/pipeline-outbox.repository.js';

@@ -614,6 +614,11 @@ export const ERROR_CODES = [
   // SUBMITTAL_PIPELINE_LINK_INVALID (409): the submittal has no valid linked LIVE pipeline
   // episode to mirror (pipeline_id null, or the linked episode is not live / cannot transition).
   'SUBMITTAL_PIPELINE_LINK_INVALID',
+  // SUBMITTAL_RESUME_SELECTION_REQUIRED (422): TALENT-INTEL-1 TI-1D-D — client
+  // send requires an EXPLICIT current TalentRequisitionResume selection for the
+  // (tenant, talent, requisition). No automatic Talent-default fallback: the exact
+  // résumé edition sent to the client must be a deliberate recruiter choice.
+  'SUBMITTAL_RESUME_SELECTION_REQUIRED',
   // OFFER_ALREADY_LIVE (409): Offer Lifecycle — create refused because a live
   // (non-terminal) Offer already exists for (tenant_id, submittal_id). The
   // one-live invariant: at most one DRAFT/SENT/NEGOTIATION offer per submittal.

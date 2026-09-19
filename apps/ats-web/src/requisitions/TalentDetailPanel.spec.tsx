@@ -42,6 +42,25 @@ vi.mock('../pipeline/talent-journey-api', () => ({
   getTalentJourney: vi.fn(async () => QUALIFIED_JOURNEY),
 }));
 
+// TI-1D-D — the panel now mounts ResumeSelectionSection, which reads the
+// résumé selection on open. Default to an empty, no-selection view so the
+// existing journey/offer/edit assertions are unaffected; transitionPipeline is
+// preserved for the recruiting-advance path.
+vi.mock('../pipeline/pipeline-api', () => ({
+  transitionPipeline: vi.fn(),
+  getPipelineResumeEdition: vi.fn(async () => ({
+    pipeline_id: 'p1',
+    talent_record_id: 't1',
+    requisition_id: 'r1',
+    selected_edition_id: null,
+    selected_at: null,
+    selected_by: null,
+    default_edition_id: null,
+    available_editions: [],
+  })),
+  setPipelineResumeEdition: vi.fn(),
+}));
+
 // The panel sources the RAW record from getTalent (full TalentRecordView) for
 // inline edit; updateTalent PATCHes the single changed column.
 const RAW_RECORD = {
