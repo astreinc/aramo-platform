@@ -1300,6 +1300,7 @@
     ],
     "@aramo/talent-record": [
       "LinkTalentRecordRequestDto",
+      "PROFILE_HYDRATION_FIELDS",
       "RESUME_ATTACHMENT_RESOLVER",
       "RESUME_REINDEX_BATCH_SIZE",
       "RESUME_REINDEX_QUEUE_NAME",
@@ -1315,6 +1316,7 @@
       "TalentRecordReconcileRepository",
       "TalentRecordRepository",
       "TalentRecordService",
+      "composeProfileHydration",
       "redactResumeText"
     ],
     "@aramo/talent-trust": [

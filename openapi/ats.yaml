@@ -1906,6 +1906,44 @@ paths:
           $ref: 'common.yaml#/components/responses/NotFound'
       security:
         - BearerAuth: []
+  /v1/talent-records/{id}/profile-hydration:
+    get:
+      operationId: getTalentProfileHydration
+      summary: The aggregate profile-hydration projection for a talent record (TALENT-INTEL-1 TI-1E-A).
+      description: |
+        A DERIVED read that composes the operational TalentRecord value with the
+        TI-1D-B field-state control/resolution/provenance over the COMPLETE governed
+        editable field set. Per field: what to DISPLAY (current_value, typed —
+        booleans stay booleans), the display value_state (UNKNOWN | SET |
+        EXPLICITLY_CLEARED), WHERE a governed value came from (source_type;
+        null = plain operational value with no governed provenance — never
+        fabricated), the evidence-linkage provenance (by reference only), and the
+        current resolution summary. The server owns the precedence
+        (explicitly-cleared > governed SET > present operational value > UNKNOWN).
+        READ-ONLY: no extraction, no reconciliation, no writes. Gated: capability
+        ats + scope talent:read.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: The per-field hydration projection.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfileHydrationResponse'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
   /v1/pipelines/{id}/resume-edition:
     get:
       operationId: getPipelineResumeEdition
@@ -5579,6 +5617,78 @@ components:
         resolution_reason:
           type: [string, 'null']
           enum: [EVIDENCE_CONFLICT, ACCEPTED_PROPOSED, KEPT_CURRENT, MANUAL_CONFIRMATION, null]
+    # ── TALENT-INTEL-1 TI-1E-A — aggregate profile-hydration projection ──
+    ProfileHydrationResponse:
+      type: object
+      additionalProperties: false
+      required: [talent_record_id, fields]
+      properties:
+        talent_record_id:
+          type: string
+          format: uuid
+        fields:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProfileHydrationItem'
+    ProfileHydrationItem:
+      type: object
+      additionalProperties: false
+      required:
+        - field_key
+        - current_value
+        - value_state
+        - source_type
+        - projection_policy
+        - provenance
+        - resolution_status
+        - resolution_reason
+        - proposed_value
+      properties:
+        field_key:
+          type: string
+        # What to DISPLAY — the current operational value, typed (booleans stay
+        # booleans, never stringified). string[] reserved; no field emits it today.
+        current_value:
+          oneOf:
+            - type: [string, number, boolean, 'null']
+            - type: array
+              items:
+                type: string
+        value_state:
+          type: string
+          enum: [UNKNOWN, SET, EXPLICITLY_CLEARED]
+        # WHERE a governed value came from. null = plain operational value with no
+        # governed provenance (never fabricated for operational-only fields).
+        source_type:
+          type: [string, 'null']
+          enum: [MANUAL, RESUME, RECONCILED, IMPORT, null]
+        projection_policy:
+          type: string
+          enum: [AUTO, HOLD]
+        # Evidence-linkage by reference only; null when the field has no provenance.
+        provenance:
+          oneOf:
+            - type: 'null'
+            - type: object
+              additionalProperties: false
+              required: [evidence_id]
+              properties:
+                evidence_id:
+                  type: string
+                  format: uuid
+        resolution_status:
+          type: string
+          enum: [NONE, PENDING_REVIEW, RESOLVED]
+        resolution_reason:
+          type: [string, 'null']
+          enum: [EVIDENCE_CONFLICT, ACCEPTED_PROPOSED, KEPT_CURRENT, MANUAL_CONFIRMATION, null]
+        # Populated only while resolution_status is PENDING_REVIEW.
+        proposed_value:
+          oneOf:
+            - type: [string, number, boolean, 'null']
+            - type: array
+              items:
+                type: string
     # ── Talent Detail Backend Enablement (B6) ──
     AttachmentDownloadUrl:
       type: object

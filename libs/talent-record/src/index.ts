@@ -51,7 +51,15 @@ export type {
   CreateTalentRecordRequestDto,
   UpdateTalentRecordRequestDto,
   TalentLinkView,
+  ProfileHydrationValue,
+  ProfileHydrationItem,
+  ProfileHydrationResponse,
 } from './lib/dto/index.js';
+export {
+  composeProfileHydration,
+  PROFILE_HYDRATION_FIELDS,
+  type ProfileHydrationInputRecord,
+} from './lib/profile-hydration.js';
 export { LinkTalentRecordRequestDto } from './lib/dto/link-talent-record-request.dto.js';
 
 // TALENT-INTEL-1 (TI-1B) — the shared résumé-extraction orchestrator + its
