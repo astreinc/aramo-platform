@@ -7,6 +7,7 @@ import {
   Rail,
   RailNavItem,
   RailNavLabel,
+  RailNavSection,
   ShellBrand,
   TopBar,
   UserMenu,
@@ -30,14 +31,23 @@ function crumbsFor(pathname: string): BreadcrumbItem[] {
   if (pathname === '/' || pathname === '') {
     return [{ label: 'Dashboard' }];
   }
-  // SKILL-TAX-1F-C1 — the skills governance section hangs off Dashboard, mirroring
-  // the tenants crumb trail.
+  // SKILL-TAX-1F-C1/C2 — the skills governance section (Registry / Review queue /
+  // Proposals) hangs off Dashboard, mirroring the tenants crumb trail.
   if (pathname.startsWith('/skills')) {
     const crumbs: BreadcrumbItem[] = [
       { label: 'Dashboard', href: '/' },
       { label: 'Skills', href: '/skills' },
     ];
-    if (/^\/skills\/[^/]+/.exec(pathname)) crumbs.push({ label: 'Detail' });
+    if (pathname.startsWith('/skills/review-queue')) {
+      crumbs.push({ label: 'Review queue' });
+    } else if (/^\/skills\/proposals\/[^/]+/.exec(pathname)) {
+      crumbs.push({ label: 'Proposals', href: '/skills/proposals' });
+      crumbs.push({ label: 'Detail' });
+    } else if (pathname.startsWith('/skills/proposals')) {
+      crumbs.push({ label: 'Proposals' });
+    } else if (/^\/skills\/[^/]+/.exec(pathname)) {
+      crumbs.push({ label: 'Detail' });
+    }
     return crumbs;
   }
   const crumbs: BreadcrumbItem[] = [
@@ -79,7 +89,11 @@ export function PlatformShell({ children }: { readonly children: ReactNode }) {
         icon={<Icons.IconBuilding />}
       />
       {canReadSkills ? (
-        <RailNavItem to="/skills" label="Skills" icon={<Icons.IconTag />} />
+        <RailNavSection label="Skills">
+          <RailNavItem to="/skills" end label="Registry" icon={<Icons.IconTag />} />
+          <RailNavItem to="/skills/review-queue" label="Review queue" icon={<Icons.IconList />} />
+          <RailNavItem to="/skills/proposals" label="Proposals" icon={<Icons.IconBolt />} />
+        </RailNavSection>
       ) : null}
     </Rail>
   );

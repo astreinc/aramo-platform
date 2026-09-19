@@ -26,17 +26,21 @@ import { SkillPicker } from './SkillPicker';
 export function SkillFormDialog({
   mode,
   skill,
+  initialName,
   open,
   onOpenChange,
   onDone,
 }: {
   readonly mode: 'create' | 'edit';
   readonly skill?: Skill;
+  // SKILL-TAX-1F-C2 — prefill the canonical name (create-a-skill-from-a-reviewed
+  // surface, from the review queue). Ignored in edit mode (the skill supplies it).
+  readonly initialName?: string;
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
   readonly onDone: (result?: Skill) => void;
 }) {
-  const [canonicalName, setCanonicalName] = useState(skill?.canonical_name ?? '');
+  const [canonicalName, setCanonicalName] = useState(skill?.canonical_name ?? initialName ?? '');
   const [description, setDescription] = useState(skill?.description ?? '');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
