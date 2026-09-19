@@ -244,15 +244,9 @@
       "isSourceSystem"
     ],
     "@aramo/cold-ingest-extraction": [
-      "COLD_INGEST_EXTRACTION_ACTOR",
-      "COLD_INGEST_EXTRACTION_BATCH_SIZE",
-      "COLD_INGEST_EXTRACTION_MAX_ATTEMPTS",
       "COLD_INGEST_EXTRACTION_QUEUE_NAME",
       "ColdIngestExtractionModule",
-      "ColdIngestExtractionProcessor",
-      "ColdIngestExtractionService",
-      "buildDeclaredIdentityEntries",
-      "extractIndeedResumeBase64"
+      "ColdIngestExtractionProcessor"
     ],
     "@aramo/common": [
       "AUTH_STORAGE_MIGRATIONS",
@@ -2734,12 +2728,6 @@
       { "project": "client-talent-restriction", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
-        "from": "libs/cold-ingest-extraction/src/tests/cold-ingest-extraction.service.spec.ts",
-        "project": "cold-ingest-extraction",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
         "from": "libs/cold-ingest-extraction/src/tests/no-llm-boundary.spec.ts",
         "project": "cold-ingest-extraction",
         "status": "excluded"
@@ -4469,8 +4457,7 @@
         "status": "excluded"
       },
       { "project": "api", "status": "production" },
-      { "project": "canonicalization", "status": "production" },
-      { "project": "cold-ingest-extraction", "status": "production" }
+      { "project": "canonicalization", "status": "production" }
     ],
     "@aramo/integration": [
       {
@@ -5349,17 +5336,10 @@
     ],
     "@aramo/resume-parse": [
       {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/api/src/tests/src2-extraction-repair.integration.spec.ts",
-        "project": "api",
-        "status": "excluded"
-      },
-      {
         "from": "pact/provider/src/verify-api.ts",
         "project": "aramo-pact-provider",
         "status": "unscoped"
       },
-      { "project": "cold-ingest-extraction", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/talent-record/src/tests/resume-editions-routes.spec.ts",
@@ -5452,8 +5432,7 @@
         "status": "excluded"
       },
       { "project": "api", "status": "production" },
-      { "project": "reporting", "status": "production" },
-      { "project": "talent-record", "status": "production" }
+      { "project": "reporting", "status": "production" }
     ],
     "@aramo/skills-taxonomy": [
       {
@@ -5615,6 +5594,11 @@
         "status": "excluded"
       },
       { "project": "api", "status": "production" },
+      {
+        "from": "pact/provider/src/verify-api.ts",
+        "project": "aramo-pact-provider",
+        "status": "unscoped"
+      },
       { "project": "talent-record", "status": "production" }
     ],
     "@aramo/talent-reconcile": [{ "project": "api", "status": "production" }],
@@ -5801,7 +5785,6 @@
       },
       { "project": "api", "status": "production" },
       { "project": "canonicalization", "status": "production" },
-      { "project": "cold-ingest-extraction", "status": "production" },
       { "project": "portal", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",

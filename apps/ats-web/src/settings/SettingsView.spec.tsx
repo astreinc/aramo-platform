@@ -6,10 +6,10 @@ import { ToastProvider } from '@aramo/fe-foundation';
 import { SettingsView } from './SettingsView';
 import type { TenantSettingsView } from './types';
 
-// SettingsView now renders multiple pickers, each with its own "Save changes"
+// SettingsView renders multiple pickers, each with its own "Save changes"
 // button. These tests target the Compensation-display picker specifically, so
-// scope the button lookup to that card (the résumé-extraction picker also has
-// a "Save changes").
+// scope the button lookup to that card (the financials toggle also has a
+// "Save changes").
 function compSaveButton(): HTMLButtonElement {
   const card = screen.getByText('Compensation display').closest('.rc-card');
   if (card === null) throw new Error('Compensation display card not found');

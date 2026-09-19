@@ -39,13 +39,10 @@ function makeController(): {
     {} as any,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     {} as any,
-    // tenantSetting + talentExtraction — unused by the duplicate-check path.
+    // talentExtraction — unused by the duplicate-check path.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     {} as any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    {} as any,
-    // TI-1B — resumeOrchestrator + resumeAuthorizer (unused on this path).
-    {} as never,
+    // TI-1B — resumeOrchestrator (unused on this path; governed-LLM sole extractor).
     {} as never,
     // TI-1D-A — reconcileRepo (field-state writes; no-op fake on this path).
     { upsertProfileFieldState: async () => undefined, releaseProjectionHold: async () => undefined, listProfileFieldStates: async () => [] } as never,

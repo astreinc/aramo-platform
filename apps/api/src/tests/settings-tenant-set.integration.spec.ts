@@ -441,7 +441,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(body).toEqual({
         'compensation.display_default': 'markup',
         'audit.financials_enabled': false,
-        'resume.extraction_mode': 'deterministic',
       });
     });
   },

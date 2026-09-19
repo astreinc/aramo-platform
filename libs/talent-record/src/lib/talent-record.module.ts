@@ -6,7 +6,6 @@ import { EntitlementModule } from '@aramo/entitlement';
 import { IdentityIndexModule } from '@aramo/identity-index';
 import { ObjectStorageModule } from '@aramo/object-storage';
 import { ResumeParseModule } from '@aramo/resume-parse';
-import { SettingsModule } from '@aramo/settings';
 import { TalentExtractionModule } from '@aramo/talent-extraction';
 import { CanonicalReconcileModule } from '@aramo/canonical-reconcile';
 
@@ -50,12 +49,11 @@ import { ResumeEditionIngestionService } from './resume-extraction/resume-editio
     IdentityIndexModule,
     ObjectStorageModule,
     ResumeParseModule,
-    // Add-Talent governed-LLM résumé extraction (LOCKED). SettingsModule →
-    // TenantSettingService (the resume.extraction_mode mode resolver);
-    // TalentExtractionModule → TalentExtractionService.extractResumeDraft (the
-    // governed LLM draft extractor, an ats→cip edge — permitted). Both are
-    // consumed ONLY by the draft-from-resume handler.
-    SettingsModule,
+    // Add-Talent governed-LLM résumé extraction. TalentExtractionModule →
+    // TalentExtractionService.extractResumeDraft (the governed LLM draft
+    // extractor, an ats→cip edge — permitted). Governed LLM is the SOLE
+    // production résumé fact extractor (TI-1F P0.2); the deterministic mode
+    // resolver (SettingsModule/TenantSettingService) is retired here.
     TalentExtractionModule,
     // SKILL-TAX Canonical Reconciliation Activation — the best-effort producer.
     CanonicalReconcileModule,

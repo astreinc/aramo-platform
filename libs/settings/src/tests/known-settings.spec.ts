@@ -15,18 +15,16 @@ import {
 // default false) — the GATE toggle for the auditor_with_financials grant.
 
 describe('KNOWN_SETTINGS — the closed-set registry (3 keys)', () => {
-  it('ships exactly the 4 known-keys (S2 + S4 + metrics.goals + resume.extraction_mode)', () => {
+  it('ships exactly the 3 known-keys (S2 + S4 + metrics.goals; résumé fact extraction is governed-LLM-only, TI-1F P0.2 — no mode toggle)', () => {
     expect([...Object.keys(KNOWN_SETTINGS)].sort()).toEqual([
       'audit.financials_enabled',
       'compensation.display_default',
       'metrics.goals',
-      'resume.extraction_mode',
     ]);
     expect([...KNOWN_SETTING_KEYS].sort()).toEqual([
       'audit.financials_enabled',
       'compensation.display_default',
       'metrics.goals',
-      'resume.extraction_mode',
     ]);
   });
 

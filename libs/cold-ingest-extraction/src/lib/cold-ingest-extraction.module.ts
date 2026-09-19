@@ -5,40 +5,36 @@ import {
   createAramoLogger,
   RedisConnectionConfig,
 } from '@aramo/common';
-import { IngestionModule } from '@aramo/ingestion';
-import { ResumeParseModule } from '@aramo/resume-parse';
-import { TalentTrustModule } from '@aramo/talent-trust';
 
-import { ColdIngestExtractionService } from './cold-ingest-extraction.service.js';
 import { ColdIngestExtractionProcessor } from './cold-ingest-extraction.processor.js';
 import { COLD_INGEST_EXTRACTION_QUEUE_NAME } from './cold-ingest-extraction.queue.constants.js';
 
 // Cold-Ingest Extraction — the poll module.
 //
-//   - Consumer-direction leaf. Imports (all scope:cip — I15 CIP⊥ATS wall
-//     clean, no ats edge):
-//       IngestionModule   → IngestionRepository (poll + extract-once marker).
-//       ResumeParseModule → ResumeParserService (deterministic parse, no LLM).
-//       TalentTrustModule → TalentTrustService (declared-evidence write to the
-//                           resolved subject).
+//   - Consumer-direction leaf. Imports (scope:cip — I15 CIP⊥ATS wall clean, no
+//     ats edge):
+//       IngestionModule → IngestionRepository (the STAGED arrival poll — the
+//                         extract-once markers are preserved for TI-1F-A).
+//
+//   - TI-1F P0.2 — heuristic résumé FACT extraction is RETIRED (governed LLM is
+//     the sole production résumé fact extractor). The service no longer parses
+//     résumés or writes declared evidence, so ResumeParseModule + TalentTrustModule
+//     are no longer imported. Arrivals are left STAGED for the governed extractor
+//     (TI-1F-A), which will re-introduce the appropriate edges.
 //
 //   - NO controller (a background poll; the canonicalization-trigger precedent).
 //
-//   - The ColdIngestExtractionProcessor is a BullMQ tick worker that drains
-//     resolved-but-unextracted RawPayloadReference rows. BullModule wiring
-//     mirrors CanonicalizationModule verbatim: forRootAsync with
-//     manualRegistration + lazyConnect + RedisConnectionConfig factory;
-//     registerQueue for the named queue; per-processor logger factory token.
+//   - The ColdIngestExtractionProcessor is a BullMQ tick worker (the STAGED-arrival
+//     handoff seam). BullModule wiring mirrors CanonicalizationModule verbatim:
+//     forRootAsync with manualRegistration + lazyConnect + RedisConnectionConfig
+//     factory; registerQueue for the named queue; per-processor logger token.
 //
-//   - Deliberately NOT imported: @aramo/ai-draft / any LLM substrate — this
-//     poll uses the deterministic resume parser only (ADR-0015 Decision 10;
-//     enforced by src/tests/no-llm-boundary.spec.ts).
+//   - Deliberately NOT imported: @aramo/ai-draft / any LLM substrate — this poll
+//     performs no extraction in P0.2 (ADR-0015 Decision 10 boundary trivially
+//     held; enforced by src/tests/no-llm-boundary.spec.ts).
 @Module({
   imports: [
     CommonModule,
-    IngestionModule,
-    ResumeParseModule,
-    TalentTrustModule,
     BullModule.forRootAsync({
       extraOptions: { manualRegistration: true },
       useFactory: (cfg: RedisConnectionConfig) => {
@@ -68,17 +64,12 @@ import { COLD_INGEST_EXTRACTION_QUEUE_NAME } from './cold-ingest-extraction.queu
     BullModule.registerQueue({ name: COLD_INGEST_EXTRACTION_QUEUE_NAME }),
   ],
   providers: [
-    ColdIngestExtractionService,
     ColdIngestExtractionProcessor,
-    {
-      provide: 'ColdIngestExtractionServiceLogger',
-      useFactory: () => createAramoLogger(ColdIngestExtractionService.name),
-    },
     {
       provide: 'ColdIngestExtractionProcessorLogger',
       useFactory: () => createAramoLogger(ColdIngestExtractionProcessor.name),
     },
   ],
-  exports: [ColdIngestExtractionService, ColdIngestExtractionProcessor],
+  exports: [ColdIngestExtractionProcessor],
 })
 export class ColdIngestExtractionModule {}

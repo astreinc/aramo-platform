@@ -11,7 +11,7 @@ import { ValidationPipe, type INestApplication } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
 import { Client } from 'pg';
 import { Verifier } from '@pact-foundation/pact';
-import { afterAll, beforeAll, describe, it } from 'vitest';
+import { afterAll, beforeAll, describe, it, vi } from 'vitest';
 import {
   exportSPKI,
   generateKeyPair,
@@ -33,6 +33,13 @@ import { PolicyStore, PrismaService as PolicyStorePrismaService } from '@aramo/p
 // (Gate-5 eslint amendment). Backends only; controllers stay live-verified.
 import { ObjectStorageService } from '@aramo/object-storage';
 import { ResumeParserService } from '@aramo/resume-parse';
+// TI-1F P0.2 — the draft-from-resume orchestrator calls the governed
+// TalentExtractionService.extractResumeDraft (the sole production résumé fact
+// extractor). Only that ONE method is spied in verify (see the app.init block)
+// so the contract's parsed prefill holds without a live model; the service's
+// other methods (the résumé-edition routes) stay REAL — a wholesale override
+// would 500 those routes.
+import { TalentExtractionService } from '@aramo/talent-extraction';
 // PC-7c — Symbol()-keyed ports the tenant-user lifecycle injects. Overriding a
 // Symbol token requires the token itself (Gate-5 eslint amendment). MAILER_PORT
 // is a plain string ('MAILER_PORT'), overridden by string literal below.
@@ -3982,17 +3989,11 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           expires_at: '2026-05-25T00:05:00.000Z',
         }),
       };
+      // PC-6 / TI-1F P0.2 — deterministic file→TEXT extraction is still valid and
+      // used by the resume-editions POST (content_hash) + the governed draft
+      // orchestrator. Résumé FACT extraction is governed-LLM-only now, so the
+      // retired heuristic parseFromStorageKey is no longer wired/stubbed.
       const mockResumeParser = {
-        parseFromStorageKey: async () => ({
-          prefill: {
-            first_name: 'Grace',
-            last_name: 'Hopper',
-            email1: 'grace@example.com',
-          },
-          parse_status: 'parsed' as const,
-        }),
-        // TALENT-INTEL-1 TI-1D-C — the resume-editions POST extracts text (for the
-        // deterministic content_hash) via this method. Deterministic stub.
         extractTextFromStorageKey: async () => 'Grace Hopper résumé — pact-seed text.',
       };
       const mockDeliveryProvider = {
@@ -4071,6 +4072,32 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         }),
       );
       await app.init();
+
+      // TI-1F P0.2 — the governed résumé extractor's model call cannot run in the
+      // verify env. Spy ONLY extractResumeDraft on the REAL TalentExtractionService
+      // instance (all its other methods — the résumé-edition routes — stay real) so
+      // the draft-from-resume contract's parsed prefill holds: identity from the
+      // proposal, email from result.contact (R17), parse_status 'parsed'.
+      vi.spyOn(
+        app.get(TalentExtractionService, { strict: false }),
+        'extractResumeDraft',
+      ).mockResolvedValue({
+        status: 'success',
+        contact: { emails: ['grace@example.com'], phones: [] },
+        proposal: {
+          first_name: 'Grace',
+          last_name: 'Hopper',
+          skills: [],
+          work_history: [],
+          education: [],
+          certifications: [],
+          rejected_count: 0,
+          overflow: false,
+          source_map_version: 'resume-source-map/v1',
+          resume_text_hash: 'pact-seed',
+        },
+      } as never);
+
       const server = await app.listen(0);
       const address = server.address() as AddressInfo;
       port = address.port;

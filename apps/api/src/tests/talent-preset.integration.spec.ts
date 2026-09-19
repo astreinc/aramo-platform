@@ -50,11 +50,9 @@ function controllerWith(repo: { searchPaged: ReturnType<typeof vi.fn> }) {
     {} as never,
     {} as never,
     {} as never,
-    // tenantSetting + talentExtraction — unused by the paged list() path.
+    // talentExtraction — unused by the paged list() path.
     {} as never,
-    {} as never,
-    // TI-1B — resumeOrchestrator + resumeAuthorizer (unused on this path).
-    {} as never,
+    // TI-1B — resumeOrchestrator (unused on this path; governed-LLM sole extractor).
     {} as never,
     // TI-1D-A — reconcileRepo (field-state writes; no-op fake on this path).
     { upsertProfileFieldState: async () => undefined, releaseProjectionHold: async () => undefined, listProfileFieldStates: async () => [] } as never,

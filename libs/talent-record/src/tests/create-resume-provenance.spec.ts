@@ -30,9 +30,7 @@ function makeController(extra: Record<string, unknown> = {}) {
     extractResumeDraft,
     ...extra,
   };
-  const tenantSetting = { get: vi.fn().mockResolvedValue('deterministic') };
   const resumeParser = {
-    parseFromStorageKey: vi.fn().mockResolvedValue({ prefill: {}, parse_status: 'partial' }),
     extractTextFromStorageKey: vi.fn().mockResolvedValue(null),
   };
   // TI-1B — real authorizer + orchestrator over the fake parser/extraction.
@@ -53,10 +51,8 @@ function makeController(extra: Record<string, unknown> = {}) {
     {} as never,
     {} as never,
     resumeParser as never,
-    tenantSetting as never,
     talentExtraction as never,
     orchestrator,
-    authorizer,
     // TI-1D-A — reconcileRepo (field-state writes; no-op fake on this path).
     { upsertProfileFieldState: async () => undefined, releaseProjectionHold: async () => undefined, listProfileFieldStates: async () => [] } as never,
     undefined, // @Optional canonicalReconcile
@@ -206,9 +202,9 @@ describe('draft/review — NOTHING is persisted before Create (review-before-cre
   it('draftFromResume creates no document and no evidence rows', async () => {
     const { ctl, createResumeDocument, persistDeclaredWorkHistory, persistDeclaredSkills } =
       makeController();
-    // deterministic mode (default) → parseFromStorageKey path; no persistence.
-    // TI-1B — a VALID Aramo résumé key under the authenticated tenant (the
-    // authorizer now guards the deterministic path too).
+    // Governed draft path → the orchestrator returns an empty prefill (fake text
+    // = null); NOTHING is persisted before Create. TI-1B — a VALID Aramo résumé
+    // key under the authenticated tenant (the orchestrator authorizes it).
     const validKey = `${TENANT}/talent/01900000-0000-7000-8000-0000000000aa/resume/01900000-0000-7000-8000-0000000000bb-Resume.pdf`;
     await ctl.draftFromResume(READ_AUTH, { storage_key: validKey }, 'rq-1');
     expect(createResumeDocument).not.toHaveBeenCalled();

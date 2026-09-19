@@ -82,7 +82,6 @@ describe('ResumeExtractionOrchestrator', () => {
     });
     // Exactly ONE governed model call.
     expect(extraction.extractResumeDraft).toHaveBeenCalledTimes(1);
-    expect(res.mode).toBe('governed_llm');
     expect(res.parse_status).toBe('parsed');
     expect(res.prefill.first_name).toBe('Alex');
     expect(res.prefill.city).toBe('Herndon');

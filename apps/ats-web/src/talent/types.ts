@@ -325,13 +325,6 @@ export interface ParseResumeResult {
   readonly parse_status: ParseStatus;
 }
 
-// Add-Talent governed-LLM résumé extraction (LOCKED). Hand-mirrors
-// libs/talent-record DraftFromResumeResponse. MODE IS EXCLUSIVE: `mode` is the
-// tenant's sole extractor for this résumé; `warning` (governed mode only) is
-// set when the LLM could not run/produce — the form opens with an empty/partial
-// prefill + a retry affordance (NO silent deterministic fallback).
-export type ResumeExtractionMode = 'governed_llm' | 'deterministic';
-
 // HF1 §13/R9 — the explicit governed-LLM extraction outcome.
 export type ResumeDraftStatus =
   | 'success'
@@ -415,8 +408,11 @@ export interface WorkHistoryDraft {
   readonly assertions?: readonly AssertionDraft[];
 }
 
+// Add-Talent governed-LLM résumé extraction. Hand-mirrors libs/talent-record
+// DraftFromResumeResponse. Governed LLM is the SOLE extractor (TI-1F P0.2);
+// `warning` is set when the LLM could not run/produce — the form opens with an
+// empty/partial prefill + a retry affordance (the heuristic parser never runs).
 export interface DraftFromResumeResult {
-  readonly mode: ResumeExtractionMode;
   readonly prefill: TalentRecordPrefill;
   readonly parse_status: ParseStatus;
   readonly warning?: string;

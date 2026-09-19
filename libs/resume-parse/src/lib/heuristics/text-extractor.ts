@@ -10,7 +10,9 @@ import pdfParse from 'pdf-parse/lib/pdf-parse.js';
 // A8-3b — deterministic text extraction (NO LLM per ADR-0015 Decision 10).
 //
 // Two formats: PDF (via pdf-parse) + DOCX (via mammoth). Both are pure-JS,
-// no native deps, and produce plain text we feed to the field-extractor.
+// no native deps, and produce plain text handed to the governed extractor
+// (@aramo/talent-extraction). TI-1F P0.2 retired the heuristic field-extractor;
+// governed LLM is the sole résumé fact extractor.
 //
 // Format detection: magic-byte sniff on the buffer head. PDFs start with
 // `%PDF-`; DOCX files are ZIPs and start with `PK\x03\x04`. Anything else

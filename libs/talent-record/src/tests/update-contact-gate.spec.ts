@@ -62,18 +62,15 @@ function makeController(): {
   const ctl = new TalentRecordController(
     repo as unknown as TalentRecordRepository,
     {} as unknown as TalentLinkService,
-    // objectStorage / resumeParser / tenantSetting / talentExtraction — unused
-    // by the scalar contact-anchor PATCH path (no work_history in these bodies).
+    // objectStorage / resumeParser / talentExtraction — unused by the scalar
+    // contact-anchor PATCH path (no work_history in these bodies).
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     {} as any,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     {} as any,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     {} as any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    {} as any,
-    // TI-1B — resumeOrchestrator + resumeAuthorizer (unused on this path).
-    {} as never,
+    // TI-1B — resumeOrchestrator (unused on this path; governed-LLM sole extractor).
     {} as never,
     // TI-1D-A — reconcileRepo (field-state writes; no-op fake on this path).
     { upsertProfileFieldState: async () => undefined, releaseProjectionHold: async () => undefined, listProfileFieldStates: async () => [] } as never,

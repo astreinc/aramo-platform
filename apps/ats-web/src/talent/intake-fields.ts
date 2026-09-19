@@ -2,7 +2,6 @@ import type {
   CertificationDraft,
   CreateTalentRecordRequest,
   EducationDraft,
-  ResumeExtractionMode,
   SkillDraft,
   TalentRecordPrefill,
   TalentRecordView,
@@ -86,14 +85,12 @@ export const INTAKE_TEXT_KEYS: ReadonlyArray<
   'key_skills',
 ];
 
-// The resume prefill populates these keys (the parser's stated-fact surface —
-// libs/resume-parse field-extractor). `key_skills` is DELIBERATELY EXCLUDED:
-// the deterministic section extractor (extractSection over SKILLS_HEADER_RE)
-// over-captures on real résumés with no clean section boundary — it swallows
-// the entire body (skills + work experience) into one blob. Auto-filling that
-// is worse than empty. key_skills stays a free-text field the recruiter fills
-// (R5 §2); clean, structured skill extraction is the governed-LLM surface,
-// gated on a filed directive (ADR-0015 v1.3 is scoped to the Core scoring
+// The resume prefill populates these keys from the governed-LLM extraction.
+// `key_skills` is EXCLUDED from this text-key set and applied separately (see
+// applyPrefill) — the governed extractor returns clean, grounded skills that
+// flow into the R5 §2 free-text field. key_skills stays a free-text field the
+// recruiter reviews; clean, structured skill extraction is the governed-LLM
+// surface, gated on a filed directive (ADR-0015 v1.3 is scoped to the Core scoring
 // layer, not the recruiter form — see the HALT note).
 const PREFILL_TEXT_KEYS: ReadonlyArray<keyof IntakeState> = [
   'first_name',
@@ -161,13 +158,12 @@ export interface PrefillApplication {
 export function applyPrefill(
   base: IntakeState,
   prefill: TalentRecordPrefill,
-  mode: ResumeExtractionMode,
 ): PrefillApplication {
   const state: IntakeState = { ...base };
   const provenance: ProvenanceMap = {};
-  // MODE IS EXCLUSIVE — the prefill came from exactly one extractor; the
-  // provenance chip is honest about which (§16).
-  const source: Provenance = mode === 'governed_llm' ? 'governed_llm' : 'deterministic';
+  // Governed LLM is the SOLE résumé extractor (TI-1F P0.2); every prefilled
+  // field carries the governed-LLM provenance chip (§16).
+  const source: Provenance = 'governed_llm';
   for (const key of PREFILL_TEXT_KEYS) {
     const v = (prefill as Record<string, unknown>)[key];
     if (typeof v === 'string' && v !== '') {
@@ -175,15 +171,9 @@ export function applyPrefill(
       provenance[key] = source;
     }
   }
-  // key_skills is applied ONLY in governed mode. The deterministic parser's
-  // key_skills over-captures the résumé body (garbage — deliberately not
-  // prefilled); the governed extractor returns clean, grounded skills that flow
-  // into the R5 §2 free-text field.
-  if (
-    mode === 'governed_llm' &&
-    typeof prefill.key_skills === 'string' &&
-    prefill.key_skills !== ''
-  ) {
+  // The governed extractor returns clean, grounded skills that flow into the
+  // R5 §2 free-text key_skills field.
+  if (typeof prefill.key_skills === 'string' && prefill.key_skills !== '') {
     state.key_skills = prefill.key_skills;
     provenance['key_skills'] = source;
   }
@@ -193,7 +183,7 @@ export function applyPrefill(
 // Mark a field 'edited' if it previously came from the resume. A field with
 // no prior provenance (recruiter-entered) carries none.
 export function provenanceAfterEdit(prev: Provenance | undefined): Provenance | undefined {
-  if (prev === 'governed_llm' || prev === 'deterministic' || prev === 'edited') return 'edited';
+  if (prev === 'governed_llm' || prev === 'edited') return 'edited';
   return undefined;
 }
 

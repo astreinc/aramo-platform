@@ -5,16 +5,17 @@ import { TalentRecordController } from '../lib/talent-record.controller.js';
 import { ResumeExtractionOrchestrator } from '../lib/resume-extraction/resume-extraction.orchestrator.js';
 import { ResumeSourceAuthorizer } from '../lib/resume-extraction/resume-source-authorizer.js';
 
-// Add-Talent draft-from-resume — MODE IS EXCLUSIVE (LOCKED). The tenant setting
-// selects the SOLE extractor server-side; the other extractor is never invoked.
-// LLM failure → empty prefill + warning + retry, NEVER a deterministic fallback.
+// Add-Talent draft-from-resume — GOVERNED LLM IS THE SOLE production résumé
+// fact extractor (TI-1F P0.2; …-TI-1F-…-v1_0-LOCKED §4-D). There is no mode
+// toggle and no deterministic fact-extraction branch; an LLM failure yields an
+// empty prefill + warning + retry, NEVER a silent fallback to the heuristic
+// parser (§15).
 //
-// TALENT-INTEL-1 (TI-1B) — the governed orchestration now lives in
+// TALENT-INTEL-1 (TI-1B) — the governed orchestration lives in
 // ResumeExtractionOrchestrator; this spec drives the controller through a REAL
-// orchestrator + authorizer over the same fake parser/extraction, so the
-// end-to-end routing + the ruling-15 authorization both hold. Every request
-// uses a VALID Aramo résumé key under the authenticated tenant (a raw 'k' would
-// now be refused pre-fetch by the authorizer — proven separately).
+// orchestrator + authorizer over a fake parser/extraction, so the end-to-end
+// routing + the ruling-15 authorization both hold. Every request uses a VALID
+// Aramo résumé key under the authenticated tenant.
 
 const TENANT = '01900000-0000-7000-8000-000000000001';
 const DRAFT = '01900000-0000-7000-8000-0000000000aa';
@@ -37,25 +38,22 @@ function emptyProposal() {
 }
 
 function makeController(opts: {
-  mode: 'governed_llm' | 'deterministic';
   text?: string | null;
   // HF1 — extractResumeDraft returns { status, proposal }.
   result?: unknown;
   proposalThrows?: boolean;
-  deterministicResult?: unknown;
 }) {
-  const tenantSetting = { get: vi.fn().mockResolvedValue(opts.mode) };
   const extractResumeDraft = opts.proposalThrows
     ? vi.fn().mockRejectedValue(new Error('provider unavailable'))
     : vi
         .fn()
         .mockResolvedValue(opts.result ?? { status: 'partial', proposal: emptyProposal() });
   const talentExtraction = { extractResumeDraft };
-  const parseFromStorageKey = vi
-    .fn()
-    .mockResolvedValue(opts.deterministicResult ?? { prefill: {}, parse_status: 'partial' });
   const extractTextFromStorageKey = vi.fn().mockResolvedValue(opts.text ?? null);
-  const resumeParser = { parseFromStorageKey, extractTextFromStorageKey };
+  // The résumé parser now exposes ONLY deterministic file→text extraction; the
+  // heuristic fact method is gone (TI-1F P0.2), so there is no path to fall back
+  // to — governed LLM is structurally the sole extractor.
+  const resumeParser = { extractTextFromStorageKey };
   // TI-1B — a REAL authorizer (no ATTACHMENT resolver: this is the CREATE path)
   // and a REAL orchestrator over the fake parser/extraction.
   const authorizer = new ResumeSourceAuthorizer();
@@ -76,28 +74,24 @@ function makeController(opts: {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     resumeParser as any,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    tenantSetting as any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     talentExtraction as any,
     orchestrator,
-    authorizer,
     // TI-1D-A — reconcileRepo (field-state writes; no-op fake on this path).
     { upsertProfileFieldState: async () => undefined, releaseProjectionHold: async () => undefined, listProfileFieldStates: async () => [] } as never,
   );
-  return { ctl, tenantSetting, extractResumeDraft, parseFromStorageKey, extractTextFromStorageKey };
+  return { ctl, extractResumeDraft, extractTextFromStorageKey };
 }
 
-describe('draft-from-resume — exclusive mode resolver', () => {
+describe('draft-from-resume — governed-LLM sole extractor', () => {
   it('empty storage_key → VALIDATION_ERROR', async () => {
-    const { ctl } = makeController({ mode: 'deterministic' });
+    const { ctl } = makeController({});
     await expect(
       ctl.draftFromResume(AUTH, { storage_key: '' }, 'rq-1'),
     ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
   });
 
-  it('governed_llm → LLM is the SOLE extractor; key_skills from surface_forms; source_refs + status carried', async () => {
-    const { ctl, extractResumeDraft, parseFromStorageKey, extractTextFromStorageKey } = makeController({
-      mode: 'governed_llm',
+  it('governed LLM is the SOLE extractor; key_skills from surface_forms; source_refs + status carried', async () => {
+    const { ctl, extractResumeDraft, extractTextFromStorageKey } = makeController({
       text: 'Sarah Nolan — Cloud Engineer, Austin TX. Skills: C#, Azure SQL',
       result: {
         status: 'success',
@@ -121,7 +115,6 @@ describe('draft-from-resume — exclusive mode resolver', () => {
       },
     });
     const res = await ctl.draftFromResume(AUTH, { storage_key: VALID_KEY }, 'rq-1');
-    expect(res.mode).toBe('governed_llm');
     expect(res.extraction_status).toBe('success');
     expect(res.prefill.first_name).toBe('Sarah');
     // key_skills derived from the structured surface_forms (R7).
@@ -142,15 +135,13 @@ describe('draft-from-resume — exclusive mode resolver', () => {
     expect(res.prefill.phone_cell).toBeUndefined();
     expect(extractTextFromStorageKey).toHaveBeenCalledOnce();
     expect(extractResumeDraft).toHaveBeenCalledOnce();
-    expect(parseFromStorageKey).not.toHaveBeenCalled();
   });
 
   // HF2 R17 — the hybrid split: EMAIL/PHONE arrive on result.contact (captured
   // during model-input redaction inside extractResumeDraft — the model never
   // sees them); CITY/STATE/ZIP come from the GROUNDED LLM proposal.
-  it('governed_llm → email/phone from result.contact, city/state/ZIP from the proposal (R17)', async () => {
+  it('email/phone from result.contact, city/state/ZIP from the proposal (R17)', async () => {
     const { ctl } = makeController({
-      mode: 'governed_llm',
       text: 'Jane Doe\nMcLean, VA 22102\nSkills: Go',
       result: {
         status: 'success',
@@ -184,9 +175,8 @@ describe('draft-from-resume — exclusive mode resolver', () => {
     expect(res.prefill.zip).toBe('22102');
   });
 
-  it('governed_llm + provider_truncated → explicit failed status + distinct warning (§13/R9)', async () => {
-    const { ctl, parseFromStorageKey } = makeController({
-      mode: 'governed_llm',
+  it('provider_truncated → explicit failed status + distinct warning (§13/R9)', async () => {
+    const { ctl } = makeController({
       text: 'a very long resume',
       result: { status: 'provider_truncated', proposal: emptyProposal() },
     });
@@ -195,13 +185,10 @@ describe('draft-from-resume — exclusive mode resolver', () => {
     expect(res.parse_status).toBe('failed');
     expect(res.prefill).toEqual({});
     expect(res.warning).toMatch(/too long/i);
-    // A technical failure NEVER falls back to the deterministic parser (§15).
-    expect(parseFromStorageKey).not.toHaveBeenCalled();
   });
 
-  it('governed_llm + invalid_structured_output → explicit failed status + retry warning', async () => {
+  it('invalid_structured_output → explicit failed status + retry warning', async () => {
     const { ctl } = makeController({
-      mode: 'governed_llm',
       text: 'resume',
       result: { status: 'invalid_structured_output', proposal: emptyProposal() },
     });
@@ -211,40 +198,22 @@ describe('draft-from-resume — exclusive mode resolver', () => {
     expect(res.warning).toBeDefined();
   });
 
-  it('deterministic → parser is the SOLE extractor (NO LLM call)', async () => {
-    const { ctl, extractResumeDraft, parseFromStorageKey, extractTextFromStorageKey } = makeController({
-      mode: 'deterministic',
-      deterministicResult: { prefill: { first_name: 'Deter', email1: 'd@x.com' }, parse_status: 'parsed' },
-    });
+  it('unreadable résumé (null text) → empty prefill + warning, LLM NOT called', async () => {
+    const { ctl, extractResumeDraft } = makeController({ text: null });
     const res = await ctl.draftFromResume(AUTH, { storage_key: VALID_KEY }, 'rq-1');
-    expect(res.mode).toBe('deterministic');
-    expect(res.prefill.first_name).toBe('Deter');
-    expect(parseFromStorageKey).toHaveBeenCalledOnce();
-    expect(extractResumeDraft).not.toHaveBeenCalled();
-    expect(extractTextFromStorageKey).not.toHaveBeenCalled();
-  });
-
-  it('governed_llm + unreadable résumé (null text) → empty prefill + warning, LLM NOT called', async () => {
-    const { ctl, extractResumeDraft } = makeController({ mode: 'governed_llm', text: null });
-    const res = await ctl.draftFromResume(AUTH, { storage_key: VALID_KEY }, 'rq-1');
-    expect(res.mode).toBe('governed_llm');
     expect(res.prefill).toEqual({});
     expect(res.parse_status).toBe('failed');
     expect(res.warning).toBeDefined();
     expect(extractResumeDraft).not.toHaveBeenCalled();
   });
 
-  it('governed_llm + LLM error → empty prefill + warning, NO deterministic fallback (§15)', async () => {
-    const { ctl, parseFromStorageKey } = makeController({
-      mode: 'governed_llm',
+  it('LLM error → empty prefill + warning, NO heuristic fallback (§15)', async () => {
+    const { ctl } = makeController({
       text: 'some resume text',
       proposalThrows: true,
     });
     const res = await ctl.draftFromResume(AUTH, { storage_key: VALID_KEY }, 'rq-1');
-    expect(res.mode).toBe('governed_llm');
     expect(res.prefill).toEqual({});
     expect(res.warning).toBeDefined();
-    // The tenant chose governed_llm — we do NOT silently run the parser.
-    expect(parseFromStorageKey).not.toHaveBeenCalled();
   });
 });

@@ -33,9 +33,7 @@ import {
 import {
   ResumeParserService,
   buildResumeSourceMap,
-  type ParseResumeResult,
 } from '@aramo/resume-parse';
-import { TenantSettingService } from '@aramo/settings';
 import {
   TalentExtractionService,
   type TalentWorkHistoryView,
@@ -62,7 +60,6 @@ import type {
 } from './dto/talent-search.dto.js';
 import type { UpdateTalentRecordRequestDto } from './dto/update-talent-record-request.dto.js';
 import { ResumeExtractionOrchestrator } from './resume-extraction/resume-extraction.orchestrator.js';
-import { ResumeSourceAuthorizer } from './resume-extraction/resume-source-authorizer.js';
 import { ResumeEditionIngestionService } from './resume-extraction/resume-edition-ingestion.service.js';
 import {
   RESUME_ATTACHMENT_RESOLVER,
@@ -146,17 +143,12 @@ export class TalentRecordController {
     private readonly linkService: TalentLinkService,
     private readonly objectStorage: ObjectStorageService,
     private readonly resumeParser: ResumeParserService,
-    // Add-Talent governed-LLM résumé extraction (LOCKED). Consumed ONLY by the
-    // draft-from-resume handler; the mode resolver + the governed extractor.
-    private readonly tenantSetting: TenantSettingService,
     private readonly talentExtraction: TalentExtractionService,
-    // TALENT-INTEL-1 (TI-1B) — the shared governed-LLM extraction orchestrator
-    // and its authorization seam. The orchestrator owns the CREATE governed
-    // path (authorize→extract); the authorizer additionally guards the
-    // deterministic (non-LLM) branch, so BOTH modes validate the draft key
-    // before any object access.
+    // TALENT-INTEL-1 (TI-1B) — the shared governed-LLM extraction orchestrator.
+    // Governed LLM is the SOLE production résumé fact extractor (TI-1F P0.2,
+    // …-TI-1F-…-v1_0-LOCKED §4-D); the orchestrator owns the CREATE governed
+    // path (authorize→extract) — it authorizes the draft key internally.
     private readonly resumeOrchestrator: ResumeExtractionOrchestrator,
-    private readonly resumeAuthorizer: ResumeSourceAuthorizer,
     // TALENT-INTEL-1 TI-1D-A — per-field control state (explicit-clear / HOLD)
     // written on manual edit so automatic reconcile never undoes recruiter intent.
     // REQUIRED (before the @Optional param below, per TS param ordering).
@@ -1127,42 +1119,15 @@ export class TalentRecordController {
       );
     }
 
-    // MODE IS EXCLUSIVE (LOCKED). The tenant setting selects the SOLE résumé
-    // extractor SERVER-side (§14 — never trust the FE). Unknown/absent → the
-    // setting's default ('deterministic'); the LLM is never silently enabled.
-    const mode = await this.tenantSetting.get(
-      authContext.tenant_id,
-      'resume.extraction_mode',
-    );
-
-    // TALENT-INTEL-1 (TI-1B, ruling 15) — the TalentRecord/Attachment do not
-    // exist yet; this is a CREATE fresh-upload source. Authorization (tenant +
-    // résumé namespace) precedes ALL object access on BOTH modes below; a raw
-    // client storage_key is never the authorization anchor.
+    // Governed LLM is the SOLE production résumé fact extractor (TI-1F P0.2;
+    // …-TI-1F-…-v1_0-LOCKED §4-D). Deterministic résumé FACT extraction is
+    // RETIRED — there is no mode toggle and no silent fallback to the heuristic
+    // parser. The orchestrator authorizes the draft key internally (tenant +
+    // résumé namespace); a raw client storage_key is never the auth anchor.
     const ctx = { tenant_id: authContext.tenant_id, requestId };
-
-    if (mode === 'governed_llm') {
-      return this.resumeOrchestrator.extractResume(
-        { kind: 'CREATE_DRAFT_UPLOAD', storage_key: body.storage_key },
-        ctx,
-      );
-    }
-
-    // deterministic — the existing parser ONLY; NO LLM call. Authorize the draft
-    // key first (the parser fetches by key), then parse. Parse failure is
-    // non-blocking: returns { prefill: {}, parse_status: 'failed' } (proof §4.4).
-    const { storage_key } = this.resumeAuthorizer.authorizeCreateDraftUpload(
-      body.storage_key,
+    return this.resumeOrchestrator.extractResume(
+      { kind: 'CREATE_DRAFT_UPLOAD', storage_key: body.storage_key },
       ctx,
     );
-    const result: ParseResumeResult = await this.resumeParser.parseFromStorageKey({
-      storage_key,
-      requestId,
-    });
-    return {
-      mode: 'deterministic',
-      prefill: result.prefill,
-      parse_status: result.parse_status,
-    };
   }
 }
