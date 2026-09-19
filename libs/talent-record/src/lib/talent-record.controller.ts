@@ -50,6 +50,11 @@ import type { ResumeUploadUrlRequestDto } from './dto/resume-upload-url-request.
 import type { TalentLinkView } from './dto/talent-link.view.js';
 import type { TalentRecordView } from './dto/talent-record.view.js';
 import type { TalentProfileFieldStateResponse } from './dto/talent-profile-field-state.view.js';
+import type { ProfileHydrationResponse } from './dto/profile-hydration.view.js';
+import {
+  composeProfileHydration,
+  type ProfileHydrationInputRecord,
+} from './profile-hydration.js';
 import type {
   TalentSearchPage,
   TalentSearchQuery,
@@ -385,6 +390,38 @@ export class TalentRecordController {
         };
       }),
     };
+  }
+
+  // TALENT-INTEL-1 TI-1E-A — the aggregate profile-hydration projection. A DERIVED
+  // read composing the operational TalentRecord value with the TI-1D-B field-state
+  // control/resolution/provenance, over the COMPLETE governed editable field set.
+  // The server owns the precedence once (explicitly-cleared > governed SET >
+  // present operational value > UNKNOWN). READ-ONLY: it reuses the same two reads
+  // as getFieldState (findById + getFieldStateReadModel) — NO extraction, NO
+  // reconciliation, NO writes. Operational-only fields are returned honestly
+  // (source_type null), never given fabricated provenance.
+  @Get(':id/profile-hydration')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('talent:read')
+  @RequireSiteMatch()
+  async getProfileHydration(
+    @AuthContext() authContext: AuthContextType,
+    @Param('id') id: string,
+    @RequestId() requestId: string,
+  ): Promise<ProfileHydrationResponse> {
+    const view = await this.repo.findById({ tenant_id: authContext.tenant_id, id });
+    if (view === null) {
+      throw new AramoError('NOT_FOUND', 'TalentRecord not found in tenant', 404, {
+        requestId,
+        details: { id },
+      });
+    }
+    const rows = await this.reconcileRepo.getFieldStateReadModel(id);
+    return composeProfileHydration(
+      id,
+      view as unknown as ProfileHydrationInputRecord,
+      rows,
+    );
   }
 
   // TALENT-INTEL-1 TI-1D-C — the résumé-edition collection for a Talent, each row

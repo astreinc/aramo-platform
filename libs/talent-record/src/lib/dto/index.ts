@@ -3,3 +3,8 @@ export type { CreateTalentRecordRequestDto } from './create-talent-record-reques
 export type { UpdateTalentRecordRequestDto } from './update-talent-record-request.dto.js';
 export { LinkTalentRecordRequestDto } from './link-talent-record-request.dto.js';
 export type { TalentLinkView } from './talent-link.view.js';
+export type {
+  ProfileHydrationValue,
+  ProfileHydrationItem,
+  ProfileHydrationResponse,
+} from './profile-hydration.view.js';
