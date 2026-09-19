@@ -4697,6 +4697,18 @@ select.rc-secinput { appearance: none; padding-right: 28px; }
 .rc-cdp__resumeuse { font-size: 12px; font-weight: 600; color: #fff; background: var(--brand-strong, #022AC0); border: none; border-radius: 6px; padding: 3px 10px; cursor: pointer; }
 .rc-cdp__resumeuse:disabled { opacity: 0.6; cursor: default; }
 
+/* ── TI-1E-B1 hydrated field value — server value_state / source_type /
+   resolution rendered inline. UNKNOWN & EXPLICITLY_CLEARED both show the value
+   em-dash; the "Cleared" tag distinguishes the governed clear; the provenance
+   tag is source_type-driven; "Review required" is a governed resolution
+   condition (NOT a confidence signal). ── */
+.hyd { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.hyd__val { }
+.hyd__tag { font-size: 10px; font-weight: 700; letter-spacing: 0.03em; border-radius: 6px; padding: 1px 6px; white-space: nowrap; }
+.hyd__tag--cleared { color: var(--muted, #6b7683); border: 1px solid var(--muted, #93A0A8); }
+.hyd__tag--prov { color: var(--brand-strong, #022AC0); border: 1px solid var(--brand-strong, #022AC0); }
+.hyd__tag--review { color: #B42318; border: 1px solid #B42318; }
+
 /* ── S3 Talent Journey (rc-cjr) — backend-owned journey presentation in the
    drawer. 5-milestone rail + owner-attributed lane + next-step. .dc values. ── */
 .rc-cjr {

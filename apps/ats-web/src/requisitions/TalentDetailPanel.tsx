@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 
 import { Avatar, HotToggle } from '../ui';
@@ -16,7 +16,9 @@ import { getVoiceEngagementEvidence } from '../communications/communications-api
 import type { VoiceEngagementEvidence } from '../communications/types';
 import { EngagementReadinessSummary } from '../engagement/EngagementReadinessSummary';
 import { MicrosoftRecruiterActions } from '../microsoft/MicrosoftRecruiterActions';
-import { getTalent, updateTalent } from '../talent/talent-api';
+import { getTalent, getTalentProfileHydration, updateTalent } from '../talent/talent-api';
+import { HydratedFieldValue } from '../talent/HydratedFieldValue';
+import { indexHydration, type ProfileHydrationItem } from '../talent/profile-hydration';
 import type { TalentRecordView, UpdateTalentRecordRequest } from '../talent/types';
 import {
   WORK_AUTHORIZATION_LABELS,
@@ -134,6 +136,25 @@ export function TalentDetailPanel({
       cancelled = true;
     };
   }, [entry.id]);
+
+  // TI-1E-B1 — the server-owned per-field hydration (value_state / source_type /
+  // resolution) for the governed profile fields. Consumed for DISPLAY only; the
+  // browser renders it, never reconstructs it. A 404 (site-match) leaves the map
+  // empty and the fields fall back to the masked enrichment.
+  const [hydration, setHydration] = useState<Map<string, ProfileHydrationItem>>(new Map());
+  useEffect(() => {
+    let cancelled = false;
+    void getTalentProfileHydration(entry.talent_record_id)
+      .then((res) => {
+        if (!cancelled) setHydration(indexHydration(res));
+      })
+      .catch(() => {
+        /* neutral — fall back to enrichment display */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [entry.talent_record_id]);
 
   // Re-read the owner-attributed journey after a governed action so the rail and
   // current lane reflect the new authoritative state (no optimistic FE guess).
@@ -466,10 +487,38 @@ export function TalentDetailPanel({
               <div className="rc-cdp__grid">
                 <Field label="First name" value={record?.first_name ?? '—'} />
                 <Field label="Last name" value={record?.last_name ?? '—'} />
-                <Field label="Email" value={enrichmentValue(entry.email)} />
-                <Field label="Phone" value={enrichmentValue(entry.phone)} />
+                {/* TI-1E-B1 — governed fields render server hydration state
+                    (SET/UNKNOWN/EXPLICITLY_CLEARED + source_type provenance +
+                    review affordance), falling back to the masked enrichment
+                    when hydration is absent (404 / not yet loaded). */}
+                <Field
+                  label="Email"
+                  value={
+                    <HydratedFieldValue
+                      item={hydration.get('email1')}
+                      fallback={enrichmentValue(entry.email)}
+                    />
+                  }
+                />
+                <Field
+                  label="Phone"
+                  value={
+                    <HydratedFieldValue
+                      item={hydration.get('phone_cell')}
+                      fallback={enrichmentValue(entry.phone)}
+                    />
+                  }
+                />
                 <Field label="Location" value={enrichmentValue(entry.location)} />
-                <Field label="Work authorization" value={enrichmentValue(entry.work_auth)} />
+                <Field
+                  label="Work authorization"
+                  value={
+                    <HydratedFieldValue
+                      item={hydration.get('work_authorization')}
+                      fallback={enrichmentValue(entry.work_auth)}
+                    />
+                  }
+                />
               </div>
             )}
           </section>
@@ -568,7 +617,7 @@ function splitName(talentName: string | undefined): {
   return { first: trimmed.slice(0, idx), last: trimmed.slice(idx + 1).trim() || null };
 }
 
-function Field({ label, value }: { label: string; value: string }): JSX.Element {
+function Field({ label, value }: { label: string; value: ReactNode }): JSX.Element {
   return (
     <div className="rc-cdp__field">
       <div className="rc-cdp__fieldl">{label}</div>

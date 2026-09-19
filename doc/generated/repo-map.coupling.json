@@ -10695,6 +10695,22 @@
     },
     {
       "excludedBy": "src/**/*.spec.ts",
+      "from": "apps/ats-web/src/talent/profile-hydration.drift.spec.ts",
+      "status": "excluded",
+      "to": "libs/talent-record/src/lib/talent-record-reconcile.repository.ts"
+    },
+    {
+      "from": "apps/ats-web/src/talent/profile-hydration.ts",
+      "status": "production",
+      "to": "libs/talent-record/src/lib/dto/profile-hydration.view.ts"
+    },
+    {
+      "from": "apps/ats-web/src/talent/profile-hydration.ts",
+      "status": "production",
+      "to": "libs/talent-record/src/lib/talent-record-reconcile.repository.ts"
+    },
+    {
+      "excludedBy": "src/**/*.spec.ts",
       "from": "apps/ats-web/src/talent/stated-fields.drift.spec.ts",
       "status": "excluded",
       "to": "libs/talent-record/src/lib/dto/stated-fields.ts"
