@@ -2392,7 +2392,7 @@ export class TalentTrustService {
     // ONLY as a grouping key here, never emitted or persisted on the wire.
     const groups = new Map<string, Hit[]>();
     for (const h of hits) {
-      const key = `${h.anchor.anchor_kind} ${h.anchor.normalized_value}`;
+      const key = `${h.anchor.anchor_kind}\0${h.anchor.normalized_value}`;
       const g = groups.get(key);
       if (g === undefined) groups.set(key, [h]);
       else g.push(h);
@@ -2540,13 +2540,13 @@ function isoMinDate(dates: (Date | null)[]): string | null {
 
 // ===========================================================================
 // Portal P3b — the Amendment v1.1 §2 outcome-mapping table, ENCODED. The tenant
-// disposition (disposePortalDispute) + candidate withdraw wire to TR-15 through
+// disposition (disposePortalDispute) + talent withdraw wire to TR-15 through
 // this map. The mandatory tripwire (portal-dispute-mapping.spec.ts) asserts all
-// three rows VERBATIM — the "upheld" inversion (candidate-visible = the ITEM
+// three rows VERBATIM — the "upheld" inversion (talent-visible = the ITEM
 // upheld; TR-15 = the DISPUTE upheld) goes red if a sense is flipped.
 // ===========================================================================
 export const PORTAL_DISPUTE_OUTCOME_MAP = {
-  // The candidate was right; the item was wrong → the DISPUTE is upheld → REVOKED.
+  // The talent was right; the item was wrong → the DISPUTE is upheld → REVOKED.
   RESOLVED_CORRECTED: { tr15Outcome: 'upheld' as const, itemEndState: 'REVOKED' as const },
   // The item stands; the dispute is rejected → DISPUTE_RESOLVED → VALID.
   RESOLVED_UPHELD: { tr15Outcome: 'rejected' as const, itemEndState: 'VALID' as const },
