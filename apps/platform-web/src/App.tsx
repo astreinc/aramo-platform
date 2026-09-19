@@ -16,6 +16,9 @@ import { TenantDetailView } from './tenants/TenantDetailView';
 import { ProvisionTenantView } from './tenants/ProvisionTenantView';
 import { SkillsRegistryView } from './skills/SkillsRegistryView';
 import { SkillDetailView } from './skills/SkillDetailView';
+import { ReviewQueueView } from './skills/ReviewQueueView';
+import { ProposalsListView } from './skills/ProposalsListView';
+import { ProposalDetailView } from './skills/ProposalDetailView';
 
 // The platform console app (Inc-2 PR-2). Single guarded surface: the whole thing
 // requires platform:tenant:read. Unauthenticated → RouteGuard redirects to
@@ -79,6 +82,39 @@ export function App() {
                 element={
                   hasScope(state.session, 'platform:skill:read') ? (
                     <SkillsRegistryView session={state.session} />
+                  ) : (
+                    <ForbiddenState scope="platform:skill:read" />
+                  )
+                }
+              />
+              {/* SKILL-TAX-1F-C2 — Review Queue + Proposals. Static paths precede
+                  /skills/:id so react-router ranks them ahead of the dynamic detail
+                  route. Same platform:skill:read gate. */}
+              <Route
+                path="/skills/review-queue"
+                element={
+                  hasScope(state.session, 'platform:skill:read') ? (
+                    <ReviewQueueView session={state.session} />
+                  ) : (
+                    <ForbiddenState scope="platform:skill:read" />
+                  )
+                }
+              />
+              <Route
+                path="/skills/proposals"
+                element={
+                  hasScope(state.session, 'platform:skill:read') ? (
+                    <ProposalsListView />
+                  ) : (
+                    <ForbiddenState scope="platform:skill:read" />
+                  )
+                }
+              />
+              <Route
+                path="/skills/proposals/:id"
+                element={
+                  hasScope(state.session, 'platform:skill:read') ? (
+                    <ProposalDetailView session={state.session} />
                   ) : (
                     <ForbiddenState scope="platform:skill:read" />
                   )

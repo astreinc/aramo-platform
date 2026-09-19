@@ -14,6 +14,9 @@ export function skillErrorMessage(e: unknown, fallback: string): string {
     }
     return `Conflict: ${e.message}`;
   }
+  if (e.code === 'SKILL_PROPOSAL_NOT_PENDING') {
+    return 'This proposal is no longer pending — it was already decided. The view has been refreshed.';
+  }
   const reason = e.details?.['reason'];
   const reasonSuffix = typeof reason === 'string' && reason.length > 0 ? ` (${reason})` : '';
   return `${e.message}${reasonSuffix}`;

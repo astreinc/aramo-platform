@@ -37,3 +37,12 @@ export { DataTable } from './DataTable';
 export { MetricCard } from './MetricCard';
 export { KpiCard, type KpiDelta, type KpiPace } from './KpiCard';
 export { Sparkline, type SparkTone } from './Sparkline';
+// SKILL-TAX-1F-C2 — a domain-neutral keyset/cursor paginator (hook + button). The
+// cursor is opaque and never decoded here; first consumed by the platform skill
+// review queue, reusable by any cursor-backed surface.
+export {
+  useCursorPager,
+  CursorLoadMore,
+  type CursorPage,
+  type CursorPagerState,
+} from './CursorPager';

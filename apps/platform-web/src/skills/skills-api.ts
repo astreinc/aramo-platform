@@ -89,6 +89,38 @@ export interface SkillRelationship {
   source_ref: string | null;
 }
 
+// ---- SKILL-TAX-1F-C2 — review queue + proposals ---------------------------
+export type ReviewQueueSourceDomain = 'talent' | 'requisition';
+
+// A counts-only review-queue row. NEVER carries a tenant/Talent/requisition id.
+export interface ReviewQueueRow {
+  surface_form: string;
+  occurrence_count: number;
+  tenant_count: number;
+}
+export interface ReviewQueuePage {
+  rows: ReviewQueueRow[];
+  next_cursor: string | null;
+}
+
+export type ProposalStatus = 'PENDING' | 'ACCEPTED' | 'REJECTED';
+export type ProposalType = 'ALIAS' | 'RELATIONSHIP';
+export type ProposalSource = 'AI_RECOMMENDED';
+
+export interface Proposal {
+  id: string;
+  proposal_type: ProposalType;
+  source: ProposalSource;
+  status: ProposalStatus;
+  payload: unknown;
+  proposed_by: string | null;
+  proposed_at: string;
+  decided_by: string | null;
+  decided_at: string | null;
+  decision_reason: string | null;
+  applied_entity_id: string | null;
+}
+
 export const skillsApi = {
   // ---- Reads (platform:skill:read) --------------------------------------
   listSkills(params?: { includeInactive?: boolean }): Promise<{ skills: Skill[] }> {
@@ -166,5 +198,41 @@ export const skillsApi = {
   },
   removeRelationship(id: string, relationshipId: string): Promise<SkillRelationship> {
     return apiClient.delete(`/platform/skills/${id}/relationships/${relationshipId}`);
+  },
+
+  // ---- Review queue (platform:skill:read; counts-only) ------------------
+  listReviewQueue(params?: {
+    sourceDomain?: ReviewQueueSourceDomain;
+    minOccurrence?: number;
+    surfaceSearch?: string;
+    limit?: number;
+    cursor?: string | null;
+  }): Promise<ReviewQueuePage> {
+    const qs = new URLSearchParams();
+    if (params?.sourceDomain) qs.set('source_domain', params.sourceDomain);
+    if (params?.minOccurrence !== undefined) qs.set('min_occurrence', String(params.minOccurrence));
+    if (params?.surfaceSearch) qs.set('surface_search', params.surfaceSearch);
+    if (params?.limit !== undefined) qs.set('limit', String(params.limit));
+    if (params?.cursor) qs.set('cursor', params.cursor);
+    const suffix = qs.toString() ? `?${qs.toString()}` : '';
+    return apiClient.get(`/platform/skill-review-queue${suffix}`);
+  },
+
+  // ---- Proposals (read list/detail; manage accept/reject) ---------------
+  listProposals(params?: { status?: ProposalStatus; limit?: number }): Promise<{ proposals: Proposal[] }> {
+    const qs = new URLSearchParams();
+    if (params?.status) qs.set('status', params.status);
+    if (params?.limit !== undefined) qs.set('limit', String(params.limit));
+    const suffix = qs.toString() ? `?${qs.toString()}` : '';
+    return apiClient.get(`/platform/skill-proposals${suffix}`);
+  },
+  getProposal(id: string): Promise<Proposal> {
+    return apiClient.get(`/platform/skill-proposals/${id}`);
+  },
+  acceptProposal(id: string): Promise<Proposal> {
+    return apiClient.post(`/platform/skill-proposals/${id}/accept`);
+  },
+  rejectProposal(id: string, body?: { reason?: string | null }): Promise<Proposal> {
+    return apiClient.post(`/platform/skill-proposals/${id}/reject`, body ?? {});
   },
 };

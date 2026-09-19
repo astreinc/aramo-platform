@@ -71,4 +71,29 @@ describe('skillsApi', () => {
       '/platform/skills/s1/relationships/r1',
     ]);
   });
+
+  it('review-queue + proposals hit the correct paths (C2)', async () => {
+    const get = vi.spyOn(apiClient, 'get').mockResolvedValue({} as never);
+    const post = vi.spyOn(apiClient, 'post').mockResolvedValue({} as never);
+
+    await skillsApi.listReviewQueue();
+    await skillsApi.listReviewQueue({ sourceDomain: 'talent', minOccurrence: 2, surfaceSearch: 'k8s', limit: 50, cursor: 'CUR' });
+    await skillsApi.listProposals();
+    await skillsApi.listProposals({ status: 'PENDING', limit: 25 });
+    await skillsApi.getProposal('p1');
+    await skillsApi.acceptProposal('p1');
+    await skillsApi.rejectProposal('p1', { reason: 'dup' });
+
+    expect(get.mock.calls.map((c) => c[0])).toEqual([
+      '/platform/skill-review-queue',
+      '/platform/skill-review-queue?source_domain=talent&min_occurrence=2&surface_search=k8s&limit=50&cursor=CUR',
+      '/platform/skill-proposals',
+      '/platform/skill-proposals?status=PENDING&limit=25',
+      '/platform/skill-proposals/p1',
+    ]);
+    expect(post.mock.calls.map((c) => c[0])).toEqual([
+      '/platform/skill-proposals/p1/accept',
+      '/platform/skill-proposals/p1/reject',
+    ]);
+  });
 });

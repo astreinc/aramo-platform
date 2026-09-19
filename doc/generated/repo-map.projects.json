@@ -4154,6 +4154,12 @@
       },
       { "project": "aramo-ats-web", "status": "production" },
       {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/platform-web/src/skills/ProposalDetailView.spec.tsx",
+        "project": "aramo-platform-web",
+        "status": "excluded"
+      },
+      {
         "excludedBy": "src/**/*.spec.ts",
         "from": "apps/platform-web/src/skills/skills-api.spec.ts",
         "project": "aramo-platform-web",
