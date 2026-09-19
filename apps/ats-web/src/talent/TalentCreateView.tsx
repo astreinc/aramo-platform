@@ -219,7 +219,7 @@ export function TalentCreateView() {
     setResume({ status: 'parsing', file, storage_key });
     try {
       const result = await parseDraftFromResume({ storage_key });
-      const applied = applyPrefill(emptyIntakeState(), result.prefill, result.mode);
+      const applied = applyPrefill(emptyIntakeState(), result.prefill);
       setFields(applied.state);
       setProvenance(applied.provenance);
       setWorkHistory(result.work_history ? [...result.work_history] : []);

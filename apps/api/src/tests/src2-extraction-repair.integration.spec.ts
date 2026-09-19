@@ -4,14 +4,13 @@ import { resolve } from 'node:path';
 
 import { Test, type TestingModule } from '@nestjs/testing';
 import type { INestApplication } from '@nestjs/common';
+import type { Job } from 'bullmq';
 import {
   PostgreSqlContainer,
   type StartedPostgreSqlContainer,
 } from '@testcontainers/postgresql';
 import { Client } from 'pg';
 import express from 'express';
-import request from 'supertest';
-import { v7 as uuidv7 } from 'uuid';
 import { Document, Packer, Paragraph } from 'docx';
 import { AramoError } from '@aramo/common';
 import { SourcedTalentModule } from '@aramo/sourced-talent';
@@ -24,14 +23,11 @@ import { TenantService } from '@aramo/identity';
 import {
   IngestionModule,
   IngestionRepository,
-  type ArrivalNeedingExtraction,
 } from '@aramo/ingestion';
 import {
   ColdIngestExtractionModule,
   ColdIngestExtractionProcessor,
-  ColdIngestExtractionService,
 } from '@aramo/cold-ingest-extraction';
-import { extractResumeText } from '@aramo/resume-parse';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { IndeedApplyController } from '../webhooks/indeed-apply.controller.js';
@@ -42,33 +38,25 @@ import {
   INDEED_APPLY_WEBHOOK_SECRET_ENV,
 } from '../webhooks/indeed-apply.constants.js';
 import { computeIndeedSignature } from '../webhooks/indeed-signature.js';
-import { PromotionService } from '../talent-identity/promotion.service.js';
 
-// SRC-2 PR-1 — extraction repair, end-to-end against real Postgres 17.
-// The NON-SEEDED twin of src1-e2e-closure: a signed Indeed application whose
-// payload CARRIES a base64 résumé promotes end-to-end with ZERO manual evidence
-// seeding — the cold-ingest sweep parses the envelope and writes FULL_NAME. Plus
-// the non-JSON regression, the résumé-less-envelope permanence, and a sweep-tick
-// drain. ObjectStorage is a byte-STORING fake that serves `data:` URLs the real
-// ResumeParserService fetches (no LocalStack; real Postgres for the spine).
+// SRC-2 / TI-1F P0.2 — cold-ingest STAGING-ONLY, end-to-end against real
+// Postgres 17. Cold-ingest is PARKED: heuristic résumé FACT extraction is
+// retired (governed LLM is the SOLE production fact extractor). A signed Indeed
+// application whose payload CARRIES a base64 résumé is canonicalized to a
+// resolved arrival and then STAGED — the inert cold-ingest processor produces NO
+// Talent evidence, stamps NO extract-once marker, and leaves the arrival needing
+// extraction (available to a future governed extractor). ObjectStorage is a
+// byte-STORING fake; real Postgres for the spine.
 
 const ROOT = resolve(__dirname, '../../../..');
-const SECRET = 'src2-extraction-secret';
+const SECRET = 'src2-staging-secret';
 const TENANT_ID = '11111111-1111-7111-8111-1111111111f2';
 const HOST = 'acme.aramo.ai';
 
-const SAMPLE_RESUME_TEXT = [
-  'Jane Smith',
-  'jane.smith@example.com',
-  '555-234-5678',
-  '',
-  'Skills',
-  'TypeScript, React, Node.js',
-].join('\n');
+const SAMPLE_RESUME_TEXT = ['Jane Smith', 'jane.smith@example.com', '555-234-5678'].join('\n');
 
-// A DOCX résumé (mammoth extraction) — deterministic and concurrency-safe, unlike
-// pdf-parse/pdf.js on generated PDFs. detectResumeFormat sniffs the ZIP magic
-// (PK\x03\x04), so the résumé's declared contentType is irrelevant to extraction.
+// A DOCX résumé — deterministic and concurrency-safe. The arrival carries a real
+// résumé, but under PARKED cold-ingest it is NOT extracted (only staged).
 async function makeResumeDocx(): Promise<Buffer> {
   const doc = new Document({
     sections: [
@@ -124,22 +112,20 @@ function splitDdl(sql: string): string[] {
 }
 
 describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
-  'SRC-2 PR-1 — extraction repair (real Postgres 17)',
+  'SRC-2 / TI-1F P0.2 — cold-ingest staging-only (real Postgres 17)',
   () => {
     let container: StartedPostgreSqlContainer;
     let moduleRef: TestingModule;
     let app: INestApplication;
     let db: Client;
     let canonicalization: CanonicalizationService;
-    let promotion: PromotionService;
     let processor: ColdIngestExtractionProcessor;
-    let extraction: ColdIngestExtractionService;
     let ingestionRepo: IngestionRepository;
     const savedEnv: Record<string, string | undefined> = {};
 
-    // Byte-STORING fake: putIngestionObject persists bytes under the bare key
-    // (R11.1) and createPresignedGet serves them as a data: URL the real
-    // ResumeParserService.fetchBytes reads.
+    // Byte-STORING fake: putIngestionObject persists bytes under the bare key so
+    // the webhook stores the résumé. createPresignedGet is never called under
+    // PARKED cold-ingest (no extraction reads bytes) — it throws if it ever is.
     const objects = new Map<string, Buffer>();
     const fakeStorage = {
       putIngestionObject: async (input: {
@@ -156,34 +142,24 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         return { storage_ref: key, sha256 };
       },
       createPresignedGet: async ({ storage_key }: { storage_key: string; requestId: string }) => {
-        const bytes = objects.get(storage_key);
-        if (bytes === undefined) {
-          throw new AramoError('OBJECT_STORAGE_UPLOAD_FAILED', `no object at ${storage_key}`, 502, {
-            requestId: 'fake',
-            details: { storage_key },
-          });
-        }
-        return {
-          presigned_url: `data:application/octet-stream;base64,${bytes.toString('base64')}`,
-          expires_at: new Date(Date.now() + 300_000).toISOString(),
-        };
+        throw new AramoError(
+          'OBJECT_STORAGE_UPLOAD_FAILED',
+          `PARKED cold-ingest must not read résumé bytes (storage_key=${storage_key})`,
+          502,
+          { requestId: 'fake', details: { storage_key } },
+        );
       },
     };
     const fakeTenants = {
       findActiveBySlug: async (slug: string) => (slug === 'acme' ? { id: TENANT_ID } : null),
     };
 
-    // Put an object into the fake store under a bare key; return the key.
-    function seedObject(key: string, bytes: Buffer): string {
-      objects.set(key, bytes);
-      return key;
-    }
-
     async function postWebhook(applyId: string, extraApplicant: Record<string, unknown> = {}): Promise<string> {
       const rawString = JSON.stringify({
         id: applyId,
         applicant: { fullName: 'Jane Smith', email: 'jane@x.co', ...extraApplicant },
       });
+      const { default: request } = await import('supertest');
       const res = await request(app.getHttpServer())
         .post(INDEED_APPLY_WEBHOOK_ROUTE)
         .set('Content-Type', 'application/json')
@@ -199,27 +175,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       return row.rows[0].id as string;
     }
 
-    async function arrivalFor(payloadId: string): Promise<ArrivalNeedingExtraction> {
-      const r = await db.query(
-        `SELECT id, tenant_id, storage_ref, resolved_subject_id, content_type
-           FROM "ingestion"."RawPayloadReference" WHERE id=$1`,
-        [payloadId],
-      );
-      const row = r.rows[0];
-      return {
-        id: row.id,
-        tenant_id: row.tenant_id,
-        storage_ref: row.storage_ref,
-        resolved_subject_id: row.resolved_subject_id,
-        content_type: row.content_type,
-      };
-    }
-
-    const identityEvidence = async (subjectId: string, assertionType: string): Promise<number> => {
+    const identityEvidenceCount = async (subjectId: string): Promise<number> => {
       const r = await db.query(
         `SELECT COUNT(*)::int AS c FROM "talent_trust"."EvidenceRecord"
-           WHERE subject_id=$1 AND dimension='IDENTITY' AND assertion_type=$2 AND current_status='VALID'`,
-        [subjectId, assertionType],
+           WHERE subject_id=$1 AND dimension='IDENTITY' AND assertion_type='FULL_NAME' AND current_status='VALID'`,
+        [subjectId],
       );
       return r.rows[0].c;
     };
@@ -253,14 +213,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       moduleRef = await Test.createTestingModule({
         imports: [
-          // ObjectStorageModule at the root so ObjectStorageService is in root
-          // scope for IndeedApplyWebhookService; overrideProvider below swaps the
-          // real one for the fake GLOBALLY (incl. inside ResumeParseModule).
           ObjectStorageModule,
-          ColdIngestExtractionModule, // pulls Ingestion + ResumeParse(+ObjectStorage) + TalentTrust
-          // Imported directly too so their exports (IngestionService/Repository,
-          // TalentTrustService/Repository) are in ROOT scope for the webhook +
-          // PromotionService (ColdIngestExtractionModule imports but doesn't re-export).
+          ColdIngestExtractionModule, // the inert PARKED processor
           IngestionModule,
           TalentTrustModule,
           SourcedTalentModule,
@@ -271,7 +225,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         controllers: [IndeedApplyController],
         providers: [
           IndeedApplyWebhookService,
-          PromotionService,
           { provide: TenantService, useValue: fakeTenants },
         ],
       })
@@ -289,26 +242,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await app.init();
 
       canonicalization = moduleRef.get(CanonicalizationService);
-      promotion = moduleRef.get(PromotionService);
       processor = moduleRef.get(ColdIngestExtractionProcessor);
-      extraction = moduleRef.get(ColdIngestExtractionService);
       ingestionRepo = moduleRef.get(IngestionRepository);
 
       db = new Client({ connectionString: url });
       await db.connect();
-
-      // Warm the deterministic extractor once before the tests (defensive; the
-      // fixture is DOCX/mammoth, which — unlike pdf-parse/pdf.js on generated PDFs
-      // — is concurrency-safe and does not exhibit the cold-start empty-parse).
-      // Bounded so it can never hang.
-      const warm = await makeResumeDocx();
-      let warmed = false;
-      for (let i = 0; i < 60 && !warmed; i++) {
-        const t = await extractResumeText(warm);
-        warmed = t !== null && t.includes('Jane');
-        if (!warmed) await new Promise((r) => setTimeout(r, 200));
-      }
-      expect(warmed).toBe(true);
     }, 300_000);
 
     afterAll(async () => {
@@ -321,9 +259,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       }
     }, 60_000);
 
-    it('NON-SEEDED: an Indeed application whose extraction yields no cell-phone evidence is FILTERED OUT of promotion (deferred), not minted', async () => {
+    it('a canonicalized résumé-carrying Indeed arrival is STAGED (resolved, not-yet-extracted)', async () => {
       const docx = await makeResumeDocx();
-      const payloadId = await postWebhook('apply-src2-001', {
+      const payloadId = await postWebhook('apply-src2-stage-1', {
         resume: { file: { data: docx.toString('base64'), fileName: 'jane.docx', contentType: RESUME_MIME } },
       });
       await canonicalization.canonicalize({
@@ -332,106 +270,51 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         authContext: { tenant_id: TENANT_ID },
         requestId: 'src2-canon-1',
       });
-      const arrival = await arrivalFor(payloadId);
-      expect(arrival.content_type).toBe('application/json');
 
-      // The sweep parses the JSON envelope → embedded résumé → FULL_NAME evidence.
-      const outcome = await processor.drainBatch({ batchSize: 10, jobId: null });
-      expect(outcome.extracted).toBeGreaterThanOrEqual(1);
-      expect(await identityEvidence(arrival.resolved_subject_id, 'FULL_NAME')).toBeGreaterThanOrEqual(1);
+      const row = await db.query(
+        `SELECT resolved_subject_id, extraction_done_at FROM "ingestion"."RawPayloadReference" WHERE id=$1`,
+        [payloadId],
+      );
+      // Resolved (has a subject) + STAGED (extract-once gate NOT stamped).
+      expect(row.rows[0].resolved_subject_id).not.toBeNull();
+      expect(row.rows[0].extraction_done_at).toBeNull();
 
-      // TalentRecord Admission Invariant — the governed promotion gate is a
-      // FILTER: a subject is admitted only when the required contact anchors
-      // (primary email AND cell phone) exist as identity evidence. Email is
-      // attached at the arrival; a cell phone is optional at the source and the
-      // résumé parse yields none here, so this subject carries NO PHONE evidence.
-      // The gate therefore filters it OUT — it stays in the staging substrate
-      // (deferred), never minted as an incomplete record. Producing the missing
-      // contact evidence later (enrichment / recruiter entry / a canonicalize
-      // phone-attach) is OUT OF THE CURRENT SCOPE; promotion simply waits for it.
-      const promoted = await promotion.promoteSubject(
-        { tenant_id: TENANT_ID, ref_type: 'SOURCED_TALENT', ref_id: payloadId },
-        { requestId: 'src2-promote-1' },
-      );
-      expect(promoted.status).toBe('deferred_incomplete_contact');
-      // No TalentRecord was minted for the filtered-out subject.
-      const rec = await db.query(
-        `SELECT id FROM "talent_record"."TalentRecord"
-          WHERE tenant_id=$1 AND first_name='Jane' AND last_name='Smith'`,
-        [TENANT_ID],
-      );
-      expect(rec.rows.length).toBe(0);
+      // The staging poll returns it — it is available to a future governed extractor.
+      const staged = await ingestionRepo.findArrivalsNeedingExtraction({ limit: 100, maxAttempts: 5 });
+      expect(staged.some((a) => a.id === payloadId)).toBe(true);
     });
 
-    it('NON-JSON regression: a bare résumé-object arrival extracts byte-identically (FULL_NAME written)', async () => {
-      // Seed a canonicalized arrival whose storage object IS a bare résumé file.
+    it('the inert processor tick produces NO Talent evidence, stamps NO marker, and leaves the arrival STAGED', async () => {
       const docx = await makeResumeDocx();
-      const key = seedObject(`${TENANT_ID}/ingestion/github/nonjson-1/resume.docx`, docx);
-      const payloadId = uuidv7();
-      const subjectId = uuidv7();
-      await db.query(
-        `INSERT INTO "talent_trust"."ResolutionSubject" (id, tenant_id, status) VALUES ($1,$2,'ACTIVE')`,
-        [subjectId, TENANT_ID],
-      );
-      await db.query(
-        `INSERT INTO "ingestion"."RawPayloadReference"
-           (id, tenant_id, source, source_class, storage_ref, sha256, content_type, captured_at, resolved_subject_id, updated_at)
-         VALUES ($1,$2,'github','THIRD_PARTY_UNVERIFIED',$3,$4,$5,NOW(),$6,NOW())`,
-        [payloadId, TENANT_ID, key, createHash('sha256').update(docx).digest('hex'), RESUME_MIME, subjectId],
-      );
-
-      const arrival: ArrivalNeedingExtraction = {
-        id: payloadId,
-        tenant_id: TENANT_ID,
-        storage_ref: key,
-        resolved_subject_id: subjectId,
-        content_type: RESUME_MIME,
-      };
-      const result = await extraction.extractArrival(arrival);
-      expect(result.outcome).toBe('extracted');
-      expect(await identityEvidence(subjectId, 'FULL_NAME')).toBeGreaterThanOrEqual(1);
-    });
-
-    it('résumé-less JSON envelope → permanent done_no_identity, no crash', async () => {
-      const payloadId = await postWebhook('apply-src2-noresume'); // no resume field
+      const payloadId = await postWebhook('apply-src2-stage-2', {
+        resume: { file: { data: docx.toString('base64'), fileName: 'jane.docx', contentType: RESUME_MIME } },
+      });
       await canonicalization.canonicalize({
         payload_id: payloadId,
         source_channel: 'indeed',
         authContext: { tenant_id: TENANT_ID },
-        requestId: 'src2-canon-3',
+        requestId: 'src2-canon-2',
       });
-      const arrival = await arrivalFor(payloadId);
-      const result = await extraction.extractArrival(arrival);
-      expect(result.outcome).toBe('done_no_identity');
-      const done = await db.query(
+      const before = await db.query(
+        `SELECT resolved_subject_id FROM "ingestion"."RawPayloadReference" WHERE id=$1`,
+        [payloadId],
+      );
+      const subjectId = before.rows[0].resolved_subject_id as string;
+
+      // Run the PARKED processor tick — it is inert (no extraction, no reads, no
+      // writes, no markers). createPresignedGet would throw if bytes were read.
+      await processor.process({ id: 'src2-parked-tick' } as Job);
+
+      // No IDENTITY evidence was minted by cold-ingest.
+      expect(await identityEvidenceCount(subjectId)).toBe(0);
+      // The extract-once gate is still NULL — the arrival remains STAGED.
+      const after = await db.query(
         `SELECT extraction_done_at FROM "ingestion"."RawPayloadReference" WHERE id=$1`,
         [payloadId],
       );
-      expect(done.rows[0].extraction_done_at).not.toBeNull(); // permanently stamped
-    });
-
-    it('sweep tick drains a seeded batch (the queue-scheduled drain seam)', async () => {
-      // Two fresh canonicalized JSON arrivals, both carrying a résumé.
-      const docx = await makeResumeDocx();
-      for (const n of ['drain-a', 'drain-b']) {
-        const pid = await postWebhook(`apply-${n}`, {
-          resume: { file: { data: docx.toString('base64'), fileName: 'r.docx', contentType: RESUME_MIME } },
-        });
-        await canonicalization.canonicalize({
-          payload_id: pid,
-          source_channel: 'indeed',
-          authContext: { tenant_id: TENANT_ID },
-          requestId: `src2-canon-${n}`,
-        });
-      }
-      const before = await ingestionRepo.findArrivalsNeedingExtraction({ limit: 100, maxAttempts: 5 });
-      expect(before.length).toBeGreaterThanOrEqual(2);
-
-      const outcome = await processor.drainBatch({ batchSize: 100, jobId: 'test-tick' });
-      expect(outcome.attempted).toBe(before.length);
-
-      const after = await ingestionRepo.findArrivalsNeedingExtraction({ limit: 100, maxAttempts: 5 });
-      expect(after.length).toBe(0); // all drained (extracted or done_no_identity → stamped)
+      expect(after.rows[0].extraction_done_at).toBeNull();
+      const staged = await ingestionRepo.findArrivalsNeedingExtraction({ limit: 100, maxAttempts: 5 });
+      expect(staged.some((a) => a.id === payloadId)).toBe(true);
     });
   },
 );

@@ -191,7 +191,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       );
     });
 
-    it('proof #2 — PDF résumé parses to prefill with parse_status=parsed', async () => {
+    // TI-1F P0.2 — résumé FACT extraction is governed-LLM-only; this lib extracts
+    // deterministic file→TEXT only (the text is handed to the governed extractor).
+    it('proof #2 — PDF résumé extracts to plain text (fed to the governed extractor)', async () => {
       const storageKey = `${TENANT_ID}/talent/${DRAFT_PARTITION_ID}/resume/parse-pdf.pdf`;
       await adminClient.send(
         new PutObjectCommand({
@@ -202,19 +204,16 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         }),
       );
 
-      const result = await parser.parseFromStorageKey({
+      const text = await parser.extractTextFromStorageKey({
         storage_key: storageKey,
         requestId: REQ_ID,
       });
 
-      expect(result.parse_status).toBe('parsed');
-      expect(result.prefill.first_name).toBe('Jane');
-      expect(result.prefill.last_name).toBe('Smith');
-      expect(result.prefill.email1).toBe('jane.smith@example.com');
-      expect(result.prefill.phone_cell).toBe('555-234-5678');
+      expect(text).not.toBeNull();
+      expect(text).toContain('Jane');
     });
 
-    it('proof #2 — DOCX résumé parses to prefill with parse_status=parsed', async () => {
+    it('proof #2 — DOCX résumé extracts to plain text', async () => {
       const storageKey = `${TENANT_ID}/talent/${DRAFT_PARTITION_ID}/resume/parse-docx.docx`;
       await adminClient.send(
         new PutObjectCommand({
@@ -226,17 +225,16 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         }),
       );
 
-      const result = await parser.parseFromStorageKey({
+      const text = await parser.extractTextFromStorageKey({
         storage_key: storageKey,
         requestId: REQ_ID,
       });
 
-      expect(result.parse_status).toBe('parsed');
-      expect(result.prefill.first_name).toBe('Jane');
-      expect(result.prefill.email1).toBe('jane.smith@example.com');
+      expect(text).not.toBeNull();
+      expect(text).toContain('Jane');
     });
 
-    it('proof #4 — parse-failure is NON-BLOCKING (malformed file → 200 + status=failed, empty prefill)', async () => {
+    it('proof #4 — text-extraction failure is NON-BLOCKING (unknown format → null text, no throw)', async () => {
       const storageKey = `${TENANT_ID}/talent/${DRAFT_PARTITION_ID}/resume/malformed.txt`;
       await adminClient.send(
         new PutObjectCommand({
@@ -246,14 +244,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         }),
       );
 
-      // The parser MUST NOT throw on parse-failure; it returns failed status.
-      const result = await parser.parseFromStorageKey({
+      // Unknown magic bytes → text extraction fails softly (null), never throws.
+      const text = await parser.extractTextFromStorageKey({
         storage_key: storageKey,
         requestId: REQ_ID,
       });
 
-      expect(result.parse_status).toBe('failed');
-      expect(result.prefill).toEqual({});
+      expect(text).toBeNull();
     });
 
     it('orphan-sweep — markResumeCommitted replaces orphan-pending tag with committed', async () => {

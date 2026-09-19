@@ -2,52 +2,22 @@ import { Inject, type OnApplicationBootstrap } from '@nestjs/common';
 import { BullRegistrar, Processor, WorkerHost } from '@nestjs/bullmq';
 import type { Job } from 'bullmq';
 import { type AramoLogger, RedisConnectionConfig } from '@aramo/common';
-import { IngestionRepository } from '@aramo/ingestion';
 
-import { ColdIngestExtractionService } from './cold-ingest-extraction.service.js';
-import {
-  COLD_INGEST_EXTRACTION_BATCH_SIZE,
-  COLD_INGEST_EXTRACTION_MAX_ATTEMPTS,
-  COLD_INGEST_EXTRACTION_QUEUE_NAME,
-} from './cold-ingest-extraction.queue.constants.js';
+import { COLD_INGEST_EXTRACTION_QUEUE_NAME } from './cold-ingest-extraction.queue.constants.js';
 
-// Cold-Ingest Extraction — the production poll from resolved-arrival →
-// declared identity evidence.
+// Cold-Ingest Extraction — PARKED (TI-1F P0.2).
 //
-// Design (mirrors CanonicalizationTriggerProcessor — the substrate-aligned
-// polling-outbox shape):
+// Heuristic résumé FACT extraction is RETIRED (governed LLM is the SOLE
+// production résumé fact extractor; …-TI-1F-…-v1_0-LOCKED §4-D). Cold-ingest is
+// PARKED pending a separate architecture review and is NOT wired into the TI-1F
+// recruiter résumé flow.
 //
-//   - The resolved-but-unextracted RawPayloadReference row IS the trigger's
-//     "work-to-do" signal (resolved_subject_id NOT NULL + extraction_done_at
-//     NULL + extraction_attempts < cap). No separate outbox table.
-//
-//   - Each tick: fetch up to N such arrivals (oldest first) and run
-//     ColdIngestExtractionService.extractArrival() per row. That service
-//     never throws — a transient parse failure is caught, the attempt
-//     counter bumped, and the gate left NULL so a later tick re-picks
-//     (bounded). One bad arrival never aborts the batch.
-//
-//   - Idempotency: two layers — (a) the poll filters out already-done rows
-//     (extraction_done_at IS NULL); (b) the marker is stamped as the LAST
-//     write after the evidence write, so a race re-fire at worst duplicates
-//     a declared record (convergent recompute).
-//
-// Lifecycle mirrors CanonicalizationTriggerProcessor / OutboxPublisherProcessor
-// (ADR-0018 Decision 1): manualRegistration + onApplicationBootstrap gate on
-// RedisConnectionConfig.isConfigured — boot is silent when Redis is
-// unconfigured; the worker registers only when REDIS_URL is present.
-
-export interface ColdIngestExtractionTickInput {
-  // Reserved for future per-batch-size overrides.
-  override_batch_size?: number;
-}
-
-interface DrainResult {
-  attempted: number;
-  extracted: number;
-  done_no_identity: number;
-  transient_retry: number;
-}
+// This worker is therefore INERT: a tick performs NO extraction — it reads no
+// arrivals, produces no Talent facts/evidence, stamps no extract-once marker,
+// and records no retry markers. The inbound/staging substrate (the ingestion
+// RawPayloadReference rows + the IngestionRepository poll) is left intact and
+// untouched; resolved arrivals simply remain STAGED for the future review. The
+// Redis-gated worker registration is retained as the dormant seam.
 
 @Processor(COLD_INGEST_EXTRACTION_QUEUE_NAME, {
   skipWaitingForReady: true,
@@ -58,8 +28,6 @@ export class ColdIngestExtractionProcessor
   implements OnApplicationBootstrap
 {
   constructor(
-    private readonly service: ColdIngestExtractionService,
-    private readonly ingestionRepo: IngestionRepository,
     private readonly registrar: BullRegistrar,
     private readonly redisConfig: RedisConnectionConfig,
     @Inject('ColdIngestExtractionProcessorLogger')
@@ -68,61 +36,13 @@ export class ColdIngestExtractionProcessor
     super();
   }
 
-  async process(job: Job<ColdIngestExtractionTickInput>): Promise<void> {
-    const batchSize =
-      job.data.override_batch_size ?? COLD_INGEST_EXTRACTION_BATCH_SIZE;
-
-    const result = await this.drainBatch({ batchSize, jobId: job.id ?? null });
-
+  // INERT tick — cold-ingest is PARKED. No extraction, no arrival reads, no
+  // writes, no markers. Logged for observability only.
+  async process(job: Job): Promise<void> {
     this.logger.log({
-      event: 'cold_ingest_extraction_tick_completed',
+      event: 'cold_ingest_extraction_parked',
       job_id: job.id ?? null,
-      batch_size: batchSize,
-      attempted: result.attempted,
-      extracted: result.extracted,
-      done_no_identity: result.done_no_identity,
-      transient_retry: result.transient_retry,
     });
-  }
-
-  // Exposed for the integration spec — exercises the drain seam end-to-end
-  // without standing up a real BullMQ worker (the canonicalize precedent).
-  async drainBatch(args: {
-    batchSize: number;
-    jobId: string | null;
-  }): Promise<DrainResult> {
-    const arrivals = await this.ingestionRepo.findArrivalsNeedingExtraction({
-      limit: args.batchSize,
-      maxAttempts: COLD_INGEST_EXTRACTION_MAX_ATTEMPTS,
-    });
-
-    if (arrivals.length === 0) {
-      this.logger.debug({
-        event: 'cold_ingest_extraction_tick_empty',
-        job_id: args.jobId,
-      });
-      return { attempted: 0, extracted: 0, done_no_identity: 0, transient_retry: 0 };
-    }
-
-    let extracted = 0;
-    let done_no_identity = 0;
-    let transient_retry = 0;
-
-    // Per-arrival isolation — the service never throws; each outcome is
-    // counted. A transient failure leaves the row for the next tick.
-    for (const arrival of arrivals) {
-      const result = await this.service.extractArrival(arrival);
-      if (result.outcome === 'extracted') extracted += 1;
-      else if (result.outcome === 'done_no_identity') done_no_identity += 1;
-      else transient_retry += 1;
-    }
-
-    return {
-      attempted: arrivals.length,
-      extracted,
-      done_no_identity,
-      transient_retry,
-    };
   }
 
   onApplicationBootstrap(): void {

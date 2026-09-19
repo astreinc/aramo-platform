@@ -7,8 +7,8 @@ import { TalentCreateView } from './TalentCreateView';
 // Add-Talent — the résumé-FIRST flow (LOCKED: Governed-LLM Resume Extraction +
 // Deterministic Fallback). A résumé upload is REQUIRED (no manual-entry path);
 // consent capture is governed separately (NOT here); the tenant's
-// resume.extraction_mode selects the sole extractor SERVER-side and the FE
-// consumes { mode, prefill, warning }. Provenance is honest about the extractor.
+// Governed LLM is the sole résumé extractor SERVER-side (TI-1F P0.2) and the FE
+// consumes { prefill, warning }. Provenance is honest about the extractor.
 
 interface MockedRequest {
   readonly url: string;
@@ -64,11 +64,11 @@ function makeFile(name = 'resume.pdf', type = 'application/pdf'): File {
   return new File(['%PDF-1.4 stub'], name, { type });
 }
 
-// The résumé-first handler: presign → S3 PUT → draft-from-resume ({mode,prefill,
-// parse_status,warning?}) → create → attach. Also answers the proactive
-// duplicate-check (default: no match) so the effect never 404s.
+// The résumé-first handler: presign → S3 PUT → draft-from-resume ({prefill,
+// parse_status,warning?}) → create → attach. Governed LLM is the sole extractor
+// (TI-1F P0.2 — no mode). Also answers the proactive duplicate-check (default:
+// no match) so the effect never 404s.
 function resumePlan(opts: {
-  mode: 'governed_llm' | 'deterministic';
   parse_status?: 'parsed' | 'partial' | 'failed';
   prefill?: Record<string, unknown>;
   warning?: string;
@@ -96,7 +96,6 @@ function resumePlan(opts: {
       return {
         status: 200,
         body: {
-          mode: opts.mode,
           prefill: opts.prefill ?? {},
           parse_status: opts.parse_status ?? 'parsed',
           ...(opts.warning !== undefined ? { warning: opts.warning } : {}),
@@ -151,11 +150,10 @@ describe('TalentCreateView — résumé-first intake (no manual path)', () => {
   });
 });
 
-describe('TalentCreateView — deterministic mode', () => {
-  it('parse → prefill (resume chip) → fill required → create + attach; NO consent', async () => {
+describe('TalentCreateView — résumé create + attach flow', () => {
+  it('parse → prefill (résumé·AI chip) → fill required → create + attach; NO consent', async () => {
     const calls = installFetch(
       resumePlan({
-        mode: 'deterministic',
         prefill: { first_name: 'Ada', last_name: 'Lovelace', city: 'Austin', state: 'TX' },
       }),
     );
@@ -164,8 +162,8 @@ describe('TalentCreateView — deterministic mode', () => {
     await waitFor(() =>
       expect((screen.getByLabelText('First name') as HTMLInputElement).value).toBe('Ada'),
     );
-    // Deterministic provenance chip.
-    expect(screen.getAllByText('resume').length).toBeGreaterThan(0);
+    // Governed-LLM résumé provenance chip.
+    expect(screen.getAllByText('resume · AI').length).toBeGreaterThan(0);
     fillRequired(false);
     fireEvent.click(screen.getByRole('button', { name: /create talent/i }));
     await waitFor(() =>
@@ -178,11 +176,10 @@ describe('TalentCreateView — deterministic mode', () => {
   });
 });
 
-describe('TalentCreateView — governed_llm mode', () => {
+describe('TalentCreateView — governed-LLM extraction', () => {
   it('clean skills flow into free-text key_skills with an AI-résumé chip; email/phone recruiter-entered', async () => {
     installFetch(
       resumePlan({
-        mode: 'governed_llm',
         prefill: {
           first_name: 'Ada',
           last_name: 'Lovelace',
@@ -198,7 +195,7 @@ describe('TalentCreateView — governed_llm mode', () => {
       expect((screen.getByLabelText('First name') as HTMLInputElement).value).toBe('Ada'),
     );
     expect((screen.getByLabelText('Key skills') as HTMLTextAreaElement).value).toBe('C#, Azure SQL');
-    // Governed provenance chip (distinct from the deterministic one, §16).
+    // Governed-LLM résumé provenance chip (§16).
     expect(screen.getAllByText('resume · AI').length).toBeGreaterThan(0);
     // Email/phone were NOT LLM-proposed (redacted) — the recruiter fills them.
     expect((screen.getByLabelText('Primary email') as HTMLInputElement).value).toBe('');
@@ -207,7 +204,6 @@ describe('TalentCreateView — governed_llm mode', () => {
   it('LLM-unavailable warning is non-blocking — form still usable + retry', async () => {
     installFetch(
       resumePlan({
-        mode: 'governed_llm',
         parse_status: 'partial',
         prefill: {},
         warning: 'Résumé extraction is temporarily unavailable. Please retry, or enter the details manually.',
@@ -225,7 +221,7 @@ describe('TalentCreateView — governed_llm mode', () => {
 
 describe('TalentCreateView — save gate + duplicate block', () => {
   it('Create is disabled until every required field is present (no attestation gate)', async () => {
-    installFetch(resumePlan({ mode: 'deterministic', prefill: {} }));
+    installFetch(resumePlan({ prefill: {} }));
     renderAt();
     await uploadResume();
     await waitFor(() => expect(screen.getByLabelText('First name')).toBeInTheDocument());
@@ -238,7 +234,6 @@ describe('TalentCreateView — save gate + duplicate block', () => {
   it('a proactive duplicate match blocks Create (§ Delta-2)', async () => {
     installFetch(
       resumePlan({
-        mode: 'deterministic',
         prefill: { first_name: 'Ada', last_name: 'Lovelace', city: 'Austin', state: 'TX' },
         duplicateMatch: { id: 'tal-dup', first_name: 'Ada', last_name: 'Lovelace', title: null, city: 'Austin', state: 'TX' },
       }),
@@ -259,7 +254,6 @@ describe('TalentCreateView — attach soft-fail + cancel', () => {
   it('reaches success even if the attach POST fails (talent IS created)', async () => {
     installFetch(
       resumePlan({
-        mode: 'deterministic',
         prefill: { first_name: 'Ada', last_name: 'Lovelace', city: 'Austin', state: 'TX' },
         attachStatus: 500,
       }),

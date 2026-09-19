@@ -86,9 +86,7 @@ describe('TenantSettingService.getAll — S2 view materialization', () => {
 
     expect(view).toEqual({
       'compensation.display_default': 'both',
-      'audit.financials_enabled': false,
-      'resume.extraction_mode': 'deterministic',
-    });
+      'audit.financials_enabled': false,    });
   });
 
   it('surfaces the row-value when one exists; absent keys still default', async () => {
@@ -103,9 +101,7 @@ describe('TenantSettingService.getAll — S2 view materialization', () => {
 
     expect(view).toEqual({
       'compensation.display_default': 'spread',
-      'audit.financials_enabled': false,
-      'resume.extraction_mode': 'deterministic',
-    });
+      'audit.financials_enabled': false,    });
   });
 
   it('filters DB rows for unknown-to-this-version keys (forward-compat invariant)', async () => {
@@ -121,9 +117,7 @@ describe('TenantSettingService.getAll — S2 view materialization', () => {
 
     expect(view).toEqual({
       'compensation.display_default': 'markup',
-      'audit.financials_enabled': false,
-      'resume.extraction_mode': 'deterministic',
-    });
+      'audit.financials_enabled': false,    });
   });
 });
 

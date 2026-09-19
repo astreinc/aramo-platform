@@ -13,9 +13,9 @@
 // runs, dates) and would hurt recall for no privacy gain a recruiter cares
 // about. If the ratified addendum widens the set (DOB/phone), extend here.
 //
-// NOTE: this runs in the async re-extract path ONLY (the new post-attachment-
-// commit seam). The E2 parse path (resume-parser.service.parseFromStorageKey)
-// is UNCHANGED — it never persisted text and still does not.
+// NOTE: this runs in the async re-extract path ONLY (the post-attachment-commit
+// seam). The governed draft path (resume-parser.service.extractTextFromStorageKey)
+// never persisted text and still does not.
 
 const SSN_SHAPED_PATTERNS: readonly RegExp[] = [
   /\b\d{3}-\d{2}-\d{4}\b/g, // 123-45-6789

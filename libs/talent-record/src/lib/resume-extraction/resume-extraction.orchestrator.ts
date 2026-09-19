@@ -51,10 +51,10 @@ export class ResumeExtractionOrchestrator {
       text = await this.resumeParser.extractTextFromStorageKey({ storage_key, requestId });
     } catch {
       // Fetch/extract error — non-blocking; empty prefill + retry.
-      return { mode: 'governed_llm', prefill: {}, parse_status: 'failed', warning: RETRY_WARNING };
+      return { prefill: {}, parse_status: 'failed', warning: RETRY_WARNING };
     }
     if (text === null || text.trim() === '') {
-      return { mode: 'governed_llm', prefill: {}, parse_status: 'failed', warning: RETRY_WARNING };
+      return { prefill: {}, parse_status: 'failed', warning: RETRY_WARNING };
     }
 
     // HF1 §3/R1 — the canonical source-map (version + text hash + ordered blocks),
@@ -68,7 +68,6 @@ export class ResumeExtractionOrchestrator {
       // Defensive: the structured path maps provider errors to a status and does
       // not throw, but an unexpected throw still degrades to a retry affordance.
       return {
-        mode: 'governed_llm',
         prefill: {},
         parse_status: 'partial',
         extraction_status: 'provider_failure',
@@ -83,7 +82,6 @@ export class ResumeExtractionOrchestrator {
     // never a masked empty draft. No prefill is offered on a technical failure.
     if (status === 'provider_truncated') {
       return {
-        mode: 'governed_llm',
         prefill: {},
         parse_status: 'failed',
         extraction_status: status,
@@ -93,7 +91,6 @@ export class ResumeExtractionOrchestrator {
     }
     if (status === 'invalid_structured_output') {
       return {
-        mode: 'governed_llm',
         prefill: {},
         parse_status: 'failed',
         extraction_status: status,
@@ -102,7 +99,6 @@ export class ResumeExtractionOrchestrator {
     }
     if (status === 'provider_failure') {
       return {
-        mode: 'governed_llm',
         prefill: {},
         parse_status: 'partial',
         extraction_status: status,
@@ -145,7 +141,6 @@ export class ResumeExtractionOrchestrator {
     const hasAny = Object.keys(prefill).length > 0 || proposal.work_history.length > 0;
     const parse_status: ParseStatus = hasIdentity ? 'parsed' : 'partial';
     return {
-      mode: 'governed_llm',
       prefill,
       parse_status,
       extraction_status: status,

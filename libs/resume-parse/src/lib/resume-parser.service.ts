@@ -2,33 +2,23 @@ import { Inject, Injectable } from '@nestjs/common';
 import { AramoError, type AramoLogger } from '@aramo/common';
 import { ObjectStorageService } from '@aramo/object-storage';
 
-import {
-  extractFields,
-  meetsMinimalIdentity,
-} from './heuristics/field-extractor.js';
 import { extractResumeText } from './heuristics/text-extractor.js';
-import type {
-  ParseResumeInput,
-  ParseResumeResult,
-} from './types/parse-resume.types.js';
+import type { ParseResumeInput } from './types/parse-resume.types.js';
 
-// A8-3b — ResumeParserService: deterministic parse-to-prefill.
+// ResumeParserService — deterministic file → TEXT extraction (NO LLM, ADR-0015
+// Decision 10).
 //
-// Flow:
-//   1. Request a presigned GET URL from ObjectStorageService.
-//   2. fetch() the bytes (the browser-direct pattern; the API never
-//      hosts bytes -- mirrors the upload direction).
-//   3. Magic-byte detect (PDF | DOCX | unknown).
-//   4. Extract text via pdf-parse or mammoth.
-//   5. Heuristic field-extraction (NO LLM per ADR-0015 Decision 10).
-//   6. Return { prefill, parse_status }.
+// Fetches the object bytes and magic-byte-extracts plain text (pdf-parse /
+// mammoth). It does NOT extract résumé FACTS: governed LLM is the SOLE
+// production résumé fact extractor (…-TI-1F-…-v1_0-LOCKED §4-D). TI-1F P0.2
+// retired the heuristic field-extraction path (parseFromStorageKey / parseBytes
+// / field-extractor); the extracted TEXT is handed to @aramo/talent-extraction
+// (a permitted LLM consumer) which redacts PII before the model.
 //
-// Failure semantics: this service NEVER throws on parse failure. A
-// failed parse returns { prefill: {}, parse_status: 'failed' } -- the
-// recruiter creates the TalentRecord manually. The only throw paths are
-// (a) presigned-GET generation failure (OBJECT_STORAGE_UPLOAD_FAILED,
-// upstream), (b) fetch network failure (OBJECT_STORAGE_UPLOAD_FAILED).
-// Parse-failure-is-non-blocking is the proof §4.4 invariant.
+// Failure semantics: never throws on a parse failure — extractTextFromStorageKey
+// returns null (non-blocking). The only throw paths are presigned-GET / fetch
+// network failures (OBJECT_STORAGE_UPLOAD_FAILED). PII floor (§17): callers MUST
+// NOT log the returned text — in-process use only.
 
 @Injectable()
 export class ResumeParserService {
@@ -37,33 +27,23 @@ export class ResumeParserService {
     @Inject('ResumeParserServiceLogger') private readonly logger: AramoLogger,
   ) {}
 
-  async parseFromStorageKey(
-    input: ParseResumeInput,
-  ): Promise<ParseResumeResult> {
-    // Byte-identical to the pre-SRC-2 flow: fetch the object bytes, then run the
-    // magic-byte extractor. Both halves are factored out (SRC-2 PR-1) so a
-    // content-type-aware caller (the cold-ingest JSON-envelope path) can reuse
-    // the SAME storage fetch and hand the extractor ALREADY-DECODED résumé bytes.
-    const buffer = await this.fetchBytes(input);
-    return this.parseBytes(buffer, input);
-  }
-
-  // Add-Talent governed-LLM path (LOCKED: "Governed-LLM Resume Extraction" —
-  // MODE IS EXCLUSIVE). Returns ONLY the extracted plain text (single fetch +
-  // single extraction) — NO deterministic field extraction runs, because in
-  // governed mode the LLM is the sole extractor. This lib stays NO-LLM: the
-  // text is the same deterministic magic-byte extraction, handed to
-  // @aramo/talent-extraction (a permitted LLM consumer) which redacts PII
-  // before the model. Returns null on a parse failure (non-blocking). PII floor
-  // (§17): callers MUST NOT log the returned text — in-process use only.
+  // Fetch the object bytes and return ONLY the extracted plain text (single
+  // fetch + single extraction). Returns null on a parse failure (non-blocking).
   async extractTextFromStorageKey(input: ParseResumeInput): Promise<string | null> {
     const buffer = await this.fetchBytes(input);
-    return extractResumeText(buffer);
+    const text = await extractResumeText(buffer);
+    this.logger.log({
+      event: text === null ? 'resume_text.failed' : 'resume_text.extracted',
+      requestId: input.requestId,
+      storage_key: input.storage_key,
+      // PII-floor: length only — never the extracted text.
+      text_length: text?.length ?? 0,
+    });
+    return text;
   }
 
-  // SRC-2 PR-1 — the presigned-GET + fetch, factored out for reuse (do not
-  // duplicate the fetch). Throws OBJECT_STORAGE_UPLOAD_FAILED (502) on a missing
-  // key / presign / network failure — the caller maps that to transient_retry.
+  // The presigned-GET + fetch. Throws OBJECT_STORAGE_UPLOAD_FAILED (502) on a
+  // missing key / presign / network failure — the caller maps that as needed.
   async fetchBytes(input: ParseResumeInput): Promise<Buffer> {
     if (input.storage_key.length === 0) {
       throw new AramoError(
@@ -101,43 +81,5 @@ export class ResumeParserService {
         },
       );
     }
-  }
-
-  // SRC-2 PR-1 — the magic-byte extraction, factored out so the JSON-envelope
-  // path can hand it decoded résumé bytes. Never throws on a parse failure
-  // (returns { prefill: {}, parse_status: 'failed' } — the non-blocking contract).
-  async parseBytes(
-    buffer: Buffer,
-    input: ParseResumeInput,
-  ): Promise<ParseResumeResult> {
-    const text = await extractResumeText(buffer);
-    if (text === null) {
-      // Parse-failure is NON-BLOCKING (proof §4.4): return failed with
-      // an empty prefill; the recruiter creates the TalentRecord manually.
-      this.logger.log({
-        event: 'resume_parse.failed',
-        requestId: input.requestId,
-        storage_key: input.storage_key,
-        reason: 'text_extraction_failed',
-      });
-      return { prefill: {}, parse_status: 'failed' };
-    }
-
-    const prefill = extractFields(text);
-    const parse_status = meetsMinimalIdentity(prefill) ? 'parsed' : 'partial';
-
-    this.logger.log({
-      event: 'resume_parse.completed',
-      requestId: input.requestId,
-      storage_key: input.storage_key,
-      parse_status,
-      // PII-floor: count the populated fields rather than the values.
-      populated_field_count: Object.values(prefill).filter(
-        (v) => typeof v === 'string' && v.length > 0,
-      ).length,
-      text_length: text.length,
-    });
-
-    return { prefill, parse_status };
   }
 }

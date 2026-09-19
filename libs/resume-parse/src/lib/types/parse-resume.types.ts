@@ -1,12 +1,12 @@
-// A8-3b — résumé parse-to-prefill types.
+// Résumé draft prefill types — the recruiter-facing prefill + status shape.
 //
-// The shape mirrors the structurally-relevant subset of
-// CreateTalentRecordRequestDto (libs/talent-record). Defining it locally
-// keeps libs/resume-parse free of a back-edge into talent-record (the
-// E2 controller LIVES in talent-record and imports this lib; if this
-// lib imported talent-record, that would be a cycle). The talent-record
-// controller passes the prefill through to the recruiter, who reviews
-// + commits via the existing POST /v1/talent-records.
+// Governed LLM is the SOLE production résumé fact extractor (…-TI-1F-…-v1_0-
+// LOCKED §4-D); the governed orchestrator (libs/talent-record) builds a
+// TalentRecordPrefill + ParseStatus from its grounded proposal. The shape
+// mirrors the structurally-relevant subset of CreateTalentRecordRequestDto and
+// is defined locally to keep libs/resume-parse free of a back-edge into
+// talent-record. The controller passes the prefill to the recruiter, who
+// reviews + commits via the existing POST /v1/talent-records.
 
 /**
  * The recruiter-facing prefill. Every field is optional; unparseable
@@ -34,36 +34,29 @@ export interface TalentRecordPrefill {
   // proposes it only when a role line is confidently isolated (never a noisy
   // guess). Absent otherwise; the recruiter fills it on review.
   title?: string;
-  // Governed-LLM draft path (LOCKED: Add-Talent Governed-LLM Resume Extraction).
-  // The deterministic parser does not populate country; the governed extractor
-  // may propose it (grounded). Optional — additive, backward-compatible.
+  // The governed extractor may propose country (grounded). Optional — additive,
+  // backward-compatible.
   country?: string;
 }
 
 /**
  * The parse-status reported back to the recruiter:
- *   - `parsed` — the parser extracted at least the minimal identity set
- *                (a name AND a contact-channel email or phone).
- *   - `partial` — text-extraction succeeded but the heuristics extracted
- *                 some fields but not the minimal identity set. The
- *                 recruiter fills the gaps.
- *   - `failed` — text-extraction itself failed (encrypted PDF, corrupt
- *                file, unsupported format). The recruiter creates the
- *                TalentRecord manually with an empty prefill.
+ *   - `parsed` — the governed extraction produced at least the minimal
+ *                identity set (a name).
+ *   - `partial` — extraction ran but did not yield the minimal identity set
+ *                 (or a technical extraction failure); the recruiter fills the
+ *                 gaps.
+ *   - `failed` — text-extraction itself failed (encrypted PDF, corrupt file,
+ *                unsupported format) or governed extraction could not run. The
+ *                recruiter creates the TalentRecord manually with an empty prefill.
  *
- * NOTE: `failed` is NOT a 5xx outcome. The E2 endpoint returns 200 with
- * `{ prefill: {}, parse_status: 'failed' }`; the create flow continues.
- * This is the "parse-failure is non-blocking" semantic (the directive
- * §3 framing, the proof §4.4).
+ * NOTE: `failed` is NOT a 5xx outcome. draft-from-resume returns 200 with
+ * `{ prefill: {}, parse_status: 'failed' }`; the create flow continues
+ * (parse-failure is non-blocking).
  */
 export type ParseStatus = 'parsed' | 'partial' | 'failed';
 
 export interface ParseResumeInput {
   storage_key: string;
   requestId: string;
-}
-
-export interface ParseResumeResult {
-  prefill: TalentRecordPrefill;
-  parse_status: ParseStatus;
 }

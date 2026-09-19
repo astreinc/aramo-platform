@@ -41,9 +41,7 @@ function makeController(opts: { view?: unknown; readModel?: unknown[] } = {}) {
     {} as never,
     {} as never,
     {} as never,
-    {} as never,
     talentExtraction as never,
-    {} as never,
     {} as never,
     reconcileRepo as never,
   );
