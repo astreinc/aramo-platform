@@ -68,8 +68,20 @@ const RAW_RECORD = {
   email1: 'sarah@x.test', phone_cell: '+1-512-555-0100',
   city: 'Austin', state: 'TX', work_authorization: 'US_CITIZEN', desired_pay: '$85/hr',
 };
+// TI-1E-B1 — the panel now reads the governed hydration on open. Default to a
+// fixture with a governed-cleared work_authorization so the read-only branch's
+// "Cleared" affordance is exercised; city SET/RECONCILED for the provenance chip.
+const HYDRATION = {
+  talent_record_id: 't1',
+  fields: [
+    { field_key: 'work_authorization', current_value: null, value_state: 'EXPLICITLY_CLEARED', source_type: 'MANUAL', projection_policy: 'HOLD', provenance: null, resolution_status: 'NONE', resolution_reason: null, proposed_value: null },
+    { field_key: 'city', current_value: 'Austin', value_state: 'SET', source_type: 'RECONCILED', projection_policy: 'AUTO', provenance: { evidence_id: 'e1' }, resolution_status: 'NONE', resolution_reason: null, proposed_value: null },
+    { field_key: 'email1', current_value: 'sarah@x.test', value_state: 'SET', source_type: null, projection_policy: 'AUTO', provenance: null, resolution_status: 'NONE', resolution_reason: null, proposed_value: null },
+  ],
+};
 vi.mock('../talent/talent-api', () => ({
   getTalent: vi.fn(async () => RAW_RECORD),
+  getTalentProfileHydration: vi.fn(async () => HYDRATION),
   updateTalent: vi.fn(async (_id: string, body: Record<string, unknown>) => ({ ...RAW_RECORD, ...body })),
 }));
 
@@ -220,6 +232,14 @@ describe('TalentDetailPanel', () => {
     renderPanel(); // scopes: []
     expect(listOffers).not.toHaveBeenCalled();
     expect(screen.queryByText('Accept')).toBeNull();
+  });
+
+  // TI-1E-B1 — the read-only governed fields consume server hydration: a
+  // governed-cleared work_authorization shows the "Cleared" affordance (distinct
+  // from a never-set em-dash), driven by the server value_state, not the FE.
+  it('read-only governed fields render server hydration state (EXPLICITLY_CLEARED → Cleared)', async () => {
+    renderPanel(); // scopes: [] → read-only branch
+    expect(await screen.findByTestId('hydrated-cleared')).toHaveTextContent('Cleared');
   });
 
   // Enrichment — the real PipelineView list enrichment surfaces on the panel;

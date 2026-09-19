@@ -1,5 +1,6 @@
 import { ApiError, apiClient } from '@aramo/fe-foundation';
 
+import type { ProfileHydrationResponse } from './profile-hydration';
 import type {
   AttachmentDownloadUrlResponse,
   AttachmentListResponse,
@@ -114,6 +115,17 @@ export async function getTalentWorkHistory(
 export async function getTalent(id: string): Promise<TalentRecordView> {
   return apiClient.get<TalentRecordView>(
     `/v1/talent-records/${encodeURIComponent(id)}`,
+  );
+}
+
+// TALENT-INTEL-1 TI-1E-B1 — the aggregate profile-hydration projection (per
+// governed field: display value + value_state + source_type + provenance +
+// resolution). READ-ONLY server-owned state the FE renders (never reconstructs).
+export async function getTalentProfileHydration(
+  id: string,
+): Promise<ProfileHydrationResponse> {
+  return apiClient.get<ProfileHydrationResponse>(
+    `/v1/talent-records/${encodeURIComponent(id)}/profile-hydration`,
   );
 }
 

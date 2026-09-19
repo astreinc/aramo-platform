@@ -112,7 +112,6 @@ export function ResumeSelectionSection({
           <ResumeRow
             key={e.edition_id}
             edition={e}
-            talentRecordId={view.talent_record_id}
             isSelected={e.edition_id === selectedId}
             canSetSelection={canSetSelection}
             busy={busyId === e.edition_id}
@@ -126,14 +125,12 @@ export function ResumeSelectionSection({
 
 function ResumeRow({
   edition,
-  talentRecordId,
   isSelected,
   canSetSelection,
   busy,
   onUse,
 }: {
   readonly edition: PipelineResumeEditionAvailable;
-  readonly talentRecordId: string;
   readonly isSelected: boolean;
   readonly canSetSelection: boolean;
   readonly busy: boolean;
@@ -144,17 +141,20 @@ function ResumeRow({
       <span className="rc-cdp__resumename">{edition.filename}</span>
       {edition.is_default ? <span className="rc-cdp__resumetag">Default</span> : null}
       {isSelected ? <span className="rc-cdp__resumetag">Selected</span> : null}
-      {/* PREVIEW — a read-only link to the résumé edition. It NEVER binds; it is a
-          plain navigation to the talent's résumé editions and issues no PUT. */}
-      <a
+      {/* PREVIEW — DISABLED (TI-1E-B1). The prior href pointed at
+          /talent/:id/resume-editions/:editionId, which has no route (dead link);
+          the pipeline edition payload also lacks the attachment identity the
+          attachment download API needs. Edition-aware viewing is TI-1H, so the
+          action is inert here (never binds, issues no PUT). */}
+      <button
+        type="button"
         className="rc-cdp__resumeprev"
         data-testid={`resume-preview-${edition.edition_id}`}
-        href={`/talent/${talentRecordId}/resume-editions/${edition.edition_id}`}
-        target="_blank"
-        rel="noreferrer"
+        disabled
+        title="Résumé preview is coming soon"
       >
         Preview
-      </a>
+      </button>
       {canSetSelection && !isSelected ? (
         <button
           type="button"

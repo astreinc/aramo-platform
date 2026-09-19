@@ -46,9 +46,12 @@ import {
   getAttachmentDownloadUrl,
   getEmailVerificationStatus,
   getTalent,
+  getTalentProfileHydration,
   listTalentAttachments,
   requestEmailVerification,
 } from './talent-api';
+import { HydratedFieldValue } from './HydratedFieldValue';
+import { indexHydration, type ProfileHydrationItem } from './profile-hydration';
 import {
   attachmentsErrorMessage,
   detailErrorMessage,
@@ -200,6 +203,10 @@ export function TalentDetailView({ sessionOverride }: TalentDetailViewProps) {
   const [verifySent, setVerifySent] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
+  // TI-1E-B1 — server-owned per-field hydration (value_state / source_type /
+  // resolution) for the governed profile fields; rendered for DISPLAY, never
+  // reconstructed. Best-effort — absence leaves the field on its plain value.
+  const [hydration, setHydration] = useState<Map<string, ProfileHydrationItem>>(new Map());
 
   useEffect(() => {
     if (talentId === undefined) return;
@@ -216,6 +223,22 @@ export function TalentDetailView({ sessionOverride }: TalentDetailViewProps) {
         if (cancelled) return;
         setError(detailErrorMessage(err));
         setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [talentId]);
+
+  // TI-1E-B1 — the governed-field hydration for this record (best-effort).
+  useEffect(() => {
+    if (talentId === undefined) return;
+    let cancelled = false;
+    void getTalentProfileHydration(talentId)
+      .then((res) => {
+        if (!cancelled) setHydration(indexHydration(res));
+      })
+      .catch(() => {
+        /* neutral — governed fields fall back to their plain value */
       });
     return () => {
       cancelled = true;
@@ -468,7 +491,7 @@ export function TalentDetailView({ sessionOverride }: TalentDetailViewProps) {
           <div className="talent-detail__subline">
             {subParts.length > 0 ? subParts.join(' · ') : 'From your tenant talent pool.'}
           </div>
-          <HeaderContact talent={talent} />
+          <HeaderContact talent={talent} hydration={hydration} />
         </div>
         <div className="talent-detail__actions">
           <Button variant="primary" size="sm" onClick={() => setAddOpen(true)}>
@@ -612,11 +635,23 @@ function HeaderBadges({
 // desired rate). Purely presentational — clean, no inline verification noise.
 // Verification is a deliberate header action ("Verify identity"), and the
 // verified state reads as the name-row "Verified identity" badge.
-function HeaderContact({ talent }: { talent: TalentRecordView }) {
+function HeaderContact({
+  talent,
+  hydration,
+}: {
+  talent: TalentRecordView;
+  hydration: Map<string, ProfileHydrationItem>;
+}) {
   const phone = talent.phone_cell ?? talent.phone_home ?? talent.phone_work;
   const emails = [talent.email1, talent.email2].filter(
     (v): v is string => v !== null && v !== '',
   );
+  // TI-1E-B1 — work_authorization is a governed field: render its server
+  // hydration state so an EXPLICITLY_CLEARED value (column null) shows a
+  // "Cleared" affordance distinct from a never-set UNKNOWN, plus source_type
+  // provenance and any open-review affordance. Shown whenever a governed row
+  // exists (even when the column itself is null/cleared).
+  const workAuthItem = hydration.get('work_authorization');
 
   return (
     <div className="talent-detail__contact">
@@ -632,7 +667,24 @@ function HeaderContact({ talent }: { talent: TalentRecordView }) {
           {formatPhone(phone)}
         </span>
       ) : null}
-      {talent.work_authorization !== null ? (
+      {workAuthItem !== undefined ? (
+        <span className="talent-detail__contact-item" data-testid="header-work-auth">
+          <Icons.IconShield />
+          <HydratedFieldValue
+            item={workAuthItem}
+            formatValue={(v) =>
+              typeof v === 'string' && v in WORK_AUTHORIZATION_LABELS
+                ? WORK_AUTHORIZATION_LABELS[v as keyof typeof WORK_AUTHORIZATION_LABELS]
+                : String(v)
+            }
+            fallback={
+              talent.work_authorization !== null
+                ? WORK_AUTHORIZATION_LABELS[talent.work_authorization]
+                : undefined
+            }
+          />
+        </span>
+      ) : talent.work_authorization !== null ? (
         <span className="talent-detail__contact-item">
           <Icons.IconShield />
           {WORK_AUTHORIZATION_LABELS[talent.work_authorization]}

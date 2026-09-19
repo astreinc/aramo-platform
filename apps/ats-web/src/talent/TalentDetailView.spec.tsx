@@ -207,6 +207,32 @@ describe('TalentDetailView', () => {
     expect(screen.getByText('Bernoulli numbers')).toBeInTheDocument();
   });
 
+  it('TI-1E-B1: HeaderContact renders governed work_authorization hydration (EXPLICITLY_CLEARED → Cleared)', async () => {
+    installFetch({
+      // Ordered first so the profile-hydration URL matches here, not the record.
+      '/v1/talent-records/tal-1/profile-hydration': {
+        talent_record_id: 'tal-1',
+        fields: [
+          {
+            field_key: 'work_authorization',
+            current_value: null,
+            value_state: 'EXPLICITLY_CLEARED',
+            source_type: 'MANUAL',
+            projection_policy: 'HOLD',
+            provenance: null,
+            resolution_status: 'NONE',
+            resolution_reason: null,
+            proposed_value: null,
+          },
+        ],
+      },
+      '/v1/talent-records/tal-1': makeTalent({ work_authorization: null }),
+    });
+    renderAt('/talent/tal-1', makeSession(['talent:read']));
+    const head = await screen.findByTestId('header-work-auth');
+    expect(within(head).getByTestId('hydrated-cleared')).toHaveTextContent('Cleared');
+  });
+
   it('falls back to the pool-open framing sub-line when employer + location are absent (R2)', async () => {
     installFetch({
       '/v1/talent-records/tal-1': makeTalent({ current_employer: null, city: null, state: null }),
