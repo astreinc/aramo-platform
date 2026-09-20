@@ -21,6 +21,7 @@ import type {
   WorkHistoryView,
   CreateTalentResumeEditionRequest,
   TalentResumeEditionsResponse,
+  TalentResumeEditionTextView,
   TalentResumeEditionView,
   WorkAuthorizationStateView,
 } from './types';
@@ -205,6 +206,17 @@ export async function createTalentResumeEdition(
   return apiClient.post<TalentResumeEditionView>(
     `/v1/talent-records/${encodeURIComponent(id)}/resume-editions`,
     body,
+  );
+}
+
+// TALENT-INTEL-1 TI-1H §9 — the redacted text belonging to ONE résumé edition
+// (preview). Opening edition R returns R's own text — never another edition's.
+export async function getTalentResumeEditionText(
+  id: string,
+  editionId: string,
+): Promise<TalentResumeEditionTextView> {
+  return apiClient.get<TalentResumeEditionTextView>(
+    `/v1/talent-records/${encodeURIComponent(id)}/resume-editions/${encodeURIComponent(editionId)}/text`,
   );
 }
 

@@ -223,5 +223,46 @@ describe('ats-web → POST /v1/talent-records/:id/resume-editions/:editionId/rej
   });
 });
 
+// TALENT-INTEL-1 TI-1H §9 — per-edition résumé TEXT (preview). Reading edition R
+// returns R's OWN redacted text; only redacted text is exposed (D4). status is
+// 'extracted' once the async re-extract has run.
+const RT_TALENT_ID = '00000000-0000-7000-8000-7a0000000019';
+const RT_ED = '00000000-0000-7000-8000-7e0000000003';
+
+describe('ats-web → GET /v1/talent-records/:id/resume-editions/:editionId/text', () => {
+  it("returns 200 with that edition's redacted text", async () => {
+    await provider
+      .addInteraction()
+      .given('an ats-web recruiter and a talent with a résumé edition text row exist')
+      .uponReceiving('a per-edition résumé-text read')
+      .withRequest(
+        'GET',
+        `/v1/talent-records/${RT_TALENT_ID}/resume-editions/${RT_ED}/text`,
+        (b) => {
+          b.headers({ Cookie: like(ACCESS_COOKIE) });
+        },
+      )
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          talent_id: uuid(RT_TALENT_ID),
+          edition_id: uuid(RT_ED),
+          status: like('extracted'),
+          redacted_text: like('Ada Lovelace — analytical engine, Bernoulli numbers.'),
+          extracted_at: regex(ISO_TIMESTAMP, '2026-07-01T00:00:00Z'),
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(
+          `${mock.url}/v1/talent-records/${RT_TALENT_ID}/resume-editions/${RT_ED}/text`,
+          { headers: { Cookie: ACCESS_COOKIE } },
+        );
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as { edition_id: string; redacted_text: string | null };
+        expect(body.edition_id).toBe(RT_ED);
+        expect(body.redacted_text).not.toBeNull();
+      });
+  });
+});
+
 beforeAll(() => undefined);
 afterAll(() => undefined);

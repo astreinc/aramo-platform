@@ -2127,6 +2127,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/talent-record/src/tests/resume-edition-text-route.spec.ts",
+        "project": "talent-record",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/talent-record/src/tests/resume-editions-routes.spec.ts",
         "project": "talent-record",
         "status": "excluded"

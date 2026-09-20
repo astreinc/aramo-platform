@@ -157,14 +157,16 @@ model TalentRecord {
   created_at DateTime @default(now()) @db.Timestamptz
   updated_at DateTime @default(now()) @updatedAt @db.Timestamptz
 
-  // Search PR-2 — the dedicated résumé-text row (1:1-latest). The
-  // persisted+redacted résumé body lives in TalentResumeText (the
-  // PII-isolation model — NOT a column on this core CRM row). The
-  // relation carries onDelete: Cascade on the FK side so deleting a
-  // TalentRecord PURGES its résumé-text row + the tsvector GIN entry
-  // (D1 self-cleaning; the cascade is DB-enforced, not service-path-
-  // dependent).
-  resume_text TalentResumeText?
+  // Search PR-2 / TALENT-INTEL-1 TI-1H — the dedicated résumé-text rows.
+  // The persisted+redacted résumé body lives in TalentResumeText (the
+  // PII-isolation model — NOT a column on this core CRM row). TI-1H makes
+  // this one-per-résumé-EDITION (was 1:1-latest): a Talent now owns MANY
+  // rows (one durable row per résumé edition + at most one edition-blind
+  // transient per uncommitted-edition résumé attachment). The relation
+  // carries onDelete: Cascade on the FK side so deleting a TalentRecord
+  // PURGES every résumé-text row + tsvector GIN entry (D1 self-cleaning;
+  // DB-enforced, not service-path-dependent).
+  resume_text TalentResumeText[]
 
   // Promotion Gate Slice-B1 — the reconcile projection annotations (same-schema
   // relations; onDelete Cascade purges them with the record). field_provenance
@@ -210,11 +212,16 @@ model TalentRecord {
 // free-text PII blob stays off the core entity. Same-schema (talent_record)
 // with a real FK → the D1 purge-on-delete cascade is a DB guarantee.
 //
-// 1:1-latest (talent_record_id @unique): re-attaching a résumé upserts
-// this row back to `pending` (versioning is a registered follow-on, not
-// v1). `storage_key` is the re-extract source pointer (the attachment's
-// S3 key, passed at enqueue — talent-record never reads the attachment
-// schema, which would cycle).
+// TALENT-INTEL-1 TI-1H — edition-aware history (was 1:1-latest). A Talent now
+// owns MANY résumé-text rows: one DURABLE row per résumé edition
+// (resume_edition_id NOT NULL) so a newer résumé never overwrites an older
+// edition's text, plus at most one edition-blind TRANSIENT row per résumé
+// attachment that has not (yet) become an edition (resume_edition_id NULL,
+// deduped by attachment_id). Uniqueness moved from UNIQUE(talent_record_id)
+// to UNIQUE(tenant_id, talent_record_id, resume_edition_id) — see @@unique
+// below + the migration's partial-unique on the transient. `storage_key` is
+// the re-extract source pointer (the attachment's S3 key, passed at enqueue —
+// talent-record never reads the attachment schema, which would cycle).
 //
 // The `search_tsv` generated tsvector column + its GIN index are added
 // by the hand-authored migration (Prisma cannot express GENERATED ALWAYS
@@ -223,22 +230,26 @@ model TalentResumeText {
   id        String @id @default(uuid()) @db.Uuid
   tenant_id String @db.Uuid
 
-  // 1:1-latest FK to the owning TalentRecord (same-schema → onDelete
-  // Cascade is the D1 purge guarantee).
-  talent_record_id String @unique @db.Uuid
+  // FK to the owning TalentRecord (same-schema → onDelete Cascade is the D1
+  // purge guarantee). TI-1H: NO LONGER @unique — a Talent owns many editions'
+  // text rows; per-edition uniqueness is the @@unique compound below.
+  talent_record_id String @db.Uuid
 
   // Provenance: which résumé Attachment produced this text. Cross-schema
   // (attachment schema) → UUID-only, NO FK (§7.3). Re-extract source
-  // pointer lives alongside.
+  // pointer lives alongside. Also the ADOPTION key: the edition-aware write
+  // claims a prior edition-blind transient row for the same attachment.
   attachment_id String? @db.Uuid
   storage_key   String?
 
-  // TALENT-INTEL-1 TI-1D-C §D — the TalentResumeEdition that produced the
-  // CURRENTLY-cached extracted text. Cross-schema (talent_evidence) → UUID-only,
-  // NO FK. NULLABLE + populated only on future edition-driven writes/re-extracts
-  // (no historical backfill). This is NOT the default/authoritative edition and
-  // NOT Talent truth — the row stays one-per-Talent latest-cache; per-edition
-  // historical text durability is TI-1H.
+  // TALENT-INTEL-1 TI-1D-C §D / TI-1H — the TalentResumeEdition this text
+  // belongs to. Cross-schema (talent_evidence) → UUID-only, NO FK. This is the
+  // per-edition durable IDENTITY (§10): a NON-NULL value is one edition's own
+  // text row (history/preview authority). NULL marks an edition-blind transient
+  // (a committed résumé attachment not yet promoted to an edition — TalentEdit-
+  // Drawer path) OR a pre-TI-1H legacy row; NULL rows are NOT deterministically
+  // an edition and are never backfilled (§12). Still NOT the default/
+  // authoritative edition and NOT Talent truth.
   resume_edition_id String? @db.Uuid
 
   // Lifecycle: 'pending' (enqueued at résumé-attachment commit, awaiting
@@ -263,11 +274,16 @@ model TalentResumeText {
 
   talent_record TalentRecord @relation(fields: [talent_record_id], references: [id], onDelete: Cascade)
 
+  // TI-1H — per-edition durable identity (§10). One text row per edition for a
+  // Talent. Postgres treats NULLs as DISTINCT, so this does NOT constrain the
+  // edition-blind transient rows (resume_edition_id NULL); the migration adds a
+  // partial-unique on (tenant_id, talent_record_id, attachment_id) WHERE
+  // resume_edition_id IS NULL to cap those at one-per-attachment.
+  @@unique([tenant_id, talent_record_id, resume_edition_id], map: "talent_resume_text_tenant_talent_edition_key")
   @@index([tenant_id])
   @@index([status])
-  // The directive names the table `talent_resume_text` (snake); the Prisma
-  // model is PascalCase, so @@map binds the client to the real table. Field
-  // names already match their snake columns (no per-field @map needed).
+  // Adoption + reader lookups by attachment.
+  @@index([talent_record_id, attachment_id])
   @@map("talent_resume_text")
   @@schema("talent_record")
 }

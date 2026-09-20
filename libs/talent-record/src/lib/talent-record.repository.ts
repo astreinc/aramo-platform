@@ -880,17 +880,28 @@ export class TalentRecordRepository {
     params.push(limit);
     const limitPlaceholder = `$${params.length}`;
 
+    // TI-1H §8 — résumé text is now per-edition (many rows per talent). Preserve
+    // the pre-TI-1H product behavior "a talent matches if any of its résumé text
+    // matches, returned ONCE": DISTINCT ON (tr.id) collapses the per-edition rows
+    // back to one row per talent, keeping the BEST-RANKED edition's snippet. Any
+    // present text row is eligible (there is no edition hard-delete path; deleted
+    // editions are not a concept — §15). The outer ORDER BY restores the global
+    // ts_rank ordering after the per-talent DISTINCT ON de-duplication.
     const sql = `
-      SELECT tr.*,
-             ts_headline('english', rt.redacted_text,
-               websearch_to_tsquery('english', $1),
-               'StartSel=<mark>,StopSel=</mark>,MaxFragments=2,MinWords=5,MaxWords=18'
-             ) AS resume_snippet
-      FROM "talent_record"."TalentRecord" tr
-      JOIN "talent_record"."talent_resume_text" rt
-        ON rt.talent_record_id = tr.id
-      WHERE ${conds.join(' AND ')}
-      ORDER BY ts_rank(rt.search_tsv, websearch_to_tsquery('english', $1)) DESC
+      SELECT * FROM (
+        SELECT DISTINCT ON (tr.id) tr.*,
+               ts_headline('english', rt.redacted_text,
+                 websearch_to_tsquery('english', $1),
+                 'StartSel=<mark>,StopSel=</mark>,MaxFragments=2,MinWords=5,MaxWords=18'
+               ) AS resume_snippet,
+               ts_rank(rt.search_tsv, websearch_to_tsquery('english', $1)) AS resume_rank
+        FROM "talent_record"."TalentRecord" tr
+        JOIN "talent_record"."talent_resume_text" rt
+          ON rt.talent_record_id = tr.id
+        WHERE ${conds.join(' AND ')}
+        ORDER BY tr.id, resume_rank DESC
+      ) ranked
+      ORDER BY ranked.resume_rank DESC
       LIMIT ${limitPlaceholder}
     `;
 
@@ -1088,6 +1099,12 @@ export class TalentRecordRepository {
   // (TalentResumeText.redacted_text; already PII-redacted at persist per D4).
   // The examine endpoint feeds this (+ key_skills) to TalentExtractionService.
   // Returns null when the talent has no résumé text row / no extracted body.
+  //
+  // TI-1H — the table is now per-edition (many rows per talent). This talent-
+  // level read preserves the pre-TI-1H "the talent's résumé text" behavior by
+  // returning the MOST-RECENTLY-EXTRACTED body DETERMINISTICALLY (was an
+  // orderBy-less findFirst — nondeterministic once multiple editions exist).
+  // Per-edition preview is findResumeEditionText().
   async findResumeRedactedText(args: {
     tenant_id: string;
     talent_record_id: string;
@@ -1096,10 +1113,41 @@ export class TalentRecordRepository {
       where: {
         tenant_id: args.tenant_id,
         talent_record_id: args.talent_record_id,
+        redacted_text: { not: null },
       },
+      orderBy: [
+        { extracted_at: { sort: 'desc', nulls: 'last' } },
+        { created_at: 'desc' },
+        { id: 'desc' },
+      ],
       select: { redacted_text: true },
     });
     return row?.redacted_text ?? null;
+  }
+
+  // TI-1H §9 — per-edition preview. Returns the redacted text + status for ONE
+  // résumé edition's own row (tenant-scoped). null when the talent/tenant has no
+  // text row for that edition (edition never extracted, or not this tenant's).
+  // Reading edition R returns R's text — never another edition's (§9).
+  async findResumeEditionText(args: {
+    tenant_id: string;
+    talent_record_id: string;
+    resume_edition_id: string;
+  }): Promise<{ redacted_text: string | null; status: string; extracted_at: Date | null } | null> {
+    const row = await this.prisma.talentResumeText.findFirst({
+      where: {
+        tenant_id: args.tenant_id,
+        talent_record_id: args.talent_record_id,
+        resume_edition_id: args.resume_edition_id,
+      },
+      select: { redacted_text: true, status: true, extracted_at: true },
+    });
+    if (row === null) return null;
+    return {
+      redacted_text: row.redacted_text ?? null,
+      status: row.status,
+      extracted_at: row.extracted_at ?? null,
+    };
   }
 
   // 4e-rest: cluster-only link write (the former identity-link column was

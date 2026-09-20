@@ -28,6 +28,18 @@ export interface TalentResumeEditionsResponse {
   editions: TalentResumeEditionView[];
 }
 
+// TALENT-INTEL-1 TI-1H §9 — per-edition résumé text (preview). Reading edition R
+// returns R's OWN redacted text — never another edition's. redacted_text is null
+// while the async re-extract is pending/failed (status carries which). Only
+// redacted text is ever exposed (D4 — raw résumé text is never returned).
+export interface TalentResumeEditionTextView {
+  talent_id: string;
+  edition_id: string;
+  status: string;
+  redacted_text: string | null;
+  extracted_at: string | null;
+}
+
 export function toResumeEditionView(
   row: TalentResumeEditionWithDocumentRow,
 ): TalentResumeEditionView {
