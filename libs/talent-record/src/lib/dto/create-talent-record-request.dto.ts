@@ -83,4 +83,9 @@ export interface CreateTalentRecordRequestDto {
     source_map_version?: string;
     resume_text_hash?: string;
   };
+  // TALENT-INTEL-1 TI-1F-B — the originating CREATE_DRAFT_UPLOAD ResumeExtractionDraft
+  // (from the draft-from-résumé prefill in A). When present, the confirmed create
+  // LINKS + marks it ACCEPTED (the draft lifecycle close-out); the repository
+  // ignores it (whitelisted mapping) — it is never a TalentRecord column.
+  draft_id?: string;
 }

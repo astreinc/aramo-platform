@@ -1270,6 +1270,7 @@
     ],
     "@aramo/talent-extraction": [
       "ARAMO_SKILL_NAMESPACE",
+      "ResumeExtractionDraftNotReviewableError",
       "TalentExtractionModule",
       "TalentExtractionService",
       "deriveSkillId",
@@ -2098,6 +2099,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/talent-record/src/tests/duplicate-check-pr.spec.ts",
+        "project": "talent-record",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/talent-record/src/tests/resume-edition-confirm-routes.spec.ts",
         "project": "talent-record",
         "status": "excluded"
       },
@@ -5602,6 +5609,12 @@
         "from": "pact/provider/src/verify-api.ts",
         "project": "aramo-pact-provider",
         "status": "unscoped"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/talent-record/src/tests/resume-edition-confirm-routes.spec.ts",
+        "project": "talent-record",
+        "status": "excluded"
       },
       { "project": "talent-record", "status": "production" }
     ],

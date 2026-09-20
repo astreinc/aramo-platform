@@ -36,7 +36,9 @@ import {
 } from '@aramo/resume-parse';
 import {
   TalentExtractionService,
+  ResumeExtractionDraftNotReviewableError,
   type TalentWorkHistoryView,
+  type ResumeExtractionDraftRow,
 } from '@aramo/talent-extraction';
 
 import type { CreateTalentRecordRequestDto } from './dto/create-talent-record-request.dto.js';
@@ -641,6 +643,155 @@ export class TalentRecordController {
     return { talent_id: id, editions: rows.map(toResumeEditionView) };
   }
 
+  // TALENT-INTEL-1 TI-1F-B — CONFIRM: promote the reviewed résumé draft's accepted
+  // facts to typed Talent evidence. Human-governed gate — nothing becomes Talent
+  // truth without this (§3). The promotion is ATOMIC (§4-E: persist ALL accepted
+  // facts + flip the draft READY_FOR_REVIEW → ACCEPTED, all-or-none), anchored on
+  // source_document_id (§4-F), and PRESERVES prior evidence (additive, §4-G). This
+  // is the EXISTING-Talent path (the draft was authored by the add-edition seam in
+  // A and driven to READY_FOR_REVIEW by the worker). Reconciliation + trust
+  // projection + hydration refresh are TI-1F-C — NOT here.
+  @Post(':id/resume-editions/:editionId/confirm')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('talent:edit')
+  @RequireSiteMatch()
+  async confirmResumeEdition(
+    @AuthContext() authContext: AuthContextType,
+    @Param('id') id: string,
+    @Param('editionId') editionId: string,
+    @RequestId() requestId: string,
+  ): Promise<TalentResumeEditionView> {
+    const draft = await this.resolveReviewableDraft(authContext, id, editionId, requestId);
+    if (draft.talent_id == null || draft.talent_document_id == null) {
+      throw new AramoError(
+        'VALIDATION_ERROR',
+        'this résumé extraction cannot be confirmed — its talent/document anchor is missing',
+        422,
+        { requestId, details: { resume_edition_id: editionId } },
+      );
+    }
+    try {
+      await this.talentExtraction.promoteResumeExtractionDraft({
+        draft,
+        actor_id: authContext.sub,
+      });
+    } catch (err) {
+      // A concurrent/duplicate confirm lost the READY_FOR_REVIEW race — the tx
+      // rolled back (no evidence written). Report it as an idempotent conflict.
+      if (err instanceof ResumeExtractionDraftNotReviewableError) {
+        throw new AramoError(
+          'RESUME_EXTRACTION_DRAFT_ALREADY_REVIEWED',
+          'this résumé extraction has already been reviewed',
+          409,
+          { requestId, details: { resume_edition_id: editionId } },
+        );
+      }
+      throw err;
+    }
+    return this.projectEditionView(authContext, id, editionId, requestId);
+  }
+
+  // TALENT-INTEL-1 TI-1F-B — REJECT: the recruiter declines the reviewed draft.
+  // NO typed evidence is created and NO reconciliation is triggered (§3); the
+  // draft is retained as governed review/audit history (status REJECTED).
+  @Post(':id/resume-editions/:editionId/reject')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('talent:edit')
+  @RequireSiteMatch()
+  async rejectResumeEdition(
+    @AuthContext() authContext: AuthContextType,
+    @Param('id') id: string,
+    @Param('editionId') editionId: string,
+    @RequestId() requestId: string,
+  ): Promise<TalentResumeEditionView> {
+    const draft = await this.resolveReviewableDraft(authContext, id, editionId, requestId);
+    const rejected = await this.talentExtraction.markResumeExtractionDraftRejected({
+      id: draft.id,
+      tenant_id: authContext.tenant_id,
+      reviewed_by: authContext.sub,
+      reviewed_at: new Date(),
+    });
+    if (rejected === 0) {
+      throw new AramoError(
+        'RESUME_EXTRACTION_DRAFT_ALREADY_REVIEWED',
+        'this résumé extraction has already been reviewed',
+        409,
+        { requestId, details: { resume_edition_id: editionId } },
+      );
+    }
+    return this.projectEditionView(authContext, id, editionId, requestId);
+  }
+
+  // Shared TI-1F-B guard: the edition belongs to this Talent+tenant AND carries a
+  // draft that is READY_FOR_REVIEW. 404 for a missing talent/edition/draft; 409
+  // when the draft is not (yet / still) reviewable (PROCESSING / FAILED / already
+  // ACCEPTED|REJECTED). Returns the reviewable draft.
+  private async resolveReviewableDraft(
+    authContext: AuthContextType,
+    talentId: string,
+    editionId: string,
+    requestId: string,
+  ): Promise<ResumeExtractionDraftRow> {
+    const talent = await this.repo.findById({ tenant_id: authContext.tenant_id, id: talentId });
+    if (talent === null) {
+      throw new AramoError('NOT_FOUND', 'TalentRecord not found in tenant', 404, {
+        requestId,
+        details: { id: talentId },
+      });
+    }
+    const edition = await this.talentExtraction.findResumeEditionById(editionId);
+    if (
+      edition === null ||
+      edition.tenant_id !== authContext.tenant_id ||
+      edition.talent_id !== talentId
+    ) {
+      throw new AramoError('NOT_FOUND', 'résumé edition not found for this talent', 404, {
+        requestId,
+        details: { resume_edition_id: editionId },
+      });
+    }
+    const draft = await this.talentExtraction.findResumeExtractionDraftByEdition({
+      tenant_id: authContext.tenant_id,
+      resume_edition_id: editionId,
+    });
+    if (draft === null) {
+      throw new AramoError(
+        'NOT_FOUND',
+        'no résumé extraction is under review for this edition',
+        404,
+        { requestId, details: { resume_edition_id: editionId } },
+      );
+    }
+    if (draft.status !== 'READY_FOR_REVIEW') {
+      throw new AramoError(
+        'RESUME_EXTRACTION_DRAFT_ALREADY_REVIEWED',
+        'this résumé extraction is not ready for review',
+        409,
+        { requestId, details: { resume_edition_id: editionId, status: draft.status } },
+      );
+    }
+    return draft;
+  }
+
+  // Project the (now-reviewed) edition back to the recruiter contract.
+  private async projectEditionView(
+    authContext: AuthContextType,
+    talentId: string,
+    editionId: string,
+    requestId: string,
+  ): Promise<TalentResumeEditionView> {
+    const rows = await this.talentExtraction.listResumeEditionsWithDocument({
+      tenant_id: authContext.tenant_id,
+      talent_id: talentId,
+    });
+    const view = rows.find((r) => r.id === editionId);
+    if (view !== undefined) return toResumeEditionView(view);
+    throw new AramoError('NOT_FOUND', 'résumé edition not found for this talent', 404, {
+      requestId,
+      details: { resume_edition_id: editionId },
+    });
+  }
+
   @Get(':id')
   @HttpCode(HttpStatus.OK)
   @RequireScopes('talent:read')
@@ -721,10 +872,13 @@ export class TalentRecordController {
     // resume_text_hash). BEST-EFFORT: the talent IS created; a provenance/evidence
     // write hiccup must not fail the create (mirrors the attach-on-create
     // soft-fail). Reuses the already-injected TalentExtractionService (no new edge).
+    // TI-1F-B — captured across the evidence block so the confirmed create can
+    // link + ACCEPT its originating CREATE_DRAFT_UPLOAD draft (below).
+    let sourceDocumentId: string | undefined;
+    let resumeEditionId: string | undefined;
     try {
       // R1 — create/link the résumé TalentDocument ONLY here, after confirmed
       // creation (never at draft/proposal time). Its id anchors the evidence.
-      let sourceDocumentId: string | undefined;
       const rd = body.resume_document;
       if (rd !== undefined && typeof rd.storage_key === 'string' && rd.storage_key !== '') {
         sourceDocumentId = await this.talentExtraction.createResumeDocument({
@@ -747,7 +901,7 @@ export class TalentRecordController {
         typeof rd?.resume_text_hash === 'string' &&
         rd.resume_text_hash !== ''
       ) {
-        await this.editionIngestion?.createEditionForDocument({
+        const editionResult = await this.editionIngestion?.createEditionForDocument({
           tenant_id: authContext.tenant_id,
           talent_id: created.id,
           talent_document_id: sourceDocumentId,
@@ -756,6 +910,7 @@ export class TalentRecordController {
           // Confirmed-create is a raw draft upload (no owned Attachment yet); a
           // GENERAL first edition. attachment_id stays null.
         });
+        resumeEditionId = editionResult?.edition.id;
       }
       const provenance = {
         ...(sourceDocumentId !== undefined ? { source_document_id: sourceDocumentId } : {}),
@@ -810,6 +965,31 @@ export class TalentRecordController {
     // -create evidence block. Best-effort + Redis-gated: a missed/failed enqueue
     // never fails the create (the backstop recovers eligible unreconciled rows).
     await this.canonicalReconcile?.enqueueTalent(authContext.tenant_id, created.id);
+
+    // TALENT-INTEL-1 TI-1F-B — CREATE_DRAFT_UPLOAD close-out. A confirmed create IS
+    // the human commit for the first-time-Create context (the recruiter reviewed
+    // the prefill in the form and submitted the reviewed facts, which the block
+    // above persisted as typed evidence — §3). When the originating draft is
+    // supplied, LINK it to the just-created Talent identity and mark it ACCEPTED so
+    // the draft lifecycle closes. Best-effort + guarded on READY_FOR_REVIEW (a
+    // 0-count is a benign no-op — a re-submit or an already-decided draft never
+    // fails the create). No re-promotion: the evidence was written above, not here.
+    if (typeof body.draft_id === 'string' && body.draft_id !== '') {
+      try {
+        await this.talentExtraction.markResumeExtractionDraftAccepted({
+          id: body.draft_id,
+          tenant_id: authContext.tenant_id,
+          talent_id: created.id,
+          talent_document_id: sourceDocumentId ?? null,
+          resume_edition_id: resumeEditionId ?? null,
+          reviewed_by: authContext.sub,
+          reviewed_at: new Date(),
+        });
+      } catch {
+        // Non-fatal: the Talent + evidence exist; a draft-link hiccup never fails
+        // the create (mirrors the evidence block's soft-fail).
+      }
+    }
 
     return created;
   }

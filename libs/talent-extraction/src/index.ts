@@ -16,7 +16,12 @@ export { TalentExtractionService } from './lib/talent-extraction.service.js';
 export type {
   TalentResumeEditionRow,
   TalentResumeEditionWithDocumentRow,
+  // TI-1F-B — the review draft the confirm/reject seam operates on.
+  ResumeExtractionDraftRow,
 } from '@aramo/talent-evidence';
+// TI-1F-B — re-export the promotion race error through the SAME sanctioned seam
+// so talent-record catches it (→ 409) without a scope:ats → scope:cip edge.
+export { ResumeExtractionDraftNotReviewableError } from '@aramo/talent-evidence';
 export {
   deriveSkillId,
   normalizeSkillSurfaceForm,

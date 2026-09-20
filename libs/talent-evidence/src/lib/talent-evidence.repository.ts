@@ -609,6 +609,16 @@ const EMPLOYMENT_TYPE_FROM_PRISMA: Record<'W2' | 'CONTRACT_1099' | 'C2C' | 'FTE'
   FTE: 'FTE',
 };
 
+// TI-1F-B — thrown INSIDE the promotion transaction when the draft is no longer
+// READY_FOR_REVIEW (a concurrent/duplicate confirm), forcing an all-or-none
+// rollback. The controller maps it to a 409 (already-decided / not reviewable).
+export class ResumeExtractionDraftNotReviewableError extends Error {
+  constructor(public readonly draftId: string) {
+    super(`ResumeExtractionDraft ${draftId} is not READY_FOR_REVIEW`);
+    this.name = 'ResumeExtractionDraftNotReviewableError';
+  }
+}
+
 @Injectable()
 export class TalentEvidenceRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -1477,6 +1487,237 @@ export class TalentEvidenceRepository {
         last_error_code: input.last_error_code,
         last_error_at: input.last_error_at,
       },
+    });
+  }
+
+  // TI-1F-B — the review-context lookup for an EXISTING-Talent confirm: the
+  // ATTACHMENT draft bound to the edition under review. Tenant-scoped; the
+  // controller has already proven the edition belongs to the talent+tenant.
+  async findResumeExtractionDraftByEdition(args: {
+    tenant_id: string;
+    resume_edition_id: string;
+  }): Promise<ResumeExtractionDraftRow | null> {
+    const row = await this.prisma.resumeExtractionDraft.findFirst({
+      where: { tenant_id: args.tenant_id, resume_edition_id: args.resume_edition_id },
+    });
+    return (row as unknown as ResumeExtractionDraftRow | null) ?? null;
+  }
+
+  // TI-1F-B — the CREATE_DRAFT_UPLOAD close-out: when a confirmed create supplies
+  // its originating draft, the draft is linked to the just-created Talent identity
+  // and marked ACCEPTED. Guarded on READY_FOR_REVIEW so a PROCESSING/FAILED/already
+  // -decided draft is never silently re-accepted; returns the rows affected so the
+  // caller can treat a 0-count as a no-op (best-effort on the create path).
+  async markResumeExtractionDraftAccepted(input: {
+    id: string;
+    tenant_id: string;
+    talent_id?: string | null;
+    talent_document_id?: string | null;
+    resume_edition_id?: string | null;
+    reviewed_by: string;
+    reviewed_at: Date;
+  }): Promise<number> {
+    const updated = await this.prisma.resumeExtractionDraft.updateMany({
+      where: { id: input.id, tenant_id: input.tenant_id, status: 'READY_FOR_REVIEW' },
+      data: {
+        status: 'ACCEPTED',
+        ...(input.talent_id != null ? { talent_id: input.talent_id } : {}),
+        ...(input.talent_document_id != null ? { talent_document_id: input.talent_document_id } : {}),
+        ...(input.resume_edition_id != null ? { resume_edition_id: input.resume_edition_id } : {}),
+        reviewed_by: input.reviewed_by,
+        reviewed_at: input.reviewed_at,
+      },
+    });
+    return updated.count;
+  }
+
+  // TI-1F-B — REJECT: the recruiter declines the draft. No typed evidence, no
+  // reconciliation (§3). Retained as governed review/audit history. Guarded on
+  // READY_FOR_REVIEW; returns rows affected (0 = not reviewable → caller 409s).
+  async markResumeExtractionDraftRejected(input: {
+    id: string;
+    tenant_id: string;
+    reviewed_by: string;
+    reviewed_at: Date;
+  }): Promise<number> {
+    const updated = await this.prisma.resumeExtractionDraft.updateMany({
+      where: { id: input.id, tenant_id: input.tenant_id, status: 'READY_FOR_REVIEW' },
+      data: { status: 'REJECTED', reviewed_by: input.reviewed_by, reviewed_at: input.reviewed_at },
+    });
+    return updated.count;
+  }
+
+  // TI-1F-B — the ATOMIC promotion on CONFIRM (directive §4-E): in ONE
+  // transaction, persist ALL accepted typed facts (work-history + per-role skill
+  // usage + projects + declared skills + education + certifications, every row
+  // already shaped by the caller and anchored on source_document_id — NEVER
+  // source_edition_id, §4-F) and flip the draft READY_FOR_REVIEW → ACCEPTED. All
+  // -or-none: the draft mark is guarded on READY_FOR_REVIEW inside the tx, so a
+  // concurrent/duplicate confirm (count 0) throws and rolls back every insert —
+  // no half-promoted evidence, no double-promotion. External ops (none here — the
+  // grounded payload was persisted in A) stay outside the tx; trust projection +
+  // reconciliation + the derived snapshot run AFTER commit (TI-1F-C). Prior
+  // evidence is PRESERVED — these are additive creates, never a replace-set (§4-G).
+  // Mirrors the inline-mapping transaction precedent of replaceWorkHistoryForTalent.
+  async promoteResumeExtractionDraftEvidence(input: {
+    draft_id: string;
+    tenant_id: string;
+    reviewed_by: string;
+    reviewed_at: Date;
+    work_history: readonly CreateTalentWorkHistoryEntryInput[];
+    skill_evidence: readonly CreateTalentSkillEvidenceInput[];
+    projects: readonly CreateTalentProjectExperienceInput[];
+    education: readonly CreateTalentEducationEntryInput[];
+    certifications: readonly CreateTalentCertificationEntryInput[];
+  }): Promise<{
+    work_history_ids: string[];
+    skill_evidence_ids: string[];
+    project_ids: string[];
+    education_ids: string[];
+    certification_ids: string[];
+  }> {
+    return this.prisma.$transaction(async (tx) => {
+      const work_history_ids: string[] = [];
+      for (const e of input.work_history) {
+        await tx.talentWorkHistoryEntry.create({
+          data: {
+            id: e.id,
+            talent_id: e.talent_id,
+            tenant_id: e.tenant_id,
+            employer_name: e.employer_name,
+            role_title: e.role_title,
+            start_date: e.start_date,
+            end_date: e.end_date,
+            location: e.location,
+            employment_type: e.employment_type,
+            description_text: e.description_text,
+            source: e.source,
+            source_document_id: e.source_document_id,
+            source_refs: e.source_refs ?? [],
+            source_map_version: e.source_map_version,
+            resume_text_hash: e.resume_text_hash,
+            company_id: e.company_id,
+            experience_summary: e.experience_summary,
+            is_authoritative: e.is_authoritative,
+            created_at: e.created_at,
+          },
+        });
+        work_history_ids.push(e.id);
+      }
+      const skill_evidence_ids: string[] = [];
+      for (const s of input.skill_evidence) {
+        await tx.talentSkillEvidence.create({
+          data: {
+            id: s.id,
+            talent_id: s.talent_id,
+            tenant_id: s.tenant_id,
+            skill_id: s.skill_id,
+            source_record_id: s.source_record_id,
+            surface_form: s.surface_form,
+            source: s.source,
+            evidence_text: s.evidence_text,
+            proficiency_claim: s.proficiency_claim,
+            years_claimed: s.years_claimed,
+            confidence_score: s.confidence_score,
+            source_document_id: s.source_document_id,
+            source_refs: s.source_refs ?? [],
+            source_map_version: s.source_map_version,
+            resume_text_hash: s.resume_text_hash,
+            work_experience_id: s.work_experience_id,
+            version: s.version,
+            usage_start: s.usage_start,
+            usage_end: s.usage_end,
+            usage_period_basis: s.usage_period_basis,
+            activity_context: s.activity_context,
+            created_at: s.created_at,
+          },
+        });
+        skill_evidence_ids.push(s.id);
+      }
+      const project_ids: string[] = [];
+      for (const p of input.projects) {
+        await tx.talentProjectExperience.create({
+          data: {
+            id: p.id,
+            talent_id: p.talent_id,
+            tenant_id: p.tenant_id,
+            work_experience_id: p.work_experience_id,
+            project_name: p.project_name,
+            context_summary: p.context_summary,
+            domain: p.domain,
+            start_date: p.start_date,
+            end_date: p.end_date,
+            source_document_id: p.source_document_id,
+            source_refs: p.source_refs ?? [],
+            source_map_version: p.source_map_version,
+            resume_text_hash: p.resume_text_hash,
+            created_at: p.created_at,
+          },
+        });
+        project_ids.push(p.id);
+      }
+      const education_ids: string[] = [];
+      for (const ed of input.education) {
+        await tx.talentEducationEntry.create({
+          data: {
+            id: ed.id,
+            talent_id: ed.talent_id,
+            tenant_id: ed.tenant_id,
+            institution_name: ed.institution_name,
+            degree_name: ed.degree_name,
+            field_of_study: ed.field_of_study,
+            conferred_date: ed.conferred_date,
+            evidence_text: ed.evidence_text,
+            source: ed.source,
+            source_document_id: ed.source_document_id,
+            source_refs: ed.source_refs ?? [],
+            source_map_version: ed.source_map_version,
+            resume_text_hash: ed.resume_text_hash,
+            created_at: ed.created_at,
+          },
+        });
+        education_ids.push(ed.id);
+      }
+      const certification_ids: string[] = [];
+      for (const c of input.certifications) {
+        await tx.talentCertificationEntry.create({
+          data: {
+            id: c.id,
+            talent_id: c.talent_id,
+            tenant_id: c.tenant_id,
+            certification_name: c.certification_name,
+            issuer_name: c.issuer_name,
+            credential_ref: c.credential_ref,
+            issued_date: c.issued_date,
+            expiry_date: c.expiry_date,
+            evidence_text: c.evidence_text,
+            source: c.source,
+            source_document_id: c.source_document_id,
+            source_refs: c.source_refs ?? [],
+            source_map_version: c.source_map_version,
+            resume_text_hash: c.resume_text_hash,
+            created_at: c.created_at,
+          },
+        });
+        certification_ids.push(c.id);
+      }
+      // The atomic gate: promote ONLY a still-reviewable draft. A concurrent or
+      // repeated confirm sees count 0 → throw → the whole tx (every insert above)
+      // rolls back. No partial evidence, no double promotion (§3, §4-E).
+      const marked = await tx.resumeExtractionDraft.updateMany({
+        where: { id: input.draft_id, tenant_id: input.tenant_id, status: 'READY_FOR_REVIEW' },
+        data: { status: 'ACCEPTED', reviewed_by: input.reviewed_by, reviewed_at: input.reviewed_at },
+      });
+      if (marked.count === 0) {
+        throw new ResumeExtractionDraftNotReviewableError(input.draft_id);
+      }
+      return {
+        work_history_ids,
+        skill_evidence_ids,
+        project_ids,
+        education_ids,
+        certification_ids,
+      };
     });
   }
 
