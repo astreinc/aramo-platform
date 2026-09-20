@@ -2244,6 +2244,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     const ATSW_RE_ATT_ID = '00000000-0000-7000-8000-7f0000000001';
     // TI-1F-B/C — the review draft bound to ATSW_RE_ED_A (confirm/reject state).
     const ATSW_RE_DRAFT_ID = '00000000-0000-7000-8000-7c0000000001';
+    const ATSW_RE_DEFAULT_ID = '00000000-0000-7000-8000-7b0000000001';
     const ATSW_DEFER_SUBJECT_ID = '00000000-0000-7000-8000-5b1000000004';
     const ATSW_DEFER_SUBJECT_B_ID = '00000000-0000-7000-8000-5b1000000005';
     const ATSW_DEFER_ARRIVAL_ID = '00000000-0000-7000-8000-a44000000003';
@@ -7255,6 +7256,15 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
                   '{"skills":[{"surface_form":"Kubernetes"}],"work_history":[]}'::jsonb,
                   '2026-07-01T00:00:00Z', $3::uuid)`,
               [ATSW_RE_TALENT_ID, ATSW_RE_DOC_A, TENANT_ID, ATSW_RE_ATT_ID, ATSW_RE_DRAFT_ID, ATSW_RE_ED_A],
+            );
+            // The lone edition is the talent's default (the confirm/reject views
+            // project is_default=true — matches the POST-create "first edition →
+            // default" semantics the ats-web consumer expects).
+            await c.query(
+              `INSERT INTO talent_evidence."TalentResumeDefault"
+                 (id, tenant_id, talent_id, resume_edition_id, set_at, set_by)
+               VALUES ($4::uuid, $2::uuid, $1::uuid, $3::uuid, '2026-07-01T00:00:00Z', $2::uuid)`,
+              [ATSW_RE_TALENT_ID, TENANT_ID, ATSW_RE_ED_A, ATSW_RE_DEFAULT_ID],
             );
           });
         },

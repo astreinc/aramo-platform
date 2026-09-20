@@ -446,34 +446,38 @@ export class TalentRecordReconcileRepository {
 
   // TALENT-INTEL-1 TI-1D-B / TI-1F-C §4-I — resolve a field's pending review:
   // RESOLVED + the recruiter's reason, CLEAR proposed_value (populated only while
-  // PENDING_REVIEW), and EXPLICITLY release the contradiction HOLD → AUTO. This is
-  // the ONLY sanctioned HOLD release for a contradiction: an intentional
-  // conflict-resolution action, never an incidental side effect of a re-reconcile.
-  // (A recruiter's manual HOLD is a separate control set via setProjectionPolicy;
-  // resolveFieldReview only ever runs as the resolution of a PENDING_REVIEW
-  // contradiction, so returning to AUTO here is the chosen-value projection resume.)
-  // updateMany over EXISTING rows only (resolving a field with no control row is a
-  // no-op); value_state / source_type are left untouched.
+  // PENDING_REVIEW), and release the CONTRADICTION-induced HOLD → AUTO so automatic
+  // projection resumes on the resolved value. Two writes so the release is precise:
+  //   1. RESOLVED + reason + proposed_value cleared — for every matching row.
+  //   2. projection_policy → AUTO ONLY where value_state <> EXPLICITLY_CLEARED —
+  //      i.e., release only a contradiction-induced HOLD. A recruiter's MANUAL
+  //      EXPLICITLY_CLEARED + HOLD control is PRESERVED (§4-I: never globally clear
+  //      a HOLD; the manual clear is a standing recruiter control, distinct from
+  //      the contradiction freeze). updateMany over EXISTING rows only (a field with
+  //      no control row is a no-op); value_state / source_type are never mutated.
   async resolveFieldReview(args: {
     tenant_id: string;
     talent_record_id: string;
     field_key: string;
     resolution_reason: TalentProfileResolutionReason;
   }): Promise<void> {
+    const key = {
+      tenant_id: args.tenant_id,
+      talent_record_id: args.talent_record_id,
+      field_key: args.field_key,
+    };
     await this.prisma.talentProfileFieldState.updateMany({
-      where: {
-        tenant_id: args.tenant_id,
-        talent_record_id: args.talent_record_id,
-        field_key: args.field_key,
-      },
+      where: key,
       data: {
         resolution_status: 'RESOLVED',
         resolution_reason: args.resolution_reason,
         proposed_value: null,
-        // §4-I — release the HOLD set on contradiction; projection resumes on the
-        // resolved (chosen) value.
-        projection_policy: 'AUTO',
       },
+    });
+    // Release only the contradiction HOLD; preserve a recruiter's manual clear.
+    await this.prisma.talentProfileFieldState.updateMany({
+      where: { ...key, value_state: { not: 'EXPLICITLY_CLEARED' } },
+      data: { projection_policy: 'AUTO' },
     });
   }
 }
