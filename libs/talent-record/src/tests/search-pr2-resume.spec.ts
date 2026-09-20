@@ -126,9 +126,14 @@ describe('PR-2 proof #2/#3/#4 — résumé content-search SQL (repo)', () => {
       resume_q: 'kubernetes',
     });
     expect(sql).toContain("search_tsv @@ websearch_to_tsquery('english', $1)");
+    // TI-1H §8 — text is now per-edition; DISTINCT ON (tr.id) collapses a talent's
+    // editions to ONE row keeping the best-ranked snippet, then the outer query
+    // restores the global ts_rank ordering.
+    expect(sql).toContain('DISTINCT ON (tr.id)');
     expect(sql).toContain(
-      "ORDER BY ts_rank(rt.search_tsv, websearch_to_tsquery('english', $1)) DESC",
+      "ts_rank(rt.search_tsv, websearch_to_tsquery('english', $1)) AS resume_rank",
     );
+    expect(sql).toContain('ORDER BY ranked.resume_rank DESC');
     // $1 carries the user query text (parameterized — no interpolation).
     expect(params[0]).toBe('kubernetes');
   });
@@ -307,11 +312,23 @@ describe('PR-2 — enqueue + async re-extract (R1)', () => {
   function makeService(prismaOverrides: Record<string, unknown>): {
     service: ResumeTextService;
     update: ReturnType<typeof vi.fn>;
+    upsert: ReturnType<typeof vi.fn>;
+    create: ReturnType<typeof vi.fn>;
+    del: ReturnType<typeof vi.fn>;
   } {
     const update = vi.fn().mockResolvedValue({});
+    const upsert = vi.fn().mockResolvedValue({});
+    const create = vi.fn().mockResolvedValue({});
+    const del = vi.fn().mockResolvedValue({});
     const prisma = {
       talentResumeText: {
-        upsert: vi.fn().mockResolvedValue({}),
+        upsert,
+        create,
+        delete: del,
+        // TI-1H: the edition-aware/transient logic reads before writing. Default
+        // to "no existing row"; individual tests override.
+        findUnique: vi.fn().mockResolvedValue(null),
+        findFirst: vi.fn().mockResolvedValue(null),
         findMany: vi.fn().mockResolvedValue([]),
         update,
         ...prismaOverrides,
@@ -328,35 +345,39 @@ describe('PR-2 — enqueue + async re-extract (R1)', () => {
       objectStorage as never,
       logger as never,
     );
-    return { service, update };
+    return { service, update, upsert, create, del };
   }
 
-  it('enqueueReindex upserts a pending row keyed to the talent_record_id', async () => {
-    const upsert = vi.fn().mockResolvedValue({});
-    const { service } = makeService({ upsert });
+  // TALENT-INTEL-1 TI-1H — the edition-BLIND attachment-commit call (no
+  // resume_edition_id) maintains a single transient row per attachment; with no
+  // prior row it CREATEs one (pending, edition null), never keyed to a fixed
+  // one-row-per-talent slot.
+  it('enqueueReindex (edition-blind) creates a transient pending row for the attachment', async () => {
+    const { service, create } = makeService({});
     await service.enqueueReindex({
       tenant_id: TENANT_ID,
       talent_record_id: 'tr-1',
       attachment_id: 'att-1',
       storage_key: 'tenant/x/resume.pdf',
     });
-    expect(upsert).toHaveBeenCalledWith(
+    expect(create).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { talent_record_id: 'tr-1' },
-        create: expect.objectContaining({ status: 'pending', talent_record_id: 'tr-1' }),
-        update: expect.objectContaining({ status: 'pending' }),
+        data: expect.objectContaining({
+          status: 'pending',
+          talent_record_id: 'tr-1',
+          attachment_id: 'att-1',
+        }),
       }),
     );
+    // No resume_edition_id on a transient row.
+    expect(create.mock.calls[0][0].data.resume_edition_id).toBeUndefined();
   });
 
-  // TALENT-INTEL-1 TI-1D-C §D — when the edition-ingestion pipeline knows the
-  // edition that produced this text, enqueueReindex associates it (future writes
-  // only; the plain attachment-commit call omits it and leaves the column null —
-  // no historical sweep). The column means "the edition of the currently-cached
-  // extracted text", NOT the default/authoritative edition.
-  it('enqueueReindex associates the résumé edition when provided (create + update)', async () => {
-    const upsert = vi.fn().mockResolvedValue({});
-    const { service } = makeService({ upsert });
+  // TALENT-INTEL-1 TI-1H — the edition-AWARE call targets THAT edition's OWN
+  // durable row (upsert on the (tenant, talent, edition) key). A newer edition
+  // never overwrites an older edition's row.
+  it('enqueueReindex (edition-aware) upserts on the edition key', async () => {
+    const { service, upsert } = makeService({});
     await service.enqueueReindex({
       tenant_id: TENANT_ID,
       talent_record_id: 'tr-1',
@@ -366,10 +387,40 @@ describe('PR-2 — enqueue + async re-extract (R1)', () => {
     });
     expect(upsert).toHaveBeenCalledWith(
       expect.objectContaining({
-        create: expect.objectContaining({ resume_edition_id: 'ed-1' }),
-        update: expect.objectContaining({ resume_edition_id: 'ed-1' }),
+        where: {
+          tenant_id_talent_record_id_resume_edition_id: {
+            tenant_id: TENANT_ID,
+            talent_record_id: 'tr-1',
+            resume_edition_id: 'ed-1',
+          },
+        },
+        create: expect.objectContaining({ resume_edition_id: 'ed-1', status: 'pending' }),
       }),
     );
+  });
+
+  // TALENT-INTEL-1 TI-1H — the edition-aware write ADOPTS a prior edition-blind
+  // transient for the same attachment (the TalentEditView commit→edition
+  // sequence), converging to ONE row rather than stranding a null transient.
+  it('enqueueReindex (edition-aware) adopts a prior transient for the same attachment', async () => {
+    const { service, update, upsert } = makeService({
+      findUnique: vi.fn().mockResolvedValue(null), // edition row does not exist yet
+      findFirst: vi.fn().mockResolvedValue({ id: 'rt-transient' }), // the transient
+    });
+    await service.enqueueReindex({
+      tenant_id: TENANT_ID,
+      talent_record_id: 'tr-1',
+      attachment_id: 'att-1',
+      storage_key: 'tenant/x/resume.pdf',
+      resume_edition_id: 'ed-1',
+    });
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'rt-transient' },
+        data: expect.objectContaining({ resume_edition_id: 'ed-1', status: 'pending' }),
+      }),
+    );
+    expect(upsert).not.toHaveBeenCalled();
   });
 
   it('#1 (persist) — drain extracts, REDACTS, and persists redacted text (no SSN)', async () => {
