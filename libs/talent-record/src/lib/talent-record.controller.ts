@@ -82,6 +82,7 @@ import {
   toResumeEditionView,
   type TalentResumeEditionView,
   type TalentResumeEditionsResponse,
+  type TalentResumeEditionTextView,
 } from './dto/talent-resume-edition.view.js';
 import { TalentLinkService } from './talent-link.service.js';
 import { TalentRecordRepository } from './talent-record.repository.js';
@@ -487,6 +488,58 @@ export class TalentRecordController {
       talent_id: id,
     });
     return { talent_id: id, editions: rows.map(toResumeEditionView) };
+  }
+
+  // TALENT-INTEL-1 TI-1H §9 — per-edition résumé TEXT (preview). Resolves the
+  // requested edition and returns THAT edition's own redacted text — a newer
+  // edition's text can never leak here (the read is scoped to the edition's own
+  // durable row). Guard chain mirrors listResumeEditions (talent:read +
+  // RequireSiteMatch). 404 when the talent is not in the tenant OR the edition
+  // does not belong to the talent; 200 with redacted_text=null while the async
+  // re-extract is still pending. Only redacted text is exposed (D4).
+  @Get(':id/resume-editions/:editionId/text')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('talent:read')
+  @RequireSiteMatch()
+  async getResumeEditionText(
+    @AuthContext() authContext: AuthContextType,
+    @Param('id') id: string,
+    @Param('editionId') editionId: string,
+    @RequestId() requestId: string,
+  ): Promise<TalentResumeEditionTextView> {
+    const view = await this.repo.findById({ tenant_id: authContext.tenant_id, id });
+    if (view === null) {
+      throw new AramoError('NOT_FOUND', 'TalentRecord not found in tenant', 404, {
+        requestId,
+        details: { id },
+      });
+    }
+    // The edition must belong to THIS talent (tenant-scoped) — otherwise 404,
+    // never a cross-talent/cross-tenant text read.
+    const editions = await this.talentExtraction.listResumeEditionsWithDocument({
+      tenant_id: authContext.tenant_id,
+      talent_id: id,
+    });
+    if (!editions.some((e) => e.id === editionId)) {
+      throw new AramoError('NOT_FOUND', 'résumé edition not found for this talent', 404, {
+        requestId,
+        details: { id, edition_id: editionId },
+      });
+    }
+    const text = await this.repo.findResumeEditionText({
+      tenant_id: authContext.tenant_id,
+      talent_record_id: id,
+      resume_edition_id: editionId,
+    });
+    return {
+      talent_id: id,
+      edition_id: editionId,
+      // No text row yet ⇒ the async re-extract has not run — report 'pending'
+      // (never fabricate text).
+      status: text?.status ?? 'pending',
+      redacted_text: text?.redacted_text ?? null,
+      extracted_at: text?.extracted_at != null ? text.extracted_at.toISOString() : null,
+    };
   }
 
   // TALENT-INTEL-1 TI-1D-C §A/§B/§F — ingest a NEW résumé edition for an EXISTING
@@ -983,6 +1036,23 @@ export class TalentRecordController {
           // GENERAL first edition. attachment_id stays null.
         });
         resumeEditionId = editionResult?.edition.id;
+        // TI-1H §7 — capture this first edition's résumé text in its OWN durable
+        // row (edition-aware), keyed to the just-minted edition. Confirmed-create
+        // is a raw draft upload (no owned Attachment), so attachment_id is
+        // omitted; storage_key is the retained draft object the worker re-extracts
+        // from. Best-effort — a cache write never fails the create.
+        if (resumeEditionId !== undefined && typeof rd?.storage_key === 'string' && rd.storage_key !== '') {
+          try {
+            await this.resumeText?.enqueueReindex({
+              tenant_id: authContext.tenant_id,
+              talent_record_id: created.id,
+              storage_key: rd.storage_key,
+              resume_edition_id: resumeEditionId,
+            });
+          } catch {
+            // non-fatal
+          }
+        }
       }
       const provenance = {
         ...(sourceDocumentId !== undefined ? { source_document_id: sourceDocumentId } : {}),
