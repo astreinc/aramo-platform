@@ -86,21 +86,30 @@ function make(parts: {
     markResumeExtractionDraftRejected,
     listResumeEditionsWithDocument,
   };
+  // TI-1F-C §4-H — the two SEPARATE reconcile producers, emitted after CONFIRM.
+  const enqueueCanonical = vi.fn().mockResolvedValue(undefined);
+  const enqueueTalentReconcile = vi.fn().mockResolvedValue(undefined);
+  const canonicalReconcile = { enqueueTalent: enqueueCanonical };
+  const talentReconcile = { enqueueTalent: enqueueTalentReconcile };
   const ctl = new TalentRecordController(
     repo as never, {} as never, {} as never, {} as never,
     talentExtraction as never, {} as never, {} as never,
-    undefined, {} as never, {} as never, {} as never,
+    canonicalReconcile as never, {} as never, {} as never, {} as never,
+    talentReconcile as never,
   );
-  return { ctl, findById, findResumeEditionById, findResumeExtractionDraftByEdition, promoteResumeExtractionDraft, markResumeExtractionDraftRejected };
+  return { ctl, findById, findResumeEditionById, findResumeExtractionDraftByEdition, promoteResumeExtractionDraft, markResumeExtractionDraftRejected, enqueueCanonical, enqueueTalentReconcile };
 }
 
 describe('TI-1F-B — POST :id/resume-editions/:editionId/confirm', () => {
-  it('promotes the reviewed draft and returns the edition view (processing_status ACCEPTED)', async () => {
-    const { ctl, promoteResumeExtractionDraft } = make();
+  it('promotes the reviewed draft, emits BOTH reconcile signals (§4-H), returns the edition view (ACCEPTED)', async () => {
+    const { ctl, promoteResumeExtractionDraft, enqueueCanonical, enqueueTalentReconcile } = make();
     const res = await ctl.confirmResumeEdition(AUTH, TALENT, EDITION, 'rq-1');
     expect(promoteResumeExtractionDraft).toHaveBeenCalledWith(
       expect.objectContaining({ draft: expect.objectContaining({ id: 'dr-1' }), actor_id: 'me' }),
     );
+    // §4-H — the two SEPARATE reconcile architectures both fire after the commit.
+    expect(enqueueCanonical).toHaveBeenCalledWith(TENANT, TALENT);
+    expect(enqueueTalentReconcile).toHaveBeenCalledWith(TENANT, TALENT);
     expect(res.edition_id).toBe(EDITION);
     expect(res.processing_status).toBe('ACCEPTED');
   });
@@ -159,6 +168,15 @@ describe('TI-1F-B — POST :id/resume-editions/:editionId/reject', () => {
     // REJECT never promotes evidence (§3).
     expect(promoteResumeExtractionDraft).not.toHaveBeenCalled();
     expect(res.edition_id).toBe(EDITION);
+  });
+
+  it('REJECT triggers NO reconciliation (§3)', async () => {
+    const { ctl, enqueueCanonical, enqueueTalentReconcile } = make({
+      edition: { id: EDITION, tenant_id: TENANT, talent_id: TALENT },
+    });
+    await ctl.rejectResumeEdition(AUTH, TALENT, EDITION, 'rq-1');
+    expect(enqueueCanonical).not.toHaveBeenCalled();
+    expect(enqueueTalentReconcile).not.toHaveBeenCalled();
   });
 
   it('409 when the draft is no longer reviewable at reject time (race → 0 rows)', async () => {

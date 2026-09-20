@@ -16673,6 +16673,16 @@
       "to": "libs/talent-extraction/tsconfig.lib.json"
     },
     {
+      "from": "libs/talent-reconcile-signal/project.json",
+      "status": "unscoped",
+      "to": "libs/talent-reconcile-signal/src/index.ts"
+    },
+    {
+      "from": "libs/talent-reconcile-signal/project.json",
+      "status": "unscoped",
+      "to": "libs/talent-reconcile-signal/tsconfig.lib.json"
+    },
+    {
       "from": "libs/talent-reconcile/project.json",
       "status": "unscoped",
       "to": "libs/talent-reconcile/src/index.ts"
@@ -18772,6 +18782,11 @@
     {
       "from": "tsconfig.base.json",
       "status": "unscoped",
+      "to": "libs/talent-reconcile-signal/src/index.ts"
+    },
+    {
+      "from": "tsconfig.base.json",
+      "status": "unscoped",
       "to": "libs/talent-reconcile/src/index.ts"
     },
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/talent-record/src/index.ts" },
@@ -18898,6 +18913,11 @@
       "from": "vitest.shared.ts",
       "status": "unscoped",
       "to": "libs/talent-extraction/src/index.ts"
+    },
+    {
+      "from": "vitest.shared.ts",
+      "status": "unscoped",
+      "to": "libs/talent-reconcile-signal/src/index.ts"
     },
     {
       "from": "vitest.shared.ts",

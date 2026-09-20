@@ -2238,6 +2238,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     const ATSW_RE_ED_A = '00000000-0000-7000-8000-7e0000000001';
     const ATSW_RE_ED_B = '00000000-0000-7000-8000-7e0000000002';
     const ATSW_RE_ATT_ID = '00000000-0000-7000-8000-7f0000000001';
+    // TI-1F-B/C — the review draft bound to ATSW_RE_ED_A (confirm/reject state).
+    const ATSW_RE_DRAFT_ID = '00000000-0000-7000-8000-7c0000000001';
     const ATSW_DEFER_SUBJECT_ID = '00000000-0000-7000-8000-5b1000000004';
     const ATSW_DEFER_SUBJECT_B_ID = '00000000-0000-7000-8000-5b1000000005';
     const ATSW_DEFER_ARRIVAL_ID = '00000000-0000-7000-8000-a44000000003';
@@ -7210,6 +7212,48 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           );
         });
       },
+
+      // TALENT-INTEL-1 TI-1F-B/C — a résumé edition whose governed extraction is
+      // READY_FOR_REVIEW: the ATTACHMENT ResumeExtractionDraft is bound to the
+      // edition (talent + document anchor set) so the CONFIRM/REJECT routes resolve
+      // it. structured_payload is a minimal grounded set (promotion is exercised;
+      // an empty set would still mark ACCEPTED). Exercises POST .../confirm + /reject.
+      'an ats-web recruiter and a talent with a résumé edition ready for review exist':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedAtsWebTalentRecord(c, { id: ATSW_RE_TALENT_ID, firstName: 'Grace', lastName: 'Hopper' });
+            await c.query(
+              `INSERT INTO talent_evidence."TalentDocument"
+                 (id, talent_id, tenant_id, uploaded_by_actor_id, uploaded_at, document_type,
+                  filename, file_storage_ref, mime_type, size_bytes, parse_status,
+                  consent_scope_at_upload, retention_policy, is_active)
+               VALUES ($2::uuid, $1::uuid, $3::uuid, $3::uuid, '2026-07-01T00:00:00Z',
+                  'resume'::"talent_evidence"."TalentDocumentType", 'grace.pdf', 'k/a', 'application/pdf',
+                  1000, 'parsed'::"talent_evidence"."TalentDocumentParseStatus", ARRAY[]::text[],
+                  'default'::"talent_evidence"."TalentDocumentRetentionPolicy", true)`,
+              [ATSW_RE_TALENT_ID, ATSW_RE_DOC_A, TENANT_ID],
+            );
+            await c.query(
+              `INSERT INTO talent_evidence."TalentResumeEdition"
+                 (id, tenant_id, talent_id, talent_document_id, content_hash, purpose, attachment_id, created_at, created_by)
+               VALUES ($2::uuid, $3::uuid, $1::uuid, $4::uuid, 'hash-a',
+                  'GENERAL'::"talent_evidence"."TalentResumeEditionPurpose", $5::uuid, '2026-07-01T00:00:00Z', $3::uuid)`,
+              [ATSW_RE_TALENT_ID, ATSW_RE_ED_A, TENANT_ID, ATSW_RE_DOC_A, ATSW_RE_ATT_ID],
+            );
+            await c.query(
+              `INSERT INTO talent_evidence."ResumeExtractionDraft"
+                 (id, tenant_id, source_kind, source_ref, talent_id, talent_document_id, resume_edition_id,
+                  status, structured_payload, created_at, created_by)
+               VALUES ($5::uuid, $3::uuid, 'ATTACHMENT'::"talent_evidence"."ResumeExtractionDraftSourceKind",
+                  $4::uuid, $1::uuid, $2::uuid, $6::uuid,
+                  'READY_FOR_REVIEW'::"talent_evidence"."ResumeExtractionDraftStatus",
+                  '{"skills":[{"surface_form":"Kubernetes"}],"work_history":[]}'::jsonb,
+                  '2026-07-01T00:00:00Z', $3::uuid)`,
+              [ATSW_RE_TALENT_ID, ATSW_RE_DOC_A, TENANT_ID, ATSW_RE_ATT_ID, ATSW_RE_DRAFT_ID, ATSW_RE_ED_A],
+            );
+          });
+        },
 
       // TR-3 B2 — email-verification REQUEST happy: a live record (id =
       // PACT_TALENT_ID, the consumer's URL id) with a stored email1 + the full

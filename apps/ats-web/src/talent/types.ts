@@ -427,6 +427,10 @@ export interface DraftFromResumeResult {
   // HF1 §16 — corpus provenance carried back into the create request.
   readonly source_map_version?: string;
   readonly resume_text_hash?: string;
+  // TALENT-INTEL-1 TI-1F-C — the durable ResumeExtractionDraft persisted from this
+  // same governed result. Confirm-Create carries it back so the durable draft (not
+  // this transient response) is the linked confirmation authority (§4-A/§5).
+  readonly draft_id?: string;
 }
 
 // Talent-detail work-history read. Hand-mirrors BE TalentWorkHistoryView.

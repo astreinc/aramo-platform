@@ -105,6 +105,9 @@ export function TalentCreateView() {
     source_map_version?: string;
     resume_text_hash?: string;
   }>({});
+  // TI-1F-C — the durable ResumeExtractionDraft id from the parse (the Confirm-
+  // Create authority; null when the résumé path was not used / no draft persisted).
+  const [resumeDraftId, setResumeDraftId] = useState<string | null>(null);
 
   const [startedAt, setStartedAt] = useState<number | null>(null);
   const [elapsedMs, setElapsedMs] = useState(0);
@@ -232,6 +235,12 @@ export function TalentCreateView() {
         source_map_version: result.source_map_version,
         resume_text_hash: result.resume_text_hash,
       });
+      // TI-1F-C — capture the durable ResumeExtractionDraft id. The recruiter
+      // reviews the prefilled form (that IS the review), then Confirm-Create links
+      // + accepts THIS durable draft — the persisted draft, not this transient
+      // response, is the confirmation authority (§4-A/§5). Same governed result,
+      // one model call (the draft was persisted from it server-side).
+      setResumeDraftId(result.draft_id ?? null);
       // Governed-mode warning (LLM unavailable / unreadable / zero fields) is
       // NON-BLOCKING (§15): the form opens for review + manual entry; the
       // recruiter can go Back and re-upload to retry. No silent mode fallback.
@@ -257,6 +266,7 @@ export function TalentCreateView() {
     setResumeEducation([]);
     setResumeCertifications([]);
     setResumeProvenance({});
+    setResumeDraftId(null);
     setStartedAt(null);
     setElapsedMs(0);
     setSubmitting(false);
@@ -318,6 +328,7 @@ export function TalentCreateView() {
           resumeDocument,
           education: resumeEducation,
           certifications: resumeCertifications,
+          draftId: resumeDraftId ?? undefined,
         }),
       );
     } catch (err) {

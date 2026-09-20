@@ -207,6 +207,31 @@ export async function setTalentResumeEditionDefault(
   );
 }
 
+// TALENT-INTEL-1 TI-1F-B/C — the human-governed review actions on a résumé
+// edition whose governed extraction is READY_FOR_REVIEW. CONFIRM promotes the
+// accepted facts to typed evidence (then reconcile signals fire server-side, and
+// the caller re-fetches hydration §4-L); REJECT discards the draft with no
+// evidence. Both return the edition (processing_status now ACCEPTED / REJECTED).
+export async function confirmTalentResumeEdition(
+  id: string,
+  editionId: string,
+): Promise<TalentResumeEditionView> {
+  return apiClient.post<TalentResumeEditionView>(
+    `/v1/talent-records/${encodeURIComponent(id)}/resume-editions/${encodeURIComponent(editionId)}/confirm`,
+    {},
+  );
+}
+
+export async function rejectTalentResumeEdition(
+  id: string,
+  editionId: string,
+): Promise<TalentResumeEditionView> {
+  return apiClient.post<TalentResumeEditionView>(
+    `/v1/talent-records/${encodeURIComponent(id)}/resume-editions/${encodeURIComponent(editionId)}/reject`,
+    {},
+  );
+}
+
 // R5 — the resume flow (the 3-step: upload-url → presigned PUT → parse).
 //
 // Step 1: ask the BE for a presigned PUT URL. Scope: attachment:create

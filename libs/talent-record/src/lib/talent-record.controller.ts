@@ -19,6 +19,7 @@ import type { Request } from 'express';
 import { v7 as uuidv7 } from 'uuid';
 import { AramoError, RequestId } from '@aramo/common';
 import { CanonicalReconcileProducer } from '@aramo/canonical-reconcile';
+import { TalentReconcileProducer } from '@aramo/talent-reconcile-signal';
 import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
 import {
   RequireScopes,
@@ -178,6 +179,12 @@ export class TalentRecordController {
     private readonly resumeResolver?: ResumeAttachmentResolver,
     // The résumé-text cache writer, to associate the producing edition (§D).
     @Optional() private readonly resumeText?: ResumeTextService,
+    // TALENT-INTEL-1 TI-1F-C — the Talent-profile reconcile PUSH producer (§4-H),
+    // the SEPARATE architecture from canonicalReconcile (skill canonical). Emitted
+    // best-effort AFTER a CONFIRM promotion / confirmed CREATE. @Optional (mirrors
+    // canonicalReconcile) so hand-wired unit-test construction sites keep compiling;
+    // apps/api wires TalentReconcileSignalModule so production always has it.
+    @Optional() private readonly talentReconcile?: TalentReconcileProducer,
   ) {}
 
   // Search PR-1/PR-2 — the LIST route gates on talent:read (route-static).
@@ -688,6 +695,14 @@ export class TalentRecordController {
       }
       throw err;
     }
+    // TALENT-INTEL-1 TI-1F-C §4-H — AFTER the authoritative promotion commits, emit
+    // BOTH reconcile signals (the two architectures are SEPARATE and must not
+    // merge): the SKILL canonical reconcile AND the Talent-profile reconcile. Both
+    // are best-effort + Redis-gated inside the producers — a missed signal never
+    // fails the CONFIRM (the watermark backstop recovers it). Trust projection +
+    // the derived snapshot already ran inside/after the promotion (TI-1F-B).
+    await this.canonicalReconcile?.enqueueTalent(authContext.tenant_id, id);
+    await this.talentReconcile?.enqueueTalent(authContext.tenant_id, id);
     return this.projectEditionView(authContext, id, editionId, requestId);
   }
 
@@ -965,6 +980,9 @@ export class TalentRecordController {
     // -create evidence block. Best-effort + Redis-gated: a missed/failed enqueue
     // never fails the create (the backstop recovers eligible unreconciled rows).
     await this.canonicalReconcile?.enqueueTalent(authContext.tenant_id, created.id);
+    // TI-1F-C §4-H — the SEPARATE Talent-profile reconcile signal (both fire on a
+    // confirmed evidence write; best-effort + Redis-gated).
+    await this.talentReconcile?.enqueueTalent(authContext.tenant_id, created.id);
 
     // TALENT-INTEL-1 TI-1F-B — CREATE_DRAFT_UPLOAD close-out. A confirmed create IS
     // the human commit for the first-time-Create context (the recruiter reviewed

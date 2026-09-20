@@ -1,5 +1,5 @@
 {
-  "aliasTotals": { "apps": 2, "libs": 69, "total": 71 },
+  "aliasTotals": { "apps": 2, "libs": 70, "total": 72 },
   "aliases": {
     "@aramo/activity": "libs/activity/src/index.ts",
     "@aramo/ai-draft": "libs/ai-draft/src/index.ts",
@@ -67,6 +67,7 @@
     "@aramo/talent-evidence": "libs/talent-evidence/src/index.ts",
     "@aramo/talent-extraction": "libs/talent-extraction/src/index.ts",
     "@aramo/talent-reconcile": "libs/talent-reconcile/src/index.ts",
+    "@aramo/talent-reconcile-signal": "libs/talent-reconcile-signal/src/index.ts",
     "@aramo/talent-record": "libs/talent-record/src/index.ts",
     "@aramo/talent-trust": "libs/talent-trust/src/index.ts",
     "@aramo/task": "libs/task/src/index.ts",
@@ -1292,6 +1293,15 @@
       "TalentReconcileProcessor",
       "TalentReconcileService",
       "computeReconcilePlan"
+    ],
+    "@aramo/talent-reconcile-signal": [
+      "TALENT_RECONCILE_BACKSTOP_INTERVAL_MS",
+      "TALENT_RECONCILE_BACKSTOP_JOB",
+      "TALENT_RECONCILE_BACKSTOP_JOB_ID",
+      "TALENT_RECONCILE_JOB",
+      "TALENT_RECONCILE_QUEUE_NAME",
+      "TalentReconcileProducer",
+      "TalentReconcileSignalModule"
     ],
     "@aramo/talent-record": [
       "LinkTalentRecordRequestDto",
@@ -3260,6 +3270,7 @@
         "status": "excluded"
       },
       { "project": "talent-reconcile", "status": "production" },
+      { "project": "talent-reconcile-signal", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/talent-record/src/tests/search-pr1.spec.ts",
@@ -5619,6 +5630,10 @@
       { "project": "talent-record", "status": "production" }
     ],
     "@aramo/talent-reconcile": [{ "project": "api", "status": "production" }],
+    "@aramo/talent-reconcile-signal": [
+      { "project": "talent-reconcile", "status": "production" },
+      { "project": "talent-record", "status": "production" }
+    ],
     "@aramo/talent-record": [
       { "from": "tools/seed-e2e-data.ts", "project": "(unscoped)", "status": "unscoped" },
       {
@@ -6378,6 +6393,13 @@
       "root": "libs/talent-reconcile",
       "sourceRoot": "libs/talent-reconcile/src",
       "tags": ["scope:ats"],
+      "targets": ["build", "lint", "test"]
+    },
+    {
+      "name": "talent-reconcile-signal",
+      "root": "libs/talent-reconcile-signal",
+      "sourceRoot": "libs/talent-reconcile-signal/src",
+      "tags": ["scope:cip"],
       "targets": ["build", "lint", "test"]
     },
     {

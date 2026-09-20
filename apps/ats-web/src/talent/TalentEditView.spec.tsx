@@ -181,6 +181,41 @@ describe('TalentEditView', () => {
     expect(calls.some((c) => c.method === 'PATCH')).toBe(false);
   });
 
+  it('TI-1F-C — a READY_FOR_REVIEW edition shows the review label + Confirm/Reject; Confirm POSTs the confirm route then refetches', async () => {
+    let editionsCall = 0;
+    const calls = installFetch((req) => {
+      if (req.method === 'GET' && req.url.includes('/resume-editions')) {
+        editionsCall += 1;
+        // First load: READY_FOR_REVIEW. After Confirm: ACCEPTED (proves refetch).
+        const status = editionsCall === 1 ? 'READY_FOR_REVIEW' : 'ACCEPTED';
+        return {
+          status: 200,
+          body: {
+            talent_id: 'tal-42',
+            editions: [
+              { edition_id: 'ed-a', talent_document_id: 'd-a', attachment_id: null, purpose: 'GENERAL', label: null, lifecycle_status: 'active', created_at: '2026-07-01T00:00:00Z', filename: 'general.pdf', mime_type: 'y', uploaded_at: '2026-07-01T00:00:00Z', is_default: true, processing_status: status },
+            ],
+          },
+        };
+      }
+      if (req.method === 'POST' && req.url.includes('/resume-editions/ed-a/confirm')) {
+        return { status: 200, body: { edition_id: 'ed-a', processing_status: 'ACCEPTED' } };
+      }
+      return routeHandler(req);
+    });
+    renderAt();
+    await waitFor(() => expect(screen.getByText(/Ready — review/)).toBeInTheDocument());
+    const confirm = screen.getByRole('button', { name: /^Confirm$/ });
+    expect(screen.getByRole('button', { name: /Reject/ })).toBeInTheDocument();
+    fireEvent.click(confirm);
+    await waitFor(() => {
+      const post = calls.find((c) => c.method === 'POST' && c.url.includes('/resume-editions/ed-a/confirm'));
+      expect(post).toBeDefined();
+    });
+    // Refetched → the edition now reads Reviewed ✓ (ACCEPTED), no more Confirm.
+    await waitFor(() => expect(screen.getByText(/Reviewed ✓/)).toBeInTheDocument());
+  });
+
   it('submits a PATCH (true PATCH — only changed scalar) and navigates to detail; work_history omitted when untouched', async () => {
     const calls = installFetch(routeHandler);
     renderAt();

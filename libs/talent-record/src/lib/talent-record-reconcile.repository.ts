@@ -424,12 +424,19 @@ export class TalentRecordReconcileRepository {
         field_key: args.field_key,
         value_state: 'UNKNOWN',
         source_type: 'RECONCILED',
-        projection_policy: 'AUTO',
+        // TALENT-INTEL-1 TI-1F-C §4-I — an unresolved contradiction FREEZES
+        // automatic projection: HOLD, not AUTO. A field with conflicting evidence
+        // must not continue auto-projecting until the conflict is resolved.
+        projection_policy: 'HOLD',
         resolution_status: 'PENDING_REVIEW',
         resolution_reason: 'EVIDENCE_CONFLICT',
         proposed_value: args.proposed_value,
       },
       update: {
+        // §4-I — also freeze projection on an EXISTING field that just gained a
+        // contradiction (value_state / source_type are left untouched — only the
+        // projection is held).
+        projection_policy: 'HOLD',
         resolution_status: 'PENDING_REVIEW',
         resolution_reason: 'EVIDENCE_CONFLICT',
         proposed_value: args.proposed_value,
@@ -437,10 +444,16 @@ export class TalentRecordReconcileRepository {
     });
   }
 
-  // TALENT-INTEL-1 TI-1D-B — resolve a field's pending review: RESOLVED + the
-  // recruiter's reason, and CLEAR proposed_value (populated only while
-  // PENDING_REVIEW). updateMany over EXISTING rows only (resolving a field with no
-  // control row is a no-op); NEVER mutates value_state / projection_policy.
+  // TALENT-INTEL-1 TI-1D-B / TI-1F-C §4-I — resolve a field's pending review:
+  // RESOLVED + the recruiter's reason, CLEAR proposed_value (populated only while
+  // PENDING_REVIEW), and EXPLICITLY release the contradiction HOLD → AUTO. This is
+  // the ONLY sanctioned HOLD release for a contradiction: an intentional
+  // conflict-resolution action, never an incidental side effect of a re-reconcile.
+  // (A recruiter's manual HOLD is a separate control set via setProjectionPolicy;
+  // resolveFieldReview only ever runs as the resolution of a PENDING_REVIEW
+  // contradiction, so returning to AUTO here is the chosen-value projection resume.)
+  // updateMany over EXISTING rows only (resolving a field with no control row is a
+  // no-op); value_state / source_type are left untouched.
   async resolveFieldReview(args: {
     tenant_id: string;
     talent_record_id: string;
@@ -457,6 +470,9 @@ export class TalentRecordReconcileRepository {
         resolution_status: 'RESOLVED',
         resolution_reason: args.resolution_reason,
         proposed_value: null,
+        // §4-I — release the HOLD set on contradiction; projection resumes on the
+        // resolved (chosen) value.
+        projection_policy: 'AUTO',
       },
     });
   }

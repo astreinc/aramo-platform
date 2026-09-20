@@ -310,6 +310,10 @@ export function buildCreateBody(
     // HF2 R8/R18/R19 — grounded education + certifications carried from review.
     readonly education?: readonly EducationDraft[];
     readonly certifications?: readonly CertificationDraft[];
+    // TALENT-INTEL-1 TI-1F-C — the originating durable ResumeExtractionDraft. When
+    // present, Confirm-Create LINKS + ACCEPTS it (the durable draft — not the
+    // transient parse response — is the review/confirmation authority §4-A/§5).
+    readonly draftId?: string;
   } = {},
 ): CreateTalentRecordRequest {
   const body: Record<string, unknown> = {
@@ -341,6 +345,10 @@ export function buildCreateBody(
   }
   if (extras.certifications !== undefined && extras.certifications.length > 0) {
     body['certifications'] = extras.certifications;
+  }
+  // TI-1F-C — carry the durable draft id so Confirm-Create links + accepts it.
+  if (typeof extras.draftId === 'string' && extras.draftId !== '') {
+    body['draft_id'] = extras.draftId;
   }
   return body as unknown as CreateTalentRecordRequest;
 }

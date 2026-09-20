@@ -7,6 +7,7 @@ import {
 } from '@aramo/common';
 import { TalentRecordModule } from '@aramo/talent-record';
 import { TalentTrustModule } from '@aramo/talent-trust';
+import { TalentReconcileSignalModule } from '@aramo/talent-reconcile-signal';
 
 import { TalentReconcileService } from './talent-reconcile.service.js';
 import { TalentReconcileProcessor } from './talent-reconcile.processor.js';
@@ -35,6 +36,9 @@ import { CONTRADICTION_DETECTION_QUEUE_NAME } from './contradiction-detection.qu
     CommonModule,
     TalentTrustModule,
     TalentRecordModule,
+    // TI-1F-C — provides TalentReconcileProducer so the worker self-schedules the
+    // backstop tick. Also the queue-name contract owner (breaks the dep cycle).
+    TalentReconcileSignalModule,
     BullModule.forRootAsync({
       extraOptions: { manualRegistration: true },
       useFactory: (cfg: RedisConnectionConfig) => {

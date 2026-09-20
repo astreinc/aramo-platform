@@ -101,4 +101,17 @@ describe('buildCreateBody — résumé source_refs survive to the create request
     expect(body.certifications).toHaveLength(1);
     expect(body.certifications?.[0]?.certification_name).toBe('CKA');
   });
+
+  it('TI-1F-C — carries the durable draft_id (Confirm-Create links + accepts it); omits it when absent', () => {
+    const state = emptyIntakeState();
+    state.first_name = 'Ada';
+    state.last_name = 'Lovelace';
+    const withDraft = buildCreateBody(state, [], { draftId: 'draft-create-1' }) as unknown as {
+      draft_id?: string;
+    };
+    expect(withDraft.draft_id).toBe('draft-create-1');
+    // No draft id supplied → the field is omitted (backward-compatible create).
+    const without = buildCreateBody(state, []) as unknown as { draft_id?: string };
+    expect(without.draft_id).toBeUndefined();
+  });
 });

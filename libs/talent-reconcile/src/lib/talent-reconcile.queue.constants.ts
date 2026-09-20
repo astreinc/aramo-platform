@@ -9,7 +9,13 @@
 // declared evidence into the live TalentRecord (fill-null contact + append
 // key_skills). "current = projection over retained history" — L2 is the history,
 // L3 the current; NO L3 version/event/log table (OPEN-2 ruling).
-export const TALENT_RECONCILE_QUEUE_NAME = 'talent-reconcile' as const;
+// TALENT-INTEL-1 TI-1F-C — the queue NAME is now owned by the neutral producer
+// lib (@aramo/talent-reconcile-signal) so the CONFIRM push producer + this worker
+// share ONE source of truth without a dependency cycle (talent-reconcile-signal
+// is a leaf; both this lib and talent-record depend on it, never the reverse).
+// Re-exported here so the existing @Processor / registerQueue / index consumers
+// are unchanged.
+export { TALENT_RECONCILE_QUEUE_NAME } from '@aramo/talent-reconcile-signal';
 
 // Batch size per tick — bounded so a backlog burst doesn't hold the worker.
 export const TALENT_RECONCILE_BATCH_SIZE = 100 as const;
