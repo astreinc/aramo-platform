@@ -3373,6 +3373,7 @@
     "libs/talent-record/src/lib/talent-record.module.ts",
     "libs/talent-record/src/lib/talent-record.repository.ts",
     "libs/talent-record/src/lib/talent-record.service.ts",
+    "libs/talent-record/src/tests/create-from-draft-upload.spec.ts",
     "libs/talent-record/src/tests/create-resume-provenance.spec.ts",
     "libs/talent-record/src/tests/create-work-history.spec.ts",
     "libs/talent-record/src/tests/draft-from-resume-mode.spec.ts",

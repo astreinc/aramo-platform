@@ -1721,6 +1721,195 @@ export class TalentEvidenceRepository {
     });
   }
 
+  // TI-1F-C — the CREATE_DRAFT_UPLOAD confirm lookup (by draft id, tenant-scoped).
+  async findResumeExtractionDraftById(args: {
+    tenant_id: string;
+    id: string;
+  }): Promise<ResumeExtractionDraftRow | null> {
+    const row = await this.prisma.resumeExtractionDraft.findFirst({
+      where: { id: args.id, tenant_id: args.tenant_id },
+    });
+    return (row as unknown as ResumeExtractionDraftRow | null) ?? null;
+  }
+
+  // TALENT-INTEL-1 TI-1F-C — PHASE 1 of the ordered, idempotent CREATE_DRAFT_UPLOAD
+  // promotion (strengthened-D). In ONE talent_evidence transaction (single schema,
+  // genuinely atomic) it establishes the accepted résumé evidence lifecycle against
+  // a RESERVED talent_id, WITHOUT finalizing the draft: create the résumé
+  // TalentDocument + its companion default TalentResumeEdition, persist ALL accepted
+  // typed evidence (anchored on the document, §4-F), and LINK the draft to the
+  // reserved talent_id/document/edition — the draft STAYS READY_FOR_REVIEW (NOT
+  // ACCEPTED: ACCEPTED means "crossed into a durable ATS Talent", which only happens
+  // after TalentRecord exists, phase 3). All-or-none: a mid-write failure rolls the
+  // whole lifecycle back so a retry re-runs phase 1 cleanly. External ops (S3/model)
+  // already happened in A; none run here. Mirrors the inline-mapping tx precedent.
+  async establishCreateDraftEvidence(input: {
+    tenant_id: string;
+    talent_id: string;
+    created_by: string;
+    draft_id: string;
+    document: {
+      id: string;
+      uploaded_by_actor_id: string;
+      filename: string;
+      file_storage_ref: string;
+      mime_type: string;
+      size_bytes: number;
+      uploaded_at: Date;
+    };
+    edition: { id: string; content_hash: string; created_at: Date };
+    resume_default_id: string;
+    work_history: readonly CreateTalentWorkHistoryEntryInput[];
+    skill_evidence: readonly CreateTalentSkillEvidenceInput[];
+    projects: readonly CreateTalentProjectExperienceInput[];
+    education: readonly CreateTalentEducationEntryInput[];
+    certifications: readonly CreateTalentCertificationEntryInput[];
+  }): Promise<{ document_id: string; edition_id: string }> {
+    return this.prisma.$transaction(async (tx) => {
+      await tx.talentDocument.create({
+        data: {
+          id: input.document.id,
+          talent_id: input.talent_id,
+          tenant_id: input.tenant_id,
+          uploaded_by_actor_id: input.document.uploaded_by_actor_id,
+          uploaded_at: input.document.uploaded_at,
+          document_type: 'resume',
+          filename: input.document.filename,
+          file_storage_ref: input.document.file_storage_ref,
+          mime_type: input.document.mime_type,
+          size_bytes: input.document.size_bytes,
+          parse_status: 'parsed',
+          consent_scope_at_upload: [],
+          retention_policy: 'default',
+          is_active: true,
+        },
+      });
+      await tx.talentResumeEdition.create({
+        data: {
+          id: input.edition.id,
+          tenant_id: input.tenant_id,
+          talent_id: input.talent_id,
+          talent_document_id: input.document.id,
+          content_hash: input.edition.content_hash,
+          created_at: input.edition.created_at,
+          created_by: input.created_by,
+          purpose: 'GENERAL',
+        },
+      });
+      // First edition for the reserved Talent → its default (presentation only).
+      await tx.talentResumeDefault.upsert({
+        where: { tenant_id_talent_id: { tenant_id: input.tenant_id, talent_id: input.talent_id } },
+        create: {
+          id: input.resume_default_id,
+          tenant_id: input.tenant_id,
+          talent_id: input.talent_id,
+          resume_edition_id: input.edition.id,
+          set_at: input.edition.created_at,
+          set_by: input.created_by,
+        },
+        update: {
+          resume_edition_id: input.edition.id,
+          set_at: input.edition.created_at,
+          set_by: input.created_by,
+        },
+      });
+      for (const e of input.work_history) {
+        await tx.talentWorkHistoryEntry.create({
+          data: {
+            id: e.id, talent_id: e.talent_id, tenant_id: e.tenant_id,
+            employer_name: e.employer_name, role_title: e.role_title,
+            start_date: e.start_date, end_date: e.end_date, location: e.location,
+            employment_type: e.employment_type, description_text: e.description_text,
+            source: e.source, source_document_id: e.source_document_id,
+            source_refs: e.source_refs ?? [], source_map_version: e.source_map_version,
+            resume_text_hash: e.resume_text_hash, company_id: e.company_id,
+            experience_summary: e.experience_summary, is_authoritative: e.is_authoritative,
+            created_at: e.created_at,
+          },
+        });
+      }
+      for (const s of input.skill_evidence) {
+        await tx.talentSkillEvidence.create({
+          data: {
+            id: s.id, talent_id: s.talent_id, tenant_id: s.tenant_id, skill_id: s.skill_id,
+            source_record_id: s.source_record_id, surface_form: s.surface_form, source: s.source,
+            evidence_text: s.evidence_text, proficiency_claim: s.proficiency_claim,
+            years_claimed: s.years_claimed, confidence_score: s.confidence_score,
+            source_document_id: s.source_document_id, source_refs: s.source_refs ?? [],
+            source_map_version: s.source_map_version, resume_text_hash: s.resume_text_hash,
+            work_experience_id: s.work_experience_id, version: s.version,
+            usage_start: s.usage_start, usage_end: s.usage_end,
+            usage_period_basis: s.usage_period_basis, activity_context: s.activity_context,
+            created_at: s.created_at,
+          },
+        });
+      }
+      for (const p of input.projects) {
+        await tx.talentProjectExperience.create({
+          data: {
+            id: p.id, talent_id: p.talent_id, tenant_id: p.tenant_id,
+            work_experience_id: p.work_experience_id, project_name: p.project_name,
+            context_summary: p.context_summary, domain: p.domain, start_date: p.start_date,
+            end_date: p.end_date, source_document_id: p.source_document_id,
+            source_refs: p.source_refs ?? [], source_map_version: p.source_map_version,
+            resume_text_hash: p.resume_text_hash, created_at: p.created_at,
+          },
+        });
+      }
+      for (const ed of input.education) {
+        await tx.talentEducationEntry.create({
+          data: {
+            id: ed.id, talent_id: ed.talent_id, tenant_id: ed.tenant_id,
+            institution_name: ed.institution_name, degree_name: ed.degree_name,
+            field_of_study: ed.field_of_study, conferred_date: ed.conferred_date,
+            evidence_text: ed.evidence_text, source: ed.source,
+            source_document_id: ed.source_document_id, source_refs: ed.source_refs ?? [],
+            source_map_version: ed.source_map_version, resume_text_hash: ed.resume_text_hash,
+            created_at: ed.created_at,
+          },
+        });
+      }
+      for (const c of input.certifications) {
+        await tx.talentCertificationEntry.create({
+          data: {
+            id: c.id, talent_id: c.talent_id, tenant_id: c.tenant_id,
+            certification_name: c.certification_name, issuer_name: c.issuer_name,
+            credential_ref: c.credential_ref, issued_date: c.issued_date,
+            expiry_date: c.expiry_date, evidence_text: c.evidence_text, source: c.source,
+            source_document_id: c.source_document_id, source_refs: c.source_refs ?? [],
+            source_map_version: c.source_map_version, resume_text_hash: c.resume_text_hash,
+            created_at: c.created_at,
+          },
+        });
+      }
+      // LINK the draft to the reserved identity — but keep it READY_FOR_REVIEW.
+      // ACCEPTED is written only in phase 3, after the TalentRecord exists.
+      // CAS on talent_id IS NULL: only the FIRST concurrent confirm links; a second
+      // (racing, different reserved id) sees count 0 → throws → its evidence rolls
+      // back. Both then converge on the winner's reserved id via the controller's
+      // idempotent retry (re-read → reuse the now-linked identity).
+      const linked = await tx.resumeExtractionDraft.updateMany({
+        where: {
+          id: input.draft_id,
+          tenant_id: input.tenant_id,
+          status: 'READY_FOR_REVIEW',
+          talent_id: null,
+        },
+        data: {
+          talent_id: input.talent_id,
+          talent_document_id: input.document.id,
+          resume_edition_id: input.edition.id,
+        },
+      });
+      if (linked.count === 0) {
+        // Already linked (a concurrent/prior phase-1) or no longer reviewable →
+        // roll back every write above (no orphan evidence for the losing racer).
+        throw new ResumeExtractionDraftNotReviewableError(input.draft_id);
+      }
+      return { document_id: input.document.id, edition_id: input.edition.id };
+    });
+  }
+
   // TALENT-INTEL-1 TI-1D-C — the idempotency lookup for edition ingestion: a
   // TalentDocument has at most ONE edition (talent_document_id @unique). A retry
   // for the same document returns the existing edition instead of creating a

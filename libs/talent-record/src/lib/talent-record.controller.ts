@@ -861,6 +861,26 @@ export class TalentRecordController {
         },
       );
     }
+    // TALENT-INTEL-1 TI-1F-C (strengthened-D) — the durable-draft-backed create.
+    // When the recruiter confirms a create prefilled from a persisted
+    // CREATE_DRAFT_UPLOAD draft, promotion is ORDERED + IDEMPOTENT: accepted résumé
+    // evidence is established FIRST (one atomic talent_evidence tx), and TalentRecord
+    // is the FINAL admission step — so a genuine ATS Talent can never exist without
+    // its source-evidence lifecycle. Handles all recoverable retry states. A missing
+    // / not-ready / non-CREATE draft returns null → the normal create path below.
+    const rd = body.resume_document;
+    const draftBacked =
+      typeof body.draft_id === 'string' &&
+      body.draft_id !== '' &&
+      rd !== undefined &&
+      typeof rd.storage_key === 'string' &&
+      rd.storage_key !== '' &&
+      typeof rd.resume_text_hash === 'string' &&
+      rd.resume_text_hash !== '';
+    if (draftBacked) {
+      const handled = await this.confirmCreateFromDraftUpload(authContext, body, email1, requestId);
+      if (handled !== null) return handled;
+    }
     const duplicate = await this.repo.findActiveByEmail({
       tenant_id: authContext.tenant_id,
       email: email1,
@@ -1009,6 +1029,136 @@ export class TalentRecordController {
       }
     }
 
+    return created;
+  }
+
+  // TALENT-INTEL-1 TI-1F-C (strengthened-D) — the ordered, idempotent, recoverable
+  // promotion of a CREATE_DRAFT_UPLOAD draft into a durable ATS Talent. Invariant:
+  // a genuine TalentRecord never exists unless its accepted résumé evidence
+  // lifecycle is already durable. Sequence:
+  //   read draft → reserve/reuse talent_id → PHASE 1 (atomic talent_evidence tx:
+  //   document + default edition + accepted evidence + LINK draft, draft stays
+  //   READY_FOR_REVIEW) → PHASE 2 (TalentRecord.create with the reserved id) →
+  //   PHASE 3 (mark draft ACCEPTED — only now has it "crossed into a Talent") →
+  //   reconcile signals.
+  // Every phase is idempotent under retry (evidence reused via the linked draft;
+  // TalentRecord reused via findById; ACCEPTED is guarded). A phase-1 failure leaves
+  // no Talent + a reusable draft; a phase-2/3 failure is recoverable without a
+  // duplicate Talent, duplicate evidence, or a second governed model call.
+  // Returns null when the draft is absent / not a CREATE_DRAFT_UPLOAD / not
+  // reviewable → the caller falls back to the normal create path.
+  private async confirmCreateFromDraftUpload(
+    authContext: AuthContextType,
+    body: CreateTalentRecordRequestDto,
+    email1: string,
+    requestId: string,
+  ): Promise<TalentRecordView | null> {
+    const tenant_id = authContext.tenant_id;
+    const draftId = body.draft_id as string;
+    const draft = await this.talentExtraction.findResumeExtractionDraftById({ tenant_id, id: draftId });
+    if (draft === null || draft.source_kind !== 'CREATE_DRAFT_UPLOAD') return null;
+
+    // Already fully promoted (idempotent duplicate submit) → return the Talent.
+    if (draft.status === 'ACCEPTED') {
+      if (draft.talent_id != null) {
+        const existing = await this.repo.findById({ tenant_id, id: draft.talent_id });
+        if (existing !== null) return existing;
+      }
+      return null;
+    }
+    // A PROCESSING / FAILED / REJECTED draft is not confirmable here → normal path.
+    if (draft.status !== 'READY_FOR_REVIEW') return null;
+
+    // Reserved identity: reuse the linked id on a retry, else it is minted in phase 1.
+    let reservedId: string | undefined = draft.talent_id ?? undefined;
+    let documentId: string | undefined = draft.talent_document_id ?? undefined;
+    let editionId: string | undefined = draft.resume_edition_id ?? undefined;
+
+    // Dedup with the reserved-id exception: our OWN in-flight Talent (a retry after
+    // phase 2 committed) is not a duplicate; a DIFFERENT active record with the same
+    // email is.
+    const duplicate = await this.repo.findActiveByEmail({ tenant_id, email: email1 });
+    if (duplicate !== null && duplicate.id !== reservedId) {
+      throw new AramoError(
+        'TALENT_RECORD_DUPLICATE',
+        'A talent with this primary email already exists in your tenant.',
+        409,
+        { requestId, details: { email1, existing_id: duplicate.id } },
+      );
+    }
+
+    const rd = body.resume_document!;
+    // PHASE 1 — establish the accepted evidence lifecycle (atomic) if not yet linked.
+    if (draft.talent_id == null) {
+      const reserved = uuidv7();
+      try {
+        const established = await this.talentExtraction.establishCreateDraftEvidence({
+          tenant_id,
+          talent_id: reserved,
+          actor_id: authContext.sub,
+          draft_id: draftId,
+          resume_document: {
+            storage_key: rd.storage_key,
+            file_name: rd.file_name,
+            mime_type: rd.mime_type,
+            size_bytes: rd.size_bytes,
+            source_map_version: rd.source_map_version,
+            resume_text_hash: rd.resume_text_hash,
+          },
+          work_history: body.work_history,
+          skills: body.skills,
+          education: body.education,
+          certifications: body.certifications,
+        });
+        reservedId = reserved;
+        documentId = established.document_id;
+        editionId = established.edition_id;
+      } catch (err) {
+        // Lost the phase-1 CAS to a concurrent confirm → re-read + reuse the
+        // winner's linked identity (converge, no duplicate Talent/evidence).
+        if (err instanceof ResumeExtractionDraftNotReviewableError) {
+          const relinked = await this.talentExtraction.findResumeExtractionDraftById({ tenant_id, id: draftId });
+          if (relinked?.talent_id != null) {
+            reservedId = relinked.talent_id;
+            documentId = relinked.talent_document_id ?? undefined;
+            editionId = relinked.resume_edition_id ?? undefined;
+          } else {
+            throw err;
+          }
+        } else {
+          throw err;
+        }
+      }
+    }
+    if (reservedId === undefined) return null; // defensive — never expected
+
+    // PHASE 2 — TalentRecord is the FINAL admission step, idempotent on the reserved id.
+    let created = await this.repo.findById({ tenant_id, id: reservedId });
+    if (created === null) {
+      created = await this.repo.create({
+        tenant_id,
+        entered_by_id: authContext.sub,
+        input: body,
+        requestId,
+        id: reservedId,
+      });
+    }
+
+    // PHASE 3 — only NOW does the draft cross into a durable Talent: ACCEPTED.
+    // Guarded READY_FOR_REVIEW→ACCEPTED (idempotent; a prior success is a no-op).
+    await this.talentExtraction.markResumeExtractionDraftAccepted({
+      id: draftId,
+      tenant_id,
+      talent_id: reservedId,
+      talent_document_id: documentId ?? null,
+      resume_edition_id: editionId ?? null,
+      reviewed_by: authContext.sub,
+      reviewed_at: new Date(),
+    });
+
+    // §4-H — both reconcile signals after the durable Talent exists (best-effort).
+    await this.canonicalReconcile?.enqueueTalent(tenant_id, reservedId);
+    await this.talentReconcile?.enqueueTalent(tenant_id, reservedId);
     return created;
   }
 

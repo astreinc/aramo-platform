@@ -29,6 +29,10 @@ function makeController(extra: Record<string, unknown> = {}) {
   const upsertResumeExtractionDraft = vi.fn().mockResolvedValue({ id: 'draft-c' });
   // TI-1F-B — the confirmed create LINKS + ACCEPTS its originating CREATE draft.
   const markResumeExtractionDraftAccepted = vi.fn().mockResolvedValue(1);
+  // TI-1F-C — these provenance tests exercise the NORMAL (non-draft-backed) create
+  // path; returning null here makes the durable-draft branch fall through to it.
+  // The strengthened-D ordered flow is proven in create-from-draft-upload.spec.ts.
+  const findResumeExtractionDraftById = vi.fn().mockResolvedValue(null);
   const talentExtraction = {
     createResumeDocument,
     persistDeclaredWorkHistory,
@@ -36,6 +40,7 @@ function makeController(extra: Record<string, unknown> = {}) {
     extractResumeDraft,
     upsertResumeExtractionDraft,
     markResumeExtractionDraftAccepted,
+    findResumeExtractionDraftById,
     ...extra,
   };
   const resumeParser = {

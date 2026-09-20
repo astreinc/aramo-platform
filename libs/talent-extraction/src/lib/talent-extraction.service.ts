@@ -1792,6 +1792,271 @@ export class TalentExtractionService {
     return result;
   }
 
+  // TI-1F-C — CREATE_DRAFT_UPLOAD confirm lookup (by draft id).
+  async findResumeExtractionDraftById(args: {
+    tenant_id: string;
+    id: string;
+  }): Promise<ResumeExtractionDraftRow | null> {
+    return this.evidence.findResumeExtractionDraftById(args);
+  }
+
+  // TALENT-INTEL-1 TI-1F-C (strengthened-D, PHASE 1) — establish the accepted
+  // résumé evidence lifecycle for a first-time create against a RESERVED talent_id,
+  // in ONE atomic talent_evidence transaction, WITHOUT finalizing the draft. Shapes
+  // the recruiter-reviewed create-body facts into typed-evidence rows anchored on a
+  // freshly-minted résumé TalentDocument (§4-F), then hands document + companion
+  // default edition + all evidence + the draft-LINK (talent_id/doc/edition, draft
+  // stays READY_FOR_REVIEW) to the repository's atomic writer. No model call — the
+  // governed extraction already ran in A; these are the reviewed facts. The derived
+  // snapshot + assertion trust claims run POST-commit (idempotent projections). The
+  // shaping mirrors promoteResumeExtractionDraft (the review path) + the create-
+  // persister mapping; ACCEPTED is written later (phase 3) once the Talent exists.
+  async establishCreateDraftEvidence(input: {
+    tenant_id: string;
+    talent_id: string;
+    actor_id: string;
+    draft_id: string;
+    resume_document: {
+      storage_key: string;
+      file_name: string;
+      mime_type: string;
+      size_bytes: number;
+      source_map_version?: string;
+      resume_text_hash?: string;
+    };
+    work_history?: readonly ResumeDraftWorkHistory[];
+    skills?: readonly ResumeDraftSkill[];
+    education?: readonly ResumeDraftEducation[];
+    certifications?: readonly ResumeDraftCertification[];
+  }): Promise<{ document_id: string; edition_id: string }> {
+    const { tenant_id, talent_id } = input;
+    const createdAt = new Date();
+    const documentId = uuidv7();
+    // §4-F — provenance is the (about-to-be-created) source DOCUMENT.
+    const provenance: ResumeProvenance = {
+      source_document_id: documentId,
+      ...(typeof input.resume_document.source_map_version === 'string'
+        ? { source_map_version: input.resume_document.source_map_version }
+        : {}),
+      ...(typeof input.resume_document.resume_text_hash === 'string'
+        ? { resume_text_hash: input.resume_document.resume_text_hash }
+        : {}),
+    };
+
+    const workHistory: CreateTalentWorkHistoryEntryInput[] = [];
+    const skillEvidence: CreateTalentSkillEvidenceInput[] = [];
+    const projects: CreateTalentProjectExperienceInput[] = [];
+    const assertionTasks: { work_experience_id: string; assertions: readonly ResumeDraftAssertion[] }[] = [];
+
+    for (const e of input.work_history ?? []) {
+      const employer = e.employer_name.trim();
+      const role = e.role_title.trim();
+      if (employer === '' || role === '') continue;
+      const start = parseWorkHistoryDate(e.start_date);
+      const end = parseWorkHistoryDate(e.end_date);
+      const workExperienceId = uuidv7();
+      const summary =
+        typeof e.experience_summary === 'string' ? capWorkSummary(e.experience_summary) : '';
+      workHistory.push({
+        id: workExperienceId,
+        talent_id,
+        tenant_id,
+        employer_name: employer,
+        role_title: role,
+        source: 'resume',
+        ...(start !== null ? { start_date: start } : {}),
+        ...(end !== null ? { end_date: end } : {}),
+        ...(typeof e.employment_type === 'string' && e.employment_type.trim() !== ''
+          ? { employment_type: e.employment_type.trim() }
+          : {}),
+        ...(typeof e.location === 'string' && e.location.trim() !== ''
+          ? { location: e.location.trim() }
+          : {}),
+        ...(typeof e.description === 'string' && e.description.trim() !== ''
+          ? { description_text: e.description.trim() }
+          : {}),
+        ...(summary !== '' ? { experience_summary: summary } : {}),
+        ...provenanceFields(e.source_refs, provenance),
+        created_at: createdAt,
+      });
+      for (const su of e.skill_usage ?? []) {
+        const surface = su.surface_form.trim();
+        if (surface === '') continue;
+        const explicit = su.usage_period_basis === 'EXPLICIT';
+        const usageStart = explicit ? resumeDateToDbDate(su.usage_start, 'start') : null;
+        const usageEnd = explicit ? resumeDateToDbDate(su.usage_end, 'end') : null;
+        skillEvidence.push({
+          id: uuidv7(),
+          talent_id,
+          tenant_id,
+          skill_id: deriveSkillId(surface),
+          surface_form: surface,
+          source: 'declared',
+          work_experience_id: workExperienceId,
+          ...(typeof su.version === 'string' && su.version.trim() !== ''
+            ? { version: su.version.trim() }
+            : {}),
+          ...(usageStart !== null ? { usage_start: usageStart } : {}),
+          ...(usageEnd !== null ? { usage_end: usageEnd } : {}),
+          ...(typeof su.usage_period_basis === 'string' && su.usage_period_basis.trim() !== ''
+            ? { usage_period_basis: su.usage_period_basis.trim() }
+            : {}),
+          ...(typeof su.activity === 'string' && su.activity.trim() !== ''
+            ? { activity_context: su.activity.trim() }
+            : {}),
+          ...provenanceFields(su.source_refs, provenance),
+          created_at: createdAt,
+        });
+      }
+      for (const pj of e.projects ?? []) {
+        const name = typeof pj.project_name === 'string' ? pj.project_name.trim() : '';
+        const context = typeof pj.context === 'string' ? capWorkSummary(pj.context) : '';
+        const domain = typeof pj.domain === 'string' ? pj.domain.trim() : '';
+        if (name === '' && context === '' && domain === '') continue;
+        const pStart = resumeDateToDbDate(pj.start_date, 'start');
+        const pEnd = resumeDateToDbDate(pj.end_date, 'end');
+        projects.push({
+          id: uuidv7(),
+          talent_id,
+          tenant_id,
+          work_experience_id: workExperienceId,
+          ...(name !== '' ? { project_name: name } : {}),
+          ...(context !== '' ? { context_summary: context } : {}),
+          ...(domain !== '' ? { domain } : {}),
+          ...(pStart !== null ? { start_date: pStart } : {}),
+          ...(pEnd !== null ? { end_date: pEnd } : {}),
+          ...provenanceFields(pj.source_refs, provenance),
+          created_at: createdAt,
+        });
+      }
+      if (Array.isArray(e.assertions) && e.assertions.length > 0) {
+        assertionTasks.push({ work_experience_id: workExperienceId, assertions: e.assertions });
+      }
+    }
+
+    const seen = new Set<string>();
+    for (const s of input.skills ?? []) {
+      const surface = s.surface_form.trim();
+      if (surface === '') continue;
+      const key = surface.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      skillEvidence.push({
+        id: uuidv7(),
+        talent_id,
+        tenant_id,
+        skill_id: deriveSkillId(surface),
+        surface_form: surface,
+        source: 'declared',
+        ...provenanceFields(s.source_refs, provenance),
+        created_at: createdAt,
+      });
+    }
+
+    const education: CreateTalentEducationEntryInput[] = [];
+    for (const ed of input.education ?? []) {
+      const institution = ed.institution_name.trim();
+      const degree = ed.degree_name.trim();
+      if (institution === '' || degree === '') continue;
+      const conferred = resumeDateToDbDate(ed.conferred_date, 'end');
+      education.push({
+        id: uuidv7(),
+        talent_id,
+        tenant_id,
+        institution_name: institution,
+        degree_name: degree,
+        source: 'resume',
+        ...(typeof ed.field_of_study === 'string' && ed.field_of_study.trim() !== ''
+          ? { field_of_study: ed.field_of_study.trim() }
+          : {}),
+        ...(conferred !== null ? { conferred_date: conferred } : {}),
+        ...provenanceFields(ed.source_refs, provenance),
+        created_at: createdAt,
+      });
+    }
+
+    const certifications: CreateTalentCertificationEntryInput[] = [];
+    for (const c of input.certifications ?? []) {
+      const name = c.certification_name.trim();
+      if (name === '') continue;
+      const issued = resumeDateToDbDate(c.issued_date, 'start');
+      const expiry = resumeDateToDbDate(c.expiry_date, 'end');
+      certifications.push({
+        id: uuidv7(),
+        talent_id,
+        tenant_id,
+        certification_name: name,
+        source: 'resume',
+        ...(typeof c.issuer_name === 'string' && c.issuer_name.trim() !== ''
+          ? { issuer_name: c.issuer_name.trim() }
+          : {}),
+        ...(typeof c.credential_ref === 'string' && c.credential_ref.trim() !== ''
+          ? { credential_ref: c.credential_ref.trim() }
+          : {}),
+        ...(issued !== null ? { issued_date: issued } : {}),
+        ...(expiry !== null ? { expiry_date: expiry } : {}),
+        ...provenanceFields(c.source_refs, provenance),
+        created_at: createdAt,
+      });
+    }
+
+    // PHASE 1 atomic write (talent_evidence, single schema): document + default
+    // edition + evidence + draft-LINK (draft stays READY_FOR_REVIEW). All-or-none.
+    const result = await this.evidence.establishCreateDraftEvidence({
+      tenant_id,
+      talent_id,
+      created_by: input.actor_id,
+      draft_id: input.draft_id,
+      document: {
+        id: documentId,
+        uploaded_by_actor_id: input.actor_id,
+        filename: input.resume_document.file_name,
+        file_storage_ref: input.resume_document.storage_key,
+        mime_type: input.resume_document.mime_type,
+        size_bytes: input.resume_document.size_bytes,
+        uploaded_at: createdAt,
+      },
+      edition: {
+        id: uuidv7(),
+        content_hash: input.resume_document.resume_text_hash ?? '',
+        created_at: createdAt,
+      },
+      resume_default_id: uuidv7(),
+      work_history: workHistory,
+      skill_evidence: skillEvidence,
+      projects,
+      education,
+      certifications,
+    });
+
+    // POST-commit projections (best-effort; keyed by talent_id + work_experience_id,
+    // independent of the TalentRecord). Mirrors the review path.
+    try {
+      await this.persistDerivedSkillSnapshot({
+        talent_id,
+        tenant_id,
+        entries: input.work_history ?? [],
+        createdAt,
+      });
+    } catch {
+      // non-fatal projection
+    }
+    for (const task of assertionTasks) {
+      try {
+        await this.persistExperienceAssertions({
+          talent_id,
+          tenant_id,
+          work_experience_id: task.work_experience_id,
+          assertions: task.assertions,
+        });
+      } catch {
+        // non-fatal trust projection
+      }
+    }
+
+    return result;
+  }
+
   // HF1 Gate-6 R2 — persist recruiter-reviewed résumé SKILLS as declared
   // TalentSkillEvidence at create time, WITH durable source provenance. Closes
   // the recon discrepancy (skills previously collapsed to the key_skills scalar

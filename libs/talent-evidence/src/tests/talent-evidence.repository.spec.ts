@@ -120,9 +120,16 @@ describe('TalentEvidenceRepository — surface', () => {
         // conscious addition. None carry a forbidden update/delete/list/query name.
         'upsertResumeExtractionDraft',
         'findResumeExtractionDraftBySource',
+        'findResumeExtractionDraftByEdition',
+        'findResumeExtractionDraftById',
         'findProcessingResumeExtractionDrafts',
         'markResumeExtractionDraftReadyForReview',
         'markResumeExtractionDraftFailed',
+        // TI-1F-B/C — draft review transitions + the atomic promotion writers.
+        'markResumeExtractionDraftAccepted',
+        'markResumeExtractionDraftRejected',
+        'promoteResumeExtractionDraftEvidence',
+        'establishCreateDraftEvidence',
         ...TR4_B2_LEDGER_READS,
         ...SKILL_TAX_1G_RECON_METHODS,
       ].sort(),
