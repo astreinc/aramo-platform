@@ -608,3 +608,89 @@ model TalentResumeDefault {
   @@index([tenant_id])
   @@schema("talent_evidence")
 }
+
+// TALENT-INTEL-1 (TI-1F-A) — the durable governed-résumé-extraction REVIEW
+// artifact. It holds the grounded governed-LLM output while it awaits recruiter
+// review; it is NOT Talent truth and NOT accepted evidence (that is TI-1F-B's
+// confirm/promotion). ONE architecture: all résumé extraction (create + existing)
+// lands here → review → confirm → durable truth.
+//
+// Two source contexts (talent_id NULLABLE):
+//   - CREATE_DRAFT_UPLOAD (first-time create): talent_id / talent_document_id /
+//     resume_edition_id are NULL — the TalentRecord/Document/Edition do not exist
+//     until Confirm-Create (TI-1F-B). source_ref = the durable draft-upload key.
+//   - ATTACHMENT (existing Talent add/replace): talent_id / talent_document_id /
+//     resume_edition_id populated immediately. source_ref = the owned attachment_id.
+// Every draft has a durable SOURCE identity; not every draft has a Talent
+// identity yet. `status` IS the durable async work-state.
+enum ResumeExtractionDraftSourceKind {
+  CREATE_DRAFT_UPLOAD
+  ATTACHMENT
+
+  @@schema("talent_evidence")
+}
+
+enum ResumeExtractionDraftStatus {
+  PROCESSING
+  READY_FOR_REVIEW
+  ACCEPTED
+  REJECTED
+  FAILED
+
+  @@schema("talent_evidence")
+}
+
+model ResumeExtractionDraft {
+  id        String @id @db.Uuid
+  tenant_id String @db.Uuid
+
+  // Durable SOURCE identity — present on EVERY draft (see the two contexts above).
+  source_kind ResumeExtractionDraftSourceKind
+  source_ref  String
+
+  // Talent identity — NULL for a pre-confirmation CREATE_DRAFT_UPLOAD draft;
+  // populated immediately for the existing-Talent ATTACHMENT path. Cross-schema
+  // (talent_record / attachment) UUID-only, NO FK (THE WALL / §7.3).
+  talent_id          String? @db.Uuid
+  talent_document_id String? @db.Uuid
+  resume_edition_id  String? @db.Uuid
+
+  // Durable async work-state (Ruling A/C): PROCESSING until the worker completes
+  // the ONE governed extraction, then READY_FOR_REVIEW (or FAILED). ACCEPTED /
+  // REJECTED are set by the recruiter confirm/promotion in TI-1F-B.
+  status ResumeExtractionDraftStatus @default(PROCESSING)
+
+  // The grounded governed-LLM output under review — NULL while PROCESSING (Json
+  // per the TalentDerivedSnapshot precedent). NOT Talent evidence.
+  structured_payload Json?
+
+  // Grounding + model provenance.
+  source_map_version String?
+  resume_text_hash   String?
+  extractor_version  String?
+
+  // Worker execution metadata (bounds transient retries; last-error is internal —
+  // never projected onto the recruiter contract).
+  attempt_count   Int       @default(0)
+  last_error_code String?
+  last_error_at   DateTime? @db.Timestamptz
+
+  created_at  DateTime  @db.Timestamptz
+  // Producing actor (identity domain forward ref). UUID-only, no FK.
+  created_by  String    @db.Uuid
+  reviewed_at DateTime? @db.Timestamptz
+  reviewed_by String?   @db.Uuid
+
+  // Idempotency (Ruling B): at most one live ingestion identity per durable
+  // source within a tenant. ATTACHMENT: source_ref = attachment_id (1:1 with the
+  // owning Talent) → realizes the (tenant, talent, attachment) retry key — the
+  // add-résumé POST resolves the same attachment to the same document/edition/
+  // draft (no duplicate mint). CREATE_DRAFT_UPLOAD: source_ref = the upload key.
+  // Content hash is NEVER the identity (a different attachment with identical
+  // bytes is a new edition).
+  @@unique([tenant_id, source_kind, source_ref])
+  @@index([tenant_id])
+  @@index([tenant_id, talent_id])
+  @@index([status])
+  @@schema("talent_evidence")
+}

@@ -6,6 +6,7 @@ import { Icons, InlineAlert, PageHeader } from '../ui';
 import { IntakeForm } from './IntakeForm';
 import { ResumePreview } from './ResumePreview';
 import {
+  confirmTalentResumeEdition,
   createAttachment,
   createTalentResumeEdition,
   getAttachmentDownloadUrl,
@@ -13,6 +14,7 @@ import {
   getTalentWorkHistory,
   listTalentResumeEditions,
   putResumeToStorage,
+  rejectTalentResumeEdition,
   requestResumeUploadUrl,
   setTalentResumeEditionDefault,
   updateTalent,
@@ -225,6 +227,26 @@ export function TalentEditView() {
 // changes the talent PATCH provenance and does not make an edition "talent truth".
 // Uploading a new résumé registers a NEW edition (attachment → edition); it does
 // NOT replace prior editions.
+// TALENT-INTEL-1 TI-1F-C §4-L — the recruiter-facing label for the governed
+// résumé-extraction lifecycle projected onto the edition. Worker attempt-counts /
+// error internals never reach the recruiter (§4-K); only these coarse states do.
+function resumeReviewLabel(status: string | null): string | null {
+  switch (status) {
+    case 'PROCESSING':
+      return 'Processing…';
+    case 'READY_FOR_REVIEW':
+      return 'Ready — review';
+    case 'FAILED':
+      return 'Processing failed';
+    case 'ACCEPTED':
+      return 'Reviewed ✓';
+    case 'REJECTED':
+      return 'Rejected';
+    default:
+      return null;
+  }
+}
+
 function EditResumePanel({
   talentId,
   disabled,
@@ -239,6 +261,10 @@ function EditResumePanel({
   const [status, setStatus] = useState<'idle' | 'uploading' | 'done' | 'error'>('idle');
   const inputRef = useRef<HTMLInputElement | null>(null);
 
+  // TALENT-INTEL-1 TI-1F-C — the per-edition review action in flight (the edition
+  // whose CONFIRM/REJECT is running) so the buttons disable + no double-submit.
+  const [reviewingId, setReviewingId] = useState<string | null>(null);
+
   const loadEditions = (): Promise<void> =>
     listTalentResumeEditions(talentId)
       .then((res) => {
@@ -251,6 +277,26 @@ function EditResumePanel({
       .catch(() => {
         /* best-effort — an empty collection just shows the attach affordance */
       });
+
+  // TI-1F-C §4-L — the human-governed review. CONFIRM promotes the reviewed draft
+  // to typed evidence (server-side reconcile signals fire); REJECT discards it. On
+  // success we re-fetch the editions so the recruiter sees the new
+  // processing_status. Hydration is composed on-read, so the next profile view
+  // reflects the promoted truth (no client cache to invalidate here).
+  const onConfirm = (editionId: string): void => {
+    setReviewingId(editionId);
+    confirmTalentResumeEdition(talentId, editionId)
+      .then(() => loadEditions())
+      .catch(() => undefined)
+      .finally(() => setReviewingId(null));
+  };
+  const onReject = (editionId: string): void => {
+    setReviewingId(editionId);
+    rejectTalentResumeEdition(talentId, editionId)
+      .then(() => loadEditions())
+      .catch(() => undefined)
+      .finally(() => setReviewingId(null));
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -364,6 +410,32 @@ function EditResumePanel({
                 Make default
               </button>
             )}
+            {/* TI-1F-C §4-L — the governed-extraction lifecycle + review action. */}
+            {resumeReviewLabel(e.processing_status) !== null ? (
+              <span className="rc-secnote rc-redition__status">
+                {resumeReviewLabel(e.processing_status)}
+              </span>
+            ) : null}
+            {e.processing_status === 'READY_FOR_REVIEW' ? (
+              <>
+                <button
+                  type="button"
+                  className="rc-redition__confirm"
+                  disabled={disabled || reviewingId === e.edition_id}
+                  onClick={() => onConfirm(e.edition_id)}
+                >
+                  {reviewingId === e.edition_id ? 'Confirming…' : 'Confirm'}
+                </button>
+                <button
+                  type="button"
+                  className="rc-redition__reject"
+                  disabled={disabled || reviewingId === e.edition_id}
+                  onClick={() => onReject(e.edition_id)}
+                >
+                  Reject
+                </button>
+              </>
+            ) : null}
           </li>
         ))}
       </ul>

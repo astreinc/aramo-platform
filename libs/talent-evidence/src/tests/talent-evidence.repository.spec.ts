@@ -112,6 +112,24 @@ describe('TalentEvidenceRepository — surface', () => {
         // TalentDocument metadata + default marker).
         'findResumeEditionByDocumentId',
         'findResumeEditionsWithDocumentByTalent',
+        // TALENT-INTEL-1 (TI-1F-A) — the ResumeExtractionDraft governed-extraction
+        // review substrate: an idempotent upsert (the polling-outbox work signal),
+        // the by-source identity lookup (retry idempotency), the PROCESSING drain
+        // read (worker poll), and the two terminal review-state writes. Each is
+        // single-purpose; enumerated so the closed-surface guard treats them as a
+        // conscious addition. None carry a forbidden update/delete/list/query name.
+        'upsertResumeExtractionDraft',
+        'findResumeExtractionDraftBySource',
+        'findResumeExtractionDraftByEdition',
+        'findResumeExtractionDraftById',
+        'findProcessingResumeExtractionDrafts',
+        'markResumeExtractionDraftReadyForReview',
+        'markResumeExtractionDraftFailed',
+        // TI-1F-B/C — draft review transitions + the atomic promotion writers.
+        'markResumeExtractionDraftAccepted',
+        'markResumeExtractionDraftRejected',
+        'promoteResumeExtractionDraftEvidence',
+        'establishCreateDraftEvidence',
         ...TR4_B2_LEDGER_READS,
         ...SKILL_TAX_1G_RECON_METHODS,
       ].sort(),

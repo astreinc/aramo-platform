@@ -32,6 +32,9 @@ function projectedRow(over: Record<string, unknown> = {}) {
     document_mime_type: 'application/pdf',
     document_uploaded_at: new Date('2026-07-01T00:00:00.000Z'),
     is_default: true,
+    // TI-1F-A — DERIVED from the edition's ResumeExtractionDraft (LEFT JOIN);
+    // null when no draft exists for the edition.
+    processing_status: null,
     ...over,
   };
 }
@@ -42,6 +45,7 @@ function make(parts: {
   resolveMeta?: unknown;
   text?: string | null;
   editionById?: unknown;
+  priorDraft?: unknown;
 } = {}) {
   const findById = vi.fn().mockResolvedValue(parts.view === undefined ? { id: TALENT } : parts.view);
   const repo = { findById };
@@ -53,7 +57,19 @@ function make(parts: {
       : parts.editionById,
   );
   const setDefaultResumeEdition = vi.fn().mockResolvedValue({});
-  const talentExtraction = { listResumeEditionsWithDocument, createResumeDocument, findResumeEditionById, setDefaultResumeEdition };
+  // TI-1F-A — the add-edition seam enqueues an async governed extraction by
+  // writing a PROCESSING ATTACHMENT draft, and reuses the prior edition on a
+  // same-attachment retry via the draft's source identity.
+  const findResumeExtractionDraftBySource = vi.fn().mockResolvedValue(parts.priorDraft ?? null);
+  const upsertResumeExtractionDraft = vi.fn().mockResolvedValue({ id: 'draft-1' });
+  const talentExtraction = {
+    listResumeEditionsWithDocument,
+    createResumeDocument,
+    findResumeEditionById,
+    setDefaultResumeEdition,
+    findResumeExtractionDraftBySource,
+    upsertResumeExtractionDraft,
+  };
   const resumeParser = {
     extractTextFromStorageKey: vi.fn().mockResolvedValue(parts.text === undefined ? 'Alan Turing résumé' : parts.text),
   };
@@ -76,18 +92,25 @@ function make(parts: {
     resumeResolver as never,
     resumeText as never,
   );
-  return { ctl, findById, listResumeEditionsWithDocument, createResumeDocument, createEditionForDocument, resolveOwnedResume, enqueueReindex, findResumeEditionById, setDefaultResumeEdition };
+  return { ctl, findById, listResumeEditionsWithDocument, createResumeDocument, createEditionForDocument, resolveOwnedResume, enqueueReindex, findResumeEditionById, setDefaultResumeEdition, findResumeExtractionDraftBySource, upsertResumeExtractionDraft };
 }
 
 describe('TI-1D-C — GET :id/resume-editions', () => {
-  it('returns the projected edition collection', async () => {
-    const { ctl } = make({ editions: [projectedRow({ id: 'ed-a', is_default: true }), projectedRow({ id: 'ed-b', is_default: false })] });
+  it('returns the projected edition collection (incl. the DERIVED processing_status)', async () => {
+    const { ctl } = make({ editions: [
+      projectedRow({ id: 'ed-a', is_default: true, processing_status: 'READY_FOR_REVIEW' }),
+      projectedRow({ id: 'ed-b', is_default: false }),
+    ] });
     const res = await ctl.listResumeEditions(AUTH, TALENT, 'rq-1');
     expect(res.talent_id).toBe(TALENT);
     expect(res.editions.map((e) => e.edition_id)).toEqual(['ed-a', 'ed-b']);
     expect(res.editions[0].is_default).toBe(true);
     expect(res.editions[0].filename).toBe('resume.pdf'); // projected from document
     expect(res.editions[0].uploaded_at).toBe('2026-07-01T00:00:00.000Z');
+    // TI-1F-A — the governed-extraction lifecycle is projected, not a new truth
+    // source: READY_FOR_REVIEW where a draft exists, null where none does.
+    expect(res.editions[0].processing_status).toBe('READY_FOR_REVIEW');
+    expect(res.editions[1].processing_status).toBeNull();
   });
 
   it('404 when the talent is not in the tenant', async () => {
@@ -109,6 +132,39 @@ describe('TI-1D-C — POST :id/resume-editions', () => {
     );
     // §D — the résumé-text cache is associated with the producing edition.
     expect(enqueueReindex).toHaveBeenCalledWith(expect.objectContaining({ talent_record_id: TALENT, resume_edition_id: 'ed-new' }));
+  });
+
+  it('TI-1F-A — enqueues a PROCESSING ATTACHMENT draft (governed extraction is worker-owned) and the sync response projects processing_status=PROCESSING', async () => {
+    const { ctl, upsertResumeExtractionDraft } = make();
+    const res = await ctl.createResumeEdition(AUTH, TALENT, { attachment_id: 'att-1', purpose: 'GENERAL' } as never, 'rq-1');
+    // The draft is the async work signal: PROCESSING, carrying the ATTACHMENT
+    // source identity + the just-minted document + edition. No inline extraction.
+    expect(upsertResumeExtractionDraft).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenant_id: TENANT,
+        source_kind: 'ATTACHMENT',
+        source_ref: 'att-1',
+        talent_id: TALENT,
+        talent_document_id: 'doc-new',
+        resume_edition_id: 'ed-new',
+        status: 'PROCESSING',
+      }),
+    );
+    // The synchronous POST projects the just-enqueued lifecycle (worker-owned).
+    expect(res.processing_status).toBe('PROCESSING');
+  });
+
+  it('TI-1F-A — a same-attachment retry reuses the prior edition (Ruling B): no new document / edition / draft', async () => {
+    const { ctl, createResumeDocument, createEditionForDocument, upsertResumeExtractionDraft } = make({
+      // The prior draft records the attachment→edition binding; ed-1 is in the list.
+      priorDraft: { resume_edition_id: 'ed-1' },
+      editions: [projectedRow({ id: 'ed-1', is_default: true })],
+    });
+    const res = await ctl.createResumeEdition(AUTH, TALENT, { attachment_id: 'att-1', purpose: 'GENERAL' } as never, 'rq-1');
+    expect(res.edition_id).toBe('ed-1'); // the SAME edition, not a duplicate
+    expect(createResumeDocument).not.toHaveBeenCalled();
+    expect(createEditionForDocument).not.toHaveBeenCalled();
+    expect(upsertResumeExtractionDraft).not.toHaveBeenCalled();
   });
 
   it('422 when the résumé text cannot be extracted', async () => {

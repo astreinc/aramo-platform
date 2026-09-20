@@ -48,7 +48,10 @@ function makeController(opts: {
     : vi
         .fn()
         .mockResolvedValue(opts.result ?? { status: 'partial', proposal: emptyProposal() });
-  const talentExtraction = { extractResumeDraft };
+  // TI-1F-A — the create seam additively persists a CREATE_DRAFT_UPLOAD draft
+  // from the SAME governed result (no second model call). Mocked here.
+  const upsertResumeExtractionDraft = vi.fn().mockResolvedValue({ id: 'draft-create-1' });
+  const talentExtraction = { extractResumeDraft, upsertResumeExtractionDraft };
   const extractTextFromStorageKey = vi.fn().mockResolvedValue(opts.text ?? null);
   // The résumé parser now exposes ONLY deterministic file→text extraction; the
   // heuristic fact method is gone (TI-1F P0.2), so there is no path to fall back
@@ -79,8 +82,62 @@ function makeController(opts: {
     // TI-1D-A — reconcileRepo (field-state writes; no-op fake on this path).
     { upsertProfileFieldState: async () => undefined, releaseProjectionHold: async () => undefined, listProfileFieldStates: async () => [] } as never,
   );
-  return { ctl, extractResumeDraft, extractTextFromStorageKey };
+  return { ctl, extractResumeDraft, upsertResumeExtractionDraft, extractTextFromStorageKey };
 }
+
+const SUCCESS_RESULT = {
+  status: 'success',
+  proposal: {
+    first_name: 'Sarah',
+    last_name: 'Nolan',
+    skills: [],
+    work_history: [],
+    education: [],
+    certifications: [],
+    rejected_count: 0,
+    overflow: false,
+    source_map_version: 'resume-source-map/v1',
+    resume_text_hash: 'h',
+  },
+};
+
+describe('draft-from-resume — TI-1F-A CREATE_DRAFT_UPLOAD additive persistence', () => {
+  it('persists a CREATE_DRAFT_UPLOAD draft from the SAME governed result; ONE model call; response prefill unchanged + additive draft_id', async () => {
+    const { ctl, extractResumeDraft, upsertResumeExtractionDraft } = makeController({
+      text: 'Sarah Nolan — Cloud Engineer',
+      result: SUCCESS_RESULT,
+    });
+    const res = await ctl.draftFromResume(AUTH, { storage_key: VALID_KEY }, 'rq-1');
+    // Create UI operational: the synchronous prefill response is unchanged.
+    expect(res.prefill.first_name).toBe('Sarah');
+    // NO duplicate model call — exactly one governed extraction feeds BOTH the
+    // response prefill and the persisted draft.
+    expect(extractResumeDraft).toHaveBeenCalledOnce();
+    // Draft persisted from that SAME result — pre-Talent (no talent_id/doc/edition).
+    expect(upsertResumeExtractionDraft).toHaveBeenCalledOnce();
+    const draftArg = upsertResumeExtractionDraft.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(draftArg['source_kind']).toBe('CREATE_DRAFT_UPLOAD');
+    expect(draftArg['source_ref']).toBe(VALID_KEY);
+    expect(draftArg['status']).toBe('READY_FOR_REVIEW');
+    expect(draftArg['talent_id'] ?? null).toBeNull();
+    expect(draftArg['talent_document_id'] ?? null).toBeNull();
+    expect(draftArg['resume_edition_id'] ?? null).toBeNull();
+    expect((draftArg['structured_payload'] as { prefill: { first_name: string } }).prefill.first_name).toBe('Sarah');
+    // Additive draft_id on the response (the current Create form ignores it).
+    expect(res.draft_id).toBe('draft-create-1');
+  });
+
+  it('draft persistence is NON-BLOCKING — a draft-write failure never affects the prefill response (Create UI stays operational)', async () => {
+    const { ctl, upsertResumeExtractionDraft } = makeController({
+      text: 'Sarah Nolan — Cloud Engineer',
+      result: SUCCESS_RESULT,
+    });
+    upsertResumeExtractionDraft.mockRejectedValueOnce(new Error('draft store unavailable'));
+    const res = await ctl.draftFromResume(AUTH, { storage_key: VALID_KEY }, 'rq-1');
+    expect(res.prefill.first_name).toBe('Sarah'); // response intact
+    expect(res.draft_id).toBeUndefined(); // no draft_id when persistence failed
+  });
+});
 
 describe('draft-from-resume — governed-LLM sole extractor', () => {
   it('empty storage_key → VALIDATION_ERROR', async () => {

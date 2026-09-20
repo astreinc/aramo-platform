@@ -427,6 +427,10 @@ export interface DraftFromResumeResult {
   // HF1 §16 — corpus provenance carried back into the create request.
   readonly source_map_version?: string;
   readonly resume_text_hash?: string;
+  // TALENT-INTEL-1 TI-1F-C — the durable ResumeExtractionDraft persisted from this
+  // same governed result. Confirm-Create carries it back so the durable draft (not
+  // this transient response) is the linked confirmation authority (§4-A/§5).
+  readonly draft_id?: string;
 }
 
 // Talent-detail work-history read. Hand-mirrors BE TalentWorkHistoryView.
@@ -497,6 +501,11 @@ export interface TalentResumeEditionView {
   readonly mime_type: string;
   readonly uploaded_at: string;
   readonly is_default: boolean;
+  // TALENT-INTEL-1 (TI-1F-A) — governed-extraction lifecycle, DERIVED from the
+  // edition's ResumeExtractionDraft (READ-ONLY): PROCESSING | READY_FOR_REVIEW |
+  // ACCEPTED | REJECTED | FAILED, or null for an edition with no draft. TI-1F-C
+  // consumes this for the async review affordance.
+  readonly processing_status: string | null;
 }
 
 export interface TalentResumeEditionsResponse {

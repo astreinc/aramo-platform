@@ -19,6 +19,12 @@ export interface DraftFromResumeResponse {
   prefill: TalentRecordPrefill;
   parse_status: ParseStatus;
   warning?: string;
+  // TALENT-INTEL-1 (TI-1F-A) — ADDITIVE + OPTIONAL. The id of the durable
+  // CREATE_DRAFT_UPLOAD ResumeExtractionDraft persisted from THIS same governed
+  // result (no second model call). Present only when the draft persisted; the
+  // current Create form ignores it (the synchronous prefill above stays the
+  // user-facing authority in A). TI-1F-C consumes it for the async review UX.
+  draft_id?: string;
   // HF1 §13/R9 — the explicit governed-LLM extraction outcome. Lets the FE
   // distinguish a technical failure (provider_truncated / invalid_structured_output
   // / provider_failure) from an honest partial/empty result — a technical failure

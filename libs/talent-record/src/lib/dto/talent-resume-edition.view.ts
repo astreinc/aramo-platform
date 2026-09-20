@@ -16,6 +16,11 @@ export interface TalentResumeEditionView {
   mime_type: string;
   uploaded_at: string;
   is_default: boolean;
+  // TALENT-INTEL-1 (TI-1F-A) — the governed-extraction lifecycle for this
+  // edition, DERIVED from its ResumeExtractionDraft (no new source of truth):
+  // PROCESSING | READY_FOR_REVIEW | ACCEPTED | REJECTED | FAILED, or null for an
+  // edition with no draft (created before TI-1F-A). READ-ONLY projection.
+  processing_status: string | null;
 }
 
 export interface TalentResumeEditionsResponse {
@@ -38,5 +43,6 @@ export function toResumeEditionView(
     mime_type: row.document_mime_type,
     uploaded_at: row.document_uploaded_at.toISOString(),
     is_default: row.is_default,
+    processing_status: row.processing_status,
   };
 }

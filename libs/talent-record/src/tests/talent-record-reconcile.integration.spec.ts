@@ -165,5 +165,34 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(mine).toBeDefined();
       expect(mine?.incumbent_evidence_id).toBeNull();
     });
+
+    it('TI-1F-C §4-I — an unresolved contradiction FREEZES projection (HOLD); resolveFieldReview explicitly releases it to AUTO', async () => {
+      const recordId = await seedRecord();
+      // A reconcile-detected contradiction opens the review AND holds projection.
+      await repo.markFieldPendingReview({
+        tenant_id: TENANT,
+        talent_record_id: recordId,
+        field_key: 'web_site',
+        proposed_value: 'https://proposed.example',
+      });
+      const held = (await repo.getFieldStateReadModel(recordId)).find((r) => r.field_key === 'web_site');
+      expect(held?.resolution_status).toBe('PENDING_REVIEW');
+      expect(held?.resolution_reason).toBe('EVIDENCE_CONFLICT');
+      // §4-I — the field must NOT continue automatic projection while conflicted.
+      expect(held?.projection_policy).toBe('HOLD');
+      expect(held?.proposed_value).toBe('https://proposed.example');
+
+      // Explicit conflict resolution → RESOLVED + projection resumes (AUTO).
+      await repo.resolveFieldReview({
+        tenant_id: TENANT,
+        talent_record_id: recordId,
+        field_key: 'web_site',
+        resolution_reason: 'ACCEPTED_PROPOSED',
+      });
+      const released = (await repo.getFieldStateReadModel(recordId)).find((r) => r.field_key === 'web_site');
+      expect(released?.resolution_status).toBe('RESOLVED');
+      expect(released?.projection_policy).toBe('AUTO'); // explicit HOLD release
+      expect(released?.proposed_value).toBeNull();
+    });
   },
 );

@@ -432,12 +432,18 @@ export class TalentRecordRepository {
     // nothing else writes tenant_status (the former tenant-overlay writer is
     // retired).
     tenant_status?: string;
+    // TALENT-INTEL-1 TI-1F-C (strengthened-D) — a RESERVED talent_id: for the
+    // draft-backed create the id is reserved up-front (draft.talent_id) so the
+    // accepted résumé evidence lifecycle is established FIRST and TalentRecord is
+    // the final admission step. Omitted on the normal path → Prisma default uuid.
+    id?: string;
   }): Promise<TalentRecordView> {
     const { tenant_id, entered_by_id, input } = args;
     assertAdmissible(input, args.requestId ?? '');
     assertStatedFields(input, args.requestId ?? '');
     const row = await this.prisma.talentRecord.create({
       data: {
+        ...(args.id !== undefined ? { id: args.id } : {}),
         tenant_id,
         site_id: input.site_id ?? null,
         first_name: input.first_name,

@@ -312,8 +312,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     });
 
     // markFieldPendingReview on a field with NO prior control row creates one
-    // (UNKNOWN / RECONCILED / AUTO) carrying the pending-review summary.
-    it('markFieldPendingReview creates a default control row when none exists', async () => {
+    // (UNKNOWN / RECONCILED) carrying the pending-review summary. TI-1F-C §4-I —
+    // an unresolved contradiction FREEZES automatic projection: projection_policy
+    // is HOLD (not AUTO) until the review is resolved.
+    it('markFieldPendingReview creates a default control row when none exists (HOLD per §4-I)', async () => {
       const id = await seedRecord(null);
       await repo.markFieldPendingReview({
         tenant_id: TENANT,
@@ -327,7 +329,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         field_key: 'city',
         value_state: 'UNKNOWN',
         source_type: 'RECONCILED',
-        projection_policy: 'AUTO',
+        projection_policy: 'HOLD',
         resolution_status: 'PENDING_REVIEW',
         resolution_reason: 'EVIDENCE_CONFLICT',
         proposed_value: 'London',

@@ -8,6 +8,7 @@ import { ObjectStorageModule } from '@aramo/object-storage';
 import { ResumeParseModule } from '@aramo/resume-parse';
 import { TalentExtractionModule } from '@aramo/talent-extraction';
 import { CanonicalReconcileModule } from '@aramo/canonical-reconcile';
+import { TalentReconcileSignalModule } from '@aramo/talent-reconcile-signal';
 
 import { PrismaService } from './prisma/prisma.service.js';
 import { TalentRecordController } from './talent-record.controller.js';
@@ -57,6 +58,10 @@ import { ResumeEditionIngestionService } from './resume-extraction/resume-editio
     TalentExtractionModule,
     // SKILL-TAX Canonical Reconciliation Activation — the best-effort producer.
     CanonicalReconcileModule,
+    // TALENT-INTEL-1 TI-1F-C — the Talent-profile reconcile PUSH producer (§4-H),
+    // the separate architecture from canonical reconcile. Neutral leaf lib (owns
+    // the queue-name contract) — no talent-record → talent-reconcile cycle.
+    TalentReconcileSignalModule,
   ],
   controllers: [TalentRecordController],
   providers: [
@@ -97,6 +102,10 @@ import { ResumeEditionIngestionService } from './resume-extraction/resume-editio
     TalentLinkService,
     ResumeTextService,
     ResumeEditionIngestionService,
+    // TALENT-INTEL-1 (TI-1F-A) — exported so the apps/api-only
+    // ResumeExtractionDraftWorkerModule can inject a fully-wired orchestrator
+    // (authorize→extract) to drain PROCESSING ATTACHMENT drafts.
+    ResumeExtractionOrchestrator,
   ],
 })
 export class TalentRecordModule {}

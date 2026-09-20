@@ -56,7 +56,11 @@ import { EvidenceModule } from '@aramo/evidence';
 import { ExaminationModule } from '@aramo/examination';
 import { TalentEvidenceModule } from '@aramo/talent-evidence';
 import { TalentExtractionModule } from '@aramo/talent-extraction';
-import { TalentRecordModule, ResumeReindexModule } from '@aramo/talent-record';
+import {
+  TalentRecordModule,
+  ResumeReindexModule,
+  ResumeExtractionDraftWorkerModule,
+} from '@aramo/talent-record';
 import { TalentTrustModule } from '@aramo/talent-trust';
 import { TaskModule } from '@aramo/task';
 
@@ -282,6 +286,10 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     // via TalentRecordModule WITHOUT the worker. Imported AFTER both, since it
     // depends on TalentRecordModule (ResumeTextService.drainPendingBatch).
     ResumeReindexModule,
+    // TALENT-INTEL-1 (TI-1F-A) — the résumé-extraction-draft worker (apps/api-only,
+    // same separation rationale): drains PROCESSING ATTACHMENT drafts via the
+    // governed orchestrator → READY_FOR_REVIEW | FAILED. No typed evidence.
+    ResumeExtractionDraftWorkerModule,
     // PR-A5a Gate 5 — fourth ATS-domain batch (part a): pipeline state
     // machine + activity log. ActivityModule is imported BEFORE
     // PipelineModule because PipelineModule depends on it (pipeline ->

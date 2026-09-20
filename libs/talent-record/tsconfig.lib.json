@@ -17,7 +17,8 @@
       "@aramo/resume-parse": ["../../dist/libs/resume-parse/src/index.d.ts"],
       "@aramo/settings": ["../../dist/libs/settings/src/index.d.ts"],
       "@aramo/talent-extraction": ["../../dist/libs/talent-extraction/src/index.d.ts"],
-      "@aramo/canonical-reconcile": ["../../dist/libs/canonical-reconcile/src/index.d.ts"]
+      "@aramo/canonical-reconcile": ["../../dist/libs/canonical-reconcile/src/index.d.ts"],
+      "@aramo/talent-reconcile-signal": ["../../dist/libs/talent-reconcile-signal/src/index.d.ts"]
     }
   },
   "include": ["src/**/*.ts"],

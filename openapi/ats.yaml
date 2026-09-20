@@ -2132,6 +2132,90 @@ paths:
           $ref: 'common.yaml#/components/responses/NotFound'
       security:
         - BearerAuth: []
+  /v1/talent-records/{id}/resume-editions/{editionId}/confirm:
+    post:
+      operationId: confirmTalentResumeEdition
+      summary: Confirm a reviewed résumé edition — promote accepted facts (TI-1F-B).
+      description: |
+        Human-governed CONFIRM of the résumé extraction under review for this
+        edition. Atomically promotes the accepted draft facts to typed Talent
+        evidence (work history, skills, education, certifications) anchored on the
+        source document, marks the extraction draft ACCEPTED, and PRESERVES all
+        prior evidence (additive). Nothing becomes Talent truth without this step.
+        409 when the extraction is not (or no longer) ready for review. Gated:
+        capability ats + scope talent:edit.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: editionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: The reviewed résumé edition (processing_status now ACCEPTED).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TalentResumeEditionView'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '409':
+          $ref: 'common.yaml#/components/responses/Conflict'
+        '422':
+          $ref: 'common.yaml#/components/responses/UnprocessableEntity'
+      security:
+        - BearerAuth: []
+  /v1/talent-records/{id}/resume-editions/{editionId}/reject:
+    post:
+      operationId: rejectTalentResumeEdition
+      summary: Reject a reviewed résumé edition — no evidence promoted (TI-1F-B).
+      description: |
+        Human-governed REJECT of the résumé extraction under review for this
+        edition. No typed evidence is created and no reconciliation is triggered;
+        the extraction draft is retained as review/audit history (status REJECTED).
+        409 when the extraction is not (or no longer) ready for review. Gated:
+        capability ats + scope talent:edit.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: editionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: The reviewed résumé edition (processing_status now REJECTED).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TalentResumeEditionView'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '409':
+          $ref: 'common.yaml#/components/responses/Conflict'
+      security:
+        - BearerAuth: []
 
   /v1/placements:
     get:
@@ -5479,6 +5563,7 @@ components:
         - mime_type
         - uploaded_at
         - is_default
+        - processing_status
       properties:
         edition_id:
           type: string
@@ -5511,6 +5596,12 @@ components:
           format: date-time
         is_default:
           type: boolean
+        # TI-1F-A — governed-extraction lifecycle, DERIVED from the edition's
+        # ResumeExtractionDraft (no new source of truth). null for an edition
+        # with no draft (created before TI-1F-A). READ-ONLY projection.
+        processing_status:
+          type: [string, 'null']
+          enum: [PROCESSING, READY_FOR_REVIEW, ACCEPTED, REJECTED, FAILED, null]
     TalentResumeEditionsResponse:
       type: object
       additionalProperties: false

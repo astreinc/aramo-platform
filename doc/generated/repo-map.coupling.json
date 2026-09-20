@@ -16673,6 +16673,16 @@
       "to": "libs/talent-extraction/tsconfig.lib.json"
     },
     {
+      "from": "libs/talent-reconcile-signal/project.json",
+      "status": "unscoped",
+      "to": "libs/talent-reconcile-signal/src/index.ts"
+    },
+    {
+      "from": "libs/talent-reconcile-signal/project.json",
+      "status": "unscoped",
+      "to": "libs/talent-reconcile-signal/tsconfig.lib.json"
+    },
+    {
       "from": "libs/talent-reconcile/project.json",
       "status": "unscoped",
       "to": "libs/talent-reconcile/src/index.ts"
@@ -17780,6 +17790,11 @@
     {
       "from": "pact/provider/src/verify-api.ts",
       "status": "unscoped",
+      "to": "libs/talent-evidence/prisma/migrations/20260919120000_talent_intel_1f_a_resume_extraction_draft/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
       "to": "libs/talent-record/prisma/migrations/20260602120000_init_talent_record_model/migration.sql"
     },
     {
@@ -18767,6 +18782,11 @@
     {
       "from": "tsconfig.base.json",
       "status": "unscoped",
+      "to": "libs/talent-reconcile-signal/src/index.ts"
+    },
+    {
+      "from": "tsconfig.base.json",
+      "status": "unscoped",
       "to": "libs/talent-reconcile/src/index.ts"
     },
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/talent-record/src/index.ts" },
@@ -18893,6 +18913,11 @@
       "from": "vitest.shared.ts",
       "status": "unscoped",
       "to": "libs/talent-extraction/src/index.ts"
+    },
+    {
+      "from": "vitest.shared.ts",
+      "status": "unscoped",
+      "to": "libs/talent-reconcile-signal/src/index.ts"
     },
     {
       "from": "vitest.shared.ts",

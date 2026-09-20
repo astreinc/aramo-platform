@@ -1,5 +1,9 @@
 export { TalentEvidenceModule } from './lib/talent-evidence.module.js';
-export { TalentEvidenceRepository } from './lib/talent-evidence.repository.js';
+export {
+  TalentEvidenceRepository,
+  // TI-1F-B — thrown inside the atomic promotion tx on a non-reviewable draft.
+  ResumeExtractionDraftNotReviewableError,
+} from './lib/talent-evidence.repository.js';
 export { PrismaService } from './lib/prisma/prisma.service.js';
 
 // SKILL-TAX-1G — canonical reconciliation orchestrator (internal; no HTTP/scope).
@@ -62,6 +66,15 @@ export type {
   SetTalentResumeDefaultInput,
   TalentResumeDefaultRow,
   TalentResumeEditionWithDocumentRow,
+  // ResumeExtractionDraft (TALENT-INTEL-1 TI-1F-A — governed-extraction review)
+  UpsertResumeExtractionDraftInput,
+  ResumeExtractionDraftRow,
+  ResumeExtractionDraftSourceKindValue,
+  ResumeExtractionDraftStatusValue,
+  // TI-1F-B promotion — the typed-evidence row inputs the confirm path shapes.
+  CreateTalentProjectExperienceInput,
+  CreateTalentEducationEntryInput,
+  CreateTalentCertificationEntryInput,
   // TalentDerivedSnapshot (Group 2 §2.2 #17)
   CreateTalentDerivedSnapshotInput,
   TalentDerivedSnapshotRow,

@@ -37,6 +37,9 @@ function editionRow(over: Record<string, unknown>) {
     mime_type: like((over['mime_type'] as string) ?? 'application/pdf'),
     uploaded_at: regex(ISO_TIMESTAMP, '2026-07-01T00:00:00Z'),
     is_default: over['is_default'] ?? false,
+    // TI-1F-A — DERIVED from the edition's ResumeExtractionDraft; null for
+    // editions seeded without a draft (the list-read provider state).
+    processing_status: over['processing_status'] ?? null,
   };
 }
 
@@ -95,6 +98,9 @@ describe('ats-web → POST /v1/talent-records/:id/resume-editions', () => {
           mime_type: like('application/pdf'),
           uploaded_at: regex(ISO_TIMESTAMP, '2026-07-01T00:00:00Z'),
           is_default: true,
+          // TI-1F-A — the ingestion enqueues a PROCESSING ResumeExtractionDraft;
+          // the created edition projects that governed-extraction lifecycle.
+          processing_status: like('PROCESSING'),
         });
       })
       .executeTest(async (mock) => {
@@ -135,6 +141,84 @@ describe('ats-web → PUT /v1/talent-records/:id/resume-editions/default', () =>
         expect(res.status).toBe(200);
         const body = (await res.json()) as { editions: Array<{ is_default: boolean }> };
         expect(body.editions[0].is_default).toBe(true);
+      });
+  });
+});
+
+describe('ats-web → POST /v1/talent-records/:id/resume-editions/:editionId/confirm', () => {
+  it('returns 200 with the reviewed edition (processing_status ACCEPTED)', async () => {
+    await provider
+      .addInteraction()
+      .given('an ats-web recruiter and a talent with a résumé edition ready for review exist')
+      .uponReceiving('a résumé-edition review CONFIRM')
+      .withRequest('POST', `/v1/talent-records/${TALENT_ID}/resume-editions/${ED_A}/confirm`, (b) => {
+        b.headers({ Cookie: like(ACCESS_COOKIE) });
+        b.jsonBody({});
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          edition_id: uuid(ED_A),
+          talent_document_id: uuid(DOC_A),
+          attachment_id: uuid(ATT_ID),
+          purpose: 'GENERAL',
+          label: null,
+          lifecycle_status: 'active',
+          created_at: regex(ISO_TIMESTAMP, '2026-07-01T00:00:00Z'),
+          filename: like('grace-general.pdf'),
+          mime_type: like('application/pdf'),
+          uploaded_at: regex(ISO_TIMESTAMP, '2026-07-01T00:00:00Z'),
+          is_default: true,
+          processing_status: like('ACCEPTED'),
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/talent-records/${TALENT_ID}/resume-editions/${ED_A}/confirm`, {
+          method: 'POST',
+          headers: { Cookie: ACCESS_COOKIE, 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+        });
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as { processing_status: string };
+        expect(body.processing_status).toBe('ACCEPTED');
+      });
+  });
+});
+
+describe('ats-web → POST /v1/talent-records/:id/resume-editions/:editionId/reject', () => {
+  it('returns 200 with the edition (processing_status REJECTED; no evidence promoted)', async () => {
+    await provider
+      .addInteraction()
+      .given('an ats-web recruiter and a talent with a résumé edition ready for review exist')
+      .uponReceiving('a résumé-edition review REJECT')
+      .withRequest('POST', `/v1/talent-records/${TALENT_ID}/resume-editions/${ED_A}/reject`, (b) => {
+        b.headers({ Cookie: like(ACCESS_COOKIE) });
+        b.jsonBody({});
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          edition_id: uuid(ED_A),
+          talent_document_id: uuid(DOC_A),
+          attachment_id: uuid(ATT_ID),
+          purpose: 'GENERAL',
+          label: null,
+          lifecycle_status: 'active',
+          created_at: regex(ISO_TIMESTAMP, '2026-07-01T00:00:00Z'),
+          filename: like('grace-general.pdf'),
+          mime_type: like('application/pdf'),
+          uploaded_at: regex(ISO_TIMESTAMP, '2026-07-01T00:00:00Z'),
+          is_default: true,
+          processing_status: like('REJECTED'),
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/talent-records/${TALENT_ID}/resume-editions/${ED_A}/reject`, {
+          method: 'POST',
+          headers: { Cookie: ACCESS_COOKIE, 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+        });
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as { processing_status: string };
+        expect(body.processing_status).toBe('REJECTED');
       });
   });
 });

@@ -1,8 +1,9 @@
-import { Inject, type OnApplicationBootstrap } from '@nestjs/common';
+import { Inject, Optional, type OnApplicationBootstrap } from '@nestjs/common';
 import { BullRegistrar, Processor, WorkerHost } from '@nestjs/bullmq';
 import type { Job } from 'bullmq';
 import { type AramoLogger, RedisConnectionConfig } from '@aramo/common';
 import { TalentTrustService } from '@aramo/talent-trust';
+import { TalentReconcileProducer } from '@aramo/talent-reconcile-signal';
 
 import { TalentReconcileService } from './talent-reconcile.service.js';
 import {
@@ -54,6 +55,9 @@ export class TalentReconcileProcessor
     private readonly redisConfig: RedisConnectionConfig,
     @Inject('TalentReconcileProcessorLogger')
     private readonly logger: AramoLogger,
+    // TI-1F-C — the neutral producer, so the worker self-schedules the recovery
+    // backstop tick (the push signal is primary; poll/watermark is the backstop).
+    @Optional() private readonly producer?: TalentReconcileProducer,
   ) {
     super();
   }
@@ -107,5 +111,8 @@ export class TalentReconcileProcessor
       return;
     }
     this.registrar.register();
+    // Self-schedule the repeatable backstop tick (dedup by fixed jobId). Gives the
+    // watermark poll a recovery mechanism for any push signal that never enqueued.
+    void this.producer?.scheduleBackstop();
   }
 }

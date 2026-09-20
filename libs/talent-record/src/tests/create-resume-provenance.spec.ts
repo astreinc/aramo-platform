@@ -23,11 +23,24 @@ function makeController(extra: Record<string, unknown> = {}) {
   const persistDeclaredWorkHistory = vi.fn().mockResolvedValue(['wh-1']);
   const persistDeclaredSkills = vi.fn().mockResolvedValue(['sk-1']);
   const extractResumeDraft = vi.fn();
+  // TI-1F-A — the create/draft seam additively persists a CREATE_DRAFT_UPLOAD
+  // draft (a review artifact, NOT authoritative truth); stub it so the seam does
+  // not lean on its non-blocking try/catch to swallow a missing method.
+  const upsertResumeExtractionDraft = vi.fn().mockResolvedValue({ id: 'draft-c' });
+  // TI-1F-B — the confirmed create LINKS + ACCEPTS its originating CREATE draft.
+  const markResumeExtractionDraftAccepted = vi.fn().mockResolvedValue(1);
+  // TI-1F-C — these provenance tests exercise the NORMAL (non-draft-backed) create
+  // path; returning null here makes the durable-draft branch fall through to it.
+  // The strengthened-D ordered flow is proven in create-from-draft-upload.spec.ts.
+  const findResumeExtractionDraftById = vi.fn().mockResolvedValue(null);
   const talentExtraction = {
     createResumeDocument,
     persistDeclaredWorkHistory,
     persistDeclaredSkills,
     extractResumeDraft,
+    upsertResumeExtractionDraft,
+    markResumeExtractionDraftAccepted,
+    findResumeExtractionDraftById,
     ...extra,
   };
   const resumeParser = {
@@ -58,7 +71,7 @@ function makeController(extra: Record<string, unknown> = {}) {
     undefined, // @Optional canonicalReconcile
     editionIngestion as never,
   );
-  return { ctl, createResumeDocument, persistDeclaredWorkHistory, persistDeclaredSkills, extractResumeDraft, createEditionForDocument };
+  return { ctl, createResumeDocument, persistDeclaredWorkHistory, persistDeclaredSkills, extractResumeDraft, createEditionForDocument, markResumeExtractionDraftAccepted };
 }
 
 describe('create — HF1 confirmed-create provenance (R1/R2/R8)', () => {
@@ -195,6 +208,49 @@ describe('create — HF1 confirmed-create provenance (R1/R2/R8)', () => {
     };
     const res = await ctl.create(CREATE_AUTH, body as never, 'rq-1');
     expect(res.id).toBe('tal-new'); // record still created
+  });
+});
+
+describe('TI-1F-B — CREATE_DRAFT_UPLOAD close-out on confirmed create', () => {
+  it('links + ACCEPTS the originating draft when draft_id is supplied (evidence persisted here, not re-promoted)', async () => {
+    const { ctl, markResumeExtractionDraftAccepted, createResumeDocument } = makeController();
+    const body = {
+      first_name: 'Ada',
+      last_name: 'Lovelace',
+      email1: 'ada@example.com',
+      phone_cell: '555-0100',
+      resume_document: {
+        storage_key: 's3/resume.pdf',
+        file_name: 'resume.pdf',
+        mime_type: 'application/pdf',
+        size_bytes: 42,
+        source_map_version: 'resume-source-map/v1',
+        resume_text_hash: 'hash-9',
+      },
+      draft_id: 'draft-create-1',
+    };
+    await ctl.create(CREATE_AUTH, body as never, 'rq-1');
+    // The résumé document is minted (its id anchors evidence + links the draft).
+    expect(createResumeDocument).toHaveBeenCalledOnce();
+    expect(markResumeExtractionDraftAccepted).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 'draft-create-1',
+        tenant_id: TENANT,
+        talent_id: 'tal-new',
+        talent_document_id: 'doc-777',
+        reviewed_by: 'me',
+      }),
+    );
+  });
+
+  it('does NOT touch any draft when no draft_id is supplied', async () => {
+    const { ctl, markResumeExtractionDraftAccepted } = makeController();
+    await ctl.create(
+      CREATE_AUTH,
+      { first_name: 'Ada', last_name: 'Lovelace', email1: 'a@e.com', phone_cell: '555-0100' } as never,
+      'rq-1',
+    );
+    expect(markResumeExtractionDraftAccepted).not.toHaveBeenCalled();
   });
 });
 
