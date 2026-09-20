@@ -518,3 +518,21 @@ export interface CreateTalentResumeEditionRequest {
   readonly purpose?: string;
   readonly label?: string;
 }
+
+// TALENT-INTEL-1 TI-1G — governed work-authorization current state + history.
+// Mirrors BE WorkAuthorizationStateView / WorkAuthorizationAssertionView.
+export interface WorkAuthorizationAssertionView {
+  readonly work_authorization_status: string;
+  readonly authorized_to_work_in: readonly string[];
+  readonly visa_type: string | null;
+  readonly requires_sponsorship: boolean;
+  readonly asserted_at: string;
+  readonly effective_from: string | null;
+  readonly effective_to: string | null;
+  readonly expires_at: string | null;
+}
+export interface WorkAuthorizationStateView {
+  readonly talent_id: string;
+  readonly current: WorkAuthorizationAssertionView | null;
+  readonly history: readonly WorkAuthorizationAssertionView[];
+}
