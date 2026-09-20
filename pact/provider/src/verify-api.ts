@@ -395,6 +395,7 @@ const TALENT_EVIDENCE_TI1A_MIGRATION = resolve(
 const TALENT_EVIDENCE_TI1FA_MIGRATION = resolve(
   ROOT,
   'libs/talent-evidence/prisma/migrations/20260919120000_talent_intel_1f_a_resume_extraction_draft/migration.sql',
+  'libs/talent-evidence/prisma/migrations/20260920140000_talent_intel_1g_work_authorization_temporal/migration.sql',
 );
 // SKILL-TAX-1F-B2 — the canonical skills-taxonomy schema (Skill + Alias + Version +
 // Relationship + AuditEvent) and the 1F governance substrate (merged_into +

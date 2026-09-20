@@ -455,6 +455,17 @@ model TalentWorkAuthorization {
   requires_sponsorship      Boolean
   updated_at                DateTime                      @db.Timestamptz
 
+  // TALENT-INTEL-1 TI-1G §2 — temporal/current-state semantics (ADDITIVE, all
+  // nullable except asserted_at). asserted_at = when the assertion was made (always
+  // known — never invented). effective_from/to + expires_at carry EXPLICITLY-supplied
+  // dates ONLY (NULL when the recruiter did not state them — no fake precision). The
+  // append-only rows (no unique key) already preserve OPT→H-1B→PR history; these
+  // fields let the deterministic current-selection exclude future/expired assertions.
+  asserted_at               DateTime                      @default(now()) @db.Timestamptz
+  effective_from            DateTime?                     @db.Date
+  effective_to              DateTime?                     @db.Date
+  expires_at                DateTime?                     @db.Date
+
   @@index([tenant_id])
   @@index([tenant_id, talent_id])
   @@schema("talent_evidence")

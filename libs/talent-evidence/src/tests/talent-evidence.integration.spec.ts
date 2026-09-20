@@ -63,6 +63,7 @@ const TI1A_MIGRATION_PATH = resolve(
 const TI1FA_MIGRATION_PATH = resolve(
   __dirname,
   '../../prisma/migrations/20260919120000_talent_intel_1f_a_resume_extraction_draft/migration.sql',
+  '../../prisma/migrations/20260920140000_talent_intel_1g_work_authorization_temporal/migration.sql',
 );
 
 // All test UUIDs use hex-only characters per RFC 4122. Tags chosen for
