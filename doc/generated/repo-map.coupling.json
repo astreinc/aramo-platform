@@ -17780,6 +17780,11 @@
     {
       "from": "pact/provider/src/verify-api.ts",
       "status": "unscoped",
+      "to": "libs/talent-evidence/prisma/migrations/20260919120000_talent_intel_1f_a_resume_extraction_draft/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
       "to": "libs/talent-record/prisma/migrations/20260602120000_init_talent_record_model/migration.sql"
     },
     {

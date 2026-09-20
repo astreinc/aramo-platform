@@ -23,11 +23,16 @@ function makeController(extra: Record<string, unknown> = {}) {
   const persistDeclaredWorkHistory = vi.fn().mockResolvedValue(['wh-1']);
   const persistDeclaredSkills = vi.fn().mockResolvedValue(['sk-1']);
   const extractResumeDraft = vi.fn();
+  // TI-1F-A — the create/draft seam additively persists a CREATE_DRAFT_UPLOAD
+  // draft (a review artifact, NOT authoritative truth); stub it so the seam does
+  // not lean on its non-blocking try/catch to swallow a missing method.
+  const upsertResumeExtractionDraft = vi.fn().mockResolvedValue({ id: 'draft-c' });
   const talentExtraction = {
     createResumeDocument,
     persistDeclaredWorkHistory,
     persistDeclaredSkills,
     extractResumeDraft,
+    upsertResumeExtractionDraft,
     ...extra,
   };
   const resumeParser = {

@@ -481,6 +481,57 @@ export interface TalentResumeDefaultRow {
   set_by: string;
 }
 
+// TALENT-INTEL-1 (TI-1F-A) — the durable governed-extraction REVIEW draft.
+export type ResumeExtractionDraftSourceKindValue = 'CREATE_DRAFT_UPLOAD' | 'ATTACHMENT';
+export type ResumeExtractionDraftStatusValue =
+  | 'PROCESSING'
+  | 'READY_FOR_REVIEW'
+  | 'ACCEPTED'
+  | 'REJECTED'
+  | 'FAILED';
+
+// Enqueue/persist a draft. Idempotent on the durable source identity
+// (tenant_id, source_kind, source_ref). talent_id / document / edition are
+// omitted (NULL) for a pre-Talent CREATE_DRAFT_UPLOAD draft.
+export interface UpsertResumeExtractionDraftInput {
+  id: string;
+  tenant_id: string;
+  source_kind: ResumeExtractionDraftSourceKindValue;
+  source_ref: string;
+  talent_id?: string | null;
+  talent_document_id?: string | null;
+  resume_edition_id?: string | null;
+  status: ResumeExtractionDraftStatusValue;
+  structured_payload?: unknown;
+  source_map_version?: string | null;
+  resume_text_hash?: string | null;
+  extractor_version?: string | null;
+  created_at: Date;
+  created_by: string;
+}
+
+export interface ResumeExtractionDraftRow {
+  id: string;
+  tenant_id: string;
+  source_kind: ResumeExtractionDraftSourceKindValue;
+  source_ref: string;
+  talent_id: string | null;
+  talent_document_id: string | null;
+  resume_edition_id: string | null;
+  status: ResumeExtractionDraftStatusValue;
+  structured_payload: unknown;
+  source_map_version: string | null;
+  resume_text_hash: string | null;
+  extractor_version: string | null;
+  attempt_count: number;
+  last_error_code: string | null;
+  last_error_at: Date | null;
+  created_at: Date;
+  created_by: string;
+  reviewed_at: Date | null;
+  reviewed_by: string | null;
+}
+
 // TALENT-INTEL-1 TI-1D-C — an edition projected WITH its TalentDocument metadata
 // (file_type/ingestion_at derived from the mandatory talent_document_id join, NOT
 // stored on the edition — ruling E) and its default marker. filename/mime_type/
@@ -490,6 +541,9 @@ export interface TalentResumeEditionWithDocumentRow extends TalentResumeEditionR
   document_mime_type: string;
   document_uploaded_at: Date;
   is_default: boolean;
+  // TI-1F-A — DERIVED from the edition's ResumeExtractionDraft (governed
+  // extraction lifecycle). NULL for editions with no draft (pre-TI-1F-A).
+  processing_status: ResumeExtractionDraftStatusValue | null;
 }
 
 // ---- TalentDerivedSnapshot (Group 2 §2.2 #17) --------------------------
@@ -1321,6 +1375,111 @@ export class TalentEvidenceRepository {
     return (row as TalentResumeDefaultRow | null) ?? null;
   }
 
+  // TALENT-INTEL-1 (TI-1F-A) — persist/enqueue the governed-extraction REVIEW
+  // draft, IDEMPOTENT on the durable source identity (tenant_id, source_kind,
+  // source_ref): a retry of the SAME source returns the existing draft untouched
+  // (never a duplicate). The draft is NOT Talent evidence and NOT authoritative.
+  async upsertResumeExtractionDraft(
+    input: UpsertResumeExtractionDraftInput,
+  ): Promise<ResumeExtractionDraftRow> {
+    const row = await this.prisma.resumeExtractionDraft.upsert({
+      where: {
+        tenant_id_source_kind_source_ref: {
+          tenant_id: input.tenant_id,
+          source_kind: input.source_kind,
+          source_ref: input.source_ref,
+        },
+      },
+      create: {
+        id: input.id,
+        tenant_id: input.tenant_id,
+        source_kind: input.source_kind,
+        source_ref: input.source_ref,
+        talent_id: input.talent_id ?? null,
+        talent_document_id: input.talent_document_id ?? null,
+        resume_edition_id: input.resume_edition_id ?? null,
+        status: input.status,
+        structured_payload: (input.structured_payload ?? undefined) as never,
+        source_map_version: input.source_map_version ?? null,
+        resume_text_hash: input.resume_text_hash ?? null,
+        extractor_version: input.extractor_version ?? null,
+        created_at: input.created_at,
+        created_by: input.created_by,
+      },
+      // Idempotent — a retry of the same source keeps the existing draft as-is.
+      update: {},
+    });
+    return row as unknown as ResumeExtractionDraftRow;
+  }
+
+  async findResumeExtractionDraftBySource(args: {
+    tenant_id: string;
+    source_kind: ResumeExtractionDraftSourceKindValue;
+    source_ref: string;
+  }): Promise<ResumeExtractionDraftRow | null> {
+    const row = await this.prisma.resumeExtractionDraft.findUnique({
+      where: {
+        tenant_id_source_kind_source_ref: {
+          tenant_id: args.tenant_id,
+          source_kind: args.source_kind,
+          source_ref: args.source_ref,
+        },
+      },
+    });
+    return (row as unknown as ResumeExtractionDraftRow | null) ?? null;
+  }
+
+  // Worker poll — the PROCESSING drafts awaiting governed extraction, oldest first.
+  async findProcessingResumeExtractionDrafts(args: {
+    limit: number;
+  }): Promise<ResumeExtractionDraftRow[]> {
+    const rows = await this.prisma.resumeExtractionDraft.findMany({
+      where: { status: 'PROCESSING' },
+      orderBy: { created_at: 'asc' },
+      take: args.limit,
+    });
+    return rows as unknown as ResumeExtractionDraftRow[];
+  }
+
+  // Worker success — the grounded governed output lands on the draft and it
+  // flips to READY_FOR_REVIEW. NO typed evidence is written (that is TI-1F-B).
+  async markResumeExtractionDraftReadyForReview(input: {
+    id: string;
+    structured_payload: unknown;
+    extractor_version?: string | null;
+    source_map_version?: string | null;
+    resume_text_hash?: string | null;
+  }): Promise<void> {
+    await this.prisma.resumeExtractionDraft.update({
+      where: { id: input.id },
+      data: {
+        status: 'READY_FOR_REVIEW',
+        structured_payload: input.structured_payload as never,
+        extractor_version: input.extractor_version ?? null,
+        source_map_version: input.source_map_version ?? null,
+        resume_text_hash: input.resume_text_hash ?? null,
+      },
+    });
+  }
+
+  // Worker failure — bump the attempt counter + record the internal error code
+  // (never projected onto the recruiter contract). Status → FAILED.
+  async markResumeExtractionDraftFailed(input: {
+    id: string;
+    last_error_code: string;
+    last_error_at: Date;
+  }): Promise<void> {
+    await this.prisma.resumeExtractionDraft.update({
+      where: { id: input.id },
+      data: {
+        status: 'FAILED',
+        attempt_count: { increment: 1 },
+        last_error_code: input.last_error_code,
+        last_error_at: input.last_error_at,
+      },
+    });
+  }
+
   // TALENT-INTEL-1 TI-1D-C — the idempotency lookup for edition ingestion: a
   // TalentDocument has at most ONE edition (talent_document_id @unique). A retry
   // for the same document returns the existing edition instead of creating a
@@ -1352,11 +1511,17 @@ export class TalentEvidenceRepository {
               e.derived_from_edition_id, e.lifecycle_status, e.created_at, e.created_by,
               d.filename AS document_filename, d.mime_type AS document_mime_type,
               d.uploaded_at AS document_uploaded_at,
-              COALESCE(df.resume_edition_id = e.id, false) AS is_default
+              COALESCE(df.resume_edition_id = e.id, false) AS is_default,
+              dr.status AS processing_status
          FROM "talent_evidence"."TalentResumeEdition" e
          JOIN "talent_evidence"."TalentDocument" d ON d.id = e.talent_document_id
          LEFT JOIN "talent_evidence"."TalentResumeDefault" df
            ON df.tenant_id = e.tenant_id AND df.talent_id = e.talent_id
+         -- TI-1F-A: processing_status is DERIVED from the edition's
+         -- ResumeExtractionDraft (no new source of truth). NULL for editions
+         -- created before TI-1F-A (no draft) — projected as null.
+         LEFT JOIN "talent_evidence"."ResumeExtractionDraft" dr
+           ON dr.tenant_id = e.tenant_id AND dr.resume_edition_id = e.id
         WHERE e.tenant_id = $1 AND e.talent_id = $2
         ORDER BY e.created_at DESC`,
       args.tenant_id,
@@ -1381,6 +1546,8 @@ export class TalentEvidenceRepository {
       document_mime_type: r['document_mime_type'] as string,
       document_uploaded_at: r['document_uploaded_at'] as Date,
       is_default: r['is_default'] === true,
+      processing_status:
+        (r['processing_status'] as ResumeExtractionDraftStatusValue | null) ?? null,
     }));
   }
 

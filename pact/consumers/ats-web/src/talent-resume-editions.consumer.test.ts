@@ -37,6 +37,9 @@ function editionRow(over: Record<string, unknown>) {
     mime_type: like((over['mime_type'] as string) ?? 'application/pdf'),
     uploaded_at: regex(ISO_TIMESTAMP, '2026-07-01T00:00:00Z'),
     is_default: over['is_default'] ?? false,
+    // TI-1F-A — DERIVED from the edition's ResumeExtractionDraft; null for
+    // editions seeded without a draft (the list-read provider state).
+    processing_status: over['processing_status'] ?? null,
   };
 }
 
@@ -95,6 +98,9 @@ describe('ats-web → POST /v1/talent-records/:id/resume-editions', () => {
           mime_type: like('application/pdf'),
           uploaded_at: regex(ISO_TIMESTAMP, '2026-07-01T00:00:00Z'),
           is_default: true,
+          // TI-1F-A — the ingestion enqueues a PROCESSING ResumeExtractionDraft;
+          // the created edition projects that governed-extraction lifecycle.
+          processing_status: like('PROCESSING'),
         });
       })
       .executeTest(async (mock) => {

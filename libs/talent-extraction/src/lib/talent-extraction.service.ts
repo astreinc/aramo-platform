@@ -16,6 +16,9 @@ import {
   type TalentResumeEditionRow,
   type TalentResumeDefaultRow,
   type TalentResumeEditionWithDocumentRow,
+  type UpsertResumeExtractionDraftInput,
+  type ResumeExtractionDraftRow,
+  type ResumeExtractionDraftSourceKindValue,
 } from '@aramo/talent-evidence';
 import { TalentTrustService } from '@aramo/talent-trust';
 
@@ -1446,6 +1449,50 @@ export class TalentExtractionService {
     talent_id: string;
   }): Promise<TalentResumeDefaultRow | null> {
     return this.evidence.findDefaultResumeEdition(args);
+  }
+
+  // TALENT-INTEL-1 (TI-1F-A) — thin ResumeExtractionDraft passthroughs (reuse
+  // this service's TalentEvidenceRepository; no new cross-lib edge). The draft is
+  // the durable governed-extraction REVIEW artifact — NOT Talent evidence, NOT
+  // authoritative until recruiter confirm (TI-1F-B).
+  async upsertResumeExtractionDraft(
+    input: Omit<UpsertResumeExtractionDraftInput, 'id'>,
+  ): Promise<ResumeExtractionDraftRow> {
+    // The id is only consumed on CREATE; on an idempotent conflict the existing
+    // draft (with its original id) is returned unchanged.
+    return this.evidence.upsertResumeExtractionDraft({ id: uuidv7(), ...input });
+  }
+
+  async findResumeExtractionDraftBySource(args: {
+    tenant_id: string;
+    source_kind: ResumeExtractionDraftSourceKindValue;
+    source_ref: string;
+  }): Promise<ResumeExtractionDraftRow | null> {
+    return this.evidence.findResumeExtractionDraftBySource(args);
+  }
+
+  async findProcessingResumeExtractionDrafts(args: {
+    limit: number;
+  }): Promise<ResumeExtractionDraftRow[]> {
+    return this.evidence.findProcessingResumeExtractionDrafts(args);
+  }
+
+  async markResumeExtractionDraftReadyForReview(input: {
+    id: string;
+    structured_payload: unknown;
+    extractor_version?: string | null;
+    source_map_version?: string | null;
+    resume_text_hash?: string | null;
+  }): Promise<void> {
+    return this.evidence.markResumeExtractionDraftReadyForReview(input);
+  }
+
+  async markResumeExtractionDraftFailed(input: {
+    id: string;
+    last_error_code: string;
+    last_error_at: Date;
+  }): Promise<void> {
+    return this.evidence.markResumeExtractionDraftFailed(input);
   }
 
   // HF1 Gate-6 R2 — persist recruiter-reviewed résumé SKILLS as declared

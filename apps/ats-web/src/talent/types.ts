@@ -497,6 +497,11 @@ export interface TalentResumeEditionView {
   readonly mime_type: string;
   readonly uploaded_at: string;
   readonly is_default: boolean;
+  // TALENT-INTEL-1 (TI-1F-A) — governed-extraction lifecycle, DERIVED from the
+  // edition's ResumeExtractionDraft (READ-ONLY): PROCESSING | READY_FOR_REVIEW |
+  // ACCEPTED | REJECTED | FAILED, or null for an edition with no draft. TI-1F-C
+  // consumes this for the async review affordance.
+  readonly processing_status: string | null;
 }
 
 export interface TalentResumeEditionsResponse {

@@ -476,6 +476,25 @@ export class TalentRecordController {
       tenant_id: authContext.tenant_id,
       requestId,
     });
+    // TALENT-INTEL-1 (TI-1F-A) — retry idempotency (Ruling B): the SAME owned
+    // attachment re-submitted resolves to the SAME already-created edition, never
+    // a duplicate document/edition/draft. The ResumeExtractionDraft (unique on
+    // (tenant, ATTACHMENT, attachment_id)) is the coordination boundary; content
+    // hash is NEVER the identity. A different attachment (identical bytes) → a new
+    // edition (falls through).
+    const priorDraft = await this.talentExtraction.findResumeExtractionDraftBySource({
+      tenant_id: authContext.tenant_id,
+      source_kind: 'ATTACHMENT',
+      source_ref: body.attachment_id,
+    });
+    if (priorDraft?.resume_edition_id != null) {
+      const priorRows = await this.talentExtraction.listResumeEditionsWithDocument({
+        tenant_id: authContext.tenant_id,
+        talent_id: id,
+      });
+      const prior = priorRows.find((r) => r.id === priorDraft.resume_edition_id);
+      if (prior !== undefined) return toResumeEditionView(prior);
+    }
     // 2. Deterministic text extraction → the content_hash (source-map text hash,
     //    the SAME hash the draft flow produces — ruling C). No LLM, no evidence
     //    authoring here.
@@ -535,6 +554,25 @@ export class TalentRecordController {
     } catch {
       // non-fatal
     }
+    // 5b. TALENT-INTEL-1 (TI-1F-A) — enqueue the async governed extraction by
+    //     writing a PROCESSING ResumeExtractionDraft (the polling-outbox work
+    //     signal; ResumeExtractionDraftProcessor drains it → READY_FOR_REVIEW |
+    //     FAILED). ATTACHMENT context: the draft carries talent_id + document +
+    //     edition immediately. Idempotent on (tenant, ATTACHMENT, attachment_id).
+    //     Extraction is WORKER-owned after this enqueue; NO typed evidence here
+    //     (that is TI-1F-B). The synchronous POST response is unchanged (the
+    //     edition view) — the extraction happens out-of-band.
+    await this.talentExtraction.upsertResumeExtractionDraft({
+      tenant_id: authContext.tenant_id,
+      source_kind: 'ATTACHMENT',
+      source_ref: body.attachment_id,
+      talent_id: id,
+      talent_document_id,
+      resume_edition_id: result.edition.id,
+      status: 'PROCESSING',
+      created_at: new Date(),
+      created_by: authContext.sub,
+    });
     // 6. Return the created edition projected with its document metadata.
     const rows = await this.talentExtraction.listResumeEditionsWithDocument({
       tenant_id: authContext.tenant_id,
@@ -555,6 +593,8 @@ export class TalentRecordController {
       mime_type: meta.mime_type,
       uploaded_at: result.edition.created_at.toISOString(),
       is_default: result.is_default,
+      // A PROCESSING draft was just enqueued (step 5b) for this edition.
+      processing_status: 'PROCESSING',
     };
   }
 
@@ -1125,9 +1165,39 @@ export class TalentRecordController {
     // parser. The orchestrator authorizes the draft key internally (tenant +
     // résumé namespace); a raw client storage_key is never the auth anchor.
     const ctx = { tenant_id: authContext.tenant_id, requestId };
-    return this.resumeOrchestrator.extractResume(
+    const result = await this.resumeOrchestrator.extractResume(
       { kind: 'CREATE_DRAFT_UPLOAD', storage_key: body.storage_key },
       ctx,
     );
+
+    // TALENT-INTEL-1 (TI-1F-A) — additively persist a CREATE_DRAFT_UPLOAD
+    // ResumeExtractionDraft from the SAME governed result above (NO second model
+    // call). This is ONE architecture: create + existing both land in a draft.
+    // In A the create flow stays synchronous — the prefill `result` remains the
+    // user-facing authority, so this persistence is BEST-EFFORT + non-blocking (a
+    // draft-write hiccup never affects the Create form). No TalentDocument /
+    // TalentResumeEdition / typed evidence here (that is TI-1F-B's Confirm-Create).
+    // Idempotent on (tenant, CREATE_DRAFT_UPLOAD, storage_key). TI-1F-C makes this
+    // durable/required when the create flow depends on the draft (the transitional
+    // sync-create / async-existing asymmetry is intentional for A).
+    let draft_id: string | undefined;
+    try {
+      const draft = await this.talentExtraction.upsertResumeExtractionDraft({
+        tenant_id: authContext.tenant_id,
+        source_kind: 'CREATE_DRAFT_UPLOAD',
+        source_ref: body.storage_key,
+        status: 'READY_FOR_REVIEW',
+        structured_payload: result,
+        source_map_version: result.source_map_version ?? null,
+        resume_text_hash: result.resume_text_hash ?? null,
+        created_at: new Date(),
+        created_by: authContext.sub,
+      });
+      draft_id = draft.id;
+    } catch {
+      // Non-fatal — the synchronous prefill response is the authority in A.
+    }
+
+    return { ...result, ...(draft_id !== undefined ? { draft_id } : {}) };
   }
 }

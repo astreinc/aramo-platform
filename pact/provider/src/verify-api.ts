@@ -390,6 +390,12 @@ const TALENT_EVIDENCE_TI1A_MIGRATION = resolve(
   ROOT,
   'libs/talent-evidence/prisma/migrations/20260916120000_talent_intel_1a_resume_edition/migration.sql',
 );
+// TALENT-INTEL-1 TI-1F-A — the ResumeExtractionDraft review-artifact table
+// (additive new table + two enums; pre-confirmation review state).
+const TALENT_EVIDENCE_TI1FA_MIGRATION = resolve(
+  ROOT,
+  'libs/talent-evidence/prisma/migrations/20260919120000_talent_intel_1f_a_resume_extraction_draft/migration.sql',
+);
 // SKILL-TAX-1F-B2 — the canonical skills-taxonomy schema (Skill + Alias + Version +
 // Relationship + AuditEvent) and the 1F governance substrate (merged_into +
 // append-only audit trigger + SkillGovernanceProposal + SkillCorrectionTask). Applied
@@ -3279,6 +3285,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         TALENT_EVIDENCE_HF2_MIGRATION,
         TALENT_EVIDENCE_1G_MIGRATION,
         TALENT_EVIDENCE_TI1A_MIGRATION,
+        TALENT_EVIDENCE_TI1FA_MIGRATION,
         // SKILL-TAX-1F-B2 — canonical skills-taxonomy schema + 1F governance substrate
         // (platform-governance-consumer state handlers seed these tables).
         SKILLS_TAXONOMY_INIT_MIGRATION,

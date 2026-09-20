@@ -45,6 +45,13 @@ export {
   RESUME_REINDEX_QUEUE_NAME,
   RESUME_REINDEX_BATCH_SIZE,
 } from './lib/resume-text/resume-reindex.queue.constants.js';
+// TALENT-INTEL-1 (TI-1F-A) — the résumé-extraction-draft worker (apps/api-only).
+export { ResumeExtractionDraftWorkerModule } from './lib/resume-extraction-draft/resume-extraction-draft.module.js';
+export { ResumeExtractionDraftProcessor } from './lib/resume-extraction-draft/resume-extraction-draft.processor.js';
+export {
+  RESUME_EXTRACTION_DRAFT_QUEUE_NAME,
+  RESUME_EXTRACTION_DRAFT_BATCH_SIZE,
+} from './lib/resume-extraction-draft/resume-extraction-draft.queue.constants.js';
 
 export type {
   TalentRecordView,

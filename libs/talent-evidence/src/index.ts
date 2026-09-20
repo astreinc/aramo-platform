@@ -62,6 +62,11 @@ export type {
   SetTalentResumeDefaultInput,
   TalentResumeDefaultRow,
   TalentResumeEditionWithDocumentRow,
+  // ResumeExtractionDraft (TALENT-INTEL-1 TI-1F-A — governed-extraction review)
+  UpsertResumeExtractionDraftInput,
+  ResumeExtractionDraftRow,
+  ResumeExtractionDraftSourceKindValue,
+  ResumeExtractionDraftStatusValue,
   // TalentDerivedSnapshot (Group 2 §2.2 #17)
   CreateTalentDerivedSnapshotInput,
   TalentDerivedSnapshotRow,

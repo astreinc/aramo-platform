@@ -5479,6 +5479,7 @@ components:
         - mime_type
         - uploaded_at
         - is_default
+        - processing_status
       properties:
         edition_id:
           type: string
@@ -5511,6 +5512,12 @@ components:
           format: date-time
         is_default:
           type: boolean
+        # TI-1F-A — governed-extraction lifecycle, DERIVED from the edition's
+        # ResumeExtractionDraft (no new source of truth). null for an edition
+        # with no draft (created before TI-1F-A). READ-ONLY projection.
+        processing_status:
+          type: [string, 'null']
+          enum: [PROCESSING, READY_FOR_REVIEW, ACCEPTED, REJECTED, FAILED, null]
     TalentResumeEditionsResponse:
       type: object
       additionalProperties: false

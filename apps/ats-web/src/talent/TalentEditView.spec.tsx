@@ -154,8 +154,8 @@ describe('TalentEditView', () => {
             talent_id: 'tal-42',
             editions: [
               // newest-first; ED_B (newer) is NOT the default.
-              { edition_id: 'ed-b', talent_document_id: 'd-b', attachment_id: null, purpose: 'CLIENT_SUBMITTAL', label: 'GenAI', lifecycle_status: 'active', created_at: '2026-07-05T00:00:00Z', filename: 'genai.docx', mime_type: 'x', uploaded_at: '2026-07-05T00:00:00Z', is_default: false },
-              { edition_id: 'ed-a', talent_document_id: 'd-a', attachment_id: null, purpose: 'GENERAL', label: null, lifecycle_status: 'active', created_at: '2026-07-01T00:00:00Z', filename: 'general.pdf', mime_type: 'y', uploaded_at: '2026-07-01T00:00:00Z', is_default: true },
+              { edition_id: 'ed-b', talent_document_id: 'd-b', attachment_id: null, purpose: 'CLIENT_SUBMITTAL', label: 'GenAI', lifecycle_status: 'active', created_at: '2026-07-05T00:00:00Z', filename: 'genai.docx', mime_type: 'x', uploaded_at: '2026-07-05T00:00:00Z', is_default: false, processing_status: null },
+              { edition_id: 'ed-a', talent_document_id: 'd-a', attachment_id: null, purpose: 'GENERAL', label: null, lifecycle_status: 'active', created_at: '2026-07-01T00:00:00Z', filename: 'general.pdf', mime_type: 'y', uploaded_at: '2026-07-01T00:00:00Z', is_default: true, processing_status: null },
             ],
           },
         };

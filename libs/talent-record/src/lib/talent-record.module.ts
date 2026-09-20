@@ -97,6 +97,10 @@ import { ResumeEditionIngestionService } from './resume-extraction/resume-editio
     TalentLinkService,
     ResumeTextService,
     ResumeEditionIngestionService,
+    // TALENT-INTEL-1 (TI-1F-A) — exported so the apps/api-only
+    // ResumeExtractionDraftWorkerModule can inject a fully-wired orchestrator
+    // (authorize→extract) to drain PROCESSING ATTACHMENT drafts.
+    ResumeExtractionOrchestrator,
   ],
 })
 export class TalentRecordModule {}
