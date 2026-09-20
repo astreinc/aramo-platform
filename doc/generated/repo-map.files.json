@@ -3293,6 +3293,7 @@
     "libs/talent-reconcile-signal/src/tests/talent-reconcile-signal.producer.spec.ts",
     "libs/talent-reconcile-signal/tsconfig.json",
     "libs/talent-reconcile-signal/tsconfig.lib.json",
+    "libs/talent-reconcile-signal/vitest.config.ts",
     "libs/talent-reconcile/project.json",
     "libs/talent-reconcile/src/index.ts",
     "libs/talent-reconcile/src/lib/contradiction-detection.processor.ts",

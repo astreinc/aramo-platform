@@ -1297,6 +1297,10 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // edition/document fixtures don't collide across interactions.
       await c.query('TRUNCATE TABLE talent_evidence."TalentResumeDefault" CASCADE');
       await c.query('TRUNCATE TABLE talent_evidence."TalentResumeEdition" CASCADE');
+      // TI-1F — the résumé-extraction review draft (fixed-id fixtures across the
+      // confirm/reject interactions collide on the (tenant, source_kind, source_ref)
+      // unique key unless reset between interactions).
+      await c.query('TRUNCATE TABLE talent_evidence."ResumeExtractionDraft" CASCADE');
       await c.query('TRUNCATE TABLE talent_evidence."TalentDocument" CASCADE');
       // M4 PR-3 — submittal-create state handlers seed an examination
       // and trigger buildPackage which writes the evidence package +
