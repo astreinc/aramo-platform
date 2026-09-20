@@ -1944,6 +1944,43 @@ paths:
           $ref: 'common.yaml#/components/responses/NotFound'
       security:
         - BearerAuth: []
+  /v1/talent-records/{id}/work-authorization:
+    get:
+      operationId: getTalentWorkAuthorizationState
+      summary: The governed work-authorization current state + assertion history (TALENT-INTEL-1 TI-1G).
+      description: |
+        Returns the DETERMINISTIC current work-authorization state and the
+        append-only assertion history for a talent. `current` is selected from the
+        eligible explicit assertions (future-dated and expired assertions are
+        excluded; the most-recently-asserted eligible one wins) — NOT simply the
+        latest DB row; it is null when no eligible assertion exists. Work
+        authorization is NEVER inferred from résumé content — only explicit
+        recruiter statements create assertions. The coarse
+        TalentRecord.work_authorization scalar remains the operational projection;
+        this surface exposes the richer governed evidence + retained history.
+        READ-ONLY. Gated: capability ats + scope talent:read.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: The current work-authorization state + assertion history.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkAuthorizationStateView'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
   /v1/pipelines/{id}/resume-edition:
     get:
       operationId: getPipelineResumeEdition
@@ -5709,6 +5746,58 @@ components:
           type: [string, 'null']
           enum: [EVIDENCE_CONFLICT, ACCEPTED_PROPOSED, KEPT_CURRENT, MANUAL_CONFIRMATION, null]
     # ── TALENT-INTEL-1 TI-1E-A — aggregate profile-hydration projection ──
+    WorkAuthorizationAssertionView:
+      type: object
+      additionalProperties: false
+      required:
+        - work_authorization_status
+        - authorized_to_work_in
+        - visa_type
+        - requires_sponsorship
+        - asserted_at
+        - effective_from
+        - effective_to
+        - expires_at
+      properties:
+        work_authorization_status:
+          type: string
+          enum: [US_CITIZEN, PERMANENT_RESIDENT, VISA_HOLDER, REQUIRES_SPONSORSHIP, OTHER, NOT_DISCLOSED]
+        authorized_to_work_in:
+          type: array
+          items:
+            type: string
+        visa_type:
+          type: [string, 'null']
+        requires_sponsorship:
+          type: boolean
+        asserted_at:
+          type: string
+          format: date-time
+        effective_from:
+          type: [string, 'null']
+          format: date
+        effective_to:
+          type: [string, 'null']
+          format: date
+        expires_at:
+          type: [string, 'null']
+          format: date
+    WorkAuthorizationStateView:
+      type: object
+      additionalProperties: false
+      required: [talent_id, current, history]
+      properties:
+        talent_id:
+          type: string
+          format: uuid
+        current:
+          oneOf:
+            - $ref: '#/components/schemas/WorkAuthorizationAssertionView'
+            - type: 'null'
+        history:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkAuthorizationAssertionView'
     ProfileHydrationResponse:
       type: object
       additionalProperties: false

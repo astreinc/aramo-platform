@@ -44,6 +44,10 @@ import {
 
 import type { CreateTalentRecordRequestDto } from './dto/create-talent-record-request.dto.js';
 import type { WorkAuthorization } from './dto/stated-fields.js';
+import {
+  toWorkAuthorizationAssertionView,
+  type WorkAuthorizationStateView,
+} from './dto/work-authorization-state.view.js';
 import type { DraftFromResumeRequestDto } from './dto/draft-from-resume-request.dto.js';
 import type { DraftFromResumeResponse } from './dto/draft-from-resume.response.js';
 import type { TalentDuplicateCheckResponse } from './dto/talent-duplicate-check.view.js';
@@ -424,6 +428,38 @@ export class TalentRecordController {
       view as unknown as ProfileHydrationInputRecord,
       rows,
     );
+  }
+
+  // TALENT-INTEL-1 TI-1G §3 — the governed work-authorization read surface: the
+  // DETERMINISTIC current state + the append-only assertion history (retained, never
+  // destroyed). The scalar TalentRecord.work_authorization stays the coarse current
+  // projection (in the record + hydration); this exposes the richer governed evidence
+  // + history. Read-only, tenant/site-scoped; no reconcile, no write.
+  @Get(':id/work-authorization')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('talent:read')
+  @RequireSiteMatch()
+  async getWorkAuthorizationState(
+    @AuthContext() authContext: AuthContextType,
+    @Param('id') id: string,
+    @RequestId() requestId: string,
+  ): Promise<WorkAuthorizationStateView> {
+    const talent = await this.repo.findById({ tenant_id: authContext.tenant_id, id });
+    if (talent === null) {
+      throw new AramoError('NOT_FOUND', 'TalentRecord not found in tenant', 404, {
+        requestId,
+        details: { id },
+      });
+    }
+    const { current, history } = await this.talentExtraction.getWorkAuthorizationHistory({
+      talent_id: id,
+      tenant_id: authContext.tenant_id,
+    });
+    return {
+      talent_id: id,
+      current: current === null ? null : toWorkAuthorizationAssertionView(current),
+      history: history.map(toWorkAuthorizationAssertionView),
+    };
   }
 
   // TALENT-INTEL-1 TI-1D-C — the résumé-edition collection for a Talent, each row

@@ -10,6 +10,8 @@ import {
 } from '@aramo/ai-draft';
 import {
   TalentEvidenceRepository,
+  selectCurrentWorkAuthorization,
+  type TalentWorkAuthorizationRow,
   type CreateTalentWorkHistoryEntryInput,
   type CreateTalentSkillEvidenceInput,
   type CreateTalentEducationEntryInput,
@@ -724,6 +726,18 @@ export class TalentExtractionService {
       tenant_id: input.tenant_id,
       talent_id: input.talent_id,
     });
+  }
+
+  // TALENT-INTEL-1 TI-1G §3 — the work-authorization read model: the DETERMINISTIC
+  // current state (selectCurrentWorkAuthorization over the append-only history —
+  // excludes future/expired, newest-asserted wins) + the full assertion history
+  // (newest first) for the recruiter read surface. Read-only; no reconcile, no write.
+  async getWorkAuthorizationHistory(input: {
+    talent_id: string;
+    tenant_id: string;
+  }): Promise<{ current: TalentWorkAuthorizationRow | null; history: TalentWorkAuthorizationRow[] }> {
+    const history = await this.evidence.findWorkAuthorizationByTalent(input);
+    return { current: selectCurrentWorkAuthorization(history, new Date()), history };
   }
 
   // TR-4 B2 (DDR §3.4) — the one-time backfill: reconcile every talent in a tenant

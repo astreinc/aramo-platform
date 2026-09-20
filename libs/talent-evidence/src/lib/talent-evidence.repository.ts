@@ -1114,6 +1114,20 @@ export class TalentEvidenceRepository {
     });
   }
 
+  // TALENT-INTEL-1 TI-1G §3 — the FULL append-only work-authorization assertion
+  // history for a talent (newest-asserted first), incl. the temporal columns, for
+  // the read surface + deterministic current-selection. Tenant-scoped, bounded read.
+  async findWorkAuthorizationByTalent(args: {
+    tenant_id: string;
+    talent_id: string;
+  }): Promise<TalentWorkAuthorizationRow[]> {
+    const rows = await this.prisma.talentWorkAuthorization.findMany({
+      where: { tenant_id: args.tenant_id, talent_id: args.talent_id },
+      orderBy: [{ asserted_at: 'desc' }, { id: 'desc' }],
+    });
+    return rows as TalentWorkAuthorizationRow[];
+  }
+
   // Backfill enumeration: the distinct talent_ids that own ANY typed skill,
   // work-history, education, or certification evidence in a tenant (the union — a
   // talent may have only one kind).

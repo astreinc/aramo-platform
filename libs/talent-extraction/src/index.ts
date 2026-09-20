@@ -18,6 +18,8 @@ export type {
   TalentResumeEditionWithDocumentRow,
   // TI-1F-B — the review draft the confirm/reject seam operates on.
   ResumeExtractionDraftRow,
+  // TI-1G §3 — the work-auth assertion row (history/current read surface).
+  TalentWorkAuthorizationRow,
 } from '@aramo/talent-evidence';
 // TI-1F-B — re-export the promotion race error through the SAME sanctioned seam
 // so talent-record catches it (→ 409) without a scope:ats → scope:cip edge.

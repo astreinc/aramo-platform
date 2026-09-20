@@ -99,6 +99,8 @@ describe('TalentEvidenceRepository — surface', () => {
         'createTalentProjectExperience',
         'findTalentProjectExperienceById',
         'findProjectExperienceByTalent',
+        // TALENT-INTEL-1 TI-1G §3 — full work-auth assertion history read (by-talent).
+        'findWorkAuthorizationByTalent',
         // TALENT-INTEL-1 (TI-1A §5) — résumé-edition substrate: the edition
         // companion to TalentDocument (create + by-id + by-talent list) and the
         // separate default/presentation selection (upsert + find).
