@@ -2132,6 +2132,45 @@ paths:
           $ref: 'common.yaml#/components/responses/UnprocessableEntity'
       security:
         - BearerAuth: []
+  /v1/talent-records/{id}/resume-editions/{editionId}/text:
+    get:
+      operationId: getTalentResumeEditionText
+      summary: The redacted résumé text for a specific edition (TI-1H §9).
+      description: |
+        Return the REDACTED résumé text belonging to ONE résumé edition (preview).
+        Reading edition R returns R's own text — a newer edition never overwrites
+        or shadows an older edition's text (TALENT-INTEL-1 TI-1H edition-aware
+        history). Only redacted text is exposed (SSN-shaped patterns removed at
+        persist). redacted_text is null while the async re-extract is still pending;
+        status carries the lifecycle. Gated: capability ats + scope talent:read.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: editionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: The edition's redacted résumé text.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TalentResumeEditionTextView'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
   /v1/talent-records/{id}/resume-editions/default:
     put:
       operationId: setTalentResumeEditionDefault
@@ -5651,6 +5690,29 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/TalentResumeEditionView'
+    TalentResumeEditionTextView:
+      type: object
+      additionalProperties: false
+      description: >-
+        TALENT-INTEL-1 TI-1H §9 — the REDACTED résumé text for ONE edition
+        (preview). redacted_text is null while the async re-extract is pending
+        (status carries the lifecycle). Only redacted text is ever returned.
+      required: [talent_id, edition_id, status, redacted_text, extracted_at]
+      properties:
+        talent_id:
+          type: string
+          format: uuid
+        edition_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          description: pending | extracted | failed.
+        redacted_text:
+          type: [string, 'null']
+        extracted_at:
+          type: [string, 'null']
+          format: date-time
     CreateTalentResumeEditionRequest:
       type: object
       additionalProperties: false

@@ -519,6 +519,17 @@ export interface CreateTalentResumeEditionRequest {
   readonly label?: string;
 }
 
+// TALENT-INTEL-1 TI-1H §9 — the redacted text for ONE résumé edition (preview).
+// Mirrors BE TalentResumeEditionTextView. redacted_text is null while the async
+// re-extract is pending; only redacted text is ever returned (D4).
+export interface TalentResumeEditionTextView {
+  readonly talent_id: string;
+  readonly edition_id: string;
+  readonly status: string;
+  readonly redacted_text: string | null;
+  readonly extracted_at: string | null;
+}
+
 // TALENT-INTEL-1 TI-1G — governed work-authorization current state + history.
 // Mirrors BE WorkAuthorizationStateView / WorkAuthorizationAssertionView.
 export interface WorkAuthorizationAssertionView {

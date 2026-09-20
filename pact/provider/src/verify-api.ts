@@ -257,6 +257,18 @@ const TALENT_RECORD_MIGRATIONS = [
   // TALENT-INTEL-1 TI-1D-B — resolution_status / resolution_reason / proposed_value
   // columns; the field-state read model projects them (500s without this migration).
   'libs/talent-record/prisma/migrations/20260918120000_talent_intel_1d_b_field_resolution/migration.sql',
+  // Search PR-2 — the talent_resume_text table (+ generated tsvector + GIN).
+  // TALENT-INTEL-1 TI-1H adds the per-edition résumé-text READ pact
+  // (GET :id/resume-editions/:editionId/text), whose provider state seeds a
+  // talent_resume_text row — so the table (and its later column/uniqueness
+  // migrations) must exist in the provider schema. Applied after TalentRecord
+  // exists (init above) since the FK targets TalentRecord(id).
+  'libs/talent-record/prisma/migrations/20260609130000_search_pr2_resume_text/migration.sql',
+  // TI-1D-C — resume_edition_id column on talent_resume_text.
+  'libs/talent-record/prisma/migrations/20260919120000_talent_intel_1d_c_resume_text_edition/migration.sql',
+  // TI-1H — edition-aware uniqueness (drops UNIQUE(talent_record_id), adds the
+  // per-edition key + the partial-unique transient key).
+  'libs/talent-record/prisma/migrations/20260920160000_talent_intel_1h_resume_text_edition_history/migration.sql',
 ].map((p) => resolve(ROOT, p));
 // PR-A1b §4 sweep — entitlement schema applied for the pact verifier so
 // the portal-thin pact interactions (5 interactions traversing the now
@@ -1311,6 +1323,9 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // TI-1G — fixed-id work-auth fixtures must not collide across interactions.
       await c.query('TRUNCATE TABLE talent_evidence."TalentWorkAuthorization" CASCADE');
       await c.query('TRUNCATE TABLE talent_evidence."TalentDocument" CASCADE');
+      // TI-1H — per-edition résumé-text rows (the edition-text read state seeds a
+      // fixed-id row; truncate so it does not collide across interactions).
+      await c.query('TRUNCATE TABLE talent_record."talent_resume_text" CASCADE');
       // M4 PR-3 — submittal-create state handlers seed an examination
       // and trigger buildPackage which writes the evidence package +
       // submittal record. Truncate both tables so prior runs don't leak.
@@ -2257,6 +2272,11 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     // TI-1G — work-authorization state read fixtures.
     const ATSW_WA_TALENT_ID = '00000000-0000-7000-8000-7a0000000018';
     const ATSW_WA_ID = '00000000-0000-7000-8000-7c0000000002';
+    // TI-1H — per-edition résumé-text read fixtures.
+    const ATSW_RT_TALENT_ID = '00000000-0000-7000-8000-7a0000000019';
+    const ATSW_RT_DOC = '00000000-0000-7000-8000-7d0000000003';
+    const ATSW_RT_ED = '00000000-0000-7000-8000-7e0000000003';
+    const ATSW_RT_TEXT_ID = '00000000-0000-7000-8000-7c0000000003';
     const ATSW_DEFER_SUBJECT_ID = '00000000-0000-7000-8000-5b1000000004';
     const ATSW_DEFER_SUBJECT_B_ID = '00000000-0000-7000-8000-5b1000000005';
     const ATSW_DEFER_ARRIVAL_ID = '00000000-0000-7000-8000-a44000000003';
@@ -7183,6 +7203,48 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
                (id, tenant_id, talent_id, resume_edition_id, set_at, set_by)
              VALUES ('00000000-0000-7000-8000-7e00000000da'::uuid, $3::uuid, $1::uuid, $2::uuid, NOW(), $3::uuid)`,
             [ATSW_RE_TALENT_ID, ATSW_RE_ED_A, TENANT_ID],
+          );
+        });
+      },
+
+      // TALENT-INTEL-1 TI-1H — a talent with ONE résumé edition that has its own
+      // extracted, redacted text row (GET :id/resume-editions/:editionId/text). The
+      // endpoint: findById (TalentRecord) → listResumeEditionsWithDocument (the
+      // edition must belong to the talent) → findResumeEditionText (the edition's
+      // own talent_resume_text row). Seed all three.
+      'an ats-web recruiter and a talent with a résumé edition text row exist': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedAtsWebTalentRecord(c, { id: ATSW_RT_TALENT_ID, firstName: 'Ada', lastName: 'Lovelace' });
+          await c.query(
+            `INSERT INTO talent_evidence."TalentDocument"
+               (id, talent_id, tenant_id, uploaded_by_actor_id, uploaded_at, document_type,
+                filename, file_storage_ref, mime_type, size_bytes, parse_status,
+                consent_scope_at_upload, retention_policy, is_active)
+             VALUES
+               ($2::uuid, $1::uuid, $3::uuid, $3::uuid, '2026-07-01T00:00:00Z',
+                'resume'::"talent_evidence"."TalentDocumentType", 'ada-general.pdf', 'k/rt',
+                'application/pdf', 1200, 'parsed'::"talent_evidence"."TalentDocumentParseStatus",
+                ARRAY[]::text[], 'default'::"talent_evidence"."TalentDocumentRetentionPolicy", true)`,
+            [ATSW_RT_TALENT_ID, ATSW_RT_DOC, TENANT_ID],
+          );
+          await c.query(
+            `INSERT INTO talent_evidence."TalentResumeEdition"
+               (id, tenant_id, talent_id, talent_document_id, content_hash, purpose, created_at, created_by)
+             VALUES
+               ($2::uuid, $3::uuid, $1::uuid, $4::uuid, 'hash-rt',
+                'GENERAL'::"talent_evidence"."TalentResumeEditionPurpose", '2026-07-01T00:00:00Z', $3::uuid)`,
+            [ATSW_RT_TALENT_ID, ATSW_RT_ED, TENANT_ID, ATSW_RT_DOC],
+          );
+          await c.query(
+            `INSERT INTO talent_record."talent_resume_text"
+               (id, tenant_id, talent_record_id, attachment_id, storage_key, resume_edition_id,
+                status, redacted_text, extracted_at)
+             VALUES
+               ($2::uuid, $3::uuid, $1::uuid, NULL, 'k/rt', $4::uuid,
+                'extracted', 'Ada Lovelace — analytical engine, Bernoulli numbers.',
+                '2026-07-01T00:00:00Z')`,
+            [ATSW_RT_TALENT_ID, ATSW_RT_TEXT_ID, TENANT_ID, ATSW_RT_ED],
           );
         });
       },
