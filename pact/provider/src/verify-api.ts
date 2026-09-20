@@ -395,6 +395,12 @@ const TALENT_EVIDENCE_TI1A_MIGRATION = resolve(
 const TALENT_EVIDENCE_TI1FA_MIGRATION = resolve(
   ROOT,
   'libs/talent-evidence/prisma/migrations/20260919120000_talent_intel_1f_a_resume_extraction_draft/migration.sql',
+);
+// TALENT-INTEL-1 TI-1G — the work-authorization temporal columns (asserted_at /
+// effective_from / effective_to / expires_at); additive ALTER on
+// TalentWorkAuthorization, applied after TI-1F-A.
+const TALENT_EVIDENCE_TI1G_MIGRATION = resolve(
+  ROOT,
   'libs/talent-evidence/prisma/migrations/20260920140000_talent_intel_1g_work_authorization_temporal/migration.sql',
 );
 // SKILL-TAX-1F-B2 — the canonical skills-taxonomy schema (Skill + Alias + Version +
@@ -3299,6 +3305,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         TALENT_EVIDENCE_1G_MIGRATION,
         TALENT_EVIDENCE_TI1A_MIGRATION,
         TALENT_EVIDENCE_TI1FA_MIGRATION,
+        TALENT_EVIDENCE_TI1G_MIGRATION,
         // SKILL-TAX-1F-B2 — canonical skills-taxonomy schema + 1F governance substrate
         // (platform-governance-consumer state handlers seed these tables).
         SKILLS_TAXONOMY_INIT_MIGRATION,
