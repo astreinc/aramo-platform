@@ -22,6 +22,7 @@ import type {
   CreateTalentResumeEditionRequest,
   TalentResumeEditionsResponse,
   TalentResumeEditionView,
+  WorkAuthorizationStateView,
 } from './types';
 
 // The Talent LIST is the POOL-OPEN surface: GET /v1/talent-records is
@@ -126,6 +127,16 @@ export async function getTalentProfileHydration(
 ): Promise<ProfileHydrationResponse> {
   return apiClient.get<ProfileHydrationResponse>(
     `/v1/talent-records/${encodeURIComponent(id)}/profile-hydration`,
+  );
+}
+
+// TALENT-INTEL-1 TI-1G — the governed work-authorization current state + assertion
+// history (read-only; the scalar stays the operational projection).
+export async function getTalentWorkAuthorizationState(
+  id: string,
+): Promise<WorkAuthorizationStateView> {
+  return apiClient.get<WorkAuthorizationStateView>(
+    `/v1/talent-records/${encodeURIComponent(id)}/work-authorization`,
   );
 }
 

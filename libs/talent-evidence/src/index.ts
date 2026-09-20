@@ -5,6 +5,8 @@ export {
   ResumeExtractionDraftNotReviewableError,
 } from './lib/talent-evidence.repository.js';
 export { PrismaService } from './lib/prisma/prisma.service.js';
+// TALENT-INTEL-1 TI-1G §2 — deterministic current-work-authorization selection.
+export { selectCurrentWorkAuthorization } from './lib/work-authorization-current.js';
 
 // SKILL-TAX-1G — canonical reconciliation orchestrator (internal; no HTTP/scope).
 export { TalentSkillCanonicalizationModule } from './lib/talent-skill-canonicalization.module.js';

@@ -368,6 +368,12 @@ export interface CreateTalentWorkAuthorizationInput {
   visa_type?: string;
   requires_sponsorship: boolean;
   updated_at: Date;
+  // TI-1G §2 — temporal (all optional; DB defaults asserted_at to now()).
+  // effective_from/to + expires_at are set ONLY when explicitly supplied.
+  asserted_at?: Date;
+  effective_from?: Date;
+  effective_to?: Date;
+  expires_at?: Date;
 }
 
 export interface TalentWorkAuthorizationRow {
@@ -379,6 +385,11 @@ export interface TalentWorkAuthorizationRow {
   visa_type: string | null;
   requires_sponsorship: boolean;
   updated_at: Date;
+  // TI-1G §2 — temporal/current-state.
+  asserted_at: Date;
+  effective_from: Date | null;
+  effective_to: Date | null;
+  expires_at: Date | null;
 }
 
 // ---- TalentDocument (Group 2 §2.2 #8) ----------------------------------
@@ -1103,6 +1114,20 @@ export class TalentEvidenceRepository {
     });
   }
 
+  // TALENT-INTEL-1 TI-1G §3 — the FULL append-only work-authorization assertion
+  // history for a talent (newest-asserted first), incl. the temporal columns, for
+  // the read surface + deterministic current-selection. Tenant-scoped, bounded read.
+  async findWorkAuthorizationByTalent(args: {
+    tenant_id: string;
+    talent_id: string;
+  }): Promise<TalentWorkAuthorizationRow[]> {
+    const rows = await this.prisma.talentWorkAuthorization.findMany({
+      where: { tenant_id: args.tenant_id, talent_id: args.talent_id },
+      orderBy: [{ asserted_at: 'desc' }, { id: 'desc' }],
+    });
+    return rows as TalentWorkAuthorizationRow[];
+  }
+
   // Backfill enumeration: the distinct talent_ids that own ANY typed skill,
   // work-history, education, or certification evidence in a tenant (the union — a
   // talent may have only one kind).
@@ -1252,6 +1277,12 @@ export class TalentEvidenceRepository {
         visa_type: input.visa_type,
         requires_sponsorship: input.requires_sponsorship,
         updated_at: input.updated_at,
+        // TI-1G §2 — asserted_at omitted → DB @default(now()); temporal dates set
+        // only when explicitly supplied (never invented).
+        ...(input.asserted_at !== undefined ? { asserted_at: input.asserted_at } : {}),
+        effective_from: input.effective_from ?? null,
+        effective_to: input.effective_to ?? null,
+        expires_at: input.expires_at ?? null,
       },
     });
     return created as TalentWorkAuthorizationRow;

@@ -64,6 +64,13 @@ const TI1FA_MIGRATION_PATH = resolve(
   __dirname,
   '../../prisma/migrations/20260919120000_talent_intel_1f_a_resume_extraction_draft/migration.sql',
 );
+// TALENT-INTEL-1 TI-1G work-authorization temporal columns (SEPARATE resolve()
+// const — never a 2nd resolve() arg → ENOTDIR; additive ALTER, applied after
+// TI-1F-A).
+const TI1G_MIGRATION_PATH = resolve(
+  __dirname,
+  '../../prisma/migrations/20260920140000_talent_intel_1g_work_authorization_temporal/migration.sql',
+);
 
 // All test UUIDs use hex-only characters per RFC 4122. Tags chosen for
 // mnemonic clarity within the hex set: 1=tenant, 2=skill, 3=source-record,
@@ -94,6 +101,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const g1gMigrationSql = readFileSync(G1G_MIGRATION_PATH, 'utf8');
       const ti1aMigrationSql = readFileSync(TI1A_MIGRATION_PATH, 'utf8');
       const ti1faMigrationSql = readFileSync(TI1FA_MIGRATION_PATH, 'utf8');
+      const ti1gMigrationSql = readFileSync(TI1G_MIGRATION_PATH, 'utf8');
 
       const setupClient = new PrismaService(url);
       await setupClient.$connect();
@@ -105,6 +113,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         ...g1gMigrationSql.split(';'),
         ...ti1aMigrationSql.split(';'),
         ...ti1faMigrationSql.split(';'),
+        ...ti1gMigrationSql.split(';'),
       ]) {
         const trimmed = stmt.trim();
         if (trimmed.length === 0) continue;

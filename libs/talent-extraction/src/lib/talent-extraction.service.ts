@@ -10,6 +10,8 @@ import {
 } from '@aramo/ai-draft';
 import {
   TalentEvidenceRepository,
+  selectCurrentWorkAuthorization,
+  type TalentWorkAuthorizationRow,
   type CreateTalentWorkHistoryEntryInput,
   type CreateTalentSkillEvidenceInput,
   type CreateTalentEducationEntryInput,
@@ -23,6 +25,7 @@ import {
   type UpsertResumeExtractionDraftInput,
   type ResumeExtractionDraftRow,
   type ResumeExtractionDraftSourceKindValue,
+  type TalentWorkAuthorizationStatusValue,
 } from '@aramo/talent-evidence';
 import { TalentTrustService } from '@aramo/talent-trust';
 
@@ -689,6 +692,52 @@ export class TalentExtractionService {
       work_authorization_written,
       skipped,
     };
+  }
+
+  // TALENT-INTEL-1 TI-1G §1 — the governed work-authorization evidence writer.
+  // Activates the (previously dormant) RIGHT_TO_WORK evidence path from an EXPLICIT
+  // recruiter statement: APPEND a TalentWorkAuthorization assertion (append-only —
+  // a new row per assertion, never overwriting prior history) carrying only the
+  // recruiter-stated coarse status, then route it into the trust ledger as a
+  // declared RIGHT_TO_WORK claim (THIRD_PARTY_UNVERIFIED — cannot elevate the
+  // ELIGIBILITY band; declaration ≠ verification). NO inference: the decomposed
+  // richer fields (authorized_to_work_in / visa_type / requires_sponsorship) are
+  // NOT derived from the status, location, or any résumé signal — they stay at
+  // their empty/false defaults until a surface explicitly collects them (TI-1G
+  // §2/§3). The caller (controller) enqueues Talent reconcile after this.
+  async recordDeclaredWorkAuthorization(input: {
+    talent_id: string;
+    tenant_id: string;
+    work_authorization_status: TalentWorkAuthorizationStatusValue;
+    asserted_by: string;
+  }): Promise<void> {
+    await this.evidence.createTalentWorkAuthorization({
+      id: uuidv7(),
+      talent_id: input.talent_id,
+      tenant_id: input.tenant_id,
+      work_authorization_status: input.work_authorization_status,
+      authorized_to_work_in: [],
+      requires_sponsorship: false,
+      updated_at: new Date(),
+    });
+    // Route the just-appended typed row into the RIGHT_TO_WORK trust ledger
+    // (idempotent; source_ref = the typed row, so each assertion lands once).
+    await this.routeDeclaredEvidenceToLedger({
+      tenant_id: input.tenant_id,
+      talent_id: input.talent_id,
+    });
+  }
+
+  // TALENT-INTEL-1 TI-1G §3 — the work-authorization read model: the DETERMINISTIC
+  // current state (selectCurrentWorkAuthorization over the append-only history —
+  // excludes future/expired, newest-asserted wins) + the full assertion history
+  // (newest first) for the recruiter read surface. Read-only; no reconcile, no write.
+  async getWorkAuthorizationHistory(input: {
+    talent_id: string;
+    tenant_id: string;
+  }): Promise<{ current: TalentWorkAuthorizationRow | null; history: TalentWorkAuthorizationRow[] }> {
+    const history = await this.evidence.findWorkAuthorizationByTalent(input);
+    return { current: selectCurrentWorkAuthorization(history, new Date()), history };
   }
 
   // TR-4 B2 (DDR §3.4) — the one-time backfill: reconcile every talent in a tenant

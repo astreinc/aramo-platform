@@ -43,6 +43,11 @@ import {
 } from '@aramo/talent-extraction';
 
 import type { CreateTalentRecordRequestDto } from './dto/create-talent-record-request.dto.js';
+import type { WorkAuthorization } from './dto/stated-fields.js';
+import {
+  toWorkAuthorizationAssertionView,
+  type WorkAuthorizationStateView,
+} from './dto/work-authorization-state.view.js';
 import type { DraftFromResumeRequestDto } from './dto/draft-from-resume-request.dto.js';
 import type { DraftFromResumeResponse } from './dto/draft-from-resume.response.js';
 import type { TalentDuplicateCheckResponse } from './dto/talent-duplicate-check.view.js';
@@ -423,6 +428,38 @@ export class TalentRecordController {
       view as unknown as ProfileHydrationInputRecord,
       rows,
     );
+  }
+
+  // TALENT-INTEL-1 TI-1G §3 — the governed work-authorization read surface: the
+  // DETERMINISTIC current state + the append-only assertion history (retained, never
+  // destroyed). The scalar TalentRecord.work_authorization stays the coarse current
+  // projection (in the record + hydration); this exposes the richer governed evidence
+  // + history. Read-only, tenant/site-scoped; no reconcile, no write.
+  @Get(':id/work-authorization')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('talent:read')
+  @RequireSiteMatch()
+  async getWorkAuthorizationState(
+    @AuthContext() authContext: AuthContextType,
+    @Param('id') id: string,
+    @RequestId() requestId: string,
+  ): Promise<WorkAuthorizationStateView> {
+    const talent = await this.repo.findById({ tenant_id: authContext.tenant_id, id });
+    if (talent === null) {
+      throw new AramoError('NOT_FOUND', 'TalentRecord not found in tenant', 404, {
+        requestId,
+        details: { id },
+      });
+    }
+    const { current, history } = await this.talentExtraction.getWorkAuthorizationHistory({
+      talent_id: id,
+      tenant_id: authContext.tenant_id,
+    });
+    return {
+      talent_id: id,
+      current: current === null ? null : toWorkAuthorizationAssertionView(current),
+      history: history.map(toWorkAuthorizationAssertionView),
+    };
   }
 
   // TALENT-INTEL-1 TI-1D-C — the résumé-edition collection for a Talent, each row
@@ -1004,6 +1041,12 @@ export class TalentRecordController {
     // confirmed evidence write; best-effort + Redis-gated).
     await this.talentReconcile?.enqueueTalent(authContext.tenant_id, created.id);
 
+    // TALENT-INTEL-1 TI-1G §1 — an EXPLICIT work-authorization value on create is a
+    // governed RIGHT_TO_WORK assertion → append evidence (history). The scalar was
+    // already written by repo.create (immediate current projection); this records
+    // the durable governed assertion. Résumé never reaches this (recruiter body only).
+    await this.recordWorkAuthEvidence(authContext, created.id, body);
+
     // TALENT-INTEL-1 TI-1F-B — CREATE_DRAFT_UPLOAD close-out. A confirmed create IS
     // the human commit for the first-time-Create context (the recruiter reviewed
     // the prefill in the form and submitted the reviewed facts, which the block
@@ -1159,7 +1202,37 @@ export class TalentRecordController {
     // §4-H — both reconcile signals after the durable Talent exists (best-effort).
     await this.canonicalReconcile?.enqueueTalent(tenant_id, reservedId);
     await this.talentReconcile?.enqueueTalent(tenant_id, reservedId);
+    // TI-1G §1 — an explicit work-auth value on the confirmed create is a governed
+    // assertion (résumé-backed create has NO special authority — same path).
+    await this.recordWorkAuthEvidence(authContext, reservedId, body);
     return created;
+  }
+
+  // TALENT-INTEL-1 TI-1G §1 — append governed RIGHT_TO_WORK evidence when a Create/
+  // Edit carries an EXPLICIT work-authorization VALUE. Best-effort: the scalar
+  // (written by repo.create/update) is the immediate current projection; a durable-
+  // evidence hiccup never fails the operation. A CLEAR (null/empty) or an OMITTED
+  // field writes NO value-evidence — the governed clear is the existing
+  // EXPLICITLY_CLEARED field-state; omitted is untouched (P0 dirty-PATCH ensures an
+  // untouched field is omitted, so this never fires spuriously). NO inference.
+  private async recordWorkAuthEvidence(
+    authContext: AuthContextType,
+    talentId: string,
+    body: { work_authorization?: string | null },
+  ): Promise<void> {
+    const wa = body.work_authorization;
+    if (typeof wa !== 'string' || wa.trim() === '') return;
+    try {
+      await this.talentExtraction.recordDeclaredWorkAuthorization({
+        talent_id: talentId,
+        tenant_id: authContext.tenant_id,
+        work_authorization_status: wa as WorkAuthorization,
+        asserted_by: authContext.sub,
+      });
+    } catch {
+      // non-fatal — the scalar is the user-facing current state; evidence is durable
+      // history recorded best-effort (no résumé/backfill path re-creates it).
+    }
   }
 
   @Patch(':id')
@@ -1334,6 +1407,16 @@ export class TalentRecordController {
           projection_policy: control.projection_policy,
         });
       }
+    }
+
+    // TALENT-INTEL-1 TI-1G §1 — an EXPLICIT work-authorization VALUE on edit is a
+    // governed RIGHT_TO_WORK assertion → append evidence + signal Talent reconcile.
+    // Present-in-body is the explicit-change signal (P0 dirty-PATCH: an untouched
+    // field is omitted; a clear sends null → handled as EXPLICITLY_CLEARED above,
+    // no value-evidence). The scalar was already written by repo.update.
+    if (typeof bodyRec['work_authorization'] === 'string' && (bodyRec['work_authorization'] as string).trim() !== '') {
+      await this.recordWorkAuthEvidence(authContext, id, body);
+      await this.talentReconcile?.enqueueTalent(authContext.tenant_id, id);
     }
 
     return updated;
