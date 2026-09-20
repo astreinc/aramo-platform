@@ -131,7 +131,9 @@ describe('TalentEditDrawer', () => {
     expect(patch).toBeDefined();
     const body = JSON.parse(String((patch?.[1] as RequestInit).body)) as Record<string, unknown>;
     expect(body.city).toBe('Dallas');
-    expect(body.work_authorization).toBe('US_CITIZEN');
+    // TI-1G-P0 — only City changed; the UNTOUCHED work_authorization is OMITTED
+    // (never re-sent), so opening + saving can't stamp a spurious explicit-clear.
+    expect('work_authorization' in body).toBe(false);
     // Read-only fields are NOT part of the patch.
     expect(body.email1).toBeUndefined();
     expect(body.phone_cell).toBeUndefined();
@@ -151,12 +153,10 @@ describe('TalentEditDrawer', () => {
     expect(onSaved).not.toHaveBeenCalled();
   });
 
-  it('work authorization + desired rate are OPTIONAL — save proceeds, empties clear to null', async () => {
-    const fetchSpy = installFetch({ '/v1/talent-records/tal-1': makeTalent() });
-    renderDrawer(makeTalent({ work_authorization: null }));
-    // Work auth unset AND desired rate cleared → save STILL proceeds (parity
-    // with Add-Talent; these are optional).
-    fireEvent.change(screen.getByLabelText(/Desired rate/), { target: { value: '' } });
+  // Helper: fire Save and return the parsed PATCH body (or undefined if no PATCH).
+  async function saveAndGetPatchBody(
+    fetchSpy: ReturnType<typeof installFetch>,
+  ): Promise<Record<string, unknown> | undefined> {
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
     await waitFor(() =>
       expect(
@@ -165,11 +165,63 @@ describe('TalentEditDrawer', () => {
     );
     const patch = fetchSpy.mock.calls.find(
       (c) => (c[1] as RequestInit | undefined)?.method === 'PATCH',
-    )!;
-    const body = JSON.parse((patch[1] as RequestInit).body as string) as Record<string, unknown>;
-    // Empty → null ("not stated"), never an empty string.
-    expect(body['work_authorization']).toBeNull();
-    expect(body['desired_pay']).toBeNull();
+    );
+    return patch ? (JSON.parse((patch[1] as RequestInit).body as string) as Record<string, unknown>) : undefined;
+  }
+
+  it('optional fields — save proceeds; desired rate empty → null', async () => {
+    const fetchSpy = installFetch({ '/v1/talent-records/tal-1': makeTalent() });
+    renderDrawer(makeTalent({ work_authorization: null }));
+    fireEvent.change(screen.getByLabelText(/Desired rate/), { target: { value: '' } });
+    const body = await saveAndGetPatchBody(fetchSpy);
+    expect(body?.['desired_pay']).toBeNull();
+  });
+
+  // TI-1G-P0 — the untouched ≠ clear matrix. work_authorization is a
+  // reconcile-covered field where a PATCH null is an EXPLICIT clear
+  // (→ EXPLICITLY_CLEARED + HOLD). Opening + saving without touching it must
+  // NEVER send it; an intentional clear MUST.
+  describe('TI-1G-P0 — work_authorization untouched ≠ clear', () => {
+    it('untouched (loaded null) → OMITTED from the PATCH (no spurious explicit-clear)', async () => {
+      const fetchSpy = installFetch({ '/v1/talent-records/tal-1': makeTalent() });
+      renderDrawer(makeTalent({ work_authorization: null }));
+      fireEvent.change(screen.getByLabelText(/City/), { target: { value: 'Dallas' } });
+      const body = await saveAndGetPatchBody(fetchSpy);
+      expect('work_authorization' in (body ?? {})).toBe(false);
+    });
+
+    it('untouched (loaded value) → OMITTED from the PATCH (never re-sent)', async () => {
+      const fetchSpy = installFetch({ '/v1/talent-records/tal-1': makeTalent() });
+      renderDrawer(makeTalent({ work_authorization: 'VISA_HOLDER' }));
+      fireEvent.change(screen.getByLabelText(/City/), { target: { value: 'Dallas' } });
+      const body = await saveAndGetPatchBody(fetchSpy);
+      expect('work_authorization' in (body ?? {})).toBe(false);
+    });
+
+    it('intentional clear (loaded value → empty) → work_authorization: null (EXPLICITLY_CLEARED)', async () => {
+      const fetchSpy = installFetch({ '/v1/talent-records/tal-1': makeTalent() });
+      renderDrawer(makeTalent({ work_authorization: 'VISA_HOLDER' }));
+      fireEvent.change(screen.getByLabelText(/Work authorization/), { target: { value: '' } });
+      const body = await saveAndGetPatchBody(fetchSpy);
+      expect('work_authorization' in (body ?? {})).toBe(true);
+      expect(body?.['work_authorization']).toBeNull();
+    });
+
+    it('new selection (loaded null → a value) → work_authorization: the value', async () => {
+      const fetchSpy = installFetch({ '/v1/talent-records/tal-1': makeTalent() });
+      renderDrawer(makeTalent({ work_authorization: null }));
+      fireEvent.change(screen.getByLabelText(/Work authorization/), { target: { value: 'US_CITIZEN' } });
+      const body = await saveAndGetPatchBody(fetchSpy);
+      expect(body?.['work_authorization']).toBe('US_CITIZEN');
+    });
+
+    it('changed selection (loaded value → different value) → the new value', async () => {
+      const fetchSpy = installFetch({ '/v1/talent-records/tal-1': makeTalent() });
+      renderDrawer(makeTalent({ work_authorization: 'VISA_HOLDER' }));
+      fireEvent.change(screen.getByLabelText(/Work authorization/), { target: { value: 'PERMANENT_RESIDENT' } });
+      const body = await saveAndGetPatchBody(fetchSpy);
+      expect(body?.['work_authorization']).toBe('PERMANENT_RESIDENT');
+    });
   });
 
   it('lets the recruiter ENTER email + phone when the record is missing them, then PATCHes the values', async () => {

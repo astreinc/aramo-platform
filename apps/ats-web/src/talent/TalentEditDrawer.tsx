@@ -136,8 +136,14 @@ export function TalentEditDrawer({ talent, onClose, onSaved }: Props) {
       city: city.trim(),
       state: state.trim(),
       country: country.trim() === '' ? 'US' : country.trim(), // B2 (non-null; default US)
-      // Optional — empty clears to "not stated" (null), never an empty string.
-      work_authorization: workAuth === '' ? null : (workAuth as WorkAuthorization),
+      // TI-1G-P0 — work_authorization is a reconcile-covered field where a PATCH
+      // null is an EXPLICIT clear (→ EXPLICITLY_CLEARED + HOLD). Always sending it
+      // meant simply opening + saving an untouched Talent whose work-auth was null
+      // stamped a spurious explicit-clear. Send it ONLY when the recruiter actually
+      // CHANGED it from the loaded value (mirrors the contact-anchor dirty-check
+      // below): untouched → omitted (server leaves it alone); an intentional clear
+      // (loaded value → empty) → null → EXPLICITLY_CLEARED. See the conditional
+      // spread after the contact anchors.
       desired_pay: desiredPay.trim() === '' ? null : desiredPay.trim(),
       // Optional talent-stated selects — empty clears to "not stated".
       engagement_type: engagement === '' ? null : (engagement as EngagementType),
@@ -163,6 +169,13 @@ export function TalentEditDrawer({ talent, onClose, onSaved }: Props) {
         : !phonePresent && phoneCell.trim() !== ''
           ? { phone_cell: phoneCell.trim() }
           : {}),
+      // TI-1G-P0 — send work_authorization ONLY when the recruiter changed it from
+      // the loaded value. Untouched → omitted (no accidental explicit-clear); an
+      // intentional clear (loaded → empty) → null → EXPLICITLY_CLEARED; a new/changed
+      // selection → the value. `undefined` initial (never-stated) is normalized to ''.
+      ...(workAuth !== (talent.work_authorization ?? '')
+        ? { work_authorization: workAuth === '' ? null : (workAuth as WorkAuthorization) }
+        : {}),
     };
     updateTalent(talent.id, patch)
       .then((updated) => {
