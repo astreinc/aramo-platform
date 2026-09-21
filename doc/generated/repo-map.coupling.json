@@ -17006,6 +17006,7 @@
     { "from": "package.json", "status": "unscoped", "to": "openapi/ingestion.yaml" },
     { "from": "package.json", "status": "unscoped", "to": "openapi/platform.yaml" },
     { "from": "package.json", "status": "unscoped", "to": "openapi/portal.yaml" },
+    { "from": "package.json", "status": "unscoped", "to": "scripts/run-script-tests.sh" },
     { "from": "package.json", "status": "unscoped", "to": "scripts/verify-vocabulary.sh" },
     { "from": "package.json", "status": "unscoped", "to": "tools/db-sync-local.sh" },
     {
@@ -18105,6 +18106,11 @@
     { "from": "redocly.yaml", "status": "unscoped", "to": "openapi/ingestion.yaml" },
     { "from": "redocly.yaml", "status": "unscoped", "to": "openapi/portal.yaml" },
     {
+      "from": "scripts/run-script-tests.sh",
+      "status": "unscoped",
+      "to": "ci/scripts/verify-aggregate-gate.ts"
+    },
+    {
       "from": "scripts/verify-vocabulary.sh",
       "status": "unscoped",
       "to": "apps/api/src/tests/ats-batch3-talent-record-attachment.integration.spec.ts"
@@ -18658,6 +18664,8 @@
       "status": "unscoped",
       "to": "pact/provider/src/verify-api.ts"
     },
+    { "from": "tools/db-sync-local.sh", "status": "unscoped", "to": "tools/db-sync-local.test.sh" },
+    { "from": "tools/db-sync-local.test.sh", "status": "unscoped", "to": "tools/db-sync-local.sh" },
     {
       "from": "tools/link-e2e-recruiter-sub.ts",
       "status": "unscoped",
@@ -18989,7 +18997,7 @@
   ],
   "scanScope": {
     "dirs": [".github/workflows", ".husky", "ci/scripts", "deploy", "scripts", "tools"],
-    "files": 69,
+    "files": 71,
     "huskyPresent": false
   },
   "scripts": [
@@ -19363,6 +19371,15 @@
       ]
     },
     {
+      "name": "scripts:test",
+      "references": [
+        { "kind": "npm-run", "path": ".github/workflows/ci.yml" },
+        { "kind": "prose", "path": ".github/workflows/ci.yml" },
+        { "kind": "prose", "path": "ci/scripts/verify-aggregate-gate.ts" },
+        { "kind": "prose", "path": "scripts/run-script-tests.sh" }
+      ]
+    },
+    {
       "name": "test",
       "references": [
         { "kind": "nx-target", "path": ".github/workflows/ci.yml" },
@@ -19389,7 +19406,10 @@
         { "kind": "prose", "path": "deploy/seed-prod.sh" },
         { "kind": "prose", "path": "deploy/seed-prod.test.sh" },
         { "kind": "prose", "path": "deploy/singlebox-compose.test.sh" },
+        { "kind": "prose", "path": "scripts/run-script-tests.sh" },
         { "kind": "prose", "path": "scripts/verify-vocabulary.sh" },
+        { "kind": "prose", "path": "tools/db-sync-local.sh" },
+        { "kind": "prose", "path": "tools/db-sync-local.test.sh" },
         { "kind": "prose", "path": "tools/link-e2e-recruiter-sub.ts" },
         { "kind": "prose", "path": "tools/provision-e2e-recruiter.lib.ts" },
         { "kind": "prose", "path": "tools/provision-e2e-recruiter.spec.ts" },
