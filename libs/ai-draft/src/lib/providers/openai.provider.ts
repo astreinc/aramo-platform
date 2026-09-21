@@ -1,14 +1,15 @@
 import { Injectable } from '@nestjs/common';
-import Anthropic, {
+import OpenAI, {
   APIConnectionError,
   APIConnectionTimeoutError,
   RateLimitError,
   AuthenticationError,
+  PermissionDeniedError,
   BadRequestError,
   UnprocessableEntityError,
-  APIError,
   InternalServerError,
-} from '@anthropic-ai/sdk';
+  APIError,
+} from 'openai';
 import { AramoError } from '@aramo/common';
 
 import type { ProviderGenerateInput } from '../dto/provider-generate-input.dto.js';
@@ -17,59 +18,54 @@ import { SecretCacheService } from '../secrets/secret-cache.service.js';
 
 import type { DraftProvider } from './draft-provider.interface.js';
 
-// M5 PR-5 §4.6 — Anthropic SDK adapter for the DraftProvider port.
-// Per ADR-0015 Decision 1: Anthropic-first, non-streaming messages API.
-// The adapter is the only vendor-specific surface in the substrate —
-// swapping LLM vendors replaces this file plus the secret-cache key
-// suffix; the substrate (service, repository, redaction, port) remains
-// unchanged.
+// TENANT-LLM-2 §5 — OpenAI SDK adapter for the DraftProvider port. The SECOND
+// wired provider (Phase A), behind the SAME provider-neutral port as Anthropic.
+// Per ADR-0015: the adapter is the only vendor-specific surface; the substrate
+// (service, dispatcher, redaction, port, result shape) is unchanged.
 //
-// Error translation per directive §4.6: five Anthropic error classes
-// fold to two AramoError codes (INTERNAL_ERROR for transport / rate /
-// auth / vendor-internal; VALIDATION_ERROR for input-shape rejection).
-// HTTP-status pairs follow the canonical mapping in
-// libs/common/src/lib/errors/aramo-error.ts plus the directive's
-// explicit overrides (e.g. INTERNAL_ERROR + status 502 for upstream
-// transport failures).
-
+// Error translation mirrors AnthropicProvider EXACTLY (parity): the OpenAI SDK
+// error classes fold to the SAME two AramoError codes + kinds so consumers see
+// an identical failure surface regardless of the tenant's active provider.
 @Injectable()
-export class AnthropicProvider implements DraftProvider {
+export class OpenAiProvider implements DraftProvider {
   constructor(private readonly secretCache: SecretCacheService) {}
 
   async generate(input: ProviderGenerateInput): Promise<ProviderGenerateResult> {
-    // TENANT-LLM-1 — resolve THIS tenant's own key and build a client bound to
-    // it per call (the key is cached per-tenant, the client is a cheap holder).
-    // No shared client → no cross-tenant key leak. A not-configured tenant throws
-    // LlmKeyNotConfiguredError (fail-closed; propagates to the governed
-    // "set a key" degradation — NEVER a platform/cross-tenant fallback).
-    const apiKey = await this.secretCache.getProviderApiKey(input.tenant_id, 'anthropic');
-    const client = new Anthropic({ apiKey });
+    // TENANT-LLM-1/2 — resolve THIS tenant's own OpenAI key and build a client
+    // bound to it per call. No shared client → no cross-tenant key leak. A
+    // not-configured tenant throws LlmKeyNotConfiguredError (fail-closed;
+    // propagates to the governed "set a key" degradation — NEVER a
+    // platform/cross-tenant/cross-provider fallback).
+    const apiKey = await this.secretCache.getProviderApiKey(input.tenant_id, 'openai');
+    const client = new OpenAI({ apiKey });
 
     try {
-      const message = await client.messages.create({
+      const response = await client.chat.completions.create({
         model: input.model,
         max_tokens: input.max_tokens,
-        messages: [{ role: 'user', content: input.prompt }],
-        ...(input.system_message !== undefined ? { system: input.system_message } : {}),
+        messages: [
+          ...(input.system_message !== undefined
+            ? [{ role: 'system' as const, content: input.system_message }]
+            : []),
+          { role: 'user' as const, content: input.prompt },
+        ],
       });
 
-      const completion = message.content
-        .map((block) => (block.type === 'text' ? block.text : ''))
-        .join('');
+      const completion = response.choices[0]?.message?.content ?? '';
 
       return {
         completion,
-        model_used: message.model,
-        input_tokens: message.usage.input_tokens,
-        output_tokens: message.usage.output_tokens,
-        provider_request_id: message.id,
+        model_used: response.model,
+        input_tokens: response.usage?.prompt_tokens ?? 0,
+        output_tokens: response.usage?.completion_tokens ?? 0,
+        provider_request_id: response.id,
       };
     } catch (err: unknown) {
-      throw this.translateAnthropicError(err);
+      throw this.translateOpenAiError(err);
     }
   }
 
-  private translateAnthropicError(err: unknown): AramoError {
+  private translateOpenAiError(err: unknown): AramoError {
     const message = err instanceof Error ? err.message : String(err);
 
     if (err instanceof APIConnectionTimeoutError || err instanceof APIConnectionError) {
@@ -84,7 +80,7 @@ export class AnthropicProvider implements DraftProvider {
         details: { kind: 'provider_rate_limited' },
       });
     }
-    if (err instanceof AuthenticationError) {
+    if (err instanceof AuthenticationError || err instanceof PermissionDeniedError) {
       return new AramoError('INTERNAL_ERROR', message, 500, {
         requestId: 'ai-draft-provider',
         details: { kind: 'provider_auth_failed' },

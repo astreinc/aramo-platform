@@ -5,9 +5,13 @@ import { AiDraftRepository } from './ai-draft.repository.js';
 import { AiDraftService } from './ai-draft.service.js';
 import { PrismaService } from './prisma/prisma.service.js';
 import { AnthropicProvider } from './providers/anthropic.provider.js';
+import { OpenAiProvider } from './providers/openai.provider.js';
+import { ProviderDraftDispatcher } from './providers/provider-draft-dispatcher.js';
 import { DRAFT_PROVIDER_TOKEN } from './providers/tokens.js';
 import { SecretCacheService } from './secrets/secret-cache.service.js';
 import { AnthropicStructuredGenerationService } from './structured-generation/anthropic-structured-generation.service.js';
+import { OpenAiStructuredGenerationService } from './structured-generation/openai-structured-generation.service.js';
+import { ProviderStructuredGenerationDispatcher } from './structured-generation/provider-structured-generation-dispatcher.js';
 import { STRUCTURED_GENERATION_PROVIDER } from './structured-generation/structured-generation.types.js';
 
 // libs/ai-draft module — M5 PR-5 substrate. Per ADR-0015 + Ruling 11
@@ -32,10 +36,18 @@ import { STRUCTURED_GENERATION_PROVIDER } from './structured-generation/structur
     PrismaService,
     AiDraftRepository,
     SecretCacheService,
-    { provide: DRAFT_PROVIDER_TOKEN, useClass: AnthropicProvider },
-    // CI-B6P — reusable structured-generation surface (owns the Anthropic SDK
-    // client, reuses SecretCacheService). Exported for the CI composition root.
-    { provide: STRUCTURED_GENERATION_PROVIDER, useClass: AnthropicStructuredGenerationService },
+    // TENANT-LLM-2 — the per-provider adapters are internal providers; the
+    // dispatchers (bound to the ports below) inject them + the @Optional
+    // ActiveProviderResolver and route per tenant.
+    AnthropicProvider,
+    OpenAiProvider,
+    AnthropicStructuredGenerationService,
+    OpenAiStructuredGenerationService,
+    // TENANT-LLM-2 §2.1 — tenant-aware dispatchers REPLACE the static Anthropic
+    // bindings on the SAME tokens (consumers unchanged). Anthropic is now one
+    // adapter among several behind the unchanged port.
+    { provide: DRAFT_PROVIDER_TOKEN, useClass: ProviderDraftDispatcher },
+    { provide: STRUCTURED_GENERATION_PROVIDER, useClass: ProviderStructuredGenerationDispatcher },
     AiDraftService,
     {
       provide: 'AiDraftServiceLogger',

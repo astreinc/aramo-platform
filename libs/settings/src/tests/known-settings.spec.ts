@@ -4,6 +4,7 @@ import {
   isBoolean,
   isCompensationDisplayDefault,
   isKnownSettingKey,
+  isLlmActiveProvider,
   KNOWN_SETTINGS,
   KNOWN_SETTING_KEYS,
 } from '../index.js';
@@ -14,16 +15,18 @@ import {
 // Settings S4 adds the SECOND entry: `audit.financials_enabled` (boolean,
 // default false) — the GATE toggle for the auditor_with_financials grant.
 
-describe('KNOWN_SETTINGS — the closed-set registry (3 keys)', () => {
-  it('ships exactly the 3 known-keys (S2 + S4 + metrics.goals; résumé fact extraction is governed-LLM-only, TI-1F P0.2 — no mode toggle)', () => {
+describe('KNOWN_SETTINGS — the closed-set registry (4 keys)', () => {
+  it('ships exactly the 4 known-keys (S2 + S4 + metrics.goals + TENANT-LLM-2 llm.active_provider)', () => {
     expect([...Object.keys(KNOWN_SETTINGS)].sort()).toEqual([
       'audit.financials_enabled',
       'compensation.display_default',
+      'llm.active_provider',
       'metrics.goals',
     ]);
     expect([...KNOWN_SETTING_KEYS].sort()).toEqual([
       'audit.financials_enabled',
       'compensation.display_default',
+      'llm.active_provider',
       'metrics.goals',
     ]);
   });
@@ -85,6 +88,37 @@ describe('KNOWN_SETTINGS — audit.financials_enabled (Settings S4 — the GATE 
     expect(definition.validate(undefined)).toBe(false);
     expect(definition.validate({})).toBe(false);
     expect(definition.validate([])).toBe(false);
+  });
+});
+
+describe('KNOWN_SETTINGS — llm.active_provider (TENANT-LLM-2 — the wired-set selector)', () => {
+  it('carries the backward-compatible default `anthropic` and is internal', () => {
+    const definition = KNOWN_SETTINGS['llm.active_provider'];
+    expect(definition.key).toBe('llm.active_provider');
+    expect(definition.default).toBe('anthropic');
+    expect(definition.internal).toBe(true);
+  });
+
+  it('validator accepts ONLY the wired set (anthropic, openai) — no dead knobs', () => {
+    const definition = KNOWN_SETTINGS['llm.active_provider'];
+    expect(definition.validate('anthropic')).toBe(true);
+    expect(definition.validate('openai')).toBe(true);
+    // Unwired providers are NOT valid values until their adapters ship.
+    expect(definition.validate('azure')).toBe(false);
+    expect(definition.validate('gemini')).toBe(false);
+    expect(definition.validate('bedrock')).toBe(false);
+    expect(definition.validate('')).toBe(false);
+    expect(definition.validate(null)).toBe(false);
+    expect(definition.validate(42)).toBe(false);
+  });
+});
+
+describe('isLlmActiveProvider — exported wired-set predicate', () => {
+  it('matches the registry validator (single source of truth)', () => {
+    expect(isLlmActiveProvider('anthropic')).toBe(true);
+    expect(isLlmActiveProvider('openai')).toBe(true);
+    expect(isLlmActiveProvider('gemini')).toBe(false);
+    expect(isLlmActiveProvider(undefined)).toBe(false);
   });
 });
 

@@ -21,6 +21,26 @@ export {
 // path (P2) to invalidate the tenant's cached key after a write.
 export { SecretCacheService } from './lib/secrets/secret-cache.service.js';
 
+// TENANT-LLM-2 — the WIRED provider set + per-provider model policy + the
+// active-provider resolver PORT. Exported so apps/api can (a) validate the
+// admin write path against the wired set (§4.5 no-dead-knobs), (b) bind the
+// settings-backed ActiveProviderResolver, and (c) share the LlmProvider union
+// with the per-provider secret custody. ai-draft owns these; consumers depend
+// on the port + union, never a vendor SDK.
+export {
+  WIRED_LLM_PROVIDERS,
+  isLlmProvider,
+  isModelAllowedForProvider,
+  resolveProviderModel,
+  PROVIDER_MODEL_ALLOWLIST,
+  PROVIDER_DEFAULT_MODEL,
+  type LlmProvider,
+} from './lib/providers/llm-provider.js';
+export {
+  ACTIVE_PROVIDER_RESOLVER,
+  type ActiveProviderResolver,
+} from './lib/providers/active-provider-resolver.js';
+
 export type { GenerateDraftInput } from './lib/dto/generate-draft-input.dto.js';
 export type { GenerateDraftResult } from './lib/dto/generate-draft-result.dto.js';
 export type { AiDraftEventView } from './lib/dto/ai-draft-event.view.js';

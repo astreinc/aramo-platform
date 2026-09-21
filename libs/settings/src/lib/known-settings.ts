@@ -153,6 +153,44 @@ export function isMetricGoalMap(value: unknown): value is MetricGoalMap {
   );
 }
 
+// `llm.active_provider` — TENANT-LLM-2. The tenant's active governed-LLM
+// provider (BYO multi-provider). ONE provider is active at a time; every
+// governed model call routes to the tenant's selected provider adapter, with
+// its own per-tenant credential custody and no cross-provider/cross-tenant
+// fallback.
+//
+// The closed set is the WIRED providers ONLY (§4.5 no-dead-knobs): a provider
+// is a valid value here EXACTLY when its adapter is shipped. Phase A ships
+// Anthropic + OpenAI; Azure/Gemini/Bedrock are NOT valid values until their
+// adapters land (their UI renders "coming soon", not selectable). The validator
+// is the write-boundary enforcement — a `PUT` of an unwired provider fails
+// VALIDATION_ERROR before it reaches the DB.
+//
+// DEFAULT 'anthropic' — backward-compatible: every existing tenant keeps
+// resolving to the Anthropic adapter (the pre-TENANT-LLM-2 behaviour) until it
+// explicitly selects another provider. Read into libs/ai-draft via a small
+// resolver PORT (apps/api provides the settings-backed implementation) so
+// ai-draft does not import @aramo/settings (no lib→lib nx edge). Selecting a
+// provider does NOT delete other providers' stored keys (kept in custody until
+// cleared) and does NOT require that provider's key to be present — a tenant
+// with the active provider unconfigured degrades to the governed
+// "not configured" state (never a fallback).
+export type LlmActiveProvider = 'anthropic' | 'openai';
+
+const LLM_ACTIVE_PROVIDER_VALUES: readonly LlmActiveProvider[] = Object.freeze([
+  'anthropic',
+  'openai',
+]);
+
+// Exported so the admin controller can introspect the wired-set for the
+// VALIDATION_ERROR `details.allowed` (rather than re-declaring the list).
+export function isLlmActiveProvider(value: unknown): value is LlmActiveProvider {
+  return (
+    typeof value === 'string' &&
+    (LLM_ACTIVE_PROVIDER_VALUES as readonly string[]).includes(value)
+  );
+}
+
 // The closed-set registry. S2 lights up the first key; S3+ register
 // additional keys here with NO migration (the pattern-B win).
 //
@@ -183,6 +221,18 @@ export const KNOWN_SETTINGS = {
     validate: isMetricGoalMap,
     // Recruiter-metrics config — NOT a tenant-admin setting. Excluded from the
     // settings materialized view (the recruiter desk reads it directly).
+    internal: true,
+  },
+  // TENANT-LLM-2 — the tenant's active governed-LLM provider (see the type
+  // definition above). INTERNAL: the LLM/AI admin surface owns select/read
+  // (GET/PUT /v1/integrations/llm/active-provider), so it is excluded from the
+  // generic tenant-settings materialized view — but it is a first-class
+  // KnownSetting (typed accessor + validator + no migration), read by the
+  // ai-draft resolver port and written by the admin path.
+  'llm.active_provider': {
+    key: 'llm.active_provider',
+    default: 'anthropic' as LlmActiveProvider,
+    validate: isLlmActiveProvider,
     internal: true,
   },
 } as const satisfies Record<string, SettingDefinition<unknown>>;

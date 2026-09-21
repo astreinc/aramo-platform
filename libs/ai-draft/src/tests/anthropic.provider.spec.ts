@@ -48,7 +48,7 @@ const TENANT = '11111111-1111-7111-8111-111111111111';
 
 function makeSecretCache(key = 'sk-ant-test') {
   const sc = new SecretCacheService();
-  vi.spyOn(sc, 'getAnthropicApiKey').mockResolvedValue(key);
+  vi.spyOn(sc, 'getProviderApiKey').mockResolvedValue(key);
   return sc;
 }
 function gen(provider: InstanceType<typeof AnthropicProvider>) {
@@ -58,7 +58,7 @@ function gen(provider: InstanceType<typeof AnthropicProvider>) {
 describe('AnthropicProvider (TENANT-LLM-1)', () => {
   it('resolves the key with the OWNED tenant_id and binds the client to it', async () => {
     const sc = makeSecretCache('sk-ant-tenant-A');
-    const spy = vi.spyOn(sc, 'getAnthropicApiKey').mockResolvedValue('sk-ant-tenant-A');
+    const spy = vi.spyOn(sc, 'getProviderApiKey').mockResolvedValue('sk-ant-tenant-A');
     const provider = new AnthropicProvider(sc);
     createImpl = async () => ({
       id: 'msg_01',
@@ -67,14 +67,14 @@ describe('AnthropicProvider (TENANT-LLM-1)', () => {
       usage: { input_tokens: 1, output_tokens: 1 },
     });
     const result = await gen(provider);
-    expect(spy).toHaveBeenCalledWith(TENANT); // resolved by owned tenant_id
+    expect(spy).toHaveBeenCalledWith(TENANT, 'anthropic'); // resolved by owned tenant_id
     expect(lastKey).toBe('sk-ant-tenant-A'); // client bound to that tenant's key
     expect(result.completion).toBe('hi');
   });
 
   it('a not-configured tenant key propagates (fail-closed, no fallback)', async () => {
     const sc = new SecretCacheService();
-    vi.spyOn(sc, 'getAnthropicApiKey').mockRejectedValue(new LlmKeyNotConfiguredError(TENANT));
+    vi.spyOn(sc, 'getProviderApiKey').mockRejectedValue(new LlmKeyNotConfiguredError(TENANT));
     const provider = new AnthropicProvider(sc);
     await expect(gen(provider)).rejects.toBeInstanceOf(LlmKeyNotConfiguredError);
   });

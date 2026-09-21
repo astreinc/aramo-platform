@@ -48,7 +48,7 @@ export class AnthropicStructuredGenerationService implements StructuredGeneratio
   // (a rotated key invalidates the cache entry; the next call rebuilds). Throws
   // LlmKeyNotConfiguredError when the tenant has no key (caller maps to terminal).
   private async tenantClient(tenantId: string): Promise<Anthropic> {
-    const apiKey = await this.secretCache.getAnthropicApiKey(tenantId);
+    const apiKey = await this.secretCache.getProviderApiKey(tenantId, 'anthropic');
     return new Anthropic({ apiKey });
   }
 

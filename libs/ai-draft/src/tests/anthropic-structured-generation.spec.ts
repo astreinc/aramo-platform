@@ -51,7 +51,7 @@ const { AnthropicStructuredGenerationService } = await import(
   '../lib/structured-generation/anthropic-structured-generation.service.js'
 );
 
-type SecretCacheLike = { getAnthropicApiKey: () => Promise<string> };
+type SecretCacheLike = { getProviderApiKey: () => Promise<string> };
 function service(secret: SecretCacheLike) {
   return new AnthropicStructuredGenerationService(secret as never);
 }
@@ -65,10 +65,10 @@ const REQ = {
   json_schema: { type: 'object' },
   schema_name: 'x',
 };
-const okSecret: SecretCacheLike = { getAnthropicApiKey: async () => 'key-abc' };
+const okSecret: SecretCacheLike = { getProviderApiKey: async () => 'key-abc' };
 // TENANT-LLM-1 — a tenant with no key configured.
 const notConfiguredSecret: SecretCacheLike = {
-  getAnthropicApiKey: async () => {
+  getProviderApiKey: async () => {
     throw new LlmKeyNotConfiguredError('11111111-1111-7111-8111-111111111111');
   },
 };
@@ -186,7 +186,7 @@ describe('AnthropicStructuredGenerationService', () => {
   it('secret resolution failure → retryable transport (no provider call)', async () => {
     let called = false;
     createImpl = async () => { called = true; return message({}); };
-    const out = await service({ getAnthropicApiKey: async () => { throw new Error('sm down'); } }).generateStructured(REQ);
+    const out = await service({ getProviderApiKey: async () => { throw new Error('sm down'); } }).generateStructured(REQ);
     expect(out).toEqual({ kind: 'retryable', category: 'transport' });
     expect(called).toBe(false);
   });

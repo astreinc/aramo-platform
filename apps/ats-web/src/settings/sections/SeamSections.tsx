@@ -13,7 +13,7 @@ import { SettingsSeam, SettingsSection } from '../components';
 import { RequisitionIngestionView } from '../../requisition-imports/RequisitionIngestionView';
 import { IntegrationConnectionsPanel } from '../../integrations/IntegrationConnectionsPanel';
 import { CommunicationsProvidersPanel } from '../../communications/CommunicationsProvidersPanel';
-import { AnthropicLlmKeyPanel } from '../../integrations/AnthropicLlmKeyPanel';
+import { LlmProvidersPanel } from '../../integrations/LlmProvidersPanel';
 
 // Settings Rebuild Directive 1 — the honest seams.
 //
@@ -171,10 +171,11 @@ export function IntegrationsSection() {
           Communications; changes NO recruiting behaviour. */}
       <CommunicationsProvidersPanel />
 
-      {/* TENANT-LLM-1 — Settings → Integrations → AI/LLM → Anthropic. The tenant's
-          OWN (BYO) Anthropic key. Self-gates on integration:read/write (absent
-          scope => absent + no fetch). Write-only: the key is never displayed. */}
-      <AnthropicLlmKeyPanel />
+      {/* TENANT-LLM-1/2 — Settings → Integrations → AI/LLM. Multi-provider BYO:
+          select an active provider + supply that provider's OWN key. Self-gates on
+          integration:read/write (absent scope => absent + no fetch). Write-only:
+          keys are never displayed; unwired providers render as "coming soon". */}
+      <LlmProvidersPanel />
 
       <SettingsSeam
         icon={<IconPlug />}

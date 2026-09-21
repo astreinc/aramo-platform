@@ -86,6 +86,7 @@ import { ConnectorExecutionModule } from './connector/connector-execution.module
 import { RequisitionIntegrationModule } from './requisition-integration/requisition-integration.module.js';
 import { PipelineIntegrationModule } from './pipeline-integration/pipeline-integration.module.js';
 import { TenantLlmModule } from './tenant-llm/tenant-llm.module.js';
+import { LlmProviderResolutionModule } from './tenant-llm/llm-provider-resolution.module.js';
 import { LifecyclePollModule } from './requisition-integration/lifecycle-poll.module.js';
 import { OfferExpiryModule } from './offer/offer-expiry.module.js';
 // CI-B6P — the production Conversation Intelligence processing worker
@@ -385,6 +386,10 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     // reconciler-analog; composes @aramo/pipeline command + integration mapping — SB-7).
     PipelineIntegrationModule,
     TenantLlmModule,
+    // TENANT-LLM-2 — @Global binding of ai-draft's ActiveProviderResolver port
+    // to the settings-backed impl, so the ai-draft dispatchers route by the
+    // tenant's llm.active_provider wherever AiDraftModule is consumed.
+    LlmProviderResolutionModule,
     // CB-D2-A1 (ADR-0030) — the provider-neutral lifecycle-poll worker (scheduled
     // tick → fetch → raw-persist → ingress → cursor-advance; Redis-gated).
     LifecyclePollModule,

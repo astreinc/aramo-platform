@@ -22,6 +22,10 @@ export interface NoLlmBoundaryViolation {
 const FORBIDDEN_PATTERNS: ReadonlyArray<readonly [string, RegExp]> = [
   ['@aramo/ai-draft import', /from\s+['"]@aramo\/ai-draft/],
   ['@anthropic-ai/sdk import', /from\s+['"]@anthropic-ai\/sdk/],
+  // TENANT-LLM-2 — OpenAI is the 2nd wired vendor SDK; a non-LLM substrate must
+  // not import it either. The bare-specifier `from 'openai'` + the identifier.
+  ['openai SDK import', /from\s+['"]openai['"]/],
+  ['openai identifier', /\bopenai\b/i],
   ['DraftProvider identifier', /\bDraftProvider\b/],
   ['anthropic identifier', /\banthropic\b/i],
   ['llm/LLM identifier', /\b(llm|LLM)\b/],
@@ -103,5 +107,8 @@ export function assertModuleHasNoLlmImports(moduleFileContents: string): void {
   }
   if (/@anthropic-ai\/sdk/.test(code)) {
     throw new Error('module file imports @anthropic-ai/sdk (forbidden by ADR-0015 Decision 10)');
+  }
+  if (/from\s+['"]openai['"]/.test(code)) {
+    throw new Error('module file imports openai (forbidden by ADR-0015 Decision 10)');
   }
 }
