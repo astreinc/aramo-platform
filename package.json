@@ -51,6 +51,7 @@
     "dead-error-codes:self-test": "SELF_TEST=1 node --import jiti/register ci/scripts/verify-dead-error-codes.ts",
     "repo-map:generate": "node --import jiti/register ci/scripts/generate-repo-map.ts",
     "repo-map:check": "node --import jiti/register ci/scripts/verify-repo-map.ts",
+    "scripts:test": "bash scripts/run-script-tests.sh",
     "placement:sql:generate": "node --import jiti/register ci/scripts/generate-placement-sql.ts",
     "placement:sql:check": "node --import jiti/register ci/scripts/verify-placement-sql.ts",
     "offer:sql:generate": "node --import jiti/register ci/scripts/generate-offer-sql.ts",
