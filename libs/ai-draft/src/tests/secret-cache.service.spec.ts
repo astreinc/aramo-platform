@@ -8,20 +8,25 @@ import {
 import { AramoError } from '@aramo/common';
 
 import { SecretCacheService } from '../lib/secrets/secret-cache.service.js';
+import { LlmKeyNotConfiguredError } from '../lib/secrets/llm-key-not-configured.error.js';
 
-// M5 PR-5 §4.15 — SecretCacheService unit spec. Validates lazy fetch,
-// in-process caching, and AWS error-class translation to AramoError.
+// TENANT-LLM-1 — SecretCacheService is now PER-TENANT. Validates: tenant-scoped
+// secret id + per-tenant cache + tenant isolation; not-configured (missing/empty
+// secret) → terminal LlmKeyNotConfiguredError (NOT a platform fallback); the env
+// fallback is HARD-GATED to ARAMO_ENV=local; AWS error-class translation.
 
 interface InternalService {
   smClient: { send: ReturnType<typeof vi.fn> } | null;
-  cachedApiKey: string | null;
 }
 
 function setSend(service: SecretCacheService, send: ReturnType<typeof vi.fn>): void {
   (service as unknown as InternalService).smClient = { send };
 }
 
-describe('SecretCacheService', () => {
+const TA = '11111111-1111-7111-8111-111111111111';
+const TB = '22222222-2222-7222-8222-222222222222';
+
+describe('SecretCacheService (TENANT-LLM-1 per-tenant)', () => {
   let savedEnv: string | undefined;
   let savedRegion: string | undefined;
   let savedKey: string | undefined;
@@ -30,10 +35,8 @@ describe('SecretCacheService', () => {
     savedEnv = process.env['ARAMO_ENV'];
     savedRegion = process.env['AWS_REGION'];
     savedKey = process.env['ANTHROPIC_API_KEY'];
-    process.env['ARAMO_ENV'] = 'dev';
+    process.env['ARAMO_ENV'] = 'dev'; // non-local → the env fallback is inert
     process.env['AWS_REGION'] = 'us-east-1';
-    // The env fallback (2b) is checked FIRST — clear it so the Secrets-Manager
-    // path tests below are deterministic; the fallback tests set it explicitly.
     delete process.env['ANTHROPIC_API_KEY'];
   });
 
@@ -46,99 +49,133 @@ describe('SecretCacheService', () => {
     else process.env['ANTHROPIC_API_KEY'] = savedKey;
   });
 
-  // Single-Box Directive 2b — ANTHROPIC_API_KEY env fallback.
-  it('prefers ANTHROPIC_API_KEY from env and does NOT call Secrets Manager', async () => {
-    process.env['ANTHROPIC_API_KEY'] = 'sk-ant-from-env';
+  it('resolves the tenant-scoped secret id aramo/<env>/tenant-llm/<tenant>/anthropic-api-key', async () => {
     const service = new SecretCacheService();
-    const send = vi.fn().mockResolvedValue({ SecretString: 'sk-ant-from-sm' });
+    const send = vi.fn().mockResolvedValue({ SecretString: 'sk-ant-a' });
     setSend(service, send);
 
-    const first = await service.getAnthropicApiKey();
-    const second = await service.getAnthropicApiKey();
+    const key = await service.getProviderApiKey(TA, 'anthropic');
 
-    expect(first).toBe('sk-ant-from-env');
-    expect(second).toBe('sk-ant-from-env'); // cached
-    expect(send).not.toHaveBeenCalled(); // no Secrets Manager round-trip
+    expect(key).toBe('sk-ant-a');
+    const sentId = send.mock.calls[0][0].input.SecretId;
+    expect(sentId).toBe(`aramo/dev/tenant-llm/${TA}/anthropic-api-key`);
   });
 
-  it('env fallback works even when ARAMO_ENV is unset (box has no AWS env)', async () => {
-    delete process.env['ARAMO_ENV'];
-    process.env['ANTHROPIC_API_KEY'] = 'sk-ant-box';
+  it('TENANT-LLM-2: resolves per PROVIDER (distinct secret id + cache key), no cross-provider bleed', async () => {
     const service = new SecretCacheService();
-    await expect(service.getAnthropicApiKey()).resolves.toBe('sk-ant-box');
-  });
-
-  it('falls through to Secrets Manager when ANTHROPIC_API_KEY is empty', async () => {
-    process.env['ANTHROPIC_API_KEY'] = '';
-    const service = new SecretCacheService();
-    const send = vi.fn().mockResolvedValue({ SecretString: 'sk-ant-from-sm' });
+    const send = vi
+      .fn()
+      .mockImplementation((cmd: { input: { SecretId: string } }) =>
+        Promise.resolve({
+          SecretString: cmd.input.SecretId.endsWith('/openai-api-key') ? 'sk-openai' : 'sk-ant',
+        }),
+      );
     setSend(service, send);
 
-    const key = await service.getAnthropicApiKey();
+    expect(await service.getProviderApiKey(TA, 'anthropic')).toBe('sk-ant');
+    expect(await service.getProviderApiKey(TA, 'openai')).toBe('sk-openai'); // distinct provider
+    // Same tenant, two providers → two distinct secret ids, cached independently.
+    expect(send.mock.calls[0][0].input.SecretId).toBe(`aramo/dev/tenant-llm/${TA}/anthropic-api-key`);
+    expect(send.mock.calls[1][0].input.SecretId).toBe(`aramo/dev/tenant-llm/${TA}/openai-api-key`);
+    // invalidate(anthropic) must NOT drop the openai cache entry.
+    service.invalidate(TA, 'anthropic');
+    expect(await service.getProviderApiKey(TA, 'openai')).toBe('sk-openai'); // still cached
+    expect(send).toHaveBeenCalledTimes(2);
+  });
 
-    expect(key).toBe('sk-ant-from-sm');
-    expect(send).toHaveBeenCalledTimes(1);
+  it('caches per tenant and does NOT bleed tenant A key into tenant B', async () => {
+    const service = new SecretCacheService();
+    const send = vi
+      .fn()
+      .mockImplementation((cmd: { input: { SecretId: string } }) =>
+        Promise.resolve({
+          SecretString: cmd.input.SecretId.includes(TA) ? 'sk-ant-A' : 'sk-ant-B',
+        }),
+      );
+    setSend(service, send);
+
+    expect(await service.getProviderApiKey(TA, 'anthropic')).toBe('sk-ant-A');
+    expect(await service.getProviderApiKey(TA, 'anthropic')).toBe('sk-ant-A'); // cached
+    expect(await service.getProviderApiKey(TB, 'anthropic')).toBe('sk-ant-B'); // distinct
+    // TA fetched once (cached second call), TB fetched once → 2 total, never A→B.
+    expect(send).toHaveBeenCalledTimes(2);
+  });
+
+  it('missing secret (ResourceNotFound) → terminal LlmKeyNotConfiguredError, NOT a fallback', async () => {
+    const service = new SecretCacheService();
+    const err = new ResourceNotFoundException({ message: 'not found', $metadata: {} });
+    setSend(service, vi.fn().mockRejectedValue(err));
+    // env fallback key present but env is 'dev' → MUST NOT be used (no cross-tenant fallback).
+    process.env['ANTHROPIC_API_KEY'] = 'sk-platform-should-never-be-used';
+
+    await expect(service.getProviderApiKey(TA, 'anthropic')).rejects.toBeInstanceOf(LlmKeyNotConfiguredError);
+  });
+
+  it('empty secret string → terminal LlmKeyNotConfiguredError', async () => {
+    const service = new SecretCacheService();
+    setSend(service, vi.fn().mockResolvedValue({ SecretString: '' }));
+    await expect(service.getProviderApiKey(TA, 'anthropic')).rejects.toBeInstanceOf(LlmKeyNotConfiguredError);
+  });
+
+  it('invalidate(tenant) drops the cache so the next call re-fetches', async () => {
+    const service = new SecretCacheService();
+    const send = vi.fn().mockResolvedValue({ SecretString: 'sk-ant-a' });
+    setSend(service, send);
+
+    await service.getProviderApiKey(TA, 'anthropic');
+    service.invalidate(TA, 'anthropic');
+    await service.getProviderApiKey(TA, 'anthropic');
+
+    expect(send).toHaveBeenCalledTimes(2); // re-fetched after invalidation
+  });
+
+  it('requires a tenant_id', async () => {
+    const service = new SecretCacheService();
+    await expect(service.getProviderApiKey('', 'anthropic')).rejects.toBeInstanceOf(AramoError);
+  });
+
+  it('env fallback is HARD-GATED to ARAMO_ENV=local', async () => {
+    // local → env key used, no Secrets Manager round-trip.
+    process.env['ARAMO_ENV'] = 'local';
+    process.env['ANTHROPIC_API_KEY'] = 'sk-ant-local';
+    const localSvc = new SecretCacheService();
+    const localSend = vi.fn();
+    setSend(localSvc, localSend);
+    expect(await localSvc.getProviderApiKey(TA, 'anthropic')).toBe('sk-ant-local');
+    expect(localSend).not.toHaveBeenCalled();
+
+    // dev → env key IGNORED; goes to Secrets Manager (no cross-tenant platform key).
+    process.env['ARAMO_ENV'] = 'dev';
+    process.env['ANTHROPIC_API_KEY'] = 'sk-ant-should-be-ignored';
+    const devSvc = new SecretCacheService();
+    const devSend = vi.fn().mockResolvedValue({ SecretString: 'sk-ant-from-sm' });
+    setSend(devSvc, devSend);
+    expect(await devSvc.getProviderApiKey(TA, 'anthropic')).toBe('sk-ant-from-sm');
+    expect(devSend).toHaveBeenCalledTimes(1);
   });
 
   it('throws AramoError when ARAMO_ENV is not set', async () => {
     delete process.env['ARAMO_ENV'];
     const service = new SecretCacheService();
-    await expect(service.getAnthropicApiKey()).rejects.toBeInstanceOf(AramoError);
-  });
-
-  it('fetches the secret on first call and caches for subsequent calls', async () => {
-    const service = new SecretCacheService();
-    const send = vi.fn().mockResolvedValue({ SecretString: 'sk-ant-abc' });
-    setSend(service, send);
-
-    const first = await service.getAnthropicApiKey();
-    const second = await service.getAnthropicApiKey();
-
-    expect(first).toBe('sk-ant-abc');
-    expect(second).toBe('sk-ant-abc');
-    expect(send).toHaveBeenCalledTimes(1);
-  });
-
-  it('translates ResourceNotFoundException to AramoError kind=secret_not_found', async () => {
-    const service = new SecretCacheService();
-    const err = new ResourceNotFoundException({
-      message: 'Secrets Manager can not find the specified secret.',
-      $metadata: {},
-    });
-    setSend(service, vi.fn().mockRejectedValue(err));
-
-    try {
-      await service.getAnthropicApiKey();
-      expect.fail('expected AramoError');
-    } catch (e) {
-      expect(e).toBeInstanceOf(AramoError);
-      const ae = e as AramoError;
-      expect(ae.code).toBe('INTERNAL_ERROR');
-      expect(ae.context.details?.['kind']).toBe('secret_not_found');
-    }
+    await expect(service.getProviderApiKey(TA, 'anthropic')).rejects.toBeInstanceOf(AramoError);
   });
 
   it('translates DecryptionFailure to AramoError kind=secret_decryption_failed', async () => {
     const service = new SecretCacheService();
-    const err = new DecryptionFailure({ message: 'decrypt failed', $metadata: {} });
-    setSend(service, vi.fn().mockRejectedValue(err));
-
+    setSend(service, vi.fn().mockRejectedValue(new DecryptionFailure({ message: 'x', $metadata: {} })));
     try {
-      await service.getAnthropicApiKey();
+      await service.getProviderApiKey(TA, 'anthropic');
       expect.fail('expected AramoError');
     } catch (e) {
-      expect(e).toBeInstanceOf(AramoError);
       expect((e as AramoError).context.details?.['kind']).toBe('secret_decryption_failed');
     }
   });
 
-  it('translates InternalServiceError to AramoError kind=aws_internal_error', async () => {
+  it('translates InternalServiceError to AramoError kind=aws_internal_error (502)', async () => {
     const service = new SecretCacheService();
-    const err = new InternalServiceError({ message: 'aws internal', $metadata: {} });
-    setSend(service, vi.fn().mockRejectedValue(err));
-
+    setSend(service, vi.fn().mockRejectedValue(new InternalServiceError({ message: 'x', $metadata: {} })));
     try {
-      await service.getAnthropicApiKey();
+      await service.getProviderApiKey(TA, 'anthropic');
       expect.fail('expected AramoError');
     } catch (e) {
       expect((e as AramoError).context.details?.['kind']).toBe('aws_internal_error');
@@ -148,11 +185,9 @@ describe('SecretCacheService', () => {
 
   it('translates InvalidParameterException to AramoError kind=secret_request_invalid', async () => {
     const service = new SecretCacheService();
-    const err = new InvalidParameterException({ message: 'bad param', $metadata: {} });
-    setSend(service, vi.fn().mockRejectedValue(err));
-
+    setSend(service, vi.fn().mockRejectedValue(new InvalidParameterException({ message: 'x', $metadata: {} })));
     try {
-      await service.getAnthropicApiKey();
+      await service.getProviderApiKey(TA, 'anthropic');
       expect.fail('expected AramoError');
     } catch (e) {
       expect((e as AramoError).context.details?.['kind']).toBe('secret_request_invalid');

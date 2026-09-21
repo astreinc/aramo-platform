@@ -11,6 +11,7 @@ import type { DraftProvider } from './providers/draft-provider.interface.js';
 import { DRAFT_PROVIDER_TOKEN } from './providers/tokens.js';
 import { redactPii } from './redaction.js';
 import { SecretCacheService } from './secrets/secret-cache.service.js';
+import { isLlmKeyNotConfigured } from './secrets/llm-key-not-configured.error.js';
 
 // M5 PR-5 §4.10 — AiDraftService orchestrator. The single substrate
 // entrypoint per ADR-0015. Responsibilities (10 ordered steps):
@@ -122,6 +123,7 @@ export class AiDraftService {
     let providerResult;
     try {
       providerResult = await this.provider.generate({
+        tenant_id: input.tenant_id,
         model,
         prompt: redactedInput.redactedText,
         max_tokens: input.max_tokens,
@@ -131,6 +133,10 @@ export class AiDraftService {
       });
     } catch (err) {
       await this.emitErrorRaised(input.tenant_id, 'response_received', err);
+      // TENANT-LLM-1 — a not-configured tenant key propagates UNTOUCHED (fail
+      // closed; consumers surface the governed "set a key" degradation). It must
+      // not be folded into a generic provider error or ever fall back to a key.
+      if (isLlmKeyNotConfigured(err)) throw err;
       throw this.wrapError(err, requestIdTag, 'response_received');
     }
 

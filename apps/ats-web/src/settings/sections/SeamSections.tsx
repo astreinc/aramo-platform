@@ -13,6 +13,7 @@ import { SettingsSeam, SettingsSection } from '../components';
 import { RequisitionIngestionView } from '../../requisition-imports/RequisitionIngestionView';
 import { IntegrationConnectionsPanel } from '../../integrations/IntegrationConnectionsPanel';
 import { CommunicationsProvidersPanel } from '../../communications/CommunicationsProvidersPanel';
+import { LlmProvidersPanel } from '../../integrations/LlmProvidersPanel';
 
 // Settings Rebuild Directive 1 — the honest seams.
 //
@@ -169,6 +170,12 @@ export function IntegrationsSection() {
           scope => absent + no fetch). Reads as Settings → Integrations →
           Communications; changes NO recruiting behaviour. */}
       <CommunicationsProvidersPanel />
+
+      {/* TENANT-LLM-1/2 — Settings → Integrations → AI/LLM. Multi-provider BYO:
+          select an active provider + supply that provider's OWN key. Self-gates on
+          integration:read/write (absent scope => absent + no fetch). Write-only:
+          keys are never displayed; unwired providers render as "coming soon". */}
+      <LlmProvidersPanel />
 
       <SettingsSeam
         icon={<IconPlug />}

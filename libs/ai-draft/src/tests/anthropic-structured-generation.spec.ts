@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { LlmKeyNotConfiguredError } from '../lib/secrets/llm-key-not-configured.error.js';
+
 // Mock the Anthropic SDK: a plain async `createImpl` holder (NOT a vi.fn — a
 // vi.fn rejected-promise interacts badly with the service's try/await/catch in
 // this runner) + minimal error classes (instanceof must work for mapError; the
@@ -49,12 +51,13 @@ const { AnthropicStructuredGenerationService } = await import(
   '../lib/structured-generation/anthropic-structured-generation.service.js'
 );
 
-type SecretCacheLike = { getAnthropicApiKey: () => Promise<string> };
+type SecretCacheLike = { getProviderApiKey: () => Promise<string> };
 function service(secret: SecretCacheLike) {
   return new AnthropicStructuredGenerationService(secret as never);
 }
 
 const REQ = {
+  tenant_id: '11111111-1111-7111-8111-111111111111',
   model: 'claude-sonnet-4-6',
   system: 'SYSTEM',
   user_content: 'USER',
@@ -62,7 +65,13 @@ const REQ = {
   json_schema: { type: 'object' },
   schema_name: 'x',
 };
-const okSecret: SecretCacheLike = { getAnthropicApiKey: async () => 'key-abc' };
+const okSecret: SecretCacheLike = { getProviderApiKey: async () => 'key-abc' };
+// TENANT-LLM-1 — a tenant with no key configured.
+const notConfiguredSecret: SecretCacheLike = {
+  getProviderApiKey: async () => {
+    throw new LlmKeyNotConfiguredError('11111111-1111-7111-8111-111111111111');
+  },
+};
 
 function message(overrides: Record<string, unknown>) {
   return {
@@ -79,6 +88,11 @@ describe('AnthropicStructuredGenerationService', () => {
   beforeEach(() => {
     lastArgs = null;
     createImpl = async () => message({});
+  });
+
+  it('TENANT-LLM-1 — a not-configured tenant key → terminal not_configured (fail-closed, never retryable/fallback)', async () => {
+    const out = await service(notConfiguredSecret).generateStructured(REQ);
+    expect(out).toEqual({ kind: 'terminal', category: 'not_configured' });
   });
 
   it('valid structured output → ok + parsed + transport; NON-STREAMING native output', async () => {
@@ -172,7 +186,7 @@ describe('AnthropicStructuredGenerationService', () => {
   it('secret resolution failure → retryable transport (no provider call)', async () => {
     let called = false;
     createImpl = async () => { called = true; return message({}); };
-    const out = await service({ getAnthropicApiKey: async () => { throw new Error('sm down'); } }).generateStructured(REQ);
+    const out = await service({ getProviderApiKey: async () => { throw new Error('sm down'); } }).generateStructured(REQ);
     expect(out).toEqual({ kind: 'retryable', category: 'transport' });
     expect(called).toBe(false);
   });

@@ -18,8 +18,7 @@ aws secretsmanager put-secret-value \
 
 The ECS task definitions reference these by ARN — either execution-role
 injection (the task-def `secrets` block) or task-role `GetSecretValue`
-(SDK-read secrets such as the Anthropic key). Never baked into an image
-or into state.
+(SDK-read secrets). Never baked into an image or into state.
 
 ## Inputs
 
@@ -38,10 +37,12 @@ or into state.
 | `secret_full_names`| Map logical name → full `aramo/<env>/<name>`.              |
 | `all_secret_arns`  | Flat list of every ARN (convenience for IAM scoping).      |
 
-## Legacy bootstrap reconciliation
+## Per-tenant LLM keys are not TF-managed
 
-`infrastructure/bootstrap/create-anthropic-secret.sh` creates
-`aramo/<env>/anthropic-api-key` out of band. For a **greenfield** account
-where this module manages that container, Terraform owns it — do **not**
-also run the bootstrap script there (name collision). The script remains
-the path for envs not yet under Terraform secret management.
+TENANT-LLM-1 retired the platform-wide `aramo/<env>/anthropic-api-key`.
+Per-tenant BYO Anthropic keys live at
+`aramo/<env>/tenant-llm/<tenant_id>/anthropic-api-key` and are created + read
+by the app at runtime (the admin write path + `libs/ai-draft` SDK read). They
+are **not** TF-managed containers and do not belong in `secret_names`; the
+task/app role's `secretsmanager` CRUD on `aramo/<env>/tenant-llm/*` is scoped
+in `infrastructure-lightsail/main.tf` for the live deploy.

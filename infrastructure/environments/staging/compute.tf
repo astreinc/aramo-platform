@@ -34,7 +34,9 @@ module "secrets" {
     "auth-public-key"       = "RS256 SPKI public key (api + auth-service verify)"
     "auth-pkce-state-key"   = "AES-256-GCM key for the PKCE state cookie"
     "google-places-api-key" = "Google Places API key (address autocomplete)"
-    "anthropic-api-key"     = "Anthropic API key (ai-draft; SDK-read at runtime)"
+    # TENANT-LLM-1 retired the platform-wide anthropic-api-key. Per-tenant BYO
+    # keys live at aramo/<env>/tenant-llm/<tenant_id>/anthropic-api-key and are
+    # created/read by the app at runtime (NOT a TF-managed container).
     # "stripe-secret-key"   = added with the billing/edge directive
   }
 
@@ -140,10 +142,15 @@ module "ecs_service_api" {
   secrets               = local.api_secrets
 
   # Task role = the résumé-bucket least-privilege policy (the compute-native
-  # successor to the iam-app-principal IAM user) + the Anthropic key the
-  # ai-draft lib reads via the SDK at runtime.
+  # successor to the iam-app-principal IAM user). TENANT-LLM-1 retired the
+  # platform anthropic-api-key; per-tenant BYO keys live at
+  # aramo/<env>/tenant-llm/<tenant_id>/anthropic-api-key and are read+written by
+  # the app at runtime. The task-role secretsmanager CRUD on
+  # aramo/<env>/tenant-llm/* (mirroring infrastructure-lightsail/main.tf's
+  # AramoConnectorAndDelegatedSecrets statement) is wired when this Fargate
+  # target is activated; the live single-box deploy carries it today.
   task_role_inline_policy_json = module.resume_bucket.app_iam_policy_json
-  task_role_secret_arns        = [module.secrets.secret_arns["anthropic-api-key"]]
+  task_role_secret_arns        = []
 
   tags = local.common_tags
 

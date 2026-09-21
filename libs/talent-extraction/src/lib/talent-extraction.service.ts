@@ -840,6 +840,8 @@ export class TalentExtractionService {
     // ONE native structured-output call (R2/R6). No retry (R6) — a truncation or
     // off-schema result is surfaced as an explicit failure status.
     const outcome = await this.structuredGen.generateStructured({
+      // TENANT-LLM-1 — the owned tenant's key resolves the model call.
+      tenant_id: input.tenant_id,
       model: ARAMO_AI_DRAFT_MODEL,
       system: DRAFT_SYSTEM_MESSAGE,
       user_content: userContent,

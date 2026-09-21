@@ -97,13 +97,23 @@
       "isNoteVisibility"
     ],
     "@aramo/ai-draft": [
+      "ACTIVE_PROVIDER_RESOLVER",
       "AI_DRAFT_EVENT_TYPES",
       "ARAMO_AI_DRAFT_MODEL",
       "AiDraftModule",
       "AiDraftService",
       "AnthropicStructuredGenerationService",
+      "LlmKeyNotConfiguredError",
+      "PROVIDER_DEFAULT_MODEL",
+      "PROVIDER_MODEL_ALLOWLIST",
       "STRUCTURED_GENERATION_PROVIDER",
-      "redactPii"
+      "SecretCacheService",
+      "WIRED_LLM_PROVIDERS",
+      "isLlmKeyNotConfigured",
+      "isLlmProvider",
+      "isModelAllowedForProvider",
+      "redactPii",
+      "resolveProviderModel"
     ],
     "@aramo/api": ["AppModule"],
     "@aramo/attachment": [
@@ -1209,6 +1219,7 @@
       "isBoolean",
       "isCompensationDisplayDefault",
       "isKnownSettingKey",
+      "isLlmActiveProvider",
       "isMetricGoalMap"
     ],
     "@aramo/skills-taxonomy": [
@@ -2613,6 +2624,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/ai-draft/src/tests/openai.provider.spec.ts",
+        "project": "ai-draft",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/ai-draft/src/tests/secret-cache.service.spec.ts",
         "project": "ai-draft",
         "status": "excluded"
@@ -2681,6 +2698,18 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/support/see-all-visibility.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/tenant-llm-controller.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/tenant-llm-key.service.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -3812,6 +3841,12 @@
       {
         "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/ats-web/src/integrations/IntegrationConnectionsPanel.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/integrations/LlmProvidersPanel.spec.tsx",
         "project": "aramo-ats-web",
         "status": "excluded"
       },

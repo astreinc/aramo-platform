@@ -12,6 +12,7 @@ import Anthropic, {
 } from '@anthropic-ai/sdk';
 
 import { SecretCacheService } from '../secrets/secret-cache.service.js';
+import { isLlmKeyNotConfigured } from '../secrets/llm-key-not-configured.error.js';
 
 import {
   type StructuredGenerationOutcome,
@@ -33,28 +34,38 @@ import {
 //     text ever leaves this method (directive §23/§24).
 @Injectable()
 export class AnthropicStructuredGenerationService implements StructuredGenerationProvider {
-  private client: Anthropic | null = null;
-
   constructor(private readonly secretCache: SecretCacheService) {}
 
   providerKey(): string {
     return 'anthropic';
   }
 
+  // TENANT-LLM-1 — build a client bound to THIS tenant's own key. The Anthropic
+  // client is a lightweight holder of the key, so it is constructed per call from
+  // the per-tenant key cache (the key, not the client, is cached). This is what
+  // guarantees isolation — there is no shared client that could carry one tenant's
+  // key into another tenant's request — and it is inherently rotation-correct
+  // (a rotated key invalidates the cache entry; the next call rebuilds). Throws
+  // LlmKeyNotConfiguredError when the tenant has no key (caller maps to terminal).
+  private async tenantClient(tenantId: string): Promise<Anthropic> {
+    const apiKey = await this.secretCache.getProviderApiKey(tenantId, 'anthropic');
+    return new Anthropic({ apiKey });
+  }
+
   async generateStructured(request: StructuredGenerationRequest): Promise<StructuredGenerationOutcome> {
-    let apiKey: string;
+    let client: Anthropic;
     try {
-      apiKey = await this.secretCache.getAnthropicApiKey();
-    } catch {
-      // Secret resolution failed — safe, content-free. Retryable so a transient
-      // Secrets Manager blip re-drives; persistent failure exhausts bounded
-      // retries and escalates to intervention (never an infinite loop).
+      client = await this.tenantClient(request.tenant_id);
+    } catch (err: unknown) {
+      // TENANT-LLM-1 — a not-configured tenant key is TERMINAL + fail-closed
+      // (governed "set a key" state; NEVER a platform/cross-tenant fallback). A
+      // transient Secrets Manager blip stays retryable (bounded) so it re-drives.
+      if (isLlmKeyNotConfigured(err)) {
+        return { kind: 'terminal', category: 'not_configured' };
+      }
       return { kind: 'retryable', category: 'transport' };
     }
-
-    if (this.client === null) {
-      this.client = new Anthropic({ apiKey });
-    }
+    const anthropic = client;
 
     // Transport selection (default STRICT). FORCED_TOOL is a schema-GUIDED
     // function call used ONLY where the schema is too large for strict grammar
@@ -65,7 +76,7 @@ export class AnthropicStructuredGenerationService implements StructuredGeneratio
     let message: Anthropic.Messages.Message;
     try {
       message = useForcedTool
-        ? await this.client.messages.create({
+        ? await anthropic.messages.create({
             model: request.model,
             max_tokens: request.max_tokens,
             system: request.system,
@@ -82,7 +93,7 @@ export class AnthropicStructuredGenerationService implements StructuredGeneratio
             ],
             tool_choice: { type: 'tool', name: toolName(request.schema_name) },
           })
-        : await this.client.messages.create({
+        : await anthropic.messages.create({
             model: request.model,
             max_tokens: request.max_tokens,
             system: request.system,

@@ -191,6 +191,11 @@ resource "aws_iam_user_policy" "api_secrets" {
         Resource = [
           "arn:aws:secretsmanager:${var.aws_region}:${data.aws_caller_identity.current.account_id}:secret:aramo/${var.secrets_env}/connector/*",
           "arn:aws:secretsmanager:${var.aws_region}:${data.aws_caller_identity.current.account_id}:secret:aramo/${var.secrets_env}/msgraph-delegated/*",
+          # TENANT-LLM-1 — per-tenant BYO Anthropic keys
+          # (aramo/${var.secrets_env}/tenant-llm/<tenant_id>/anthropic-api-key).
+          # Same least-privilege scoping as connector/msgraph-delegated; NO
+          # platform-wide anthropic-api-key ARN (retired to per-tenant custody).
+          "arn:aws:secretsmanager:${var.aws_region}:${data.aws_caller_identity.current.account_id}:secret:aramo/${var.secrets_env}/tenant-llm/*",
         ]
       }
     ]

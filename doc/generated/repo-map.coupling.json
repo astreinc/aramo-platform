@@ -11218,6 +11218,11 @@
     {
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
+      "to": "apps/api/src/tenant-llm/tenant-llm.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
       "to": "apps/api/src/webhooks/indeed-apply.controller.ts"
     },
     {
@@ -12307,12 +12312,7 @@
     {
       "from": "doc/adr/Aramo-ADR-0015-AI-Substrate-Posture-v1_0-LOCKED.md",
       "status": "unscoped",
-      "to": "doc/runbooks/bootstrap-anthropic-secret.md"
-    },
-    {
-      "from": "doc/adr/Aramo-ADR-0015-AI-Substrate-Posture-v1_0-LOCKED.md",
-      "status": "unscoped",
-      "to": "infrastructure/bootstrap/create-anthropic-secret.sh"
+      "to": "doc/runbooks/tenant-llm-key-onboarding.md"
     },
     {
       "from": "doc/adr/Aramo-ADR-0015-AI-Substrate-Posture-v1_0-LOCKED.md",
@@ -12736,17 +12736,12 @@
     {
       "from": "doc/go-live-known-limitations.md",
       "status": "unscoped",
-      "to": "doc/runbooks/bootstrap-anthropic-secret.md"
-    },
-    {
-      "from": "doc/go-live-known-limitations.md",
-      "status": "unscoped",
       "to": "doc/runbooks/talent-rtbf-erasure.md"
     },
     {
       "from": "doc/go-live-known-limitations.md",
       "status": "unscoped",
-      "to": "infrastructure/bootstrap/create-anthropic-secret.sh"
+      "to": "doc/runbooks/tenant-llm-key-onboarding.md"
     },
     {
       "from": "doc/go-live-known-limitations.md",
@@ -13853,11 +13848,6 @@
       "to": "deploy/seed-prod.sh"
     },
     {
-      "from": "doc/runbooks/bootstrap-anthropic-secret.md",
-      "status": "unscoped",
-      "to": "infrastructure/bootstrap/create-anthropic-secret.sh"
-    },
-    {
       "from": "doc/runbooks/core-talent-ledger-reconciliation.md",
       "status": "unscoped",
       "to": "deploy/migrate-prod.sh"
@@ -13979,6 +13969,11 @@
       "to": "tools/db-sync-local.sh"
     },
     {
+      "from": "doc/runbooks/tenant-llm-key-onboarding.md",
+      "status": "unscoped",
+      "to": "infrastructure-lightsail/main.tf"
+    },
+    {
       "from": "doc/settings-rebuild-substrate-audit.md",
       "status": "unscoped",
       "to": "apps/api/src/cognito/tenant-cognito.adapter.ts"
@@ -14074,11 +14069,6 @@
       "from": "doc/step4-deploy-substrate-recon.md",
       "status": "unscoped",
       "to": "infrastructure/bootstrap/bootstrap.sh"
-    },
-    {
-      "from": "doc/step4-deploy-substrate-recon.md",
-      "status": "unscoped",
-      "to": "infrastructure/bootstrap/create-anthropic-secret.sh"
     },
     {
       "from": "doc/step4-deploy-substrate-recon.md",
@@ -14568,6 +14558,16 @@
     },
     { "from": "infrastructure/README.md", "status": "unscoped", "to": "doc/step4-compute-iac.md" },
     {
+      "from": "infrastructure/environments/prod/compute.tf",
+      "status": "unscoped",
+      "to": "infrastructure-lightsail/main.tf"
+    },
+    {
+      "from": "infrastructure/environments/staging/compute.tf",
+      "status": "unscoped",
+      "to": "infrastructure-lightsail/main.tf"
+    },
+    {
       "from": "infrastructure/modules/README.md",
       "status": "unscoped",
       "to": "doc/step4-compute-iac.md"
@@ -14590,7 +14590,7 @@
     {
       "from": "infrastructure/modules/secrets-manager/README.md",
       "status": "unscoped",
-      "to": "infrastructure/bootstrap/create-anthropic-secret.sh"
+      "to": "infrastructure-lightsail/main.tf"
     },
     {
       "from": "libs/activity/prisma/schema.prisma",

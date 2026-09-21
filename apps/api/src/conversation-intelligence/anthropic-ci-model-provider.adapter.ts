@@ -51,6 +51,8 @@ export class AnthropicConversationIntelligenceAdapter implements ConversationInt
   async generateStructuredAnalysis(input: ModelAnalysisInput): Promise<ModelAnalysisOutcome> {
     const model = this.config.resolveModel();
     const outcome = await this.generation.generateStructured({
+      // TENANT-LLM-1 — the owned tenant's key resolves the model call.
+      tenant_id: input.tenant_id,
       model,
       system: CI_PROMPT_TEMPLATE_TEXT,
       user_content: this.buildEvidencePayload(input),

@@ -4767,6 +4767,128 @@ paths:
           $ref: 'common.yaml#/components/responses/Conflict'
       security:
         - BearerAuth: []
+  /v1/integrations/llm/overview:
+    get:
+      operationId: getTenantLlmOverview
+      summary: The tenant's active LLM provider + per-provider key status (TENANT-LLM-2).
+      description: >-
+        Returns the active provider and each WIRED provider's has-key status —
+        never a key value. Drives the multi-provider admin panel. Guarded by
+        `integration:read`.
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TenantLlmOverview' }
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+      security:
+        - BearerAuth: []
+  /v1/integrations/llm/active-provider:
+    put:
+      operationId: selectTenantLlmProvider
+      summary: Select the tenant's active LLM provider (TENANT-LLM-2).
+      description: >-
+        Set the tenant's active governed-LLM provider. Validated against the wired
+        set (VALIDATION_ERROR for an unwired provider — §4.5 no-dead-knobs).
+        Switching does NOT delete other providers' stored keys. Returns the
+        overview. Guarded by `integration:write`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SelectLlmProviderRequest' }
+      responses:
+        '200':
+          description: The active provider was set; the overview is returned.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TenantLlmOverview' }
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+      security:
+        - BearerAuth: []
+  /v1/integrations/llm/{provider}/key:
+    parameters:
+      - name: provider
+        in: path
+        required: true
+        schema: { $ref: '#/components/schemas/WiredLlmProvider' }
+    put:
+      operationId: setTenantLlmKey
+      summary: Set or rotate the tenant's own key for a provider (TENANT-LLM-1/2).
+      description: >-
+        Store (or rotate) the tenant's per-tenant, per-provider API key.
+        WRITE-ONLY — the raw key is written to AWS Secrets Manager at the
+        tenant+provider-scoped id and is NEVER returned, logged, or displayed.
+        There is no platform key and no cross-tenant/cross-provider fallback. The
+        response is the has-key status. An unwired provider is rejected
+        (VALIDATION_ERROR). Guarded by `integration:write`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SetTenantLlmKeyRequest' }
+      responses:
+        '200':
+          description: The key was stored; the has-key status is returned.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TenantLlmKeyStatus' }
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+      security:
+        - BearerAuth: []
+    delete:
+      operationId: clearTenantLlmKey
+      summary: Clear the tenant's key for a provider (TENANT-LLM-1/2).
+      description: >-
+        Clear the tenant's key for a provider (tombstone-not-delete). After
+        clearing, that provider degrades to "not configured" until a new key is
+        set. An unwired provider is rejected (VALIDATION_ERROR). Guarded by
+        `integration:write`.
+      responses:
+        '200':
+          description: The key was cleared; the has-key status is returned.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TenantLlmKeyStatus' }
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+      security:
+        - BearerAuth: []
+  /v1/integrations/llm/{provider}/status:
+    parameters:
+      - name: provider
+        in: path
+        required: true
+        schema: { $ref: '#/components/schemas/WiredLlmProvider' }
+    get:
+      operationId: getTenantLlmKeyStatus
+      summary: Whether the tenant has a key configured for a provider (TENANT-LLM-1/2).
+      description: >-
+        Has-key status ONLY — never returns the key. `configured=false` when no
+        key is set (or it was cleared). Never throws when unconfigured. An unwired
+        provider is rejected (VALIDATION_ERROR). Guarded by `integration:read`.
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TenantLlmKeyStatus' }
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+      security:
+        - BearerAuth: []
   /v1/integrations:
     get:
       operationId: listIntegrationConnections
@@ -6475,6 +6597,56 @@ components:
             unmapped: { type: integer }
             disabled: { type: integer }
             reauth_required: { type: integer }
+    WiredLlmProvider:
+      type: string
+      description: >-
+        TENANT-LLM-2 — a WIRED governed-LLM provider (a provider whose adapter is
+        shipped + selectable). Phase A: anthropic, openai. Unwired providers
+        (Azure/Gemini/Bedrock) are NOT valid values (§4.5 no-dead-knobs).
+      enum: [anthropic, openai]
+    TenantLlmKeyStatus:
+      type: object
+      additionalProperties: false
+      description: >-
+        TENANT-LLM-1/2 — has-key status for a tenant's provider key. NEVER
+        carries the key itself (write-only custody).
+      required: [provider, configured]
+      properties:
+        provider: { $ref: '#/components/schemas/WiredLlmProvider' }
+        configured:
+          type: boolean
+    TenantLlmOverview:
+      type: object
+      additionalProperties: false
+      description: >-
+        TENANT-LLM-2 — the tenant's active provider + per-wired-provider has-key
+        status. Drives the multi-provider admin panel; only WIRED providers appear.
+      required: [active_provider, providers]
+      properties:
+        active_provider: { $ref: '#/components/schemas/WiredLlmProvider' }
+        providers:
+          type: array
+          items: { $ref: '#/components/schemas/TenantLlmKeyStatus' }
+    SelectLlmProviderRequest:
+      type: object
+      additionalProperties: false
+      description: >-
+        TENANT-LLM-2 — select the tenant's active provider. Validated against the
+        wired set (VALIDATION_ERROR for an unwired provider).
+      required: [provider]
+      properties:
+        provider: { $ref: '#/components/schemas/WiredLlmProvider' }
+    SetTenantLlmKeyRequest:
+      type: object
+      additionalProperties: false
+      description: >-
+        TENANT-LLM-1/2 — write-only. The api_key is stored in Secrets Manager and
+        is never returned by any endpoint.
+      required: [api_key]
+      properties:
+        api_key:
+          type: string
+          minLength: 1
     MicrosoftProviderStatus:
       type: object
       additionalProperties: false
