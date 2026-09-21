@@ -5508,6 +5508,144 @@ paths:
       security:
         - BearerAuth: []
 
+  # ── RN-1 Requisition Enterprise Notes (LOCKED) — the activity note surface
+  # this increment changed: the note create/read shape (category / visibility /
+  # pin + the returned note attributes) and the pin / unpin commands. NOT a
+  # global activity-API definition — only the RN-1-affected operations.
+  /v1/activities:
+    get:
+      operationId: listActivities
+      summary: List activity for a polymorphic subject (RN-1 note attributes included).
+      description: |
+        Returns the tenant's activity stream, optionally scoped to a subject via
+        subject_type + subject_id. RN-1 note attributes (category, visibility,
+        is_pinned, …) are projected on note rows. Visibility is enforced
+        server-side: a PRIVATE note is returned ONLY to its author — never to
+        another user and never through any talent-facing/external surface.
+        Requires the `activity:read` scope and the `ats` capability.
+      parameters:
+        - name: subject_type
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: subject_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: The visibility-scoped activity list.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ActivityListResponse'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+      security:
+        - BearerAuth: []
+    post:
+      operationId: createActivity
+      summary: Log a note (or call / email) against a subject (RN-1).
+      description: |
+        Creates a manual activity entry. For type=note this creates the note,
+        its 1:1 ActivityNote extension (category / visibility / pin), and exactly
+        one append-only CREATED lifecycle event — atomically. The note body is
+        bounded 1..20000 characters (400 VALIDATION_ERROR otherwise). tenant_id
+        and created_by_id are server-derived from the auth context, never the
+        body. Requires the `activity:create` scope and the `ats` capability.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: 'common.yaml#/components/schemas/CreateActivityRequest'
+      responses:
+        '201':
+          description: The created activity (a note carries its RN-1 attributes).
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ActivityView'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+      security:
+        - BearerAuth: []
+  /v1/activities/{id}/pin:
+    post:
+      operationId: pinActivityNote
+      summary: Pin a note to the requisition overview (RN-1).
+      description: |
+        Pins the note with provenance and appends exactly one PINNED lifecycle
+        event (atomically). Pinning an already-pinned note is a no-op that
+        appends no event. A non-note or a redacted note returns 422
+        ACTIVITY_NOT_PINNABLE. A PRIVATE note is only pinnable by its author.
+        Requires the `activity:create` scope and the `ats` capability.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: The updated note.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ActivityView'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '422':
+          $ref: 'common.yaml#/components/responses/UnprocessableEntity'
+      security:
+        - BearerAuth: []
+  /v1/activities/{id}/unpin:
+    post:
+      operationId: unpinActivityNote
+      summary: Unpin a note from the requisition overview (RN-1).
+      description: |
+        Clears the pin and appends exactly one UNPINNED lifecycle event
+        (atomically). Unpinning an already-unpinned note is a no-op that appends
+        no event. Requires the `activity:create` scope and the `ats` capability.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: The updated note.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ActivityView'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '422':
+          $ref: 'common.yaml#/components/responses/UnprocessableEntity'
+      security:
+        - BearerAuth: []
+
 components:
   securitySchemes:
     # Duplicated byte-for-byte from openapi/common.yaml per locked invariant

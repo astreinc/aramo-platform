@@ -103,6 +103,11 @@ const ACTIVITY_INIT = resolve(
   ROOT,
   'libs/activity/prisma/migrations/20260602140000_init_activity_model/migration.sql',
 );
+// RN-1 — SEPARATE const (never a 2nd resolve() arg — ENOTDIR/variadic trap).
+const ACTIVITY_NOTE_EXTENSION = resolve(
+  ROOT,
+  'libs/activity/prisma/migrations/20260921160000_rn1_activity_note_extension/migration.sql',
+);
 const PIPELINE_INIT = resolve(
   ROOT,
   'libs/pipeline/prisma/migrations/20260602150000_init_pipeline_model/migration.sql',
@@ -275,6 +280,7 @@ const MIGRATIONS = [
   TALENT_RECORD_SUPERSESSION,
   TALENT_RECORD_TITLE_COUNTRY,
   ACTIVITY_INIT,
+  ACTIVITY_NOTE_EXTENSION,
   PIPELINE_INIT,
   PIPELINE_E6,
   PIPELINE_VERSION,

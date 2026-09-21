@@ -36,6 +36,7 @@ import { PipelineRepository } from '../lib/pipeline.repository.js';
 const MIGRATIONS = [
   '../../../../libs/activity/prisma/migrations/20260602140000_init_activity_model/migration.sql',
   '../../../../libs/activity/prisma/migrations/20260801120000_add_activity_redaction_fields/migration.sql',
+  '../../../../libs/activity/prisma/migrations/20260921160000_rn1_activity_note_extension/migration.sql',
   '../../../../libs/metering/prisma/migrations/20260601150000_init_metering_model/migration.sql',
   '../../prisma/migrations/20260602150000_init_pipeline_model/migration.sql',
   '../../prisma/migrations/20260807100000_e6_pipeline_live_episode_unique/migration.sql',

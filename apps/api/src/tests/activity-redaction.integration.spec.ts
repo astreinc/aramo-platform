@@ -55,6 +55,11 @@ const ACTIVITY_REDACTION = resolve(
   ROOT,
   'libs/activity/prisma/migrations/20260801120000_add_activity_redaction_fields/migration.sql',
 );
+// RN-1 — SEPARATE const (never a 2nd resolve() arg — ENOTDIR/variadic trap).
+const ACTIVITY_NOTE_EXTENSION = resolve(
+  ROOT,
+  'libs/activity/prisma/migrations/20260921160000_rn1_activity_note_extension/migration.sql',
+);
 const POLICY_STORE_INIT = resolve(
   ROOT,
   'libs/policy-store/prisma/migrations/20260730120000_init_policy_store/migration.sql',
@@ -68,6 +73,7 @@ const MIGRATIONS = [
   ENTITLEMENT_INIT,
   ACTIVITY_INIT,
   ACTIVITY_REDACTION,
+  ACTIVITY_NOTE_EXTENSION,
   POLICY_STORE_INIT,
   POLICY_DECISION_RECORD,
 ];

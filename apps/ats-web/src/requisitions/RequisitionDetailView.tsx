@@ -520,7 +520,12 @@ export function RequisitionDetailView({
         <div className="rc-viewhead">
           <h2 className="rc-section-h">Requisition activity</h2>
           <div className="rc-viewhead__actions">
-            <LogNoteDialog requisitionId={req.id} onSaved={refresh} />
+            <LogNoteDialog
+              requisitionId={req.id}
+              requisitionCode={`REQ-${req.requisition_number}`}
+              requisitionTitle={req.title}
+              onSaved={refresh}
+            />
           </div>
         </div>
         <ActivityTimeline
@@ -640,7 +645,12 @@ export function RequisitionDetailView({
             {req.bookmarked ? 'Bookmarked' : 'Bookmark'}
           </button>
           {canLogNote ? (
-            <LogNoteDialog requisitionId={req.id} onSaved={refresh} />
+            <LogNoteDialog
+              requisitionId={req.id}
+              requisitionCode={`REQ-${req.requisition_number}`}
+              requisitionTitle={req.title}
+              onSaved={refresh}
+            />
           ) : null}
           <button className="rc-hbtn" onClick={() => setTab('overview')}>
             <Icons.IconPencil />

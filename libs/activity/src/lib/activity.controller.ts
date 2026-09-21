@@ -21,7 +21,9 @@ import {
 import { EntitlementGuard, RequireCapability } from '@aramo/entitlement';
 
 import type { ActivityView } from './dto/activity.view.js';
-import type { CreateActivityRequestDto } from './dto/create-activity-request.dto.js';
+// Value import (NOT `import type`) — the global ValidationPipe needs the class
+// as the runtime route metatype to validate/whitelist the body (RN-1 D-6).
+import { CreateActivityRequestDto } from './dto/create-activity-request.dto.js';
 import type { RedactActivityRequestDto } from './dto/redact-activity-request.dto.js';
 import { isRedactionReasonCode } from './dto/redaction-reason.js';
 import { ActivityRepository } from './activity.repository.js';
@@ -59,6 +61,7 @@ export class ActivityController {
     const visiblePipelineIds = await req.resolveVisiblePipelineIds!();
     const items = await this.activityRepository.listForActor({
       tenant_id: authContext.tenant_id,
+      actor_user_id: authContext.sub,
       visibility,
       visible_requisition_ids: visibleReqIds,
       visible_pipeline_ids: visiblePipelineIds,
@@ -84,6 +87,7 @@ export class ActivityController {
     const view = await this.activityRepository.findByIdForActor({
       tenant_id: authContext.tenant_id,
       id,
+      actor_user_id: authContext.sub,
       visibility,
       visible_requisition_ids: visibleReqIds,
       visible_pipeline_ids: visiblePipelineIds,
@@ -106,11 +110,55 @@ export class ActivityController {
   async create(
     @AuthContext() authContext: AuthContextType,
     @Body() body: CreateActivityRequestDto,
+    @RequestId() requestId: string,
   ): Promise<ActivityView> {
     return this.activityRepository.create({
       tenant_id: authContext.tenant_id,
       created_by_id: authContext.sub,
       input: body,
+      requestId,
+    });
+  }
+
+  // RN-1 (D-3) — pin / unpin a note to the requisition overview. Pin permission
+  // follows note-write permission (D-9 — `activity:create`). Pin metadata
+  // carries provenance and a PINNED/UNPINNED lifecycle event is appended
+  // transactionally; a no-op transition appends nothing (RN-1-A1 rule 12).
+  // PRIVATE notes are only visible to their author, so a non-author cannot pin
+  // a note they cannot see (the repository privacy where-clause returns 404).
+  @Post(':id/pin')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('activity:create')
+  @RequireSiteMatch()
+  async pin(
+    @AuthContext() authContext: AuthContextType,
+    @Param('id') id: string,
+    @RequestId() requestId: string,
+  ): Promise<ActivityView> {
+    return this.activityRepository.setPinned({
+      tenant_id: authContext.tenant_id,
+      id,
+      actor_user_id: authContext.sub,
+      pinned: true,
+      requestId,
+    });
+  }
+
+  @Post(':id/unpin')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('activity:create')
+  @RequireSiteMatch()
+  async unpin(
+    @AuthContext() authContext: AuthContextType,
+    @Param('id') id: string,
+    @RequestId() requestId: string,
+  ): Promise<ActivityView> {
+    return this.activityRepository.setPinned({
+      tenant_id: authContext.tenant_id,
+      id,
+      actor_user_id: authContext.sub,
+      pinned: false,
+      requestId,
     });
   }
 

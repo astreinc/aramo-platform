@@ -118,6 +118,8 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       // D3b — Charter §4 Amendment activity redaction (2).
       'ACTIVITY_NOT_REDACTABLE',
       'ACTIVITY_ALREADY_REDACTED',
+      // RN-1 Requisition Enterprise Notes — pin refusal (non-note / redacted).
+      'ACTIVITY_NOT_PINNABLE',
       // Track 1 T1-b — 1 optimistic-concurrency stale-write refusal on
       // requisition.Requisition (versioned update, version mismatch → 409).
       'REQUISITION_VERSION_CONFLICT',

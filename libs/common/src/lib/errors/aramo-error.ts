@@ -91,6 +91,7 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   // Charter §4 Amendment — activity redaction refusals.
   ACTIVITY_NOT_REDACTABLE: 422,
   ACTIVITY_ALREADY_REDACTED: 409,
+  ACTIVITY_NOT_PINNABLE: 422,
   // Track 1 T1-b (R2) — optimistic-concurrency stale-write on requisition (409).
   REQUISITION_VERSION_CONFLICT: 409,
   // Track 1 T1-e (§2.3 / R9) — status-changing PATCH into a subsystem-gated

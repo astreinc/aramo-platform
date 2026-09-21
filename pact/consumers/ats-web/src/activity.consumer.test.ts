@@ -45,6 +45,13 @@ function activityView(id: string | undefined, opts: { notes?: string } = {}) {
     // GET row but the actor's id on POST create (set server-side). Pact
     // tolerates the provider including it in either form.
     created_at: regex(ISO_TIMESTAMP, '2026-05-25T00:00:00Z'),
+    // RN-1 (LOCKED) enterprise-note attributes on the returned shape.
+    category: like('GENERAL'),
+    visibility: like('TEAM'),
+    body_format: like('plain_text'),
+    is_pinned: like(false),
+    pinned_at: null,
+    pinned_by_id: null,
   };
 }
 
@@ -84,6 +91,10 @@ describe('ats-web → POST /v1/activities', () => {
       subject_type: 'requisition',
       subject_id: SUBJECT_REQ_ID,
       notes: 'Left a voicemail.',
+      // RN-1 — category/visibility/pin travel with the note create.
+      category: 'GENERAL',
+      visibility: 'TEAM',
+      pinned: false,
     };
     await provider
       .addInteraction()

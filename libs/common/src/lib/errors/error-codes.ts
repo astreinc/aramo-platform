@@ -368,6 +368,10 @@ export const ERROR_CODES = [
   // SUBMITTAL_ALREADY_CONFIRMED / IMPORT_ALREADY_REVERTED).
   'ACTIVITY_NOT_REDACTABLE',
   'ACTIVITY_ALREADY_REDACTED',
+  // RN-1 (Requisition Enterprise Notes) — pin refused because the activity is
+  // not a note, or a redacted note cannot be pinned (HTTP 422; mirrors
+  // ACTIVITY_NOT_REDACTABLE / SUBMITTAL_STATE_INVALID).
+  'ACTIVITY_NOT_PINNABLE',
   // Track 1 T1-b (ruling R2) — optimistic-concurrency stale-write refusal on
   // requisition.Requisition. The PATCH (or any versioned update) supplied an
   // expected `version` that no longer matches the stored row: someone else
