@@ -155,7 +155,7 @@ jobs:
       # Nx local task cache — restore prior task results (nx re-validates every
       # task hash, so a restored cache can only produce identical outputs).
       - name: Nx cache (lint)
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .nx/cache
           key: nx-lint-${{ runner.os }}-${{ github.sha }}
@@ -186,7 +186,7 @@ jobs:
       - run: npm ci || npm ci || npm ci # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
       - uses: ./.github/actions/prisma-generate
       - name: Nx cache (build)
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .nx/cache
           key: nx-build-${{ runner.os }}-${{ github.sha }}
@@ -372,7 +372,7 @@ jobs:
       - run: npm ci || npm ci || npm ci # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
       - uses: ./.github/actions/prisma-generate
       - name: Nx cache (test)
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .nx/cache
           key: nx-test-${{ runner.os }}-${{ github.sha }}
