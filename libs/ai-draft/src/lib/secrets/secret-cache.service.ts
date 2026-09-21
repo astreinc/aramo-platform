@@ -10,42 +10,43 @@ import {
 } from '@aws-sdk/client-secrets-manager';
 import { AramoError } from '@aramo/common';
 
-// M5 PR-5 §4.7 — AWS Secrets Manager adapter for the Anthropic API key.
-// Per ADR-0015 Decision 4: secrets live in AWS Secrets Manager, fetched
-// lazily on first use and cached in-process for the lifetime of the
-// NestJS singleton. The secret id template is
-// `aramo/${ARAMO_ENV}/anthropic-api-key`.
+import { LlmKeyNotConfiguredError } from './llm-key-not-configured.error.js';
+
+// TENANT-LLM-1 — PER-TENANT Anthropic key custody (was platform-wide).
 //
-// Ruling 4 (cache-shape): instance-level cachedApiKey field; since
-// SecretCacheService is a Nest singleton (default scope), this caches
-// for process lifetime. Rotation is a process restart — automated
-// rotation lands at M7 IaC.
+// Each tenant brings its own Anthropic key, stored under a tenant-namespaced
+// Secrets Manager id `aramo/${ARAMO_ENV}/tenant-llm/${tenant_id}/anthropic-api-key`
+// (mirrors the connector/msgraph-delegated per-tenant custody). The key is
+// resolved with the OWNED tenant_id of the work being processed — never a
+// client-supplied value. There is NO platform-key fallback across tenants
+// (directive LOCK): a tenant with no key resolves to LlmKeyNotConfiguredError,
+// a terminal/fail-closed governed state.
 //
-// Single-Box Directive 2b — ENV FALLBACK (keeps the box AWS-credential-free).
-// On the single box (Lightsail, no instance role) there is no AWS credential to
-// reach Secrets Manager, so the key is supplied like every other secret: in the
-// box .env. Resolution order: prefer a non-empty ANTHROPIC_API_KEY from the
-// environment; otherwise fall back to the Secrets Manager fetch (UNCHANGED —
-// the platform path for go-live #2, where Fargate task roles read it properly).
-// An empty/unset env var falls through (never hard-fails when SM is available).
+// Cache: per-tenant, process-lifetime (Nest singleton). Rotation invalidates the
+// tenant's entry (invalidate(tenant_id)) — the admin set/rotate/clear path calls
+// it; automated TTL is a follow-on.
+//
+// LOCAL-DEV ONLY env fallback: on a developer box `ARAMO_ENV=local` may set a
+// single `ANTHROPIC_API_KEY` for convenience (one dev tenant). This fallback is
+// HARD-GATED to `local` — it is NEVER consulted in staging/prod, where the
+// no-cross-tenant-fallback LOCK is absolute.
 
 @Injectable()
 export class SecretCacheService {
-  private cachedApiKey: string | null = null;
+  private readonly cachedByTenant = new Map<string, string>();
   private smClient: SecretsManagerClient | null = null;
 
-  async getAnthropicApiKey(): Promise<string> {
-    if (this.cachedApiKey !== null) {
-      return this.cachedApiKey;
+  async getAnthropicApiKey(tenantId: string): Promise<string> {
+    if (typeof tenantId !== 'string' || tenantId.length === 0) {
+      throw new AramoError('INTERNAL_ERROR', 'tenant_id required for LLM key resolution', 500, {
+        requestId: 'ai-draft-secret-cache',
+        details: { kind: 'tenant_id_missing' },
+      });
     }
 
-    // Env fallback (Directive 2b): prefer a non-empty ANTHROPIC_API_KEY from the
-    // environment so the box needs no AWS credential. Empty/unset → fall through
-    // to the Secrets Manager path below (the platform path, unchanged).
-    const envKey = process.env['ANTHROPIC_API_KEY'];
-    if (envKey !== undefined && envKey.length > 0) {
-      this.cachedApiKey = envKey;
-      return this.cachedApiKey;
+    const cached = this.cachedByTenant.get(tenantId);
+    if (cached !== undefined) {
+      return cached;
     }
 
     const env = process.env['ARAMO_ENV'];
@@ -56,7 +57,18 @@ export class SecretCacheService {
       });
     }
 
-    const secretId = `aramo/${env}/anthropic-api-key`;
+    // LOCAL-DEV ONLY: a single-box developer convenience key. HARD-GATED to
+    // `local` so it can never become a cross-tenant platform fallback in a
+    // real multi-tenant environment (directive LOCK).
+    if (env === 'local') {
+      const envKey = process.env['ANTHROPIC_API_KEY'];
+      if (envKey !== undefined && envKey.length > 0) {
+        this.cachedByTenant.set(tenantId, envKey);
+        return envKey;
+      }
+    }
+
+    const secretId = `aramo/${env}/tenant-llm/${tenantId}/anthropic-api-key`;
     const region = process.env['AWS_REGION'] ?? 'us-east-1';
 
     if (this.smClient === null) {
@@ -68,32 +80,31 @@ export class SecretCacheService {
         new GetSecretValueCommand({ SecretId: secretId }),
       );
       if (response.SecretString === undefined || response.SecretString.length === 0) {
-        throw new AramoError(
-          'INTERNAL_ERROR',
-          `secret value empty: ${secretId}`,
-          500,
-          {
-            requestId: 'ai-draft-secret-cache',
-            details: { kind: 'secret_value_empty', secretId },
-          },
-        );
+        // An empty secret is a not-configured state, not a 500 — the tenant must
+        // (re)set a real key.
+        throw new LlmKeyNotConfiguredError(tenantId);
       }
-      this.cachedApiKey = response.SecretString;
-      return this.cachedApiKey;
+      this.cachedByTenant.set(tenantId, response.SecretString);
+      return response.SecretString;
     } catch (err: unknown) {
+      if (err instanceof LlmKeyNotConfiguredError) throw err;
       if (err instanceof AramoError) throw err;
-      throw this.translateAwsError(err, secretId);
+      throw this.translateAwsError(err, secretId, tenantId);
     }
   }
 
-  private translateAwsError(err: unknown, secretId: string): AramoError {
+  /** Drop a tenant's cached key (called by the admin set/rotate/clear path). */
+  invalidate(tenantId: string): void {
+    this.cachedByTenant.delete(tenantId);
+  }
+
+  private translateAwsError(err: unknown, secretId: string, tenantId: string): AramoError | LlmKeyNotConfiguredError {
     const message = err instanceof Error ? err.message : String(err);
 
+    // The secret does not exist → the tenant has not configured a key. Terminal,
+    // fail-closed governed state — NOT a platform fallback, NOT a 500.
     if (err instanceof ResourceNotFoundException) {
-      return new AramoError('INTERNAL_ERROR', `secret missing: ${secretId}`, 500, {
-        requestId: 'ai-draft-secret-cache',
-        details: { kind: 'secret_not_found', secretId },
-      });
+      return new LlmKeyNotConfiguredError(tenantId);
     }
     if (err instanceof DecryptionFailure) {
       return new AramoError('INTERNAL_ERROR', message, 500, {

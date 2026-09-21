@@ -46,6 +46,10 @@ import { STRUCTURED_GENERATION_PROVIDER } from './structured-generation/structur
       useFactory: () => createAramoLogger(AiDraftRepository.name),
     },
   ],
-  exports: [AiDraftService, STRUCTURED_GENERATION_PROVIDER],
+  // TENANT-LLM-1 — SecretCacheService is exported so the admin set/rotate/clear
+  // path (apps/api tenant-llm) can invalidate THIS singleton's per-tenant cache
+  // immediately after a key write (rotation-correctness). It remains internal to
+  // the LLM call path otherwise.
+  exports: [AiDraftService, STRUCTURED_GENERATION_PROVIDER, SecretCacheService],
 })
 export class AiDraftModule {}

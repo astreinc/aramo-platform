@@ -34,19 +34,19 @@ import type { DraftProvider } from './draft-provider.interface.js';
 
 @Injectable()
 export class AnthropicProvider implements DraftProvider {
-  private client: Anthropic | null = null;
-
   constructor(private readonly secretCache: SecretCacheService) {}
 
   async generate(input: ProviderGenerateInput): Promise<ProviderGenerateResult> {
-    const apiKey = await this.secretCache.getAnthropicApiKey();
-
-    if (this.client === null) {
-      this.client = new Anthropic({ apiKey });
-    }
+    // TENANT-LLM-1 — resolve THIS tenant's own key and build a client bound to
+    // it per call (the key is cached per-tenant, the client is a cheap holder).
+    // No shared client → no cross-tenant key leak. A not-configured tenant throws
+    // LlmKeyNotConfiguredError (fail-closed; propagates to the governed
+    // "set a key" degradation — NEVER a platform/cross-tenant fallback).
+    const apiKey = await this.secretCache.getAnthropicApiKey(input.tenant_id);
+    const client = new Anthropic({ apiKey });
 
     try {
-      const message = await this.client.messages.create({
+      const message = await client.messages.create({
         model: input.model,
         max_tokens: input.max_tokens,
         messages: [{ role: 'user', content: input.prompt }],

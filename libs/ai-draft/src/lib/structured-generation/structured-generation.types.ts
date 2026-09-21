@@ -22,7 +22,11 @@ export type StructuredGenerationErrorCategory =
   // terminal
   | 'auth_config'
   | 'invalid_request'
-  | 'empty_output';
+  | 'empty_output'
+  // TENANT-LLM-1 — the tenant has no Anthropic key configured. Terminal +
+  // fail-closed (never a platform/cross-tenant fallback); the consumer surfaces
+  // the governed "LLM not configured — set a key" degradation.
+  | 'not_configured';
 
 /** Safe transport metadata (no content). */
 export interface StructuredGenerationTransport {
@@ -45,6 +49,11 @@ export interface StructuredGenerationTransport {
 export type StructuredGenerationTransportMode = 'STRICT_JSON_SCHEMA' | 'FORCED_TOOL';
 
 export interface StructuredGenerationRequest {
+  /** TENANT-LLM-1 — the OWNED tenant_id of the work being processed. The tenant's
+   *  own Anthropic key is resolved from it (per-tenant custody, no cross-tenant
+   *  fallback). Server-derived from the authenticated/owned context — NEVER
+   *  client-supplied. */
+  readonly tenant_id: string;
   /** Exact provider model id (allowlisted by the caller — never request-derived). */
   readonly model: string;
   /** Static system instructions (no evidence). */

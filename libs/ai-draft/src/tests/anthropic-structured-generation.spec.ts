@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { LlmKeyNotConfiguredError } from '../lib/secrets/llm-key-not-configured.error.js';
+
 // Mock the Anthropic SDK: a plain async `createImpl` holder (NOT a vi.fn — a
 // vi.fn rejected-promise interacts badly with the service's try/await/catch in
 // this runner) + minimal error classes (instanceof must work for mapError; the
@@ -55,6 +57,7 @@ function service(secret: SecretCacheLike) {
 }
 
 const REQ = {
+  tenant_id: '11111111-1111-7111-8111-111111111111',
   model: 'claude-sonnet-4-6',
   system: 'SYSTEM',
   user_content: 'USER',
@@ -63,6 +66,12 @@ const REQ = {
   schema_name: 'x',
 };
 const okSecret: SecretCacheLike = { getAnthropicApiKey: async () => 'key-abc' };
+// TENANT-LLM-1 — a tenant with no key configured.
+const notConfiguredSecret: SecretCacheLike = {
+  getAnthropicApiKey: async () => {
+    throw new LlmKeyNotConfiguredError('11111111-1111-7111-8111-111111111111');
+  },
+};
 
 function message(overrides: Record<string, unknown>) {
   return {
@@ -79,6 +88,11 @@ describe('AnthropicStructuredGenerationService', () => {
   beforeEach(() => {
     lastArgs = null;
     createImpl = async () => message({});
+  });
+
+  it('TENANT-LLM-1 — a not-configured tenant key → terminal not_configured (fail-closed, never retryable/fallback)', async () => {
+    const out = await service(notConfiguredSecret).generateStructured(REQ);
+    expect(out).toEqual({ kind: 'terminal', category: 'not_configured' });
   });
 
   it('valid structured output → ok + parsed + transport; NON-STREAMING native output', async () => {
