@@ -90,7 +90,10 @@
       "AiDraftModule",
       "AiDraftService",
       "AnthropicStructuredGenerationService",
+      "LlmKeyNotConfiguredError",
       "STRUCTURED_GENERATION_PROVIDER",
+      "SecretCacheService",
+      "isLlmKeyNotConfigured",
       "redactPii"
     ],
     "@aramo/api": ["AppModule"],
@@ -2601,6 +2604,12 @@
       },
       { "project": "ai-draft", "status": "production" },
       {
+        "excludedBy": "**/*.spec.ts",
+        "from": "apps/api/src/tenant-llm/tenant-llm-key.service.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/ci-b6p-processing.integration.spec.ts",
         "project": "api",
@@ -3788,6 +3797,12 @@
       {
         "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/ats-web/src/identity-advisories/IdentityAdvisoriesView.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/integrations/AnthropicLlmKeyPanel.spec.tsx",
         "project": "aramo-ats-web",
         "status": "excluded"
       },
