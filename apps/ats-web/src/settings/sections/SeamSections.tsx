@@ -13,6 +13,7 @@ import { SettingsSeam, SettingsSection } from '../components';
 import { RequisitionIngestionView } from '../../requisition-imports/RequisitionIngestionView';
 import { IntegrationConnectionsPanel } from '../../integrations/IntegrationConnectionsPanel';
 import { CommunicationsProvidersPanel } from '../../communications/CommunicationsProvidersPanel';
+import { AnthropicLlmKeyPanel } from '../../integrations/AnthropicLlmKeyPanel';
 
 // Settings Rebuild Directive 1 — the honest seams.
 //
@@ -169,6 +170,11 @@ export function IntegrationsSection() {
           scope => absent + no fetch). Reads as Settings → Integrations →
           Communications; changes NO recruiting behaviour. */}
       <CommunicationsProvidersPanel />
+
+      {/* TENANT-LLM-1 — Settings → Integrations → AI/LLM → Anthropic. The tenant's
+          OWN (BYO) Anthropic key. Self-gates on integration:read/write (absent
+          scope => absent + no fetch). Write-only: the key is never displayed. */}
+      <AnthropicLlmKeyPanel />
 
       <SettingsSeam
         icon={<IconPlug />}

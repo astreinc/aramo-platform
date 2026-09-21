@@ -4767,6 +4767,69 @@ paths:
           $ref: 'common.yaml#/components/responses/Conflict'
       security:
         - BearerAuth: []
+  /v1/integrations/llm/anthropic/key:
+    put:
+      operationId: setTenantAnthropicKey
+      summary: Set or rotate the tenant's own Anthropic API key (TENANT-LLM-1).
+      description: >-
+        Store (or rotate) the tenant's per-tenant Anthropic API key. WRITE-ONLY —
+        the raw key is written to AWS Secrets Manager at the tenant-scoped id and
+        is NEVER returned, logged, or displayed. There is no platform key and no
+        cross-tenant fallback: a tenant's LLM features are enabled only once its
+        own key is set. The response is the has-key status. Guarded by
+        `integration:write`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SetTenantAnthropicKeyRequest' }
+      responses:
+        '200':
+          description: The key was stored; the has-key status is returned.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TenantLlmKeyStatus' }
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+      security:
+        - BearerAuth: []
+    delete:
+      operationId: clearTenantAnthropicKey
+      summary: Clear the tenant's Anthropic API key (TENANT-LLM-1).
+      description: >-
+        Clear the tenant's Anthropic key (tombstone-not-delete). After clearing,
+        the tenant's governed LLM features degrade to "not configured" until a new
+        key is set. Guarded by `integration:write`.
+      responses:
+        '200':
+          description: The key was cleared; the has-key status is returned.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TenantLlmKeyStatus' }
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+      security:
+        - BearerAuth: []
+  /v1/integrations/llm/anthropic/status:
+    get:
+      operationId: getTenantAnthropicKeyStatus
+      summary: Whether the tenant has an Anthropic key configured (TENANT-LLM-1).
+      description: >-
+        Has-key status ONLY — never returns the key. `configured=false` when no
+        key is set (or it was cleared). Never throws when unconfigured. Guarded by
+        `integration:read`.
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TenantLlmKeyStatus' }
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+      security:
+        - BearerAuth: []
   /v1/integrations:
     get:
       operationId: listIntegrationConnections
@@ -6337,6 +6400,30 @@ components:
             unmapped: { type: integer }
             disabled: { type: integer }
             reauth_required: { type: integer }
+    TenantLlmKeyStatus:
+      type: object
+      additionalProperties: false
+      description: >-
+        TENANT-LLM-1 — has-key status for a tenant's LLM provider key. NEVER
+        carries the key itself (write-only custody).
+      required: [provider, configured]
+      properties:
+        provider:
+          type: string
+          enum: [anthropic]
+        configured:
+          type: boolean
+    SetTenantAnthropicKeyRequest:
+      type: object
+      additionalProperties: false
+      description: >-
+        TENANT-LLM-1 — write-only. The api_key is stored in Secrets Manager and is
+        never returned by any endpoint.
+      required: [api_key]
+      properties:
+        api_key:
+          type: string
+          minLength: 1
     MicrosoftProviderStatus:
       type: object
       additionalProperties: false

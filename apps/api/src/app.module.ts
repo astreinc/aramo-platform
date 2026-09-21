@@ -85,6 +85,7 @@ import { MicrosoftModule } from './microsoft/microsoft.module.js';
 import { ConnectorExecutionModule } from './connector/connector-execution.module.js';
 import { RequisitionIntegrationModule } from './requisition-integration/requisition-integration.module.js';
 import { PipelineIntegrationModule } from './pipeline-integration/pipeline-integration.module.js';
+import { TenantLlmModule } from './tenant-llm/tenant-llm.module.js';
 import { LifecyclePollModule } from './requisition-integration/lifecycle-poll.module.js';
 import { OfferExpiryModule } from './offer/offer-expiry.module.js';
 // CI-B6P — the production Conversation Intelligence processing worker
@@ -383,6 +384,7 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     // L2-I (D1) — the Pipeline provider-integration seam (mapping-admin + inbound
     // reconciler-analog; composes @aramo/pipeline command + integration mapping — SB-7).
     PipelineIntegrationModule,
+    TenantLlmModule,
     // CB-D2-A1 (ADR-0030) — the provider-neutral lifecycle-poll worker (scheduled
     // tick → fetch → raw-persist → ingress → cursor-advance; Redis-gated).
     LifecyclePollModule,
