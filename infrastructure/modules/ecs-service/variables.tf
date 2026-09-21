@@ -108,7 +108,7 @@ variable "task_role_inline_policy_json" {
 }
 
 variable "task_role_secret_arns" {
-  description = "Secret ARNs the app reads via the AWS SDK at runtime (task-role GetSecretValue), e.g. the Anthropic key libs/ai-draft fetches directly."
+  description = "Secret ARNs the app reads via the AWS SDK at runtime (task-role GetSecretValue), e.g. the per-tenant aramo/<env>/tenant-llm/<tenant_id>/anthropic-api-key libs/ai-draft fetches directly (TENANT-LLM-1)."
   type        = list(string)
   default     = []
 }

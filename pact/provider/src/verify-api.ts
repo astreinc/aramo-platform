@@ -21,7 +21,7 @@ import {
 } from 'jose';
 import { AppModule } from '@aramo/api';
 import { EFFECTIVE_AUTHORIZATION_RESOLVER } from '@aramo/auth';
-import { SECRETS_MANAGER_WRITER } from '@aramo/integration';
+import { SECRETS_MANAGER_PORT, SECRETS_MANAGER_WRITER } from '@aramo/integration';
 // ADR-0024 PR-4a — the /v1/pipelines + /v1/sourcing/pipeline replays now RETRIEVE
 // the lifecycle package and fail closed without it, so the verifier publishes one
 // for its tenant. The module-boundary wall forbids importing the apps/api test
@@ -4098,6 +4098,19 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         // T8-CONNECTOR-A — the write-only credential set must not hit AWS SM.
         .overrideProvider(SECRETS_MANAGER_WRITER)
         .useValue({ putSecretValue: async () => undefined })
+        // TENANT-LLM-1 — the has-key status read (GET .../anthropic/status) calls
+        // the reader port; in the credential-less verify env the real AWS adapter
+        // would attempt the IMDS credential chain (timeout risk). Fake it to a
+        // deterministic not-found — behaviour-identical to today's env (no reader
+        // override existed and every connector interaction still passes), so the
+        // has-key status resolves write-only to configured:false. NO secret value
+        // is ever surfaced; the consumer contract type-matches `configured`.
+        .overrideProvider(SECRETS_MANAGER_PORT)
+        .useValue({
+          getSecretValue: async () => {
+            throw new Error('ResourceNotFoundException');
+          },
+        })
         // HF-AUTH-1 — bind the version-keyed configurable resolver (MODE A) so the
         // guard hydrates AuthContext.scopes from the per-token grants above; the
         // provider verifies contract shape, not RBAC derivation.
@@ -4832,6 +4845,12 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         });
       },
       'a tenant entitled to ats with a caller holding integration:write': async () => {
+        await withClient((c) => c.query(`DELETE FROM integration."IntegrationConnection" WHERE tenant_id = $1::uuid`, [TENANT_ID]).then(() => undefined));
+      },
+      // TENANT-LLM-1 — the per-tenant Anthropic key status read. No DB rows: the
+      // has-key status resolves write-only via the (faked) Secrets Manager reader;
+      // this state only asserts the caller holds integration:read + ats entitlement.
+      'a tenant entitled to ats with a caller holding integration:read': async () => {
         await withClient((c) => c.query(`DELETE FROM integration."IntegrationConnection" WHERE tenant_id = $1::uuid`, [TENANT_ID]).then(() => undefined));
       },
       'a tenant entitled to ats with a caller holding integration:write and one connector connection': async () => {

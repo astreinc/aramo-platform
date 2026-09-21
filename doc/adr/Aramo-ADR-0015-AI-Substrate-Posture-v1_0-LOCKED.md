@@ -5,6 +5,15 @@
 **Authors:** Lead.
 **Cross-references:** Charter v1.2 Ruling C (Anthropic + AWS Secrets Manager day-one); ADR-0012 (IaC conventions; Decision 3 bootstrap-outside-TF, Decision 7 Secrets Manager IaC M7-sequenced); ADR-0013 (observability conventions; Decision 2 envelope discipline, Decision 5 log-group naming).
 
+> **⚠ Partially superseded — TENANT-LLM-1 (2026-09-21):** Decision 3's secret-name
+> convention `aramo/<env>/anthropic-api-key` (one platform-wide key per
+> environment) is **retired**. Per-tenant BYO custody replaces it — each tenant's
+> key lives at `aramo/<env>/tenant-llm/<tenant_id>/anthropic-api-key`, resolved
+> with the owned `tenant_id`, with no platform/cross-tenant fallback. The
+> port-layer vendor-agnostic posture (Decision 2 / the service-layer interface)
+> is unchanged and is generalised further by TENANT-LLM-2 (multi-provider). See
+> `doc/runbooks/tenant-llm-key-onboarding.md`.
+
 ---
 
 ## §1. Context

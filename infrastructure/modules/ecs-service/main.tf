@@ -112,7 +112,8 @@ resource "aws_iam_role_policy" "task_inline" {
 }
 
 # GetSecretValue for secrets the app reads via the AWS SDK at runtime (e.g.
-# libs/ai-draft reads aramo/<env>/anthropic-api-key directly).
+# libs/ai-draft reads the per-tenant aramo/<env>/tenant-llm/<tenant_id>/
+# anthropic-api-key directly — TENANT-LLM-1).
 data "aws_iam_policy_document" "task_secrets" {
   count = length(var.task_role_secret_arns) > 0 ? 1 : 0
 

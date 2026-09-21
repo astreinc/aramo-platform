@@ -121,6 +121,14 @@ that would surface it — loudly, at boot — but the fix is to wire the handout
   GET /v1/requisitions and wire server-side pagination/facets in the list.
 
 ### New Requisition — AI intake lane: dark until the per-env Anthropic secret is provisioned
+- **SUPERSEDED (TENANT-LLM-1, 2026-09-21):** the platform-wide
+  `aramo/<env>/anthropic-api-key` model in this entry is **retired**. Governed
+  LLM features now use per-tenant BYO keys at
+  `aramo/<env>/tenant-llm/<tenant_id>/anthropic-api-key`, onboarded via Settings
+  → Integrations → AI/LLM → Anthropic. Runbook:
+  [doc/runbooks/tenant-llm-key-onboarding.md](runbooks/tenant-llm-key-onboarding.md).
+  The honest-failure + working-manual-lane behaviour below still holds; the
+  per-env bootstrap steps no longer apply.
 - **Date:** 2026-06-18 · **Branch:** `feat/new-requisition-mockup-parity`
 - **Present:** the New Requisition "Draft with AI" lane (POST /v1/requisitions/
   intake) is fully built + correct — it reuses the governed `libs/ai-draft`
@@ -139,10 +147,11 @@ that would surface it — loudly, at boot — but the fix is to wire the handout
   correct and fails honestly. A live draft (the one pre-merge check CI cannot
   cover, since CI has no LLM provider) must be confirmed once the secret is
   provisioned.
-- **Provisioning (per env — staging + prod each need their own):**
-  `infrastructure/bootstrap/create-anthropic-secret.sh --env <staging|prod> --api-key sk-ant-…`
-  then restart the API (the key caches for process lifetime). Runbook:
-  [doc/runbooks/bootstrap-anthropic-secret.md](runbooks/bootstrap-anthropic-secret.md).
+- **Provisioning (per tenant, via the admin surface — TENANT-LLM-1):** a tenant
+  admin sets the tenant's own Anthropic key in Settings → Integrations → AI/LLM
+  → Anthropic (write-only). No per-env bootstrap script/secret; the key takes
+  effect immediately (per-tenant cache invalidation). Runbook:
+  [doc/runbooks/tenant-llm-key-onboarding.md](runbooks/tenant-llm-key-onboarding.md).
 - **Risk:** none to integrity (no fabricated drafts; honest failure + working
   manual lane). The only effect of the missing secret is the AI lane being
   unavailable until provisioned.

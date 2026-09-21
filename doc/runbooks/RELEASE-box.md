@@ -36,8 +36,9 @@ declaration.]*
   roots caveat (auth-service portal-session); `override:ok-to-merge` range scan; provider-verification
   split. (Substrate audit baseline `a6ef61f`; F-P4b-1 session lessons.)
 - **Deliberately NOT folded** (recorded so the omissions are conscious): per-env secret name
-  enumeration (belongs to the *provisioning* path, not steady-state deploy; `bootstrap-anthropic-secret.md`
-  owns the Anthropic secret) and the nginx R14 host nuance (out of v2.0's current smoke scope —
+  enumeration (belongs to the *provisioning* path, not steady-state deploy; per-tenant Anthropic
+  keys are onboarded at runtime via the admin surface — `tenant-llm-key-onboarding.md` — since
+  TENANT-LLM-1 retired the platform secret) and the nginx R14 host nuance (out of v2.0's current smoke scope —
   STEP 9 smokes the tenant front door, which carries on-demand TLS).
 - The on-box procedure (PRE-FLIGHT, STEP 1–9, ROLLBACK, HARD STOPS, REPORT, Backlog) is **unchanged
   from v2.0**.
