@@ -14352,6 +14352,11 @@
       "to": "doc/runbooks/frontdoor-pr0-apply.md"
     },
     {
+      "from": "infrastructure-lightsail/resume-bucket-cors.tf",
+      "status": "unscoped",
+      "to": "infrastructure/modules/s3-resume-bucket/main.tf"
+    },
+    {
       "from": "infrastructure/README.md",
       "status": "unscoped",
       "to": "doc/01-locked-baselines.md"
