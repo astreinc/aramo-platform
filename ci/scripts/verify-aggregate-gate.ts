@@ -63,6 +63,7 @@ export const REQUIRED_STATIC_GOVERNANCE_STEPS = [
   'pipeline:write-authority:check',
   'integration-roots:check',
   'repo-map:check',
+  'scripts:test', // deploy/tools shell-script unit tests (migrate gate parse, db-sync pending count, …) — pinned so they cannot silently stop gating
   'release-manifest:check',
   // NOTE: identity-index:privacy-wall is intentionally ABSENT — it is kept as a standalone
   // job (TR2b-DDR/B1 visibility rationale, not folded); see ci.yml + the CI-Velocity-2

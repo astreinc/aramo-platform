@@ -468,6 +468,9 @@ jobs:
       - name: repo-map:check
         if: ${{ !cancelled() }}
         run: npm run repo-map:check
+      - name: scripts:test
+        if: ${{ !cancelled() }}
+        run: npm run scripts:test
       - name: release-manifest:check
         if: ${{ !cancelled() }}
         run: npm run release-manifest:selftest
