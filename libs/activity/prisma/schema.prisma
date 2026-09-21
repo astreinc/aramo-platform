@@ -45,6 +45,52 @@ enum ActivityType {
   @@schema("activity")
 }
 
+// RN-1 Requisition Enterprise Notes (LOCKED 2026-09-21). NoteCategory is
+// ORTHOGONAL to ActivityType — a note is always ActivityType.note, and its
+// NoteCategory says what the note is *about* (for filtering/scanning, not for
+// forcing perfect classification). Ratified 7-value set (Q4).
+enum NoteCategory {
+  GENERAL
+  CLIENT_INTERACTION
+  HIRING_TEAM
+  COMMERCIAL
+  INTERVIEW_FEEDBACK
+  DECISION
+  RISK_BLOCKER
+
+  @@schema("activity")
+}
+
+// NoteVisibility — persisted authorial-intent confidentiality (first-class, not
+// read-time-only). RN-1 ships TEAM + PRIVATE (Q1). PRIVATE is strictly
+// author-only, no admin/support override (Q3). RESTRICTED is deferred to RN-2
+// and can be appended to this enum additively then.
+enum NoteVisibility {
+  TEAM
+  PRIVATE
+
+  @@schema("activity")
+}
+
+// NoteBodyFormat — RN-1 is plain_text only (D-5: no arbitrary Markdown on an
+// audit/business record). Controlled rich text is a governed RN-3 option gated
+// behind this discriminator.
+enum NoteBodyFormat {
+  plain_text
+
+  @@schema("activity")
+}
+
+// NoteEventType — RN-1-A1 note-lifecycle ledger event kinds (ratified 2026-09-21).
+enum NoteEventType {
+  CREATED
+  PINNED
+  UNPINNED
+  REDACTED
+
+  @@schema("activity")
+}
+
 // Activity — the side-effect log. Polymorphic on (subject_type,
 // subject_id) — UUID-only cross-schema reference (e.g. subject_type=
 // 'pipeline' + subject_id = Pipeline.id). NO FK; reads validate
@@ -62,8 +108,19 @@ model Activity {
   subject_type String? // e.g. 'pipeline', 'talent_record', 'requisition'
   subject_id   String? @db.Uuid
 
-  // Free-text recruiter notes.
+  // Free-text recruiter notes. The note BODY stays here (Q2 ruling — no body
+  // migration in RN-1). Note-specific attributes live in the ActivityNote
+  // extension (1:1, type=note only).
   notes String?
+
+  // RN-1 — enterprise-note extension (present iff type=note). Optional at the
+  // Prisma layer because call/email_logged/pipeline_status_change rows have no
+  // ActivityNote. Backfilled 1:1 for pre-existing note rows by the migration.
+  note ActivityNote?
+
+  // RN-1-A1 — append-only note-lifecycle ledger (CREATED/PINNED/UNPINNED/
+  // REDACTED). History only; Activity/ActivityNote remain authoritative state.
+  noteEvents ActivityNoteEvent[]
 
   // Provenance (UUID-only logical ref to identity.User).
   created_by_id String? @db.Uuid
@@ -87,5 +144,53 @@ model Activity {
   @@index([tenant_id, subject_type, subject_id])
   @@index([tenant_id, created_at])
 
+  @@schema("activity")
+}
+
+// ActivityNote — RN-1 enterprise-note payload, 1:1 with an Activity row of
+// type=note (INTRA-schema FK, cascade on delete). Tenant scoping is via the
+// Activity join (no duplicated tenant_id, per ADD-not-duplicate). Mutations are
+// create (via Activity create), pin/unpin, and redaction (which nulls the body
+// on the Activity envelope and hides the note from the pinned projection). No
+// edit-in-place (D-7).
+model ActivityNote {
+  activity_id String   @id @db.Uuid
+  activity    Activity @relation(fields: [activity_id], references: [id], onDelete: Cascade)
+
+  category    NoteCategory   @default(GENERAL)
+  visibility  NoteVisibility @default(TEAM)
+  body_format NoteBodyFormat @default(plain_text)
+
+  // Pin metadata with provenance (D-3) — never a bare boolean. Pin/unpin does
+  // not reorder the chronological timeline (presentation metadata only).
+  is_pinned    Boolean   @default(false)
+  pinned_at    DateTime? @db.Timestamptz
+  pinned_by_id String?   @db.Uuid
+
+  // NOTE: the pinned-projection lookup index is a PARTIAL index
+  // (WHERE is_pinned) owned by the migration — Prisma schema cannot express a
+  // partial index, so it is deliberately not declared with @@index here.
+  @@schema("activity")
+}
+
+// ActivityNoteEvent — RN-1-A1 append-only note-lifecycle ledger (ratified
+// 2026-09-21). RN-1-owned; NOT libs/audit. Activity/ActivityNote are the
+// authoritative CURRENT STATE; this table is transition HISTORY only. Exactly
+// one row is appended, transactionally, per real state transition. Rows are
+// DB-level immutable (a BEFORE UPDATE OR DELETE trigger rejects all mutation —
+// migration-owned, not modelled here). Content NEVER enters this table — only
+// IDs, enums, booleans and counts (metadata JSONB).
+model ActivityNoteEvent {
+  id            String        @id @default(uuid()) @db.Uuid
+  tenant_id     String        @db.Uuid
+  activity_id   String        @db.Uuid
+  activity      Activity      @relation(fields: [activity_id], references: [id], onDelete: Restrict)
+  event_type    NoteEventType
+  actor_user_id String        @db.Uuid
+  created_at    DateTime      @default(now()) @db.Timestamptz
+  metadata      Json?
+
+  @@index([tenant_id, activity_id, created_at])
+  @@index([tenant_id, created_at])
   @@schema("activity")
 }

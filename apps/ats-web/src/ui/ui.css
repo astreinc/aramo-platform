@@ -5339,3 +5339,21 @@ button.rc-tj__cell:hover { color: #022ac0; text-decoration: underline; }
   border: 1px dashed #dce1e6; border-radius: 10px; padding: 16px; text-align: center; background: #f7f9fb;
 }
 .rc-comm-embed__placeholder { font-size: 12px; color: #93a0a8; margin: 0; }
+
+/* RN-1 Requisition Enterprise Notes — Log-a-note dialog (category/visibility/pin). */
+.lognote__category { display: flex; flex-wrap: wrap; gap: 6px; }
+.lognote__category-chip {
+  border: 1px solid var(--line, #dce1e6); background: #fff; color: var(--ink, #1a2a33);
+  border-radius: 999px; padding: 5px 12px; font-size: 0.8rem; cursor: pointer;
+}
+.lognote__category-chip[aria-pressed="true"] {
+  border-color: var(--brand, #2f6fed); background: var(--brand, #2f6fed); color: #fff;
+}
+.lognote__category-chip:disabled { opacity: 0.6; cursor: default; }
+.lognote__meta {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-top: 6px; font-size: 0.72rem; color: var(--faint, #93a0a8);
+}
+.lognote__hint { color: var(--faint, #93a0a8); }
+.lognote__count { color: var(--muted, #6b7a83); font-variant-numeric: tabular-nums; }
+.lognote__pin { display: inline-flex; align-items: center; gap: 6px; font-size: 0.8rem; margin-right: auto; }

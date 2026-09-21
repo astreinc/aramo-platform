@@ -4,6 +4,9 @@ import { AramoError, type VisibilityContextShape } from '@aramo/common';
 import type { ActivityView } from './dto/activity.view.js';
 import type { ActivityType } from './dto/activity-type.js';
 import type { CreateActivityRequestDto } from './dto/create-activity-request.dto.js';
+import { DEFAULT_NOTE_CATEGORY } from './dto/note-category.js';
+import { DEFAULT_NOTE_VISIBILITY } from './dto/note-visibility.js';
+import { DEFAULT_NOTE_BODY_FORMAT } from './dto/note-body-format.js';
 import { PrismaService } from './prisma/prisma.service.js';
 
 // ActivityRepository — write + read surface for Activity.
@@ -15,6 +18,16 @@ import { PrismaService } from './prisma/prisma.service.js';
 // recordUsage) — it is composed into the pipeline transition's
 // $transaction so the Activity row commits iff the pipeline state
 // change commits (PR-A1c Ruling 6 atomicity, applied to activity).
+
+// The 1:1 note extension as returned by `include: { note: true }`.
+interface ActivityNoteRel {
+  category: string;
+  visibility: string;
+  body_format: string;
+  is_pinned: boolean;
+  pinned_at: Date | null;
+  pinned_by_id: string | null;
+}
 
 interface ActivityRow {
   id: string;
@@ -30,9 +43,17 @@ interface ActivityRow {
   redacted_by: string | null;
   redaction_reason_code: string | null;
   redaction_reason: string | null;
+  // Present when the row was read with `include: { note: true }`. `null` for
+  // non-note activity; `undefined` when the caller did not include the relation.
+  note?: ActivityNoteRel | null;
 }
 
+// Project the returned shape. RN-1 note attributes come from the 1:1 note
+// relation; for non-note activity (or when the relation was not included) they
+// project as null / is_pinned=false. Every VIEW-producing read path includes
+// the relation, so a note always projects its real attributes.
 function projectView(row: ActivityRow): ActivityView {
+  const note = row.note ?? null;
   return {
     id: row.id,
     tenant_id: row.tenant_id,
@@ -47,6 +68,17 @@ function projectView(row: ActivityRow): ActivityView {
     redacted_by: row.redacted_by,
     redaction_reason_code: row.redaction_reason_code,
     redaction_reason: row.redaction_reason,
+    category: note === null ? null : (note.category as ActivityView['category']),
+    visibility:
+      note === null ? null : (note.visibility as ActivityView['visibility']),
+    body_format:
+      note === null ? null : (note.body_format as ActivityView['body_format']),
+    is_pinned: note === null ? false : note.is_pinned,
+    pinned_at:
+      note === null || note.pinned_at === null
+        ? null
+        : note.pinned_at.toISOString(),
+    pinned_by_id: note === null ? null : note.pinned_by_id,
   };
 }
 
@@ -64,17 +96,158 @@ export class ActivityRepository {
     tenant_id: string;
     created_by_id: string;
     input: CreateActivityRequestDto;
+    requestId: string;
   }): Promise<ActivityView> {
-    const row = await this.prisma.activity.create({
-      data: {
+    const input = args.input;
+
+    // Non-note manual entry (call | email_logged) — no note extension, no
+    // lifecycle ledger. Single insert, unchanged behaviour.
+    if (input.type !== 'note') {
+      const row = await this.prisma.activity.create({
+        data: {
+          tenant_id: args.tenant_id,
+          site_id: input.site_id ?? null,
+          type: input.type,
+          subject_type: input.subject_type ?? null,
+          subject_id: input.subject_id ?? null,
+          notes: input.notes ?? null,
+          created_by_id: args.created_by_id,
+        },
+        include: { note: true },
+      });
+      return projectView(row as ActivityRow);
+    }
+
+    // RN-1 note — a note requires a non-empty body (D-6). Length bounds
+    // (1..20000) are enforced by the DTO; this guards the note-specific
+    // "body required" rule that call/email are exempt from.
+    const body = input.notes?.trim() ?? '';
+    if (body === '') {
+      throw new AramoError('INVALID_REQUEST', 'A note requires a body', 400, {
+        requestId: args.requestId,
+      });
+    }
+    const category = input.category ?? DEFAULT_NOTE_CATEGORY;
+    const visibility = input.visibility ?? DEFAULT_NOTE_VISIBILITY;
+    const pinned = input.pinned === true;
+    const now = new Date();
+
+    // CREATED is appended transactionally with the Activity + ActivityNote
+    // (RN-1-A1 rule 9). A pin-at-create is captured in the CREATED event's
+    // metadata (is_pinned=true) — NOT a separate PINNED event — so creation is
+    // exactly one lifecycle event.
+    const row = await this.prisma.$transaction(async (tx) => {
+      const activity = await tx.activity.create({
+        data: {
+          tenant_id: args.tenant_id,
+          site_id: input.site_id ?? null,
+          type: 'note',
+          subject_type: input.subject_type ?? null,
+          subject_id: input.subject_id ?? null,
+          notes: body,
+          created_by_id: args.created_by_id,
+        },
+      });
+      await tx.activityNote.create({
+        data: {
+          activity_id: activity.id,
+          category,
+          visibility,
+          body_format: DEFAULT_NOTE_BODY_FORMAT,
+          is_pinned: pinned,
+          pinned_at: pinned ? now : null,
+          pinned_by_id: pinned ? args.created_by_id : null,
+        },
+      });
+      await tx.activityNoteEvent.create({
+        data: {
+          tenant_id: args.tenant_id,
+          activity_id: activity.id,
+          event_type: 'CREATED',
+          actor_user_id: args.created_by_id,
+          metadata: { category, visibility, is_pinned: pinned },
+        },
+      });
+      return tx.activity.findFirstOrThrow({
+        where: { id: activity.id },
+        include: { note: true },
+      });
+    });
+    return projectView(row as ActivityRow);
+  }
+
+  // -------------------------------------------------------------------------
+  // Pin / unpin — RN-1 (D-3). Pin metadata carries provenance
+  // (is_pinned/pinned_at/pinned_by_id). Pinning does NOT reorder the
+  // chronological timeline. A real transition appends exactly one
+  // PINNED/UNPINNED event transactionally (RN-1-A1 rule 10); a no-op transition
+  // (already in the desired state) appends NOTHING (rule 12). Redacted notes
+  // cannot be pinned. PRIVATE notes are only pin-visible to their author (the
+  // privacy where-clause), so a non-author cannot pin a note they cannot see.
+  // -------------------------------------------------------------------------
+  async setPinned(args: {
+    tenant_id: string;
+    id: string;
+    actor_user_id: string;
+    pinned: boolean;
+    requestId: string;
+  }): Promise<ActivityView> {
+    const existing = await this.prisma.activity.findFirst({
+      where: {
         tenant_id: args.tenant_id,
-        site_id: args.input.site_id ?? null,
-        type: args.input.type,
-        subject_type: args.input.subject_type ?? null,
-        subject_id: args.input.subject_id ?? null,
-        notes: args.input.notes ?? null,
-        created_by_id: args.created_by_id,
+        id: args.id,
+        AND: [buildNotePrivacyWhere(args.actor_user_id)],
       },
+      include: { note: true },
+    });
+    if (existing === null) {
+      throw new AramoError('NOT_FOUND', 'Activity not found in tenant', 404, {
+        requestId: args.requestId,
+        details: { id: args.id },
+      });
+    }
+    const note = (existing as ActivityRow).note ?? null;
+    if (existing.type !== 'note' || note === null) {
+      throw new AramoError(
+        'ACTIVITY_NOT_PINNABLE',
+        'Only note activity can be pinned',
+        422,
+        { requestId: args.requestId, details: { id: args.id, type: existing.type } },
+      );
+    }
+    if (args.pinned && existing.redacted_at !== null) {
+      throw new AramoError(
+        'ACTIVITY_NOT_PINNABLE',
+        'A redacted note cannot be pinned',
+        422,
+        { requestId: args.requestId, details: { id: args.id } },
+      );
+    }
+    // Idempotency (rule 12) — no state change, no event.
+    if (note.is_pinned === args.pinned) {
+      return projectView(existing as ActivityRow);
+    }
+    const now = new Date();
+    const row = await this.prisma.$transaction(async (tx) => {
+      await tx.activityNote.update({
+        where: { activity_id: args.id },
+        data: args.pinned
+          ? { is_pinned: true, pinned_at: now, pinned_by_id: args.actor_user_id }
+          : { is_pinned: false, pinned_at: null, pinned_by_id: null },
+      });
+      await tx.activityNoteEvent.create({
+        data: {
+          tenant_id: args.tenant_id,
+          activity_id: args.id,
+          event_type: args.pinned ? 'PINNED' : 'UNPINNED',
+          actor_user_id: args.actor_user_id,
+          metadata: {},
+        },
+      });
+      return tx.activity.findFirstOrThrow({
+        where: { id: args.id },
+        include: { note: true },
+      });
     });
     return projectView(row as ActivityRow);
   }
@@ -131,15 +304,31 @@ export class ActivityRepository {
         { requestId: args.requestId, details: { id: args.id } },
       );
     }
-    const row = await this.prisma.activity.update({
-      where: { id: args.id },
-      data: {
-        notes: null,
-        redacted_at: new Date(),
-        redacted_by: args.redacted_by,
-        redaction_reason_code: args.redaction_reason_code,
-        redaction_reason: args.redaction_reason,
-      },
+    // RN-1-A1 rule 11 — the redact-never-delete mutation and the REDACTED
+    // lifecycle event are one transaction. R5 (above) guarantees at most one
+    // REDACTED event per note.
+    const row = await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.activity.update({
+        where: { id: args.id },
+        data: {
+          notes: null,
+          redacted_at: new Date(),
+          redacted_by: args.redacted_by,
+          redaction_reason_code: args.redaction_reason_code,
+          redaction_reason: args.redaction_reason,
+        },
+        include: { note: true },
+      });
+      await tx.activityNoteEvent.create({
+        data: {
+          tenant_id: args.tenant_id,
+          activity_id: args.id,
+          event_type: 'REDACTED',
+          actor_user_id: args.redacted_by,
+          metadata: { reason_code: args.redaction_reason_code },
+        },
+      });
+      return updated;
     });
     return projectView(row as ActivityRow);
   }
@@ -154,6 +343,7 @@ export class ActivityRepository {
   }): Promise<ActivityView | null> {
     const row = await this.prisma.activity.findFirst({
       where: { tenant_id: args.tenant_id, id: args.id },
+      include: { note: true },
     });
     return row === null ? null : projectView(row as ActivityRow);
   }
@@ -182,6 +372,7 @@ export class ActivityRepository {
           ? { subject_type: args.subject_type, subject_id: args.subject_id }
           : {}),
       },
+      include: { note: true },
       orderBy: { created_at: 'desc' },
       take: limit,
     });
@@ -302,6 +493,7 @@ export class ActivityRepository {
   async findByIdForActor(args: {
     tenant_id: string;
     id: string;
+    actor_user_id: string;
     visibility: VisibilityContextShape;
     visible_requisition_ids: ReadonlySet<string> | null;
     visible_pipeline_ids: ReadonlySet<string> | null;
@@ -309,18 +501,28 @@ export class ActivityRepository {
     const where: Record<string, unknown> = {
       tenant_id: args.tenant_id,
       id: args.id,
-      ...buildActivityVisibilityWhere({
-        visibility: args.visibility,
-        visible_requisition_ids: args.visible_requisition_ids,
-        visible_pipeline_ids: args.visible_pipeline_ids,
-      }),
+      // Subject visibility AND note-privacy (RN-1 D-2). The privacy clause is
+      // ANDed so it holds even for a see-all actor — a see-all actor still must
+      // not read another author's PRIVATE note.
+      AND: [
+        buildActivityVisibilityWhere({
+          visibility: args.visibility,
+          visible_requisition_ids: args.visible_requisition_ids,
+          visible_pipeline_ids: args.visible_pipeline_ids,
+        }),
+        buildNotePrivacyWhere(args.actor_user_id),
+      ],
     };
-    const row = await this.prisma.activity.findFirst({ where });
+    const row = await this.prisma.activity.findFirst({
+      where,
+      include: { note: true },
+    });
     return row === null ? null : projectView(row as ActivityRow);
   }
 
   async listForActor(args: {
     tenant_id: string;
+    actor_user_id: string;
     visibility: VisibilityContextShape;
     visible_requisition_ids: ReadonlySet<string> | null;
     visible_pipeline_ids: ReadonlySet<string> | null;
@@ -336,19 +538,42 @@ export class ActivityRepository {
       ...(bothSubjectFiltersProvided
         ? { subject_type: args.subject_type, subject_id: args.subject_id }
         : {}),
-      ...buildActivityVisibilityWhere({
-        visibility: args.visibility,
-        visible_requisition_ids: args.visible_requisition_ids,
-        visible_pipeline_ids: args.visible_pipeline_ids,
-      }),
+      AND: [
+        buildActivityVisibilityWhere({
+          visibility: args.visibility,
+          visible_requisition_ids: args.visible_requisition_ids,
+          visible_pipeline_ids: args.visible_pipeline_ids,
+        }),
+        buildNotePrivacyWhere(args.actor_user_id),
+      ],
     };
     const rows = await this.prisma.activity.findMany({
       where,
+      include: { note: true },
       orderBy: { created_at: 'desc' },
       take: limit,
     });
     return (rows as ActivityRow[]).map(projectView);
   }
+}
+
+// RN-1 D-2 (Q3) — note-privacy read filter. A row is visible iff it is NOT a
+// PRIVATE note authored by someone other than the actor. Non-note activity (no
+// ActivityNote relation) and TEAM notes are unaffected. PRIVATE is strictly
+// author-only — no admin/support override in RN-1. Applied on EVERY view read
+// (including talent-facing/external surfaces via the same repository), so a
+// PRIVATE body never leaves the author's own reads (AC-7).
+function buildNotePrivacyWhere(actorUserId: string): Record<string, unknown> {
+  return {
+    OR: [
+      // Non-note activity — no note extension, no privacy restriction.
+      { note: { is: null } },
+      // Any note whose visibility is not PRIVATE (i.e. TEAM) — team-visible.
+      { note: { visibility: { not: 'PRIVATE' } } },
+      // The actor's own rows — an author always sees their own PRIVATE note.
+      { created_by_id: actorUserId },
+    ],
+  };
 }
 
 // Build the activity polymorphic visibility OR (query-layer per DDR D6).

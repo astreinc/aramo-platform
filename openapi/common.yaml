@@ -769,6 +769,179 @@ components:
             $ref: '#/components/schemas/ErrorResponse'
 
   schemas:
+    # ── RN-1 Requisition Enterprise Notes (LOCKED) — the activity note surface
+    # affected by this increment. NoteVisibility ships TEAM + PRIVATE only in
+    # RN-1 (RESTRICTED is deferred to RN-2). body_format is plain_text only.
+    # The ActivityNoteEvent lifecycle ledger is an internal append-only record
+    # with NO exposed read API — it is deliberately NOT represented here.
+    NoteCategory:
+      type: string
+      description: What the note is about (orthogonal to the activity type).
+      enum:
+        - GENERAL
+        - CLIENT_INTERACTION
+        - HIRING_TEAM
+        - COMMERCIAL
+        - INTERVIEW_FEEDBACK
+        - DECISION
+        - RISK_BLOCKER
+    NoteVisibility:
+      type: string
+      description: |
+        Persisted authorial-intent confidentiality. RN-1 ships TEAM + PRIVATE.
+        PRIVATE is strictly author-only. RESTRICTED is deferred to RN-2.
+      enum:
+        - TEAM
+        - PRIVATE
+    NoteBodyFormat:
+      type: string
+      description: RN-1 is plain_text only (no arbitrary Markdown on an audit record).
+      enum:
+        - plain_text
+    CreateActivityRequest:
+      type: object
+      additionalProperties: false
+      description: |
+        Manual activity entry. tenant_id, created_by_id and all lifecycle-event
+        provenance are server-derived from the auth context — NEVER accepted from
+        the body. body_format is server-set (plain_text) and is not an input.
+      required:
+        - type
+      properties:
+        type:
+          type: string
+          description: Manual kinds only — pipeline_status_change is system-emitted.
+          enum:
+            - note
+            - call
+            - email_logged
+        subject_type:
+          type: string
+          description: Polymorphic subject discriminator (e.g. requisition).
+        subject_id:
+          type: string
+          format: uuid
+        notes:
+          type: string
+          minLength: 1
+          maxLength: 20000
+          description: |
+            Note body (RN-1 D-6). Bounded 1..20000 characters at the API and FE.
+            Required for type=note; a blank/whitespace-only body is rejected.
+        site_id:
+          type: string
+          format: uuid
+        category:
+          $ref: '#/components/schemas/NoteCategory'
+        visibility:
+          $ref: '#/components/schemas/NoteVisibility'
+        pinned:
+          type: boolean
+          description: RN-1 pin-on-create — pins the note to the requisition overview.
+    ActivityView:
+      type: object
+      additionalProperties: false
+      description: |
+        The returned activity projection. RN-1 note attributes (category,
+        visibility, body_format, pin metadata) are non-null only when type=note.
+      required:
+        - id
+        - tenant_id
+        - type
+        - created_at
+        - is_pinned
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        site_id:
+          oneOf:
+            - type: string
+              format: uuid
+            - type: 'null'
+        type:
+          type: string
+          enum:
+            - pipeline_status_change
+            - note
+            - call
+            - email_logged
+        subject_type:
+          oneOf:
+            - type: string
+            - type: 'null'
+        subject_id:
+          oneOf:
+            - type: string
+              format: uuid
+            - type: 'null'
+        notes:
+          oneOf:
+            - type: string
+            - type: 'null'
+        created_by_id:
+          oneOf:
+            - type: string
+              format: uuid
+            - type: 'null'
+        created_at:
+          type: string
+          format: date-time
+        redacted_at:
+          oneOf:
+            - type: string
+              format: date-time
+            - type: 'null'
+        redacted_by:
+          oneOf:
+            - type: string
+              format: uuid
+            - type: 'null'
+        redaction_reason_code:
+          oneOf:
+            - type: string
+            - type: 'null'
+        redaction_reason:
+          oneOf:
+            - type: string
+            - type: 'null'
+        category:
+          oneOf:
+            - $ref: '#/components/schemas/NoteCategory'
+            - type: 'null'
+        visibility:
+          oneOf:
+            - $ref: '#/components/schemas/NoteVisibility'
+            - type: 'null'
+        body_format:
+          oneOf:
+            - $ref: '#/components/schemas/NoteBodyFormat'
+            - type: 'null'
+        is_pinned:
+          type: boolean
+        pinned_at:
+          oneOf:
+            - type: string
+              format: date-time
+            - type: 'null'
+        pinned_by_id:
+          oneOf:
+            - type: string
+              format: uuid
+            - type: 'null'
+    ActivityListResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ActivityView'
     ConsentScope:
       type: string
       description: |
@@ -1660,6 +1833,7 @@ components:
         - POLICY_DENIED
         - ACTIVITY_NOT_REDACTABLE
         - ACTIVITY_ALREADY_REDACTED
+        - ACTIVITY_NOT_PINNABLE
         - REQUISITION_VERSION_CONFLICT
         - REQUISITION_STATUS_GATED
         - RESTRICTION_INVALID

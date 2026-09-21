@@ -81,8 +81,20 @@
       "ActivityModule",
       "ActivityPrismaService",
       "ActivityRepository",
+      "CreateActivityRequestDto",
+      "DEFAULT_NOTE_BODY_FORMAT",
+      "DEFAULT_NOTE_CATEGORY",
+      "DEFAULT_NOTE_VISIBILITY",
+      "NOTE_BODY_FORMAT_VALUES",
+      "NOTE_CATEGORY_VALUES",
+      "NOTE_EVENT_TYPE_VALUES",
+      "NOTE_VISIBILITY_VALUES",
       "insertActivityInTx",
-      "isActivityType"
+      "isActivityType",
+      "isNoteBodyFormat",
+      "isNoteCategory",
+      "isNoteEventType",
+      "isNoteVisibility"
     ],
     "@aramo/ai-draft": [
       "AI_DRAFT_EVENT_TYPES",
@@ -1756,6 +1768,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/response-received.negative-shape.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/rn1-requisition-notes.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },

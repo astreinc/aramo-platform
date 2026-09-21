@@ -89,6 +89,7 @@ const MIGRATIONS = [
   'libs/saved-list/prisma/migrations/20260602120000_init_saved_list_model/migration.sql',
   'libs/attachment/prisma/migrations/20260602120000_init_attachment_model/migration.sql',
   'libs/activity/prisma/migrations/20260602140000_init_activity_model/migration.sql',
+  'libs/activity/prisma/migrations/20260921160000_rn1_activity_note_extension/migration.sql',
   'libs/task/prisma/migrations/20260609140000_init_task_model/migration.sql',
   // TR-2a-B3b — the four Group-2 immutability reconcile-re-key trigger amendments
   // (GUC-gated exemption of the talent_id re-point). Applied AFTER each schema's

@@ -577,6 +577,16 @@ const ACTIVITY_REDACTION_MIGRATION = resolve(
   ROOT,
   'libs/activity/prisma/migrations/20260801120000_add_activity_redaction_fields/migration.sql',
 );
+// RN-1 (LOCKED) + RN-1-A1 — ActivityNote extension (category/visibility/pin) +
+// the append-only ActivityNoteEvent lifecycle ledger. The regenerated activity
+// client projects the 1:1 `note` relation on every Activity SELECT (the ats-web
+// activity-list/create interactions include it); absent in DB → 500 on the
+// activity read. SEPARATE const + apply-list entry (never a 2nd resolve() arg —
+// ENOTDIR trap). Applied after the redaction migration (it references Activity).
+const ACTIVITY_NOTE_EXTENSION_MIGRATION = resolve(
+  ROOT,
+  'libs/activity/prisma/migrations/20260921160000_rn1_activity_note_extension/migration.sql',
+);
 const PIPELINE_INIT_MIGRATION = resolve(
   ROOT,
   'libs/pipeline/prisma/migrations/20260602150000_init_pipeline_model/migration.sql',
@@ -2173,6 +2183,16 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           params.notes ?? null,
         ],
       );
+      // RN-1 — a note carries a 1:1 ActivityNote extension (defaults: GENERAL /
+      // TEAM / plain_text / not pinned) so the projected `note` relation is
+      // present on the activity SELECT. Non-note kinds have no extension.
+      if (params.type === 'note') {
+        await c.query(
+          `INSERT INTO activity."ActivityNote" (activity_id)
+           VALUES ($1) ON CONFLICT (activity_id) DO NOTHING`,
+          [params.id],
+        );
+      }
     }
 
     // PC-5d — task + attachment fixture ids. task owner_id / attachment
@@ -3418,6 +3438,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         // PC-4 — activity + pipeline for the talent-records enrichment reads.
         ACTIVITY_INIT_MIGRATION,
         ACTIVITY_REDACTION_MIGRATION,
+        ACTIVITY_NOTE_EXTENSION_MIGRATION,
         PIPELINE_INIT_MIGRATION,
         PIPELINE_E6_MIGRATION,
         PIPELINE_VERSION_MIGRATION,

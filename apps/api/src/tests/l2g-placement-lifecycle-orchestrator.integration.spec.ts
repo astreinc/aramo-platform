@@ -38,6 +38,7 @@ const MIGRATIONS = [
   'libs/requisition/prisma/migrations/20260907120000_add_requisition_postal_code/migration.sql',
   'libs/activity/prisma/migrations/20260602140000_init_activity_model/migration.sql',
   'libs/activity/prisma/migrations/20260801120000_add_activity_redaction_fields/migration.sql',
+  'libs/activity/prisma/migrations/20260921160000_rn1_activity_note_extension/migration.sql',
   'libs/metering/prisma/migrations/20260601150000_init_metering_model/migration.sql',
   'libs/pipeline/prisma/migrations/20260602150000_init_pipeline_model/migration.sql',
   'libs/pipeline/prisma/migrations/20260807100000_e6_pipeline_live_episode_unique/migration.sql',
