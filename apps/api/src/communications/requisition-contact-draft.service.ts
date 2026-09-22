@@ -8,6 +8,7 @@ import {
   EMAIL_RECIPIENT_RESOLVER,
   type EmailRecipientResolver,
 } from '../microsoft/email-recipient-resolver.port.js';
+
 import { RequisitionContactContextError } from './requisition-contact-context.error.js';
 import {
   REQUISITION_CONTACT_TEMPLATE_RESOLVER,

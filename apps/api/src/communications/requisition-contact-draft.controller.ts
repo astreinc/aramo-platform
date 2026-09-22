@@ -4,13 +4,14 @@ import { AramoError, RequestId } from '@aramo/common';
 import { RequireScopes, RolesGuard } from '@aramo/authorization';
 import { EntitlementGuard, RequireCapability } from '@aramo/entitlement';
 
+import { TalentEmailUnavailableError } from '../microsoft/email-recipient-resolver.port.js';
+
 import { RequisitionContactEmailDraftRequestDto } from './dto/requisition-contact-draft.dto.js';
 import { RequisitionContactContextError } from './requisition-contact-context.error.js';
 import {
   RequisitionContactDraftService,
   type RequisitionContactDraftView,
 } from './requisition-contact-draft.service.js';
-import { TalentEmailUnavailableError } from '../microsoft/email-recipient-resolver.port.js';
 
 // COMM-C4 (RCE-1) — prepares a REVIEWABLE requisition-contact email draft. This
 // endpoint WRITES NOTHING: no Graph send, no CommunicationInteraction, no
