@@ -56,6 +56,41 @@ function splitDdl(sql: string): string[] {
   return out;
 }
 
+// A deterministic read-barrier over the process delegate: it holds every transition()
+// at the point just AFTER its pre-write version read until ALL `n` readers have read,
+// so all `n` observe the SAME version, THEN releases them together to write. This is the
+// exact TOCTOU window an atomic CAS must survive — no reliance on scheduler luck. Against
+// a non-guarded UPDATE all `n` writers commit (write-skew); against a version-guarded
+// UPDATE exactly one advances and the rest conflict. Only the outer `findFirst` is
+// gated; the interactive-tx client used inside `$transaction` is untouched.
+function barrieredPrisma(real: PrismaService, n: number): PrismaService {
+  let arrived = 0;
+  let release!: () => void;
+  const gate = new Promise<void>((r) => (release = r));
+  const model = real.clientSelectionProcess;
+  const modelProxy = new Proxy(model, {
+    get(t, p, r) {
+      if (p === 'findFirst') {
+        return async (a: unknown) => {
+          const res = await (t as typeof model).findFirst(a as never);
+          if (++arrived === n) release();
+          await gate;
+          return res;
+        };
+      }
+      const v = Reflect.get(t, p, r);
+      return typeof v === 'function' ? (v as (...x: unknown[]) => unknown).bind(t) : v;
+    },
+  });
+  return new Proxy(real, {
+    get(t, p, r) {
+      if (p === 'clientSelectionProcess') return modelProxy;
+      const v = Reflect.get(t, p, r);
+      return typeof v === 'function' ? (v as (...x: unknown[]) => unknown).bind(t) : v;
+    },
+  }) as unknown as PrismaService;
+}
+
 describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
   'L2-F F1 ClientSelectionProcess (real Postgres 17)',
   () => {
@@ -149,24 +184,36 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     // ----------------------------------------------------------------------
     // F1.2 — CAS concurrency.
     // ----------------------------------------------------------------------
-    it('F1.2: two transitions with the same expected_version — one commits (+1), one conflicts, no extra event', async () => {
+    it('F1.2: N concurrent transitions with the same expected_version — exactly one commits (+1), the rest conflict, no extra event', async () => {
       const tenant = randomUUID();
       const req = randomUUID();
       const p = await seedProcess(tenant, req);
       expect(p.version).toBe(0);
 
-      const results = await Promise.allSettled([
-        repo.transition({ tenant_id: tenant, id: p.id, to_state: 'INTERVIEW', expected_version: 0, changed_by_id: randomUUID(), requestId: 'a', visible_requisition_ids: null }),
-        repo.transition({ tenant_id: tenant, id: p.id, to_state: 'SELECTED', expected_version: 0, changed_by_id: randomUUID(), requestId: 'b', visible_requisition_ids: null }),
-      ]);
+      // Fire many writers concurrently, ALL claiming expected_version 0. The CAS must be
+      // ATOMIC at the write: exactly one writer may advance the row; every other MUST
+      // observe the conflict. A stale read-then-write version check (TOCTOU) lets two or
+      // more commit — the exact defect this proves against — so 2-way is too weak to
+      // surface it deterministically. N-way makes the overlap near-certain regardless of
+      // connection-pool timing.
+      const CONCURRENCY = 8;
+      const barrierRepo = new ClientSelectionProcessRepository(
+        barrieredPrisma(prisma, CONCURRENCY),
+      );
+      const results = await Promise.allSettled(
+        Array.from({ length: CONCURRENCY }, (_, i) =>
+          barrierRepo.transition({ tenant_id: tenant, id: p.id, to_state: 'INTERVIEW', expected_version: 0, changed_by_id: randomUUID(), requestId: `cas-${i}`, visible_requisition_ids: null }),
+        ),
+      );
       const ok = results.filter((r) => r.status === 'fulfilled');
       const bad = results.filter((r) => r.status === 'rejected') as PromiseRejectedResult[];
       expect(ok).toHaveLength(1);
-      expect(bad).toHaveLength(1);
-      expect(bad[0]!.reason?.code).toBe('CLIENT_SELECTION_TRANSITION_CONFLICT');
+      expect(bad).toHaveLength(CONCURRENCY - 1);
+      for (const b of bad) expect(b.reason?.code).toBe('CLIENT_SELECTION_TRANSITION_CONFLICT');
 
       const after = await repo.findById({ tenant_id: tenant, id: p.id, visible_requisition_ids: null });
       expect(after!.version).toBe(1); // exactly one commit
+      expect(after!.state).toBe('INTERVIEW');
       // birth + exactly one transition event.
       expect(await eventRows(p.id)).toHaveLength(2);
     });

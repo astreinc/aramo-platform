@@ -235,10 +235,43 @@ export class ClientSelectionProcessRepository {
     const note = args.note ?? null;
     const reasonCode = args.reason_code ?? null;
     const updated = await this.prisma.$transaction(async (tx) => {
-      const u = await tx.clientSelectionProcess.update({
-        where: { id: args.id },
+      // ATOMIC CAS — the version guard lives in the WRITE, not in the prior in-memory
+      // read. The pre-read check above is advisory (a fast, friendly 409 for the common
+      // non-concurrent case); it is NOT the concurrency floor. Concurrent writers that
+      // all passed that stale check funnel here, where the row lock serializes them and
+      // ONLY the writer still matching `version: expected_version` advances the row.
+      // Everyone else matches 0 rows → conflict, with NO event/outbox written (the throw
+      // rolls the tx back). A non-guarded `update({ where: { id } })` here was a
+      // read-then-write TOCTOU that let two concurrent transitions both commit.
+      const res = await tx.clientSelectionProcess.updateMany({
+        where: {
+          id: args.id,
+          tenant_id: args.tenant_id,
+          version: args.expected_version,
+        },
         data: { state: args.to_state, version: { increment: 1 } },
       });
+      if (res.count === 0) {
+        const latest = (await tx.clientSelectionProcess.findFirst({
+          where: { tenant_id: args.tenant_id, id: args.id },
+        })) as ProcessRow | null;
+        throw new AramoError(
+          'CLIENT_SELECTION_TRANSITION_CONFLICT',
+          'Client-selection process was modified concurrently; refresh and retry',
+          409,
+          {
+            requestId: args.requestId,
+            details: {
+              client_selection_process_id: args.id,
+              current_state: latest?.state ?? cur.state,
+              current_version: latest?.version ?? cur.version,
+            },
+          },
+        );
+      }
+      const u = (await tx.clientSelectionProcess.findFirstOrThrow({
+        where: { id: args.id },
+      })) as ProcessRow;
       await tx.clientSelectionEvent.create({
         data: {
           id: uuidv7(),
