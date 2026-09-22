@@ -15377,6 +15377,21 @@
       "to": "libs/conversation-transcript/tsconfig.lib.json"
     },
     {
+      "from": "libs/documents/prisma/schema.prisma",
+      "status": "unscoped",
+      "to": "doc/05-conventions.md"
+    },
+    {
+      "from": "libs/documents/project.json",
+      "status": "unscoped",
+      "to": "libs/documents/src/index.ts"
+    },
+    {
+      "from": "libs/documents/project.json",
+      "status": "unscoped",
+      "to": "libs/documents/tsconfig.lib.json"
+    },
+    {
       "from": "libs/engagement/project.json",
       "status": "unscoped",
       "to": "libs/engagement/src/index.ts"
@@ -17131,6 +17146,7 @@
       "status": "unscoped",
       "to": "libs/conversation-transcript/prisma/schema.prisma"
     },
+    { "from": "package.json", "status": "unscoped", "to": "libs/documents/prisma/schema.prisma" },
     { "from": "package.json", "status": "unscoped", "to": "libs/entitlement/prisma/schema.prisma" },
     {
       "from": "package.json",
@@ -17235,6 +17251,7 @@
     { "from": "package.json", "status": "unscoped", "to": "openapi/ats.yaml" },
     { "from": "package.json", "status": "unscoped", "to": "openapi/auth.yaml" },
     { "from": "package.json", "status": "unscoped", "to": "openapi/common.yaml" },
+    { "from": "package.json", "status": "unscoped", "to": "openapi/documents.yaml" },
     { "from": "package.json", "status": "unscoped", "to": "openapi/ingestion.yaml" },
     { "from": "package.json", "status": "unscoped", "to": "openapi/platform.yaml" },
     { "from": "package.json", "status": "unscoped", "to": "openapi/portal.yaml" },
@@ -18982,6 +18999,7 @@
       "status": "unscoped",
       "to": "libs/conversation-transcript/src/index.ts"
     },
+    { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/documents/src/index.ts" },
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/engagement/src/index.ts" },
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/entitlement/src/index.ts" },
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/events/src/index.ts" },
@@ -19150,6 +19168,7 @@
       "status": "unscoped",
       "to": "libs/conversation-transcript/src/index.ts"
     },
+    { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/documents/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/engagement/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/entitlement/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/events/src/index.ts" },

@@ -14,6 +14,7 @@
     "libs/consent",
     "libs/conversation-intelligence",
     "libs/conversation-transcript",
+    "libs/documents",
     "libs/entitlement",
     "libs/evidence",
     "libs/examination",

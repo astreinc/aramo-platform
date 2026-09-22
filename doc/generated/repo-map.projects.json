@@ -1,5 +1,5 @@
 {
-  "aliasTotals": { "apps": 2, "libs": 70, "total": 72 },
+  "aliasTotals": { "apps": 2, "libs": 71, "total": 73 },
   "aliases": {
     "@aramo/activity": "libs/activity/src/index.ts",
     "@aramo/ai-draft": "libs/ai-draft/src/index.ts",
@@ -24,6 +24,7 @@
     "@aramo/contact": "libs/contact/src/index.ts",
     "@aramo/conversation-intelligence": "libs/conversation-intelligence/src/index.ts",
     "@aramo/conversation-transcript": "libs/conversation-transcript/src/index.ts",
+    "@aramo/documents": "libs/documents/src/index.ts",
     "@aramo/engagement": "libs/engagement/src/index.ts",
     "@aramo/entitlement": "libs/entitlement/src/index.ts",
     "@aramo/events": "libs/events/src/index.ts",
@@ -506,6 +507,20 @@
       "sha256Hex",
       "sha256HexUtf8",
       "validateNormalizedTranscript"
+    ],
+    "@aramo/documents": [
+      "DOCUMENTS_SCHEMA",
+      "DOCUMENT_STORAGE_PORT",
+      "DocumentIdempotencyConflictError",
+      "DocumentIdempotencyService",
+      "DocumentIllegalTransitionError",
+      "DocumentNotFoundError",
+      "DocumentStorageNotSupportedError",
+      "DocumentTypesController",
+      "DocumentsController",
+      "DocumentsModule",
+      "DocumentsRepository",
+      "PrismaService"
     ],
     "@aramo/engagement": [
       "DEFAULT_ENGAGEMENT_ENFORCEMENT_MODE",
@@ -1640,6 +1655,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/documents-http.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/domain-verification.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -2018,6 +2039,7 @@
         "status": "excluded"
       },
       { "project": "contact", "status": "production" },
+      { "project": "documents", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/entitlement/src/tests/entitlement.guard.spec.ts",
@@ -2458,6 +2480,7 @@
       { "project": "company", "status": "production" },
       { "project": "consent", "status": "production" },
       { "project": "contact", "status": "production" },
+      { "project": "documents", "status": "production" },
       { "project": "export", "status": "production" },
       { "project": "identity", "status": "production" },
       { "project": "import", "status": "production" },
@@ -2638,6 +2661,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/ci-b6p-processing.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/documents-http.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -2902,6 +2931,7 @@
         "status": "excluded"
       },
       { "project": "conversation-intelligence", "status": "production" },
+      { "project": "documents", "status": "production" },
       { "project": "entitlement", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
@@ -3548,6 +3578,21 @@
       },
       { "project": "api", "status": "production" }
     ],
+    "@aramo/documents": [
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/documents-http.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/documents-storage-adapter.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      { "project": "api", "status": "production" }
+    ],
     "@aramo/engagement": [
       {
         "excludedBy": "src/tests/**/*",
@@ -3565,6 +3610,12 @@
     ],
     "@aramo/entitlement": [
       { "project": "activity", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/documents-http.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
       { "project": "api", "status": "production" },
       { "project": "attachment", "status": "production" },
       { "project": "calendar", "status": "production" },
@@ -3577,6 +3628,7 @@
       },
       { "project": "company", "status": "production" },
       { "project": "contact", "status": "production" },
+      { "project": "documents", "status": "production" },
       { "project": "export", "status": "production" },
       { "project": "identity", "status": "production" },
       { "project": "import", "status": "production" },
@@ -4807,6 +4859,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/ci-b6-composition-adapters.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/documents-storage-adapter.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -6135,6 +6193,13 @@
       "root": "libs/conversation-transcript",
       "sourceRoot": "libs/conversation-transcript/src",
       "tags": ["scope:ats"],
+      "targets": ["build", "lint", "test"]
+    },
+    {
+      "name": "documents",
+      "root": "libs/documents",
+      "sourceRoot": "libs/documents/src",
+      "tags": ["scope:boundary"],
       "targets": ["build", "lint", "test"]
     },
     {

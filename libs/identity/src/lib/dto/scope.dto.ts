@@ -89,6 +89,10 @@ export const SEED_SCOPE_KEYS = [
   'attachment:read',            // recruiter+
   'attachment:create',          // recruiter+
   'attachment:delete',          // recruiter+ (Ruling 1 carve-out — junction/link delete)
+  // DOC-1a — canonical Documents domain scopes (dedicated DOCUMENTS_SEED_BUNDLES).
+  'document:read',              // recruiter+ (read documents/types/events/artifacts)
+  'document:create',            // recruiter+ (create documents, prepare, associate)
+  'document_type:manage',       // tenant_admin+ (create/manage tenant document types)
   'pipeline:read',              // recruiter+
   // TI-1D-D — set the Requisition-context résumé selection (PUT
   // /v1/pipelines/{id}/resume-edition). DEDICATED mutation scope, EXPLICIT

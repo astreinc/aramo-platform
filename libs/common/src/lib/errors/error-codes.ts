@@ -372,6 +372,12 @@ export const ERROR_CODES = [
   // not a note, or a redacted note cannot be pinned (HTTP 422; mirrors
   // ACTIVITY_NOT_REDACTABLE / SUBMITTAL_STATE_INVALID).
   'ACTIVITY_NOT_PINNABLE',
+  // DOC-1a (Documents core) — canonical document lifecycle errors. NOT_FOUND
+  // variants are tenant-scoped (a cross-tenant id is NOT FOUND, never 403);
+  // ILLEGAL_TRANSITION is a document state-machine refusal (409).
+  'DOCUMENT_NOT_FOUND',
+  'DOCUMENT_TYPE_NOT_FOUND',
+  'DOCUMENT_ILLEGAL_TRANSITION',
   // Track 1 T1-b (ruling R2) — optimistic-concurrency stale-write refusal on
   // requisition.Requisition. The PATCH (or any versioned update) supplied an
   // expected `version` that no longer matches the stored row: someone else

@@ -35,7 +35,8 @@ import { IngestionModule } from '@aramo/ingestion';
 import { JobDomainModule } from '@aramo/job-domain';
 import { MailerModule } from '@aramo/mailer';
 import { MatchingModule } from '@aramo/matching';
-import { ObjectStorageModule } from '@aramo/object-storage';
+import { ObjectStorageModule, ObjectStorageService } from '@aramo/object-storage';
+import { DocumentsModule, DOCUMENT_STORAGE_PORT } from '@aramo/documents';
 import { SourcedTalentModule } from '@aramo/sourced-talent';
 import { OutboxPublisherModule } from '@aramo/outbox-publisher';
 import { PipelineModule } from '@aramo/pipeline';
@@ -64,6 +65,7 @@ import {
 import { TalentTrustModule } from '@aramo/talent-trust';
 import { TaskModule } from '@aramo/task';
 
+import { AramoS3DocumentStorageAdapter } from './documents/aramo-s3-document-storage.adapter.js';
 import { ResumeAttachmentResolverModule } from './resume-extraction/resume-attachment-resolver.module.js';
 import { ResumeEditionReaderModule } from './resume-extraction/resume-edition-reader.module.js';
 import { CompanyClientCheckModule } from './company-client-check/company-client-check.module.js';
@@ -506,6 +508,9 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     // upload; later A4 owner_types) consume ObjectStorageService at
     // the cross-lib boundary.
     ObjectStorageModule,
+    // DOC-1a — canonical Documents domain (scope:boundary). The
+    // DOCUMENT_STORAGE_PORT binding is provided below at the composition root.
+    DocumentsModule,
     // SRC-1 PR-2 — SourcedTalentModule provides SourcedTalentRepository so the
     // Indeed apply webhook can write the channel dedup-memory arrival. The
     // apps/api → @aramo/sourced-talent nx edge already exists (admit-arrivals),
@@ -649,6 +654,14 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     IndeedApplyController,
   ],
   providers: [
+    // DOC-1a — bind the DocumentStoragePort to the S3 adapter at the
+    // composition root (mirrors the TranscriptArtifactStore precedent). The
+    // adapter wraps ObjectStorageService; libs/documents never imports the SDK.
+    {
+      provide: DOCUMENT_STORAGE_PORT,
+      useFactory: (storage: ObjectStorageService) => new AramoS3DocumentStorageAdapter(storage),
+      inject: [ObjectStorageService],
+    },
     // SKILL-TAX-1E — canonical SHADOW-matching (dark/observe-only). Config +
     // comparator + logger registered at the app boundary (like ExamineController),
     // because the comparator is the only place that legally reads requisition

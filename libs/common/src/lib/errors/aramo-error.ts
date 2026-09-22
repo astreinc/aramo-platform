@@ -92,6 +92,10 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   ACTIVITY_NOT_REDACTABLE: 422,
   ACTIVITY_ALREADY_REDACTED: 409,
   ACTIVITY_NOT_PINNABLE: 422,
+  // DOC-1a (Documents core) — document lifecycle errors.
+  DOCUMENT_NOT_FOUND: 404,
+  DOCUMENT_TYPE_NOT_FOUND: 404,
+  DOCUMENT_ILLEGAL_TRANSITION: 409,
   // Track 1 T1-b (R2) — optimistic-concurrency stale-write on requisition (409).
   REQUISITION_VERSION_CONFLICT: 409,
   // Track 1 T1-e (§2.3 / R9) — status-changing PATCH into a subsystem-gated

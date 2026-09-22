@@ -1,0 +1,433 @@
+openapi: 3.1.0
+info:
+  title: Aramo Documents API
+  version: 0.0.0
+  description: |
+    DOC-1a — the canonical, workflow-neutral Documents domain. Documents own a
+    single canonical identity, controlled polymorphic associations to business
+    resources, an append-only lifecycle event ledger, and immutable artifacts.
+    All operations are tenant-scoped and require the `core` capability. Reads
+    require `document:read`; document creation/preparation/association require
+    `document:create`; document-type management requires `document_type:manage`.
+paths:
+  /v1/document-types:
+    post:
+      operationId: createDocumentType
+      summary: Create a tenant document type.
+      description: Registers a tenant-scoped document type. Requires `document_type:manage`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateDocumentTypeRequest'
+      responses:
+        '201':
+          description: The created document type.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentType'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+    get:
+      operationId: listDocumentTypes
+      summary: List document types available to the tenant.
+      description: Returns the tenant's own types plus SYSTEM types. Requires `document:read`.
+      responses:
+        '200':
+          description: The list of document types.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DocumentType'
+  /v1/documents:
+    post:
+      operationId: createDocument
+      summary: Create a document.
+      description: |
+        Creates a canonical document (status DRAFT) with optional business
+        associations. Supports the canonical idempotency pattern via the
+        optional `Idempotency-Key` header. Requires `document:create`.
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: false
+          description: Optional idempotency key. A replay with a different body is a 409.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateDocumentRequest'
+      responses:
+        '201':
+          description: The created (or idempotently replayed) document.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Document'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    get:
+      operationId: listDocuments
+      summary: List documents for the tenant.
+      description: Returns the tenant's documents, newest first. Requires `document:read`.
+      responses:
+        '200':
+          description: The list of documents.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Document'
+  /v1/documents/{id}:
+    get:
+      operationId: getDocument
+      summary: Get a document by id.
+      description: Returns a tenant-scoped document. A cross-tenant id is a 404. Requires `document:read`.
+      parameters:
+        - $ref: '#/components/parameters/DocumentId'
+      responses:
+        '200':
+          description: The document.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Document'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/documents/{id}/prepare:
+    post:
+      operationId: prepareDocument
+      summary: Prepare a document (DRAFT to PREPARED).
+      description: |
+        Transitions a DRAFT document to PREPARED. A no-op on an already-PREPARED
+        document. Any other source state is a 409. Requires `document:create`.
+      parameters:
+        - $ref: '#/components/parameters/DocumentId'
+      responses:
+        '200':
+          description: The prepared document.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Document'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /v1/documents/{id}/associations:
+    post:
+      operationId: addDocumentAssociation
+      summary: Associate a document with a business resource.
+      description: Adds a controlled-vocabulary association. Requires `document:create`.
+      parameters:
+        - $ref: '#/components/parameters/DocumentId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAssociationRequest'
+      responses:
+        '201':
+          description: The created association.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentAssociation'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/documents/{id}/events:
+    get:
+      operationId: listDocumentEvents
+      summary: List a document's append-only lifecycle events.
+      description: Returns the document's events in chronological order. Requires `document:read`.
+      parameters:
+        - $ref: '#/components/parameters/DocumentId'
+      responses:
+        '200':
+          description: The document's events.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DocumentEvent'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/documents/{id}/artifacts:
+    get:
+      operationId: listDocumentArtifacts
+      summary: List a document's artifacts.
+      description: Returns the document's stored artifacts. Requires `document:read`.
+      parameters:
+        - $ref: '#/components/parameters/DocumentId'
+      responses:
+        '200':
+          description: The document's artifacts.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DocumentArtifact'
+        '404':
+          $ref: '#/components/responses/NotFound'
+components:
+  parameters:
+    DocumentId:
+      name: id
+      in: path
+      required: true
+      description: The document id (UUID).
+      schema:
+        type: string
+        format: uuid
+  responses:
+    BadRequest:
+      description: The request failed validation.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: The document was not found in the caller's tenant.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Conflict:
+      description: An illegal transition or an idempotency-key conflict.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+  schemas:
+    ErrorResponse:
+      type: object
+      description: The canonical Aramo error envelope.
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+          description: The stable error code.
+        message:
+          type: string
+          description: A human-readable message.
+    DocumentType:
+      type: object
+      description: A semantic business document type.
+      required:
+        - id
+        - key
+        - name
+        - scope
+        - execution_mode_default
+        - retention_class
+        - active
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: [string, 'null']
+          format: uuid
+        key:
+          type: string
+        name:
+          type: string
+        description:
+          type: [string, 'null']
+        scope:
+          type: string
+          enum: [SYSTEM, TENANT, CLIENT]
+        execution_mode_default:
+          type: string
+          enum: [NO_SIGNATURE, ACKNOWLEDGEMENT, SINGLE_SIGNATURE, MULTI_SIGNATURE]
+        retention_class:
+          type: string
+        active:
+          type: boolean
+    Document:
+      type: object
+      description: The canonical business document aggregate.
+      required:
+        - id
+        - tenant_id
+        - document_type_id
+        - title
+        - status
+        - execution_mode
+        - source_kind
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        document_type_id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        status:
+          type: string
+          enum: [DRAFT, PREPARED, EXECUTION_PENDING, EXECUTED, VOIDED, EXPIRED, ARCHIVED]
+        execution_mode:
+          type: string
+          enum: [NO_SIGNATURE, ACKNOWLEDGEMENT, SINGLE_SIGNATURE, MULTI_SIGNATURE]
+        source_kind:
+          type: string
+          enum: [TEMPLATE_GENERATED, UPLOADED, EXTERNAL_IMPORT]
+        current_revision_id:
+          type: [string, 'null']
+          format: uuid
+        prepared_at:
+          type: [string, 'null']
+          format: date-time
+    CreateDocumentTypeRequest:
+      type: object
+      required:
+        - key
+        - name
+        - scope
+        - execution_mode_default
+        - retention_class
+      properties:
+        key:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        scope:
+          type: string
+          enum: [SYSTEM, TENANT, CLIENT]
+        execution_mode_default:
+          type: string
+          enum: [NO_SIGNATURE, ACKNOWLEDGEMENT, SINGLE_SIGNATURE, MULTI_SIGNATURE]
+        retention_class:
+          type: string
+    CreateDocumentRequest:
+      type: object
+      required:
+        - document_type_id
+        - title
+        - execution_mode
+        - source_kind
+      properties:
+        document_type_id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        execution_mode:
+          type: string
+          enum: [NO_SIGNATURE, ACKNOWLEDGEMENT, SINGLE_SIGNATURE, MULTI_SIGNATURE]
+        source_kind:
+          type: string
+          enum: [TEMPLATE_GENERATED, UPLOADED, EXTERNAL_IMPORT]
+        associations:
+          type: array
+          items:
+            $ref: '#/components/schemas/CreateAssociationRequest'
+    CreateAssociationRequest:
+      type: object
+      required:
+        - resource_type
+        - resource_id
+        - relationship
+      properties:
+        resource_type:
+          type: string
+          enum: [TALENT, REQUISITION, COMPANY, SUBMITTAL, OFFER, PLACEMENT, PURCHASE_ORDER, TENANT_ORGANIZATION, CONTACT]
+        resource_id:
+          type: string
+          format: uuid
+        relationship:
+          type: string
+          enum: [SUBJECT, REGARDING, CLIENT, SUPPORTS, OWNER, ISSUER, COUNTERPARTY]
+    DocumentAssociation:
+      type: object
+      description: A polymorphic link from a document to a business resource.
+      required:
+        - id
+        - document_id
+        - resource_type
+        - resource_id
+        - relationship
+      properties:
+        id:
+          type: string
+          format: uuid
+        document_id:
+          type: string
+          format: uuid
+        resource_type:
+          type: string
+        resource_id:
+          type: string
+          format: uuid
+        relationship:
+          type: string
+    DocumentEvent:
+      type: object
+      description: An append-only document lifecycle event.
+      required:
+        - id
+        - document_id
+        - event_type
+        - actor_type
+        - occurred_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        document_id:
+          type: string
+          format: uuid
+        event_type:
+          type: string
+        actor_type:
+          type: string
+          enum: [USER, SYSTEM]
+        occurred_at:
+          type: string
+          format: date-time
+    DocumentArtifact:
+      type: object
+      description: An immutable stored document artifact.
+      required:
+        - id
+        - revision_id
+        - document_id
+        - artifact_role
+        - sha256
+      properties:
+        id:
+          type: string
+          format: uuid
+        revision_id:
+          type: string
+          format: uuid
+        document_id:
+          type: string
+          format: uuid
+        artifact_role:
+          type: string
+        sha256:
+          type: string

@@ -1,0 +1,210 @@
+// Per-module Prisma schema for the `documents` module (DOC-1a).
+//
+// Governing directive: Aramo-DOC-1a-Documents-Core-Slice-Directive-v1_0-LOCKED
+// (parent: Aramo-DOC-Documents-and-Native-ESignature-Architecture-and-Build-Directive-v1_1-LOCKED).
+//
+// Schema-per-module (doc/05-conventions.md). The `documents` domain is the
+// canonical, workflow-neutral document identity. It owns ONE schema: writes
+// (state + DocumentEvent + OutboxEvent + IdempotencyKey) share one $transaction,
+// so they live in one Prisma client / one schema.
+//
+// PO model refinement (2026-09-21): DocumentAssociation is the ONLY polymorphic
+// table (controlled resource_type/relationship vocabulary + unique tuple, CHECK
+// constraints in the migration). Every relationship INSIDE this bounded context
+// is a real same-schema FK. DocumentArtifact belongs to a DocumentRevision.
+// No cross-schema FK anywhere; business context is recorded as opaque
+// ResourceReference rows, never as columns on Document.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "./generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["documents"]
+}
+
+/// Semantic business type (RIGHT_TO_REPRESENT, OFFER_LETTER, ...). tenant_id is
+/// NULL for SYSTEM-scoped types; set for TENANT/CLIENT custom types.
+model DocumentType {
+  id                    String   @id @db.Uuid
+  tenant_id             String?  @db.Uuid
+  key                   String
+  name                  String
+  description           String?
+  scope                 String // CHECK: SYSTEM | TENANT | CLIENT (migration)
+  execution_mode_default String // CHECK: NO_SIGNATURE | ACKNOWLEDGEMENT | SINGLE_SIGNATURE | MULTI_SIGNATURE
+  retention_class       String
+  system_defined        Boolean  @default(false)
+  active                Boolean  @default(true)
+  created_at            DateTime @default(now()) @db.Timestamptz
+  updated_at            DateTime @updatedAt @db.Timestamptz
+
+  documents             Document[]
+
+  @@unique([tenant_id, key])
+  @@index([tenant_id])
+  @@schema("documents")
+}
+
+/// The central business document aggregate — ONE canonical identity per document.
+/// Business context lives in DocumentAssociation, never as columns here.
+model Document {
+  id                   String    @id @db.Uuid
+  tenant_id            String    @db.Uuid
+  document_type_id     String    @db.Uuid
+  template_version_id  String?   @db.Uuid
+  title                String
+  status               String // CHECK: DRAFT|PREPARED|EXECUTION_PENDING|EXECUTED|VOIDED|EXPIRED|ARCHIVED
+  execution_mode       String // CHECK: NO_SIGNATURE|ACKNOWLEDGEMENT|SINGLE_SIGNATURE|MULTI_SIGNATURE
+  current_revision_id  String?   @db.Uuid // FK -> DocumentRevision added in migration (avoids Prisma cycle)
+  source_kind          String // CHECK: TEMPLATE_GENERATED|UPLOADED|EXTERNAL_IMPORT
+  created_by           String    @db.Uuid
+  created_at           DateTime  @default(now()) @db.Timestamptz
+  prepared_at          DateTime? @db.Timestamptz
+  execution_started_at DateTime? @db.Timestamptz
+  executed_at          DateTime? @db.Timestamptz
+  voided_at            DateTime? @db.Timestamptz
+  superseded_at        DateTime? @db.Timestamptz
+
+  document_type        DocumentType          @relation(fields: [document_type_id], references: [id])
+  revisions            DocumentRevision[]
+  associations         DocumentAssociation[]
+  events               DocumentEvent[]
+
+  @@index([tenant_id])
+  @@index([tenant_id, document_type_id])
+  @@schema("documents")
+}
+
+/// A content version of a Document. Frozen after frozen_at.
+model DocumentRevision {
+  id                  String    @id @db.Uuid
+  tenant_id           String    @db.Uuid
+  document_id         String    @db.Uuid
+  revision_number     Int
+  template_version_id String?   @db.Uuid
+  render_manifest     Json?
+  source_artifact_id  String?   @db.Uuid
+  prepared_artifact_id String?  @db.Uuid
+  content_sha256      String?
+  mime_type           String?
+  byte_size           Int?
+  status              String
+  created_by          String    @db.Uuid
+  created_at          DateTime  @default(now()) @db.Timestamptz
+  frozen_at           DateTime? @db.Timestamptz
+
+  document            Document           @relation(fields: [document_id], references: [id], onDelete: Restrict)
+  artifacts           DocumentArtifact[]
+
+  @@unique([document_id, revision_number])
+  @@index([tenant_id])
+  @@index([tenant_id, document_id])
+  @@schema("documents")
+}
+
+/// A physical file/rendition. Belongs to a DocumentRevision (revision_id is the
+/// primary structural owner); document_id is denormalized and MUST be invariant
+/// with the revision's parent Document (enforced by migration trigger + repo).
+model DocumentArtifact {
+  id                String    @id @db.Uuid
+  tenant_id         String    @db.Uuid
+  revision_id       String    @db.Uuid
+  document_id       String    @db.Uuid
+  artifact_role     String // CHECK: TEMPLATE_SOURCE|SOURCE_UPLOAD|RENDERED_UNSIGNED|EXECUTED|EXECUTION_CERTIFICATE|PREVIEW|ATTACHMENT
+  storage_profile_id String?  @db.Uuid
+  storage_provider  String
+  storage_locator   String
+  provider_version_id String?
+  mime_type         String
+  byte_size         Int
+  sha256            String
+  immutability_state String // CHECK: MUTABLE|FROZEN
+  retention_class   String
+  retain_until      DateTime? @db.Timestamptz
+  legal_hold        Boolean   @default(false)
+  created_at        DateTime  @default(now()) @db.Timestamptz
+  created_by        String    @db.Uuid
+
+  revision          DocumentRevision @relation(fields: [revision_id], references: [id], onDelete: Restrict)
+
+  @@index([tenant_id])
+  @@index([tenant_id, revision_id])
+  @@index([tenant_id, document_id])
+  @@schema("documents")
+}
+
+/// The ONLY polymorphic table. Links a Document to any external business
+/// resource by opaque (resource_type, resource_id). Controlled vocabulary +
+/// unique tuple enforced by migration CHECK/UNIQUE. NO cross-schema FK.
+model DocumentAssociation {
+  id            String   @id @db.Uuid
+  tenant_id     String   @db.Uuid
+  document_id   String   @db.Uuid
+  resource_type String // CHECK: TALENT|REQUISITION|COMPANY|SUBMITTAL|OFFER|PLACEMENT|PURCHASE_ORDER|TENANT_ORGANIZATION|CONTACT
+  resource_id   String   @db.Uuid
+  relationship  String // CHECK: SUBJECT|REGARDING|CLIENT|SUPPORTS|OWNER|ISSUER|COUNTERPARTY
+  created_at    DateTime @default(now()) @db.Timestamptz
+  created_by    String   @db.Uuid
+
+  document      Document @relation(fields: [document_id], references: [id], onDelete: Restrict)
+
+  @@unique([tenant_id, document_id, resource_type, resource_id, relationship])
+  @@index([tenant_id])
+  @@index([tenant_id, resource_type, resource_id])
+  @@schema("documents")
+}
+
+/// Append-only domain lifecycle ledger. UPDATE/DELETE rejected by an
+/// unconditional DB trigger installed in the migration (RN-1 precedent).
+model DocumentEvent {
+  id             String   @id @db.Uuid
+  tenant_id      String   @db.Uuid
+  document_id    String   @db.Uuid
+  revision_id    String?  @db.Uuid
+  event_type     String
+  actor_type     String // CHECK: USER|SYSTEM
+  actor_id       String?  @db.Uuid
+  correlation_id String?  @db.Uuid
+  request_id     String?
+  payload        Json?
+  occurred_at    DateTime @default(now()) @db.Timestamptz
+
+  document       Document @relation(fields: [document_id], references: [id], onDelete: Restrict)
+
+  @@index([tenant_id, document_id, occurred_at])
+  @@index([tenant_id, occurred_at])
+  @@schema("documents")
+}
+
+/// Transactional outbox — rows written in the same $transaction as state
+/// changes. DOC-1a writes rows only; the publisher drain is deferred (consent
+/// PR-2 precedent).
+model OutboxEvent {
+  id            String    @id @db.Uuid
+  tenant_id     String    @db.Uuid
+  event_type    String
+  event_payload Json
+  created_at    DateTime  @default(now()) @db.Timestamptz
+  published_at  DateTime? @db.Timestamptz
+
+  @@index([published_at])
+  @@schema("documents")
+}
+
+/// Schema-local idempotency. Own table (not consent's) so it can participate in
+/// the DocumentEvent $transaction without a documents -> consent nx edge.
+model IdempotencyKey {
+  id              String   @id @db.Uuid
+  tenant_id       String   @db.Uuid
+  key             String
+  request_hash    String
+  response_status Int?
+  response_body   Json?
+  created_at      DateTime @default(now()) @db.Timestamptz
+
+  @@unique([tenant_id, key])
+  @@schema("documents")
+}
