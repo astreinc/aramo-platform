@@ -415,6 +415,20 @@ const TALENT_EVIDENCE_TI1G_MIGRATION = resolve(
   ROOT,
   'libs/talent-evidence/prisma/migrations/20260920140000_talent_intel_1g_work_authorization_temporal/migration.sql',
 );
+// DOC-1a — the canonical documents schema (Document + Revision + Artifact +
+// Association + Type + Event); applied BEFORE talent-evidence init because the
+// DOC-1b writers/backfill target it.
+const DOCUMENTS_INIT_MIGRATION = resolve(
+  ROOT,
+  'libs/documents/prisma/migrations/20260921180000_init_documents_model/migration.sql',
+);
+// DOC-1b — the TalentDocument→documents.Document reconciliation (seed DocumentTypes
+// + ADD document_id + backfill quartet + DROP generic columns); applied AFTER the
+// talent-evidence migrations (it ALTERs TalentDocument and writes into documents).
+const TALENT_EVIDENCE_DOC1B_MIGRATION = resolve(
+  ROOT,
+  'libs/talent-evidence/prisma/migrations/20260922120000_doc1b_talentdocument_reconciliation/migration.sql',
+);
 // SKILL-TAX-1F-B2 — the canonical skills-taxonomy schema (Skill + Alias + Version +
 // Relationship + AuditEvent) and the 1F governance substrate (merged_into +
 // append-only audit trigger + SkillGovernanceProposal + SkillCorrectionTask). Applied
@@ -1301,6 +1315,68 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       }
     }
 
+    // DOC-1b — seed a TalentDocument as a projection over the canonical
+    // documents.Document quartet (Document + Revision + Artifact + Association).
+    // DocumentTypes are seeded by the DOC-1b migration; the reduced TalentDocument
+    // is linked by document_id. The edition-read projection reads the generic
+    // metadata (filename/mime/uploaded_at) back out of documents.
+    const TALENT_DOC_TYPE_IDS: Record<string, string> = {
+      resume: '01900000-0000-7000-8000-0000000002d1',
+      cover_letter: '01900000-0000-7000-8000-0000000002d2',
+      certification: '01900000-0000-7000-8000-0000000002d3',
+      work_sample: '01900000-0000-7000-8000-0000000002d4',
+      reference_letter: '01900000-0000-7000-8000-0000000002d5',
+      other: '01900000-0000-7000-8000-0000000002d6',
+    };
+    async function seedTalentDocumentCanonical(
+      c: Client,
+      a: {
+        talentDocumentId: string;
+        talentId: string;
+        tenantId: string;
+        actorId: string;
+        documentType: string;
+        filename: string;
+        storageRef: string;
+        mimeType: string;
+        sizeBytes: number;
+        uploadedAt: string;
+        isActive?: boolean;
+      },
+    ): Promise<void> {
+      const { randomUUID } = require('node:crypto') as typeof import('node:crypto');
+      const docId = randomUUID();
+      const revId = randomUUID();
+      const artId = randomUUID();
+      const assocId = randomUUID();
+      const active = a.isActive ?? true;
+      await c.query(
+        `INSERT INTO documents."Document" ("id","tenant_id","document_type_id","title","status","execution_mode","source_kind","created_by","created_at")
+         VALUES ($1::uuid,$2::uuid,$3::uuid,$4,$5,'NO_SIGNATURE','UPLOADED',$6::uuid,$7::timestamptz)`,
+        [docId, a.tenantId, TALENT_DOC_TYPE_IDS[a.documentType], a.filename, active ? 'EXECUTED' : 'VOIDED', a.actorId, a.uploadedAt],
+      );
+      await c.query(
+        `INSERT INTO documents."DocumentRevision" ("id","tenant_id","document_id","revision_number","mime_type","byte_size","content_sha256","status","created_by","created_at","frozen_at")
+         VALUES ($1::uuid,$2::uuid,$3::uuid,1,$4,$5,'unknown','FROZEN',$6::uuid,$7::timestamptz,$7::timestamptz)`,
+        [revId, a.tenantId, docId, a.mimeType, a.sizeBytes, a.actorId, a.uploadedAt],
+      );
+      await c.query(
+        `INSERT INTO documents."DocumentArtifact" ("id","tenant_id","revision_id","document_id","artifact_role","storage_provider","storage_locator","mime_type","byte_size","sha256","immutability_state","retention_class","created_at","created_by")
+         VALUES ($1::uuid,$2::uuid,$3::uuid,$4::uuid,'SOURCE_UPLOAD','aramo-s3',$5,$6,$7,'unknown','FROZEN','TALENT_DOCUMENT',$8::timestamptz,$9::uuid)`,
+        [artId, a.tenantId, revId, docId, a.storageRef, a.mimeType, a.sizeBytes, a.uploadedAt, a.actorId],
+      );
+      await c.query(
+        `INSERT INTO documents."DocumentAssociation" ("id","tenant_id","document_id","resource_type","resource_id","relationship","created_at","created_by")
+         VALUES ($1::uuid,$2::uuid,$3::uuid,'TALENT',$4::uuid,'SUBJECT',$5::timestamptz,$6::uuid)`,
+        [assocId, a.tenantId, docId, a.talentId, a.uploadedAt, a.actorId],
+      );
+      await c.query(
+        `INSERT INTO talent_evidence."TalentDocument" ("id","talent_id","tenant_id","parse_status","consent_scope_at_upload","retention_policy","is_active","document_id")
+         VALUES ($1::uuid,$2::uuid,$3::uuid,'parsed'::"talent_evidence"."TalentDocumentParseStatus",ARRAY[]::text[],'default'::"talent_evidence"."TalentDocumentRetentionPolicy",$4,$5::uuid)`,
+        [a.talentDocumentId, a.talentId, a.tenantId, active, docId],
+      );
+    }
+
     // Truncate every table the consent + ingestion pacts touch so each
     // interaction starts from a known-empty floor. The Pact verifier runs
     // interactions in sequence; without a reset a prior interaction's
@@ -1333,6 +1409,10 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // TI-1G — fixed-id work-auth fixtures must not collide across interactions.
       await c.query('TRUNCATE TABLE talent_evidence."TalentWorkAuthorization" CASCADE');
       await c.query('TRUNCATE TABLE talent_evidence."TalentDocument" CASCADE');
+      // DOC-1b — the canonical documents backing TalentDocument (CASCADE clears
+      // Revision/Artifact/Association/Event; the SYSTEM DocumentTypes seeded by
+      // the DOC-1b migration are NOT truncated — the seeds reference them by id).
+      await c.query('TRUNCATE TABLE documents."Document" CASCADE');
       // TI-1H — per-edition résumé-text rows (the edition-text read state seeds a
       // fixed-id row; truncate so it does not collide across interactions).
       await c.query('TRUNCATE TABLE talent_record."talent_resume_text" CASCADE');
@@ -3338,6 +3418,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         // M4 PR-3 §4.8 — evidence + talent-evidence + submittal
         // migrations applied so the submittal-create pact verification
         // can build the evidence package + persist the workflow record.
+        DOCUMENTS_INIT_MIGRATION,
         TALENT_EVIDENCE_INIT_MIGRATION,
         TALENT_EVIDENCE_TR7_MIGRATION,
         TALENT_EVIDENCE_HF1_MIGRATION,
@@ -3346,6 +3427,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         TALENT_EVIDENCE_TI1A_MIGRATION,
         TALENT_EVIDENCE_TI1FA_MIGRATION,
         TALENT_EVIDENCE_TI1G_MIGRATION,
+        TALENT_EVIDENCE_DOC1B_MIGRATION,
         // SKILL-TAX-1F-B2 — canonical skills-taxonomy schema + 1F governance substrate
         // (platform-governance-consumer state handlers seed these tables).
         SKILLS_TAXONOMY_INIT_MIGRATION,
@@ -6950,17 +7032,18 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
               firstName: 'Dana',
               lastName: 'Rivera',
             });
-            await c.query(
-              `INSERT INTO talent_evidence."TalentDocument"
-                 (id, talent_id, tenant_id, uploaded_by_actor_id, uploaded_at, document_type,
-                  filename, file_storage_ref, mime_type, size_bytes, parse_status,
-                  consent_scope_at_upload, retention_policy, is_active)
-               VALUES ($2::uuid, $1::uuid, $3::uuid, $3::uuid, '2026-07-01T00:00:00Z',
-                  'resume'::"talent_evidence"."TalentDocumentType", 'dana-general.pdf', 'k/p',
-                  'application/pdf', 1000, 'parsed'::"talent_evidence"."TalentDocumentParseStatus",
-                  ARRAY[]::text[], 'default'::"talent_evidence"."TalentDocumentRetentionPolicy", true)`,
-              [ATSW_PIPE_TALENT_ID, ATSW_PIPE_RE_DOC, TENANT_ID],
-            );
+            await seedTalentDocumentCanonical(c, {
+              talentDocumentId: ATSW_PIPE_RE_DOC,
+              talentId: ATSW_PIPE_TALENT_ID,
+              tenantId: TENANT_ID,
+              actorId: TENANT_ID,
+              documentType: 'resume',
+              filename: 'dana-general.pdf',
+              storageRef: 'k/p',
+              mimeType: 'application/pdf',
+              sizeBytes: 1000,
+              uploadedAt: '2026-07-01T00:00:00Z',
+            });
             await c.query(
               `INSERT INTO talent_evidence."TalentResumeEdition"
                  (id, tenant_id, talent_id, talent_document_id, content_hash, purpose, created_at, created_by)
@@ -7008,17 +7091,18 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
               firstName: 'Dana',
               lastName: 'Rivera',
             });
-            await c.query(
-              `INSERT INTO talent_evidence."TalentDocument"
-                 (id, talent_id, tenant_id, uploaded_by_actor_id, uploaded_at, document_type,
-                  filename, file_storage_ref, mime_type, size_bytes, parse_status,
-                  consent_scope_at_upload, retention_policy, is_active)
-               VALUES ($2::uuid, $1::uuid, $3::uuid, $3::uuid, '2026-07-01T00:00:00Z',
-                  'resume'::"talent_evidence"."TalentDocumentType", 'dana-general.pdf', 'k/p',
-                  'application/pdf', 1000, 'parsed'::"talent_evidence"."TalentDocumentParseStatus",
-                  ARRAY[]::text[], 'default'::"talent_evidence"."TalentDocumentRetentionPolicy", true)`,
-              [ATSW_PIPE_TALENT_ID, ATSW_PIPE_RE_DOC, TENANT_ID],
-            );
+            await seedTalentDocumentCanonical(c, {
+              talentDocumentId: ATSW_PIPE_RE_DOC,
+              talentId: ATSW_PIPE_TALENT_ID,
+              tenantId: TENANT_ID,
+              actorId: TENANT_ID,
+              documentType: 'resume',
+              filename: 'dana-general.pdf',
+              storageRef: 'k/p',
+              mimeType: 'application/pdf',
+              sizeBytes: 1000,
+              uploadedAt: '2026-07-01T00:00:00Z',
+            });
             await c.query(
               `INSERT INTO talent_evidence."TalentResumeEdition"
                  (id, tenant_id, talent_id, talent_document_id, content_hash, purpose, created_at, created_by)
@@ -7211,23 +7295,17 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         await withClient(async (c) => {
           await resetAllRows(c);
           await seedAtsWebTalentRecord(c, { id: ATSW_RE_TALENT_ID, firstName: 'Grace', lastName: 'Hopper' });
-          await c.query(
-            `INSERT INTO talent_evidence."TalentDocument"
-               (id, talent_id, tenant_id, uploaded_by_actor_id, uploaded_at, document_type,
-                filename, file_storage_ref, mime_type, size_bytes, parse_status,
-                consent_scope_at_upload, retention_policy, is_active)
-             VALUES
-               ($2::uuid, $1::uuid, $3::uuid, $3::uuid, '2026-07-01T00:00:00Z',
-                'resume'::"talent_evidence"."TalentDocumentType", 'grace-general.pdf', 'k/a',
-                'application/pdf', 1000, 'parsed'::"talent_evidence"."TalentDocumentParseStatus",
-                ARRAY[]::text[], 'default'::"talent_evidence"."TalentDocumentRetentionPolicy", true),
-               ($4::uuid, $1::uuid, $3::uuid, $3::uuid, '2026-07-05T00:00:00Z',
-                'resume'::"talent_evidence"."TalentDocumentType", 'grace-genai.docx', 'k/b',
-                'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 2000,
-                'parsed'::"talent_evidence"."TalentDocumentParseStatus", ARRAY[]::text[],
-                'default'::"talent_evidence"."TalentDocumentRetentionPolicy", true)`,
-            [ATSW_RE_TALENT_ID, ATSW_RE_DOC_A, TENANT_ID, ATSW_RE_DOC_B],
-          );
+          await seedTalentDocumentCanonical(c, {
+            talentDocumentId: ATSW_RE_DOC_A, talentId: ATSW_RE_TALENT_ID, tenantId: TENANT_ID, actorId: TENANT_ID,
+            documentType: 'resume', filename: 'grace-general.pdf', storageRef: 'k/a',
+            mimeType: 'application/pdf', sizeBytes: 1000, uploadedAt: '2026-07-01T00:00:00Z',
+          });
+          await seedTalentDocumentCanonical(c, {
+            talentDocumentId: ATSW_RE_DOC_B, talentId: ATSW_RE_TALENT_ID, tenantId: TENANT_ID, actorId: TENANT_ID,
+            documentType: 'resume', filename: 'grace-genai.docx', storageRef: 'k/b',
+            mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            sizeBytes: 2000, uploadedAt: '2026-07-05T00:00:00Z',
+          });
           await c.query(
             `INSERT INTO talent_evidence."TalentResumeEdition"
                (id, tenant_id, talent_id, talent_document_id, content_hash, purpose, created_at, created_by)
@@ -7256,18 +7334,11 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         await withClient(async (c) => {
           await resetAllRows(c);
           await seedAtsWebTalentRecord(c, { id: ATSW_RT_TALENT_ID, firstName: 'Ada', lastName: 'Lovelace' });
-          await c.query(
-            `INSERT INTO talent_evidence."TalentDocument"
-               (id, talent_id, tenant_id, uploaded_by_actor_id, uploaded_at, document_type,
-                filename, file_storage_ref, mime_type, size_bytes, parse_status,
-                consent_scope_at_upload, retention_policy, is_active)
-             VALUES
-               ($2::uuid, $1::uuid, $3::uuid, $3::uuid, '2026-07-01T00:00:00Z',
-                'resume'::"talent_evidence"."TalentDocumentType", 'ada-general.pdf', 'k/rt',
-                'application/pdf', 1200, 'parsed'::"talent_evidence"."TalentDocumentParseStatus",
-                ARRAY[]::text[], 'default'::"talent_evidence"."TalentDocumentRetentionPolicy", true)`,
-            [ATSW_RT_TALENT_ID, ATSW_RT_DOC, TENANT_ID],
-          );
+          await seedTalentDocumentCanonical(c, {
+            talentDocumentId: ATSW_RT_DOC, talentId: ATSW_RT_TALENT_ID, tenantId: TENANT_ID, actorId: TENANT_ID,
+            documentType: 'resume', filename: 'ada-general.pdf', storageRef: 'k/rt',
+            mimeType: 'application/pdf', sizeBytes: 1200, uploadedAt: '2026-07-01T00:00:00Z',
+          });
           await c.query(
             `INSERT INTO talent_evidence."TalentResumeEdition"
                (id, tenant_id, talent_id, talent_document_id, content_hash, purpose, created_at, created_by)
@@ -7312,17 +7383,11 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         await withClient(async (c) => {
           await resetAllRows(c);
           await seedAtsWebTalentRecord(c, { id: ATSW_RE_TALENT_ID, firstName: 'Grace', lastName: 'Hopper' });
-          await c.query(
-            `INSERT INTO talent_evidence."TalentDocument"
-               (id, talent_id, tenant_id, uploaded_by_actor_id, uploaded_at, document_type,
-                filename, file_storage_ref, mime_type, size_bytes, parse_status,
-                consent_scope_at_upload, retention_policy, is_active)
-             VALUES ($2::uuid, $1::uuid, $3::uuid, $3::uuid, '2026-07-01T00:00:00Z',
-                'resume'::"talent_evidence"."TalentDocumentType", 'grace.pdf', 'k/a', 'application/pdf',
-                1000, 'parsed'::"talent_evidence"."TalentDocumentParseStatus", ARRAY[]::text[],
-                'default'::"talent_evidence"."TalentDocumentRetentionPolicy", true)`,
-            [ATSW_RE_TALENT_ID, ATSW_RE_DOC_A, TENANT_ID],
-          );
+          await seedTalentDocumentCanonical(c, {
+            talentDocumentId: ATSW_RE_DOC_A, talentId: ATSW_RE_TALENT_ID, tenantId: TENANT_ID, actorId: TENANT_ID,
+            documentType: 'resume', filename: 'grace.pdf', storageRef: 'k/a',
+            mimeType: 'application/pdf', sizeBytes: 1000, uploadedAt: '2026-07-01T00:00:00Z',
+          });
           await c.query(
             `INSERT INTO talent_evidence."TalentResumeEdition"
                (id, tenant_id, talent_id, talent_document_id, content_hash, purpose, created_at, created_by)
@@ -7343,17 +7408,11 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           await withClient(async (c) => {
             await resetAllRows(c);
             await seedAtsWebTalentRecord(c, { id: ATSW_RE_TALENT_ID, firstName: 'Grace', lastName: 'Hopper' });
-            await c.query(
-              `INSERT INTO talent_evidence."TalentDocument"
-                 (id, talent_id, tenant_id, uploaded_by_actor_id, uploaded_at, document_type,
-                  filename, file_storage_ref, mime_type, size_bytes, parse_status,
-                  consent_scope_at_upload, retention_policy, is_active)
-               VALUES ($2::uuid, $1::uuid, $3::uuid, $3::uuid, '2026-07-01T00:00:00Z',
-                  'resume'::"talent_evidence"."TalentDocumentType", 'grace.pdf', 'k/a', 'application/pdf',
-                  1000, 'parsed'::"talent_evidence"."TalentDocumentParseStatus", ARRAY[]::text[],
-                  'default'::"talent_evidence"."TalentDocumentRetentionPolicy", true)`,
-              [ATSW_RE_TALENT_ID, ATSW_RE_DOC_A, TENANT_ID],
-            );
+            await seedTalentDocumentCanonical(c, {
+              talentDocumentId: ATSW_RE_DOC_A, talentId: ATSW_RE_TALENT_ID, tenantId: TENANT_ID, actorId: TENANT_ID,
+              documentType: 'resume', filename: 'grace.pdf', storageRef: 'k/a',
+              mimeType: 'application/pdf', sizeBytes: 1000, uploadedAt: '2026-07-01T00:00:00Z',
+            });
             await c.query(
               `INSERT INTO talent_evidence."TalentResumeEdition"
                  (id, tenant_id, talent_id, talent_document_id, content_hash, purpose, attachment_id, created_at, created_by)

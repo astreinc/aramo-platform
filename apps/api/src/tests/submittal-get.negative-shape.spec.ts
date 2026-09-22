@@ -76,9 +76,17 @@ const REQUISITION_INIT_MIGRATION = resolve(
   ROOT,
   'libs/requisition/prisma/migrations/20260602100000_init_requisition_model/migration.sql',
 );
+const DOCUMENTS_INIT_MIGRATION = resolve(
+  ROOT,
+  'libs/documents/prisma/migrations/20260921180000_init_documents_model/migration.sql',
+);
 const TALENT_EVIDENCE_INIT_MIGRATION = resolve(
   ROOT,
   'libs/talent-evidence/prisma/migrations/20260519170000_init_talent_evidence_model/migration.sql',
+);
+const TALENT_EVIDENCE_DOC1B_MIGRATION = resolve(
+  ROOT,
+  'libs/talent-evidence/prisma/migrations/20260922120000_doc1b_talentdocument_reconciliation/migration.sql',
 );
 const TALENT_EVIDENCE_TR7_MIGRATION = resolve(
   ROOT,
@@ -239,11 +247,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         EXAMINATION_LIVE_LIST_MIGRATION,
         JOB_DOMAIN_INIT_MIGRATION,
         REQUISITION_INIT_MIGRATION,
+        DOCUMENTS_INIT_MIGRATION,
         TALENT_EVIDENCE_INIT_MIGRATION,
         TALENT_EVIDENCE_TR7_MIGRATION,
         TALENT_EVIDENCE_HF1_MIGRATION,
         TALENT_EVIDENCE_HF2_MIGRATION,
         TALENT_EVIDENCE_1G_MIGRATION,
+        TALENT_EVIDENCE_DOC1B_MIGRATION,
         EVIDENCE_INIT_MIGRATION,
         SUBMITTAL_INIT_MIGRATION,
         SUBMITTAL_REVOKE_MIGRATION,

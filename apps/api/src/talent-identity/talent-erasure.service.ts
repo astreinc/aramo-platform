@@ -67,7 +67,16 @@ const INVENTORY: ErasureStep[] = [
   { label: 'talent_evidence."TalentContactMethod"', keyspace: 'record', where: `talent_id = ANY($1::uuid[])` },
   { label: 'talent_evidence."TalentRateExpectation"', keyspace: 'record', where: `talent_id = ANY($1::uuid[])` },
   { label: 'talent_evidence."TalentWorkAuthorization"', keyspace: 'record', where: `talent_id = ANY($1::uuid[])` },
-  { label: 'talent_evidence."TalentDocument"', keyspace: 'record', where: `talent_id = ANY($1::uuid[])`, s3RefColumn: 'file_storage_ref' },
+  { label: 'talent_evidence."TalentDocument"', keyspace: 'record', where: `talent_id = ANY($1::uuid[])` },
+  // DOC-1b — the canonical documents.Document quartet for a talent (linked via
+  // DocumentAssociation.resource_type='TALENT' AND resource_id=talent_id). The S3
+  // bytes moved from TalentDocument.file_storage_ref to DocumentArtifact.
+  // storage_locator. FK-safe order: artifact -> revision -> event -> document
+  // (deleting the Document cascades its associations, per the DOC-1b FK change).
+  { label: 'documents."DocumentArtifact"', keyspace: 'record', where: `document_id IN (SELECT document_id FROM documents."DocumentAssociation" WHERE resource_type = 'TALENT' AND resource_id = ANY($1::uuid[]))`, s3RefColumn: 'storage_locator' },
+  { label: 'documents."DocumentRevision"', keyspace: 'record', where: `document_id IN (SELECT document_id FROM documents."DocumentAssociation" WHERE resource_type = 'TALENT' AND resource_id = ANY($1::uuid[]))` },
+  { label: 'documents."DocumentEvent"', keyspace: 'record', where: `document_id IN (SELECT document_id FROM documents."DocumentAssociation" WHERE resource_type = 'TALENT' AND resource_id = ANY($1::uuid[]))` },
+  { label: 'documents."Document"', keyspace: 'record', where: `id IN (SELECT document_id FROM documents."DocumentAssociation" WHERE resource_type = 'TALENT' AND resource_id = ANY($1::uuid[]))` },
   { label: 'talent_evidence."TalentDerivedSnapshot"', keyspace: 'record', where: `talent_id = ANY($1::uuid[])` },
   // ⚠ INVENTORY ADDITION (TR-7 B1 PII; absent from the reconcile repoint set — HALT-noted):
   { label: 'talent_evidence."TalentEducationEntry"', keyspace: 'record', where: `talent_id = ANY($1::uuid[])` },

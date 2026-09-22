@@ -1,8 +1,9 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
+import { Client } from 'pg';
 
 import { PrismaService } from '../lib/prisma/prisma.service.js';
 import { TalentEvidenceRepository } from '../lib/talent-evidence.repository.js';
@@ -24,53 +25,19 @@ import { TalentEvidenceRepository } from '../lib/talent-evidence.repository.js';
 //     (no insert failure; the application layer is responsible for
 //     referential integrity per Architecture §7.3).
 
-const MIGRATION_PATH = resolve(
-  __dirname,
-  '../../prisma/migrations/20260519170000_init_talent_evidence_model/migration.sql',
-);
-// TR-7 B1 — TalentEducationEntry + TalentCertificationEntry (the regenerated
-// client knows these models).
-const TR7_MIGRATION_PATH = resolve(
-  __dirname,
-  '../../prisma/migrations/20260714120000_tr7_b1_education_certification/migration.sql',
-);
-// HF1 durable-fact-extraction provenance columns (SEPARATE resolve const — never
-// a 2nd resolve() arg, which would ENOTDIR). Applied after the TR-7 migration.
-const HF1_MIGRATION_PATH = resolve(
-  __dirname,
-  '../../prisma/migrations/20260915120000_hf1_resume_provenance/migration.sql',
-);
-// HF2 Talent-Experience-Intelligence columns/tables (SEPARATE resolve const).
-const HF2_MIGRATION_PATH = resolve(
-  __dirname,
-  '../../prisma/migrations/20260915170000_hf2_experience_intelligence/migration.sql',
-);
-// SKILL-TAX-1G additive canonical columns (SEPARATE resolve const; applied after HF2).
-const G1G_MIGRATION_PATH = resolve(
-  __dirname,
-  '../../prisma/migrations/20260915180000_skill_tax_1g_canonical_reconciliation/migration.sql',
-);
-// SEPARATE resolve() const (never a 2nd resolve() arg → ENOTDIR). TALENT-INTEL-1
-// TI-1A résumé-edition substrate; applied after HF2 / SKILL-TAX-1G (independent
-// additive new tables).
-const TI1A_MIGRATION_PATH = resolve(
-  __dirname,
-  '../../prisma/migrations/20260916120000_talent_intel_1a_resume_edition/migration.sql',
-);
-// TALENT-INTEL-1 TI-1F-A ResumeExtractionDraft review-artifact table (SEPARATE
-// resolve() const — never a 2nd resolve() arg → ENOTDIR; additive new table,
-// applied after TI-1A).
-const TI1FA_MIGRATION_PATH = resolve(
-  __dirname,
-  '../../prisma/migrations/20260919120000_talent_intel_1f_a_resume_extraction_draft/migration.sql',
-);
-// TALENT-INTEL-1 TI-1G work-authorization temporal columns (SEPARATE resolve()
-// const — never a 2nd resolve() arg → ENOTDIR; additive ALTER, applied after
-// TI-1F-A).
-const TI1G_MIGRATION_PATH = resolve(
-  __dirname,
-  '../../prisma/migrations/20260920140000_talent_intel_1g_work_authorization_temporal/migration.sql',
-);
+// DOC-1b — the whole schema is now applied by globbing each lib's migrations dir
+// and applying every migration WHOLE-FILE (pg supports multi-statement + the
+// documents trigger's dollar-quoted body, which a naive `;`-split would break).
+// documents is applied FIRST (DOC-1b writers/backfill target it), then
+// talent-evidence (incl. the DOC-1b reconciliation migration).
+const ROOT = resolve(__dirname, '../../../..');
+function migrationFiles(libDir: string): string[] {
+  const dir = resolve(ROOT, libDir, 'prisma/migrations');
+  return readdirSync(dir)
+    .filter((n) => /^\d/.test(n))
+    .sort()
+    .map((n) => resolve(dir, n, 'migration.sql'));
+}
 
 // All test UUIDs use hex-only characters per RFC 4122. Tags chosen for
 // mnemonic clarity within the hex set: 1=tenant, 2=skill, 3=source-record,
@@ -94,32 +61,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     beforeAll(async () => {
       container = await new PostgreSqlContainer('postgres:17').start();
       const url = container.getConnectionUri();
-      const migrationSql = readFileSync(MIGRATION_PATH, 'utf8');
-      const tr7MigrationSql = readFileSync(TR7_MIGRATION_PATH, 'utf8');
-      const hf1MigrationSql = readFileSync(HF1_MIGRATION_PATH, 'utf8');
-      const hf2MigrationSql = readFileSync(HF2_MIGRATION_PATH, 'utf8');
-      const g1gMigrationSql = readFileSync(G1G_MIGRATION_PATH, 'utf8');
-      const ti1aMigrationSql = readFileSync(TI1A_MIGRATION_PATH, 'utf8');
-      const ti1faMigrationSql = readFileSync(TI1FA_MIGRATION_PATH, 'utf8');
-      const ti1gMigrationSql = readFileSync(TI1G_MIGRATION_PATH, 'utf8');
 
-      const setupClient = new PrismaService(url);
-      await setupClient.$connect();
-      for (const stmt of [
-        ...migrationSql.split(';'),
-        ...tr7MigrationSql.split(';'),
-        ...hf1MigrationSql.split(';'),
-        ...hf2MigrationSql.split(';'),
-        ...g1gMigrationSql.split(';'),
-        ...ti1aMigrationSql.split(';'),
-        ...ti1faMigrationSql.split(';'),
-        ...ti1gMigrationSql.split(';'),
-      ]) {
-        const trimmed = stmt.trim();
-        if (trimmed.length === 0) continue;
-        await setupClient.$executeRawUnsafe(trimmed);
-      }
-      await setupClient.$disconnect();
+      const setup = new Client({ connectionString: url });
+      await setup.connect();
+      for (const p of migrationFiles('libs/documents')) await setup.query(readFileSync(p, 'utf8'));
+      for (const p of migrationFiles('libs/talent-evidence')) await setup.query(readFileSync(p, 'utf8'));
+      await setup.end();
 
       prisma = new PrismaService(url);
       await prisma.$connect();
@@ -258,12 +205,22 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(wh.source_document_id).toBe(DOC_ID);
 
       const readDoc = await repo.findTalentDocumentById(DOC_ID);
-      expect(readDoc?.uploaded_by_actor_id).toBe(ACTOR);
-      expect(readDoc?.document_type).toBe('resume');
+      // DOC-1b — TalentDocument keeps only the talent-specific fields.
       expect(readDoc?.consent_scope_at_upload).toEqual(['matching', 'contacting']);
       expect(readDoc?.parse_status).toBe('parsed');
       expect(readDoc?.retention_policy).toBe('default');
-      expect(readDoc?.size_bytes).toBe(524288);
+      expect(readDoc?.document_id).not.toBeNull();
+      // The generic file metadata now lives on documents.Document (created_by,
+      // type) + DocumentRevision (byte_size), linked by document_id.
+      const docMeta = await prisma.$queryRawUnsafe<Array<{ created_by: string; key: string; byte_size: number }>>(
+        `SELECT d.created_by, dt.key, r.byte_size
+           FROM "documents"."Document" d
+           JOIN "documents"."DocumentType" dt ON dt.id = d.document_type_id
+           JOIN "documents"."DocumentRevision" r ON r.document_id = d.id AND r.revision_number = 1
+          WHERE d.id = $1`,
+        readDoc?.document_id,
+      );
+      expect(docMeta[0]).toMatchObject({ created_by: ACTOR, key: 'TALENT_RESUME', byte_size: 524288 });
 
       const readWh = await repo.findTalentWorkHistoryEntryById(wh.id);
       expect(readWh?.source_document_id).toBe(DOC_ID);
@@ -516,7 +473,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         is_active: false,
       });
 
-      expect(created.uploaded_by_actor_id).toBe('00000000-0000-7000-8000-deadbeef0000');
+      // DOC-1b — the forward-ref actor UUID (no FK) now lives on the canonical
+      // documents.Document.created_by; a non-existent UUID still persists.
+      expect(created.document_id).not.toBeNull();
+      const orphan = await prisma.$queryRawUnsafe<Array<{ created_by: string }>>(
+        `SELECT created_by FROM "documents"."Document" WHERE id = $1`,
+        created.document_id,
+      );
+      expect(orphan[0]?.created_by).toBe('00000000-0000-7000-8000-deadbeef0000');
     });
 
     it('TalentSelectionEvent is NOT present on the Prisma client (deferred to M5 per directive §2 Ruling 1)', () => {
