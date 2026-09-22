@@ -221,6 +221,8 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   SKILL_CONFLICT: 409,
   SKILL_PROPOSAL_NOT_PENDING: 409,
   SKILL_PROPOSAL_PAYLOAD_INVALID: 422,
+  COMMUNICATION_EMAIL_RECIPIENT_UNAVAILABLE: 422,
+  COMMUNICATION_REQUISITION_CONTACT_CONTEXT_INVALID: 422,
 };
 
 // Base error class. Thrown anywhere in the app where a structured response

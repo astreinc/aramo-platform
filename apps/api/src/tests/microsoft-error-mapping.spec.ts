@@ -52,7 +52,7 @@ describe('MicrosoftAuthorizationController error mapping', () => {
     });
     await expect(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      ctl.sendEmail(AUTH, { to_email: 'x@y.z', subject: 's', body: 'b' } as any, 'rq-2'),
+      ctl.sendEmail(AUTH, { talent_record_id: 't', requisition_id: 'r', subject: 's', body: 'b' } as any, 'rq-2', { resolveVisibleRequisitionIds: async () => null } as any),
     ).rejects.toMatchObject({ code: 'MICROSOFT_PROVIDER_NOT_CONFIGURED', statusCode: 409 });
   });
 
@@ -62,7 +62,7 @@ describe('MicrosoftAuthorizationController error mapping', () => {
     });
     await expect(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      ctl.sendEmail(AUTH, { to_email: 'x@y.z', subject: 's', body: 'b' } as any, 'rq-3'),
+      ctl.sendEmail(AUTH, { talent_record_id: 't', requisition_id: 'r', subject: 's', body: 'b' } as any, 'rq-3', { resolveVisibleRequisitionIds: async () => null } as any),
     ).rejects.toMatchObject({ code: 'MICROSOFT_REAUTHORIZATION_REQUIRED', statusCode: 409 });
   });
 });

@@ -313,6 +313,12 @@ const COMMUNICATIONS_C2B_MEETING_MIGRATION = resolve(
   ROOT,
   'libs/communications/prisma/migrations/20260905140000_comm_c2b_meeting_channel/migration.sql',
 );
+// COMM-C4 — SEPARATE const (single resolve() arg; a 2nd arg would concatenate
+// into one nested path → ENOTDIR, per the warning above).
+const COMMUNICATIONS_C4_MIGRATION = resolve(
+  ROOT,
+  'libs/communications/prisma/migrations/20260921170000_comm_c4_email_content_capture/migration.sql',
+);
 // PR-A1c §4 sweep — metering schema applied because every selection +
 // submittal state-transition write method (the methods the pact provider
 // formerly exercised through the retired thin-consumer pacts) now emits
@@ -3413,6 +3419,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         COMMUNICATIONS_INIT_MIGRATION,
         COMMUNICATIONS_C2B_MIGRATION,
         COMMUNICATIONS_C2B_MEETING_MIGRATION,
+        COMMUNICATIONS_C4_MIGRATION,
         // PR-A1c §4 — metering schema (in-tx UsageEvent INSERT in every
         // selection + submittal state-transition write method).
         METERING_INIT_MIGRATION,
@@ -3778,6 +3785,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           'communication:voice:call',
           'communication:disposition:write',
           'communication:notes:write',
+          // COMM-C4 — gates the requisition-contact email draft (and send).
+          'communication:email:send',
           // PC-5c — pipeline state machine + activity RolesGuard
           // @RequireScopes. pipeline:change-status gates the transition
           // endpoint (the state machine); pipeline:remove omitted (DELETE is
@@ -5017,6 +5026,47 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           );
         });
       },
+      // COMM-C4 — the requisition-contact draft reads authoritative context: a
+      // live Talent WITH email1, a Requisition, a Pipeline linking them, and the
+      // recruiter's identity. The endpoint writes nothing; it returns a hydrated,
+      // recipient-server-owned draft.
+      'a tenant entitled to ats with a caller holding communication:email:send and a Talent associated with a requisition (COMM-C4 draft)':
+        async () => {
+          await withClient(async (c) => {
+            const talent = PACT_TALENT_ID;
+            const requisition = 'bbbbbbbb-bbbb-7bbb-8bbb-bbbbbbbbbbbb';
+            const company = 'dddddddd-dddd-7ddd-8ddd-dddddddddddd';
+            const pipeline = 'ffffffff-ffff-7fff-8fff-ffffffffffff';
+            await c.query(`DELETE FROM pipeline."Pipeline" WHERE tenant_id = $1::uuid`, [TENANT_ID]);
+            await c.query(
+              `INSERT INTO talent_record."TalentRecord"
+                 (id, tenant_id, first_name, last_name, email1, created_at, updated_at)
+               VALUES ($1,$2,'Omvignesh','Murugesan','pact-talent@example.test',NOW(),NOW())
+               ON CONFLICT (id) DO NOTHING`,
+              [talent, TENANT_ID],
+            );
+            await c.query(
+              `INSERT INTO requisition."Requisition"
+                 (id, tenant_id, title, company_id, status, requisition_number)
+               VALUES ($1,$2,'Business Analyst - Multi-Family',$3,'open'::requisition."RecruitingStatus",
+                       (SELECT COALESCE(MAX(requisition_number), 999) + 1 FROM requisition."Requisition" WHERE tenant_id = $2))
+               ON CONFLICT (id) DO NOTHING`,
+              [requisition, TENANT_ID, company],
+            );
+            await c.query(
+              `INSERT INTO pipeline."Pipeline" (id, tenant_id, talent_record_id, requisition_id, status)
+               VALUES ($1,$2,$3,$4,'no_contact'::pipeline."PipelineStatus")
+               ON CONFLICT (id) DO NOTHING`,
+              [pipeline, TENANT_ID, talent, requisition],
+            );
+            await c.query(
+              `INSERT INTO identity."User" (id, email, display_name, updated_at)
+               VALUES ($1,'recruiter-pact@example.test','Purush Pichaimuthu',NOW())
+               ON CONFLICT (id) DO NOTHING`,
+              [RECRUITER_ID],
+            );
+          });
+        },
       // COMM-C2A — a voice interaction (connected) associated to BOTH the Talent
       // (subject) AND the Requisition (regarding), so the voice-evidence read
       // returns provider-verified two-way evidence for (talent, requisition).

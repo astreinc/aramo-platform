@@ -26,6 +26,7 @@ const provider = makeAtsWebProvider();
 const INTERACTION_ID = 'eeeeeeee-eeee-7eee-8eee-eeeeeeeeeeee';
 const CONNECTION_ID = 'cccccccc-cccc-7ccc-8ccc-cccccccccccc';
 const TALENT_ID = 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa';
+const REQ_ID = 'bbbbbbbb-bbbb-7bbb-8bbb-bbbbbbbbbbbb';
 
 describe('ats-web → GET /v1/communications/capabilities', () => {
   it('returns 200 with a provider-neutral capability descriptor', async () => {
@@ -404,6 +405,50 @@ describe('ats-web → POST /v1/communications/interactions/{id}/disposition (COM
           body: JSON.stringify({ disposition: 'no_answer' }),
         });
         expect(res.status).toBe(201);
+      });
+  });
+});
+
+describe('ats-web → POST /v1/communications/email-drafts/requisition-contact (COMM-C4)', () => {
+  it('returns 200 with a prepared draft — recipient server-owned (editable:false), ids-only request', async () => {
+    await provider
+      .addInteraction()
+      .given(
+        'a tenant entitled to ats with a caller holding communication:email:send and a Talent associated with a requisition (COMM-C4 draft)',
+      )
+      .uponReceiving('an ats-web requisition-contact email draft preparation (ids only)')
+      .withRequest('POST', '/v1/communications/email-drafts/requisition-contact', (b) => {
+        b.headers({ Cookie: like(ACCESS_COOKIE) });
+        // ids ONLY — no recipient/subject/body is supplied by the client.
+        b.jsonBody({ talent_record_id: uuid(TALENT_ID), requisition_id: uuid(REQ_ID) });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          to: {
+            email: regex('.+@.+', 'talent@example.test'),
+            display_name: like('Omvignesh Murugesan'),
+            // Recipient is server-owned; the client never edits or supplies it.
+            editable: false,
+          },
+          subject: like('Business Analyst - Multi-Family'),
+          body: like('Hi Omvignesh,'),
+          context: {
+            requisition_reference: like('REQ-1000'),
+            requisition_title: like('Business Analyst - Multi-Family'),
+            template_id: like('system.requisition-contact.v1'),
+            template_version: like('1'),
+          },
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/communications/email-drafts/requisition-contact`, {
+          method: 'POST',
+          headers: { Cookie: ACCESS_COOKIE, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ talent_record_id: TALENT_ID, requisition_id: REQ_ID }),
+        });
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as { to: { editable: boolean } };
+        expect(body.to.editable).toBe(false);
       });
   });
 });

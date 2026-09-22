@@ -2881,6 +2881,12 @@
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/comm-b5-call-initiation.integration.spec.ts",
       "status": "excluded",
+      "to": "libs/communications/prisma/migrations/20260921170000_comm_c4_email_content_capture/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/comm-b5-call-initiation.integration.spec.ts",
+      "status": "excluded",
       "to": "libs/consent/prisma/migrations/20260429164414_initial_consent_schema/migration.sql"
     },
     {
@@ -2929,6 +2935,12 @@
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/comm-b6-zoom-webhook.integration.spec.ts",
       "status": "excluded",
+      "to": "libs/communications/prisma/migrations/20260921170000_comm_c4_email_content_capture/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/comm-b6-zoom-webhook.integration.spec.ts",
+      "status": "excluded",
       "to": "libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql"
     },
     {
@@ -2959,6 +2971,12 @@
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/comm-b7-disposition-timeline.integration.spec.ts",
       "status": "excluded",
+      "to": "libs/communications/prisma/migrations/20260921170000_comm_c4_email_content_capture/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/comm-b7-disposition-timeline.integration.spec.ts",
+      "status": "excluded",
       "to": "libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql"
     },
     {
@@ -2984,6 +3002,12 @@
       "from": "apps/api/src/tests/comm-b8-provider-reference.integration.spec.ts",
       "status": "excluded",
       "to": "libs/communications/prisma/migrations/20260905140000_comm_c2b_meeting_channel/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/comm-b8-provider-reference.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/communications/prisma/migrations/20260921170000_comm_c4_email_content_capture/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -3068,6 +3092,12 @@
       "from": "apps/api/src/tests/communications-authz.integration.spec.ts",
       "status": "excluded",
       "to": "libs/communications/prisma/migrations/20260905140000_comm_c2b_meeting_channel/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/communications-authz.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/communications/prisma/migrations/20260921170000_comm_c4_email_content_capture/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -7040,6 +7070,12 @@
       "from": "apps/api/src/tests/submit-talent.integration.spec.ts",
       "status": "excluded",
       "to": "libs/communications/prisma/migrations/20260905140000_comm_c2b_meeting_channel/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/submit-talent.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/communications/prisma/migrations/20260921170000_comm_c4_email_content_capture/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -17400,6 +17436,11 @@
       "from": "pact/provider/src/verify-api.ts",
       "status": "unscoped",
       "to": "libs/communications/prisma/migrations/20260905140000_comm_c2b_meeting_channel/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "libs/communications/prisma/migrations/20260921170000_comm_c4_email_content_capture/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",

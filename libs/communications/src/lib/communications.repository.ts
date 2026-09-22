@@ -33,6 +33,8 @@ export interface InteractionRow {
   to_address: string;
   idempotency_key: string | null;
   join_reference: string | null;
+  subject: string | null;
+  body: string | null;
   started_at: Date | null;
   ringing_at: Date | null;
   connected_at: Date | null;
@@ -85,6 +87,9 @@ export class CommunicationsRepository {
     idempotency_key?: string | null;
     provider_interaction_id?: string | null;
     join_reference?: string | null;
+    // COMM-C4 — final sent subject/body for an email-channel interaction.
+    subject?: string | null;
+    body?: string | null;
     started_at?: Date | null;
     ended_at?: Date | null;
   }): Promise<InteractionRow> {
@@ -102,6 +107,8 @@ export class CommunicationsRepository {
         idempotency_key: args.idempotency_key ?? null,
         provider_interaction_id: args.provider_interaction_id ?? null,
         join_reference: args.join_reference ?? null,
+        subject: args.subject ?? null,
+        body: args.body ?? null,
         started_at: args.started_at ?? null,
         ended_at: args.ended_at ?? null,
       },

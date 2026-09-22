@@ -5,6 +5,8 @@ import { CommunicationsModule } from '@aramo/communications';
 import { ConsentModule } from '@aramo/consent';
 import { EntitlementModule } from '@aramo/entitlement';
 import { IntegrationModule } from '@aramo/integration';
+import { PipelineModule } from '@aramo/pipeline';
+import { TalentRecordModule } from '@aramo/talent-record';
 import {
   DELEGATED_TOKEN_STORE,
   DelegatedAuthorizationService,
@@ -19,6 +21,8 @@ import {
 import { ConsentEmailGateAdapter } from './consent-email-gate.adapter.js';
 import { DelegatedTokenSecretStoreAdapter } from './delegated-token-secret-store.adapter.js';
 import { EMAIL_CONSENT_GATE } from './email-consent-gate.port.js';
+import { EMAIL_RECIPIENT_RESOLVER } from './email-recipient-resolver.port.js';
+import { TalentEmailRecipientAdapter } from './talent-email-recipient.adapter.js';
 import { MicrosoftAuthorizationController } from './microsoft-authorization.controller.js';
 import { MicrosoftAuthorizationOrchestrator } from './microsoft-authorization.orchestrator.js';
 import { MicrosoftCallbackController } from './microsoft-callback.controller.js';
@@ -42,6 +46,11 @@ import { ProviderIdentityStoreAdapter } from './provider-identity-store.adapter.
     IntegrationModule,
     CommunicationsModule,
     ConsentModule,
+    TalentRecordModule,
+    // COMM-C4 — composition-root read/act into Pipeline for the governed
+    // no_contact→contacted orchestration on email acceptance (R6; apps/api edge
+    // only, NO libs/communications → pipeline dependency).
+    PipelineModule,
   ],
   controllers: [MicrosoftAuthorizationController, MicrosoftCallbackController],
   providers: [
@@ -50,7 +59,9 @@ import { ProviderIdentityStoreAdapter } from './provider-identity-store.adapter.
     DelegatedTokenSecretStoreAdapter,
     ProviderIdentityStoreAdapter,
     ConsentEmailGateAdapter,
+    TalentEmailRecipientAdapter,
     MicrosoftConfigResolver,
+    { provide: EMAIL_RECIPIENT_RESOLVER, useExisting: TalentEmailRecipientAdapter },
     { provide: MICROSOFT_OAUTH_PORT, useExisting: MicrosoftOAuthHttpAdapter },
     { provide: MICROSOFT_GRAPH_PORT, useExisting: MicrosoftGraphHttpAdapter },
     { provide: DELEGATED_TOKEN_STORE, useExisting: DelegatedTokenSecretStoreAdapter },
