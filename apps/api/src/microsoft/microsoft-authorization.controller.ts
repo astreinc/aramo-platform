@@ -1,4 +1,5 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Logger, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Logger, Post, Query, Req, UseGuards } from '@nestjs/common';
+import type { Request } from 'express';
 import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
 import { AramoError, RequestId } from '@aramo/common';
 import { RequireScopes, RolesGuard } from '@aramo/authorization';
@@ -14,6 +15,7 @@ import {
   SendMicrosoftEmailRequestDto,
 } from './dto/microsoft.dto.js';
 import { EmailConsentDeniedError } from './email-consent-gate.port.js';
+import { TalentEmailUnavailableError } from './email-recipient-resolver.port.js';
 import { MicrosoftProviderNotConfiguredError } from './microsoft-provider-not-configured.error.js';
 import {
   MicrosoftAuthorizationOrchestrator,
@@ -128,7 +130,12 @@ export class MicrosoftAuthorizationController {
     @AuthContext() auth: AuthContextType,
     @Body() body: SendMicrosoftEmailRequestDto,
     @RequestId() requestId: string,
+    @Req() req: Request,
   ): Promise<EmailSendResultView> {
+    // COMM-C4 — the caller's visible requisition set (global VisibilityInterceptor)
+    // threaded into the send so the acceptance→CONTACT orchestration honours the
+    // same concealment as the Pipeline surface.
+    const visibleReqIds = await req.resolveVisibleRequisitionIds!();
     try {
       return await this.email.sendRecruiterEmail({
         tenant_id: auth.tenant_id,
@@ -137,12 +144,12 @@ export class MicrosoftAuthorizationController {
         talent_record_id: body.talent_record_id,
         requisition_id: body.requisition_id,
         pipeline_id: body.pipeline_id,
-        to_email: body.to_email,
         subject: body.subject,
         body: body.body,
         idempotency_key: body.idempotency_key,
         authContext: auth,
         requestId,
+        visible_requisition_ids: visibleReqIds,
       });
     } catch (err) {
       throw this.mapError(err, requestId);
@@ -186,6 +193,11 @@ export class MicrosoftAuthorizationController {
     if (err instanceof MicrosoftProviderNotConfiguredError) {
       // The tenant genuinely has no usable connection — an expected 409, not a failure.
       return new AramoError('MICROSOFT_PROVIDER_NOT_CONFIGURED', err.message, 409, { requestId });
+    }
+    if (err instanceof TalentEmailUnavailableError) {
+      // COMM-C4 — the Talent has no authoritative email1; fail-closed (422). The
+      // send never reached Graph and wrote no evidence.
+      return new AramoError('COMMUNICATION_EMAIL_RECIPIENT_UNAVAILABLE', 'the Talent has no authoritative email for send', 422, { requestId });
     }
     if (err instanceof AramoError) {
       return err;

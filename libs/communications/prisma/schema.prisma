@@ -175,6 +175,12 @@ model CommunicationInteraction {
   // interaction (e.g. a Teams join URL). Never a token or provider secret.
   join_reference String?
 
+  // COMM-C4 (RCE-1) — the FINAL sent subject and body for an email-channel
+  // interaction (post-review durable evidence). Nullable: voice/meeting rows
+  // carry neither. Plain text; never a token or provider secret.
+  subject String?
+  body    String?
+
   started_at   DateTime? @db.Timestamptz
   ringing_at   DateTime? @db.Timestamptz
   connected_at DateTime? @db.Timestamptz

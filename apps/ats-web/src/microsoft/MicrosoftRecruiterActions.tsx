@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 
+import { RequisitionContactEmailComposer } from './RequisitionContactEmailComposer';
 import {
   createMicrosoftMeeting as defaultCreateMeeting,
   getMicrosoftBindingStatus as defaultLoadStatus,
@@ -9,6 +10,8 @@ import {
   type MicrosoftBindingStatus,
   type MicrosoftEmailSendResult,
   type MicrosoftMeetingResult,
+  type RequisitionContactDraft,
+  type RequisitionContactDraftInput,
   type SendEmailInput,
 } from './microsoft-api';
 
@@ -17,13 +20,22 @@ import {
 // exposes send-email + create-Teams-meeting. It is TRUTHFUL about the locked
 // boundary — a sent email is evidence of an accepted outbound send, NOT a Talent
 // response; a created meeting is a link, NOT attendance. No token is ever shown.
+//
+// COMM-C4 PR-2 — "Send email" no longer transmits on click: it opens the
+// compose/review composer (INV-1). The old hard-coded subject/body literals and
+// the client-supplied recipient are gone (INV-10) — the backend owns both.
 
 export interface MicrosoftRecruiterActionsProps {
   readonly talentId: string;
   readonly requisitionId: string;
   readonly pipelineId?: string;
-  readonly toEmail?: string;
+  // Least-visibility (INV/§8), FAIL-CLOSED: the email affordance is shown only
+  // when the session holds `communication:email:send`. REQUIRED (no default) so
+  // a caller that forgets to pass the capability hides the action rather than
+  // accidentally exposing it; the server still enforces authorization too.
+  readonly canSendEmail: boolean;
   readonly loadStatusFn?: () => Promise<MicrosoftBindingStatus>;
+  readonly draftFn?: (input: RequisitionContactDraftInput) => Promise<RequisitionContactDraft>;
   readonly sendEmailFn?: (input: SendEmailInput) => Promise<MicrosoftEmailSendResult>;
   readonly createMeetingFn?: (input: CreateMeetingInput) => Promise<MicrosoftMeetingResult>;
 }
@@ -36,8 +48,10 @@ export function MicrosoftRecruiterActions(props: MicrosoftRecruiterActionsProps)
   const load = props.loadStatusFn ?? defaultLoadStatus;
   const sendEmail = props.sendEmailFn ?? defaultSendEmail;
   const createMeeting = props.createMeetingFn ?? defaultCreateMeeting;
+  const canSendEmail = props.canSendEmail;
 
   const [status, setStatus] = useState<MicrosoftBindingStatus | null>(null);
+  const [composerOpen, setComposerOpen] = useState(false);
   const [emailResult, setEmailResult] = useState<MicrosoftEmailSendResult | null>(null);
   const [meetingResult, setMeetingResult] = useState<MicrosoftMeetingResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -56,20 +70,12 @@ export function MicrosoftRecruiterActions(props: MicrosoftRecruiterActionsProps)
     };
   }, [load]);
 
-  const onSendEmail = useCallback(() => {
+  // INV-1 — clicking "Send email" opens the compose/review surface; it does NOT
+  // transmit. Transmission happens only via the composer's explicit Send.
+  const onOpenComposer = useCallback(() => {
     setError(null);
-    sendEmail({
-      talent_record_id: props.talentId,
-      requisition_id: props.requisitionId,
-      pipeline_id: props.pipelineId,
-      to_email: props.toEmail ?? '',
-      subject: 'Regarding your application',
-      body: 'A recruiter would like to connect with you.',
-      idempotency_key: newKey('email'),
-    })
-      .then(setEmailResult)
-      .catch(() => setError('microsoft_reauthorization_required'));
-  }, [sendEmail, props]);
+    setComposerOpen(true);
+  }, []);
 
   const onCreateMeeting = useCallback(() => {
     setError(null);
@@ -109,12 +115,26 @@ export function MicrosoftRecruiterActions(props: MicrosoftRecruiterActionsProps)
 
   return (
     <div data-testid="microsoft-actions">
-      <button type="button" data-testid="microsoft-send-email" onClick={onSendEmail}>
-        Send email
-      </button>
+      {canSendEmail && (
+        <button type="button" data-testid="microsoft-send-email" onClick={onOpenComposer}>
+          Send email
+        </button>
+      )}
       <button type="button" data-testid="microsoft-create-meeting" onClick={onCreateMeeting}>
         Create Teams meeting
       </button>
+      {canSendEmail && (
+        <RequisitionContactEmailComposer
+          open={composerOpen}
+          onOpenChange={setComposerOpen}
+          talentId={props.talentId}
+          requisitionId={props.requisitionId}
+          pipelineId={props.pipelineId}
+          draftFn={props.draftFn}
+          sendFn={sendEmail}
+          onSent={setEmailResult}
+        />
+      )}
       {emailResult !== null && (
         <p data-testid="microsoft-email-sent">Email sent (delivery accepted).</p>
       )}

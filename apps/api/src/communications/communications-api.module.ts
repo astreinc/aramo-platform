@@ -9,18 +9,25 @@ import {
 } from '@aramo/communications';
 import { ConsentModule } from '@aramo/consent';
 import { EntitlementModule } from '@aramo/entitlement';
+import { IdentityCoreModule } from '@aramo/identity';
 import { IntegrationModule } from '@aramo/integration';
 import { PipelineModule } from '@aramo/pipeline';
 import { RequisitionModule } from '@aramo/requisition';
 import { TalentRecordModule } from '@aramo/talent-record';
 
 import { ConversationTranscriptZoomModule } from '../conversation-transcript/conversation-transcript-zoom.module.js';
+import { EMAIL_RECIPIENT_RESOLVER } from '../microsoft/email-recipient-resolver.port.js';
+import { TalentEmailRecipientAdapter } from '../microsoft/talent-email-recipient.adapter.js';
 
 import { CommunicationsController } from './communications.controller.js';
 import { TalentCommunicationsController } from './talent-communications.controller.js';
 import { CommunicationsApiService } from './communications-api.service.js';
 import { CommunicationCallService } from './communication-call.service.js';
 import { CommunicationTimelineService } from './communication-timeline.service.js';
+import { RequisitionContactDraftController } from './requisition-contact-draft.controller.js';
+import { RequisitionContactDraftService } from './requisition-contact-draft.service.js';
+import { REQUISITION_CONTACT_TEMPLATE_RESOLVER } from './requisition-contact-template.port.js';
+import { SystemRequisitionContactTemplateService } from './system-requisition-contact-template.service.js';
 import { RequisitionExistenceAdapter } from './requisition-existence.adapter.js';
 import { ZoomWebhookController } from './zoom-webhook.controller.js';
 import { ZoomWebhookService } from './zoom-webhook.service.js';
@@ -58,15 +65,32 @@ const ZOOM_VOICE_PROVIDER_REGISTRAR = Symbol('ZOOM_VOICE_PROVIDER_REGISTRAR');
     // no_contact→contacted orchestration (PipelineRepository). apps/api edge only;
     // NO libs/communications → pipeline dependency (R6).
     PipelineModule,
+    // COMM-C4 (RCE-1) — read-only identity surface for the requisition-contact
+    // draft (recruiter display_name + tenant display name). IdentityCoreModule
+    // is the slim shared read module (NOT the dynamic IdentityModule).
+    IdentityCoreModule,
     // CI-B5Z — the Conversation-Intelligence Zoom transcript composition. Exports
     // ZOOM_TRANSCRIPT_EVENT_HANDLER, which ZoomWebhookService @Optional-injects to
     // route phone.recording_transcript_completed into the CI acquisition flow.
     ConversationTranscriptZoomModule,
   ],
-  controllers: [CommunicationsController, ZoomWebhookController, TalentCommunicationsController],
+  controllers: [
+    CommunicationsController,
+    ZoomWebhookController,
+    TalentCommunicationsController,
+    RequisitionContactDraftController,
+  ],
   providers: [
     CommunicationsApiService,
     CommunicationCallService,
+    // COMM-C4 (RCE-1) — requisition-contact draft generation. Reuses the C
+    // recipient resolver (TalentEmailRecipientAdapter) so the recipient authority
+    // model is identical to the send path; the governed template is code-owned.
+    RequisitionContactDraftService,
+    TalentEmailRecipientAdapter,
+    { provide: EMAIL_RECIPIENT_RESOLVER, useExisting: TalentEmailRecipientAdapter },
+    SystemRequisitionContactTemplateService,
+    { provide: REQUISITION_CONTACT_TEMPLATE_RESOLVER, useExisting: SystemRequisitionContactTemplateService },
     // COMM-B7 — disposition write + Talent communication timeline read.
     CommunicationTimelineService,
     // COMM-B6 — Zoom webhook ingress (HMAC-verified, un-JWT'd; wired here at the

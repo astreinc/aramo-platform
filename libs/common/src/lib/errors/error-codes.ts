@@ -794,6 +794,20 @@ export const ERROR_CODES = [
   // relationship fields) — the canonical write cannot be materialized. A stored-state
   // refusal (422), distinct from a request-shape VALIDATION_ERROR (400).
   'SKILL_PROPOSAL_PAYLOAD_INVALID',
+  // COMM-C4 (RCE-1) — requisition-contact email send refused because the target
+  // Talent has no authoritative primary email (email1) on the live record (422).
+  // The recipient is ALWAYS resolved server-side from the TalentRecord; the send
+  // contract carries no client-supplied address, so a missing email1 is a
+  // fail-closed precondition (Graph is not called and no CommunicationInteraction
+  // is written). A cross-tenant/absent Talent likewise yields no address → this.
+  'COMMUNICATION_EMAIL_RECIPIENT_UNAVAILABLE',
+  // COMM-C4 (RCE-1) — requisition-contact DRAFT context refusal (422). One code,
+  // details.reason discriminates: `requisition_not_found` (absent or cross-tenant
+  // requisition) | `talent_not_associated_with_requisition` (no pipeline links the
+  // Talent to the requisition in this tenant — includes a cross-tenant Talent,
+  // which has no such pipeline). Fail-closed at the draft boundary; the send path
+  // re-validates independently.
+  'COMMUNICATION_REQUISITION_CONTACT_CONTEXT_INVALID',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

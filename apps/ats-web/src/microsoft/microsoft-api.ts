@@ -49,11 +49,12 @@ export interface ConfigureMicrosoftInput {
   readonly client_secret?: string;
 }
 
+// COMM-C4 — the send contract carries NO recipient. The backend resolves the
+// authoritative Talent email server-side; the client never supplies an address.
 export interface SendEmailInput {
   readonly talent_record_id: string;
   readonly requisition_id: string;
   readonly pipeline_id?: string;
-  readonly to_email: string;
   readonly subject: string;
   readonly body: string;
   readonly idempotency_key: string;
@@ -67,6 +68,34 @@ export interface CreateMeetingInput {
   readonly start_date_time: string;
   readonly end_date_time: string;
   readonly idempotency_key: string;
+}
+
+// COMM-C4 PR-2 — requisition-contact draft generation. The backend resolves the
+// authoritative Talent + Requisition + recruiter/tenant context and hydrates the
+// system-owned template. Read/generate only: NO side effects, NO idempotency key,
+// and the recipient is server-owned (editable:false) — the composer shows it but
+// never submits it on send.
+export interface RequisitionContactDraftInput {
+  readonly talent_record_id: string;
+  readonly requisition_id: string;
+  readonly pipeline_id?: string;
+}
+
+export interface RequisitionContactDraft {
+  readonly to: {
+    readonly email: string;
+    readonly display_name: string | null;
+    readonly editable: false;
+  };
+  readonly subject: string;
+  readonly body: string;
+  readonly context: {
+    readonly requisition_reference: string;
+    readonly requisition_title: string;
+    readonly template_id: string;
+    readonly template_version: string;
+  };
+  readonly warnings?: readonly string[];
 }
 
 export async function getMicrosoftBindingStatus(): Promise<MicrosoftBindingStatus> {
@@ -83,6 +112,15 @@ export async function sendMicrosoftEmail(input: SendEmailInput): Promise<Microso
 
 export async function createMicrosoftMeeting(input: CreateMeetingInput): Promise<MicrosoftMeetingResult> {
   return apiClient.post<MicrosoftMeetingResult>('/v1/integrations/microsoft/meeting', input);
+}
+
+export async function generateRequisitionContactDraft(
+  input: RequisitionContactDraftInput,
+): Promise<RequisitionContactDraft> {
+  return apiClient.post<RequisitionContactDraft>(
+    '/v1/communications/email-drafts/requisition-contact',
+    input,
+  );
 }
 
 export async function getMicrosoftProviderStatus(): Promise<MicrosoftProviderStatus> {

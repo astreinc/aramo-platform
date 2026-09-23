@@ -259,6 +259,12 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       'SKILL_CONFLICT',
       'SKILL_PROPOSAL_NOT_PENDING',
       'SKILL_PROPOSAL_PAYLOAD_INVALID',
+      // COMM-C4 (RCE-1) — 1 requisition-contact recipient fail-closed refusal
+      // (Talent has no authoritative email1; 422).
+      'COMMUNICATION_EMAIL_RECIPIENT_UNAVAILABLE',
+      // COMM-C4 (RCE-1) — 1 requisition-contact draft context refusal (422;
+      // details.reason: requisition_not_found | talent_not_associated_with_requisition).
+      'COMMUNICATION_REQUISITION_CONTACT_CONTEXT_INVALID',
     ]);
   });
 });
