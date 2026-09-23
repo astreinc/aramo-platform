@@ -6,7 +6,7 @@ import {
   useSession,
   type Session,
 } from '@aramo/fe-foundation';
-import { Tabs, type TabItem } from '@aramo/fe-foundation';
+import { Tabs, type TabItem, Button } from '@aramo/fe-foundation';
 
 import { listActivities } from '../activity/activity-api';
 import type { ActivityView } from '../activity/types';
@@ -358,14 +358,14 @@ export function CompanyDetailView({ sessionOverride }: CompanyDetailViewProps) {
             </Link>
           ) : null}
           {canEdit ? (
-            <button
+            <Button unstyled
               type="button"
               className="rc-hbtn"
               onClick={() => setEditOpen(true)}
               data-testid="company-detail-edit"
             >
               <Icons.IconPencil /> Edit
-            </button>
+            </Button>
           ) : null}
         </div>
       </div>

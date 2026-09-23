@@ -1,3 +1,5 @@
+import { Checkbox } from '@aramo/fe-foundation';
+
 import type { TenantRoleCatalogEntry } from './types';
 import type { FinancialsToggleState } from './users-api';
 
@@ -87,9 +89,9 @@ export function RolePicker({
             data-disabled={deco.disabled ? 'true' : 'false'}
             data-role-key={entry.key}
           >
-            <input
+            <Checkbox unstyled
               id={inputId}
-              type="checkbox"
+             
               className="rc-role-picker__check"
               checked={checked}
               disabled={deco.disabled}

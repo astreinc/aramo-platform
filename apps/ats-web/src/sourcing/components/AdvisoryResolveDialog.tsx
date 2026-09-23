@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Button, Dialog, InlineAlert, useToast } from '@aramo/fe-foundation';
+import { Button, Dialog, InlineAlert, useToast, Checkbox, TextArea } from '@aramo/fe-foundation';
 
 import { approveAdvisory, dismissAdvisory } from '../sourcing-api';
 import { advisoryErrorMessage } from '../error-messages';
@@ -164,7 +164,7 @@ export function AdvisoryResolveDialog({ advisory, action, onClose, onResolved }:
 
       {overrideRequired ? (
         <label className="rc-check rc-mt-16">
-          <input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} />
+          <Checkbox checked={ack} onChange={(e) => setAck(e.target.checked)} />
           <span>I’ve reviewed the contradiction and confirm these are the same person.</span>
         </label>
       ) : null}
@@ -173,7 +173,7 @@ export function AdvisoryResolveDialog({ advisory, action, onClose, onResolved }:
         <span className="rc-field__label">
           {overrideRequired ? 'Justification (required)' : 'Note (optional)'}
         </span>
-        <textarea
+        <TextArea unstyled
           className="rc-select"
           rows={3}
           value={justification}

@@ -2,7 +2,7 @@ import {
   InlineAlert,
   hasScope,
   useSession,
-  type Session,
+  type Session, Button, Checkbox, Input, Select,
 } from '@aramo/fe-foundation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
@@ -398,22 +398,22 @@ export function ContactsListView({
           <div className="rc-titlerow">
             <h1 className="rc-h1">Contacts</h1>
             <div className="rc-scopetabs" role="group" aria-label="Scope">
-              <button
+              <Button unstyled
                 type="button"
                 className={scope === 'mine' ? 'on' : ''}
                 aria-pressed={scope === 'mine'}
                 onClick={() => setScope('mine')}
               >
                 My contacts
-              </button>
-              <button
+              </Button>
+              <Button unstyled
                 type="button"
                 className={scope === 'all' ? 'on' : ''}
                 aria-pressed={scope === 'all'}
                 onClick={() => setScope('all')}
               >
                 All
-              </button>
+              </Button>
             </div>
           </div>
           {!isCold ? <p className="rc-sub rc-sub--count">{headline}</p> : null}
@@ -426,52 +426,52 @@ export function ContactsListView({
         </div>
         <div className="rc-viewhead__actions">
           <div className="rc-scopetabs" role="group" aria-label="Mode">
-            <button
+            <Button unstyled
               type="button"
               className={mode === 'directory' ? 'on' : ''}
               aria-pressed={mode === 'directory'}
               onClick={() => setMode('directory')}
             >
               Directory
-            </button>
-            <button
+            </Button>
+            <Button unstyled
               type="button"
               className={mode === 'cold' ? 'on' : ''}
               aria-pressed={mode === 'cold'}
               onClick={() => setMode('cold')}
             >
               Cold-call list
-            </button>
+            </Button>
           </div>
           {!isCold ? (
             <div className="rc-scopetabs" role="group" aria-label="View mode">
-              <button
+              <Button unstyled
                 type="button"
                 className={vmode === 'table' ? 'on' : ''}
                 aria-pressed={vmode === 'table'}
                 onClick={() => setVmode('table')}
               >
                 Table
-              </button>
-              <button
+              </Button>
+              <Button unstyled
                 type="button"
                 className={vmode === 'cards' ? 'on' : ''}
                 aria-pressed={vmode === 'cards'}
                 onClick={() => setVmode('cards')}
               >
                 Cards
-              </button>
+              </Button>
             </div>
           ) : null}
           {canCreate ? (
-            <button
+            <Button unstyled
               type="button"
               className="rc-hbtn rc-hbtn--primary"
               onClick={openCreate}
               data-testid="contact-new"
             >
               <Icons.IconUserPlus /> New contact
-            </button>
+            </Button>
           ) : null}
         </div>
       </div>
@@ -482,7 +482,7 @@ export function ContactsListView({
           {SEGMENTS.map((s) => {
             const count = segmentCountFrom(facets, total, s.key);
             return (
-              <button
+              <Button unstyled
                 key={s.key}
                 type="button"
                 className={`rc-view${segment === s.key ? ' on' : ''}`}
@@ -493,7 +493,7 @@ export function ContactsListView({
                 {count !== null ? (
                   <span className="rc-view__ct num">{count}</span>
                 ) : null}
-              </button>
+              </Button>
             );
           })}
         </div>
@@ -501,7 +501,7 @@ export function ContactsListView({
 
       <div className="rc-tokenbox">
         <Icons.IconSearch className="rc-tokenbox__icon" aria-hidden="true" />
-        <input
+        <Input unstyled
           className="rc-tokenbox__input"
           type="search"
           placeholder="Filter loaded contacts by name, title, email or company"
@@ -516,7 +516,7 @@ export function ContactsListView({
       {!isCold ? (
         <div className="rc-views" role="group" aria-label="Filters">
           <span className="rc-views__lbl">Filters</span>
-          <select
+          <Select unstyled
             className="rc-view"
             aria-label="Filter by company"
             value={strValue('company')}
@@ -526,8 +526,8 @@ export function ContactsListView({
             {companyOptions.map((o) => (
               <option key={o.value} value={o.value}>{o.label}</option>
             ))}
-          </select>
-          <select
+          </Select>
+          <Select unstyled
             className="rc-view"
             aria-label="Filter by role"
             value={strValue('role')}
@@ -537,8 +537,8 @@ export function ContactsListView({
             {ROLE_ORDER.map((r) => (
               <option key={r} value={r}>{ROLE_LABELS[r] ?? r}</option>
             ))}
-          </select>
-          <select
+          </Select>
+          <Select unstyled
             className="rc-view"
             aria-label="Filter by communication"
             value={strValue('preference')}
@@ -548,8 +548,8 @@ export function ContactsListView({
             {PREFERENCE_ORDER.map((p) => (
               <option key={p} value={p}>{PREFERENCE_LABELS[p] ?? p}</option>
             ))}
-          </select>
-          <select
+          </Select>
+          <Select unstyled
             className="rc-view"
             aria-label="Filter by owner"
             value={ownerFilter}
@@ -559,11 +559,11 @@ export function ContactsListView({
             {ownerOptions.map((o) => (
               <option key={o.value} value={o.value}>{o.label}</option>
             ))}
-          </select>
+          </Select>
           {FLAG_OPTIONS.map((f) => {
             const on = facetState.flags.includes(f.value);
             return (
-              <button
+              <Button unstyled
                 key={f.value}
                 type="button"
                 className={`rc-view${on ? ' on' : ''}`}
@@ -571,7 +571,7 @@ export function ContactsListView({
                 onClick={() => toggleFlag(f.value)}
               >
                 {f.label}
-              </button>
+              </Button>
             );
           })}
         </div>
@@ -586,19 +586,19 @@ export function ContactsListView({
         {chips.map((c, i) => (
           <span key={`${c.k}-${c.label}-${i}`} className="rc-fchip">
             <span className="rc-fchip__k">{c.k}</span> {c.label}
-            <button
+            <Button
               type="button"
               aria-label={`Remove ${c.k} ${c.label}`}
               onClick={c.clear}
             >
               <Icons.IconX />
-            </button>
+            </Button>
           </span>
         ))}
         {chips.length > 0 ? (
-          <button type="button" className="rc-activebar__clear" onClick={resetAll}>
+          <Button unstyled type="button" className="rc-activebar__clear" onClick={resetAll}>
             Clear all
-          </button>
+          </Button>
         ) : null}
       </div>
 
@@ -650,8 +650,8 @@ export function ContactsListView({
                   ) : (
                     <tr>
                       <th scope="col" style={{ width: 34 }}>
-                        <input
-                          type="checkbox"
+                        <Checkbox
+                         
                           aria-label="Select all"
                           checked={
                             visible.length > 0 && selected.size >= visible.length
@@ -694,13 +694,13 @@ export function ContactsListView({
                           <td>
                             <span className="rc-ent">
                               <Avatar name={FULL_NAME(c)} size="sm" />
-                              <button
+                              <Button unstyled
                                 type="button"
                                 className="rc-link-strong"
                                 onClick={() => openEdit(c)}
                               >
                                 {FULL_NAME(c)}
-                              </button>
+                              </Button>
                             </span>
                           </td>
                           <td>{c.title ?? '—'}</td>
@@ -723,8 +723,8 @@ export function ContactsListView({
                         }}
                       >
                         <td>
-                          <input
-                            type="checkbox"
+                          <Checkbox
+                           
                             aria-label={`Select ${FULL_NAME(c)}`}
                             checked={selected.has(c.id)}
                             onChange={() => toggleSel(c.id)}
@@ -735,13 +735,13 @@ export function ContactsListView({
                             <Avatar name={FULL_NAME(c)} size="sm" />
                             <span>
                               <span className="rc-ent__nm">
-                                <button
+                                <Button unstyled
                                   type="button"
                                   className="rc-link-strong"
                                   onClick={() => openEdit(c)}
                                 >
                                   {FULL_NAME(c)}
-                                </button>
+                                </Button>
                                 {c.is_primary ? (
                                   <StatusPill tone="brand">Primary</StatusPill>
                                 ) : null}
@@ -786,14 +786,14 @@ export function ContactsListView({
 
               {nextCursor !== null && query.trim() === '' ? (
                 <div className="rc-loadmore">
-                  <button
+                  <Button unstyled
                     type="button"
                     className="tc-button tc-button--ghost"
                     onClick={loadMore}
                     disabled={loadingMore}
                   >
                     {loadingMore ? 'Loading…' : 'Load more contacts'}
-                  </button>
+                  </Button>
                 </div>
               ) : null}
             </div>
@@ -816,7 +816,7 @@ export function ContactsListView({
               write scope (never a disabled control naming the scope). Disabled
               only while a submit is in flight. */}
           {canAssign ? (
-            <button
+            <Button
               type="button"
               onClick={assignToMe}
               disabled={busy}
@@ -824,17 +824,17 @@ export function ContactsListView({
             >
               <Icons.IconUserPlus />
               Assign to me
-            </button>
+            </Button>
           ) : null}
           {/* Honest carries — disabled with reason (saved-list + owner-picker). */}
-          <button
+          <Button
             type="button"
             disabled
             title="Saved lists aren’t granted to recruiters yet (saved-list scope carry)."
           >
             <Icons.IconList />
             Add to list
-          </button>
+          </Button>
           <span className="rc-bulkbar__sep" />
           <span
             className="rc-bulkbar__ex"
@@ -843,14 +843,14 @@ export function ContactsListView({
             <Icons.IconShield />
             Export off
           </span>
-          <button
+          <Button unstyled
             type="button"
             className="rc-bulkbar__x"
             aria-label="Clear selection"
             onClick={() => setSelected(new Set())}
           >
             <Icons.IconX />
-          </button>
+          </Button>
         </div>
       ) : null}
 
@@ -877,7 +877,7 @@ function ContactCard({
 }) {
   const role = roleLabel(contact.relationship_role);
   return (
-    <button type="button" className="rc-cocard" onClick={onOpen}>
+    <Button unstyled type="button" className="rc-cocard" onClick={onOpen}>
       <div className="rc-cocard__top">
         <Avatar name={FULL_NAME(contact)} size="md" />
         <div className="rc-cocard__id">
@@ -921,6 +921,6 @@ function ContactCard({
           {lastContactLabel(contact)}
         </span>
       </div>
-    </button>
+    </Button>
   );
 }

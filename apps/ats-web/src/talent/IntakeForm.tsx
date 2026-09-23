@@ -1,4 +1,5 @@
 import { type ReactNode } from 'react';
+import { Button, Input, Select, TextArea } from '@aramo/fe-foundation';
 
 import { AddressTypeahead } from '../companies/AddressTypeahead';
 
@@ -93,7 +94,7 @@ export function IntakeForm({
           </span>
           {locked ? <span className="rc-secfield__lock">Identity anchor</span> : <ProvenanceChip prov={prov} />}
         </span>
-        <input
+        <Input unstyled
           className={`rc-secinput${flagged ? ' rc-secinput--prov' : ''}`}
           type={opts.type ?? 'text'}
           value={values[key] as string}
@@ -127,7 +128,7 @@ export function IntakeForm({
           </span>
           <ProvenanceChip prov={provenance[key] as Provenance | undefined} />
         </span>
-        <select
+        <Select unstyled
           className="rc-secinput"
           value={values[key]}
           aria-label={label}
@@ -140,7 +141,7 @@ export function IntakeForm({
               {labels[o]}
             </option>
           ))}
-        </select>
+        </Select>
       </label>
     );
   }
@@ -151,7 +152,7 @@ export function IntakeForm({
         <span className="rc-secfield__lb">
           <span>{label}</span>
         </span>
-        <button
+        <Button unstyled
           type="button"
           role="switch"
           aria-checked={values[key]}
@@ -162,7 +163,7 @@ export function IntakeForm({
         >
           <span className="rc-toggle__sw" aria-hidden="true" />
           {values[key] ? 'Yes' : 'No'}
-        </button>
+        </Button>
       </div>
     );
   }
@@ -243,7 +244,7 @@ export function IntakeForm({
             <span>Key skills</span>
             <ProvenanceChip prov={provenance['key_skills'] as Provenance | undefined} />
           </span>
-          <textarea
+          <TextArea unstyled
             className="rc-secinput rc-secinput--area"
             value={values.key_skills}
             aria-label="Key skills"
@@ -272,7 +273,7 @@ export function IntakeForm({
           <span className="rc-secfield__lb">
             <span>Owner</span>
           </span>
-          <input className="rc-secinput" value="You" aria-label="Owner" disabled readOnly />
+          <Input unstyled className="rc-secinput" value="You" aria-label="Owner" disabled readOnly />
         </div>
       </Section>
 
@@ -281,7 +282,7 @@ export function IntakeForm({
           <span className="rc-secfield__lb">
             <span>Recruiter notes</span>
           </span>
-          <textarea
+          <TextArea unstyled
             className="rc-secinput rc-secinput--area"
             value={values.notes}
             aria-label="Recruiter notes"
@@ -370,7 +371,7 @@ function WorkHistoryEditor({
               <span className="rc-secfield__lb">
                 <span>Role title<span className="rc-secfield__req"> *</span></span>
               </span>
-              <input
+              <Input unstyled
                 className="rc-secinput"
                 value={e.role_title}
                 aria-label={`Role title ${i + 1}`}
@@ -382,7 +383,7 @@ function WorkHistoryEditor({
               <span className="rc-secfield__lb">
                 <span>Employer<span className="rc-secfield__req"> *</span></span>
               </span>
-              <input
+              <Input unstyled
                 className="rc-secinput"
                 value={e.employer_name}
                 aria-label={`Employer ${i + 1}`}
@@ -392,7 +393,7 @@ function WorkHistoryEditor({
             </label>
             <label className="rc-secfield">
               <span className="rc-secfield__lb"><span>Start</span></span>
-              <input
+              <Input unstyled
                 className="rc-secinput"
                 value={e.start_date ?? ''}
                 aria-label={`Start date ${i + 1}`}
@@ -403,7 +404,7 @@ function WorkHistoryEditor({
             </label>
             <label className="rc-secfield">
               <span className="rc-secfield__lb"><span>End</span></span>
-              <input
+              <Input unstyled
                 className="rc-secinput"
                 value={e.end_date ?? ''}
                 aria-label={`End date ${i + 1}`}
@@ -419,7 +420,7 @@ function WorkHistoryEditor({
               persisted to experience_summary on create. */}
           <label className="rc-secfield rc-secfield--full">
             <span className="rc-secfield__lb"><span>Work experience</span></span>
-            <textarea
+            <TextArea unstyled
               className="rc-secinput rc-secinput--area"
               value={e.experience_summary ?? ''}
               aria-label={`Work experience ${i + 1}`}
@@ -431,21 +432,21 @@ function WorkHistoryEditor({
           </label>
           <ExperienceIntelligence entry={e} />
           <div className="rc-wh__rowfoot">
-            <button
+            <Button unstyled
               type="button"
               className="rc-wh__remove"
               disabled={disabled}
               onClick={() => onRemove(i)}
             >
               Remove
-            </button>
+            </Button>
           </div>
         </div>
       ))}
       <div className="rc-wh__addrow">
-        <button type="button" className="rc-btn" disabled={disabled} onClick={onAdd}>
+        <Button unstyled type="button" className="rc-btn" disabled={disabled} onClick={onAdd}>
           + Add role
-        </button>
+        </Button>
       </div>
       <p className="rc-secnote">
         From résumé — review and correct. Saved as declared work history (not

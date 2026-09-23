@@ -14,7 +14,7 @@ import {
   IconShield,
   IconSourcing,
   IconTalent,
-  IconTasks,
+  IconTasks, Button,
 } from '@aramo/fe-foundation';
 
 import { hasAdminScope } from '../admin/admin-access';
@@ -240,14 +240,14 @@ function RecruiterShellInner({
             name={railName}
             role={railRole ?? undefined}
           />
-          <button
+          <Button unstyled
             type="button"
             className="rc-rail__logout"
             onClick={handleLogout}
           >
             <IconLogout />
             <span>Log out</span>
-          </button>
+          </Button>
         </>
       }
     >

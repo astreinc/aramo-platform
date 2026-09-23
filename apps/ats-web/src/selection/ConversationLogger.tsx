@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Button, FormField, InlineAlert } from '@aramo/fe-foundation';
+import { Button, FormField, InlineAlert, Input } from '@aramo/fe-foundation';
 
 import type { RecordConversationRequest } from './types';
 
@@ -48,7 +48,7 @@ export function ConversationLogger({ onSubmit }: ConversationLoggerProps) {
       }}
     >
       <FormField label="When did the conversation begin?">
-        <input
+        <Input
           type="datetime-local"
           value={startedAt}
           onChange={(e) => setStartedAt(e.target.value)}

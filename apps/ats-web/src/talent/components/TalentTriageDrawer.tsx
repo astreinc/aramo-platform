@@ -156,7 +156,7 @@ export function TalentTriageDrawer({
       aria-label={`${fullName(talent)} — triage`}
     >
       <div className="rc-drawer__hd">
-        <button
+        <Button unstyled
           type="button"
           className="rc-drawer__nav"
           aria-label="Previous talent"
@@ -164,8 +164,8 @@ export function TalentTriageDrawer({
           disabled={index <= 0}
         >
           <Icons.IconChevronLeft />
-        </button>
-        <button
+        </Button>
+        <Button unstyled
           type="button"
           className="rc-drawer__nav"
           aria-label="Next talent"
@@ -173,18 +173,18 @@ export function TalentTriageDrawer({
           disabled={index >= total - 1}
         >
           <Icons.IconChevronRight />
-        </button>
+        </Button>
         <span className="rc-drawer__pos num">
           {index + 1} of {total}
         </span>
-        <button
+        <Button unstyled
           type="button"
           className="rc-drawer__x"
           aria-label="Close"
           onClick={onClose}
         >
           <Icons.IconX />
-        </button>
+        </Button>
       </div>
 
       <div className="rc-drawer__body">

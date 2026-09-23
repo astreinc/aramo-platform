@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Button, Dialog, FormField, InlineAlert } from '@aramo/fe-foundation';
+import { Button, Dialog, FormField, InlineAlert, Input, Select, TextArea } from '@aramo/fe-foundation';
 
 import {
   skillsApi,
@@ -83,7 +83,7 @@ export function SkillFormDialog({
     >
       {error ? <InlineAlert variant="error">{error}</InlineAlert> : null}
       <FormField label="Canonical name">
-        <input
+        <Input unstyled
           className="tc-input"
           value={canonicalName}
           onChange={(e) => setCanonicalName(e.target.value)}
@@ -91,7 +91,7 @@ export function SkillFormDialog({
         />
       </FormField>
       <FormField label="Description (optional)">
-        <textarea
+        <TextArea unstyled
           className="tc-input"
           rows={3}
           value={description}
@@ -151,16 +151,16 @@ export function AliasDialog({
     >
       {error ? <InlineAlert variant="error">{error}</InlineAlert> : null}
       <FormField label="Alias surface">
-        <input className="tc-input" value={alias} onChange={(e) => setAlias(e.target.value)} placeholder="e.g. K8s" />
+        <Input unstyled className="tc-input" value={alias} onChange={(e) => setAlias(e.target.value)} placeholder="e.g. K8s" />
       </FormField>
       <FormField label="Alias type">
-        <select className="tc-input" value={aliasType} onChange={(e) => setAliasType(e.target.value as SkillAliasType)}>
+        <Select unstyled className="tc-input" value={aliasType} onChange={(e) => setAliasType(e.target.value as SkillAliasType)}>
           {ALIAS_TYPES.map((t) => (
             <option key={t} value={t}>
               {t}
             </option>
           ))}
-        </select>
+        </Select>
       </FormField>
     </Dialog>
   );
@@ -225,7 +225,7 @@ export function VersionDialog({
     >
       {error ? <InlineAlert variant="error">{error}</InlineAlert> : null}
       <FormField label="Version">
-        <input
+        <Input unstyled
           className="tc-input"
           value={versionStr}
           onChange={(e) => setVersionStr(e.target.value)}
@@ -234,14 +234,14 @@ export function VersionDialog({
         />
       </FormField>
       <FormField label="Version family (optional)">
-        <input className="tc-input" value={versionFamily} onChange={(e) => setVersionFamily(e.target.value)} />
+        <Input unstyled className="tc-input" value={versionFamily} onChange={(e) => setVersionFamily(e.target.value)} />
       </FormField>
       {editing ? (
         <FormField label="Status">
-          <select className="tc-input" value={status} onChange={(e) => setStatus(e.target.value as 'active' | 'inactive')}>
+          <Select unstyled className="tc-input" value={status} onChange={(e) => setStatus(e.target.value as 'active' | 'inactive')}>
             <option value="active">active</option>
             <option value="inactive">inactive</option>
-          </select>
+          </Select>
         </FormField>
       ) : null}
     </Dialog>
@@ -314,7 +314,7 @@ export function RelationshipDialog({
         />
       </FormField>
       <FormField label="Relationship type">
-        <select
+        <Select unstyled
           className="tc-input"
           value={relationshipType}
           onChange={(e) => setRelationshipType(e.target.value as SkillRelationshipType)}
@@ -324,10 +324,10 @@ export function RelationshipDialog({
               {t}
             </option>
           ))}
-        </select>
+        </Select>
       </FormField>
       <FormField label="Source">
-        <select
+        <Select unstyled
           className="tc-input"
           value={source}
           onChange={(e) => setSource(e.target.value as SkillRelationshipSource)}
@@ -337,10 +337,10 @@ export function RelationshipDialog({
               {s}
             </option>
           ))}
-        </select>
+        </Select>
       </FormField>
       <FormField label="Source reference (optional)">
-        <input className="tc-input" value={sourceRef} onChange={(e) => setSourceRef(e.target.value)} />
+        <Input unstyled className="tc-input" value={sourceRef} onChange={(e) => setSourceRef(e.target.value)} />
       </FormField>
     </Dialog>
   );

@@ -4,7 +4,7 @@ import {
   Combobox,
   type ComboboxItem,
   type Session,
-  useSession,
+  useSession, Button, Input, Select, TextArea,
 } from '@aramo/fe-foundation';
 
 import {
@@ -686,7 +686,7 @@ export function NewRequisitionView({ sessionOverride }: NewRequisitionViewProps)
                   edit anything before saving — you decide. Add the client and
                   anything the notes didn’t state.
                 </span>
-                <button
+                <Button unstyled
                   type="button"
                   className="rc-btn rc-btn--sm"
                   onClick={() => void onDraft()}
@@ -694,7 +694,7 @@ export function NewRequisitionView({ sessionOverride }: NewRequisitionViewProps)
                 >
                   <Icons.IconBolt />
                   Regenerate
-                </button>
+                </Button>
               </div>
             ) : draftSource === 'parsed' ? (
               <div className="rc-aibanner rc-aibanner--parsed">
@@ -707,7 +707,7 @@ export function NewRequisitionView({ sessionOverride }: NewRequisitionViewProps)
                   description. Review and edit every field, then create; nothing
                   is created until you do. Pick the matching client.
                 </span>
-                <button
+                <Button unstyled
                   type="button"
                   className="rc-btn rc-btn--sm"
                   onClick={onImport}
@@ -715,7 +715,7 @@ export function NewRequisitionView({ sessionOverride }: NewRequisitionViewProps)
                 >
                   <Icons.IconFile />
                   Re-import
-                </button>
+                </Button>
               </div>
             ) : (
               <p className="rc-newreq__hint">
@@ -892,7 +892,7 @@ export function NewRequisitionView({ sessionOverride }: NewRequisitionViewProps)
                     <ReqProvenanceChip prov={provenance['duration_value']} />
                   </label>
                   <div className="rc-inpgrp">
-                    <input
+                    <Input unstyled
                       className={`rc-input${isPrefilled(provenance['duration_value']) ? ' rc-input--prov' : ''}`}
                       type="number"
                       min={0}
@@ -904,7 +904,7 @@ export function NewRequisitionView({ sessionOverride }: NewRequisitionViewProps)
                         setField('duration_value', ev.target.value as EnterpriseFormState['duration_value'])
                       }
                     />
-                    <select
+                    <Select unstyled
                       className="rc-input"
                       value={state.duration_unit}
                       aria-label="Contract duration unit"
@@ -919,7 +919,7 @@ export function NewRequisitionView({ sessionOverride }: NewRequisitionViewProps)
                           {enterpriseLabel(u)}
                         </option>
                       ))}
-                    </select>
+                    </Select>
                   </div>
                 </div>
                 <Field
@@ -949,7 +949,7 @@ export function NewRequisitionView({ sessionOverride }: NewRequisitionViewProps)
                       <ReqProvenanceChip prov={provenance['bill_rate_amount']} />
                     </label>
                     <div className="rc-inpgrp">
-                      <input
+                      <Input unstyled
                         className={`rc-input${isPrefilled(provenance['bill_rate_amount']) ? ' rc-input--prov' : ''}`}
                         type="text"
                         inputMode="decimal"
@@ -959,7 +959,7 @@ export function NewRequisitionView({ sessionOverride }: NewRequisitionViewProps)
                         disabled={submitting}
                         onChange={(ev) => setBillRate(ev.target.value)}
                       />
-                      <select
+                      <Select unstyled
                         className="rc-input"
                         value={state.bill_rate_period}
                         aria-label="Bill rate period"
@@ -973,7 +973,7 @@ export function NewRequisitionView({ sessionOverride }: NewRequisitionViewProps)
                             {RATE_PERIOD_LABELS[p]}
                           </option>
                         ))}
-                      </select>
+                      </Select>
                     </div>
                   </div>
                 ) : null}
@@ -982,7 +982,7 @@ export function NewRequisitionView({ sessionOverride }: NewRequisitionViewProps)
                     <span>Rate type</span>
                     <ReqProvenanceChip prov={provenance['rate_type']} />
                   </label>
-                  <select
+                  <Select unstyled
                     className={`rc-input${isPrefilled(provenance['rate_type']) ? ' rc-input--prov' : ''}`}
                     value={state.rate_type}
                     aria-label="Rate type"
@@ -995,7 +995,7 @@ export function NewRequisitionView({ sessionOverride }: NewRequisitionViewProps)
                         {rt}
                       </option>
                     ))}
-                  </select>
+                  </Select>
                 </div>
                 <div className="rc-ifield">
                   <label className="rc-ifield__lb">
@@ -1030,7 +1030,7 @@ export function NewRequisitionView({ sessionOverride }: NewRequisitionViewProps)
               />
               <div className="rc-fgrid">
                 <div className="rc-ifield rc-ifield--full">
-                  <textarea
+                  <TextArea unstyled
                     className={`rc-input rc-jd${isPrefilled(provenance['description']) ? ' rc-input--prov' : ''}`}
                     rows={draftSource !== 'none' ? 20 : 14}
                     value={state.description}
@@ -1120,7 +1120,7 @@ export function NewRequisitionView({ sessionOverride }: NewRequisitionViewProps)
               />
               <div className="rc-fgrid">
                 <div className="rc-ifield rc-ifield--full">
-                  <textarea
+                  <TextArea unstyled
                     className="rc-input"
                     rows={3}
                     value={state.notes}
@@ -1326,7 +1326,7 @@ export function NewRequisitionView({ sessionOverride }: NewRequisitionViewProps)
                 <GateRow ok={titleValid} label="Job title" />
                 <GateRow ok={companyValid} label="Company" />
               </ul>
-              <button
+              <Button unstyled
                 type="button"
                 className="rc-btn rc-btn--primary"
                 disabled={!canCreate}
@@ -1334,9 +1334,9 @@ export function NewRequisitionView({ sessionOverride }: NewRequisitionViewProps)
               >
                 <Icons.IconCheck />
                 {submitting ? 'Creating…' : 'Create requisition'}
-              </button>
+              </Button>
               {runMatch ? (
-                <button
+                <Button unstyled
                   type="button"
                   className="rc-btn"
                   disabled={!canCreate}
@@ -1344,16 +1344,16 @@ export function NewRequisitionView({ sessionOverride }: NewRequisitionViewProps)
                 >
                   <Icons.IconBolt />
                   Create &amp; run match
-                </button>
+                </Button>
               ) : null}
-              <button
+              <Button unstyled
                 type="button"
                 className="rc-btn rc-btn--ghost"
                 disabled={submitting}
                 onClick={() => navigate('/requisitions')}
               >
                 Cancel
-              </button>
+              </Button>
             </section>
           </aside>
         </div>
@@ -1396,7 +1396,7 @@ function IntakeLane({
             requirement — import it as-is. Either way you review, edit and
             create.
           </p>
-          <textarea
+          <TextArea unstyled
             className="rc-input rc-reqintake__ta"
             rows={8}
             value={text}
@@ -1406,14 +1406,14 @@ function IntakeLane({
           />
           {error !== null ? <InlineAlert variant="error">{error}</InlineAlert> : null}
           <div className="rc-reqintake__actions">
-            <button type="button" className="rc-btn rc-btn--primary" onClick={onDraft}>
+            <Button unstyled type="button" className="rc-btn rc-btn--primary" onClick={onDraft}>
               <Icons.IconBolt />
               Draft with AI
-            </button>
-            <button type="button" className="rc-btn" onClick={onImport}>
+            </Button>
+            <Button unstyled type="button" className="rc-btn" onClick={onImport}>
               <Icons.IconFile />
               Import requisition
-            </button>
+            </Button>
             <span className="rc-reqintake__hint">
               Import parses a ready requirement into the form — no AI. You review,
               edit and create.
@@ -1423,9 +1423,9 @@ function IntakeLane({
       </Card>
       <p className="rc-reqintake__manual">
         Prefer to type it?{' '}
-        <button type="button" className="rc-linkbtn" onClick={onManual}>
+        <Button unstyled type="button" className="rc-linkbtn" onClick={onManual}>
           Enter the requisition manually
-        </button>
+        </Button>
       </p>
     </div>
   );
@@ -1478,7 +1478,7 @@ function Field({
         </span>
         <ReqProvenanceChip prov={prov} />
       </label>
-      <input
+      <Input unstyled
         className={`rc-input${flagged ? ' rc-input--prov' : ''}`}
         type={type ?? 'text'}
         value={value}
@@ -1507,7 +1507,7 @@ function NumberField({
         <span>{label}</span>
         <ReqProvenanceChip prov={prov} />
       </label>
-      <input
+      <Input unstyled
         className={`rc-input${isPrefilled(prov) ? ' rc-input--prov' : ''}`}
         type="number"
         min={0}
@@ -1536,7 +1536,7 @@ function SelectField({
       <label className="rc-ifield__lb">
         <span>{label}</span>
       </label>
-      <select
+      <Select unstyled
         className="rc-input"
         value={value}
         aria-label={label}
@@ -1547,7 +1547,7 @@ function SelectField({
             {o}
           </option>
         ))}
-      </select>
+      </Select>
     </div>
   );
 }
@@ -1579,7 +1579,7 @@ function EnumSelect({
         <span>{label}</span>
         <ReqProvenanceChip prov={prov} />
       </label>
-      <select
+      <Select unstyled
         className={`rc-input${isPrefilled(prov) ? ' rc-input--prov' : ''}`}
         value={value}
         aria-label={label}
@@ -1592,7 +1592,7 @@ function EnumSelect({
             {labelFn ? labelFn(v) : v}
           </option>
         ))}
-      </select>
+      </Select>
     </div>
   );
 }
@@ -1613,7 +1613,7 @@ function NumStrField({
       <label className="rc-ifield__lb">
         <span>{label}</span>
       </label>
-      <input
+      <Input unstyled
         className="rc-input"
         type="text"
         inputMode="decimal"
@@ -1653,19 +1653,19 @@ function SkillEditor({
         {skills.map((s, i) => (
           <span key={`${s}-${i}`} className={`rc-skillchip rc-skillchip--${tone}`}>
             {s}
-            <button
+            <Button
               type="button"
               aria-label={`Remove ${s}`}
               disabled={disabled}
               onClick={() => onRemove(i)}
             >
               ×
-            </button>
+            </Button>
           </span>
         ))}
       </div>
       <div className="rc-skilladd">
-        <input
+        <Input unstyled
           className="rc-input"
           value={draft}
           aria-label={`Add ${label.toLowerCase()} skill`}
@@ -1679,10 +1679,10 @@ function SkillEditor({
             }
           }}
         />
-        <button type="button" className="rc-btn rc-btn--sm" disabled={disabled} onClick={commit}>
+        <Button unstyled type="button" className="rc-btn rc-btn--sm" disabled={disabled} onClick={commit}>
           <Icons.IconPlus />
           Add
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -1727,12 +1727,12 @@ function SuccessScreen({
         <InlineAlert variant="error">{profileWarning}</InlineAlert>
       ) : null}
       <div className="rc-success__btns">
-        <button type="button" className="rc-btn rc-btn--primary" onClick={onOpen}>
+        <Button unstyled type="button" className="rc-btn rc-btn--primary" onClick={onOpen}>
           Open requisition
-        </button>
-        <button type="button" className="rc-btn" onClick={onAnother}>
+        </Button>
+        <Button unstyled type="button" className="rc-btn" onClick={onAnother}>
           Add another
-        </button>
+        </Button>
       </div>
     </section>
   );

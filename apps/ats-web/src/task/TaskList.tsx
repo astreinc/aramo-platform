@@ -1,3 +1,5 @@
+import { Button } from '@aramo/fe-foundation';
+
 import { TYPE_LABELS } from './task-vocab';
 import type { TaskView } from './types';
 
@@ -58,21 +60,21 @@ export function TaskList({
           {canWrite ? (
             <span className="task-list__controls">
               {' · '}
-              <button
+              <Button
                 type="button"
                 onClick={() => onToggleStatus(t)}
                 data-testid="task-toggle"
               >
                 {t.status === 'done' ? 'Reopen' : 'Mark done'}
-              </button>
+              </Button>
               {' · '}
-              <button type="button" onClick={() => onEdit(t)} data-testid="task-edit">
+              <Button type="button" onClick={() => onEdit(t)} data-testid="task-edit">
                 Edit
-              </button>
+              </Button>
               {' · '}
-              <button type="button" onClick={() => onDelete(t)} data-testid="task-delete">
+              <Button type="button" onClick={() => onDelete(t)} data-testid="task-delete">
                 Delete
-              </button>
+              </Button>
             </span>
           ) : null}
         </li>

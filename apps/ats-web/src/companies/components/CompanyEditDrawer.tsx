@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { InlineAlert } from '@aramo/fe-foundation';
+import { InlineAlert, Button } from '@aramo/fe-foundation';
 
 import { Icons } from '../../ui';
 import { createCompany, updateCompany } from '../companies-api';
@@ -137,14 +137,14 @@ export function CompanyEditDrawer({
             Open full record →
           </Link>
         ) : null}
-        <button
+        <Button unstyled
           type="button"
           className="rc-drawer__x"
           aria-label="Close"
           onClick={onClose}
         >
           <Icons.IconX />
-        </button>
+        </Button>
       </div>
 
       <div className="rc-drawer__body">

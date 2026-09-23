@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Button } from '@aramo/fe-foundation';
 
 import { Card, InlineAlert, safeErrorMessage, StatusPill } from '../../ui';
 import { SettingHint } from '../components';
@@ -131,7 +132,7 @@ export function RolesMatrixView({ fetchFn }: Props = {}) {
             <div key={g.tier}>
               <div className="rc-roles-list__tier">{g.tier}</div>
               {g.roles.map((r) => (
-                <button
+                <Button unstyled
                   key={r.key}
                   type="button"
                   className={`rc-roles-list__item${r.key === selected?.key ? ' on' : ''}`}
@@ -141,7 +142,7 @@ export function RolesMatrixView({ fetchFn }: Props = {}) {
                 >
                   <span className="rc-roles-list__name">{r.display}</span>
                   <span className="rc-roles-list__count">{r.scopes.length}</span>
-                </button>
+                </Button>
               ))}
             </div>
           ))}

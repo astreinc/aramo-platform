@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { IconSearch } from '@aramo/fe-foundation';
+import { IconSearch, Button, Input } from '@aramo/fe-foundation';
 
 interface ToolbarProps {
   readonly children: ReactNode;
@@ -39,7 +39,7 @@ export function FilterChip({
   children,
 }: FilterChipProps) {
   return (
-    <button
+    <Button unstyled
       type="button"
       className={`rc-chip${active && !disabled ? ' rc-chip--on' : ''}${disabled ? ' rc-chip--disabled' : ''}`}
       aria-pressed={disabled ? undefined : active}
@@ -49,7 +49,7 @@ export function FilterChip({
     >
       {icon}
       {children}
-    </button>
+    </Button>
   );
 }
 
@@ -68,7 +68,7 @@ export function ScopedSearch({ placeholder = 'Search', value, onChange }: Scoped
     return (
       <label className="rc-scopedsearch">
         <IconSearch />
-        <input
+        <Input
           type="search"
           value={value ?? ''}
           placeholder={placeholder}

@@ -1,7 +1,7 @@
 import { InlineAlert, useSession, useToast, type Session } from '@aramo/fe-foundation';
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { Tabs, type TabItem } from '@aramo/fe-foundation';
+import { Tabs, type TabItem, Button } from '@aramo/fe-foundation';
 
 import { listActivities } from '../activity/activity-api';
 import { ActivityTimeline } from '../activity/ActivityTimeline';
@@ -634,7 +634,7 @@ export function RequisitionDetailView({
         <div className="rc-dhead__actions">
           {/* PR-14 — personal bookmark. NOT the team-wide HOT pill; never
               toggles is_hot, invisible to other users. */}
-          <button
+          <Button unstyled
             type="button"
             className={`rc-hbtn${req.bookmarked ? ' rc-hbtn--on' : ''}`}
             aria-pressed={req.bookmarked}
@@ -643,7 +643,7 @@ export function RequisitionDetailView({
           >
             <Icons.IconBookmark />
             {req.bookmarked ? 'Bookmarked' : 'Bookmark'}
-          </button>
+          </Button>
           {canLogNote ? (
             <LogNoteDialog
               requisitionId={req.id}
@@ -652,10 +652,10 @@ export function RequisitionDetailView({
               onSaved={refresh}
             />
           ) : null}
-          <button className="rc-hbtn" onClick={() => setTab('overview')}>
+          <Button unstyled className="rc-hbtn" onClick={() => setTab('overview')}>
             <Icons.IconPencil />
             Edit
-          </button>
+          </Button>
           {/* L1-E — the named LIFECYCLE ACTIONS, gated by (current status × scope
               × submitter-context). Status is DISPLAYED as the pill above; the user
               changes the lifecycle ONLY through these named actions mirroring the
@@ -668,7 +668,7 @@ export function RequisitionDetailView({
             submitterId: req.pending_approval_submitter_id,
             actorId: session?.sub ?? null,
           }).map((aff) => (
-            <button
+            <Button unstyled
               key={aff.action}
               type="button"
               className={`rc-hbtn${aff.action === 'APPROVE' ? ' rc-hbtn--primary' : ''}`}
@@ -678,7 +678,7 @@ export function RequisitionDetailView({
               }}
             >
               {aff.label}
-            </button>
+            </Button>
           ))}
           {/* SoD — the submitter of a pending_approval requisition (holding the
               approve scope) sees the reason their own Approve is suppressed; Reject
@@ -765,9 +765,9 @@ function SnapshotCard({
     return <div className={className}>{inner}</div>;
   }
   return (
-    <button type="button" className={className} onClick={onClick}>
+    <Button unstyled type="button" className={className} onClick={onClick}>
       {inner}
-    </button>
+    </Button>
   );
 }
 
@@ -901,9 +901,9 @@ function AttnRow({
         {detail !== undefined ? <span className="rc-attn__detail"> {detail}</span> : null}
       </span>
       {age !== undefined ? <span className="rc-attn__age">{age}</span> : null}
-      <button type="button" className="rc-attn__link" onClick={onClick}>
+      <Button unstyled type="button" className="rc-attn__link" onClick={onClick}>
         {linkLabel}
-      </button>
+      </Button>
     </div>
   );
 }
@@ -1202,7 +1202,7 @@ function TalentJourney({
             return (
               <div key={p.id} className="rc-tj__row" role="row">
                 {/* TALENT → the talent side panel (owning surface). */}
-                <button
+                <Button unstyled
                   type="button"
                   className="rc-tj__talent"
                   onClick={() => openRow(p)}
@@ -1218,16 +1218,16 @@ function TalentJourney({
                       </span>
                     ) : null}
                   </span>
-                </button>
+                </Button>
                 {/* PIPELINE → the recruiting stepper in the side panel. */}
-                <button
+                <Button unstyled
                   type="button"
                   className="rc-tj__cell"
                   onClick={() => openRow(p)}
                   aria-label={`Pipeline: ${PIPELINE_STATUS_LABELS[p.status]}`}
                 >
                   <StagePill status={p.status} />
-                </button>
+                </Button>
                 {/* CLIENT — authoritative submittal-state summary for this talent,
                     populated LAZILY when the row is opened (the pipeline→submittal
                     linkage read; never derived from the pipeline stage). */}
@@ -1236,7 +1236,7 @@ function TalentJourney({
                 </span>
                 {/* OFFER → the offer surface in the side panel. */}
                 {offer !== null ? (
-                  <button
+                  <Button unstyled
                     type="button"
                     className="rc-tj__cell"
                     onClick={() => openRow(p)}
@@ -1247,7 +1247,7 @@ function TalentJourney({
                         Expires {Math.max(0, offerDaysLeft(offer))}d
                       </span>
                     ) : null}
-                  </button>
+                  </Button>
                 ) : (
                   <span className="rc-tj__cell rc-tj__empty">—</span>
                 )}
@@ -1258,13 +1258,13 @@ function TalentJourney({
                 </span>
                 {/* ASSIGNMENT → the Assignments surface (drill). */}
                 {placement !== null ? (
-                  <button
+                  <Button unstyled
                     type="button"
                     className="rc-tj__cell"
                     onClick={() => onNavigate('assignments')}
                   >
                     {PLACEMENT_STATE_LABELS[placement.state]}
-                  </button>
+                  </Button>
                 ) : (
                   <span className="rc-tj__cell rc-tj__empty">—</span>
                 )}
@@ -1548,7 +1548,7 @@ function PlacementDrillList({
         const isOpen = openId === p.id;
         return (
           <li key={p.id} className="rc-filelist__row" style={{ display: 'block' }}>
-            <button
+            <Button unstyled
               type="button"
               className="rc-linkbtn"
               aria-expanded={isOpen}
@@ -1557,7 +1557,7 @@ function PlacementDrillList({
               {talentLabel(talents, p.talent_record_id)} ·{' '}
               {PLACEMENT_STATE_LABELS[p.state]}
               {isOpen ? ' ▾' : ' ▸'}
-            </button>
+            </Button>
             {isOpen ? <div className="rc-mt-8">{renderPanel(p.id)}</div> : null}
           </li>
         );

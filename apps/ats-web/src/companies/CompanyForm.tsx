@@ -5,7 +5,7 @@ import {
   FormField,
   InlineAlert,
   Switch,
-  type ComboboxItem,
+  type ComboboxItem, Checkbox, Input, Select, TextArea,
 } from '@aramo/fe-foundation';
 
 import { AddressTypeahead } from './AddressTypeahead';
@@ -610,7 +610,7 @@ export function CompanyForm(props: CompanyFormProps) {
       <fieldset className="company-form__basics" disabled={submitting}>
         <legend>Basics</legend>
         <FormField label="Name" required>
-          <input
+          <Input
             type="text"
             value={state.name}
             onChange={(ev) => set('name', ev.target.value)}
@@ -619,7 +619,7 @@ export function CompanyForm(props: CompanyFormProps) {
           />
         </FormField>
         <FormField label="Phone">
-          <input
+          <Input
             type="tel"
             value={state.phone1}
             onChange={(ev) => set('phone1', ev.target.value)}
@@ -627,7 +627,7 @@ export function CompanyForm(props: CompanyFormProps) {
           />
         </FormField>
         <FormField label="Website">
-          <input
+          <Input
             type="url"
             value={state.url}
             onChange={(ev) => set('url', ev.target.value)}
@@ -638,7 +638,7 @@ export function CompanyForm(props: CompanyFormProps) {
           label="Key technologies"
           helper="Free-text — e.g. 'AWS, Postgres, Python'."
         >
-          <input
+          <Input
             type="text"
             value={state.key_technologies}
             onChange={(ev) => set('key_technologies', ev.target.value)}
@@ -676,7 +676,7 @@ export function CompanyForm(props: CompanyFormProps) {
             />
           </FormField>
           <FormField label="Address">
-            <input
+            <Input
               type="text"
               value={state.address}
               onChange={(ev) => set('address', ev.target.value)}
@@ -684,7 +684,7 @@ export function CompanyForm(props: CompanyFormProps) {
             />
           </FormField>
           <FormField label="Address 2">
-            <input
+            <Input
               type="text"
               value={state.address2}
               onChange={(ev) => set('address2', ev.target.value)}
@@ -692,7 +692,7 @@ export function CompanyForm(props: CompanyFormProps) {
             />
           </FormField>
           <FormField label="City">
-            <input
+            <Input
               type="text"
               value={state.city}
               onChange={(ev) => set('city', ev.target.value)}
@@ -700,7 +700,7 @@ export function CompanyForm(props: CompanyFormProps) {
             />
           </FormField>
           <FormField label="State">
-            <input
+            <Input
               type="text"
               value={state.state}
               onChange={(ev) => set('state', ev.target.value)}
@@ -708,7 +708,7 @@ export function CompanyForm(props: CompanyFormProps) {
             />
           </FormField>
           <FormField label="Zip">
-            <input
+            <Input
               type="text"
               value={state.zip}
               onChange={(ev) => set('zip', ev.target.value)}
@@ -720,7 +720,7 @@ export function CompanyForm(props: CompanyFormProps) {
         <fieldset className="company-form__contact-extras" disabled={submitting}>
           <legend>Additional contact</legend>
           <FormField label="Phone (secondary)">
-            <input
+            <Input
               type="tel"
               value={state.phone2}
               onChange={(ev) => set('phone2', ev.target.value)}
@@ -728,7 +728,7 @@ export function CompanyForm(props: CompanyFormProps) {
             />
           </FormField>
           <FormField label="Fax">
-            <input
+            <Input
               type="tel"
               value={state.fax_number}
               onChange={(ev) => set('fax_number', ev.target.value)}
@@ -740,7 +740,7 @@ export function CompanyForm(props: CompanyFormProps) {
         <fieldset className="company-form__notes" disabled={submitting}>
           <legend>Notes</legend>
           <FormField label="Notes">
-            <textarea
+            <TextArea
               value={state.notes}
               onChange={(ev) => set('notes', ev.target.value)}
               aria-label="Notes"
@@ -756,8 +756,8 @@ export function CompanyForm(props: CompanyFormProps) {
             <div className="company-form__rel" role="group" aria-label="Relationships">
               <div className="company-form__relrow">
                 <label className="company-form__check">
-                  <input
-                    type="checkbox"
+                  <Checkbox
+                   
                     checked={state.rel_client}
                     onChange={(e) => set('rel_client', e.target.checked)}
                   />{' '}
@@ -766,19 +766,19 @@ export function CompanyForm(props: CompanyFormProps) {
                     <small>Owns requisitions · receives submittals · placements</small>
                   </span>
                 </label>
-                <select
+                <Select
                   value={state.rel_client_status}
                   onChange={(e) => set('rel_client_status', e.target.value)}
                   aria-label="Client status"
                   disabled={!state.rel_client}
                 >
                   {renderOptions(REL_STATUS_OPTS, false)}
-                </select>
+                </Select>
               </div>
               <div className="company-form__relrow">
                 <label className="company-form__check">
-                  <input
-                    type="checkbox"
+                  <Checkbox
+                   
                     checked={state.rel_vendor}
                     onChange={(e) => set('rel_vendor', e.target.checked)}
                   />{' '}
@@ -787,19 +787,19 @@ export function CompanyForm(props: CompanyFormProps) {
                     <small>Supplies talent · staffing supplier</small>
                   </span>
                 </label>
-                <select
+                <Select
                   value={state.rel_vendor_status}
                   onChange={(e) => set('rel_vendor_status', e.target.value)}
                   aria-label="Vendor status"
                   disabled={!state.rel_vendor}
                 >
                   {renderOptions(REL_STATUS_OPTS, false)}
-                </select>
+                </Select>
               </div>
               <div className="company-form__relrow">
                 <label className="company-form__check">
-                  <input
-                    type="checkbox"
+                  <Checkbox
+                   
                     checked={state.rel_partner}
                     onChange={(e) => set('rel_partner', e.target.checked)}
                   />{' '}
@@ -808,14 +808,14 @@ export function CompanyForm(props: CompanyFormProps) {
                     <small>Strategic · referral · integration</small>
                   </span>
                 </label>
-                <select
+                <Select
                   value={state.rel_partner_status}
                   onChange={(e) => set('rel_partner_status', e.target.value)}
                   aria-label="Partner status"
                   disabled={!state.rel_partner}
                 >
                   {renderOptions(REL_STATUS_OPTS, false)}
-                </select>
+                </Select>
               </div>
             </div>
             <p className="company-form__hint">
@@ -825,8 +825,8 @@ export function CompanyForm(props: CompanyFormProps) {
           </FormField>
           <FormField label="Do not contact">
             <label className="company-form__check">
-              <input
-                type="checkbox"
+              <Checkbox
+               
                 checked={state.communication_restricted}
                 onChange={(e) => set('communication_restricted', e.target.checked)}
               />{' '}
@@ -834,7 +834,7 @@ export function CompanyForm(props: CompanyFormProps) {
             </label>
           </FormField>
           <FormField label="Industry">
-            <input
+            <Input
               type="text"
               value={state.industry}
               onChange={(ev) => set('industry', ev.target.value)}
@@ -842,7 +842,7 @@ export function CompanyForm(props: CompanyFormProps) {
             />
           </FormField>
           <FormField label="Description">
-            <textarea
+            <TextArea
               value={state.description}
               onChange={(ev) => set('description', ev.target.value)}
               aria-label="Description"
@@ -855,29 +855,29 @@ export function CompanyForm(props: CompanyFormProps) {
         <fieldset className="company-form__firmographics" disabled={submitting}>
           <legend>Firmographics</legend>
           <FormField label="Country">
-            <select value={state.country} onChange={(ev) => set('country', ev.target.value)} aria-label="Country">
+            <Select value={state.country} onChange={(ev) => set('country', ev.target.value)} aria-label="Country">
               {renderOptions(COUNTRY_OPTS, true)}
-            </select>
+            </Select>
           </FormField>
           <FormField label="Employees (band)">
-            <input type="text" value={state.employee_count_band} onChange={(ev) => set('employee_count_band', ev.target.value)} aria-label="Employees (band)" />
+            <Input type="text" value={state.employee_count_band} onChange={(ev) => set('employee_count_band', ev.target.value)} aria-label="Employees (band)" />
           </FormField>
           <FormField label="Revenue (band)">
-            <input type="text" value={state.annual_revenue_band} onChange={(ev) => set('annual_revenue_band', ev.target.value)} aria-label="Revenue (band)" />
+            <Input type="text" value={state.annual_revenue_band} onChange={(ev) => set('annual_revenue_band', ev.target.value)} aria-label="Revenue (band)" />
           </FormField>
           <FormField label="Founded year">
-            <input type="number" value={state.founded_year} onChange={(ev) => set('founded_year', ev.target.value)} aria-label="Founded year" />
+            <Input type="number" value={state.founded_year} onChange={(ev) => set('founded_year', ev.target.value)} aria-label="Founded year" />
           </FormField>
           <FormField label="Ownership type">
-            <select value={state.ownership_type} onChange={(ev) => set('ownership_type', ev.target.value)} aria-label="Ownership type">
+            <Select value={state.ownership_type} onChange={(ev) => set('ownership_type', ev.target.value)} aria-label="Ownership type">
               {renderOptions(OWNERSHIP_OPTS, true)}
-            </select>
+            </Select>
           </FormField>
           <FormField label="Registration number">
-            <input type="text" value={state.registration_number} onChange={(ev) => set('registration_number', ev.target.value)} aria-label="Registration number" />
+            <Input type="text" value={state.registration_number} onChange={(ev) => set('registration_number', ev.target.value)} aria-label="Registration number" />
           </FormField>
           <FormField label="General email">
-            <input type="email" value={state.general_email} onChange={(ev) => set('general_email', ev.target.value)} aria-label="General email" />
+            <Input type="email" value={state.general_email} onChange={(ev) => set('general_email', ev.target.value)} aria-label="General email" />
           </FormField>
         </fieldset>
 
@@ -885,18 +885,18 @@ export function CompanyForm(props: CompanyFormProps) {
         <fieldset className="company-form__relationship" disabled={submitting}>
           <legend>Relationship</legend>
           <FormField label="Source">
-            <input type="text" value={state.source} onChange={(ev) => set('source', ev.target.value)} aria-label="Source" />
+            <Input type="text" value={state.source} onChange={(ev) => set('source', ev.target.value)} aria-label="Source" />
           </FormField>
           <FormField label="Client tier" helper="a | b | c">
-            <input type="text" value={state.client_tier} onChange={(ev) => set('client_tier', ev.target.value)} aria-label="Client tier" />
+            <Input type="text" value={state.client_tier} onChange={(ev) => set('client_tier', ev.target.value)} aria-label="Client tier" />
           </FormField>
           <FormField label="Supplier status">
-            <select value={state.supplier_status} onChange={(ev) => set('supplier_status', ev.target.value)} aria-label="Supplier status">
+            <Select value={state.supplier_status} onChange={(ev) => set('supplier_status', ev.target.value)} aria-label="Supplier status">
               {renderOptions(SUPPLIER_STATUS_OPTS, true)}
-            </select>
+            </Select>
           </FormField>
           <FormField label="Tags" helper="Comma-separated.">
-            <input type="text" value={state.tags} onChange={(ev) => set('tags', ev.target.value)} aria-label="Tags" />
+            <Input type="text" value={state.tags} onChange={(ev) => set('tags', ev.target.value)} aria-label="Tags" />
           </FormField>
           <FormField label="Exclusivity">
             <Switch checked={state.exclusivity} onCheckedChange={(c) => set('exclusivity', c)} aria-label="Exclusivity" />
@@ -959,26 +959,26 @@ export function CompanyForm(props: CompanyFormProps) {
         <fieldset className="company-form__commercial" disabled={submitting}>
           <legend>Commercial defaults</legend>
           <FormField label="Fee model">
-            <select value={state.fee_model} onChange={(ev) => set('fee_model', ev.target.value)} aria-label="Fee model">
+            <Select value={state.fee_model} onChange={(ev) => set('fee_model', ev.target.value)} aria-label="Fee model">
               {renderOptions(FEE_MODEL_OPTS, true)}
-            </select>
+            </Select>
           </FormField>
           <FormField label="Default contract markup %">
-            <input type="text" inputMode="decimal" value={state.default_contract_markup_pct} onChange={(ev) => set('default_contract_markup_pct', ev.target.value)} aria-label="Default contract markup %" />
+            <Input type="text" inputMode="decimal" value={state.default_contract_markup_pct} onChange={(ev) => set('default_contract_markup_pct', ev.target.value)} aria-label="Default contract markup %" />
           </FormField>
           <FormField label="Default perm fee %">
-            <input type="text" inputMode="decimal" value={state.default_perm_fee_pct} onChange={(ev) => set('default_perm_fee_pct', ev.target.value)} aria-label="Default perm fee %" />
+            <Input type="text" inputMode="decimal" value={state.default_perm_fee_pct} onChange={(ev) => set('default_perm_fee_pct', ev.target.value)} aria-label="Default perm fee %" />
           </FormField>
           <FormField label="Payment terms">
-            <select value={state.payment_terms} onChange={(ev) => set('payment_terms', ev.target.value)} aria-label="Payment terms">
+            <Select value={state.payment_terms} onChange={(ev) => set('payment_terms', ev.target.value)} aria-label="Payment terms">
               {renderOptions(PAYMENT_TERMS_OPTS, true)}
-            </select>
+            </Select>
           </FormField>
           <FormField label="Credit status">
-            <input type="text" value={state.credit_status} onChange={(ev) => set('credit_status', ev.target.value)} aria-label="Credit status" />
+            <Input type="text" value={state.credit_status} onChange={(ev) => set('credit_status', ev.target.value)} aria-label="Credit status" />
           </FormField>
           <FormField label="Default currency" helper="USD only for now.">
-            <input
+            <Input
               type="text"
               value="USD"
               aria-label="Default currency"
@@ -1113,7 +1113,7 @@ function DepartmentsEditor({
         </ul>
       )}
       <FormField label="Add department">
-        <input
+        <Input
           type="text"
           value={newName}
           onChange={(ev) => setNewName(ev.target.value)}

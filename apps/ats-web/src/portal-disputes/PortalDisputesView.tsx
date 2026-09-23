@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Button, hasScope, InlineAlert, useSession, type Session } from '@aramo/fe-foundation';
+import { Button, hasScope, InlineAlert, useSession, type Session, TextArea } from '@aramo/fe-foundation';
 
 import { formatInstant } from '../format/date';
 import { Card, safeErrorMessage } from '../ui';
@@ -134,7 +134,7 @@ export function PortalDisputesView({ sessionOverride }: { sessionOverride?: Sess
               ? 'The disputed evidence will be revoked. Record a resolution note for the audit + the talent.'
               : 'The dispute is rejected and the evidence returns to valid. Record a resolution note.'}
           </p>
-          <textarea
+          <TextArea unstyled
             className="rc-input"
             rows={3}
             value={note}

@@ -1,4 +1,4 @@
-import { Button, Dialog, FormField, InlineAlert, useToast } from '@aramo/fe-foundation';
+import { Button, Dialog, FormField, InlineAlert, useToast, Input, Select } from '@aramo/fe-foundation';
 import { useMemo, useState, type FormEvent } from 'react';
 
 import { messageForSiteError } from './error-messages';
@@ -127,7 +127,7 @@ export function SiteDialog({
       <form onSubmit={onSubmit} aria-label="Branch form" data-testid="site-dialog-form">
         {error !== '' && <InlineAlert variant="error">{error}</InlineAlert>}
         <FormField label="Branch name">
-          <input
+          <Input unstyled
             className="rc-input"
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -137,7 +137,7 @@ export function SiteDialog({
           />
         </FormField>
         <FormField label="Parent branch (optional)">
-          <select
+          <Select unstyled
             className="rc-input"
             value={parentId}
             onChange={(e) => setParentId(e.target.value)}
@@ -149,7 +149,7 @@ export function SiteDialog({
                 {s.name}
               </option>
             ))}
-          </select>
+          </Select>
         </FormField>
       </form>
     </Dialog>

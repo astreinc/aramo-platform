@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ApiError, Button, Dialog, FormField, InlineAlert } from '@aramo/fe-foundation';
+import { ApiError, Button, Dialog, FormField, InlineAlert, Input, TextArea } from '@aramo/fe-foundation';
 
 import {
   generateRequisitionContactDraft as defaultDraft,
@@ -205,7 +205,7 @@ export function RequisitionContactEmailComposer(
             </InlineAlert>
           ) : null}
           <FormField label="Subject">
-            <input
+            <Input
               type="text"
               data-testid="email-composer-subject"
               value={subject}
@@ -218,7 +218,7 @@ export function RequisitionContactEmailComposer(
             label="Message"
             helper="This is the exact message sent under your name. Edit it as needed, then send."
           >
-            <textarea
+            <TextArea
               data-testid="email-composer-body"
               rows={10}
               value={body}

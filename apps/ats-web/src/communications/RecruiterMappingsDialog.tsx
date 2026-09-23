@@ -1,4 +1,4 @@
-import { Button, Dialog, FormField, InlineAlert, Switch, useToast } from '@aramo/fe-foundation';
+import { Button, Dialog, FormField, InlineAlert, Switch, useToast, Input } from '@aramo/fe-foundation';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 
 import { EmptyState, ErrorState, LoadingState, safeErrorMessage } from '../ui';
@@ -148,7 +148,7 @@ export function RecruiterMappingsDialog({
           <form onSubmit={onSubmit} aria-label="Recruiter mapping form" data-testid="recruiter-mapping-form" style={{ marginTop: '1rem' }}>
             {error !== '' && <InlineAlert variant="error">{error}</InlineAlert>}
             <FormField label="Recruiter id">
-              <input
+              <Input unstyled
                 className="rc-input"
                 value={recruiterId}
                 onChange={(e) => setRecruiterId(e.target.value)}
@@ -157,7 +157,7 @@ export function RecruiterMappingsDialog({
               />
             </FormField>
             <FormField label="Provider user id">
-              <input
+              <Input unstyled
                 className="rc-input"
                 value={providerUserId}
                 onChange={(e) => setProviderUserId(e.target.value)}
@@ -166,7 +166,7 @@ export function RecruiterMappingsDialog({
               />
             </FormField>
             <FormField label="Extension (optional)">
-              <input
+              <Input unstyled
                 className="rc-input"
                 value={extension}
                 onChange={(e) => setExtension(e.target.value)}

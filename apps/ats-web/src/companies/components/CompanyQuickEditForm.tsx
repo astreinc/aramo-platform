@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Button, FormField } from '@aramo/fe-foundation';
+import { Button, FormField, Checkbox, Input, Select, TextArea } from '@aramo/fe-foundation';
 
 import { companyTypes, relStatusFor } from '../company-workspace';
 import type {
@@ -170,8 +170,8 @@ export function CompanyQuickEditForm(props: CompanyQuickEditFormProps) {
   ) => (
     <div className="company-form__relrow">
       <label className="company-form__check">
-        <input
-          type="checkbox"
+        <Checkbox
+         
           checked={on}
           onChange={(e) => set(onKey, e.target.checked as never)}
         />{' '}
@@ -180,7 +180,7 @@ export function CompanyQuickEditForm(props: CompanyQuickEditFormProps) {
           <small>{desc}</small>
         </span>
       </label>
-      <select
+      <Select
         value={statusVal}
         onChange={(e) => set(statusKey, e.target.value as never)}
         aria-label={`${label} status`}
@@ -189,7 +189,7 @@ export function CompanyQuickEditForm(props: CompanyQuickEditFormProps) {
         {REL_STATUS_OPTS.map((o) => (
           <option key={o.value} value={o.value}>{o.label}</option>
         ))}
-      </select>
+      </Select>
     </div>
   );
 
@@ -209,7 +209,7 @@ export function CompanyQuickEditForm(props: CompanyQuickEditFormProps) {
           </p>
         </FormField>
         <FormField label="Company name">
-          <input
+          <Input
             type="text"
             value={state.name}
             onChange={(e) => set('name', e.target.value)}
@@ -219,7 +219,7 @@ export function CompanyQuickEditForm(props: CompanyQuickEditFormProps) {
         </FormField>
         <div className="company-form__row2">
           <FormField label="Industry">
-            <input
+            <Input
               type="text"
               value={state.industry}
               onChange={(e) => set('industry', e.target.value)}
@@ -228,8 +228,8 @@ export function CompanyQuickEditForm(props: CompanyQuickEditFormProps) {
           </FormField>
           <FormField label="Do not contact">
             <label className="company-form__check">
-              <input
-                type="checkbox"
+              <Checkbox
+               
                 checked={state.communication_restricted}
                 onChange={(e) => set('communication_restricted', e.target.checked)}
               />{' '}
@@ -239,14 +239,14 @@ export function CompanyQuickEditForm(props: CompanyQuickEditFormProps) {
         </div>
         <div className="company-form__row2">
           <FormField label="Website">
-            <input type="text" value={state.url} onChange={(e) => set('url', e.target.value)} placeholder="https://" aria-label="Website" />
+            <Input type="text" value={state.url} onChange={(e) => set('url', e.target.value)} placeholder="https://" aria-label="Website" />
           </FormField>
           <FormField label="Phone">
-            <input type="text" value={state.phone1} onChange={(e) => set('phone1', e.target.value)} aria-label="Phone" />
+            <Input type="text" value={state.phone1} onChange={(e) => set('phone1', e.target.value)} aria-label="Phone" />
           </FormField>
         </div>
         <FormField label="Location">
-          <input type="text" value={state.city} onChange={(e) => set('city', e.target.value)} placeholder="City" aria-label="Location" />
+          <Input type="text" value={state.city} onChange={(e) => set('city', e.target.value)} placeholder="City" aria-label="Location" />
         </FormField>
       </fieldset>
 
@@ -254,7 +254,7 @@ export function CompanyQuickEditForm(props: CompanyQuickEditFormProps) {
         <fieldset className="company-form__section" disabled={props.submitting}>
           <legend>Engagement</legend>
           <FormField label="Payment terms">
-            <input type="text" value={state.payment_terms} onChange={(e) => set('payment_terms', e.target.value)} placeholder="e.g. net_30" aria-label="Payment terms" />
+            <Input type="text" value={state.payment_terms} onChange={(e) => set('payment_terms', e.target.value)} placeholder="e.g. net_30" aria-label="Payment terms" />
           </FormField>
         </fieldset>
       ) : null}
@@ -262,7 +262,7 @@ export function CompanyQuickEditForm(props: CompanyQuickEditFormProps) {
       <fieldset className="company-form__section" disabled={props.submitting}>
         <legend>Notes</legend>
         <FormField label="Notes">
-          <textarea rows={3} value={state.notes} onChange={(e) => set('notes', e.target.value)} aria-label="Notes" />
+          <TextArea rows={3} value={state.notes} onChange={(e) => set('notes', e.target.value)} aria-label="Notes" />
         </FormField>
       </fieldset>
 

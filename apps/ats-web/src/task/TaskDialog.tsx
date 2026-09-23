@@ -4,7 +4,7 @@ import {
   Dialog,
   FormField,
   InlineAlert,
-  type ComboboxItem,
+  type ComboboxItem, Button, Input, Select, TextArea,
 } from '@aramo/fe-foundation';
 
 import type { AssignableUser } from '../users/users-api';
@@ -130,12 +130,12 @@ export function TaskDialog({
       title={mode === 'create' ? 'New task' : 'Edit task'}
       footer={
         <>
-          <button type="button" onClick={() => onOpenChange(false)} disabled={busy}>
+          <Button type="button" onClick={() => onOpenChange(false)} disabled={busy}>
             Cancel
-          </button>
-          <button type="button" onClick={() => void submit()} disabled={busy} data-testid="task-save">
+          </Button>
+          <Button type="button" onClick={() => void submit()} disabled={busy} data-testid="task-save">
             {busy ? 'Saving…' : 'Save'}
-          </button>
+          </Button>
         </>
       }
     >
@@ -144,7 +144,7 @@ export function TaskDialog({
         label="Title"
         helper="A short, action-oriented summary — e.g. “Call Priya about the offer”."
       >
-        <input
+        <Input
           aria-label="Title"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
@@ -156,7 +156,7 @@ export function TaskDialog({
         label="Description"
         helper="Optional — add context, links, or the next step."
       >
-        <textarea
+        <TextArea
           aria-label="Description"
           value={description}
           onChange={(e) => setDescription(e.target.value)}
@@ -165,7 +165,7 @@ export function TaskDialog({
         />
       </FormField>
       <FormField label="Due date">
-        <input
+        <Input
           type="date"
           aria-label="Due date"
           value={dueDate}
@@ -173,7 +173,7 @@ export function TaskDialog({
         />
       </FormField>
       <FormField label="Type">
-        <select
+        <Select
           aria-label="Type"
           value={type}
           onChange={(e) => setType(e.target.value as TaskType | '')}
@@ -184,10 +184,10 @@ export function TaskDialog({
               {TYPE_LABELS[t]}
             </option>
           ))}
-        </select>
+        </Select>
       </FormField>
       <FormField label="Priority">
-        <select
+        <Select
           aria-label="Priority"
           value={priority}
           onChange={(e) => setPriority(e.target.value as TaskPriority | '')}
@@ -198,11 +198,11 @@ export function TaskDialog({
               {PRIORITY_LABELS[p]}
             </option>
           ))}
-        </select>
+        </Select>
       </FormField>
       {mode === 'edit' ? (
         <FormField label="Status">
-          <select
+          <Select
             aria-label="Status"
             value={status}
             onChange={(e) => setStatus(e.target.value as TaskStatus)}
@@ -212,7 +212,7 @@ export function TaskDialog({
                 {STATUS_LABELS[s]}
               </option>
             ))}
-          </select>
+          </Select>
         </FormField>
       ) : null}
       <FormField label="Assignee">

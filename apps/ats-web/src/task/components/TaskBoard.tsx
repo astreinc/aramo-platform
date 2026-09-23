@@ -1,3 +1,5 @@
+import { Button, Select } from '@aramo/fe-foundation';
+
 import { StatusPill } from '../../ui';
 import {
   OWNER_LABELS,
@@ -60,9 +62,9 @@ export function TaskBoard({ tasks, now, canWrite, onMove, onOpen }: TaskBoardPro
                       {typeIcon(t.type)}
                     </span>
                   ) : null}
-                  <button type="button" className="rc-bcard__title" onClick={() => onOpen(t)}>
+                  <Button unstyled type="button" className="rc-bcard__title" onClick={() => onOpen(t)}>
                     {t.title}
-                  </button>
+                  </Button>
                 </div>
                 <div className="rc-bcard__meta">
                   <span className={`rc-tlink rc-tlink--${t.owner_type}`}>
@@ -74,7 +76,7 @@ export function TaskBoard({ tasks, now, canWrite, onMove, onOpen }: TaskBoardPro
                 {canWrite ? (
                   <label className="rc-bcard__move">
                     <span className="rc-sr">Move {t.title} to</span>
-                    <select
+                    <Select
                       aria-label={`Move ${t.title} to status`}
                       value={t.status}
                       onChange={(e) => onMove(t, e.target.value as TaskStatus)}
@@ -87,7 +89,7 @@ export function TaskBoard({ tasks, now, canWrite, onMove, onOpen }: TaskBoardPro
                           </option>
                         ),
                       )}
-                    </select>
+                    </Select>
                   </label>
                 ) : (
                   <StatusPill tone={STATUS_TONE[t.status]} dot>

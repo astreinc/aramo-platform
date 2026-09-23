@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Button, FormField, InlineAlert } from '@aramo/fe-foundation';
+import { Button, FormField, InlineAlert, Input, Select } from '@aramo/fe-foundation';
 
 import type { SelectionEventView, RecordResponseRequest } from './types';
 
@@ -68,7 +68,7 @@ export function ResponseLogger({
       }}
     >
       <FormField label="Which outreach is this a response to?">
-        <select
+        <Select
           value={refId}
           onChange={(e) => setRefId(e.target.value)}
           disabled={submitting}
@@ -79,10 +79,10 @@ export function ResponseLogger({
               Outreach sent · {event.created_at}
             </option>
           ))}
-        </select>
+        </Select>
       </FormField>
       <FormField label="When did the response arrive?">
-        <input
+        <Input
           type="datetime-local"
           value={receivedAt}
           onChange={(e) => setReceivedAt(e.target.value)}

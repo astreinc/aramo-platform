@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Button, Dialog, InlineAlert, useToast } from '@aramo/fe-foundation';
+import { Button, Dialog, InlineAlert, useToast, TextArea } from '@aramo/fe-foundation';
 
 import { resolveContradiction, type ContradictionItem } from '../dossier-api';
 
@@ -75,7 +75,7 @@ export function ContradictionResolveDialog({ item, onClose, onResolved }: Props)
       ) : null}
       <label className="rc-field rc-mt-16">
         <span className="rc-field__label">Justification (required)</span>
-        <textarea
+        <TextArea unstyled
           className="rc-select"
           rows={3}
           value={justification}

@@ -1,3 +1,5 @@
+import { Input, Select } from '@aramo/fe-foundation';
+
 import { Icons } from '../../ui';
 import { PRIORITY_LABELS, TYPE_LABELS } from '../task-vocab';
 import { TASK_PRIORITY_VALUES, TASK_TYPE_VALUES } from '../types';
@@ -17,28 +19,28 @@ export function QuickAddSeam() {
       <span className="rc-quickadd__plus" aria-hidden="true">
         <Icons.IconPlus />
       </span>
-      <input
+      <Input unstyled
         className="rc-quickadd__title"
         placeholder="Create a task from a talent, requisition, or company record…"
         disabled
         aria-label="Add a task (disabled — create from a record)"
       />
-      <select disabled aria-label="Type" defaultValue="">
+      <Select disabled aria-label="Type" defaultValue="">
         <option value="">Type</option>
         {TASK_TYPE_VALUES.map((t) => (
           <option key={t} value={t}>
             {TYPE_LABELS[t]}
           </option>
         ))}
-      </select>
-      <select disabled aria-label="Priority" defaultValue="">
+      </Select>
+      <Select disabled aria-label="Priority" defaultValue="">
         <option value="">Priority</option>
         {TASK_PRIORITY_VALUES.map((p) => (
           <option key={p} value={p}>
             {PRIORITY_LABELS[p]}
           </option>
         ))}
-      </select>
+      </Select>
       <span className="rc-quickadd__note">
         <Icons.IconInfo />
         New tasks are created from a record’s Tasks tab.

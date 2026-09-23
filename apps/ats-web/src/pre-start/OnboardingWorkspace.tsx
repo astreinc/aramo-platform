@@ -1,3 +1,5 @@
+import { Button } from '@aramo/fe-foundation';
+
 import { canMarkReady, requirementActionsFor, type RequirementAffordance } from './pre-start-affordance';
 import { REQUIREMENT_STATUS_LABELS, type PreStartPlacementRequirements, type PreStartRequirementView } from './types';
 
@@ -39,9 +41,9 @@ export function OnboardingWorkspace({
           {readinessText(data)}
         </span>
         {showMarkReady ? (
-          <button type="button" className="rc-hbtn rc-hbtn--primary" onClick={() => onMarkReady()}>
+          <Button unstyled type="button" className="rc-hbtn rc-hbtn--primary" onClick={() => onMarkReady()}>
             Mark ready to start
-          </button>
+          </Button>
         ) : null}
       </header>
 
@@ -80,14 +82,14 @@ function RequirementRow({
       {actions.length > 0 ? (
         <span className="rc-onboarding__req-actions">
           {actions.map((a) => (
-            <button
+            <Button unstyled
               key={a.action}
               type="button"
               className={`rc-hbtn${a.action === 'SATISFY' || a.action === 'VERIFY' ? ' rc-hbtn--primary' : ''}`}
               onClick={() => onAction(r.id, a)}
             >
               {a.label}
-            </button>
+            </Button>
           ))}
         </span>
       ) : null}

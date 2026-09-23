@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { Button } from '@aramo/fe-foundation';
 
 import { RequisitionContactEmailComposer } from './RequisitionContactEmailComposer';
 import {
@@ -116,13 +117,13 @@ export function MicrosoftRecruiterActions(props: MicrosoftRecruiterActionsProps)
   return (
     <div data-testid="microsoft-actions">
       {canSendEmail && (
-        <button type="button" data-testid="microsoft-send-email" onClick={onOpenComposer}>
+        <Button type="button" data-testid="microsoft-send-email" onClick={onOpenComposer}>
           Send email
-        </button>
+        </Button>
       )}
-      <button type="button" data-testid="microsoft-create-meeting" onClick={onCreateMeeting}>
+      <Button type="button" data-testid="microsoft-create-meeting" onClick={onCreateMeeting}>
         Create Teams meeting
-      </button>
+      </Button>
       {canSendEmail && (
         <RequisitionContactEmailComposer
           open={composerOpen}

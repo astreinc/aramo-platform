@@ -6,7 +6,7 @@ import {
   InlineAlert,
   RadioGroup,
   type RadioOption,
-  useToast,
+  useToast, Input, TextArea,
 } from '@aramo/fe-foundation';
 import { useState } from 'react';
 
@@ -157,7 +157,7 @@ export function CommercialRevisionFormDialog({
       }
     >
       <FormField label="Pay rate" error={fieldError['pay']}>
-        <input
+        <Input unstyled
           className="rc-input"
           inputMode="decimal"
           value={pay}
@@ -167,7 +167,7 @@ export function CommercialRevisionFormDialog({
         />
       </FormField>
       <FormField label="Bill rate" error={fieldError['bill']}>
-        <input
+        <Input unstyled
           className="rc-input"
           inputMode="decimal"
           value={bill}
@@ -177,7 +177,7 @@ export function CommercialRevisionFormDialog({
         />
       </FormField>
       <FormField label="Currency" error={fieldError['currency']}>
-        <input
+        <Input unstyled
           className="rc-input"
           maxLength={3}
           value={currency}
@@ -197,7 +197,7 @@ export function CommercialRevisionFormDialog({
         />
       </fieldset>
       <FormField label="Change reason" error={fieldError['changeReason']}>
-        <textarea
+        <TextArea unstyled
           className="rc-input"
           rows={2}
           maxLength={2000}

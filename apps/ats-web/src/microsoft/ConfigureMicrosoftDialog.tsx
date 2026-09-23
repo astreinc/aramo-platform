@@ -1,4 +1,4 @@
-import { Button, Dialog, FormField, InlineAlert, useToast } from '@aramo/fe-foundation';
+import { Button, Dialog, FormField, InlineAlert, useToast, Input } from '@aramo/fe-foundation';
 import { useState, type FormEvent } from 'react';
 
 import { safeErrorMessage } from '../ui';
@@ -108,11 +108,11 @@ export function ConfigureMicrosoftDialog({
         {error !== '' && <InlineAlert variant="error">{error}</InlineAlert>}
         {redirectUri !== undefined && redirectUri !== '' && (
           <FormField label="Redirect (callback) URI — register this in Azure">
-            <input className="rc-input" value={redirectUri} readOnly data-testid="microsoft-redirect-uri" />
+            <Input unstyled className="rc-input" value={redirectUri} readOnly data-testid="microsoft-redirect-uri" />
           </FormField>
         )}
         <FormField label="Application (client) ID">
-          <input
+          <Input unstyled
             className="rc-input"
             value={clientId}
             onChange={(e) => setClientId(e.target.value)}
@@ -122,7 +122,7 @@ export function ConfigureMicrosoftDialog({
           />
         </FormField>
         <FormField label="Directory (authority) tenant">
-          <input
+          <Input unstyled
             className="rc-input"
             value={authorityTenant}
             onChange={(e) => setAuthorityTenant(e.target.value)}
@@ -132,7 +132,7 @@ export function ConfigureMicrosoftDialog({
           />
         </FormField>
         <FormField label={hasSecret ? 'Client secret (leave blank to keep the stored secret)' : 'Client secret'}>
-          <input
+          <Input unstyled
             className="rc-input"
             type="password"
             value={clientSecret}

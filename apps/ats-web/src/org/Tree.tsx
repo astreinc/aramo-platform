@@ -119,14 +119,14 @@ function TreeRow({
     >
       <div className="rc-tree__row">
         {hasChildren ? (
-          <button
+          <Button unstyled
             type="button"
             className="rc-tree__toggle"
             aria-label={expanded ? 'Collapse' : 'Expand'}
             onClick={() => setExpanded(!expanded)}
           >
             {expanded ? '▾' : '▸'}
-          </button>
+          </Button>
         ) : (
           <span className="rc-tree__toggle rc-tree__toggle--leaf" aria-hidden="true">
             •

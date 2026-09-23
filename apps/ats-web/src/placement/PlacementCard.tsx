@@ -1,3 +1,5 @@
+import { Button } from '@aramo/fe-foundation';
+
 import { allowedActions } from './board-derivation';
 import { PLACEMENT_STATE_LABELS, type PlacementView } from './types';
 
@@ -31,7 +33,7 @@ export function PlacementCard({ placement, scopes, onAction }: PlacementCardProp
       {onAction !== undefined && actions.length > 0 ? (
         <div className="placement-card__actions">
           {actions.map((a) => (
-            <button
+            <Button unstyled
               key={a.to}
               type="button"
               className="placement-card__action"
@@ -39,7 +41,7 @@ export function PlacementCard({ placement, scopes, onAction }: PlacementCardProp
               onClick={() => onAction(a.to)}
             >
               {PLACEMENT_STATE_LABELS[a.to]}
-            </button>
+            </Button>
           ))}
         </div>
       ) : null}

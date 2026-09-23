@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Button, TextArea } from '@aramo/fe-foundation';
 
 import type { EngagementReadiness } from './engagement-api';
 
@@ -56,14 +57,14 @@ export function EngagementOverridePrompt(props: EngagementOverridePromptProps): 
       </p>
       <label>
         Override reason (required)
-        <textarea
+        <TextArea
           data-testid="engagement-override-reason"
           value={reason}
           maxLength={1000}
           onChange={(e) => setReason(e.target.value)}
         />
       </label>
-      <button
+      <Button
         type="button"
         data-testid="engagement-override-submit"
         disabled={!reasonValid || busy === true}
@@ -72,7 +73,7 @@ export function EngagementOverridePrompt(props: EngagementOverridePromptProps): 
         }}
       >
         Override &amp; Submit to client
-      </button>
+      </Button>
     </div>
   );
 }

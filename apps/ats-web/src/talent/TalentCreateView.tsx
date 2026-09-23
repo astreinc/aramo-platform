@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ApiError } from '@aramo/fe-foundation';
+import { ApiError, Button } from '@aramo/fe-foundation';
 
 import { useMe } from '../shell/me-api';
 import { Icons, InlineAlert, PageHeader } from '../ui';
@@ -419,13 +419,13 @@ export function TalentCreateView() {
             A resume is required to create a Talent record.
           </p>
           <div className="rc-stepcancel">
-            <button
+            <Button unstyled
               type="button"
               className="rc-btn"
               onClick={() => navigate('/talent')}
             >
               Cancel
-            </button>
+            </Button>
             <p className="rc-stepcancel__note">
               Contact permissions are governed separately from profile creation ·
               provenance is recorded automatically.
@@ -445,14 +445,14 @@ export function TalentCreateView() {
         <div className="rc-editgrid">
           <div className="rc-editgrid__main">
             <div className="rc-stephdr">
-              <button
+              <Button unstyled
                 type="button"
                 className="rc-step__back"
                 disabled={submitting}
                 onClick={() => setPhase('intake')}
               >
                 ← Back
-              </button>
+              </Button>
               <span className="rc-stepeyebrow">Step 2 of 2 · Review &amp; create</span>
             </div>
             <ParseBanner resume={resume} />
@@ -523,7 +523,7 @@ export function TalentCreateView() {
       {phase === 'form' ? (
         <div className="rc-addfoot">
           <div className="rc-addfoot__actions">
-            <button
+            <Button unstyled
               type="button"
               className="rc-btn rc-btn--primary"
               disabled={!canCreate || submitting}
@@ -531,15 +531,15 @@ export function TalentCreateView() {
             >
               <Icons.IconCheck />
               {submitting ? 'Creating…' : 'Create talent'}
-            </button>
-            <button
+            </Button>
+            <Button unstyled
               type="button"
               className="rc-btn"
               disabled={submitting}
               onClick={() => navigate('/talent')}
             >
               Cancel
-            </button>
+            </Button>
           </div>
           <p className="rc-addfoot__note">
             Contact permissions are governed separately from profile creation ·
@@ -623,16 +623,16 @@ function DupMatchCard({
           </span>
         </span>
         <span className="rc-dupcard__acts">
-          <button
+          <Button unstyled
             type="button"
             className="rc-dupcard__review"
             onClick={() => onReview(match.id)}
           >
             Review existing Talent
-          </button>
-          <button type="button" className="rc-dupcard__diff" onClick={onDifferent}>
+          </Button>
+          <Button unstyled type="button" className="rc-dupcard__diff" onClick={onDifferent}>
             Use a different email
-          </button>
+          </Button>
         </span>
       </div>
       <div className="rc-dupcard__foot">
@@ -737,12 +737,12 @@ function SuccessScreen({
         <InlineAlert variant="error">{attachWarning}</InlineAlert>
       ) : null}
       <div className="rc-success__btns">
-        <button type="button" className="rc-btn rc-btn--primary" onClick={onOpen}>
+        <Button unstyled type="button" className="rc-btn rc-btn--primary" onClick={onOpen}>
           Open profile
-        </button>
-        <button type="button" className="rc-btn" onClick={onAnother}>
+        </Button>
+        <Button unstyled type="button" className="rc-btn" onClick={onAnother}>
           Add another
-        </button>
+        </Button>
       </div>
     </section>
   );

@@ -2,10 +2,15 @@ import './components.css';
 
 export { Button } from './Button';
 export { Card } from './Card';
+export { Checkbox, type CheckboxProps } from './Checkbox';
 export { Combobox, type ComboboxItem, type ComboboxProps } from './Combobox';
 export { Dialog, DialogClose } from './Dialog';
 export { ForbiddenState } from './ForbiddenState';
 export { FormField } from './FormField';
+export { Input, type InputProps } from './Input';
+export { TextArea, type TextAreaProps } from './TextArea';
+export { Select, type SelectProps } from './Select';
+export { TextField, type TextFieldProps } from './TextField';
 export { InlineAlert } from './InlineAlert';
 export { Label } from './Label';
 export { NavLink } from './NavLink';

@@ -1,5 +1,6 @@
 import * as RadixPopover from '@radix-ui/react-popover';
 import { useEffect, useId, useRef, useState } from 'react';
+import { Input } from '@aramo/fe-foundation';
 
 import { autocompleteAddress, getAddressDetails } from './companies-api';
 import type { AddressDetails, AddressSuggestion } from './types';
@@ -166,7 +167,7 @@ export function AddressTypeahead({
     <div className="address-typeahead">
       <RadixPopover.Root open={open} onOpenChange={setOpen}>
         <RadixPopover.Anchor asChild>
-          <input
+          <Input unstyled
             type="text"
             className="tc-combobox__input address-typeahead__input"
             role="combobox"

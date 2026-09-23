@@ -1,4 +1,4 @@
-import { PageHeader } from '@aramo/fe-foundation';
+import { PageHeader, Input } from '@aramo/fe-foundation';
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
@@ -42,7 +42,7 @@ function IdLookup({
         if (trimmed !== '') navigate(toPath(encodeURIComponent(trimmed)));
       }}
     >
-      <input
+      <Input unstyled
         className="rc-input"
         aria-label={ariaLabel}
         placeholder={placeholder}

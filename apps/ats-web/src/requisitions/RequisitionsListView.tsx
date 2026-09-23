@@ -4,7 +4,7 @@ import {
   InlineAlert,
   hasScope,
   useSession,
-  type Session,
+  type Session, Select,
 } from '@aramo/fe-foundation';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
@@ -428,7 +428,7 @@ export function RequisitionsListView({
             </h2>
             <div className="rc-focus__row">
               {focusItems.map((r) => (
-                <button
+                <Button unstyled
                   key={r.id}
                   type="button"
                   className="rc-focus__k"
@@ -440,7 +440,7 @@ export function RequisitionsListView({
                   />
                   <span className="rc-focus__t">{r.title} —</span>{' '}
                   {focusReason(r, pipelineCounts)}
-                </button>
+                </Button>
               ))}
             </div>
           </div>
@@ -455,7 +455,7 @@ export function RequisitionsListView({
           value={query}
           onChange={setQuery}
         />
-        <select
+        <Select unstyled
           className="rc-fsel"
           aria-label="Filter by status"
           value={statusFilter}
@@ -467,7 +467,7 @@ export function RequisitionsListView({
               {RECRUITING_STATUS_LABELS[s]}
             </option>
           ))}
-        </select>
+        </Select>
         {/* Searchable company filter (type to navigate). */}
         <span className="rc-fcombo">
           <Combobox
@@ -485,7 +485,7 @@ export function RequisitionsListView({
             testId="company-filter"
           />
         </span>
-        <select
+        <Select unstyled
           className="rc-fsel"
           aria-label="Filter by location"
           value={locationFilter}
@@ -497,8 +497,8 @@ export function RequisitionsListView({
               {loc}
             </option>
           ))}
-        </select>
-        <select
+        </Select>
+        <Select unstyled
           className="rc-fsel"
           aria-label="Filter by owner"
           value={ownerFilter}
@@ -513,7 +513,7 @@ export function RequisitionsListView({
                 {o.name}
               </option>
             ))}
-        </select>
+        </Select>
         <FilterChip
           active={mode === 'hot'}
           onClick={() => setMode(mode === 'hot' ? 'none' : 'hot')}
@@ -527,7 +527,7 @@ export function RequisitionsListView({
           Bookmarked
         </FilterChip>
         <span className="rc-toolbar__grow" />
-        <select
+        <Select unstyled
           className="rc-fsel"
           aria-label="Sort requisitions"
           value={sort}
@@ -537,7 +537,7 @@ export function RequisitionsListView({
           <option value="aging">Sort: Aging</option>
           <option value="pipeline">Sort: Pipeline</option>
           <option value="new">Sort: Newest</option>
-        </select>
+        </Select>
       </Toolbar>
 
       <Card flush className="rc-mt-16">
@@ -709,7 +709,7 @@ function RequisitionRow({
       {/* Leading ★ column — the personal favorite (PR-14), prototype's first
           column. It re-skins the bookmark to a star and never touches is_hot;
           the team-wide signal stays the "Priority" pill beside the title. */}
-      <button
+      <Button unstyled
         type="button"
         className={`rc-rt__star${req.bookmarked ? ' rc-rt__star--on' : ''}`}
         aria-pressed={req.bookmarked}
@@ -721,7 +721,7 @@ function RequisitionRow({
         }}
       >
         {req.bookmarked ? '★' : '☆'}
-      </button>
+      </Button>
 
       {/* Requisition */}
       <div className="rc-rt__req">
@@ -884,7 +884,7 @@ function RequisitionRow({
                   const name = talentNames[e.talent_record_id];
                   const bucket = funnelBucket(e.status);
                   return (
-                    <button
+                    <Button unstyled
                       key={e.id}
                       type="button"
                       className="rc-texp__row"
@@ -926,7 +926,7 @@ function RequisitionRow({
                       <span className="rc-texp__cell rc-texp__cell--r mono">
                         {e.desired_rate || '—'}
                       </span>
-                    </button>
+                    </Button>
                   );
                 })}
               </div>

@@ -1,3 +1,5 @@
+import { Button } from '@aramo/fe-foundation';
+
 import { formatInstant } from '../format/date';
 
 import { IngestionStatusPill } from './IngestionStatusPill';
@@ -19,7 +21,7 @@ export function IngestionBatchRow({
 }) {
   const date = formatInstant(batch.committed_at ?? batch.created_at);
   return (
-    <button
+    <Button unstyled
       type="button"
       className={`set-row set-row--btn${selected ? ' on' : ''}`}
       data-testid={`ingestion-batch-row-${batch.id}`}
@@ -39,6 +41,6 @@ export function IngestionBatchRow({
           {date}
         </span>
       </span>
-    </button>
+    </Button>
   );
 }

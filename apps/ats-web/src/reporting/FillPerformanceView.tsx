@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react';
+import { Button, Input } from '@aramo/fe-foundation';
 
 import { useEntityCrumb } from '../shell/breadcrumb';
 import { ErrorState, LoadingState, PageHeader } from '../ui';
@@ -69,7 +70,7 @@ export function FillPerformanceView(): JSX.Element {
       <form onSubmit={run}>
         <label>
           From
-          <input
+          <Input
             type="datetime-local"
             value={from}
             onChange={(e) => setFrom(e.target.value)}
@@ -78,16 +79,16 @@ export function FillPerformanceView(): JSX.Element {
         </label>
         <label>
           To
-          <input
+          <Input
             type="datetime-local"
             value={to}
             onChange={(e) => setTo(e.target.value)}
             data-testid="fp-to"
           />
         </label>
-        <button type="submit" data-testid="fp-run">
+        <Button type="submit" data-testid="fp-run">
           Run report
-        </button>
+        </Button>
       </form>
 
       {status === 'loading' ? <LoadingState /> : null}

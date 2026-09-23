@@ -1,4 +1,4 @@
-import { ApiError, Combobox, type ComboboxItem, useToast } from '@aramo/fe-foundation';
+import { ApiError, Combobox, type ComboboxItem, useToast, Input } from '@aramo/fe-foundation';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 
@@ -342,7 +342,7 @@ export function TeamClientsView({
                     label={<label htmlFor="add-client-uuid">Company ID</label>}
                     helper="Company list unavailable to your role — paste the UUID."
                   >
-                    <input
+                    <Input unstyled
                       id="add-client-uuid"
                       type="text"
                       className="rc-input"

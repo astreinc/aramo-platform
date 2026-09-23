@@ -4,7 +4,7 @@ import {
   Dialog,
   FormField,
   InlineAlert,
-  useToast,
+  useToast, Checkbox, Select, TextArea,
 } from '@aramo/fe-foundation';
 
 import { createNote } from './activity-api';
@@ -108,8 +108,8 @@ export function LogNoteDialog({
         footer={
           <>
             <label className="lognote__pin">
-              <input
-                type="checkbox"
+              <Checkbox
+               
                 checked={pinned}
                 onChange={(e) => setPinned(e.target.checked)}
                 disabled={submitting}
@@ -136,7 +136,7 @@ export function LogNoteDialog({
         <FormField label="Category">
           <div className="lognote__category" role="group" aria-label="Category">
             {NOTE_CATEGORY_VALUES.map((c) => (
-              <button
+              <Button unstyled
                 key={c}
                 type="button"
                 className="lognote__category-chip"
@@ -145,12 +145,12 @@ export function LogNoteDialog({
                 disabled={submitting}
               >
                 {NOTE_CATEGORY_LABELS[c]}
-              </button>
+              </Button>
             ))}
           </div>
         </FormField>
         <FormField label="Visibility">
-          <select
+          <Select
             value={visibility}
             onChange={(e) => setVisibility(e.target.value as NoteVisibility)}
             disabled={submitting}
@@ -160,10 +160,10 @@ export function LogNoteDialog({
                 {NOTE_VISIBILITY_LABELS[v]}
               </option>
             ))}
-          </select>
+          </Select>
         </FormField>
         <FormField label="Note">
-          <textarea
+          <TextArea
             value={text}
             onChange={(e) => setText(e.target.value)}
             rows={10}

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Button } from '@aramo/fe-foundation';
 
 import { findSubmittalForTalentJob } from '../submittals/submittals-api';
 
@@ -142,14 +143,14 @@ export function OfferPanelContainer({
         <OfferPanel state={offer.state} scopes={scopes} onAction={onAction} />
       ) : null}
       {showCreate ? (
-        <button
+        <Button unstyled
           type="button"
           className="rc-hbtn rc-hbtn--primary"
           disabled={busy}
           onClick={() => void onCreate()}
         >
           Make offer
-        </button>
+        </Button>
       ) : null}
       {err ? <p className="rc-offer__err">{err}</p> : null}
     </section>

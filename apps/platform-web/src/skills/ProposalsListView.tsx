@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ApiError, DataTable, InlineAlert, type TableColumn } from '@aramo/fe-foundation';
+import { ApiError, DataTable, InlineAlert, type TableColumn, Select } from '@aramo/fe-foundation';
 
 import { skillsApi, type Proposal, type ProposalStatus } from './skills-api';
 import { ProposalStatusBadge } from './ProposalStatusBadge';
@@ -63,7 +63,7 @@ export function ProposalsListView() {
       </div>
 
       <div className="pw-toolbar">
-        <select
+        <Select unstyled
           aria-label="Filter by status"
           className="tc-input"
           value={status}
@@ -75,7 +75,7 @@ export function ProposalsListView() {
               {s === '' ? 'All statuses' : s}
             </option>
           ))}
-        </select>
+        </Select>
       </div>
 
       {error ? <InlineAlert variant="error">{error}</InlineAlert> : null}

@@ -1,3 +1,5 @@
+import { Button } from '@aramo/fe-foundation';
+
 import { Icons } from '../ui';
 
 import {
@@ -42,7 +44,7 @@ export function ConsentCapture({
               key={def.key}
               className={`rc-consent__item${on ? ' rc-consent__item--on' : ''}`}
             >
-              <button
+              <Button unstyled
                 type="button"
                 role="switch"
                 aria-checked={on}
@@ -54,7 +56,7 @@ export function ConsentCapture({
                 <span className="rc-consent__box" aria-hidden="true">
                   {on ? <Icons.IconCheck /> : null}
                 </span>
-              </button>
+              </Button>
               <div className="rc-consent__body">
                 <div className="rc-consent__lb">{def.label}</div>
                 <div className="rc-consent__s">{def.summary}</div>

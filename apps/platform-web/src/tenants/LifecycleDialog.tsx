@@ -4,7 +4,7 @@ import {
   Button,
   Dialog,
   FormField,
-  InlineAlert,
+  InlineAlert, Checkbox, Input, Select, TextArea,
 } from '@aramo/fe-foundation';
 
 import { platformApi } from '../platform-api';
@@ -136,7 +136,7 @@ export function LifecycleDialog({
       {error ? <InlineAlert variant="error">{error}</InlineAlert> : null}
 
       <FormField label="Reason code">
-        <select
+        <Select unstyled
           className="tc-input"
           value={reasonCode}
           onChange={(e) => setReasonCode(e.target.value)}
@@ -146,14 +146,14 @@ export function LifecycleDialog({
               {c}
             </option>
           ))}
-        </select>
+        </Select>
       </FormField>
 
       {action === 'suspend' || action === 'close' ? (
         <FormField
           label={action === 'suspend' ? 'Reason (required)' : 'Reason (optional)'}
         >
-          <textarea
+          <TextArea unstyled
             className="tc-input"
             rows={3}
             value={reasonText}
@@ -166,7 +166,7 @@ export function LifecycleDialog({
       {action === 'offboarding' ? (
         <>
           <FormField label="Close date">
-            <input
+            <Input unstyled
               className="tc-input"
               type="date"
               value={closeAt}
@@ -177,7 +177,7 @@ export function LifecycleDialog({
             label="Retention policy code"
             helper="Opaque string — policy semantics TBD (counsel-gated)."
           >
-            <input
+            <Input unstyled
               className="tc-input"
               value={retentionPolicyCode}
               onChange={(e) => setRetentionPolicyCode(e.target.value)}
@@ -189,8 +189,8 @@ export function LifecycleDialog({
 
       {action === 'close' ? (
         <label style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8 }}>
-          <input
-            type="checkbox"
+          <Checkbox
+           
             checked={confirmClose}
             onChange={(e) => setConfirmClose(e.target.checked)}
           />

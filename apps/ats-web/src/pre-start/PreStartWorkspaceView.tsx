@@ -1,4 +1,4 @@
-import { hasScope, type Session, useSession } from '@aramo/fe-foundation';
+import { hasScope, type Session, useSession, Button, Select, TextArea } from '@aramo/fe-foundation';
 import { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 
@@ -207,29 +207,29 @@ function PendingActionForm({
         {pending.action === 'WAIVE' ? (
           <label>
             Authority
-            <select value={authority} onChange={(e) => setAuthority(e.target.value as WaiverAuthority)}>
+            <Select value={authority} onChange={(e) => setAuthority(e.target.value as WaiverAuthority)}>
               {WAIVER_AUTHORITY_VALUES.map((a) => (
                 <option key={a} value={a}>
                   {a}
                 </option>
               ))}
-            </select>
+            </Select>
           </label>
         ) : null}
         <label>
           Justification
-          <textarea
+          <TextArea
             value={justification}
             onChange={(e) => setJustification(e.target.value)}
             aria-label="Justification"
           />
         </label>
-        <button type="submit" className="rc-hbtn rc-hbtn--primary" disabled={justification.trim().length === 0}>
+        <Button unstyled type="submit" className="rc-hbtn rc-hbtn--primary" disabled={justification.trim().length === 0}>
           Confirm
-        </button>
-        <button type="button" className="rc-hbtn" onClick={() => onCancel()}>
+        </Button>
+        <Button unstyled type="button" className="rc-hbtn" onClick={() => onCancel()}>
           Cancel
-        </button>
+        </Button>
       </form>
     </Card>
   );

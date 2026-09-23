@@ -1,3 +1,5 @@
+import { Button } from '@aramo/fe-foundation';
+
 import { TYPE_LABELS } from '../task-vocab';
 import { buildCalendar } from '../workspace';
 import type { TaskView } from '../types';
@@ -28,7 +30,7 @@ export function TaskCalendar({ tasks, now, onOpen }: TaskCalendarProps) {
             </div>
             <div className="rc-calday__body">
               {d.tasks.slice(0, 6).map((t) => (
-                <button
+                <Button unstyled
                   type="button"
                   key={t.id}
                   className={`rc-calitem${t.type !== null ? ` rc-calitem--${t.type}` : ''}`}
@@ -37,7 +39,7 @@ export function TaskCalendar({ tasks, now, onOpen }: TaskCalendarProps) {
                   title={t.type !== null ? TYPE_LABELS[t.type] : undefined}
                 >
                   <span className="rc-calitem__t">{t.title}</span>
-                </button>
+                </Button>
               ))}
               {d.tasks.length > 6 ? (
                 <span className="rc-calmore">+{d.tasks.length - 6} more</span>

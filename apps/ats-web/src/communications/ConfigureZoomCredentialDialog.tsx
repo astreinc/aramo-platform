@@ -1,4 +1,4 @@
-import { Button, Dialog, FormField, InlineAlert, useToast } from '@aramo/fe-foundation';
+import { Button, Dialog, FormField, InlineAlert, useToast, Input } from '@aramo/fe-foundation';
 import { useState, type FormEvent } from 'react';
 
 import { safeErrorMessage } from '../ui';
@@ -100,7 +100,7 @@ export function ConfigureZoomCredentialDialog({
       <form onSubmit={onSubmit} aria-label="Zoom credential form" data-testid="zoom-credential-form">
         {error !== '' && <InlineAlert variant="error">{error}</InlineAlert>}
         <FormField label="Access token">
-          <input
+          <Input unstyled
             className="rc-input"
             value={accessToken}
             onChange={(e) => setAccessToken(e.target.value)}
@@ -110,7 +110,7 @@ export function ConfigureZoomCredentialDialog({
           />
         </FormField>
         <FormField label="Refresh token (optional)">
-          <input
+          <Input unstyled
             className="rc-input"
             value={refreshToken}
             onChange={(e) => setRefreshToken(e.target.value)}
@@ -119,7 +119,7 @@ export function ConfigureZoomCredentialDialog({
           />
         </FormField>
         <FormField label="Zoom account id (optional)">
-          <input
+          <Input unstyled
             className="rc-input"
             value={accountId}
             onChange={(e) => setAccountId(e.target.value)}

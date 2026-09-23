@@ -2,7 +2,7 @@ import {
   InlineAlert,
   hasScope,
   useSession,
-  type Session,
+  type Session, Button, Checkbox, Input,
 } from '@aramo/fe-foundation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -332,22 +332,22 @@ export function CompaniesListView({
           <div className="rc-titlerow">
             <h1 className="rc-h1">Companies</h1>
             <div className="rc-scopetabs" role="group" aria-label="Scope">
-              <button
+              <Button unstyled
                 type="button"
                 className={scope === 'mine' ? 'on' : ''}
                 aria-pressed={scope === 'mine'}
                 onClick={() => setScope('mine')}
               >
                 My accounts
-              </button>
-              <button
+              </Button>
+              <Button unstyled
                 type="button"
                 className={scope === 'all' ? 'on' : ''}
                 aria-pressed={scope === 'all'}
                 onClick={() => setScope('all')}
               >
                 All
-              </button>
+              </Button>
             </div>
           </div>
           {headline !== null ? (
@@ -361,32 +361,32 @@ export function CompaniesListView({
         </div>
         <div className="rc-viewhead__actions">
           <div className="rc-scopetabs" role="group" aria-label="View mode">
-            <button
+            <Button unstyled
               type="button"
               className={vmode === 'table' ? 'on' : ''}
               aria-pressed={vmode === 'table'}
               onClick={() => setVmode('table')}
             >
               Table
-            </button>
-            <button
+            </Button>
+            <Button unstyled
               type="button"
               className={vmode === 'cards' ? 'on' : ''}
               aria-pressed={vmode === 'cards'}
               onClick={() => setVmode('cards')}
             >
               Cards
-            </button>
+            </Button>
           </div>
           {canCreate ? (
-            <button
+            <Button unstyled
               type="button"
               className="rc-hbtn rc-hbtn--primary"
               onClick={openCreate}
               data-testid="company-new"
             >
               <Icons.IconPlus /> New company
-            </button>
+            </Button>
           ) : null}
         </div>
       </div>
@@ -397,7 +397,7 @@ export function CompaniesListView({
         {RELATIONSHIP_TABS.map((t) => {
           const count = tabCountFrom(facets, total, t.key);
           return (
-            <button
+            <Button unstyled
               key={t.key}
               type="button"
               className={`rc-view${tab === t.key ? ' on' : ''}`}
@@ -408,7 +408,7 @@ export function CompaniesListView({
               {count !== null ? (
                 <span className="rc-view__ct num">{count}</span>
               ) : null}
-            </button>
+            </Button>
           );
         })}
       </div>
@@ -419,7 +419,7 @@ export function CompaniesListView({
         {REL_STATUS_ORDER.map((s) => {
           const on = facetState.relationship_status.includes(s);
           return (
-            <button
+            <Button unstyled
               key={s}
               type="button"
               className={`rc-view${on ? ' on' : ''}`}
@@ -427,14 +427,14 @@ export function CompaniesListView({
               onClick={() => toggleStr('relationship_status', s)}
             >
               {relStatusLabel(s)}
-            </button>
+            </Button>
           );
         })}
       </div>
 
       <div className="rc-tokenbox">
         <Icons.IconSearch className="rc-tokenbox__icon" aria-hidden="true" />
-        <input
+        <Input unstyled
           className="rc-tokenbox__input"
           type="search"
           placeholder="Filter loaded accounts by name, industry, location or tag"
@@ -453,19 +453,19 @@ export function CompaniesListView({
         {chips.map((c, i) => (
           <span key={`${c.k}-${c.label}-${i}`} className="rc-fchip">
             <span className="rc-fchip__k">{c.k}</span> {c.label}
-            <button
+            <Button
               type="button"
               aria-label={`Remove ${c.k} ${c.label}`}
               onClick={c.clear}
             >
               <Icons.IconX />
-            </button>
+            </Button>
           </span>
         ))}
         {chips.length > 0 ? (
-          <button type="button" className="rc-activebar__clear" onClick={resetAll}>
+          <Button unstyled type="button" className="rc-activebar__clear" onClick={resetAll}>
             Clear all
-          </button>
+          </Button>
         ) : null}
       </div>
 
@@ -511,8 +511,8 @@ export function CompaniesListView({
                 <thead>
                   <tr>
                     <th scope="col" style={{ width: 34 }}>
-                      <input
-                        type="checkbox"
+                      <Checkbox
+                       
                         aria-label="Select all"
                         checked={
                           visible.length > 0 && selected.size >= visible.length
@@ -556,8 +556,8 @@ export function CompaniesListView({
                         }}
                       >
                         <td>
-                          <input
-                            type="checkbox"
+                          <Checkbox
+                           
                             aria-label={`Select ${c.name}`}
                             checked={selected.has(c.id)}
                             onChange={() => toggleSel(c.id)}
@@ -619,14 +619,14 @@ export function CompaniesListView({
                         <td className="lastcell">{lastContactLabel(c)}</td>
                         <td>
                           <div className="rc-rowq">
-                            <button
+                            <Button
                               type="button"
                               title="Quick edit"
                               aria-label={`Quick edit ${c.name}`}
                               onClick={() => openEdit(c)}
                             >
                               <Icons.IconOpen />
-                            </button>
+                            </Button>
                           </div>
                         </td>
                       </tr>
@@ -637,7 +637,7 @@ export function CompaniesListView({
 
               {nextCursor !== null && query.trim() === '' ? (
                 <div className="rc-loadmore">
-                  <button
+                  <Button unstyled
                     ref={loadMoreRef}
                     type="button"
                     className="tc-button tc-button--ghost"
@@ -645,7 +645,7 @@ export function CompaniesListView({
                     disabled={loadingMore}
                   >
                     {loadingMore ? 'Loading…' : 'Load more companies'}
-                  </button>
+                  </Button>
                 </div>
               ) : null}
             </div>
@@ -691,7 +691,7 @@ function CompanyCard({
 }) {
   const tier = tierLabel(company.client_tier);
   return (
-    <button type="button" className="rc-cocard" onClick={onOpen}>
+    <Button unstyled type="button" className="rc-cocard" onClick={onOpen}>
       <div className="rc-cocard__top">
         <Avatar name={company.name} size="md" />
         <div className="rc-cocard__id">
@@ -727,6 +727,6 @@ function CompanyCard({
           {lastContactLabel(company)}
         </span>
       </div>
-    </button>
+    </Button>
   );
 }

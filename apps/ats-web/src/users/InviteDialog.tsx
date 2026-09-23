@@ -3,7 +3,7 @@ import { Button } from '@aramo/fe-foundation';
 import { Dialog } from '@aramo/fe-foundation';
 import { FormField } from '@aramo/fe-foundation';
 import { InlineAlert } from '@aramo/fe-foundation';
-import { useToast } from '@aramo/fe-foundation';
+import { useToast, Input } from '@aramo/fe-foundation';
 
 import { RolePicker } from './RolePicker';
 import { messageForInviteError, type ErrorMessage } from './error-messages';
@@ -154,7 +154,7 @@ export function InviteDialog({
         <FormField
           label={<label htmlFor="invite-email">Email</label>}
         >
-          <input
+          <Input unstyled
             id="invite-email"
             type="email"
             className="rc-input"
@@ -169,7 +169,7 @@ export function InviteDialog({
           label={<label htmlFor="invite-display-name">Display name</label>}
           helper="Optional — falls back to the email if blank."
         >
-          <input
+          <Input unstyled
             id="invite-display-name"
             type="text"
             className="rc-input"

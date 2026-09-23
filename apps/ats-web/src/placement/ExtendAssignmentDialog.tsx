@@ -4,7 +4,7 @@ import {
   InlineAlert,
   RadioGroup,
   type RadioOption,
-  useToast,
+  useToast, Input,
 } from '@aramo/fe-foundation';
 import { useState } from 'react';
 
@@ -121,7 +121,7 @@ export function ExtendAssignmentDialog({
     >
       <label className="rc-field">
         <span className="rc-field__label">New planned end</span>
-        <input
+        <Input unstyled
           type="date"
           className="rc-input"
           value={newEnd}
@@ -143,7 +143,7 @@ export function ExtendAssignmentDialog({
       </fieldset>
       <label className="rc-field">
         <span className="rc-field__label">Comment (optional)</span>
-        <input
+        <Input unstyled
           type="text"
           className="rc-input"
           value={comment}

@@ -8,7 +8,7 @@ import {
   InlineAlert,
   hasScope,
   useToast,
-  type Session,
+  type Session, TextArea,
 } from '@aramo/fe-foundation';
 
 import { skillsApi, type Proposal } from './skills-api';
@@ -200,7 +200,7 @@ function RejectProposalDialog({
     >
       {error ? <InlineAlert variant="error">{error}</InlineAlert> : null}
       <FormField label="Reason (optional)">
-        <textarea className="tc-input" rows={3} value={reason} onChange={(e) => setReason(e.target.value)} />
+        <TextArea unstyled className="tc-input" rows={3} value={reason} onChange={(e) => setReason(e.target.value)} />
       </FormField>
     </Dialog>
   );

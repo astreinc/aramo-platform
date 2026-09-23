@@ -1,3 +1,5 @@
+import { Button } from '@aramo/fe-foundation';
+
 import { Icons } from '../../ui';
 
 // BulkBar — fixed action bar shown when ≥1 talent is selected. Feature-local.
@@ -30,16 +32,16 @@ export function BulkBar({
       </span>
       <span className="rc-bulkbar__sep" />
 
-      <button type="button" onClick={onAddToReq} disabled={busy}>
+      <Button type="button" onClick={onAddToReq} disabled={busy}>
         <Icons.IconBriefcase />
         Add to req
-      </button>
+      </Button>
 
       {/* T10-B3/F-012 — permission-driven: HIDE when the actor lacks the write
           scope (never a disabled control naming the scope). Disabled only while
           a submit is in flight. */}
       {canAssign ? (
-        <button
+        <Button
           type="button"
           onClick={onAssignToMe}
           disabled={busy}
@@ -47,30 +49,30 @@ export function BulkBar({
         >
           <Icons.IconUserPlus />
           Assign to me
-        </button>
+        </Button>
       ) : null}
 
       {/* Honest carries — disabled with reason */}
-      <button
+      <Button
         type="button"
         disabled
         title="Saved lists aren't granted to recruiters yet (saved-list scope carry)."
       >
         <Icons.IconList />
         Add to list
-      </button>
-      <button type="button" disabled title="No tag model on the talent record yet (carry).">
+      </Button>
+      <Button type="button" disabled title="No tag model on the talent record yet (carry).">
         <Icons.IconTag />
         Tag
-      </button>
-      <button
+      </Button>
+      <Button
         type="button"
         disabled
         title="Selection needs a Core talent overlay; blocked for ATS-only talent (carry)."
       >
         <Icons.IconMessage />
         Start selection
-      </button>
+      </Button>
 
       <span className="rc-bulkbar__sep" />
       <span
@@ -81,14 +83,14 @@ export function BulkBar({
         Export off — consent-protected
       </span>
 
-      <button
+      <Button unstyled
         type="button"
         className="rc-bulkbar__x"
         aria-label="Clear selection"
         onClick={onClear}
       >
         <Icons.IconX />
-      </button>
+      </Button>
     </div>
   );
 }

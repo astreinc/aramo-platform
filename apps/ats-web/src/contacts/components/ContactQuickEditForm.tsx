@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Button, FormField } from '@aramo/fe-foundation';
+import { Button, FormField, Checkbox, Input, Select, TextArea } from '@aramo/fe-foundation';
 
 import { searchCompanies } from '../../companies/companies-api';
 import type { ContactView } from '../../companies/types';
@@ -191,7 +191,7 @@ export function ContactQuickEditForm(props: ContactQuickEditFormProps) {
         <legend>Contact</legend>
         <div className="company-form__row2">
           <FormField label="First name">
-            <input
+            <Input
               type="text"
               value={state.first_name}
               onChange={(e) => set('first_name', e.target.value)}
@@ -200,7 +200,7 @@ export function ContactQuickEditForm(props: ContactQuickEditFormProps) {
             />
           </FormField>
           <FormField label="Last name">
-            <input
+            <Input
               type="text"
               value={state.last_name}
               onChange={(e) => set('last_name', e.target.value)}
@@ -210,7 +210,7 @@ export function ContactQuickEditForm(props: ContactQuickEditFormProps) {
           </FormField>
         </div>
         <FormField label="Title">
-          <input
+          <Input
             type="text"
             value={state.title}
             onChange={(e) => set('title', e.target.value)}
@@ -220,7 +220,7 @@ export function ContactQuickEditForm(props: ContactQuickEditFormProps) {
         </FormField>
         <FormField label="Company">
           {isCreate ? (
-            <select
+            <Select
               value={state.company_id}
               onChange={(e) => set('company_id', e.target.value)}
               aria-label="Company"
@@ -229,9 +229,9 @@ export function ContactQuickEditForm(props: ContactQuickEditFormProps) {
               {companies.map((c) => (
                 <option key={c.id} value={c.id}>{c.name}</option>
               ))}
-            </select>
+            </Select>
           ) : (
-            <input
+            <Input
               type="text"
               value={companyName}
               readOnly
@@ -242,8 +242,8 @@ export function ContactQuickEditForm(props: ContactQuickEditFormProps) {
         </FormField>
         <FormField label="Primary contact">
           <label className="company-form__check">
-            <input
-              type="checkbox"
+            <Checkbox
+             
               checked={state.is_primary}
               onChange={(e) => set('is_primary', e.target.checked)}
               aria-label="Primary contact for this company"
@@ -256,7 +256,7 @@ export function ContactQuickEditForm(props: ContactQuickEditFormProps) {
       <fieldset className="company-form__section" disabled={props.submitting}>
         <legend>Details</legend>
         <FormField label="Email">
-          <input
+          <Input
             type="email"
             value={state.email1}
             onChange={(e) => set('email1', e.target.value)}
@@ -266,7 +266,7 @@ export function ContactQuickEditForm(props: ContactQuickEditFormProps) {
         </FormField>
         <div className="company-form__row2">
           <FormField label="Phone">
-            <input
+            <Input
               type="tel"
               value={state.phone_work}
               onChange={(e) => set('phone_work', e.target.value)}
@@ -274,7 +274,7 @@ export function ContactQuickEditForm(props: ContactQuickEditFormProps) {
             />
           </FormField>
           <FormField label="Mobile">
-            <input
+            <Input
               type="tel"
               value={state.phone_cell}
               onChange={(e) => set('phone_cell', e.target.value)}
@@ -283,7 +283,7 @@ export function ContactQuickEditForm(props: ContactQuickEditFormProps) {
           </FormField>
         </div>
         <FormField label="Account owner">
-          <select
+          <Select
             value={state.owner_id}
             onChange={(e) => set('owner_id', e.target.value)}
             aria-label="Account owner"
@@ -294,10 +294,10 @@ export function ContactQuickEditForm(props: ContactQuickEditFormProps) {
                 {u.display_name ?? u.user_id}
               </option>
             ))}
-          </select>
+          </Select>
         </FormField>
         <FormField label="Notes">
-          <textarea
+          <TextArea
             rows={3}
             value={state.notes}
             onChange={(e) => set('notes', e.target.value)}

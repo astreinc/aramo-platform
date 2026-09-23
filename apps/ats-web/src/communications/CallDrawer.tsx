@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ApiError } from '@aramo/fe-foundation';
+import { ApiError, Button, Select, TextArea } from '@aramo/fe-foundation';
 
 import { safeErrorMessage } from '../ui';
 import type { TalentRecordView } from '../talent/types';
@@ -167,9 +167,9 @@ export function CallDrawer({
     <aside className="rc-comm-drawer" role="dialog" aria-label={`Call ${talent.first_name} ${talent.last_name}`}>
       <header className="rc-comm-drawer__hd">
         <h2 className="rc-comm-drawer__title">Call {talent.first_name} {talent.last_name}</h2>
-        <button type="button" className="rc-comm-drawer__close" onClick={onClose} aria-label="Close">
+        <Button unstyled type="button" className="rc-comm-drawer__close" onClick={onClose} aria-label="Close">
           ×
-        </button>
+        </Button>
       </header>
 
       <fieldset className="rc-comm-drawer__section">
@@ -179,6 +179,7 @@ export function CallDrawer({
         ) : (
           options.map((o) => (
             <label key={o.key} className="rc-comm-drawer__radio">
+              {/* eslint-disable-next-line no-restricted-syntax -- G1/A3 escape hatch: native radio in a custom per-row layout; no clean fe-foundation RadioGroup mapping without redesign */}
               <input
                 type="radio"
                 name="rc-comm-phone"
@@ -232,7 +233,7 @@ export function CallDrawer({
             <>
               <label className="rc-comm-drawer__radio">
                 Disposition
-                <select
+                <Select unstyled
                   className="rc-input"
                   value={disposition}
                   data-testid="disposition-select"
@@ -244,11 +245,11 @@ export function CallDrawer({
                       {DISPOSITION_LABELS[o]}
                     </option>
                   ))}
-                </select>
+                </Select>
               </label>
               <label className="rc-comm-drawer__radio">
                 Notes (optional)
-                <textarea
+                <TextArea unstyled
                   className="rc-input"
                   value={notes}
                   data-testid="disposition-notes"
@@ -257,7 +258,7 @@ export function CallDrawer({
                 />
               </label>
               {dispError !== null ? <p className="rc-comm-drawer__muted">{dispError}</p> : null}
-              <button
+              <Button unstyled
                 type="button"
                 className="rc-comm-drawer__call"
                 disabled={disposition === '' || savingDisp}
@@ -265,7 +266,7 @@ export function CallDrawer({
                 onClick={() => void saveDisposition()}
               >
                 {savingDisp ? 'Saving…' : 'Record outcome'}
-              </button>
+              </Button>
             </>
           )}
         </section>
@@ -274,7 +275,7 @@ export function CallDrawer({
       <footer className="rc-comm-drawer__ft">
         {interaction === null ? (
           <>
-            <button
+            <Button unstyled
               type="button"
               className="rc-comm-drawer__call"
               disabled={!canPlace}
@@ -282,7 +283,7 @@ export function CallDrawer({
               onClick={() => void placeCall()}
             >
               {placing ? 'Calling…' : 'Call'}
-            </button>
+            </Button>
             <p className="rc-comm-drawer__note">
               {callError !== null
                 ? callError

@@ -209,7 +209,7 @@ export function SourcingSubjectDrawer({
       aria-label={`${heading} — sourcing subject`}
     >
       <div className="rc-drawer__hd">
-        <button
+        <Button unstyled
           type="button"
           className="rc-drawer__nav"
           aria-label="Previous subject"
@@ -217,8 +217,8 @@ export function SourcingSubjectDrawer({
           disabled={index <= 0}
         >
           <Icons.IconChevronLeft />
-        </button>
-        <button
+        </Button>
+        <Button unstyled
           type="button"
           className="rc-drawer__nav"
           aria-label="Next subject"
@@ -226,13 +226,13 @@ export function SourcingSubjectDrawer({
           disabled={index >= total - 1}
         >
           <Icons.IconChevronRight />
-        </button>
+        </Button>
         <span className="rc-drawer__pos num">
           {index + 1} of {total}
         </span>
-        <button type="button" className="rc-drawer__x" aria-label="Close" onClick={onClose}>
+        <Button unstyled type="button" className="rc-drawer__x" aria-label="Close" onClick={onClose}>
           <Icons.IconX />
-        </button>
+        </Button>
       </div>
 
       <div className="rc-drawer__body">

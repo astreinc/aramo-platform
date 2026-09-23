@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Button, FormField, InlineAlert } from '@aramo/fe-foundation';
+import { Button, FormField, InlineAlert, Input, TextArea } from '@aramo/fe-foundation';
 
 import { draftOutreach, sendOutreach } from './selection-api';
 import {
@@ -144,7 +144,7 @@ export function OutreachComposer({
         label="Outreach prompt"
         helper="Describe the message; the assistant drafts it for you to review and edit before it sends."
       >
-        <textarea
+        <TextArea unstyled
           className="outreach-composer__prompt"
           rows={4}
           value={prompt}
@@ -154,7 +154,7 @@ export function OutreachComposer({
         />
       </FormField>
       <FormField label="Max tokens (optional)">
-        <input
+        <Input
           type="number"
           min={1}
           value={maxTokens}
@@ -164,7 +164,7 @@ export function OutreachComposer({
         />
       </FormField>
       <FormField label="System message (optional)">
-        <textarea
+        <TextArea
           rows={2}
           value={systemMessage}
           onChange={(e) => setSystemMessage(e.target.value)}
@@ -173,7 +173,7 @@ export function OutreachComposer({
         />
       </FormField>
       <FormField label="Recipient handle (optional)">
-        <input
+        <Input
           type="text"
           value={recipientHandle}
           onChange={(e) => setRecipientHandle(e.target.value)}
@@ -208,7 +208,7 @@ export function OutreachComposer({
             label="Review and edit before sending"
             helper="This is the exact message that will be sent under your name. Edit it as needed, then send."
           >
-            <textarea
+            <TextArea unstyled
               className="outreach-composer__final"
               rows={8}
               value={finalText}

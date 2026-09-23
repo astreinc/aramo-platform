@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Button } from '@aramo/fe-foundation';
 
 interface ExpandableTextProps {
   readonly text: string;
@@ -17,14 +18,14 @@ export function ExpandableText({ text, limit = 64 }: ExpandableTextProps) {
   return (
     <>
       {shown}{' '}
-      <button
+      <Button unstyled
         type="button"
         className="rc-link-action"
         aria-expanded={expanded}
         onClick={() => setExpanded((e) => !e)}
       >
         {expanded ? 'Less' : 'More'}
-      </button>
+      </Button>
     </>
   );
 }
