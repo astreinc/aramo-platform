@@ -31,6 +31,55 @@ export class DocumentIdempotencyConflictError extends Error {
   }
 }
 
+// DOC-2 — template + requirement domain errors. The controller maps these to:
+//   TemplateNotFoundError                 -> TEMPLATE_NOT_FOUND (404)
+//   TemplateVersionNotFoundError          -> TEMPLATE_VERSION_NOT_FOUND (404)
+//   TemplateVersionNotActiveError         -> TEMPLATE_VERSION_NOT_ACTIVE (409)
+//   TemplateImmutableError                -> TEMPLATE_IMMUTABLE (409)
+//   DocumentRequirementNotFoundError      -> DOCUMENT_REQUIREMENT_NOT_FOUND (404)
+//   DocumentRequirementAlreadySatisfiedError -> DOCUMENT_REQUIREMENT_ALREADY_SATISFIED (409)
+export class TemplateNotFoundError extends Error {
+  constructor(public readonly templateId: string) {
+    super(`DocumentTemplate ${templateId} not found`);
+    this.name = 'TemplateNotFoundError';
+  }
+}
+
+export class TemplateVersionNotFoundError extends Error {
+  constructor(public readonly versionId: string) {
+    super(`TemplateVersion ${versionId} not found`);
+    this.name = 'TemplateVersionNotFoundError';
+  }
+}
+
+export class TemplateVersionNotActiveError extends Error {
+  constructor(public readonly versionId: string, public readonly status: string) {
+    super(`TemplateVersion ${versionId} is ${status}, not ACTIVE`);
+    this.name = 'TemplateVersionNotActiveError';
+  }
+}
+
+export class TemplateImmutableError extends Error {
+  constructor(public readonly versionId: string) {
+    super(`TemplateVersion ${versionId} is ACTIVE and immutable (DOC-2 R-2-3): edits require a new version`);
+    this.name = 'TemplateImmutableError';
+  }
+}
+
+export class DocumentRequirementNotFoundError extends Error {
+  constructor(public readonly requirementId: string) {
+    super(`DocumentRequirement ${requirementId} not found`);
+    this.name = 'DocumentRequirementNotFoundError';
+  }
+}
+
+export class DocumentRequirementAlreadySatisfiedError extends Error {
+  constructor(public readonly requirementId: string, public readonly status: string) {
+    super(`DocumentRequirement ${requirementId} is already ${status}`);
+    this.name = 'DocumentRequirementAlreadySatisfiedError';
+  }
+}
+
 // A DocumentStoragePort capability declared in the contract but not enforced in
 // DOC-1a (S3 Object Lock / WORM / legal-hold / generic presigned write). The
 // R27.1 storage-hardening increment implements these; until then the adapter

@@ -422,6 +422,13 @@ const DOCUMENTS_INIT_MIGRATION = resolve(
   ROOT,
   'libs/documents/prisma/migrations/20260921180000_init_documents_model/migration.sql',
 );
+// DOC-2 — Templates + TemplateVersion + fields + assets + DocumentRequirement +
+// Packets; adds the FKs onto the DOC-1a template_version_id columns; applied
+// AFTER the documents init migration.
+const DOCUMENTS_DOC2_MIGRATION = resolve(
+  ROOT,
+  'libs/documents/prisma/migrations/20260922130000_doc2_templates_rendering_requirements/migration.sql',
+);
 // DOC-1b — the TalentDocument→documents.Document reconciliation (seed DocumentTypes
 // + ADD document_id + backfill quartet + DROP generic columns); applied AFTER the
 // talent-evidence migrations (it ALTERs TalentDocument and writes into documents).
@@ -3419,6 +3426,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         // migrations applied so the submittal-create pact verification
         // can build the evidence package + persist the workflow record.
         DOCUMENTS_INIT_MIGRATION,
+        DOCUMENTS_DOC2_MIGRATION,
         TALENT_EVIDENCE_INIT_MIGRATION,
         TALENT_EVIDENCE_TR7_MIGRATION,
         TALENT_EVIDENCE_HF1_MIGRATION,

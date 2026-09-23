@@ -208,3 +208,176 @@ model IdempotencyKey {
   @@unique([tenant_id, key])
   @@schema("documents")
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DOC-2 — Templates + Rendering foundations + Requirements + Packets.
+// Governing directive: Aramo-DOC-2-Templates-Rendering-Requirements-Slice-Directive-v1_0-LOCKED.
+// Cross-cluster references to DOC-1a models (Document, DocumentType,
+// DocumentArtifact) are bare UUID columns with FKs added in the migration
+// (mirrors DOC-1a current_revision_id), so the DOC-1a models are unchanged.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// DOC-2 — a reusable document template. GENERATED (deterministic renderer),
+/// UPLOADED_PDF (client PDF + field overlays), or HYBRID. current_version_id FK
+/// added in the migration (avoids a Prisma cycle with TemplateVersion).
+model DocumentTemplate {
+  id                 String   @id @db.Uuid
+  tenant_id          String   @db.Uuid
+  document_type_id   String   @db.Uuid
+  client_id          String?  @db.Uuid
+  name               String
+  description        String?
+  template_kind      String // CHECK: GENERATED|UPLOADED_PDF|HYBRID (migration)
+  status             String // CHECK: DRAFT|ACTIVE|RETIRED (migration)
+  current_version_id String?  @db.Uuid // FK -> TemplateVersion added in migration (avoids cycle)
+  created_by         String   @db.Uuid
+  created_at         DateTime @default(now()) @db.Timestamptz
+  updated_at         DateTime @updatedAt @db.Timestamptz
+
+  versions           TemplateVersion[]
+
+  @@index([tenant_id])
+  @@index([tenant_id, document_type_id])
+  @@schema("documents")
+}
+
+/// DOC-2 — an immutable-after-activation version of a template (Invariant 5).
+/// Once ACTIVE, content fields are frozen and status may only move to RETIRED
+/// (app-surface guard + DB trigger). source_artifact_id references the immutable
+/// TEMPLATE_SOURCE artifact for UPLOADED_PDF templates.
+model TemplateVersion {
+  id                    String    @id @db.Uuid
+  tenant_id             String    @db.Uuid
+  template_id           String    @db.Uuid
+  version_number        Int
+  status                String // CHECK: DRAFT|ACTIVE|RETIRED (migration)
+  source_artifact_id    String?   @db.Uuid // FK -> DocumentArtifact added in migration
+  render_schema_version String
+  field_schema          Json?
+  binding_schema        Json?
+  effective_from        DateTime? @db.Timestamptz
+  effective_until       DateTime? @db.Timestamptz
+  created_by            String    @db.Uuid
+  created_at            DateTime  @default(now()) @db.Timestamptz
+  activated_at          DateTime? @db.Timestamptz
+  retired_at            DateTime? @db.Timestamptz
+
+  template              DocumentTemplate          @relation(fields: [template_id], references: [id], onDelete: Restrict)
+  fields                TemplateFieldDefinition[]
+
+  @@unique([template_id, version_number])
+  @@index([tenant_id])
+  @@index([tenant_id, template_id])
+  @@schema("documents")
+}
+
+/// DOC-2 — the CANONICAL field model. A PDF AcroForm field is only one rendering
+/// representation of this; a future non-pdf-lib adapter must realize the same
+/// field without AcroForms. Controlled building blocks + explicit placement.
+model TemplateFieldDefinition {
+  id                  String  @id @db.Uuid
+  template_version_id String  @db.Uuid
+  field_key           String
+  field_type          String // CHECK: TEXT|MULTILINE_TEXT|DATE|NUMBER|CURRENCY|CHECKBOX|IMAGE|SIGNATURE|INITIALS|SIGN_DATE|SIGNER_NAME|SIGNER_EMAIL (migration)
+  binding_key         String?
+  required            Boolean @default(false)
+  page_number         Int?
+  x                   Float?
+  y                   Float?
+  width               Float?
+  height              Float?
+  format_rule         String?
+  signer_role         String?
+  ordinal             Int
+
+  template_version    TemplateVersion @relation(fields: [template_version_id], references: [id], onDelete: Cascade)
+
+  @@unique([template_version_id, field_key])
+  @@index([template_version_id])
+  @@schema("documents")
+}
+
+/// DOC-2 — controlled render input (approved font/image/logo), content-hashed.
+/// Rendering embeds ONLY from these; the renderer performs no network fetch.
+model TemplateAsset {
+  id              String   @id @db.Uuid
+  tenant_id       String   @db.Uuid
+  asset_kind      String // CHECK: FONT|IMAGE|LOGO (migration)
+  sha256          String
+  mime_type       String
+  storage_provider String
+  storage_locator String
+  name            String
+  created_by      String   @db.Uuid
+  created_at      DateTime @default(now()) @db.Timestamptz
+
+  @@index([tenant_id])
+  @@index([tenant_id, asset_kind])
+  @@schema("documents")
+}
+
+/// DOC-2 — the generic requirement bridge (R12). Documents-owned; satisfaction is
+/// determined INDEPENDENTLY of any business transition. satisfied_by_document_id
+/// is NULLABLE (a requirement exists before any document). FKs added in migration.
+model DocumentRequirement {
+  id                       String    @id @db.Uuid
+  tenant_id                String    @db.Uuid
+  document_type_id         String    @db.Uuid
+  resource_type            String // CHECK: mirrors DocumentAssociation vocab (migration)
+  resource_id              String    @db.Uuid
+  relationship             String? // CHECK: mirrors DocumentAssociation relationship vocab (migration)
+  status                   String // CHECK: UNSATISFIED|SATISFIED|WAIVED (migration)
+  satisfied_by_document_id String?   @db.Uuid // FK -> Document (nullable) added in migration
+  waived_by                String?   @db.Uuid
+  waived_reason            String?
+  waived_at                DateTime? @db.Timestamptz
+  created_by               String    @db.Uuid
+  created_at               DateTime  @default(now()) @db.Timestamptz
+  updated_at               DateTime  @updatedAt @db.Timestamptz
+
+  @@index([tenant_id])
+  @@index([tenant_id, resource_type, resource_id])
+  @@index([tenant_id, document_type_id])
+  @@schema("documents")
+}
+
+/// DOC-2 — groups Documents into one logical business package (e.g. an Offer
+/// package). It does NOT own the packeted documents' business state and does NOT
+/// replace DocumentAssociation — each packeted Document keeps its own
+/// associations. DOC-5/DOC-6 CONSUME packets; they never redefine this model.
+model DocumentPacket {
+  id           String    @id @db.Uuid
+  tenant_id    String    @db.Uuid
+  packet_type  String
+  title        String
+  status       String // CHECK: OPEN|COMPLETED|CANCELLED (migration)
+  created_by   String    @db.Uuid
+  created_at   DateTime  @default(now()) @db.Timestamptz
+  completed_at DateTime? @db.Timestamptz
+
+  items        DocumentPacketItem[]
+
+  @@index([tenant_id])
+  @@index([tenant_id, packet_type])
+  @@schema("documents")
+}
+
+/// DOC-2 — a Document's membership in a packet (grouping only). tenant_id is
+/// carried for isolation (Invariant 8) though subordinate to the packet.
+/// document_id FK added in migration (bare column keeps Document unchanged).
+model DocumentPacketItem {
+  id          String   @id @db.Uuid
+  tenant_id   String   @db.Uuid
+  packet_id   String   @db.Uuid
+  document_id String   @db.Uuid
+  sequence    Int
+  required    Boolean  @default(true)
+  created_at  DateTime @default(now()) @db.Timestamptz
+
+  packet      DocumentPacket @relation(fields: [packet_id], references: [id], onDelete: Cascade)
+
+  @@unique([packet_id, document_id])
+  @@index([tenant_id])
+  @@index([packet_id])
+  @@schema("documents")
+}

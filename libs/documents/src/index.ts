@@ -4,6 +4,11 @@ export const DOCUMENTS_SCHEMA = 'documents' as const;
 
 export { DocumentsModule } from './lib/documents.module.js';
 export { DocumentsController, DocumentTypesController } from './lib/documents.controller.js';
+export {
+  DocumentTemplatesController,
+  DocumentRequirementsController,
+  DocumentPacketsController,
+} from './lib/templates.controller.js';
 
 export { PrismaService } from './lib/prisma/prisma.service.js';
 export {
@@ -13,12 +18,34 @@ export {
   type DocumentAssociationInput,
   type IdempotencyContext,
 } from './lib/documents.repository.js';
+export {
+  TemplatesRepository,
+  type CreateTemplateInput,
+  type CreateVersionInput,
+  type AddFieldInput,
+} from './lib/templates.repository.js';
+export {
+  RequirementsRepository,
+  type CreateRequirementInput,
+  type RequirementVerdict,
+} from './lib/requirements.repository.js';
+export {
+  RenderService,
+  type GenerateRevisionInput,
+  type GenerateRevisionResult,
+} from './lib/render.service.js';
 export { DocumentIdempotencyService, type IdempotencyCheck } from './lib/idempotency.service.js';
 export {
   DocumentNotFoundError,
   DocumentIllegalTransitionError,
   DocumentIdempotencyConflictError,
   DocumentStorageNotSupportedError,
+  TemplateNotFoundError,
+  TemplateVersionNotFoundError,
+  TemplateVersionNotActiveError,
+  TemplateImmutableError,
+  DocumentRequirementNotFoundError,
+  DocumentRequirementAlreadySatisfiedError,
 } from './lib/domain/errors.js';
 export {
   DOCUMENT_STORAGE_PORT,

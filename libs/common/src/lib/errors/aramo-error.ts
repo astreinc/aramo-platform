@@ -96,6 +96,15 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   DOCUMENT_NOT_FOUND: 404,
   DOCUMENT_TYPE_NOT_FOUND: 404,
   DOCUMENT_ILLEGAL_TRANSITION: 409,
+  // DOC-2 (Templates + Requirements + Rendering) — template/requirement/render errors.
+  TEMPLATE_NOT_FOUND: 404,
+  TEMPLATE_VERSION_NOT_FOUND: 404,
+  TEMPLATE_VERSION_NOT_ACTIVE: 409,
+  TEMPLATE_IMMUTABLE: 409,
+  DOCUMENT_REQUIREMENT_NOT_FOUND: 404,
+  DOCUMENT_REQUIREMENT_ALREADY_SATISFIED: 409,
+  DOCUMENT_RENDER_FAILED: 422,
+  DOCUMENT_UPLOAD_UNSAFE: 422,
   // Track 1 T1-b (R2) — optimistic-concurrency stale-write on requisition (409).
   REQUISITION_VERSION_CONFLICT: 409,
   // Track 1 T1-e (§2.3 / R9) — status-changing PATCH into a subsystem-gated

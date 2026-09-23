@@ -378,6 +378,17 @@ export const ERROR_CODES = [
   'DOCUMENT_NOT_FOUND',
   'DOCUMENT_TYPE_NOT_FOUND',
   'DOCUMENT_ILLEGAL_TRANSITION',
+  // DOC-2 (Templates + Requirements + Rendering) — template/requirement/render
+  // errors. TEMPLATE_IMMUTABLE + *_NOT_ACTIVE are state refusals (409); render
+  // + upload-safety failures are unprocessable (422). Same order as common.yaml.
+  'TEMPLATE_NOT_FOUND',
+  'TEMPLATE_VERSION_NOT_FOUND',
+  'TEMPLATE_VERSION_NOT_ACTIVE',
+  'TEMPLATE_IMMUTABLE',
+  'DOCUMENT_REQUIREMENT_NOT_FOUND',
+  'DOCUMENT_REQUIREMENT_ALREADY_SATISFIED',
+  'DOCUMENT_RENDER_FAILED',
+  'DOCUMENT_UPLOAD_UNSAFE',
   // Track 1 T1-b (ruling R2) — optimistic-concurrency stale-write refusal on
   // requisition.Requisition. The PATCH (or any versioned update) supplied an
   // expected `version` that no longer matches the stored row: someone else

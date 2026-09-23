@@ -82,6 +82,7 @@ const MIGRATIONS = [
   'libs/evidence/prisma/migrations/20260522090000_init_evidence_model/migration.sql',
   'libs/examination/prisma/migrations/20260517200000_init_examination_model/migration.sql',
   'libs/documents/prisma/migrations/20260921180000_init_documents_model/migration.sql',
+  'libs/documents/prisma/migrations/20260922130000_doc2_templates_rendering_requirements/migration.sql',
   'libs/talent-evidence/prisma/migrations/20260519170000_init_talent_evidence_model/migration.sql',
   'libs/talent-evidence/prisma/migrations/20260922120000_doc1b_talentdocument_reconciliation/migration.sql',
   'libs/talent-evidence/prisma/migrations/20260714120000_tr7_b1_education_certification/migration.sql',

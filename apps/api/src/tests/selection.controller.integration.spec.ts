@@ -64,6 +64,7 @@ const JOB_DOMAIN_INIT = resolve(ROOT, 'libs/job-domain/prisma/migrations/2026051
 // T1-a — the ATS requisition schema (Pattern-A validation now reads it).
 const REQUISITION_INIT = resolve(ROOT, 'libs/requisition/prisma/migrations/20260602100000_init_requisition_model/migration.sql');
 const DOCUMENTS_INIT_MIGRATION = resolve(ROOT, 'libs/documents/prisma/migrations/20260921180000_init_documents_model/migration.sql');
+const DOCUMENTS_DOC2_MIGRATION = resolve(ROOT, 'libs/documents/prisma/migrations/20260922130000_doc2_templates_rendering_requirements/migration.sql');
 const TALENT_EVIDENCE_INIT = resolve(ROOT, 'libs/talent-evidence/prisma/migrations/20260519170000_init_talent_evidence_model/migration.sql');
 const TALENT_EVIDENCE_DOC1B_MIGRATION = resolve(ROOT, 'libs/talent-evidence/prisma/migrations/20260922120000_doc1b_talentdocument_reconciliation/migration.sql');
 const TALENT_EVIDENCE_TR7 = resolve(ROOT, 'libs/talent-evidence/prisma/migrations/20260714120000_tr7_b1_education_certification/migration.sql');
@@ -159,6 +160,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         JOB_DOMAIN_INIT,
         REQUISITION_INIT,
         DOCUMENTS_INIT_MIGRATION,
+        DOCUMENTS_DOC2_MIGRATION,
         TALENT_EVIDENCE_INIT,
         TALENT_EVIDENCE_TR7,
         TALENT_EVIDENCE_HF1,

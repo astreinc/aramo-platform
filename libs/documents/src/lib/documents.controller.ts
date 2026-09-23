@@ -90,7 +90,7 @@ export class DocumentTypesController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @RequireScopes('document_type:manage')
+  @RequireScopes('document:manage')
   async create(
     @AuthContext() auth: AuthContextType,
     @Body() body: CreateDocumentTypeBody,

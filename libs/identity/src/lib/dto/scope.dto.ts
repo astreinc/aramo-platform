@@ -92,7 +92,12 @@ export const SEED_SCOPE_KEYS = [
   // DOC-1a — canonical Documents domain scopes (dedicated DOCUMENTS_SEED_BUNDLES).
   'document:read',              // recruiter+ (read documents/types/events/artifacts)
   'document:create',            // recruiter+ (create documents, prepare, associate)
-  'document_type:manage',       // tenant_admin+ (create/manage tenant document types)
+  'document:manage',            // tenant_admin+ (DOC-2 reconciled from document_type:manage, R22)
+  // DOC-2 — Templates + Requirements scopes (dedicated DOCUMENTS_DOC2_SEED_BUNDLES).
+  'document_template:read',     // recruiter+ (read templates/versions)
+  'document_template:manage',   // tenant_admin+ (create/activate/retire templates + versions)
+  'document_requirement:read',  // recruiter+ (read requirement status)
+  'document_requirement:manage',// tenant_admin+ (create/satisfy/waive requirements)
   'pipeline:read',              // recruiter+
   // TI-1D-D — set the Requisition-context résumé selection (PUT
   // /v1/pipelines/{id}/resume-edition). DEDICATED mutation scope, EXPLICIT

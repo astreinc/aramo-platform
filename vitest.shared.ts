@@ -69,6 +69,7 @@ export default defineConfig({
       '@aramo/cold-ingest-extraction': resolve(root, 'libs/cold-ingest-extraction/src/index.ts'),
       '@aramo/consent': resolve(root, 'libs/consent/src/index.ts'),
       '@aramo/documents': resolve(root, 'libs/documents/src/index.ts'),
+      '@aramo/documents-rendering': resolve(root, 'libs/documents-rendering/src/index.ts'),
       // PR-A2 Gate 5 — first ATS-domain leaves (company + contact). Mirrors
       // tsconfig.base.json aliases so vitest runtime resolves the AppModule
       // imports + cross-lib edge contact -> company in the integration specs.

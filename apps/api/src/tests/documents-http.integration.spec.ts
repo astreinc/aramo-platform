@@ -19,7 +19,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 const ROOT = resolve(__dirname, '../../../..');
 const READ = ['document:read'];
-const ADMIN = ['document:read', 'document:create', 'document_type:manage'];
+const ADMIN = ['document:read', 'document:create', 'document:manage'];
 
 let testAuth: { tenant_id: string; sub: string; scopes: string[]; site_id: string | null };
 

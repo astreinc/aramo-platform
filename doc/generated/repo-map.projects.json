@@ -1,5 +1,5 @@
 {
-  "aliasTotals": { "apps": 2, "libs": 71, "total": 73 },
+  "aliasTotals": { "apps": 2, "libs": 72, "total": 74 },
   "aliases": {
     "@aramo/activity": "libs/activity/src/index.ts",
     "@aramo/ai-draft": "libs/ai-draft/src/index.ts",
@@ -25,6 +25,7 @@
     "@aramo/conversation-intelligence": "libs/conversation-intelligence/src/index.ts",
     "@aramo/conversation-transcript": "libs/conversation-transcript/src/index.ts",
     "@aramo/documents": "libs/documents/src/index.ts",
+    "@aramo/documents-rendering": "libs/documents-rendering/src/index.ts",
     "@aramo/engagement": "libs/engagement/src/index.ts",
     "@aramo/entitlement": "libs/entitlement/src/index.ts",
     "@aramo/events": "libs/events/src/index.ts",
@@ -515,12 +516,31 @@
       "DocumentIdempotencyService",
       "DocumentIllegalTransitionError",
       "DocumentNotFoundError",
+      "DocumentPacketsController",
+      "DocumentRequirementAlreadySatisfiedError",
+      "DocumentRequirementNotFoundError",
+      "DocumentRequirementsController",
       "DocumentStorageNotSupportedError",
+      "DocumentTemplatesController",
       "DocumentTypesController",
       "DocumentsController",
       "DocumentsModule",
       "DocumentsRepository",
-      "PrismaService"
+      "PrismaService",
+      "RenderService",
+      "RequirementsRepository",
+      "TemplateImmutableError",
+      "TemplateNotFoundError",
+      "TemplateVersionNotActiveError",
+      "TemplateVersionNotFoundError",
+      "TemplatesRepository"
+    ],
+    "@aramo/documents-rendering": [
+      "DOCUMENT_RENDERING_PORT",
+      "PdfLibDocumentRenderingAdapter",
+      "RenderFailedError",
+      "SafePdfPipeline",
+      "UnsafePdfError"
     ],
     "@aramo/engagement": [
       "DEFAULT_ENGAGEMENT_ENFORCEMENT_MODE",
@@ -3593,6 +3613,15 @@
       },
       { "project": "api", "status": "production" }
     ],
+    "@aramo/documents-rendering": [
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/documents/src/tests/doc2-render-service.integration.spec.ts",
+        "project": "documents",
+        "status": "excluded"
+      },
+      { "project": "documents", "status": "production" }
+    ],
     "@aramo/engagement": [
       {
         "excludedBy": "src/tests/**/*",
@@ -6199,6 +6228,13 @@
       "name": "documents",
       "root": "libs/documents",
       "sourceRoot": "libs/documents/src",
+      "tags": ["scope:boundary"],
+      "targets": ["build", "lint", "test"]
+    },
+    {
+      "name": "documents-rendering",
+      "root": "libs/documents-rendering",
+      "sourceRoot": "libs/documents-rendering/src",
       "tags": ["scope:boundary"],
       "targets": ["build", "lint", "test"]
     },

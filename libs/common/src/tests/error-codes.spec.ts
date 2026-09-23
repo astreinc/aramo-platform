@@ -120,6 +120,19 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       'ACTIVITY_ALREADY_REDACTED',
       // RN-1 Requisition Enterprise Notes — pin refusal (non-note / redacted).
       'ACTIVITY_NOT_PINNABLE',
+      // DOC-1a (Documents core) — canonical document lifecycle errors.
+      'DOCUMENT_NOT_FOUND',
+      'DOCUMENT_TYPE_NOT_FOUND',
+      'DOCUMENT_ILLEGAL_TRANSITION',
+      // DOC-2 (Templates + Requirements + Rendering) — template/requirement/render errors.
+      'TEMPLATE_NOT_FOUND',
+      'TEMPLATE_VERSION_NOT_FOUND',
+      'TEMPLATE_VERSION_NOT_ACTIVE',
+      'TEMPLATE_IMMUTABLE',
+      'DOCUMENT_REQUIREMENT_NOT_FOUND',
+      'DOCUMENT_REQUIREMENT_ALREADY_SATISFIED',
+      'DOCUMENT_RENDER_FAILED',
+      'DOCUMENT_UPLOAD_UNSAFE',
       // Track 1 T1-b — 1 optimistic-concurrency stale-write refusal on
       // requisition.Requisition (versioned update, version mismatch → 409).
       'REQUISITION_VERSION_CONFLICT',
