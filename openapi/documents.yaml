@@ -517,6 +517,68 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '404':
           $ref: '#/components/responses/NotFound'
+  /v1/documents/revisions/{id}/source:
+    get:
+      operationId: getRevisionSource
+      summary: Source PDF bytes (base64) for a frozen revision — pulled by esign-service for executed-document production (DOC-4).
+      description: Authorized service-to-service read; esign-service holds no document storage binding.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: tenant_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: The base64 source PDF.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [revision_id, source_base64]
+                properties:
+                  revision_id: { type: string, format: uuid }
+                  source_base64: { type: string }
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/documents/esign-writeback:
+    post:
+      operationId: esignWriteBack
+      summary: Idempotent executed-artifact write-back — pulls executed bytes + certificate from esign-service and stores the permanent EXECUTED + EXECUTION_CERTIFICATE artifacts (DOC-4).
+      description: Invoked by the executed-envelope event consumer; idempotent on (tenant, envelope, document).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tenant_id, envelope_id]
+              properties:
+                tenant_id: { type: string, format: uuid }
+                envelope_id: { type: string, format: uuid }
+                correlation_id: { type: string }
+      responses:
+        '200':
+          description: The write-back result.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [envelope_id, documents_written]
+                properties:
+                  envelope_id: { type: string, format: uuid }
+                  documents_written: { type: integer }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '422':
+          $ref: '#/components/responses/BadRequest'
 components:
   parameters:
     DocumentId:

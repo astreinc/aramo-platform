@@ -15,6 +15,7 @@ paths:
     post:
       operationId: createSignatureEnvelope
       summary: Create a signature envelope (DRAFT) with documents + signers.
+      description: Trusted service-to-service; the authoritative tenant_id is supplied by the caller.
       requestBody:
         required: true
         content:
@@ -34,6 +35,7 @@ paths:
     post:
       operationId: sendSignatureEnvelope
       summary: Send the envelope (DRAFT -> SENT); issues signer capability sessions.
+      description: Transitions DRAFT to SENT and issues one signing capability session per signer.
       parameters:
         - $ref: '#/components/parameters/EnvelopeId'
       requestBody:
@@ -60,6 +62,7 @@ paths:
     get:
       operationId: getSignatureEnvelope
       summary: Get an envelope summary.
+      description: Returns the tenant-scoped envelope summary; a cross-tenant id is a 404.
       parameters:
         - $ref: '#/components/parameters/EnvelopeId'
         - name: tenant_id
@@ -81,6 +84,7 @@ paths:
     post:
       operationId: voidSignatureEnvelope
       summary: Void an envelope.
+      description: Voids a non-terminal envelope with a recorded reason.
       parameters:
         - $ref: '#/components/parameters/EnvelopeId'
       requestBody:
@@ -109,6 +113,7 @@ paths:
     get:
       operationId: getSignatureEvidence
       summary: Retrieve envelope evidence metadata (event-chain hash + software signature).
+      description: Returns evidence metadata (hashes + signature); verifiable independently of signing.
       parameters:
         - $ref: '#/components/parameters/EnvelopeId'
         - name: tenant_id
@@ -126,10 +131,55 @@ paths:
                 $ref: '#/components/schemas/EvidenceSummary'
         '404':
           $ref: '#/components/responses/NotFound'
+  /v1/esign/envelopes/{id}/executed:
+    get:
+      operationId: getExecutedArtifacts
+      summary: Pull executed document bytes + certificate (base64) for the Documents write-back.
+      description: Service-to-service pull for the Documents write-back; bytes are base64 (the event bus carries only refs).
+      parameters:
+        - $ref: '#/components/parameters/EnvelopeId'
+        - name: tenant_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Executed artifacts (bytes never traverse the event bus).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [envelope_id, documents, certificate]
+                properties:
+                  envelope_id:
+                    type: string
+                    format: uuid
+                  documents:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        envelope_document_id: { type: string, format: uuid }
+                        document_ref: { type: [string, 'null'], format: uuid }
+                        document_revision_ref: { type: [string, 'null'], format: uuid }
+                        executed_sha256: { type: string }
+                        byte_size: { type: integer }
+                        executed_base64: { type: string }
+                  certificate:
+                    type: [object, 'null']
+                    properties:
+                      certificate_sha256: { type: string }
+                      byte_size: { type: integer }
+                      certificate_base64: { type: string }
+        '404':
+          $ref: '#/components/responses/NotFound'
   /v1/esign/signing/exchange:
     post:
       operationId: exchangeSigningToken
       summary: Exchange a raw capability token for an active signing session.
+      description: The tenant is resolved server-side from the capability token; the client sends no tenant id.
       requestBody:
         required: true
         content:

@@ -98,6 +98,19 @@ export class EsignProviderController {
       throw toHttp(e, requestId);
     }
   }
+
+  // DOC-4 (R-4-7) — executed-artifact pull for the Documents write-back (bytes
+  // as base64; the bus carries only refs).
+  @Get(':id/executed')
+  @HttpCode(HttpStatus.OK)
+  async executed(@Param('id') id: string, @Query('tenant_id') tenantId: string, @RequestId() requestId: string) {
+    validate(typeof tenantId === 'string', 'tenant_id is required', requestId);
+    try {
+      return await this.provider.getExecutedArtifacts(tenantId, id);
+    } catch (e) {
+      throw toHttp(e, requestId);
+    }
+  }
 }
 
 @Controller('v1/esign/signing')

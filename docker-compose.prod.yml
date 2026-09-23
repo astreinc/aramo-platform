@@ -77,6 +77,8 @@ services:
       - NGINX_TENANT_SERVER_NAME=${NGINX_TENANT_SERVER_NAME:-localhost}
       - NGINX_ADMIN_SERVER_NAME=${NGINX_ADMIN_SERVER_NAME:-admin.localhost}
       - NGINX_PORTAL_SERVER_NAME=${NGINX_PORTAL_SERVER_NAME:-portal.localhost}
+      # DOC-4 (R-4-10) — external-signer SPA host (DEPLOY=NO until provisioned).
+      - NGINX_SIGN_SERVER_NAME=${NGINX_SIGN_SERVER_NAME:-sign.localhost}
       - NGINX_CERT_DIR=${NGINX_CERT_DIR:-/etc/letsencrypt/live/aramo.ai}
     ports:
       - '80:80'

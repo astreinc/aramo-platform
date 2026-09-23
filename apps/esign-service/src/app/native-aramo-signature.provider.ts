@@ -67,4 +67,46 @@ export class NativeAramoSignatureProvider implements SignatureProviderPort {
       completed_at: signed.manifest.completed_at,
     };
   }
+
+  // DOC-4 (R-4-7) — the executed-artifact PULL for the Documents write-back.
+  // apps/api's idempotent consumer fetches the executed bytes + certificate
+  // (base64) then stores the permanent EXECUTED + EXECUTION_CERTIFICATE
+  // artifacts. Bytes never traverse the event bus; this authorized read is the
+  // only bytes path. Service-to-service (authoritative tenant_id from the caller).
+  async getExecutedArtifacts(tenant_id: string, envelope_id: string): Promise<ExecutedArtifactsBundle> {
+    const docs = await this.repo.listExecutedDocuments(tenant_id, envelope_id);
+    const cert = await this.repo.getExecutionCertificate(tenant_id, envelope_id);
+    return {
+      envelope_id,
+      documents: docs.map((d) => ({
+        envelope_document_id: d.envelope_document_id,
+        document_ref: d.document_ref,
+        document_revision_ref: d.document_revision_ref,
+        executed_sha256: d.executed_sha256,
+        byte_size: d.byte_size,
+        executed_base64: Buffer.from(d.executed_bytes).toString('base64'),
+      })),
+      certificate:
+        cert === null
+          ? null
+          : {
+              certificate_sha256: cert.certificate_sha256,
+              byte_size: cert.byte_size,
+              certificate_base64: Buffer.from(cert.certificate_bytes).toString('base64'),
+            },
+    };
+  }
+}
+
+export interface ExecutedArtifactsBundle {
+  envelope_id: string;
+  documents: {
+    envelope_document_id: string;
+    document_ref: string | null;
+    document_revision_ref: string | null;
+    executed_sha256: string;
+    byte_size: number;
+    executed_base64: string;
+  }[];
+  certificate: { certificate_sha256: string; byte_size: number; certificate_base64: string } | null;
 }

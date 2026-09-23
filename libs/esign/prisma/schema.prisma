@@ -233,3 +233,43 @@ model OutboxEvent {
   @@index([published_at])
   @@schema("esign")
 }
+
+/// DOC-4 (R-4-3) — the executed document bytes produced at envelope completion,
+/// held TRANSIENTLY in esign until the Documents write-back (R-4-7) stores the
+/// permanent EXECUTED artifact. esign is NOT a second document repository
+/// (invariant 12); rows are disposable once written back.
+model ExecutedDocument {
+  id                   String   @id @db.Uuid
+  tenant_id            String   @db.Uuid
+  envelope_id          String   @db.Uuid
+  envelope_document_id String   @db.Uuid
+  source_sha256        String
+  executed_sha256      String
+  byte_size            Int
+  executed_bytes       Bytes
+  produced_at          DateTime @default(now()) @db.Timestamptz
+  written_back_at      DateTime? @db.Timestamptz
+
+  @@unique([envelope_document_id])
+  @@index([tenant_id])
+  @@index([envelope_id])
+  @@schema("esign")
+}
+
+/// DOC-4 (R-4-6) — the human-readable execution certificate PDF produced at
+/// completion (one per envelope). Held transiently in esign until the Documents
+/// write-back stores the permanent EXECUTION_CERTIFICATE artifact.
+model ExecutionCertificate {
+  id              String    @id @db.Uuid
+  tenant_id       String    @db.Uuid
+  envelope_id     String    @db.Uuid
+  certificate_sha256 String
+  byte_size       Int
+  certificate_bytes Bytes
+  produced_at     DateTime  @default(now()) @db.Timestamptz
+  written_back_at DateTime? @db.Timestamptz
+
+  @@unique([envelope_id])
+  @@index([tenant_id])
+  @@schema("esign")
+}

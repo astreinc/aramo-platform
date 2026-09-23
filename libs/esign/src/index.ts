@@ -25,6 +25,24 @@ export {
   type SigningNotificationResult,
 } from './lib/ports/signing-notification.port.js';
 export {
+  DOCUMENT_SOURCE_PROVIDER_PORT,
+  type DocumentSourceProviderPort,
+  type DocumentSourceRequest,
+} from './lib/ports/document-source-provider.port.js';
+export {
+  EXECUTION_PRODUCER_PORT,
+  type ExecutionProducerPort,
+  type ExecutedProductionResult,
+} from './lib/ports/execution-producer.port.js';
+export { ExecutionService } from './lib/execution.service.js';
+export {
+  EVENT_PUBLISHER_PORT,
+  LocalEventPublisher,
+  type EventPublisherPort,
+  type EsignDomainEvent,
+} from './lib/ports/event-publisher.port.js';
+export { OutboxService } from './lib/outbox.service.js';
+export {
   EVIDENCE_MANIFEST_SIGNER_PORT,
   SoftwareEvidenceManifestSigner,
   type EvidenceManifestSignerPort,

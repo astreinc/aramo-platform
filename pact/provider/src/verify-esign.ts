@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { AddressInfo } from 'node:net';
 
@@ -24,10 +24,16 @@ import { AppModule } from '@aramo/esign-service';
 // Gated on ARAMO_RUN_PACT_PROVIDER=1 (same as verify.ts / verify-api.ts).
 
 const ROOT = resolve(__dirname, '../../..');
-const ESIGN_MIGRATION = resolve(
-  ROOT,
-  'libs/esign/prisma/migrations/20260922140000_init_esign_model/migration.sql',
-);
+// Apply ALL esign migrations whole-file, in order — the append-only trigger is
+// $$-quoted (the shared splitDdl is comment/$$-blind), and DOC-4 added the
+// ExecutedDocument migration (never hardcode a single-migration list).
+function esignMigrations(): string[] {
+  const dir = resolve(ROOT, 'libs/esign/prisma/migrations');
+  return readdirSync(dir)
+    .filter((n) => /^\d/.test(n))
+    .sort()
+    .map((n) => resolve(dir, n, 'migration.sql'));
+}
 const PACT_FILE = resolve(ROOT, 'pact/pacts/aramo-core-esign-service.json');
 
 // Fixed ids — MUST match pact/consumers/esign-consumer/src/esign.consumer.test.ts.
@@ -81,7 +87,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       db = new Client({ connectionString: url });
       await db.connect();
       // Whole-file apply — the SignatureEvent append-only trigger is $$-quoted.
-      await db.query(readFileSync(ESIGN_MIGRATION, 'utf8'));
+      for (const m of esignMigrations()) await db.query(readFileSync(m, 'utf8'));
 
       savedEnv = {
         DATABASE_URL: process.env['DATABASE_URL'],

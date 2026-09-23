@@ -36,9 +36,16 @@ export {
 } from './lib/render.service.js';
 export { DocumentIdempotencyService, type IdempotencyCheck } from './lib/idempotency.service.js';
 export {
+  DocumentExecutedWriteBackService,
+  type StoreExecutedInput,
+  type StoreExecutedResult,
+} from './lib/executed-write-back.service.js';
+export { RevisionSourceService } from './lib/revision-source.service.js';
+export {
   DocumentNotFoundError,
   DocumentIllegalTransitionError,
   DocumentIdempotencyConflictError,
+  ExecutedArtifactHashMismatchError,
   DocumentStorageNotSupportedError,
   TemplateNotFoundError,
   TemplateVersionNotFoundError,

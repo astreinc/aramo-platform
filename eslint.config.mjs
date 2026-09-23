@@ -44,6 +44,10 @@ const SCOPE_DEP_CONSTRAINTS = [
   { sourceTag: 'scope:ats', onlyDependOnLibsWithTags: ['scope:ats', 'scope:cip', 'scope:boundary', 'scope:shared'] },
   { sourceTag: 'scope:platform', onlyDependOnLibsWithTags: ['scope:platform', 'scope:boundary', 'scope:shared'] },
   { sourceTag: 'scope:portal', onlyDependOnLibsWithTags: ['scope:portal', 'scope:boundary', 'scope:shared'] },
+  // DOC-4 (R-4-2) — scope:sign is the external-signer SPA wall (apps/sign-web at
+  // sign.aramo.ai). It must NOT reach scope:ats, scope:cip, scope:platform, or
+  // scope:portal — it talks only to the E-Sign public signer transport over HTTP.
+  { sourceTag: 'scope:sign', onlyDependOnLibsWithTags: ['scope:sign', 'scope:boundary', 'scope:shared'] },
   // Auth-Decoupling PR-5b (ADR-0021 §4) — scope:auth is the portable identity core
   // (libs/auth-core). It must NOT reach scope:ats, scope:cip, scope:platform, or
   // scope:portal; its legal closure is scope:auth + scope:boundary + scope:shared

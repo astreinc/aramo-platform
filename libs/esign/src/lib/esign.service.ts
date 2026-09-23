@@ -1,9 +1,10 @@
 import { randomUUID } from 'node:crypto';
 
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 
 import { PrismaService } from './prisma/prisma.service.js';
 import { EsignRepository } from './esign.repository.js';
+import { EXECUTION_PRODUCER_PORT, type ExecutionProducerPort } from './ports/execution-producer.port.js';
 import { generateSigningToken, hashSigningToken, signingSessionExpiresAt } from './signing-token.js';
 import {
   DisclosureNotAcceptedError,
@@ -62,6 +63,9 @@ export class EsignService {
     private readonly prisma: PrismaService,
     private readonly repo: EsignRepository,
     @Inject(EVIDENCE_MANIFEST_SIGNER_PORT) private readonly evidenceSigner: EvidenceManifestSignerPort,
+    // DOC-4 — OPTIONAL: when unbound (DOC-3 domain tests) completion has no
+    // executed-bytes side-effect, preserving DOC-3 behavior.
+    @Optional() @Inject(EXECUTION_PRODUCER_PORT) private readonly executionProducer?: ExecutionProducerPort,
   ) {}
 
   private async requireStatus(tenant_id: string, envelope_id: string, expected: string): Promise<void> {
@@ -240,6 +244,9 @@ export class EsignService {
         actor_type: 'SERVICE',
         timestampField: 'completed_at',
       });
+      // DOC-4 (R-4-3) — produce executed bytes + completion notification when a
+      // producer is bound (apps/esign-service composition root).
+      await this.executionProducer?.produce(ctx.tenant_id, ctx.envelope_id);
       return { envelope_status: 'COMPLETED' };
     }
     return { envelope_status: 'IN_PROGRESS' };
@@ -277,10 +284,15 @@ export class EsignService {
     const chainHash = (await this.repo.terminalEventHash(tenant_id, envelope_id)) ?? '';
     const disclosures = await this.prisma.signerDisclosureAcceptance.findMany({ where: { tenant_id, signer_id: { in: full.signers.map((s) => s.id) } } });
     const disclosureHash = disclosures.length > 0 ? disclosures.map((d) => d.disclosure_text_hash).sort().join('|') : null;
+    // DOC-4 — the executed-document hash, if executed bytes have been produced.
+    const executed = await this.prisma.executedDocument.findFirst({
+      where: { tenant_id, envelope_id },
+      orderBy: { produced_at: 'desc' },
+    });
     const manifest: EvidenceManifest = {
       envelope_id,
-      source_sha256: full.documents[0]?.source_sha256 ?? null,
-      executed_sha256: null, // DOC-4 produces executed bytes
+      source_sha256: executed?.source_sha256 ?? full.documents[0]?.source_sha256 ?? null,
+      executed_sha256: executed?.executed_sha256 ?? null,
       event_chain_hash: chainHash,
       disclosure_hash: disclosureHash,
       execution_manifest_hash: chainHash,

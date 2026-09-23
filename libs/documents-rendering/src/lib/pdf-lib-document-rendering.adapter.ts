@@ -110,7 +110,23 @@ export class PdfLibDocumentRenderingAdapter implements DocumentRenderingPort {
         if (p.x < 0 || p.y < 0 || p.x > width || p.y > height) {
           throw new RenderFailedError(`placement ${p.field_key} out of page bounds`);
         }
-        page.drawText(p.value, { x: p.x, y: p.y, size: p.size ?? 11, font, color: rgb(0, 0, 0) });
+        if (p.kind === 'IMAGE') {
+          // DOC-4 B1 — DRAWN/UPLOADED signature image. Embed is deterministic
+          // (identical bytes → identical embedded object), preserving hash-stability.
+          if (p.image_bytes === undefined || p.image_format === undefined) {
+            throw new RenderFailedError(`image placement ${p.field_key} missing image_bytes/image_format`);
+          }
+          const img =
+            p.image_format === 'PNG'
+              ? await doc.embedPng(p.image_bytes)
+              : await doc.embedJpg(p.image_bytes);
+          page.drawImage(img, { x: p.x, y: p.y, width: p.width ?? img.width, height: p.height ?? img.height });
+        } else {
+          if (p.value === undefined) {
+            throw new RenderFailedError(`text placement ${p.field_key} missing value`);
+          }
+          page.drawText(p.value, { x: p.x, y: p.y, size: p.size ?? 11, font, color: rgb(0, 0, 0) });
+        }
       }
       const bytes = await this.save(doc);
       const output_sha256 = sha256Hex(bytes);
@@ -118,7 +134,21 @@ export class PdfLibDocumentRenderingAdapter implements DocumentRenderingPort {
         renderer: 'PDF_LIB',
         renderer_version: RENDERER_VERSION,
         template_version_id: opts?.template_version_id,
-        render_manifest_sha256: manifestSha256(placements),
+        // Uint8Array does not JSON-serialize; project image bytes to a sha256 so
+        // the manifest hash stays stable + collision-resistant for IMAGE placements.
+        render_manifest_sha256: manifestSha256(placements.map((p) => ({
+          field_key: p.field_key,
+          page_number: p.page_number,
+          x: p.x,
+          y: p.y,
+          kind: p.kind ?? 'TEXT',
+          value: p.value,
+          size: p.size,
+          width: p.width,
+          height: p.height,
+          image_format: p.image_format,
+          image_sha256: p.image_bytes ? sha256Hex(p.image_bytes) : undefined,
+        }))),
         source_artifact_sha256,
         output_sha256,
       };

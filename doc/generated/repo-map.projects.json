@@ -515,6 +515,7 @@
     "@aramo/documents": [
       "DOCUMENTS_SCHEMA",
       "DOCUMENT_STORAGE_PORT",
+      "DocumentExecutedWriteBackService",
       "DocumentIdempotencyConflictError",
       "DocumentIdempotencyService",
       "DocumentIllegalTransitionError",
@@ -529,9 +530,11 @@
       "DocumentsController",
       "DocumentsModule",
       "DocumentsRepository",
+      "ExecutedArtifactHashMismatchError",
       "PrismaService",
       "RenderService",
       "RequirementsRepository",
+      "RevisionSourceService",
       "TemplateImmutableError",
       "TemplateNotFoundError",
       "TemplateVersionNotActiveError",
@@ -583,9 +586,12 @@
       "resolveReconcileTarget"
     ],
     "@aramo/esign": [
+      "DOCUMENT_SOURCE_PROVIDER_PORT",
       "DisclosureNotAcceptedError",
       "ESIGN_SCHEMA",
+      "EVENT_PUBLISHER_PORT",
       "EVIDENCE_MANIFEST_SIGNER_PORT",
+      "EXECUTION_PRODUCER_PORT",
       "EnvelopeAlreadyExecutedError",
       "EnvelopeIllegalTransitionError",
       "EnvelopeNotFoundError",
@@ -593,6 +599,9 @@
       "EsignModule",
       "EsignRepository",
       "EsignService",
+      "ExecutionService",
+      "LocalEventPublisher",
+      "OutboxService",
       "PrismaService",
       "SIGNING_NOTIFICATION_PORT",
       "SIGNING_TOKEN_BYTES",
@@ -3654,7 +3663,15 @@
         "project": "documents",
         "status": "excluded"
       },
-      { "project": "documents", "status": "production" }
+      { "project": "documents", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/esign/src/tests/esign-flow.integration.spec.ts",
+        "project": "esign",
+        "status": "excluded"
+      },
+      { "project": "esign", "status": "production" },
+      { "project": "esign-service", "status": "production" }
     ],
     "@aramo/engagement": [
       {
@@ -3723,7 +3740,15 @@
       { "project": "talent-record", "status": "production" },
       { "project": "task", "status": "production" }
     ],
-    "@aramo/esign": [{ "project": "esign-service", "status": "production" }],
+    "@aramo/esign": [
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/esign-service/src/tests/kms-evidence-manifest-signer.spec.ts",
+        "project": "esign-service",
+        "status": "excluded"
+      },
+      { "project": "esign-service", "status": "production" }
+    ],
     "@aramo/esign-service": [
       {
         "from": "pact/provider/src/verify-esign.ts",
@@ -6117,6 +6142,13 @@
       "root": "apps/portal-web",
       "sourceRoot": "apps/portal-web/src",
       "tags": ["scope:portal"],
+      "targets": ["build", "lint", "preview", "serve", "test"]
+    },
+    {
+      "name": "aramo-sign-web",
+      "root": "apps/sign-web",
+      "sourceRoot": "apps/sign-web/src",
+      "tags": ["scope:sign"],
       "targets": ["build", "lint", "preview", "serve", "test"]
     },
     {

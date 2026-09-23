@@ -16,6 +16,7 @@
     "libs/conversation-transcript",
     "libs/documents",
     "libs/entitlement",
+    "libs/esign",
     "libs/evidence",
     "libs/examination",
     "libs/identity",

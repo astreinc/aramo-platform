@@ -241,4 +241,24 @@ export class EsignRepository {
     });
     return last?.event_hash ?? null;
   }
+
+  // DOC-4 (R-4-7) — executed artifacts for the write-back pull. Each executed
+  // document is joined to its EnvelopeDocument for the Documents refs.
+  async listExecutedDocuments(tenant_id: string, envelope_id: string) {
+    const rows = await this.prisma.executedDocument.findMany({ where: { tenant_id, envelope_id } });
+    const docs = await this.prisma.envelopeDocument.findMany({ where: { envelope_id } });
+    const byId = new Map(docs.map((d) => [d.id, d]));
+    return rows.map((r) => ({
+      envelope_document_id: r.envelope_document_id,
+      document_ref: byId.get(r.envelope_document_id)?.document_ref ?? null,
+      document_revision_ref: byId.get(r.envelope_document_id)?.document_revision_ref ?? null,
+      executed_sha256: r.executed_sha256,
+      byte_size: r.byte_size,
+      executed_bytes: r.executed_bytes,
+    }));
+  }
+
+  async getExecutionCertificate(tenant_id: string, envelope_id: string) {
+    return this.prisma.executionCertificate.findFirst({ where: { tenant_id, envelope_id } });
+  }
 }

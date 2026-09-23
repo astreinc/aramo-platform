@@ -31,6 +31,16 @@ export class DocumentIdempotencyConflictError extends Error {
   }
 }
 
+// DOC-4 (R-4-7) — an executed-artifact write-back whose bytes do not match the
+// asserted sha256 (integrity failure). The write-back MUST NOT store mismatched
+// bytes; the caller maps this to DOCUMENT_EXECUTED_HASH_MISMATCH (422).
+export class ExecutedArtifactHashMismatchError extends Error {
+  constructor(public readonly role: string) {
+    super(`Executed ${role} artifact bytes do not match the asserted sha256`);
+    this.name = 'ExecutedArtifactHashMismatchError';
+  }
+}
+
 // DOC-2 — template + requirement domain errors. The controller maps these to:
 //   TemplateNotFoundError                 -> TEMPLATE_NOT_FOUND (404)
 //   TemplateVersionNotFoundError          -> TEMPLATE_VERSION_NOT_FOUND (404)

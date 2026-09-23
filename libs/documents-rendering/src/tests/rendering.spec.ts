@@ -97,6 +97,71 @@ describe('PdfLibDocumentRenderingAdapter (UPLOADED_PDF path)', () => {
       adapter.prepareFromSource(source, [{ field_key: 'x', page_number: 5, x: 10, y: 10, value: 'v' }]),
     ).rejects.toBeInstanceOf(RenderFailedError);
   });
+
+  // DOC-4 B1 — IMAGE placement: stamp a DRAWN/UPLOADED signature image (PNG) at
+  // field coordinates. A 1x1 transparent PNG proves the embed+draw path.
+  const PNG_1x1 = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M8AAAMBAQDJ/pLvAAAAAElFTkSuQmCC',
+    'base64',
+  );
+
+  it('stamps a PNG signature image at field coordinates (executed-doc production)', async () => {
+    const source = await makeSourcePdf();
+    const out = await adapter.prepareFromSource(source, [
+      {
+        field_key: 'sig',
+        page_number: 0,
+        x: 72,
+        y: 120,
+        kind: 'IMAGE',
+        image_bytes: new Uint8Array(PNG_1x1),
+        image_format: 'PNG',
+        width: 120,
+        height: 40,
+      },
+    ]);
+    expect(Buffer.from(out.bytes.slice(0, 5)).toString('latin1')).toBe('%PDF-');
+    expect(out.provenance.output_sha256).toBe(out.sha256);
+    // Image overlay changed the bytes (source != output).
+    expect(out.provenance.source_artifact_sha256).not.toBe(out.provenance.output_sha256);
+  });
+
+  it('is hash-stable on the IMAGE path (deterministic embed)', async () => {
+    const source = await makeSourcePdf();
+    const placement = {
+      field_key: 'sig',
+      page_number: 0,
+      x: 72,
+      y: 120,
+      kind: 'IMAGE' as const,
+      image_bytes: new Uint8Array(PNG_1x1),
+      image_format: 'PNG' as const,
+      width: 120,
+      height: 40,
+    };
+    const a = await adapter.prepareFromSource(source, [placement]);
+    const b = await adapter.prepareFromSource(source, [placement]);
+    expect(a.sha256).toBe(b.sha256);
+  });
+
+  it('rejects an out-of-bounds IMAGE placement', async () => {
+    const source = await makeSourcePdf();
+    await expect(
+      adapter.prepareFromSource(source, [
+        {
+          field_key: 'sig',
+          page_number: 0,
+          x: 9999,
+          y: 9999,
+          kind: 'IMAGE',
+          image_bytes: new Uint8Array(PNG_1x1),
+          image_format: 'PNG',
+          width: 120,
+          height: 40,
+        },
+      ]),
+    ).rejects.toBeInstanceOf(RenderFailedError);
+  });
 });
 
 describe('SafePdfPipeline (B6 — governed upload safety)', () => {

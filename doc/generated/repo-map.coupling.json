@@ -11480,6 +11480,11 @@
       "to": "libs/fe-foundation/src/index.ts"
     },
     {
+      "from": "apps/sign-web/project.json",
+      "status": "unscoped",
+      "to": "apps/sign-web/vite.config.ts"
+    },
+    {
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
       "to": "apps/api/src/client-decision-orchestration/client-decision.controller.ts"
@@ -15897,6 +15902,11 @@
       "to": "libs/portal-identity/src/lib/portal-login-token.ts"
     },
     {
+      "from": "libs/esign/vitest.config.ts",
+      "status": "unscoped",
+      "to": "libs/documents/vitest.config.ts"
+    },
+    {
       "from": "libs/events/prisma/schema.prisma",
       "status": "unscoped",
       "to": "doc/05-conventions.md"
@@ -18799,11 +18809,6 @@
       "from": "pact/provider/src/verify-api.ts",
       "status": "unscoped",
       "to": "pact/consumers/ats-web/src/placement.consumer.test.ts"
-    },
-    {
-      "from": "pact/provider/src/verify-esign.ts",
-      "status": "unscoped",
-      "to": "libs/esign/prisma/migrations/20260922140000_init_esign_model/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-esign.ts",

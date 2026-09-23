@@ -12,6 +12,7 @@
       "@aramo/common": ["../../dist/libs/common/src/index.d.ts"],
       "@aramo/esign": ["../../dist/libs/esign/src/index.d.ts"],
       "@aramo/documents-contracts": ["../../dist/libs/documents-contracts/src/index.d.ts"],
+      "@aramo/documents-rendering": ["../../dist/libs/documents-rendering/src/index.d.ts"],
       "@aramo/mailer": ["../../dist/libs/mailer/src/index.d.ts"]
     }
   },

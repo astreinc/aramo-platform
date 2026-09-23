@@ -24,13 +24,25 @@ export interface RenderModel {
 }
 
 // A resolved field placement for the UPLOADED_PDF overlay path.
+//
+// DOC-4 B1 — placements carry a `kind`: TEXT (default; existing drawText path,
+// used for typed signatures/date/initials) or IMAGE (a DRAWN/UPLOADED signature
+// image stamped via embedPng/embedJpg + drawImage). Executed-document production
+// (R-4-3) maps each filled esign SignatureField to one of these.
 export interface PreparedField {
   field_key: string;
   page_number: number; // 0-based
   x: number;
   y: number;
-  value: string;
+  kind?: 'TEXT' | 'IMAGE'; // default TEXT
+  // TEXT placement
+  value?: string;
   size?: number;
+  // IMAGE placement (DOC-4) — required when kind === 'IMAGE'
+  image_bytes?: Uint8Array;
+  image_format?: 'PNG' | 'JPG';
+  width?: number;
+  height?: number;
 }
 
 // Durable provenance — the AUTHORITATIVE reproducibility proof (byte-equality is
