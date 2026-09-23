@@ -92,6 +92,7 @@ export const SEED_SCOPE_KEYS = [
   // DOC-1a — canonical Documents domain scopes (dedicated DOCUMENTS_SEED_BUNDLES).
   'document:read',              // recruiter+ (read documents/types/events/artifacts)
   'document:create',            // recruiter+ (create documents, prepare, associate)
+  'document:execute',           // recruiter+ (DOC-3 — request/send a signature envelope via the E-Sign seam)
   'document:manage',            // tenant_admin+ (DOC-2 reconciled from document_type:manage, R22)
   // DOC-2 — Templates + Requirements scopes (dedicated DOCUMENTS_DOC2_SEED_BUNDLES).
   'document_template:read',     // recruiter+ (read templates/versions)

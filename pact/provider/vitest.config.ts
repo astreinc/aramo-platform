@@ -12,7 +12,7 @@ export default mergeConfig(
       // entry point for the apps/api provider target. auth-helpers.ts
       // and state-handlers.ts are imported by verify.ts; they are not
       // test files and are excluded from discovery.
-      include: ['src/verify.ts', 'src/verify-api.ts'],
+      include: ['src/verify.ts', 'src/verify-api.ts', 'src/verify-esign.ts'],
       // Provider verification starts a real Nest app + Postgres container.
       // Match the auth-service integration suite's wall-clock budget.
       testTimeout: 180_000,

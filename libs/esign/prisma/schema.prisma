@@ -1,0 +1,235 @@
+// Per-module Prisma schema for the `esign` module (DOC-3 — Native E-Sign Service Core).
+//
+// Governing directive: Aramo-DOC-3-Native-ESign-Service-Core-Slice-Directive-v1_0-LOCKED
+// (parent: Aramo-DOC-Documents-and-Native-ESignature-Architecture-and-Build-Directive-v1_1-LOCKED).
+//
+// ATS-neutral (§229; Invariant 2/19): this schema references Documents ONLY by
+// opaque UUID (EnvelopeDocument.document_ref / document_revision_ref) — NO
+// cross-schema FK, NO import of any ATS/cip domain. Canonical aggregate names
+// (PO ruling 2026-09-22): SignatureEnvelope, SignatureField, SignerDisclosureAcceptance.
+// SignatureEvent is append-only with a tamper-evident hash chain (R20/§256).
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "./generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["esign"]
+}
+
+/// The signature envelope aggregate — one signing transaction.
+model SignatureEnvelope {
+  id             String    @id @db.Uuid
+  tenant_id      String    @db.Uuid
+  subject        String
+  status         String // CHECK: DRAFT|SENT|IN_PROGRESS|COMPLETED|DECLINED|VOIDED|EXPIRED
+  execution_mode String // CHECK: ACKNOWLEDGEMENT|SINGLE_SIGNATURE|MULTI_SIGNATURE
+  created_by     String    @db.Uuid
+  created_at     DateTime  @default(now()) @db.Timestamptz
+  updated_at     DateTime  @updatedAt @db.Timestamptz
+  sent_at        DateTime? @db.Timestamptz
+  completed_at   DateTime? @db.Timestamptz
+  declined_at    DateTime? @db.Timestamptz
+  voided_at      DateTime? @db.Timestamptz
+  expires_at     DateTime? @db.Timestamptz
+
+  documents EnvelopeDocument[]
+  signers   Signer[]
+  sessions  SigningSession[]
+  events    SignatureEvent[]
+
+  @@index([tenant_id])
+  @@index([tenant_id, status])
+  @@schema("esign")
+}
+
+/// A frozen Documents revision attached to an envelope. UUID-ref only (no FK).
+model EnvelopeDocument {
+  id                    String @id @db.Uuid
+  tenant_id             String @db.Uuid
+  envelope_id           String @db.Uuid
+  document_ref          String @db.Uuid
+  document_revision_ref String @db.Uuid
+  title                 String
+  source_sha256         String
+  ordinal               Int
+
+  envelope SignatureEnvelope @relation(fields: [envelope_id], references: [id], onDelete: Cascade)
+  fields   SignatureField[]
+
+  @@unique([envelope_id, document_ref])
+  @@index([tenant_id])
+  @@index([envelope_id])
+  @@schema("esign")
+}
+
+/// A party who must sign/acknowledge. Signer order enforced by signing_order.
+model Signer {
+  id            String    @id @db.Uuid
+  tenant_id     String    @db.Uuid
+  envelope_id   String    @db.Uuid
+  email         String
+  name          String
+  signing_order Int
+  signer_role   String?
+  status        String // CHECK: PENDING|VIEWED|SIGNED|DECLINED
+  viewed_at     DateTime? @db.Timestamptz
+  signed_at     DateTime? @db.Timestamptz
+  declined_at   DateTime? @db.Timestamptz
+  decline_reason String?
+
+  envelope    SignatureEnvelope            @relation(fields: [envelope_id], references: [id], onDelete: Cascade)
+  fields      SignatureField[]
+  sessions    SigningSession[]
+  disclosures SignerDisclosureAcceptance[]
+
+  @@unique([envelope_id, signing_order])
+  @@index([tenant_id])
+  @@index([envelope_id])
+  @@schema("esign")
+}
+
+/// A placement of a signable field on an envelope document, assigned to a signer.
+model SignatureField {
+  id                   String    @id @db.Uuid
+  tenant_id            String    @db.Uuid
+  envelope_document_id String    @db.Uuid
+  signer_id            String?   @db.Uuid
+  field_type           String // CHECK: SIGNATURE|INITIALS|SIGN_DATE|SIGNER_NAME|TEXT|CHECKBOX|ACKNOWLEDGEMENT
+  signature_method     String? // CHECK (nullable): TYPED|DRAWN|UPLOADED|DIGITAL_CERTIFICATE
+  page_number          Int
+  x                    Float
+  y                    Float
+  width                Float?
+  height               Float?
+  required             Boolean   @default(true)
+  value                String?
+  filled_at            DateTime? @db.Timestamptz
+
+  envelope_document EnvelopeDocument @relation(fields: [envelope_document_id], references: [id], onDelete: Cascade)
+  signer            Signer?          @relation(fields: [signer_id], references: [id], onDelete: SetNull)
+
+  @@index([tenant_id])
+  @@index([envelope_document_id])
+  @@index([signer_id])
+  @@schema("esign")
+}
+
+/// A short-lived capability-token signing session (R17/§250). token_hash is the
+/// sha256(base64url) of the raw token; the raw token is NEVER persisted.
+model SigningSession {
+  id                String    @id @db.Uuid
+  tenant_id         String    @db.Uuid
+  envelope_id       String    @db.Uuid
+  signer_id         String    @db.Uuid
+  token_hash        String
+  status            String // CHECK: ISSUED|EXCHANGED|ACTIVE|COMPLETED|EXPIRED|REVOKED
+  created_at        DateTime  @default(now()) @db.Timestamptz
+  expires_at        DateTime  @db.Timestamptz
+  first_accessed_at DateTime? @db.Timestamptz
+  last_accessed_at  DateTime? @db.Timestamptz
+  completed_at      DateTime? @db.Timestamptz
+  revoked_at        DateTime? @db.Timestamptz
+  failed_auth_count Int       @default(0)
+
+  envelope SignatureEnvelope @relation(fields: [envelope_id], references: [id], onDelete: Cascade)
+  signer   Signer            @relation(fields: [signer_id], references: [id], onDelete: Cascade)
+
+  @@unique([token_hash])
+  @@index([tenant_id])
+  @@index([envelope_id])
+  @@index([signer_id])
+  @@schema("esign")
+}
+
+/// The signer's acceptance of the E-Sign electronic-record disclosure (R16/§246).
+/// Versioned frozen text + sha256; distinct from the Consent domain.
+model SignerDisclosureAcceptance {
+  id                   String   @id @db.Uuid
+  tenant_id            String   @db.Uuid
+  signer_id            String   @db.Uuid
+  disclosure_version   String
+  disclosure_text_hash String
+  accepted_at          DateTime @default(now()) @db.Timestamptz
+  ip_address           String?
+  user_agent           String?
+  session_id           String   @db.Uuid
+
+  signer Signer @relation(fields: [signer_id], references: [id], onDelete: Cascade)
+
+  @@index([tenant_id])
+  @@index([signer_id])
+  @@schema("esign")
+}
+
+/// Append-only signature-event ledger with a tamper-evident hash chain (R20/§256).
+/// UPDATE/DELETE rejected by an unconditional DB trigger. event_hash chains from
+/// previous_event_hash; the terminal event_hash is the envelope's event-chain hash.
+model SignatureEvent {
+  id                  String   @id @db.Uuid
+  tenant_id           String   @db.Uuid
+  envelope_id         String   @db.Uuid
+  signer_id           String?  @db.Uuid
+  event_type          String
+  actor_type          String // CHECK: SIGNER|SYSTEM|SERVICE
+  actor_ref           String?  @db.Uuid
+  payload             Json?
+  previous_event_hash String?
+  event_hash          String
+  occurred_at         DateTime @default(now()) @db.Timestamptz
+  ip_address          String?
+  user_agent          String?
+
+  envelope SignatureEnvelope @relation(fields: [envelope_id], references: [id], onDelete: Restrict)
+
+  @@index([tenant_id, envelope_id, occurred_at])
+  @@index([tenant_id, occurred_at])
+  @@schema("esign")
+}
+
+/// A durable notification delivery-attempt record (§298; NEW E-Sign-domain work).
+model NotificationDelivery {
+  id                String    @id @db.Uuid
+  tenant_id         String    @db.Uuid
+  envelope_id       String    @db.Uuid
+  signer_id         String?   @db.Uuid
+  notification_kind String // CHECK: SIGNATURE_REQUEST|SIGNATURE_REMINDER|SIGNATURE_COMPLETED|SIGNATURE_DECLINED|SIGNATURE_EXPIRED
+  status            String // CHECK: PENDING|SENT|FAILED
+  attempts          Int       @default(0)
+  last_error        String?
+  created_at        DateTime  @default(now()) @db.Timestamptz
+  sent_at           DateTime? @db.Timestamptz
+
+  @@index([tenant_id])
+  @@index([envelope_id])
+  @@schema("esign")
+}
+
+/// Schema-local idempotency for cross-service mutations (Invariant 16).
+model IdempotencyKey {
+  id              String   @id @db.Uuid
+  tenant_id       String   @db.Uuid
+  key             String
+  request_hash    String
+  response_status Int?
+  response_body   Json?
+  created_at      DateTime @default(now()) @db.Timestamptz
+
+  @@unique([tenant_id, key])
+  @@schema("esign")
+}
+
+/// Transactional outbox — rows written in the same $transaction as state changes.
+model OutboxEvent {
+  id            String    @id @db.Uuid
+  tenant_id     String    @db.Uuid
+  event_type    String
+  event_payload Json
+  created_at    DateTime  @default(now()) @db.Timestamptz
+  published_at  DateTime? @db.Timestamptz
+
+  @@index([published_at])
+  @@schema("esign")
+}

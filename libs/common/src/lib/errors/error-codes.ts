@@ -389,6 +389,17 @@ export const ERROR_CODES = [
   'DOCUMENT_REQUIREMENT_ALREADY_SATISFIED',
   'DOCUMENT_RENDER_FAILED',
   'DOCUMENT_UPLOAD_UNSAFE',
+  // DOC-3 (Native E-Sign Service Core) — envelope/signer/session lifecycle
+  // errors. NOT_FOUND variants are tenant-scoped (404); illegal transitions +
+  // incomplete/already-terminal are 409; capability-session failures are 401.
+  'ENVELOPE_NOT_FOUND',
+  'ENVELOPE_ILLEGAL_TRANSITION',
+  'ENVELOPE_ALREADY_EXECUTED',
+  'SIGNER_NOT_FOUND',
+  'SIGNING_SESSION_INVALID',
+  'SIGNING_SESSION_EXPIRED',
+  'DISCLOSURE_NOT_ACCEPTED',
+  'SIGNATURE_FIELD_INCOMPLETE',
   // Track 1 T1-b (ruling R2) — optimistic-concurrency stale-write refusal on
   // requisition.Requisition. The PATCH (or any versioned update) supplied an
   // expected `version` that no longer matches the stored row: someone else

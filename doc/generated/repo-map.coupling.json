@@ -11362,6 +11362,26 @@
       "to": "libs/identity/src/tests/tenant-lifecycle.spec.ts"
     },
     {
+      "from": "apps/esign-service/Dockerfile",
+      "status": "unscoped",
+      "to": "doc/runbooks/run-layer.md"
+    },
+    {
+      "from": "apps/esign-service/Dockerfile",
+      "status": "unscoped",
+      "to": "tools/local-run-link.sh"
+    },
+    {
+      "from": "apps/esign-service/project.json",
+      "status": "unscoped",
+      "to": "apps/esign-service/src/main.ts"
+    },
+    {
+      "from": "apps/esign-service/project.json",
+      "status": "unscoped",
+      "to": "apps/esign-service/tsconfig.app.json"
+    },
+    {
       "from": "apps/platform-admin/Dockerfile",
       "status": "unscoped",
       "to": "doc/runbooks/run-layer.md"
@@ -15796,6 +15816,16 @@
       "to": "libs/conversation-transcript/tsconfig.lib.json"
     },
     {
+      "from": "libs/documents-contracts/project.json",
+      "status": "unscoped",
+      "to": "libs/documents-contracts/src/index.ts"
+    },
+    {
+      "from": "libs/documents-contracts/project.json",
+      "status": "unscoped",
+      "to": "libs/documents-contracts/tsconfig.lib.json"
+    },
+    {
       "from": "libs/documents-rendering/project.json",
       "status": "unscoped",
       "to": "libs/documents-rendering/src/index.ts"
@@ -15854,6 +15884,17 @@
       "from": "libs/entitlement/src/lib/reconcile-entitlements.ts",
       "status": "production",
       "to": "libs/entitlement/prisma/seed-entitlements.ts"
+    },
+    { "from": "libs/esign/project.json", "status": "unscoped", "to": "libs/esign/src/index.ts" },
+    {
+      "from": "libs/esign/project.json",
+      "status": "unscoped",
+      "to": "libs/esign/tsconfig.lib.json"
+    },
+    {
+      "from": "libs/esign/src/lib/signing-token.ts",
+      "status": "production",
+      "to": "libs/portal-identity/src/lib/portal-login-token.ts"
     },
     {
       "from": "libs/events/prisma/schema.prisma",
@@ -17582,6 +17623,7 @@
       "status": "unscoped",
       "to": "libs/entitlement/prisma/seed-entitlements.ts"
     },
+    { "from": "package.json", "status": "unscoped", "to": "libs/esign/prisma/schema.prisma" },
     { "from": "package.json", "status": "unscoped", "to": "libs/events/prisma/schema.prisma" },
     { "from": "package.json", "status": "unscoped", "to": "libs/evidence/prisma/schema.prisma" },
     { "from": "package.json", "status": "unscoped", "to": "libs/examination/prisma/schema.prisma" },
@@ -17681,6 +17723,7 @@
     { "from": "package.json", "status": "unscoped", "to": "openapi/auth.yaml" },
     { "from": "package.json", "status": "unscoped", "to": "openapi/common.yaml" },
     { "from": "package.json", "status": "unscoped", "to": "openapi/documents.yaml" },
+    { "from": "package.json", "status": "unscoped", "to": "openapi/esign.yaml" },
     { "from": "package.json", "status": "unscoped", "to": "openapi/ingestion.yaml" },
     { "from": "package.json", "status": "unscoped", "to": "openapi/platform.yaml" },
     { "from": "package.json", "status": "unscoped", "to": "openapi/portal.yaml" },
@@ -18758,6 +18801,21 @@
       "to": "pact/consumers/ats-web/src/placement.consumer.test.ts"
     },
     {
+      "from": "pact/provider/src/verify-esign.ts",
+      "status": "unscoped",
+      "to": "libs/esign/prisma/migrations/20260922140000_init_esign_model/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-esign.ts",
+      "status": "unscoped",
+      "to": "pact/consumers/esign-consumer/src/esign.consumer.test.ts"
+    },
+    {
+      "from": "pact/provider/src/verify-esign.ts",
+      "status": "unscoped",
+      "to": "pact/provider/src/verify.ts"
+    },
+    {
       "from": "pact/provider/src/verify.ts",
       "status": "unscoped",
       "to": "apps/auth-service/src/tests/auth.integration.spec.ts"
@@ -19395,6 +19453,11 @@
       "status": "unscoped",
       "to": "apps/auth-service/src/app/auth/auth.module.ts"
     },
+    {
+      "from": "tsconfig.base.json",
+      "status": "unscoped",
+      "to": "apps/esign-service/src/app/app.module.ts"
+    },
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/activity/src/index.ts" },
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/ai-draft/src/index.ts" },
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/attachment/src/index.ts" },
@@ -19451,11 +19514,17 @@
     {
       "from": "tsconfig.base.json",
       "status": "unscoped",
+      "to": "libs/documents-contracts/src/index.ts"
+    },
+    {
+      "from": "tsconfig.base.json",
+      "status": "unscoped",
       "to": "libs/documents-rendering/src/index.ts"
     },
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/documents/src/index.ts" },
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/engagement/src/index.ts" },
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/entitlement/src/index.ts" },
+    { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/esign/src/index.ts" },
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/events/src/index.ts" },
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/evidence/src/index.ts" },
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/examination/src/index.ts" },
@@ -19573,6 +19642,11 @@
       "status": "unscoped",
       "to": "apps/auth-service/src/app/auth/auth.module.ts"
     },
+    {
+      "from": "vitest.shared.ts",
+      "status": "unscoped",
+      "to": "apps/esign-service/src/app/app.module.ts"
+    },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/activity/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/ai-draft/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/attachment/src/index.ts" },
@@ -19625,11 +19699,17 @@
     {
       "from": "vitest.shared.ts",
       "status": "unscoped",
+      "to": "libs/documents-contracts/src/index.ts"
+    },
+    {
+      "from": "vitest.shared.ts",
+      "status": "unscoped",
       "to": "libs/documents-rendering/src/index.ts"
     },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/documents/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/engagement/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/entitlement/src/index.ts" },
+    { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/esign/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/events/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/evidence/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/examination/src/index.ts" },

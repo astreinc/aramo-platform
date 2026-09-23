@@ -1,5 +1,5 @@
 {
-  "aliasTotals": { "apps": 2, "libs": 72, "total": 74 },
+  "aliasTotals": { "apps": 3, "libs": 74, "total": 77 },
   "aliases": {
     "@aramo/activity": "libs/activity/src/index.ts",
     "@aramo/ai-draft": "libs/ai-draft/src/index.ts",
@@ -25,9 +25,12 @@
     "@aramo/conversation-intelligence": "libs/conversation-intelligence/src/index.ts",
     "@aramo/conversation-transcript": "libs/conversation-transcript/src/index.ts",
     "@aramo/documents": "libs/documents/src/index.ts",
+    "@aramo/documents-contracts": "libs/documents-contracts/src/index.ts",
     "@aramo/documents-rendering": "libs/documents-rendering/src/index.ts",
     "@aramo/engagement": "libs/engagement/src/index.ts",
     "@aramo/entitlement": "libs/entitlement/src/index.ts",
+    "@aramo/esign": "libs/esign/src/index.ts",
+    "@aramo/esign-service": "apps/esign-service/src/app/app.module.ts",
     "@aramo/events": "libs/events/src/index.ts",
     "@aramo/evidence": "libs/evidence/src/index.ts",
     "@aramo/examination": "libs/examination/src/index.ts",
@@ -535,6 +538,7 @@
       "TemplateVersionNotFoundError",
       "TemplatesRepository"
     ],
+    "@aramo/documents-contracts": ["SIGNATURE_PROVIDER_PORT"],
     "@aramo/documents-rendering": [
       "DOCUMENT_RENDERING_PORT",
       "PdfLibDocumentRenderingAdapter",
@@ -578,6 +582,31 @@
       "reconcileTenantEntitlements",
       "resolveReconcileTarget"
     ],
+    "@aramo/esign": [
+      "DisclosureNotAcceptedError",
+      "ESIGN_SCHEMA",
+      "EVIDENCE_MANIFEST_SIGNER_PORT",
+      "EnvelopeAlreadyExecutedError",
+      "EnvelopeIllegalTransitionError",
+      "EnvelopeNotFoundError",
+      "EsignIdempotencyConflictError",
+      "EsignModule",
+      "EsignRepository",
+      "EsignService",
+      "PrismaService",
+      "SIGNING_NOTIFICATION_PORT",
+      "SIGNING_TOKEN_BYTES",
+      "SignatureFieldIncompleteError",
+      "SignerNotFoundError",
+      "SigningSessionExpiredError",
+      "SigningSessionInvalidError",
+      "SoftwareEvidenceManifestSigner",
+      "computeEventHash",
+      "generateSigningToken",
+      "hashSigningToken",
+      "signingSessionExpiresAt"
+    ],
+    "@aramo/esign-service": ["AppModule"],
     "@aramo/events": ["EventsModule"],
     "@aramo/evidence": ["EvidenceModule", "EvidenceRepository", "PrismaService"],
     "@aramo/examination": [
@@ -2953,6 +2982,7 @@
       { "project": "conversation-intelligence", "status": "production" },
       { "project": "documents", "status": "production" },
       { "project": "entitlement", "status": "production" },
+      { "project": "esign-service", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/evidence/src/tests/evidence.repository.cross-schema-validator.integration.spec.ts",
@@ -3613,6 +3643,10 @@
       },
       { "project": "api", "status": "production" }
     ],
+    "@aramo/documents-contracts": [
+      { "project": "api", "status": "production" },
+      { "project": "esign-service", "status": "production" }
+    ],
     "@aramo/documents-rendering": [
       {
         "excludedBy": "src/tests/**/*",
@@ -3688,6 +3722,14 @@
       { "project": "saved-list", "status": "production" },
       { "project": "talent-record", "status": "production" },
       { "project": "task", "status": "production" }
+    ],
+    "@aramo/esign": [{ "project": "esign-service", "status": "production" }],
+    "@aramo/esign-service": [
+      {
+        "from": "pact/provider/src/verify-esign.ts",
+        "project": "aramo-pact-provider",
+        "status": "unscoped"
+      }
     ],
     "@aramo/events": [],
     "@aramo/evidence": [
@@ -4822,6 +4864,7 @@
         "status": "excluded"
       },
       { "project": "auth-service", "status": "production" },
+      { "project": "esign-service", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/identity/src/tests/invite-s3-actions.integration.spec.ts",
@@ -6238,6 +6281,13 @@
       "targets": ["build", "lint", "test"]
     },
     {
+      "name": "documents-contracts",
+      "root": "libs/documents-contracts",
+      "sourceRoot": "libs/documents-contracts/src",
+      "tags": ["scope:boundary"],
+      "targets": ["build", "lint", "test"]
+    },
+    {
       "name": "documents-rendering",
       "root": "libs/documents-rendering",
       "sourceRoot": "libs/documents-rendering/src",
@@ -6256,6 +6306,27 @@
       "root": "libs/entitlement",
       "sourceRoot": "libs/entitlement/src",
       "tags": ["scope:shared"],
+      "targets": ["build", "lint", "test"]
+    },
+    {
+      "name": "esign",
+      "root": "libs/esign",
+      "sourceRoot": "libs/esign/src",
+      "tags": ["scope:boundary"],
+      "targets": ["build", "lint", "test"]
+    },
+    {
+      "name": "esign-consumer-pact",
+      "root": "pact/consumers/esign-consumer",
+      "sourceRoot": "pact/consumers/esign-consumer/src",
+      "tags": ["pact-consumer"],
+      "targets": ["lint", "pact-test", "test"]
+    },
+    {
+      "name": "esign-service",
+      "root": "apps/esign-service",
+      "sourceRoot": "apps/esign-service/src",
+      "tags": [],
       "targets": ["build", "lint", "test"]
     },
     {

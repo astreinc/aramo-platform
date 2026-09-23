@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "../../dist/libs/documents-contracts",
+    "rootDir": "src",
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "declaration": true,
+    "tsBuildInfoFile": "../../dist/libs/documents-contracts/.tsbuildinfo",
+    "types": ["node"],
+    "paths": {}
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/tests/**/*", "**/*.spec.ts"]
+}

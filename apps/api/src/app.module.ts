@@ -37,6 +37,7 @@ import { MailerModule } from '@aramo/mailer';
 import { MatchingModule } from '@aramo/matching';
 import { ObjectStorageModule, ObjectStorageService } from '@aramo/object-storage';
 import { DocumentsModule, DOCUMENT_STORAGE_PORT } from '@aramo/documents';
+import { SIGNATURE_PROVIDER_PORT } from '@aramo/documents-contracts';
 import { SourcedTalentModule } from '@aramo/sourced-talent';
 import { OutboxPublisherModule } from '@aramo/outbox-publisher';
 import { PipelineModule } from '@aramo/pipeline';
@@ -65,6 +66,7 @@ import {
 import { TalentTrustModule } from '@aramo/talent-trust';
 import { TaskModule } from '@aramo/task';
 
+import { EsignServiceHttpProvider } from './esign/esign-service-http.provider.js';
 import { AramoS3DocumentStorageAdapter } from './documents/aramo-s3-document-storage.adapter.js';
 import { ResumeAttachmentResolverModule } from './resume-extraction/resume-attachment-resolver.module.js';
 import { ResumeEditionReaderModule } from './resume-extraction/resume-edition-reader.module.js';
@@ -662,6 +664,10 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
       useFactory: (storage: ObjectStorageService) => new AramoS3DocumentStorageAdapter(storage),
       inject: [ObjectStorageService],
     },
+    // DOC-3 B5c — the provider-neutral SignatureProviderPort bound to the HTTP
+    // adapter for the separate apps/esign-service. apps/api reaches E-Sign ONLY
+    // over HTTP (never the esign schema/Prisma). Consumed by RTR/Offer in DOC-5/6.
+    { provide: SIGNATURE_PROVIDER_PORT, useClass: EsignServiceHttpProvider },
     // SKILL-TAX-1E — canonical SHADOW-matching (dark/observe-only). Config +
     // comparator + logger registered at the app boundary (like ExamineController),
     // because the comparator is the only place that legally reads requisition

@@ -157,6 +157,7 @@ export const SEED_IDS = {
     'document:read': '01900000-0000-7000-8000-0000000001d1',
     'document:create': '01900000-0000-7000-8000-0000000001d2',
     'document:manage': '01900000-0000-7000-8000-0000000001d3',
+    'document:execute': '01900000-0000-7000-8000-0000000001d8', // DOC-3 (E-Sign request/send)
     // DOC-2 — Templates + Requirements scopes (contiguous 0x1d4+ range).
     'document_template:read': '01900000-0000-7000-8000-0000000001d4',
     'document_template:manage': '01900000-0000-7000-8000-0000000001d5',
@@ -2570,6 +2571,32 @@ const DOCUMENTS_DOC2_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
   return map;
 })();
 
+// DOC-3 — Native E-Sign grant. Dedicated bundle at 0x1320+ (append-don't-renumber;
+// DOC-1a 0x1300 + DOC-2 0x1310 frozen). document:execute → the ATS delivery matrix
+// (request/send a signature envelope via the E-Sign seam). 4 grants total.
+export const DOCUMENTS_DOC3_SEED_BUNDLES: ReadonlyArray<
+  readonly [string, readonly string[]]
+> = [
+  ['tenant_admin', ['document:execute']],
+  ['tenant_owner', ['document:execute']],
+  ['recruiter', ['document:execute']],
+  ['account_manager', ['document:execute']],
+];
+
+// Deterministic RoleScope row ids for the 4 DOC-3 grants. Fresh range 0x1320+.
+const DOCUMENTS_DOC3_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
+  const map: Record<string, string> = {};
+  let i = 0x1320;
+  for (const [role, scopes] of DOCUMENTS_DOC3_SEED_BUNDLES) {
+    for (const scope of scopes) {
+      map[`${role}:${scope}`] =
+        `01900000-0000-7000-8000-${i.toString(16).padStart(12, '0')}`;
+      i++;
+    }
+  }
+  return map;
+})();
+
 interface IdentityPrismaClient {
   tenant: typeof PrismaClient.prototype.tenant;
   user: typeof PrismaClient.prototype.user;
@@ -2945,6 +2972,7 @@ export async function runIdentitySeed(
   // DOC-1a — register the Documents domain scopes (before any grant loop).
   await upsertScope(prisma, SEED_IDS.scopes['document:read'], 'document:read', 'DOC-1a — read documents, document types, document events and artifacts (tenant-scoped). NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['document:create'], 'document:create', 'DOC-1a — create a document, prepare it, and add resource associations. NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['document:execute'], 'document:execute', 'DOC-3 — request/send a signature envelope via the E-Sign seam (SignatureProviderPort). NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['document:manage'], 'document:manage', 'DOC-2 (reconciled from document_type:manage, R22) — manage document types + templates config (admin act). NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['document_template:read'], 'document_template:read', 'DOC-2 — read document templates and template versions (tenant-scoped). NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['document_template:manage'], 'document_template:manage', 'DOC-2 — create/activate/retire document templates and versions (admin act). NO scope.created (scope-seed precedent).');
@@ -3746,6 +3774,26 @@ export async function runIdentitySeed(
       if (rsId === undefined) {
         throw new Error(
           `Documents-DOC2-Role-Matrix: Missing generated RoleScope id for ${roleKey}:${scopeKey}`,
+        );
+      }
+      const scope_id = scopeIdForKey(scopeKey);
+      await prisma.roleScope.upsert({
+        where: { role_id_scope_id: { role_id, scope_id } },
+        update: {},
+        create: { id: rsId, role_id, scope_id },
+      });
+    }
+  }
+
+  // DOC-3 — Native E-Sign grant (range 0x1320+). All 4 (role, scope) pairs seeded
+  // via the dedicated DOCUMENTS_DOC3_SEED_BUNDLES — none in the frozen arrays.
+  for (const [roleKey, scopeKeys] of DOCUMENTS_DOC3_SEED_BUNDLES) {
+    const role_id = roleIdForKey(roleKey);
+    for (const scopeKey of scopeKeys) {
+      const rsId = DOCUMENTS_DOC3_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
+      if (rsId === undefined) {
+        throw new Error(
+          `Documents-DOC3-Role-Matrix: Missing generated RoleScope id for ${roleKey}:${scopeKey}`,
         );
       }
       const scope_id = scopeIdForKey(scopeKey);

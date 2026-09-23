@@ -232,6 +232,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'contact:search',
         'dashboard:read',
         'document:create',
+        'document:execute',
         'document:manage',
         'document:read',
         'document_requirement:manage',
@@ -433,7 +434,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Track7/T7-P3: +3 placement:permanent:terms:write grants (account_manager/tenant_admin/tenant_owner) -> 565.
       // Track8/T8-CONNECTOR-A: +4 integration:read/write grants (tenant_admin/tenant_owner ×2) -> 569.
       // L8-B1: +3 submittal-policy:write grants -> 572; +3 requisition:approve grants (account_manager/tenant_admin/tenant_owner) -> 575.
-      expect(roleScopes).toBe(667); // DOC-2: +12 grants (document_template:read×4 + document_template:manage×2 + document_requirement:read×4 + document_requirement:manage×2, dedicated DOCUMENTS_DOC2_SEED_BUNDLES @ 0x1310+); document_type:manage→document:manage rename grant-neutral → 655+12=667. // DOC-1a: +10 grants (document:read×4 + document:create×4 + document_type:manage→document:manage×2, dedicated DOCUMENTS_SEED_BUNDLES @ 0x1300+) → 645+10=655. // TI-1D-D: +4 grants (pipeline:resume:set × tenant_admin/tenant_owner/recruiter/account_manager; dedicated RESUME_SELECT_SEED_BUNDLES @ 0x1200+) → 641+4=645. SKILL-TAX-1F-A: +2 grants (super_admin × platform:skill:{read,manage}) → 639+2=641. talent:edit:contact: +2 grants (× tenant_admin/tenant_owner, range 0x1110+) → 637+2=639. WL-B2: +6 grants (address:lookup × tenant_admin/recruiter [ROLE_SCOPE_ASSIGNMENTS] + tenant_owner/account_manager/recruiting_manager/lead_recruiter [ADDRESS_LOOKUP_SEED_BUNDLES, range 0x1100+]) → 631+6=637. COMM PART A: +2 grants (engagement:policy:override × tenant_admin/tenant_owner, range 0xf40+) → 629+2=631. COMM-C2B: +8 grants (communication:email:send + communication:meeting:create × recruiter/AM/tenant_admin/tenant_owner, range 0xf30+) → 621+8=629. COMM-C3: +4 grants (engagement:policy:read + engagement:policy:write × tenant_admin/tenant_owner) → 617+4=621. L6-0: −6 grants (assignment:create + assignment:update × account_manager/tenant_admin/tenant_owner removed as grounded-dead ACTIVE_RESERVED) → 623−6=617. L4/P5: +8 grants (offer:read + offer:read:financial × recruiter/AM/tenant_admin/tenant_owner) → 615+8=623. L2-I (D1): +2 grants (integration:pipeline-mapping:write × tenant_admin/tenant_owner, range 0xf10+) → 613+2=615. L2-F: +12 client-selection grants (create/read/transition × recruiter/AM/tenant_admin/tenant_owner) → 593+12. HYG-1: 605 − 12 removed grants (pipeline:remove ×2, pipeline:add-activity ×7, submittal-policy:write ×3) → 593
+      expect(roleScopes).toBe(671); // DOC-3: +4 grants (document:execute × recruiter/AM/tenant_admin/tenant_owner, DOCUMENTS_DOC3_SEED_BUNDLES 0x1320+) → 667+4=671. // DOC-2: +12 grants (document_template:read×4 + document_template:manage×2 + document_requirement:read×4 + document_requirement:manage×2, dedicated DOCUMENTS_DOC2_SEED_BUNDLES @ 0x1310+); document_type:manage→document:manage rename grant-neutral → 655+12=667. // DOC-1a: +10 grants (document:read×4 + document:create×4 + document_type:manage→document:manage×2, dedicated DOCUMENTS_SEED_BUNDLES @ 0x1300+) → 645+10=655. // TI-1D-D: +4 grants (pipeline:resume:set × tenant_admin/tenant_owner/recruiter/account_manager; dedicated RESUME_SELECT_SEED_BUNDLES @ 0x1200+) → 641+4=645. SKILL-TAX-1F-A: +2 grants (super_admin × platform:skill:{read,manage}) → 639+2=641. talent:edit:contact: +2 grants (× tenant_admin/tenant_owner, range 0x1110+) → 637+2=639. WL-B2: +6 grants (address:lookup × tenant_admin/recruiter [ROLE_SCOPE_ASSIGNMENTS] + tenant_owner/account_manager/recruiting_manager/lead_recruiter [ADDRESS_LOOKUP_SEED_BUNDLES, range 0x1100+]) → 631+6=637. COMM PART A: +2 grants (engagement:policy:override × tenant_admin/tenant_owner, range 0xf40+) → 629+2=631. COMM-C2B: +8 grants (communication:email:send + communication:meeting:create × recruiter/AM/tenant_admin/tenant_owner, range 0xf30+) → 621+8=629. COMM-C3: +4 grants (engagement:policy:read + engagement:policy:write × tenant_admin/tenant_owner) → 617+4=621. L6-0: −6 grants (assignment:create + assignment:update × account_manager/tenant_admin/tenant_owner removed as grounded-dead ACTIVE_RESERVED) → 623−6=617. L4/P5: +8 grants (offer:read + offer:read:financial × recruiter/AM/tenant_admin/tenant_owner) → 615+8=623. L2-I (D1): +2 grants (integration:pipeline-mapping:write × tenant_admin/tenant_owner, range 0xf10+) → 613+2=615. L2-F: +12 client-selection grants (create/read/transition × recruiter/AM/tenant_admin/tenant_owner) → 593+12. HYG-1: 605 − 12 removed grants (pipeline:remove ×2, pipeline:add-activity ×7, submittal-policy:write ×3) → 593
 
       const utmRole = await prisma.userTenantMembershipRole.findUnique({
         where: { id: SEED_IDS.membership_role_admin },
@@ -535,7 +536,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Track 3 / E2: +7 pre_start_requirement (all non-platform). Re-derived
       // actual 96 (prior literal 85 was pre-existingly understated by 4 — F-2).
       // Track 3 / E2 v1.2.2: +1 pre_start_requirement:reopen (non-platform) → 97.
-      expect(tenantScopes.length).toBe(148); // DOC-2: +4 non-platform tenant scopes (document_template:{read,manage}, document_requirement:{read,manage}); document_type:manage→document:manage rename count-neutral → 144+4=148. // DOC-1a: +3 document scopes (document:read, document:create, document_type:manage→document:manage — all non-platform tenant scopes) → 141+3=144. // TI-1D-D: +1 pipeline:resume:set (non-platform tenant scope) → 140+1=141. talent:edit:contact: +1 (non-platform tenant scope) → 139+1=140. WL-B2: +1 address:lookup (non-platform tenant scope) → 138+1=139. COMM PART A: +1 engagement:policy:override (non-platform tenant scope) → 137+1=138. COMM-C2B: +2 communication:email:send + communication:meeting:create (both non-platform) → 135+2=137. COMM-C3: +2 engagement:policy:read + engagement:policy:write (both non-platform tenant scopes) → 133+2=135. L5-P6: +1 pre_start_requirement:verify (non-platform tenant scope) → 133. L6-0: −2 assignment:create + assignment:update (both non-platform, grounded-dead) → 134−2=132. L4/P5: +2 offer:read + offer:read:financial (both non-platform) → 132+2=134. L2-I (D1): +1 integration:pipeline-mapping:write (non-platform) → 131+1=132. L2-F: +3 client-selection:create/read/transition (all non-platform) → 126+3. HYG-1: 128 − 3 removed tenant scopes (pipeline:remove, pipeline:add-activity, submittal-policy:write)
+      expect(tenantScopes.length).toBe(149); // DOC-3: +1 document:execute (non-platform tenant scope) → 148+1=149. // DOC-2: +4 non-platform tenant scopes (document_template:{read,manage}, document_requirement:{read,manage}); document_type:manage→document:manage rename count-neutral → 144+4=148. // DOC-1a: +3 document scopes (document:read, document:create, document_type:manage→document:manage — all non-platform tenant scopes) → 141+3=144. // TI-1D-D: +1 pipeline:resume:set (non-platform tenant scope) → 140+1=141. talent:edit:contact: +1 (non-platform tenant scope) → 139+1=140. WL-B2: +1 address:lookup (non-platform tenant scope) → 138+1=139. COMM PART A: +1 engagement:policy:override (non-platform tenant scope) → 137+1=138. COMM-C2B: +2 communication:email:send + communication:meeting:create (both non-platform) → 135+2=137. COMM-C3: +2 engagement:policy:read + engagement:policy:write (both non-platform tenant scopes) → 133+2=135. L5-P6: +1 pre_start_requirement:verify (non-platform tenant scope) → 133. L6-0: −2 assignment:create + assignment:update (both non-platform, grounded-dead) → 134−2=132. L4/P5: +2 offer:read + offer:read:financial (both non-platform) → 132+2=134. L2-I (D1): +1 integration:pipeline-mapping:write (non-platform) → 131+1=132. L2-F: +3 client-selection:create/read/transition (all non-platform) → 126+3. HYG-1: 128 − 3 removed tenant scopes (pipeline:remove, pipeline:add-activity, submittal-policy:write)
       for (const s of tenantScopes) {
         expect(s.key.startsWith('platform:')).toBe(false);
       }
@@ -827,6 +828,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'contact:search',
         'dashboard:read',
         'document:create',
+        'document:execute',
         'document:manage',
         'document:read',
         'document_requirement:manage',
@@ -1107,6 +1109,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'contact:search',
         'dashboard:read',
         'document:create',
+        'document:execute',
         'document:manage',
         'document:read',
         'document_requirement:manage',
@@ -1236,6 +1239,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'contact:search',
         'dashboard:read',
         'document:create',
+        'document:execute',
         'document:read',
         'document_requirement:read',
         'document_template:read',
@@ -1423,6 +1427,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'contact:search',
         'dashboard:read',
         'document:create',
+        'document:execute',
         'document:manage',
         'document:read',
         'document_requirement:manage',
@@ -1557,6 +1562,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'contact:search',
         'dashboard:read',
         'document:create',
+        'document:execute',
         'document:read',
         'document_requirement:read',
         'document_template:read',

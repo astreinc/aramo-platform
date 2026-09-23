@@ -133,6 +133,15 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       'DOCUMENT_REQUIREMENT_ALREADY_SATISFIED',
       'DOCUMENT_RENDER_FAILED',
       'DOCUMENT_UPLOAD_UNSAFE',
+      // DOC-3 (Native E-Sign Service Core) — envelope/signer/session errors.
+      'ENVELOPE_NOT_FOUND',
+      'ENVELOPE_ILLEGAL_TRANSITION',
+      'ENVELOPE_ALREADY_EXECUTED',
+      'SIGNER_NOT_FOUND',
+      'SIGNING_SESSION_INVALID',
+      'SIGNING_SESSION_EXPIRED',
+      'DISCLOSURE_NOT_ACCEPTED',
+      'SIGNATURE_FIELD_INCOMPLETE',
       // Track 1 T1-b — 1 optimistic-concurrency stale-write refusal on
       // requisition.Requisition (versioned update, version mismatch → 409).
       'REQUISITION_VERSION_CONFLICT',

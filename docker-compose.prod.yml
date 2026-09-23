@@ -266,6 +266,25 @@ services:
       postgres:
         condition: service_healthy
 
+  esign-service:
+    # DOC-3 — Native E-Sign Service Core backend. DEPLOY=NO (config lands with the
+    # slice; not exposed until DOC-4 adds sign-web + the sign.aramo.ai nginx block).
+    # Container-internal only (never port-published). Referenced, not built here.
+    image: ${ARAMO_ESIGN_IMAGE:-aramo/esign-service:local}
+    container_name: aramo-prod-esign
+    restart: unless-stopped
+    environment:
+      # PORT 3003 matches main.ts's default (api=3000, auth=3001, platform-admin=3002).
+      - PORT=3003
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-aramo}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@postgres:5432/${POSTGRES_DB:-aramo}?schema=public
+      # E-Sign signer notifications ride the standing SES mailer path (SigningNotificationPort → MailerPort).
+      - MAILER_PROVIDER
+      - SES_FROM_ADDRESS
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   platform-admin:
     # Inc-3 PR-3.3 — the platform-console backend as a real prod service.
     # Override ARAMO_PLATFORM_ADMIN_IMAGE to the GHCR tag on the box; defaults

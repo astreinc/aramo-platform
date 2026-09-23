@@ -105,6 +105,15 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   DOCUMENT_REQUIREMENT_ALREADY_SATISFIED: 409,
   DOCUMENT_RENDER_FAILED: 422,
   DOCUMENT_UPLOAD_UNSAFE: 422,
+  // DOC-3 (Native E-Sign Service Core) — envelope/signer/session errors.
+  ENVELOPE_NOT_FOUND: 404,
+  ENVELOPE_ILLEGAL_TRANSITION: 409,
+  ENVELOPE_ALREADY_EXECUTED: 409,
+  SIGNER_NOT_FOUND: 404,
+  SIGNING_SESSION_INVALID: 401,
+  SIGNING_SESSION_EXPIRED: 401,
+  DISCLOSURE_NOT_ACCEPTED: 409,
+  SIGNATURE_FIELD_INCOMPLETE: 409,
   // Track 1 T1-b (R2) — optimistic-concurrency stale-write on requisition (409).
   REQUISITION_VERSION_CONFLICT: 409,
   // Track 1 T1-e (§2.3 / R9) — status-changing PATCH into a subsystem-gated
