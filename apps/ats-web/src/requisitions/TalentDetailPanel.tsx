@@ -363,7 +363,7 @@ export function TalentDetailPanel({
               talentId={entry.talent_record_id}
               requisitionId={entry.requisition_id}
               pipelineId={entry.id}
-              toEmail={emailValue ?? undefined}
+              canSendEmail={scopes.includes('communication:email:send')}
             />
           </section>
 

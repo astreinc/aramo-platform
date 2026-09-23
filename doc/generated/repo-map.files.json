@@ -624,6 +624,8 @@
     "apps/ats-web/src/microsoft/MicrosoftProviderAdminStatus.tsx",
     "apps/ats-web/src/microsoft/MicrosoftRecruiterActions.spec.tsx",
     "apps/ats-web/src/microsoft/MicrosoftRecruiterActions.tsx",
+    "apps/ats-web/src/microsoft/RequisitionContactEmailComposer.spec.tsx",
+    "apps/ats-web/src/microsoft/RequisitionContactEmailComposer.tsx",
     "apps/ats-web/src/microsoft/microsoft-api.ts",
     "apps/ats-web/src/offers/OfferPanel.spec.tsx",
     "apps/ats-web/src/offers/OfferPanel.tsx",
