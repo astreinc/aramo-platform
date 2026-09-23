@@ -62,7 +62,8 @@ export function MicrosoftRecruiterActions(props: MicrosoftRecruiterActionsProps)
       talent_record_id: props.talentId,
       requisition_id: props.requisitionId,
       pipeline_id: props.pipelineId,
-      to_email: props.toEmail ?? '',
+      // COMM-C4 — no client-supplied recipient; the backend resolves the
+      // authoritative Talent email. (Compose/review UX lands in PR-2.)
       subject: 'Regarding your application',
       body: 'A recruiter would like to connect with you.',
       idempotency_key: newKey('email'),

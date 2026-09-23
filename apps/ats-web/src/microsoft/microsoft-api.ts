@@ -49,11 +49,12 @@ export interface ConfigureMicrosoftInput {
   readonly client_secret?: string;
 }
 
+// COMM-C4 — the send contract carries NO recipient. The backend resolves the
+// authoritative Talent email server-side; the client never supplies an address.
 export interface SendEmailInput {
   readonly talent_record_id: string;
   readonly requisition_id: string;
   readonly pipeline_id?: string;
-  readonly to_email: string;
   readonly subject: string;
   readonly body: string;
   readonly idempotency_key: string;

@@ -4447,6 +4447,55 @@ paths:
           $ref: 'common.yaml#/components/responses/UnprocessableEntity'
       security:
         - BearerAuth: []
+  /v1/communications/email-drafts/requisition-contact:
+    post:
+      operationId: prepareRequisitionContactEmailDraft
+      summary: Prepare a reviewable requisition-contact email draft (COMM-C4).
+      description: |
+        Prepare a REVIEWABLE requisition-contact email draft. Requires the `ats`
+        capability and the `communication:email:send` scope (drafting is a
+        send-precursor). This endpoint WRITES NOTHING: no email is sent, no
+        CommunicationInteraction is created, and no pipeline state changes.
+
+        The browser supplies ONLY ids; the backend reloads every business fact
+        authoritatively and resolves the recipient itself from the Talent record
+        (the recipient is display-only — `to.editable` is always false; no
+        client-supplied address is accepted). The subject/body are hydrated from a
+        single governed, code-owned template; the optional role-summary block is a
+        deterministic excerpt of authoritative requisition text (never generated).
+        `warnings` names any optional context that was omitted.
+
+        Refusals:
+          - 400 VALIDATION_ERROR — body invariants.
+          - 422 COMMUNICATION_REQUISITION_CONTACT_CONTEXT_INVALID — the requisition
+            is absent/cross-tenant (details.reason=requisition_not_found) or the
+            Talent is not associated with it
+            (details.reason=talent_not_associated_with_requisition).
+          - 422 COMMUNICATION_EMAIL_RECIPIENT_UNAVAILABLE — the Talent has no
+            authoritative email on file.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RequisitionContactEmailDraftRequest'
+      responses:
+        '200':
+          description: A prepared (unsent) requisition-contact email draft.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequisitionContactEmailDraft'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '422':
+          $ref: 'common.yaml#/components/responses/UnprocessableEntity'
+      security:
+        - BearerAuth: []
   /v1/communications/interactions/{interactionId}:
     get:
       operationId: getCommunicationInteraction
@@ -6690,13 +6739,15 @@ components:
     SendMicrosoftEmailRequest:
       type: object
       additionalProperties: false
-      required: [talent_record_id, requisition_id, to_email, subject, body, idempotency_key]
+      # COMM-C4 — no client-supplied recipient; the address is resolved
+      # server-side from the Talent record. `to_email` is removed from the
+      # send contract.
+      required: [talent_record_id, requisition_id, subject, body, idempotency_key]
       properties:
         talent_record_id: { type: string, format: uuid }
         requisition_id: { type: string, format: uuid }
         pipeline_id: { type: string, format: uuid }
         connection_id: { type: string, format: uuid }
-        to_email: { type: string, format: email }
         subject: { type: string, minLength: 1, maxLength: 998 }
         body: { type: string, minLength: 1, maxLength: 100000 }
         idempotency_key: { type: string, minLength: 8, maxLength: 200 }
@@ -6710,6 +6761,44 @@ components:
         talent_record_id: { type: string, format: uuid }
         requisition_id: { type: string, format: uuid }
         idempotent_replay: { type: boolean }
+    RequisitionContactEmailDraftRequest:
+      type: object
+      additionalProperties: false
+      # COMM-C4 — ids only; the backend reloads all business facts and resolves
+      # the recipient itself. No recipient/subject/body is accepted here.
+      required: [talent_record_id, requisition_id]
+      properties:
+        talent_record_id: { type: string, format: uuid }
+        requisition_id: { type: string, format: uuid }
+        pipeline_id: { type: string, format: uuid }
+    RequisitionContactEmailDraft:
+      type: object
+      additionalProperties: false
+      required: [to, subject, body, context]
+      properties:
+        to:
+          type: object
+          additionalProperties: false
+          required: [email, display_name, editable]
+          properties:
+            email: { type: string, format: email }
+            display_name: { type: [string, 'null'] }
+            # Recipient is server-owned; the client never edits or supplies it.
+            editable: { type: boolean, enum: [false] }
+        subject: { type: string }
+        body: { type: string }
+        context:
+          type: object
+          additionalProperties: false
+          required: [requisition_reference, requisition_title, template_id, template_version]
+          properties:
+            requisition_reference: { type: string }
+            requisition_title: { type: string }
+            template_id: { type: string }
+            template_version: { type: string }
+        warnings:
+          type: array
+          items: { type: string }
     CreateMicrosoftMeetingRequest:
       type: object
       additionalProperties: false

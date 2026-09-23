@@ -33,6 +33,7 @@ const MIGRATIONS = [
   'libs/communications/prisma/migrations/20260825120000_init_communications/migration.sql',
   'libs/communications/prisma/migrations/20260905130000_comm_c2b_provider_identity_email_tenant/migration.sql',
   'libs/communications/prisma/migrations/20260905140000_comm_c2b_meeting_channel/migration.sql',
+  'libs/communications/prisma/migrations/20260921170000_comm_c4_email_content_capture/migration.sql',
   'libs/integration/prisma/migrations/20260814170000_init_integration_connection/migration.sql',
 ].map(M);
 

@@ -1,5 +1,4 @@
 import {
-  IsEmail,
   IsISO8601,
   IsOptional,
   IsString,
@@ -37,8 +36,8 @@ export class SendMicrosoftEmailRequestDto {
   @IsUUID()
   connection_id?: string;
 
-  @IsEmail()
-  to_email!: string;
+  // COMM-C4 — NO client-supplied recipient. The address is resolved server-side
+  // from the Talent record; the send contract carries no `to_email`.
 
   @IsString()
   @MinLength(1)
