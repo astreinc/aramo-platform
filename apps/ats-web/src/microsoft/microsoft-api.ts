@@ -70,6 +70,34 @@ export interface CreateMeetingInput {
   readonly idempotency_key: string;
 }
 
+// COMM-C4 PR-2 — requisition-contact draft generation. The backend resolves the
+// authoritative Talent + Requisition + recruiter/tenant context and hydrates the
+// system-owned template. Read/generate only: NO side effects, NO idempotency key,
+// and the recipient is server-owned (editable:false) — the composer shows it but
+// never submits it on send.
+export interface RequisitionContactDraftInput {
+  readonly talent_record_id: string;
+  readonly requisition_id: string;
+  readonly pipeline_id?: string;
+}
+
+export interface RequisitionContactDraft {
+  readonly to: {
+    readonly email: string;
+    readonly display_name: string | null;
+    readonly editable: false;
+  };
+  readonly subject: string;
+  readonly body: string;
+  readonly context: {
+    readonly requisition_reference: string;
+    readonly requisition_title: string;
+    readonly template_id: string;
+    readonly template_version: string;
+  };
+  readonly warnings?: readonly string[];
+}
+
 export async function getMicrosoftBindingStatus(): Promise<MicrosoftBindingStatus> {
   return apiClient.get<MicrosoftBindingStatus>('/v1/integrations/microsoft/me');
 }
@@ -84,6 +112,15 @@ export async function sendMicrosoftEmail(input: SendEmailInput): Promise<Microso
 
 export async function createMicrosoftMeeting(input: CreateMeetingInput): Promise<MicrosoftMeetingResult> {
   return apiClient.post<MicrosoftMeetingResult>('/v1/integrations/microsoft/meeting', input);
+}
+
+export async function generateRequisitionContactDraft(
+  input: RequisitionContactDraftInput,
+): Promise<RequisitionContactDraft> {
+  return apiClient.post<RequisitionContactDraft>(
+    '/v1/communications/email-drafts/requisition-contact',
+    input,
+  );
 }
 
 export async function getMicrosoftProviderStatus(): Promise<MicrosoftProviderStatus> {
