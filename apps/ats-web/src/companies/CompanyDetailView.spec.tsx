@@ -227,6 +227,19 @@ describe('CompanyDetailView (account hub)', () => {
     await waitFor(() => expect(screen.getByText('Olive Owner')).toBeInTheDocument());
     // the assigned member (deduped from the owner) resolves its name
     expect(screen.getByText('Manny Mate')).toBeInTheDocument();
+    // WITHOUT company:assign there is no Manage affordance.
+    expect(screen.queryByRole('link', { name: 'Manage' })).toBeNull();
+  });
+
+  it('Account team card exposes a "Manage" link to assignments with company:assign', async () => {
+    installFetch({
+      '/v1/companies/co-1': makeCompany(),
+      '/v1/companies/co-1/team': { owner_user_id: 'usr-owner', member_user_ids: [] },
+    });
+    renderAt('/companies/co-1', makeSession(['company:read', 'company:assign']));
+    await waitFor(() => expect(screen.getByText('Account team')).toBeInTheDocument());
+    const manage = screen.getByRole('link', { name: 'Manage' });
+    expect(manage).toHaveAttribute('href', '/companies/co-1/assignments');
   });
 
   it('Placements tab lists placed talent at the company (report+req scopes)', async () => {

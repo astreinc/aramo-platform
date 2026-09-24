@@ -92,6 +92,10 @@
   margin: 0;
 }
 
+/* Account-team card header — title left, "Manage" link right. */
+.rc-teamhd { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.rc-teamhd__manage { font-size: 0.82rem; white-space: nowrap; }
+
 .rc-footnote {
   font-size: 0.78rem;
   color: var(--faint);

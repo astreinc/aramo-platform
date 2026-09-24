@@ -120,6 +120,7 @@ export function CompanyDetailView({ sessionOverride }: CompanyDetailViewProps) {
 
   const scopes = session?.scopes ?? [];
   const canReadContacts = scopes.includes('contact:read');
+  const canAssign = scopes.includes('company:assign');
   const canReadReqs = scopes.includes('requisition:read');
   const canReadActivity = scopes.includes('activity:read');
   const canReadTasks = scopes.includes('task:read');
@@ -243,6 +244,7 @@ export function CompanyDetailView({ sessionOverride }: CompanyDetailViewProps) {
           team={team}
           userNames={userNames}
           canEditContact={canEditContact}
+          canAssign={canAssign}
         />
       ),
     },
@@ -474,6 +476,7 @@ function OverviewPanel({
   team,
   userNames,
   canEditContact,
+  canAssign,
 }: {
   readonly company: CompanyView;
   readonly contacts: readonly ContactView[];
@@ -481,6 +484,7 @@ function OverviewPanel({
   readonly team: CompanyTeam | null;
   readonly userNames: Record<string, string>;
   readonly canEditContact: boolean;
+  readonly canAssign: boolean;
 }) {
   const about = company.description ?? company.notes;
   const tags = company.tags ?? [];
@@ -554,7 +558,19 @@ function OverviewPanel({
 
       <div className="rc-stack">
         <Card>
-          <h3 className="rc-section-h">Account team</h3>
+          <div className="rc-teamhd">
+            <h3 className="rc-section-h">Account team</h3>
+            {/* Assign users to this client (company:assign) — the members here
+                gate who can see the client's requisitions (AUTHZ-D4b). */}
+            {canAssign ? (
+              <Link
+                to={`/companies/${company.id}/assignments`}
+                className="rc-link-strong rc-teamhd__manage"
+              >
+                Manage
+              </Link>
+            ) : null}
+          </div>
           <ul className="rc-detail-list rc-mt-8">
             <li className="rc-tmrow">
               <Avatar name={ownerName ?? 'Unassigned'} size="md" />

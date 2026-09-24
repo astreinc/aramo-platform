@@ -440,6 +440,21 @@ export function App() {
                         </RouteGuard>
                       }
                     />
+                    {/* Account-team management from the company context. Gated on
+                        the real API scope (company:assign) — held by account
+                        managers who lack tenant:admin:*, so this must NOT live
+                        only under the admin gate. Reuses CompanyAssignmentsView. */}
+                    <Route
+                      path="companies/:companyId/assignments"
+                      element={
+                        <RouteGuard
+                          requireScope="company:assign"
+                          sessionStateOverride={state}
+                        >
+                          <CompanyAssignmentsView />
+                        </RouteGuard>
+                      }
+                    />
                     <Route
                       path="contacts"
                       element={
