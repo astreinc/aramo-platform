@@ -325,12 +325,6 @@ export function RequisitionForm(props: RequisitionFormProps): JSX.Element {
                 <Icons.IconMessage className="rc-card__hic" />
                 Hiring-manager notes
               </span>
-              {/* The "internal — never shared" caption is dropped on the New
-                  requisition page (mode=create) per PO; kept on the Detail
-                  Overview where the note may be read alongside talent-facing data. */}
-              {mode !== 'create' ? (
-                <span className="rc-card__hnote">Internal — never shared with talent</span>
-              ) : null}
             </>
           }
         />
