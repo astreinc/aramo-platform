@@ -1,4 +1,4 @@
-import { InlineAlert, useSession, useToast, type Session } from '@aramo/fe-foundation';
+import { ApiError, InlineAlert, useSession, useToast, type Session } from '@aramo/fe-foundation';
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { Tabs, type TabItem, Button } from '@aramo/fe-foundation';
@@ -175,6 +175,9 @@ export function RequisitionDetailView({
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [tab, setTab] = useState<TabId | null>(null);
+  // G2.5b — whole-form Overview edit. Entered only via the header Edit button;
+  // exited by the sticky edit bar's Cancel/Save.
+  const [editing, setEditing] = useState(false);
 
   const sessionState = useSession();
   const toast = useToast();
@@ -332,6 +335,23 @@ export function RequisitionDetailView({
     setReq(await updateRequisition(req.id, body));
   };
 
+  // G2.5b — the Overview whole-form save. ONE PATCH carrying the changed
+  // editable fields + the read-then-write `version` (existing CAS authority);
+  // status is NOT included (it stays a governed transition). On success the
+  // response's incremented version refreshes the header ("Edited …") and edit
+  // mode exits. A CAS conflict throws → DetailsPanel keeps the draft + surfaces it.
+  const saveOverviewEdits = async (
+    body: UpdateRequisitionRequest,
+  ): Promise<void> => {
+    if (req === null) return;
+    const updated = await updateRequisition(req.id, {
+      ...body,
+      version: req.version,
+    } as UpdateRequisitionRequest);
+    setReq(updated);
+    setEditing(false);
+  };
+
   // L1-E — run a named lifecycle action. AWAITED + catching (replaces the prior
   // fire-and-forget `void saveField`): a governed transition is a status-changing
   // PATCH the BE may refuse (409/422/403 self-approval/scope/POLICY_DENIED); the
@@ -407,6 +427,9 @@ export function RequisitionDetailView({
         contactName={contactName}
         present={present}
         scopes={scopes}
+        editing={editing}
+        onCancel={() => setEditing(false)}
+        onSave={saveOverviewEdits}
         onProfileLinked={refresh}
       />
     ),
@@ -634,9 +657,19 @@ export function RequisitionDetailView({
               onSaved={refresh}
             />
           ) : null}
-          <Button unstyled className="rc-hbtn" onClick={() => setTab('overview')}>
+          {/* G2.5b — Edit enters whole-form Overview edit (switching to the
+              Overview tab from anywhere); it reads "Editing" while active. */}
+          <Button
+            unstyled
+            className={`rc-hbtn${editing ? ' rc-hbtn--primary' : ''}`}
+            aria-pressed={editing}
+            onClick={() => {
+              setTab('overview');
+              setEditing(true);
+            }}
+          >
             <Icons.IconPencil />
-            Edit
+            {editing ? 'Editing' : 'Edit'}
           </Button>
           {/* L1-E — the named LIFECYCLE ACTIONS, gated by (current status × scope
               × submitter-context). Status is DISPLAYED as the pill above; the user
@@ -1540,12 +1573,52 @@ function toFormValues(req: RequisitionView): Record<string, string> {
 // per-field click-to-edit cockpit is gone; whole-form edit arrives via the
 // header Edit button (G2.5b). Requirement skills stay owned by the existing
 // ProfileWorkbenchPanel, dropped into the form's skills slot.
+// G2.5b — the Overview form's editable keys (client/contact/status are excluded:
+// client/contact reassignment isn't a field edit here, and status is a governed
+// transition). Booleans + numbers coerce back from the draft's string map; ''
+// clears a field (→ null).
+const OVERVIEW_BOOLEAN_KEYS = new Set([
+  'is_hot',
+  'allow_subcontractors',
+  'relocation_offered',
+  'extension_possible',
+]);
+const OVERVIEW_NUMBER_KEYS = new Set([
+  'openings',
+  'travel_percent',
+  'hours_per_week',
+  'duration_value',
+]);
+const OVERVIEW_EDITABLE_KEYS: readonly string[] = [
+  'title', 'job_type', 'openings', 'is_hot', 'city', 'state', 'postal_code',
+  'work_arrangement', 'duration_value', 'duration_unit', 'start_date',
+  'bill_rate_amount', 'rate_type', 'allow_subcontractors', 'description', 'notes',
+  'work_authorization', 'labor_category', 'role_family', 'seniority_level',
+  'headcount_reason', 'travel_percent', 'relocation_offered', 'hours_per_week',
+  'end_date', 'extension_possible', 'source_system', 'external_req_id',
+  'target_margin_percent', 'markup_percent_target', 'rate_card_id',
+  'min_bill_rate', 'max_bill_rate', 'min_pay_rate', 'max_pay_rate',
+];
+
+function coerceOverviewValue(key: string, str: string): unknown {
+  if (OVERVIEW_BOOLEAN_KEYS.has(key)) return str === 'true';
+  if (str === '') return null;
+  if (OVERVIEW_NUMBER_KEYS.has(key)) {
+    const n = Number(str);
+    return Number.isFinite(n) ? n : null;
+  }
+  return str;
+}
+
 function DetailsPanel({
   req,
   companyName,
   contactName,
   present,
   scopes,
+  editing,
+  onCancel,
+  onSave,
   onProfileLinked,
 }: {
   readonly req: RequisitionView;
@@ -1553,15 +1626,89 @@ function DetailsPanel({
   readonly contactName: string | null;
   readonly present: (key: string) => boolean;
   readonly scopes: readonly string[];
+  readonly editing: boolean;
+  readonly onCancel: () => void;
+  readonly onSave: (body: UpdateRequisitionRequest) => Promise<void>;
   readonly onProfileLinked: () => void;
 }) {
+  const original = toFormValues(req);
+  const [draft, setDraft] = useState<Record<string, string>>(original);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // (Re)seed the draft from the current record whenever edit mode is entered.
+  useEffect(() => {
+    if (editing) {
+      setDraft(toFormValues(req));
+      setError(null);
+      setBusy(false);
+    }
+  }, [editing, req]);
+
+  const doSave = async (): Promise<void> => {
+    // Same required fields as create (client is inherited + display-only here,
+    // so it is always satisfied; title is the editable required field).
+    if ((draft['title'] ?? '').trim() === '') {
+      setError('Job title is required.');
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    const body: Record<string, unknown> = {};
+    for (const key of OVERVIEW_EDITABLE_KEYS) {
+      if (!present(key)) continue; // never write a masked field
+      if ((draft[key] ?? '') !== (original[key] ?? '')) {
+        body[key] = coerceOverviewValue(key, draft[key] ?? '');
+      }
+    }
+    try {
+      await onSave(body as UpdateRequisitionRequest);
+    } catch (e) {
+      setError(
+        e instanceof ApiError && e.status === 409
+          ? 'This requisition changed since you opened it. Cancel and reopen to edit the latest version.'
+          : 'Your changes could not be saved. Please try again.',
+      );
+      setBusy(false);
+    }
+  };
+
   return (
     <div className="rc-mt-16 rc-ov-form">
+      {editing ? (
+        <div className="rc-editbar" role="region" aria-label="Editing requisition">
+          <Icons.IconPencil />
+          <span className="rc-editbar__msg">
+            <b>Editing REQ-{req.requisition_number}.</b> Saving creates version{' '}
+            <span className="mono">v{req.version + 1}</span> and is logged to the
+            audit trail. Nothing changes until you save.
+          </span>
+          <Button
+            unstyled
+            className="rc-btn rc-btn--sm"
+            onClick={onCancel}
+            disabled={busy}
+          >
+            Cancel
+          </Button>
+          <Button
+            unstyled
+            className="rc-btn rc-btn--sm rc-btn--primary"
+            onClick={() => void doSave()}
+            disabled={busy}
+          >
+            {busy ? 'Saving…' : 'Save changes'}
+          </Button>
+        </div>
+      ) : null}
+      {error !== null ? <InlineAlert variant="error">{error}</InlineAlert> : null}
       <RequisitionForm
-        mode="view"
-        values={toFormValues(req)}
+        mode={editing ? 'edit' : 'view'}
+        values={editing ? draft : original}
         present={present}
         scopes={scopes}
+        disabled={busy}
+        onChange={(k, v) => setDraft((d) => ({ ...d, [k]: v }))}
         clientDisplay={companyName ?? 'Client'}
         contactDisplay={contactName}
         statusDisplay={RECRUITING_STATUS_LABELS[req.status]}

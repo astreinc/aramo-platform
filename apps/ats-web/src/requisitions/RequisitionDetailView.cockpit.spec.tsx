@@ -3,6 +3,7 @@ import {
   render as rawRender,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import type { ReactElement } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
@@ -331,5 +332,71 @@ describe('RequisitionDetailView — PR-15 internal requisition number', () => {
     expect(text).toContain('VMS-88');
     // Internal number appears before the external identifier in the header.
     expect(text.indexOf('REQ-1007')).toBeLessThan(text.indexOf('VMS-88'));
+  });
+});
+
+describe('RequisitionDetailView Overview — edit mode + save (G2.5b)', () => {
+  it('the header Edit button enters edit mode: fields become inputs + a sticky edit bar', async () => {
+    installFetch(() => ({ status: 200, body: baseView() }));
+    mount(makeSession(['requisition:read', 'requisition:edit']));
+    await screen.findByRole('heading', { name: /Senior Engineer/ });
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    expect(await screen.findByText(/Editing REQ-1000\./)).toBeInTheDocument();
+    expect(screen.getByLabelText('Job title')).toHaveValue('Senior Engineer');
+    // The button now reads "Editing".
+    expect(screen.getByRole('button', { name: 'Editing' })).toBeInTheDocument();
+  });
+
+  it('Cancel discards changes and returns to view without a PATCH', async () => {
+    const calls = installFetch(() => ({ status: 200, body: baseView() }));
+    mount(makeSession(['requisition:read', 'requisition:edit']));
+    await screen.findByRole('heading', { name: /Senior Engineer/ });
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    fireEvent.change(await screen.findByLabelText('Job title'), {
+      target: { value: 'Changed Title' },
+    });
+    // Scope to the edit bar — the header also has a lifecycle "Cancel" action.
+    const bar = screen.getByRole('region', { name: 'Editing requisition' });
+    fireEvent.click(within(bar).getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(screen.queryByLabelText('Job title')).toBeNull());
+    expect(calls.some((c) => c.method === 'PATCH')).toBe(false);
+  });
+
+  it('Save issues ONE PATCH with only the changed field + the CAS version, then returns to view', async () => {
+    const calls = installFetch((req) => {
+      if (req.method === 'PATCH') {
+        return { status: 200, body: baseView({ title: 'Changed Title', version: 1 }) };
+      }
+      return { status: 200, body: baseView() };
+    });
+    mount(makeSession(['requisition:read', 'requisition:edit']));
+    await screen.findByRole('heading', { name: /Senior Engineer/ });
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    fireEvent.change(await screen.findByLabelText('Job title'), {
+      target: { value: 'Changed Title' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    await waitFor(() => expect(calls.some((c) => c.method === 'PATCH')).toBe(true));
+    const patch = calls.find((c) => c.method === 'PATCH');
+    const body = patch?.body as Record<string, unknown>;
+    expect(body['title']).toBe('Changed Title');
+    expect(body['version']).toBe(0); // read-then-write CAS token
+    // Only the changed field is sent — not a full dump.
+    expect(body['city']).toBeUndefined();
+    // Returns to view mode.
+    await waitFor(() => expect(screen.queryByLabelText('Job title')).toBeNull());
+  });
+
+  it('Save validates the required Job title — an empty title blocks the PATCH', async () => {
+    const calls = installFetch(() => ({ status: 200, body: baseView() }));
+    mount(makeSession(['requisition:read', 'requisition:edit']));
+    await screen.findByRole('heading', { name: /Senior Engineer/ });
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    fireEvent.change(await screen.findByLabelText('Job title'), {
+      target: { value: '   ' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    expect(await screen.findByText(/Job title is required/i)).toBeInTheDocument();
+    expect(calls.some((c) => c.method === 'PATCH')).toBe(false);
   });
 });

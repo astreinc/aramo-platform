@@ -5407,3 +5407,15 @@ button.rc-tj__cell:hover { color: #022ac0; text-decoration: underline; }
 }
 .rc-vbox--text { display: block; white-space: pre-wrap; line-height: 1.6; font-weight: 400; }
 .rc-vbox--empty { color: var(--muted, #93A0A8); font-weight: 400; }
+
+/* G2.5b — Overview sticky edit bar. */
+.rc-editbar {
+  display: flex; align-items: center; gap: 11px; flex-wrap: wrap;
+  background: var(--surface, #fff); border: 1px solid var(--brand-line, #C9D4F2);
+  border-left: 3px solid var(--brand-strong, #022AC0); border-radius: 11px;
+  padding: 11px 16px; margin-bottom: 14px;
+  position: sticky; top: 62px; z-index: 20;
+  box-shadow: 0 6px 18px -10px rgba(15, 25, 40, 0.25);
+}
+.rc-editbar > svg { flex: none; color: var(--brand-strong, #022AC0); }
+.rc-editbar__msg { flex: 1; min-width: 220px; font-size: 0.8rem; color: #3a454e; }
