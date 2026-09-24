@@ -28,7 +28,6 @@ import { REQUIREMENT_STATUS_LABELS } from '../pre-start/types';
 import { findSubmittalForTalentJob } from '../submittals/submittals-api';
 import { SUBMITTAL_STATE_LABELS } from '../submittals/types';
 import { useEntityCrumb } from '../shell/breadcrumb';
-import { resolveUserNames } from '../users/users-api';
 import { getTalent, updateTalent } from '../talent/talent-api';
 import type { AttachmentView, TalentRecordView } from '../talent/types';
 import { TasksPanel } from '../task/TasksPanel';
@@ -161,7 +160,6 @@ export function RequisitionDetailView({
   const [req, setReq] = useState<RequisitionView | null>(null);
   const [pipelines, setPipelines] = useState<readonly PipelineView[]>([]);
   const [talents, setTalents] = useState<Record<string, TalentRecordView>>({});
-  const [userNames, setUserNames] = useState<Record<string, string>>({});
   const [companyName, setCompanyName] = useState<string | null>(null);
   const [contactName, setContactName] = useState<string | null>(null);
   const [attachments, setAttachments] = useState<readonly AttachmentView[]>([]);
@@ -226,7 +224,6 @@ export function RequisitionDetailView({
           coRes,
           contactRes,
           talentResults,
-          rosterRes,
           attachRes,
           reqActRes,
           pipeActResults,
@@ -238,7 +235,6 @@ export function RequisitionDetailView({
             ? getContact(reqRes.contact_id)
             : Promise.reject(new Error('no contact')),
           Promise.allSettled(ids.map((id) => getTalent(id))),
-          resolveUserNames(),
           listRequisitionAttachments(reqId),
           listActivities('requisition', reqId),
           Promise.allSettled(pids.map((id) => listActivities('pipeline', id))),
@@ -263,10 +259,6 @@ export function RequisitionDetailView({
             if (id !== undefined && r.status === 'fulfilled') map[id] = r.value;
           });
           setTalents(map);
-        }
-        // §5 D4c — recruiter/owner names from the directory (incl. departed).
-        if (rosterRes.status === 'fulfilled') {
-          setUserNames(rosterRes.value);
         }
         if (attachRes.status === 'fulfilled' && Array.isArray(attachRes.value.items)) {
           setAttachments(attachRes.value.items);
@@ -609,11 +601,10 @@ export function RequisitionDetailView({
               {RECRUITING_STATUS_LABELS[req.status]}
             </StatusPill>
           </h1>
-          {/* Line 2 — company · city, state · arrangement · type/Contract · Owner
-              · external. NO company icon (prototype has none). Each clause is
-              omitted when its value is absent; company is a link. */}
-          {/* §0 — NO "· Owner <name>": ownership isn't modeled (creator ≠ owner),
-              so the meta line reads Client · City · Arrangement · Type only. */}
+          {/* Line 2 — company · city, state · arrangement · type/Contract ·
+              external. NO company icon (prototype has none); each clause is
+              omitted when absent; company is a link. §0 — NO "· Owner <name>"
+              (ownership isn't modeled; creator ≠ owner). */}
           <div className="rc-dhead__co">
             <Link to={`/companies/${req.company_id}`}>
               {companyName ?? 'Company'}
