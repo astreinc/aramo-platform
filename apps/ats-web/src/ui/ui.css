@@ -4048,7 +4048,7 @@ select.rc-secinput { appearance: none; padding-right: 28px; }
   font-family: var(--mono, ui-monospace, monospace);
 }
 
-.rc-newreq__owner { font-size: .8rem; color: var(--muted); margin: 0; }
+/* §0 — .rc-newreq__owner removed with the New-requisition Owner card. */
 
 /* AI intake lane (phase 1) */
 
@@ -4064,7 +4064,7 @@ select.rc-secinput { appearance: none; padding-right: 28px; }
 
 .rc-reqintake__hint { font-size: .76rem; color: var(--faint, var(--muted)); }
 
-.rc-reqintake__manual { text-align: center; margin-top: 14px; font-size: .82rem; color: var(--muted); }
+/* §4 — .rc-reqintake__manual removed with the manual-entry link. */
 
 .rc-linkbtn {
   background: none; border: none; padding: 0; cursor: pointer;

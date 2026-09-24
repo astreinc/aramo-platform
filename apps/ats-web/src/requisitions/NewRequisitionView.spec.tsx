@@ -92,22 +92,40 @@ function renderView(scopes: string[]) {
   );
 }
 
+// §4 — the review form is reached only via Draft or Import (no manual path).
+// Import is deterministic + network-free (local parse), so tests paste a minimal
+// requirement and click "Import Client Requisition" to reveal the grouped form.
+async function openFormViaImport() {
+  fireEvent.change(await screen.findByLabelText('Requisition intake'), {
+    target: { value: 'Contract role, remote. Review the details.' },
+  });
+  fireEvent.click(
+    screen.getByRole('button', { name: /import client requisition/i }),
+  );
+  await screen.findByLabelText('Job title');
+}
+
 afterEach(() => {
   vi.restoreAllMocks();
 });
 
 describe('NewRequisitionView (New Requisition — mockup parity)', () => {
-  it('opens on the AI intake lane with a manual fallback', async () => {
+  it('§4: opens on the intake lane with Draft/Import and NO manual-entry path', async () => {
     mockApi();
     renderView(['requisition:create']);
     expect(await screen.findByText('New requisition')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /draft with ai/i })).toBeInTheDocument();
     expect(
-      screen.getByRole('button', { name: /enter the requisition manually/i }),
+      screen.getByRole('button', { name: /import client requisition/i }),
     ).toBeInTheDocument();
+    // §4 — the manual-entry link is removed; the form is only reached via
+    // Draft or Import.
+    expect(
+      screen.queryByRole('button', { name: /enter the requisition manually/i }),
+    ).toBeNull();
   });
 
-  it('manual entry reveals the grouped form and creates → navigates to detail', async () => {
+  it('import reveals the grouped form and creates → navigates to detail', async () => {
     mockApi((url, method) => {
       if (url === '/v1/requisitions' && method === 'POST') {
         return json({ id: 'new-req', title: 'New Role' }, 201);
@@ -115,9 +133,7 @@ describe('NewRequisitionView (New Requisition — mockup parity)', () => {
       return null;
     });
     renderView(['requisition:create']);
-    fireEvent.click(
-      await screen.findByRole('button', { name: /enter the requisition manually/i }),
-    );
+    await openFormViaImport();
     fireEvent.change(await screen.findByLabelText('Job title'), {
       target: { value: 'New Role' },
     });
@@ -188,9 +204,7 @@ describe('NewRequisitionView (New Requisition — mockup parity)', () => {
   it('reserves matching as a stored flag + a disabled seam (no scores)', async () => {
     mockApi();
     renderView(['requisition:create']);
-    fireEvent.click(
-      await screen.findByRole('button', { name: /enter the requisition manually/i }),
-    );
+    await openFormViaImport();
     // The match RESULT is a reserved seam — coming with Core, not a result.
     expect(screen.getByText('Match results')).toBeInTheDocument();
     expect(screen.getByText(/coming with aramo core/i)).toBeInTheDocument();
@@ -204,11 +218,11 @@ describe('NewRequisitionView (New Requisition — mockup parity)', () => {
     ).toBeInTheDocument();
   });
 
-  it('offers a non-AI "Import requisition" action on the intake lane', async () => {
+  it('offers a non-AI "Import Client Requisition" action on the intake lane', async () => {
     mockApi();
     renderView(['requisition:create']);
     expect(
-      await screen.findByRole('button', { name: /import requisition/i }),
+      await screen.findByRole('button', { name: /import client requisition/i }),
     ).toBeInTheDocument();
   });
 
@@ -225,7 +239,7 @@ describe('NewRequisitionView (New Requisition — mockup parity)', () => {
           'Need a Senior Backend Engineer. Contract, Austin, TX or mostly remote. Nice to have gRPC.',
       },
     });
-    fireEvent.click(screen.getByRole('button', { name: /import requisition/i }));
+    fireEvent.click(screen.getByRole('button', { name: /import client requisition/i }));
 
     // The SAME manual form opens, prefilled from the parse (no loading spinner,
     // no network round-trip).
@@ -246,7 +260,7 @@ describe('NewRequisitionView (New Requisition — mockup parity)', () => {
     fireEvent.change(await screen.findByLabelText('Requisition intake'), {
       target: { value: 'Need a Senior Backend Engineer. Austin, TX.' },
     });
-    fireEvent.click(screen.getByRole('button', { name: /import requisition/i }));
+    fireEvent.click(screen.getByRole('button', { name: /import client requisition/i }));
     const title = await screen.findByLabelText('Job title');
     expect(screen.getAllByText('Parsed').length).toBeGreaterThan(0);
     fireEvent.change(title, { target: { value: 'Staff Backend Engineer' } });

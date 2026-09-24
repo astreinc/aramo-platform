@@ -657,7 +657,7 @@ export function NewRequisitionView({ sessionOverride }: NewRequisitionViewProps)
     <section className="rc-newreq">
       <PageHeader
         title="New requisition"
-        description="Paste a client email or a few lines and Aramo drafts the requisition — review, edit and create. Or enter it manually."
+        description="Paste a client email or a few lines and Aramo drafts the requisition — review, edit and create."
       />
 
       {phase === 'intake' ? (
@@ -667,7 +667,6 @@ export function NewRequisitionView({ sessionOverride }: NewRequisitionViewProps)
           onText={setIntakeText}
           onDraft={() => void onDraft()}
           onImport={onImport}
-          onManual={startManual}
         />
       ) : null}
 
@@ -1310,16 +1309,8 @@ export function NewRequisitionView({ sessionOverride }: NewRequisitionViewProps)
               </ReservedSeam>
             </section>
 
-            <section className="rc-sidecard" aria-label="Owner">
-              <h3 className="rc-sidecard__h">
-                <Icons.IconUser />
-                Owner
-              </h3>
-              <p className="rc-newreq__owner">
-                Assigned to you. Reassigning to a teammate arrives with the
-                shared assignment roster.
-              </p>
-            </section>
+            {/* §0 — no Owner card: ownership isn't modeled, and a requisition's
+                creator must never be presented as its owner. */}
 
             <section className="rc-savebar">
               <ul className="rc-savebar__gates">
@@ -1369,14 +1360,12 @@ function IntakeLane({
   onText,
   onDraft,
   onImport,
-  onManual,
 }: {
   readonly text: string;
   readonly error: string | null;
   readonly onText: (v: string) => void;
   readonly onDraft: () => void;
   readonly onImport: () => void;
-  readonly onManual: () => void;
 }) {
   return (
     <div className="rc-reqintake">
@@ -1412,7 +1401,7 @@ function IntakeLane({
             </Button>
             <Button unstyled type="button" className="rc-btn" onClick={onImport}>
               <Icons.IconFile />
-              Import requisition
+              Import Client Requisition
             </Button>
             <span className="rc-reqintake__hint">
               Import parses a ready requirement into the form — no AI. You review,
@@ -1421,12 +1410,9 @@ function IntakeLane({
           </div>
         </div>
       </Card>
-      <p className="rc-reqintake__manual">
-        Prefer to type it?{' '}
-        <Button unstyled type="button" className="rc-linkbtn" onClick={onManual}>
-          Enter the requisition manually
-        </Button>
-      </p>
+      {/* §4 — no manual-entry path: the requisition is always drafted or
+          imported, then reviewed. The "Enter the requisition manually" link is
+          removed. */}
     </div>
   );
 }
