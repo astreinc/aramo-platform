@@ -33,8 +33,8 @@ vi.mock('../pipeline/pipeline-api', () => ({
     Promise.resolve({ id: 't', first_name: 'A', last_name: 'B' }),
   transitionPipeline: () => Promise.resolve(),
 }));
-vi.mock('./ProfileWorkbenchPanel', () => ({
-  ProfileWorkbenchPanel: () => <div data-testid="profile-panel" />,
+vi.mock('./RequirementSkills', () => ({
+  RequirementSkills: () => <div data-testid="skills-panel" />,
 }));
 
 // The cockpit (inline-edit sections + workbench) lives in the Overview tab
@@ -182,7 +182,7 @@ describe('RequisitionDetailView Overview (G2.5a view mode)', () => {
     // old cockpit's Identity/Classification grouping.
     expect(screen.getByText('Role & client')).toBeInTheDocument();
     expect(screen.getByText('Job title')).toBeInTheDocument();
-    expect(screen.getByTestId('profile-panel')).toBeInTheDocument();
+    expect(screen.getByTestId('skills-panel')).toBeInTheDocument();
   });
 });
 

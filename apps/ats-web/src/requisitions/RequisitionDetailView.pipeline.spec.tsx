@@ -144,7 +144,7 @@ describe('RequisitionDetailView — header / meta / pipeline (2D)', () => {
     expect(screen.getByText(/REQ-2041/)).toBeInTheDocument();
   });
 
-  it('NO MetaStrip (prototype removal); header line 2 carries location + type; §5 no snapshot strip', async () => {
+  it('NO MetaStrip (prototype removal); header line 2 carries location + type; Capacity is a snapshot card', async () => {
     mockApi();
     mountDetail();
     await screen.findByRole('heading', { name: /Senior Rust Engineer/ });
@@ -155,9 +155,9 @@ describe('RequisitionDetailView — header / meta / pipeline (2D)', () => {
     // The data moved to the header line 2 (as " · {value}" clauses).
     expect(screen.getByText(/Austin, TX/)).toBeInTheDocument();
     expect(screen.getByText(/· C2H/)).toBeInTheDocument();
-    // §5 — the snapshot-cards strip (Capacity/Aging/etc.) is removed.
-    expect(screen.queryByText('Capacity')).toBeNull();
-    expect(screen.queryByText('1/3 filled')).toBeNull();
+    // Capacity is a derived snapshot card (never a status).
+    expect(screen.getByText('Capacity')).toBeInTheDocument();
+    expect(screen.getByText('1/3 filled')).toBeInTheDocument();
   });
 
   it('§0: no owner name is shown on the detail header (ownership not modeled)', async () => {

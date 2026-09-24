@@ -51,7 +51,7 @@ import {
   type LifecycleAction,
 } from './approval-affordance';
 import { RequisitionForm } from './RequisitionForm';
-import { ProfileWorkbenchPanel } from './ProfileWorkbenchPanel';
+import { RequirementSkills } from './RequirementSkills';
 import {
   getRequisition,
   listRequisitionAttachments,
@@ -422,7 +422,6 @@ export function RequisitionDetailView({
         editing={editing}
         onCancel={() => setEditing(false)}
         onSave={saveOverviewEdits}
-        onProfileLinked={refresh}
       />
     ),
   });
@@ -705,8 +704,20 @@ export function RequisitionDetailView({
         </div>
       </div>
 
-      {/* §5 — the snapshot-cards strip is removed to match the updated
-          prototype (the Overview is the sectioned form; matching isn't built). */}
+      {/* Snapshot strip (eager, grounded cards) then the attention rail — both
+          above the tabs, matching the prototype. */}
+      <SnapshotStrip
+        req={req}
+        pipelines={pipelines}
+        offers={offers}
+        placements={placements}
+        canReadPipeline={canReadPipeline}
+        canReadOffers={canReadOffers}
+        canReadPreStart={canReadPreStart}
+        canReadPlacements={canReadPlacements}
+        canReadCommercial={canReadCommercial}
+        onNavigate={setTab}
+      />
 
       <AttentionRail
         req={req}
@@ -728,6 +739,138 @@ export function RequisitionDetailView({
         />
       </div>
     </section>
+  );
+}
+
+// ── Snapshot strip (eager cards, clickable → tab) ──
+
+function SnapshotCard({
+  label,
+  value,
+  hint,
+  onClick,
+  warn,
+}: {
+  readonly label: string;
+  readonly value: ReactNode;
+  readonly hint?: string;
+  readonly onClick?: () => void;
+  readonly warn?: boolean;
+}) {
+  const className = `rc-snapcard${warn ? ' rc-snapcard--warn' : ''}`;
+  const inner = (
+    <>
+      <span className="rc-snapcard__k">
+        {warn ? <span aria-hidden="true">⚠</span> : null}
+        {label}
+      </span>
+      <span className="rc-snapcard__v">{value}</span>
+      {hint !== undefined ? <span className="rc-snapcard__sub">{hint}</span> : null}
+    </>
+  );
+  if (onClick === undefined) {
+    return <div className={className}>{inner}</div>;
+  }
+  return (
+    <Button unstyled type="button" className={className} onClick={onClick}>
+      {inner}
+    </Button>
+  );
+}
+
+function clientStatusValue(status: RequisitionView['client_submittal_status']): string {
+  // L8-B2 — null ⇒ OPEN (never "Unknown"). paused/closed are the actionable states.
+  switch (status) {
+    case 'paused':
+      return 'Paused';
+    case 'closed':
+      return 'Closed';
+    default:
+      return 'Open';
+  }
+}
+
+function SnapshotStrip({
+  req,
+  pipelines,
+  offers,
+  placements,
+  canReadPipeline,
+  canReadOffers,
+  canReadPreStart,
+  canReadPlacements,
+  canReadCommercial,
+  onNavigate,
+}: {
+  readonly req: RequisitionView;
+  readonly pipelines: readonly PipelineView[];
+  readonly offers: readonly OfferView[];
+  readonly placements: readonly PlacementView[];
+  readonly canReadPipeline: boolean;
+  readonly canReadOffers: boolean;
+  readonly canReadPreStart: boolean;
+  readonly canReadPlacements: boolean;
+  readonly canReadCommercial: boolean;
+  readonly onNavigate: (tab: TabId) => void;
+}) {
+  const filled = req.openings - req.openings_available;
+  const overCapacity = req.capacity_balance < 0;
+  const activeOffers = offers.filter((o) => OPEN_OFFER_STATES.has(o.state)).length;
+  const expiringOffers = offers.filter((o) => isOfferExpiringSoon(o)).length;
+  const startedPlacements = placements.filter((p) => p.state === 'STARTED').length;
+  const clientStatus = clientStatusValue(req.client_submittal_status ?? null);
+  const clientReason =
+    req.client_submittal_reason !== null && req.client_submittal_reason !== undefined
+      ? req.client_submittal_reason.replace(/_/g, ' ')
+      : undefined;
+
+  return (
+    <div className="rc-snap">
+      <SnapshotCard
+        label="Talent"
+        value={pipelines.length}
+        hint="in play"
+        onClick={canReadPipeline ? () => onNavigate('talent') : undefined}
+      />
+      <SnapshotCard
+        label="Capacity"
+        value={overCapacity ? `+${-req.capacity_balance} over` : req.openings_available}
+        hint={overCapacity ? 'over capacity' : `${filled}/${req.openings} filled`}
+        warn={overCapacity}
+        onClick={canReadPipeline ? () => onNavigate('talent') : undefined}
+      />
+      <SnapshotCard
+        label="Client status"
+        value={clientStatus}
+        hint={clientReason}
+        warn={clientStatus !== 'Open'}
+        onClick={() => onNavigate('overview')}
+      />
+      {canReadOffers ? (
+        <SnapshotCard
+          label="Offers"
+          value={activeOffers}
+          hint={expiringOffers > 0 ? `${expiringOffers} expiring soon` : undefined}
+          warn={expiringOffers > 0}
+          onClick={() => onNavigate('offers')}
+        />
+      ) : null}
+      {canReadPreStart ? (
+        <SnapshotCard label="Pre-start" value="View" onClick={() => onNavigate('prestart')} />
+      ) : null}
+      {canReadPlacements ? (
+        <SnapshotCard
+          label="Assignments"
+          value={startedPlacements}
+          hint={placements.length > 0 ? `${placements.length} placement rows` : undefined}
+          onClick={() => onNavigate('assignments')}
+        />
+      ) : null}
+      {canReadCommercial ? (
+        <SnapshotCard label="Commercial" value="View" onClick={() => onNavigate('commercial')} />
+      ) : null}
+      <SnapshotCard label="Aging" value={`${daysOpen(req.created_at)}d`} hint="since opened" />
+    </div>
   );
 }
 
@@ -1610,7 +1753,6 @@ function DetailsPanel({
   editing,
   onCancel,
   onSave,
-  onProfileLinked,
 }: {
   readonly req: RequisitionView;
   readonly companyName: string | null;
@@ -1620,7 +1762,6 @@ function DetailsPanel({
   readonly editing: boolean;
   readonly onCancel: () => void;
   readonly onSave: (body: UpdateRequisitionRequest) => Promise<void>;
-  readonly onProfileLinked: () => void;
 }) {
   const original = toFormValues(req);
   const [draft, setDraft] = useState<Record<string, string>>(original);
@@ -1704,10 +1845,10 @@ function DetailsPanel({
         contactDisplay={contactName}
         statusDisplay={RECRUITING_STATUS_LABELS[req.status]}
         skillsSlot={
-          <ProfileWorkbenchPanel
+          <RequirementSkills
             requisitionId={req.id}
+            mode={editing ? 'edit' : 'view'}
             scopes={scopes}
-            onProfileLinked={onProfileLinked}
           />
         }
       />

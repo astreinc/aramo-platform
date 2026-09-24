@@ -78,6 +78,7 @@ interface MockOpts {
   readonly placements?: unknown[];
   readonly submittal?: Record<string, unknown> | null;
   readonly preStart?: Record<string, unknown>;
+  readonly profile?: Record<string, unknown>;
 }
 
 // Installs the app fetch and returns the captured GET urls (for fan-out proofs).
@@ -91,6 +92,10 @@ function mockApi(opts: MockOpts = {}): { urls: string[] } {
         status: s,
         headers: { 'Content-Type': 'application/json' },
       });
+    // Profile read must be matched BEFORE the generic requisition GET.
+    if (url.includes('/v1/requisitions/req-1/profile')) {
+      return json(opts.profile ?? { has_profile: false });
+    }
     if (url.includes('/v1/requisitions/req-1')) return json(opts.req ?? reqView());
     if (url.includes('/v1/pipelines')) return json({ items: opts.pipelines ?? [] });
     if (url.includes('/v1/offers')) return json({ items: opts.offers ?? [] });
@@ -221,7 +226,7 @@ describe('RequisitionDetailView workspace — tab availability (scope-gated)', (
 describe('RequisitionDetailView workspace — prototype structure (no MetaStrip / no company icon)', () => {
   afterEach(() => vi.restoreAllMocks());
 
-  it('renders header → attention → tabs, with NO MetaStrip, NO header company icon, NO snapshot strip', async () => {
+  it('renders header → snapshot → attention → tabs, with NO MetaStrip and NO header company icon', async () => {
     mockApi({ req: reqView({ capacity_balance: -1 }) }); // capacity<0 → attention present
     const { container } = render(
       <ToastProvider>
@@ -244,14 +249,15 @@ describe('RequisitionDetailView workspace — prototype structure (no MetaStrip 
     expect(container.querySelector('.rc-meta')).toBeNull();
     // No company icon (svg) in the header company line → no gray box.
     expect(container.querySelector('.rc-dhead__co svg')).toBeNull();
-    // §5 — the snapshot strip is removed; attention card + underline tabs remain.
-    expect(container.querySelector('.rc-snap')).toBeNull();
+    // Snapshot strip + attention card + underline tabs all present.
+    const snap = container.querySelector('.rc-snap');
     const attn = container.querySelector('.rc-attn');
     const tabs = container.querySelector('.rc-ws-tabs');
-    if (attn === null || tabs === null) {
-      throw new Error('missing attention / tabs');
+    if (snap === null || attn === null || tabs === null) {
+      throw new Error('missing snapshot / attention / tabs');
     }
-    // Order: attention before tabs.
+    // Order: snapshot before attention before tabs.
+    expect(snap.compareDocumentPosition(attn) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(attn.compareDocumentPosition(tabs) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });
@@ -259,12 +265,11 @@ describe('RequisitionDetailView workspace — prototype structure (no MetaStrip 
 describe('RequisitionDetailView workspace — snapshot + attention (grounded only)', () => {
   afterEach(() => vi.restoreAllMocks());
 
-  it('§5: the eager snapshot-cards strip is removed', async () => {
-    const { container } = mount(['requisition:read', 'pipeline:read']);
+  it('renders the eager snapshot cards (prototype)', async () => {
+    mount(['requisition:read', 'pipeline:read']);
     await screen.findByRole('heading', { name: /Staff Platform Engineer/ });
-    expect(container.querySelector('.rc-snap')).toBeNull();
-    expect(screen.queryByText('Capacity')).toBeNull();
-    expect(screen.queryByText('Aging')).toBeNull();
+    expect(screen.getByText('Capacity')).toBeInTheDocument();
+    expect(screen.getByText('Aging')).toBeInTheDocument();
   });
 
   it('attention shows only grounded rows (over-capacity, client paused, offer expiring) — never interviews-today or a deadline countdown', async () => {
@@ -404,7 +409,7 @@ describe('RequisitionDetailView workspace — load model (no first-paint fan-out
   it('selecting the Offers tab shows the Offers panel', async () => {
     mount(['requisition:read', 'pipeline:read', 'offer:create']);
     await screen.findByRole('heading', { name: /Staff Platform Engineer/ });
-    // §5 — the snapshot strip is gone; navigation is via the tab itself.
+    // Navigate via the tab (unambiguous vs. the snapshot Offers card).
     fireEvent.click(screen.getByRole('tab', { name: /Offers/ }));
     await waitFor(() => expect(selectedTabName()).toMatch(/Offers/));
     expect(await screen.findByText(/No offers on this requisition yet\./)).toBeInTheDocument();
@@ -470,5 +475,22 @@ describe('RequisitionDetailView workspace — load model (no first-paint fan-out
     await screen.findByText('Talent journey'); // panel reopened
     expect(submittalCalls()).toBe(1);
     expect(preStartCalls()).toBe(1);
+  });
+});
+
+describe('RequisitionDetailView Overview — edit does not blank (real RequirementSkills)', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('entering edit renders the form even when the profile omits skill arrays', async () => {
+    // The profile endpoint returns a shape WITHOUT required/preferred arrays —
+    // previously this threw in the skills section and blanked the whole Overview.
+    mount(['requisition:read', 'requisition:edit'], {
+      profile: { has_profile: false },
+    });
+    await screen.findByRole('heading', { name: /Staff Platform Engineer/ });
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    // The form still renders (no blank) — Job title input + the skills section.
+    expect(await screen.findByLabelText('Job title')).toBeInTheDocument();
+    expect(screen.getByText('Requirement skills')).toBeInTheDocument();
   });
 });

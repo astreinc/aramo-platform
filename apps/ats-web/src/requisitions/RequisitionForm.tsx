@@ -349,11 +349,13 @@ export function RequisitionForm(props: RequisitionFormProps): JSX.Element {
                 </div>
               ) : (
                 <ViewBox
-                  value={
-                    (values['duration_value'] ?? '') === ''
-                      ? '—'
-                      : `${values['duration_value']} ${selectLabel(values['duration_unit'] ?? '')}`
-                  }
+                  value={(() => {
+                    const dv = values['duration_value'] ?? '';
+                    const du = values['duration_unit'] ?? '';
+                    if (dv === '') return '—';
+                    // Append the unit only when set — never a dangling "12 —".
+                    return du === '' ? dv : `${dv} ${enterpriseLabel(du)}`;
+                  })()}
                 />
               )}
             </Row>
