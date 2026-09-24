@@ -782,6 +782,7 @@
     "apps/ats-web/src/requisitions/RequisitionDetailView.pipeline.spec.tsx",
     "apps/ats-web/src/requisitions/RequisitionDetailView.tsx",
     "apps/ats-web/src/requisitions/RequisitionDetailView.workspace.spec.tsx",
+    "apps/ats-web/src/requisitions/RequisitionForm.tsx",
     "apps/ats-web/src/requisitions/RequisitionsListView.spec.tsx",
     "apps/ats-web/src/requisitions/RequisitionsListView.tsx",
     "apps/ats-web/src/requisitions/ResumeSelectionSection.spec.tsx",

@@ -51,8 +51,7 @@ import {
   lifecycleActionsFor,
   type LifecycleAction,
 } from './approval-affordance';
-import { CockpitFieldRow, type SaveFieldFn } from './cockpit-fields';
-import { COCKPIT_FIELDS, type CockpitSection } from './field-affordance';
+import { RequisitionForm } from './RequisitionForm';
 import { ProfileWorkbenchPanel } from './ProfileWorkbenchPanel';
 import {
   getRequisition,
@@ -86,27 +85,9 @@ import {
 //   assignment detail, per-placement commercial proposals, and the talent-journey
 //   downstream cells. No per-placement read is issued at first paint.
 
-const SECTION_TITLES: Readonly<Record<CockpitSection, string>> = {
-  identity: 'Identity',
-  classification: 'Classification',
-  work_arrangement: 'Work arrangement',
-  duration: 'Duration & schedule',
-  source: 'Source',
-  compensation: 'Compensation',
-  financial: 'Financial planning',
-  system: 'System',
-};
-
-const SECTION_ORDER: readonly CockpitSection[] = [
-  'identity',
-  'classification',
-  'work_arrangement',
-  'duration',
-  'source',
-  'compensation',
-  'financial',
-];
-
+// G2.5 — the cockpit section table (SECTION_TITLES/SECTION_ORDER) is removed;
+// the Overview now renders the shared RequisitionForm, whose sections are the
+// New-requisition sections.
 
 // Offer states still in play (FE mirror of the BE OPEN offer position). An offer
 // in one of these can be expiring; the terminal states cannot.
@@ -334,7 +315,9 @@ export function RequisitionDetailView({
     );
   }, []);
 
-  const saveField: SaveFieldFn = async (key, value) => {
+  // G2.5 — retained ONLY for the governed status transition (lifecycle actions);
+  // ordinary field edits now flow through the Overview form's whole-form save.
+  const saveField = async (key: string, value: unknown): Promise<void> => {
     if (req === null) return;
     // T1-e (§2.4) — a status change is a governed transition and the server
     // requires the expected version. Send the version we last read alongside
@@ -420,10 +403,10 @@ export function RequisitionDetailView({
     content: (
       <DetailsPanel
         req={req}
+        companyName={companyName}
         contactName={contactName}
         present={present}
         scopes={scopes}
-        saveField={saveField}
         onProfileLinked={refresh}
       />
     ),
@@ -698,18 +681,8 @@ export function RequisitionDetailView({
         </div>
       </div>
 
-      <SnapshotStrip
-        req={req}
-        pipelines={pipelines}
-        offers={offers}
-        placements={placements}
-        canReadPipeline={canReadPipeline}
-        canReadOffers={canReadOffers}
-        canReadPreStart={canReadPreStart}
-        canReadPlacements={canReadPlacements}
-        canReadCommercial={canReadCommercial}
-        onNavigate={setTab}
-      />
+      {/* §5 — the snapshot-cards strip is removed to match the updated
+          prototype (the Overview is the sectioned form; matching isn't built). */}
 
       <AttentionRail
         req={req}
@@ -731,138 +704,6 @@ export function RequisitionDetailView({
         />
       </div>
     </section>
-  );
-}
-
-// ── Snapshot strip (eager cards, clickable → tab) ──
-
-function SnapshotCard({
-  label,
-  value,
-  hint,
-  onClick,
-  warn,
-}: {
-  readonly label: string;
-  readonly value: ReactNode;
-  readonly hint?: string;
-  readonly onClick?: () => void;
-  readonly warn?: boolean;
-}) {
-  const className = `rc-snapcard${warn ? ' rc-snapcard--warn' : ''}`;
-  const inner = (
-    <>
-      <span className="rc-snapcard__k">
-        {warn ? <span aria-hidden="true">⚠</span> : null}
-        {label}
-      </span>
-      <span className="rc-snapcard__v">{value}</span>
-      {hint !== undefined ? <span className="rc-snapcard__sub">{hint}</span> : null}
-    </>
-  );
-  if (onClick === undefined) {
-    return <div className={className}>{inner}</div>;
-  }
-  return (
-    <Button unstyled type="button" className={className} onClick={onClick}>
-      {inner}
-    </Button>
-  );
-}
-
-function clientStatusValue(status: RequisitionView['client_submittal_status']): string {
-  // L8-B2 — null ⇒ OPEN (never "Unknown"). paused/closed are the actionable states.
-  switch (status) {
-    case 'paused':
-      return 'Paused';
-    case 'closed':
-      return 'Closed';
-    default:
-      return 'Open';
-  }
-}
-
-function SnapshotStrip({
-  req,
-  pipelines,
-  offers,
-  placements,
-  canReadPipeline,
-  canReadOffers,
-  canReadPreStart,
-  canReadPlacements,
-  canReadCommercial,
-  onNavigate,
-}: {
-  readonly req: RequisitionView;
-  readonly pipelines: readonly PipelineView[];
-  readonly offers: readonly OfferView[];
-  readonly placements: readonly PlacementView[];
-  readonly canReadPipeline: boolean;
-  readonly canReadOffers: boolean;
-  readonly canReadPreStart: boolean;
-  readonly canReadPlacements: boolean;
-  readonly canReadCommercial: boolean;
-  readonly onNavigate: (tab: TabId) => void;
-}) {
-  const filled = req.openings - req.openings_available;
-  const overCapacity = req.capacity_balance < 0;
-  const activeOffers = offers.filter((o) => OPEN_OFFER_STATES.has(o.state)).length;
-  const expiringOffers = offers.filter((o) => isOfferExpiringSoon(o)).length;
-  const startedPlacements = placements.filter((p) => p.state === 'STARTED').length;
-  const clientStatus = clientStatusValue(req.client_submittal_status ?? null);
-  const clientReason =
-    req.client_submittal_reason !== null && req.client_submittal_reason !== undefined
-      ? req.client_submittal_reason.replace(/_/g, ' ')
-      : undefined;
-
-  return (
-    <div className="rc-snap">
-      <SnapshotCard
-        label="Talent"
-        value={pipelines.length}
-        hint="in play"
-        onClick={canReadPipeline ? () => onNavigate('talent') : undefined}
-      />
-      <SnapshotCard
-        label="Capacity"
-        value={overCapacity ? `+${-req.capacity_balance} over` : req.openings_available}
-        hint={overCapacity ? 'over capacity' : `${filled}/${req.openings} filled`}
-        warn={overCapacity}
-        onClick={canReadPipeline ? () => onNavigate('talent') : undefined}
-      />
-      <SnapshotCard
-        label="Client status"
-        value={clientStatus}
-        hint={clientReason}
-        warn={clientStatus !== 'Open'}
-        onClick={() => onNavigate('overview')}
-      />
-      {canReadOffers ? (
-        <SnapshotCard
-          label="Offers"
-          value={activeOffers}
-          hint={expiringOffers > 0 ? `${expiringOffers} expiring soon` : undefined}
-          warn={expiringOffers > 0}
-          onClick={() => onNavigate('offers')}
-        />
-      ) : null}
-      {canReadPreStart ? (
-        <SnapshotCard label="Pre-start" value="View" onClick={() => onNavigate('prestart')} />
-      ) : null}
-      {canReadPlacements ? (
-        <SnapshotCard
-          label="Assignments"
-          value={startedPlacements}
-          hint={placements.length > 0 ? `${placements.length} placement rows` : undefined}
-          onClick={() => onNavigate('assignments')}
-        />
-      ) : null}
-      {canReadCommercial ? (
-        <SnapshotCard label="Commercial" value="View" onClick={() => onNavigate('commercial')} />
-      ) : null}
-      <SnapshotCard label="Aging" value={`${daysOpen(req.created_at)}d`} hint="since opened" />
-    </div>
   );
 }
 
@@ -1678,90 +1519,59 @@ function AttachmentsPanel({
 // collapses — no CSS hiding, no sensitive field loaded to hide it. Compensation
 // actuals ride the same masked-by-absence discipline. ──
 
-function OvRow({ k, value, ok }: { readonly k: string; readonly value: string; readonly ok?: boolean }) {
-  return (
-    <div>
-      <div className="rc-ov__k">{k}</div>
-      <div className={`rc-ov__v${ok ? ' rc-ov__v--ok' : ''}`}>{value}</div>
-    </div>
-  );
+// G2.5 — normalize a RequisitionView into the shared form's string value map.
+// Dates reduce to YYYY-MM-DD (the date-input shape); booleans to 'true'/'false';
+// everything else to a string ('' for null). Masked fields are simply absent
+// from `req` (BE omit) and `present()` skips them — never blanked here.
+function toFormValues(req: RequisitionView): Record<string, string> {
+  const r = req as unknown as Record<string, unknown>;
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(r)) {
+    if (v === null || v === undefined) out[k] = '';
+    else if (typeof v === 'boolean') out[k] = v ? 'true' : 'false';
+    else if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(v)) out[k] = v.slice(0, 10);
+    else out[k] = String(v);
+  }
+  return out;
 }
 
+// G2.5a — the Overview tab. Renders the SHARED RequisitionForm in view mode: a
+// single full-width column of section cards (§5 — no right rail). The
+// per-field click-to-edit cockpit is gone; whole-form edit arrives via the
+// header Edit button (G2.5b). Requirement skills stay owned by the existing
+// ProfileWorkbenchPanel, dropped into the form's skills slot.
 function DetailsPanel({
   req,
+  companyName,
   contactName,
   present,
   scopes,
-  saveField,
   onProfileLinked,
 }: {
   readonly req: RequisitionView;
+  readonly companyName: string | null;
   readonly contactName: string | null;
   readonly present: (key: string) => boolean;
   readonly scopes: readonly string[];
-  readonly saveField: SaveFieldFn;
   readonly onProfileLinked: () => void;
 }) {
-  const reqRecord = req as unknown as Record<string, unknown>;
-  const place = [req.city, req.state].filter(Boolean).join(', ');
-  const arrangement = remoteLabel(req.work_arrangement, req.onsite_days_per_week);
-  const filled = req.openings - req.openings_available;
-  const clientStatus = clientStatusValue(req.client_submittal_status ?? null);
   return (
-    <div className="rc-mt-16 rc-stack">
-      {/* Demand + Client summary (the prototype Overview cards). Read-only, and
-          masked-by-absence — only present values render; the prototype's
-          fabricated "Submittal deadline" is OMITTED (no such field). */}
-      <div className="rc-ov">
-        <div className="rc-ov__card">
-          <div className="rc-ov__h">Demand</div>
-          <div className="rc-ov__grid">
-            <OvRow k="Openings" value={`${req.openings} · ${filled} filled · ${req.openings_available} available`} />
-            <OvRow k="Job type" value={req.job_type ?? req.type ?? '—'} />
-            <OvRow k="Location" value={place || '—'} />
-            <OvRow k="Arrangement" value={arrangement ?? '—'} />
-            <OvRow k="Start" value={req.start_date !== null ? formatDate(req.start_date) : '—'} />
-            <OvRow k="End" value={req.end_date !== null ? formatDate(req.end_date) : '—'} />
-          </div>
-        </div>
-        <div className="rc-ov__card">
-          <div className="rc-ov__h">Client</div>
-          <div className="rc-ov__grid">
-            <OvRow k="Client status" value={clientStatus} ok={clientStatus === 'Open'} />
-            <OvRow k="Contact" value={contactName ?? '—'} />
-            <OvRow k="Work authorization" value={req.work_authorization ?? '—'} />
-            <OvRow k="Source" value={req.source_system ?? '—'} />
-          </div>
-        </div>
-      </div>
-      {SECTION_ORDER.map((section) => {
-        const fields = COCKPIT_FIELDS.filter(
-          (f) => f.section === section && present(f.key),
-        );
-        if (fields.length === 0) return null;
-        return (
-          <Card key={section}>
-            <h3 className="req-cockpit__section-title">
-              {SECTION_TITLES[section]}
-            </h3>
-            <div className="req-cockpit__grid">
-              {fields.map((f) => (
-                <CockpitFieldRow
-                  key={f.key}
-                  field={f}
-                  raw={reqRecord[f.key]}
-                  scopes={scopes}
-                  onSave={saveField}
-                />
-              ))}
-            </div>
-          </Card>
-        );
-      })}
-      <ProfileWorkbenchPanel
-        requisitionId={req.id}
+    <div className="rc-mt-16 rc-ov-form">
+      <RequisitionForm
+        mode="view"
+        values={toFormValues(req)}
+        present={present}
         scopes={scopes}
-        onProfileLinked={onProfileLinked}
+        clientDisplay={companyName ?? 'Client'}
+        contactDisplay={contactName}
+        statusDisplay={RECRUITING_STATUS_LABELS[req.status]}
+        skillsSlot={
+          <ProfileWorkbenchPanel
+            requisitionId={req.id}
+            scopes={scopes}
+            onProfileLinked={onProfileLinked}
+          />
+        }
       />
     </div>
   );

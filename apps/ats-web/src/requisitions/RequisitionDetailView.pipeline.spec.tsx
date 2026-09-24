@@ -144,7 +144,7 @@ describe('RequisitionDetailView — header / meta / pipeline (2D)', () => {
     expect(screen.getByText(/REQ-2041/)).toBeInTheDocument();
   });
 
-  it('NO MetaStrip (prototype removal); header line 2 carries location + type; Capacity is a snapshot card', async () => {
+  it('NO MetaStrip (prototype removal); header line 2 carries location + type; §5 no snapshot strip', async () => {
     mockApi();
     mountDetail();
     await screen.findByRole('heading', { name: /Senior Rust Engineer/ });
@@ -155,19 +155,18 @@ describe('RequisitionDetailView — header / meta / pipeline (2D)', () => {
     // The data moved to the header line 2 (as " · {value}" clauses).
     expect(screen.getByText(/Austin, TX/)).toBeInTheDocument();
     expect(screen.getByText(/· C2H/)).toBeInTheDocument();
-    // Capacity is a derived snapshot card (never a status).
-    expect(screen.getByText('Capacity')).toBeInTheDocument();
-    expect(screen.getByText('1/3 filled')).toBeInTheDocument();
+    // §5 — the snapshot-cards strip (Capacity/Aging/etc.) is removed.
+    expect(screen.queryByText('Capacity')).toBeNull();
+    expect(screen.queryByText('1/3 filled')).toBeNull();
   });
 
-  it('header owner (recruiter) resolved via the roster + work-arrangement suffix in meta', async () => {
+  it('§0: no owner name is shown on the detail header (ownership not modeled)', async () => {
     mockApi();
     mountDetail();
     await screen.findByRole('heading', { name: /Senior Rust Engineer/ });
-    // Owner = recruiter_id ?? owner_id, resolved via the roster (gap #8) — now
-    // in the header, not a meta cell.
-    await waitFor(() => expect(screen.getByText('Priya Recruiter')).toBeInTheDocument());
-    // Location carries the work-arrangement suffix (work_arrangement=remote).
+    // §0 — the recruiter/owner name is never surfaced as an owner in the header.
+    expect(screen.queryByText('Priya Recruiter')).toBeNull();
+    // Location still carries the work-arrangement suffix (work_arrangement=remote).
     expect(screen.getByText('· Remote ok')).toBeInTheDocument();
   });
 

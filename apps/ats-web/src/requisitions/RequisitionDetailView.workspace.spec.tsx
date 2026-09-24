@@ -221,7 +221,7 @@ describe('RequisitionDetailView workspace — tab availability (scope-gated)', (
 describe('RequisitionDetailView workspace — prototype structure (no MetaStrip / no company icon)', () => {
   afterEach(() => vi.restoreAllMocks());
 
-  it('renders header → snapshot → attention → tabs, with NO MetaStrip and NO header company icon', async () => {
+  it('renders header → attention → tabs, with NO MetaStrip, NO header company icon, NO snapshot strip', async () => {
     mockApi({ req: reqView({ capacity_balance: -1 }) }); // capacity<0 → attention present
     const { container } = render(
       <ToastProvider>
@@ -244,15 +244,14 @@ describe('RequisitionDetailView workspace — prototype structure (no MetaStrip 
     expect(container.querySelector('.rc-meta')).toBeNull();
     // No company icon (svg) in the header company line → no gray box.
     expect(container.querySelector('.rc-dhead__co svg')).toBeNull();
-    // Snapshot strip + attention card + underline tabs all present.
-    const snap = container.querySelector('.rc-snap');
+    // §5 — the snapshot strip is removed; attention card + underline tabs remain.
+    expect(container.querySelector('.rc-snap')).toBeNull();
     const attn = container.querySelector('.rc-attn');
     const tabs = container.querySelector('.rc-ws-tabs');
-    if (snap === null || attn === null || tabs === null) {
-      throw new Error('missing snapshot / attention / tabs');
+    if (attn === null || tabs === null) {
+      throw new Error('missing attention / tabs');
     }
-    // Order: snapshot before attention before tabs.
-    expect(snap.compareDocumentPosition(attn) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // Order: attention before tabs.
     expect(attn.compareDocumentPosition(tabs) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });
@@ -260,12 +259,12 @@ describe('RequisitionDetailView workspace — prototype structure (no MetaStrip 
 describe('RequisitionDetailView workspace — snapshot + attention (grounded only)', () => {
   afterEach(() => vi.restoreAllMocks());
 
-  it('renders eager snapshot cards from requisition-grain data', async () => {
-    mount(['requisition:read', 'pipeline:read']);
+  it('§5: the eager snapshot-cards strip is removed', async () => {
+    const { container } = mount(['requisition:read', 'pipeline:read']);
     await screen.findByRole('heading', { name: /Staff Platform Engineer/ });
-    expect(screen.getByText('Capacity')).toBeInTheDocument();
-    expect(screen.getByText('Client status')).toBeInTheDocument();
-    expect(screen.getByText('Aging')).toBeInTheDocument();
+    expect(container.querySelector('.rc-snap')).toBeNull();
+    expect(screen.queryByText('Capacity')).toBeNull();
+    expect(screen.queryByText('Aging')).toBeNull();
   });
 
   it('attention shows only grounded rows (over-capacity, client paused, offer expiring) — never interviews-today or a deadline countdown', async () => {
@@ -402,11 +401,11 @@ describe('RequisitionDetailView workspace — load model (no first-paint fan-out
     );
   });
 
-  it('a snapshot card drills through to its tab', async () => {
+  it('selecting the Offers tab shows the Offers panel', async () => {
     mount(['requisition:read', 'pipeline:read', 'offer:create']);
     await screen.findByRole('heading', { name: /Staff Platform Engineer/ });
-    // Default is Talent; the Offers snapshot card switches to the Offers tab.
-    fireEvent.click(screen.getByRole('button', { name: /Offers/ }));
+    // §5 — the snapshot strip is gone; navigation is via the tab itself.
+    fireEvent.click(screen.getByRole('tab', { name: /Offers/ }));
     await waitFor(() => expect(selectedTabName()).toMatch(/Offers/));
     expect(await screen.findByText(/No offers on this requisition yet\./)).toBeInTheDocument();
   });
