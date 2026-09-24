@@ -2,7 +2,11 @@
 //
 // `sourcing` is reserved at PR-A1b; runtime enforcement deferred to Phase B
 // per Ruling 3. Names are locked-vocabulary-clean (Rule 5).
-export const CAPABILITY_VALUES = ['core', 'ats', 'portal', 'sourcing'] as const;
+// DOC-4 (R-4-9) — `esign` is RESERVED (the `sourcing` precedent): the signing
+// ceremony is authorized by the SigningSession capability token, not the tenant
+// bundle, so it stays OUT of DEFAULT_TENANT_CAPABILITIES (the default bundle
+// remains exactly [core, ats, portal]).
+export const CAPABILITY_VALUES = ['core', 'ats', 'portal', 'sourcing', 'esign'] as const;
 export type Capability = (typeof CAPABILITY_VALUES)[number];
 
 export function isCapability(value: unknown): value is Capability {

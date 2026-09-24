@@ -1,0 +1,1155 @@
+openapi: 3.1.0
+info:
+  title: Aramo Documents API
+  version: 0.0.0
+  description: |
+    DOC-1a — the canonical, workflow-neutral Documents domain. Documents own a
+    single canonical identity, controlled polymorphic associations to business
+    resources, an append-only lifecycle event ledger, and immutable artifacts.
+    All operations are tenant-scoped and require the `core` capability. Reads
+    require `document:read`; document creation/preparation/association require
+    `document:create`; document-type management requires `document:manage`.
+paths:
+  /v1/document-types:
+    post:
+      operationId: createDocumentType
+      summary: Create a tenant document type.
+      description: Registers a tenant-scoped document type. Requires `document:manage`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateDocumentTypeRequest'
+      responses:
+        '201':
+          description: The created document type.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentType'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+    get:
+      operationId: listDocumentTypes
+      summary: List document types available to the tenant.
+      description: Returns the tenant's own types plus SYSTEM types. Requires `document:read`.
+      responses:
+        '200':
+          description: The list of document types.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DocumentType'
+  /v1/documents:
+    post:
+      operationId: createDocument
+      summary: Create a document.
+      description: |
+        Creates a canonical document (status DRAFT) with optional business
+        associations. Supports the canonical idempotency pattern via the
+        optional `Idempotency-Key` header. Requires `document:create`.
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: false
+          description: Optional idempotency key. A replay with a different body is a 409.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateDocumentRequest'
+      responses:
+        '201':
+          description: The created (or idempotently replayed) document.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Document'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    get:
+      operationId: listDocuments
+      summary: List documents for the tenant.
+      description: Returns the tenant's documents, newest first. Requires `document:read`.
+      responses:
+        '200':
+          description: The list of documents.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Document'
+  /v1/documents/{id}:
+    get:
+      operationId: getDocument
+      summary: Get a document by id.
+      description: Returns a tenant-scoped document. A cross-tenant id is a 404. Requires `document:read`.
+      parameters:
+        - $ref: '#/components/parameters/DocumentId'
+      responses:
+        '200':
+          description: The document.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Document'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/documents/{id}/prepare:
+    post:
+      operationId: prepareDocument
+      summary: Prepare a document (DRAFT to PREPARED).
+      description: |
+        Transitions a DRAFT document to PREPARED. A no-op on an already-PREPARED
+        document. Any other source state is a 409. Requires `document:create`.
+      parameters:
+        - $ref: '#/components/parameters/DocumentId'
+      responses:
+        '200':
+          description: The prepared document.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Document'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /v1/documents/{id}/associations:
+    post:
+      operationId: addDocumentAssociation
+      summary: Associate a document with a business resource.
+      description: Adds a controlled-vocabulary association. Requires `document:create`.
+      parameters:
+        - $ref: '#/components/parameters/DocumentId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAssociationRequest'
+      responses:
+        '201':
+          description: The created association.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentAssociation'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/documents/{id}/events:
+    get:
+      operationId: listDocumentEvents
+      summary: List a document's append-only lifecycle events.
+      description: Returns the document's events in chronological order. Requires `document:read`.
+      parameters:
+        - $ref: '#/components/parameters/DocumentId'
+      responses:
+        '200':
+          description: The document's events.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DocumentEvent'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/documents/{id}/artifacts:
+    get:
+      operationId: listDocumentArtifacts
+      summary: List a document's artifacts.
+      description: Returns the document's stored artifacts. Requires `document:read`.
+      parameters:
+        - $ref: '#/components/parameters/DocumentId'
+      responses:
+        '200':
+          description: The document's artifacts.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DocumentArtifact'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/document-templates:
+    post:
+      operationId: createDocumentTemplate
+      summary: Create a document template.
+      description: Creates a DRAFT template (GENERATED, UPLOADED_PDF, or HYBRID). Requires `document_template:manage`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTemplateRequest'
+      responses:
+        '201':
+          description: The created template.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentTemplate'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+    get:
+      operationId: listDocumentTemplates
+      summary: List document templates for the tenant.
+      description: Requires `document_template:read`.
+      responses:
+        '200':
+          description: The list of templates.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DocumentTemplate'
+  /v1/document-templates/{id}:
+    get:
+      operationId: getDocumentTemplate
+      summary: Get a document template.
+      description: Requires `document_template:read`.
+      parameters:
+        - $ref: '#/components/parameters/DocumentId'
+      responses:
+        '200':
+          description: The template.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentTemplate'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/document-templates/{id}/versions:
+    post:
+      operationId: createTemplateVersion
+      summary: Create a DRAFT template version.
+      description: Version numbers auto-increment. Requires `document_template:manage`.
+      parameters:
+        - $ref: '#/components/parameters/DocumentId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateVersionRequest'
+      responses:
+        '201':
+          description: The created version.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemplateVersion'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    get:
+      operationId: listTemplateVersions
+      summary: List versions of a template.
+      description: Requires `document_template:read`.
+      parameters:
+        - $ref: '#/components/parameters/DocumentId'
+      responses:
+        '200':
+          description: The versions.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TemplateVersion'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/document-templates/versions/{versionId}/activate:
+    post:
+      operationId: activateTemplateVersion
+      summary: Activate a DRAFT template version (DRAFT -> ACTIVE).
+      description: |
+        Activates the version and retires any prior ACTIVE version of the same
+        template. Once ACTIVE the version is immutable. Requires `document_template:manage`.
+      parameters:
+        - $ref: '#/components/parameters/VersionId'
+      responses:
+        '200':
+          description: The activated version.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemplateVersion'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /v1/document-templates/versions/{versionId}/fields:
+    post:
+      operationId: addTemplateField
+      summary: Add a field definition to a DRAFT version.
+      description: Rejected once the version is ACTIVE (immutable). Requires `document_template:manage`.
+      parameters:
+        - $ref: '#/components/parameters/VersionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddFieldRequest'
+      responses:
+        '201':
+          description: The created field definition.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemplateFieldDefinition'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    get:
+      operationId: listTemplateFields
+      summary: List the field definitions of a version.
+      description: Requires `document_template:read`.
+      parameters:
+        - $ref: '#/components/parameters/VersionId'
+      responses:
+        '200':
+          description: The field definitions, ordered.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TemplateFieldDefinition'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/document-requirements:
+    post:
+      operationId: createDocumentRequirement
+      summary: Create a document requirement.
+      description: Creates an UNSATISFIED requirement bound to a business resource. Requires `document_requirement:manage`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRequirementRequest'
+      responses:
+        '201':
+          description: The created requirement.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentRequirement'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+    get:
+      operationId: listDocumentRequirements
+      summary: List document requirements (optionally filtered by resource).
+      description: Requires `document_requirement:read`.
+      parameters:
+        - name: resource_type
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: resource_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: The requirements.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DocumentRequirement'
+  /v1/document-requirements/{id}/check:
+    get:
+      operationId: checkDocumentRequirement
+      summary: Read a requirement's satisfaction verdict.
+      description: |
+        Read-only verdict, determined INDEPENDENTLY of any business transition.
+        Requires `document_requirement:read`.
+      parameters:
+        - $ref: '#/components/parameters/DocumentId'
+      responses:
+        '200':
+          description: The verdict.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequirementVerdict'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/document-requirements/{id}/satisfy:
+    post:
+      operationId: satisfyDocumentRequirement
+      summary: Satisfy a requirement by linking a document.
+      description: Requires `document_requirement:manage`.
+      parameters:
+        - $ref: '#/components/parameters/DocumentId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SatisfyRequirementRequest'
+      responses:
+        '200':
+          description: The satisfied requirement.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentRequirement'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /v1/document-requirements/{id}/waive:
+    post:
+      operationId: waiveDocumentRequirement
+      summary: Waive a requirement.
+      description: The waiver authority. Requires `document_requirement:manage`.
+      parameters:
+        - $ref: '#/components/parameters/DocumentId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WaiveRequirementRequest'
+      responses:
+        '200':
+          description: The waived requirement.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentRequirement'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /v1/document-packets:
+    post:
+      operationId: createDocumentPacket
+      summary: Create a document packet (a grouping of documents).
+      description: A packet groups documents; it does not own their business state. Requires `document:create`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePacketRequest'
+      responses:
+        '201':
+          description: The created packet.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentPacket'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+    get:
+      operationId: listDocumentPackets
+      summary: List document packets for the tenant.
+      description: Requires `document:read`.
+      responses:
+        '200':
+          description: The packets with their items.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DocumentPacket'
+  /v1/document-packets/{id}:
+    get:
+      operationId: getDocumentPacket
+      summary: Get a document packet with its items.
+      description: Requires `document:read`.
+      parameters:
+        - $ref: '#/components/parameters/DocumentId'
+      responses:
+        '200':
+          description: The packet.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentPacket'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/document-packets/{id}/items:
+    post:
+      operationId: addDocumentPacketItem
+      summary: Add a document to a packet.
+      description: Requires `document:create`.
+      parameters:
+        - $ref: '#/components/parameters/DocumentId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddPacketItemRequest'
+      responses:
+        '201':
+          description: The created packet item.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentPacketItem'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/documents/revisions/{id}/source:
+    get:
+      operationId: getRevisionSource
+      summary: Source PDF bytes (base64) for a frozen revision — pulled by esign-service for executed-document production (DOC-4).
+      description: Authorized service-to-service read; esign-service holds no document storage binding.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: tenant_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: The base64 source PDF.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [revision_id, source_base64]
+                properties:
+                  revision_id: { type: string, format: uuid }
+                  source_base64: { type: string }
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/documents/esign-writeback:
+    post:
+      operationId: esignWriteBack
+      summary: Idempotent executed-artifact write-back — pulls executed bytes + certificate from esign-service and stores the permanent EXECUTED + EXECUTION_CERTIFICATE artifacts (DOC-4).
+      description: Invoked by the executed-envelope event consumer; idempotent on (tenant, envelope, document).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tenant_id, envelope_id]
+              properties:
+                tenant_id: { type: string, format: uuid }
+                envelope_id: { type: string, format: uuid }
+                correlation_id: { type: string }
+      responses:
+        '200':
+          description: The write-back result.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [envelope_id, documents_written]
+                properties:
+                  envelope_id: { type: string, format: uuid }
+                  documents_written: { type: integer }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '422':
+          $ref: '#/components/responses/BadRequest'
+components:
+  parameters:
+    DocumentId:
+      name: id
+      in: path
+      required: true
+      description: The document id (UUID).
+      schema:
+        type: string
+        format: uuid
+    VersionId:
+      name: versionId
+      in: path
+      required: true
+      description: The template version id (UUID).
+      schema:
+        type: string
+        format: uuid
+  responses:
+    BadRequest:
+      description: The request failed validation.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: The document was not found in the caller's tenant.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Conflict:
+      description: An illegal transition or an idempotency-key conflict.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+  schemas:
+    ErrorResponse:
+      type: object
+      description: The canonical Aramo error envelope.
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+          description: The stable error code.
+        message:
+          type: string
+          description: A human-readable message.
+    DocumentType:
+      type: object
+      description: A semantic business document type.
+      required:
+        - id
+        - key
+        - name
+        - scope
+        - execution_mode_default
+        - retention_class
+        - active
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: [string, 'null']
+          format: uuid
+        key:
+          type: string
+        name:
+          type: string
+        description:
+          type: [string, 'null']
+        scope:
+          type: string
+          enum: [SYSTEM, TENANT, CLIENT]
+        execution_mode_default:
+          type: string
+          enum: [NO_SIGNATURE, ACKNOWLEDGEMENT, SINGLE_SIGNATURE, MULTI_SIGNATURE]
+        retention_class:
+          type: string
+        active:
+          type: boolean
+    Document:
+      type: object
+      description: The canonical business document aggregate.
+      required:
+        - id
+        - tenant_id
+        - document_type_id
+        - title
+        - status
+        - execution_mode
+        - source_kind
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        document_type_id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        status:
+          type: string
+          enum: [DRAFT, PREPARED, EXECUTION_PENDING, EXECUTED, VOIDED, EXPIRED, ARCHIVED]
+        execution_mode:
+          type: string
+          enum: [NO_SIGNATURE, ACKNOWLEDGEMENT, SINGLE_SIGNATURE, MULTI_SIGNATURE]
+        source_kind:
+          type: string
+          enum: [TEMPLATE_GENERATED, UPLOADED, EXTERNAL_IMPORT]
+        current_revision_id:
+          type: [string, 'null']
+          format: uuid
+        prepared_at:
+          type: [string, 'null']
+          format: date-time
+    CreateDocumentTypeRequest:
+      type: object
+      required:
+        - key
+        - name
+        - scope
+        - execution_mode_default
+        - retention_class
+      properties:
+        key:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        scope:
+          type: string
+          enum: [SYSTEM, TENANT, CLIENT]
+        execution_mode_default:
+          type: string
+          enum: [NO_SIGNATURE, ACKNOWLEDGEMENT, SINGLE_SIGNATURE, MULTI_SIGNATURE]
+        retention_class:
+          type: string
+    CreateDocumentRequest:
+      type: object
+      required:
+        - document_type_id
+        - title
+        - execution_mode
+        - source_kind
+      properties:
+        document_type_id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        execution_mode:
+          type: string
+          enum: [NO_SIGNATURE, ACKNOWLEDGEMENT, SINGLE_SIGNATURE, MULTI_SIGNATURE]
+        source_kind:
+          type: string
+          enum: [TEMPLATE_GENERATED, UPLOADED, EXTERNAL_IMPORT]
+        associations:
+          type: array
+          items:
+            $ref: '#/components/schemas/CreateAssociationRequest'
+    CreateAssociationRequest:
+      type: object
+      required:
+        - resource_type
+        - resource_id
+        - relationship
+      properties:
+        resource_type:
+          type: string
+          enum: [TALENT, REQUISITION, COMPANY, SUBMITTAL, OFFER, PLACEMENT, PURCHASE_ORDER, TENANT_ORGANIZATION, CONTACT]
+        resource_id:
+          type: string
+          format: uuid
+        relationship:
+          type: string
+          enum: [SUBJECT, REGARDING, CLIENT, SUPPORTS, OWNER, ISSUER, COUNTERPARTY]
+    DocumentAssociation:
+      type: object
+      description: A polymorphic link from a document to a business resource.
+      required:
+        - id
+        - document_id
+        - resource_type
+        - resource_id
+        - relationship
+      properties:
+        id:
+          type: string
+          format: uuid
+        document_id:
+          type: string
+          format: uuid
+        resource_type:
+          type: string
+        resource_id:
+          type: string
+          format: uuid
+        relationship:
+          type: string
+    DocumentEvent:
+      type: object
+      description: An append-only document lifecycle event.
+      required:
+        - id
+        - document_id
+        - event_type
+        - actor_type
+        - occurred_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        document_id:
+          type: string
+          format: uuid
+        event_type:
+          type: string
+        actor_type:
+          type: string
+          enum: [USER, SYSTEM]
+        occurred_at:
+          type: string
+          format: date-time
+    DocumentArtifact:
+      type: object
+      description: An immutable stored document artifact.
+      required:
+        - id
+        - revision_id
+        - document_id
+        - artifact_role
+        - sha256
+      properties:
+        id:
+          type: string
+          format: uuid
+        revision_id:
+          type: string
+          format: uuid
+        document_id:
+          type: string
+          format: uuid
+        artifact_role:
+          type: string
+        sha256:
+          type: string
+    DocumentTemplate:
+      type: object
+      description: A reusable document template (DOC-2).
+      required:
+        - id
+        - tenant_id
+        - document_type_id
+        - name
+        - template_kind
+        - status
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        document_type_id:
+          type: string
+          format: uuid
+        client_id:
+          type: [string, 'null']
+          format: uuid
+        name:
+          type: string
+        description:
+          type: [string, 'null']
+        template_kind:
+          type: string
+          enum: [GENERATED, UPLOADED_PDF, HYBRID]
+        status:
+          type: string
+          enum: [DRAFT, ACTIVE, RETIRED]
+        current_version_id:
+          type: [string, 'null']
+          format: uuid
+    TemplateVersion:
+      type: object
+      description: An immutable-after-activation template version (DOC-2).
+      required:
+        - id
+        - tenant_id
+        - template_id
+        - version_number
+        - status
+        - render_schema_version
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        template_id:
+          type: string
+          format: uuid
+        version_number:
+          type: integer
+        status:
+          type: string
+          enum: [DRAFT, ACTIVE, RETIRED]
+        render_schema_version:
+          type: string
+        source_artifact_id:
+          type: [string, 'null']
+          format: uuid
+        activated_at:
+          type: [string, 'null']
+          format: date-time
+    TemplateFieldDefinition:
+      type: object
+      description: The canonical field model (a PDF AcroForm field is only one representation).
+      required:
+        - id
+        - template_version_id
+        - field_key
+        - field_type
+        - ordinal
+      properties:
+        id:
+          type: string
+          format: uuid
+        template_version_id:
+          type: string
+          format: uuid
+        field_key:
+          type: string
+        field_type:
+          type: string
+          enum: [TEXT, MULTILINE_TEXT, DATE, NUMBER, CURRENCY, CHECKBOX, IMAGE, SIGNATURE, INITIALS, SIGN_DATE, SIGNER_NAME, SIGNER_EMAIL]
+        required:
+          type: boolean
+        page_number:
+          type: [integer, 'null']
+        ordinal:
+          type: integer
+    DocumentRequirement:
+      type: object
+      description: The generic requirement bridge (R12). Satisfaction is independent of business transitions.
+      required:
+        - id
+        - tenant_id
+        - document_type_id
+        - resource_type
+        - resource_id
+        - status
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        document_type_id:
+          type: string
+          format: uuid
+        resource_type:
+          type: string
+        resource_id:
+          type: string
+          format: uuid
+        relationship:
+          type: [string, 'null']
+        status:
+          type: string
+          enum: [UNSATISFIED, SATISFIED, WAIVED]
+        satisfied_by_document_id:
+          type: [string, 'null']
+          format: uuid
+    RequirementVerdict:
+      type: object
+      description: A read-only requirement satisfaction verdict.
+      required:
+        - requirement_id
+        - satisfied
+        - status
+      properties:
+        requirement_id:
+          type: string
+          format: uuid
+        satisfied:
+          type: boolean
+        status:
+          type: string
+          enum: [UNSATISFIED, SATISFIED, WAIVED]
+        satisfied_by_document_id:
+          type: [string, 'null']
+          format: uuid
+    DocumentPacket:
+      type: object
+      description: A grouping of documents into one logical business package (DOC-2).
+      required:
+        - id
+        - tenant_id
+        - packet_type
+        - title
+        - status
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        packet_type:
+          type: string
+        title:
+          type: string
+        status:
+          type: string
+          enum: [OPEN, COMPLETED, CANCELLED]
+        completed_at:
+          type: [string, 'null']
+          format: date-time
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/DocumentPacketItem'
+    DocumentPacketItem:
+      type: object
+      description: A document's membership in a packet (grouping only).
+      required:
+        - id
+        - packet_id
+        - document_id
+        - sequence
+      properties:
+        id:
+          type: string
+          format: uuid
+        packet_id:
+          type: string
+          format: uuid
+        document_id:
+          type: string
+          format: uuid
+        sequence:
+          type: integer
+        required:
+          type: boolean
+    CreateTemplateRequest:
+      type: object
+      required:
+        - document_type_id
+        - name
+        - template_kind
+      properties:
+        document_type_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+        template_kind:
+          type: string
+          enum: [GENERATED, UPLOADED_PDF, HYBRID]
+        client_id:
+          type: string
+          format: uuid
+    CreateVersionRequest:
+      type: object
+      required:
+        - render_schema_version
+      properties:
+        render_schema_version:
+          type: string
+        field_schema:
+          type: object
+          additionalProperties: true
+        binding_schema:
+          type: object
+          additionalProperties: true
+        source_artifact_id:
+          type: string
+          format: uuid
+    AddFieldRequest:
+      type: object
+      required:
+        - field_key
+        - field_type
+        - ordinal
+      properties:
+        field_key:
+          type: string
+        field_type:
+          type: string
+          enum: [TEXT, MULTILINE_TEXT, DATE, NUMBER, CURRENCY, CHECKBOX, IMAGE, SIGNATURE, INITIALS, SIGN_DATE, SIGNER_NAME, SIGNER_EMAIL]
+        binding_key:
+          type: string
+        required:
+          type: boolean
+        page_number:
+          type: integer
+        x:
+          type: number
+        y:
+          type: number
+        width:
+          type: number
+        height:
+          type: number
+        ordinal:
+          type: integer
+    CreateRequirementRequest:
+      type: object
+      required:
+        - document_type_id
+        - resource_type
+        - resource_id
+      properties:
+        document_type_id:
+          type: string
+          format: uuid
+        resource_type:
+          type: string
+        resource_id:
+          type: string
+          format: uuid
+        relationship:
+          type: string
+    SatisfyRequirementRequest:
+      type: object
+      required:
+        - document_id
+      properties:
+        document_id:
+          type: string
+          format: uuid
+    WaiveRequirementRequest:
+      type: object
+      required:
+        - reason
+      properties:
+        reason:
+          type: string
+    CreatePacketRequest:
+      type: object
+      required:
+        - packet_type
+        - title
+      properties:
+        packet_type:
+          type: string
+        title:
+          type: string
+    AddPacketItemRequest:
+      type: object
+      required:
+        - document_id
+        - sequence
+      properties:
+        document_id:
+          type: string
+          format: uuid
+        sequence:
+          type: integer
+        required:
+          type: boolean

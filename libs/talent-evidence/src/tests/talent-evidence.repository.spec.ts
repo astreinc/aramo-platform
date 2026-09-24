@@ -68,6 +68,9 @@ describe('TalentEvidenceRepository — surface', () => {
         'findTalentWorkAuthorizationById',
         'createTalentDocument',
         'findTalentDocumentById',
+        // DOC-1b — mints the canonical documents.Document quartet inside the
+        // talent write transaction (atomic cross-schema link).
+        'mintCanonicalDocument',
         'createTalentDerivedSnapshot',
         'findTalentDerivedSnapshotById',
         // Gate-1 G1-B — deterministic-derivation by-talent reads (the matching

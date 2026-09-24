@@ -60,9 +60,10 @@ exec /docker-entrypoint.sh nginx -g '\''daemon off;'\'''
 # --- Run: NO NGINX_* env; loopback host-aliases for the known upstreams -------
 # Ruling B — the runtime analogue of the Option C build-time loopback rewrite:
 # nginx resolves literal-hostname upstreams at config-load, and a standalone
-# container has no compose network, so api/auth-service/platform-admin would be
-# "host not found in upstream". These THREE aliases (the exact upstreams the
-# template proxies) point them at a dead loopback so nginx starts; the smoke
+# container has no compose network, so api/auth-service/platform-admin/esign-service
+# would be "host not found in upstream". These FOUR aliases (the exact upstreams the
+# template proxies — esign-service added by DOC-4 Sign Web) point them at a dead
+# loopback so nginx starts; the smoke
 # exercises /healthz + static HTTPS, never the proxied backends. Forced
 # consciousness: a FOURTH upstream added to the template fails this smoke until
 # it is added here (same property as the Option C name list).
@@ -71,6 +72,7 @@ docker run -d --name "$CONTAINER" \
   --add-host api:127.0.0.1 \
   --add-host auth-service:127.0.0.1 \
   --add-host platform-admin:127.0.0.1 \
+  --add-host esign-service:127.0.0.1 \
   -v "$CERTDIR:/etc/letsencrypt:ro" \
   "$IMAGE" /bin/sh -c "$NGINX_CMD" >/dev/null 2>&1 \
   || fail "docker run failed to start the container"

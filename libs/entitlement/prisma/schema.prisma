@@ -42,6 +42,7 @@ enum Capability {
   ats
   portal
   sourcing
+  esign // DOC-4 R-4-9 — RESERVED (not in DEFAULT_TENANT_CAPABILITIES); mirrors CAPABILITY_VALUES
 
   @@schema("entitlement")
 }

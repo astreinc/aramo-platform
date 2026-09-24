@@ -1,78 +1,83 @@
 {
-  "aliasTotals": { "apps": 0, "libs": 0, "total": 72 },
+  "aliasTotals": { "apps": 3, "libs": 74, "total": 77 },
   "aliases": {
-    "@aramo/activity": "./libs/activity/src/index.ts",
-    "@aramo/ai-draft": "./libs/ai-draft/src/index.ts",
-    "@aramo/api": "./apps/api/src/app.module.ts",
-    "@aramo/attachment": "./libs/attachment/src/index.ts",
-    "@aramo/audit": "./libs/audit/src/index.ts",
-    "@aramo/auth": "./libs/auth/src/index.ts",
-    "@aramo/auth-core": "./libs/auth-core/src/index.ts",
-    "@aramo/auth-service": "./apps/auth-service/src/app/auth/auth.module.ts",
-    "@aramo/auth-storage": "./libs/auth-storage/src/index.ts",
-    "@aramo/authorization": "./libs/authorization/src/index.ts",
-    "@aramo/calendar": "./libs/calendar/src/index.ts",
-    "@aramo/canonical-reconcile": "./libs/canonical-reconcile/src/index.ts",
-    "@aramo/canonicalization": "./libs/canonicalization/src/index.ts",
-    "@aramo/client-selection": "./libs/client-selection/src/index.ts",
-    "@aramo/client-talent-restriction": "./libs/client-talent-restriction/src/index.ts",
-    "@aramo/cold-ingest-extraction": "./libs/cold-ingest-extraction/src/index.ts",
-    "@aramo/common": "./libs/common/src/index.ts",
-    "@aramo/communications": "./libs/communications/src/index.ts",
-    "@aramo/company": "./libs/company/src/index.ts",
-    "@aramo/consent": "./libs/consent/src/index.ts",
-    "@aramo/contact": "./libs/contact/src/index.ts",
-    "@aramo/conversation-intelligence": "./libs/conversation-intelligence/src/index.ts",
-    "@aramo/conversation-transcript": "./libs/conversation-transcript/src/index.ts",
-    "@aramo/engagement": "./libs/engagement/src/index.ts",
-    "@aramo/entitlement": "./libs/entitlement/src/index.ts",
-    "@aramo/events": "./libs/events/src/index.ts",
-    "@aramo/evidence": "./libs/evidence/src/index.ts",
-    "@aramo/examination": "./libs/examination/src/index.ts",
-    "@aramo/export": "./libs/export/src/index.ts",
-    "@aramo/fe-foundation": "./libs/fe-foundation/src/index.ts",
-    "@aramo/field-masking": "./libs/field-masking/src/index.ts",
-    "@aramo/identity": "./libs/identity/src/index.ts",
-    "@aramo/identity-index": "./libs/identity-index/src/index.ts",
-    "@aramo/import": "./libs/import/src/index.ts",
-    "@aramo/ingestion": "./libs/ingestion/src/index.ts",
-    "@aramo/integration": "./libs/integration/src/index.ts",
-    "@aramo/job-distribution": "./libs/job-distribution/src/index.ts",
-    "@aramo/job-domain": "./libs/job-domain/src/index.ts",
-    "@aramo/mailer": "./libs/mailer/src/index.ts",
-    "@aramo/matching": "./libs/matching/src/index.ts",
-    "@aramo/metering": "./libs/metering/src/index.ts",
-    "@aramo/microsoft-graph": "./libs/microsoft-graph/src/index.ts",
-    "@aramo/object-storage": "./libs/object-storage/src/index.ts",
-    "@aramo/outbox-publisher": "./libs/outbox-publisher/src/index.ts",
-    "@aramo/pipeline": "./libs/pipeline/src/index.ts",
-    "@aramo/placement": "./libs/placement/src/index.ts",
-    "@aramo/placement-pipeline-bridge": "./libs/placement-pipeline-bridge/src/index.ts",
-    "@aramo/platform-trust": "./libs/platform-trust/src/index.ts",
-    "@aramo/policy-engine": "./libs/policy-engine/src/index.ts",
-    "@aramo/policy-store": "./libs/policy-store/src/index.ts",
-    "@aramo/portal": "./libs/portal/src/index.ts",
-    "@aramo/portal-identity": "./libs/portal-identity/src/index.ts",
-    "@aramo/pre-start-requirement": "./libs/pre-start-requirement/src/index.ts",
-    "@aramo/reporting": "./libs/reporting/src/index.ts",
-    "@aramo/requisition": "./libs/requisition/src/index.ts",
-    "@aramo/resume-parse": "./libs/resume-parse/src/index.ts",
-    "@aramo/saved-list": "./libs/saved-list/src/index.ts",
-    "@aramo/selection": "./libs/selection/src/index.ts",
-    "@aramo/settings": "./libs/settings/src/index.ts",
-    "@aramo/skills-taxonomy": "./libs/skills-taxonomy/src/index.ts",
-    "@aramo/sourced-talent": "./libs/sourced-talent/src/index.ts",
-    "@aramo/submittal": "./libs/submittal/src/index.ts",
-    "@aramo/submittal-eligibility": "./libs/submittal-eligibility/src/index.ts",
-    "@aramo/talent-evidence": "./libs/talent-evidence/src/index.ts",
-    "@aramo/talent-extraction": "./libs/talent-extraction/src/index.ts",
-    "@aramo/talent-reconcile": "./libs/talent-reconcile/src/index.ts",
-    "@aramo/talent-reconcile-signal": "./libs/talent-reconcile-signal/src/index.ts",
-    "@aramo/talent-record": "./libs/talent-record/src/index.ts",
-    "@aramo/talent-trust": "./libs/talent-trust/src/index.ts",
-    "@aramo/task": "./libs/task/src/index.ts",
-    "@aramo/tenant-reset": "./libs/tenant-reset/src/index.ts",
-    "@aramo/visibility": "./libs/visibility/src/index.ts"
+    "@aramo/activity": "libs/activity/src/index.ts",
+    "@aramo/ai-draft": "libs/ai-draft/src/index.ts",
+    "@aramo/api": "apps/api/src/app.module.ts",
+    "@aramo/attachment": "libs/attachment/src/index.ts",
+    "@aramo/audit": "libs/audit/src/index.ts",
+    "@aramo/auth": "libs/auth/src/index.ts",
+    "@aramo/auth-core": "libs/auth-core/src/index.ts",
+    "@aramo/auth-service": "apps/auth-service/src/app/auth/auth.module.ts",
+    "@aramo/auth-storage": "libs/auth-storage/src/index.ts",
+    "@aramo/authorization": "libs/authorization/src/index.ts",
+    "@aramo/calendar": "libs/calendar/src/index.ts",
+    "@aramo/canonical-reconcile": "libs/canonical-reconcile/src/index.ts",
+    "@aramo/canonicalization": "libs/canonicalization/src/index.ts",
+    "@aramo/client-selection": "libs/client-selection/src/index.ts",
+    "@aramo/client-talent-restriction": "libs/client-talent-restriction/src/index.ts",
+    "@aramo/cold-ingest-extraction": "libs/cold-ingest-extraction/src/index.ts",
+    "@aramo/common": "libs/common/src/index.ts",
+    "@aramo/communications": "libs/communications/src/index.ts",
+    "@aramo/company": "libs/company/src/index.ts",
+    "@aramo/consent": "libs/consent/src/index.ts",
+    "@aramo/contact": "libs/contact/src/index.ts",
+    "@aramo/conversation-intelligence": "libs/conversation-intelligence/src/index.ts",
+    "@aramo/conversation-transcript": "libs/conversation-transcript/src/index.ts",
+    "@aramo/documents": "libs/documents/src/index.ts",
+    "@aramo/documents-contracts": "libs/documents-contracts/src/index.ts",
+    "@aramo/documents-rendering": "libs/documents-rendering/src/index.ts",
+    "@aramo/engagement": "libs/engagement/src/index.ts",
+    "@aramo/entitlement": "libs/entitlement/src/index.ts",
+    "@aramo/esign": "libs/esign/src/index.ts",
+    "@aramo/esign-service": "apps/esign-service/src/app/app.module.ts",
+    "@aramo/events": "libs/events/src/index.ts",
+    "@aramo/evidence": "libs/evidence/src/index.ts",
+    "@aramo/examination": "libs/examination/src/index.ts",
+    "@aramo/export": "libs/export/src/index.ts",
+    "@aramo/fe-foundation": "libs/fe-foundation/src/index.ts",
+    "@aramo/field-masking": "libs/field-masking/src/index.ts",
+    "@aramo/identity": "libs/identity/src/index.ts",
+    "@aramo/identity-index": "libs/identity-index/src/index.ts",
+    "@aramo/import": "libs/import/src/index.ts",
+    "@aramo/ingestion": "libs/ingestion/src/index.ts",
+    "@aramo/integration": "libs/integration/src/index.ts",
+    "@aramo/job-distribution": "libs/job-distribution/src/index.ts",
+    "@aramo/job-domain": "libs/job-domain/src/index.ts",
+    "@aramo/mailer": "libs/mailer/src/index.ts",
+    "@aramo/matching": "libs/matching/src/index.ts",
+    "@aramo/metering": "libs/metering/src/index.ts",
+    "@aramo/microsoft-graph": "libs/microsoft-graph/src/index.ts",
+    "@aramo/object-storage": "libs/object-storage/src/index.ts",
+    "@aramo/outbox-publisher": "libs/outbox-publisher/src/index.ts",
+    "@aramo/pipeline": "libs/pipeline/src/index.ts",
+    "@aramo/placement": "libs/placement/src/index.ts",
+    "@aramo/placement-pipeline-bridge": "libs/placement-pipeline-bridge/src/index.ts",
+    "@aramo/platform-trust": "libs/platform-trust/src/index.ts",
+    "@aramo/policy-engine": "libs/policy-engine/src/index.ts",
+    "@aramo/policy-store": "libs/policy-store/src/index.ts",
+    "@aramo/portal": "libs/portal/src/index.ts",
+    "@aramo/portal-identity": "libs/portal-identity/src/index.ts",
+    "@aramo/pre-start-requirement": "libs/pre-start-requirement/src/index.ts",
+    "@aramo/reporting": "libs/reporting/src/index.ts",
+    "@aramo/requisition": "libs/requisition/src/index.ts",
+    "@aramo/resume-parse": "libs/resume-parse/src/index.ts",
+    "@aramo/saved-list": "libs/saved-list/src/index.ts",
+    "@aramo/selection": "libs/selection/src/index.ts",
+    "@aramo/settings": "libs/settings/src/index.ts",
+    "@aramo/skills-taxonomy": "libs/skills-taxonomy/src/index.ts",
+    "@aramo/sourced-talent": "libs/sourced-talent/src/index.ts",
+    "@aramo/submittal": "libs/submittal/src/index.ts",
+    "@aramo/submittal-eligibility": "libs/submittal-eligibility/src/index.ts",
+    "@aramo/talent-evidence": "libs/talent-evidence/src/index.ts",
+    "@aramo/talent-extraction": "libs/talent-extraction/src/index.ts",
+    "@aramo/talent-reconcile": "libs/talent-reconcile/src/index.ts",
+    "@aramo/talent-reconcile-signal": "libs/talent-reconcile-signal/src/index.ts",
+    "@aramo/talent-record": "libs/talent-record/src/index.ts",
+    "@aramo/talent-trust": "libs/talent-trust/src/index.ts",
+    "@aramo/task": "libs/task/src/index.ts",
+    "@aramo/tenant-reset": "libs/tenant-reset/src/index.ts",
+    "@aramo/visibility": "libs/visibility/src/index.ts"
   },
   "exports": {
     "@aramo/activity": [
@@ -507,6 +512,43 @@
       "sha256HexUtf8",
       "validateNormalizedTranscript"
     ],
+    "@aramo/documents": [
+      "DOCUMENTS_SCHEMA",
+      "DOCUMENT_STORAGE_PORT",
+      "DocumentExecutedWriteBackService",
+      "DocumentIdempotencyConflictError",
+      "DocumentIdempotencyService",
+      "DocumentIllegalTransitionError",
+      "DocumentNotFoundError",
+      "DocumentPacketsController",
+      "DocumentRequirementAlreadySatisfiedError",
+      "DocumentRequirementNotFoundError",
+      "DocumentRequirementsController",
+      "DocumentStorageNotSupportedError",
+      "DocumentTemplatesController",
+      "DocumentTypesController",
+      "DocumentsController",
+      "DocumentsModule",
+      "DocumentsRepository",
+      "ExecutedArtifactHashMismatchError",
+      "PrismaService",
+      "RenderService",
+      "RequirementsRepository",
+      "RevisionSourceService",
+      "TemplateImmutableError",
+      "TemplateNotFoundError",
+      "TemplateVersionNotActiveError",
+      "TemplateVersionNotFoundError",
+      "TemplatesRepository"
+    ],
+    "@aramo/documents-contracts": ["SIGNATURE_PROVIDER_PORT"],
+    "@aramo/documents-rendering": [
+      "DOCUMENT_RENDERING_PORT",
+      "PdfLibDocumentRenderingAdapter",
+      "RenderFailedError",
+      "SafePdfPipeline",
+      "UnsafePdfError"
+    ],
     "@aramo/engagement": [
       "DEFAULT_ENGAGEMENT_ENFORCEMENT_MODE",
       "ENGAGEMENT_CHANNELS",
@@ -543,6 +585,37 @@
       "reconcileTenantEntitlements",
       "resolveReconcileTarget"
     ],
+    "@aramo/esign": [
+      "DOCUMENT_SOURCE_PROVIDER_PORT",
+      "DisclosureNotAcceptedError",
+      "ESIGN_SCHEMA",
+      "EVENT_PUBLISHER_PORT",
+      "EVIDENCE_MANIFEST_SIGNER_PORT",
+      "EXECUTION_PRODUCER_PORT",
+      "EnvelopeAlreadyExecutedError",
+      "EnvelopeIllegalTransitionError",
+      "EnvelopeNotFoundError",
+      "EsignIdempotencyConflictError",
+      "EsignModule",
+      "EsignRepository",
+      "EsignService",
+      "ExecutionService",
+      "LocalEventPublisher",
+      "OutboxService",
+      "PrismaService",
+      "SIGNING_NOTIFICATION_PORT",
+      "SIGNING_TOKEN_BYTES",
+      "SignatureFieldIncompleteError",
+      "SignerNotFoundError",
+      "SigningSessionExpiredError",
+      "SigningSessionInvalidError",
+      "SoftwareEvidenceManifestSigner",
+      "computeEventHash",
+      "generateSigningToken",
+      "hashSigningToken",
+      "signingSessionExpiresAt"
+    ],
+    "@aramo/esign-service": ["AppModule"],
     "@aramo/events": ["EventsModule"],
     "@aramo/evidence": ["EvidenceModule", "EvidenceRepository", "PrismaService"],
     "@aramo/examination": [
@@ -1645,6 +1718,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/documents-http.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/domain-verification.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -2023,6 +2102,7 @@
         "status": "excluded"
       },
       { "project": "contact", "status": "production" },
+      { "project": "documents", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/entitlement/src/tests/entitlement.guard.spec.ts",
@@ -2463,6 +2543,7 @@
       { "project": "company", "status": "production" },
       { "project": "consent", "status": "production" },
       { "project": "contact", "status": "production" },
+      { "project": "documents", "status": "production" },
       { "project": "export", "status": "production" },
       { "project": "identity", "status": "production" },
       { "project": "import", "status": "production" },
@@ -2643,6 +2724,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/ci-b6p-processing.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/documents-http.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -2907,7 +2994,9 @@
         "status": "excluded"
       },
       { "project": "conversation-intelligence", "status": "production" },
+      { "project": "documents", "status": "production" },
       { "project": "entitlement", "status": "production" },
+      { "project": "esign-service", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/evidence/src/tests/evidence.repository.cross-schema-validator.integration.spec.ts",
@@ -3553,6 +3642,61 @@
       },
       { "project": "api", "status": "production" }
     ],
+    "@aramo/documents": [
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/doc6-offer-document.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/documents-http.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/documents-storage-adapter.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/submit-talent.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      { "project": "api", "status": "production" }
+    ],
+    "@aramo/documents-contracts": [
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/doc6-offer-document.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      { "project": "api", "status": "production" },
+      { "project": "esign-service", "status": "production" }
+    ],
+    "@aramo/documents-rendering": [
+      { "project": "api", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/documents/src/tests/doc2-render-service.integration.spec.ts",
+        "project": "documents",
+        "status": "excluded"
+      },
+      { "project": "documents", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/esign/src/tests/esign-flow.integration.spec.ts",
+        "project": "esign",
+        "status": "excluded"
+      },
+      { "project": "esign", "status": "production" },
+      { "project": "esign-service", "status": "production" }
+    ],
     "@aramo/engagement": [
       {
         "excludedBy": "src/tests/**/*",
@@ -3570,6 +3714,12 @@
     ],
     "@aramo/entitlement": [
       { "project": "activity", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/documents-http.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
       { "project": "api", "status": "production" },
       { "project": "attachment", "status": "production" },
       { "project": "calendar", "status": "production" },
@@ -3582,6 +3732,7 @@
       },
       { "project": "company", "status": "production" },
       { "project": "contact", "status": "production" },
+      { "project": "documents", "status": "production" },
       { "project": "export", "status": "production" },
       { "project": "identity", "status": "production" },
       { "project": "import", "status": "production" },
@@ -3612,6 +3763,22 @@
       { "project": "saved-list", "status": "production" },
       { "project": "talent-record", "status": "production" },
       { "project": "task", "status": "production" }
+    ],
+    "@aramo/esign": [
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/esign-service/src/tests/kms-evidence-manifest-signer.spec.ts",
+        "project": "esign-service",
+        "status": "excluded"
+      },
+      { "project": "esign-service", "status": "production" }
+    ],
+    "@aramo/esign-service": [
+      {
+        "from": "pact/provider/src/verify-esign.ts",
+        "project": "aramo-pact-provider",
+        "status": "unscoped"
+      }
     ],
     "@aramo/events": [],
     "@aramo/evidence": [
@@ -4746,6 +4913,7 @@
         "status": "excluded"
       },
       { "project": "auth-service", "status": "production" },
+      { "project": "esign-service", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/identity/src/tests/invite-s3-actions.integration.spec.ts",
@@ -4812,6 +4980,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/ci-b6-composition-adapters.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/documents-storage-adapter.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -4918,6 +5092,12 @@
       { "project": "visibility", "status": "production" }
     ],
     "@aramo/placement": [
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/doc6-offer-document.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/l2h-talent-journey.integration.spec.ts",
@@ -5130,6 +5310,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/cb-d2-r-reconciliation-drain.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/doc6-offer-document.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -5721,6 +5907,12 @@
       { "from": "tools/seed-e2e-data.ts", "project": "(unscoped)", "status": "unscoped" },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/doc6-offer-document.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/pipeline-talent-enrichment.service.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -5995,6 +6187,13 @@
       "targets": ["build", "lint", "preview", "serve", "test"]
     },
     {
+      "name": "aramo-sign-web",
+      "root": "apps/sign-web",
+      "sourceRoot": "apps/sign-web/src",
+      "tags": ["scope:sign"],
+      "targets": ["build", "lint", "preview", "serve", "test"]
+    },
+    {
       "name": "ats-web-pact",
       "root": "pact/consumers/ats-web",
       "sourceRoot": "pact/consumers/ats-web/src",
@@ -6149,6 +6348,27 @@
       "targets": ["build", "lint", "test"]
     },
     {
+      "name": "documents",
+      "root": "libs/documents",
+      "sourceRoot": "libs/documents/src",
+      "tags": ["scope:boundary"],
+      "targets": ["build", "lint", "test"]
+    },
+    {
+      "name": "documents-contracts",
+      "root": "libs/documents-contracts",
+      "sourceRoot": "libs/documents-contracts/src",
+      "tags": ["scope:boundary"],
+      "targets": ["build", "lint", "test"]
+    },
+    {
+      "name": "documents-rendering",
+      "root": "libs/documents-rendering",
+      "sourceRoot": "libs/documents-rendering/src",
+      "tags": ["scope:boundary"],
+      "targets": ["build", "lint", "test"]
+    },
+    {
       "name": "engagement",
       "root": "libs/engagement",
       "sourceRoot": "libs/engagement/src",
@@ -6161,6 +6381,34 @@
       "sourceRoot": "libs/entitlement/src",
       "tags": ["scope:shared"],
       "targets": ["build", "lint", "test"]
+    },
+    {
+      "name": "esign",
+      "root": "libs/esign",
+      "sourceRoot": "libs/esign/src",
+      "tags": ["scope:boundary"],
+      "targets": ["build", "lint", "test"]
+    },
+    {
+      "name": "esign-consumer-pact",
+      "root": "pact/consumers/esign-consumer",
+      "sourceRoot": "pact/consumers/esign-consumer/src",
+      "tags": ["pact-consumer"],
+      "targets": ["lint", "pact-test", "test"]
+    },
+    {
+      "name": "esign-service",
+      "root": "apps/esign-service",
+      "sourceRoot": "apps/esign-service/src",
+      "tags": [],
+      "targets": ["build", "lint", "test"]
+    },
+    {
+      "name": "esign-source-consumer-pact",
+      "root": "pact/consumers/esign-source-consumer",
+      "sourceRoot": "pact/consumers/esign-source-consumer/src",
+      "tags": ["pact-consumer"],
+      "targets": ["lint", "pact-test", "test"]
     },
     {
       "name": "events",
@@ -6434,6 +6682,13 @@
       "sourceRoot": "libs/settings/src",
       "tags": ["scope:ats"],
       "targets": ["build", "lint", "test"]
+    },
+    {
+      "name": "sign-web-consumer-pact",
+      "root": "pact/consumers/sign-web-consumer",
+      "sourceRoot": "pact/consumers/sign-web-consumer/src",
+      "tags": ["pact-consumer"],
+      "targets": ["lint", "pact-test", "test"]
     },
     {
       "name": "skills-taxonomy",

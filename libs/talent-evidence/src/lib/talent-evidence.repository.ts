@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 import { Injectable } from '@nestjs/common';
 
 import { PrismaService } from './prisma/prisma.service.js';
@@ -411,21 +413,20 @@ export interface CreateTalentDocumentInput {
   is_active: boolean;
 }
 
+// DOC-1b — TalentDocument is now a Talent-specific projection over the canonical
+// documents.Document (linked by document_id). The GENERIC file metadata
+// (uploaded_by_actor_id, uploaded_at, document_type, filename, file_storage_ref,
+// mime_type, size_bytes) moved to documents.Document/Revision/Artifact and was
+// dropped from this row; readers source it from documents via document_id.
 export interface TalentDocumentRow {
   id: string;
   talent_id: string;
   tenant_id: string;
-  uploaded_by_actor_id: string;
-  uploaded_at: Date;
-  document_type: TalentDocumentTypeValue;
-  filename: string;
-  file_storage_ref: string;
-  mime_type: string;
-  size_bytes: number;
   parse_status: TalentDocumentParseStatusValue;
   consent_scope_at_upload: string[];
   retention_policy: TalentDocumentRetentionPolicyValue;
   is_active: boolean;
+  document_id: string | null;
 }
 
 // ---- TalentResumeEdition / TalentResumeDefault (TALENT-INTEL-1 §5) ----------
@@ -1297,28 +1298,94 @@ export class TalentEvidenceRepository {
 
   // ---- TalentDocument ------------------------------------------------
 
+  // DOC-1b — the six SYSTEM DocumentType ids (seeded by the DOC-1b migration),
+  // keyed by TalentDocumentType. Deterministic; must match the migration.
+  private static readonly TALENT_DOCUMENT_TYPE_IDS: Record<TalentDocumentTypeValue, string> = {
+    resume: '01900000-0000-7000-8000-0000000002d1',
+    cover_letter: '01900000-0000-7000-8000-0000000002d2',
+    certification: '01900000-0000-7000-8000-0000000002d3',
+    work_sample: '01900000-0000-7000-8000-0000000002d4',
+    reference_letter: '01900000-0000-7000-8000-0000000002d5',
+    other: '01900000-0000-7000-8000-0000000002d6',
+  };
+
+  // DOC-1b — mint the canonical documents.Document quartet (Document +
+  // DocumentRevision + DocumentArtifact + DocumentAssociation(TALENT)) for a
+  // talent-uploaded document, INSIDE the caller's talent_evidence transaction.
+  // Same Prisma client / same connection → atomic with the TalentDocument write;
+  // a rollback removes both (NO orphan). This is the resolution of the W2
+  // cross-schema-atomicity concern (supersedes the documents-first/orphan sketch
+  // in directive R-1b-3). Returns the new documents.Document id.
+  private async mintCanonicalDocument(
+    tx: { $executeRawUnsafe(query: string, ...values: unknown[]): Promise<number> },
+    input: {
+      tenant_id: string;
+      talent_id: string;
+      document_type: TalentDocumentTypeValue;
+      filename: string;
+      file_storage_ref: string;
+      mime_type: string;
+      size_bytes: number;
+      uploaded_by_actor_id: string;
+      uploaded_at: Date;
+      is_active: boolean;
+    },
+  ): Promise<string> {
+    const documentId = randomUUID();
+    const revisionId = randomUUID();
+    const artifactId = randomUUID();
+    const associationId = randomUUID();
+    const typeId = TalentEvidenceRepository.TALENT_DOCUMENT_TYPE_IDS[input.document_type];
+    const status = input.is_active ? 'EXECUTED' : 'VOIDED';
+    await tx.$executeRawUnsafe(
+      `INSERT INTO "documents"."Document" ("id","tenant_id","document_type_id","title","status","execution_mode","source_kind","created_by","created_at") VALUES ($1,$2,$3,$4,$5,'NO_SIGNATURE','UPLOADED',$6,$7)`,
+      documentId, input.tenant_id, typeId, input.filename, status, input.uploaded_by_actor_id, input.uploaded_at,
+    );
+    await tx.$executeRawUnsafe(
+      `INSERT INTO "documents"."DocumentRevision" ("id","tenant_id","document_id","revision_number","mime_type","byte_size","content_sha256","status","created_by","created_at","frozen_at") VALUES ($1,$2,$3,1,$4,$5,'unknown','FROZEN',$6,$7,$7)`,
+      revisionId, input.tenant_id, documentId, input.mime_type, input.size_bytes, input.uploaded_by_actor_id, input.uploaded_at,
+    );
+    await tx.$executeRawUnsafe(
+      `INSERT INTO "documents"."DocumentArtifact" ("id","tenant_id","revision_id","document_id","artifact_role","storage_provider","storage_locator","mime_type","byte_size","sha256","immutability_state","retention_class","created_at","created_by") VALUES ($1,$2,$3,$4,'SOURCE_UPLOAD','aramo-s3',$5,$6,$7,'unknown','FROZEN','TALENT_DOCUMENT',$8,$9)`,
+      artifactId, input.tenant_id, revisionId, documentId, input.file_storage_ref, input.mime_type, input.size_bytes, input.uploaded_at, input.uploaded_by_actor_id,
+    );
+    await tx.$executeRawUnsafe(
+      `INSERT INTO "documents"."DocumentAssociation" ("id","tenant_id","document_id","resource_type","resource_id","relationship","created_at","created_by") VALUES ($1,$2,$3,'TALENT',$4,'SUBJECT',$5,$6)`,
+      associationId, input.tenant_id, documentId, input.talent_id, input.uploaded_at, input.uploaded_by_actor_id,
+    );
+    return documentId;
+  }
+
   async createTalentDocument(
     input: CreateTalentDocumentInput,
   ): Promise<TalentDocumentRow> {
-    const created = await this.prisma.talentDocument.create({
-      data: {
-        id: input.id,
-        talent_id: input.talent_id,
+    return this.prisma.$transaction(async (tx) => {
+      const documentId = await this.mintCanonicalDocument(tx, {
         tenant_id: input.tenant_id,
-        uploaded_by_actor_id: input.uploaded_by_actor_id,
-        uploaded_at: input.uploaded_at,
+        talent_id: input.talent_id,
         document_type: input.document_type,
         filename: input.filename,
         file_storage_ref: input.file_storage_ref,
         mime_type: input.mime_type,
         size_bytes: input.size_bytes,
-        parse_status: input.parse_status,
-        consent_scope_at_upload: [...input.consent_scope_at_upload],
-        retention_policy: input.retention_policy,
+        uploaded_by_actor_id: input.uploaded_by_actor_id,
+        uploaded_at: input.uploaded_at,
         is_active: input.is_active,
-      },
+      });
+      const created = await tx.talentDocument.create({
+        data: {
+          id: input.id,
+          talent_id: input.talent_id,
+          tenant_id: input.tenant_id,
+          parse_status: input.parse_status,
+          consent_scope_at_upload: [...input.consent_scope_at_upload],
+          retention_policy: input.retention_policy,
+          is_active: input.is_active,
+          document_id: documentId,
+        },
+      });
+      return created as TalentDocumentRow;
     });
-    return created as TalentDocumentRow;
   }
 
   async findTalentDocumentById(id: string): Promise<TalentDocumentRow | null> {
@@ -1797,22 +1864,29 @@ export class TalentEvidenceRepository {
     certifications: readonly CreateTalentCertificationEntryInput[];
   }): Promise<{ document_id: string; edition_id: string }> {
     return this.prisma.$transaction(async (tx) => {
+      // DOC-1b — mint the canonical Document quartet atomically in this tx.
+      const canonicalDocumentId = await this.mintCanonicalDocument(tx, {
+        tenant_id: input.tenant_id,
+        talent_id: input.talent_id,
+        document_type: 'resume',
+        filename: input.document.filename,
+        file_storage_ref: input.document.file_storage_ref,
+        mime_type: input.document.mime_type,
+        size_bytes: input.document.size_bytes,
+        uploaded_by_actor_id: input.document.uploaded_by_actor_id,
+        uploaded_at: input.document.uploaded_at,
+        is_active: true,
+      });
       await tx.talentDocument.create({
         data: {
           id: input.document.id,
           talent_id: input.talent_id,
           tenant_id: input.tenant_id,
-          uploaded_by_actor_id: input.document.uploaded_by_actor_id,
-          uploaded_at: input.document.uploaded_at,
-          document_type: 'resume',
-          filename: input.document.filename,
-          file_storage_ref: input.document.file_storage_ref,
-          mime_type: input.document.mime_type,
-          size_bytes: input.document.size_bytes,
           parse_status: 'parsed',
           consent_scope_at_upload: [],
           retention_policy: 'default',
           is_active: true,
+          document_id: canonicalDocumentId,
         },
       });
       await tx.talentResumeEdition.create({
@@ -1967,15 +2041,23 @@ export class TalentEvidenceRepository {
     const rows = await this.prisma.$queryRawUnsafe<
       Array<Record<string, unknown>>
     >(
+      // DOC-1b cutover — the document metadata (filename/mime_type/uploaded_at)
+      // is sourced from the canonical documents.Document + its revision-1, reached
+      // via the UUID-only TalentDocument.document_id link (no cross-schema FK).
+      // filename→Document.title, mime_type→DocumentRevision.mime_type,
+      // uploaded_at→Document.created_at. The output aliases are unchanged.
       `SELECT e.id, e.tenant_id, e.talent_id, e.talent_document_id, e.attachment_id,
               e.content_hash, e.purpose, e.label, e.requisition_id, e.client_context_id,
               e.derived_from_edition_id, e.lifecycle_status, e.created_at, e.created_by,
-              d.filename AS document_filename, d.mime_type AS document_mime_type,
-              d.uploaded_at AS document_uploaded_at,
+              doc.title AS document_filename, rev.mime_type AS document_mime_type,
+              doc.created_at AS document_uploaded_at,
               COALESCE(df.resume_edition_id = e.id, false) AS is_default,
               dr.status AS processing_status
          FROM "talent_evidence"."TalentResumeEdition" e
-         JOIN "talent_evidence"."TalentDocument" d ON d.id = e.talent_document_id
+         JOIN "talent_evidence"."TalentDocument" td ON td.id = e.talent_document_id
+         JOIN "documents"."Document" doc ON doc.id = td.document_id
+         JOIN "documents"."DocumentRevision" rev
+           ON rev.document_id = doc.id AND rev.revision_number = 1
          LEFT JOIN "talent_evidence"."TalentResumeDefault" df
            ON df.tenant_id = e.tenant_id AND df.talent_id = e.talent_id
          -- TI-1F-A: processing_status is DERIVED from the edition's
@@ -2120,6 +2202,17 @@ export class TalentEvidenceRepository {
       );
       ids.push(...rows.map((r) => r.id));
     }
+    // DOC-1b — the documents.DocumentAssociation talent link uses resource_id
+    // (there is no talent_id column), so the generic loop above misses it. This
+    // is exactly the omission class the education/certification erasure gap
+    // flagged; re-point it explicitly (resource_type='TALENT', loser→survivor).
+    await this.prisma.$executeRawUnsafe(
+      `UPDATE "documents"."DocumentAssociation" SET "resource_id" = $1::uuid
+         WHERE "resource_id" = $2::uuid AND "tenant_id" = $3::uuid AND "resource_type" = 'TALENT'`,
+      args.to_record_id,
+      args.from_record_id,
+      args.tenant_id,
+    );
     return { repointed_ids: ids, removed_rows: [] };
   }
 }

@@ -120,6 +120,30 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       'ACTIVITY_ALREADY_REDACTED',
       // RN-1 Requisition Enterprise Notes — pin refusal (non-note / redacted).
       'ACTIVITY_NOT_PINNABLE',
+      // DOC-1a (Documents core) — canonical document lifecycle errors.
+      'DOCUMENT_NOT_FOUND',
+      'DOCUMENT_TYPE_NOT_FOUND',
+      'DOCUMENT_ILLEGAL_TRANSITION',
+      // DOC-2 (Templates + Requirements + Rendering) — template/requirement/render errors.
+      'TEMPLATE_NOT_FOUND',
+      'TEMPLATE_VERSION_NOT_FOUND',
+      'TEMPLATE_VERSION_NOT_ACTIVE',
+      'TEMPLATE_IMMUTABLE',
+      'DOCUMENT_REQUIREMENT_NOT_FOUND',
+      'DOCUMENT_REQUIREMENT_ALREADY_SATISFIED',
+      'DOCUMENT_RENDER_FAILED',
+      'DOCUMENT_UPLOAD_UNSAFE',
+      // DOC-3 (Native E-Sign Service Core) — envelope/signer/session errors.
+      'ENVELOPE_NOT_FOUND',
+      'ENVELOPE_ILLEGAL_TRANSITION',
+      'ENVELOPE_ALREADY_EXECUTED',
+      'SIGNER_NOT_FOUND',
+      'SIGNING_SESSION_INVALID',
+      'SIGNING_SESSION_EXPIRED',
+      'DISCLOSURE_NOT_ACCEPTED',
+      'SIGNATURE_FIELD_INCOMPLETE',
+      // DOC-4 (R-4-7) — 1 executed-artifact write-back integrity failure (422).
+      'DOCUMENT_EXECUTED_HASH_MISMATCH',
       // Track 1 T1-b — 1 optimistic-concurrency stale-write refusal on
       // requisition.Requisition (versioned update, version mismatch → 409).
       'REQUISITION_VERSION_CONFLICT',
@@ -185,6 +209,7 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       'CLIENT_SUBMITTAL_ENGAGEMENT_POLICY_MISSING',
       'CLIENT_SUBMITTAL_ENGAGEMENT_INCOMPLETE',
       'CLIENT_SUBMITTAL_ENGAGEMENT_EVIDENCE_UNAVAILABLE',
+      'SUBMITTAL_RTR_NOT_EXECUTED',
       'ENGAGEMENT_POLICY_SCHEMA_INVALID',
       'ENGAGEMENT_POLICY_NOT_ACTIVATABLE',
       'MICROSOFT_REAUTHORIZATION_REQUIRED',

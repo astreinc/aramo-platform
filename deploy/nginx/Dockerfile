@@ -32,6 +32,7 @@ RUN npm run prisma:generate
 RUN npx nx build aramo-ats-web --skip-nx-cache
 RUN npx nx build aramo-platform-web --skip-nx-cache
 RUN npx nx build aramo-portal-web --skip-nx-cache
+RUN npx nx build aramo-sign-web --skip-nx-cache
 
 # ---------- Stage 2: config validation gate (§2.7 — mirrors the retired front door's config validate) ---
 # Materialize the template with DEFAULT env against an EPHEMERAL self-signed cert
@@ -48,11 +49,12 @@ RUN set -eux; \
     export NGINX_TENANT_SERVER_NAME=localhost \
            NGINX_ADMIN_SERVER_NAME=admin.localhost \
            NGINX_PORTAL_SERVER_NAME=portal.localhost \
+           NGINX_SIGN_SERVER_NAME=sign.localhost \
            NGINX_CERT_DIR=/tmp/aramo-ephemeral-certs; \
     mkdir -p "$NGINX_CERT_DIR"; \
     openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj '/CN=localhost' \
       -keyout "$NGINX_CERT_DIR/privkey.pem" -out "$NGINX_CERT_DIR/fullchain.pem"; \
-    envsubst '${NGINX_TENANT_SERVER_NAME} ${NGINX_ADMIN_SERVER_NAME} ${NGINX_PORTAL_SERVER_NAME} ${NGINX_CERT_DIR}' \
+    envsubst '${NGINX_TENANT_SERVER_NAME} ${NGINX_ADMIN_SERVER_NAME} ${NGINX_PORTAL_SERVER_NAME} ${NGINX_SIGN_SERVER_NAME} ${NGINX_CERT_DIR}' \
       < /tmp/aramo.conf.template > /tmp/aramo.materialized.conf; \
     # nginx (unlike the retired front door) resolves literal-hostname upstreams at config-test time;
     # this build stage has no compose DNS and BuildKit mounts /etc/hosts read-only.
@@ -63,7 +65,7 @@ RUN set -eux; \
     # VERBATIM (§2.2) — this rewrite touches only the build-time syntax test. A
     # typo'd/unknown upstream name is NOT rewritten and still fails to resolve, so
     # name errors are still caught.
-    sed -E 's#(proxy_pass http://)(api|auth-service|platform-admin)(:)#\1127.0.0.1\3#g' \
+    sed -E 's#(proxy_pass http://)(api|auth-service|platform-admin|esign-service)(:)#\1127.0.0.1\3#g' \
       /tmp/aramo.materialized.conf > /etc/nginx/conf.d/aramo.conf; \
     nginx -t
 
@@ -78,6 +80,7 @@ LABEL org.opencontainers.image.revision=$GIT_REVISION
 COPY --from=web-builder /app/dist/apps/ats-web /srv/ats
 COPY --from=web-builder /app/dist/apps/platform-web /srv/admin
 COPY --from=web-builder /app/dist/apps/portal-web /srv/portal
+COPY --from=web-builder /app/dist/apps/sign-web /srv/sign
 # The validated nginx.conf (COPY --from=conf-validate forces the §2.7 gate to run,
 # and carries the byte-identical validated config forward — nothing else from the
 # validation stage reaches runtime: no ephemeral cert, no materialized conf).
@@ -98,6 +101,7 @@ ENV NGINX_ENVSUBST_FILTER=^NGINX_
 ENV NGINX_TENANT_SERVER_NAME=localhost \
     NGINX_ADMIN_SERVER_NAME=admin.localhost \
     NGINX_PORTAL_SERVER_NAME=portal.localhost \
+    NGINX_SIGN_SERVER_NAME=sign.localhost \
     NGINX_CERT_DIR=/etc/letsencrypt/live/aramo.ai
 # Drop the base image's default server so only our block is included.
 RUN rm -f /etc/nginx/conf.d/default.conf

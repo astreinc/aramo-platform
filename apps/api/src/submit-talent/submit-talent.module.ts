@@ -9,6 +9,7 @@ import {
 } from '@aramo/submittal-eligibility';
 
 import { EngagementGateModule } from '../engagement/engagement-gate.module.js';
+import { DocumentReadinessModule } from '../rtr/document-readiness.module.js';
 
 import { SubmitTalentController } from './submit-talent.controller.js';
 import { SubmitTalentToClientService } from './submit-talent.service.js';
@@ -20,7 +21,7 @@ import { SubmitTalentToClientService } from './submit-talent.service.js';
 // transaction on the submittal-eligibility connection (bound as 'SubmitTalentDb')
 // and issues cross-schema parameterized raw SQL confined to that boundary.
 @Module({
-  imports: [AuthModule, SubmittalEligibilityModule, SubmittalModule, ConsentModule, EngagementGateModule],
+  imports: [AuthModule, SubmittalEligibilityModule, SubmittalModule, ConsentModule, EngagementGateModule, DocumentReadinessModule],
   controllers: [SubmitTalentController],
   providers: [
     SubmitTalentToClientService,

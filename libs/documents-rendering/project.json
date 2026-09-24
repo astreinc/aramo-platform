@@ -1,0 +1,30 @@
+{
+  "name": "documents-rendering",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/documents-rendering/src",
+  "projectType": "library",
+  "tags": ["scope:boundary"],
+  "targets": {
+    "build": {
+      "executor": "@nx/js:tsc",
+      "outputs": ["{options.outputPath}"],
+      "options": {
+        "outputPath": "dist/libs/documents-rendering",
+        "main": "libs/documents-rendering/src/index.ts",
+        "tsConfig": "libs/documents-rendering/tsconfig.lib.json"
+      }
+    },
+    "lint": {
+      "executor": "@nx/eslint:lint",
+      "options": {
+        "lintFilePatterns": ["libs/documents-rendering/**/*.ts"]
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "vitest run --passWithNoTests --root libs/documents-rendering"
+      }
+    }
+  }
+}

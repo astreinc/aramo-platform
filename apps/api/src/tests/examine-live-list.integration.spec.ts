@@ -105,7 +105,10 @@ const MIGRATIONS = [
   'libs/talent-record/prisma/migrations/20260919120000_talent_intel_1d_c_resume_text_edition/migration.sql',
   'libs/talent-record/prisma/migrations/20260920160000_talent_intel_1h_resume_text_edition_history/migration.sql',
   // talent-evidence
+  'libs/documents/prisma/migrations/20260921180000_init_documents_model/migration.sql',
+  'libs/documents/prisma/migrations/20260922130000_doc2_templates_rendering_requirements/migration.sql',
   'libs/talent-evidence/prisma/migrations/20260519170000_init_talent_evidence_model/migration.sql',
+  'libs/talent-evidence/prisma/migrations/20260922120000_doc1b_talentdocument_reconciliation/migration.sql',
   'libs/talent-evidence/prisma/migrations/20260714120000_tr7_b1_education_certification/migration.sql',
   'libs/talent-evidence/prisma/migrations/20260915120000_hf1_resume_provenance/migration.sql',
   'libs/talent-evidence/prisma/migrations/20260915170000_hf2_experience_intelligence/migration.sql',

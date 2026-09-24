@@ -377,5 +377,43 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(expiresMs).toBeGreaterThan(60_000);
       expect(expiresMs).toBeLessThan(125_000);
     });
+
+    it('DOC-1a — headObject returns size for an existing object and null for a missing key', async () => {
+      const key = `${TENANT_ID}/documents/head-probe`;
+      const body = Buffer.from('%PDF head probe');
+      await service.putObjectBytes({ storage_key: key, body, content_type: 'application/pdf', requestId: REQ_ID });
+      const head = await service.headObject({ storage_key: key, requestId: REQ_ID });
+      expect(head).not.toBeNull();
+      expect(head?.byte_length).toBe(body.byteLength);
+      const missing = await service.headObject({
+        storage_key: `${TENANT_ID}/documents/does-not-exist`,
+        requestId: REQ_ID,
+      });
+      expect(missing).toBeNull();
+    });
+
+    it('DOC-1a — verifyObjectSha256 confirms integrity and rejects a wrong digest', async () => {
+      const key = `${TENANT_ID}/documents/verify-probe`;
+      const put = await service.putObjectBytes({
+        storage_key: key,
+        body: Buffer.from('executed pdf bytes'),
+        content_type: 'application/pdf',
+        requestId: REQ_ID,
+      });
+      const ok = await service.verifyObjectSha256({
+        storage_key: key,
+        expected_sha256: put.sha256,
+        requestId: REQ_ID,
+        maxBytes: 10_000,
+      });
+      expect(ok).toBe(true);
+      const bad = await service.verifyObjectSha256({
+        storage_key: key,
+        expected_sha256: 'deadbeef',
+        requestId: REQ_ID,
+        maxBytes: 10_000,
+      });
+      expect(bad).toBe(false);
+    });
   },
 );

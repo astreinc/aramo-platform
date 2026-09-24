@@ -372,6 +372,37 @@ export const ERROR_CODES = [
   // not a note, or a redacted note cannot be pinned (HTTP 422; mirrors
   // ACTIVITY_NOT_REDACTABLE / SUBMITTAL_STATE_INVALID).
   'ACTIVITY_NOT_PINNABLE',
+  // DOC-1a (Documents core) — canonical document lifecycle errors. NOT_FOUND
+  // variants are tenant-scoped (a cross-tenant id is NOT FOUND, never 403);
+  // ILLEGAL_TRANSITION is a document state-machine refusal (409).
+  'DOCUMENT_NOT_FOUND',
+  'DOCUMENT_TYPE_NOT_FOUND',
+  'DOCUMENT_ILLEGAL_TRANSITION',
+  // DOC-2 (Templates + Requirements + Rendering) — template/requirement/render
+  // errors. TEMPLATE_IMMUTABLE + *_NOT_ACTIVE are state refusals (409); render
+  // + upload-safety failures are unprocessable (422). Same order as common.yaml.
+  'TEMPLATE_NOT_FOUND',
+  'TEMPLATE_VERSION_NOT_FOUND',
+  'TEMPLATE_VERSION_NOT_ACTIVE',
+  'TEMPLATE_IMMUTABLE',
+  'DOCUMENT_REQUIREMENT_NOT_FOUND',
+  'DOCUMENT_REQUIREMENT_ALREADY_SATISFIED',
+  'DOCUMENT_RENDER_FAILED',
+  'DOCUMENT_UPLOAD_UNSAFE',
+  // DOC-3 (Native E-Sign Service Core) — envelope/signer/session lifecycle
+  // errors. NOT_FOUND variants are tenant-scoped (404); illegal transitions +
+  // incomplete/already-terminal are 409; capability-session failures are 401.
+  'ENVELOPE_NOT_FOUND',
+  'ENVELOPE_ILLEGAL_TRANSITION',
+  'ENVELOPE_ALREADY_EXECUTED',
+  'SIGNER_NOT_FOUND',
+  'SIGNING_SESSION_INVALID',
+  'SIGNING_SESSION_EXPIRED',
+  'DISCLOSURE_NOT_ACCEPTED',
+  'SIGNATURE_FIELD_INCOMPLETE',
+  // DOC-4 (R-4-7) — executed-artifact write-back integrity failure: the executed
+  // or certificate bytes do not match the asserted sha256 (never stored).
+  'DOCUMENT_EXECUTED_HASH_MISMATCH',
   // Track 1 T1-b (ruling R2) — optimistic-concurrency stale-write refusal on
   // requisition.Requisition. The PATCH (or any versioned update) supplied an
   // expected `version` that no longer matches the stored row: someone else
@@ -598,6 +629,9 @@ export const ERROR_CODES = [
   'CLIENT_SUBMITTAL_ENGAGEMENT_POLICY_MISSING',
   'CLIENT_SUBMITTAL_ENGAGEMENT_INCOMPLETE',
   'CLIENT_SUBMITTAL_ENGAGEMENT_EVIDENCE_UNAVAILABLE',
+  // DOC-5 (R-5-10, 409): the document-readiness gate found no EXECUTED
+  // RIGHT_TO_REPRESENT jointly associated to this exact Talent + Requisition.
+  'SUBMITTAL_RTR_NOT_EXECUTED',
   // COMM-C3 — engagement-policy publish/admin refusals (422). SCHEMA_INVALID:
   // typed/structural validation failed. NOT_ACTIVATABLE: a required channel has no
   // evidence producer yet (e.g. email today), so the policy cannot be activated (R7).

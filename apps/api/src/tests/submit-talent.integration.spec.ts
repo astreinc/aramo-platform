@@ -11,6 +11,11 @@ import { Client } from 'pg';
 import { PrismaService } from '@aramo/submittal-eligibility';
 import { CommunicationsRepository, CommunicationsPrismaService } from '@aramo/communications';
 import { EngagementPolicyService } from '@aramo/engagement';
+import {
+  DocumentsRepository,
+  DocumentIdempotencyService,
+  PrismaService as DocumentsPrismaService,
+} from '@aramo/documents';
 
 // COMM-C3 — the engagement gate is composed into the orchestrator; imported here
 // to construct the real gate against the same test DB (dormant unless a policy is
@@ -18,6 +23,13 @@ import { EngagementPolicyService } from '@aramo/engagement';
 import { EngagementPolicyGatewayAdapter } from '../engagement/engagement-policy-gateway.adapter.js';
 import { VoiceEvidenceReaderAdapter } from '../engagement/voice-evidence.adapter.js';
 import { EngagementGateService } from '../engagement/engagement-gate.service.js';
+// DOC-5 (R-5-7, PL-1) — the document-readiness gate is composed into the
+// orchestrator. Constructed here against the SAME test DB (documents schema
+// applied below). CONDITIONAL: with NO RTR requirement declared for a
+// requisition it returns satisfied (ungated), so these pre-RTR proofs — none of
+// which declare an RTR requirement — stay unchanged. This is the load-bearing
+// proof that existing submits remain ungated with the REAL gate wired.
+import { DocumentReadinessGate } from '../rtr/document-readiness.gate.js';
 
 // Lane L8-B1 (v1.2) — the load-bearing atomicity + authority proofs for the
 // "Submit Talent to Client" orchestrator (real Postgres 17, 7 schemas). These
@@ -107,6 +119,13 @@ const MIGRATIONS = [
   'libs/communications/prisma/migrations/20260905130000_comm_c2b_provider_identity_email_tenant/migration.sql',
   'libs/communications/prisma/migrations/20260905140000_comm_c2b_meeting_channel/migration.sql',
   'libs/communications/prisma/migrations/20260921170000_comm_c4_email_content_capture/migration.sql',
+  // DOC-5 — the documents schema, so the REAL DocumentReadinessGate resolves
+  // against a real DocumentRequirement table. init + DOC-2 (requirements) + the
+  // DOC-5 RTR SYSTEM-type seed. None of these pre-RTR tenants declare an RTR
+  // requirement, so findRequirement returns null ⇒ ungated (proof preserved).
+  'libs/documents/prisma/migrations/20260921180000_init_documents_model/migration.sql',
+  'libs/documents/prisma/migrations/20260922130000_doc2_templates_rendering_requirements/migration.sql',
+  'libs/documents/prisma/migrations/20260923170000_doc5_seed_rtr_document_type/migration.sql',
 ].map(mig);
 
 const TI1DD_EDITION = randomUUID();
@@ -119,6 +138,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     let sql: Client;
     let db: PrismaService;
     let commsPrisma: CommunicationsPrismaService;
+    let docsPrisma: DocumentsPrismaService;
     let engagementPolicy: EngagementPolicyService;
     let svc: InstanceType<typeof SubmitTalentToClientService>;
 
@@ -143,12 +163,19 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         new VoiceEvidenceReaderAdapter(new CommunicationsRepository(commsPrisma)),
         db as never,
       );
-      svc = new SubmitTalentToClientService(db, logger, gate);
+      // DOC-5 — the REAL readiness gate over the documents schema on the same DB.
+      docsPrisma = new DocumentsPrismaService(url);
+      await docsPrisma.$connect();
+      const documentReadiness = new DocumentReadinessGate(
+        new DocumentsRepository(docsPrisma, new DocumentIdempotencyService(docsPrisma)),
+      );
+      svc = new SubmitTalentToClientService(db, logger, gate, documentReadiness);
     }, 180_000);
 
     afterAll(async () => {
       await db?.$disconnect();
       await commsPrisma?.$disconnect();
+      await docsPrisma?.$disconnect();
       await sql?.end();
       await container?.stop();
     });

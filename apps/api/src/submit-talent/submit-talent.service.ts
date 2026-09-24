@@ -10,6 +10,7 @@ import {
 } from '@aramo/submittal-eligibility';
 
 import { EngagementGateService } from '../engagement/engagement-gate.service.js';
+import { DocumentReadinessGate } from '../rtr/document-readiness.gate.js';
 
 // Lane L8-B1 (v1.2) — the "Submit Talent to Client" orchestration command.
 //
@@ -99,6 +100,9 @@ export class SubmitTalentToClientService {
     // COMM-C3 — the engagement gate (composition-root); resolves policy + neutral
     // evidence + provenance on its OWN connections and returns the typed verdict.
     private readonly engagementGate: EngagementGateService,
+    // DOC-5 — the document-readiness (RTR) gate; resolves the same-document
+    // executed-RTR verdict on its own connection. Checked LAST in the order.
+    private readonly documentReadiness: DocumentReadinessGate,
   ) {}
 
   async submitToClient(
@@ -260,11 +264,20 @@ export class SubmitTalentToClientService {
         override: input.engagement_override,
         correlation_id: requestId,
       });
+      // DOC-5 — document-readiness (RTR) gate, resolved after engagement, before
+      // the pure decision. The gate reads Documents on its own connection (never
+      // mutates Submittal); the pure decision denies LAST with the carried reason.
+      const document = await this.documentReadiness.assess({
+        tenant_id,
+        talent_id: talent_record_id,
+        requisition_id,
+      });
       const decision = evaluateEligibility(inputs, {
         now: new Date(),
         consumed_count: consumedRows[0]?.n ?? 0,
         restriction_active,
         engagement,
+        document,
       });
       if (!decision.eligible && decision.deny !== undefined) {
         throw err(decision.deny, `Submittal not eligible: ${decision.deny}`, 409, {
