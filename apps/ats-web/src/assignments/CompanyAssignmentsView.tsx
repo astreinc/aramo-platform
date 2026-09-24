@@ -145,7 +145,7 @@ export function CompanyAssignmentsView({
     setState({ status: 'loading' });
     fetchAssignmentsFun(companyId)
       .then((view) => {
-        setState({ status: 'ready', rows: view.items });
+        setState({ status: 'ready', rows: view.items ?? [] });
         void resolveNamesFun(
           view.items.flatMap((r) =>
             r.assigned_by_id !== null ? [r.user_id, r.assigned_by_id] : [r.user_id],

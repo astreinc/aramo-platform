@@ -117,6 +117,9 @@ export function CompanyDetailView({ sessionOverride }: CompanyDetailViewProps) {
   // the in-flight edits (string-map); Cancel discards it without mutation.
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<OverviewDraft>({});
+  // Controlled active tab: the header Edit jumps to Overview (edit is in place
+  // there); the Overview "Manage" affordance jumps to the Account team tab.
+  const [activeTab, setActiveTab] = useState('overview');
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [contacts, setContacts] = useState<readonly ContactView[]>([]);
@@ -232,6 +235,7 @@ export function CompanyDetailView({ sessionOverride }: CompanyDetailViewProps) {
     setDraft(companyToDraft(company));
     setSaveError(null);
     setEditing(true);
+    setActiveTab('overview'); // edit is in place on Overview (prototype startEdit)
   }
   function cancelEdit(): void {
     setEditing(false);
@@ -284,6 +288,7 @@ export function CompanyDetailView({ sessionOverride }: CompanyDetailViewProps) {
           canEditContact={canEditContact}
           canAssign={canAssign}
           canSeeCommercial={canSeeCommercial}
+          onManageTeam={() => setActiveTab('account-team')}
         />
       ),
     },
@@ -474,7 +479,13 @@ export function CompanyDetailView({ sessionOverride }: CompanyDetailViewProps) {
       </div>
 
       <div className="rc-mt-16">
-        <Tabs items={tabs} ariaLabel="Company sections" initialId="overview" />
+        <Tabs
+          items={tabs}
+          ariaLabel="Company sections"
+          initialId="overview"
+          selectedId={activeTab}
+          onSelectedChange={setActiveTab}
+        />
       </div>
     </section>
   );
@@ -546,6 +557,7 @@ function OverviewPanel({
   canEditContact,
   canAssign,
   canSeeCommercial,
+  onManageTeam,
 }: {
   readonly company: CompanyView;
   readonly editing: boolean;
@@ -562,6 +574,7 @@ function OverviewPanel({
   readonly canEditContact: boolean;
   readonly canAssign: boolean;
   readonly canSeeCommercial: boolean;
+  readonly onManageTeam: () => void;
 }) {
   // In view mode the fields read from the company's display strings; in edit
   // mode from the live draft. companyToDraft gives display-ready strings for
@@ -759,16 +772,18 @@ function OverviewPanel({
         <Card>
           <div className="rc-teamhd">
             <h3 className="rc-section-h">Account team</h3>
-            {/* Assign users to this client (company:assign) — the members here
-                gate who can see the client's requisitions (AUTHZ-D4b). */}
-            {canAssign ? (
-              <Link
-                to={`/companies/${company.id}/assignments`}
-                className="rc-link-strong rc-teamhd__manage"
-              >
-                Manage
-              </Link>
-            ) : null}
+            {/* Switch to the in-page Account team tab (prototype goTeam) — the
+                members there gate who can see the client's requisitions
+                (AUTHZ-D4b). "Manage" when the actor can assign, else "View". */}
+            <Button
+              unstyled
+              type="button"
+              className="rc-link-strong rc-teamhd__manage"
+              onClick={onManageTeam}
+              data-testid="overview-manage-team"
+            >
+              {canAssign ? 'Manage' : 'View'}
+            </Button>
           </div>
           <ul className="rc-detail-list rc-mt-8">
             <li className="rc-tmrow">

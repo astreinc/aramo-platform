@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { Session } from '@aramo/fe-foundation';
+import { ToastProvider, type Session } from '@aramo/fe-foundation';
 
 import type { RecruitingStatus, RequisitionView } from '../requisitions/types';
 
@@ -141,16 +141,18 @@ function installFetch(map: FetchMap) {
 
 function renderAt(path: string, session: Session) {
   return render(
-    <MemoryRouter initialEntries={[path]}>
-      <Routes>
-        <Route
-          path="/companies/:companyId"
-          element={<CompanyDetailView sessionOverride={session} />}
-        />
-        <Route path="/companies" element={<p>Companies list</p>} />
-        <Route path="/requisitions/:reqId" element={<p>Req detail</p>} />
-      </Routes>
-    </MemoryRouter>,
+    <ToastProvider>
+      <MemoryRouter initialEntries={[path]}>
+        <Routes>
+          <Route
+            path="/companies/:companyId"
+            element={<CompanyDetailView sessionOverride={session} />}
+          />
+          <Route path="/companies" element={<p>Companies list</p>} />
+          <Route path="/requisitions/:reqId" element={<p>Req detail</p>} />
+        </Routes>
+      </MemoryRouter>
+    </ToastProvider>,
   );
 }
 
@@ -225,15 +227,29 @@ describe('CompanyDetailView (account hub)', () => {
     expect(screen.queryByRole('link', { name: 'Manage' })).toBeNull();
   });
 
-  it('Account team card exposes a "Manage" link to assignments with company:assign', async () => {
+  it('Overview "Manage" switches to the Account team TAB in place (no navigation)', async () => {
     installFetch({
       '/v1/companies/co-1': makeCompany(),
       '/v1/companies/co-1/team': { owner_user_id: 'usr-owner', member_user_ids: [] },
+      '/v1/companies/co-1/assignments': { items: [] },
     });
     renderAt('/companies/co-1', makeSession(['company:read', 'company:assign']));
     await waitFor(() => expect(screen.getByText('Account team')).toBeInTheDocument());
-    const manage = screen.getByRole('link', { name: 'Manage' });
-    expect(manage).toHaveAttribute('href', '/companies/co-1/assignments');
+    // Overview tab is active first
+    expect(screen.getByRole('tab', { name: 'Overview' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    // Manage is a button (not a link to a separate screen) and switches tabs
+    const manage = screen.getByTestId('overview-manage-team');
+    expect(manage.tagName).toBe('BUTTON');
+    fireEvent.click(manage);
+    await waitFor(() =>
+      expect(screen.getByRole('tab', { name: /Account team/ })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      ),
+    );
   });
 
   it('Placements tab lists placed talent at the company (report+req scopes)', async () => {
@@ -431,6 +447,37 @@ describe('CompanyDetailView (account hub)', () => {
     // … and the KPI strip + tabs REMAIN (edit is in place, not a takeover)
     expect(screen.getByText('Open requisitions')).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Overview' })).toBeInTheDocument();
+  });
+
+  it('Edit from another tab jumps back to Overview (edit is in place there)', async () => {
+    // prototype startEdit: setState({ editing:true, tab:'Overview' }).
+    installFetch({
+      '/v1/companies/co-1': makeCompany(),
+      '/v1/requisitions': { items: [] },
+    });
+    renderAt(
+      '/companies/co-1',
+      makeSession(['company:read', 'company:edit', 'requisition:read']),
+    );
+    await waitFor(() =>
+      expect(screen.getByRole('tab', { name: /Requisitions/ })).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByRole('tab', { name: /Requisitions/ }));
+    await waitFor(() =>
+      expect(screen.getByRole('tab', { name: /Requisitions/ })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      ),
+    );
+    // Edit → snaps back to Overview and enters edit mode
+    fireEvent.click(screen.getByTestId('company-detail-edit'));
+    await waitFor(() =>
+      expect(screen.getByRole('tab', { name: 'Overview' })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      ),
+    );
+    expect(screen.getByLabelText('Company name')).toBeInTheDocument();
   });
 
   it('Save PATCHes only the changed fields via updateCompany and exits edit mode', async () => {
