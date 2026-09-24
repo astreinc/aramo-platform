@@ -11600,6 +11600,11 @@
     {
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
+      "to": "apps/api/src/documents/documents-esign.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
       "to": "apps/api/src/engagement/engagement.controller.ts"
     },
     {
@@ -11611,6 +11616,11 @@
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
       "to": "apps/api/src/microsoft/microsoft-callback.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "apps/api/src/offer-document/offer-document.controller.ts"
     },
     {
       "from": "ci/config/api-surface-manifest.json",
@@ -11636,6 +11646,11 @@
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
       "to": "apps/api/src/pre-start-requirement/pre-start-requirement.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "apps/api/src/rtr/rtr.controller.ts"
     },
     {
       "from": "ci/config/api-surface-manifest.json",
@@ -11720,6 +11735,11 @@
     {
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
+      "to": "apps/esign-service/src/app/esign-http.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
       "to": "apps/platform-admin/src/app/platform/platform.controller.ts"
     },
     {
@@ -11786,6 +11806,16 @@
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
       "to": "libs/contact/src/lib/contact.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "libs/documents/src/lib/documents.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "libs/documents/src/lib/templates.controller.ts"
     },
     {
       "from": "ci/config/api-surface-manifest.json",
