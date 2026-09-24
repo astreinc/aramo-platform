@@ -117,7 +117,7 @@ export class OfferDocumentOrchestratorService {
           { type: 'HEADING', text: 'Offer Letter' },
           { type: 'TEXT', text: `This offer letter is presented to ${name} for signature.` },
           ...(offer.offer_terms_summary !== null && offer.offer_terms_summary.length > 0
-            ? [{ type: 'TEXT', text: offer.offer_terms_summary }]
+            ? [{ type: 'TEXT' as const, text: offer.offer_terms_summary }]
             : []),
         ],
       },
