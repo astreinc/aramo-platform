@@ -169,8 +169,8 @@ describe('CompanyDetailView (account hub)', () => {
     expect(screen.getAllByText('San Francisco, CA').length).toBeGreaterThan(0);
     expect(screen.getByRole('link', { name: 'acme.example.com' })).toBeInTheDocument();
     expect(screen.getByText(/Client since 2023/i)).toBeInTheDocument();
-    // status active → "Client" pill; tier a → "Key account"
-    expect(screen.getByText('Client')).toBeInTheDocument();
+    // status active → "Client" (header pill + Relationships & status card row)
+    expect(screen.getAllByText('Client').length).toBeGreaterThan(0);
     // KPI strip (the account-briefing seam is removed per the prototype)
     expect(screen.getByText('Open requisitions')).toBeInTheDocument();
   });

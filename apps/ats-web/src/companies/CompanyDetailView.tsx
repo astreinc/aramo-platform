@@ -22,7 +22,6 @@ import {
   Icons,
   MetricCard,
   StatusPill,
-  Tag,
 } from '../ui';
 
 import {
@@ -471,7 +470,6 @@ function OverviewPanel({
   readonly canAssign: boolean;
 }) {
   const about = company.description ?? company.notes;
-  const tags = company.tags ?? [];
   const present = (key: string): boolean =>
     Object.prototype.hasOwnProperty.call(company, key);
   const commercialKeys: [string, string][] = [
@@ -489,35 +487,81 @@ function OverviewPanel({
     <div className="rc-mt-16 rc-ovgrid">
       <div className="rc-stack">
         <Card>
-          <h3 className="rc-section-h">About</h3>
-          <p className="rc-about rc-mt-8">
-            {about !== null && about !== '' ? about : 'No description on file.'}
-          </p>
-          {tags.length > 0 ? (
-            <div className="rc-tags rc-mt-8">
-              {tags.map((t) => (
-                <Tag key={t}>{t}</Tag>
-              ))}
+          <h3 className="rc-section-h">Company profile</h3>
+          <div className="rc-rfgrid rc-mt-8">
+            <RF label="Company name" value={company.name} />
+            <RF label="Website" value={display(company.url)} />
+            <RF label="Industry" value={display(company.industry)} />
+            <RF label="Employees" value={display(company.employee_count_band)} />
+            <RF label="Revenue band" value={display(company.annual_revenue_band)} />
+            <RF
+              label="Founded"
+              value={company.founded_year !== null ? String(company.founded_year) : '—'}
+            />
+            <RF label="Ownership" value={display(company.ownership_type)} />
+            <RF label="Parent company" value="—" />
+          </div>
+          <div className="rc-rf rc-rf--full rc-mt-8">
+            <div className="rc-rf__lb">About</div>
+            <div className={`rc-rf__v${about === null || about === '' ? ' rc-rf__v--empty' : ''}`}>
+              {about !== null && about !== '' ? about : '—'}
             </div>
-          ) : null}
+          </div>
         </Card>
 
         <Card>
-          <h3 className="rc-section-h">Key facts</h3>
-          <dl className="rc-deflist rc-mt-8">
-            <KV k="Industry" v={display(company.industry)} />
-            <KV k="Headquarters" v={locationOf(company)} />
-            <KV k="Country" v={display(company.country)} />
-            <KV k="Employees" v={display(company.employee_count_band)} />
-            <KV k="Revenue band" v={display(company.annual_revenue_band)} />
-            <KV
-              k="Founded"
-              v={company.founded_year !== null ? String(company.founded_year) : '—'}
-            />
-            <KV k="Ownership" v={display(company.ownership_type)} />
-            <KV k="Supplier status" v={display(company.supplier_status)} />
-            <KV k="Exclusive" v={company.exclusivity ? 'Yes' : 'No'} />
-          </dl>
+          <div className="rc-teamhd">
+            <h3 className="rc-section-h">Relationships &amp; status</h3>
+            <span className="rc-teamhd__manage rc-muted-line">
+              Each relationship has its own status.
+            </span>
+          </div>
+          <div className="rc-relstatus rc-mt-8">
+            {(['CLIENT', 'VENDOR', 'PARTNER'] as const).map((t) => {
+              const r = (company.relationships ?? []).find((x) => x.type === t);
+              const desc =
+                t === 'CLIENT'
+                  ? 'Owns requisitions · receives submittals · placements'
+                  : t === 'VENDOR'
+                    ? 'Supplies talent · staffing supplier'
+                    : 'Strategic · referral · integration';
+              return (
+                <div
+                  key={t}
+                  className={`rc-relstatus__row${r === undefined ? ' rc-relstatus__row--off' : ''}`}
+                >
+                  <div>
+                    <div className="rc-relstatus__t">{relTypeLabel(t)}</div>
+                    <div className="rc-relstatus__d">{desc}</div>
+                  </div>
+                  {r !== undefined ? (
+                    <StatusPill tone={REL_STATUS_TONES[r.status] ?? 'neutral'} dot>
+                      {relStatusLabel(r.status)}
+                    </StatusPill>
+                  ) : (
+                    <span className="rc-muted-line">Not set</span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          <p className="rc-footnote">
+            <strong>Do not contact</strong>{' '}
+            {company.communication_restricted
+              ? 'On — no contact at this company may be contacted.'
+              : 'Off — contacts at this company may be contacted.'}
+          </p>
+        </Card>
+
+        <Card>
+          <h3 className="rc-section-h">Headquarters</h3>
+          <div className="rc-rfgrid rc-mt-8">
+            <RF label="Street address" value={display(company.address)} />
+            <RF label="City" value={display(company.city)} />
+            <RF label="State" value={display(company.state)} />
+            <RF label="ZIP / Postal code" value={display(company.zip)} />
+            <RF label="Country" value={display(company.country)} />
+          </div>
         </Card>
 
         {commercialRows.length > 0 ? (
@@ -635,6 +679,28 @@ function KV({ k, v }: { readonly k: string; readonly v: string }) {
     <div className="rc-defrow">
       <dt>{k}</dt>
       <dd>{v}</dd>
+    </div>
+  );
+}
+
+// A read-view field — label over a bordered value box (the prototype's profile /
+// HQ field look). Inline field-flip editing is a separate deferred slice.
+function RF({
+  label,
+  value,
+  full,
+}: {
+  readonly label: string;
+  readonly value: string;
+  readonly full?: boolean;
+}) {
+  const empty = value === '' || value === '—';
+  return (
+    <div className={`rc-rf${full ? ' rc-rf--full' : ''}`}>
+      <div className="rc-rf__lb">{label}</div>
+      <div className={`rc-rf__v${empty ? ' rc-rf__v--empty' : ''}`}>
+        {empty ? '—' : value}
+      </div>
     </div>
   );
 }
