@@ -5841,6 +5841,7 @@ paths:
             application/json:
               schema:
                 type: object
+                additionalProperties: false
                 required: [document_id]
                 properties:
                   document_id: { type: string, format: uuid }
@@ -5874,6 +5875,7 @@ paths:
             application/json:
               schema:
                 type: object
+                additionalProperties: false
                 required: [document_id, envelope_id, status]
                 properties:
                   document_id: { type: string, format: uuid }
@@ -5902,6 +5904,7 @@ paths:
             application/json:
               schema:
                 type: object
+                additionalProperties: false
                 required: [document_id, status, document_status]
                 properties:
                   document_id: { type: string, format: uuid }
@@ -5936,6 +5939,7 @@ paths:
             application/json:
               schema:
                 type: object
+                additionalProperties: false
                 required: [document_id, offer_id]
                 properties:
                   document_id: { type: string, format: uuid }
@@ -5972,6 +5976,7 @@ paths:
             application/json:
               schema:
                 type: object
+                additionalProperties: false
                 required: [document_id, envelope_id, status]
                 properties:
                   document_id: { type: string, format: uuid }
@@ -6000,6 +6005,7 @@ paths:
             application/json:
               schema:
                 type: object
+                additionalProperties: false
                 required: [document_id, status, document_status]
                 properties:
                   document_id: { type: string, format: uuid }

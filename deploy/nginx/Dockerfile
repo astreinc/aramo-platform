@@ -64,7 +64,7 @@ RUN set -eux; \
     # VERBATIM (§2.2) — this rewrite touches only the build-time syntax test. A
     # typo'd/unknown upstream name is NOT rewritten and still fails to resolve, so
     # name errors are still caught.
-    sed -E 's#(proxy_pass http://)(api|auth-service|platform-admin)(:)#\1127.0.0.1\3#g' \
+    sed -E 's#(proxy_pass http://)(api|auth-service|platform-admin|esign-service)(:)#\1127.0.0.1\3#g' \
       /tmp/aramo.materialized.conf > /etc/nginx/conf.d/aramo.conf; \
     nginx -t
 
