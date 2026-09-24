@@ -6,7 +6,7 @@ import { ToastProvider } from '@aramo/fe-foundation';
 
 import type { AssignableUser } from '../users/users-api';
 
-import { CompanyAssignmentsView } from './CompanyAssignmentsView';
+import { CompanyAssignmentsView, type UserEnrich } from './CompanyAssignmentsView';
 import type { UserClientAssignmentRow } from './types';
 
 const rows: UserClientAssignmentRow[] = [
@@ -21,7 +21,8 @@ const rows: UserClientAssignmentRow[] = [
 ];
 
 // §5 D4c — the picker source is the assignable endpoint (broad active roster,
-// {user_id, display_name}); assigned-user names come from the directory.
+// {user_id, display_name}); assigned-user names come from the directory; email +
+// role come from the admin roster (fetchTenantUsers) via the injected enrichFn.
 const assignableUsers: readonly AssignableUser[] = [
   { user_id: 'u-alice', display_name: 'Alice' },
   { user_id: 'u-bob', display_name: 'Bob' },
@@ -35,6 +36,8 @@ function renderView(opts?: {
   rowItems?: readonly UserClientAssignmentRow[];
   assignableUsers?: readonly AssignableUser[];
   names?: Record<string, string>;
+  enrich?: Record<string, UserEnrich>;
+  canManage?: boolean;
   assignFn?: typeof import('./assignments-api').assignUserToCompany;
   unassignFn?: typeof import('./assignments-api').unassignUserFromCompany;
   fetchFn?: (id: string) => Promise<{ items: readonly UserClientAssignmentRow[] }>;
@@ -45,6 +48,7 @@ function renderView(opts?: {
     async () => opts?.assignableUsers ?? assignableUsers,
   );
   const resolveNamesFn = vi.fn(async () => opts?.names ?? directoryNames);
+  const enrichFn = vi.fn(async () => opts?.enrich ?? {});
   const assignFn = opts?.assignFn ?? vi.fn();
   const unassignFn = opts?.unassignFn ?? vi.fn();
   return {
@@ -53,9 +57,11 @@ function renderView(opts?: {
         <ToastProvider>
           <CompanyAssignmentsView
             companyIdOverride="c-acme"
+            canManage={opts?.canManage ?? true}
             fetchAssignmentsFn={fetchAssignmentsFn}
             fetchAssignableFn={fetchAssignableFn}
             resolveNamesFn={resolveNamesFn}
+            enrichFn={enrichFn}
             assignFn={assignFn}
             unassignFn={unassignFn}
           />
@@ -69,28 +75,60 @@ function renderView(opts?: {
   };
 }
 
-describe('CompanyAssignmentsView (D)', () => {
-  it('renders the assignment list joined to the roster', async () => {
+// Open the "+ Add member" panel and focus the search box so the picker opens.
+function openPicker() {
+  fireEvent.click(screen.getByTestId('team-add-member'));
+  fireEvent.click(screen.getByTestId('assign-user-search'));
+}
+
+describe('CompanyAssignmentsView (Account team)', () => {
+  it('renders the team table joined to the roster', async () => {
     renderView();
     await waitFor(() => expect(screen.getByText('Alice')).toBeInTheDocument());
-    expect(
-      screen.getByTestId('assignment-row-u-alice'),
-    ).toBeInTheDocument();
+    expect(screen.getByTestId('assignment-row-u-alice')).toBeInTheDocument();
   });
 
-  it('Combobox is pre-filtered to NON-ASSIGNED users (Alice excluded; Bob shown)', async () => {
+  it('wires email + role into the member row (fetchTenantUsers enrichment)', async () => {
+    renderView({
+      enrich: { 'u-alice': { email: 'alice@astre.com', role: 'Account Manager' } },
+    });
+    await waitFor(() => expect(screen.getByText('Alice')).toBeInTheDocument());
+    expect(screen.getByText('alice@astre.com')).toBeInTheDocument();
+    expect(screen.getByText('Account Manager')).toBeInTheDocument();
+  });
+
+  it('the add picker is pre-filtered to NON-ASSIGNED users (Alice excluded; Bob shown)', async () => {
     renderView();
     await waitFor(() => expect(screen.getByText('Alice')).toBeInTheDocument());
-    fireEvent.click(screen.getByTestId('assign-user-combobox'));
+    openPicker();
+    expect(screen.getByTestId('assign-user-option-u-bob')).toBeInTheDocument();
     expect(
-      screen.getByTestId('assign-user-combobox-option-u-bob'),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByTestId('assign-user-combobox-option-u-alice'),
+      screen.queryByTestId('assign-user-option-u-alice'),
     ).not.toBeInTheDocument();
   });
 
-  it('assign: select + Add → POST', async () => {
+  it('the add picker filters by name/email as the query changes', async () => {
+    renderView({
+      assignableUsers: [
+        { user_id: 'u-bob', display_name: 'Bob' },
+        { user_id: 'u-carol', display_name: 'Carol' },
+      ],
+      names: { 'u-bob': 'Bob', 'u-carol': 'Carol' },
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId('team-add-member')).toBeInTheDocument(),
+    );
+    openPicker();
+    fireEvent.change(screen.getByTestId('assign-user-search'), {
+      target: { value: 'car' },
+    });
+    expect(screen.getByTestId('assign-user-option-u-carol')).toBeInTheDocument();
+    expect(
+      screen.queryByTestId('assign-user-option-u-bob'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('assign: pick + Add to team → POST + refresh', async () => {
     const assignFn = vi.fn(async () => ({
       id: 'a2',
       user_id: 'u-bob',
@@ -98,8 +136,8 @@ describe('CompanyAssignmentsView (D)', () => {
     }));
     const { fetchAssignmentsFn } = renderView({ assignFn });
     await waitFor(() => expect(screen.getByText('Alice')).toBeInTheDocument());
-    fireEvent.click(screen.getByTestId('assign-user-combobox'));
-    fireEvent.click(screen.getByTestId('assign-user-combobox-option-u-bob'));
+    openPicker();
+    fireEvent.click(screen.getByTestId('assign-user-option-u-bob'));
     fireEvent.click(screen.getByTestId('assign-user-submit'));
     await waitFor(() =>
       expect(assignFn).toHaveBeenCalledWith({
@@ -110,7 +148,7 @@ describe('CompanyAssignmentsView (D)', () => {
     await waitFor(() => expect(fetchAssignmentsFn).toHaveBeenCalledTimes(2));
   });
 
-  it('IDEMPOTENT assign (uniform ruling 1): duplicate POST resolves silently — no role="alert"', async () => {
+  it('IDEMPOTENT assign: duplicate POST resolves silently — no role="alert"', async () => {
     const assignFn = vi.fn(async () => ({
       id: 'a-existing',
       user_id: 'u-bob',
@@ -118,19 +156,19 @@ describe('CompanyAssignmentsView (D)', () => {
     }));
     renderView({ assignFn });
     await waitFor(() => expect(screen.getByText('Alice')).toBeInTheDocument());
-    fireEvent.click(screen.getByTestId('assign-user-combobox'));
-    fireEvent.click(screen.getByTestId('assign-user-combobox-option-u-bob'));
+    openPicker();
+    fireEvent.click(screen.getByTestId('assign-user-option-u-bob'));
     fireEvent.click(screen.getByTestId('assign-user-submit'));
     await waitFor(() => expect(assignFn).toHaveBeenCalledTimes(1));
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
-  it('unassign: inline confirm → DELETE; refresh', async () => {
+  it('remove: inline confirm → DELETE; refresh', async () => {
     const unassignFn = vi.fn(async () => undefined);
     const { fetchAssignmentsFn } = renderView({ unassignFn });
     await waitFor(() => expect(screen.getByText('Alice')).toBeInTheDocument());
     fireEvent.click(screen.getByTestId('unassign-u-alice'));
-    expect(screen.getByText('Unassign?')).toBeInTheDocument();
+    expect(screen.getByText('Remove?')).toBeInTheDocument();
     fireEvent.click(screen.getByTestId('confirm-unassign-u-alice'));
     await waitFor(() =>
       expect(unassignFn).toHaveBeenCalledWith({
@@ -141,7 +179,7 @@ describe('CompanyAssignmentsView (D)', () => {
     await waitFor(() => expect(fetchAssignmentsFn).toHaveBeenCalledTimes(2));
   });
 
-  it('IDEMPOTENT DELETE 404 (uniform ruling 1): treated as SUCCESS — toast + refresh', async () => {
+  it('IDEMPOTENT DELETE 404: treated as SUCCESS — refresh', async () => {
     const unassignFn = vi.fn(async () => {
       throw new ApiError(404, 'gone', 'NOT_FOUND', {});
     });
@@ -153,16 +191,14 @@ describe('CompanyAssignmentsView (D)', () => {
     await waitFor(() => expect(fetchAssignmentsFn).toHaveBeenCalledTimes(2));
   });
 
-  it('§5 D4c: the picker is always the Combobox — no 403→UUID fallback', async () => {
-    renderView();
+  it('without canManage: no Add / Remove affordance, view-only note shown', async () => {
+    renderView({ canManage: false });
     await waitFor(() => expect(screen.getByText('Alice')).toBeInTheDocument());
-    expect(screen.getByTestId('assign-user-combobox')).toBeInTheDocument();
+    expect(screen.queryByTestId('team-add-member')).toBeNull();
+    expect(screen.queryByTestId('unassign-u-alice')).toBeNull();
     expect(
-      screen.queryByTestId('assign-user-uuid-input'),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByText(/Roster unavailable to your role/i),
-    ).not.toBeInTheDocument();
+      screen.getByText(/Ask an account manager to change assignments/i),
+    ).toBeInTheDocument();
   });
 
   it('cross-tenant 404 on fetch surfaces "company isn’t in your tenant"', async () => {

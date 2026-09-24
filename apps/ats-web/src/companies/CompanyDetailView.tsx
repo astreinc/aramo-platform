@@ -1,7 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
+  Checkbox,
   InlineAlert,
+  Select,
   hasScope,
   useSession,
   type Session,
@@ -39,8 +41,19 @@ import {
   reqsErrorMessage,
   updateErrorMessage,
 } from './error-messages';
-import type { CompanyView, ContactView, UpdateCompanyRequest } from './types';
-import { CompanyForm } from './CompanyForm';
+import type { CompanyView, ContactView } from './types';
+import {
+  COMMERCIAL_FIELDS,
+  EF,
+  EFAbout,
+  HQ_FIELDS,
+  PROFILE_FIELDS,
+  SUPPLIER_FIELDS,
+  companyToDraft,
+  draftToPatch,
+  type OverviewDraft,
+  type OverviewField,
+} from './company-overview-fields';
 import {
   REL_STATUS_TONES,
   REL_TYPE_TONES,
@@ -56,17 +69,19 @@ import {
   type CompanyTeam,
 } from './company-workspace';
 
-// Company DETAIL — rebuilt to the locked Confident-Blue "account hub" mockup.
-// Header (logo + relationship/tier/hot pills + meta + actions) · honest KPI
-// strip (Open reqs / Contacts / Tier / Last contact — only what real fields
-// back) · a ReservedSeam "account briefing" (R10 — Aramo Core writes the
-// reasoning later; never fabricated here) · tabs Overview / Contacts / Jobs /
+// Company DETAIL — the "account hub" rebuilt to Company Detail.dc.html.
+// Header (logo + relationship/tier/hot pills + meta + actions) · 5-card KPI strip
+// (Open requisitions / Submitted / Active placements / Fill rate / Last activity)
+// · tabs Overview / Account team / Contacts / Requisitions / Placements /
 // Activity / Tasks (each scope-gated; a tab the actor can't read is hidden).
 //
-// FE-only. Omitted vs the mockup (no backend field): revenue, fill-rate,
-// active-placements, submittals-pending, off-limits, multi-person account team,
-// Placements tab. Activity stays confirmed-but-empty (no company write path —
-// CreateNoteRequest excludes 'company'), so there is no "Log note" action here.
+// Edit flips the Overview cards to edit IN PLACE (company-overview-fields: every
+// field becomes its matching control at the same position; one Save; Cancel
+// discards). Commercial terms are masked-by-absence and gated on
+// company:read_commercial. Parent company / MSP-VMS / Vendor number have no
+// backend write path — they render as read boxes for parity, never fabricated.
+// Activity stays confirmed-but-empty (no company write path — CreateNoteRequest
+// excludes 'company'), so there is no "Log note" action here.
 
 interface CompanyDetailViewProps {
   readonly sessionOverride?: Session;
@@ -96,10 +111,12 @@ export function CompanyDetailView({ sessionOverride }: CompanyDetailViewProps) {
     (sessionState.status === 'authenticated' ? sessionState.session : null);
 
   const [company, setCompany] = useState<CompanyView | null>(null);
-  // Company Party/Role (ADR-0032, R6) — "Full Edit Company" makes the hub
-  // editable IN PLACE (all fields, one Save), mirroring the requisition detail
-  // edit affordance — not a separate page, not the quick-edit drawer.
-  const [editOpen, setEditOpen] = useState(false);
+  // Company Party/Role (ADR-0032, R6) — Edit flips the Overview cards to edit
+  // IN PLACE (every field becomes its matching control at the same position,
+  // one Save), mirroring the requisition detail edit affordance. `draft` holds
+  // the in-flight edits (string-map); Cancel discards it without mutation.
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState<OverviewDraft>({});
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [contacts, setContacts] = useState<readonly ContactView[]>([]);
@@ -206,16 +223,32 @@ export function CompanyDetailView({ sessionOverride }: CompanyDetailViewProps) {
   const canEdit = hasScope(session, 'company:edit');
   const canSeeCommercial = hasScope(session, 'company:read_commercial');
 
-  // Company Party/Role (ADR-0032, R6) — "Full Edit Company" save. PATCHes the
-  // full field set, refreshes the hub in place, and exits edit mode.
-  async function onFullEdit(body: UpdateCompanyRequest): Promise<void> {
+  // Inline in-place edit (ADR-0032, R6). Edit seeds the draft from the company
+  // and flips the Overview cards to edit mode; Cancel discards the draft with no
+  // mutation; Save diffs draft→company into the minimal PATCH and refreshes in
+  // place. Commercial keys are dropped from the PATCH without commercial access.
+  function startEdit(): void {
     if (company === null) return;
+    setDraft(companyToDraft(company));
+    setSaveError(null);
+    setEditing(true);
+  }
+  function cancelEdit(): void {
+    setEditing(false);
+    setSaveError(null);
+  }
+  function onDraftChange(key: string, value: string): void {
+    setDraft((d) => ({ ...d, [key]: value }));
+  }
+  async function saveEdit(): Promise<void> {
+    if (company === null) return;
+    const body = draftToPatch(draft, company, canSeeCommercial);
     setSaving(true);
     setSaveError(null);
     try {
       const updated = await updateCompany(company.id, body);
       setCompany(updated);
-      setEditOpen(false);
+      setEditing(false);
     } catch (err) {
       setSaveError(updateErrorMessage(err));
     } finally {
@@ -237,12 +270,20 @@ export function CompanyDetailView({ sessionOverride }: CompanyDetailViewProps) {
       content: (
         <OverviewPanel
           company={company}
+          editing={editing}
+          draft={draft}
+          onDraftChange={onDraftChange}
+          onSave={saveEdit}
+          onCancel={cancelEdit}
+          saving={saving}
+          saveError={saveError}
           contacts={contacts}
           ownerName={ownerName}
           team={team}
           userNames={userNames}
           canEditContact={canEditContact}
           canAssign={canAssign}
+          canSeeCommercial={canSeeCommercial}
         />
       ),
     },
@@ -255,7 +296,7 @@ export function CompanyDetailView({ sessionOverride }: CompanyDetailViewProps) {
     label: `Account team (${team?.member_user_ids?.length ?? 0})`,
     content: (
       <div className="rc-mt-16">
-        <CompanyAssignmentsView companyIdOverride={company.id} />
+        <CompanyAssignmentsView companyIdOverride={company.id} canManage={canAssign} />
       </div>
     ),
   });
@@ -360,42 +401,23 @@ export function CompanyDetailView({ sessionOverride }: CompanyDetailViewProps) {
           ) : null}
           {canCreateReq ? (
             <Link to="/requisitions/new" className="rc-hbtn">
-              <Icons.IconRequisitions /> New req
+              <Icons.IconRequisitions /> New requisition
             </Link>
           ) : null}
           {canEdit ? (
             <Button unstyled
               type="button"
-              className="rc-hbtn"
-              onClick={() => setEditOpen(true)}
+              className={`rc-hbtn${editing ? ' rc-hbtn--on' : ''}`}
+              onClick={editing ? cancelEdit : startEdit}
+              aria-pressed={editing}
               data-testid="company-detail-edit"
             >
-              <Icons.IconPencil /> Edit
+              <Icons.IconPencil /> {editing ? 'Editing' : 'Edit'}
             </Button>
           ) : null}
         </div>
       </div>
 
-      {editOpen ? (
-        <Card>
-          {saveError !== null ? (
-            <InlineAlert variant="error">{saveError}</InlineAlert>
-          ) : null}
-          <CompanyForm
-            mode="edit"
-            initial={company}
-            onSubmit={onFullEdit}
-            onCancel={() => {
-              setEditOpen(false);
-              setSaveError(null);
-            }}
-            submitting={saving}
-            submitError={saveError}
-            canSeeCommercial={canSeeCommercial}
-          />
-        </Card>
-      ) : (
-        <>
       <div className="rc-metrics rc-metrics--spaced rc-metrics--5">
         <MetricCard
           label="Open requisitions"
@@ -454,8 +476,6 @@ export function CompanyDetailView({ sessionOverride }: CompanyDetailViewProps) {
       <div className="rc-mt-16">
         <Tabs items={tabs} ariaLabel="Company sections" initialId="overview" />
       </div>
-        </>
-      )}
     </section>
   );
 }
@@ -464,62 +484,148 @@ function normalizeUrl(url: string): string {
   return /^https?:\/\//i.test(url) ? url : `https://${url}`;
 }
 
+// Relationship status vocabulary offered in the inline editor (the workspace
+// lifecycle set the detail hub exposes).
+const REL_STATUS_OPTIONS = ['PROSPECT', 'ACTIVE', 'INACTIVE'] as const;
+const REL_DESC: Record<string, string> = {
+  CLIENT: 'Owns requisitions · receives submittals · placements',
+  VENDOR: 'Supplies talent · staffing supplier',
+  PARTNER: 'Strategic · referral · integration',
+};
+
+// A grid of Overview fields — each renders a read box (view) or its matching
+// control (edit) at the same position via EF. `vals` is the draft when editing,
+// the company's display strings when viewing (so read↔edit never shifts).
+function FieldGrid({
+  fields,
+  vals,
+  editing,
+  onDraftChange,
+  extra,
+}: {
+  readonly fields: readonly OverviewField[];
+  readonly vals: OverviewDraft;
+  readonly editing: boolean;
+  readonly onDraftChange: (key: string, value: string) => void;
+  readonly extra?: readonly OverviewField[];
+}) {
+  return (
+    <div className="rc-rfgrid rc-mt-8">
+      {fields.map((f) => (
+        <EF
+          key={f.key}
+          field={f}
+          value={vals[f.key] ?? ''}
+          editing={editing}
+          onChange={(v) => onDraftChange(f.key, v)}
+        />
+      ))}
+      {/* Read-only-for-parity fields (no backend write path) stay a read box in
+          both modes so the prototype layout is preserved without fabrication. */}
+      {(extra ?? []).map((f) => (
+        <EF key={f.key} field={f} value="" editing={editing} readOnly />
+      ))}
+    </div>
+  );
+}
+
 // ── Overview ──
 function OverviewPanel({
   company,
+  editing,
+  draft,
+  onDraftChange,
+  onSave,
+  onCancel,
+  saving,
+  saveError,
   contacts,
   ownerName,
   team,
   userNames,
   canEditContact,
   canAssign,
+  canSeeCommercial,
 }: {
   readonly company: CompanyView;
+  readonly editing: boolean;
+  readonly draft: OverviewDraft;
+  readonly onDraftChange: (key: string, value: string) => void;
+  readonly onSave: () => void;
+  readonly onCancel: () => void;
+  readonly saving: boolean;
+  readonly saveError: string | null;
   readonly contacts: readonly ContactView[];
   readonly ownerName: string | null;
   readonly team: CompanyTeam | null;
   readonly userNames: Record<string, string>;
   readonly canEditContact: boolean;
   readonly canAssign: boolean;
+  readonly canSeeCommercial: boolean;
 }) {
-  const about = company.description ?? company.notes;
+  // In view mode the fields read from the company's display strings; in edit
+  // mode from the live draft. companyToDraft gives display-ready strings for
+  // every key (founded_year as text, exclusivity as Yes/No), so one shape backs
+  // both — the box and the control occupy identical positions.
+  const viewVals = useMemo(() => companyToDraft(company), [company]);
+  const vals = editing ? draft : viewVals;
   const present = (key: string): boolean =>
     Object.prototype.hasOwnProperty.call(company, key);
-  const commercialKeys: [string, string][] = [
-    ['fee_model', 'Fee model'],
-    ['payment_terms', 'Payment terms'],
-    ['default_contract_markup_pct', 'Contract markup %'],
-    ['default_perm_fee_pct', 'Perm fee %'],
-    ['credit_status', 'Credit status'],
-    ['default_currency', 'Currency'],
-  ];
-  const record = company as unknown as Record<string, unknown>;
-  const commercialRows = commercialKeys.filter(([k]) => present(k));
+  // Commercial terms are masked-by-absence: if the actor lacks commercial
+  // access the keys are not on the company object at all. Render the card only
+  // when at least one commercial key is present.
+  const showCommercial = COMMERCIAL_FIELDS.some((f) => present(f.key));
+  const rels = company.relationships ?? [];
 
   return (
     <div className="rc-mt-16 rc-ovgrid">
       <div className="rc-stack">
+        {editing ? (
+          <div className="rc-editbar" role="region" aria-label="Editing company">
+            <Icons.IconPencil />
+            <span className="rc-editbar__msg">
+              <b>Editing {company.name}.</b> Changes take effect when you save and
+              are logged to the audit trail. Nothing changes until you save.
+            </span>
+            <Button
+              unstyled
+              type="button"
+              className="rc-btn rc-btn--sm"
+              onClick={onCancel}
+              disabled={saving}
+            >
+              Cancel
+            </Button>
+            <Button
+              unstyled
+              type="button"
+              className="rc-btn rc-btn--sm rc-btn--primary"
+              onClick={onSave}
+              disabled={saving}
+              data-testid="company-detail-save"
+            >
+              {saving ? 'Saving…' : 'Save changes'}
+            </Button>
+          </div>
+        ) : null}
+        {editing && saveError !== null ? (
+          <InlineAlert variant="error">{saveError}</InlineAlert>
+        ) : null}
+
         <Card>
           <h3 className="rc-section-h">Company profile</h3>
-          <div className="rc-rfgrid rc-mt-8">
-            <RF label="Company name" value={company.name} />
-            <RF label="Website" value={display(company.url)} />
-            <RF label="Industry" value={display(company.industry)} />
-            <RF label="Employees" value={display(company.employee_count_band)} />
-            <RF label="Revenue band" value={display(company.annual_revenue_band)} />
-            <RF
-              label="Founded"
-              value={company.founded_year !== null ? String(company.founded_year) : '—'}
-            />
-            <RF label="Ownership" value={display(company.ownership_type)} />
-            <RF label="Parent company" value="—" />
-          </div>
-          <div className="rc-rf rc-rf--full rc-mt-8">
-            <div className="rc-rf__lb">About</div>
-            <div className={`rc-rf__v${about === null || about === '' ? ' rc-rf__v--empty' : ''}`}>
-              {about !== null && about !== '' ? about : '—'}
-            </div>
-          </div>
+          <FieldGrid
+            fields={PROFILE_FIELDS}
+            vals={vals}
+            editing={editing}
+            onDraftChange={onDraftChange}
+            extra={[{ key: 'parent_company', label: 'Parent company' }]}
+          />
+          <EFAbout
+            value={vals['description'] ?? ''}
+            editing={editing}
+            onChange={(v) => onDraftChange('description', v)}
+          />
         </Card>
 
         <Card>
@@ -531,23 +637,47 @@ function OverviewPanel({
           </div>
           <div className="rc-relstatus rc-mt-8">
             {(['CLIENT', 'VENDOR', 'PARTNER'] as const).map((t) => {
-              const r = (company.relationships ?? []).find((x) => x.type === t);
-              const desc =
-                t === 'CLIENT'
-                  ? 'Owns requisitions · receives submittals · placements'
-                  : t === 'VENDOR'
-                    ? 'Supplies talent · staffing supplier'
-                    : 'Strategic · referral · integration';
+              const r = rels.find((x) => x.type === t);
+              const on = editing
+                ? draft[`rel_${t}`] === 'true'
+                : r !== undefined;
               return (
                 <div
                   key={t}
-                  className={`rc-relstatus__row${r === undefined ? ' rc-relstatus__row--off' : ''}`}
+                  className={`rc-relstatus__row${!on ? ' rc-relstatus__row--off' : ''}`}
                 >
                   <div>
-                    <div className="rc-relstatus__t">{relTypeLabel(t)}</div>
-                    <div className="rc-relstatus__d">{desc}</div>
+                    {editing ? (
+                      <label className="rc-relstatus__cb">
+                        <Checkbox
+                          checked={draft[`rel_${t}`] === 'true'}
+                          onChange={(e) =>
+                            onDraftChange(`rel_${t}`, e.target.checked ? 'true' : 'false')
+                          }
+                        />
+                        <span className="rc-relstatus__t">{relTypeLabel(t)}</span>
+                      </label>
+                    ) : (
+                      <div className="rc-relstatus__t">{relTypeLabel(t)}</div>
+                    )}
+                    <div className="rc-relstatus__d">{REL_DESC[t]}</div>
                   </div>
-                  {r !== undefined ? (
+                  {editing ? (
+                    <Select
+                      unstyled
+                      className="rc-ef__input rc-relstatus__sel"
+                      value={draft[`rel_${t}_status`] ?? 'PROSPECT'}
+                      disabled={draft[`rel_${t}`] !== 'true'}
+                      aria-label={`${relTypeLabel(t)} status`}
+                      onChange={(e) => onDraftChange(`rel_${t}_status`, e.target.value)}
+                    >
+                      {REL_STATUS_OPTIONS.map((s) => (
+                        <option key={s} value={s}>
+                          {relStatusLabel(s)}
+                        </option>
+                      ))}
+                    </Select>
+                  ) : r !== undefined ? (
                     <StatusPill tone={REL_STATUS_TONES[r.status] ?? 'neutral'} dot>
                       {relStatusLabel(r.status)}
                     </StatusPill>
@@ -558,44 +688,69 @@ function OverviewPanel({
               );
             })}
           </div>
-          <p className="rc-footnote">
-            <strong>Do not contact</strong>{' '}
-            {company.communication_restricted
-              ? 'On — no contact at this company may be contacted.'
-              : 'Off — contacts at this company may be contacted.'}
-          </p>
+          {editing ? (
+            <label className="rc-relstatus__cb rc-relstatus__dnc">
+              <Checkbox
+                checked={draft['communication_restricted'] === 'true'}
+                onChange={(e) =>
+                  onDraftChange(
+                    'communication_restricted',
+                    e.target.checked ? 'true' : 'false',
+                  )
+                }
+              />
+              <span>
+                <strong>Do not contact</strong> — no contact at this company may be
+                contacted
+              </span>
+            </label>
+          ) : (
+            <p className="rc-footnote">
+              <strong>Do not contact</strong>{' '}
+              {company.communication_restricted
+                ? 'On — no contact at this company may be contacted.'
+                : 'Off — contacts at this company may be contacted.'}
+            </p>
+          )}
         </Card>
 
         <Card>
           <h3 className="rc-section-h">Headquarters</h3>
-          <div className="rc-rfgrid rc-mt-8">
-            <RF label="Street address" value={display(company.address)} />
-            <RF label="City" value={display(company.city)} />
-            <RF label="State" value={display(company.state)} />
-            <RF label="ZIP / Postal code" value={display(company.zip)} />
-            <RF label="Country" value={display(company.country)} />
-          </div>
+          <FieldGrid
+            fields={HQ_FIELDS}
+            vals={vals}
+            editing={editing}
+            onDraftChange={onDraftChange}
+          />
         </Card>
 
-        {commercialRows.length > 0 ? (
+        <Card>
+          <h3 className="rc-section-h">Supplier &amp; program</h3>
+          <FieldGrid
+            fields={SUPPLIER_FIELDS}
+            vals={vals}
+            editing={editing}
+            onDraftChange={onDraftChange}
+            extra={[
+              { key: 'msp_vms', label: 'MSP / VMS' },
+              { key: 'vendor_number', label: 'Vendor number' },
+            ]}
+          />
+        </Card>
+
+        {showCommercial ? (
           <Card>
             <div className="rc-teamhd">
               <h3 className="rc-section-h">Commercial terms</h3>
               <span className="rc-card__sens">RESTRICTED</span>
             </div>
-            <dl className="rc-deflist rc-mt-8">
-              {commercialRows.map(([key, label]) => {
-                const raw = record[key];
-                const v =
-                  raw === null || raw === undefined || raw === ''
-                    ? '—'
-                    : String(raw);
-                return <KV key={key} k={label} v={v} />;
-              })}
-            </dl>
-            <p className="rc-footnote">
-              Visible to users with commercial access.
-            </p>
+            <FieldGrid
+              fields={COMMERCIAL_FIELDS}
+              vals={vals}
+              editing={editing && canSeeCommercial}
+              onDraftChange={onDraftChange}
+            />
+            <p className="rc-footnote">Visible to users with commercial access.</p>
           </Card>
         ) : null}
       </div>
@@ -686,37 +841,6 @@ function OverviewPanel({
   );
 }
 
-
-function KV({ k, v }: { readonly k: string; readonly v: string }) {
-  return (
-    <div className="rc-defrow">
-      <dt>{k}</dt>
-      <dd>{v}</dd>
-    </div>
-  );
-}
-
-// A read-view field — label over a bordered value box (the prototype's profile /
-// HQ field look). Inline field-flip editing is a separate deferred slice.
-function RF({
-  label,
-  value,
-  full,
-}: {
-  readonly label: string;
-  readonly value: string;
-  readonly full?: boolean;
-}) {
-  const empty = value === '' || value === '—';
-  return (
-    <div className={`rc-rf${full ? ' rc-rf--full' : ''}`}>
-      <div className="rc-rf__lb">{label}</div>
-      <div className={`rc-rf__v${empty ? ' rc-rf__v--empty' : ''}`}>
-        {empty ? '—' : value}
-      </div>
-    </div>
-  );
-}
 
 // ── Contacts ──
 function ContactsPanel({

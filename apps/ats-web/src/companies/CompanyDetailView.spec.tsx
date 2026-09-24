@@ -386,9 +386,10 @@ describe('CompanyDetailView (account hub)', () => {
     ).toBeInTheDocument();
   });
 
-  it('renders the header "Edit" button (opens the quick-edit drawer) only when company:edit is granted', async () => {
-    // Company Party/Role (ADR-0032, R6) — Edit is now a button opening the
-    // slide-over quick-edit drawer, not a link to a retired /edit page.
+  it('renders the header "Edit" button (flips Overview to inline edit) only when company:edit is granted', async () => {
+    // Company Party/Role (ADR-0032, R6) — Edit flips the Overview cards to edit
+    // in place (company-overview-fields), not a link to a retired /edit page and
+    // not a drawer.
     installFetch({ '/v1/companies/co-1': makeCompany() });
     const { unmount } = renderAt(
       '/companies/co-1',
@@ -407,27 +408,90 @@ describe('CompanyDetailView (account hub)', () => {
     expect(screen.queryByTestId('company-detail-edit')).toBeNull();
   });
 
-  it('Edit makes the hub editable in place (Full Edit form appears, read metrics hide)', async () => {
-    // Company Party/Role (ADR-0032, R6) — Full Edit Company = inline edit, not
-    // a drawer and not a separate page.
+  it('Edit flips Overview to inline edit IN PLACE (fields become controls, KPI strip + tabs stay)', async () => {
+    // Company Party/Role (ADR-0032, R6) — inline in-place edit: the same cards
+    // flip to controls, the page chrome (KPI strip, tabs) does NOT disappear.
+    installFetch({ '/v1/companies/co-1': makeCompany() });
+    renderAt('/companies/co-1', makeSession(['company:read', 'company:edit']));
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: /Acme Corp/i })).toBeInTheDocument(),
+    );
+    // read view: the company name is a read box, not an input
+    expect(screen.queryByLabelText('Company name')).toBeNull();
+    expect(screen.getByText('Open requisitions')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('company-detail-edit'));
+    // sticky edit banner + Save appear …
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /save changes/i })).toBeInTheDocument(),
+    );
+    // … fields are now controls seeded from the company …
+    const nameInput = screen.getByLabelText('Company name') as HTMLInputElement;
+    expect(nameInput.value).toBe('Acme Corp');
+    // … and the KPI strip + tabs REMAIN (edit is in place, not a takeover)
+    expect(screen.getByText('Open requisitions')).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Overview' })).toBeInTheDocument();
+  });
+
+  it('Save PATCHes only the changed fields via updateCompany and exits edit mode', async () => {
     installFetch({
       '/v1/companies/co-1': makeCompany(),
-      '/v1/companies/co-1/departments': { items: [] },
-      '/v1/contacts': { items: [] },
     });
     renderAt('/companies/co-1', makeSession(['company:read', 'company:edit']));
     await waitFor(() =>
       expect(screen.getByRole('heading', { name: /Acme Corp/i })).toBeInTheDocument(),
     );
-    // read view shows the KPI strip
-    expect(screen.getByText('Open requisitions')).toBeInTheDocument();
     fireEvent.click(screen.getByTestId('company-detail-edit'));
-    // the full edit form appears in place …
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: /save changes/i })).toBeInTheDocument(),
+      expect(screen.getByLabelText('Company name')).toBeInTheDocument(),
     );
-    // … and the read KPI strip is gone (same view is now editable)
-    expect(screen.queryByText('Open requisitions')).toBeNull();
+    fireEvent.change(screen.getByLabelText('Company name'), {
+      target: { value: 'Acme Robotics' },
+    });
+    fireEvent.click(screen.getByTestId('company-detail-save'));
+
+    // the PATCH carries only the changed key (minimal diff)
+    await waitFor(() => {
+      const calls = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls;
+      const patch = calls.find(
+        (c) =>
+          String(c[0]).includes('/v1/companies/co-1') &&
+          (c[1] as RequestInit | undefined)?.method === 'PATCH',
+      );
+      expect(patch).toBeDefined();
+      const body = JSON.parse(String((patch?.[1] as RequestInit).body));
+      expect(body).toEqual({ name: 'Acme Robotics' });
+    });
+    // edit mode exits — the Save button is gone
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: /save changes/i })).toBeNull(),
+    );
+  });
+
+  it('Cancel discards the draft with NO mutation (no PATCH, read view restored)', async () => {
+    installFetch({ '/v1/companies/co-1': makeCompany() });
+    renderAt('/companies/co-1', makeSession(['company:read', 'company:edit']));
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: /Acme Corp/i })).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByTestId('company-detail-edit'));
+    await waitFor(() =>
+      expect(screen.getByLabelText('Company name')).toBeInTheDocument(),
+    );
+    fireEvent.change(screen.getByLabelText('Company name'), {
+      target: { value: 'Should Not Persist' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^cancel$/i }));
+
+    // back to read view, no input, no PATCH ever issued
+    await waitFor(() => expect(screen.queryByLabelText('Company name')).toBeNull());
+    const calls = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls;
+    const patch = calls.find(
+      (c) => (c[1] as RequestInit | undefined)?.method === 'PATCH',
+    );
+    expect(patch).toBeUndefined();
+    // the header still shows the original name
+    expect(screen.getByRole('heading', { name: /Acme Corp/i })).toBeInTheDocument();
   });
 
   it('renders the "Add contact" header action when contact:create is granted', async () => {

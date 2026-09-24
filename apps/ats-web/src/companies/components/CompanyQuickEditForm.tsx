@@ -16,10 +16,10 @@ import type {
 // slide-over, matching the Companies.dc.html panel: COMPANY (relationship rows
 // with per-role status, name, industry, do-not-contact, website, phone,
 // location) · ENGAGEMENT (payment terms) · Notes. The full field set
-// (firmographics, commercial defaults, departments, address block, billing
-// contact) lives in the detail-page "Full Edit" — NOT here.
+// (firmographics, commercial defaults, address block) lives in the detail-page
+// in-place inline edit (company-overview-fields) — NOT here.
 //
-// Relationship body-building mirrors CompanyForm exactly (per-role status;
+// Relationship body-building matches the detail inline edit (per-role status;
 // Amendment-3 de-select → INACTIVE transition, not delete) and is covered by
 // this component's own spec.
 
