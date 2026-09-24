@@ -384,21 +384,32 @@ export function CompanyDetailView({ sessionOverride }: CompanyDetailViewProps) {
         </Card>
       ) : (
         <>
-      <div className="rc-metrics rc-metrics--spaced rc-metrics--6">
+      <div className="rc-metrics rc-metrics--spaced rc-metrics--5">
         <MetricCard
-          label="Open reqs"
+          label="Open requisitions"
           value={metrics !== null ? metrics.open_reqs : canReadReqs ? reqs.length : '—'}
           icon={<Icons.IconRequisitions />}
-        />
-        <MetricCard
-          label="Active placements"
-          value={metrics !== null ? metrics.active_placements : '—'}
-          icon={<Icons.IconContacts />}
+          hint={
+            metrics !== null
+              ? `${metrics.openings} opening${metrics.openings === 1 ? '' : 's'}`
+              : undefined
+          }
         />
         <MetricCard
           label="Submitted"
           value={metrics !== null ? metrics.submitted : '—'}
           icon={<Icons.IconList />}
+          hint="Last 30 days"
+        />
+        <MetricCard
+          label="Active placements"
+          value={metrics !== null ? metrics.active_placements : '—'}
+          icon={<Icons.IconContacts />}
+          hint={
+            metrics !== null && metrics.active_placements > 0
+              ? `${metrics.active_placements} started`
+              : 'None started'
+          }
         />
         <MetricCard
           label="Fill rate"
@@ -408,17 +419,23 @@ export function CompanyDetailView({ sessionOverride }: CompanyDetailViewProps) {
               : '—'
           }
           icon={<Icons.IconBookmark />}
+          hint={
+            metrics !== null && metrics.fill_rate !== null
+              ? `${metrics.filled}/${metrics.openings} filled`
+              : 'No closed requisitions yet'
+          }
         />
         <MetricCard
-          label="Last contact"
-          value={lastContactLabel(company)}
+          label="Last activity"
+          value={
+            company.last_activity_at !== null ? lastContactLabel(company) : 'None yet'
+          }
           icon={<Icons.IconClock />}
-        />
-        <MetricCard
-          label="Revenue band"
-          value={display(company.annual_revenue_band)}
-          icon={<Icons.IconCompanies />}
-          hint="firmographic"
+          hint={
+            company.last_activity_at !== null
+              ? undefined
+              : 'No calls, emails or notes'
+          }
         />
       </div>
 

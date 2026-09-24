@@ -2214,13 +2214,16 @@ button.rc-link-strong:hover { text-decoration: underline; }
 /* 6-up KPI strip (account hub) */
 
 .rc-metrics--6 { grid-template-columns: repeat(6, 1fr); }
+.rc-metrics--5 { grid-template-columns: repeat(5, 1fr); }
 
 @media (max-width: 1080px) {
 .rc-metrics--6 { grid-template-columns: repeat(3, 1fr); }
+.rc-metrics--5 { grid-template-columns: repeat(3, 1fr); }
 }
 
 @media (max-width: 640px) {
 .rc-metrics--6 { grid-template-columns: repeat(2, 1fr); }
+.rc-metrics--5 { grid-template-columns: repeat(2, 1fr); }
 }
 
 /* rule-based briefing (deterministic; sits above the ReservedSeam) */

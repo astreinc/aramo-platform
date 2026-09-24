@@ -172,7 +172,7 @@ describe('CompanyDetailView (account hub)', () => {
     // status active → "Client" pill; tier a → "Key account"
     expect(screen.getByText('Client')).toBeInTheDocument();
     // KPI strip (the account-briefing seam is removed per the prototype)
-    expect(screen.getByText('Open reqs')).toBeInTheDocument();
+    expect(screen.getByText('Open requisitions')).toBeInTheDocument();
   });
 
   it('renders real per-company metrics in the KPI strip + rule-based briefing', async () => {
@@ -419,14 +419,14 @@ describe('CompanyDetailView (account hub)', () => {
       expect(screen.getByRole('heading', { name: /Acme Corp/i })).toBeInTheDocument(),
     );
     // read view shows the KPI strip
-    expect(screen.getByText('Open reqs')).toBeInTheDocument();
+    expect(screen.getByText('Open requisitions')).toBeInTheDocument();
     fireEvent.click(screen.getByTestId('company-detail-edit'));
     // the full edit form appears in place …
     await waitFor(() =>
       expect(screen.getByRole('button', { name: /save changes/i })).toBeInTheDocument(),
     );
     // … and the read KPI strip is gone (same view is now editable)
-    expect(screen.queryByText('Open reqs')).toBeNull();
+    expect(screen.queryByText('Open requisitions')).toBeNull();
   });
 
   it('renders the "Add contact" header action when contact:create is granted', async () => {
