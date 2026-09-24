@@ -49,11 +49,12 @@ RUN set -eux; \
     export NGINX_TENANT_SERVER_NAME=localhost \
            NGINX_ADMIN_SERVER_NAME=admin.localhost \
            NGINX_PORTAL_SERVER_NAME=portal.localhost \
+           NGINX_SIGN_SERVER_NAME=sign.localhost \
            NGINX_CERT_DIR=/tmp/aramo-ephemeral-certs; \
     mkdir -p "$NGINX_CERT_DIR"; \
     openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj '/CN=localhost' \
       -keyout "$NGINX_CERT_DIR/privkey.pem" -out "$NGINX_CERT_DIR/fullchain.pem"; \
-    envsubst '${NGINX_TENANT_SERVER_NAME} ${NGINX_ADMIN_SERVER_NAME} ${NGINX_PORTAL_SERVER_NAME} ${NGINX_CERT_DIR}' \
+    envsubst '${NGINX_TENANT_SERVER_NAME} ${NGINX_ADMIN_SERVER_NAME} ${NGINX_PORTAL_SERVER_NAME} ${NGINX_SIGN_SERVER_NAME} ${NGINX_CERT_DIR}' \
       < /tmp/aramo.conf.template > /tmp/aramo.materialized.conf; \
     # nginx (unlike the retired front door) resolves literal-hostname upstreams at config-test time;
     # this build stage has no compose DNS and BuildKit mounts /etc/hosts read-only.
@@ -100,6 +101,7 @@ ENV NGINX_ENVSUBST_FILTER=^NGINX_
 ENV NGINX_TENANT_SERVER_NAME=localhost \
     NGINX_ADMIN_SERVER_NAME=admin.localhost \
     NGINX_PORTAL_SERVER_NAME=portal.localhost \
+    NGINX_SIGN_SERVER_NAME=sign.localhost \
     NGINX_CERT_DIR=/etc/letsencrypt/live/aramo.ai
 # Drop the base image's default server so only our block is included.
 RUN rm -f /etc/nginx/conf.d/default.conf
