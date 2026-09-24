@@ -17854,6 +17854,11 @@
       "to": "pact/provider/src/verify.ts"
     },
     {
+      "from": "pact/consumers/esign-consumer/src/esign.consumer.test.ts",
+      "status": "unscoped",
+      "to": "apps/api/src/documents/esign-writeback.ts"
+    },
+    {
       "from": "pact/consumers/ingestion-consumer/src/ingestion.consumer.test.ts",
       "status": "unscoped",
       "to": "openapi/ingestion.yaml"
@@ -17867,6 +17872,16 @@
       "from": "pact/consumers/requisition-import-consumer/src/requisition-import.consumer.test.ts",
       "status": "unscoped",
       "to": "openapi/ats.yaml"
+    },
+    {
+      "from": "pact/consumers/sign-web-consumer/src/signer-session.consumer.test.ts",
+      "status": "unscoped",
+      "to": "apps/sign-web/src/sign-api.ts"
+    },
+    {
+      "from": "pact/consumers/sign-web-consumer/src/signer-session.consumer.test.ts",
+      "status": "unscoped",
+      "to": "pact/provider/src/verify-esign.ts"
     },
     {
       "from": "pact/provider/src/state-handlers.ts",
@@ -18862,6 +18877,11 @@
       "from": "pact/provider/src/verify-esign.ts",
       "status": "unscoped",
       "to": "pact/consumers/esign-consumer/src/esign.consumer.test.ts"
+    },
+    {
+      "from": "pact/provider/src/verify-esign.ts",
+      "status": "unscoped",
+      "to": "pact/consumers/sign-web-consumer/src/signer-session.consumer.test.ts"
     },
     {
       "from": "pact/provider/src/verify-esign.ts",

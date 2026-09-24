@@ -142,5 +142,54 @@ describe('aramo-core → GET /v1/esign/envelopes/{id}/evidence', () => {
   });
 });
 
+// DOC-4C (R1 seam B) — the executed-artifact PULL apps/api performs after
+// completion (EsignExecutedArtifactsClient, apps/api/src/documents/esign-writeback.ts
+// → GET /v1/esign/envelopes/:id/executed). A NEW INTERACTION on the SAME
+// aramo-core → esign-service relationship (not a new consumer identity).
+describe('aramo-core → GET /v1/esign/envelopes/{id}/executed', () => {
+  // A DISTINCT COMPLETED envelope (the 'a signature envelope exists' fixture is a
+  // DRAFT with no executed artifacts, and SignatureEvent is append-only so it
+  // cannot be re-seeded onto the same id).
+  const EXEC_ENVELOPE_ID = '88888888-8888-7888-8888-888888888888';
+  const EXEC_ENV_DOC_ID = '99999999-9999-7999-8999-999999999999';
+  it('returns 200 ExecutedArtifactsBundle (executed documents + certificate, base64)', async () => {
+    await provider
+      .addInteraction()
+      .given('an executed envelope exists')
+      .uponReceiving('an executed-artifact pull for the Documents write-back')
+      .withRequest('GET', `/v1/esign/envelopes/${EXEC_ENVELOPE_ID}/executed`, (b) => {
+        b.query({ tenant_id: TENANT_ID });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          envelope_id: uuid(EXEC_ENVELOPE_ID),
+          documents: [
+            {
+              envelope_document_id: uuid(EXEC_ENV_DOC_ID),
+              document_ref: uuid(DOC_REF),
+              document_revision_ref: uuid(REV_REF),
+              executed_sha256: like('b'.repeat(64)),
+              byte_size: like(12),
+              executed_base64: like('JVBERi0xLjQ='),
+            },
+          ],
+          certificate: {
+            certificate_sha256: like('c'.repeat(64)),
+            byte_size: like(10),
+            certificate_base64: like('Y2VydA=='),
+          },
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/esign/envelopes/${EXEC_ENVELOPE_ID}/executed?tenant_id=${TENANT_ID}`);
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as { envelope_id: string; documents: unknown[]; certificate: unknown };
+        expect(body.envelope_id).toBe(EXEC_ENVELOPE_ID);
+        expect(Array.isArray(body.documents)).toBe(true);
+        expect(body.certificate).not.toBeNull();
+      });
+  });
+});
+
 beforeAll(() => undefined);
 afterAll(() => undefined);

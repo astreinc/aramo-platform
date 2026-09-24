@@ -1027,6 +1027,8 @@ const PLATFORM_GOVERNANCE_PACT = resolve(
   ROOT,
   'pact/pacts/platform-governance-consumer-aramo-core.json',
 );
+// DOC-4C (R1 seam C) — esign-service → apps/api source-document pull.
+const ESIGN_SOURCE_PACT = resolve(ROOT, 'pact/pacts/esign-service-aramo-core.json');
 
 const ISSUER = 'Aramo Core Auth';
 const AUDIENCE = 'aramo-pact-provider-api-audience';
@@ -4155,6 +4157,12 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           presigned_url: 'https://mock-storage.local/put/pact-seed',
           expires_at: '2026-05-25T00:05:00.000Z',
         }),
+        // DOC-4C (R1 seam C) — the source-PDF read the RevisionSourceService performs
+        // (via AramoS3DocumentStorageAdapter.getArtifact → objectStorage.getObjectBytes)
+        // for the esign-service source pull. Object storage is external infra (already
+        // overridden here); returning fixed bytes exercises the HTTP seam without a
+        // real bucket — no production/boundary change.
+        getObjectBytes: async (): Promise<Buffer> => Buffer.from('%PDF-1.4 pact source bytes', 'utf8'),
       };
       // PC-6 / TI-1F P0.2 — deterministic file→TEXT extraction is still valid and
       // used by the resume-editions POST (content_hash) + the governed draft
@@ -4598,6 +4606,39 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     }
 
     const stateHandlers: Record<string, () => Promise<void>> = {
+      // ===== DOC-4C seam C — esign-service → apps/api source-document pull =====
+      // Seed a frozen Document + revision + SOURCE_UPLOAD artifact so
+      // RevisionSourceService.getSourceBase64 resolves (object storage is the mock
+      // above, returning fixed bytes). Fixed ids + ON CONFLICT ⇒ idempotent.
+      'a frozen document revision with a source artifact exists': async () => {
+        await withClient(async (c) => {
+          const TENANT = '11111111-1111-7111-8111-111111111111';
+          const DOC_ID = 'd0c4c000-0000-7000-8000-000000000010';
+          const REV_ID = 'd0c4c000-0000-7000-8000-000000000001';
+          const ART_ID = 'd0c4c000-0000-7000-8000-000000000020';
+          const ACTOR = 'd0c4c000-0000-7000-8000-0000000000ac';
+          const TYPE_ID = '01900000-0000-7000-8000-0000000002d6'; // DOC-1b-seeded 'other'
+          const NOW = '2026-05-25T00:00:00.000Z';
+          await c.query(
+            `INSERT INTO documents."Document" ("id","tenant_id","document_type_id","title","status","execution_mode","source_kind","created_by","created_at")
+             VALUES ($1::uuid,$2::uuid,$3::uuid,'Offer Letter','EXECUTED','NO_SIGNATURE','UPLOADED',$4::uuid,$5::timestamptz) ON CONFLICT ("id") DO NOTHING`,
+            [DOC_ID, TENANT, TYPE_ID, ACTOR, NOW],
+          );
+          await c.query(
+            `INSERT INTO documents."DocumentRevision" ("id","tenant_id","document_id","revision_number","mime_type","byte_size","content_sha256","status","created_by","created_at","frozen_at")
+             VALUES ($1::uuid,$2::uuid,$3::uuid,1,'application/pdf',26,'unknown','FROZEN',$4::uuid,$5::timestamptz,$5::timestamptz) ON CONFLICT ("id") DO NOTHING`,
+            [REV_ID, TENANT, DOC_ID, ACTOR, NOW],
+          );
+          await c.query(
+            `INSERT INTO documents."DocumentArtifact" ("id","tenant_id","revision_id","document_id","artifact_role","storage_provider","storage_locator","mime_type","byte_size","sha256","immutability_state","retention_class","created_at","created_by")
+             VALUES ($1::uuid,$2::uuid,$3::uuid,$4::uuid,'SOURCE_UPLOAD','aramo-s3','pact/doc4c-source.pdf','application/pdf',26,'unknown','FROZEN','CONTRACT_RECORD',$5::timestamptz,$6::uuid) ON CONFLICT ("id") DO NOTHING`,
+            [ART_ID, TENANT, REV_ID, DOC_ID, NOW, ACTOR],
+          );
+        });
+      },
+      // A revision id with no source artifact ⇒ getSourceBase64 → null → 404. No seed.
+      'a document revision without a source artifact exists': async () => undefined,
+
       // ===== SKILL-TAX-1F-B2 platform skill-governance pacts =====
       // The canonical taxonomy is platform-global (no tenant scope). TRUNCATE the
       // skills_taxonomy tables (bypasses the SkillAuditEvent BEFORE-DELETE append-only
@@ -8600,6 +8641,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
             ATS_WEB_PACT,
             REQUISITION_IMPORT_PACT,
             PLATFORM_GOVERNANCE_PACT,
+            ESIGN_SOURCE_PACT,
           ],
           stateHandlers,
           requestFilter: requestFilter as never,

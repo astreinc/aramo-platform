@@ -6399,6 +6399,13 @@
       "targets": ["build", "lint", "test"]
     },
     {
+      "name": "esign-source-consumer-pact",
+      "root": "pact/consumers/esign-source-consumer",
+      "sourceRoot": "pact/consumers/esign-source-consumer/src",
+      "tags": ["pact-consumer"],
+      "targets": ["lint", "pact-test", "test"]
+    },
+    {
       "name": "events",
       "root": "libs/events",
       "sourceRoot": "libs/events/src",
@@ -6670,6 +6677,13 @@
       "sourceRoot": "libs/settings/src",
       "tags": ["scope:ats"],
       "targets": ["build", "lint", "test"]
+    },
+    {
+      "name": "sign-web-consumer-pact",
+      "root": "pact/consumers/sign-web-consumer",
+      "sourceRoot": "pact/consumers/sign-web-consumer/src",
+      "tags": ["pact-consumer"],
+      "targets": ["lint", "pact-test", "test"]
     },
     {
       "name": "skills-taxonomy",
