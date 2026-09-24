@@ -4950,7 +4950,7 @@ button.rc-snapcard:hover {
 /* Talent-journey GRID (Option A). Outer card + sticky-width inner; header row +
  * data rows share the exact prototype grid template. Avatar #E8EDFB/#011F8D. */
 .rc-tj { margin-top: 16px; background: #fff; border: 1px solid #e5e9ed; border-radius: 13px; overflow-x: auto; }
-.rc-tj__inner { min-width: 900px; }
+.rc-tj__inner { min-width: 1120px; }
 .rc-tj__head { display: flex; align-items: center; gap: 10px; padding: 12px 18px; border-bottom: 1px solid #e5e9ed; }
 .rc-tj__title { font-size: 13px; font-weight: 700; color: #1b2730; }
 .rc-tj__sub { font-size: 11.5px; color: #93a0a8; }
@@ -4958,7 +4958,8 @@ button.rc-snapcard:hover {
 .rc-tj__full:hover { text-decoration: underline; }
 .rc-tj__row {
   display: grid;
-  grid-template-columns: minmax(150px, 1.1fr) 105px 110px 115px 115px 115px;
+  grid-template-columns:
+    minmax(160px, 1.1fr) minmax(180px, 1.2fr) 118px 96px 90px 80px 96px 96px 150px;
   gap: 0 12px; align-items: center; padding: 9px 18px; border-top: 1px solid #f2f4f6;
 }
 .rc-tj__row:not(.rc-tj__row--head):hover { background: #e8edfb55; }
@@ -4979,6 +4980,49 @@ button.rc-tj__cell { cursor: pointer; }
 button.rc-tj__cell:hover { color: #022ac0; text-decoration: underline; }
 .rc-tj__exp { display: block; font-size: 10.5px; color: #93a0a8; }
 .rc-tj__empty { color: #93a0a8; }
+
+/* Email / Phone cells */
+.rc-tj__mail {
+  font-size: 11.5px; color: #3a454e; text-decoration: none;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;
+}
+.rc-tj__mail:hover { color: #022ac0; text-decoration: underline; }
+.rc-tj__phone { font-size: 11.5px; color: #3a454e; white-space: nowrap; }
+
+/* Find Talent ▾ dropdown */
+.rc-tj__find { position: relative; margin-left: auto; flex: none; }
+.rc-tj__findbtn {
+  display: inline-flex; align-items: center; gap: 5px;
+  border: 1px solid #022ac0; background: #022ac0; color: #fff; border-radius: 8px;
+  padding: 7px 14px; font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap;
+}
+.rc-tj__findbtn:hover { background: #3355e0; }
+.rc-tj__findbtn svg { width: 13px; height: 13px; }
+.rc-tj__findveil { position: fixed; inset: 0; z-index: 29; border: 0; background: none; cursor: default; }
+.rc-tj__findmenu {
+  position: absolute; top: calc(100% + 6px); right: 0; z-index: 30; width: 300px;
+  background: #fff; border: 1px solid #e5e9ed; border-radius: 11px;
+  box-shadow: 0 16px 40px -16px rgba(11, 16, 34, 0.28); padding: 8px;
+}
+.rc-tj__finditem { display: block; border-radius: 8px; padding: 10px 12px; text-decoration: none; }
+.rc-tj__finditem:hover { background: #e8edfb; }
+.rc-tj__findt { display: block; font-size: 12.5px; font-weight: 700; color: #1b2730; }
+.rc-tj__findd { display: block; font-size: 11px; color: #93a0a8; margin-top: 2px; }
+
+/* RTR cell — Send button (placeholder until the send slice wires it) */
+.rc-tj__rtr { display: flex; align-items: center; min-width: 0; }
+.rc-tj__rtrbtn {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid #022ac0; background: #fff; color: #022ac0; border-radius: 7px;
+  padding: 5px 11px; font-size: 11.5px; font-weight: 600; cursor: pointer; white-space: nowrap;
+}
+.rc-tj__rtrbtn:hover { background: #e8edfb; }
+.rc-tj__rtrbtn svg { width: 12px; height: 12px; }
+
+/* RTR explainer + next-action footer */
+.rc-tj__rtrnote { font-size: 11.5px; color: #93a0a8; margin: 6px 2px 0; }
+.rc-tj__next { font-size: 11.5px; color: #93a0a8; margin: 8px 2px 0; }
+.rc-tj__next b { color: #1b2730; }
 
 /* ─────────────── COMM-V1 recruiter Call affordance (COMM-B4) ─────────────── */
 

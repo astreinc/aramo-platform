@@ -1120,6 +1120,9 @@ function TalentJourney({
   const [selected, setSelected] = useState<PipelineView | null>(null);
   // Lazy CLIENT/PRE-START population, keyed by talent_record_id.
   const [cells, setCells] = useState<Record<string, JourneyCells>>({});
+  // Find Talent ▾ menu (prototype): the two sourcing entry points.
+  const [findOpen, setFindOpen] = useState(false);
+  const canSource = scopes.includes('talent:source');
   const inPlay = useMemo(
     () => collapseToCurrentEpisode(pipelines).length,
     [pipelines],
@@ -1174,6 +1177,59 @@ function TalentJourney({
           <span className="rc-tj__sub">
             Each status is owned by its lifecycle — click to open it
           </span>
+          {/* Find Talent ▾ — the two sourcing entry points (prototype). Gated on
+              talent:source (the /sourcing route's scope); no menu without it. */}
+          {canSource ? (
+            <div className="rc-tj__find">
+              <Button
+                unstyled
+                type="button"
+                className="rc-tj__findbtn"
+                aria-haspopup="menu"
+                aria-expanded={findOpen}
+                onClick={() => setFindOpen((o) => !o)}
+              >
+                Find Talent <Icons.IconChevronDown />
+              </Button>
+              {findOpen ? (
+                <>
+                  <Button
+                    unstyled
+                    type="button"
+                    aria-label="Close menu"
+                    className="rc-tj__findveil"
+                    onClick={() => setFindOpen(false)}
+                  >
+                    <span aria-hidden="true" />
+                  </Button>
+                  <div className="rc-tj__findmenu" role="menu">
+                    <Link
+                      to="/sourcing"
+                      role="menuitem"
+                      className="rc-tj__finditem"
+                      onClick={() => setFindOpen(false)}
+                    >
+                      <span className="rc-tj__findt">Rediscover existing Talent</span>
+                      <span className="rc-tj__findd">
+                        Search your tenant&apos;s eligible, known Talent pool for this requisition
+                      </span>
+                    </Link>
+                    <Link
+                      to="/sourcing"
+                      role="menuitem"
+                      className="rc-tj__finditem"
+                      onClick={() => setFindOpen(false)}
+                    >
+                      <span className="rc-tj__findt">Source new Talent</span>
+                      <span className="rc-tj__findd">
+                        Discover people not yet in your working Talent pool
+                      </span>
+                    </Link>
+                  </div>
+                </>
+              ) : null}
+            </div>
+          ) : null}
           {/* Full pipeline → the requisitions list (the prototype target). */}
           <Link to="/requisitions" className="rc-tj__full">
             Full pipeline →
@@ -1185,11 +1241,14 @@ function TalentJourney({
               Each cell still reads from its OWNING aggregate; only the column
               header presentation is the unified-journey vocabulary. */}
           <span className="rc-tj__ch">Talent</span>
+          <span className="rc-tj__ch">Email</span>
+          <span className="rc-tj__ch">Phone</span>
           <span className="rc-tj__ch">Recruiting</span>
           <span className="rc-tj__ch">Client</span>
           <span className="rc-tj__ch">Offer</span>
           <span className="rc-tj__ch">Pre-Start</span>
           <span className="rc-tj__ch">Employment</span>
+          <span className="rc-tj__ch">RTR</span>
         </div>
         {pipelines.length === 0 ? (
           <div className="rc-tj__row" role="row">
@@ -1199,6 +1258,8 @@ function TalentJourney({
           pipelines.map((p) => {
             const t = talents[p.talent_record_id];
             const name = t ? `${t.first_name} ${t.last_name}`.trim() : 'Talent';
+            const email = t?.email1 ?? null;
+            const phone = t?.phone_cell ?? t?.phone_work ?? t?.phone_home ?? null;
             const offer = canReadOffers
               ? liveOfferFor(offers, p.talent_record_id)
               : null;
@@ -1226,6 +1287,18 @@ function TalentJourney({
                     ) : null}
                   </span>
                 </Button>
+                {/* EMAIL — mailto (primary email1); "—" when absent. */}
+                {email !== null && email !== '' ? (
+                  <a className="rc-tj__mail" href={`mailto:${email}`} title={email}>
+                    {email}
+                  </a>
+                ) : (
+                  <span className="rc-tj__cell rc-tj__empty">—</span>
+                )}
+                {/* PHONE — cell, then work, then home; "—" when absent. */}
+                <span className="rc-tj__cell rc-tj__phone">
+                  {phone !== null && phone !== '' ? phone : '—'}
+                </span>
                 {/* PIPELINE → the recruiting stepper in the side panel. */}
                 <Button unstyled
                   type="button"
@@ -1275,11 +1348,35 @@ function TalentJourney({
                 ) : (
                   <span className="rc-tj__cell rc-tj__empty">—</span>
                 )}
+                {/* RTR — Right to Represent. Send action is being wired in a
+                    separate slice; the button is placed (unwired) so the column
+                    matches the prototype. No backend call is issued yet. */}
+                <span className="rc-tj__rtr">
+                  <Button
+                    unstyled
+                    type="button"
+                    className="rc-tj__rtrbtn"
+                    title="Send RTR — wiring in progress"
+                  >
+                    <Icons.IconMail />
+                    Send RTR
+                  </Button>
+                </span>
               </div>
             );
           })
         )}
       </div>
+      {/* RTR explainer + the next-best-action nudge (prototype footer). */}
+      <p className="rc-tj__rtrnote">
+        RTR (Right to Represent) — the talent confirms that you may represent
+        them to the client for this requisition. Client submittal requires a
+        confirmed RTR.
+      </p>
+      <p className="rc-tj__next">
+        Next recommended action: <b>Prepare client submittal</b> — Offer
+        creation unlocks only after client selection.
+      </p>
       {selected !== null ? (
         <TalentDetailPanel
           entry={selected}

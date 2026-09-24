@@ -74,8 +74,8 @@ const PIPELINES = {
 };
 
 const TALENTS: Record<string, unknown> = {
-  'tal-1': { id: 'tal-1', first_name: 'Marcus', last_name: 'Adeyemi', current_pay: '$74/hr', owner_id: 'usr-own', is_hot: true },
-  'tal-2': { id: 'tal-2', first_name: 'Sofia', last_name: 'Ramos', current_pay: '$76/hr', owner_id: 'usr-own', is_hot: false },
+  'tal-1': { id: 'tal-1', first_name: 'Marcus', last_name: 'Adeyemi', current_pay: '$74/hr', owner_id: 'usr-own', is_hot: true, email1: 'marcus@example.com', phone_cell: '+1 202-555-0104' },
+  'tal-2': { id: 'tal-2', first_name: 'Sofia', last_name: 'Ramos', current_pay: '$76/hr', owner_id: 'usr-own', is_hot: false, email1: 'sofia@example.com', phone_cell: '+1 202-555-0177' },
 };
 
 function urlOf(input: RequestInfo | URL): string {
@@ -202,8 +202,12 @@ describe('RequisitionDetailView — header / meta / pipeline (2D)', () => {
     await screen.findByRole('heading', { name: /Senior Rust Engineer/ });
     // Grid header columns.
     const grid = screen.getByRole('table', { name: 'Talent journey' });
-    // Ruling 2 — canonical journey column labels.
-    for (const h of ['Talent', 'Recruiting', 'Client', 'Offer', 'Pre-Start', 'Employment']) {
+    // Ruling 2 — canonical journey column labels. Email/Phone/RTR added to match
+    // the Detail prototype's journey grid; "Onboarding" stays "Pre-Start" (vocab).
+    for (const h of [
+      'Talent', 'Email', 'Phone', 'Recruiting', 'Client', 'Offer', 'Pre-Start',
+      'Employment', 'RTR',
+    ]) {
       expect(within(grid).getByText(h)).toBeInTheDocument();
     }
     // Pipeline cell = status pill (human label + tone); no funnel ribbon.
@@ -222,6 +226,52 @@ describe('RequisitionDetailView — header / meta / pipeline (2D)', () => {
     expect(
       await within(dialog).findByRole('list', { name: 'Talent journey' }),
     ).toBeInTheDocument();
+  });
+
+  it('Talent tab: Email (mailto) + Phone cells, Send RTR button per row, RTR + next-action footer', async () => {
+    mockApi();
+    mountDetail();
+    await screen.findByRole('heading', { name: /Senior Rust Engineer/ });
+    // Email renders as a mailto link; phone as text.
+    const mail = await screen.findByRole('link', { name: 'marcus@example.com' });
+    expect(mail).toHaveAttribute('href', 'mailto:marcus@example.com');
+    expect(screen.getByText('+1 202-555-0104')).toBeInTheDocument();
+    // Send RTR button placed per row (unwired placeholder — one per talent).
+    expect(screen.getAllByRole('button', { name: /Send RTR/ })).toHaveLength(2);
+    // Footer nudges.
+    expect(screen.getByText(/RTR \(Right to Represent\)/)).toBeInTheDocument();
+    expect(screen.getByText(/Next recommended action:/)).toBeInTheDocument();
+    // Find Talent ▾ is gated on talent:source — absent for this session.
+    expect(screen.queryByRole('button', { name: /Find Talent/ })).toBeNull();
+  });
+
+  it('Talent tab: Find Talent ▾ (talent:source) opens the two sourcing entry points', async () => {
+    mockApi();
+    render(
+      <ToastProvider>
+        <BreadcrumbProvider>
+          <MemoryRouter initialEntries={['/requisitions/req-1']}>
+            <Routes>
+              <Route
+                path="/requisitions/:reqId"
+                element={
+                  <RequisitionDetailView
+                    sessionOverride={{
+                      ...SESSION,
+                      scopes: [...SESSION.scopes, 'talent:source'],
+                    }}
+                  />
+                }
+              />
+            </Routes>
+          </MemoryRouter>
+        </BreadcrumbProvider>
+      </ToastProvider>,
+    );
+    await screen.findByRole('heading', { name: /Senior Rust Engineer/ });
+    fireEvent.click(screen.getByRole('button', { name: /Find Talent/ }));
+    expect(screen.getByText('Rediscover existing Talent')).toBeInTheDocument();
+    expect(screen.getByText('Source new Talent')).toBeInTheDocument();
   });
 
   it('no leftover old-styled surfaces: no funnel ribbon / at-a-glance card / reserved seam / inline MoveToMenu', async () => {
