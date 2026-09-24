@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Button, FormField, Checkbox, Input, Select, TextArea } from '@aramo/fe-foundation';
 
 import { fetchAssignableUsers } from '../../users/users-api';
+import { searchContacts } from '../../contacts/contacts-api';
 import { companyTypes, relStatusFor } from '../company-workspace';
 import type {
   CompanyRelationshipInput,
@@ -42,6 +43,17 @@ const PAYMENT_TERM_OPTS: readonly { value: string; label: string }[] = [
   { value: 'net_60', label: 'Net 60' },
 ];
 
+// The primary-contact write the drawer performs after the company save (create
+// or update). Null when the two name fields are empty (nothing to persist).
+export interface PrimaryContactPayload {
+  readonly existingId: string | null;
+  readonly first_name: string;
+  readonly last_name: string;
+  readonly title: string;
+  readonly phone_cell: string;
+  readonly email1: string;
+}
+
 interface FormState {
   name: string;
   industry: string;
@@ -52,6 +64,13 @@ interface FormState {
   payment_terms: string;
   owner_id: string;
   communication_restricted: boolean;
+  // Primary contact (prototype section).
+  pc_existing_id: string | null;
+  pc_first: string;
+  pc_last: string;
+  pc_title: string;
+  pc_mobile: string;
+  pc_email: string;
   rel_client: boolean;
   rel_client_status: string;
   rel_vendor: boolean;
@@ -65,6 +84,8 @@ function initialState(c: CompanyView | null): FormState {
     return {
       name: '', industry: '', url: '', phone1: '', city: '', notes: '',
       payment_terms: '', owner_id: '', communication_restricted: false,
+      pc_existing_id: null, pc_first: '', pc_last: '', pc_title: '',
+      pc_mobile: '', pc_email: '',
       rel_client: true, rel_client_status: 'PROSPECT',
       rel_vendor: false, rel_vendor_status: 'PROSPECT',
       rel_partner: false, rel_partner_status: 'PROSPECT',
@@ -81,6 +102,9 @@ function initialState(c: CompanyView | null): FormState {
     payment_terms: c.payment_terms ?? '',
     owner_id: c.owner_id ?? '',
     communication_restricted: c.communication_restricted,
+    // Primary contact hydrates asynchronously (fetched by company id).
+    pc_existing_id: null, pc_first: '', pc_last: '', pc_title: '',
+    pc_mobile: '', pc_email: '',
     rel_client: types.includes('CLIENT'),
     rel_client_status: relStatusFor(c, 'CLIENT') ?? 'ACTIVE',
     rel_vendor: types.includes('VENDOR'),
@@ -152,6 +176,22 @@ function buildPatch(
   return b as unknown as UpdateCompanyRequest;
 }
 
+// The primary-contact write — null unless BOTH names are present (a contact
+// requires first + last). The drawer persists this after the company save.
+function buildPc(s: FormState): PrimaryContactPayload | null {
+  const first = s.pc_first.trim();
+  const last = s.pc_last.trim();
+  if (first === '' || last === '') return null;
+  return {
+    existingId: s.pc_existing_id,
+    first_name: first,
+    last_name: last,
+    title: s.pc_title.trim(),
+    phone_cell: s.pc_mobile.trim(),
+    email1: s.pc_email.trim(),
+  };
+}
+
 interface CommonProps {
   readonly canSeeCommercial: boolean;
   readonly submitting: boolean;
@@ -160,8 +200,8 @@ interface CommonProps {
   readonly fullRecordHref?: string;
 }
 type CompanyQuickEditFormProps =
-  | (CommonProps & { readonly mode: 'create'; readonly onSubmit: (b: CreateCompanyRequest) => Promise<void> })
-  | (CommonProps & { readonly mode: 'edit'; readonly initial: CompanyView; readonly onSubmit: (b: UpdateCompanyRequest) => Promise<void> });
+  | (CommonProps & { readonly mode: 'create'; readonly onSubmit: (b: CreateCompanyRequest, pc: PrimaryContactPayload | null) => Promise<void> })
+  | (CommonProps & { readonly mode: 'edit'; readonly initial: CompanyView; readonly onSubmit: (b: UpdateCompanyRequest, pc: PrimaryContactPayload | null) => Promise<void> });
 
 export function CompanyQuickEditForm(props: CompanyQuickEditFormProps) {
   const [state, setState] = useState<FormState>(() =>
@@ -196,15 +236,50 @@ export function CompanyQuickEditForm(props: CompanyQuickEditFormProps) {
       ? [{ value: state.owner_id, label: state.owner_id }, ...owners]
       : owners;
 
+  // Hydrate the primary-contact fields (edit mode) from the company's existing
+  // primary contact — best-effort; absence leaves the fields empty (create-new).
+  const editCompanyId = props.mode === 'edit' ? props.initial.id : null;
+  useEffect(() => {
+    if (editCompanyId === null) return;
+    let cancelled = false;
+    const params = new URLSearchParams({
+      paged: 'true',
+      is_primary: 'true',
+      company_id: editCompanyId,
+      page_size: '1',
+    });
+    void searchContacts(params)
+      .then((page) => {
+        const ct = page.items[0];
+        if (cancelled || ct === undefined) return;
+        setState((s) => ({
+          ...s,
+          pc_existing_id: ct.id,
+          pc_first: ct.first_name,
+          pc_last: ct.last_name,
+          pc_title: ct.title ?? '',
+          pc_mobile: ct.phone_cell ?? '',
+          pc_email: ct.email1 ?? '',
+        }));
+      })
+      .catch(() => {
+        /* no contact:read → fields stay empty */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [editCompanyId]);
+
   const canSubmit =
     state.name.trim() !== '' && selectedRels(state).length > 0 && !props.submitting;
 
   async function onSubmit(ev: React.FormEvent): Promise<void> {
     ev.preventDefault();
+    const pc = buildPc(state);
     if (props.mode === 'create') {
-      await props.onSubmit(buildCreate(state, props.canSeeCommercial));
+      await props.onSubmit(buildCreate(state, props.canSeeCommercial), pc);
     } else {
-      await props.onSubmit(buildPatch(state, props.initial, props.canSeeCommercial));
+      await props.onSubmit(buildPatch(state, props.initial, props.canSeeCommercial), pc);
     }
   }
 
@@ -303,6 +378,29 @@ export function CompanyQuickEditForm(props: CompanyQuickEditFormProps) {
       </fieldset>
 
       <fieldset className="company-form__section" disabled={props.submitting}>
+        <legend>Primary contact</legend>
+        <div className="company-form__row2">
+          <FormField label="First name">
+            <Input type="text" value={state.pc_first} onChange={(e) => set('pc_first', e.target.value)} aria-label="First name" />
+          </FormField>
+          <FormField label="Last name">
+            <Input type="text" value={state.pc_last} onChange={(e) => set('pc_last', e.target.value)} aria-label="Last name" />
+          </FormField>
+        </div>
+        <div className="company-form__row2">
+          <FormField label="Title">
+            <Input type="text" value={state.pc_title} onChange={(e) => set('pc_title', e.target.value)} placeholder="e.g. VP Engineering" aria-label="Contact title" />
+          </FormField>
+          <FormField label="Mobile">
+            <Input type="text" value={state.pc_mobile} onChange={(e) => set('pc_mobile', e.target.value)} placeholder="(555) 000-0000" aria-label="Mobile" />
+          </FormField>
+        </div>
+        <FormField label="Email">
+          <Input type="text" value={state.pc_email} onChange={(e) => set('pc_email', e.target.value)} placeholder="name@company.com" aria-label="Contact email" />
+        </FormField>
+      </fieldset>
+
+      <fieldset className="company-form__section" disabled={props.submitting}>
         <legend>Engagement</legend>
         <div className="company-form__row2">
           <FormField label="Account owner">
@@ -341,6 +439,19 @@ export function CompanyQuickEditForm(props: CompanyQuickEditFormProps) {
             aria-label="Notes"
           />
         </FormField>
+      </fieldset>
+
+      {/* Documents — a visual affordance matching the prototype. Company-level
+          attachment upload is not yet built in the backend (only requisition /
+          talent), so the dropzone is non-interactive for now. */}
+      <fieldset className="company-form__section" disabled={props.submitting}>
+        <legend>Documents</legend>
+        <div className="company-form__dropzone" aria-hidden="true">
+          <div className="company-form__dz-title">Attach documents</div>
+          <div className="company-form__dz-sub">
+            MSA, rate cards, NDAs, insurance certs · PDF, DOCX, XLSX · up to 25 MB
+          </div>
+        </div>
       </fieldset>
 
       <div className="company-form__actions">

@@ -4022,6 +4022,14 @@ select.rc-secinput { appearance: none; padding-right: 28px; }
   gap: 8px; padding: 14px 0 2px; margin-top: 4px; border-top: 1px solid var(--line);
   background: var(--surface);
 }
+/* Documents dropzone — visual affordance (company attachments not yet built). */
+.company-form__dropzone {
+  border: 1.5px dashed #c9d4f2; border-radius: 11px; background: #fafbfc;
+  padding: 22px 16px; text-align: center;
+}
+.company-form__dz-title { font-size: 12.5px; font-weight: 600; color: #022ac0; }
+.company-form__dz-sub { font-size: 11px; color: #93a0a8; margin-top: 3px; }
+
 /* "Full Edit Company" footer link — pushed to the left of Cancel/Save. */
 .company-form__full {
   margin-right: auto; font-size: 12.5px; font-weight: 600;
