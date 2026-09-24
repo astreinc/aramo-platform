@@ -35,7 +35,9 @@ import { IngestionModule } from '@aramo/ingestion';
 import { JobDomainModule } from '@aramo/job-domain';
 import { MailerModule } from '@aramo/mailer';
 import { MatchingModule } from '@aramo/matching';
-import { ObjectStorageModule } from '@aramo/object-storage';
+import { ObjectStorageModule, ObjectStorageService } from '@aramo/object-storage';
+import { DocumentsModule, DOCUMENT_STORAGE_PORT } from '@aramo/documents';
+import { SIGNATURE_PROVIDER_PORT } from '@aramo/documents-contracts';
 import { SourcedTalentModule } from '@aramo/sourced-talent';
 import { OutboxPublisherModule } from '@aramo/outbox-publisher';
 import { PipelineModule } from '@aramo/pipeline';
@@ -64,6 +66,11 @@ import {
 import { TalentTrustModule } from '@aramo/talent-trust';
 import { TaskModule } from '@aramo/task';
 
+import { EsignServiceHttpProvider } from './esign/esign-service-http.provider.js';
+import { AramoS3DocumentStorageAdapter } from './documents/aramo-s3-document-storage.adapter.js';
+import { DocumentsEsignModule } from './documents/documents-esign.module.js';
+import { RtrModule } from './rtr/rtr.module.js';
+import { OfferDocumentModule } from './offer-document/offer-document.module.js';
 import { ResumeAttachmentResolverModule } from './resume-extraction/resume-attachment-resolver.module.js';
 import { ResumeEditionReaderModule } from './resume-extraction/resume-edition-reader.module.js';
 import { CompanyClientCheckModule } from './company-client-check/company-client-check.module.js';
@@ -506,6 +513,16 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     // upload; later A4 owner_types) consume ObjectStorageService at
     // the cross-lib boundary.
     ObjectStorageModule,
+    // DOC-1a — canonical Documents domain (scope:boundary). The
+    // DOCUMENT_STORAGE_PORT binding is provided below at the composition root.
+    DocumentsModule,
+    // DOC-4 (R-4-7) — the executed-artifact write-back seam (source-bytes read +
+    // idempotent write-back). Self-contained module (own storage + prisma).
+    DocumentsEsignModule,
+    // DOC-5 (R-5-5) — the RTR orchestrator (request/prepare/send; first
+    // SIGNATURE_PROVIDER_PORT consumer). Self-contained composition module.
+    RtrModule,
+    OfferDocumentModule,
     // SRC-1 PR-2 — SourcedTalentModule provides SourcedTalentRepository so the
     // Indeed apply webhook can write the channel dedup-memory arrival. The
     // apps/api → @aramo/sourced-talent nx edge already exists (admit-arrivals),
@@ -649,6 +666,18 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     IndeedApplyController,
   ],
   providers: [
+    // DOC-1a — bind the DocumentStoragePort to the S3 adapter at the
+    // composition root (mirrors the TranscriptArtifactStore precedent). The
+    // adapter wraps ObjectStorageService; libs/documents never imports the SDK.
+    {
+      provide: DOCUMENT_STORAGE_PORT,
+      useFactory: (storage: ObjectStorageService) => new AramoS3DocumentStorageAdapter(storage),
+      inject: [ObjectStorageService],
+    },
+    // DOC-3 B5c — the provider-neutral SignatureProviderPort bound to the HTTP
+    // adapter for the separate apps/esign-service. apps/api reaches E-Sign ONLY
+    // over HTTP (never the esign schema/Prisma). Consumed by RTR/Offer in DOC-5/6.
+    { provide: SIGNATURE_PROVIDER_PORT, useClass: EsignServiceHttpProvider },
     // SKILL-TAX-1E — canonical SHADOW-matching (dark/observe-only). Config +
     // comparator + logger registered at the app boundary (like ExamineController),
     // because the comparator is the only place that legally reads requisition

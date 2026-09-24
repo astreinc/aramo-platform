@@ -5817,6 +5817,205 @@ paths:
       security:
         - BearerAuth: []
 
+  # DOC-5 — RTR (Right to Represent) recruiter orchestration.
+  /v1/rtr:
+    post:
+      operationId: requestRtr
+      summary: Request a Right to Represent for a (talent, requisition, company).
+      description: Creates the RIGHT_TO_REPRESENT Document + TALENT/REQUISITION/COMPANY associations and declares the requisition's RTR requirement. Recruiter-only; requires document:create.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [talent_id, requisition_id, company_id]
+              properties:
+                talent_id: { type: string, format: uuid }
+                requisition_id: { type: string, format: uuid }
+                company_id: { type: string, format: uuid }
+      responses:
+        '201':
+          description: The created RTR document reference.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [document_id]
+                properties:
+                  document_id: { type: string, format: uuid }
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+      security:
+        - BearerAuth: []
+  /v1/rtr/{documentId}/send:
+    post:
+      operationId: sendRtr
+      summary: Prepare + send the RTR for the Talent's signature.
+      description: Freezes a revision, then creates + sends the signature envelope with the authoritatively-resolved Talent signer. Recruiter-only; requires document:execute.
+      parameters:
+        - name: documentId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [talent_id]
+              properties:
+                talent_id: { type: string, format: uuid }
+      responses:
+        '200':
+          description: The sent envelope reference.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [document_id, envelope_id, status]
+                properties:
+                  document_id: { type: string, format: uuid }
+                  envelope_id: { type: string, format: uuid }
+                  status: { type: string }
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+  /v1/rtr/{documentId}/status:
+    get:
+      operationId: getRtrStatus
+      summary: The derived RTR status (read-model).
+      description: A DERIVED status label (REQUESTED / AWAITING_SIGNATURE / EXECUTED) computed from the canonical Document state; no second stored authority. Recruiter-only; requires document:read.
+      parameters:
+        - name: documentId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: The derived status.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [document_id, status, document_status]
+                properties:
+                  document_id: { type: string, format: uuid }
+                  status: { type: string }
+                  document_status: { type: string }
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+
+  # DOC-6 — Offer Letter recruiter orchestration. Evidence-only: signing produces an
+  # EXECUTED OFFER_LETTER document; the Offer state machine remains the sole authority
+  # for ACCEPT (Document=EXECUTED while Offer=SENT is an intended, valid dual state).
+  /v1/offer-documents:
+    post:
+      operationId: requestOfferDocument
+      summary: Request an offer letter for an Offer.
+      description: Reads the Offer and creates the OFFER_LETTER Document + TALENT/OFFER/REQUISITION associations. Does not transition the Offer. Recruiter-only; requires document:create.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [offer_id]
+              properties:
+                offer_id: { type: string, format: uuid }
+      responses:
+        '201':
+          description: The created offer-letter document reference.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [document_id, offer_id]
+                properties:
+                  document_id: { type: string, format: uuid }
+                  offer_id: { type: string, format: uuid }
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+  /v1/offer-documents/{documentId}/send:
+    post:
+      operationId: sendOfferDocument
+      summary: Prepare + send the offer letter for the Talent's signature.
+      description: Freezes a revision, then creates + sends the signature envelope with the Talent signer resolved authoritatively from the Offer. Evidence-only — fires no Offer transition. Recruiter-only; requires document:execute.
+      parameters:
+        - name: documentId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [offer_id]
+              properties:
+                offer_id: { type: string, format: uuid }
+      responses:
+        '200':
+          description: The sent envelope reference.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [document_id, envelope_id, status]
+                properties:
+                  document_id: { type: string, format: uuid }
+                  envelope_id: { type: string, format: uuid }
+                  status: { type: string }
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+  /v1/offer-documents/{documentId}/status:
+    get:
+      operationId: getOfferDocumentStatus
+      summary: The derived offer-letter status (read-model).
+      description: A DERIVED status label (PREPARING / AWAITING_SIGNATURE / EXECUTED) computed from the canonical Document state; no second stored authority and distinct from the Offer's own state. Recruiter-only; requires document:read.
+      parameters:
+        - name: documentId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: The derived status.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [document_id, status, document_status]
+                properties:
+                  document_id: { type: string, format: uuid }
+                  status: { type: string }
+                  document_status: { type: string }
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+
 components:
   securitySchemes:
     # Duplicated byte-for-byte from openapi/common.yaml per locked invariant

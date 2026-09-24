@@ -4,6 +4,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import {
   DeleteObjectCommand,
   GetObjectCommand,
+  HeadObjectCommand,
   PutObjectCommand,
   PutObjectTaggingCommand,
 } from '@aws-sdk/client-s3';
@@ -295,6 +296,52 @@ export class ObjectStorageService {
       byte_length: body.byteLength,
     });
     return Buffer.from(body);
+  }
+
+  /**
+   * HEAD an object — returns size/content-type, or null when the object is
+   * absent. Added for the Documents DocumentStoragePort (DOC-1a).
+   */
+  async headObject(input: {
+    storage_key: string;
+    requestId: string;
+  }): Promise<{ byte_length: number; content_type: string | undefined } | null> {
+    const { bucket } = this.s3Factory.getConfig();
+    const client = this.s3Factory.getClient();
+    try {
+      const res = await client.send(new HeadObjectCommand({ Bucket: bucket, Key: input.storage_key }));
+      return { byte_length: res.ContentLength ?? 0, content_type: res.ContentType };
+    } catch (err: unknown) {
+      const name = (err as { name?: string })?.name;
+      const status = (err as { $metadata?: { httpStatusCode?: number } })?.$metadata?.httpStatusCode;
+      if (name === 'NotFound' || name === 'NoSuchKey' || status === 404) {
+        return null;
+      }
+      const message = err instanceof Error ? err.message : String(err);
+      throw new AramoError('OBJECT_STORAGE_UPLOAD_FAILED', `object head failed: ${message}`, 502, {
+        requestId: input.requestId,
+        details: { kind: 'head_object_failed', bucket, storage_key: input.storage_key },
+      });
+    }
+  }
+
+  /**
+   * Read the object back and verify its sha256 matches the expected digest.
+   * Integrity control for executed/rendered Document artifacts (DOC-1a).
+   */
+  async verifyObjectSha256(input: {
+    storage_key: string;
+    expected_sha256: string;
+    requestId: string;
+    maxBytes: number;
+  }): Promise<boolean> {
+    const body = await this.getObjectBytes({
+      storage_key: input.storage_key,
+      requestId: input.requestId,
+      maxBytes: input.maxBytes,
+    });
+    const actual = createHash('sha256').update(body).digest('hex');
+    return actual === input.expected_sha256;
   }
 
   /** Server-side DELETE by opaque key (idempotent at the S3 layer). */
