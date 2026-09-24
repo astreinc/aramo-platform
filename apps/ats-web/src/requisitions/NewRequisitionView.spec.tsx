@@ -273,3 +273,35 @@ describe('RATE_TYPE_VALUES — hand-mirror of the BE allowlist', () => {
     expect([...RATE_TYPE_VALUES]).toEqual(['C2C', 'W2', '1099', 'Any']);
   });
 });
+
+describe('NewRequisitionView — shared-form create semantics (G2.5c)', () => {
+  it('entering a Bill rate (max) sets the CONTRACT discriminator so the create body sends it', async () => {
+    const bodies: Record<string, unknown>[] = [];
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = typeof input === 'string' ? input : (input as Request).url;
+      const method = init?.method ?? 'GET';
+      if (url.includes('/v1/companies') && method === 'GET') return json({ items: [ACME] });
+      if (url.includes('/v1/contacts')) return json({ items: [] });
+      if (url.endsWith('/v1/requisitions') && method === 'POST') {
+        bodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+        return json({ id: 'r1', title: 'Rate Role' }, 201);
+      }
+      return new Response('{}', { status: 404 });
+    });
+    // compensation:view:bill makes Bill rate (max) a visible, writable field.
+    renderView(['requisition:create', 'compensation:view:bill']);
+    await openFormViaImport();
+    fireEvent.change(await screen.findByLabelText('Job title'), {
+      target: { value: 'Rate Role' },
+    });
+    fireEvent.click(screen.getByRole('combobox', { name: 'Company' }));
+    fireEvent.click(await screen.findByRole('option', { name: /Acme Corp/i }));
+    fireEvent.change(screen.getByLabelText('Bill rate (max)'), {
+      target: { value: '85' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^create requisition$/i }));
+    await waitFor(() => expect(bodies.length).toBe(1));
+    // The discriminator (compensation_model=CONTRACT) was set → the bill rate ships.
+    expect(bodies[0]['bill_rate_amount']).toBe('85');
+  });
+});

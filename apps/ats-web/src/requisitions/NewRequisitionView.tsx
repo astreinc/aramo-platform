@@ -4,7 +4,7 @@ import {
   Combobox,
   type ComboboxItem,
   type Session,
-  useSession, Button, Input, Select, TextArea,
+  useSession, Button, Input, TextArea,
 } from '@aramo/fe-foundation';
 
 import {
@@ -36,10 +36,7 @@ import {
   JOB_TYPE_VALUES,
   ROLE_FAMILY_VALUES,
   SENIORITY_LEVEL_VALUES,
-  HEADCOUNT_REASON_VALUES,
-  SOURCE_SYSTEM_VALUES,
   DURATION_UNIT_VALUES,
-  enterpriseLabel,
   emptyEnterpriseFormState,
   emptyFinancialFormState,
   type EnterpriseFormState,
@@ -57,15 +54,13 @@ import {
 } from './requisitions-api';
 import { createErrorMessage, intakeErrorMessage } from './error-messages';
 import { parseRequisitionIntake } from './parse-intake';
+import { RequisitionForm } from './RequisitionForm';
 import {
-  ReqProvenanceChip,
-  isPrefilled,
   provenanceAfterEdit,
   type ReqProvenance,
   type ReqProvenanceMap,
 } from './req-provenance';
 import {
-  RATE_PERIOD_VALUES,
   RATE_TYPE_VALUES,
   type CompensationModel,
   type CreateRequisitionRequest,
@@ -114,15 +109,6 @@ function onBranchKeys(model: CompensationModel | ''): readonly CompensationField
   return [];
 }
 
-// Friendly period suffixes for the bill-rate unit select (mockup "/hr", "/yr").
-const RATE_PERIOD_LABELS: Readonly<Record<string, string>> = {
-  HOURLY: '/hr',
-  DAILY: '/day',
-  WEEKLY: '/wk',
-  MONTHLY: '/mo',
-  ANNUAL: '/yr',
-};
-
 interface BasicsFormState {
   title: string;
   company_id: string;
@@ -147,12 +133,6 @@ interface FormState
     CompensationFormState,
     EnterpriseFormState,
     FinancialFormState {}
-
-// The only initial status a MANUAL (human) create may ESTABLISH. Establishing
-// open/hold/etc. needs requisition:create:establish (catalog-only, no human role);
-// those states are reached via the governed lifecycle after create. Kept as the
-// sole create option so the form matches establishment-authorization-gate.ts.
-const MANUAL_CREATE_STATUS_VALUES: readonly RecruitingStatus[] = ['draft'];
 
 function emptyState(): FormState {
   return {
@@ -179,6 +159,27 @@ function emptyState(): FormState {
     ...emptyEnterpriseFormState(),
     ...emptyFinancialFormState(),
   };
+}
+
+// G2.5c — thin adapter between New-Req's typed FormState (the source of truth,
+// which buildCreateBody still reads) and the shared RequisitionForm's string
+// value map. FormState stays authoritative; the map is derived each render and
+// writes coerce straight back through setField.
+const FORM_BOOLEAN_KEYS = new Set([
+  'is_hot',
+  'allow_subcontractors',
+  'relocation_offered',
+  'extension_possible',
+]);
+const FORM_NUMBER_KEYS = new Set(['openings']);
+
+function stateToFormValues(state: FormState): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(state)) {
+    if (typeof v === 'boolean') out[k] = v ? 'true' : 'false';
+    else out[k] = v === null || v === undefined ? '' : String(v);
+  }
+  return out;
 }
 
 // The D5-defensive CREATE-body construction (preserved from the prior
@@ -653,6 +654,101 @@ export function NewRequisitionView({ sessionOverride }: NewRequisitionViewProps)
     );
   }
 
+  // G2.5c — adapt New-Req's typed state to the shared RequisitionForm contract.
+  const formValues = stateToFormValues(state);
+  const writeField = setField as unknown as (k: string, v: unknown) => void;
+  const onFormChange = (key: string, val: string): void => {
+    // Bill rate keeps its discriminator behavior (sets compensation_model =
+    // CONTRACT so buildCreateBody sends it) — preserved from setBillRate.
+    if (key === 'bill_rate_amount') {
+      setBillRate(val);
+      return;
+    }
+    if (FORM_BOOLEAN_KEYS.has(key)) writeField(key, val === 'true');
+    else if (FORM_NUMBER_KEYS.has(key)) writeField(key, Math.max(0, Number(val) || 0));
+    else writeField(key, val);
+  };
+  // Only bill_rate_amount is scope-masked in Commercials; everything else shows.
+  const formPresent = (key: string): boolean =>
+    key === 'bill_rate_amount' ? visibleComp.has('bill_rate_amount') : true;
+
+  // Domain widgets fed to the shared form via explicit slots (create lane).
+  const clientSlot = (
+    <>
+      <Combobox
+        ariaLabel="Company"
+        items={companyItems}
+        value={state.company_id === '' ? null : state.company_id}
+        onSelect={(item) => onCompanyChange(item.value)}
+        placeholder={companiesLoading ? 'Loading…' : 'Select client…'}
+        disabled={companiesLoading || submitting}
+        testId="company-picker"
+      />
+      {companyHint !== null ? (
+        <span className="rc-ifield__hint">
+          From your notes: “{companyHint}” — pick the matching client.
+        </span>
+      ) : null}
+    </>
+  );
+  const contactSlot = (
+    <>
+      <Combobox
+        ariaLabel="Hiring manager"
+        items={contactItems}
+        value={state.contact_id === '' ? null : state.contact_id}
+        onSelect={(item) => setField('contact_id', item.value)}
+        placeholder={
+          state.company_id === '' ? 'Select a client first…' : 'Select contact…'
+        }
+        disabled={state.company_id === '' || submitting}
+        testId="contact-picker"
+      />
+      {contactHint !== null ? (
+        <span className="rc-ifield__hint">From your notes: “{contactHint}”.</span>
+      ) : null}
+    </>
+  );
+  const addressSlot = (
+    <div className="rc-ifield">
+      <label className="rc-ifield__lb">Search work location</label>
+      <AddressTypeahead
+        onSelectAddress={populateWorkLocation}
+        disabled={submitting}
+        testId="req-worklocation-search"
+      />
+      <span style={{ display: 'block', fontSize: 12, color: '#5C6770', marginTop: 4 }}>
+        Optional — fills City, State and ZIP / Postal code; you can edit them after.
+      </span>
+    </div>
+  );
+  const skillsSlot = (
+    <div className="rc-skillsblock">
+      <SkillEditor
+        label="Required"
+        tone="must"
+        skills={required}
+        disabled={submitting}
+        onAdd={(s) => setRequired((p) => (p.includes(s) ? p : [...p, s]))}
+        onRemove={(i) => setRequired((p) => p.filter((_, j) => j !== i))}
+      />
+      <SkillEditor
+        label="Nice to have"
+        tone="nice"
+        skills={nice}
+        disabled={submitting}
+        onAdd={(s) => setNice((p) => (p.includes(s) ? p : [...p, s]))}
+        onRemove={(i) => setNice((p) => p.filter((_, j) => j !== i))}
+      />
+      <p className="rc-newreq__note">
+        <Icons.IconInfo />
+        These are the requirements the role needs. No person is judged here —
+        matching surfaces which requirements each person meets, and arrives with
+        Aramo Core.
+      </p>
+    </div>
+  );
+
   return (
     <section className="rc-newreq">
       <PageHeader
@@ -731,543 +827,25 @@ export function NewRequisitionView({ sessionOverride }: NewRequisitionViewProps)
               <InlineAlert variant="error">{profileWarning}</InlineAlert>
             ) : null}
 
-            {/* ── 1. Role & client ── */}
-            <Card>
-              <CardHead
-                title={
-                  <>
-                    <Icons.IconBriefcase className="rc-card__hic" />
-                    Role &amp; client
-                  </>
-                }
-              />
-              <div className="rc-fgrid">
-                <Field
-                  label="Job title"
-                  required
-                  full
-                  prov={provenance['title']}
-                  value={state.title}
-                  onChange={(v) => setField('title', v)}
-                />
-                <div className="rc-ifield">
-                  <label className="rc-ifield__lb">
-                    <span>
-                      Client<span className="rc-ifield__req"> *</span>
-                    </span>
-                  </label>
-                  <Combobox
-                    ariaLabel="Company"
-                    items={companyItems}
-                    value={state.company_id === '' ? null : state.company_id}
-                    onSelect={(item) => onCompanyChange(item.value)}
-                    placeholder={companiesLoading ? 'Loading…' : 'Select client…'}
-                    disabled={companiesLoading || submitting}
-                    testId="company-picker"
-                  />
-                  {companyHint !== null ? (
-                    <span className="rc-ifield__hint">
-                      From your notes: “{companyHint}” — pick the matching client.
-                    </span>
-                  ) : null}
-                </div>
-                <div className="rc-ifield">
-                  <label className="rc-ifield__lb">
-                    <span>Hiring manager</span>
-                  </label>
-                  <Combobox
-                    ariaLabel="Hiring manager"
-                    items={contactItems}
-                    value={state.contact_id === '' ? null : state.contact_id}
-                    onSelect={(item) => setField('contact_id', item.value)}
-                    placeholder={
-                      state.company_id === '' ? 'Select a client first…' : 'Select contact…'
-                    }
-                    disabled={state.company_id === '' || submitting}
-                    testId="contact-picker"
-                  />
-                  {contactHint !== null ? (
-                    <span className="rc-ifield__hint">
-                      From your notes: “{contactHint}”.
-                    </span>
-                  ) : null}
-                </div>
-                <EnumSelect
-                  label="Requisition type"
-                  value={state.job_type}
-                  values={JOB_TYPE_VALUES}
-                  labelFn={enterpriseLabel}
-                  prov={provenance['job_type']}
-                  disabled={submitting}
-                  onChange={(v) => setField('job_type', v as EnterpriseFormState['job_type'])}
-                />
-                <NumberField
-                  label="Openings"
-                  prov={provenance['openings']}
-                  value={state.openings}
-                  onChange={(v) => setField('openings', v)}
-                />
-                {/* A human create can only ESTABLISH a draft; open/hold/etc. are
-                    reached via the governed lifecycle, never at create. Offer only
-                    the establishable status so the form cannot 403 server-side. */}
-                <SelectField
-                  label="Status"
-                  value={state.status}
-                  options={MANUAL_CREATE_STATUS_VALUES}
-                  onChange={(v) => setField('status', v as RecruitingStatus)}
-                />
-                <div className="rc-ifield">
-                  <label className="rc-ifield__lb">
-                    <span>Priority</span>
-                  </label>
-                  <label className="rc-switchrow">
-                    <Switch
-                      checked={state.is_hot}
-                      onCheckedChange={(c) => setField('is_hot', c)}
-                      aria-label="Mark as hot"
-                    />
-                    <span>Mark as hot</span>
-                  </label>
-                </div>
-              </div>
-            </Card>
-
-            {/* ── 2. Location & work arrangement ── */}
-            <Card>
-              <CardHead
-                title={
-                  <>
-                    <Icons.IconPin className="rc-card__hic" />
-                    Location &amp; work arrangement
-                  </>
-                }
-              />
-              {/* WL-B3 — Search work location (reuses AddressTypeahead). Optional
-                  input assistance; fills City/State/ZIP, all still editable. */}
-              <div className="rc-ifield">
-                <label className="rc-ifield__lb">Search work location</label>
-                <AddressTypeahead
-                  onSelectAddress={populateWorkLocation}
-                  disabled={submitting}
-                  testId="req-worklocation-search"
-                />
-                <span style={{ display: 'block', fontSize: 12, color: '#5C6770', marginTop: 4 }}>
-                  Optional — fills City, State and ZIP / Postal code; you can edit them after.
-                </span>
-              </div>
-              <div className="rc-fgrid">
-                <Field
-                  label="City"
-                  prov={provenance['city']}
-                  value={state.city}
-                  onChange={(v) => setField('city', v)}
-                />
-                <Field
-                  label="State"
-                  prov={provenance['state']}
-                  value={state.state}
-                  onChange={(v) => setField('state', v)}
-                />
-                <Field
-                  label="ZIP / Postal code"
-                  prov={provenance['postal_code']}
-                  value={state.postal_code}
-                  onChange={(v) => setField('postal_code', v)}
-                />
-                <EnumSelect
-                  label="Work arrangement"
-                  value={state.work_arrangement}
-                  values={WORK_ARRANGEMENT_VALUES}
-                  labelFn={enterpriseLabel}
-                  prov={provenance['work_arrangement']}
-                  disabled={submitting}
-                  onChange={(v) =>
-                    setField('work_arrangement', v as EnterpriseFormState['work_arrangement'])
-                  }
-                />
-                <div className="rc-ifield">
-                  <label className="rc-ifield__lb">
-                    <span>Contract duration</span>
-                    <ReqProvenanceChip prov={provenance['duration_value']} />
-                  </label>
-                  <div className="rc-inpgrp">
-                    <Input unstyled
-                      className={`rc-input${isPrefilled(provenance['duration_value']) ? ' rc-input--prov' : ''}`}
-                      type="number"
-                      min={0}
-                      value={state.duration_value}
-                      aria-label="Contract duration value"
-                      placeholder="e.g. 12"
-                      disabled={submitting}
-                      onChange={(ev) =>
-                        setField('duration_value', ev.target.value as EnterpriseFormState['duration_value'])
-                      }
-                    />
-                    <Select unstyled
-                      className="rc-input"
-                      value={state.duration_unit}
-                      aria-label="Contract duration unit"
-                      disabled={submitting}
-                      onChange={(ev) =>
-                        setField('duration_unit', ev.target.value as EnterpriseFormState['duration_unit'])
-                      }
-                    >
-                      <option value="">unit…</option>
-                      {DURATION_UNIT_VALUES.map((u) => (
-                        <option key={u} value={u}>
-                          {enterpriseLabel(u)}
-                        </option>
-                      ))}
-                    </Select>
-                  </div>
-                </div>
-                <Field
-                  label="Start date"
-                  type="date"
-                  value={state.start_date}
-                  onChange={(v) => setField('start_date', v)}
-                />
-              </div>
-            </Card>
-
-            {/* ── 3. Commercials (bill rate D5-gated + rate type + subk) ── */}
-            <Card>
-              <CardHead
-                title={
-                  <>
-                    <Icons.IconTag className="rc-card__hic" />
-                    Commercials
-                  </>
-                }
-              />
-              <div className="rc-fgrid">
-                {visibleComp.has('bill_rate_amount') ? (
-                  <div className="rc-ifield">
-                    <label className="rc-ifield__lb">
-                      <span>Bill rate (max)</span>
-                      <ReqProvenanceChip prov={provenance['bill_rate_amount']} />
-                    </label>
-                    <div className="rc-inpgrp">
-                      <Input unstyled
-                        className={`rc-input${isPrefilled(provenance['bill_rate_amount']) ? ' rc-input--prov' : ''}`}
-                        type="text"
-                        inputMode="decimal"
-                        value={state.bill_rate_amount}
-                        aria-label="Bill rate (max)"
-                        placeholder="85"
-                        disabled={submitting}
-                        onChange={(ev) => setBillRate(ev.target.value)}
-                      />
-                      <Select unstyled
-                        className="rc-input"
-                        value={state.bill_rate_period}
-                        aria-label="Bill rate period"
-                        disabled={submitting}
-                        onChange={(ev) =>
-                          setField('bill_rate_period', ev.target.value as FormState['bill_rate_period'])
-                        }
-                      >
-                        {RATE_PERIOD_VALUES.map((p) => (
-                          <option key={p} value={p}>
-                            {RATE_PERIOD_LABELS[p]}
-                          </option>
-                        ))}
-                      </Select>
-                    </div>
-                  </div>
-                ) : null}
-                <div className="rc-ifield">
-                  <label className="rc-ifield__lb">
-                    <span>Rate type</span>
-                    <ReqProvenanceChip prov={provenance['rate_type']} />
-                  </label>
-                  <Select unstyled
-                    className={`rc-input${isPrefilled(provenance['rate_type']) ? ' rc-input--prov' : ''}`}
-                    value={state.rate_type}
-                    aria-label="Rate type"
-                    disabled={submitting}
-                    onChange={(ev) => setField('rate_type', ev.target.value)}
-                  >
-                    <option value="">Not stated</option>
-                    {RATE_TYPE_VALUES.map((rt) => (
-                      <option key={rt} value={rt}>
-                        {rt}
-                      </option>
-                    ))}
-                  </Select>
-                </div>
-                <div className="rc-ifield">
-                  <label className="rc-ifield__lb">
-                    <span>Allow subcontractors</span>
-                  </label>
-                  <label className="rc-switchrow">
-                    <Switch
-                      checked={state.allow_subcontractors}
-                      onCheckedChange={(c) => setField('allow_subcontractors', c)}
-                      aria-label="Allow subcontractors"
-                    />
-                    <span>C2C / non-W2 OK</span>
-                  </label>
-                </div>
-              </div>
-              <p className="rc-newreq__note">
-                <Icons.IconInfo />
-                Bill rate is the client max; pay / markup is set on placement.
-              </p>
-            </Card>
-
-            {/* ── 4. Job description (the AI's primary output — tall) ── */}
-            <Card>
-              <CardHead
-                title={
-                  <>
-                    <Icons.IconFile className="rc-card__hic" />
-                    Job description
-                    <ReqProvenanceChip prov={provenance['description']} />
-                  </>
-                }
-              />
-              <div className="rc-fgrid">
-                <div className="rc-ifield rc-ifield--full">
-                  <TextArea unstyled
-                    className={`rc-input rc-jd${isPrefilled(provenance['description']) ? ' rc-input--prov' : ''}`}
-                    rows={draftSource !== 'none' ? 20 : 14}
-                    value={state.description}
-                    aria-label="Job description"
-                    placeholder="Describe the role…"
-                    disabled={submitting}
-                    onChange={(ev) => setField('description', ev.target.value)}
-                  />
-                </div>
-              </div>
-            </Card>
-
-            {/* ── 5. Requirement skills (persist via the GoldenProfile) ── */}
-            <Card>
-              <CardHead
-                title={
-                  <>
-                    <Icons.IconTag className="rc-card__hic" />
-                    Requirement skills
-                  </>
-                }
-              />
-              <div className="rc-skillsblock">
-                <SkillEditor
-                  label="Required"
-                  tone="must"
-                  skills={required}
-                  disabled={submitting}
-                  onAdd={(s) =>
-                    setRequired((p) => (p.includes(s) ? p : [...p, s]))
-                  }
-                  onRemove={(i) => setRequired((p) => p.filter((_, j) => j !== i))}
-                />
-                <SkillEditor
-                  label="Nice to have"
-                  tone="nice"
-                  skills={nice}
-                  disabled={submitting}
-                  onAdd={(s) => setNice((p) => (p.includes(s) ? p : [...p, s]))}
-                  onRemove={(i) => setNice((p) => p.filter((_, j) => j !== i))}
-                />
-                <p className="rc-newreq__note">
-                  <Icons.IconInfo />
-                  These are the requirements the role needs. No person is judged
-                  here — matching surfaces which requirements each person meets,
-                  and arrives with Aramo Core.
-                </p>
-              </div>
-            </Card>
-
-            {/* ── 6. Work authorization (sensitive) ── */}
-            <Card>
-              <CardHead
-                title={
-                  <>
-                    <Icons.IconShield className="rc-card__hic" />
-                    Work authorization
-                    <span className="rc-card__sens">sensitive</span>
-                  </>
-                }
-              />
-              <div className="rc-fgrid">
-                <EnumSelect
-                  label="Authorization required"
-                  full
-                  value={state.work_authorization}
-                  values={WORK_AUTHORIZATION_VALUES}
-                  labelFn={enterpriseLabel}
-                  prov={provenance['work_authorization']}
-                  disabled={submitting}
-                  onChange={(v) =>
-                    setField('work_authorization', v as EnterpriseFormState['work_authorization'])
-                  }
-                />
-              </div>
-            </Card>
-
-            {/* ── 7. Hiring-manager notes ── */}
-            <Card>
-              <CardHead
-                title={
-                  <>
-                    <Icons.IconMessage className="rc-card__hic" />
-                    Hiring-manager notes
-                  </>
-                }
-              />
-              <div className="rc-fgrid">
-                <div className="rc-ifield rc-ifield--full">
-                  <TextArea unstyled
-                    className="rc-input"
-                    rows={3}
-                    value={state.notes}
-                    aria-label="Hiring-manager notes"
-                    placeholder="Context from the hiring manager…"
-                    disabled={submitting}
-                    onChange={(ev) => setField('notes', ev.target.value)}
-                  />
-                </div>
-              </div>
-            </Card>
-
-            {/* ── 8. Additional fields (non-mockup real fields, collapsed) ── */}
-            <Card>
-              <details className="rc-addl" open={draftSource !== 'none'}>
-                <summary className="rc-addl__summary">
-                  <Icons.IconColumns className="rc-card__hic" />
-                  Additional fields
-                  <span className="rc-addl__hint">classification · schedule · source — optional</span>
-                </summary>
-                <div className="rc-addl__body">
-                  <div className="rc-fgrid">
-                    <Field
-                      label="Labor category"
-                      value={state.labor_category}
-                      onChange={(v) => setField('labor_category', v)}
-                    />
-                    <EnumSelect
-                      label="Role family"
-                      value={state.role_family}
-                      values={ROLE_FAMILY_VALUES}
-                      labelFn={enterpriseLabel}
-                      prov={provenance['role_family']}
-                      disabled={submitting}
-                      onChange={(v) =>
-                        setField('role_family', v as EnterpriseFormState['role_family'])
-                      }
-                    />
-                    <EnumSelect
-                      label="Seniority level"
-                      value={state.seniority_level}
-                      values={SENIORITY_LEVEL_VALUES}
-                      labelFn={enterpriseLabel}
-                      prov={provenance['seniority_level']}
-                      disabled={submitting}
-                      onChange={(v) =>
-                        setField('seniority_level', v as EnterpriseFormState['seniority_level'])
-                      }
-                    />
-                    <EnumSelect
-                      label="Headcount reason"
-                      value={state.headcount_reason}
-                      values={HEADCOUNT_REASON_VALUES}
-                      labelFn={enterpriseLabel}
-                      disabled={submitting}
-                      onChange={(v) =>
-                        setField('headcount_reason', v as EnterpriseFormState['headcount_reason'])
-                      }
-                    />
-                    <NumStrField
-                      label="Travel percent"
-                      value={state.travel_percent}
-                      onChange={(v) => setField('travel_percent', v as EnterpriseFormState['travel_percent'])}
-                    />
-                    <div className="rc-ifield">
-                      <label className="rc-ifield__lb"><span>Relocation offered</span></label>
-                      <label className="rc-switchrow">
-                        <Switch
-                          checked={state.relocation_offered}
-                          onCheckedChange={(c) => setField('relocation_offered', c)}
-                          aria-label="Relocation offered"
-                        />
-                        <span>Yes</span>
-                      </label>
-                    </div>
-                    <NumStrField
-                      label="Hours per week"
-                      value={state.hours_per_week}
-                      onChange={(v) => setField('hours_per_week', v as EnterpriseFormState['hours_per_week'])}
-                    />
-                    <Field
-                      label="End date"
-                      type="date"
-                      value={state.end_date}
-                      onChange={(v) => setField('end_date', v as EnterpriseFormState['end_date'])}
-                    />
-                    <div className="rc-ifield">
-                      <label className="rc-ifield__lb"><span>Extension possible</span></label>
-                      <label className="rc-switchrow">
-                        <Switch
-                          checked={state.extension_possible}
-                          onCheckedChange={(c) => setField('extension_possible', c)}
-                          aria-label="Extension possible"
-                        />
-                        <span>Yes</span>
-                      </label>
-                    </div>
-                    <EnumSelect
-                      label="Source system"
-                      value={state.source_system}
-                      values={SOURCE_SYSTEM_VALUES}
-                      labelFn={enterpriseLabel}
-                      disabled={submitting}
-                      onChange={(v) =>
-                        setField('source_system', v as EnterpriseFormState['source_system'])
-                      }
-                    />
-                    <Field
-                      label="External req ID"
-                      value={state.external_req_id}
-                      onChange={(v) => setField('external_req_id', v)}
-                    />
-                    <Field
-                      label="Imported at"
-                      type="date"
-                      value={state.imported_at}
-                      onChange={(v) => setField('imported_at', v)}
-                    />
-                  </div>
-
-                  {financialsVisible ? (
-                    <div className="rc-addl__fin">
-                      <div className="rc-addl__finh">
-                        <Icons.IconShield />
-                        Financial planning
-                        <span className="rc-card__sens">restricted</span>
-                      </div>
-                      <div className="rc-fgrid">
-                        <NumStrField label="Target margin %" value={state.target_margin_percent}
-                          onChange={(v) => setField('target_margin_percent', v)} />
-                        <NumStrField label="Markup % target" value={state.markup_percent_target}
-                          onChange={(v) => setField('markup_percent_target', v)} />
-                        <Field label="Rate card ID" value={state.rate_card_id}
-                          onChange={(v) => setField('rate_card_id', v)} />
-                        <NumStrField label="Min bill rate" value={state.min_bill_rate}
-                          onChange={(v) => setField('min_bill_rate', v)} />
-                        <NumStrField label="Max bill rate" value={state.max_bill_rate}
-                          onChange={(v) => setField('max_bill_rate', v)} />
-                        <NumStrField label="Min pay rate" value={state.min_pay_rate}
-                          onChange={(v) => setField('min_pay_rate', v)} />
-                        <NumStrField label="Max pay rate" value={state.max_pay_rate}
-                          onChange={(v) => setField('max_pay_rate', v)} />
-                      </div>
-                    </div>
-                  ) : null}
-                </div>
-              </details>
-            </Card>
+            {/* G2.5c — the SAME shared form the Detail Overview uses (create
+                mode). New-Req keeps its rail, banner, and create-body building;
+                only the duplicate section JSX is gone. */}
+            <RequisitionForm
+              mode="create"
+              values={formValues}
+              present={formPresent}
+              scopes={scopes}
+              onChange={onFormChange}
+              disabled={submitting}
+              provenance={provenance}
+              clientDisplay=""
+              contactDisplay={null}
+              clientSlot={clientSlot}
+              contactSlot={contactSlot}
+              addressSlot={addressSlot}
+              skillsSlot={skillsSlot}
+              statusDisplay="Draft"
+            />
           </div>
 
           {/* ── Right rail ── */}
@@ -1432,181 +1010,6 @@ function DraftingCard() {
           </div>
         </div>
       </Card>
-    </div>
-  );
-}
-
-// ── Small field helpers (provenance-aware) ──────────────────────────────────
-function Field({
-  label,
-  value,
-  onChange,
-  prov,
-  required,
-  full,
-  type,
-}: {
-  readonly label: string;
-  readonly value: string;
-  readonly onChange: (v: string) => void;
-  readonly prov?: ReqProvenance;
-  readonly required?: boolean;
-  readonly full?: boolean;
-  readonly type?: string;
-}) {
-  const flagged = isPrefilled(prov);
-  return (
-    <div className={`rc-ifield${full ? ' rc-ifield--full' : ''}`}>
-      <label className="rc-ifield__lb">
-        <span>
-          {label}
-          {required ? <span className="rc-ifield__req"> *</span> : null}
-        </span>
-        <ReqProvenanceChip prov={prov} />
-      </label>
-      <Input unstyled
-        className={`rc-input${flagged ? ' rc-input--prov' : ''}`}
-        type={type ?? 'text'}
-        value={value}
-        aria-label={label}
-        required={required}
-        onChange={(ev) => onChange(ev.target.value)}
-      />
-    </div>
-  );
-}
-
-function NumberField({
-  label,
-  value,
-  onChange,
-  prov,
-}: {
-  readonly label: string;
-  readonly value: number;
-  readonly onChange: (v: number) => void;
-  readonly prov?: ReqProvenance;
-}) {
-  return (
-    <div className="rc-ifield">
-      <label className="rc-ifield__lb">
-        <span>{label}</span>
-        <ReqProvenanceChip prov={prov} />
-      </label>
-      <Input unstyled
-        className={`rc-input${isPrefilled(prov) ? ' rc-input--prov' : ''}`}
-        type="number"
-        min={0}
-        step={1}
-        value={value}
-        aria-label={label}
-        onChange={(ev) => onChange(Math.max(0, Number(ev.target.value) || 0))}
-      />
-    </div>
-  );
-}
-
-function SelectField({
-  label,
-  value,
-  options,
-  onChange,
-}: {
-  readonly label: string;
-  readonly value: string;
-  readonly options: readonly string[];
-  readonly onChange: (v: string) => void;
-}) {
-  return (
-    <div className="rc-ifield">
-      <label className="rc-ifield__lb">
-        <span>{label}</span>
-      </label>
-      <Select unstyled
-        className="rc-input"
-        value={value}
-        aria-label={label}
-        onChange={(ev) => onChange(ev.target.value)}
-      >
-        {options.map((o) => (
-          <option key={o} value={o}>
-            {o}
-          </option>
-        ))}
-      </Select>
-    </div>
-  );
-}
-
-// A closed-vocabulary select (mockup-styled, provenance-aware). Renders a
-// "Select…" placeholder + friendly labels via labelFn (enterpriseLabel).
-function EnumSelect({
-  label,
-  value,
-  values,
-  onChange,
-  prov,
-  disabled,
-  labelFn,
-  full,
-}: {
-  readonly label: string;
-  readonly value: string;
-  readonly values: readonly string[];
-  readonly onChange: (v: string) => void;
-  readonly prov?: ReqProvenance;
-  readonly disabled?: boolean;
-  readonly labelFn?: (v: string) => string;
-  readonly full?: boolean;
-}) {
-  return (
-    <div className={`rc-ifield${full ? ' rc-ifield--full' : ''}`}>
-      <label className="rc-ifield__lb">
-        <span>{label}</span>
-        <ReqProvenanceChip prov={prov} />
-      </label>
-      <Select unstyled
-        className={`rc-input${isPrefilled(prov) ? ' rc-input--prov' : ''}`}
-        value={value}
-        aria-label={label}
-        disabled={disabled}
-        onChange={(ev) => onChange(ev.target.value)}
-      >
-        <option value="">Select…</option>
-        {values.map((v) => (
-          <option key={v} value={v}>
-            {labelFn ? labelFn(v) : v}
-          </option>
-        ))}
-      </Select>
-    </div>
-  );
-}
-
-// A numeric field whose form value is a string (the enterprise/financial
-// idiom: '' → omitted at submit).
-function NumStrField({
-  label,
-  value,
-  onChange,
-}: {
-  readonly label: string;
-  readonly value: string;
-  readonly onChange: (v: string) => void;
-}) {
-  return (
-    <div className="rc-ifield">
-      <label className="rc-ifield__lb">
-        <span>{label}</span>
-      </label>
-      <Input unstyled
-        className="rc-input"
-        type="text"
-        inputMode="decimal"
-        value={value}
-        aria-label={label}
-        onChange={(ev) => onChange(ev.target.value)}
-      />
     </div>
   );
 }
