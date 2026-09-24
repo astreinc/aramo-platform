@@ -522,7 +522,10 @@ function OverviewPanel({
 
         {commercialRows.length > 0 ? (
           <Card>
-            <h3 className="rc-section-h">Commercial terms</h3>
+            <div className="rc-teamhd">
+              <h3 className="rc-section-h">Commercial terms</h3>
+              <span className="rc-card__sens">RESTRICTED</span>
+            </div>
             <dl className="rc-deflist rc-mt-8">
               {commercialRows.map(([key, label]) => {
                 const raw = record[key];
@@ -534,7 +537,7 @@ function OverviewPanel({
               })}
             </dl>
             <p className="rc-footnote">
-              Commercial terms are visible only with company:read_commercial.
+              Visible to users with commercial access.
             </p>
           </Card>
         ) : null}
@@ -577,10 +580,21 @@ function OverviewPanel({
                 </li>
               ))}
           </ul>
+          <p className="rc-footnote">
+            Members can see and work on this client&rsquo;s requisitions.
+          </p>
         </Card>
 
         <Card>
-          <h3 className="rc-section-h">Key contacts</h3>
+          <div className="rc-teamhd">
+            <h3 className="rc-section-h">Key contacts</h3>
+            <Link
+              to={`/contacts?company_id=${company.id}`}
+              className="rc-link-strong rc-teamhd__manage"
+            >
+              All contacts
+            </Link>
+          </div>
           {contacts.length === 0 ? (
             <p className="rc-empty">No contacts on this account yet.</p>
           ) : (
@@ -589,7 +603,12 @@ function OverviewPanel({
                 <li key={c.id} className="rc-tmrow">
                   <Avatar name={fullContactName(c)} size="sm" />
                   <div>
-                    <div className="rc-tmrow__nm">{fullContactName(c)}</div>
+                    <div className="rc-tmrow__nm">
+                      {fullContactName(c)}
+                      {c.is_primary ? (
+                        <span className="rc-primary-badge">PRIMARY</span>
+                      ) : null}
+                    </div>
                     <div className="rc-tmrow__rl">
                       {display(c.title)}
                       {canEditContact ? (
