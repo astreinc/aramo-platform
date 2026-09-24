@@ -106,6 +106,20 @@ describe('RecruiterShell', () => {
     expect(screen.getByRole('link', { name: 'Talent' })).not.toHaveAttribute('aria-current');
   });
 
+  it('§5: on Requisition Detail, only Requisitions is active — NOT Contacts', () => {
+    renderShell(
+      makeSession(['requisition:read', 'contact:read']),
+      '/requisitions/req-1',
+    );
+    expect(screen.getByRole('link', { name: 'Requisitions' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+    expect(screen.getByRole('link', { name: 'Contacts' })).not.toHaveAttribute(
+      'aria-current',
+    );
+  });
+
   // Enterprise "one clear H1" ruling: the app shell no longer renders a
   // route/section title in the TopBar (it duplicated each page's own
   // H1/PageHeader, and the left rail already marks the active module). The
