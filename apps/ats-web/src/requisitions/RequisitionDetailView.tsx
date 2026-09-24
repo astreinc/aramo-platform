@@ -1722,14 +1722,18 @@ const OVERVIEW_NUMBER_KEYS = new Set([
   'travel_percent',
   'hours_per_week',
   'duration_value',
+  'onsite_days_per_week',
 ]);
+// margin_percent / markup_percent are DERIVED downstream — read-only in the form,
+// so they are deliberately absent here (never written back).
 const OVERVIEW_EDITABLE_KEYS: readonly string[] = [
   'title', 'job_type', 'openings', 'is_hot', 'city', 'state', 'postal_code',
-  'work_arrangement', 'duration_value', 'duration_unit', 'start_date',
-  'bill_rate_amount', 'rate_type', 'allow_subcontractors', 'description', 'notes',
+  'work_arrangement', 'onsite_days_per_week', 'duration_value', 'duration_unit',
+  'start_date', 'end_date', 'bill_rate_amount', 'pay_rate_amount', 'rate_type',
+  'allow_subcontractors', 'description', 'notes',
   'work_authorization', 'labor_category', 'role_family', 'seniority_level',
   'headcount_reason', 'travel_percent', 'relocation_offered', 'hours_per_week',
-  'end_date', 'extension_possible', 'source_system', 'external_req_id',
+  'extension_possible', 'source_system', 'external_req_id',
   'target_margin_percent', 'markup_percent_target', 'rate_card_id',
   'min_bill_rate', 'max_bill_rate', 'min_pay_rate', 'max_pay_rate',
 ];

@@ -284,17 +284,16 @@ describe('RequisitionDetailView — PR-17 hybrid onsite frequency', () => {
     expect(document.body.textContent).toContain('Hybrid · 3 days on-site');
   });
 
-  it('Onsite days / week is not an Overview form field (not in the prototype sections)', async () => {
+  it('Onsite days / week renders as a Location field in the Overview (per the Detail prototype)', async () => {
     installFetch(() => ({
       status: 200,
       body: baseView({ work_arrangement: 'hybrid', onsite_days_per_week: 3 }),
     }));
     mount(makeSession(['requisition:read', 'requisition:edit']));
     await openDetails();
-    // The onsite frequency drives only the header arrangement suffix; it is not
-    // one of the §5 form fields.
-    expect(screen.queryByText('Onsite days / week')).toBeNull();
-    expect(screen.queryByTestId('cockpit-field-onsite_days_per_week')).toBeNull();
+    // The Detail prototype's ovLoc section lists "Onsite days / week" alongside
+    // Work arrangement — present-gated, so it shows when the payload carries it.
+    expect(screen.getByText('Onsite days / week')).toBeTruthy();
   });
 });
 

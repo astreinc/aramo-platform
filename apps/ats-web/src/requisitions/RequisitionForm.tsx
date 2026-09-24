@@ -213,6 +213,23 @@ export function RequisitionForm(props: RequisitionFormProps): JSX.Element {
     );
   };
 
+  // A derived / read-only value — rendered as a value box in BOTH view and edit
+  // (Margin, Markup % are computed downstream, never hand-entered here).
+  const readonlyField = (
+    key: string,
+    label: string,
+    opts: { suffix?: string } = {},
+  ): JSX.Element | null => {
+    if (!present(key)) return null;
+    const raw = values[key] ?? '';
+    const value = raw === '' ? '—' : `${raw}${opts.suffix ?? ''}`;
+    return (
+      <Row key={key} label={label}>
+        <ViewBox value={value} />
+      </Row>
+    );
+  };
+
   // A Yes/No switch.
   const switchField = (
     key: string,
@@ -299,7 +316,40 @@ export function RequisitionForm(props: RequisitionFormProps): JSX.Element {
         </div>
       </Card>
 
-      {/* ── 2. Location & work arrangement ── */}
+      {/* ── 2. Hiring-manager notes (second panel — the call-context capture) ── */}
+      <Card>
+        <CardHead
+          title={
+            <>
+              <span className="rc-card__hnowrap">
+                <Icons.IconMessage className="rc-card__hic" />
+                Hiring-manager notes
+              </span>
+              <span className="rc-card__hnote">Internal — never shared with talent</span>
+            </>
+          }
+        />
+        <div className="rc-fgrid">
+          <div className="rc-ifield rc-ifield--full">
+            {editable ? (
+              <TextArea
+                unstyled
+                className="rc-input rc-notesbox"
+                rows={10}
+                value={notes}
+                aria-label="Hiring-manager notes"
+                placeholder="Call notes and context from the hiring manager — must-haves, team setup, interview process, red flags…"
+                disabled={disabled}
+                onChange={(e) => set('notes')(e.target.value)}
+              />
+            ) : (
+              <ViewText value={notes} />
+            )}
+          </div>
+        </div>
+      </Card>
+
+      {/* ── 3. Location & work arrangement ── */}
       <Card>
         <CardHead
           title={
@@ -316,6 +366,7 @@ export function RequisitionForm(props: RequisitionFormProps): JSX.Element {
           {textField('state', 'State')}
           {textField('postal_code', 'ZIP / Postal code')}
           {selectField('work_arrangement', 'Work arrangement', WORK_ARRANGEMENT_VALUES)}
+          {textField('onsite_days_per_week', 'Onsite days / week', { type: 'number' })}
           {/* Contract duration — value + unit. */}
           {present('duration_value') ? (
             <Row label="Contract duration">
@@ -361,10 +412,11 @@ export function RequisitionForm(props: RequisitionFormProps): JSX.Element {
             </Row>
           ) : null}
           {textField('start_date', 'Start date', { type: 'date' })}
+          {textField('end_date', 'End date', { type: 'date' })}
         </div>
       </Card>
 
-      {/* ── 3. Commercials (scope-masked by absence) ── */}
+      {/* ── 4. Commercials (scope-masked by absence) ── */}
       <Card>
         <CardHead
           title={
@@ -381,6 +433,7 @@ export function RequisitionForm(props: RequisitionFormProps): JSX.Element {
         />
         <div className="rc-fgrid">
           {textField('bill_rate_amount', 'Bill rate (max)')}
+          {textField('pay_rate_amount', 'Pay rate')}
           {present('rate_type') ? (
             <Row label="Rate type">
               {editable ? (
@@ -404,11 +457,14 @@ export function RequisitionForm(props: RequisitionFormProps): JSX.Element {
               )}
             </Row>
           ) : null}
+          {/* Margin & Markup % are derived downstream — read-only here. */}
+          {readonlyField('margin_percent', 'Margin', { suffix: '%' })}
+          {readonlyField('markup_percent', 'Markup %', { suffix: '%' })}
           {switchField('allow_subcontractors', 'Allow subcontractors', 'C2C / non-W2 OK')}
         </div>
       </Card>
 
-      {/* ── 4. Job description ── */}
+      {/* ── 5. Job description ── */}
       <Card>
         <CardHead
           title={
@@ -439,7 +495,7 @@ export function RequisitionForm(props: RequisitionFormProps): JSX.Element {
         </div>
       </Card>
 
-      {/* ── 5. Requirement skills (domain widget via the slot) ── */}
+      {/* ── 6. Requirement skills (domain widget via the slot) ── */}
       <Card>
         <CardHead
           title={
@@ -452,7 +508,7 @@ export function RequisitionForm(props: RequisitionFormProps): JSX.Element {
         {skillsSlot}
       </Card>
 
-      {/* ── 6. Work authorization (sensitive) ── */}
+      {/* ── 7. Work authorization (sensitive) ── */}
       <Card>
         <CardHead
           title={
@@ -469,39 +525,6 @@ export function RequisitionForm(props: RequisitionFormProps): JSX.Element {
           {selectField('work_authorization', 'Authorization required', WORK_AUTHORIZATION_VALUES, {
             full: true,
           })}
-        </div>
-      </Card>
-
-      {/* ── 7. Hiring-manager notes ── */}
-      <Card>
-        <CardHead
-          title={
-            <>
-              <span className="rc-card__hnowrap">
-                <Icons.IconMessage className="rc-card__hic" />
-                Hiring-manager notes
-              </span>
-              <span className="rc-card__hnote">Internal — never shared with talent</span>
-            </>
-          }
-        />
-        <div className="rc-fgrid">
-          <div className="rc-ifield rc-ifield--full">
-            {editable ? (
-              <TextArea
-                unstyled
-                className="rc-input"
-                rows={7}
-                value={notes}
-                aria-label="Hiring-manager notes"
-                placeholder="Call notes and context from the hiring manager — must-haves, team setup, interview process, red flags…"
-                disabled={disabled}
-                onChange={(e) => set('notes')(e.target.value)}
-              />
-            ) : (
-              <ViewText value={notes} />
-            )}
-          </div>
         </div>
       </Card>
 
@@ -522,7 +545,6 @@ export function RequisitionForm(props: RequisitionFormProps): JSX.Element {
               {textField('travel_percent', 'Travel percent', { type: 'number' })}
               {switchField('relocation_offered', 'Relocation offered', 'Yes')}
               {textField('hours_per_week', 'Hours per week', { type: 'number' })}
-              {textField('end_date', 'End date', { type: 'date' })}
               {switchField('extension_possible', 'Extension possible', 'Yes')}
               {selectField('source_system', 'Source system', SOURCE_SYSTEM_VALUES)}
               {textField('external_req_id', 'External req ID')}

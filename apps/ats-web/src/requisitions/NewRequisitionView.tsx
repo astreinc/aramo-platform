@@ -172,6 +172,15 @@ const FORM_BOOLEAN_KEYS = new Set([
   'extension_possible',
 ]);
 const FORM_NUMBER_KEYS = new Set(['openings']);
+// Fields the shared RequisitionForm renders only in the Detail Overview, never at
+// intake: onsite cadence (set once an arrangement is confirmed), pay rate, and the
+// derived margin/markup actuals. present()=false keeps them out of the create form.
+const DETAIL_ONLY_FORM_KEYS = new Set([
+  'onsite_days_per_week',
+  'pay_rate_amount',
+  'margin_percent',
+  'markup_percent',
+]);
 
 function stateToFormValues(state: FormState): Record<string, string> {
   const out: Record<string, string> = {};
@@ -668,9 +677,14 @@ export function NewRequisitionView({ sessionOverride }: NewRequisitionViewProps)
     else if (FORM_NUMBER_KEYS.has(key)) writeField(key, Math.max(0, Number(val) || 0));
     else writeField(key, val);
   };
-  // Only bill_rate_amount is scope-masked in Commercials; everything else shows.
-  const formPresent = (key: string): boolean =>
-    key === 'bill_rate_amount' ? visibleComp.has('bill_rate_amount') : true;
+  // Detail-only fields — the create form doesn't collect them (no onsite cadence
+  // until an arrangement is confirmed; pay rate + derived margin/markup surface
+  // on the requisition record, not at intake). They render only in the Overview.
+  const formPresent = (key: string): boolean => {
+    if (DETAIL_ONLY_FORM_KEYS.has(key)) return false;
+    if (key === 'bill_rate_amount') return visibleComp.has('bill_rate_amount');
+    return true;
+  };
 
   // Domain widgets fed to the shared form via explicit slots (create lane).
   const clientSlot = (
