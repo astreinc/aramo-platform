@@ -16,6 +16,12 @@ import {
   DURATION_UNIT_VALUES,
   enterpriseLabel,
 } from './enterprise-fields';
+import {
+  ReqProvenanceChip,
+  isPrefilled,
+  type ReqProvenance,
+  type ReqProvenanceMap,
+} from './req-provenance';
 import { RATE_TYPE_VALUES } from './types';
 
 // G2.5 — the ONE shared requisition form (Aramo-UI-HotFix Requisitions §5).
@@ -55,6 +61,10 @@ export interface RequisitionFormProps {
   readonly statusDisplay: string;
   /** Requirement-skills widget (Detail: ProfileWorkbenchPanel; New-req: SkillEditors). */
   readonly skillsSlot: ReactNode;
+  /** Per-field provenance (New-req create lane): AI-draft / Parsed / edited tags. */
+  readonly provenance?: ReqProvenanceMap;
+  /** Address-search helper above City/State/ZIP (New-req create lane). */
+  readonly addressSlot?: ReactNode;
 }
 
 const YES_NO = 'Yes';
@@ -73,11 +83,13 @@ function Row({
   label,
   required,
   full,
+  prov,
   children,
 }: {
   readonly label: string;
   readonly required?: boolean;
   readonly full?: boolean;
+  readonly prov?: ReqProvenance;
   readonly children: ReactNode;
 }) {
   return (
@@ -87,6 +99,7 @@ function Row({
           {label}
           {required ? <span className="rc-ifield__req"> *</span> : null}
         </span>
+        <ReqProvenanceChip prov={prov} />
       </label>
       {children}
     </div>
@@ -129,10 +142,15 @@ export function RequisitionForm(props: RequisitionFormProps): JSX.Element {
     contactSlot,
     statusDisplay,
     skillsSlot,
+    provenance,
+    addressSlot,
   } = props;
 
   const editable = isEditable(mode);
   const set = (key: string) => (value: string) => onChange?.(key, value);
+  const prov = (key: string): ReqProvenance | undefined => provenance?.[key];
+  const inputClass = (key: string): string =>
+    `rc-input${isPrefilled(prov(key)) ? ' rc-input--prov' : ''}`;
 
   // A scalar text/number field.
   const textField = (
@@ -143,11 +161,11 @@ export function RequisitionForm(props: RequisitionFormProps): JSX.Element {
     if (!present(key)) return null;
     const value = values[key] ?? '';
     return (
-      <Row key={key} label={label} required={opts.required} full={opts.full}>
+      <Row key={key} label={label} required={opts.required} full={opts.full} prov={prov(key)}>
         {editable ? (
           <Input
             unstyled
-            className="rc-input"
+            className={inputClass(key)}
             type={opts.type ?? 'text'}
             value={value}
             aria-label={label}
@@ -171,11 +189,11 @@ export function RequisitionForm(props: RequisitionFormProps): JSX.Element {
     if (!present(key)) return null;
     const value = values[key] ?? '';
     return (
-      <Row key={key} label={label} full={opts.full}>
+      <Row key={key} label={label} full={opts.full} prov={prov(key)}>
         {editable ? (
           <Select
             unstyled
-            className="rc-input"
+            className={inputClass(key)}
             value={value}
             aria-label={label}
             disabled={disabled}
@@ -291,6 +309,8 @@ export function RequisitionForm(props: RequisitionFormProps): JSX.Element {
             </>
           }
         />
+        {/* Address-search helper (create lane) — fills City/State/ZIP. */}
+        {editable && addressSlot !== undefined ? addressSlot : null}
         <div className="rc-fgrid">
           {textField('city', 'City')}
           {textField('state', 'State')}
@@ -393,6 +413,7 @@ export function RequisitionForm(props: RequisitionFormProps): JSX.Element {
             <>
               <Icons.IconFile className="rc-card__hic" />
               Job description
+              <ReqProvenanceChip prov={prov('description')} />
             </>
           }
         />
@@ -401,7 +422,7 @@ export function RequisitionForm(props: RequisitionFormProps): JSX.Element {
             {editable ? (
               <TextArea
                 unstyled
-                className="rc-input rc-jd"
+                className={`rc-jd ${inputClass('description')}`}
                 rows={10}
                 value={jd}
                 aria-label="Job description"
