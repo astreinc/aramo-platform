@@ -21,7 +21,6 @@ import {
   Card,
   Icons,
   MetricCard,
-  ReservedSeam,
   StatusPill,
   Tag,
 } from '../ui';
@@ -45,7 +44,6 @@ import { CompanyForm } from './CompanyForm';
 import {
   REL_STATUS_TONES,
   REL_TYPE_TONES,
-  accountBriefing,
   companyTypes,
   lastContactLabel,
   locationOf,
@@ -267,7 +265,7 @@ export function CompanyDetailView({ sessionOverride }: CompanyDetailViewProps) {
   if (canReadReqs) {
     tabs.push({
       id: 'jobs',
-      label: `Jobs (${reqs.length})`,
+      label: `Requisitions (${reqs.length})`,
       content: <JobsPanel reqs={reqs} error={reqsError} />,
     });
     tabs.push({
@@ -301,12 +299,6 @@ export function CompanyDetailView({ sessionOverride }: CompanyDetailViewProps) {
 
   return (
     <section>
-      <p className="rc-mb-8">
-        <Link to="/companies" className="rc-link-action">
-          ← Back to companies
-        </Link>
-      </p>
-
       <div className="rc-dhead">
         <div className="rc-dhead__lead">
           <Avatar name={company.name} size="lg" />
@@ -372,16 +364,6 @@ export function CompanyDetailView({ sessionOverride }: CompanyDetailViewProps) {
         </div>
       </div>
 
-      {company.off_limits ? (
-        <div className="rc-offlimits" role="note">
-          <Icons.IconShield />
-          <span>
-            <strong>Off-limits.</strong> This client&rsquo;s own employees are
-            excluded from sourcing working sets.
-          </span>
-        </div>
-      ) : null}
-
       {editOpen ? (
         <Card>
           {saveError !== null ? (
@@ -439,21 +421,6 @@ export function CompanyDetailView({ sessionOverride }: CompanyDetailViewProps) {
           hint="firmographic"
         />
       </div>
-
-      {/* Account briefing — deterministic, facts only (counts / fill-rate /
-          last-contact). No evaluative verdict on the account (no health/tier/
-          quality judgement — R10; rating disposition DDR §11). The ReservedSeam
-          beneath reserves the richer Core reasoning. */}
-      <div className="rc-brief">
-        <div className="rc-brief__ic" aria-hidden="true">
-          <Icons.IconBolt />
-        </div>
-        <p className="rc-brief__text">{accountBriefing(company, metrics)}</p>
-      </div>
-      <ReservedSeam title="Account briefing" tag="Integrates with Core later">
-        When Aramo Core is connected, its richer account reasoning — the evidence
-        behind a suggested next move, never a fabricated metric — appears here.
-      </ReservedSeam>
 
       <div className="rc-mt-16">
         <Tabs items={tabs} ariaLabel="Company sections" initialId="overview" />
@@ -621,29 +588,11 @@ function OverviewPanel({
             </ul>
           )}
         </Card>
-
-        <Card>
-          <h3 className="rc-section-h">Next steps</h3>
-          <p className="rc-muted-line rc-mt-8">{nextSteps(company)}</p>
-        </Card>
       </div>
     </div>
   );
 }
 
-function nextSteps(c: CompanyView): string {
-  if (c.next_action_at !== null) {
-    const d = new Date(c.next_action_at);
-    if (!Number.isNaN(d.getTime())) {
-      return `Next action scheduled for ${d.toLocaleDateString()}.`;
-    }
-  }
-  if (primaryStatus(c) === 'PROSPECT')
-    return 'Advance the BD conversation and scope a first requisition.';
-  if (primaryStatus(c) === 'INACTIVE')
-    return 'Dormant account — consider a re-engagement note.';
-  return 'Keep open requisitions moving and confirm upcoming interviews.';
-}
 
 function KV({ k, v }: { readonly k: string; readonly v: string }) {
   return (

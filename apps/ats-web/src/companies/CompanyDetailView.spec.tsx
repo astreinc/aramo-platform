@@ -171,11 +171,8 @@ describe('CompanyDetailView (account hub)', () => {
     expect(screen.getByText(/Client since 2023/i)).toBeInTheDocument();
     // status active → "Client" pill; tier a → "Key account"
     expect(screen.getByText('Client')).toBeInTheDocument();
-    // KPI strip + reserved seam (NOT a fabricated metric)
+    // KPI strip (the account-briefing seam is removed per the prototype)
     expect(screen.getByText('Open reqs')).toBeInTheDocument();
-    expect(
-      screen.getByRole('region', { name: /Account briefing/i }),
-    ).toBeInTheDocument();
   });
 
   it('renders real per-company metrics in the KPI strip + rule-based briefing', async () => {
@@ -203,9 +200,6 @@ describe('CompanyDetailView (account hub)', () => {
     await waitFor(() => expect(screen.getByText('40%')).toBeInTheDocument());
     // revenue band appears in the KPI strip + Overview "Key facts"
     expect(screen.getAllByText('$10M–$50M').length).toBeGreaterThan(0);
-    // briefing restates the real counts only (facts; no evaluative verdict)
-    expect(screen.getByText(/2 open reqs/i)).toBeInTheDocument();
-    expect(screen.getByText(/4 submitted/i)).toBeInTheDocument();
   });
 
   it('renders the account team (owner + assigned members) on Overview', async () => {
@@ -278,7 +272,7 @@ describe('CompanyDetailView (account hub)', () => {
       expect(screen.getByRole('tab', { name: 'Overview' })).toBeInTheDocument(),
     );
     expect(screen.queryByRole('tab', { name: /Contacts/ })).toBeNull();
-    expect(screen.queryByRole('tab', { name: /Jobs/ })).toBeNull();
+    expect(screen.queryByRole('tab', { name: /Requisitions/ })).toBeNull();
     expect(screen.queryByRole('tab', { name: /Activity/ })).toBeNull();
   });
 
@@ -302,7 +296,7 @@ describe('CompanyDetailView (account hub)', () => {
       expect(screen.getByRole('tab', { name: 'Overview' })).toBeInTheDocument(),
     );
     expect(screen.getByRole('tab', { name: /Contacts/ })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: /Jobs/ })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /Requisitions/ })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /Activity/ })).toBeInTheDocument();
   });
 
@@ -339,7 +333,7 @@ describe('CompanyDetailView (account hub)', () => {
     await waitFor(() =>
       expect(screen.getByRole('heading', { name: /Acme Corp/i })).toBeInTheDocument(),
     );
-    fireEvent.click(screen.getByRole('tab', { name: /Jobs/ }));
+    fireEvent.click(screen.getByRole('tab', { name: /Requisitions/ }));
     await waitFor(() =>
       expect(screen.getByText('Senior Engineer')).toBeInTheDocument(),
     );
