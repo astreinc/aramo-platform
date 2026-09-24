@@ -295,6 +295,7 @@ describe('CompanyDetailView (account hub)', () => {
     await waitFor(() =>
       expect(screen.getByRole('tab', { name: 'Overview' })).toBeInTheDocument(),
     );
+    expect(screen.getByRole('tab', { name: /Account team/ })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /Contacts/ })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /Requisitions/ })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /Activity/ })).toBeInTheDocument();

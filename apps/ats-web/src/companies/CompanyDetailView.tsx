@@ -23,6 +23,7 @@ import {
   MetricCard,
   StatusPill,
 } from '../ui';
+import { CompanyAssignmentsView } from '../assignments/CompanyAssignmentsView';
 
 import {
   getCompany,
@@ -246,6 +247,18 @@ export function CompanyDetailView({ sessionOverride }: CompanyDetailViewProps) {
       ),
     },
   ];
+  // Account team — the assignment-management surface as an in-page tab (matches
+  // the prototype); reuses the CompanyAssignmentsView. Members here gate who can
+  // see the client's requisitions (AUTHZ-D4b). 2nd tab, per the prototype order.
+  tabs.push({
+    id: 'account-team',
+    label: `Account team (${team?.member_user_ids?.length ?? 0})`,
+    content: (
+      <div className="rc-mt-16">
+        <CompanyAssignmentsView companyIdOverride={company.id} />
+      </div>
+    ),
+  });
   if (canReadContacts) {
     tabs.push({
       id: 'contacts',
