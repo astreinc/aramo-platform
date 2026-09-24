@@ -35,6 +35,14 @@ const REGISTRY_SITES = [
 // Each MUST carry a reason. This is the machine-detectable exemption the Architect
 // requires (not a prose comment the guard would have to interpret).
 export const RESERVED_CODES: Record<string, string> = {
+  DOCUMENT_TYPE_NOT_FOUND:
+    'RESERVED (DOC-1a/DOC-2): documented in openapi/common.yaml as the DocumentType-lookup refusal; the create/associate paths currently surface an unknown type via the FK/validation layer, so no AramoError emitter is wired yet. Registered + documented for the DOC surface; throw-site pending.',
+  DOCUMENT_RENDER_FAILED:
+    'RESERVED (DOC-2): the RenderFailedError domain error (libs/documents-rendering) maps here; rendering runs inside the RTR/Offer orchestrators and is not yet exposed on a throwing HTTP path, so no controller emitter is seen. Registered + documented; HTTP mapping pending.',
+  DOCUMENT_UPLOAD_UNSAFE:
+    'RESERVED (DOC-2): the UnsafePdfError domain error (libs/documents-rendering) maps here; the upload-safety scan is DARK/unwired, so no emitter exists yet. Registered + documented; throw-site pending.',
+  ENVELOPE_ALREADY_EXECUTED:
+    'RESERVED (DOC-3): the EnvelopeAlreadyExecutedError domain error (libs/esign) maps here — the re-execution guard on an already-executed envelope; not yet exercised on a wired HTTP transition, so no emitter is seen. Registered + documented; throw-site pending.',
   REQUISITION_NO_OPENINGS:
     'RESERVED (T4-B2 §7): the pipeline over-capacity refusal was retired (capacity is now derived), but the code is kept for compatibility — still mapped by the ats-web pipeline error-message map.',
   PIPELINE_SUBMIT_REQUIRES_SUBMITTAL:
