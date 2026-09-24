@@ -1676,6 +1676,23 @@ button.rc-link-action {
 
 .rc-tokenbox__icon { width: 17px; height: 17px; color: var(--faint); flex: none; }
 
+/* Companies list — one-line filter row (search + status/industry/owner pills). */
+.rc-cofilters { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 10px 0 4px; }
+.rc-cofilters__search { flex: 0 1 260px; margin-bottom: 0; }
+.rc-filterpill {
+  border: 1px solid var(--line, #e5e9ed); background: #fff; border-radius: 20px;
+  padding: 6px 12px; font-size: 12.5px; font-weight: 500; color: #5c6770; cursor: pointer;
+}
+.rc-filterpill:hover { border-color: #d5dbe1; }
+.rc-cofilters__result { margin-left: auto; font-size: 12px; color: var(--muted, #93a0a8); }
+
+/* Companies list table — primary-contact + phone cells. */
+.rc-cotable td { vertical-align: middle; }
+.rc-copc { display: flex; flex-direction: column; min-width: 0; }
+.rc-copc__nm { font-size: 12.5px; color: #1b2730; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rc-copc__ti { font-size: 11px; color: var(--muted, #93a0a8); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rc-cophone { font-size: 12.5px; color: #3a454e; white-space: nowrap; }
+
 .rc-tokenbox__input {
   border: none; outline: none; flex: 1; min-width: 160px; font-size: .9rem;
   background: transparent; color: var(--ink);

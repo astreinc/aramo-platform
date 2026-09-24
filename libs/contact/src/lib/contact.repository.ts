@@ -211,6 +211,10 @@ function buildSelectionWhere(
   if (q.company_id !== undefined && q.company_id.length > 0)
     and.push({ company_id: { in: [...q.company_id] } });
   if (q.is_hot === true) where['is_hot'] = true;
+  // Primary-contact filter (companies-list "Primary contact" column) — one
+  // primary per company; combined with company_id[] it returns the page's
+  // primaries in a single visibility-scoped read.
+  if (q.is_primary === true) where['is_primary'] = true;
   if (q.quiet === true) {
     and.push({
       OR: [
