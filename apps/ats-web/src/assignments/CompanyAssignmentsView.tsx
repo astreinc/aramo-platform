@@ -65,13 +65,17 @@ interface PendingRemoval {
 function rosterToItems(
   users: readonly AssignableUser[],
   assignedUserIds: ReadonlySet<string>,
+  names: Record<string, string>,
 ): ReadonlyArray<ComboboxItem> {
+  // Label fallback chain: directory name → assignable-endpoint display_name →
+  // id. The directory map is authoritative (the assignable endpoint can return
+  // display_name: null, which previously leaked the raw UUID into the picker).
+  const nameOf = (u: AssignableUser): string =>
+    names[u.user_id] ?? u.display_name ?? u.user_id;
   return [...users]
     .filter((u) => !assignedUserIds.has(u.user_id))
-    .sort((a, b) =>
-      (a.display_name ?? a.user_id).localeCompare(b.display_name ?? b.user_id),
-    )
-    .map((u) => ({ value: u.user_id, label: u.display_name ?? u.user_id }));
+    .sort((a, b) => nameOf(a).localeCompare(nameOf(b)))
+    .map((u) => ({ value: u.user_id, label: nameOf(u) }));
 }
 
 export function CompanyAssignmentsView({
@@ -118,7 +122,7 @@ export function CompanyAssignmentsView({
         setState({ status: 'ready', rows: view.items });
         // Resolve assigned-user names from the directory (incl. departed).
         void resolveNamesFun(view.items.map((r) => r.user_id)).then((m) => {
-          if (!cancelled) setNames(m);
+          if (!cancelled) setNames((prev) => ({ ...prev, ...m }));
         });
       })
       .catch((err: unknown) => {
@@ -129,7 +133,14 @@ export function CompanyAssignmentsView({
     // BROAD active roster (no company_id) — this view creates the mappings.
     void fetchAssignableFun()
       .then((users) => {
-        if (!cancelled) setPickerUsers(users);
+        if (cancelled) return;
+        setPickerUsers(users);
+        // Resolve the picker users' names through the directory too, so the
+        // dropdown shows names — not raw UUIDs — when the assignable endpoint
+        // returns a null display_name.
+        void resolveNamesFun(users.map((u) => u.user_id)).then((m) => {
+          if (!cancelled) setNames((prev) => ({ ...prev, ...m }));
+        });
       })
       .catch(() => {
         if (!cancelled) setPickerUsers([]);
@@ -148,8 +159,8 @@ export function CompanyAssignmentsView({
   }, [state]);
 
   const comboboxItems = useMemo(
-    () => rosterToItems(pickerUsers, assignedUserIds),
-    [pickerUsers, assignedUserIds],
+    () => rosterToItems(pickerUsers, assignedUserIds, names),
+    [pickerUsers, assignedUserIds, names],
   );
 
   const onAdd = async () => {
