@@ -1,6 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Button, FormField, Checkbox, Input, Select, TextArea } from '@aramo/fe-foundation';
 
+import { fetchAssignableUsers } from '../../users/users-api';
 import { companyTypes, relStatusFor } from '../company-workspace';
 import type {
   CompanyRelationshipInput,
@@ -20,11 +22,24 @@ import type {
 // Amendment-3 de-select → INACTIVE transition, not delete) and is covered by
 // this component's own spec.
 
+// Relationship status options — prototype list (no "On hold" in the drawer).
 const REL_STATUS_OPTS: readonly { value: string; label: string }[] = [
   { value: 'PROSPECT', label: 'Prospect' },
   { value: 'ACTIVE', label: 'Active' },
-  { value: 'ON_HOLD', label: 'On hold' },
   { value: 'INACTIVE', label: 'Inactive' },
+];
+
+// Fixed industry vocabulary (prototype select).
+const INDUSTRY_OPTS: readonly string[] = [
+  'Technology', 'Healthcare', 'Government', 'Banking', 'Insurance',
+  'Manufacturing', 'Retail',
+];
+
+// Payment terms (prototype select) — value is the stored token, label the UI.
+const PAYMENT_TERM_OPTS: readonly { value: string; label: string }[] = [
+  { value: 'net_30', label: 'Net 30' },
+  { value: 'net_45', label: 'Net 45' },
+  { value: 'net_60', label: 'Net 60' },
 ];
 
 interface FormState {
@@ -35,6 +50,7 @@ interface FormState {
   city: string;
   notes: string;
   payment_terms: string;
+  owner_id: string;
   communication_restricted: boolean;
   rel_client: boolean;
   rel_client_status: string;
@@ -48,7 +64,7 @@ function initialState(c: CompanyView | null): FormState {
   if (c === null) {
     return {
       name: '', industry: '', url: '', phone1: '', city: '', notes: '',
-      payment_terms: '', communication_restricted: false,
+      payment_terms: '', owner_id: '', communication_restricted: false,
       rel_client: true, rel_client_status: 'PROSPECT',
       rel_vendor: false, rel_vendor_status: 'PROSPECT',
       rel_partner: false, rel_partner_status: 'PROSPECT',
@@ -63,6 +79,7 @@ function initialState(c: CompanyView | null): FormState {
     city: c.city ?? '',
     notes: c.notes ?? '',
     payment_terms: c.payment_terms ?? '',
+    owner_id: c.owner_id ?? '',
     communication_restricted: c.communication_restricted,
     rel_client: types.includes('CLIENT'),
     rel_client_status: relStatusFor(c, 'CLIENT') ?? 'ACTIVE',
@@ -93,6 +110,7 @@ function buildCreate(s: FormState, canSeeCommercial: boolean): CreateCompanyRequ
   if (s.notes.trim() !== '') b['notes'] = s.notes.trim();
   if (canSeeCommercial && s.payment_terms.trim() !== '')
     b['payment_terms'] = s.payment_terms.trim();
+  if (s.owner_id !== '') b['owner_id'] = s.owner_id;
   return b as unknown as CreateCompanyRequest;
 }
 
@@ -129,6 +147,8 @@ function buildPatch(
   diff(s.city, initial.city, 'city');
   diff(s.notes, initial.notes, 'notes');
   if (canSeeCommercial) diff(s.payment_terms, initial.payment_terms ?? '', 'payment_terms');
+  if (s.owner_id !== (initial.owner_id ?? ''))
+    b['owner_id'] = s.owner_id === '' ? null : s.owner_id;
   return b as unknown as UpdateCompanyRequest;
 }
 
@@ -136,6 +156,8 @@ interface CommonProps {
   readonly canSeeCommercial: boolean;
   readonly submitting: boolean;
   readonly onCancel: () => void;
+  /** Footer "Full Edit Company" deep-link (edit mode). */
+  readonly fullRecordHref?: string;
 }
 type CompanyQuickEditFormProps =
   | (CommonProps & { readonly mode: 'create'; readonly onSubmit: (b: CreateCompanyRequest) => Promise<void> })
@@ -147,6 +169,32 @@ export function CompanyQuickEditForm(props: CompanyQuickEditFormProps) {
   );
   const set = <K extends keyof FormState>(k: K, v: FormState[K]) =>
     setState((s) => ({ ...s, [k]: v }));
+
+  // Account-owner options — the active tenant roster (names now populated on
+  // invite; a departed owner still shown as an explicit fallback option).
+  const [owners, setOwners] = useState<readonly { value: string; label: string }[]>(
+    [],
+  );
+  useEffect(() => {
+    let cancelled = false;
+    void fetchAssignableUsers()
+      .then((users) => {
+        if (!cancelled)
+          setOwners(
+            users.map((u) => ({ value: u.user_id, label: u.display_name ?? u.user_id })),
+          );
+      })
+      .catch(() => {
+        if (!cancelled) setOwners([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const ownerOpts =
+    state.owner_id !== '' && !owners.some((o) => o.value === state.owner_id)
+      ? [{ value: state.owner_id, label: state.owner_id }, ...owners]
+      : owners;
 
   const canSubmit =
     state.name.trim() !== '' && selectedRels(state).length > 0 && !props.submitting;
@@ -219,21 +267,25 @@ export function CompanyQuickEditForm(props: CompanyQuickEditFormProps) {
         </FormField>
         <div className="company-form__row2">
           <FormField label="Industry">
-            <Input
-              type="text"
+            <Select
               value={state.industry}
               onChange={(e) => set('industry', e.target.value)}
               aria-label="Industry"
-            />
+            >
+              <option value="">Select…</option>
+              {INDUSTRY_OPTS.map((i) => (
+                <option key={i} value={i}>{i}</option>
+              ))}
+            </Select>
           </FormField>
           <FormField label="Do not contact">
             <label className="company-form__check">
               <Checkbox
-               
+
                 checked={state.communication_restricted}
                 onChange={(e) => set('communication_restricted', e.target.checked)}
               />{' '}
-              Company-wide — overrides all relationships
+              Company-wide · overrides all relationships
             </label>
           </FormField>
         </div>
@@ -242,31 +294,65 @@ export function CompanyQuickEditForm(props: CompanyQuickEditFormProps) {
             <Input type="text" value={state.url} onChange={(e) => set('url', e.target.value)} placeholder="https://" aria-label="Website" />
           </FormField>
           <FormField label="Phone">
-            <Input type="text" value={state.phone1} onChange={(e) => set('phone1', e.target.value)} aria-label="Phone" />
+            <Input type="text" value={state.phone1} onChange={(e) => set('phone1', e.target.value)} placeholder="(555) 000-0000" aria-label="Phone" />
           </FormField>
         </div>
         <FormField label="Location">
-          <Input type="text" value={state.city} onChange={(e) => set('city', e.target.value)} placeholder="City" aria-label="Location" />
+          <Input type="text" value={state.city} onChange={(e) => set('city', e.target.value)} placeholder="City, State" aria-label="Location" />
         </FormField>
       </fieldset>
 
-      {props.canSeeCommercial ? (
-        <fieldset className="company-form__section" disabled={props.submitting}>
-          <legend>Engagement</legend>
-          <FormField label="Payment terms">
-            <Input type="text" value={state.payment_terms} onChange={(e) => set('payment_terms', e.target.value)} placeholder="e.g. net_30" aria-label="Payment terms" />
-          </FormField>
-        </fieldset>
-      ) : null}
-
       <fieldset className="company-form__section" disabled={props.submitting}>
-        <legend>Notes</legend>
+        <legend>Engagement</legend>
+        <div className="company-form__row2">
+          <FormField label="Account owner">
+            <Select
+              value={state.owner_id}
+              onChange={(e) => set('owner_id', e.target.value)}
+              aria-label="Account owner"
+            >
+              <option value="">Unassigned</option>
+              {ownerOpts.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </Select>
+          </FormField>
+          {props.canSeeCommercial ? (
+            <FormField label="Payment terms">
+              <Select
+                value={state.payment_terms}
+                onChange={(e) => set('payment_terms', e.target.value)}
+                aria-label="Payment terms"
+              >
+                <option value="">Select…</option>
+                {PAYMENT_TERM_OPTS.map((p) => (
+                  <option key={p.value} value={p.value}>{p.label}</option>
+                ))}
+              </Select>
+            </FormField>
+          ) : null}
+        </div>
         <FormField label="Notes">
-          <TextArea rows={3} value={state.notes} onChange={(e) => set('notes', e.target.value)} aria-label="Notes" />
+          <TextArea
+            rows={3}
+            value={state.notes}
+            onChange={(e) => set('notes', e.target.value)}
+            placeholder="MSA status, submittal rules, rate cards…"
+            aria-label="Notes"
+          />
         </FormField>
       </fieldset>
 
       <div className="company-form__actions">
+        {props.fullRecordHref !== undefined ? (
+          <Link
+            to={props.fullRecordHref}
+            className="company-form__full"
+            data-testid="company-open-full-record"
+          >
+            Full Edit Company
+          </Link>
+        ) : null}
         <Button type="button" variant="ghost" onClick={props.onCancel}>
           Cancel
         </Button>

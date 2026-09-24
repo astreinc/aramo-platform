@@ -4018,10 +4018,16 @@ select.rc-secinput { appearance: none; padding-right: 28px; }
 @media (max-width: 520px) { .company-form__row2 { grid-template-columns: 1fr; } }
 
 .company-form__actions {
-  position: sticky; bottom: 0; display: flex; justify-content: flex-end; gap: 8px;
-  padding: 14px 0 2px; margin-top: 4px; border-top: 1px solid var(--line);
+  position: sticky; bottom: 0; display: flex; align-items: center; justify-content: flex-end;
+  gap: 8px; padding: 14px 0 2px; margin-top: 4px; border-top: 1px solid var(--line);
   background: var(--surface);
 }
+/* "Full Edit Company" footer link — pushed to the left of Cancel/Save. */
+.company-form__full {
+  margin-right: auto; font-size: 12.5px; font-weight: 600;
+  color: var(--brand-strong, #022ac0); text-decoration: none; white-space: nowrap;
+}
+.company-form__full:hover { text-decoration: underline; }
 
 .rc-scrim { position: fixed; inset: 0; background: rgba(16,28,48,.34); z-index: 29; }
 

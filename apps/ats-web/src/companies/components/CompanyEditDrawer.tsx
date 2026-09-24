@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { InlineAlert, Button } from '@aramo/fe-foundation';
 
 import { Icons } from '../../ui';
@@ -128,15 +127,6 @@ export function CompanyEditDrawer({
             </span>
           ) : null}
         </h3>
-        {mode === 'edit' && company !== null ? (
-          <Link
-            to={`/companies/${company.id}`}
-            className="rc-drawer__full"
-            data-testid="company-open-full-record"
-          >
-            Open full record →
-          </Link>
-        ) : null}
         <Button unstyled
           type="button"
           className="rc-drawer__x"
@@ -159,6 +149,7 @@ export function CompanyEditDrawer({
             onCancel={onClose}
             submitting={submitting}
             canSeeCommercial={canSeeCommercial}
+            fullRecordHref={`/companies/${company.id}`}
           />
         ) : (
           <CompanyQuickEditForm

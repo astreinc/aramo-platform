@@ -54,16 +54,17 @@ describe('CompanyQuickEditForm', () => {
       <CompanyQuickEditForm mode="create" canSeeCommercial={false} submitting={false} onCancel={vi.fn()} onSubmit={onSubmit} />,
     );
     fireEvent.change(screen.getByLabelText('Company name'), { target: { value: 'NewCo' } });
-    // add a VENDOR role with ON_HOLD
+    // add a VENDOR role with INACTIVE (drawer status options: Prospect/Active/
+    // Inactive — "On hold" is not offered in the quick-edit drawer per prototype)
     fireEvent.click(screen.getByRole('checkbox', { name: /Vendor/i }));
-    fireEvent.change(screen.getByLabelText('Vendor status'), { target: { value: 'ON_HOLD' } });
+    fireEvent.change(screen.getByLabelText('Vendor status'), { target: { value: 'INACTIVE' } });
     fireEvent.click(screen.getByRole('button', { name: /save company/i }));
     await vi.waitFor(() => expect(onSubmit).toHaveBeenCalled());
     const body = onSubmit.mock.calls[0][0];
     expect(body.name).toBe('NewCo');
     expect(body.relationships).toEqual([
       { type: 'CLIENT', status: 'PROSPECT' },
-      { type: 'VENDOR', status: 'ON_HOLD' },
+      { type: 'VENDOR', status: 'INACTIVE' },
     ]);
   });
 
