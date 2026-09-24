@@ -13,8 +13,6 @@ import {
   Icons,
   InlineAlert,
   PageHeader,
-  ReservedSeam,
-  Switch,
 } from '../ui';
 import { listCompanies, listContactsForCompany } from '../companies/companies-api';
 import type { CompanyView, ContactView } from '../companies/types';
@@ -286,7 +284,8 @@ export function NewRequisitionView({ sessionOverride }: NewRequisitionViewProps)
   const [sourceText, setSourceText] = useState('');
   const [companyHint, setCompanyHint] = useState<string | null>(null);
   const [contactHint, setContactHint] = useState<string | null>(null);
-  const [runMatch, setRunMatch] = useState(false);
+  // "View pasted source" drawer (prototype) — read-only; the form stays editable.
+  const [sourceOpen, setSourceOpen] = useState(false);
 
   const [companies, setCompanies] = useState<readonly CompanyView[]>([]);
   const [companiesLoading, setCompaniesLoading] = useState(true);
@@ -598,7 +597,7 @@ export function NewRequisitionView({ sessionOverride }: NewRequisitionViewProps)
     setSubmitting(true);
     setSubmitError(null);
     setProfileWarning(null);
-    const flag = withMatch || runMatch;
+    const flag = withMatch;
 
     let createdReq: RequisitionView;
     try {
@@ -783,8 +782,7 @@ export function NewRequisitionView({ sessionOverride }: NewRequisitionViewProps)
       {phase === 'loading' ? <DraftingCard /> : null}
 
       {phase === 'form' ? (
-        <div className="rc-editgrid">
-          <div className="rc-editgrid__main">
+        <div className="rc-newreqform">
             {draftSource === 'ai' ? (
               <div className="rc-aibanner">
                 <span className="rc-aibanner__ic" aria-hidden="true">
@@ -794,6 +792,7 @@ export function NewRequisitionView({ sessionOverride }: NewRequisitionViewProps)
                   <b>AI drafted this requisition from your notes.</b> Review and
                   edit anything before saving — you decide. Add the client and
                   anything the notes didn’t state.
+                  {sourceText !== '' ? <ViewSourceLink onOpen={() => setSourceOpen(true)} /> : null}
                 </span>
                 <Button unstyled
                   type="button"
@@ -815,6 +814,7 @@ export function NewRequisitionView({ sessionOverride }: NewRequisitionViewProps)
                   drafted or invented — the full text is kept in the job
                   description. Review and edit every field, then create; nothing
                   is created until you do. Pick the matching client.
+                  {sourceText !== '' ? <ViewSourceLink onOpen={() => setSourceOpen(true)} /> : null}
                 </span>
                 <Button unstyled
                   type="button"
@@ -860,56 +860,29 @@ export function NewRequisitionView({ sessionOverride }: NewRequisitionViewProps)
               skillsSlot={skillsSlot}
               statusDisplay="Draft"
             />
-          </div>
 
-          {/* ── Right rail ── */}
-          <aside className="rc-editgrid__rail">
-            {draftSource !== 'none' && sourceText !== '' ? (
-              <section className="rc-sidecard" aria-label="Source">
-                <h3 className="rc-sidecard__h">
-                  <Icons.IconFile />
-                  Source
-                </h3>
-                <pre className="rc-newreq__source">{sourceText}</pre>
-              </section>
-            ) : null}
-
-            <ReservedSeam title="Duplicate check" tag="Coming soon">
-              Aramo surfaces likely-duplicate requisitions for you to decide — it
-              never merges silently. Duplicate detection arrives soon.
-            </ReservedSeam>
-
-            <section className="rc-sidecard" aria-label="Matching">
-              <h3 className="rc-sidecard__h">
-                <Icons.IconSearch />
-                Matching
-              </h3>
-              <label className="rc-switchrow">
-                <Switch
-                  checked={runMatch}
-                  onCheckedChange={setRunMatch}
-                  aria-label="Run match when created"
-                />
-                <span>
-                  Mark this requisition for matching when it’s created.
-                </span>
-              </label>
-              <ReservedSeam title="Match results" tag="Coming with Aramo Core">
-                When matching ships, it surfaces which stated requirements each
-                consented person meets — evidence only, never an ordered list or
-                a number on a person.
-              </ReservedSeam>
-            </section>
-
-            {/* §0 — no Owner card: ownership isn't modeled, and a requisition's
-                creator must never be presented as its owner. */}
-
-            <section className="rc-savebar">
-              <ul className="rc-savebar__gates">
-                <GateRow ok={titleValid} label="Job title" />
-                <GateRow ok={companyValid} label="Company" />
-              </ul>
-              <Button unstyled
+          {/* ── Sticky action bar (prototype) — required-field gates on the
+              left; Cancel + Create on the right. The old right rail (Source /
+              Duplicate / Matching cards) is gone; the pasted source moved to the
+              "View pasted source" drawer opened from the banner. */}
+          <div className="rc-createbar">
+            <ul className="rc-createbar__gates">
+              <li className="rc-createbar__req">REQUIRED</li>
+              <GateRow ok={titleValid} label="Job title" />
+              <GateRow ok={companyValid} label="Client" />
+            </ul>
+            <div className="rc-createbar__actions">
+              <Button
+                unstyled
+                type="button"
+                className="rc-btn rc-btn--ghost"
+                disabled={submitting}
+                onClick={() => navigate('/requisitions')}
+              >
+                Cancel
+              </Button>
+              <Button
+                unstyled
                 type="button"
                 className="rc-btn rc-btn--primary"
                 disabled={!canCreate}
@@ -918,28 +891,14 @@ export function NewRequisitionView({ sessionOverride }: NewRequisitionViewProps)
                 <Icons.IconCheck />
                 {submitting ? 'Creating…' : 'Create requisition'}
               </Button>
-              {runMatch ? (
-                <Button unstyled
-                  type="button"
-                  className="rc-btn"
-                  disabled={!canCreate}
-                  onClick={() => void onCreate(true)}
-                >
-                  <Icons.IconBolt />
-                  Create &amp; run match
-                </Button>
-              ) : null}
-              <Button unstyled
-                type="button"
-                className="rc-btn rc-btn--ghost"
-                disabled={submitting}
-                onClick={() => navigate('/requisitions')}
-              >
-                Cancel
-              </Button>
-            </section>
-          </aside>
+            </div>
+          </div>
         </div>
+      ) : null}
+
+      {/* Read-only pasted-source drawer (prototype) — the form stays editable. */}
+      {sourceOpen && sourceText !== '' ? (
+        <PastedSourceDrawer text={sourceText} onClose={() => setSourceOpen(false)} />
       ) : null}
     </section>
   );
@@ -1088,6 +1047,62 @@ function SkillEditor({
         </Button>
       </div>
     </div>
+  );
+}
+
+// The "View pasted source" affordance in the import/draft banner — a link that
+// opens the read-only source drawer (prototype).
+function ViewSourceLink({ onOpen }: { readonly onOpen: () => void }) {
+  return (
+    <>
+      {' '}
+      <Button unstyled type="button" className="rc-viewsrc" onClick={onOpen}>
+        <Icons.IconFile />
+        View pasted source
+      </Button>
+    </>
+  );
+}
+
+// Read-only right-side drawer showing the pasted requirement verbatim. It does
+// NOT modal-block the form (the form stays editable while open); Esc closes it.
+function PastedSourceDrawer({
+  text,
+  onClose,
+}: {
+  readonly text: string;
+  readonly onClose: () => void;
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+  return (
+    <aside className="rc-srcdrawer" role="dialog" aria-label="Pasted source">
+      <header className="rc-srcdrawer__head">
+        <Icons.IconFile />
+        <span className="rc-srcdrawer__ttl">
+          <span className="rc-srcdrawer__t">Pasted source</span>
+          <span className="rc-srcdrawer__s">
+            Read-only · the form stays editable while this is open
+          </span>
+        </span>
+        <Button
+          unstyled
+          type="button"
+          className="rc-srcdrawer__x"
+          title="Close (Esc)"
+          aria-label="Close pasted source"
+          onClick={onClose}
+        >
+          <Icons.IconX />
+        </Button>
+      </header>
+      <pre className="rc-srcdrawer__body">{text}</pre>
+    </aside>
   );
 }
 

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Session } from '@aramo/fe-foundation';
@@ -201,21 +201,32 @@ describe('NewRequisitionView (New Requisition — mockup parity)', () => {
     expect(screen.queryByLabelText('Job title')).not.toBeInTheDocument();
   });
 
-  it('reserves matching as a stored flag + a disabled seam (no scores)', async () => {
+  it('has no right-rail Matching / Duplicate / run-match cards (removed per prototype)', async () => {
     mockApi();
     renderView(['requisition:create']);
     await openFormViaImport();
-    // The match RESULT is a reserved seam — coming with Core, not a result.
-    expect(screen.getByText('Match results')).toBeInTheDocument();
-    expect(screen.getByText(/coming with aramo core/i)).toBeInTheDocument();
-    // Toggling the run-match intent reveals the "Create & run match" action.
+    expect(screen.queryByText('Match results')).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('switch', { name: /run match when created/i }),
+    ).not.toBeInTheDocument();
     expect(
       screen.queryByRole('button', { name: /create & run match/i }),
     ).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('switch', { name: /run match when created/i }));
-    expect(
-      screen.getByRole('button', { name: /create & run match/i }),
-    ).toBeInTheDocument();
+    expect(screen.queryByText('Duplicate check')).not.toBeInTheDocument();
+  });
+
+  it('"View pasted source" opens a read-only drawer with the pasted text', async () => {
+    mockApi();
+    renderView(['requisition:create']);
+    await openFormViaImport();
+    fireEvent.click(screen.getByRole('button', { name: /view pasted source/i }));
+    const drawer = screen.getByRole('dialog', { name: 'Pasted source' });
+    expect(within(drawer).getByText(/Read-only/)).toBeInTheDocument();
+    expect(within(drawer).getByText(/Contract role, remote/)).toBeInTheDocument();
+    // Closing the drawer removes it; the form stays mounted (editable throughout).
+    fireEvent.click(within(drawer).getByRole('button', { name: /close pasted source/i }));
+    expect(screen.queryByRole('dialog', { name: 'Pasted source' })).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Job title')).toBeInTheDocument();
   });
 
   it('offers a non-AI "Import Client Requisition" action on the intake lane', async () => {

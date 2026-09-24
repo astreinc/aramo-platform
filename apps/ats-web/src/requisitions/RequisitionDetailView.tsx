@@ -139,10 +139,13 @@ type TabId =
 // The resolved tab is clamped to the AVAILABLE set (fallback Overview) so the
 // default can never point at a tab the actor cannot see.
 function defaultTabFor(scopes: readonly string[], available: ReadonlySet<TabId>): TabId {
+  // Talent is the default working surface when the actor can read the pipeline
+  // (recruiters, owners); Commercial/Assignments are fallbacks for actors whose
+  // only relevant scope is approval/assignment.
   let preferred: TabId = 'overview';
-  if (scopes.includes(COMMERCIAL_APPROVE)) preferred = 'commercial';
-  else if (scopes.includes(PIPELINE_CHANGE_STATUS) || scopes.includes(PIPELINE_READ))
+  if (scopes.includes(PIPELINE_CHANGE_STATUS) || scopes.includes(PIPELINE_READ))
     preferred = 'talent';
+  else if (scopes.includes(COMMERCIAL_APPROVE)) preferred = 'commercial';
   else if (scopes.includes(ASSIGNMENT_EXTEND) || scopes.includes(PRE_START_ACT))
     preferred = 'assignments';
   return available.has(preferred) ? preferred : 'overview';

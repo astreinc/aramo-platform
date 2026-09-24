@@ -164,6 +164,17 @@ describe('RequisitionDetailView workspace — scope-driven default order', () =>
     await waitFor(() => expect(selectedTabName()).toMatch(/Talent/));
   });
 
+  it('pipeline:read + commercials:approve → default Talent (pipeline wins)', async () => {
+    mount([
+      'requisition:read',
+      'pipeline:read',
+      'assignment:commercials:read',
+      'assignment:commercials:approve',
+    ]);
+    await screen.findByRole('heading', { name: /Staff Platform Engineer/ });
+    await waitFor(() => expect(selectedTabName()).toMatch(/Talent/));
+  });
+
   it('assignment:extend (+placement:read) → default Assignments', async () => {
     mount(['requisition:read', 'assignment:extend', 'placement:read']);
     await screen.findByRole('heading', { name: /Staff Platform Engineer/ });
