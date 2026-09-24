@@ -5024,6 +5024,23 @@ button.rc-tj__cell:hover { color: #022ac0; text-decoration: underline; }
 .rc-tj__next { font-size: 11.5px; color: #93a0a8; margin: 8px 2px 0; }
 .rc-tj__next b { color: #1b2730; }
 
+/* Per-tab empty state — the prototype's dashed "nothing here yet" card. */
+.rc-tabempty {
+  background: #fff; border: 1.5px dashed #d5dbe1; border-radius: 13px; padding: 22px 20px;
+}
+.rc-tabempty__t { font-size: 14px; font-weight: 700; color: #1b2730; }
+.rc-tabempty__b {
+  font-size: 12.5px; color: #93a0a8; margin-top: 6px; line-height: 1.55; max-width: 72ch;
+}
+
+/* Commercial empty scaffold — two side-by-side cards (reflow narrow). */
+.rc-comm2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+@media (max-width: 720px) { .rc-comm2 { grid-template-columns: 1fr; } }
+.rc-comm2__hint { font-weight: 400; color: #93a0a8; }
+
+/* Attachments empty-state helper line (suggested docs · types · count). */
+.rc-att-hint { margin-top: 6px; }
+
 /* ─────────────── COMM-V1 recruiter Call affordance (COMM-B4) ─────────────── */
 
 .talent-detail__actions { display: flex; gap: 8px; margin: 6px 0 2px; }

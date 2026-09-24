@@ -412,7 +412,8 @@ describe('RequisitionDetailView workspace — load model (no first-paint fan-out
     // Navigate via the tab (unambiguous vs. the snapshot Offers card).
     fireEvent.click(screen.getByRole('tab', { name: /Offers/ }));
     await waitFor(() => expect(selectedTabName()).toMatch(/Offers/));
-    expect(await screen.findByText(/No offers on this requisition yet\./)).toBeInTheDocument();
+    // Empty state matches the prototype's "No offers on this requisition" card.
+    expect(await screen.findByText(/No offers on this requisition/)).toBeInTheDocument();
   });
 
   const PIPELINE_TAL1 = [

@@ -993,7 +993,7 @@ function IntakeLane({
             </Button>
             <Button unstyled type="button" className="rc-btn" onClick={onImport}>
               <Icons.IconFile />
-              Import Client Requisition
+              Import client requisition
             </Button>
             <span className="rc-reqintake__hint">
               Import parses a ready requirement into the form — no AI. You review,

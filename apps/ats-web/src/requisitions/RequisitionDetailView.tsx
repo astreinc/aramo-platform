@@ -513,7 +513,7 @@ export function RequisitionDetailView({
     content: (
       <div className="rc-mt-16">
         <div className="rc-viewhead">
-          <h2 className="rc-section-h">Requisition activity</h2>
+          <h2 className="rc-section-h">Activity — one timeline, every lifecycle</h2>
           <div className="rc-viewhead__actions">
             <LogNoteDialog
               requisitionId={req.id}
@@ -546,11 +546,17 @@ export function RequisitionDetailView({
       label: 'Tasks',
       content: (
         <div className="rc-mt-16">
+          <div className="rc-viewhead">
+            <h2 className="rc-section-h">Tasks on this requisition</h2>
+          </div>
           <TasksPanel
             ownerType="requisition"
             ownerId={req.id}
             canWrite={canWriteTasks}
           />
+          <p className="rc-muted-line rc-mt-8">
+            Tasks consolidate actionable work across lifecycles.
+          </p>
         </div>
       ),
     });
@@ -1412,6 +1418,26 @@ function talentLabel(
   return t ? `${t.first_name} ${t.last_name}`.trim() : 'Talent';
 }
 
+// Shared per-tab empty state — mirrors the prototype's dashed "nothing here yet"
+// card (title + explanatory body). Used by the tabs whose prototype view is an
+// empty state; the populated tables/lists render instead once data exists.
+function TabEmpty({
+  title,
+  children,
+}: {
+  readonly title: string;
+  readonly children: ReactNode;
+}) {
+  return (
+    <div className="rc-mt-16">
+      <div className="rc-tabempty">
+        <div className="rc-tabempty__t">{title}</div>
+        <p className="rc-tabempty__b">{children}</p>
+      </div>
+    </div>
+  );
+}
+
 function OffersTab({
   offers,
   talents,
@@ -1419,6 +1445,15 @@ function OffersTab({
   readonly offers: readonly OfferView[];
   readonly talents: Record<string, TalentRecordView>;
 }) {
+  if (offers.length === 0) {
+    return (
+      <TabEmpty title="No offers on this requisition">
+        Create offer becomes available when a Talent reaches Client — Selected.
+        Offers carry Talent-facing terms only; employer financials live in
+        Commercial.
+      </TabEmpty>
+    );
+  }
   const columns: ReadonlyArray<TableColumn<OfferView>> = [
     {
       key: 'talent',
@@ -1563,6 +1598,19 @@ function PreStartPanel({
 
   const list = Object.values(rows);
 
+  // Empty state mirrors the prototype's "No placements in pre-start" card.
+  // ("onboarding readiness" in the mock → "pre-start readiness" here, per the
+  // codebase's Pre-Start lifecycle vocabulary.)
+  if (canReadPlacements && list.length === 0) {
+    return (
+      <TabEmpty title="No placements in pre-start">
+        When an offer is accepted, pre-start readiness appears here: requirements,
+        blockers, and days to start. Readiness is derived from requirement
+        completion — never toggled manually.
+      </TabEmpty>
+    );
+  }
+
   return (
     <div className="rc-mt-16">
       <Card flush>
@@ -1573,8 +1621,6 @@ function PreStartPanel({
           <p className="rc-muted-line rc-mt-8">
             Placement visibility is required to summarise pre-start readiness.
           </p>
-        ) : list.length === 0 ? (
-          <p className="rc-empty">No committed placements to check yet.</p>
         ) : (
           <ul className="rc-filelist">
             {list.map((row) => (
@@ -1679,6 +1725,15 @@ function AssignmentsTab({
   readonly talents: Record<string, TalentRecordView>;
   readonly session: Session | undefined;
 }) {
+  if (placements.length === 0) {
+    return (
+      <TabEmpty title="No assignments yet">
+        Started work appears here as assignments — start, expected end,
+        extensions, and capacity consumption. Permanent placements show
+        guarantee-period tracking instead.
+      </TabEmpty>
+    );
+  }
   return (
     <div className="rc-mt-16">
       <Card flush>
@@ -1718,6 +1773,41 @@ function CommercialTab({
   readonly talents: Record<string, TalentRecordView>;
   readonly session: Session | undefined;
 }) {
+  // No placements yet → the prototype's requisition-level scaffold: a "Current
+  // terms" card (fields shown as "—" until work starts) + a "Proposals &
+  // approvals" card. No values are computed here — the "—"s are literal empties,
+  // per masked-by-absence. Real per-assignment terms appear via the drill-through
+  // once placements exist.
+  if (placements.length === 0) {
+    return (
+      <div className="rc-mt-16 rc-comm2">
+        <Card flush>
+          <div className="rc-card__head">
+            <h2>Current terms</h2>
+          </div>
+          <div className="rc-fgrid rc-mt-8">
+            <CommTerm label="Pay rate" />
+            <CommTerm label="Bill rate" />
+            <CommTerm label="Margin" hint="derived" />
+            <CommTerm label="Effective date" />
+          </div>
+          <p className="rc-muted-line rc-mt-8">
+            Commercial terms are recorded per assignment once work starts.
+            Requisition-level targets live in Financial planning (Overview).
+          </p>
+        </Card>
+        <Card flush>
+          <div className="rc-card__head">
+            <h2>Proposals &amp; approvals</h2>
+          </div>
+          <p className="rc-muted-line rc-mt-8">
+            No pending proposals. Rate revisions raised on an assignment will
+            appear here for approval, with current → proposed impact.
+          </p>
+        </Card>
+      </div>
+    );
+  }
   return (
     <div className="rc-mt-16">
       <Card flush>
@@ -1742,6 +1832,20 @@ function CommercialTab({
   );
 }
 
+// One read-only "Current terms" field (empty scaffold) — label + "—" value box,
+// with an optional derived-note under the label.
+function CommTerm({ label, hint }: { readonly label: string; readonly hint?: string }) {
+  return (
+    <div className="rc-ifield">
+      <span className="rc-ifield__lb">
+        {label}
+        {hint !== undefined ? <span className="rc-comm2__hint"> · {hint}</span> : null}
+      </span>
+      <div className="rc-vbox rc-vbox--empty">—</div>
+    </div>
+  );
+}
+
 // ── Attachments tab ──
 
 function AttachmentsPanel({
@@ -1756,7 +1860,15 @@ function AttachmentsPanel({
           <h2>Attachments</h2>
         </div>
         {attachments.length === 0 ? (
-          <p className="rc-empty">No attachments on this requisition yet.</p>
+          <>
+            <p className="rc-empty">No attachments on this requisition yet.</p>
+            {/* Prototype's suggested-docs / file-type / count helper. Upload is a
+                separate (unbuilt) capability — this stays a read surface. */}
+            <p className="rc-muted-line rc-att-hint">
+              Job description, client requirements, rate card · PDF, DOCX, XLSX ·{' '}
+              {attachments.length} files attached
+            </p>
+          </>
         ) : (
           <ul className="rc-filelist">
             {attachments.map((a) => (
