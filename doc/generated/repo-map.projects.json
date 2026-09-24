@@ -3650,6 +3650,12 @@
         "project": "api",
         "status": "excluded"
       },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/submit-talent.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
       { "project": "api", "status": "production" }
     ],
     "@aramo/documents-contracts": [
@@ -3657,6 +3663,7 @@
       { "project": "esign-service", "status": "production" }
     ],
     "@aramo/documents-rendering": [
+      { "project": "api", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/documents/src/tests/doc2-render-service.integration.spec.ts",

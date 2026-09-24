@@ -108,4 +108,37 @@ describe('evaluateEligibility (pure gate)', () => {
         .closed_by,
     ).toBe('QUOTA');
   });
+
+  // DOC-5 — document-readiness (RTR) gate: LAST, after engagement.
+  it('document unsatisfied → deny SUBMITTAL_RTR_NOT_EXECUTED', () => {
+    const d = evaluateEligibility(inputs(), ctx({ document: { satisfied: false, deny: 'SUBMITTAL_RTR_NOT_EXECUTED', missing: ['RIGHT_TO_REPRESENT'] } }));
+    expect(d.eligible).toBe(false);
+    expect(d.deny).toBe('SUBMITTAL_RTR_NOT_EXECUTED');
+  });
+
+  it('document satisfied → eligible', () => {
+    const d = evaluateEligibility(inputs(), ctx({ document: { satisfied: true, deny: null } }));
+    expect(d).toEqual({ eligible: true, status: 'OPEN' });
+  });
+
+  it('document absent → eligible (additive/backward-compatible, v1)', () => {
+    const d = evaluateEligibility(inputs(), ctx());
+    expect(d.eligible).toBe(true);
+  });
+
+  it('order: an engagement denial wins over a document denial (document is checked LAST)', () => {
+    const d = evaluateEligibility(
+      inputs(),
+      ctx({
+        engagement: { satisfied: false, deny: 'CLIENT_SUBMITTAL_ENGAGEMENT_INCOMPLETE', missing: ['email'] },
+        document: { satisfied: false, deny: 'SUBMITTAL_RTR_NOT_EXECUTED' },
+      }),
+    );
+    expect(d.deny).toBe('CLIENT_SUBMITTAL_ENGAGEMENT_INCOMPLETE');
+  });
+
+  it('order: a window/restriction denial wins over a document denial', () => {
+    const d = evaluateEligibility(inputs({ manual_override: 'CLOSED' }), ctx({ document: { satisfied: false, deny: 'SUBMITTAL_RTR_NOT_EXECUTED' } }));
+    expect(d.deny).toBe('SUBMITTALS_CLOSED');
+  });
 });

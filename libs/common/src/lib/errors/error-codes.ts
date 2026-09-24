@@ -629,6 +629,9 @@ export const ERROR_CODES = [
   'CLIENT_SUBMITTAL_ENGAGEMENT_POLICY_MISSING',
   'CLIENT_SUBMITTAL_ENGAGEMENT_INCOMPLETE',
   'CLIENT_SUBMITTAL_ENGAGEMENT_EVIDENCE_UNAVAILABLE',
+  // DOC-5 (R-5-10, 409): the document-readiness gate found no EXECUTED
+  // RIGHT_TO_REPRESENT jointly associated to this exact Talent + Requisition.
+  'SUBMITTAL_RTR_NOT_EXECUTED',
   // COMM-C3 — engagement-policy publish/admin refusals (422). SCHEMA_INVALID:
   // typed/structural validation failed. NOT_ACTIVATABLE: a required channel has no
   // evidence producer yet (e.g. email today), so the policy cannot be activated (R7).

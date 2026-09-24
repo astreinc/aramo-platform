@@ -69,6 +69,7 @@ import { TaskModule } from '@aramo/task';
 import { EsignServiceHttpProvider } from './esign/esign-service-http.provider.js';
 import { AramoS3DocumentStorageAdapter } from './documents/aramo-s3-document-storage.adapter.js';
 import { DocumentsEsignModule } from './documents/documents-esign.module.js';
+import { RtrModule } from './rtr/rtr.module.js';
 import { ResumeAttachmentResolverModule } from './resume-extraction/resume-attachment-resolver.module.js';
 import { ResumeEditionReaderModule } from './resume-extraction/resume-edition-reader.module.js';
 import { CompanyClientCheckModule } from './company-client-check/company-client-check.module.js';
@@ -517,6 +518,9 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     // DOC-4 (R-4-7) — the executed-artifact write-back seam (source-bytes read +
     // idempotent write-back). Self-contained module (own storage + prisma).
     DocumentsEsignModule,
+    // DOC-5 (R-5-5) — the RTR orchestrator (request/prepare/send; first
+    // SIGNATURE_PROVIDER_PORT consumer). Self-contained composition module.
+    RtrModule,
     // SRC-1 PR-2 — SourcedTalentModule provides SourcedTalentRepository so the
     // Indeed apply webhook can write the channel dedup-memory arrival. The
     // apps/api → @aramo/sourced-talent nx edge already exists (admit-arrivals),

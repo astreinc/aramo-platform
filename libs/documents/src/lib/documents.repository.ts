@@ -221,6 +221,74 @@ export class DocumentsRepository {
     });
   }
 
+  // DOC-5 (R-5-11, PL-1) — the same-document executed predicate. Returns the
+  // single canonical Document that, in ONE row, is this tenant's, of the given
+  // DocumentType key, status=EXECUTED, and simultaneously satisfies EVERY given
+  // association (each `some` scoped to the SAME document's associations relation
+  // via a distinct AND clause). Opaque refs only — no ATS import. NOT satisfied
+  // by separate documents, a single association alone, or a non-EXECUTED status.
+  async findExecutedByTypeAndAssociations(input: {
+    tenant_id: string;
+    document_type_key: string;
+    associations: readonly { resource_type: string; resource_id: string; relationship: string }[];
+  }) {
+    return this.prisma.document.findFirst({
+      where: {
+        tenant_id: input.tenant_id,
+        status: 'EXECUTED',
+        document_type: { key: input.document_type_key },
+        AND: input.associations.map((a) => ({
+          associations: { some: { resource_type: a.resource_type, resource_id: a.resource_id, relationship: a.relationship } },
+        })),
+      },
+    });
+  }
+
+  // DOC-5 (R-5-11) — is a document of this type REQUIRED for a resource? Returns
+  // the DocumentRequirement (or null). The readiness gate uses this to stay
+  // CONDITIONAL: a submit is gated on RTR ONLY when such a requirement exists, so
+  // submits with no RTR requirement are never denied. Opaque refs; no ATS import.
+  async findRequirement(input: {
+    tenant_id: string;
+    document_type_id: string;
+    resource_type: string;
+    resource_id: string;
+  }) {
+    return this.prisma.documentRequirement.findFirst({
+      where: {
+        tenant_id: input.tenant_id,
+        document_type_id: input.document_type_id,
+        resource_type: input.resource_type,
+        resource_id: input.resource_id,
+      },
+    });
+  }
+
+  // DOC-5 (R-5-11) — idempotently ensure a document requirement exists for a
+  // resource (the readiness gate's CONDITIONAL trigger). Returns the existing or
+  // newly-created UNSATISFIED requirement. Opaque refs; no ATS import.
+  async ensureRequirement(input: {
+    tenant_id: string;
+    document_type_id: string;
+    resource_type: string;
+    resource_id: string;
+    created_by: string;
+  }) {
+    const existing = await this.findRequirement(input);
+    if (existing !== null) return existing;
+    return this.prisma.documentRequirement.create({
+      data: {
+        id: randomUUID(),
+        tenant_id: input.tenant_id,
+        document_type_id: input.document_type_id,
+        resource_type: input.resource_type,
+        resource_id: input.resource_id,
+        status: 'UNSATISFIED',
+        created_by: input.created_by,
+      },
+    });
+  }
+
   private async reloadReplay(tenant_id: string, responseBody: unknown) {
     const id = (responseBody as { document_id?: string } | null)?.document_id;
     if (id === undefined) {
