@@ -28,7 +28,6 @@ import {
   Avatar,
   Card,
   FilterChip,
-  Icons,
   ScopedSearch,
   StatusPill,
   Toolbar,
@@ -317,21 +316,6 @@ export function RequisitionsListView({
     pipelineCounts,
   ]);
 
-  // Needs-attention: hot, or aging (open >= AGING_DAYS with nothing submitted).
-  // Derived from the already-loaded set within the current scope — no new call,
-  // no fabricated signal.
-  const focusItems = useMemo(
-    () =>
-      filtered
-        .filter((r) => {
-          if (isClosedStatus(r.status)) return false;
-          if (r.is_hot) return true;
-          return daysOpen(r) >= AGING_DAYS;
-        })
-        .slice(0, 6),
-    [filtered, pipelineCounts],
-  );
-
   // R5 — the summary line uses ONLY real enum values (open / on hold /
   // closed). No derived bucket, and no total implying these sum.
   const openCount = items.filter((r) => r.status === 'open').length;
@@ -415,37 +399,9 @@ export function RequisitionsListView({
         <InlineAlert variant="error">{error}</InlineAlert>
       ) : null}
 
-      {focusItems.length > 0 ? (
-        <div className="rc-focus">
-          <div className="rc-focus__ic">
-            <Icons.IconBolt />
-          </div>
-          <div className="rc-focus__body">
-            <h2 className="rc-focus__h">
-              {focusItems.length} requisition
-              {focusItems.length === 1 ? '' : 's'}{' '}
-              {focusItems.length === 1 ? 'needs' : 'need'} attention
-            </h2>
-            <div className="rc-focus__row">
-              {focusItems.map((r) => (
-                <Button unstyled
-                  key={r.id}
-                  type="button"
-                  className="rc-focus__k"
-                  onClick={() => scrollToRow(r.id)}
-                >
-                  <span
-                    className="rc-focus__d"
-                    style={{ background: r.is_hot ? 'var(--hot)' : 'var(--warn)' }}
-                  />
-                  <span className="rc-focus__t">{r.title} —</span>{' '}
-                  {focusReason(r, pipelineCounts)}
-                </Button>
-              ))}
-            </div>
-          </div>
-        </div>
-      ) : null}
+      {/* G2.1 — the "needs attention" summary banner above the table is removed
+          to match the prototype. The aging/priority signal remains available per
+          row (Attention column) and via the Priority filter chip + Sort. */}
 
       <Toolbar float>
         {/* Search first (prototype). Then the prototype dropdowns, then the two
@@ -733,11 +689,9 @@ function RequisitionRow({
           >
             {req.title}
           </Link>
-          {/* Team-wide operational priority signal (is_hot). Recruiter-facing
-              label is "Priority"; the underlying flag/permission are unchanged. */}
-          {req.is_hot ? (
-            <span className="rc-rt__hot">Priority</span>
-          ) : null}
+          {/* G2.1 — the per-row Priority pill is removed to match the prototype;
+              the team-wide is_hot signal now surfaces only via the Attention
+              column and the Priority filter chip. */}
         </div>
         {idParts.length > 0 ? (
           <div className="rc-rt__sub">
@@ -946,11 +900,6 @@ function rowDomId(id: string): string {
   return `req-row-${id}`;
 }
 
-function scrollToRow(id: string): void {
-  const el = document.getElementById(rowDomId(id));
-  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-}
-
 function daysOpen(r: RequisitionView): number {
   const created = Date.parse(r.created_at);
   if (Number.isNaN(created)) return 0;
@@ -971,15 +920,6 @@ function relativeTime(iso: string): string {
   if (days < 30) return `${days}d ago`;
   const months = Math.floor(days / 30);
   return `${months}mo ago`;
-}
-
-function focusReason(
-  r: RequisitionView,
-  counts: Record<string, ReqPipelineCount>,
-): string {
-  const age = daysOpen(r);
-  if (r.is_hot) return `priority · ${age}d open`;
-  return `aging · ${age}d open`;
 }
 
 // Per-row ATTENTION (.dc column). GROUNDED-ONLY: derived exclusively from

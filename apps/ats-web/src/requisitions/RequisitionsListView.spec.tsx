@@ -658,17 +658,18 @@ describe('RequisitionsListView', () => {
     expect(sub?.textContent ?? '').toContain('REQ-1007');
   });
 
-  it('the is_hot badge is labelled "Priority" (not "Hot", not a star)', async () => {
+  it('G2.1: an is_hot row renders NO per-row Priority pill beside the title', async () => {
     mockFetch([HOT]);
     renderList();
     await waitFor(() =>
       expect(screen.getByText('Hot Role')).toBeInTheDocument(),
     );
-    // Recruiter-facing team-wide priority signal — the row badge reads "Priority".
+    // G2.1 removed the per-row Priority pill to match the prototype. The is_hot
+    // signal now surfaces only via the Attention column + Priority filter chip.
+    expect(document.querySelector('.rc-rt__hot')).toBeNull();
     expect(
-      screen.getByText('Priority', { selector: '.rc-rt__hot' }),
-    ).toBeInTheDocument();
-    expect(screen.queryByText('Hot', { selector: '.rc-rt__hot' })).toBeNull();
+      screen.queryByText('Priority', { selector: '.rc-rt__hot' }),
+    ).toBeNull();
   });
 
   it('R5: the summary line uses only real enum values (open / on hold / closed), no derived bucket', async () => {
@@ -706,13 +707,14 @@ describe('RequisitionsListView', () => {
     expect(screen.queryByRole('button', { name: /assign/i })).toBeNull();
   });
 
-  it('surfaces a needs-attention banner for hot requisitions', async () => {
+  it('G2.1: renders NO "needs attention" summary banner above the table', async () => {
     mockFetch([HOT]);
     renderList();
     await waitFor(() =>
-      expect(
-        screen.getByText(/requisition.*need.*attention/i),
-      ).toBeInTheDocument(),
+      expect(screen.getByText('Hot Role')).toBeInTheDocument(),
     );
+    // G2.1 removed the summary banner to match the prototype.
+    expect(screen.queryByText(/requisition.*need.*attention/i)).toBeNull();
+    expect(document.querySelector('.rc-focus')).toBeNull();
   });
 });

@@ -2192,6 +2192,7 @@
     "libs/fe-foundation/src/components/Checkbox.tsx",
     "libs/fe-foundation/src/components/Combobox.spec.tsx",
     "libs/fe-foundation/src/components/Combobox.tsx",
+    "libs/fe-foundation/src/components/Dialog.spec.tsx",
     "libs/fe-foundation/src/components/Dialog.tsx",
     "libs/fe-foundation/src/components/ForbiddenState.tsx",
     "libs/fe-foundation/src/components/FormField.spec.tsx",

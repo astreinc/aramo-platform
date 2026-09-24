@@ -2371,58 +2371,8 @@ button.rc-cocard {
  * All data is real/derived — no mocks. Token-based throughout. Match/Matches is
  * NOT on this surface (PR-REQ R1: the reserved seam lives on the detail page). */
 
-/* needs-attention banner */
-
-.rc-focus {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  background: linear-gradient(180deg, var(--surface), var(--surface-2));
-  border: 1px solid var(--line);
-  border-left: 3px solid var(--brand-accent);
-  border-radius: var(--r-lg);
-  padding: 13px 16px;
-  margin-top: 16px;
-  box-shadow: var(--elev);
-}
-
-.rc-focus__ic {
-  width: 30px;
-  height: 30px;
-  border-radius: 8px;
-  background: var(--brand-tint);
-  color: var(--brand-strong);
-  display: grid;
-  place-items: center;
-  flex: none;
-}
-
-.rc-focus__ic svg { width: 16px; height: 16px; }
-
-.rc-focus__body { flex: 1; min-width: 0; }
-
-.rc-focus__h { font-size: 0.86rem; font-weight: 700; margin: 0 0 5px; }
-
-.rc-focus__row { display: flex; flex-wrap: wrap; gap: 5px 14px; }
-
-.rc-focus__k {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  font-size: 0.8rem;
-  color: var(--muted);
-  background: none;
-  border: 0;
-  padding: 0;
-  cursor: pointer;
-  text-align: left;
-}
-
-.rc-focus__k:hover { color: var(--brand-strong); }
-
-.rc-focus__k b { color: var(--ink); font-weight: 600; }
-
-.rc-focus__d { width: 6px; height: 6px; border-radius: 50%; flex: none; }
+/* G2.1 — the needs-attention banner (.rc-focus*) was removed to match the
+   prototype; its styles are deleted with it (zero live residue). */
 
 /* filter-bar native selects (client / status / sort) */
 
@@ -2734,17 +2684,8 @@ button.rc-cocard {
 
 .rc-rt__title:hover { color: var(--brand-strong); }
 
-.rc-rt__hot {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  font-size: 0.66rem;
-  font-weight: 700;
-  color: var(--hot);
-  background: var(--hot-tint);
-  border-radius: 20px;
-  padding: 2px 8px;
-}
+/* G2.1 — the per-row Priority pill (.rc-rt__hot) was removed to match the
+   prototype; its style is deleted with it (zero live residue). */
 
 .rc-rt__title:focus-visible {
   outline: 2px solid var(--brand-accent);
@@ -2752,10 +2693,9 @@ button.rc-cocard {
   border-radius: 4px;
 }
 
-/* PR-14 — personal bookmark star on a list row. Distinct from .rc-rt__hot
-   (the team-wide HOT pill): a muted outline star that fills brand when the
-   CURRENT user has bookmarked. It never affects is_hot, ranking/sort, or
-   another user's view. */
+/* PR-14 — personal bookmark star on a list row: a muted outline star that
+   fills brand when the CURRENT user has bookmarked. It never affects is_hot,
+   ranking/sort, or another user's view. */
 .rc-rt__bm {
   flex: none;
   display: inline-flex;
@@ -4656,9 +4596,9 @@ select.rc-secinput { appearance: none; padding-right: 28px; }
    --muted, brand wash #E8EDFB, primary hover #3355E0. */
 .rc-cdp__backdrop { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.28); z-index: 40; }
 .rc-cdp {
-  /* Wider working panel for recruiters (the 2-col talent details + journey read
-     more comfortably); still responsive — never exceeds the viewport. */
-  position: fixed; top: 0; right: 0; bottom: 0; width: min(560px, 96vw); max-width: 100vw;
+  /* G2.2 — widened to min(620px, 94vw): the 2-col talent details + journey read
+     more comfortably; still responsive — never exceeds the viewport. */
+  position: fixed; top: 0; right: 0; bottom: 0; width: min(620px, 94vw); max-width: 100vw;
   background: #fff; z-index: 41; display: flex; flex-direction: column;
   border-left: 1px solid var(--border, #E5E9ED); box-shadow: -8px 0 28px rgba(2, 42, 192, 0.10);
 }
@@ -5357,3 +5297,53 @@ button.rc-tj__cell:hover { color: #022ac0; text-decoration: underline; }
 .lognote__hint { color: var(--faint, #93a0a8); }
 .lognote__count { color: var(--muted, #6b7a83); font-variant-numeric: tabular-nums; }
 .lognote__pin { display: inline-flex; align-items: center; gap: 6px; font-size: 0.8rem; margin-right: auto; }
+
+/* ─── G2.3 — Review email draft modal (renders inside a fe-foundation
+   Dialog size="xl"; the rc-eml classes style only the modal's own content) ─── */
+.rc-eml__hd { display: flex; align-items: center; gap: 11px; min-width: 0; }
+.rc-eml__hd-ic {
+  width: 34px; height: 34px; border-radius: 9px; flex: none;
+  background: var(--brand-tint, #E8EDFB); color: var(--brand-strong, #011F8D);
+  display: grid; place-items: center;
+}
+.rc-eml__hd-txt { font-size: 1rem; font-weight: 700; letter-spacing: -0.01em; }
+.rc-eml__pill {
+  margin-left: auto; flex: none; display: inline-flex; align-items: center; gap: 5px;
+  border-radius: 14px; padding: 2.5px 10px; font-size: 0.62rem; font-weight: 700;
+  letter-spacing: 0.04em; background: #E6F2EA; color: #1F7A4D;
+}
+.rc-eml__pill-dot { width: 4px; height: 4px; border-radius: 50%; background: currentColor; }
+
+.rc-eml { display: flex; flex-direction: column; gap: 14px; }
+.rc-eml__banner {
+  display: flex; gap: 9px; align-items: flex-start;
+  border: 1px solid var(--brand-line, #C9D4F2); background: var(--brand-wash, #E8EDFB55);
+  border-radius: 10px; padding: 10px 14px; font-size: 0.8rem; line-height: 1.55;
+}
+.rc-eml__banner-ic { flex: none; margin-top: 1px; color: var(--brand-strong, #022AC0); }
+
+.rc-eml__meta {
+  display: grid; grid-template-columns: 64px 1fr; gap: 9px 12px; align-items: center;
+}
+.rc-eml__label { font-size: 0.8rem; font-weight: 600; color: var(--muted, #5C6770); }
+.rc-eml__from { display: flex; align-items: center; gap: 8px; font-size: 0.82rem; flex-wrap: wrap; }
+.rc-eml__from-txt { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.rc-eml__badge {
+  flex: none; display: inline-flex; border-radius: 10px; padding: 1px 7px;
+  font-size: 0.56rem; font-weight: 700; background: #E6F2EA; color: #1F7A4D;
+}
+.rc-eml__chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid var(--border, #E5E9ED); background: var(--surface-2, #FAFBFC);
+  border-radius: 16px; padding: 3.5px 11px; font-size: 0.82rem; color: var(--ink, #1B2730);
+}
+.rc-eml__chip-lock { flex: none; color: var(--muted, #93A0A8); line-height: 0; }
+.rc-eml__hint { display: block; font-size: 0.7rem; color: var(--muted, #93A0A8); margin-top: 3px; }
+.rc-eml__body {
+  min-height: 340px; font-size: 13.5px; line-height: 1.65; resize: vertical;
+}
+.rc-eml__logline {
+  display: inline-flex; align-items: center; gap: 7px; margin-right: auto;
+  font-size: 0.75rem; color: var(--muted, #93A0A8);
+}
+.rc-eml__logline-ic { flex: none; color: #1F7A4D; line-height: 0; }

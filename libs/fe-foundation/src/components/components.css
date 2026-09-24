@@ -520,6 +520,20 @@
   width: min(680px, calc(100vw - var(--sp-8)));
 }
 
+/* xl — a wide review/compose surface (e.g. the requisition email draft). The
+   header (title + description) and footer stay fixed; only the body scrolls. */
+.tc-dialog__content--xl {
+  width: min(980px, calc(100vw - var(--sp-8)));
+  max-height: min(860px, 94vh);
+  overflow: hidden;
+}
+
+.tc-dialog__content--xl .tc-dialog__body {
+  overflow-y: auto;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
 .tc-dialog__title {
   margin: 0;
   font-size: var(--fs-16);

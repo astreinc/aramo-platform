@@ -25,14 +25,16 @@ interface DialogProps {
   children: ReactNode;
   footer?: ReactNode;
   // Sizes follow the existing density tokens. 'sm' for confirms, 'md'
-  // for forms (the default), 'lg' for the role-assign editor.
-  size?: 'sm' | 'md' | 'lg';
+  // for forms (the default), 'lg' for the role-assign editor, 'xl' for a
+  // wide review/compose surface (fixed header/footer, scrollable body).
+  size?: 'sm' | 'md' | 'lg' | 'xl';
 }
 
 const sizeClass: Record<NonNullable<DialogProps['size']>, string> = {
   sm: 'tc-dialog__content--sm',
   md: '',
   lg: 'tc-dialog__content--lg',
+  xl: 'tc-dialog__content--xl',
 };
 
 export function Dialog({
