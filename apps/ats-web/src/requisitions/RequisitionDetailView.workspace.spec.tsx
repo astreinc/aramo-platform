@@ -473,7 +473,7 @@ describe('RequisitionDetailView workspace — load model (no first-paint fan-out
     // Close + reopen the SAME row → cache hit, NO refetch.
     fireEvent.click(screen.getByRole('button', { name: 'Close' }));
     fireEvent.click(await screen.findByRole('button', { name: /Marcus Adeyemi/ }));
-    await screen.findByText('Talent journey'); // panel reopened
+    await screen.findByRole('list', { name: 'Talent journey' }); // panel reopened
     expect(submittalCalls()).toBe(1);
     expect(preStartCalls()).toBe(1);
   });

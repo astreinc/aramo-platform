@@ -206,7 +206,7 @@ describe('RequisitionDetailView — header / meta / pipeline (2D)', () => {
     // the Detail prototype's journey grid; "Onboarding" stays "Pre-Start" (vocab).
     for (const h of [
       'Talent', 'Email', 'Phone', 'Recruiting', 'Client', 'Offer', 'Pre-Start',
-      'Employment', 'RTR',
+      'Employment', 'Right to represent',
     ]) {
       expect(within(grid).getByText(h)).toBeInTheDocument();
     }
@@ -228,7 +228,7 @@ describe('RequisitionDetailView — header / meta / pipeline (2D)', () => {
     ).toBeInTheDocument();
   });
 
-  it('Talent tab: Email (mailto) + Phone cells, Send RTR button per row, RTR + next-action footer', async () => {
+  it('Talent tab: Email (mailto) + Phone cells + Send RTR button per row', async () => {
     mockApi();
     mountDetail();
     await screen.findByRole('heading', { name: /Senior Rust Engineer/ });
@@ -238,9 +238,6 @@ describe('RequisitionDetailView — header / meta / pipeline (2D)', () => {
     expect(screen.getByText('+1 202-555-0104')).toBeInTheDocument();
     // Send RTR button placed per row (unwired placeholder — one per talent).
     expect(screen.getAllByRole('button', { name: /Send RTR/ })).toHaveLength(2);
-    // Footer nudges.
-    expect(screen.getByText(/RTR \(Right to Represent\)/)).toBeInTheDocument();
-    expect(screen.getByText(/Next recommended action:/)).toBeInTheDocument();
     // Find Talent ▾ is gated on talent:source — absent for this session.
     expect(screen.queryByRole('button', { name: /Find Talent/ })).toBeNull();
   });

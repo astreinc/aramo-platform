@@ -4950,7 +4950,7 @@ button.rc-snapcard:hover {
 /* Talent-journey GRID (Option A). Outer card + sticky-width inner; header row +
  * data rows share the exact prototype grid template. Avatar #E8EDFB/#011F8D. */
 .rc-tj { margin-top: 16px; background: #fff; border: 1px solid #e5e9ed; border-radius: 13px; overflow-x: auto; }
-.rc-tj__inner { min-width: 1120px; }
+.rc-tj__inner { min-width: 1200px; }
 .rc-tj__head { display: flex; align-items: center; gap: 10px; padding: 12px 18px; border-bottom: 1px solid #e5e9ed; }
 .rc-tj__title { font-size: 13px; font-weight: 700; color: #1b2730; }
 .rc-tj__sub { font-size: 11.5px; color: #93a0a8; }
@@ -5019,11 +5019,6 @@ button.rc-tj__cell:hover { color: #022ac0; text-decoration: underline; }
 .rc-tj__rtrbtn:hover { background: #e8edfb; }
 .rc-tj__rtrbtn svg { width: 12px; height: 12px; }
 
-/* RTR explainer + next-action footer */
-.rc-tj__rtrnote { font-size: 11.5px; color: #93a0a8; margin: 6px 2px 0; }
-.rc-tj__next { font-size: 11.5px; color: #93a0a8; margin: 8px 2px 0; }
-.rc-tj__next b { color: #1b2730; }
-
 /* Per-tab empty state — the prototype's dashed "nothing here yet" card. */
 .rc-tabempty {
   background: #fff; border: 1.5px dashed #d5dbe1; border-radius: 13px; padding: 22px 20px;
@@ -5033,13 +5028,30 @@ button.rc-tj__cell:hover { color: #022ac0; text-decoration: underline; }
   font-size: 12.5px; color: #93a0a8; margin-top: 6px; line-height: 1.55; max-width: 72ch;
 }
 
-/* Commercial empty scaffold — two side-by-side cards (reflow narrow). */
-.rc-comm2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-@media (max-width: 720px) { .rc-comm2 { grid-template-columns: 1fr; } }
-.rc-comm2__hint { font-weight: 400; color: #93a0a8; }
+/* Commercial empty scaffold — auto-fit padded cards (prototype). */
+.rc-comm2 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+  gap: 13px;
+}
+.rc-commcard {
+  background: #fff; border: 1px solid #e5e9ed; border-radius: 13px; padding: 16px 18px;
+}
+.rc-commcard__t { font-size: 13px; font-weight: 700; margin-bottom: 12px; }
+.rc-commcard__t--tight { margin-bottom: 8px; }
+.rc-commcard__note { margin-top: 12px; font-size: 11.5px; color: #93a0a8; }
+.rc-commcard__body { font-size: 12.5px; color: #5c6770; line-height: 1.5; }
+.rc-commgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 16px; }
+.rc-commterm__l { font-size: 10.5px; color: #93a0a8; }
+.rc-commterm__v { font-size: 13px; font-weight: 600; color: #93a0a8; }
 
-/* Attachments empty-state helper line (suggested docs · types · count). */
-.rc-att-hint { margin-top: 6px; }
+/* Attachments empty — centered dashed "Attach documents" prompt (prototype). */
+.rc-attdrop {
+  border: 1.5px dashed #c9d4f2; border-radius: 13px; background: #fafbfc;
+  padding: 34px 20px; text-align: center;
+}
+.rc-attdrop__t { font-size: 13px; font-weight: 600; color: #022ac0; margin-bottom: 3px; }
+.rc-attdrop__s { font-size: 11.5px; color: #93a0a8; }
 
 /* ─────────────── COMM-V1 recruiter Call affordance (COMM-B4) ─────────────── */
 

@@ -9,7 +9,6 @@ import { LogNoteDialog } from '../activity/LogNoteDialog';
 import type { ActivityView } from '../activity/types';
 import { getCompany } from '../companies/companies-api';
 import { getContact } from '../contacts/contacts-api';
-import { collapseToCurrentEpisode } from '../pipeline/rollup';
 import { listPipelinesForRequisition } from '../pipeline/pipeline-api';
 import { PIPELINE_STATUS_LABELS, type PipelineView } from '../pipeline/types';
 import { listOffers } from '../offers/offers-api';
@@ -1129,10 +1128,6 @@ function TalentJourney({
   // Find Talent ▾ menu (prototype): the two sourcing entry points.
   const [findOpen, setFindOpen] = useState(false);
   const canSource = scopes.includes('talent:source');
-  const inPlay = useMemo(
-    () => collapseToCurrentEpisode(pipelines).length,
-    [pipelines],
-  );
 
   // Least-visibility: the read rides its existing scope; without it the cell
   // stays "—" and NO fetch is ever issued.
@@ -1179,10 +1174,7 @@ function TalentJourney({
     <div className="rc-tj">
       <div className="rc-tj__inner" role="table" aria-label="Talent journey">
         <div className="rc-tj__head">
-          <span className="rc-tj__title">Talent journey — {inPlay} in play</span>
-          <span className="rc-tj__sub">
-            Each status is owned by its lifecycle — click to open it
-          </span>
+          <span className="rc-tj__title">Talent journey</span>
           {/* Find Talent ▾ — the two sourcing entry points (prototype). Gated on
               talent:source (the /sourcing route's scope); no menu without it. */}
           {canSource ? (
@@ -1254,7 +1246,7 @@ function TalentJourney({
           <span className="rc-tj__ch">Offer</span>
           <span className="rc-tj__ch">Pre-Start</span>
           <span className="rc-tj__ch">Employment</span>
-          <span className="rc-tj__ch">RTR</span>
+          <span className="rc-tj__ch">Right to represent</span>
         </div>
         {pipelines.length === 0 ? (
           <div className="rc-tj__row" role="row">
@@ -1373,16 +1365,6 @@ function TalentJourney({
           })
         )}
       </div>
-      {/* RTR explainer + the next-best-action nudge (prototype footer). */}
-      <p className="rc-tj__rtrnote">
-        RTR (Right to Represent) — the talent confirms that you may represent
-        them to the client for this requisition. Client submittal requires a
-        confirmed RTR.
-      </p>
-      <p className="rc-tj__next">
-        Next recommended action: <b>Prepare client submittal</b> — Offer
-        creation unlocks only after client selection.
-      </p>
       {selected !== null ? (
         <TalentDetailPanel
           entry={selected}
@@ -1781,30 +1763,28 @@ function CommercialTab({
   if (placements.length === 0) {
     return (
       <div className="rc-mt-16 rc-comm2">
-        <Card flush>
-          <div className="rc-card__head">
-            <h2>Current terms</h2>
+        <div className="rc-commcard">
+          <div className="rc-commcard__t">Current terms</div>
+          <div className="rc-commgrid">
+            <CommTerm label="Pay rate" value="—" />
+            <CommTerm label="Bill rate" value="—" />
+            <CommTerm label="Margin" value="— · derived" />
+            <CommTerm label="Effective date" value="—" />
           </div>
-          <div className="rc-fgrid rc-mt-8">
-            <CommTerm label="Pay rate" />
-            <CommTerm label="Bill rate" />
-            <CommTerm label="Margin" hint="derived" />
-            <CommTerm label="Effective date" />
-          </div>
-          <p className="rc-muted-line rc-mt-8">
+          <p className="rc-commcard__note">
             Commercial terms are recorded per assignment once work starts.
             Requisition-level targets live in Financial planning (Overview).
           </p>
-        </Card>
-        <Card flush>
-          <div className="rc-card__head">
-            <h2>Proposals &amp; approvals</h2>
+        </div>
+        <div className="rc-commcard">
+          <div className="rc-commcard__t rc-commcard__t--tight">
+            Proposals &amp; approvals
           </div>
-          <p className="rc-muted-line rc-mt-8">
+          <p className="rc-commcard__body">
             No pending proposals. Rate revisions raised on an assignment will
             appear here for approval, with current → proposed impact.
           </p>
-        </Card>
+        </div>
       </div>
     );
   }
@@ -1832,16 +1812,13 @@ function CommercialTab({
   );
 }
 
-// One read-only "Current terms" field (empty scaffold) — label + "—" value box,
-// with an optional derived-note under the label.
-function CommTerm({ label, hint }: { readonly label: string; readonly hint?: string }) {
+// One read-only "Current terms" field (empty scaffold) — a small muted label
+// over a muted plain-text value, per the prototype (not a boxed input).
+function CommTerm({ label, value }: { readonly label: string; readonly value: string }) {
   return (
-    <div className="rc-ifield">
-      <span className="rc-ifield__lb">
-        {label}
-        {hint !== undefined ? <span className="rc-comm2__hint"> · {hint}</span> : null}
-      </span>
-      <div className="rc-vbox rc-vbox--empty">—</div>
+    <div className="rc-commterm">
+      <div className="rc-commterm__l">{label}</div>
+      <div className="rc-commterm__v">{value}</div>
     </div>
   );
 }
@@ -1853,35 +1830,38 @@ function AttachmentsPanel({
 }: {
   readonly attachments: readonly AttachmentView[];
 }) {
+  // Empty: the prototype's centered dashed "Attach documents" prompt (upload is
+  // a separate, unbuilt capability — this is the affordance, no live uploader).
+  if (attachments.length === 0) {
+    return (
+      <div className="rc-mt-16">
+        <div className="rc-attdrop">
+          <div className="rc-attdrop__t">Attach documents</div>
+          <div className="rc-attdrop__s">
+            Job description, client requirements, rate card · PDF, DOCX, XLSX ·{' '}
+            {attachments.length} files attached
+          </div>
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="rc-mt-16">
       <Card flush>
         <div className="rc-card__head">
           <h2>Attachments</h2>
         </div>
-        {attachments.length === 0 ? (
-          <>
-            <p className="rc-empty">No attachments on this requisition yet.</p>
-            {/* Prototype's suggested-docs / file-type / count helper. Upload is a
-                separate (unbuilt) capability — this stays a read surface. */}
-            <p className="rc-muted-line rc-att-hint">
-              Job description, client requirements, rate card · PDF, DOCX, XLSX ·{' '}
-              {attachments.length} files attached
-            </p>
-          </>
-        ) : (
-          <ul className="rc-filelist">
-            {attachments.map((a) => (
-              <li key={a.id} className="rc-filelist__row">
-                <Icons.IconList />
-                <span className="rc-filelist__nm">{a.file_name}</span>
-                <span className="rc-filelist__meta mono">
-                  {formatBytes(a.size_bytes)}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
+        <ul className="rc-filelist">
+          {attachments.map((a) => (
+            <li key={a.id} className="rc-filelist__row">
+              <Icons.IconList />
+              <span className="rc-filelist__nm">{a.file_name}</span>
+              <span className="rc-filelist__meta mono">
+                {formatBytes(a.size_bytes)}
+              </span>
+            </li>
+          ))}
+        </ul>
       </Card>
     </div>
   );
