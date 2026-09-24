@@ -115,15 +115,39 @@ export function MicrosoftRecruiterActions(props: MicrosoftRecruiterActionsProps)
   }
 
   return (
-    <div data-testid="microsoft-actions">
-      {canSendEmail && (
-        <Button type="button" data-testid="microsoft-send-email" onClick={onOpenComposer}>
-          Send email
+    <div className="rc-m365" data-testid="microsoft-actions">
+      <div className="rc-m365__row">
+        {canSendEmail && (
+          <Button
+            unstyled
+            type="button"
+            className="rc-m365__btn rc-m365__btn--primary"
+            data-testid="microsoft-send-email"
+            onClick={onOpenComposer}
+          >
+            <span className="rc-m365__btn-ic" aria-hidden="true">
+              <MailGlyph />
+            </span>
+            Send email
+          </Button>
+        )}
+        <Button
+          unstyled
+          type="button"
+          className="rc-m365__btn rc-m365__btn--secondary"
+          data-testid="microsoft-create-meeting"
+          onClick={onCreateMeeting}
+        >
+          <span className="rc-m365__btn-ic" aria-hidden="true">
+            <CalendarGlyph />
+          </span>
+          Create Teams meeting
         </Button>
-      )}
-      <Button type="button" data-testid="microsoft-create-meeting" onClick={onCreateMeeting}>
-        Create Teams meeting
-      </Button>
+      </div>
+      <p className="rc-m365__helper">
+        Sent as you from your connected Microsoft 365 mailbox · logged to this
+        Talent&apos;s activity automatically.
+      </p>
       {canSendEmail && (
         <RequisitionContactEmailComposer
           open={composerOpen}
@@ -149,5 +173,24 @@ export function MicrosoftRecruiterActions(props: MicrosoftRecruiterActionsProps)
       )}
       {error !== null && <p data-testid="microsoft-action-error">{error}</p>}
     </div>
+  );
+}
+
+// Decorative inline glyphs (presentation only) matching the prototype's M365 card.
+function MailGlyph(): JSX.Element {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="4" width="20" height="16" rx="2" />
+      <path d="m22 7-10 6L2 7" />
+    </svg>
+  );
+}
+
+function CalendarGlyph(): JSX.Element {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="4" width="18" height="17" rx="2" />
+      <path d="M16 2v4M8 2v4M3 10h18" />
+    </svg>
   );
 }

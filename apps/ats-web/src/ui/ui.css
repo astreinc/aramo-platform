@@ -5299,6 +5299,32 @@ button.rc-tj__cell:hover { color: #022ac0; text-decoration: underline; }
 .lognote__visdesc { margin: 5px 0 0; font-size: 0.75rem; color: var(--muted, #6b7a83); }
 .lognote__pin { display: inline-flex; align-items: center; gap: 6px; font-size: 0.8rem; margin-right: auto; }
 
+/* ─── G2.2 — Microsoft 365 card in the talent drawer. Send email = outlined
+   primary (blue border/text); Create Teams meeting = secondary (grey border,
+   dark text); helper line beneath. Matches Requisitions.dc.html. ─── */
+.rc-m365 {
+  border: 1px solid var(--border, #E5E9ED); border-radius: 11px; padding: 12px 14px;
+}
+.rc-m365__row { display: flex; gap: 8px; flex-wrap: wrap; }
+.rc-m365__btn {
+  display: inline-flex; align-items: center; gap: 7px; white-space: nowrap;
+  border: 1px solid; border-radius: 8px; padding: 8px 14px;
+  font: 600 0.78rem 'Hanken Grotesk', system-ui, sans-serif; cursor: pointer;
+}
+.rc-m365__btn-ic { display: inline-flex; line-height: 0; }
+.rc-m365__btn--primary {
+  border-color: var(--brand-strong, #022AC0); background: #fff;
+  color: var(--brand-strong, #022AC0);
+}
+.rc-m365__btn--primary:hover { background: var(--brand-tint, #E8EDFB); }
+.rc-m365__btn--secondary {
+  border-color: var(--line-2, #D5DBE1); background: #fff; color: var(--ink, #1B2730);
+}
+.rc-m365__btn--secondary:hover { background: var(--surface-2, #FAFBFC); }
+.rc-m365__helper {
+  margin: 9px 0 0; font-size: 0.7rem; color: var(--muted, #93A0A8); line-height: 1.5;
+}
+
 /* ─── G2.3 — Review email draft modal (renders inside a fe-foundation
    Dialog size="xl"; the rc-eml classes style only the modal's own content) ─── */
 .rc-eml__hd { display: flex; align-items: center; gap: 11px; min-width: 0; }
