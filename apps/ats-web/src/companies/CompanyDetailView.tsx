@@ -739,28 +739,65 @@ function ContactsPanel({
         {contacts.length === 0 ? (
           <p className="rc-empty">No contacts for this company yet.</p>
         ) : (
-          <ul className="rc-detail-list rc-detail-list--flush">
-            {contacts.map((c) => (
-              <li key={c.id} className="rc-tmrow rc-tmrow--row">
-                <Avatar name={fullContactName(c)} size="sm" />
-                <div className="rc-tmrow__body">
-                  <div className="rc-tmrow__nm">
-                    {fullContactName(c)}
-                    {c.left_company ? ' · (left company)' : ''}
-                  </div>
-                  <div className="rc-tmrow__rl">
-                    {display(c.title)}
-                    {c.email1 !== null && c.email1 !== '' ? ` · ${c.email1}` : ''}
-                  </div>
-                </div>
-                {canEdit ? (
-                  <Link to={`/contacts?edit=${c.id}`} className="rc-link-action">
-                    Edit
-                  </Link>
-                ) : null}
-              </li>
-            ))}
-          </ul>
+          <div className="rc-tablewrap">
+            <table className="rc-table">
+              <thead>
+                <tr>
+                  <th scope="col">Contact</th>
+                  <th scope="col">Title</th>
+                  <th scope="col">Email</th>
+                  <th scope="col">Phone</th>
+                  {canEdit ? <th scope="col" aria-label="Actions" /> : null}
+                </tr>
+              </thead>
+              <tbody>
+                {contacts.map((c) => {
+                  const phone =
+                    c.phone_work ?? c.phone_cell ?? c.phone_other ?? null;
+                  return (
+                    <tr key={c.id}>
+                      <td>
+                        <span className="rc-ent">
+                          <Avatar name={fullContactName(c)} size="sm" />
+                          <span className="rc-ent__nm">
+                            {fullContactName(c)}
+                            {c.left_company ? ' · (left company)' : ''}
+                            {c.is_primary ? (
+                              <span className="rc-primary-badge">PRIMARY</span>
+                            ) : null}
+                          </span>
+                        </span>
+                      </td>
+                      <td>{display(c.title)}</td>
+                      <td>
+                        {c.email1 !== null && c.email1 !== '' ? (
+                          <a href={`mailto:${c.email1}`} className="rc-link-strong">
+                            {c.email1}
+                          </a>
+                        ) : (
+                          <span className="rc-consent-stub">—</span>
+                        )}
+                      </td>
+                      <td>
+                        {phone !== null && phone !== '' ? (
+                          phone
+                        ) : (
+                          <span className="rc-consent-stub">—</span>
+                        )}
+                      </td>
+                      {canEdit ? (
+                        <td>
+                          <Link to={`/contacts?edit=${c.id}`} className="rc-link-action">
+                            Edit
+                          </Link>
+                        </td>
+                      ) : null}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
       </Card>
     </div>
@@ -785,20 +822,40 @@ function JobsPanel({
         {reqs.length === 0 ? (
           <p className="rc-empty">No active requisitions for this company yet.</p>
         ) : (
-          <ul className="rc-detail-list rc-detail-list--flush">
-            {reqs.map((r) => (
-              <li key={r.id} className="rc-tmrow rc-tmrow--row">
-                <div className="rc-tmrow__body">
-                  <div className="rc-tmrow__nm">
-                    <Link to={`/requisitions/${r.id}`} className="rc-link-strong">
-                      {r.title}
-                    </Link>
-                  </div>
-                  <div className="rc-tmrow__rl">{r.status}</div>
-                </div>
-              </li>
-            ))}
-          </ul>
+          <div className="rc-tablewrap">
+            <table className="rc-table">
+              <thead>
+                <tr>
+                  <th scope="col">Requisition</th>
+                  <th scope="col">Status</th>
+                  <th scope="col" className="num">In pipeline</th>
+                  <th scope="col" className="num">Openings</th>
+                </tr>
+              </thead>
+              <tbody>
+                {reqs.map((r) => (
+                  <tr key={r.id}>
+                    <td>
+                      <Link to={`/requisitions/${r.id}`} className="rc-link-strong">
+                        {r.title}
+                      </Link>
+                    </td>
+                    <td>
+                      <StatusPill tone="neutral" dot>
+                        {r.status}
+                      </StatusPill>
+                    </td>
+                    {/* In-pipeline count is a per-requisition pipeline read not
+                        loaded on this surface — shown as "—" for now. */}
+                    <td className="num">
+                      <span className="rc-consent-stub">—</span>
+                    </td>
+                    <td className="num">{r.openings}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </Card>
     </div>
