@@ -3713,6 +3713,12 @@
     "@aramo/fe-foundation": [
       {
         "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/activity/LogNoteDialog.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/ats-web/src/admin/AdminGate.spec.tsx",
         "project": "aramo-ats-web",
         "status": "excluded"

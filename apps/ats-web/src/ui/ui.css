@@ -5291,11 +5291,12 @@ button.rc-tj__cell:hover { color: #022ac0; text-decoration: underline; }
 }
 .lognote__category-chip:disabled { opacity: 0.6; cursor: default; }
 .lognote__meta {
-  display: flex; justify-content: space-between; align-items: center;
+  display: flex; justify-content: space-between; align-items: flex-start; gap: 16px;
   margin-top: 6px; font-size: 0.72rem; color: var(--faint, #93a0a8);
 }
 .lognote__hint { color: var(--faint, #93a0a8); }
-.lognote__count { color: var(--muted, #6b7a83); font-variant-numeric: tabular-nums; }
+.lognote__meta .lognote__hint:last-child { text-align: right; white-space: nowrap; }
+.lognote__visdesc { margin: 5px 0 0; font-size: 0.75rem; color: var(--muted, #6b7a83); }
 .lognote__pin { display: inline-flex; align-items: center; gap: 6px; font-size: 0.8rem; margin-right: auto; }
 
 /* ─── G2.3 — Review email draft modal (renders inside a fe-foundation

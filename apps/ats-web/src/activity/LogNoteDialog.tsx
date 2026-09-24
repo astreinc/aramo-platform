@@ -30,7 +30,19 @@ interface LogNoteDialogProps {
 }
 
 const NOTE_PLACEHOLDER =
-  'Capture decisions, client feedback, requirement changes, risks, or next steps…';
+  'Capture decisions, client feedback, requirement changes, risks, blockers, or next steps…';
+
+// The visibility selection drives two copy surfaces (G2.6): a description line
+// under the select, and the trailing clause of the header context sentence.
+const VISIBILITY_DESCRIPTION: Readonly<Record<NoteVisibility, string>> = {
+  TEAM: 'Everyone on the requisition team can see this note.',
+  PRIVATE: 'Only you can see this note.',
+};
+
+const VISIBILITY_HEADER_CLAUSE: Readonly<Record<NoteVisibility, string>> = {
+  TEAM: 'visible to the requisition team',
+  PRIVATE: 'private to you',
+};
 
 export function LogNoteDialog({
   requisitionId,
@@ -83,14 +95,14 @@ export function LogNoteDialog({
     }
   };
 
+  const recordedAgainst = [requisitionCode, requisitionTitle]
+    .filter((s): s is string => s !== undefined && s !== '')
+    .join(' · ');
+  // The header sentence changes with the selected visibility (G2.6).
   const subjectLine =
-    requisitionCode !== undefined || requisitionTitle !== undefined
-      ? `Recorded against ${[requisitionCode, requisitionTitle]
-          .filter((s): s is string => s !== undefined && s !== '')
-          .join(' · ')}`
-      : 'A note recorded against this requisition.';
-
-  const remaining = NOTE_BODY_MAX_LENGTH - text.length;
+    recordedAgainst === ''
+      ? `A note recorded against this requisition · ${VISIBILITY_HEADER_CLAUSE[visibility]}.`
+      : `Recorded against ${recordedAgainst} · ${VISIBILITY_HEADER_CLAUSE[visibility]}.`;
 
   return (
     <>
@@ -105,6 +117,7 @@ export function LogNoteDialog({
         }}
         title="Log a note"
         description={subjectLine}
+        size="lg"
         footer={
           <>
             <label className="lognote__pin">
@@ -161,6 +174,7 @@ export function LogNoteDialog({
               </option>
             ))}
           </Select>
+          <p className="lognote__visdesc">{VISIBILITY_DESCRIPTION[visibility]}</p>
         </FormField>
         <FormField label="Note">
           <TextArea
@@ -169,15 +183,17 @@ export function LogNoteDialog({
             rows={10}
             maxLength={NOTE_BODY_MAX_LENGTH}
             placeholder={NOTE_PLACEHOLDER}
-            style={{ resize: 'vertical', minHeight: '220px' }}
+            style={{ resize: 'vertical', minHeight: '240px' }}
             disabled={submitting}
           />
           <div className="lognote__meta">
             <span className="lognote__hint">
-              Timestamped and attributed to you
+              Timestamped and attributed to you · saved notes can be redacted,
+              not edited
             </span>
-            <span className="lognote__count">
-              {remaining.toLocaleString()} characters left
+            <span className="lognote__hint">
+              Plain text · links auto-detected ·{' '}
+              {NOTE_BODY_MAX_LENGTH.toLocaleString()} char limit
             </span>
           </div>
         </FormField>

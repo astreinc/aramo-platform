@@ -9,12 +9,11 @@ import {
   IconCompanies,
   IconContacts,
   IconDesk,
-  IconLogout,
   IconRequisitions,
   IconShield,
   IconSourcing,
   IconTalent,
-  IconTasks, Button,
+  IconTasks,
 } from '@aramo/fe-foundation';
 
 import { hasAdminScope } from '../admin/admin-access';
@@ -234,21 +233,13 @@ function RecruiterShellInner({
   const rail = (
     <Rail
       user={
-        <>
-          <RailUser
-            initials={railInitials}
-            name={railName}
-            role={railRole ?? undefined}
-          />
-          <Button unstyled
-            type="button"
-            className="rc-rail__logout"
-            onClick={handleLogout}
-          >
-            <IconLogout />
-            <span>Log out</span>
-          </Button>
-        </>
+        // G2.7 — the left-nav user block shows identity ONLY, matching the
+        // prototype. Sign out lives in the top-right avatar menu (UserMenu).
+        <RailUser
+          initials={railInitials}
+          name={railName}
+          role={railRole ?? undefined}
+        />
       }
     >
       <AramoBrand />

@@ -492,6 +492,7 @@
     "apps/ats-web/src/App.tsx",
     "apps/ats-web/src/activity/ActivityTimeline.spec.tsx",
     "apps/ats-web/src/activity/ActivityTimeline.tsx",
+    "apps/ats-web/src/activity/LogNoteDialog.spec.tsx",
     "apps/ats-web/src/activity/LogNoteDialog.tsx",
     "apps/ats-web/src/activity/activity-api.ts",
     "apps/ats-web/src/activity/error-messages.ts",
