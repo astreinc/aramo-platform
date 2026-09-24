@@ -91,9 +91,10 @@ function projectSet(r: SetRow, defs: readonly DefRow[]): SetView {
 // one transaction, so at most one open published set exists per scope. The set
 // checksum is computed over the canonical definition serialization.
 //
-// SCOPE (§4b finding): TENANT-only. `scope` must be 'TENANT' and, by the same
-// finding, scope_ref_id === tenant_id. Non-TENANT scopes are refused here — the
-// column pair is the seam, but no precedence resolution is implemented.
+// SCOPE: a set is published at one of TENANT | CLIENT | REQUISITION. For TENANT,
+// scope_ref_id === tenant_id; CLIENT/REQUISITION carry an in-tenant opaque
+// client/requisition ref. resolveApplicable resolves ONE scope's open set;
+// resolveEffective merges the layered TENANT -> CLIENT -> REQUISITION chain.
 @Injectable()
 export class DefinitionSetRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -201,8 +202,9 @@ export class DefinitionSetRepository {
     return projectSet(result.setRow, result.defRows);
   }
 
-  // Resolve the applicable published set for a scope (the one an instance
-  // materializes from). TENANT-only, single open published set, no precedence.
+  // Resolve the applicable published set for a SINGLE scope (the one an instance
+  // materializes from) — one open published set, no layered merge. The layered
+  // TENANT -> CLIENT -> REQUISITION merge is resolveEffective's job.
   async resolveApplicable(
     tenant_id: string,
     selector: ScopeSelector,
