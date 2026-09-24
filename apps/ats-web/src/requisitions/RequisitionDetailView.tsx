@@ -398,10 +398,8 @@ export function RequisitionDetailView({
   const present = (key: string): boolean =>
     Object.prototype.hasOwnProperty.call(reqRecord, key);
 
-  // Owner = recruiter_id, else owner_id (directive Header). Resolved via the
-  // directory (departed users still resolve).
-  const ownerId = req.recruiter_id ?? req.owner_id ?? null;
-  const ownerName = ownerId !== null ? (userNames[ownerId] ?? null) : null;
+  // §0 — no owner is derived or shown on the detail header (ownership isn't
+  // modeled; creator ≠ owner).
   // Header line-2 clauses (each omitted when absent). WL-B4/R13 — render
   // "City, State ZIP" (e.g. "Washington, DC 20005") with partial values clean:
   // no stray null/undefined, no dangling comma when a part is missing.
@@ -608,6 +606,8 @@ export function RequisitionDetailView({
           {/* Line 2 — company · city, state · arrangement · type/Contract · Owner
               · external. NO company icon (prototype has none). Each clause is
               omitted when its value is absent; company is a link. */}
+          {/* §0 — NO "· Owner <name>": ownership isn't modeled (creator ≠ owner),
+              so the meta line reads Client · City · Arrangement · Type only. */}
           <div className="rc-dhead__co">
             <Link to={`/companies/${req.company_id}`}>
               {companyName ?? 'Company'}
@@ -615,20 +615,19 @@ export function RequisitionDetailView({
             {headerPlace !== '' ? <span> · {headerPlace}</span> : null}
             {headerArrangement !== null ? <span> · {headerArrangement}</span> : null}
             {headerType !== null ? <span> · {headerType}</span> : null}
-            {ownerName !== null ? (
-              <span> · Owner <span>{ownerName}</span></span>
-            ) : null}
             {req.external_req_id !== null ? (
               <span className="mono"> · {req.external_req_id}</span>
             ) : null}
           </div>
-          {/* Line 3 — aging + optimistic-concurrency version, both from
-              RequisitionView. An "Approved <date> by <approver>" clause is
-              DELIBERATELY OMITTED: the view carries no approver/approved-at
-              field, so it is never fabricated (masked-by-absence). */}
+          {/* §0 — second line shows only aging; the version number and any
+              "Created … by <user>" are removed (created-by is an audit fact shown
+              only in Activity, never here, and never as "Owner"). An "· Edited
+              <when>" clause is appended once the record has been edited. */}
           <div className="rc-dhead__sub">
             Open {daysOpen(req.created_at)} days
-            <span className="mono"> · v{req.version}</span>
+            {req.updated_at !== req.created_at ? (
+              <span> · Edited {formatDate(req.updated_at)}</span>
+            ) : null}
           </div>
         </div>
         <div className="rc-dhead__actions">

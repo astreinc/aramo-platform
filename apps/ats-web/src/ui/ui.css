@@ -2603,16 +2603,17 @@ button.rc-cocard {
 
 .rc-rt__scroll { overflow-x: auto; }
 
-.rc-rt { min-width: 1240px; }
+.rc-rt { min-width: 1166px; }
 
 .rc-rt__head,
 .rc-rt__row {
   display: grid;
-  /* .dc authority — 10 tracks: star · Requisition · Talent(3-cell) · Pipeline ·
-     Capacity · Client Status · Attention · Owner · Updated · Status. */
+  /* §0 — Owner column removed (ownership isn't modeled; creator ≠ owner). 9
+     tracks: star · Requisition · Talent(3-cell) · Pipeline · Capacity ·
+     Client Status · Attention · Updated · Status. */
   grid-template-columns:
     26px minmax(230px, 1.3fr) 280px minmax(115px, 0.8fr) 110px
-    100px minmax(135px, 0.9fr) 60px 80px 90px;
+    100px minmax(135px, 0.9fr) 80px 90px;
   gap: 0 14px;
   align-items: center;
   padding: 14px 16px;
@@ -2888,7 +2889,7 @@ button.rc-cocard {
 
 /* Owner / Updated / Status cells */
 
-.rc-rt__owner { display: flex; align-items: center; gap: 7px; min-width: 0; }
+/* §0 — .rc-rt__owner (list owner cell) removed with the Owner column. */
 
 .rc-rt__upd { font-size: 0.76rem; color: var(--muted); }
 

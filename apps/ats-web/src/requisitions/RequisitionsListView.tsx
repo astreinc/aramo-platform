@@ -143,10 +143,9 @@ export function RequisitionsListView({
   const [statusFilter, setStatusFilter] = useState<RecruitingStatus | ''>('');
   const [sort, setSort] = useState<SortKey>('focus');
   const [query, setQuery] = useState('');
-  // REQ-PIXEL-PARITY-1 (hybrid) — prototype Location + Owner dropdowns, additive
-  // to the wired chips. FE-derived from the loaded set (city/state, owner ids).
+  // Prototype Location dropdown, additive to the wired chips. FE-derived from
+  // the loaded set (city/state). (§0 — the Owner dropdown was removed.)
   const [locationFilter, setLocationFilter] = useState('');
-  const [ownerFilter, setOwnerFilter] = useState('');
 
   const sessionState = useSession();
   const session: Session | null =
@@ -286,13 +285,6 @@ export function RequisitionsListView({
       if (client !== '' && r.company_id !== client) return false;
       if (statusFilter !== '' && r.status !== statusFilter) return false;
       if (locationFilter !== '' && locationKeyOf(r) !== locationFilter) return false;
-      if (ownerFilter !== '') {
-        const ownerMatch =
-          ownerFilter === 'me'
-            ? isMine(r)
-            : r.recruiter_id === ownerFilter || r.owner_id === ownerFilter;
-        if (!ownerMatch) return false;
-      }
       if (q !== '') {
         const hay = `${r.title} ${companyNames[r.company_id] ?? ''} ${
           r.external_req_id ?? ''
@@ -308,7 +300,6 @@ export function RequisitionsListView({
     client,
     statusFilter,
     locationFilter,
-    ownerFilter,
     query,
     sort,
     myId,
@@ -454,22 +445,8 @@ export function RequisitionsListView({
             </option>
           ))}
         </Select>
-        <Select unstyled
-          className="rc-fsel"
-          aria-label="Filter by owner"
-          value={ownerFilter}
-          onChange={(e) => setOwnerFilter(e.target.value)}
-        >
-          <option value="">Any owner</option>
-          {myId !== null ? <option value="me">Me</option> : null}
-          {ownerFilterOptions(items, userNames)
-            .filter((o) => o.id !== myId)
-            .map((o) => (
-              <option key={o.id} value={o.id}>
-                {o.name}
-              </option>
-            ))}
-        </Select>
+        {/* §0 — the "owner" filter is removed: ownership isn't modeled and it
+            must never map to created_by. */}
         <FilterChip
           active={mode === 'hot'}
           onClick={() => setMode(mode === 'hot' ? 'none' : 'hot')}
@@ -516,7 +493,6 @@ export function RequisitionsListView({
                 <span className="rc-rt__hc">Capacity</span>
                 <span className="rc-rt__hc">Client Status</span>
                 <span className="rc-rt__hc">Attention</span>
-                <span className="rc-rt__hc">Owner</span>
                 <span className="rc-rt__hc">Updated</span>
                 <span className="rc-rt__hc">Status</span>
               </div>
@@ -526,7 +502,6 @@ export function RequisitionsListView({
                   req={r}
                   companyName={companyNames[r.company_id]}
                   funnel={funnels[r.id]}
-                  ownerName={ownerName(r, userNames)}
                   onToggleBookmark={toggleBookmark}
                   expanded={expandedId === r.id}
                   onToggle={() => toggleExpand(r.id)}
@@ -569,7 +544,6 @@ interface RequisitionRowProps {
   readonly req: RequisitionView;
   readonly companyName: string | undefined;
   readonly funnel: ReqFunnel | undefined;
-  readonly ownerName: string | null;
   readonly onToggleBookmark: (id: string, next: boolean) => void;
   readonly expanded: boolean;
   readonly onToggle: () => void;
@@ -582,7 +556,6 @@ function RequisitionRow({
   req,
   companyName,
   funnel,
-  ownerName: owner,
   onToggleBookmark,
   expanded,
   onToggle,
@@ -784,14 +757,7 @@ function RequisitionRow({
         </span>
       </div>
 
-      {/* Owner */}
-      <div className="rc-rt__owner" title={owner ?? 'Unassigned'}>
-        {owner != null ? (
-          <Avatar name={owner} size="sm" />
-        ) : (
-          <Avatar initials="?" size="sm" />
-        )}
-      </div>
+      {/* §0 — Owner cell removed (ownership isn't modeled; creator ≠ owner). */}
 
       {/* Updated */}
       <div className="rc-rt__upd">{relativeTime(req.updated_at)}</div>
@@ -974,15 +940,6 @@ function rowAttention(
   return { tone: 'muted', text: '—', dotColor: muted };
 }
 
-function ownerName(
-  r: RequisitionView,
-  names: Record<string, string>,
-): string | null {
-  const id = r.recruiter_id ?? r.owner_id;
-  if (id === null) return null;
-  return names[id] ?? null;
-}
-
 function locationOf(r: RequisitionView): string {
   const place = [[r.city, r.state].filter(Boolean).join(', '), r.postal_code]
     .filter(Boolean)
@@ -1030,20 +987,6 @@ function locationOptions(items: readonly RequisitionView[]): readonly string[] {
     if (k !== '') set.add(k);
   }
   return [...set].sort((a, b) => a.localeCompare(b));
-}
-
-function ownerFilterOptions(
-  items: readonly RequisitionView[],
-  names: Record<string, string>,
-): ReadonlyArray<{ id: string; name: string }> {
-  const seen = new Map<string, string>();
-  for (const r of items) {
-    const id = r.recruiter_id ?? r.owner_id;
-    if (id != null && !seen.has(id)) seen.set(id, names[id] ?? '—');
-  }
-  return [...seen.entries()]
-    .map(([id, name]) => ({ id, name }))
-    .sort((a, b) => a.name.localeCompare(b.name));
 }
 
 function sortRows(
