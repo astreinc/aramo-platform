@@ -494,3 +494,34 @@ describe('RequisitionDetailView Overview — edit does not blank (real Requireme
     expect(screen.getByText('Requirement skills')).toBeInTheDocument();
   });
 });
+
+describe('RequisitionDetailView Overview — edit renders with a realistic profile', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('edit mode renders the edit bar + fields for a req with a full profile', async () => {
+    mount(['requisition:read', 'requisition:edit', 'requisition:profile:edit'], {
+      req: reqView({
+        duration_value: 12,
+        duration_unit: null,
+        job_type: null,
+        work_arrangement: null,
+      }),
+      profile: {
+        has_profile: true,
+        jd_text: 'Analyze workflows.',
+        role_family: 'business_analyst',
+        seniority_level: null,
+        required_skills: [{ name: 'Business analysis' }],
+        preferred_skills: [{ name: 'Multi-family lending' }],
+        critical_skills: [],
+        generated_by: 'manual',
+      },
+    });
+    await screen.findByRole('heading', { name: /Staff Platform Engineer/ });
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    // The edit bar + form must render (a throw anywhere blanks the whole panel).
+    expect(await screen.findByText(/Editing REQ-/)).toBeInTheDocument();
+    expect(screen.getByLabelText('Job title')).toBeInTheDocument();
+    expect(screen.getByText('Business analysis')).toBeInTheDocument();
+  });
+});

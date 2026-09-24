@@ -5422,5 +5422,7 @@ button.rc-tj__cell:hover { color: #022ac0; text-decoration: underline; }
   position: sticky; top: 62px; z-index: 20;
   box-shadow: 0 6px 18px -10px rgba(15, 25, 40, 0.25);
 }
-.rc-editbar > svg { flex: none; color: var(--brand-strong, #022AC0); }
+/* The icon set ships viewBox-only svgs (no intrinsic size) — it MUST be sized
+   here or it fills the container (the edit-bar pencil blanked the Overview). */
+.rc-editbar > svg { flex: none; width: 15px; height: 15px; color: var(--brand-strong, #022AC0); }
 .rc-editbar__msg { flex: 1; min-width: 220px; font-size: 0.8rem; color: #3a454e; }
