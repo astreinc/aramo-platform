@@ -3461,6 +3461,36 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/doc6-offer-document.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/placement/prisma/migrations/20260824120000_init_offer_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/doc6-offer-document.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/placement/prisma/migrations/20260901130000_offer_compensation_snapshot/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/doc6-offer-document.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/placement/prisma/migrations/20260901140000_offer_revision_history/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/doc6-offer-document.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/policy-store/prisma/migrations/20260730120000_init_policy_store/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/doc6-offer-document.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/policy-store/prisma/migrations/20260730160000_add_policy_decision_record/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/domain-verification.integration.spec.ts",
       "status": "excluded",
       "to": "libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql"

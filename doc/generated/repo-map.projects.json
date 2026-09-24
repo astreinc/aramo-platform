@@ -3640,6 +3640,12 @@
     "@aramo/documents": [
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/doc6-offer-document.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/documents-http.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -3659,6 +3665,12 @@
       { "project": "api", "status": "production" }
     ],
     "@aramo/documents-contracts": [
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/doc6-offer-document.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
       { "project": "api", "status": "production" },
       { "project": "esign-service", "status": "production" }
     ],
@@ -5077,6 +5089,12 @@
     "@aramo/placement": [
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/doc6-offer-document.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/l2h-talent-journey.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -5287,6 +5305,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/cb-d2-r-reconciliation-drain.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/doc6-offer-document.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -5876,6 +5900,12 @@
     ],
     "@aramo/talent-record": [
       { "from": "tools/seed-e2e-data.ts", "project": "(unscoped)", "status": "unscoped" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/doc6-offer-document.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/pipeline-talent-enrichment.service.spec.ts",
