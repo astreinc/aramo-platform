@@ -156,6 +156,27 @@ export class ClientSelectionProcessRepository {
     return row === null ? null : projectView(row as ProcessRow);
   }
 
+  // Requisition Talent Board (TB-1) — BATCHED read of the client-selection
+  // processes for a SET of submittals. The per-id `findBySubmittalId` would fan
+  // out N queries across a Board's submittal set (N+1, directive §19); this issues
+  // ONE `submittal_id IN (...)` read. The caller passes ALREADY visibility-scoped
+  // submittal ids (the Board resolves submittal visibility upstream via the
+  // requisition-scoped submittal read), so no re-derivation of visibility here.
+  // Read-only; tenant-scoped. Empty input → [].
+  async listBySubmittalIds(args: {
+    tenant_id: string;
+    submittal_ids: readonly string[];
+  }): Promise<ClientSelectionProcessView[]> {
+    if (args.submittal_ids.length === 0) return [];
+    const rows = await this.prisma.clientSelectionProcess.findMany({
+      where: {
+        tenant_id: args.tenant_id,
+        submittal_id: { in: Array.from(new Set(args.submittal_ids)) },
+      },
+    });
+    return (rows as ProcessRow[]).map(projectView);
+  }
+
   // Drive a legal, CAS-guarded state transition. Concealment (404) + CAS (409) +
   // legality (422) precede the atomic tx (UPDATE + event + outbox).
   async transition(args: {

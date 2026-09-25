@@ -131,6 +131,11 @@
       "to": "libs/policy-store/src/lib/window.ts"
     },
     {
+      "from": "apps/api/src/requisition-talent-board/TB-7-visual-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/ats-web/src/ui/ui.css"
+    },
+    {
       "from": "apps/api/src/talent-anchor/erase-talent.command.ts",
       "status": "production",
       "to": "doc/runbooks/talent-rtbf-erasure.md"
@@ -11664,6 +11669,11 @@
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
       "to": "apps/api/src/pre-start-requirement/pre-start-requirement.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "apps/api/src/requisition-talent-board/requisition-talent-board.controller.ts"
     },
     {
       "from": "ci/config/api-surface-manifest.json",

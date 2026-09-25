@@ -1,5 +1,5 @@
 {
-  "aliasTotals": { "apps": 3, "libs": 75, "total": 78 },
+  "aliasTotals": { "apps": 3, "libs": 74, "total": 77 },
   "aliases": {
     "@aramo/activity": "libs/activity/src/index.ts",
     "@aramo/ai-draft": "libs/ai-draft/src/index.ts",
@@ -15,7 +15,6 @@
     "@aramo/canonical-reconcile": "libs/canonical-reconcile/src/index.ts",
     "@aramo/canonicalization": "libs/canonicalization/src/index.ts",
     "@aramo/client-selection": "libs/client-selection/src/index.ts",
-    "@aramo/client-submittal-policy": "libs/client-submittal-policy/src/index.ts",
     "@aramo/client-talent-restriction": "libs/client-talent-restriction/src/index.ts",
     "@aramo/cold-ingest-extraction": "libs/cold-ingest-extraction/src/index.ts",
     "@aramo/common": "libs/common/src/index.ts",
@@ -256,35 +255,6 @@
       "isWithdrawReasonCode",
       "legalNextClientSelectionStates",
       "legalNextInterviewSessionStates"
-    ],
-    "@aramo/client-submittal-policy": [
-      "CLIENT_SUBMITTAL_ACTION",
-      "CLIENT_SUBMITTAL_OVERRIDE_CAPABILITY",
-      "CLIENT_SUBMITTAL_PACKAGE_LIKE",
-      "CLIENT_SUBMITTAL_PACKAGE_NAME",
-      "CLIENT_SUBMITTAL_POLICY_GATEWAY",
-      "CLIENT_SUBMITTAL_POLICY_SCOPES",
-      "CLIENT_SUBMITTAL_REQUIREMENT_KEYS",
-      "CLIENT_SUBMITTAL_RESOURCE",
-      "ClientSubmittalPolicyService",
-      "DEFAULT_OVERRIDE_POLICY",
-      "DISPOSITION_VALUES",
-      "OVERRIDE_CLASS_VALUES",
-      "OVERRIDE_POLICY_VALUES",
-      "canonicalizeDefinition",
-      "checksumDefinition",
-      "clientSubmittalPackageName",
-      "compileEffectivePackage",
-      "dispositionIsAtLeastAsStrictAs",
-      "floorViolation",
-      "isClientSubmittalPolicyDefinition",
-      "isClientSubmittalRequirement",
-      "isClientSubmittalRequirementKey",
-      "isDisposition",
-      "isOverrideClass",
-      "isOverridePolicy",
-      "joinFloor",
-      "overrideClassIsAtLeastAsStrictAs"
     ],
     "@aramo/client-talent-restriction": [
       "ASSERTED_BY_TYPE_VALUES",
@@ -1207,11 +1177,9 @@
     ],
     "@aramo/pre-start-requirement": [
       "AUDIT_ACTION_VALUES",
-      "DEFAULT_OVERRIDE_POLICY",
       "DEFAULT_SATISFACTION_POLICY",
       "DefinitionSetRepository",
       "MaterializationIntentRepository",
-      "OVERRIDE_POLICY_VALUES",
       "PROVIDER_OBSERVATION_OUTCOME_VALUES",
       "PreStartReportingReadModule",
       "PreStartReportingRepository",
@@ -1229,7 +1197,6 @@
       "canonicalizeDefinitions",
       "checksumDefinitions",
       "isAuditAction",
-      "isOverridePolicy",
       "isProviderObservationOutcome",
       "isReopen",
       "isRequirementDefinitionInput",
@@ -1703,12 +1670,6 @@
       },
       {
         "excludedBy": "src/tests/**/*",
-        "from": "apps/api/src/tests/client-submittal-policy/client-submittal-policy-reads.spec.ts",
-        "project": "api",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/comm-b5-call-initiation.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -1764,12 +1725,6 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/domain-verification.integration.spec.ts",
-        "project": "api",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/api/src/tests/engagement-policy-publish-ownership.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -1842,12 +1797,6 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/policy-add-talent.integration.spec.ts",
-        "project": "api",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/api/src/tests/policy-admin-reads.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -2713,6 +2662,12 @@
         "project": "api",
         "status": "excluded"
       },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/tb1-requisition-talent-board.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
       { "project": "api", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
@@ -2722,22 +2677,15 @@
       },
       { "project": "outbox-publisher", "status": "production" }
     ],
-    "@aramo/client-submittal-policy": [
+    "@aramo/client-talent-restriction": [
       {
         "excludedBy": "src/tests/**/*",
-        "from": "apps/api/src/tests/client-submittal-policy/client-submittal-policy.integration.spec.ts",
-        "project": "api",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/api/src/tests/submit-talent.integration.spec.ts",
+        "from": "apps/api/src/tests/tb1-requisition-talent-board.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
       { "project": "api", "status": "production" }
     ],
-    "@aramo/client-talent-restriction": [{ "project": "api", "status": "production" }],
     "@aramo/cold-ingest-extraction": [
       {
         "excludedBy": "src/tests/**/*",
@@ -2861,6 +2809,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/tb1-requisition-talent-board.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/tenant-llm-controller.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -2964,7 +2918,6 @@
       },
       { "project": "canonicalization", "status": "production" },
       { "project": "client-selection", "status": "production" },
-      { "project": "client-submittal-policy", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/client-talent-restriction/src/tests/client-talent-restriction.repository.integration.spec.ts",
@@ -3731,6 +3684,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/submit-talent.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/tb1-requisition-talent-board.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -5140,6 +5099,12 @@
         "project": "api",
         "status": "excluded"
       },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/tb1-requisition-talent-board.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
       { "project": "api", "status": "production" },
       { "project": "export", "status": "production" },
       {
@@ -5216,6 +5181,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/t8p2-requisition-import.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/tb1-requisition-talent-board.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -5334,13 +5305,6 @@
       { "project": "api", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
-        "from": "libs/client-submittal-policy/src/tests/client-submittal-policy.spec.ts",
-        "project": "client-submittal-policy",
-        "status": "excluded"
-      },
-      { "project": "client-submittal-policy", "status": "production" },
-      {
-        "excludedBy": "src/tests/**/*",
         "from": "libs/pipeline/src/tests/add-talent-policy-mapping.spec.ts",
         "project": "pipeline",
         "status": "excluded"
@@ -5384,12 +5348,6 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/cb-d2-r-reconciliation-drain.integration.spec.ts",
-        "project": "api",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/api/src/tests/client-submittal-policy/client-submittal-policy.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -5477,7 +5435,6 @@
         "project": "aramo-pact-provider",
         "status": "unscoped"
       },
-      { "project": "client-submittal-policy", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/engagement/src/tests/engagement-policy.spec.ts",
@@ -5663,6 +5620,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/t8p2-requisition-import.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/tb1-requisition-talent-board.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -5868,6 +5831,12 @@
         "project": "api",
         "status": "excluded"
       },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/tb1-requisition-talent-board.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
       { "project": "api", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
@@ -5881,6 +5850,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/submit-talent.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/tb1-requisition-talent-board.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -6362,13 +6337,6 @@
       "name": "client-selection",
       "root": "libs/client-selection",
       "sourceRoot": "libs/client-selection/src",
-      "tags": ["scope:ats"],
-      "targets": ["build", "lint", "test"]
-    },
-    {
-      "name": "client-submittal-policy",
-      "root": "libs/client-submittal-policy",
-      "sourceRoot": "libs/client-submittal-policy/src",
       "tags": ["scope:ats"],
       "targets": ["build", "lint", "test"]
     },
