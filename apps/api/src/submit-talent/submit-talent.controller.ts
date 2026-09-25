@@ -110,6 +110,11 @@ export class SubmitTalentController {
       actor_id: authContext.sub,
       actor_can_override: authContext.scopes.includes('engagement:policy:override'),
       engagement_override: engagementOverride,
+      // CSP PR-3 — the client-submittal-policy override authority is a DISTINCT scope
+      // (never a role name); the reason (when present) is shared with the engagement
+      // override input and recorded in the decision provenance.
+      submittal_actor_can_override: authContext.scopes.includes('client-submittal-policy:override'),
+      submittal_override_reason: engagementOverride?.reason ?? null,
       requestId,
     });
 
