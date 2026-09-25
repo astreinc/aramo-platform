@@ -16,6 +16,16 @@ export { PrismaService } from './lib/prisma/prisma.service.js';
 
 // Repositories (the domain surface apps/api orchestrates over).
 export { DefinitionSetRepository } from './lib/definition-set.repository.js';
+// CSP PA-2 — read-side provenance / raw-layer / history view types (admin FE).
+export type {
+  PreStartRequirementProvenance,
+  EffectiveDefinitionView,
+  PreStartLayerRef,
+  EffectivePreStartView,
+  PreStartLayerView,
+  PreStartLayersView,
+  PreStartHistoryEntry,
+} from './lib/definition-set.repository.js';
 export { RequirementInstanceRepository } from './lib/requirement-instance.repository.js';
 export { MaterializationIntentRepository } from './lib/materialization-intent.repository.js';
 export { ReadinessDecisionRepository } from './lib/readiness-decision.repository.js';

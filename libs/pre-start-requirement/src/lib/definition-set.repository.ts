@@ -87,6 +87,61 @@ function projectSet(r: SetRow, defs: readonly DefRow[]): SetView {
   };
 }
 
+// CSP PA-2 — read-side provenance parity with Client Submittal. Per-requirement
+// source layer + provenance flags (§6/§7), backend truth (never FE-inferred).
+export interface PreStartRequirementProvenance {
+  readonly inherited: boolean;
+  readonly client_override: boolean;
+  readonly client_added: boolean;
+  readonly tenant_floor: boolean;
+}
+export interface EffectiveDefinitionView extends DefinitionView {
+  readonly source: { readonly scope: ScopeTypeValue; readonly scope_ref_id: string; readonly version: string };
+  readonly provenance: PreStartRequirementProvenance;
+}
+export interface PreStartLayerRef {
+  readonly scope: ScopeTypeValue;
+  readonly scope_ref_id: string;
+  readonly version: string;
+  readonly checksum: string;
+}
+export interface EffectivePreStartView {
+  readonly scope: ScopeTypeValue;
+  readonly scope_ref_id: string;
+  readonly version: string;
+  readonly checksum: string;
+  readonly published_at: Date | null;
+  readonly published_by: string | null;
+  readonly definitions: readonly EffectiveDefinitionView[];
+  readonly layers: readonly PreStartLayerRef[];
+}
+/** One raw (unmerged) pre-start layer for the editor's inherit/override deltas (§8). */
+export interface PreStartLayerView {
+  readonly scope: ScopeTypeValue;
+  readonly scope_ref_id: string;
+  readonly present: boolean;
+  readonly version: string | null;
+  readonly checksum: string | null;
+  readonly published_at: string | null;
+  readonly published_by: string | null;
+  readonly definitions: readonly DefinitionView[];
+}
+export interface PreStartLayersView {
+  readonly tenant: PreStartLayerView;
+  readonly client: PreStartLayerView | null;
+  readonly requisition: PreStartLayerView | null;
+  readonly effective: EffectivePreStartView | null;
+}
+/** One immutable published set in the history read (§10). */
+export interface PreStartHistoryEntry {
+  readonly version: string;
+  readonly published_at: string | null;
+  readonly published_by: string | null;
+  readonly effective_to: string | null;
+  readonly checksum: string;
+  readonly status: 'current' | 'superseded';
+}
+
 // DefinitionSetRepository — authoring + publication lifecycle for
 // PreStartRequirementSet / PreStartRequirementDefinition (Track 3 / E2, §4).
 //
@@ -274,11 +329,20 @@ export class DefinitionSetRepository {
   // synthetic effective SetView's version is the composite of the contributing layer
   // versions and its checksum hashes the merged definitions. Null when NO layer has an
   // open published set (fail-closed, as the single-scope resolver).
-  async resolveEffective(
+  // CSP PA-2 — the SINGLE authoritative TENANT -> CLIENT -> REQUISITION merge, tracking
+  // per-key source scope + tenant provenance so the decision path (resolveEffective) and
+  // the read/admin path (resolveEffectiveView) can never diverge. The fail-closed FLOOR
+  // guard (§D4-A, CSP PR-1) is enforced HERE for every caller.
+  private async mergeLayered(
     tenant_id: string,
     context: LayeredContext,
     requestId: string,
-  ): Promise<SetView | null> {
+  ): Promise<{
+    contributing: Array<{ scope: ScopeTypeValue; set: SetRow }>;
+    entries: Map<string, { view: DefinitionView; source: { scope: ScopeTypeValue; scope_ref_id: string; version: string } }>;
+    tenantKeys: Set<string>;
+    tenantFloorKeys: Set<string>;
+  } | null> {
     const layers: Array<{ scope: ScopeTypeValue; ref: string }> = [
       { scope: 'TENANT', ref: tenant_id },
       ...(context.client_id !== null ? [{ scope: 'CLIENT' as ScopeTypeValue, ref: context.client_id }] : []),
@@ -287,16 +351,11 @@ export class DefinitionSetRepository {
         : []),
     ];
 
-    const merged = new Map<string, DefinitionView>();
+    const entries = new Map<string, { view: DefinitionView; source: { scope: ScopeTypeValue; scope_ref_id: string; version: string } }>();
     const contributing: Array<{ scope: ScopeTypeValue; set: SetRow }> = [];
-    // CSP PR-1 (§D4-A) — the AUTHORITATIVE, fail-closed FLOOR guard. Independent of the
-    // publish-time early check: a bad policy from an old row, a migration anomaly, a direct
-    // DB write or a future write path is still refused HERE. Per requirement_type we carry
-    // the accumulated (effective) FLOOR down the TENANT -> CLIENT -> REQUISITION chain; a
-    // more-specific layer must be at-least-as-strict as it, and any strengthening RAISES the
-    // floor for deeper layers. When no requirement is FLOOR the map stays empty and the loop
-    // reduces to the plain union merge (DEFAULT behaviour is unchanged).
     const floors = new Map<string, StrictnessDims>();
+    const tenantKeys = new Set<string>();
+    const tenantFloorKeys = new Set<string>();
     for (const layer of layers) {
       const setRow = (await this.prisma.preStartRequirementSet.findFirst({
         where: { tenant_id, scope: layer.scope, scope_ref_id: layer.ref, state: 'published', effective_to: null },
@@ -319,8 +378,6 @@ export class DefinitionSetRepository {
         };
         const inherited = floors.get(key);
         if (inherited !== undefined) {
-          // Floor-protected by a broader scope: validate the override BEFORE merging it,
-          // then accumulate so a strengthening raises the floor for the next layer.
           const violated = floorViolation(dims, inherited);
           if (violated !== null) {
             throw this.invalid(
@@ -331,20 +388,25 @@ export class DefinitionSetRepository {
           }
           floors.set(key, joinFloor(inherited, dims));
         } else if (view.override_policy === 'FLOOR') {
-          // A new floor starts at this scope (independent of broader layers being DEFAULT).
           floors.set(key, dims);
         }
-        merged.set(key, view);
+        if (layer.scope === 'TENANT') {
+          tenantKeys.add(key);
+          if (view.override_policy === 'FLOOR') tenantFloorKeys.add(key);
+        }
+        entries.set(key, { view, source: { scope: layer.scope, scope_ref_id: layer.ref, version: setRow.version } });
       }
     }
     if (contributing.length === 0) return null;
+    return { contributing, entries, tenantKeys, tenantFloorKeys };
+  }
 
-    const anchor = contributing[contributing.length - 1]!.set; // most-specific present layer
-    const definitions = [...merged.values()].sort((a, b) =>
-      a.requirement_type < b.requirement_type ? -1 : a.requirement_type > b.requirement_type ? 1 : 0,
-    );
-    const version = contributing.map((c) => `${c.scope}:${c.set.version}`).join('|');
-    const checksum = checksumDefinitions(
+  private static byType(a: DefinitionView, b: DefinitionView): number {
+    return a.requirement_type < b.requirement_type ? -1 : a.requirement_type > b.requirement_type ? 1 : 0;
+  }
+
+  private static effectiveChecksum(definitions: readonly DefinitionView[]): string {
+    return checksumDefinitions(
       definitions.map((d) => ({
         requirement_type: d.requirement_type,
         label: d.label,
@@ -355,7 +417,128 @@ export class DefinitionSetRepository {
         satisfaction_policy: d.satisfaction_policy,
       })),
     );
-    return { ...projectSet(anchor, []), version, checksum, definitions };
+  }
+
+  // The decision path's authoritative merged read — return shape intentionally frozen.
+  async resolveEffective(
+    tenant_id: string,
+    context: LayeredContext,
+    requestId: string,
+  ): Promise<SetView | null> {
+    const m = await this.mergeLayered(tenant_id, context, requestId);
+    if (m === null) return null;
+    const anchor = m.contributing[m.contributing.length - 1]!.set;
+    const definitions = [...m.entries.values()].map((e) => e.view).sort(DefinitionSetRepository.byType);
+    const version = m.contributing.map((c) => `${c.scope}:${c.set.version}`).join('|');
+    return { ...projectSet(anchor, []), version, checksum: DefinitionSetRepository.effectiveChecksum(definitions), definitions };
+  }
+
+  // The read/admin effective view (§7/§9): the same merge, each requirement annotated
+  // with its source layer + provenance. Never used by the readiness decision path.
+  async resolveEffectiveView(
+    tenant_id: string,
+    context: LayeredContext,
+    requestId: string,
+  ): Promise<EffectivePreStartView | null> {
+    const m = await this.mergeLayered(tenant_id, context, requestId);
+    if (m === null) return null;
+    const anchor = m.contributing[m.contributing.length - 1]!.set;
+    const definitions: EffectiveDefinitionView[] = [...m.entries.values()]
+      .map((e) => {
+        const fromTenant = e.source.scope === 'TENANT';
+        const tenantHad = fromTenant || m.tenantKeys.has(e.view.requirement_type);
+        return {
+          ...e.view,
+          source: e.source,
+          provenance: {
+            inherited: fromTenant,
+            client_override: !fromTenant && tenantHad,
+            client_added: !fromTenant && !tenantHad,
+            tenant_floor: fromTenant
+              ? e.view.override_policy === 'FLOOR'
+              : m.tenantFloorKeys.has(e.view.requirement_type),
+          },
+        };
+      })
+      .sort(DefinitionSetRepository.byType);
+    return {
+      scope: anchor.scope as ScopeTypeValue,
+      scope_ref_id: anchor.scope_ref_id,
+      version: m.contributing.map((c) => `${c.scope}:${c.set.version}`).join('|'),
+      checksum: DefinitionSetRepository.effectiveChecksum(definitions),
+      published_at: anchor.published_at,
+      published_by: anchor.published_by,
+      definitions,
+      layers: m.contributing.map((c) => ({
+        scope: c.scope,
+        scope_ref_id: c.set.scope_ref_id,
+        version: c.set.version,
+        checksum: c.set.checksum,
+      })),
+    };
+  }
+
+  // The raw per-layer read (§8): each scope's OWN open published set (unmerged) plus the
+  // merged effective — powers inherit/override toggles and the "Tenant: X -> Client: Y" delta.
+  async readLayers(
+    tenant_id: string,
+    context: LayeredContext,
+    requestId: string,
+  ): Promise<PreStartLayersView> {
+    const layerFor = async (scope: ScopeTypeValue, ref: string | null): Promise<PreStartLayerView> => {
+      if (ref === null) {
+        return { scope, scope_ref_id: '', present: false, version: null, checksum: null, published_at: null, published_by: null, definitions: [] };
+      }
+      const setRow = (await this.prisma.preStartRequirementSet.findFirst({
+        where: { tenant_id, scope, scope_ref_id: ref, state: 'published', effective_to: null },
+        orderBy: { published_at: 'desc' },
+      })) as SetRow | null;
+      if (setRow === null) {
+        return { scope, scope_ref_id: ref, present: false, version: null, checksum: null, published_at: null, published_by: null, definitions: [] };
+      }
+      const defRows = (await this.prisma.preStartRequirementDefinition.findMany({
+        where: { tenant_id, set_id: setRow.id },
+        orderBy: { sequence: 'asc' },
+      })) as DefRow[];
+      return {
+        scope,
+        scope_ref_id: ref,
+        present: true,
+        version: setRow.version,
+        checksum: setRow.checksum,
+        published_at: setRow.published_at === null ? null : setRow.published_at.toISOString(),
+        published_by: setRow.published_by,
+        definitions: defRows.map(projectDef),
+      };
+    };
+    return {
+      tenant: await layerFor('TENANT', tenant_id),
+      client: context.client_id !== null ? await layerFor('CLIENT', context.client_id) : null,
+      requisition: context.requisition_id !== null ? await layerFor('REQUISITION', context.requisition_id) : null,
+      effective: await this.resolveEffectiveView(tenant_id, context, requestId),
+    };
+  }
+
+  // The published-version history for one pre-start scope (§10), newest first.
+  async history(
+    tenant_id: string,
+    scope: ScopeTypeValue,
+    scope_ref_id: string,
+  ): Promise<PreStartHistoryEntry[]> {
+    // The full published lineage: the open 'published' set plus every 'superseded'
+    // prior version (a draft has never been published, so it is excluded).
+    const rows = (await this.prisma.preStartRequirementSet.findMany({
+      where: { tenant_id, scope, scope_ref_id, state: { in: ['published', 'superseded'] } },
+      orderBy: { published_at: 'desc' },
+    })) as SetRow[];
+    return rows.map((r) => ({
+      version: r.version,
+      published_at: r.published_at === null ? null : r.published_at.toISOString(),
+      published_by: r.published_by,
+      effective_to: r.effective_to === null ? null : r.effective_to.toISOString(),
+      checksum: r.checksum,
+      status: r.effective_to === null ? 'current' : 'superseded',
+    }));
   }
 
   async findById(tenant_id: string, set_id: string): Promise<SetView | null> {

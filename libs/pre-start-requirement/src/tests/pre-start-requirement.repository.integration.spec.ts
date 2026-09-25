@@ -707,6 +707,66 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(await sets.resolveEffective(randomUUID(), { client_id: null, requisition_id: randomUUID() }, 'r')).toBeNull();
     });
 
+    // ---- CSP PA-2 — read-side provenance / raw layers / history (admin FE) --------
+    it('resolveEffectiveView: annotates source + provenance (inherited FLOOR / client override / client-added)', async () => {
+      const tenant = randomUUID();
+      const client = randomUUID();
+      await publishSet(tenant, 'TENANT', tenant, 'v1', [
+        { requirement_type: 'BACKGROUND_CHECK', label: 'bg', blocking: true, owner_role: null, sequence: 1, waiver_mode: 'NOT_WAIVABLE', override_policy: 'FLOOR' },
+        { requirement_type: 'NDA', label: 'nda', blocking: false, owner_role: null, sequence: 2, waiver_mode: 'AUTHORIZED_INTERNAL' },
+      ]);
+      await publishSet(tenant, 'CLIENT', client, 'v1', [
+        { requirement_type: 'NDA', label: 'nda-strong', blocking: true, owner_role: null, sequence: 1, waiver_mode: 'NOT_WAIVABLE' }, // override
+        { requirement_type: 'CLIENT_PAPERWORK', label: 'cp', blocking: false, owner_role: null, sequence: 2, waiver_mode: 'AUTHORIZED_INTERNAL' }, // client-added
+      ]);
+      const view = await sets.resolveEffectiveView(tenant, { client_id: client, requisition_id: null }, 'r');
+      const byKey = Object.fromEntries((view?.definitions ?? []).map((d) => [d.requirement_type, d]));
+
+      expect(byKey['BACKGROUND_CHECK']!.source.scope).toBe('TENANT');
+      expect(byKey['BACKGROUND_CHECK']!.provenance).toEqual({ inherited: true, client_override: false, client_added: false, tenant_floor: true });
+      expect(byKey['NDA']!.source.scope).toBe('CLIENT');
+      expect(byKey['NDA']!.provenance).toEqual({ inherited: false, client_override: true, client_added: false, tenant_floor: false });
+      expect(byKey['CLIENT_PAPERWORK']!.source.scope).toBe('CLIENT');
+      expect(byKey['CLIENT_PAPERWORK']!.provenance).toEqual({ inherited: false, client_override: false, client_added: true, tenant_floor: false });
+      expect(view?.layers.map((l) => l.scope)).toEqual(['TENANT', 'CLIENT']);
+    });
+
+    it('readLayers: raw tenant + client definitions + merged effective; requisition absent', async () => {
+      const tenant = randomUUID();
+      const client = randomUUID();
+      await publishSet(tenant, 'TENANT', tenant, 'v1', DEFS);
+      await publishSet(tenant, 'CLIENT', client, 'v1', [
+        { requirement_type: 'DRUG_SCREEN', label: 'd', blocking: true, owner_role: null, sequence: 1, waiver_mode: 'CLIENT_AUTHORITY_ONLY' },
+      ]);
+      const layers = await sets.readLayers(tenant, { client_id: client, requisition_id: null }, 'r');
+      expect(layers.tenant.present).toBe(true);
+      expect(layers.client?.present).toBe(true);
+      expect(layers.client?.definitions.map((d) => d.requirement_type)).toEqual(['DRUG_SCREEN']);
+      expect(layers.requisition).toBeNull();
+      expect(layers.effective?.definitions.length).toBe(4);
+    });
+
+    it('readLayers: an absent client layer is marked not-present (inherit-only)', async () => {
+      const tenant = randomUUID();
+      await publishSet(tenant, 'TENANT', tenant, 'v1', DEFS);
+      const layers = await sets.readLayers(tenant, { client_id: randomUUID(), requisition_id: null }, 'r');
+      expect(layers.client?.present).toBe(false);
+      expect(layers.client?.definitions).toEqual([]);
+    });
+
+    it('history: published versions newest first with lifecycle status', async () => {
+      const tenant = randomUUID();
+      await publishSet(tenant, 'TENANT', tenant, 'v1', DEFS);
+      await publishSet(tenant, 'TENANT', tenant, 'v2', DEFS);
+      const hist = await sets.history(tenant, 'TENANT', tenant);
+      const byV = Object.fromEntries(hist.map((h) => [h.version, h]));
+      expect(hist.length).toBe(2);
+      expect(byV['v2']!.status).toBe('current');
+      expect(byV['v2']!.effective_to).toBeNull();
+      expect(byV['v1']!.status).toBe('superseded');
+      expect(hist[0]!.version).toBe('v2'); // newest first
+    });
+
     // ---- L5-P6 — completion vs verification split (ruling P4) + waiver evidence (P5) ----
 
     // Publish a TENANT set whose BACKGROUND_CHECK is VERIFICATION_REQUIRED, materialize.
