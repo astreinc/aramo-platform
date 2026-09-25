@@ -14,6 +14,7 @@ import {
 import {
   OVERRIDE_POLICY_VALUES,
   REQUIREMENT_TYPE_VALUES,
+  SATISFACTION_POLICY_VALUES,
   SCOPE_TYPE_VALUES,
   WAIVER_AUTHORITY_VALUES,
   WAIVER_MODE_VALUES,
@@ -47,6 +48,12 @@ export class RequirementDefinitionDto {
 
   @IsIn(WAIVER_MODE_VALUES as readonly string[])
   waiver_mode!: string;
+
+  // L5-P6 — optional; absent = SELF_ATTEST. VERIFICATION_REQUIRED demands a distinct
+  // verifier (separation of duties). CSP PA-6 authors this from the Pre-Start editor.
+  @IsOptional()
+  @IsIn(SATISFACTION_POLICY_VALUES as readonly string[])
+  satisfaction_policy?: string;
 
   // CSP PR-1 — optional; absent = DEFAULT. FLOOR marks a non-relaxable requirement.
   @IsOptional()

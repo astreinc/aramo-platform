@@ -5804,3 +5804,8 @@ button.rc-tj__cell:hover { color: #022ac0; text-decoration: underline; }
 
 /* CSP Policies — engagement enforcement selector (PA-5) */
 .rc-enf { display: flex; align-items: center; gap: 12px; padding: 8px 0 4px; }
+
+/* CSP Policies — Pre-Start editor (expandable requirement rows, PA-6) */
+.rc-prestart-row { padding: 14px 0; border-top: 1px solid var(--rc-hairline, #eef1f4); }
+.rc-prestart-row__head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.rc-prestart-row__dims { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; padding-left: 4px; }

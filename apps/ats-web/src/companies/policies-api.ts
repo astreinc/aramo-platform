@@ -246,3 +246,18 @@ export function getPreStartHistory(
 ): Promise<{ versions: readonly PolicyVersionHistoryEntry[] }> {
   return apiClient.get(`/v1/pre-start-requirement/history${historyQ(scope, scopeRef)}`);
 }
+// Pre-Start publish is a two-step lifecycle: create the CLIENT draft set, then publish
+// it (immutable). The FE composes both so the editor sees a single "publish".
+export async function publishPreStart(body: {
+  scope_ref_id: string;
+  version: string;
+  definitions: readonly PreStartRequirementDef[];
+}): Promise<void> {
+  const draft = await apiClient.post<{ id: string }>('/v1/pre-start-requirement/sets', {
+    scope: 'CLIENT',
+    scope_ref_id: body.scope_ref_id,
+    version: body.version,
+    definitions: body.definitions,
+  });
+  await apiClient.post(`/v1/pre-start-requirement/sets/${draft.id}/publish`);
+}

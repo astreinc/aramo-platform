@@ -104,6 +104,7 @@ export class PreStartRequirementController {
           owner_role: d.owner_role ?? null,
           sequence: d.sequence,
           waiver_mode: d.waiver_mode as never,
+          satisfaction_policy: d.satisfaction_policy as never,
           override_policy: d.override_policy as never,
         })),
       },
