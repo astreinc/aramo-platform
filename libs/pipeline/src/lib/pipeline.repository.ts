@@ -1410,4 +1410,60 @@ export class PipelineRepository {
     return (row as TalentRequisitionResumeRow | null) ?? null;
   }
 
+  // Requisition Talent Board (TB-1) — BATCHED current-résumé selection for a SET
+  // of talent records on ONE requisition. The per-id sibling `getCurrentRequisitionResume`
+  // would fan out N queries across a Board's talent set (N+1, directive §19); this
+  // issues ONE `talent_record_id IN (...)` read and reduces to the current (MAX
+  // selected_at) selection per talent in memory. Read-only; tenant-scoped. Empty
+  // input set → empty Map (no query).
+  async listCurrentRequisitionResumes(args: {
+    tenant_id: string;
+    requisition_id: string;
+    talent_record_ids: readonly string[];
+  }): Promise<Map<string, TalentRequisitionResumeRow>> {
+    const out = new Map<string, TalentRequisitionResumeRow>();
+    if (args.talent_record_ids.length === 0) return out;
+    const rows = (await this.prisma.talentRequisitionResume.findMany({
+      where: {
+        tenant_id: args.tenant_id,
+        requisition_id: args.requisition_id,
+        talent_record_id: { in: Array.from(new Set(args.talent_record_ids)) },
+      },
+      orderBy: { selected_at: 'desc' },
+    })) as TalentRequisitionResumeRow[];
+    // `desc` → the first row seen per talent is the current (MAX selected_at) one.
+    for (const row of rows) {
+      if (!out.has(row.talent_record_id)) out.set(row.talent_record_id, row);
+    }
+    return out;
+  }
+
+  // Requisition Talent Board (TB-1) — BATCHED latest status-transition timestamp for
+  // a SET of pipelines. Feeds the Board's days-in-stage derivation (§22): the current
+  // status was entered at the MAX(changed_at) history row for that pipeline. One
+  // `pipeline_id IN (...)` read (dominant index `[tenant_id, pipeline_id, changed_at]`);
+  // reduce to the latest entry per pipeline in memory — never a per-card `listHistory`
+  // loop. Read-only; tenant-scoped. Empty input → empty Map.
+  async listLatestStatusEntryForPipelines(args: {
+    tenant_id: string;
+    pipeline_ids: readonly string[];
+  }): Promise<Map<string, { status_to: PipelineStatus; changed_at: Date }>> {
+    const out = new Map<string, { status_to: PipelineStatus; changed_at: Date }>();
+    if (args.pipeline_ids.length === 0) return out;
+    const rows = (await this.prisma.pipelineStatusHistory.findMany({
+      where: {
+        tenant_id: args.tenant_id,
+        pipeline_id: { in: Array.from(new Set(args.pipeline_ids)) },
+      },
+      orderBy: { changed_at: 'desc' },
+      select: { pipeline_id: true, status_to: true, changed_at: true },
+    })) as Array<{ pipeline_id: string; status_to: PipelineStatus; changed_at: Date }>;
+    for (const row of rows) {
+      if (!out.has(row.pipeline_id)) {
+        out.set(row.pipeline_id, { status_to: row.status_to, changed_at: row.changed_at });
+      }
+    }
+    return out;
+  }
+
 }
