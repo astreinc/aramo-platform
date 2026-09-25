@@ -5816,3 +5816,7 @@ button.rc-tj__cell:hover { color: #022ac0; text-decoration: underline; }
 .rc-voidmodal__cancel { font-size: 0.84rem; font-weight: 600; color: var(--muted, #5c6770); background: transparent; border: 1px solid var(--line, #e5e9ed); border-radius: var(--r-md, 9px); padding: 7px 15px; cursor: pointer; }
 .rc-voidmodal__confirm { font-size: 0.84rem; font-weight: 600; color: #fff; background: var(--danger, #a8412f); border: 1px solid var(--danger, #a8412f); border-radius: var(--r-md, 9px); padding: 7px 15px; cursor: pointer; }
 .rc-voidmodal__confirm:disabled, .rc-voidmodal__cancel:disabled { opacity: 0.6; cursor: default; }
+.rc-tj__voidbtn { display: block; margin-top: 4px; font-size: 0.72rem; font-weight: 600; color: var(--danger, #a8412f); background: transparent; border: none; padding: 0; cursor: pointer; text-align: left; }
+.rc-tj__voidbtn:hover { text-decoration: underline; }
+.rc-cdp__btn--danger { color: var(--danger, #a8412f); background: var(--danger-tint, #f7e9e6); border: 1px solid var(--danger, #a8412f); }
+.rc-cdp__btn--danger:hover { background: var(--surface, #fff); }

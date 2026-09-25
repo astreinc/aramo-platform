@@ -44,6 +44,7 @@ import { GuaranteeTermsPanel } from './GuaranteeTermsPanel';
 import { TalentDetailPanel } from './TalentDetailPanel';
 import { RequisitionTalentBoard } from './RequisitionTalentBoard';
 import { RemoveFromRequisitionModal } from './RemoveFromRequisitionModal';
+import { getRequisitionTalentBoard } from './requisition-talent-board-api';
 import { AddTalentDialog } from './AddTalentDialog';
 import {
   CLOSE_SUBMITTALS_HELPER,
@@ -1139,6 +1140,10 @@ function TalentJourney({
   const [voidBusy, setVoidBusy] = useState(false);
   const [voidError, setVoidError] = useState('');
   const [boardRefresh, setBoardRefresh] = useState(0);
+  // Accidental-Add Correction — the server-authoritative set of VOID-eligible pipeline ids
+  // (a card carries the projected pipeline.void action). Gates the "Remove from requisition"
+  // affordance in the List rows + the drawer footer — never FE-reconstructed from no_contact.
+  const [voidEligibleIds, setVoidEligibleIds] = useState<ReadonlySet<string>>(new Set());
   // Lazy CLIENT/PRE-START population, keyed by talent_record_id.
   const [cells, setCells] = useState<Record<string, JourneyCells>>({});
   // Find Talent ▾ menu (prototype): the two sourcing entry points.
@@ -1195,6 +1200,27 @@ function TalentJourney({
       ),
     [talents],
   );
+
+  // Accidental-Add Correction — fetch the server-authoritative VOID eligibility (which cards
+  // carry the projected pipeline.void action) so the List + drawer reveal the action only when
+  // the backend allows it. Re-runs after a removal (boardRefresh). Best-effort: a fetch failure
+  // simply leaves the affordance hidden (never a false-positive).
+  useEffect(() => {
+    let live = true;
+    getRequisitionTalentBoard(req.id)
+      .then((board) => {
+        if (!live) return;
+        const ids = new Set<string>();
+        for (const col of board.columns) {
+          for (const c of col.cards) {
+            if (c.next_actions.some((a) => a.key === 'pipeline.void')) ids.add(c.pipeline_id);
+          }
+        }
+        setVoidEligibleIds(ids);
+      })
+      .catch(() => { if (live) setVoidEligibleIds(new Set()); });
+    return () => { live = false; };
+  }, [req.id, boardRefresh]);
 
   // Accidental-Add Correction — open the "Remove from requisition" confirmation.
   const requestVoid = useCallback((pipelineId: string, talentName: string) => {
@@ -1460,6 +1486,19 @@ function TalentJourney({
                     <Icons.IconMail />
                     Send RTR
                   </Button>
+                  {/* Accidental-Add Correction — "Remove from requisition" appears ONLY when the
+                      backend deems this episode VOID-eligible (server-authoritative; never from
+                      the No-contact status alone). Opens the shared correction confirmation. */}
+                  {voidEligibleIds.has(p.id) && (
+                    <Button
+                      unstyled
+                      type="button"
+                      className="rc-tj__voidbtn"
+                      onClick={() => requestVoid(p.id, name)}
+                    >
+                      Remove from requisition
+                    </Button>
+                  )}
                 </span>
               </div>
             );
@@ -1486,6 +1525,8 @@ function TalentJourney({
             // CLIENT/PRE-START cells and refetch (the row is still open).
             fetchCells(u.talent_record_id);
           }}
+          canVoid={voidEligibleIds.has(selected.id)}
+          onRequestVoid={requestVoid}
         />
       ) : null}
       {voidTarget !== null ? (

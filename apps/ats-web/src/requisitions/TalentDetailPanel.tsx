@@ -74,6 +74,11 @@ export interface TalentDetailPanelProps {
     talentRecordId: string,
     enrichmentPatch: Partial<PipelineView>,
   ) => void;
+  // Accidental-Add Correction — the drawer footer shows "Remove from requisition" ONLY when
+  // the backend deems this episode VOID-eligible (server-authoritative; passed in). Opens the
+  // shared correction confirmation via onRequestVoid.
+  readonly canVoid?: boolean;
+  readonly onRequestVoid?: (pipelineId: string, talentName: string) => void;
 }
 
 export function TalentDetailPanel({
@@ -89,6 +94,8 @@ export function TalentDetailPanel({
   canEditHot = false,
   onToggleHot,
   onTalentFieldSaved,
+  canVoid = false,
+  onRequestVoid,
 }: TalentDetailPanelProps): JSX.Element {
   const [record, setRecord] = useState<TalentRecordView | null>(null);
   // S3 — backend-owned Unified Talent Journey for this pipeline episode. The
@@ -563,6 +570,18 @@ export function TalentDetailPanel({
           >
             Open full profile
           </Link>
+          {canVoid === true && onRequestVoid !== undefined && (
+            // Accidental-Add Correction — destructive correction, separated (red), NOT the
+            // primary journey action. Opens the confirmation; the backend re-checks eligibility.
+            <Button
+              unstyled
+              type="button"
+              className="rc-cdp__btn rc-cdp__btn--danger"
+              onClick={() => onRequestVoid(entry.id, talentName ?? 'this Talent')}
+            >
+              Remove from requisition
+            </Button>
+          )}
           <Link
             to={`/talent/${entry.talent_record_id}`}
             className="rc-cdp__btn rc-cdp__btn--pri"
