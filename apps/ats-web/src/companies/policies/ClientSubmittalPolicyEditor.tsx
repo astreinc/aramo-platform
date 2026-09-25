@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 
-import { Button, StatusPill } from '../../ui';
+import { Button } from '../../ui';
 import {
   getClientSubmittalHistory,
   getClientSubmittalLayers,
@@ -10,12 +10,21 @@ import {
 
 import { PolicySourceBadge } from './PolicySourceBadge';
 import { PublishBar } from './PublishBar';
-import { SUBMITTAL_KEYS, submittalLabel, type SubmittalKey } from './labels';
+import { SUBMITTAL_KEYS, submittalLabel, submittalDescription, type SubmittalKey } from './labels';
 
 function describeChoice(s: { choice: 'inherit' | 'required' | 'not_required'; override_class: 'HARD_DENY' | 'OVERRIDABLE' }): string {
   if (s.choice === 'inherit') return 'Inherit';
   if (s.choice === 'not_required') return 'Not required';
   return `Required (${s.override_class === 'OVERRIDABLE' ? 'Lead / Admin' : 'Not allowed'})`;
+}
+
+function LockGlyph(): JSX.Element {
+  return (
+    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="4" y="11" width="16" height="10" rx="2" />
+      <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+    </svg>
+  );
 }
 
 // CSP PA-4 — the Client Submittal Policy editor (§12). A bounded domain form over the
@@ -59,10 +68,12 @@ function initialRow(client: ClientSubmittalRequirementDef | undefined): RowState
 export function ClientSubmittalPolicyEditor({
   companyId,
   onBack,
+  onPreview,
   onPublished,
 }: {
   companyId: string;
   onBack: () => void;
+  onPreview?: () => void;
   onPublished?: () => void;
 }): JSX.Element {
   const [loaded, setLoaded] = useState<Loaded | null>(null);
@@ -141,59 +152,81 @@ export function ClientSubmittalPolicyEditor({
 
   return (
     <PanelShell onBack={onBack}>
-      <ul className="rc-editor-rows">
-        {SUBMITTAL_KEYS.map((k) => {
-          const tenant = loaded.tenant[k];
-          const isFloor = loaded.floored.has(k);
-          const prov = loaded.provenanceByKey[k];
-          const tenantSetting = tenant === undefined ? 'not set' : tenant.disposition === 'REQUIRED' ? 'Required' : 'Not required';
-          const showOverride = rows[k].choice === 'required';
-          return (
-            <li key={k} className="rc-editor-row">
-              <div className="rc-editor-row__label">
-                <span className="rc-policy-req__label">{submittalLabel(k)}</span>
-                {isFloor ? <StatusPill tone="brand">Tenant floor</StatusPill> : null}
-              </div>
-              <div className="rc-toggle" role="group" aria-label={`${submittalLabel(k)} setting`}>
-                <Button unstyled className={rows[k].choice === 'inherit' ? 'is-on' : ''} onClick={() => setChoice(k, 'inherit')}>
-                  Inherit · {tenantSetting}
-                </Button>
-                <Button unstyled className={rows[k].choice === 'required' ? 'is-on' : ''} onClick={() => setChoice(k, 'required')}>
-                  Required
-                </Button>
-                <Button
-                  unstyled
-                  className={rows[k].choice === 'not_required' ? 'is-on' : ''}
-                  disabled={isFloor}
-                  title={isFloor ? 'Tenant floor — cannot be weakened at client scope' : undefined}
-                  onClick={() => setChoice(k, 'not_required')}
-                >
-                  Not required
-                </Button>
-              </div>
-              <div className="rc-editor-row__src">{prov !== undefined ? <PolicySourceBadge provenance={prov} /> : null}</div>
-              <div className="rc-editor-row__ovr">
-                {showOverride ? (
-                  <div className="rc-toggle rc-toggle--sm" role="group" aria-label={`${submittalLabel(k)} runtime override`}>
-                    <Button unstyled className={rows[k].override_class === 'HARD_DENY' ? 'is-on' : ''} onClick={() => setOverride(k, 'HARD_DENY')}>
-                      Not allowed
-                    </Button>
-                    <Button unstyled className={rows[k].override_class === 'OVERRIDABLE' ? 'is-on' : ''} onClick={() => setOverride(k, 'OVERRIDABLE')}>
-                      Lead / Admin
-                    </Button>
-                  </div>
-                ) : (
-                  <span className="rc-muted-line">—</span>
-                )}
-              </div>
-            </li>
-          );
-        })}
-      </ul>
+      <div className="rc-editor-card">
+        <div className="rc-editor-head">
+          <span>Requirement</span>
+          <span>Requirement setting</span>
+          <span>Policy source</span>
+          <span>Runtime override</span>
+        </div>
+        <ul className="rc-editor-rows">
+          {SUBMITTAL_KEYS.map((k) => {
+            const tenant = loaded.tenant[k];
+            const isFloor = loaded.floored.has(k);
+            const prov = loaded.provenanceByKey[k];
+            const tenantSetting = tenant === undefined ? 'not set' : tenant.disposition === 'REQUIRED' ? 'Required' : 'Not required';
+            const clientSetting = rows[k].choice === 'required' ? 'Required' : rows[k].choice === 'not_required' ? 'Not required' : 'Inherit';
+            const showOverride = rows[k].choice === 'required';
+            const delta = isFloor
+              ? 'Tenant floor — cannot be weakened at client scope'
+              : tenant === undefined
+                ? 'Not in tenant defaults · added for this client'
+                : rows[k].choice === 'inherit'
+                  ? `Follows tenant default (${tenantSetting})`
+                  : `Tenant: ${tenantSetting} → Client: ${clientSetting}`;
+            const deltaChanged = tenant !== undefined && rows[k].choice !== 'inherit' && clientSetting !== tenantSetting;
+            return (
+              <li key={k} className="rc-editor-row">
+                <div className="rc-editor-row__label">
+                  <span className="rc-policy-req__label">{submittalLabel(k)}</span>
+                  <span className="rc-muted-line">{submittalDescription(k)}</span>
+                </div>
+                <div className="rc-editor-row__setting">
+                  {isFloor ? (
+                    <span className="rc-locked-chip">
+                      <LockGlyph />
+                      Required
+                    </span>
+                  ) : (
+                    <div className="rc-toggle" role="group" aria-label={`${submittalLabel(k)} setting`}>
+                      <Button unstyled className={rows[k].choice === 'inherit' ? 'is-on' : ''} onClick={() => setChoice(k, 'inherit')}>
+                        Inherit · {tenantSetting}
+                      </Button>
+                      <Button unstyled className={rows[k].choice === 'required' ? 'is-on' : ''} onClick={() => setChoice(k, 'required')}>
+                        Required
+                      </Button>
+                      <Button unstyled className={rows[k].choice === 'not_required' ? 'is-on' : ''} onClick={() => setChoice(k, 'not_required')}>
+                        Not required
+                      </Button>
+                    </div>
+                  )}
+                  <span className={`rc-delta${deltaChanged ? ' rc-delta--changed' : ''}`}>{delta}</span>
+                </div>
+                <div className="rc-editor-row__src">{prov !== undefined ? <PolicySourceBadge provenance={prov} /> : null}</div>
+                <div className="rc-editor-row__ovr">
+                  {showOverride ? (
+                    <div className="rc-toggle rc-toggle--sm" role="group" aria-label={`${submittalLabel(k)} runtime override`}>
+                      <Button unstyled className={rows[k].override_class === 'HARD_DENY' ? 'is-on' : ''} onClick={() => setOverride(k, 'HARD_DENY')}>
+                        Not allowed
+                      </Button>
+                      <Button unstyled className={rows[k].override_class === 'OVERRIDABLE' ? 'is-on' : ''} onClick={() => setOverride(k, 'OVERRIDABLE')}>
+                        Lead / Admin
+                      </Button>
+                    </div>
+                  ) : (
+                    <span className="rc-muted-line">— not required</span>
+                  )}
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
       <PublishBar
         changes={changes.map((k) => `${submittalLabel(k)}: ${describeChoice(initial[k])} → ${describeChoice(rows[k])}`)}
         publishing={publishing}
         onCancel={onBack}
+        onPreview={onPreview}
         onPublish={() => void publish()}
       />
     </PanelShell>

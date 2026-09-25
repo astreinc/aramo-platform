@@ -5839,3 +5839,29 @@ button.rc-tj__cell:hover { color: #022ac0; text-decoration: underline; }
 /* card header — tighten to the prototype */
 .rc-policy-card__title { font-size: 14.5px; font-weight: 700; margin: 0 0 3px; }
 .rc-policy-cards .rc-card, .rc-policy-cards > * > .rc-card { border-radius: 13px; }
+
+/* CSP Policies — Client Submittal editor as the prototype 4-column table */
+.rc-editor-card { background: #fff; border: 1px solid #e5e9ed; border-radius: 13px; overflow-x: auto; }
+.rc-editor-head, .rc-editor-card .rc-editor-row {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.3fr) minmax(300px, 1.3fr) 150px 200px;
+  gap: 0 16px; align-items: center;
+}
+.rc-editor-head {
+  padding: 10px 18px; border-bottom: 1px solid #edf0f3;
+  font-size: 10.5px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: #93a0a8;
+  min-width: 900px;
+}
+.rc-editor-card .rc-editor-rows { min-width: 900px; margin: 0; }
+.rc-editor-card .rc-editor-row { padding: 12px 18px; border-top: 1px solid #f2f4f6; }
+.rc-editor-row__setting { display: flex; flex-direction: column; gap: 5px; align-items: flex-start; }
+.rc-locked-chip {
+  display: inline-flex; align-items: center; gap: 6px; border: 1px dashed #c6cdd4; border-radius: 8px;
+  padding: 5px 11px; font-size: 12px; font-weight: 700; color: #1b2730; background: #fafbfc; white-space: nowrap;
+}
+.rc-delta { font-size: 11px; color: #93a0a8; }
+.rc-delta--changed { color: #022ac0; }
+@media (max-width: 1024px) {
+  .rc-editor-head { display: none; }
+  .rc-editor-card .rc-editor-row { grid-template-columns: 1fr; }
+}

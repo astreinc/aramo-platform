@@ -41,7 +41,13 @@ export function CompanyPoliciesView({
     return <PolicyHistoryPanel domain={open.domain} companyId={companyId} onBack={back} />;
   }
   if (open.mode === 'configure' && open.domain === 'client-submittal') {
-    return <ClientSubmittalPolicyEditor companyId={companyId} onBack={back} />;
+    return (
+      <ClientSubmittalPolicyEditor
+        companyId={companyId}
+        onBack={back}
+        onPreview={() => setOpen({ domain: 'client-submittal', mode: 'effective' })}
+      />
+    );
   }
   if (open.mode === 'configure' && open.domain === 'engagement') {
     return <EngagementPolicyEditor companyId={companyId} onBack={back} />;

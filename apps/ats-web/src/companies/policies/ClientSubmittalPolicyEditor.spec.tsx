@@ -39,17 +39,18 @@ beforeEach(() => {
 });
 
 describe('ClientSubmittalPolicyEditor', () => {
-  it('renders a tri-toggle per canonical requirement key', async () => {
+  it('renders a tri-toggle per non-floored canonical requirement key', async () => {
     render(<ClientSubmittalPolicyEditor companyId="co-1" onBack={vi.fn()} />);
     await waitFor(() => expect(screen.getByRole('group', { name: 'Bill rate setting' })).toBeInTheDocument());
-    expect(screen.getByRole('group', { name: 'Work authorization setting' })).toBeInTheDocument();
     expect(screen.getByRole('group', { name: 'Right to Represent setting' })).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: 'Résumé selected setting' })).toBeInTheDocument();
   });
 
-  it('a tenant-floored requirement disables "Not required" and shows the Tenant floor badge', async () => {
+  it('a tenant-floored requirement is locked (no toggle) and shows the Tenant floor badge', async () => {
     render(<ClientSubmittalPolicyEditor companyId="co-1" onBack={vi.fn()} />);
-    const group = await screen.findByRole('group', { name: 'Work authorization setting' });
-    expect(within(group).getByText('Not required')).toBeDisabled();
+    await screen.findByRole('group', { name: 'Bill rate setting' });
+    // Work authorization is a tenant floor → rendered as a locked chip, not a toggle group.
+    expect(screen.queryByRole('group', { name: 'Work authorization setting' })).not.toBeInTheDocument();
     expect(screen.getAllByText('Tenant floor').length).toBeGreaterThanOrEqual(1);
   });
 

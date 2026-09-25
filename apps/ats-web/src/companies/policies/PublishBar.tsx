@@ -7,11 +7,13 @@ export function PublishBar({
   changes,
   publishing,
   onCancel,
+  onPreview,
   onPublish,
 }: {
   changes: readonly string[];
   publishing: boolean;
   onCancel: () => void;
+  onPreview?: () => void;
   onPublish: () => void;
 }): JSX.Element {
   return (
@@ -32,6 +34,11 @@ export function PublishBar({
         <span className="rc-editor-bar__count">
           {changes.length === 0 ? 'No changes yet' : 'Review the changes above, then publish.'}
         </span>
+        {onPreview !== undefined ? (
+          <Button variant="secondary" onClick={onPreview} disabled={publishing}>
+            Preview effective policy
+          </Button>
+        ) : null}
         <Button variant="secondary" onClick={onCancel} disabled={publishing}>
           Cancel
         </Button>

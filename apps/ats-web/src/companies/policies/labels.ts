@@ -22,8 +22,19 @@ export const SUBMITTAL_LABELS: Record<string, string> = {
   rtr_present: 'Right to Represent',
 };
 
+export const SUBMITTAL_DESCRIPTIONS: Record<string, string> = {
+  resume_selected: 'A résumé chosen for this position',
+  engagement_satisfied: 'Meets this client’s Engagement policy',
+  work_authorization_present: 'Work authorization on the talent record',
+  bill_rate_present: 'Bill rate recorded for the submittal',
+  rtr_present: 'Confirmed Right to Represent from the talent',
+};
+
 export function submittalLabel(key: string): string {
   return SUBMITTAL_LABELS[key] ?? key;
+}
+export function submittalDescription(key: string): string {
+  return SUBMITTAL_DESCRIPTIONS[key] ?? '';
 }
 export function engagementLabel(channel: 'voice' | 'email'): string {
   return channel === 'voice' ? 'Voice engagement' : 'Email engagement';
