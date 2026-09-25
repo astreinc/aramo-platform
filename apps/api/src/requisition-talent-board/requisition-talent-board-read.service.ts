@@ -26,6 +26,7 @@ import {
 } from '@aramo/submittal-eligibility';
 import { RequisitionAssignmentRepository, RequisitionRepository } from '@aramo/requisition';
 import { ClientTalentRestrictionRepository } from '@aramo/client-talent-restriction';
+import { CommunicationsRepository } from '@aramo/communications';
 
 import { DocumentReadinessGate } from '../rtr/document-readiness.gate.js';
 import { EngagementGateService } from '../engagement/engagement-gate.service.js';
@@ -97,7 +98,11 @@ const HANDOFF_COLUMNS: ReadonlySet<BoardColumnKey> = new Set<BoardColumnKey>([
 // `owner_state` is the persisted owner enum verbatim (Rule D — never re-derived).
 type CardDecision =
   | { readonly kind: 'active'; readonly column: BoardColumnKey; readonly owner: BoardOwner; readonly source_object_id: string; readonly owner_state: string }
-  | { readonly kind: 'closed'; readonly reason: string };
+  | { readonly kind: 'closed'; readonly reason: string }
+  // Accidental-Add Correction — a `voided` episode is administratively removed: it is
+  // DROPPED from the Board entirely (§11/§16 — not an active column, and NOT a Closed
+  // recruiting disposition; it never inflates the Closed counts).
+  | { readonly kind: 'excluded' };
 
 // Pipeline status → the Pipeline-OWNED forward column. The two terminals contribute NO
 // forward column: `not_in_consideration` is a negative disposition (Closed), `completed`
@@ -113,8 +118,11 @@ function pipelineColumn(status: PipelineStatus): BoardColumnKey | null {
     case 'qualifying':
     case 'qualified':
       return 'qualified';
+    // `voided` (accidental-add correction) contributes NO column — the card is dropped
+    // from the Board (handled as an `excluded` decision in decideCard).
     case 'not_in_consideration':
     case 'completed':
+    case 'voided':
       return null;
     default: {
       const _exhaustive: never = status;
@@ -177,6 +185,7 @@ export class RequisitionTalentBoardReadService {
     private readonly requisitions: RequisitionRepository,
     private readonly restriction: ClientTalentRestrictionRepository,
     private readonly engagement: EngagementGateService,
+    private readonly comms: CommunicationsRepository,
     @Inject('RequisitionTalentBoardLogger') private readonly logger: AramoLogger,
   ) {}
 
@@ -224,7 +233,7 @@ export class RequisitionTalentBoardReadService {
     // Stage 1 — the owner reads, BATCHED + CONCURRENT (never per-card). Offer + Placement are
     // requisition-scoped in one call each; résumé + history are SET reads; the TB-4 readiness
     // substrate (raw policy inputs + the batched RTR gate) is read here too.
-    const [submittals, resumeByTalent, historyByPipeline, offers, placements, readinessMap, assignments, policyInputsMap, rtrByTalent, restrictedTalentIds, engagementApplicability] =
+    const [submittals, resumeByTalent, historyByPipeline, offers, placements, readinessMap, assignments, policyInputsMap, rtrByTalent, restrictedTalentIds, engagementApplicability, engagedTalentIds] =
       await Promise.all([
         this.submittal.listByRequisitionForBoard({
           tenant_id,
@@ -251,6 +260,10 @@ export class RequisitionTalentBoardReadService {
           ? Promise.resolve(new Set<string>())
           : this.restriction.findActiveRestrictedTalentIds({ tenant_id, client_company_id: company_id, talent_record_ids: talentIds, now: args.now }),
         this.engagement.resolveApplicability({ tenant_id, company_id, requisition_id }),
+        // Accidental-Add Correction — the talents on this requisition that have ANY
+        // engagement interaction. A no_contact card with engagement is NOT VOID-eligible
+        // (the action is hidden; the server also rejects a direct call). One batched read.
+        this.comms.findTalentIdsWithRequisitionInteractions({ tenant_id, requisition_id, talent_record_ids: talentIds }),
       ]);
 
     // Stage 2 — ClientSelection for the whole submittal set, ONE IN-list read.
@@ -306,6 +319,12 @@ export class RequisitionTalentBoardReadService {
       // authoritative for this card (active column OR Closed disposition).
       const decision = decideCard(row, submittal, selection, currentOffer, currentPlacement);
 
+      // Accidental-Add Correction — a voided episode is DROPPED from the Board entirely:
+      // not an active card, and NOT counted in Closed (§11/§16).
+      if (decision.kind === 'excluded') {
+        continue;
+      }
+
       if (decision.kind === 'closed') {
         closedReasons.set(decision.reason, (closedReasons.get(decision.reason) ?? 0) + 1);
         closedTotal += 1;
@@ -322,6 +341,7 @@ export class RequisitionTalentBoardReadService {
           rtr_verdict: rtrByTalent.get(row.talent_record_id) ?? null,
           restriction_active: restrictedTalentIds.has(row.talent_record_id),
           engagement: engagementApplicability,
+          engaged: engagedTalentIds.has(row.talent_record_id),
           assigned_recruiter_user_id,
           now: args.now,
         }),
@@ -376,6 +396,8 @@ export class RequisitionTalentBoardReadService {
       rtr_verdict: DocumentEligibilityInput | null;
       restriction_active: boolean;
       engagement: EngagementApplicability;
+      engaged: boolean; // Accidental-Add: any requisition-specific interaction on this Talent
+
       assigned_recruiter_user_id: string | null;
       now: Date;
     },
@@ -419,7 +441,7 @@ export class RequisitionTalentBoardReadService {
       days_in_stage,
       stage_entered_at,
       assigned_recruiter_user_id: ctx.assigned_recruiter_user_id,
-      next_actions: deriveNextActions(winner, row.id),
+      next_actions: deriveNextActions(winner, row.id, ctx.engaged),
       handoff: HANDOFF_COLUMNS.has(winner.column),
     };
   }
@@ -437,13 +459,24 @@ export class RequisitionTalentBoardReadService {
 function deriveNextActions(
   winner: Extract<CardDecision, { kind: 'active' }>,
   pipelineId: string,
+  engaged: boolean,
 ): BoardNextAction[] {
   const PIPELINE_ROUTE = `POST /v1/pipelines/${pipelineId}/actions`;
   switch (winner.owner) {
     case 'pipeline':
       switch (winner.owner_state) {
         case 'no_contact':
-          return [{ key: 'pipeline.contact', label: 'Mark contacted', owner: 'pipeline', command_route: PIPELINE_ROUTE, required_scope: 'pipeline:change-status' }];
+          // Accidental-Add Correction — the "Remove from requisition" (VOID) action is
+          // projected ONLY when the backend deems it eligible: no_contact AND no engagement
+          // (a no_contact card in the pipeline column has no downstream by construction).
+          // The server re-checks all guards on execution — this projection is never the
+          // authority (§13). Routes to the dedicated correction endpoint (POST …/void).
+          return [
+            { key: 'pipeline.contact', label: 'Mark contacted', owner: 'pipeline', command_route: PIPELINE_ROUTE, required_scope: 'pipeline:change-status' },
+            ...(engaged
+              ? []
+              : [{ key: 'pipeline.void', label: 'Remove from requisition', owner: 'pipeline' as const, command_route: `POST /v1/pipelines/${pipelineId}/void`, required_scope: 'pipeline:change-status' }]),
+          ];
         case 'contacted':
           return [{ key: 'pipeline.mark_responded', label: 'Mark responded', owner: 'pipeline', command_route: PIPELINE_ROUTE, required_scope: 'pipeline:change-status' }];
         case 'talent_responded':
@@ -534,6 +567,9 @@ function decideCard(
     return { kind: 'active', column: pCol, owner: 'pipeline', source_object_id: row.id, owner_state: row.status };
   }
   if (row.status === 'not_in_consideration') return { kind: 'closed', reason: 'not_in_consideration' };
+  // Accidental-Add Correction — a voided episode is administratively removed; DROP it from
+  // the Board (never an active column, never a Closed count — §11/§16).
+  if (row.status === 'voided') return { kind: 'excluded' };
   // `completed` with no downstream placement row.
   return { kind: 'active', column: 'started', owner: 'pipeline', source_object_id: row.id, owner_state: row.status };
 }

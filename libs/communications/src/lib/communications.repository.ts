@@ -388,6 +388,62 @@ export class CommunicationsRepository {
   // Reads Communications' OWN rows only (no cross-domain join). The composition
   // root derives the provider-neutral attempt/two-way/strength projection from
   // this; the repository stays vendor- and Lane-2-agnostic.
+  // Accidental-Add Correction (VOID) — BATCHED requisition-specific engagement existence.
+  // Returns the SET of talent record ids (from the input set) that have AT LEAST ONE
+  // communication interaction of ANY channel intersecting (talent subject ∩ requisition
+  // regarding) — i.e. a real recruiting interaction on this requisition. One query (never a
+  // per-talent loop); read-only; tenant-scoped. Used by the VOID orchestrator to fail closed
+  // (§7 — accidental removal must not erase a real interaction) and by the Board projection to
+  // HIDE the action when engagement exists. Empty input → empty Set.
+  async findTalentIdsWithRequisitionInteractions(input: {
+    tenant_id: string;
+    requisition_id: string;
+    talent_record_ids: readonly string[];
+  }): Promise<Set<string>> {
+    const out = new Set<string>();
+    if (input.talent_record_ids.length === 0) return out;
+    const wanted = new Set(input.talent_record_ids);
+    const rows = await this.prisma.communicationInteraction.findMany({
+      where: {
+        tenant_id: input.tenant_id,
+        AND: [
+          {
+            associations: {
+              some: {
+                tenant_id: input.tenant_id,
+                subject_type: 'talent_record' satisfies CommunicationSubjectType,
+                subject_id: { in: Array.from(wanted) },
+                relation_type: 'subject' satisfies CommunicationRelationType,
+              },
+            },
+          },
+          {
+            associations: {
+              some: {
+                tenant_id: input.tenant_id,
+                subject_type: 'requisition' satisfies CommunicationSubjectType,
+                subject_id: input.requisition_id,
+                relation_type: 'regarding' satisfies CommunicationRelationType,
+              },
+            },
+          },
+        ],
+      },
+      select: {
+        associations: {
+          where: { subject_type: 'talent_record' satisfies CommunicationSubjectType, relation_type: 'subject' satisfies CommunicationRelationType },
+          select: { subject_id: true },
+        },
+      },
+    });
+    for (const r of rows) {
+      for (const a of r.associations) {
+        if (wanted.has(a.subject_id)) out.add(a.subject_id);
+      }
+    }
+    return out;
+  }
+
   async findVoiceEvidenceInteractions(
     tenantId: string,
     talentId: string,

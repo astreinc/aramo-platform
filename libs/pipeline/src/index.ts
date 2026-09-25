@@ -32,6 +32,11 @@ export {
   isRecruiterPipelineAction,
   SYSTEM_COMPLETE_ACTION,
   type RecruiterPipelineAction,
+  // Accidental-Add Correction — the governed VOID command surface.
+  VOID_ACTION,
+  VOID_REASON_VALUES,
+  isVoidReason,
+  type VoidReason,
 } from './lib/pipeline-state.js';
 // Lane 2 / L2-C — the PipelineDisposition domain (authority classes + reason taxonomy).
 export {

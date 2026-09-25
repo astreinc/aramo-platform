@@ -24,6 +24,7 @@
     "apps/api/src/pipeline-integration/pipeline-provider-mapping-admin.controller.ts": "AP",
     "apps/api/src/talent-journey/talent-journey.controller.ts": "AP",
     "apps/api/src/requisition-talent-board/requisition-talent-board.controller.ts": "AP",
+    "apps/api/src/pipeline-void/pipeline-void.controller.ts": "AP",
     "apps/api/src/communications/communications.controller.ts": "AP",
     "apps/api/src/communications/requisition-contact-draft.controller.ts": "AP",
     "apps/api/src/engagement/engagement.controller.ts": "AP",

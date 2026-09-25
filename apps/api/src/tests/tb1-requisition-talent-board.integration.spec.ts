@@ -98,6 +98,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     // board's HANDLING of each verdict deterministically).
     const companyIdByReq = new Map<string, string | null>();
     let engagementMode: 'dormant' | 'policy_missing' | 'policy_present' = 'dormant';
+    // Accidental-Add — talents with a requisition interaction (controls the VOID-action gate;
+    // the REAL comms reader is proven end-to-end in the VOID orchestrator integration spec).
+    const engagedTalentSet = new Set<string>();
 
     beforeAll(async () => {
       container = await new PostgreSqlContainer('postgres:17').start();
@@ -141,6 +144,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const engagementStub = {
         resolveApplicability: async (): Promise<'dormant' | 'policy_missing' | 'policy_present'> => engagementMode,
       } as unknown as EngagementGateService;
+      const commsStub = {
+        findTalentIdsWithRequisitionInteractions: async (a: { talent_record_ids: readonly string[] }): Promise<Set<string>> =>
+          new Set(a.talent_record_ids.filter((t) => engagedTalentSet.has(t))),
+      } as unknown as ConstructorParameters<typeof RequisitionTalentBoardReadService>[11];
       service = new RequisitionTalentBoardReadService(
         pipelineRepo,
         submittalRepo,
@@ -153,6 +160,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         requisitionsStub,
         restrictionRepo,
         engagementStub,
+        commsStub,
         NOOP_LOGGER,
       );
     }, 240_000);
@@ -160,6 +168,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     beforeEach(() => {
       companyIdByReq.clear();
       engagementMode = 'dormant';
+      engagedTalentSet.clear();
     });
 
     afterAll(async () => {
@@ -782,6 +791,41 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(anyCard(board, tP)!.handoff).toBe(true); // Started — downstream, tracked read-only
       // A handoff card is never governed-draggable / never carries a bounded Board action.
       expect(anyCard(board, tP)!.next_actions).toEqual([]);
+    });
+
+    // ---------------------------------------------------------------------------------------
+    // PC2-BOARD-1 (Accidental-Add) — a voided episode is DROPPED from the Board entirely:
+    // not an active card, and NOT counted in Closed (§11/§16).
+    // ---------------------------------------------------------------------------------------
+    it('PC2-BOARD-1: a voided episode is excluded from active columns AND from Closed counts', async () => {
+      const tenant = randomUUID(); const req = randomUUID();
+      const active = randomUUID(); await seedPipeline(tenant, req, active, 'qualified');
+      const voided = randomUUID(); await seedPipeline(tenant, req, voided, 'voided');
+      const disp = randomUUID(); await seedPipeline(tenant, req, disp, 'not_in_consideration');
+
+      const board = await call(tenant, req);
+      expect(board.total_active).toBe(1); // only the qualified card
+      expect(anyCard(board, voided)).toBeUndefined(); // voided is not on the Board
+      expect(board.closed.total).toBe(1); // ONLY the real disposition — voided never inflates Closed
+      expect(board.closed.by_reason.find((r) => r.reason === 'not_in_consideration')?.count).toBe(1);
+    });
+
+    // ---------------------------------------------------------------------------------------
+    // PC2-BOARD-2 (Accidental-Add) — the "Remove from requisition" (pipeline.void) action is
+    // projected on a no_contact card ONLY when the backend deems it eligible: no engagement.
+    // ---------------------------------------------------------------------------------------
+    it('PC2-BOARD-2: pipeline.void projected on a clean no_contact card; HIDDEN once engagement exists', async () => {
+      const tenant = randomUUID(); const req = randomUUID();
+      const clean = randomUUID(); await seedPipeline(tenant, req, clean, 'no_contact');
+      const engaged = randomUUID(); await seedPipeline(tenant, req, engaged, 'no_contact');
+      engagedTalentSet.add(engaged); // this Talent has a requisition interaction
+
+      const board = await call(tenant, req);
+      const cleanCard = cardsIn(board, 'pipeline').find((c) => c.talent_record_id === clean)!;
+      expect(cleanCard.next_actions.map((a) => a.key)).toContain('pipeline.void');
+      expect(cleanCard.next_actions.find((a) => a.key === 'pipeline.void')!.command_route).toBe(`POST /v1/pipelines/${cleanCard.pipeline_id}/void`);
+      const engagedCard = cardsIn(board, 'pipeline').find((c) => c.talent_record_id === engaged)!;
+      expect(engagedCard.next_actions.map((a) => a.key)).not.toContain('pipeline.void'); // hidden — server-authoritative
     });
   },
 );

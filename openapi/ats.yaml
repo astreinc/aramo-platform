@@ -188,6 +188,68 @@ paths:
           $ref: 'common.yaml#/components/responses/NotFound'
       security:
         - BearerAuth: []
+  # ── Pipeline Accidental-Add Correction Directive v1.0 (VOID) ──
+  # Remove a Talent from a requisition when added by mistake — an administrative
+  # correction, NOT a recruiting disposition and NOT a delete. Governed + strict:
+  # allowed ONLY from no_contact AND with no requisition-specific engagement AND no
+  # downstream record; the backend (not the caller/UI) is authoritative. CAS on
+  # expected_version. The episode becomes the terminal `voided` state, releasing the
+  # live slot; TalentRecord + history are preserved.
+  /v1/pipelines/{id}/void:
+    post:
+      operationId: voidPipelineEpisode
+      summary: Remove a Talent from a requisition (accidental-add correction).
+      description: |
+        Administratively invalidates an accidentally-created Pipeline episode
+        (no_contact → voided). Requires `pipeline:change-status` + the `ats`
+        capability. Refuses with a typed error when ineligible:
+        PIPELINE_VOID_NOT_ALLOWED_FROM_STATE (422, not no_contact),
+        PIPELINE_VOID_HAS_ENGAGEMENT (409), PIPELINE_VOID_HAS_DOWNSTREAM_ACTIVITY
+        (409), or PIPELINE_TRANSITION_CONFLICT (409, stale expected_version). A
+        non-visible episode is concealed as 404.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [reason, expected_version]
+              properties:
+                reason: { type: string, enum: [ADDED_BY_MISTAKE] }
+                expected_version: { type: integer }
+      responses:
+        '200':
+          description: The episode is now voided (terminal, slot released).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PipelineEpisodeView'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '409':
+          description: Ineligible (engagement / downstream activity) or a stale expected_version.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '422':
+          description: VOID is not allowed from the current state (only no_contact).
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+      security:
+        - BearerAuth: []
   /v1/offers:
     get:
       operationId: listOffers
@@ -6603,6 +6665,21 @@ components:
           description: Canonical postal code (UI label "ZIP / Postal code").
         work_arrangement:
           type: [string, 'null']
+    # ── Pipeline episode (VOID response) ──
+    PipelineEpisodeView:
+      type: object
+      description: The Pipeline episode read model (core fields; the enriched list read adds optional rate columns not restated here).
+      required: [id, tenant_id, talent_record_id, requisition_id, status, version, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        tenant_id: { type: string, format: uuid }
+        site_id: { type: [string, 'null'], format: uuid }
+        talent_record_id: { type: string, format: uuid }
+        requisition_id: { type: string, format: uuid }
+        status: { type: string, enum: [no_contact, contacted, talent_responded, qualifying, qualified, not_in_consideration, completed, voided] }
+        version: { type: integer }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
     # ── Requisition Talent Board (TB-1..TB-7) ──
     BoardNextAction:
       type: object
