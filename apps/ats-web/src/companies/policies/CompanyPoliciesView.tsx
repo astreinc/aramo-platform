@@ -7,6 +7,7 @@ import {
 } from './CompanyPoliciesOverview';
 import { EffectivePolicyPreview } from './EffectivePolicyPreview';
 import { PolicyHistoryPanel } from './PolicyHistoryPanel';
+import { ClientSubmittalPolicyEditor } from './ClientSubmittalPolicyEditor';
 
 // CSP PA-3 — the Company → Policies tab container. Owns the open sub-view: the overview,
 // the read-only effective preview (§23), or the version history (§10). The domain
@@ -33,6 +34,9 @@ export function CompanyPoliciesView({
   }
   if (open.mode === 'history') {
     return <PolicyHistoryPanel domain={open.domain} companyId={companyId} onBack={back} />;
+  }
+  if (open.mode === 'configure' && open.domain === 'client-submittal') {
+    return <ClientSubmittalPolicyEditor companyId={companyId} onBack={back} />;
   }
   return <EffectivePolicyPreview domain={open.domain} companyId={companyId} onBack={back} />;
 }

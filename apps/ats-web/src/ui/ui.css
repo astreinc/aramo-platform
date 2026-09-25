@@ -5772,3 +5772,32 @@ button.rc-tj__cell:hover { color: #022ac0; text-decoration: underline; }
   margin-top: 12px;
   flex-wrap: wrap;
 }
+
+/* CSP Policies — editor (tri-toggle rows + sticky action bar, PA-4) */
+.rc-editor-rows { list-style: none; margin: 8px 0 0; padding: 0; }
+.rc-editor-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 1.4fr) auto minmax(120px, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 0;
+  border-top: 1px solid var(--rc-hairline, #eef1f4);
+}
+.rc-editor-row__label { display: flex; align-items: center; gap: 8px; }
+.rc-editor-row__src { display: flex; justify-content: flex-start; }
+.rc-editor-row__ovr { display: flex; justify-content: flex-end; }
+.rc-toggle { display: inline-flex; border: 1px solid #d6dbe1; border-radius: 8px; overflow: hidden; }
+.rc-toggle > button {
+  appearance: none; border: 0; background: #fff; color: #3a454e;
+  padding: 6px 10px; font-size: 0.8rem; cursor: pointer; border-right: 1px solid #eef1f4;
+}
+.rc-toggle > button:last-child { border-right: 0; }
+.rc-toggle > button.is-on { background: var(--brand-strong, #022AC0); color: #fff; font-weight: 600; }
+.rc-toggle > button:disabled { opacity: 0.45; cursor: not-allowed; }
+.rc-toggle--sm > button { padding: 4px 8px; font-size: 0.75rem; }
+.rc-editor-bar {
+  position: sticky; bottom: 0; margin-top: 16px; padding: 12px 0;
+  display: flex; align-items: center; gap: 12px; justify-content: flex-end;
+  border-top: 1px solid var(--rc-hairline, #eef1f4); background: #fff;
+}
+.rc-editor-bar__count { margin-right: auto; color: #3a454e; font-size: 0.85rem; }

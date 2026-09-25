@@ -3,6 +3,17 @@ import type { PolicyDomain } from './CompanyPoliciesOverview';
 // CSP PA-3 — shared human labels + setting text for the policy surfaces, so the
 // overview, the effective preview, and (later) the editors render one vocabulary.
 
+// §13 — the canonical bounded Client Submittal requirement keys (v1). The editor
+// authors ONLY these; there is no arbitrary requirement creation (§36/§37).
+export const SUBMITTAL_KEYS = [
+  'resume_selected',
+  'engagement_satisfied',
+  'work_authorization_present',
+  'bill_rate_present',
+  'rtr_present',
+] as const;
+export type SubmittalKey = (typeof SUBMITTAL_KEYS)[number];
+
 export const SUBMITTAL_LABELS: Record<string, string> = {
   resume_selected: 'Résumé selected',
   engagement_satisfied: 'Engagement satisfied',
