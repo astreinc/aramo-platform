@@ -1703,6 +1703,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/client-submittal-policy/client-submittal-policy-reads.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/comm-b5-call-initiation.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -1836,6 +1842,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/policy-add-talent.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/policy-admin-reads.spec.ts",
         "project": "api",
         "status": "excluded"
       },
