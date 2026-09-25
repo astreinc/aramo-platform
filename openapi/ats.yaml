@@ -146,6 +146,48 @@ paths:
                 $ref: 'common.yaml#/components/schemas/ErrorResponse'
       security:
         - BearerAuth: []
+  # ── Requisition Talent Board Directive v1.0 (TB-1..TB-7) ──
+  # A read-only projection of Talent-on-a-Requisition, composed in apps/api over
+  # the scope:ats owners (Pipeline · Submittal · ClientSelection · Offer ·
+  # Placement) + submittal-eligibility + assignment. STATE ENUMS ONLY — no
+  # compensation/bill field is composed. The Qualified band is grounded on the
+  # authoritative evaluateEligibility port (window · client restriction ·
+  # engagement · RTR); it is an advisory preflight — the submit transaction
+  # re-evaluates all gates. A non-visible requisition is concealed as 404.
+  /v1/requisitions/{requisition_id}/talent-board:
+    get:
+      operationId: getRequisitionTalentBoard
+      summary: The read-only Talent Board projection for a requisition.
+      description: |
+        Returns the Board projection for one requisition: every Talent-on-the-
+        requisition placed in a single canonical column (deepest authoritative
+        owner wins), with the Qualified two-band readiness (Ready to submit /
+        Needs action), bounded governed next actions, downstream handoff marking,
+        and a collapsed Closed summary. Requires the `pipeline:read` scope and the
+        `ats` capability; visibility is site- and requisition-scoped. A requisition
+        the actor cannot see resolves to 404 (existence is never disclosed).
+      parameters:
+        - name: requisition_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: The composed Talent Board.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequisitionTalentBoardView'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
   /v1/offers:
     get:
       operationId: listOffers
@@ -6561,6 +6603,105 @@ components:
           description: Canonical postal code (UI label "ZIP / Postal code").
         work_arrangement:
           type: [string, 'null']
+    # ── Requisition Talent Board (TB-1..TB-7) ──
+    BoardNextAction:
+      type: object
+      additionalProperties: false
+      description: A bounded governed next action — an EXISTING owner command route, gated by owner state + required_scope. Not a generic action engine.
+      required: [key, label, owner, command_route, required_scope]
+      properties:
+        key: { type: string }
+        label: { type: string }
+        owner: { type: string, enum: [pipeline, submittal, client_selection, offer, placement] }
+        command_route: { type: string }
+        required_scope: { type: string }
+    BoardReadiness:
+      type: object
+      additionalProperties: false
+      description: The Qualified-band readiness, grounded on the authoritative evaluateEligibility port. band is null except on the Qualified column.
+      required: [requisition_state, requisition_reason, blockers, band]
+      properties:
+        requisition_state: { type: string, enum: [open, paused, closed] }
+        requisition_reason: { type: [string, 'null'] }
+        blockers:
+          type: array
+          items: { type: string }
+          description: Canonical blocker codes (e.g. client_restricted, engagement_policy_missing, engagement_readiness_unavailable, rtr_not_executed, submittals_closed, resume_not_selected).
+        band: { type: [string, 'null'], enum: [ready_to_submit, needs_action, null] }
+    BoardResume:
+      type: object
+      additionalProperties: false
+      description: The requisition-specific résumé linkage — working selection pre-submit, frozen submitted edition post-submit; never the Talent's latest résumé.
+      required: [resume_edition_id, source, locked]
+      properties:
+        resume_edition_id: { type: [string, 'null'], format: uuid }
+        source: { type: string, enum: [working_selection, submitted_frozen, none] }
+        locked: { type: boolean }
+    BoardCardView:
+      type: object
+      additionalProperties: false
+      description: One Talent-on-requisition card. STATE ENUMS ONLY — no compensation/bill field.
+      required: [talent_record_id, pipeline_id, column, owner, source_object_id, owner_state, resume, rtr_state, readiness, days_in_stage, stage_entered_at, assigned_recruiter_user_id, next_actions, handoff]
+      properties:
+        talent_record_id: { type: string, format: uuid }
+        pipeline_id: { type: string, format: uuid }
+        column: { type: string, enum: [pipeline, contacted, qualified, submitted, interview, selected, offer, accepted, prestart, ready, started] }
+        owner: { type: string, enum: [pipeline, submittal, client_selection, offer, placement] }
+        source_object_id: { type: string, format: uuid }
+        owner_state:
+          type: string
+          description: The persisted owner enum verbatim (e.g. qualified / INTERVIEW / STARTED).
+        resume: { $ref: '#/components/schemas/BoardResume' }
+        rtr_state: { type: [string, 'null'], enum: [NOT_EXECUTED, null] }
+        readiness:
+          oneOf:
+            - $ref: '#/components/schemas/BoardReadiness'
+            - type: 'null'
+        days_in_stage: { type: [integer, 'null'] }
+        stage_entered_at: { type: [string, 'null'], format: date-time }
+        assigned_recruiter_user_id: { type: [string, 'null'], format: uuid }
+        next_actions:
+          type: array
+          items: { $ref: '#/components/schemas/BoardNextAction' }
+        handoff: { type: boolean, description: Derived — true once past the Client Selected handoff boundary (tracked read-only). }
+    BoardColumnView:
+      type: object
+      additionalProperties: false
+      required: [key, owner, count, cards]
+      properties:
+        key: { type: string, enum: [pipeline, contacted, qualified, submitted, interview, selected, offer, accepted, prestart, ready, started] }
+        owner: { type: string, enum: [pipeline, submittal, client_selection, offer, placement] }
+        count: { type: integer }
+        cards:
+          type: array
+          items: { $ref: '#/components/schemas/BoardCardView' }
+    BoardClosedSummary:
+      type: object
+      additionalProperties: false
+      description: The collapsed Closed panel — canonical dispositions, never a Board taxonomy.
+      required: [total, by_reason]
+      properties:
+        total: { type: integer }
+        by_reason:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [reason, count]
+            properties:
+              reason: { type: string }
+              count: { type: integer }
+    RequisitionTalentBoardView:
+      type: object
+      additionalProperties: false
+      required: [requisition_id, columns, closed, total_active]
+      properties:
+        requisition_id: { type: string, format: uuid }
+        columns:
+          type: array
+          items: { $ref: '#/components/schemas/BoardColumnView' }
+        closed: { $ref: '#/components/schemas/BoardClosedSummary' }
+        total_active: { type: integer }
     CommunicationCapabilities:
       type: object
       additionalProperties: false
