@@ -43,4 +43,44 @@ export class DocumentReadinessGate {
     if (executed !== null) return { satisfied: true, deny: null };
     return { satisfied: false, deny: 'SUBMITTAL_RTR_NOT_EXECUTED', missing: [RIGHT_TO_REPRESENT_KEY] };
   }
+
+  // Requisition Talent Board (TB-4) — the BATCHED sibling of `assess` for a whole talent set on
+  // ONE requisition. Same CONDITIONAL semantic, evaluated with bounded reads (never a per-talent
+  // loop — directive §19): ONE requirement lookup for the requisition + ONE batched executed-doc
+  // query. Reuses this gate's DOC-5 predicate — the Board never re-derives RTR readiness. Returns
+  // a per-talent verdict for every input id (ungated → satisfied when no RTR requirement exists).
+  async assessMany(input: {
+    tenant_id: string;
+    requisition_id: string;
+    talent_ids: readonly string[];
+  }): Promise<Map<string, DocumentEligibilityInput>> {
+    const out = new Map<string, DocumentEligibilityInput>();
+    if (input.talent_ids.length === 0) return out;
+    const requirement = await this.documents.findRequirement({
+      tenant_id: input.tenant_id,
+      document_type_id: RIGHT_TO_REPRESENT_TYPE_ID,
+      resource_type: 'REQUISITION',
+      resource_id: input.requisition_id,
+    });
+    if (requirement === null) {
+      // RTR not required for this requisition → every talent is ungated (satisfied).
+      for (const t of input.talent_ids) out.set(t, { satisfied: true, deny: null });
+      return out;
+    }
+    const executed = await this.documents.findExecutedSubjectTalentIds({
+      tenant_id: input.tenant_id,
+      document_type_key: RIGHT_TO_REPRESENT_KEY,
+      requisition_id: input.requisition_id,
+      talent_ids: input.talent_ids,
+    });
+    for (const t of input.talent_ids) {
+      out.set(
+        t,
+        executed.has(t)
+          ? { satisfied: true, deny: null }
+          : { satisfied: false, deny: 'SUBMITTAL_RTR_NOT_EXECUTED', missing: [RIGHT_TO_REPRESENT_KEY] },
+      );
+    }
+    return out;
+  }
 }

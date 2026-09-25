@@ -85,6 +85,41 @@ export class RequisitionSubmittalEligibilityReader {
     }
     return out;
   }
+
+  // Requisition Talent Board (TB-4) — BATCHED raw policy inputs + consumed count for a SET of
+  // requisitions, so a caller can invoke the SAME pure `evaluateEligibility` port per talent
+  // (window → restriction → engagement → document) WITHOUT re-deriving the window itself
+  // (TE-9: one decision authority, no duplicated policy logic). Same two reads as
+  // `deriveByRequisitionIds` (ONE policy findMany + ONE grouped consumption count — never N
+  // per-requisition reads). A requisition with no policy row yields the R-DEFAULT-OPEN inputs.
+  async loadPolicyInputsByRequisitionIds(
+    tenant_id: string,
+    requisition_ids: readonly string[],
+  ): Promise<Map<string, { inputs: SubmittalPolicyInputs; consumed_count: number }>> {
+    const out = new Map<string, { inputs: SubmittalPolicyInputs; consumed_count: number }>();
+    if (requisition_ids.length === 0) return out;
+    const ids = [...requisition_ids];
+    const [policies, consumption] = await Promise.all([
+      this.prisma.requisitionSubmittalPolicy.findMany({
+        where: { tenant_id, requisition_id: { in: ids } },
+      }),
+      this.prisma.submittalConsumption.groupBy({
+        by: ['requisition_id'],
+        where: { tenant_id, requisition_id: { in: ids } },
+        _count: { _all: true },
+      }),
+    ]);
+    const policyByReq = new Map(policies.map((p) => [p.requisition_id, p]));
+    const consumedByReq = new Map(consumption.map((g) => [g.requisition_id, g._count._all]));
+    for (const requisition_id of ids) {
+      const row = policyByReq.get(requisition_id);
+      const inputs: SubmittalPolicyInputs = row
+        ? inputsFrom(row)
+        : { submittal_deadline: null, submittal_limit: null, manual_override: null, submittal_authority: 'ARAMO' };
+      out.set(requisition_id, { inputs, consumed_count: consumedByReq.get(requisition_id) ?? 0 });
+    }
+    return out;
+  }
 }
 
 // Maps the pure derivation's `closed_by` to the wire reason (R-SEMANTICS).

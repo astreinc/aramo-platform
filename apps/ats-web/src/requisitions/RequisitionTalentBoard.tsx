@@ -84,6 +84,11 @@ function BoardCard({
               Résumé locked
             </span>
           )}
+          {card.rtr_state === 'NOT_EXECUTED' && (
+            <span className="rc-board__rtr" title="Right to represent not executed">
+              RTR needed
+            </span>
+          )}
           {card.days_in_stage != null && (
             <span className="rc-board__days">{card.days_in_stage}d in stage</span>
           )}

@@ -5794,3 +5794,4 @@ button.rc-tj__cell:hover { color: #022ac0; text-decoration: underline; }
 .rc-board__actions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 7px; padding-top: 7px; border-top: 1px dashed var(--line, #e2e8f0); }
 .rc-board__action { font-size: 0.66rem; font-weight: 600; color: var(--brand-strong, #022AC0); background: var(--brand-tint, #eef2fe); border: 1px solid var(--brand-line, #c9d4f2); border-radius: 999px; padding: 2px 9px; cursor: pointer; }
 .rc-board__action:hover { background: var(--surface, #fff); }
+.rc-board__rtr { color: var(--warn, #b45309); font-weight: 600; }

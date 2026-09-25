@@ -172,6 +172,22 @@ describe('RequisitionTalentBoard (TB-2)', () => {
     expect(await screen.findByRole('button', { name: 'Qualify' })).toBeInTheDocument();
   });
 
+  // TB-4 — the port-grounded readiness blockers + the RTR-needed indicator.
+  it('renders the RTR-needed indicator and the rtr_not_executed blocker (port-grounded)', async () => {
+    const c = card({
+      talent_record_id: 't1',
+      pipeline_id: 'p1',
+      column: 'qualified',
+      rtr_state: 'NOT_EXECUTED',
+      readiness: { requisition_state: 'open', requisition_reason: null, blockers: ['rtr_not_executed'], band: 'needs_action' },
+    });
+    mockGet.mockResolvedValue(board({ total_active: 1, columns: [{ key: 'qualified', owner: 'pipeline', count: 1, cards: [c] }] }));
+    render(<RequisitionTalentBoard requisitionId="r1" talentNames={NAMES} onSelectCard={vi.fn()} />);
+    const col = await screen.findByLabelText('Qualified');
+    expect(within(col).getByText('RTR needed')).toBeInTheDocument();
+    expect(within(col).getByText('Right to represent not executed')).toBeInTheDocument();
+  });
+
   it('routes a next action to the governed drawer surface (onSelectCard by pipeline_id)', async () => {
     const onSelectCard = vi.fn();
     const c = card({

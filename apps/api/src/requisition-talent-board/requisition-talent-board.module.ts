@@ -11,6 +11,7 @@ import { RequisitionModule } from '@aramo/requisition';
 
 import { OfferModule } from '../offer/offer.module.js';
 import { PlacementModule } from '../placement/placement.module.js';
+import { DocumentReadinessModule } from '../rtr/document-readiness.module.js';
 
 import { RequisitionTalentBoardController } from './requisition-talent-board.controller.js';
 import { RequisitionTalentBoardReadService } from './requisition-talent-board-read.service.js';
@@ -34,6 +35,7 @@ import { RequisitionTalentBoardReadService } from './requisition-talent-board-re
     PlacementModule,
     SubmittalEligibilityModule,
     RequisitionModule,
+    DocumentReadinessModule,
   ],
   controllers: [RequisitionTalentBoardController],
   providers: [

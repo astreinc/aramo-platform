@@ -12,8 +12,10 @@ import { ClientSelectionProcessRepository, ClientSelectionPrismaService } from '
 import { OfferRepository, PlacementRepository, PrismaService as PlacementPrismaService } from '@aramo/placement';
 import { RequisitionSubmittalEligibilityReader, PrismaService as EligibilityPrismaService } from '@aramo/submittal-eligibility';
 import { RequisitionAssignmentRepository, RequisitionPrismaService } from '@aramo/requisition';
+import { DocumentsRepository, DocumentIdempotencyService, PrismaService as DocumentsPrismaService } from '@aramo/documents';
 
 import { RequisitionTalentBoardReadService } from '../requisition-talent-board/requisition-talent-board-read.service.js';
+import { DocumentReadinessGate, RIGHT_TO_REPRESENT_TYPE_ID } from '../rtr/document-readiness.gate.js';
 
 // Requisition Talent Board (TB-1) — the Board read-composer, end-to-end against real
 // Postgres 17. The composer is constructed with the REAL owner read repositories over the
@@ -39,17 +41,27 @@ const MIGRATIONS = [
   ...migrationsFor('client-selection'),
   ...migrationsFor('placement'),
   ...migrationsFor('submittal-eligibility'),
+  ...migrationsFor('documents'),
 ];
 
-// Dollar-quote- AND line-comment-aware DDL splitter (the comment-blind-splitter trap).
+// Dollar-quote-, single-quote- AND line-comment-aware DDL splitter (the comment-blind-splitter
+// trap + the DOC-6 seed carries a `;` inside a single-quoted description string).
 function splitDdl(sql: string): string[] {
   const out: string[] = [];
   let cur = '';
   let inDollar = false;
   let inLineComment = false;
+  let inString = false; // inside a '...' string literal
   for (let i = 0; i < sql.length; i++) {
     const ch = sql[i];
     if (inLineComment) { cur += ch; if (ch === '\n') inLineComment = false; continue; }
+    if (inString) {
+      cur += ch;
+      // '' is an escaped quote (stays in the string); a lone ' closes it.
+      if (ch === "'") { if (sql[i + 1] === "'") { cur += "'"; i += 1; } else { inString = false; } }
+      continue;
+    }
+    if (!inDollar && ch === "'") { inString = true; cur += ch; continue; }
     if (!inDollar && ch === '-' && sql[i + 1] === '-') { inLineComment = true; cur += ch; continue; }
     if (sql.startsWith('$$', i)) { inDollar = !inDollar; cur += '$$'; i += 1; continue; }
     if (ch === ';' && !inDollar) { out.push(cur); cur = ''; } else { cur += ch; }
@@ -74,6 +86,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     let placementRepo: PlacementRepository;
     let readinessReader: RequisitionSubmittalEligibilityReader;
     let assignmentRepo: RequisitionAssignmentRepository;
+    let documentReadiness: DocumentReadinessGate;
     const prismas: Array<{ $disconnect: () => Promise<void> }> = [];
 
     beforeAll(async () => {
@@ -93,7 +106,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const placementPrisma = new PlacementPrismaService(url);
       const eligibilityPrisma = new EligibilityPrismaService(url);
       const requisitionPrisma = new RequisitionPrismaService(url);
-      for (const p of [pipelinePrisma, submittalPrisma, csPrisma, placementPrisma, eligibilityPrisma, requisitionPrisma]) {
+      const documentsPrisma = new DocumentsPrismaService(url);
+      for (const p of [pipelinePrisma, submittalPrisma, csPrisma, placementPrisma, eligibilityPrisma, requisitionPrisma, documentsPrisma]) {
         await (p as unknown as { $connect: () => Promise<void> }).$connect();
         prismas.push(p as never);
       }
@@ -104,6 +118,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       placementRepo = new PlacementRepository(placementPrisma);
       readinessReader = new RequisitionSubmittalEligibilityReader(eligibilityPrisma as never);
       assignmentRepo = new RequisitionAssignmentRepository(requisitionPrisma as never);
+      const docsRepo = new DocumentsRepository(documentsPrisma, new DocumentIdempotencyService(documentsPrisma) as never);
+      documentReadiness = new DocumentReadinessGate(docsRepo);
       service = new RequisitionTalentBoardReadService(
         pipelineRepo,
         submittalRepo,
@@ -112,6 +128,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         placementRepo,
         readinessReader,
         assignmentRepo,
+        documentReadiness,
         NOOP_LOGGER,
       );
     }, 240_000);
@@ -202,6 +219,32 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
          VALUES ($1,$2,$3,$4,now())`,
         [randomUUID(), tenant, req, userId],
       );
+    }
+    // TB-4 — an RTR DocumentRequirement makes the DOC-5 gate CONDITIONALLY apply to a requisition.
+    async function seedRtrRequirement(tenant: string, req: string): Promise<void> {
+      await db.query(
+        `INSERT INTO documents."DocumentRequirement"
+           (id, tenant_id, document_type_id, resource_type, resource_id, relationship, status, created_by)
+         VALUES ($1,$2,$3,'REQUISITION',$4,'REGARDING','UNSATISFIED',$5)`,
+        [randomUUID(), tenant, RIGHT_TO_REPRESENT_TYPE_ID, req, randomUUID()],
+      );
+    }
+    // TB-4 — an EXECUTED RTR document jointly associated to (talent SUBJECT, requisition REGARDING).
+    async function seedExecutedRtr(tenant: string, req: string, talent: string): Promise<void> {
+      const docId = randomUUID();
+      await db.query(
+        `INSERT INTO documents."Document"
+           (id, tenant_id, document_type_id, title, status, execution_mode, source_kind, created_by, executed_at)
+         VALUES ($1,$2,$3,'RTR','EXECUTED','SINGLE_SIGNATURE','TEMPLATE_GENERATED',$4,now())`,
+        [docId, tenant, RIGHT_TO_REPRESENT_TYPE_ID, randomUUID()],
+      );
+      for (const [rtype, rid, rel] of [['REQUISITION', req, 'REGARDING'], ['TALENT', talent, 'SUBJECT']] as const) {
+        await db.query(
+          `INSERT INTO documents."DocumentAssociation" (id, tenant_id, document_id, resource_type, resource_id, relationship, created_by)
+           VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+          [randomUUID(), tenant, docId, rtype, rid, rel, randomUUID()],
+        );
+      }
     }
 
     const call = (tenant: string, req: string, vis: ReadonlySet<string> | null = null) =>
@@ -525,6 +568,57 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const submittedCard = anyCard(board, tSub)!;
       expect(submittedCard.column).toBe('submitted');
       expect(submittedCard.next_actions).toEqual([]); // no bounded Board command at the submittal handoff
+    });
+
+    // ---------------------------------------------------------------------------------------
+    // TB4-1 — the Qualified band is re-grounded on the REAL evaluateEligibility port: with NO
+    // policy row (open window) and NO RTR requirement (ungated) + a résumé → ready_to_submit.
+    // ---------------------------------------------------------------------------------------
+    it('TB4-1: open window + RTR not required + résumé → ready_to_submit (via the real eligibility port)', async () => {
+      const tenant = randomUUID(); const talent = randomUUID(); const req = randomUUID();
+      await seedPipeline(tenant, req, talent, 'qualified');
+      await seedResume(tenant, talent, req, randomUUID(), new Date('2026-01-10T00:00:00Z'));
+
+      const board = await call(tenant, req);
+      const card = cardsIn(board, 'qualified')[0]!;
+      expect(card.readiness?.band).toBe('ready_to_submit');
+      expect(card.readiness?.blockers).toEqual([]);
+      expect(card.rtr_state).toBeNull(); // ungated — no RTR concern
+    });
+
+    // ---------------------------------------------------------------------------------------
+    // TB4-2 — RTR REQUIRED for the requisition but NOT executed for the talent → the port denies:
+    // needs_action + the canonical rtr_not_executed blocker + rtr_state NOT_EXECUTED.
+    // ---------------------------------------------------------------------------------------
+    it('TB4-2: RTR required + not executed → needs_action + rtr_not_executed (DOC-5 gate via the port)', async () => {
+      const tenant = randomUUID(); const talent = randomUUID(); const req = randomUUID();
+      await seedPipeline(tenant, req, talent, 'qualified');
+      await seedResume(tenant, talent, req, randomUUID(), new Date('2026-01-10T00:00:00Z'));
+      await seedRtrRequirement(tenant, req); // gate now applies; no executed RTR seeded
+
+      const board = await call(tenant, req);
+      const card = cardsIn(board, 'qualified')[0]!;
+      expect(card.readiness?.band).toBe('needs_action');
+      expect(card.readiness?.blockers).toContain('rtr_not_executed');
+      expect(card.rtr_state).toBe('NOT_EXECUTED');
+    });
+
+    // ---------------------------------------------------------------------------------------
+    // TB4-3 — RTR required AND executed for the exact (talent, requisition) → the port is
+    // satisfied → ready_to_submit; no RTR blocker; rtr_state clears.
+    // ---------------------------------------------------------------------------------------
+    it('TB4-3: RTR required + executed for the exact (talent, requisition) → ready_to_submit', async () => {
+      const tenant = randomUUID(); const talent = randomUUID(); const req = randomUUID();
+      await seedPipeline(tenant, req, talent, 'qualified');
+      await seedResume(tenant, talent, req, randomUUID(), new Date('2026-01-10T00:00:00Z'));
+      await seedRtrRequirement(tenant, req);
+      await seedExecutedRtr(tenant, req, talent);
+
+      const board = await call(tenant, req);
+      const card = cardsIn(board, 'qualified')[0]!;
+      expect(card.readiness?.band).toBe('ready_to_submit');
+      expect(card.readiness?.blockers).toEqual([]);
+      expect(card.rtr_state).toBeNull();
     });
   },
 );

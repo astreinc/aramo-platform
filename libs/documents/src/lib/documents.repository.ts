@@ -244,6 +244,45 @@ export class DocumentsRepository {
     });
   }
 
+  // Requisition Talent Board (TB-4) — BATCHED: the SET of talent ids that have an EXECUTED
+  // document of this type jointly associated to the EXACT requisition (REGARDING) AND to
+  // themselves as SUBJECT — the same-document predicate, evaluated for a whole talent set in
+  // ONE query (never a per-talent `findExecutedByTypeAndAssociations` loop — directive §19).
+  // Read-only; tenant-scoped. Empty talent set → empty Set.
+  async findExecutedSubjectTalentIds(input: {
+    tenant_id: string;
+    document_type_key: string;
+    requisition_id: string;
+    talent_ids: readonly string[];
+  }): Promise<Set<string>> {
+    const out = new Set<string>();
+    if (input.talent_ids.length === 0) return out;
+    const wanted = new Set(input.talent_ids);
+    const docs = await this.prisma.document.findMany({
+      where: {
+        tenant_id: input.tenant_id,
+        status: 'EXECUTED',
+        document_type: { key: input.document_type_key },
+        AND: [
+          { associations: { some: { resource_type: 'REQUISITION', resource_id: input.requisition_id, relationship: 'REGARDING' } } },
+          { associations: { some: { resource_type: 'TALENT', resource_id: { in: Array.from(wanted) }, relationship: 'SUBJECT' } } },
+        ],
+      },
+      select: {
+        associations: {
+          where: { resource_type: 'TALENT', relationship: 'SUBJECT' },
+          select: { resource_id: true },
+        },
+      },
+    });
+    for (const d of docs) {
+      for (const a of d.associations) {
+        if (wanted.has(a.resource_id)) out.add(a.resource_id);
+      }
+    }
+    return out;
+  }
+
   // DOC-5 (R-5-11) — is a document of this type REQUIRED for a resource? Returns
   // the DocumentRequirement (or null). The readiness gate uses this to stay
   // CONDITIONAL: a submit is gated on RTR ONLY when such a requirement exists, so

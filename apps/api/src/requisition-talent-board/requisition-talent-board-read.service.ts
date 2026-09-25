@@ -17,8 +17,15 @@ import {
   type OfferView,
   type PlacementProcessView,
 } from '@aramo/placement';
-import { RequisitionSubmittalEligibilityReader } from '@aramo/submittal-eligibility';
+import {
+  RequisitionSubmittalEligibilityReader,
+  evaluateEligibility,
+  type SubmittalPolicyInputs,
+  type DocumentEligibilityInput,
+} from '@aramo/submittal-eligibility';
 import { RequisitionAssignmentRepository } from '@aramo/requisition';
+
+import { DocumentReadinessGate } from '../rtr/document-readiness.gate.js';
 
 import type {
   BoardCardView,
@@ -146,6 +153,7 @@ export class RequisitionTalentBoardReadService {
     private readonly placement: PlacementRepository,
     private readonly readiness: RequisitionSubmittalEligibilityReader,
     private readonly assignment: RequisitionAssignmentRepository,
+    private readonly documentReadiness: DocumentReadinessGate,
     @Inject('RequisitionTalentBoardLogger') private readonly logger: AramoLogger,
   ) {}
 
@@ -186,9 +194,10 @@ export class RequisitionTalentBoardReadService {
     const pipelineIds = pipelineRows.map((r) => r.id);
     const talentIds = pipelineRows.map((r) => r.talent_record_id);
 
-    // Stage 1 — the seven owner reads, BATCHED + CONCURRENT (never per-card). Offer +
-    // Placement are requisition-scoped in one call each; résumé + history are SET reads.
-    const [submittals, resumeByTalent, historyByPipeline, offers, placements, readinessMap, assignments] =
+    // Stage 1 — the owner reads, BATCHED + CONCURRENT (never per-card). Offer + Placement are
+    // requisition-scoped in one call each; résumé + history are SET reads; the TB-4 readiness
+    // substrate (raw policy inputs + the batched RTR gate) is read here too.
+    const [submittals, resumeByTalent, historyByPipeline, offers, placements, readinessMap, assignments, policyInputsMap, rtrByTalent] =
       await Promise.all([
         this.submittal.listByRequisitionForBoard({
           tenant_id,
@@ -205,6 +214,9 @@ export class RequisitionTalentBoardReadService {
         this.placement.listForActor({ tenant_id, requisition_id, visible_requisition_ids: vis, limit: 200 }),
         this.readiness.deriveByRequisitionIds(tenant_id, [requisition_id], args.now),
         this.assignment.listForRequisition({ tenant_id, requisition_id }),
+        // TB-4 — raw policy inputs (for the pure eligibility port) + the batched RTR gate.
+        this.readiness.loadPolicyInputsByRequisitionIds(tenant_id, [requisition_id]),
+        this.documentReadiness.assessMany({ tenant_id, requisition_id, talent_ids: talentIds }),
       ]);
 
     // Stage 2 — ClientSelection for the whole submittal set, ONE IN-list read.
@@ -234,6 +246,12 @@ export class RequisitionTalentBoardReadService {
     }
 
     const req_readiness = readinessMap.get(requisition_id) ?? { status: 'open' as const, reason: null };
+    // TB-4 — the requisition's raw policy inputs (for the pure eligibility port). R-DEFAULT-OPEN
+    // when no policy row exists (the reader supplies the default inputs).
+    const policy = policyInputsMap.get(requisition_id) ?? {
+      inputs: { submittal_deadline: null, submittal_limit: null, manual_override: null, submittal_authority: 'ARAMO' as const },
+      consumed_count: 0,
+    };
     // G-B — the requisition-grain assigned recruiter (listForRequisition is assigned_at desc).
     const assigned_recruiter_user_id = assignments[0]?.user_id ?? null;
 
@@ -266,6 +284,8 @@ export class RequisitionTalentBoardReadService {
           resumeRow: resumeByTalent.get(row.talent_record_id) ?? null,
           history: historyByPipeline.get(row.id) ?? null,
           req_readiness,
+          policy,
+          rtr_verdict: rtrByTalent.get(row.talent_record_id) ?? null,
           assigned_recruiter_user_id,
           now: args.now,
         }),
@@ -316,18 +336,27 @@ export class RequisitionTalentBoardReadService {
       resumeRow: { resume_edition_id: string } | null;
       history: { changed_at: Date } | null;
       req_readiness: { status: 'open' | 'paused' | 'closed'; reason: string | null };
+      policy: { inputs: SubmittalPolicyInputs; consumed_count: number };
+      rtr_verdict: DocumentEligibilityInput | null;
       assigned_recruiter_user_id: string | null;
       now: Date;
     },
   ): BoardCardView {
     const resume = deriveResume(ctx.submittal, ctx.resumeRow);
     const { days_in_stage, stage_entered_at } = deriveDwell(ctx.history, ctx.now);
-    // Readiness band is meaningful only for the Qualified column (§6). V1 uses the
-    // requisition-grain tri-state + the per-card résumé fact; the FULL per-talent policy
-    // gate is re-grounded at TB-4 (no interim eligibility algorithm invented — §7).
+    // rtr_state — the DOC-5 per-talent fact (from the batched RTR gate). Only the ACTIONABLE
+    // NOT_EXECUTED state is surfaced; a satisfied verdict (executed OR RTR-not-required) carries
+    // no RTR concern, so it stays null rather than fabricating an EXECUTED value the verdict
+    // shape cannot distinguish from ungated.
+    const rtr_state = ctx.rtr_verdict !== null && !ctx.rtr_verdict.satisfied ? 'NOT_EXECUTED' : null;
+    // Readiness band (§6) is meaningful only for the Qualified column. TB-4: re-grounded on
+    // the REAL `evaluateEligibility` port (window via the raw policy inputs + the DOC-5 RTR
+    // verdict) — no duplicated policy logic. restriction/engagement remain the submit
+    // transaction's authority (the band is an advisory pre-check; §7). The résumé-selected
+    // fact is an orthogonal Board pre-check (not part of the policy port).
     const readiness: BoardReadiness | null =
       winner.column === 'qualified'
-        ? deriveReadiness(ctx.req_readiness, resume)
+        ? deriveReadiness(ctx.req_readiness, resume, ctx.policy, ctx.rtr_verdict, ctx.now)
         : null;
 
     return {
@@ -338,7 +367,7 @@ export class RequisitionTalentBoardReadService {
       source_object_id: winner.source_object_id,
       owner_state: winner.owner_state,
       resume,
-      rtr_state: null, // TB-4 grounds the full per-talent readiness (incl. RTR) — null in V1.
+      rtr_state,
       readiness,
       days_in_stage,
       stage_entered_at,
@@ -490,16 +519,29 @@ function deriveDwell(
   };
 }
 
-// The Qualified band (§6) — V1: ready_to_submit iff the requisition is open AND a working
-// résumé is selected; else needs_action with the specific blockers. Consumes the
-// authoritative requisition-grain readiness; the Board never computes policy (§7).
+// The Qualified band (§6) — TB-4: re-grounded on the REAL `evaluateEligibility` port (window
+// via the raw policy inputs + the DOC-5 RTR verdict), NOT a Board re-derivation of policy
+// (TE-9: one decision authority, no duplicated logic). The band is an ADVISORY pre-check — the
+// submit transaction remains the authority for restriction + engagement (passed neutral here;
+// restriction_active:false, engagement omitted → the port's documented no-gate defaults, §7).
+// The résumé-selected fact is an orthogonal Board pre-check (never part of the policy port).
+// requisition_state/reason stay the requisition-grain window display (deriveByRequisitionIds).
 function deriveReadiness(
   req_readiness: { status: 'open' | 'paused' | 'closed'; reason: string | null },
   resume: BoardResume,
+  policy: { inputs: SubmittalPolicyInputs; consumed_count: number },
+  rtr_verdict: DocumentEligibilityInput | null,
+  now: Date,
 ): BoardReadiness {
+  const decision = evaluateEligibility(policy.inputs, {
+    now,
+    consumed_count: policy.consumed_count,
+    restriction_active: false, // submit-tx authoritative for restriction (advisory band, §7)
+    ...(rtr_verdict !== null ? { document: rtr_verdict } : {}),
+  });
   const blockers: string[] = [];
-  if (req_readiness.status === 'paused') blockers.push('requisition_paused');
-  if (req_readiness.status === 'closed') blockers.push('requisition_closed');
+  if (!decision.eligible && decision.deny !== undefined) blockers.push(denyToBlocker(decision.deny));
+  // Orthogonal Board pre-check: a submit needs a selected résumé (not part of the policy port).
   if (resume.source === 'none') blockers.push('resume_not_selected');
   const band: QualifiedBand = blockers.length === 0 ? 'ready_to_submit' : 'needs_action';
   return {
@@ -508,6 +550,22 @@ function deriveReadiness(
     blockers,
     band,
   };
+}
+
+// Map the port's typed deny code → the Board's blocker vocabulary (canonical, UI-labelled).
+function denyToBlocker(deny: string): string {
+  switch (deny) {
+    case 'SUBMITTAL_WINDOW_PASSED':
+      return 'submittal_window_passed';
+    case 'SUBMITTAL_LIMIT_REACHED':
+      return 'submittal_limit_reached';
+    case 'SUBMITTALS_CLOSED':
+      return 'submittals_closed';
+    case 'SUBMITTAL_RTR_NOT_EXECUTED':
+      return 'rtr_not_executed';
+    default:
+      return deny.toLowerCase();
+  }
 }
 
 // The natural owner of an empty column (attribution when no card is present).

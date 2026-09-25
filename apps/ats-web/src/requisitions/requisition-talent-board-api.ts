@@ -114,9 +114,15 @@ export function closedReasonLabel(reason: string): string {
   return BOARD_CLOSED_REASON_LABELS[reason] ?? reason;
 }
 
-// The Qualified-band blocker labels (V1 recruiting facts; full policy gate at TB-4).
+// The Qualified-band blocker labels. TB-4 grounds these on the real eligibility port: the
+// submittal-window + RTR deny codes are the port's; résumé-selected is the Board's orthogonal
+// pre-check. (requisition_paused/closed retained for the requisition-grain window display.)
 export const BOARD_BLOCKER_LABELS: Record<string, string> = {
   resume_not_selected: 'Résumé not selected',
+  rtr_not_executed: 'Right to represent not executed',
+  submittal_window_passed: 'Submittal window passed',
+  submittal_limit_reached: 'Submittal limit reached',
+  submittals_closed: 'Submittals closed',
   requisition_paused: 'Requisition paused',
   requisition_closed: 'Requisition closed',
 };
