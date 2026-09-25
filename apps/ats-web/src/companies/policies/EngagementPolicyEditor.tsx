@@ -12,6 +12,7 @@ import {
 
 import { PolicySourceBadge } from './PolicySourceBadge';
 import { PublishBar } from './PublishBar';
+import { PolicyEditorHeader } from './PolicyEditorHeader';
 import { engagementLabel } from './labels';
 
 // CSP PA-5 — the Engagement Policy editor (§18/§19). A bounded form over the executable
@@ -218,14 +219,12 @@ export function EngagementPolicyEditor({
 
 function Shell({ onBack, children }: { onBack: () => void; children: React.ReactNode }): JSX.Element {
   return (
-    <div className="rc-policy-detail">
-      <div className="rc-policy-detail__head">
-        <Button unstyled className="rc-link-action" onClick={onBack}>
-          ‹ Policies
-        </Button>
-        <h3 className="rc-section-h">Engagement Policy</h3>
-        <p className="rc-muted-line">Communication evidence required before client submittal. Voice and email only.</p>
-      </div>
+    <div className="rc-pol">
+      <PolicyEditorHeader
+        onBack={onBack}
+        title="Engagement Policy"
+        subtitle="Communication evidence required before client submittal. Voice and email only."
+      />
       {children}
     </div>
   );

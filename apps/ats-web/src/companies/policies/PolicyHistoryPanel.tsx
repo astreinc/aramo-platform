@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-import { Button, StatusPill } from '../../ui';
+import { StatusPill } from '../../ui';
 import {
   getClientSubmittalHistory,
   getEngagementHistory,
@@ -8,6 +8,7 @@ import {
   type PolicyVersionHistoryEntry,
 } from '../policies-api';
 
+import { PolicyEditorHeader } from './PolicyEditorHeader';
 import type { PolicyDomain } from './CompanyPoliciesOverview';
 import { DOMAIN_TITLES } from './labels';
 
@@ -56,14 +57,13 @@ export function PolicyHistoryPanel({
   }, [domain, companyId]);
 
   return (
-    <div className="rc-policy-detail">
-      <div className="rc-policy-detail__head">
-        <Button unstyled className="rc-link-action" onClick={onBack}>
-          ‹ Policies
-        </Button>
-        <h3 className="rc-section-h">{DOMAIN_TITLES[domain]} — history</h3>
-        <p className="rc-muted-line">This client’s published versions, newest first.</p>
-      </div>
+    <div className="rc-pol">
+      <PolicyEditorHeader
+        onBack={onBack}
+        title={`${DOMAIN_TITLES[domain]} · history`}
+        subtitle="Every published version is kept. Items already in progress keep the version they started under."
+        legend={false}
+      />
       {error !== null ? <p className="rc-muted-line">{error}</p> : null}
       {versions !== null && versions.length === 0 ? (
         <p className="rc-muted-line">No client-scope versions — this client inherits the tenant defaults.</p>

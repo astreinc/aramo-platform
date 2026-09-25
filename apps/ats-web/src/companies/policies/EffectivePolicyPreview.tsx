@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 
-import { Button } from '../../ui';
 import {
   getClientSubmittalLayers,
   getEngagementLayers,
@@ -8,6 +7,7 @@ import {
   type RequirementProvenance,
 } from '../policies-api';
 
+import { PolicyEditorHeader } from './PolicyEditorHeader';
 import type { PolicyDomain } from './CompanyPoliciesOverview';
 import { PolicySourceBadge } from './PolicySourceBadge';
 import {
@@ -146,16 +146,13 @@ export function EffectivePolicyPreview({
   }, [domain, companyId]);
 
   return (
-    <div className="rc-policy-detail">
-      <div className="rc-policy-detail__head">
-        <Button unstyled className="rc-link-action" onClick={onBack}>
-          ‹ Policies
-        </Button>
-        <h3 className="rc-section-h">{DOMAIN_TITLES[domain]} — effective policy</h3>
-        <p className="rc-muted-line">
-          Read-only. Effective policy = tenant defaults + this client’s changes.
-        </p>
-      </div>
+    <div className="rc-pol">
+      <PolicyEditorHeader
+        onBack={onBack}
+        title={`Effective ${DOMAIN_TITLES[domain]}`}
+        subtitle="Read-only · what applies to this client today (tenant defaults + this client’s changes)."
+        legend={false}
+      />
       {error !== null ? <p className="rc-muted-line">{error}</p> : null}
       {data !== null ? (
         <div className="rc-preview">

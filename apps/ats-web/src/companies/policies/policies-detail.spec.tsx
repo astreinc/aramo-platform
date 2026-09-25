@@ -87,7 +87,7 @@ describe('CompanyPoliciesView routing', () => {
     // Each card has a "View effective policy"; click the first.
     fireEvent.click(screen.getAllByText('View effective policy')[0]!);
     await waitFor(() => expect(screen.getByText('Tenant default')).toBeInTheDocument());
-    fireEvent.click(screen.getByText('‹ Policies'));
+    fireEvent.click(screen.getByRole('button', { name: 'Policies' }));
     await waitFor(() => expect(screen.getByText('Client Submittal Policy')).toBeInTheDocument());
   });
 });
