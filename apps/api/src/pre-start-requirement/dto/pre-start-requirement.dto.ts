@@ -12,7 +12,10 @@ import {
   ValidateNested,
 } from 'class-validator';
 import {
+  OVERRIDE_POLICY_VALUES,
   REQUIREMENT_TYPE_VALUES,
+  SATISFACTION_POLICY_VALUES,
+  SCOPE_TYPE_VALUES,
   WAIVER_AUTHORITY_VALUES,
   WAIVER_MODE_VALUES,
 } from '@aramo/pre-start-requirement';
@@ -45,9 +48,31 @@ export class RequirementDefinitionDto {
 
   @IsIn(WAIVER_MODE_VALUES as readonly string[])
   waiver_mode!: string;
+
+  // L5-P6 — optional; absent = SELF_ATTEST. VERIFICATION_REQUIRED demands a distinct
+  // verifier (separation of duties). CSP PA-6 authors this from the Pre-Start editor.
+  @IsOptional()
+  @IsIn(SATISFACTION_POLICY_VALUES as readonly string[])
+  satisfaction_policy?: string;
+
+  // CSP PR-1 — optional; absent = DEFAULT. FLOOR marks a non-relaxable requirement.
+  @IsOptional()
+  @IsIn(OVERRIDE_POLICY_VALUES as readonly string[])
+  override_policy?: string;
 }
 
 export class CreateDraftSetDto {
+  // CSP PR-1 — optional scope authoring. Absent = TENANT (server sets scope_ref_id =
+  // tenant_id). CLIENT requires scope_ref_id = an owned company_id, verified at the
+  // controller via CompanyClientCheckPort.
+  @IsOptional()
+  @IsIn(SCOPE_TYPE_VALUES as readonly string[])
+  scope?: string;
+
+  @IsOptional()
+  @IsString()
+  scope_ref_id?: string;
+
   @IsString()
   @IsNotEmpty()
   version!: string;

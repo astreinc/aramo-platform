@@ -386,6 +386,10 @@ export const SEED_IDS = {
     'engagement:policy:read': '01900000-0000-7000-8000-0000000000fa',
     'engagement:policy:write': '01900000-0000-7000-8000-0000000000fb',
     'engagement:policy:override': '01900000-0000-7000-8000-0000000000fc',
+    // CSP PR-2 — Client Submittal Policy scopes (next-free after 0x1101 scope max).
+    'client-submittal-policy:read': '01900000-0000-7000-8000-000000001102',
+    'client-submittal-policy:write': '01900000-0000-7000-8000-000000001103',
+    'client-submittal-policy:override': '01900000-0000-7000-8000-000000001104',
     // Requisition Lane 1-A (Create-Governance) — next-free suffix 0xe3
     // (0xdd/0xe1/0xe2 are taken by integration:write / assignment:extend /
     // assignment:commercials:approve; 0xde freed by the HYG-1 submittal-policy:write
@@ -2243,6 +2247,49 @@ const ENGAGEMENT_OVERRIDE_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() 
   return map;
 })();
 
+// CSP PR-2 — Client Submittal Policy administration grants. client-submittal-policy
+// :read / :write -> tenant_admin + tenant_owner ONLY (dedicated admin tier; not reused
+// authority; recruiter/AM excluded). Fresh disjoint RoleScope id range 0x1330+
+// (append-don't-renumber). 4 grants (2 scopes x 2 roles).
+export const CLIENT_SUBMITTAL_POLICY_ADMIN_SEED_BUNDLES: ReadonlyArray<
+  readonly [string, readonly string[]]
+> = [
+  ['tenant_admin', ['client-submittal-policy:read', 'client-submittal-policy:write']],
+  ['tenant_owner', ['client-submittal-policy:read', 'client-submittal-policy:write']],
+];
+const CLIENT_SUBMITTAL_POLICY_ADMIN_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
+  const map: Record<string, string> = {};
+  let i = 0x1330;
+  for (const [role, scopes] of CLIENT_SUBMITTAL_POLICY_ADMIN_SEED_BUNDLES) {
+    for (const scope of scopes) {
+      map[`${role}:${scope}`] = `01900000-0000-7000-8000-${i.toString(16).padStart(12, '0')}`;
+      i++;
+    }
+  }
+  return map;
+})();
+
+// CSP PR-2 — Client Submittal Policy OVERRIDE grants. client-submittal-policy:override
+// -> tenant_admin + tenant_owner (authorized-user tier; scope-based authority, never a
+// role-name check). Fresh disjoint RoleScope id range 0x1340+. 2 grants (1 scope x 2).
+export const CLIENT_SUBMITTAL_OVERRIDE_SEED_BUNDLES: ReadonlyArray<
+  readonly [string, readonly string[]]
+> = [
+  ['tenant_admin', ['client-submittal-policy:override']],
+  ['tenant_owner', ['client-submittal-policy:override']],
+];
+const CLIENT_SUBMITTAL_OVERRIDE_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
+  const map: Record<string, string> = {};
+  let i = 0x1340;
+  for (const [role, scopes] of CLIENT_SUBMITTAL_OVERRIDE_SEED_BUNDLES) {
+    for (const scope of scopes) {
+      map[`${role}:${scope}`] = `01900000-0000-7000-8000-${i.toString(16).padStart(12, '0')}`;
+      i++;
+    }
+  }
+  return map;
+})();
+
 // Talent contact-anchor edit — owner/admin-only data-correction authority.
 // talent:edit:contact -> tenant_admin + tenant_owner ONLY (scope-based authority,
 // never a role-name check; mirrors ENGAGEMENT_OVERRIDE precedent — a dedicated
@@ -2963,6 +3010,9 @@ export async function runIdentitySeed(
   await upsertScope(prisma, SEED_IDS.scopes['engagement:policy:read'], 'engagement:policy:read', 'COMM-C3 — read the tenant Engagement Policy: the effective (TENANT/CLIENT/REQUISITION-resolved) engagement requirements + evidence-channel capabilities (Settings → Recruiting → Engagement Requirements). A dedicated administration read (R16); NOT reused from communication/integration authority. GRANTED to tenant_admin, tenant_owner only; recruiter/account_manager excluded. NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['engagement:policy:write'], 'engagement:policy:write', 'COMM-C3 — publish a new immutable Tenant Engagement Policy version (typed, versioned, effective-dated; validated + activation-guarded so an unsatisfiable required channel like email cannot be activated). A dedicated administration write (R16); NOT the broad integration:write. GRANTED to tenant_admin, tenant_owner only; recruiter/account_manager excluded. NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['engagement:policy:override'], 'engagement:policy:override', 'COMM PART A — override an ENFORCING_WITH_OVERRIDE Engagement Policy at Submit to client: an authorized user may proceed past a genuinely-missing required evidence item WITH a recorded reason, captured in authoritative append-only decision provenance. Authority is scope-based (never a role-name check); read-error/unavailable evidence remains fail-closed and NOT overridable, and an override never fabricates evidence. GRANTED to tenant_admin, tenant_owner only; recruiter/account_manager excluded. NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['client-submittal-policy:read'], 'client-submittal-policy:read', 'CSP PR-2 — read the effective (TENANT/CLIENT/REQUISITION-resolved) Client Submittal Policy for a company/requisition context. Dedicated admin read; GRANTED to tenant_admin, tenant_owner only. NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['client-submittal-policy:write'], 'client-submittal-policy:write', 'CSP PR-2 — publish a new immutable, per-scope (TENANT/CLIENT/REQUISITION) Client Submittal Policy version (typed, versioned, effective-dated; FLOOR-validated). CLIENT scope is company-ownership-verified. GRANTED to tenant_admin, tenant_owner only. NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['client-submittal-policy:override'], 'client-submittal-policy:override', 'CSP PR-2 — proceed past an OVERRIDABLE Client Submittal Policy requirement at Submit to client WITH a recorded reason, captured in authoritative decision provenance. Scope-based authority (never a role-name check); HARD_DENY requirements are never overridable. GRANTED to tenant_admin, tenant_owner only. NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['communication:email:send'], 'communication:email:send', 'COMM-C2B — send recruiter email through the bound delegated Microsoft identity (POST /v1/integrations/microsoft/email). Server-side contacting-consent gate precedes any provider execution; provider-neutral email evidence is recorded on success. GRANTED to recruiter, account_manager, tenant_admin, tenant_owner (mirrors communication:voice:call). NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['communication:meeting:create'], 'communication:meeting:create', 'COMM-C2B — create a Teams meeting through the bound delegated Microsoft identity (POST /v1/integrations/microsoft/meeting; create-link-only, no Talent invite). Records provider-neutral meeting evidence (join reference + Talent x Requisition association). GRANTED to recruiter, account_manager, tenant_admin, tenant_owner (mirrors communication:voice:call). NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['requisition:create:establish'], 'requisition:create:establish', 'Requisition Lane 1-A (Create-Governance) — the functional create qualifier that unlocks the governed initial-state establishment mode (MANUAL-ESTABLISH + SYSTEM). Grants authority to ENTER the governed establishment mode; never permits arbitrary statuses (the establishment-authorization gate still bounds { draft, open }). CATALOG-ONLY in v1: GRANTED to NO human tenant role (recruiter / recruiting_manager / delivery_manager / account_manager never receive it, so no human bypasses draft->approval via the manual create path); held programmatically by system/bootstrap establishment identities + passed by bootstrap/test helpers only. The INTEGRATION import path does NOT use this scope — it reuses the existing requisition:import:write. NO scope.created (scope-seed precedent); NO RoleScope grant.');
@@ -3564,6 +3614,42 @@ export async function runIdentitySeed(
       const rsId = ENGAGEMENT_OVERRIDE_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
       if (rsId === undefined) {
         throw new Error(`COMM Engagement-Policy-Override-Role-Matrix: Missing generated RoleScope id for ${roleKey}:${scopeKey}`);
+      }
+      const scope_id = scopeIdForKey(scopeKey);
+      await prisma.roleScope.upsert({
+        where: { role_id_scope_id: { role_id, scope_id } },
+        update: {},
+        create: { id: rsId, role_id, scope_id },
+      });
+    }
+  }
+
+  // CSP PR-2 — Client Submittal Policy admin grants (4 rows; range 0x1330+).
+  // client-submittal-policy:{read,write} -> tenant_admin + tenant_owner ONLY.
+  for (const [roleKey, scopeKeys] of CLIENT_SUBMITTAL_POLICY_ADMIN_SEED_BUNDLES) {
+    const role_id = roleIdForKey(roleKey);
+    for (const scopeKey of scopeKeys) {
+      const rsId = CLIENT_SUBMITTAL_POLICY_ADMIN_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
+      if (rsId === undefined) {
+        throw new Error(`CSP Client-Submittal-Policy-Admin-Role-Matrix: Missing generated RoleScope id for ${roleKey}:${scopeKey}`);
+      }
+      const scope_id = scopeIdForKey(scopeKey);
+      await prisma.roleScope.upsert({
+        where: { role_id_scope_id: { role_id, scope_id } },
+        update: {},
+        create: { id: rsId, role_id, scope_id },
+      });
+    }
+  }
+
+  // CSP PR-2 — Client Submittal Policy override grants (2 rows; range 0x1340+).
+  // client-submittal-policy:override -> tenant_admin + tenant_owner ONLY (scope-based).
+  for (const [roleKey, scopeKeys] of CLIENT_SUBMITTAL_OVERRIDE_SEED_BUNDLES) {
+    const role_id = roleIdForKey(roleKey);
+    for (const scopeKey of scopeKeys) {
+      const rsId = CLIENT_SUBMITTAL_OVERRIDE_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
+      if (rsId === undefined) {
+        throw new Error(`CSP Client-Submittal-Policy-Override-Role-Matrix: Missing generated RoleScope id for ${roleKey}:${scopeKey}`);
       }
       const scope_id = scopeIdForKey(scopeKey);
       await prisma.roleScope.upsert({

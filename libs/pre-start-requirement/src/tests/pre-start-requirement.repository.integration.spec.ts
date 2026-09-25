@@ -34,6 +34,12 @@ const SATISFACTION_POLICY_MIGRATION_PATH = resolve(
   __dirname,
   '../../prisma/migrations/20260901200000_l5_pre_start_satisfaction_policy/migration.sql',
 );
+// CSP PR-1 — a SEPARATE const (never a 2nd resolve() arg — ENOTDIR trap). Adds
+// override_policy to the Definition table; the regenerated client SELECTs it.
+const OVERRIDE_POLICY_MIGRATION_PATH = resolve(
+  __dirname,
+  '../../prisma/migrations/20260924000000_csp_pr1_definition_override_policy/migration.sql',
+);
 
 const DEFS: RequirementDefinitionInput[] = [
   { requirement_type: 'BACKGROUND_CHECK', label: 'Background check', blocking: true, owner_role: null, sequence: 1, waiver_mode: 'NOT_WAIVABLE' },
@@ -57,7 +63,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const url = container.getConnectionUri();
       setupClient = new PrismaService(url);
       await setupClient.$connect();
-      for (const migrationPath of [INIT_MIGRATION_PATH, READINESS_MIGRATION_PATH, SATISFACTION_POLICY_MIGRATION_PATH]) {
+      for (const migrationPath of [
+        INIT_MIGRATION_PATH,
+        READINESS_MIGRATION_PATH,
+        SATISFACTION_POLICY_MIGRATION_PATH,
+        OVERRIDE_POLICY_MIGRATION_PATH,
+      ]) {
         for (const stmt of splitDdl(readFileSync(migrationPath, 'utf8'))) {
           const trimmed = stmt.trim();
           if (trimmed.length === 0) continue;
@@ -151,6 +162,167 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           'w',
         ),
       ).rejects.toMatchObject({ code: 'PRE_START_REQUIREMENT_INVALID', statusCode: 422 });
+    });
+
+    // ---- CSP PR-1: client-scoped FLOOR + CLIENT authoring (§D4-A) ----
+
+    async function publishTenant(tenant: string, defs: RequirementDefinitionInput[], version = 'v1') {
+      const draft = await sets.createDraft(
+        { tenant_id: tenant, scope: 'TENANT', scope_ref_id: tenant, version, definitions: defs },
+        'seed',
+      );
+      return sets.publish({ tenant_id: tenant, set_id: draft.id, published_by: randomUUID() }, 'seed');
+    }
+    async function publishScoped(
+      tenant: string,
+      scope: 'CLIENT' | 'REQUISITION',
+      ref: string,
+      defs: RequirementDefinitionInput[],
+      version = 'v1',
+    ) {
+      const draft = await sets.createDraft(
+        { tenant_id: tenant, scope, scope_ref_id: ref, version, definitions: defs },
+        'seed',
+      );
+      return sets.publish({ tenant_id: tenant, set_id: draft.id, published_by: randomUUID() }, 'seed');
+    }
+    const bg = (over: Partial<RequirementDefinitionInput> = {}): RequirementDefinitionInput => ({
+      requirement_type: 'BACKGROUND_CHECK',
+      label: 'Background check',
+      blocking: true,
+      owner_role: null,
+      sequence: 1,
+      waiver_mode: 'NOT_WAIVABLE',
+      ...over,
+    });
+    const i9 = (over: Partial<RequirementDefinitionInput> = {}): RequirementDefinitionInput => ({
+      requirement_type: 'I9_VERIFICATION',
+      label: 'I-9',
+      blocking: true,
+      owner_role: null,
+      sequence: 2,
+      waiver_mode: 'NOT_WAIVABLE',
+      ...over,
+    });
+
+    it('CLIENT vs TENANT — divergent effective materialization for two clients (same tenant)', async () => {
+      const tenant = randomUUID();
+      const clientA = randomUUID();
+      const clientB = randomUUID();
+      await publishTenant(tenant, [bg({ override_policy: 'DEFAULT' })]);
+      await publishScoped(tenant, 'CLIENT', clientA, [bg({ override_policy: 'DEFAULT' }), i9({ sequence: 2 })]);
+      const effA = await sets.resolveEffective(tenant, { client_id: clientA, requisition_id: null }, 'r');
+      const effB = await sets.resolveEffective(tenant, { client_id: clientB, requisition_id: null }, 'r');
+      expect(effA?.definitions.map((d) => d.requirement_type).sort()).toEqual(['BACKGROUND_CHECK', 'I9_VERIFICATION']);
+      expect(effB?.definitions.map((d) => d.requirement_type)).toEqual(['BACKGROUND_CHECK']); // TENANT fallback
+    });
+
+    it('TENANT fallback — no CLIENT set resolves the tenant baseline', async () => {
+      const tenant = randomUUID();
+      await publishTenant(tenant, [bg()]);
+      const eff = await sets.resolveEffective(tenant, { client_id: randomUUID(), requisition_id: null }, 'r');
+      expect(eff?.definitions.map((d) => d.requirement_type)).toEqual(['BACKGROUND_CHECK']);
+    });
+
+    it('DEFAULT behaviour unchanged — a CLIENT DEFAULT override may relax (no FLOOR anywhere)', async () => {
+      const tenant = randomUUID();
+      const client = randomUUID();
+      await publishTenant(tenant, [bg({ override_policy: 'DEFAULT', blocking: true })]);
+      await publishScoped(tenant, 'CLIENT', client, [bg({ override_policy: 'DEFAULT', blocking: false })]);
+      const eff = await sets.resolveEffective(tenant, { client_id: client, requisition_id: null }, 'r');
+      expect(eff?.definitions.find((d) => d.requirement_type === 'BACKGROUND_CHECK')?.blocking).toBe(false);
+    });
+
+    it('FLOOR — publish-time rejection when a CLIENT set weakens a TENANT FLOOR (blocking)', async () => {
+      const tenant = randomUUID();
+      const client = randomUUID();
+      await publishTenant(tenant, [bg({ override_policy: 'FLOOR', blocking: true })]);
+      const draft = await sets.createDraft(
+        { tenant_id: tenant, scope: 'CLIENT', scope_ref_id: client, version: 'v1', definitions: [bg({ blocking: false })] },
+        'seed',
+      );
+      await expect(
+        sets.publish({ tenant_id: tenant, set_id: draft.id, published_by: randomUUID() }, 'p'),
+      ).rejects.toMatchObject({ code: 'PRE_START_REQUIREMENT_INVALID', statusCode: 422 });
+    });
+
+    it('FLOOR — publish-time rejection when a CLIENT set weakens satisfaction_policy', async () => {
+      const tenant = randomUUID();
+      const client = randomUUID();
+      await publishTenant(tenant, [bg({ override_policy: 'FLOOR', satisfaction_policy: 'VERIFICATION_REQUIRED' })]);
+      const draft = await sets.createDraft(
+        {
+          tenant_id: tenant,
+          scope: 'CLIENT',
+          scope_ref_id: client,
+          version: 'v1',
+          definitions: [bg({ satisfaction_policy: 'SELF_ATTEST' })],
+        },
+        'seed',
+      );
+      await expect(
+        sets.publish({ tenant_id: tenant, set_id: draft.id, published_by: randomUUID() }, 'p'),
+      ).rejects.toMatchObject({ code: 'PRE_START_REQUIREMENT_INVALID', statusCode: 422 });
+    });
+
+    it('FLOOR — publish-time rejection when a CLIENT set weakens waiver_mode (NOT_WAIVABLE relaxed)', async () => {
+      const tenant = randomUUID();
+      const client = randomUUID();
+      await publishTenant(tenant, [bg({ override_policy: 'FLOOR', waiver_mode: 'NOT_WAIVABLE' })]);
+      const draft = await sets.createDraft(
+        {
+          tenant_id: tenant,
+          scope: 'CLIENT',
+          scope_ref_id: client,
+          version: 'v1',
+          definitions: [bg({ waiver_mode: 'AUTHORIZED_INTERNAL' })],
+        },
+        'seed',
+      );
+      await expect(
+        sets.publish({ tenant_id: tenant, set_id: draft.id, published_by: randomUUID() }, 'p'),
+      ).rejects.toMatchObject({ code: 'PRE_START_REQUIREMENT_INVALID', statusCode: 422 });
+    });
+
+    it('FLOOR — strengthening is allowed (CLIENT adds VERIFICATION_REQUIRED over a TENANT floor)', async () => {
+      const tenant = randomUUID();
+      const client = randomUUID();
+      await publishTenant(tenant, [bg({ override_policy: 'FLOOR', blocking: true, satisfaction_policy: 'SELF_ATTEST' })]);
+      const set = await publishScoped(tenant, 'CLIENT', client, [
+        bg({ blocking: true, satisfaction_policy: 'VERIFICATION_REQUIRED' }),
+      ]);
+      expect(set.definitions.find((d) => d.requirement_type === 'BACKGROUND_CHECK')?.satisfaction_policy).toBe(
+        'VERIFICATION_REQUIRED',
+      );
+      const eff = await sets.resolveEffective(tenant, { client_id: client, requisition_id: null }, 'r');
+      expect(eff?.definitions.find((d) => d.requirement_type === 'BACKGROUND_CHECK')?.satisfaction_policy).toBe(
+        'VERIFICATION_REQUIRED',
+      );
+    });
+
+    it('FLOOR — inherited raise-then-reject: CLIENT strengthens, REQUISITION weakens → resolveEffective fails closed', async () => {
+      const tenant = randomUUID();
+      const client = randomUUID();
+      const requisition = randomUUID();
+      await publishTenant(tenant, [bg({ override_policy: 'FLOOR', blocking: true, satisfaction_policy: 'SELF_ATTEST' })]);
+      await publishScoped(tenant, 'CLIENT', client, [bg({ blocking: true, satisfaction_policy: 'VERIFICATION_REQUIRED' })]);
+      // REQUISITION weakens satisfaction back below the raised (effective) floor. Publish-time
+      // guards only CLIENT-vs-TENANT, so the publish itself is allowed here...
+      await publishScoped(tenant, 'REQUISITION', requisition, [bg({ blocking: true, satisfaction_policy: 'SELF_ATTEST' })]);
+      // ...but the AUTHORITATIVE resolveEffective fails closed on the inherited floor.
+      await expect(
+        sets.resolveEffective(tenant, { client_id: client, requisition_id: requisition }, 'r'),
+      ).rejects.toMatchObject({ code: 'PRE_START_REQUIREMENT_INVALID', statusCode: 422 });
+    });
+
+    it('existence-survival — a TENANT FLOOR requirement always survives the union merge', async () => {
+      const tenant = randomUUID();
+      const client = randomUUID();
+      await publishTenant(tenant, [bg({ override_policy: 'FLOOR' }), i9({ override_policy: 'FLOOR' })]);
+      // CLIENT set omits BACKGROUND_CHECK entirely — cannot remove it (union-only merge).
+      await publishScoped(tenant, 'CLIENT', client, [i9({ sequence: 1 })]);
+      const eff = await sets.resolveEffective(tenant, { client_id: client, requisition_id: null }, 'r');
+      expect(eff?.definitions.map((d) => d.requirement_type).sort()).toContain('BACKGROUND_CHECK');
     });
 
     // ---- Integration proof 2: column-scoped DB immutability ----
@@ -533,6 +705,66 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
     it('resolveEffective: no published set at any layer → null (fail-closed)', async () => {
       expect(await sets.resolveEffective(randomUUID(), { client_id: null, requisition_id: randomUUID() }, 'r')).toBeNull();
+    });
+
+    // ---- CSP PA-2 — read-side provenance / raw layers / history (admin FE) --------
+    it('resolveEffectiveView: annotates source + provenance (inherited FLOOR / client override / client-added)', async () => {
+      const tenant = randomUUID();
+      const client = randomUUID();
+      await publishSet(tenant, 'TENANT', tenant, 'v1', [
+        { requirement_type: 'BACKGROUND_CHECK', label: 'bg', blocking: true, owner_role: null, sequence: 1, waiver_mode: 'NOT_WAIVABLE', override_policy: 'FLOOR' },
+        { requirement_type: 'NDA', label: 'nda', blocking: false, owner_role: null, sequence: 2, waiver_mode: 'AUTHORIZED_INTERNAL' },
+      ]);
+      await publishSet(tenant, 'CLIENT', client, 'v1', [
+        { requirement_type: 'NDA', label: 'nda-strong', blocking: true, owner_role: null, sequence: 1, waiver_mode: 'NOT_WAIVABLE' }, // override
+        { requirement_type: 'CLIENT_PAPERWORK', label: 'cp', blocking: false, owner_role: null, sequence: 2, waiver_mode: 'AUTHORIZED_INTERNAL' }, // client-added
+      ]);
+      const view = await sets.resolveEffectiveView(tenant, { client_id: client, requisition_id: null }, 'r');
+      const byKey = Object.fromEntries((view?.definitions ?? []).map((d) => [d.requirement_type, d]));
+
+      expect(byKey['BACKGROUND_CHECK']!.source.scope).toBe('TENANT');
+      expect(byKey['BACKGROUND_CHECK']!.provenance).toEqual({ inherited: true, client_override: false, client_added: false, tenant_floor: true });
+      expect(byKey['NDA']!.source.scope).toBe('CLIENT');
+      expect(byKey['NDA']!.provenance).toEqual({ inherited: false, client_override: true, client_added: false, tenant_floor: false });
+      expect(byKey['CLIENT_PAPERWORK']!.source.scope).toBe('CLIENT');
+      expect(byKey['CLIENT_PAPERWORK']!.provenance).toEqual({ inherited: false, client_override: false, client_added: true, tenant_floor: false });
+      expect(view?.layers.map((l) => l.scope)).toEqual(['TENANT', 'CLIENT']);
+    });
+
+    it('readLayers: raw tenant + client definitions + merged effective; requisition absent', async () => {
+      const tenant = randomUUID();
+      const client = randomUUID();
+      await publishSet(tenant, 'TENANT', tenant, 'v1', DEFS);
+      await publishSet(tenant, 'CLIENT', client, 'v1', [
+        { requirement_type: 'DRUG_SCREEN', label: 'd', blocking: true, owner_role: null, sequence: 1, waiver_mode: 'CLIENT_AUTHORITY_ONLY' },
+      ]);
+      const layers = await sets.readLayers(tenant, { client_id: client, requisition_id: null }, 'r');
+      expect(layers.tenant.present).toBe(true);
+      expect(layers.client?.present).toBe(true);
+      expect(layers.client?.definitions.map((d) => d.requirement_type)).toEqual(['DRUG_SCREEN']);
+      expect(layers.requisition).toBeNull();
+      expect(layers.effective?.definitions.length).toBe(4);
+    });
+
+    it('readLayers: an absent client layer is marked not-present (inherit-only)', async () => {
+      const tenant = randomUUID();
+      await publishSet(tenant, 'TENANT', tenant, 'v1', DEFS);
+      const layers = await sets.readLayers(tenant, { client_id: randomUUID(), requisition_id: null }, 'r');
+      expect(layers.client?.present).toBe(false);
+      expect(layers.client?.definitions).toEqual([]);
+    });
+
+    it('history: published versions newest first with lifecycle status', async () => {
+      const tenant = randomUUID();
+      await publishSet(tenant, 'TENANT', tenant, 'v1', DEFS);
+      await publishSet(tenant, 'TENANT', tenant, 'v2', DEFS);
+      const hist = await sets.history(tenant, 'TENANT', tenant);
+      const byV = Object.fromEntries(hist.map((h) => [h.version, h]));
+      expect(hist.length).toBe(2);
+      expect(byV['v2']!.status).toBe('current');
+      expect(byV['v2']!.effective_to).toBeNull();
+      expect(byV['v1']!.status).toBe('superseded');
+      expect(hist[0]!.version).toBe('v2'); // newest first
     });
 
     // ---- L5-P6 — completion vs verification split (ruling P4) + waiver evidence (P5) ----

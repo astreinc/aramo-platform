@@ -5,6 +5,7 @@
 // what the repositories consume and return.
 
 import type {
+  OverridePolicyValue,
   RequirementDefinitionInput,
   RequirementStatusValue,
   RequirementTypeValue,
@@ -14,9 +15,10 @@ import type {
   WaiverModeValue,
 } from './pre-start-requirement-vocab.js';
 
-// A scope selector. TENANT-only today (§4b finding): scope === 'TENANT' and
-// scope_ref_id === tenant_id. The pair is the seam for future client/requisition
-// scopes; no precedence resolution is implemented.
+// A scope selector. `scope` is one of TENANT | CLIENT | REQUISITION; for TENANT,
+// scope_ref_id === tenant_id, while CLIENT/REQUISITION carry an in-tenant opaque
+// client/requisition ref. Layered precedence across the three scopes is resolved
+// by DefinitionSetRepository.resolveEffective (TENANT -> CLIENT -> REQUISITION).
 export type ScopeSelector = {
   readonly scope: ScopeTypeValue;
   readonly scope_ref_id: string;
@@ -55,6 +57,7 @@ export type DefinitionView = {
   readonly sequence: number;
   readonly waiver_mode: WaiverModeValue;
   readonly satisfaction_policy: SatisfactionPolicyValue;
+  readonly override_policy: OverridePolicyValue;
   readonly created_at: Date;
 };
 

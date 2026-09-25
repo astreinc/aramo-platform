@@ -89,6 +89,7 @@ import { TalentJourneyModule } from './talent-journey/talent-journey.module.js';
 import { RequisitionTalentBoardModule } from './requisition-talent-board/requisition-talent-board.module.js';
 import { CommunicationsApiModule } from './communications/communications-api.module.js';
 import { EngagementApiModule } from './engagement/engagement-api.module.js';
+import { ClientSubmittalPolicyModule } from './client-submittal-policy/client-submittal-policy.module.js';
 import { MicrosoftModule } from './microsoft/microsoft.module.js';
 import { ConnectorExecutionModule } from './connector/connector-execution.module.js';
 import { RequisitionIntegrationModule } from './requisition-integration/requisition-integration.module.js';
@@ -471,6 +472,7 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     RequisitionTalentBoardModule,
     CommunicationsApiModule,
     EngagementApiModule,
+    ClientSubmittalPolicyModule,
     MicrosoftModule,
     // T2-2a — canonicalization orchestrator (NEW leaf lib). Lead-authored
     // per Aramo-T2-2a-Canonicalization-Orchestration-Directive-v1_0-LOCKED.md.

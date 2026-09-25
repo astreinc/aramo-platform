@@ -5739,6 +5739,307 @@ button.rc-tj__cell:hover { color: #022ac0; text-decoration: underline; }
 .rc-editbar > svg { flex: none; width: 15px; height: 15px; color: var(--brand-strong, #022AC0); }
 .rc-editbar__msg { flex: 1; min-width: 220px; font-size: 0.8rem; color: #3a454e; }
 
+/* ── CSP Company → Policies (PA-3) ────────────────────────────────────────────
+   The Policies tab: an overview of the three lifecycle policies as side-by-side
+   cards, each a list of effective requirements with backend provenance badges. */
+.rc-policies__head { margin-bottom: 16px; }
+.rc-policy-cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+@media (max-width: 1100px) { .rc-policy-cards { grid-template-columns: 1fr; } }
+.rc-policy-card__head { margin-bottom: 12px; }
+.rc-policy-card__title { font-size: 1rem; font-weight: 600; color: #0f1928; margin: 0 0 4px; }
+.rc-policy-card__meta { margin-top: 8px; }
+.rc-policy-reqs { list-style: none; margin: 12px 0 0; padding: 0; }
+.rc-policy-req {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  border-top: 1px solid var(--rc-hairline, #eef1f4);
+  font-size: 0.85rem;
+}
+.rc-policy-req__label { color: #1f2933; font-weight: 500; }
+.rc-policy-req__setting { color: #3a454e; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rc-badges { display: inline-flex; gap: 6px; flex-wrap: wrap; }
+.rc-policy-card__actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+
+/* CSP Policies — editor (tri-toggle rows + sticky action bar, PA-4) */
+.rc-editor-rows { list-style: none; margin: 8px 0 0; padding: 0; }
+.rc-editor-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 1.4fr) auto minmax(120px, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 0;
+  border-top: 1px solid var(--rc-hairline, #eef1f4);
+}
+.rc-editor-row__label { display: flex; align-items: center; gap: 8px; }
+.rc-editor-row__src { display: flex; justify-content: flex-start; }
+.rc-editor-row__ovr { display: flex; justify-content: flex-end; }
+.rc-toggle { display: inline-flex; border: 1px solid #d6dbe1; border-radius: 8px; overflow: hidden; }
+.rc-toggle > button {
+  appearance: none; border: 0; background: #fff; color: #3a454e;
+  padding: 6px 10px; font-size: 0.8rem; cursor: pointer; border-right: 1px solid #eef1f4;
+}
+.rc-toggle > button:last-child { border-right: 0; }
+.rc-toggle > button.is-on { background: var(--brand-strong, #022AC0); color: #fff; font-weight: 600; }
+.rc-toggle > button:disabled { opacity: 0.45; cursor: not-allowed; }
+.rc-toggle--sm > button { padding: 4px 8px; font-size: 0.75rem; }
+.rc-editor-bar {
+  position: sticky; bottom: 0; margin-top: 16px; padding: 12px 0;
+  display: flex; align-items: center; gap: 12px; justify-content: flex-end;
+  border-top: 1px solid var(--rc-hairline, #eef1f4); background: #fff;
+}
+.rc-editor-bar__count { margin-right: auto; color: #3a454e; font-size: 0.85rem; }
+
+/* CSP Policies — engagement enforcement selector (PA-5) */
+.rc-enf { display: flex; align-items: center; gap: 12px; padding: 8px 0 4px; }
+
+/* CSP Policies — Pre-Start editor (expandable requirement rows, PA-6) */
+.rc-prestart-row { padding: 14px 0; border-top: 1px solid var(--rc-hairline, #eef1f4); }
+.rc-prestart-row__head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.rc-prestart-row__dims { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; padding-left: 4px; }
+
+/* CSP Policies — publish change summary + responsive editor rows (PA-7) */
+.rc-change-summary { margin-top: 16px; padding: 12px 14px; background: #f6f8fb; border: 1px solid var(--rc-hairline, #eef1f4); border-radius: 8px; }
+.rc-change-summary__h { font-weight: 600; color: #0f1928; font-size: 0.85rem; }
+.rc-change-summary__list { list-style: none; margin: 6px 0 0; padding: 0; }
+.rc-change-summary__list > li { color: #3a454e; font-size: 0.85rem; padding: 2px 0; }
+@media (max-width: 1024px) {
+  .rc-editor-row { grid-template-columns: 1fr; align-items: start; }
+  .rc-editor-row__ovr { justify-content: flex-start; }
+  .rc-prestart-row__head { align-items: flex-start; }
+}
+
+/* CSP Policies — prototype-exact overview rows (short source chip + lock) */
+.rc-policy-req {
+  display: flex; align-items: center; gap: 10px;
+  grid-template-columns: none; border-top: none;
+  padding: 6px 0; border-bottom: 1px solid #f7f8fa;
+}
+.rc-policy-reqs > .rc-policy-req:last-child { border-bottom: none; }
+.rc-policy-req__label { flex: 1; display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: #1b2730; font-weight: 400; }
+.rc-lock { color: #1b2730; flex: none; }
+.rc-src { display: inline-flex; border-radius: 10px; padding: 1.5px 7px; font-size: 9.5px; font-weight: 700; white-space: nowrap; }
+.rc-src--tenant { background: #eef1f4; color: #54606a; }
+.rc-src--override { background: #e8edfb; color: #011f8d; }
+.rc-src--added { background: #fbeadf; color: #c0410c; }
+.rc-policy-req__setting { font-size: 12px; font-weight: 600; color: #1b2730; white-space: nowrap; }
+.rc-policy-req__setting--muted { color: #93a0a8; }
+/* card header — tighten to the prototype */
+.rc-policy-card__title { font-size: 14.5px; font-weight: 700; margin: 0 0 3px; }
+.rc-policy-cards .rc-card, .rc-policy-cards > * > .rc-card { border-radius: 13px; }
+
+/* CSP Policies — Client Submittal editor as the prototype 4-column table */
+.rc-editor-card { background: #fff; border: 1px solid #e5e9ed; border-radius: 13px; overflow-x: auto; }
+.rc-editor-head, .rc-editor-card .rc-editor-row {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.3fr) minmax(300px, 1.3fr) 150px 200px;
+  gap: 0 16px; align-items: center;
+}
+.rc-editor-head {
+  padding: 10px 18px; border-bottom: 1px solid #edf0f3;
+  font-size: 10.5px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: #93a0a8;
+  min-width: 900px;
+}
+.rc-editor-card .rc-editor-rows { min-width: 900px; margin: 0; }
+.rc-editor-card .rc-editor-row { padding: 12px 18px; border-top: 1px solid #f2f4f6; }
+/* prototype: requirement label stacked above its description, left-aligned */
+.rc-editor-card .rc-editor-row__label { flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; }
+.rc-editor-card .rc-editor-row__label .rc-policy-req__label { font-size: 13px; font-weight: 600; }
+.rc-editor-row__setting { display: flex; flex-direction: column; gap: 5px; align-items: flex-start; }
+/* prototype: "+ Add requirement" footer + catalog popover */
+.rc-addreq { position: relative; padding: 12px 18px; border-top: 1px solid #f2f4f6; }
+.rc-addreq__btn { border: none; background: none; color: #022ac0; font: 600 12.5px 'Hanken Grotesk', system-ui, sans-serif; cursor: pointer; padding: 0; }
+.rc-addreq__scrim { position: fixed; inset: 0; z-index: 70; }
+.rc-addreq__pop { position: absolute; left: 18px; bottom: calc(100% - 6px); z-index: 71; width: 300px; background: #fff; border: 1px solid #e5e9ed; border-radius: 10px; box-shadow: 0 16px 40px -14px rgba(11, 16, 34, 0.32); padding: 5px; }
+.rc-addreq__h { padding: 6px 10px; font-size: 10.5px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: #93a0a8; }
+.rc-addreq__empty { padding: 8px 10px; font-size: 12px; color: #93a0a8; }
+.rc-addreq__item { display: block; width: 100%; text-align: left; border: none; background: none; border-radius: 7px; padding: 8px 10px; cursor: pointer; font: 600 12.5px 'Hanken Grotesk', system-ui, sans-serif; color: #1b2730; }
+.rc-addreq__item:hover { background: #e8edfb; }
+.rc-addreq__item span { display: block; font-size: 11px; font-weight: 400; color: #93a0a8; }
+.rc-locked-chip {
+  display: inline-flex; align-items: center; gap: 6px; border: 1px dashed #c6cdd4; border-radius: 8px;
+  padding: 5px 11px; font-size: 12px; font-weight: 700; color: #1b2730; background: #fafbfc; white-space: nowrap;
+}
+.rc-delta { font-size: 11px; color: #93a0a8; }
+.rc-delta--changed { color: #022ac0; }
+@media (max-width: 1024px) {
+  .rc-editor-head { display: none; }
+  .rc-editor-card .rc-editor-row { grid-template-columns: 1fr; }
+}
+
+/* CSP Policies — effective preview as prototype 3-column cards */
+.rc-preview { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; align-items: start; max-width: none; }
+@media (max-width: 1024px) { .rc-preview { grid-template-columns: 1fr; } }
+.rc-preview-col { border-radius: 13px; padding: 15px 18px; border: 1px solid #edf0f3; background: #fafbfc; }
+.rc-preview-col--client { background: #f5f7fd; border-color: #c9d4f2; }
+.rc-preview-col--effective { background: #fff; border-color: #cbe5d5; }
+.rc-preview-col__head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.rc-preview-col__h { font-size: 13.5px; font-weight: 700; color: #0f1928; }
+.rc-preview-item { display: flex; align-items: flex-start; gap: 8px; padding: 6px 0; border-top: 1px solid #edf0f3; font-size: 12.5px; }
+.rc-preview-item:first-of-type { border-top: none; }
+.rc-preview-item__text { flex: 1; color: #1b2730; }
+.rc-preview-item__mark { width: 16px; flex: none; text-align: center; font-weight: 700; }
+.rc-preview-item__mark--ok { color: #1f7a4d; }
+.rc-preview-item__mark--added { color: #c0410c; }
+.rc-preview-item__mark--muted { color: #a9b3bc; }
+
+/* CSP Policies — Pre-Start editor row order badge + stacked label */
+.rc-prestart-row__ord { width: 22px; height: 22px; border-radius: 6px; background: #eef1f4; color: #3a454e; display: grid; place-items: center; font: 700 11px 'IBM Plex Mono', monospace; flex: none; }
+.rc-prestart-row__labelcol { flex: 1; min-width: 180px; flex-direction: column; align-items: flex-start; gap: 2px; }
+
+/* CSP Policies — overview tier strip + legend + muted link (re-added; lost in a4fbc245) */
+.rc-policies__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 14px; }
+.rc-policies__legend { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.rc-tier-strip { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); background: #fff; border: 1px solid var(--rc-hairline, #eef1f4); border-radius: 12px; overflow: hidden; margin-bottom: 16px; }
+@media (max-width: 1100px) { .rc-tier-strip { grid-template-columns: 1fr; } }
+.rc-tier { display: flex; align-items: center; gap: 11px; padding: 12px 16px; border-right: 1px solid #f2f4f6; }
+.rc-tier--active { background: #f5f7fd; }
+.rc-tier > span:last-child > b { display: block; font-size: 12.5px; color: #0f1928; }
+.rc-tier > span:last-child > .rc-muted-line { display: block; font-size: 11.5px; }
+.rc-tier__n { width: 24px; height: 24px; border-radius: 50%; background: #93a0a8; color: #fff; display: grid; place-items: center; font-size: 11px; font-weight: 700; flex: none; }
+.rc-tier__n--active { background: var(--brand-strong, #022AC0); }
+.rc-policy-card__meta { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.rc-link-action--muted { color: #5c6770 !important; }
+
+/* CSP Policies — equal-height overview cards with footer actions pinned to the bottom */
+.rc-policy-cards { align-items: stretch; }
+.rc-policy-card { display: flex; flex-direction: column; height: 100%; }
+.rc-policy-card .rc-policy-reqs { flex: 1 1 auto; }
+.rc-policy-card .rc-policy-card__actions { margin-top: auto; padding-top: 12px; border-top: 1px solid var(--rc-hairline, #eef1f4); }
+.rc-policy-card .rc-footnote { margin-top: 8px; }
+
+/* ===== CSP Policies — prototype-exact overview (rc-pol namespace) ===== */
+.rc-pol__head { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+.rc-pol__headmain { flex: 1; min-width: 260px; }
+.rc-pol__title { font-size: 17px; font-weight: 700; letter-spacing: -0.01em; color: #1b2730; }
+.rc-pol__subtitle { font-size: 12.5px; color: #5c6770; margin-top: 2px; }
+.rc-pol__legend { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.rc-pol__legend-lbl { font-size: 11px; color: #93a0a8; }
+.rc-pol-lgd { border-radius: 12px; padding: 2px 9px; font-size: 10.5px; font-weight: 700; white-space: nowrap; }
+.rc-pol-lgd--tenant { background: #eef1f4; color: #54606a; }
+.rc-pol-lgd--override { background: #e8edfb; color: #011f8d; }
+.rc-pol-lgd--added { background: #fbeadf; color: #c0410c; }
+.rc-pol-tiers { display: flex; align-items: stretch; gap: 0; background: #fff; border: 1px solid #e5e9ed; border-radius: 12px; margin-bottom: 16px; flex-wrap: wrap; overflow: hidden; }
+.rc-pol-tier { flex: 1 1 220px; display: flex; align-items: center; gap: 11px; padding: 12px 16px; background: #fafbfc; border-right: 1px solid #f2f4f6; }
+.rc-pol-tier--on { background: #f5f7fd; }
+.rc-pol-tier__n { width: 24px; height: 24px; border-radius: 50%; background: #93a0a8; color: #fff; display: grid; place-items: center; font-size: 11px; font-weight: 700; flex: none; }
+.rc-pol-tier__n--on { background: #022ac0; }
+.rc-pol-tier__text { min-width: 0; }
+.rc-pol-tier__t { display: block; font-size: 12.5px; font-weight: 700; color: #1b2730; }
+.rc-pol-tier__d { display: block; font-size: 11.5px; color: #5c6770; }
+.rc-pol-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; align-items: stretch; }
+@media (max-width: 1000px) { .rc-pol-cards { grid-template-columns: 1fr; } }
+.rc-pol-card { background: #fff; border: 1px solid #e5e9ed; border-radius: 13px; display: flex; flex-direction: column; }
+.rc-pol-card__head { padding: 16px 18px 12px; border-bottom: 1px solid #f2f4f6; }
+.rc-pol-card__title { font-size: 14.5px; font-weight: 700; color: #1b2730; }
+.rc-pol-card__purpose { font-size: 12px; color: #5c6770; margin-top: 3px; line-height: 1.5; }
+.rc-pol-card__statusrow { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+.rc-pol-status { display: inline-flex; align-items: center; gap: 5px; border-radius: 12px; padding: 2px 9px; font-size: 10.5px; font-weight: 700; white-space: nowrap; }
+.rc-pol-status__dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+.rc-pol-status--tenant { background: #eef1f4; color: #54606a; }
+.rc-pol-status--client { background: #e8edfb; color: #011f8d; }
+.rc-pol-card__meta { font-size: 11.5px; color: #93a0a8; margin-top: 8px; }
+.rc-pol-card__body { padding: 10px 18px; flex: 1; }
+.rc-pol-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-bottom: 1px solid #f7f8fa; }
+.rc-pol-row__label { flex: 1; min-width: 0; font-size: 12.5px; color: #1b2730; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.rc-pol-row__label .rc-lock { color: #1b2730; flex: none; }
+.rc-pol-row__val { font-size: 12px; font-weight: 600; color: #1b2730; white-space: nowrap; }
+.rc-pol-row__val--muted { color: #93a0a8; }
+.rc-pol-row--empty { color: #93a0a8; font-size: 12.5px; border-bottom: none; }
+.rc-pol-card__counts { font-size: 11.5px; color: #93a0a8; margin-top: 8px; }
+.rc-pol-card__foot { display: flex; align-items: center; gap: 12px; padding: 12px 18px; border-top: 1px solid #f2f4f6; flex-wrap: wrap; }
+.rc-pol-btn { border: 1px solid #022ac0; background: #022ac0; color: #fff; border-radius: 8px; padding: 7px 14px; font: 600 12.5px 'Hanken Grotesk', system-ui, sans-serif; cursor: pointer; white-space: nowrap; }
+.rc-pol-btn:hover { background: #3355e0; }
+.rc-pol-link { border: none; background: none; color: #022ac0; font: 600 12.5px 'Hanken Grotesk', system-ui, sans-serif; cursor: pointer; padding: 0; white-space: nowrap; }
+.rc-pol-link--muted { color: #5c6770; }
+.rc-pol__foot { font-size: 11.5px; color: #93a0a8; margin-top: 12px; line-height: 1.55; }
+
+/* CSP Policies — segmented toggle to the prototype spec (grey pill group, white active pill) */
+.rc-toggle { display: inline-flex; background: #eef1f4; border: none; border-radius: 8px; padding: 2px; gap: 2px; overflow: visible; }
+.rc-toggle > button, .rc-toggle > .tc-button {
+  border: none; background: transparent; color: #5c6770; border-right: none;
+  border-radius: 6px; padding: 5px 10px; font: 500 11.5px 'Hanken Grotesk', system-ui, sans-serif; cursor: pointer;
+}
+.rc-toggle > button.is-on, .rc-toggle > .is-on {
+  background: #fff; color: #011f8d; font-weight: 700; box-shadow: 0 1px 2px rgba(15, 25, 40, 0.14);
+}
+.rc-toggle > button:disabled { opacity: 0.45; cursor: not-allowed; }
+.rc-toggle--sm > button { padding: 4px 9px; font-size: 11px; }
+
+/* CSP Policies — editor/detail back link + header spacing */
+.rc-pol-back { display: inline-flex; align-items: center; gap: 4px; border: none; background: none; color: #022ac0; font: 600 12.5px 'Hanken Grotesk', system-ui, sans-serif; cursor: pointer; padding: 0; margin-bottom: 10px; white-space: nowrap; }
+.rc-pol-back:hover { color: #3355e0; }
+
+/* CSP Policies — sticky publish action bar (PA-7, prototype polEditing bar) */
+.rc-pubbar {
+  position: sticky; bottom: 0; z-index: 20; margin: 16px 0 0; padding: 12px 0 4px;
+  background: #fff; border-top: 1px solid #e5e9ed;
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+}
+.rc-pubbar__chg { font-size: 12.5px; color: #93a0a8; font-weight: 600; }
+.rc-pubbar__chg--on { color: #022ac0; }
+.rc-pubbar__right { margin-left: auto; display: flex; gap: 8px; }
+.rc-pubbar__preview,
+.rc-btn-ghost,
+.rc-btn-primary {
+  border-radius: 8px; padding: 7px 14px; font: 600 12.5px 'Hanken Grotesk', system-ui, sans-serif; cursor: pointer; white-space: nowrap;
+}
+.rc-pubbar__preview { display: inline-flex; align-items: center; gap: 6px; border: 1px solid #022ac0; background: #fff; color: #022ac0; }
+.rc-pubbar__preview:hover:not(:disabled) { background: #e8edfb; }
+.rc-btn-ghost { border: 1px solid #d5dbe1; background: #fff; color: #1b2730; }
+.rc-btn-ghost:hover:not(:disabled) { background: #fafbfc; }
+.rc-btn-primary { border: 1px solid #022ac0; background: #022ac0; color: #fff; }
+.rc-btn-primary:hover:not(:disabled) { background: #3355e0; }
+.rc-pubbar__preview:disabled,
+.rc-btn-ghost:disabled,
+.rc-btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* CSP Policies — publish confirmation modal (PA-7, prototype publishOpen) */
+.rc-modal__scrim { position: fixed; inset: 0; background: rgba(15, 25, 40, 0.45); z-index: 80; }
+.rc-modal {
+  position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  width: min(560px, 94vw); max-height: 86vh; background: #fff; border-radius: 14px; z-index: 81;
+  box-shadow: 0 24px 64px rgba(11, 16, 34, 0.32); display: flex; flex-direction: column;
+}
+.rc-modal__head { padding: 18px 24px 12px; border-bottom: 1px solid #e5e9ed; }
+.rc-modal__title { font-size: 16px; font-weight: 700; color: #1b2730; }
+.rc-modal__body { flex: 1; min-height: 0; overflow-y: auto; padding: 14px 24px; }
+.rc-modal__label { font-size: 10.5px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: #93a0a8; margin-bottom: 8px; }
+.rc-modal__chg { display: flex; gap: 8px; font-size: 13px; padding: 6px 0; border-top: 1px solid #f2f4f6; color: #1b2730; }
+.rc-modal__mark { width: 14px; flex: none; font-weight: 700; color: #022ac0; }
+.rc-modal__note { display: flex; gap: 9px; margin-top: 14px; background: #fafbfc; border: 1px solid #edf0f3; border-radius: 10px; padding: 10px 13px; font-size: 12px; color: #3a454e; line-height: 1.55; }
+.rc-modal__note b { white-space: nowrap; }
+.rc-modal__foot { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 24px 18px; border-top: 1px solid #e5e9ed; }
+
+/* CSP Policies — Pre-Start ordered checklist cards (PA-6, prototype edPre) */
+.rc-pre { display: grid; gap: 10px; }
+.rc-pre-card { background: #fff; border: 1px solid #e5e9ed; border-radius: 12px; padding: 13px 16px; }
+.rc-pre-card__head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.rc-pre-card__arrows { display: flex; flex-direction: column; gap: 2px; flex: none; }
+.rc-pre-card__arrow { border: none; background: none; color: #93a0a8; cursor: pointer; padding: 0; line-height: 0; }
+.rc-pre-card__arrow:hover:not(:disabled) { color: #022ac0; }
+.rc-pre-card__arrow:disabled { color: #d5dbe1; cursor: not-allowed; }
+.rc-pre-card__ord { width: 22px; height: 22px; border-radius: 6px; background: #eef1f4; color: #3a454e; display: grid; place-items: center; font: 700 11px 'IBM Plex Mono', monospace; flex: none; }
+.rc-pre-card__title { flex: 1; min-width: 200px; }
+.rc-pre-card__label { display: block; font-size: 13px; font-weight: 700; color: #1b2730; }
+.rc-pre-card__dims { display: flex; align-items: center; gap: 10px 16px; flex-wrap: wrap; margin-top: 11px; padding-left: clamp(0px, 5vw, 56px); min-width: 0; }
+.rc-pre-card__selects { display: flex; gap: 8px; flex-wrap: wrap; }
+.rc-pre-card__selects .rc-select { width: auto; border: 1px solid #d5dbe1; border-radius: 7px; padding: 6px 8px; font: 500 12px 'Hanken Grotesk', system-ui, sans-serif; background: #fff; color: #1b2730; }
+.rc-pre-card__selects .rc-select:disabled { opacity: 0.55; cursor: not-allowed; }
+.rc-pre-card__delta { flex-basis: 100%; font-size: 11px; color: #93a0a8; }
+.rc-floor-pill { display: inline-flex; align-items: center; gap: 4px; border-radius: 12px; padding: 2px 8px; font-size: 10.5px; font-weight: 700; background: #1b2730; color: #fff; white-space: nowrap; }
 /* ============================================================================
    Requisition Talent Board (TB-2) — the read-only List|Board projection surface.
    A horizontally-scrolling lane layout over the backend-authoritative columns.

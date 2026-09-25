@@ -215,6 +215,7 @@ export default defineConfig({
       // the public surface. No consumer imports it yet (substrate-only slice);
       // the alias lands now for template parity + fix-slice-2's cross-lib wiring.
       '@aramo/sourced-talent': resolve(root, 'libs/sourced-talent/src/index.ts'),
+      '@aramo/client-submittal-policy': resolve(root, 'libs/client-submittal-policy/src/index.ts'),
       '@aramo/submittal': resolve(root, 'libs/submittal/src/index.ts'),
       '@aramo/submittal-eligibility': resolve(
         root,

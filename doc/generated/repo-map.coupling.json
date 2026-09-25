@@ -2866,6 +2866,12 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/client-submittal-policy/client-submittal-policy.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/policy-store/prisma/migrations/20260730120000_init_policy_store/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/comm-b5-call-initiation.integration.spec.ts",
       "status": "excluded",
       "to": "libs/communications/prisma/migrations/20260825120000_init_communications/migration.sql"
@@ -5734,6 +5740,12 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/pre-start-requirement/pre-start-orchestrator.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/pre-start-requirement/prisma/migrations/20260924000000_csp_pr1_definition_override_policy/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/requisition-bookmarks.integration.spec.ts",
       "status": "excluded",
       "to": "libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql"
@@ -7459,6 +7471,12 @@
       "from": "apps/api/src/tests/submit-talent.integration.spec.ts",
       "status": "excluded",
       "to": "libs/requisition/prisma/migrations/20260602100000_init_requisition_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/submit-talent.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/requisition/prisma/migrations/20260605123400_add_compensation_fields_to_requisition/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -11550,6 +11568,11 @@
     {
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
+      "to": "apps/api/src/client-submittal-policy/client-submittal-policy.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
       "to": "apps/api/src/communications/communications.controller.ts"
     },
     {
@@ -15513,6 +15536,16 @@
       "from": "libs/client-selection/project.json",
       "status": "unscoped",
       "to": "libs/client-selection/tsconfig.lib.json"
+    },
+    {
+      "from": "libs/client-submittal-policy/project.json",
+      "status": "unscoped",
+      "to": "libs/client-submittal-policy/src/index.ts"
+    },
+    {
+      "from": "libs/client-submittal-policy/project.json",
+      "status": "unscoped",
+      "to": "libs/client-submittal-policy/tsconfig.lib.json"
     },
     {
       "from": "libs/client-talent-restriction/prisma/schema.prisma",
@@ -19598,6 +19631,11 @@
     {
       "from": "tsconfig.base.json",
       "status": "unscoped",
+      "to": "libs/client-submittal-policy/src/index.ts"
+    },
+    {
+      "from": "tsconfig.base.json",
+      "status": "unscoped",
       "to": "libs/client-talent-restriction/src/index.ts"
     },
     {
@@ -19783,6 +19821,11 @@
       "from": "vitest.shared.ts",
       "status": "unscoped",
       "to": "libs/client-selection/src/index.ts"
+    },
+    {
+      "from": "vitest.shared.ts",
+      "status": "unscoped",
+      "to": "libs/client-submittal-policy/src/index.ts"
     },
     {
       "from": "vitest.shared.ts",

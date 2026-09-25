@@ -43,6 +43,12 @@ const SATISFACTION_POLICY_MIGRATION_PATH = resolve(
   __dirname,
   '../../../../../libs/pre-start-requirement/prisma/migrations/20260901200000_l5_pre_start_satisfaction_policy/migration.sql',
 );
+// CSP PR-1 — a SEPARATE const (never a 2nd resolve() arg — ENOTDIR trap). Adds
+// override_policy to the Definition table; the regenerated client SELECTs it.
+const OVERRIDE_POLICY_MIGRATION_PATH = resolve(
+  __dirname,
+  '../../../../../libs/pre-start-requirement/prisma/migrations/20260924000000_csp_pr1_definition_override_policy/migration.sql',
+);
 
 // The minimal SOURCE tables the orchestrator READS (exact columns only), mirroring the
 // L2-G orchestrator spec's approach to a cross-schema read-source. L5-P5 adds a minimal
@@ -90,7 +96,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const url = container.getConnectionUri();
       setupClient = new PreStartPrismaService(url);
       await setupClient.$connect();
-      for (const migrationPath of [INIT_MIGRATION_PATH, INTENT_CONTEXT_MIGRATION_PATH, SATISFACTION_POLICY_MIGRATION_PATH]) {
+      for (const migrationPath of [
+        INIT_MIGRATION_PATH,
+        INTENT_CONTEXT_MIGRATION_PATH,
+        SATISFACTION_POLICY_MIGRATION_PATH,
+        OVERRIDE_POLICY_MIGRATION_PATH,
+      ]) {
         for (const stmt of splitDdl(readFileSync(migrationPath, 'utf8'))) {
           if (stmt.trim()) await setupClient.$executeRawUnsafe(stmt.trim());
         }
