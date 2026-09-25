@@ -11568,6 +11568,11 @@
     {
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
+      "to": "apps/api/src/client-submittal-policy/client-submittal-policy.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
       "to": "apps/api/src/communications/communications.controller.ts"
     },
     {
