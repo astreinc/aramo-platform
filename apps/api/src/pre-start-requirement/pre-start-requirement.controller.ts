@@ -9,6 +9,7 @@ import {
   ParseUUIDPipe,
   Post,
   Put,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
@@ -155,6 +156,111 @@ export class PreStartRequirementController {
       { scope: 'TENANT', scope_ref_id: auth.tenant_id },
       requestId,
     );
+  }
+
+  // ---- Effective / layers / history (read; admin FE, CSP PA-2c) ----------------
+
+  /** The effective (TENANT/CLIENT/REQUISITION-resolved) set with per-requirement source
+   *  + provenance (§7/§9), or null. company_id maps to the CLIENT layer's scope_ref. */
+  @Get('effective')
+  @RequireScopes('pre_start_requirement:read')
+  async effective(
+    @Query('company_id') companyId: string | undefined,
+    @Query('requisition_id') requisitionId: string | undefined,
+    @AuthContext() auth: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<{ effective: unknown }> {
+    await this.assertClientOwned(auth.tenant_id, companyId, requestId);
+    const effective = await this.sets.resolveEffectiveView(
+      auth.tenant_id,
+      { client_id: companyId ?? null, requisition_id: requisitionId ?? null },
+      requestId,
+    );
+    return { effective };
+  }
+
+  /** The raw per-layer read (§8): each scope's own set + merged effective. */
+  @Get('layers')
+  @RequireScopes('pre_start_requirement:read')
+  async layers(
+    @Query('company_id') companyId: string | undefined,
+    @Query('requisition_id') requisitionId: string | undefined,
+    @AuthContext() auth: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<{ layers: unknown }> {
+    await this.assertClientOwned(auth.tenant_id, companyId, requestId);
+    const layers = await this.sets.readLayers(
+      auth.tenant_id,
+      { client_id: companyId ?? null, requisition_id: requisitionId ?? null },
+      requestId,
+    );
+    return { layers };
+  }
+
+  /** The immutable published-set history for one scope (§10), newest first. */
+  @Get('history')
+  @RequireScopes('pre_start_requirement:read')
+  async history(
+    @Query('scope') scope: string | undefined,
+    @Query('scope_ref') scopeRef: string | undefined,
+    @AuthContext() auth: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<{ versions: unknown }> {
+    const resolvedScope = this.assertScope(scope, requestId);
+    // Pre-Start TENANT scope_ref_id === tenant_id; CLIENT/REQUISITION carry an in-tenant ref.
+    let ref: string;
+    if (resolvedScope === 'TENANT') {
+      ref = auth.tenant_id;
+    } else {
+      if (!scopeRef) {
+        throw new AramoError('PRE_START_REQUIREMENT_INVALID', `${resolvedScope} scope requires scope_ref`, 422, {
+          requestId,
+          details: { reason: 'SCOPE_REF_REQUIRED', scope: resolvedScope },
+        });
+      }
+      if (resolvedScope === 'CLIENT') {
+        await this.assertClientOwned(auth.tenant_id, scopeRef, requestId, true);
+      }
+      ref = scopeRef;
+    }
+    const versions = await this.sets.history(auth.tenant_id, resolvedScope, ref);
+    return { versions };
+  }
+
+  private assertScope(scope: string | undefined, requestId: string): 'TENANT' | 'CLIENT' | 'REQUISITION' {
+    if (scope !== 'TENANT' && scope !== 'CLIENT' && scope !== 'REQUISITION') {
+      throw new AramoError('PRE_START_REQUIREMENT_INVALID', 'scope must be TENANT | CLIENT | REQUISITION', 422, {
+        requestId,
+        details: { reason: 'INVALID_SCOPE', scope: scope ?? null },
+      });
+    }
+    return scope;
+  }
+
+  // §27 — a client-level read carrying a company_id must target a company the caller
+  // tenant owns as a CLIENT (the same CompanyClientCheckPort seam as createDraft).
+  private async assertClientOwned(
+    tenantId: string,
+    companyId: string | undefined,
+    requestId: string,
+    required = false,
+  ): Promise<void> {
+    if (!companyId) {
+      if (required) {
+        throw new AramoError('PRE_START_REQUIREMENT_INVALID', 'CLIENT scope requires scope_ref', 422, {
+          requestId,
+          details: { reason: 'SCOPE_REF_REQUIRED', scope: 'CLIENT' },
+        });
+      }
+      return;
+    }
+    const owned = await this.clientCheck.isClientCompany({ tenant_id: tenantId, company_id: companyId });
+    if (!owned) {
+      throw new AramoError('PRE_START_REQUIREMENT_INVALID', 'company_id is not a CLIENT company of this tenant', 422, {
+        requestId,
+        details: { reason: 'COMPANY_NOT_CLIENT', company_id: companyId },
+      });
+    }
   }
 
   // ---- Instances (read / act / waive) -----------------------------------------
