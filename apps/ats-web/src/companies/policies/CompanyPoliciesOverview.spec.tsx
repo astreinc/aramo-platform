@@ -113,10 +113,11 @@ describe('CompanyPoliciesOverview', () => {
   it('surfaces backend provenance badges (tenant floor, client-added) — not FE-inferred', async () => {
     render(<CompanyPoliciesOverview companyId="co-1" />);
     await waitFor(() => expect(screen.getByText('Work authorization')).toBeInTheDocument());
-    // Two floored requirements across the cards (work auth + background check).
-    expect(screen.getAllByText('Tenant floor').length).toBeGreaterThanOrEqual(2);
-    // "Client-added" appears in the row badge AND the header legend.
-    expect(screen.getAllByText('Client-added').length).toBeGreaterThanOrEqual(1);
+    // Two floored requirements render an inline lock (work auth + background check).
+    expect(screen.getAllByLabelText('Tenant floor').length).toBeGreaterThanOrEqual(2);
+    // The legend keeps the full "Client-added" label; the client-added row shows "Added".
+    expect(screen.getByText('Client-added')).toBeInTheDocument();
+    expect(screen.getAllByText('Added').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('Bill rate')).toBeInTheDocument();
   });
 

@@ -14,7 +14,6 @@ import {
   type RequirementProvenance,
 } from '../policies-api';
 
-import { PolicySourceBadge } from './PolicySourceBadge';
 import {
   submittalLabel,
   engagementLabel,
@@ -85,6 +84,23 @@ function summarize(rows: readonly OverviewRow[], overridable: number, floors: nu
 
 function overrideCount(rows: readonly OverviewRow[]): number {
   return rows.filter((r) => r.provenance.client_override || r.provenance.client_added).length;
+}
+
+// §6 — the compact source chip used in the overview rows (short labels, matching the
+// prototype: Tenant / Override / Added). The full-text badge lives in PolicySourceBadge.
+function ShortSource({ provenance }: { provenance: RequirementProvenance }): JSX.Element {
+  if (provenance.client_added) return <span className="rc-src rc-src--added">Added</span>;
+  if (provenance.client_override) return <span className="rc-src rc-src--override">Override</span>;
+  return <span className="rc-src rc-src--tenant">Tenant</span>;
+}
+
+function LockIcon(): JSX.Element {
+  return (
+    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-label="Tenant floor" className="rc-lock">
+      <rect x="4" y="11" width="16" height="10" rx="2" />
+      <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+    </svg>
+  );
 }
 function metaLine(versions: readonly { version: string; published_at?: string | null; published_by?: string | null }[]): string | null {
   const v = versions[0];
@@ -230,9 +246,18 @@ export function CompanyPoliciesOverview({
             <ul className="rc-policy-reqs">
               {c.rows.map((r) => (
                 <li key={r.label} className="rc-policy-req">
-                  <span className="rc-policy-req__label">{r.label}</span>
-                  <PolicySourceBadge provenance={r.provenance} />
-                  <span className="rc-policy-req__setting">{r.setting}</span>
+                  <span className="rc-policy-req__label">
+                    {r.label}
+                    {r.provenance.tenant_floor ? <LockIcon /> : null}
+                  </span>
+                  <ShortSource provenance={r.provenance} />
+                  <span
+                    className={`rc-policy-req__setting${
+                      r.setting === 'Required' || r.setting === 'Blocking' ? '' : ' rc-policy-req__setting--muted'
+                    }`}
+                  >
+                    {r.setting}
+                  </span>
                 </li>
               ))}
               {c.loaded && c.rows.length === 0 ? (

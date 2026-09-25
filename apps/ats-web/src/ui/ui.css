@@ -5820,3 +5820,22 @@ button.rc-tj__cell:hover { color: #022ac0; text-decoration: underline; }
   .rc-editor-row__ovr { justify-content: flex-start; }
   .rc-prestart-row__head { align-items: flex-start; }
 }
+
+/* CSP Policies — prototype-exact overview rows (short source chip + lock) */
+.rc-policy-req {
+  display: flex; align-items: center; gap: 10px;
+  grid-template-columns: none; border-top: none;
+  padding: 6px 0; border-bottom: 1px solid #f7f8fa;
+}
+.rc-policy-reqs > .rc-policy-req:last-child { border-bottom: none; }
+.rc-policy-req__label { flex: 1; display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: #1b2730; font-weight: 400; }
+.rc-lock { color: #1b2730; flex: none; }
+.rc-src { display: inline-flex; border-radius: 10px; padding: 1.5px 7px; font-size: 9.5px; font-weight: 700; white-space: nowrap; }
+.rc-src--tenant { background: #eef1f4; color: #54606a; }
+.rc-src--override { background: #e8edfb; color: #011f8d; }
+.rc-src--added { background: #fbeadf; color: #c0410c; }
+.rc-policy-req__setting { font-size: 12px; font-weight: 600; color: #1b2730; white-space: nowrap; }
+.rc-policy-req__setting--muted { color: #93a0a8; }
+/* card header — tighten to the prototype */
+.rc-policy-card__title { font-size: 14.5px; font-weight: 700; margin: 0 0 3px; }
+.rc-policy-cards .rc-card, .rc-policy-cards > * > .rc-card { border-radius: 13px; }
