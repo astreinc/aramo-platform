@@ -620,5 +620,30 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(card.readiness?.blockers).toEqual([]);
       expect(card.rtr_state).toBeNull();
     });
+
+    // ---------------------------------------------------------------------------------------
+    // TB6-1 — the DERIVED downstream-handoff marker: cards at/before Client Selected are
+    // Board-owned (handoff=false); cards past the §3.2 boundary (Offer onward) are handoff=true.
+    // ---------------------------------------------------------------------------------------
+    it('TB6-1: handoff is false up to Client Selected and true for Offer/Placement (derived boundary)', async () => {
+      const tenant = randomUUID(); const req = randomUUID();
+      // A recruiting-lane card (qualified) — Board-owned.
+      const tQ = randomUUID(); await seedPipeline(tenant, req, tQ, 'qualified');
+      // A Client-Selected card — the LAST Board-owned column (handoff point, not yet handoff).
+      const tS = randomUUID(); const pS = await seedPipeline(tenant, req, tS, 'qualified');
+      const sS = await seedSubmittal(tenant, tS, req, 'submitted_to_ats', pS, null);
+      await seedSelection(tenant, sS, req, tS, 'SELECTED');
+      // A Started placement — downstream/handoff.
+      const tP = randomUUID(); const pP = await seedPipeline(tenant, req, tP, 'qualified');
+      const sP = await seedSubmittal(tenant, tP, req, 'submitted_to_ats', pP, null);
+      await seedPlacement(tenant, sP, req, tP, 'STARTED');
+
+      const board = await call(tenant, req);
+      expect(anyCard(board, tQ)!.handoff).toBe(false);
+      expect(anyCard(board, tS)!.handoff).toBe(false); // Client Selected is the handoff point, still Board-owned
+      expect(anyCard(board, tP)!.handoff).toBe(true); // Started — downstream, tracked read-only
+      // A handoff card is never governed-draggable / never carries a bounded Board action.
+      expect(anyCard(board, tP)!.next_actions).toEqual([]);
+    });
   },
 );

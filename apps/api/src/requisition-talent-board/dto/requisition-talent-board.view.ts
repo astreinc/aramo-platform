@@ -80,6 +80,10 @@ export interface BoardCardView {
   readonly assigned_recruiter_user_id: string | null; // requisition-grain RequisitionAssignment (§14)
   // TB-3 — the bounded governed next action(s) for this card's current state (may be empty).
   readonly next_actions: readonly BoardNextAction[];
+  // TB-6 — DERIVED downstream-handoff marker: true once the card has crossed the §3.2 handoff
+  // boundary (Offer onward). The Board TRACKS these lifecycles read-only — it never owns them;
+  // a handoff card is not governed-draggable and its commands live in the owning surface.
+  readonly handoff: boolean;
 }
 
 export interface BoardColumnView {

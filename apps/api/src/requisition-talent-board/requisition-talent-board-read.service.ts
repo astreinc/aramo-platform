@@ -71,6 +71,17 @@ const BOARD_COLUMN_ORDER: readonly BoardColumnKey[] = [
   'started',
 ];
 
+// TB-6 — the columns PAST the §3.2 handoff boundary (Offer onward). A card here is downstream:
+// the Board tracks its lifecycle read-only, never owns it. `selected` is the LAST Board-owned
+// column (the handoff point); everything after is handoff/tracking.
+const HANDOFF_COLUMNS: ReadonlySet<BoardColumnKey> = new Set<BoardColumnKey>([
+  'offer',
+  'accepted',
+  'prestart',
+  'ready',
+  'started',
+]);
+
 // One card's placement decision. The DEEPEST owner in the lineage that has a row is
 // authoritative (mirrors `talent-journey-read` "downstream owns it"): it yields either an
 // active column (attributed to that owner row) or a Closed disposition (negative terminal).
@@ -373,6 +384,7 @@ export class RequisitionTalentBoardReadService {
       stage_entered_at,
       assigned_recruiter_user_id: ctx.assigned_recruiter_user_id,
       next_actions: deriveNextActions(winner, row.id),
+      handoff: HANDOFF_COLUMNS.has(winner.column),
     };
   }
 }

@@ -58,7 +58,17 @@ export interface BoardCardView {
   readonly stage_entered_at: string | null;
   readonly assigned_recruiter_user_id: string | null;
   readonly next_actions: readonly BoardNextAction[];
+  readonly handoff: boolean; // TB-6 — derived: past the §3.2 boundary (tracked read-only)
 }
+
+// TB-6 — the downstream owner a handoff card is TRACKED from (read-only; the Board never owns it).
+export const BOARD_OWNER_LABELS: Record<BoardOwner, string> = {
+  pipeline: 'Pipeline',
+  submittal: 'Submittal',
+  client_selection: 'Client',
+  offer: 'Offer',
+  placement: 'Placement',
+};
 
 export interface BoardColumnView {
   readonly key: BoardColumnKey;

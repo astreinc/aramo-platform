@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   getRequisitionTalentBoard,
   BOARD_COLUMN_LABELS,
+  BOARD_OWNER_LABELS,
   closedReasonLabel,
   blockerLabel,
   type BoardCardView,
@@ -71,16 +72,23 @@ function BoardCard({
   // Scope-gate the projected next actions (TB-3): only actions the actor can perform are
   // offered. The server re-authorizes on execution — this is presentation, not the boundary.
   const performable = card.next_actions.filter((a) => scopes.includes(a.required_scope));
+  // TB-6 — a downstream (handoff) card is TRACKED read-only: not governed-draggable; its
+  // commands live in the owning surface. The Board only projects its state + owner.
   return (
     <div
-      className="rc-board__card"
-      draggable
-      onDragStart={(e) => { e.dataTransfer?.setData?.('text/plain', card.pipeline_id); onDragStart(); }}
-      onDragEnd={onDragEnd}
+      className={`rc-board__card${card.handoff ? ' rc-board__card--tracked' : ''}`}
+      draggable={!card.handoff}
+      onDragStart={card.handoff ? undefined : (e) => { e.dataTransfer?.setData?.('text/plain', card.pipeline_id); onDragStart(); }}
+      onDragEnd={card.handoff ? undefined : onDragEnd}
     >
       <Button unstyled type="button" className="rc-board__card-main" onClick={onSelect} aria-label={`Open ${name}`}>
         <span className="rc-board__card-name">{name}</span>
         <span className="rc-board__card-meta">
+          {card.handoff && (
+            <span className="rc-board__tracked" title={`Tracked from ${BOARD_OWNER_LABELS[card.owner]} — the Board does not own this stage`}>
+              Tracked · {BOARD_OWNER_LABELS[card.owner]}
+            </span>
+          )}
           {card.readiness?.band != null && (
             <span
               className={`rc-board__band rc-board__band--${card.readiness.band}`}

@@ -33,6 +33,7 @@ function card(overrides: Partial<BoardCardView> = {}): BoardCardView {
     stage_entered_at: null,
     assigned_recruiter_user_id: null,
     next_actions: [],
+    handoff: false,
     ...overrides,
   };
 }
@@ -149,6 +150,21 @@ describe('RequisitionTalentBoard (TB-2)', () => {
     mockGet.mockRejectedValue(new Error('boom'));
     render(<RequisitionTalentBoard requisitionId="r1" talentNames={NAMES} onSelectCard={vi.fn()} />);
     expect(await screen.findByRole('alert')).toHaveTextContent('boom');
+  });
+
+  // TB-6 — a downstream (handoff) card is presented as tracked read-only, not draggable.
+  it('marks a downstream card as Tracked (read-only) with its owner label', async () => {
+    const c = card({
+      talent_record_id: 't1', pipeline_id: 'p1', column: 'started', owner: 'placement',
+      owner_state: 'STARTED', handoff: true,
+    });
+    mockGet.mockResolvedValue(board({ total_active: 1, columns: [{ key: 'started', owner: 'placement', count: 1, cards: [c] }] }));
+    render(<RequisitionTalentBoard requisitionId="r1" talentNames={NAMES} onSelectCard={vi.fn()} />);
+    const col = await screen.findByLabelText('Started');
+    expect(within(col).getByText('Tracked · Placement')).toBeInTheDocument();
+    // Not draggable (the Board tracks, never owns, downstream).
+    const cardEl = within(col).getByText('Ada Lovelace').closest('.rc-board__card') as HTMLElement;
+    expect(cardEl.getAttribute('draggable')).toBe('false');
   });
 
   // TB-5 — a governed drag from Interviewing onto Client Selected routes to the governed surface;
