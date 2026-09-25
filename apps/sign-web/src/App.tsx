@@ -102,6 +102,7 @@ export function App(): JSX.Element {
       {stage === 'OPEN' && (
         <section>
           <p>You have a document to review and sign.</p>
+          {/* eslint-disable-next-line no-restricted-syntax -- sign-web is the isolated external-signer SPA (scope:sign, R-4-2) with no design-system dependency by design; native controls are a genuine native need (G1 escape hatch). */}
           <button type="button" onClick={() => void open()} disabled={token.length === 0}>
             Open document
           </button>
@@ -112,6 +113,7 @@ export function App(): JSX.Element {
         <section>
           <h2>Electronic Record & Signature Disclosure</h2>
           <p>By continuing you consent to sign this document electronically.</p>
+          {/* eslint-disable-next-line no-restricted-syntax -- sign-web native control (isolated signer SPA, no design-system dep). */}
           <button type="button" onClick={() => void accept()}>I agree</button>
         </section>
       )}
@@ -120,13 +122,17 @@ export function App(): JSX.Element {
           <h2>Apply your signature</h2>
           <label>
             Field id
+            {/* eslint-disable-next-line no-restricted-syntax -- sign-web native control (isolated signer SPA, no design-system dep). */}
             <input value={fieldId} onChange={(e) => setFieldId(e.target.value)} placeholder="signature field id" />
           </label>
           <div className="method">
+            {/* eslint-disable-next-line no-restricted-syntax -- native radio: no fe-foundation Radio primitive exists; isolated signer SPA. */}
             <label><input type="radio" checked={method === 'TYPED'} onChange={() => setMethod('TYPED')} /> Type</label>
+            {/* eslint-disable-next-line no-restricted-syntax -- native radio: no fe-foundation Radio primitive exists; isolated signer SPA. */}
             <label><input type="radio" checked={method === 'DRAWN'} onChange={() => setMethod('DRAWN')} /> Draw</label>
           </div>
           {method === 'TYPED' ? (
+            // eslint-disable-next-line no-restricted-syntax -- sign-web native control (isolated signer SPA, no design-system dep).
             <input aria-label="typed signature" value={typed} onChange={(e) => setTyped(e.target.value)} placeholder="Full name" />
           ) : (
             <canvas
@@ -140,6 +146,7 @@ export function App(): JSX.Element {
               onPointerLeave={endDraw}
             />
           )}
+          {/* eslint-disable-next-line no-restricted-syntax -- sign-web native control (isolated signer SPA, no design-system dep). */}
           <button type="button" onClick={() => void apply()}>Apply signature & complete</button>
           {error.length > 0 && <p className="err">{error}</p>}
         </section>

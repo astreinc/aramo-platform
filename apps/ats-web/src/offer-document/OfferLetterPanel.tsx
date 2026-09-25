@@ -1,3 +1,4 @@
+import { Button } from '@aramo/fe-foundation';
 import { useState } from 'react';
 
 import {
@@ -77,20 +78,20 @@ export function OfferLetterPanel({ offerId, offerState }: OfferLetterPanelProps)
         Offer: <strong>{offerState}</strong>
       </p>
       {documentId === null ? (
-        <button type="button" onClick={() => void onRequest()} disabled={busy}>
+        <Button unstyled type="button" onClick={() => void onRequest()} disabled={busy}>
           Request offer letter
-        </button>
+        </Button>
       ) : (
         <div className="offer-letter-actions">
           <p>
             Letter: <strong>{status !== null ? (STATUS_LABEL[status] ?? status) : 'Unknown'}</strong>
           </p>
-          <button type="button" onClick={() => void onSend()} disabled={busy || executed}>
+          <Button unstyled type="button" onClick={() => void onSend()} disabled={busy || executed}>
             Send for signature
-          </button>
-          <button type="button" onClick={() => void onRefresh()} disabled={busy}>
+          </Button>
+          <Button unstyled type="button" onClick={() => void onRefresh()} disabled={busy}>
             Refresh status
-          </button>
+          </Button>
           {executed && (
             <div className="offer-letter-executed">
               <a href={`/v1/documents/${documentId}/artifacts`}>View Executed Offer</a>
