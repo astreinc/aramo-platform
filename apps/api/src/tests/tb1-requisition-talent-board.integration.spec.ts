@@ -209,6 +209,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
     const cardsIn = (board: Awaited<ReturnType<typeof call>>, key: string) =>
       board.columns.find((c) => c.key === key)?.cards ?? [];
+    const anyCard = (board: Awaited<ReturnType<typeof call>>, talent: string) =>
+      board.columns.flatMap((c) => c.cards).find((c) => c.talent_record_id === talent);
 
     // ---------------------------------------------------------------------------------------
     // TB1-1 — the deepest owner with a row owns the column; SUBMITTED attributes to the
@@ -464,6 +466,65 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const needsCard = cardsIn(board, 'qualified').find((c) => c.talent_record_id === needs)!;
       expect(needsCard.readiness?.band).toBe('needs_action');
       expect(needsCard.readiness?.blockers).toContain('resume_not_selected');
+    });
+
+    // ---------------------------------------------------------------------------------------
+    // TB3-1 — the bounded pipeline recruiter-action ladder is owner-attributed + routed to the
+    // EXISTING governed command (POST /v1/pipelines/:id/actions, pipeline:change-status).
+    // ---------------------------------------------------------------------------------------
+    it('TB3-1: a `qualifying` pipeline card projects a single Qualify action on the governed pipeline route', async () => {
+      const tenant = randomUUID(); const talent = randomUUID(); const req = randomUUID();
+      const pipe = await seedPipeline(tenant, req, talent, 'qualifying');
+
+      const board = await call(tenant, req);
+      const card = anyCard(board, talent)!;
+      expect(card.next_actions).toHaveLength(1);
+      expect(card.next_actions[0]).toMatchObject({
+        key: 'pipeline.qualify',
+        owner: 'pipeline',
+        command_route: `POST /v1/pipelines/${pipe}/actions`,
+        required_scope: 'pipeline:change-status',
+      });
+    });
+
+    // ---------------------------------------------------------------------------------------
+    // TB3-2 — the offer-create action is SELECTED-gated (the S3-FIX sequencing guard): a card in
+    // INTERVIEW never advertises Create offer; a SELECTED card does, on POST /v1/offers.
+    // ---------------------------------------------------------------------------------------
+    it('TB3-2: Create offer appears only on a SELECTED card, never on INTERVIEW (SELECTED-gated handoff)', async () => {
+      const tenant = randomUUID(); const req = randomUUID();
+      const tI = randomUUID(); const pI = await seedPipeline(tenant, req, tI, 'qualified');
+      const sI = await seedSubmittal(tenant, tI, req, 'submitted_to_ats', pI, null);
+      await seedSelection(tenant, sI, req, tI, 'INTERVIEW');
+      const tS = randomUUID(); const pS = await seedPipeline(tenant, req, tS, 'qualified');
+      const sS = await seedSubmittal(tenant, tS, req, 'submitted_to_ats', pS, null);
+      await seedSelection(tenant, sS, req, tS, 'SELECTED');
+
+      const board = await call(tenant, req);
+      const interviewCard = anyCard(board, tI)!;
+      expect(interviewCard.next_actions.some((a) => a.key === 'offer.create')).toBe(false);
+      expect(interviewCard.next_actions.map((a) => a.key)).toEqual(['client_selection.mark_selected']);
+      const selectedCard = anyCard(board, tS)!;
+      expect(selectedCard.next_actions).toEqual([
+        { key: 'offer.create', label: 'Create offer', owner: 'offer', command_route: 'POST /v1/offers', required_scope: 'offer:create' },
+      ]);
+    });
+
+    // ---------------------------------------------------------------------------------------
+    // TB3-3 — a Closed card (and a post-submit submittal with no forward owner command) projects
+    // NO next action (the Board never advertises a command a terminal/handoff card cannot run).
+    // ---------------------------------------------------------------------------------------
+    it('TB3-3: a not_in_consideration card is Closed and carries no card (no action projected)', async () => {
+      const tenant = randomUUID(); const req = randomUUID();
+      await seedPipeline(tenant, req, randomUUID(), 'not_in_consideration');
+      const tSub = randomUUID(); const pSub = await seedPipeline(tenant, req, tSub, 'qualified');
+      await seedSubmittal(tenant, tSub, req, 'submitted_to_ats', pSub, null); // post-submit, client owns next
+
+      const board = await call(tenant, req);
+      expect(board.closed.total).toBe(1);
+      const submittedCard = anyCard(board, tSub)!;
+      expect(submittedCard.column).toBe('submitted');
+      expect(submittedCard.next_actions).toEqual([]); // no bounded Board command at the submittal handoff
     });
   },
 );

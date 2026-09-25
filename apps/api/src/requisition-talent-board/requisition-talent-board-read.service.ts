@@ -25,6 +25,7 @@ import type {
   BoardClosedSummary,
   BoardColumnKey,
   BoardColumnView,
+  BoardNextAction,
   BoardOwner,
   BoardReadiness,
   BoardResume,
@@ -342,7 +343,70 @@ export class RequisitionTalentBoardReadService {
       days_in_stage,
       stage_entered_at,
       assigned_recruiter_user_id: ctx.assigned_recruiter_user_id,
+      next_actions: deriveNextActions(winner, row.id),
     };
+  }
+}
+
+// The BOUNDED next-action projection (TB-3) — the ONE (or zero) governed command the card's
+// DEEPEST owner exposes for its current state. Owner-attributed, routed to an EXISTING
+// governed command, gated by the owner state — mirrors `talent-journey-read.deriveActions`.
+// This is NOT a generic action-availability engine: there is no capability matrix and no
+// `GET /available-actions`; each arm below is a hand-authored owner transition. The offer
+// create is gated on ClientSelection SELECTED (the S3-FIX sequencing guard — never advertise
+// "Create offer" before the client has selected). Downstream owners whose next command needs
+// a child id (pre-start requirement) or is system-driven (placement establishment) emit no
+// Board action — those run in the governed drawer surface (TB-5 rides this same path).
+function deriveNextActions(
+  winner: Extract<CardDecision, { kind: 'active' }>,
+  pipelineId: string,
+): BoardNextAction[] {
+  const PIPELINE_ROUTE = `POST /v1/pipelines/${pipelineId}/actions`;
+  switch (winner.owner) {
+    case 'pipeline':
+      switch (winner.owner_state) {
+        case 'no_contact':
+          return [{ key: 'pipeline.contact', label: 'Mark contacted', owner: 'pipeline', command_route: PIPELINE_ROUTE, required_scope: 'pipeline:change-status' }];
+        case 'contacted':
+          return [{ key: 'pipeline.mark_responded', label: 'Mark responded', owner: 'pipeline', command_route: PIPELINE_ROUTE, required_scope: 'pipeline:change-status' }];
+        case 'talent_responded':
+          return [{ key: 'pipeline.start_qualification', label: 'Start qualification', owner: 'pipeline', command_route: PIPELINE_ROUTE, required_scope: 'pipeline:change-status' }];
+        case 'qualifying':
+          return [{ key: 'pipeline.qualify', label: 'Qualify', owner: 'pipeline', command_route: PIPELINE_ROUTE, required_scope: 'pipeline:change-status' }];
+        default:
+          // `qualified` (top of the recruiter ladder — submit runs in the drawer wizard) and
+          // the `started`/`completed` fallback have no bounded pipeline command here.
+          return [];
+      }
+    case 'client_selection': {
+      const CS_ROUTE = `POST /v1/client-selection/${winner.source_object_id}/transition`;
+      switch (winner.owner_state) {
+        case 'CLIENT_REVIEW':
+          return [{ key: 'client_selection.advance_interview', label: 'Advance to interview', owner: 'client_selection', command_route: CS_ROUTE, required_scope: 'client-selection:transition' }];
+        case 'INTERVIEW':
+          return [{ key: 'client_selection.mark_selected', label: 'Mark client selected', owner: 'client_selection', command_route: CS_ROUTE, required_scope: 'client-selection:transition' }];
+        case 'SELECTED':
+          // Offer creation is the SELECTED-gated §3.2 handoff — the ONLY forward step here.
+          return [{ key: 'offer.create', label: 'Create offer', owner: 'offer', command_route: 'POST /v1/offers', required_scope: 'offer:create' }];
+        default:
+          return [];
+      }
+    }
+    case 'offer':
+      // An OPEN offer (DRAFT/SENT/NEGOTIATION) advances via the generic governed transition;
+      // ACCEPTED is terminal-positive for the offer (placement is downstream/system).
+      return winner.column === 'offer'
+        ? [{ key: 'offer.transition', label: 'Update offer', owner: 'offer', command_route: `PATCH /v1/offers/${winner.source_object_id}`, required_scope: 'offer:transition' }]
+        : [];
+    case 'submittal':
+    case 'placement':
+      // Submittal (post-submit, client owns next) and Placement (pre-start requirement / system
+      // establishment) expose no single bounded Board command — handled in the drawer surface.
+      return [];
+    default: {
+      const _exhaustive: never = winner.owner;
+      return _exhaustive;
+    }
   }
 }
 

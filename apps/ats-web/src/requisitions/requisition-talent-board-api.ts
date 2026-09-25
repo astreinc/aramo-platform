@@ -35,6 +35,15 @@ export interface BoardResume {
   readonly locked: boolean;
 }
 
+// TB-3 — a bounded governed next action (hand-mirror of the backend BoardNextAction).
+export interface BoardNextAction {
+  readonly key: string;
+  readonly label: string;
+  readonly owner: BoardOwner;
+  readonly command_route: string;
+  readonly required_scope: string;
+}
+
 export interface BoardCardView {
   readonly talent_record_id: string;
   readonly pipeline_id: string;
@@ -48,6 +57,7 @@ export interface BoardCardView {
   readonly days_in_stage: number | null;
   readonly stage_entered_at: string | null;
   readonly assigned_recruiter_user_id: string | null;
+  readonly next_actions: readonly BoardNextAction[];
 }
 
 export interface BoardColumnView {

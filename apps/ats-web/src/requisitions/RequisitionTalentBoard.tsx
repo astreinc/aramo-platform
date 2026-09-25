@@ -41,6 +41,9 @@ export interface RequisitionTalentBoardProps {
   readonly talentNames?: Readonly<Record<string, string | undefined>>;
   /** Open the shared TalentDetailPanel drawer for a card's pipeline episode. */
   readonly onSelectCard: (pipelineId: string) => void;
+  /** The actor's scopes — the Board hides a next action the actor cannot perform (TB-3).
+   *  UI hiding is never the boundary: the server re-authorizes every governed command. */
+  readonly scopes?: readonly string[];
 }
 
 function talentLabel(names: RequisitionTalentBoardProps['talentNames'], id: string): string {
@@ -52,49 +55,70 @@ function talentLabel(names: RequisitionTalentBoardProps['talentNames'], id: stri
 function BoardCard({
   card,
   name,
+  scopes,
   onSelect,
 }: {
   card: BoardCardView;
   name: string;
+  scopes: readonly string[];
   onSelect: () => void;
 }): JSX.Element {
+  // Scope-gate the projected next actions (TB-3): only actions the actor can perform are
+  // offered. The server re-authorizes on execution — this is presentation, not the boundary.
+  const performable = card.next_actions.filter((a) => scopes.includes(a.required_scope));
   return (
-    <Button unstyled type="button" className="rc-board__card" onClick={onSelect} aria-label={`Open ${name}`}>
-      <span className="rc-board__card-name">{name}</span>
-      <span className="rc-board__card-meta">
-        {card.readiness?.band != null && (
-          <span
-            className={`rc-board__band rc-board__band--${card.readiness.band}`}
-            data-band={card.readiness.band}
-          >
-            {card.readiness.band === 'ready_to_submit' ? 'Ready to submit' : 'Needs action'}
-          </span>
-        )}
-        {card.resume.locked && (
-          <span className="rc-board__resume-lock" title="Submitted résumé (frozen)">
-            Résumé locked
-          </span>
-        )}
-        {card.days_in_stage != null && (
-          <span className="rc-board__days">{card.days_in_stage}d in stage</span>
-        )}
-      </span>
-      {card.readiness?.band === 'needs_action' && card.readiness.blockers.length > 0 && (
-        <span className="rc-board__blockers">
-          {card.readiness.blockers.map((b) => blockerLabel(b)).join(' · ')}
+    <div className="rc-board__card">
+      <Button unstyled type="button" className="rc-board__card-main" onClick={onSelect} aria-label={`Open ${name}`}>
+        <span className="rc-board__card-name">{name}</span>
+        <span className="rc-board__card-meta">
+          {card.readiness?.band != null && (
+            <span
+              className={`rc-board__band rc-board__band--${card.readiness.band}`}
+              data-band={card.readiness.band}
+            >
+              {card.readiness.band === 'ready_to_submit' ? 'Ready to submit' : 'Needs action'}
+            </span>
+          )}
+          {card.resume.locked && (
+            <span className="rc-board__resume-lock" title="Submitted résumé (frozen)">
+              Résumé locked
+            </span>
+          )}
+          {card.days_in_stage != null && (
+            <span className="rc-board__days">{card.days_in_stage}d in stage</span>
+          )}
         </span>
+        {card.readiness?.band === 'needs_action' && card.readiness.blockers.length > 0 && (
+          <span className="rc-board__blockers">
+            {card.readiness.blockers.map((b) => blockerLabel(b)).join(' · ')}
+          </span>
+        )}
+      </Button>
+      {performable.length > 0 && (
+        <div className="rc-board__actions" aria-label={`Actions for ${name}`}>
+          {performable.map((a) => (
+            // The governed command executes in the owning drawer surface (TB-3 routes there;
+            // TB-5 will drive the same projected command directly). The Board never
+            // re-implements an owner command.
+            <Button key={a.key} unstyled type="button" className="rc-board__action" onClick={onSelect} title={a.command_route}>
+              {a.label}
+            </Button>
+          ))}
+        </div>
       )}
-    </Button>
+    </div>
   );
 }
 
 function BoardColumn({
   column,
   talentNames,
+  scopes,
   onSelectCard,
 }: {
   column: BoardColumnView;
   talentNames: RequisitionTalentBoardProps['talentNames'];
+  scopes: readonly string[];
   onSelectCard: (pipelineId: string) => void;
 }): JSX.Element {
   // The Qualified column splits into its two readiness bands (§6); every other column is flat.
@@ -117,7 +141,7 @@ function BoardColumn({
               <div className="rc-board__band-group">
                 <p className="rc-board__band-label">Ready to submit</p>
                 {ready.map((c) => (
-                  <BoardCard key={c.pipeline_id} card={c} name={talentLabel(talentNames, c.talent_record_id)} onSelect={() => onSelectCard(c.pipeline_id)} />
+                  <BoardCard key={c.pipeline_id} card={c} name={talentLabel(talentNames, c.talent_record_id)} scopes={scopes} onSelect={() => onSelectCard(c.pipeline_id)} />
                 ))}
               </div>
             )}
@@ -125,14 +149,14 @@ function BoardColumn({
               <div className="rc-board__band-group">
                 <p className="rc-board__band-label">Needs action</p>
                 {needs.map((c) => (
-                  <BoardCard key={c.pipeline_id} card={c} name={talentLabel(talentNames, c.talent_record_id)} onSelect={() => onSelectCard(c.pipeline_id)} />
+                  <BoardCard key={c.pipeline_id} card={c} name={talentLabel(talentNames, c.talent_record_id)} scopes={scopes} onSelect={() => onSelectCard(c.pipeline_id)} />
                 ))}
               </div>
             )}
           </>
         ) : (
           column.cards.map((c) => (
-            <BoardCard key={c.pipeline_id} card={c} name={talentLabel(talentNames, c.talent_record_id)} onSelect={() => onSelectCard(c.pipeline_id)} />
+            <BoardCard key={c.pipeline_id} card={c} name={talentLabel(talentNames, c.talent_record_id)} scopes={scopes} onSelect={() => onSelectCard(c.pipeline_id)} />
           ))
         )}
       </div>
@@ -140,7 +164,7 @@ function BoardColumn({
   );
 }
 
-export function RequisitionTalentBoard({ requisitionId, talentNames, onSelectCard }: RequisitionTalentBoardProps): JSX.Element {
+export function RequisitionTalentBoard({ requisitionId, talentNames, onSelectCard, scopes = [] }: RequisitionTalentBoardProps): JSX.Element {
   const [board, setBoard] = useState<RequisitionTalentBoardView | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
@@ -172,7 +196,7 @@ export function RequisitionTalentBoard({ requisitionId, talentNames, onSelectCar
     <div className="rc-board" aria-label="Talent board">
       <div className="rc-board__cols">
         {columns.map((col) => (
-          <BoardColumn key={col.key} column={col} talentNames={talentNames} onSelectCard={onSelectCard} />
+          <BoardColumn key={col.key} column={col} talentNames={talentNames} scopes={scopes} onSelectCard={onSelectCard} />
         ))}
       </div>
       {board.closed.total > 0 && (

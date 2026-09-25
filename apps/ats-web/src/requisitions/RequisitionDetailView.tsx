@@ -1214,6 +1214,7 @@ function TalentJourney({
         <RequisitionTalentBoard
           requisitionId={req.id}
           talentNames={boardTalentNames}
+          scopes={scopes}
           onSelectCard={(pid) => {
             const p = pipelines.find((x) => x.id === pid);
             if (p !== undefined) openRow(p);

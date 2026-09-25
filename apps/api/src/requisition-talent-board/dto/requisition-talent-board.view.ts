@@ -48,6 +48,20 @@ export interface BoardResume {
   readonly locked: boolean; // true once submitted (frozen evidence)
 }
 
+// A single BOUNDED next action (TB-3) — the ONE governed command the card's deepest owner
+// exposes for its current state. NOT a generic action-availability engine (§ prohibitions):
+// there is no `GET /available-actions`, no capability matrix; each entry is an owner-owned
+// command route the Board already knows, gated by the owner state, mirroring
+// `talent-journey-read.deriveActions`. `required_scope` lets the UI hide an action the actor
+// cannot perform — the SERVER stays authoritative (UI hiding is never the boundary, §16).
+export interface BoardNextAction {
+  readonly key: string; // stable action key (e.g. 'pipeline.qualify', 'offer.create')
+  readonly label: string;
+  readonly owner: BoardOwner;
+  readonly command_route: string; // an EXISTING governed command route (never a Board route)
+  readonly required_scope: string;
+}
+
 export interface BoardCardView {
   readonly talent_record_id: string;
   readonly pipeline_id: string;
@@ -64,6 +78,8 @@ export interface BoardCardView {
   readonly days_in_stage: number | null;
   readonly stage_entered_at: string | null; // ISO; the authoritative transition timestamp
   readonly assigned_recruiter_user_id: string | null; // requisition-grain RequisitionAssignment (§14)
+  // TB-3 — the bounded governed next action(s) for this card's current state (may be empty).
+  readonly next_actions: readonly BoardNextAction[];
 }
 
 export interface BoardColumnView {

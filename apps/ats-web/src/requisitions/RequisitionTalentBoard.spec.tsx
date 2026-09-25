@@ -32,6 +32,7 @@ function card(overrides: Partial<BoardCardView> = {}): BoardCardView {
     days_in_stage: null,
     stage_entered_at: null,
     assigned_recruiter_user_id: null,
+    next_actions: [],
     ...overrides,
   };
 }
@@ -148,5 +149,41 @@ describe('RequisitionTalentBoard (TB-2)', () => {
     mockGet.mockRejectedValue(new Error('boom'));
     render(<RequisitionTalentBoard requisitionId="r1" talentNames={NAMES} onSelectCard={vi.fn()} />);
     expect(await screen.findByRole('alert')).toHaveTextContent('boom');
+  });
+
+  // TB-3 — the bounded next-action menu, scope-gated.
+  it('renders a projected next action only when the actor holds its required scope', async () => {
+    const withAction = card({
+      talent_record_id: 't1',
+      pipeline_id: 'p1',
+      column: 'qualified',
+      next_actions: [{ key: 'pipeline.qualify', label: 'Qualify', owner: 'pipeline', command_route: 'POST /v1/pipelines/p1/actions', required_scope: 'pipeline:change-status' }],
+    });
+    mockGet.mockResolvedValue(board({ total_active: 1, columns: [{ key: 'qualified', owner: 'pipeline', count: 1, cards: [withAction] }] }));
+
+    // WITHOUT the scope → the action is hidden (UI hiding is not the boundary, but the affordance is gated).
+    const { unmount } = render(<RequisitionTalentBoard requisitionId="r1" talentNames={NAMES} scopes={[]} onSelectCard={vi.fn()} />);
+    await screen.findByLabelText('Talent board');
+    expect(screen.queryByRole('button', { name: 'Qualify' })).not.toBeInTheDocument();
+    unmount();
+
+    // WITH the scope → the action renders.
+    render(<RequisitionTalentBoard requisitionId="r1" talentNames={NAMES} scopes={['pipeline:change-status']} onSelectCard={vi.fn()} />);
+    expect(await screen.findByRole('button', { name: 'Qualify' })).toBeInTheDocument();
+  });
+
+  it('routes a next action to the governed drawer surface (onSelectCard by pipeline_id)', async () => {
+    const onSelectCard = vi.fn();
+    const c = card({
+      talent_record_id: 't1',
+      pipeline_id: 'pipe-7',
+      column: 'selected',
+      owner: 'client_selection',
+      next_actions: [{ key: 'offer.create', label: 'Create offer', owner: 'offer', command_route: 'POST /v1/offers', required_scope: 'offer:create' }],
+    });
+    mockGet.mockResolvedValue(board({ total_active: 1, columns: [{ key: 'selected', owner: 'client_selection', count: 1, cards: [c] }] }));
+    render(<RequisitionTalentBoard requisitionId="r1" talentNames={NAMES} scopes={['offer:create']} onSelectCard={onSelectCard} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Create offer' }));
+    expect(onSelectCard).toHaveBeenCalledWith('pipe-7');
   });
 });
