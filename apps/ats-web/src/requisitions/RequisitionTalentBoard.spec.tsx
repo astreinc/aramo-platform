@@ -152,6 +152,36 @@ describe('RequisitionTalentBoard (TB-2)', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('boom');
   });
 
+  // TB-7 — scale: the Board renders the target 150-card load (spread across columns) in a
+  // single mount, from ONE backend response (the composer is batched — no per-card fetch).
+  it('renders a 150-card board (scale) with correct per-column counts', async () => {
+    const columnsSpec: Array<{ key: BoardCardView['column']; owner: BoardCardView['owner']; n: number }> = [
+      { key: 'pipeline', owner: 'pipeline', n: 40 },
+      { key: 'contacted', owner: 'pipeline', n: 35 },
+      { key: 'qualified', owner: 'pipeline', n: 30 },
+      { key: 'submitted', owner: 'submittal', n: 25 },
+      { key: 'interview', owner: 'client_selection', n: 20 },
+    ];
+    let id = 0;
+    const columns = columnsSpec.map((c) => ({
+      key: c.key, owner: c.owner, count: c.n,
+      cards: Array.from({ length: c.n }, () => {
+        id += 1;
+        return card({ talent_record_id: `t${id}`, pipeline_id: `p${id}`, column: c.key, owner: c.owner });
+      }),
+    }));
+    const total = columnsSpec.reduce((s, c) => s + c.n, 0); // 150
+    mockGet.mockResolvedValue(board({ total_active: total, columns }));
+
+    render(<RequisitionTalentBoard requisitionId="r1" onSelectCard={vi.fn()} />);
+    await screen.findByLabelText('Talent board');
+    expect(mockGet).toHaveBeenCalledTimes(1); // ONE response drives all 150 cards
+    expect(within(screen.getByLabelText('Pipeline')).getByText('40')).toBeInTheDocument();
+    expect(within(screen.getByLabelText('Interviewing')).getByText('20')).toBeInTheDocument();
+    // Every card rendered (talent-N fallback labels, since no names map supplied).
+    expect(screen.getAllByRole('button', { name: /^Open Talent / }).length).toBe(total);
+  });
+
   // TB-6 — a downstream (handoff) card is presented as tracked read-only, not draggable.
   it('marks a downstream card as Tracked (read-only) with its owner label', async () => {
     const c = card({
