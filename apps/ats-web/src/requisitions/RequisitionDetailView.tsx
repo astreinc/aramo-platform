@@ -1188,13 +1188,13 @@ function TalentJourney({
 
   return (
     <div className="rc-tj">
-      <div className="rc-board__toolbar" role="tablist" aria-label="Talent view">
+      <div className="rc-tboard__toolbar" role="tablist" aria-label="Talent view">
         <Button
           unstyled
           type="button"
           role="tab"
           aria-selected={talentView === 'list'}
-          className={`rc-board__toggle${talentView === 'list' ? ' rc-board__toggle--on' : ''}`}
+          className={`rc-tboard__toggle${talentView === 'list' ? ' rc-tboard__toggle--on' : ''}`}
           onClick={() => setTalentView('list')}
         >
           List
@@ -1204,7 +1204,7 @@ function TalentJourney({
           type="button"
           role="tab"
           aria-selected={talentView === 'board'}
-          className={`rc-board__toggle${talentView === 'board' ? ' rc-board__toggle--on' : ''}`}
+          className={`rc-tboard__toggle${talentView === 'board' ? ' rc-tboard__toggle--on' : ''}`}
           onClick={() => setTalentView('board')}
         >
           Board

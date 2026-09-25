@@ -203,6 +203,7 @@
     "apps/api/src/requisition-state/requisition-state-reader.adapter.ts",
     "apps/api/src/requisition-state/requisition-state-reader.module.ts",
     "apps/api/src/requisition-talent-board/TB-0-projection-contract.md",
+    "apps/api/src/requisition-talent-board/TB-7-visual-acceptance.md",
     "apps/api/src/requisition-talent-board/dto/requisition-talent-board.view.ts",
     "apps/api/src/requisition-talent-board/requisition-talent-board-read.service.ts",
     "apps/api/src/requisition-talent-board/requisition-talent-board.controller.ts",

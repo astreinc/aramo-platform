@@ -131,6 +131,11 @@
       "to": "libs/policy-store/src/lib/window.ts"
     },
     {
+      "from": "apps/api/src/requisition-talent-board/TB-7-visual-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/ats-web/src/ui/ui.css"
+    },
+    {
       "from": "apps/api/src/talent-anchor/erase-talent.command.ts",
       "status": "production",
       "to": "doc/runbooks/talent-rtbf-erasure.md"

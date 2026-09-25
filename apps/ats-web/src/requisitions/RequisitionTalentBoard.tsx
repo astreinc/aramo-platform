@@ -76,54 +76,54 @@ function BoardCard({
   // commands live in the owning surface. The Board only projects its state + owner.
   return (
     <div
-      className={`rc-board__card${card.handoff ? ' rc-board__card--tracked' : ''}`}
+      className={`rc-tboard__card${card.handoff ? ' rc-tboard__card--tracked' : ''}`}
       draggable={!card.handoff}
       onDragStart={card.handoff ? undefined : (e) => { e.dataTransfer?.setData?.('text/plain', card.pipeline_id); onDragStart(); }}
       onDragEnd={card.handoff ? undefined : onDragEnd}
     >
-      <Button unstyled type="button" className="rc-board__card-main" onClick={onSelect} aria-label={`Open ${name}`}>
-        <span className="rc-board__card-name">{name}</span>
-        <span className="rc-board__card-meta">
+      <Button unstyled type="button" className="rc-tboard__card-main" onClick={onSelect} aria-label={`Open ${name}`}>
+        <span className="rc-tboard__card-name">{name}</span>
+        <span className="rc-tboard__card-meta">
           {card.handoff && (
-            <span className="rc-board__tracked" title={`Tracked from ${BOARD_OWNER_LABELS[card.owner]} — the Board does not own this stage`}>
+            <span className="rc-tboard__tracked" title={`Tracked from ${BOARD_OWNER_LABELS[card.owner]} — the Board does not own this stage`}>
               Tracked · {BOARD_OWNER_LABELS[card.owner]}
             </span>
           )}
           {card.readiness?.band != null && (
             <span
-              className={`rc-board__band rc-board__band--${card.readiness.band}`}
+              className={`rc-tboard__band rc-tboard__band--${card.readiness.band}`}
               data-band={card.readiness.band}
             >
               {card.readiness.band === 'ready_to_submit' ? 'Ready to submit' : 'Needs action'}
             </span>
           )}
           {card.resume.locked && (
-            <span className="rc-board__resume-lock" title="Submitted résumé (frozen)">
+            <span className="rc-tboard__resume-lock" title="Submitted résumé (frozen)">
               Résumé locked
             </span>
           )}
           {card.rtr_state === 'NOT_EXECUTED' && (
-            <span className="rc-board__rtr" title="Right to represent not executed">
+            <span className="rc-tboard__rtr" title="Right to represent not executed">
               RTR needed
             </span>
           )}
           {card.days_in_stage != null && (
-            <span className="rc-board__days">{card.days_in_stage}d in stage</span>
+            <span className="rc-tboard__days">{card.days_in_stage}d in stage</span>
           )}
         </span>
         {card.readiness?.band === 'needs_action' && card.readiness.blockers.length > 0 && (
-          <span className="rc-board__blockers">
+          <span className="rc-tboard__blockers">
             {card.readiness.blockers.map((b) => blockerLabel(b)).join(' · ')}
           </span>
         )}
       </Button>
       {performable.length > 0 && (
-        <div className="rc-board__actions" aria-label={`Actions for ${name}`}>
+        <div className="rc-tboard__actions" aria-label={`Actions for ${name}`}>
           {performable.map((a) => (
             // The governed command executes in the owning drawer surface (TB-3 routes there;
             // TB-5 will drive the same projected command directly). The Board never
             // re-implements an owner command.
-            <Button key={a.key} unstyled type="button" className="rc-board__action" onClick={onSelect} title={a.command_route}>
+            <Button key={a.key} unstyled type="button" className="rc-tboard__action" onClick={onSelect} title={a.command_route}>
               {a.label}
             </Button>
           ))}
@@ -170,30 +170,30 @@ function BoardColumn({
 
   return (
     <section
-      className={`rc-board__col${isDropTarget ? ' rc-board__col--drop' : ''}`}
+      className={`rc-tboard__col${isDropTarget ? ' rc-tboard__col--drop' : ''}`}
       aria-label={BOARD_COLUMN_LABELS[column.key]}
       data-drop-target={isDropTarget || undefined}
       onDragOver={(e) => { if (isDropTarget) e.preventDefault(); }}
       onDrop={(e) => { if (isDropTarget) { e.preventDefault(); onDropCard(column.key); } }}
     >
-      <header className="rc-board__col-head">
-        <span className="rc-board__col-title">{BOARD_COLUMN_LABELS[column.key]}</span>
-        <span className="rc-board__col-count">{column.count}</span>
+      <header className="rc-tboard__col-head">
+        <span className="rc-tboard__col-title">{BOARD_COLUMN_LABELS[column.key]}</span>
+        <span className="rc-tboard__col-count">{column.count}</span>
       </header>
-      <div className="rc-board__col-body">
+      <div className="rc-tboard__col-body">
         {column.count === 0 ? (
-          <p className="rc-board__empty">—</p>
+          <p className="rc-tboard__empty">—</p>
         ) : isQualified ? (
           <>
             {ready.length > 0 && (
-              <div className="rc-board__band-group">
-                <p className="rc-board__band-label">Ready to submit</p>
+              <div className="rc-tboard__band-group">
+                <p className="rc-tboard__band-label">Ready to submit</p>
                 {ready.map(renderCard)}
               </div>
             )}
             {needs.length > 0 && (
-              <div className="rc-board__band-group">
-                <p className="rc-board__band-label">Needs action</p>
+              <div className="rc-tboard__band-group">
+                <p className="rc-tboard__band-label">Needs action</p>
                 {needs.map(renderCard)}
               </div>
             )}
@@ -246,13 +246,13 @@ export function RequisitionTalentBoard({ requisitionId, talentNames, onSelectCar
     // Rejected drops snap back (no-op) — the governance is the resolver, not the drop target.
   };
 
-  if (loading) return <p className="rc-board__status" role="status">Loading board…</p>;
-  if (error.length > 0) return <p className="rc-board__status rc-board__status--error" role="alert">{error}</p>;
-  if (board === null) return <p className="rc-board__status">No board.</p>;
+  if (loading) return <p className="rc-tboard__status" role="status">Loading board…</p>;
+  if (error.length > 0) return <p className="rc-tboard__status rc-tboard__status--error" role="alert">{error}</p>;
+  if (board === null) return <p className="rc-tboard__status">No board.</p>;
 
   return (
-    <div className="rc-board" aria-label="Talent board">
-      <div className="rc-board__cols">
+    <div className="rc-tboard" aria-label="Talent board">
+      <div className="rc-tboard__cols">
         {columns.map((col) => (
           <BoardColumn
             key={col.key}
@@ -268,15 +268,15 @@ export function RequisitionTalentBoard({ requisitionId, talentNames, onSelectCar
         ))}
       </div>
       {board.closed.total > 0 && (
-        <details className="rc-board__closed">
-          <summary className="rc-board__closed-summary">
-            Closed <span className="rc-board__col-count">{board.closed.total}</span>
+        <details className="rc-tboard__closed">
+          <summary className="rc-tboard__closed-summary">
+            Closed <span className="rc-tboard__col-count">{board.closed.total}</span>
           </summary>
-          <ul className="rc-board__closed-list">
+          <ul className="rc-tboard__closed-list">
             {board.closed.by_reason.map((r) => (
-              <li key={r.reason} className="rc-board__closed-row">
+              <li key={r.reason} className="rc-tboard__closed-row">
                 <span>{closedReasonLabel(r.reason)}</span>
-                <span className="rc-board__col-count">{r.count}</span>
+                <span className="rc-tboard__col-count">{r.count}</span>
               </li>
             ))}
           </ul>

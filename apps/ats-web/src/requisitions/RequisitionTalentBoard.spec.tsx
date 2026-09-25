@@ -193,7 +193,7 @@ describe('RequisitionTalentBoard (TB-2)', () => {
     const col = await screen.findByLabelText('Started');
     expect(within(col).getByText('Tracked · Placement')).toBeInTheDocument();
     // Not draggable (the Board tracks, never owns, downstream).
-    const cardEl = within(col).getByText('Ada Lovelace').closest('.rc-board__card') as HTMLElement;
+    const cardEl = within(col).getByText('Ada Lovelace').closest('.rc-tboard__card') as HTMLElement;
     expect(cardEl.getAttribute('draggable')).toBe('false');
   });
 
@@ -209,7 +209,7 @@ describe('RequisitionTalentBoard (TB-2)', () => {
     render(<RequisitionTalentBoard requisitionId="r1" talentNames={NAMES} scopes={['client-selection:transition']} onSelectCard={onSelectCard} />);
     await screen.findByLabelText('Talent board');
 
-    const cardEl = screen.getByText('Ada Lovelace').closest('.rc-board__card') as HTMLElement;
+    const cardEl = screen.getByText('Ada Lovelace').closest('.rc-tboard__card') as HTMLElement;
     const selectedCol = screen.getByLabelText('Client Selected');
     fireEvent.dragStart(cardEl);
     fireEvent.dragOver(selectedCol);
@@ -227,7 +227,7 @@ describe('RequisitionTalentBoard (TB-2)', () => {
     render(<RequisitionTalentBoard requisitionId="r1" talentNames={NAMES} scopes={[]} onSelectCard={onSelectCard} />);
     await screen.findByLabelText('Talent board');
 
-    const cardEl = screen.getByText('Ada Lovelace').closest('.rc-board__card') as HTMLElement;
+    const cardEl = screen.getByText('Ada Lovelace').closest('.rc-tboard__card') as HTMLElement;
     const selectedCol = screen.getByLabelText('Client Selected');
     fireEvent.dragStart(cardEl);
     fireEvent.drop(selectedCol);
