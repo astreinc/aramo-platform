@@ -90,6 +90,7 @@
       "@aramo/canonical-reconcile": ["libs/canonical-reconcile/src/index.ts"],
       "@aramo/sourced-talent": ["libs/sourced-talent/src/index.ts"],
       "@aramo/submittal": ["libs/submittal/src/index.ts"],
+      "@aramo/client-submittal-policy": ["libs/client-submittal-policy/src/index.ts"],
       "@aramo/submittal-eligibility": ["libs/submittal-eligibility/src/index.ts"],
       "@aramo/tenant-reset": ["libs/tenant-reset/src/index.ts"],
       "@aramo/talent-evidence": ["libs/talent-evidence/src/index.ts"],
