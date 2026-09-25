@@ -12,6 +12,13 @@ import {
 } from '../policies-api';
 
 import { PolicySourceBadge } from './PolicySourceBadge';
+import {
+  submittalLabel,
+  engagementLabel,
+  dispositionSetting,
+  requiredSetting,
+  blockingSetting,
+} from './labels';
 
 // CSP PA-3 — the Company → Policies overview (§5). Three lifecycle policy cards
 // (Engagement · Client Submittal · Pre-Start), each showing the effective version, a
@@ -28,27 +35,19 @@ interface OverviewRow {
   readonly provenance: RequirementProvenance;
 }
 
-const SUBMITTAL_LABELS: Record<string, string> = {
-  resume_selected: 'Résumé selected',
-  engagement_satisfied: 'Engagement satisfied',
-  work_authorization_present: 'Work authorization',
-  bill_rate_present: 'Bill rate',
-  rtr_present: 'Right to Represent',
-};
-
 function submittalRows(v: ClientSubmittalEffectiveView | null): OverviewRow[] {
   if (v === null) return [];
   return v.requirements.map((r) => ({
-    label: SUBMITTAL_LABELS[r.key] ?? r.key,
-    setting: r.effective.disposition === 'REQUIRED' ? 'Required' : 'Not required',
+    label: submittalLabel(r.key),
+    setting: dispositionSetting(r.effective.disposition),
     provenance: r.provenance,
   }));
 }
 function engagementRows(v: EngagementEffectiveView | null): OverviewRow[] {
   if (v === null) return [];
   return v.requirements.map((r) => ({
-    label: r.channel === 'voice' ? 'Voice engagement' : 'Email engagement',
-    setting: r.requirement.required ? 'Required' : 'Not required',
+    label: engagementLabel(r.channel),
+    setting: requiredSetting(r.requirement.required),
     provenance: r.provenance,
   }));
 }
@@ -56,7 +55,7 @@ function preStartRows(v: PreStartEffectiveView | null): OverviewRow[] {
   if (v === null) return [];
   return v.definitions.map((d) => ({
     label: d.label,
-    setting: d.blocking ? 'Blocking' : 'Non-blocking',
+    setting: blockingSetting(d.blocking),
     provenance: d.provenance,
   }));
 }

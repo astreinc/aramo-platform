@@ -27,7 +27,7 @@ import {
 } from '../ui';
 import { CompanyAssignmentsView } from '../assignments/CompanyAssignmentsView';
 
-import { CompanyPoliciesOverview } from './policies/CompanyPoliciesOverview';
+import { CompanyPoliciesView } from './policies/CompanyPoliciesView';
 import {
   getCompany,
   getCompanyPlacements,
@@ -342,7 +342,7 @@ export function CompanyDetailView({ sessionOverride }: CompanyDetailViewProps) {
         label: 'Policies',
         content: (
           <div className="rc-mt-16">
-            <CompanyPoliciesOverview companyId={company.id} canConfigure={canConfigurePolicies} />
+            <CompanyPoliciesView companyId={company.id} canConfigure={canConfigurePolicies} />
           </div>
         ),
       });
