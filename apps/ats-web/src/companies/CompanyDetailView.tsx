@@ -27,6 +27,7 @@ import {
 } from '../ui';
 import { CompanyAssignmentsView } from '../assignments/CompanyAssignmentsView';
 
+import { CompanyPoliciesOverview } from './policies/CompanyPoliciesOverview';
 import {
   getCompany,
   getCompanyPlacements,
@@ -142,6 +143,15 @@ export function CompanyDetailView({ sessionOverride }: CompanyDetailViewProps) {
   const canReadReqs = scopes.includes('requisition:read');
   const canReadActivity = scopes.includes('activity:read');
   const canReadTasks = scopes.includes('task:read');
+  // CSP PA-3 — the Company → Policies tab is a CLIENT-management surface: shown for a
+  // CLIENT company to an actor with a policy read scope. Per-domain Configure is gated
+  // on each domain's write authority; server authorization remains authoritative.
+  const canReadPolicies = scopes.includes('client-submittal-policy:read');
+  const canConfigurePolicies = {
+    engagement: scopes.includes('engagement:policy:write'),
+    'client-submittal': scopes.includes('client-submittal-policy:write'),
+    'pre-start': scopes.includes('pre_start_requirement:configure'),
+  } as const;
 
   useEffect(() => {
     if (companyId === undefined) return;
@@ -326,6 +336,17 @@ export function CompanyDetailView({ sessionOverride }: CompanyDetailViewProps) {
       label: `Requisitions (${reqs.length})`,
       content: <JobsPanel reqs={reqs} error={reqsError} />,
     });
+    if (canReadPolicies && companyTypes(company).includes('CLIENT')) {
+      tabs.push({
+        id: 'policies',
+        label: 'Policies',
+        content: (
+          <div className="rc-mt-16">
+            <CompanyPoliciesOverview companyId={company.id} canConfigure={canConfigurePolicies} />
+          </div>
+        ),
+      });
+    }
     tabs.push({
       id: 'placements',
       label: `Placements (${placements.length})`,

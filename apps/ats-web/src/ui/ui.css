@@ -5738,3 +5738,37 @@ button.rc-tj__cell:hover { color: #022ac0; text-decoration: underline; }
    here or it fills the container (the edit-bar pencil blanked the Overview). */
 .rc-editbar > svg { flex: none; width: 15px; height: 15px; color: var(--brand-strong, #022AC0); }
 .rc-editbar__msg { flex: 1; min-width: 220px; font-size: 0.8rem; color: #3a454e; }
+
+/* ── CSP Company → Policies (PA-3) ────────────────────────────────────────────
+   The Policies tab: an overview of the three lifecycle policies as side-by-side
+   cards, each a list of effective requirements with backend provenance badges. */
+.rc-policies__head { margin-bottom: 16px; }
+.rc-policy-cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+@media (max-width: 1100px) { .rc-policy-cards { grid-template-columns: 1fr; } }
+.rc-policy-card__head { margin-bottom: 12px; }
+.rc-policy-card__title { font-size: 1rem; font-weight: 600; color: #0f1928; margin: 0 0 4px; }
+.rc-policy-card__meta { margin-top: 8px; }
+.rc-policy-reqs { list-style: none; margin: 12px 0 0; padding: 0; }
+.rc-policy-req {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  border-top: 1px solid var(--rc-hairline, #eef1f4);
+  font-size: 0.85rem;
+}
+.rc-policy-req__label { color: #1f2933; font-weight: 500; }
+.rc-policy-req__setting { color: #3a454e; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rc-badges { display: inline-flex; gap: 6px; flex-wrap: wrap; }
+.rc-policy-card__actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
