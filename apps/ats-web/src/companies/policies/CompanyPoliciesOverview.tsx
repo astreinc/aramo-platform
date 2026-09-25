@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-import { Card, StatusPill, Button } from '../../ui';
+import { Button } from '../../ui';
 import {
   getClientSubmittalEffective,
   getClientSubmittalHistory,
@@ -34,6 +34,7 @@ export type PolicyMode = 'configure' | 'effective' | 'history';
 interface OverviewRow {
   readonly label: string;
   readonly setting: string;
+  readonly required: boolean;
   readonly provenance: RequirementProvenance;
 }
 
@@ -42,6 +43,7 @@ function submittalRows(v: ClientSubmittalEffectiveView | null): OverviewRow[] {
   return v.requirements.map((r) => ({
     label: submittalLabel(r.key),
     setting: dispositionSetting(r.effective.disposition),
+    required: r.effective.disposition === 'REQUIRED',
     provenance: r.provenance,
   }));
 }
@@ -50,6 +52,7 @@ function engagementRows(v: EngagementEffectiveView | null): OverviewRow[] {
   return v.requirements.map((r) => ({
     label: engagementLabel(r.channel),
     setting: requiredSetting(r.requirement.required),
+    required: r.requirement.required,
     provenance: r.provenance,
   }));
 }
@@ -58,6 +61,7 @@ function preStartRows(v: PreStartEffectiveView | null): OverviewRow[] {
   return v.definitions.map((d) => ({
     label: d.label,
     setting: blockingSetting(d.blocking),
+    required: true,
     provenance: d.provenance,
   }));
 }
@@ -197,91 +201,88 @@ export function CompanyPoliciesOverview({
   }, [companyId]);
 
   const clientLabel = companyName === undefined ? 'Client policy' : `Client policy · ${companyName}`;
+  const clientName = companyName ?? 'this client';
   return (
-    <div className="rc-policies">
-      <div className="rc-policies__head">
-        <div>
-          <h3 className="rc-section-h">Policies</h3>
-          <p className="rc-muted-line">Configure lifecycle requirements for working with this client.</p>
+    <div className="rc-pol">
+      <div className="rc-pol__head">
+        <div className="rc-pol__headmain">
+          <div className="rc-pol__title">Policies</div>
+          <div className="rc-pol__subtitle">Configure lifecycle requirements for working with {clientName}.</div>
         </div>
-        {/* §6 — the provenance legend; the badges themselves are backend truth. */}
-        <div className="rc-policies__legend">
-          <span className="rc-muted-line">Source:</span>
-          <StatusPill tone="neutral">Inherited from tenant</StatusPill>
-          <StatusPill tone="info">Client override</StatusPill>
-          <StatusPill tone="warn">Client-added</StatusPill>
-        </div>
+        <span className="rc-pol__legend">
+          <span className="rc-pol__legend-lbl">Source:</span>
+          <span className="rc-pol-lgd rc-pol-lgd--tenant">Inherited from tenant</span>
+          <span className="rc-pol-lgd rc-pol-lgd--override">Client override</span>
+          <span className="rc-pol-lgd rc-pol-lgd--added">Client-added</span>
+        </span>
       </div>
-      {/* §5 — the TENANT → CLIENT → REQUISITION layering, in business language. */}
-      <div className="rc-tier-strip">
-        <div className="rc-tier">
-          <span className="rc-tier__n">1</span>
-          <span><b>Tenant defaults</b><span className="rc-muted-line">Baseline requirements for every client</span></span>
-        </div>
-        <div className="rc-tier rc-tier--active">
-          <span className="rc-tier__n rc-tier__n--active">2</span>
-          <span><b>{clientLabel}</b><span className="rc-muted-line">Adds or overrides where tenant policy permits</span></span>
-        </div>
-        <div className="rc-tier">
-          <span className="rc-tier__n">3</span>
-          <span><b>Requisition requirements</b><span className="rc-muted-line">Can add more; cannot weaken locked requirements</span></span>
-        </div>
+
+      <div className="rc-pol-tiers">
+        {[
+          { n: '1', t: 'Tenant defaults', d: 'Baseline requirements for every client', on: false },
+          { n: '2', t: clientLabel, d: 'Adds or overrides where tenant policy permits', on: true },
+          { n: '3', t: 'Requisition requirements', d: 'Can add more requirements; cannot weaken locked requirements', on: false },
+        ].map((tier) => (
+          <div key={tier.n} className={`rc-pol-tier${tier.on ? ' rc-pol-tier--on' : ''}`}>
+            <span className={`rc-pol-tier__n${tier.on ? ' rc-pol-tier__n--on' : ''}`}>{tier.n}</span>
+            <span className="rc-pol-tier__text">
+              <span className="rc-pol-tier__t">{tier.t}</span>
+              <span className="rc-pol-tier__d">{tier.d}</span>
+            </span>
+          </div>
+        ))}
       </div>
+
       {error !== null ? <p className="rc-muted-line">{error}</p> : null}
-      <div className="rc-policy-cards">
+
+      <div className="rc-pol-cards">
         {cards.map((c) => (
-          <Card key={c.domain} className="rc-policy-card">
-            <div className="rc-policy-card__head">
-              <h4 className="rc-policy-card__title">{c.title}</h4>
-              <p className="rc-muted-line">{c.description}</p>
-              <div className="rc-policy-card__meta">
-                {c.overrides > 0 ? (
-                  <StatusPill tone="info">{c.overrides} client override{c.overrides === 1 ? '' : 's'}</StatusPill>
-                ) : (
-                  <StatusPill tone="neutral">Tenant defaults only</StatusPill>
-                )}
-                {c.meta !== null ? <span className="rc-muted-line">{c.meta}</span> : null}
+          <div key={c.domain} className="rc-pol-card">
+            <div className="rc-pol-card__head">
+              <div className="rc-pol-card__title">{c.title}</div>
+              <div className="rc-pol-card__purpose">{c.description}</div>
+              <div className="rc-pol-card__statusrow">
+                <span className={`rc-pol-status rc-pol-status--${c.overrides > 0 ? 'client' : 'tenant'}`}>
+                  <span className="rc-pol-status__dot" />
+                  {c.overrides > 0 ? `Client overrides · ${c.overrides}` : 'Tenant defaults only'}
+                </span>
               </div>
+              {c.meta !== null ? <div className="rc-pol-card__meta">{c.meta}</div> : null}
             </div>
-            <ul className="rc-policy-reqs">
+            <div className="rc-pol-card__body">
               {c.rows.map((r) => (
-                <li key={r.label} className="rc-policy-req">
-                  <span className="rc-policy-req__label">
+                <div key={r.label} className="rc-pol-row">
+                  <span className="rc-pol-row__label">
                     {r.label}
                     {r.provenance.tenant_floor ? <LockIcon /> : null}
                   </span>
                   <ShortSource provenance={r.provenance} />
-                  <span
-                    className={`rc-policy-req__setting${
-                      r.setting === 'Required' || r.setting === 'Blocking' ? '' : ' rc-policy-req__setting--muted'
-                    }`}
-                  >
-                    {r.setting}
-                  </span>
-                </li>
+                  <span className={`rc-pol-row__val${r.required ? '' : ' rc-pol-row__val--muted'}`}>{r.setting}</span>
+                </div>
               ))}
               {c.loaded && c.rows.length === 0 ? (
-                <li className="rc-muted-line">No effective requirements — inherits tenant defaults.</li>
+                <div className="rc-pol-row rc-pol-row--empty">No effective requirements — inherits tenant defaults.</div>
               ) : null}
-            </ul>
-            <p className="rc-footnote">{c.summary}</p>
-            <div className="rc-policy-card__actions">
+              <div className="rc-pol-card__counts">{c.summary}</div>
+            </div>
+            <div className="rc-pol-card__foot">
               {canConfigure?.[c.domain] ? (
-                <Button size="sm" onClick={() => onOpen?.(c.domain, 'configure')}>
+                <Button unstyled className="rc-pol-btn" onClick={() => onOpen?.(c.domain, 'configure')}>
                   Configure policy
                 </Button>
               ) : null}
-              <Button unstyled className="rc-link-action" onClick={() => onOpen?.(c.domain, 'effective')}>
+              <Button unstyled className="rc-pol-link" onClick={() => onOpen?.(c.domain, 'effective')}>
                 View effective policy
               </Button>
-              <Button unstyled className="rc-link-action rc-link-action--muted" onClick={() => onOpen?.(c.domain, 'history')}>
+              <Button unstyled className="rc-pol-link rc-pol-link--muted" onClick={() => onOpen?.(c.domain, 'history')}>
                 History
               </Button>
             </div>
-          </Card>
+          </div>
         ))}
       </div>
-      <p className="rc-footnote">
+
+      <p className="rc-pol__foot">
         Policies are authored here and enforced where the work happens — submittal checks on the
         requisition, engagement evidence on communication, and the Pre-Start checklist on the placement.
       </p>
