@@ -12,6 +12,12 @@ export type {
   EngagementScopeContext,
   PublishEngagementPolicyInput,
   PublishedEngagementPolicy,
+  EngagementRequirementProvenance,
+  EffectiveEngagementRequirementView,
+  EffectiveEngagementView,
+  EngagementLayerView,
+  EngagementLayersView,
+  EngagementHistoryEntry,
 } from './lib/engagement-policy.service.js';
 
 // Persistence port (adapter provided by apps/api, R12/R13).
