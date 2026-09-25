@@ -60,4 +60,11 @@ export type {
   ClientSubmittalScopeContext,
   EffectiveLayerRef,
   ResolvedClientSubmittalPolicy,
+  RequirementSourceRef,
+  RequirementProvenance,
+  EffectiveRequirementView,
+  EffectivePolicyView,
+  PolicyLayerView,
+  PolicyLayersView,
+  PolicyVersionHistoryEntry,
 } from './lib/client-submittal-policy.service.js';

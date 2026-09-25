@@ -23,7 +23,11 @@ export class ClientSubmittalPolicyController {
     @Inject(COMPANY_CLIENT_CHECK_PORT) private readonly clientCheck: CompanyClientCheckPort,
   ) {}
 
-  /** The effective (TENANT/CLIENT/REQUISITION-resolved) policy, or null. */
+  /**
+   * The effective (TENANT/CLIENT/REQUISITION-resolved) policy with per-requirement
+   * source layer + provenance (§7/§9), or null. This is the authoritative effective
+   * read the admin UI consumes — provenance is backend truth, never FE-inferred.
+   */
   @Get('effective')
   @HttpCode(HttpStatus.OK)
   @RequireScopes('client-submittal-policy:read')
@@ -31,12 +35,102 @@ export class ClientSubmittalPolicyController {
     @Query('company_id') companyId: string | undefined,
     @Query('requisition_id') requisitionId: string | undefined,
     @AuthContext() auth: AuthContextType,
+    @RequestId() requestId: string,
   ): Promise<{ effective: unknown }> {
-    const effective = await this.policy.resolveEffective(auth.tenant_id, {
+    await this.assertClientOwned(auth.tenant_id, companyId, requestId);
+    const effective = await this.policy.resolveEffectiveView(auth.tenant_id, {
       company_id: companyId ?? null,
       requisition_id: requisitionId ?? null,
     });
     return { effective };
+  }
+
+  /**
+   * The raw per-layer read (§8): each scope's OWN definition (TENANT / CLIENT /
+   * REQUISITION) plus the merged effective. Powers the editor's inherit/override
+   * toggles and the "Tenant: X -> Client: Y" delta.
+   */
+  @Get('layers')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('client-submittal-policy:read')
+  async layers(
+    @Query('company_id') companyId: string | undefined,
+    @Query('requisition_id') requisitionId: string | undefined,
+    @AuthContext() auth: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<{ layers: unknown }> {
+    await this.assertClientOwned(auth.tenant_id, companyId, requestId);
+    const layers = await this.policy.readLayers(auth.tenant_id, {
+      company_id: companyId ?? null,
+      requisition_id: requisitionId ?? null,
+    });
+    return { layers };
+  }
+
+  /**
+   * The immutable version history for one policy scope (§10), newest first. A CLIENT
+   * scope's scope_ref must be an owned client company.
+   */
+  @Get('history')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('client-submittal-policy:read')
+  async history(
+    @Query('scope') scope: string | undefined,
+    @Query('scope_ref') scopeRef: string | undefined,
+    @AuthContext() auth: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<{ versions: unknown }> {
+    const resolvedScope = this.assertScope(scope, requestId);
+    if (resolvedScope === 'CLIENT') {
+      await this.assertClientOwned(auth.tenant_id, scopeRef, requestId, true);
+    }
+    if ((resolvedScope === 'CLIENT' || resolvedScope === 'REQUISITION') && !scopeRef) {
+      throw new AramoError('CLIENT_SUBMITTAL_POLICY_INVALID', `${resolvedScope} scope requires scope_ref`, 422, {
+        requestId,
+        details: { reason: 'SCOPE_REF_REQUIRED', scope: resolvedScope },
+      });
+    }
+    const versions = await this.policy.history(auth.tenant_id, resolvedScope, scopeRef ?? null);
+    return { versions };
+  }
+
+  private assertScope(scope: string | undefined, requestId: string): ClientSubmittalPolicyScope {
+    if (scope !== 'TENANT' && scope !== 'CLIENT' && scope !== 'REQUISITION') {
+      throw new AramoError('CLIENT_SUBMITTAL_POLICY_INVALID', 'scope must be TENANT | CLIENT | REQUISITION', 422, {
+        requestId,
+        details: { reason: 'INVALID_SCOPE', scope: scope ?? null },
+      });
+    }
+    return scope;
+  }
+
+  /**
+   * §27 — a client-level read carrying a company_id must target a company the caller
+   * tenant owns as a CLIENT (the same CompanyClientCheckPort seam as publish). `required`
+   * forces the check even for a history scope_ref.
+   */
+  private async assertClientOwned(
+    tenantId: string,
+    companyId: string | undefined,
+    requestId: string,
+    required = false,
+  ): Promise<void> {
+    if (!companyId) {
+      if (required) {
+        throw new AramoError('CLIENT_SUBMITTAL_POLICY_INVALID', 'CLIENT scope requires scope_ref', 422, {
+          requestId,
+          details: { reason: 'SCOPE_REF_REQUIRED', scope: 'CLIENT' },
+        });
+      }
+      return;
+    }
+    const owned = await this.clientCheck.isClientCompany({ tenant_id: tenantId, company_id: companyId });
+    if (!owned) {
+      throw new AramoError('CLIENT_SUBMITTAL_POLICY_INVALID', 'company_id is not a CLIENT company of this tenant', 422, {
+        requestId,
+        details: { reason: 'COMPANY_NOT_CLIENT', company_id: companyId },
+      });
+    }
   }
 
   /** Publish a new immutable version at TENANT / CLIENT / REQUISITION scope. */

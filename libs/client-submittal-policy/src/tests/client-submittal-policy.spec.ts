@@ -205,3 +205,94 @@ describe('resolveEffective + decide', () => {
     expect(svc.decide(TENANT, eff!, { resume_selected: true, bill_rate_present: false }, 'c').decision).toBe('ALLOW');
   });
 });
+
+describe('read-side provenance / raw layers / history (PA-1)', () => {
+  const tenantDef = def(
+    req('resume_selected', 'REQUIRED', 'HARD_DENY', 'DEFAULT'),
+    req('work_authorization_present', 'REQUIRED', 'HARD_DENY', 'FLOOR'),
+  );
+  const clientDef = def(
+    req('resume_selected', 'REQUIRED', 'OVERRIDABLE', 'DEFAULT'), // override — changes override_class
+    req('bill_rate_present', 'REQUIRED', 'HARD_DENY', 'DEFAULT'), // client-added
+  );
+  const pkgClientA = clientSubmittalPackageName('CLIENT', COMPANY_A);
+  const svc = new ClientSubmittalPolicyService(
+    new FakeGateway([row(pkgTenant, '1', tenantDef), row(pkgClientA, '1', clientDef)]),
+  );
+
+  it('resolveEffectiveView annotates each requirement with source layer + provenance', async () => {
+    const view = await svc.resolveEffectiveView(TENANT, { company_id: COMPANY_A, requisition_id: null });
+    expect(view).not.toBeNull();
+    const byKey = Object.fromEntries(view!.requirements.map((r) => [r.key, r]));
+
+    // Overridden at CLIENT (tenant had it, client changed override_class).
+    expect(byKey['resume_selected'].source.scope).toBe('CLIENT');
+    expect(byKey['resume_selected'].effective.override_class).toBe('OVERRIDABLE');
+    expect(byKey['resume_selected'].provenance).toEqual({
+      inherited: false, client_override: true, client_added: false, tenant_floor: false,
+    });
+
+    // Inherited TENANT FLOOR (never restated at client scope).
+    expect(byKey['work_authorization_present'].source.scope).toBe('TENANT');
+    expect(byKey['work_authorization_present'].provenance).toEqual({
+      inherited: true, client_override: false, client_added: false, tenant_floor: true,
+    });
+
+    // Client-added (not present in tenant defaults).
+    expect(byKey['bill_rate_present'].source.scope).toBe('CLIENT');
+    expect(byKey['bill_rate_present'].provenance).toEqual({
+      inherited: false, client_override: false, client_added: true, tenant_floor: false,
+    });
+  });
+
+  it('resolveEffective (decision path) return shape is unchanged — raw merged requirements', async () => {
+    const eff = await svc.resolveEffective(TENANT, { company_id: COMPANY_A, requisition_id: null });
+    expect(eff!.requirements.map((r) => r.key).sort()).toEqual([
+      'bill_rate_present', 'resume_selected', 'work_authorization_present',
+    ]);
+    expect(eff!.requirements.find((r) => r.key === 'resume_selected')!.override_class).toBe('OVERRIDABLE');
+    // Same composite identity as the annotated view (single merge).
+    const view = await svc.resolveEffectiveView(TENANT, { company_id: COMPANY_A, requisition_id: null });
+    expect(eff!.composite_version).toBe(view!.composite_version);
+  });
+
+  it('readLayers returns each raw layer definition plus the merged effective', async () => {
+    const layers = await svc.readLayers(TENANT, { company_id: COMPANY_A, requisition_id: null });
+    expect(layers.tenant.present).toBe(true);
+    expect(layers.tenant.requirements.map((r) => r.key).sort()).toEqual([
+      'resume_selected', 'work_authorization_present',
+    ]);
+    expect(layers.client!.present).toBe(true);
+    expect(layers.client!.requirements.map((r) => r.key).sort()).toEqual([
+      'bill_rate_present', 'resume_selected',
+    ]);
+    expect(layers.requisition).toBeNull();
+    expect(layers.effective!.requirements.length).toBe(3);
+  });
+
+  it('readLayers marks an absent client layer not-present (inherit-only)', async () => {
+    const inheritOnly = new ClientSubmittalPolicyService(new FakeGateway([row(pkgTenant, '1', tenantDef)]));
+    const layers = await inheritOnly.readLayers(TENANT, { company_id: COMPANY_B, requisition_id: null });
+    expect(layers.client!.present).toBe(false);
+    expect(layers.client!.requirements).toEqual([]);
+    expect(layers.effective!.requirements.map((r) => r.key).sort()).toEqual([
+      'resume_selected', 'work_authorization_present',
+    ]);
+  });
+
+  it('history returns versions newest first with lifecycle status + immutable checksum', async () => {
+    const v1 = row(pkgTenant, '1', tenantDef, new Date('2026-01-01T00:00:00Z'), new Date('2026-06-01T00:00:00Z'));
+    const v2 = row(
+      pkgTenant, '2', def(req('resume_selected', 'REQUIRED', 'HARD_DENY')),
+      new Date('2026-06-01T00:00:00Z'), null,
+    );
+    const svcH = new ClientSubmittalPolicyService(new FakeGateway([v1, v2]));
+    const hist = await svcH.history(TENANT, 'TENANT', null, new Date('2026-09-01T00:00:00Z'));
+    expect(hist.map((h) => h.version)).toEqual(['2', '1']);
+    expect(hist[0]!.status).toBe('current');
+    expect(hist[0]!.effective_to).toBeNull();
+    expect(hist[1]!.status).toBe('superseded');
+    expect(hist[1]!.effective_to).toBe('2026-06-01T00:00:00.000Z');
+    expect(hist[1]!.checksum).toBe(checksumDefinition(tenantDef));
+  });
+});
