@@ -4,6 +4,7 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  Inject,
   Param,
   ParseUUIDPipe,
   Post,
@@ -11,9 +12,10 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
-import { RequestId } from '@aramo/common';
+import { AramoError, RequestId } from '@aramo/common';
 import { RequireScopes, RolesGuard } from '@aramo/authorization';
 import { EntitlementGuard, RequireCapability } from '@aramo/entitlement';
+import { COMPANY_CLIENT_CHECK_PORT, type CompanyClientCheckPort } from '@aramo/requisition';
 import {
   DefinitionSetRepository,
   RequirementInstanceRepository,
@@ -44,6 +46,9 @@ export class PreStartRequirementController {
     // L5-P4 — a status/waiver/reopen move can change the blocker projection; reconcile
     // the placement's PRE_START <-> BLOCKED state as a governed consequence.
     private readonly blockReconciliation: PlacementBlockReconciliationService,
+    // CSP PR-1 — reuse the established company-ownership seam (string token; no
+    // @aramo/company import) to verify a CLIENT scope_ref_id is an owned client company.
+    @Inject(COMPANY_CLIENT_CHECK_PORT) private readonly clientCheck: CompanyClientCheckPort,
   ) {}
 
   // ---- Definition sets (configure / publish) ----------------------------------
@@ -56,11 +61,40 @@ export class PreStartRequirementController {
     @RequestId() requestId: string,
     @Body() body: CreateDraftSetDto,
   ) {
+    // CSP PR-1 (§D4-A / §D13) — scope authoring. TENANT (default) is server-derived.
+    // CLIENT requires an owned company_id, verified through the CompanyClientCheckPort.
+    const scope = body.scope ?? 'TENANT';
+    let scope_ref_id: string;
+    if (scope === 'TENANT') {
+      scope_ref_id = auth.tenant_id;
+    } else if (scope === 'CLIENT') {
+      if (!body.scope_ref_id) {
+        throw new AramoError('PRE_START_REQUIREMENT_INVALID', 'CLIENT scope requires scope_ref_id', 422, {
+          requestId,
+          details: { reason: 'SCOPE_REF_REQUIRED', scope },
+        });
+      }
+      scope_ref_id = body.scope_ref_id;
+      const owned = await this.clientCheck.isClientCompany({ tenant_id: auth.tenant_id, company_id: scope_ref_id });
+      if (!owned) {
+        throw new AramoError(
+          'PRE_START_REQUIREMENT_INVALID',
+          'scope_ref_id is not a CLIENT company of this tenant',
+          422,
+          { requestId, details: { reason: 'COMPANY_NOT_CLIENT', scope, scope_ref_id } },
+        );
+      }
+    } else {
+      throw new AramoError('PRE_START_REQUIREMENT_INVALID', 'scope must be TENANT or CLIENT on this endpoint', 422, {
+        requestId,
+        details: { reason: 'SCOPE_UNSUPPORTED', scope },
+      });
+    }
     return this.sets.createDraft(
       {
         tenant_id: auth.tenant_id,
-        scope: 'TENANT',
-        scope_ref_id: auth.tenant_id,
+        scope,
+        scope_ref_id,
         version: body.version,
         definitions: body.definitions.map((d) => ({
           requirement_type: d.requirement_type as never,
@@ -69,6 +103,7 @@ export class PreStartRequirementController {
           owner_role: d.owner_role ?? null,
           sequence: d.sequence,
           waiver_mode: d.waiver_mode as never,
+          override_policy: d.override_policy as never,
         })),
       },
       requestId,

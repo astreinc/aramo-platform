@@ -5,6 +5,7 @@
 // what the repositories consume and return.
 
 import type {
+  OverridePolicyValue,
   RequirementDefinitionInput,
   RequirementStatusValue,
   RequirementTypeValue,
@@ -56,6 +57,7 @@ export type DefinitionView = {
   readonly sequence: number;
   readonly waiver_mode: WaiverModeValue;
   readonly satisfaction_policy: SatisfactionPolicyValue;
+  readonly override_policy: OverridePolicyValue;
   readonly created_at: Date;
 };
 
