@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { hasScope, InlineAlert, useSession, type Session } from '@aramo/fe-foundation';
+import { hasScope, InlineAlert, useSession, type Session, Button } from '@aramo/fe-foundation';
 
 import { BandPill, Card, FilterChip, PageHeader, StatusPill, Tag, Toolbar } from '../ui';
 import {
@@ -243,20 +243,20 @@ export function IdentityAdvisoriesView({ sessionOverride }: IdentityAdvisoriesVi
                         <td>
                           {isPending && canResolve ? (
                             <div className="rc-rowq">
-                              <button
+                              <Button unstyled
                                 type="button"
                                 className="tc-button tc-button--ghost"
                                 onClick={() => setTarget({ item: it, action: 'dismiss' })}
                               >
                                 Dismiss
-                              </button>
-                              <button
+                              </Button>
+                              <Button unstyled
                                 type="button"
                                 className="tc-button"
                                 onClick={() => setTarget({ item: it, action: 'approve' })}
                               >
                                 Approve merge
-                              </button>
+                              </Button>
                             </div>
                           ) : (
                             <StatusPill tone={STATUS_TONE[it.status]} dot={isPending}>
@@ -273,14 +273,14 @@ export function IdentityAdvisoriesView({ sessionOverride }: IdentityAdvisoriesVi
 
             {nextCursor !== null ? (
               <div className="rc-loadmore">
-                <button
+                <Button unstyled
                   type="button"
                   className="tc-button tc-button--ghost"
                   onClick={loadMore}
                   disabled={loadingMore}
                 >
                   {loadingMore ? 'Loading…' : 'Load more'}
-                </button>
+                </Button>
               </div>
             ) : null}
           </div>

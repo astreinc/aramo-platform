@@ -40,6 +40,8 @@ export interface ContactSearchQuery {
   readonly preference?: readonly string[];
   readonly company_id?: readonly string[];
   readonly is_hot?: boolean;
+  readonly is_primary?: boolean; // companies-list primary-contact column
+
   readonly quiet?: boolean; // going-quiet segment (>= QUIET_DAYS, or never)
   readonly former?: boolean; // include left-company contacts (default: excluded)
   // Cold-call queue — contactable (preference != do_not_contact) AND a work

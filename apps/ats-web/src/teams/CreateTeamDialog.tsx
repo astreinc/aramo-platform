@@ -5,7 +5,7 @@ import {
   Dialog,
   FormField,
   InlineAlert,
-  useToast,
+  useToast, Input,
 } from '@aramo/fe-foundation';
 import { useMemo, useState } from 'react';
 
@@ -135,7 +135,7 @@ export function CreateTeamDialog({
           </InlineAlert>
         )}
         <FormField label={<label htmlFor="create-team-name">Name</label>}>
-          <input
+          <Input unstyled
             id="create-team-name"
             type="text"
             className="rc-input"

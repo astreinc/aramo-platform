@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Session } from '@aramo/fe-foundation';
@@ -92,22 +92,40 @@ function renderView(scopes: string[]) {
   );
 }
 
+// §4 — the review form is reached only via Draft or Import (no manual path).
+// Import is deterministic + network-free (local parse), so tests paste a minimal
+// requirement and click "Import Client Requisition" to reveal the grouped form.
+async function openFormViaImport() {
+  fireEvent.change(await screen.findByLabelText('Requisition intake'), {
+    target: { value: 'Contract role, remote. Review the details.' },
+  });
+  fireEvent.click(
+    screen.getByRole('button', { name: /import client requisition/i }),
+  );
+  await screen.findByLabelText('Job title');
+}
+
 afterEach(() => {
   vi.restoreAllMocks();
 });
 
 describe('NewRequisitionView (New Requisition — mockup parity)', () => {
-  it('opens on the AI intake lane with a manual fallback', async () => {
+  it('§4: opens on the intake lane with Draft/Import and NO manual-entry path', async () => {
     mockApi();
     renderView(['requisition:create']);
     expect(await screen.findByText('New requisition')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /draft with ai/i })).toBeInTheDocument();
     expect(
-      screen.getByRole('button', { name: /enter the requisition manually/i }),
+      screen.getByRole('button', { name: /import client requisition/i }),
     ).toBeInTheDocument();
+    // §4 — the manual-entry link is removed; the form is only reached via
+    // Draft or Import.
+    expect(
+      screen.queryByRole('button', { name: /enter the requisition manually/i }),
+    ).toBeNull();
   });
 
-  it('manual entry reveals the grouped form and creates → navigates to detail', async () => {
+  it('import reveals the grouped form and creates → navigates to detail', async () => {
     mockApi((url, method) => {
       if (url === '/v1/requisitions' && method === 'POST') {
         return json({ id: 'new-req', title: 'New Role' }, 201);
@@ -115,9 +133,7 @@ describe('NewRequisitionView (New Requisition — mockup parity)', () => {
       return null;
     });
     renderView(['requisition:create']);
-    fireEvent.click(
-      await screen.findByRole('button', { name: /enter the requisition manually/i }),
-    );
+    await openFormViaImport();
     fireEvent.change(await screen.findByLabelText('Job title'), {
       target: { value: 'New Role' },
     });
@@ -185,30 +201,39 @@ describe('NewRequisitionView (New Requisition — mockup parity)', () => {
     expect(screen.queryByLabelText('Job title')).not.toBeInTheDocument();
   });
 
-  it('reserves matching as a stored flag + a disabled seam (no scores)', async () => {
+  it('has no right-rail Matching / Duplicate / run-match cards (removed per prototype)', async () => {
     mockApi();
     renderView(['requisition:create']);
-    fireEvent.click(
-      await screen.findByRole('button', { name: /enter the requisition manually/i }),
-    );
-    // The match RESULT is a reserved seam — coming with Core, not a result.
-    expect(screen.getByText('Match results')).toBeInTheDocument();
-    expect(screen.getByText(/coming with aramo core/i)).toBeInTheDocument();
-    // Toggling the run-match intent reveals the "Create & run match" action.
+    await openFormViaImport();
+    expect(screen.queryByText('Match results')).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('switch', { name: /run match when created/i }),
+    ).not.toBeInTheDocument();
     expect(
       screen.queryByRole('button', { name: /create & run match/i }),
     ).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('switch', { name: /run match when created/i }));
-    expect(
-      screen.getByRole('button', { name: /create & run match/i }),
-    ).toBeInTheDocument();
+    expect(screen.queryByText('Duplicate check')).not.toBeInTheDocument();
   });
 
-  it('offers a non-AI "Import requisition" action on the intake lane', async () => {
+  it('"View pasted source" opens a read-only drawer with the pasted text', async () => {
+    mockApi();
+    renderView(['requisition:create']);
+    await openFormViaImport();
+    fireEvent.click(screen.getByRole('button', { name: /view pasted source/i }));
+    const drawer = screen.getByRole('dialog', { name: 'Pasted source' });
+    expect(within(drawer).getByText(/Read-only/)).toBeInTheDocument();
+    expect(within(drawer).getByText(/Contract role, remote/)).toBeInTheDocument();
+    // Closing the drawer removes it; the form stays mounted (editable throughout).
+    fireEvent.click(within(drawer).getByRole('button', { name: /close pasted source/i }));
+    expect(screen.queryByRole('dialog', { name: 'Pasted source' })).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Job title')).toBeInTheDocument();
+  });
+
+  it('offers a non-AI "Import Client Requisition" action on the intake lane', async () => {
     mockApi();
     renderView(['requisition:create']);
     expect(
-      await screen.findByRole('button', { name: /import requisition/i }),
+      await screen.findByRole('button', { name: /import client requisition/i }),
     ).toBeInTheDocument();
   });
 
@@ -225,7 +250,7 @@ describe('NewRequisitionView (New Requisition — mockup parity)', () => {
           'Need a Senior Backend Engineer. Contract, Austin, TX or mostly remote. Nice to have gRPC.',
       },
     });
-    fireEvent.click(screen.getByRole('button', { name: /import requisition/i }));
+    fireEvent.click(screen.getByRole('button', { name: /import client requisition/i }));
 
     // The SAME manual form opens, prefilled from the parse (no loading spinner,
     // no network round-trip).
@@ -246,7 +271,7 @@ describe('NewRequisitionView (New Requisition — mockup parity)', () => {
     fireEvent.change(await screen.findByLabelText('Requisition intake'), {
       target: { value: 'Need a Senior Backend Engineer. Austin, TX.' },
     });
-    fireEvent.click(screen.getByRole('button', { name: /import requisition/i }));
+    fireEvent.click(screen.getByRole('button', { name: /import client requisition/i }));
     const title = await screen.findByLabelText('Job title');
     expect(screen.getAllByText('Parsed').length).toBeGreaterThan(0);
     fireEvent.change(title, { target: { value: 'Staff Backend Engineer' } });
@@ -257,5 +282,37 @@ describe('NewRequisitionView (New Requisition — mockup parity)', () => {
 describe('RATE_TYPE_VALUES — hand-mirror of the BE allowlist', () => {
   it('matches the BE rate-type closed set exactly (C2C|W2|1099|Any)', () => {
     expect([...RATE_TYPE_VALUES]).toEqual(['C2C', 'W2', '1099', 'Any']);
+  });
+});
+
+describe('NewRequisitionView — shared-form create semantics (G2.5c)', () => {
+  it('entering a Bill rate (max) sets the CONTRACT discriminator so the create body sends it', async () => {
+    const bodies: Record<string, unknown>[] = [];
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = typeof input === 'string' ? input : (input as Request).url;
+      const method = init?.method ?? 'GET';
+      if (url.includes('/v1/companies') && method === 'GET') return json({ items: [ACME] });
+      if (url.includes('/v1/contacts')) return json({ items: [] });
+      if (url.endsWith('/v1/requisitions') && method === 'POST') {
+        bodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+        return json({ id: 'r1', title: 'Rate Role' }, 201);
+      }
+      return new Response('{}', { status: 404 });
+    });
+    // compensation:view:bill makes Bill rate (max) a visible, writable field.
+    renderView(['requisition:create', 'compensation:view:bill']);
+    await openFormViaImport();
+    fireEvent.change(await screen.findByLabelText('Job title'), {
+      target: { value: 'Rate Role' },
+    });
+    fireEvent.click(screen.getByRole('combobox', { name: 'Company' }));
+    fireEvent.click(await screen.findByRole('option', { name: /Acme Corp/i }));
+    fireEvent.change(screen.getByLabelText('Bill rate (max)'), {
+      target: { value: '85' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^create requisition$/i }));
+    await waitFor(() => expect(bodies.length).toBe(1));
+    // The discriminator (compensation_model=CONTRACT) was set → the bill rate ships.
+    expect(bodies[0]['bill_rate_amount']).toBe('85');
   });
 });

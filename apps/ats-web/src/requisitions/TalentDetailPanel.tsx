@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
+import { Button } from '@aramo/fe-foundation';
 
 import { Avatar, HotToggle } from '../ui';
 import { InlineEditField, InlineSelectField } from '../components/InlineEditField';
@@ -312,9 +313,9 @@ export function TalentDetailPanel({
               onToggle={(next) => onToggleHot(next)}
             />
           ) : null}
-          <button type="button" className="rc-cdp__x" aria-label="Close" onClick={onClose}>
+          <Button unstyled type="button" className="rc-cdp__x" aria-label="Close" onClick={onClose}>
             ✕
-          </button>
+          </Button>
         </header>
 
         <div className="rc-cdp__body">

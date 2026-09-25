@@ -8,7 +8,7 @@ import { CompanyEditDrawer } from './CompanyEditDrawer';
 
 // Company Party/Role (ADR-0032, R6) — the shared create/edit slide-over. This
 // spec covers the drawer SHELL (modes, EDITING badge, Open-full-record, close);
-// the form body + body-builders are covered by CompanyForm.spec.
+// the form body + body-builders are covered by CompanyQuickEditForm.spec.
 
 function makeCompany(over: Partial<CompanyView> = {}): CompanyView {
   return {
@@ -39,7 +39,7 @@ function makeCompany(over: Partial<CompanyView> = {}): CompanyView {
 }
 
 function installFetch() {
-  // CompanyForm loads contacts/departments on edit — return empty for all.
+  // The edit drawer loads contacts on edit — return empty for all.
   vi.spyOn(globalThis, 'fetch').mockImplementation(async () =>
     new Response(JSON.stringify({ items: [] }), {
       status: 200, headers: { 'Content-Type': 'application/json' },

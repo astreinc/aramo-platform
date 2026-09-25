@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { hasScope, InlineAlert, useSession, type Session } from '@aramo/fe-foundation';
+import { hasScope, InlineAlert, useSession, type Session, Button } from '@aramo/fe-foundation';
 
 import { Card, FilterChip, PageHeader, StatusPill, Tag, Toolbar } from '../ui';
 import { ContradictionResolveDialog } from '../talent/components/ContradictionResolveDialog';
@@ -175,13 +175,13 @@ export function TrustProposalsView({ sessionOverride }: TrustProposalsViewProps 
       );
     }
     const dismissBtn = (
-      <button
+      <Button unstyled
         type="button"
         className="tc-button tc-button--ghost"
         onClick={() => setDismissTarget(it.id)}
       >
         Dismiss
-      </button>
+      </Button>
     );
 
     // The consent refusal — a fact about the row, not an error toast.
@@ -198,13 +198,13 @@ export function TrustProposalsView({ sessionOverride }: TrustProposalsViewProps 
       return (
         <div className="rc-rowq">
           {canResolve ? (
-            <button
+            <Button unstyled
               type="button"
               className="tc-button"
               onClick={() => setResolveTarget(it)}
             >
               Resolve
-            </button>
+            </Button>
           ) : null}
           {dismissBtn}
         </div>
@@ -216,9 +216,9 @@ export function TrustProposalsView({ sessionOverride }: TrustProposalsViewProps 
       return (
         <div className="rc-rowq">
           {oneClick ? (
-            <button type="button" className="tc-button" onClick={() => void onVerify(it)}>
+            <Button unstyled type="button" className="tc-button" onClick={() => void onVerify(it)}>
               Verify
-            </button>
+            </Button>
           ) : it.record_id !== undefined ? (
             <Link className="tc-button tc-button--ghost" to={`/talent/${it.record_id}`}>
               Open record to verify
@@ -310,14 +310,14 @@ export function TrustProposalsView({ sessionOverride }: TrustProposalsViewProps 
 
             {nextCursor !== null ? (
               <div className="rc-loadmore">
-                <button
+                <Button unstyled
                   type="button"
                   className="tc-button tc-button--ghost"
                   onClick={loadMore}
                   disabled={loadingMore}
                 >
                   {loadingMore ? 'Loading…' : 'Load more'}
-                </button>
+                </Button>
               </div>
             ) : null}
           </div>

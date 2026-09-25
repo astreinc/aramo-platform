@@ -92,6 +92,163 @@
   margin: 0;
 }
 
+/* Account-team card header — title left, "Manage" link right. */
+.rc-teamhd { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.rc-teamhd__manage { font-size: 0.82rem; white-space: nowrap; }
+
+/* PRIMARY badge on the primary key-contact row. */
+.rc-primary-badge {
+  margin-left: 7px; font-size: 9px; font-weight: 700; letter-spacing: 0.06em;
+  color: #011f8d; background: #e8edfb; border-radius: 4px; padding: 1px 5px;
+  vertical-align: middle;
+}
+
+/* Company detail — Overview field grid + the in-place read/edit field (EF).
+   The read box (rc-ef__view) and the edit control (rc-ef__input) share
+   border/radius/padding/min-height so toggling Edit never shifts the layout
+   (Company Detail.dc.html). */
+.rc-rfgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px 16px; }
+.rc-ef { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+/* About is the only full-width field and sits below the grid — give it the
+   grid's vertical rhythm (12px) so it doesn't butt against the row above. */
+.rc-ef--full { grid-column: 1 / -1; margin-top: 12px; }
+.rc-ef__lb { font-size: 12px; font-weight: 600; color: #3a454e; }
+.rc-ef__req { color: #c0410c; }
+.rc-ef__view {
+  border: 1px solid #edf0f3; border-radius: 8px; padding: 9px 12px;
+  background: #fafbfc; font-size: 13px; color: #1b2730; min-height: 38px;
+  box-sizing: border-box; display: flex; align-items: center;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.rc-ef--full .rc-ef__view {
+  white-space: pre-wrap; align-items: flex-start; min-height: 78px; display: block;
+}
+.rc-ef__view--empty { color: var(--muted, #93a0a8); }
+.rc-ef__input {
+  width: 100%; box-sizing: border-box; font: inherit; font-size: 13px; color: #1b2730;
+  border: 1px solid #d5dbe1; border-radius: 8px; padding: 9px 12px; min-height: 38px;
+  background: #fff;
+}
+.rc-ef__input:focus {
+  outline: none; border-color: #022ac0; box-shadow: 0 0 0 3px rgba(2, 42, 192, 0.12);
+}
+.rc-ef__input:disabled {
+  background: var(--canvas, #f6f8fa); color: var(--muted, #93a0a8); cursor: not-allowed;
+}
+.rc-ef__ta { min-height: 78px; line-height: 1.5; resize: vertical; }
+
+/* Relationships & status rows. */
+.rc-relstatus { display: flex; flex-direction: column; gap: 8px; }
+.rc-relstatus__row {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  border: 1px solid var(--line, #e5e9ed); border-radius: 10px; padding: 11px 14px;
+}
+.rc-relstatus__row--off { background: #fbfcfd; }
+.rc-relstatus__t { font-size: 13px; font-weight: 600; color: #1b2730; }
+.rc-relstatus__d { font-size: 11.5px; color: var(--muted, #93a0a8); margin-top: 1px; }
+.rc-relstatus__sel { width: auto; flex: none; min-width: 132px; }
+.rc-relstatus__cb { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.rc-relstatus__cb > span { font-size: 13px; color: #1b2730; }
+.rc-relstatus__dnc { margin-top: 12px; }
+
+/* ── Account team tab (Company Detail.dc.html "Account team"): header + search
+   picker + rich Member/Role/Access/Assigned/Remove table. ─────────────────── */
+.rc-team {
+  background: var(--surface, #fff); border: 1px solid var(--line, #e5e9ed);
+  border-radius: 13px; position: relative;
+}
+.rc-team__hd {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 14px 18px; border-bottom: 1px solid var(--line, #e5e9ed);
+}
+.rc-team__hdt { min-width: 0; flex: 1; }
+.rc-team__title { display: block; font-size: 14px; font-weight: 700; color: #1b2730; }
+.rc-team__count { color: #93a0a8; font-weight: 600; margin-left: 2px; }
+.rc-team__sub { display: block; font-size: 12px; color: #5c6770; margin-top: 2px; line-height: 1.45; }
+.rc-team__addbtn {
+  border: 1px solid #022ac0; background: #022ac0; color: #fff; border-radius: 8px;
+  padding: 8px 14px; font-size: 12.5px; font-weight: 600; cursor: pointer; white-space: nowrap;
+}
+.rc-team__addbtn:hover { background: #3355e0; }
+.rc-team__note {
+  padding: 10px 18px; background: #fafbfc; border-bottom: 1px solid #f2f4f6;
+  font-size: 12px; color: #5c6770;
+}
+/* Add-member panel. */
+.rc-team__add {
+  display: flex; align-items: flex-start; gap: 12px; flex-wrap: wrap;
+  padding: 14px 18px; background: #f5f7fd; border-bottom: 1px solid var(--line, #e5e9ed);
+}
+.rc-team__pickwrap { flex: 1 1 320px; max-width: 520px; position: relative; }
+.rc-team__search { margin-top: 5px; }
+.rc-team__menu {
+  position: absolute; top: 100%; left: 0; right: 0; z-index: 40; margin-top: 4px;
+  background: #fff; border: 1px solid var(--line, #e5e9ed); border-radius: 10px;
+  box-shadow: 0 16px 40px -14px rgba(11, 16, 34, 0.32); padding: 5px;
+  max-height: 260px; overflow-y: auto;
+}
+.rc-team__opt {
+  display: flex; align-items: center; gap: 10px; width: 100%; box-sizing: border-box;
+  min-width: 0; text-align: left; border: none; background: none; border-radius: 7px;
+  padding: 8px 10px; cursor: pointer;
+}
+.rc-team__opt:hover, .rc-team__opt--on { background: #f0f4ff; }
+.rc-team__optm { flex: 1; min-width: 0; }
+.rc-team__optn { display: block; font-size: 13px; font-weight: 600; color: #1b2730; }
+.rc-team__opte {
+  display: block; font-size: 11.5px; color: #93a0a8;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.rc-team__optr { font-size: 11px; font-weight: 600; color: #5c6770; white-space: nowrap; flex: none; }
+.rc-team__nomatch { padding: 12px 10px; font-size: 12.5px; color: #93a0a8; }
+.rc-team__addactions { display: flex; gap: 8px; margin-top: 22px; }
+.rc-team__addnote { flex-basis: 100%; font-size: 11.5px; color: #5c6770; }
+.rc-team__adderr { flex-basis: 100%; }
+.rc-team__flash {
+  display: flex; align-items: center; gap: 8px; padding: 10px 18px;
+  background: #e6f2ea; border-bottom: 1px solid #cbe5d5; font-size: 12.5px; color: #1f7a4d;
+}
+/* Rich table (5-column grid, horizontally scrollable at narrow widths). */
+.rc-team__tablewrap { overflow-x: auto; border-radius: 0 0 13px 13px; }
+.rc-team__table { min-width: 760px; }
+.rc-team__row {
+  display: grid;
+  grid-template-columns: minmax(200px, 1.3fr) minmax(150px, 1fr) minmax(200px, 1.3fr) minmax(150px, 1fr) 70px;
+  gap: 0 14px; align-items: center; padding: 12px 18px; border-top: 1px solid #f2f4f6;
+}
+.rc-team__row--head {
+  padding: 9px 18px; border-top: none; border-bottom: 1px solid #edf0f3;
+}
+.rc-team__row--head > span {
+  font-size: 10.5px; font-weight: 600; letter-spacing: 0.07em;
+  text-transform: uppercase; color: #93a0a8;
+}
+.rc-team__member { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.rc-team__mm { min-width: 0; }
+.rc-team__mn { display: block; font-size: 13px; font-weight: 600; color: #1b2730; }
+.rc-team__me {
+  display: block; font-size: 11.5px; color: #93a0a8;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.rc-team__rolepill {
+  display: inline-flex; border-radius: 16px; padding: 2.5px 10px; font-size: 11.5px;
+  font-weight: 600; background: #e8edfb; color: #011f8d; white-space: nowrap;
+}
+.rc-team__access { font-size: 12px; color: #5c6770; }
+.rc-team__assigned { min-width: 0; }
+.rc-team__since { display: block; font-size: 12.5px; color: #1b2730; }
+.rc-team__by { display: block; font-size: 11px; color: #93a0a8; }
+.rc-team__rm { text-align: right; }
+.rc-team__rmlink {
+  border: none; background: none; color: #b3402a; font-size: 12px; font-weight: 600;
+  cursor: pointer; padding: 0;
+}
+.rc-team__rmcancel {
+  border: none; background: none; color: #5c6770; font-size: 12px; font-weight: 600;
+  cursor: pointer; padding: 0;
+}
+.rc-team__foot { font-size: 11.5px; color: #93a0a8; margin: 10px 0 0; }
+
 .rc-footnote {
   font-size: 0.78rem;
   color: var(--faint);
@@ -1672,6 +1829,23 @@ button.rc-link-action {
 
 .rc-tokenbox__icon { width: 17px; height: 17px; color: var(--faint); flex: none; }
 
+/* Companies list — one-line filter row (search + status/industry/owner pills). */
+.rc-cofilters { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 10px 0 4px; }
+.rc-cofilters__search { flex: 0 1 260px; margin-bottom: 0; }
+.rc-filterpill {
+  border: 1px solid var(--line, #e5e9ed); background: #fff; border-radius: 20px;
+  padding: 6px 12px; font-size: 12.5px; font-weight: 500; color: #5c6770; cursor: pointer;
+}
+.rc-filterpill:hover { border-color: #d5dbe1; }
+.rc-cofilters__result { margin-left: auto; font-size: 12px; color: var(--muted, #93a0a8); }
+
+/* Companies list table — primary-contact + phone cells. */
+.rc-cotable td { vertical-align: middle; }
+.rc-copc { display: flex; flex-direction: column; min-width: 0; }
+.rc-copc__nm { font-size: 12.5px; color: #1b2730; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rc-copc__ti { font-size: 11px; color: var(--muted, #93a0a8); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rc-cophone { font-size: 12.5px; color: #3a454e; white-space: nowrap; }
+
 .rc-tokenbox__input {
   border: none; outline: none; flex: 1; min-width: 160px; font-size: .9rem;
   background: transparent; color: var(--ink);
@@ -2193,13 +2367,16 @@ button.rc-link-strong:hover { text-decoration: underline; }
 /* 6-up KPI strip (account hub) */
 
 .rc-metrics--6 { grid-template-columns: repeat(6, 1fr); }
+.rc-metrics--5 { grid-template-columns: repeat(5, 1fr); }
 
 @media (max-width: 1080px) {
 .rc-metrics--6 { grid-template-columns: repeat(3, 1fr); }
+.rc-metrics--5 { grid-template-columns: repeat(3, 1fr); }
 }
 
 @media (max-width: 640px) {
 .rc-metrics--6 { grid-template-columns: repeat(2, 1fr); }
+.rc-metrics--5 { grid-template-columns: repeat(2, 1fr); }
 }
 
 /* rule-based briefing (deterministic; sits above the ReservedSeam) */
@@ -2300,13 +2477,16 @@ button.rc-cocard {
 
 .rc-dhead__co span, .rc-dhead__co a { white-space: nowrap; }
 
-/* Overview two-column grid */
-
-.rc-ovgrid { display: grid; grid-template-columns: 1.5fr 1fr; gap: 16px; align-items: start; }
-
-@media (max-width: 980px) {
-.rc-ovgrid { grid-template-columns: 1fr; }
-}
+/* Overview two-column layout — the prototype's exact flex model (Company
+   Detail.dc.html): main col flex 1 1 600px, sidebar flex 1 1 280px capped at
+   360px so the Account team / Key contacts cards never widen past the mockup. */
+.rc-ovgrid { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; }
+.rc-ovgrid > .rc-stack { gap: 14px; }
+.rc-ovgrid > .rc-stack:first-child { flex: 1 1 600px; min-width: 0; }
+.rc-ovgrid > .rc-stack:last-child { flex: 1 1 280px; max-width: 360px; }
+/* Main-col cards carry the prototype's 18px 20px; sidebar cards keep the Card
+   default 16px 18px (Company Detail.dc.html). */
+.rc-ovgrid > .rc-stack:first-child > .rc-card--pad { padding: 18px 20px; }
 
 .rc-about { font-size: 0.92rem; line-height: 1.6; color: var(--ink); }
 
@@ -2371,58 +2551,8 @@ button.rc-cocard {
  * All data is real/derived — no mocks. Token-based throughout. Match/Matches is
  * NOT on this surface (PR-REQ R1: the reserved seam lives on the detail page). */
 
-/* needs-attention banner */
-
-.rc-focus {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  background: linear-gradient(180deg, var(--surface), var(--surface-2));
-  border: 1px solid var(--line);
-  border-left: 3px solid var(--brand-accent);
-  border-radius: var(--r-lg);
-  padding: 13px 16px;
-  margin-top: 16px;
-  box-shadow: var(--elev);
-}
-
-.rc-focus__ic {
-  width: 30px;
-  height: 30px;
-  border-radius: 8px;
-  background: var(--brand-tint);
-  color: var(--brand-strong);
-  display: grid;
-  place-items: center;
-  flex: none;
-}
-
-.rc-focus__ic svg { width: 16px; height: 16px; }
-
-.rc-focus__body { flex: 1; min-width: 0; }
-
-.rc-focus__h { font-size: 0.86rem; font-weight: 700; margin: 0 0 5px; }
-
-.rc-focus__row { display: flex; flex-wrap: wrap; gap: 5px 14px; }
-
-.rc-focus__k {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  font-size: 0.8rem;
-  color: var(--muted);
-  background: none;
-  border: 0;
-  padding: 0;
-  cursor: pointer;
-  text-align: left;
-}
-
-.rc-focus__k:hover { color: var(--brand-strong); }
-
-.rc-focus__k b { color: var(--ink); font-weight: 600; }
-
-.rc-focus__d { width: 6px; height: 6px; border-radius: 50%; flex: none; }
+/* G2.1 — the needs-attention banner (.rc-focus*) was removed to match the
+   prototype; its styles are deleted with it (zero live residue). */
 
 /* filter-bar native selects (client / status / sort) */
 
@@ -2653,16 +2783,17 @@ button.rc-cocard {
 
 .rc-rt__scroll { overflow-x: auto; }
 
-.rc-rt { min-width: 1240px; }
+.rc-rt { min-width: 1166px; }
 
 .rc-rt__head,
 .rc-rt__row {
   display: grid;
-  /* .dc authority — 10 tracks: star · Requisition · Talent(3-cell) · Pipeline ·
-     Capacity · Client Status · Attention · Owner · Updated · Status. */
+  /* §0 — Owner column removed (ownership isn't modeled; creator ≠ owner). 9
+     tracks: star · Requisition · Talent(3-cell) · Pipeline · Capacity ·
+     Client Status · Attention · Updated · Status. */
   grid-template-columns:
     26px minmax(230px, 1.3fr) 280px minmax(115px, 0.8fr) 110px
-    100px minmax(135px, 0.9fr) 60px 80px 90px;
+    100px minmax(135px, 0.9fr) 80px 90px;
   gap: 0 14px;
   align-items: center;
   padding: 14px 16px;
@@ -2734,17 +2865,8 @@ button.rc-cocard {
 
 .rc-rt__title:hover { color: var(--brand-strong); }
 
-.rc-rt__hot {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  font-size: 0.66rem;
-  font-weight: 700;
-  color: var(--hot);
-  background: var(--hot-tint);
-  border-radius: 20px;
-  padding: 2px 8px;
-}
+/* G2.1 — the per-row Priority pill (.rc-rt__hot) was removed to match the
+   prototype; its style is deleted with it (zero live residue). */
 
 .rc-rt__title:focus-visible {
   outline: 2px solid var(--brand-accent);
@@ -2752,10 +2874,9 @@ button.rc-cocard {
   border-radius: 4px;
 }
 
-/* PR-14 — personal bookmark star on a list row. Distinct from .rc-rt__hot
-   (the team-wide HOT pill): a muted outline star that fills brand when the
-   CURRENT user has bookmarked. It never affects is_hot, ranking/sort, or
-   another user's view. */
+/* PR-14 — personal bookmark star on a list row: a muted outline star that
+   fills brand when the CURRENT user has bookmarked. It never affects is_hot,
+   ranking/sort, or another user's view. */
 .rc-rt__bm {
   flex: none;
   display: inline-flex;
@@ -2948,7 +3069,7 @@ button.rc-cocard {
 
 /* Owner / Updated / Status cells */
 
-.rc-rt__owner { display: flex; align-items: center; gap: 7px; min-width: 0; }
+/* §0 — .rc-rt__owner (list owner cell) removed with the Owner column. */
 
 .rc-rt__upd { font-size: 0.76rem; color: var(--muted); }
 
@@ -3963,10 +4084,10 @@ select.rc-secinput { appearance: none; padding-right: 28px; }
 
 .rc-drawer__foot { padding: 12px 16px; border-top: 1px solid var(--line); display: flex; gap: 8px; flex-wrap: wrap; }
 
-/* ── Company party/role form (ADR-0032, R6) — shared by the quick-edit drawer
-   (CompanyQuickEditForm) and the detail-page in-place Full Edit (CompanyForm).
-   Sectioned fieldsets with small header legends; relationship rows carry a
-   per-role status select on the right. ─────────────────────────────────────── */
+/* ── Company party/role form (ADR-0032, R6) — the quick-edit drawer
+   (CompanyQuickEditForm). Sectioned fieldsets with small header legends;
+   relationship rows carry a per-role status select on the right. The detail-page
+   in-place edit lives in the .rc-ef field model below, not here. ────────────── */
 .company-form { display: flex; flex-direction: column; gap: 0; }
 
 .company-form__section {
@@ -3977,26 +4098,6 @@ select.rc-secinput { appearance: none; padding-right: 28px; }
 .company-form__section:first-of-type { padding-top: 2px; }
 
 .company-form__section + .company-form__section { border-top: 1px solid var(--line); }
-
-/* CompanyForm (detail in-place Full Edit) groups fields in bare <fieldset>s and a
-   <details> "More fields"; give them the same sectioned look as the drawer form. */
-.company-form > fieldset,
-.company-form details > fieldset {
-  border: none; margin: 0; padding: 18px 0; min-width: 0;
-  display: flex; flex-direction: column; gap: 13px;
-}
-
-.company-form > fieldset + fieldset,
-.company-form > details,
-.company-form details > fieldset + fieldset { border-top: 1px solid var(--line); }
-
-.company-form > fieldset:first-of-type { padding-top: 2px; }
-
-.company-form > details { padding: 4px 0; }
-
-.company-form > details > summary {
-  font-size: .8rem; font-weight: 600; color: var(--brand); cursor: pointer; padding: 12px 0;
-}
 
 .company-form legend {
   font-size: .68rem; font-weight: 700; letter-spacing: .07em; text-transform: uppercase;
@@ -4056,10 +4157,24 @@ select.rc-secinput { appearance: none; padding-right: 28px; }
 @media (max-width: 520px) { .company-form__row2 { grid-template-columns: 1fr; } }
 
 .company-form__actions {
-  position: sticky; bottom: 0; display: flex; justify-content: flex-end; gap: 8px;
-  padding: 14px 0 2px; margin-top: 4px; border-top: 1px solid var(--line);
+  position: sticky; bottom: 0; display: flex; align-items: center; justify-content: flex-end;
+  gap: 8px; padding: 14px 0 2px; margin-top: 4px; border-top: 1px solid var(--line);
   background: var(--surface);
 }
+/* Documents dropzone — visual affordance (company attachments not yet built). */
+.company-form__dropzone {
+  border: 1.5px dashed #c9d4f2; border-radius: 11px; background: #fafbfc;
+  padding: 22px 16px; text-align: center;
+}
+.company-form__dz-title { font-size: 12.5px; font-weight: 600; color: #022ac0; }
+.company-form__dz-sub { font-size: 11px; color: #93a0a8; margin-top: 3px; }
+
+/* "Full Edit Company" footer link — pushed to the left of Cancel/Save. */
+.company-form__full {
+  margin-right: auto; font-size: 12.5px; font-weight: 600;
+  color: var(--brand-strong, #022ac0); text-decoration: none; white-space: nowrap;
+}
+.company-form__full:hover { text-decoration: underline; }
 
 .rc-scrim { position: fixed; inset: 0; background: rgba(16,28,48,.34); z-index: 29; }
 
@@ -4107,7 +4222,65 @@ select.rc-secinput { appearance: none; padding-right: 28px; }
   font-family: var(--mono, ui-monospace, monospace);
 }
 
-.rc-newreq__owner { font-size: .8rem; color: var(--muted); margin: 0; }
+/* §0 — .rc-newreq__owner removed with the New-requisition Owner card. */
+
+/* New requisition — full-width review form (right rail removed per prototype). */
+.rc-newreqform { display: flex; flex-direction: column; gap: 14px; }
+
+/* "View pasted source" link inside the import/draft banner. */
+.rc-viewsrc {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: none; border: 0; padding: 0; cursor: pointer;
+  color: var(--brand-strong, #022ac0); font-weight: 600; font-size: inherit;
+  white-space: nowrap;
+}
+.rc-viewsrc:hover { text-decoration: underline; }
+.rc-viewsrc svg { width: 13px; height: 13px; }
+
+/* Sticky action bar — required-field gates + Cancel/Create. */
+.rc-createbar {
+  position: sticky; bottom: 0; z-index: 5;
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  padding: 12px 18px; margin-top: 2px;
+  background: #fff; border: 1px solid var(--line, #e5e9ed); border-radius: 12px;
+  box-shadow: 0 -6px 18px -12px rgba(15, 25, 40, 0.25);
+}
+.rc-createbar__gates {
+  list-style: none; margin: 0; padding: 0;
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+}
+.rc-createbar__req {
+  font-size: 11px; font-weight: 700; letter-spacing: 0.07em; color: var(--muted, #93a0a8);
+}
+.rc-createbar__gates .rc-gate-row { padding: 0; }
+.rc-createbar__actions { margin-left: auto; display: flex; gap: 8px; }
+
+/* Read-only pasted-source drawer (does not block the form). */
+.rc-srcdrawer {
+  position: fixed; top: 12px; right: 12px; bottom: 12px; z-index: 40;
+  width: min(540px, 92vw); display: flex; flex-direction: column;
+  background: #fff; border: 1px solid var(--line, #e5e9ed); border-radius: 13px;
+  box-shadow: 0 24px 60px -20px rgba(11, 16, 34, 0.35);
+}
+.rc-srcdrawer__head {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 14px 16px; border-bottom: 1px solid var(--line, #e5e9ed);
+}
+.rc-srcdrawer__head > svg { width: 18px; height: 18px; color: var(--muted, #93a0a8); flex: none; margin-top: 1px; }
+.rc-srcdrawer__ttl { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.rc-srcdrawer__t { font-size: 14.5px; font-weight: 700; color: #1b2730; }
+.rc-srcdrawer__s { font-size: 11.5px; color: var(--muted, #93a0a8); }
+.rc-srcdrawer__x {
+  width: 30px; height: 30px; flex: none; border: 0; border-radius: 6px;
+  background: transparent; color: #5c6770; cursor: pointer; display: grid; place-items: center;
+}
+.rc-srcdrawer__x:hover { background: #eef1f4; color: #1b2730; }
+.rc-srcdrawer__x svg { width: 16px; height: 16px; }
+.rc-srcdrawer__body {
+  flex: 1; min-height: 0; overflow: auto; margin: 0; padding: 16px;
+  font-size: 12.5px; line-height: 1.55; white-space: pre-wrap;
+  font-family: var(--mono, ui-monospace, monospace); color: #1b2730;
+}
 
 /* AI intake lane (phase 1) */
 
@@ -4123,7 +4296,7 @@ select.rc-secinput { appearance: none; padding-right: 28px; }
 
 .rc-reqintake__hint { font-size: .76rem; color: var(--faint, var(--muted)); }
 
-.rc-reqintake__manual { text-align: center; margin-top: 14px; font-size: .82rem; color: var(--muted); }
+/* §4 — .rc-reqintake__manual removed with the manual-entry link. */
 
 .rc-linkbtn {
   background: none; border: none; padding: 0; cursor: pointer;
@@ -4208,6 +4381,7 @@ select.rc-secinput { appearance: none; padding-right: 28px; }
 .rc-skillchip--must { color: var(--brand-strong, var(--brand)); background: var(--brand-tint, #eef3fb); border-color: var(--line-2, var(--line)); }
 
 .rc-skillchip--nice { color: var(--muted); background: var(--surface-2, #f6f8fb); border-color: var(--line); }
+.rc-skills__empty { font-size: 0.82rem; color: var(--muted, #93a0a8); }
 
 .rc-skillchip button { border: none; background: none; color: inherit; cursor: pointer; font-size: .95rem; line-height: 1; padding: 0; opacity: .6; }
 
@@ -4223,20 +4397,27 @@ select.rc-secinput { appearance: none; padding-right: 28px; }
 
 /* Inline input+unit group (bill rate /hr·/yr, duration value+unit) */
 
-.rc-inpgrp { display: flex; }
+/* value+unit combo (Contract duration): stays inside its grid cell — the group
+   is width-capped and min-width:0 so the unit select never overflows into the
+   adjacent field. */
+.rc-inpgrp { display: flex; width: 100%; min-width: 0; }
 
 .rc-inpgrp .rc-input:first-child {
   border-top-right-radius: 0; border-bottom-right-radius: 0; border-right: none; flex: 1; min-width: 0;
 }
 
 .rc-inpgrp .rc-input:last-child {
-  border-top-left-radius: 0; border-bottom-left-radius: 0; width: auto;
-  background: var(--surface-2, #f6f8fb); font-weight: 600; flex: none;
+  border-top-left-radius: 0; border-bottom-left-radius: 0;
+  background: var(--surface-2, #f6f8fb); font-weight: 600;
+  flex: none; width: auto; min-width: 5.5rem; max-width: 7.5rem;
 }
 
 /* Tall JD textarea — the AI's primary output */
 
 .rc-jd { min-height: 280px; line-height: 1.6; resize: vertical; }
+
+/* Hiring-manager notes — the second-panel call-capture box (tall). */
+.rc-notesbox { min-height: 200px; line-height: 1.6; resize: vertical; }
 
 /* "sensitive" / "restricted" pill on a card head */
 
@@ -4656,9 +4837,9 @@ select.rc-secinput { appearance: none; padding-right: 28px; }
    --muted, brand wash #E8EDFB, primary hover #3355E0. */
 .rc-cdp__backdrop { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.28); z-index: 40; }
 .rc-cdp {
-  /* Wider working panel for recruiters (the 2-col talent details + journey read
-     more comfortably); still responsive — never exceeds the viewport. */
-  position: fixed; top: 0; right: 0; bottom: 0; width: min(560px, 96vw); max-width: 100vw;
+  /* G2.2 — widened to min(620px, 94vw): the 2-col talent details + journey read
+     more comfortably; still responsive — never exceeds the viewport. */
+  position: fixed; top: 0; right: 0; bottom: 0; width: min(620px, 94vw); max-width: 100vw;
   background: #fff; z-index: 41; display: flex; flex-direction: column;
   border-left: 1px solid var(--border, #E5E9ED); box-shadow: -8px 0 28px rgba(2, 42, 192, 0.10);
 }
@@ -4975,7 +5156,11 @@ button.rc-snapcard:hover {
 /* Underline tabs — scoped to the workspace; the global Tabs primitive is
  * untouched (the wrapper class raises specificity over theme.css). */
 .rc-ws-tabs .tabs__list {
-  gap: 2px; border-bottom: 1px solid #e5e9ed; overflow-x: auto; margin-bottom: 16px;
+  /* overflow-x:auto allows horizontal tab scroll; overflow-y MUST be pinned to
+     hidden — leaving it `visible` makes the browser compute it to `auto`
+     (CSS overflow rule), which shows a spurious vertical scrollbar on the strip. */
+  gap: 2px; border-bottom: 1px solid #e5e9ed; overflow-x: auto; overflow-y: hidden;
+  margin-bottom: 16px;
 }
 .rc-ws-tabs .tabs__tab {
   border: 0; border-bottom: 2px solid transparent; border-radius: 0;
@@ -4997,7 +5182,7 @@ button.rc-snapcard:hover {
 /* Talent-journey GRID (Option A). Outer card + sticky-width inner; header row +
  * data rows share the exact prototype grid template. Avatar #E8EDFB/#011F8D. */
 .rc-tj { margin-top: 16px; background: #fff; border: 1px solid #e5e9ed; border-radius: 13px; overflow-x: auto; }
-.rc-tj__inner { min-width: 900px; }
+.rc-tj__inner { min-width: 1200px; }
 .rc-tj__head { display: flex; align-items: center; gap: 10px; padding: 12px 18px; border-bottom: 1px solid #e5e9ed; }
 .rc-tj__title { font-size: 13px; font-weight: 700; color: #1b2730; }
 .rc-tj__sub { font-size: 11.5px; color: #93a0a8; }
@@ -5005,7 +5190,8 @@ button.rc-snapcard:hover {
 .rc-tj__full:hover { text-decoration: underline; }
 .rc-tj__row {
   display: grid;
-  grid-template-columns: minmax(150px, 1.1fr) 105px 110px 115px 115px 115px;
+  grid-template-columns:
+    minmax(160px, 1.1fr) minmax(180px, 1.2fr) 118px 96px 90px 80px 96px 96px 150px;
   gap: 0 12px; align-items: center; padding: 9px 18px; border-top: 1px solid #f2f4f6;
 }
 .rc-tj__row:not(.rc-tj__row--head):hover { background: #e8edfb55; }
@@ -5026,6 +5212,78 @@ button.rc-tj__cell { cursor: pointer; }
 button.rc-tj__cell:hover { color: #022ac0; text-decoration: underline; }
 .rc-tj__exp { display: block; font-size: 10.5px; color: #93a0a8; }
 .rc-tj__empty { color: #93a0a8; }
+
+/* Email / Phone cells */
+.rc-tj__mail {
+  font-size: 11.5px; color: #3a454e; text-decoration: none;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;
+}
+.rc-tj__mail:hover { color: #022ac0; text-decoration: underline; }
+.rc-tj__phone { font-size: 11.5px; color: #3a454e; white-space: nowrap; }
+
+/* Find Talent ▾ dropdown */
+.rc-tj__find { position: relative; margin-left: auto; flex: none; }
+.rc-tj__findbtn {
+  display: inline-flex; align-items: center; gap: 5px;
+  border: 1px solid #022ac0; background: #022ac0; color: #fff; border-radius: 8px;
+  padding: 7px 14px; font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap;
+}
+.rc-tj__findbtn:hover { background: #3355e0; }
+.rc-tj__findbtn svg { width: 13px; height: 13px; }
+.rc-tj__findveil { position: fixed; inset: 0; z-index: 29; border: 0; background: none; cursor: default; }
+.rc-tj__findmenu {
+  position: absolute; top: calc(100% + 6px); right: 0; z-index: 30; width: 300px;
+  background: #fff; border: 1px solid #e5e9ed; border-radius: 11px;
+  box-shadow: 0 16px 40px -16px rgba(11, 16, 34, 0.28); padding: 8px;
+}
+.rc-tj__finditem { display: block; border-radius: 8px; padding: 10px 12px; text-decoration: none; }
+.rc-tj__finditem:hover { background: #e8edfb; }
+.rc-tj__findt { display: block; font-size: 12.5px; font-weight: 700; color: #1b2730; }
+.rc-tj__findd { display: block; font-size: 11px; color: #93a0a8; margin-top: 2px; }
+
+/* RTR cell — Send button (placeholder until the send slice wires it) */
+.rc-tj__rtr { display: flex; align-items: center; min-width: 0; }
+.rc-tj__rtrbtn {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid #022ac0; background: #fff; color: #022ac0; border-radius: 7px;
+  padding: 5px 11px; font-size: 11.5px; font-weight: 600; cursor: pointer; white-space: nowrap;
+}
+.rc-tj__rtrbtn:hover { background: #e8edfb; }
+.rc-tj__rtrbtn svg { width: 12px; height: 12px; }
+
+/* Per-tab empty state — the prototype's dashed "nothing here yet" card. */
+.rc-tabempty {
+  background: #fff; border: 1.5px dashed #d5dbe1; border-radius: 13px; padding: 22px 20px;
+}
+.rc-tabempty__t { font-size: 14px; font-weight: 700; color: #1b2730; }
+.rc-tabempty__b {
+  font-size: 12.5px; color: #93a0a8; margin-top: 6px; line-height: 1.55; max-width: 72ch;
+}
+
+/* Commercial empty scaffold — auto-fit padded cards (prototype). */
+.rc-comm2 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+  gap: 13px;
+}
+.rc-commcard {
+  background: #fff; border: 1px solid #e5e9ed; border-radius: 13px; padding: 16px 18px;
+}
+.rc-commcard__t { font-size: 13px; font-weight: 700; margin-bottom: 12px; }
+.rc-commcard__t--tight { margin-bottom: 8px; }
+.rc-commcard__note { margin-top: 12px; font-size: 11.5px; color: #93a0a8; }
+.rc-commcard__body { font-size: 12.5px; color: #5c6770; line-height: 1.5; }
+.rc-commgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 16px; }
+.rc-commterm__l { font-size: 10.5px; color: #93a0a8; }
+.rc-commterm__v { font-size: 13px; font-weight: 600; color: #93a0a8; }
+
+/* Attachments empty — centered dashed "Attach documents" prompt (prototype). */
+.rc-attdrop {
+  border: 1.5px dashed #c9d4f2; border-radius: 13px; background: #fafbfc;
+  padding: 34px 20px; text-align: center;
+}
+.rc-attdrop__t { font-size: 13px; font-weight: 600; color: #022ac0; margin-bottom: 3px; }
+.rc-attdrop__s { font-size: 11.5px; color: #93a0a8; }
 
 /* ─────────────── COMM-V1 recruiter Call affordance (COMM-B4) ─────────────── */
 
@@ -5351,9 +5609,132 @@ button.rc-tj__cell:hover { color: #022ac0; text-decoration: underline; }
 }
 .lognote__category-chip:disabled { opacity: 0.6; cursor: default; }
 .lognote__meta {
-  display: flex; justify-content: space-between; align-items: center;
+  display: flex; justify-content: space-between; align-items: flex-start; gap: 16px;
   margin-top: 6px; font-size: 0.72rem; color: var(--faint, #93a0a8);
 }
 .lognote__hint { color: var(--faint, #93a0a8); }
-.lognote__count { color: var(--muted, #6b7a83); font-variant-numeric: tabular-nums; }
+.lognote__meta .lognote__hint:last-child { text-align: right; white-space: nowrap; }
+.lognote__visdesc { margin: 5px 0 0; font-size: 0.75rem; color: var(--muted, #6b7a83); }
 .lognote__pin { display: inline-flex; align-items: center; gap: 6px; font-size: 0.8rem; margin-right: auto; }
+
+/* ─── G2.2 — Microsoft 365 card in the talent drawer. Send email = outlined
+   primary (blue border/text); Create Teams meeting = secondary (grey border,
+   dark text); helper line beneath. Matches Requisitions.dc.html. ─── */
+.rc-m365 {
+  border: 1px solid var(--border, #E5E9ED); border-radius: 11px; padding: 12px 14px;
+}
+.rc-m365__row { display: flex; gap: 8px; flex-wrap: wrap; }
+.rc-m365__btn {
+  display: inline-flex; align-items: center; gap: 7px; white-space: nowrap;
+  border: 1px solid; border-radius: 8px; padding: 8px 14px;
+  font: 600 0.78rem 'Hanken Grotesk', system-ui, sans-serif; cursor: pointer;
+}
+.rc-m365__btn-ic { display: inline-flex; line-height: 0; }
+.rc-m365__btn--primary {
+  border-color: var(--brand-strong, #022AC0); background: #fff;
+  color: var(--brand-strong, #022AC0);
+}
+.rc-m365__btn--primary:hover { background: var(--brand-tint, #E8EDFB); }
+.rc-m365__btn--secondary {
+  border-color: var(--line-2, #D5DBE1); background: #fff; color: var(--ink, #1B2730);
+}
+.rc-m365__btn--secondary:hover { background: var(--surface-2, #FAFBFC); }
+.rc-m365__helper {
+  margin: 9px 0 0; font-size: 0.7rem; color: var(--muted, #93A0A8); line-height: 1.5;
+}
+
+/* ─── G2.3 — Review email draft modal (renders inside a fe-foundation
+   Dialog size="xl"; the rc-eml classes style only the modal's own content) ─── */
+.rc-eml__hd { display: flex; align-items: center; gap: 11px; min-width: 0; }
+.rc-eml__hd-ic {
+  width: 34px; height: 34px; border-radius: 9px; flex: none;
+  background: var(--brand-tint, #E8EDFB); color: var(--brand-strong, #011F8D);
+  display: grid; place-items: center;
+}
+.rc-eml__hd-txt { font-size: 1rem; font-weight: 700; letter-spacing: -0.01em; }
+.rc-eml__pill {
+  margin-left: auto; flex: none; display: inline-flex; align-items: center; gap: 5px;
+  border-radius: 14px; padding: 2.5px 10px; font-size: 0.62rem; font-weight: 700;
+  letter-spacing: 0.04em; background: #E6F2EA; color: #1F7A4D;
+}
+.rc-eml__pill-dot { width: 4px; height: 4px; border-radius: 50%; background: currentColor; }
+
+.rc-eml { display: flex; flex-direction: column; gap: 14px; }
+.rc-eml__banner {
+  display: flex; gap: 9px; align-items: flex-start;
+  border: 1px solid var(--brand-line, #C9D4F2); background: var(--brand-wash, #E8EDFB55);
+  border-radius: 10px; padding: 10px 14px; font-size: 0.8rem; line-height: 1.55;
+}
+.rc-eml__banner-ic { flex: none; margin-top: 1px; color: var(--brand-strong, #022AC0); }
+
+.rc-eml__meta {
+  display: grid; grid-template-columns: 64px 1fr; gap: 9px 12px; align-items: center;
+}
+.rc-eml__label { font-size: 0.8rem; font-weight: 600; color: var(--muted, #5C6770); }
+.rc-eml__from { display: flex; align-items: center; gap: 8px; font-size: 0.82rem; flex-wrap: wrap; }
+.rc-eml__from-txt { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.rc-eml__badge {
+  flex: none; display: inline-flex; border-radius: 10px; padding: 1px 7px;
+  font-size: 0.56rem; font-weight: 700; background: #E6F2EA; color: #1F7A4D;
+}
+.rc-eml__chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid var(--border, #E5E9ED); background: var(--surface-2, #FAFBFC);
+  border-radius: 16px; padding: 3.5px 11px; font-size: 0.82rem; color: var(--ink, #1B2730);
+}
+.rc-eml__chip-lock { flex: none; color: var(--muted, #93A0A8); line-height: 0; }
+.rc-eml__hint { display: block; font-size: 0.7rem; color: var(--muted, #93A0A8); margin-top: 3px; }
+.rc-eml__body {
+  min-height: 340px; font-size: 13.5px; line-height: 1.65; resize: vertical;
+}
+.rc-eml__logline {
+  display: inline-flex; align-items: center; gap: 7px; margin-right: auto;
+  font-size: 0.75rem; color: var(--muted, #93A0A8);
+}
+.rc-eml__logline-ic { flex: none; color: #1F7A4D; line-height: 0; }
+
+/* ─── G2.5 — the shared Requisition form (New requisition + Detail Overview).
+   Single full-width column (§5 — no right rail on Detail); view boxes sized to
+   match their inputs so nothing shifts view↔edit. ─── */
+.rc-ov-form { width: 100%; }
+.rc-reqform { display: flex; flex-direction: column; gap: 14px; }
+
+/* §5 — field grids reflow at narrow widths. */
+.rc-reqform .rc-fgrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px 16px;
+}
+
+/* Section header: icon+title come first (nowrap), the note right-aligns and
+   wraps onto its own line when it doesn't fit. */
+.rc-reqform .rc-card__head h2 { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 9px; }
+.rc-card__hnowrap { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
+.rc-card__hnote {
+  margin-left: auto; font-size: 0.72rem; font-weight: 400;
+  color: var(--muted, #93A0A8); text-align: right;
+}
+
+/* View-mode read-only value box — light fill, subtle border, 38px min height. */
+.rc-vbox {
+  width: 100%; box-sizing: border-box; min-height: 38px;
+  border: 1px solid var(--line-2, #EDF0F3); background: var(--surface-2, #FAFBFC);
+  border-radius: 8px; padding: 9px 12px; font-size: 0.82rem; font-weight: 500;
+  color: var(--ink, #1B2730); line-height: 1.4; display: flex; align-items: center;
+}
+.rc-vbox--text { display: block; white-space: pre-wrap; line-height: 1.6; font-weight: 400; }
+.rc-vbox--empty { color: var(--muted, #93A0A8); font-weight: 400; }
+
+/* G2.5b — Overview sticky edit bar. */
+.rc-editbar {
+  display: flex; align-items: center; gap: 11px; flex-wrap: wrap;
+  background: var(--surface, #fff); border: 1px solid var(--brand-line, #C9D4F2);
+  border-left: 3px solid var(--brand-strong, #022AC0); border-radius: 11px;
+  padding: 11px 16px; margin-bottom: 14px;
+  position: sticky; top: 62px; z-index: 20;
+  box-shadow: 0 6px 18px -10px rgba(15, 25, 40, 0.25);
+}
+/* The icon set ships viewBox-only svgs (no intrinsic size) — it MUST be sized
+   here or it fills the container (the edit-bar pencil blanked the Overview). */
+.rc-editbar > svg { flex: none; width: 15px; height: 15px; color: var(--brand-strong, #022AC0); }
+.rc-editbar__msg { flex: 1; min-width: 220px; font-size: 0.8rem; color: #3a454e; }

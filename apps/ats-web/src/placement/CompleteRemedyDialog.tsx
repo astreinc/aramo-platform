@@ -1,4 +1,4 @@
-import { Button, Dialog, FormField, InlineAlert, useToast } from '@aramo/fe-foundation';
+import { Button, Dialog, FormField, InlineAlert, useToast, Input } from '@aramo/fe-foundation';
 import { useState } from 'react';
 
 import { formatMoney } from './commercial-format';
@@ -96,7 +96,7 @@ export function CompleteRemedyDialog({ open, placementId, remedy, onClose, onCom
           label="Replacement placement reference"
           helper="The replacement must be a permanent placement on the same requisition that has started."
         >
-          <input
+          <Input unstyled
             className="rc-input"
             type="text"
             aria-label="Replacement placement reference"
@@ -111,7 +111,7 @@ export function CompleteRemedyDialog({ open, placementId, remedy, onClose, onCom
           label="Completion evidence reference"
           helper="A governed reference for the completed remedy obligation."
         >
-          <input
+          <Input unstyled
             className="rc-input"
             type="text"
             aria-label="Completion evidence reference"

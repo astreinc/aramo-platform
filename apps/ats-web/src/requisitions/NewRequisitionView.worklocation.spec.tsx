@@ -95,7 +95,14 @@ async function openManualForm(scopes: string[] = ['requisition:create']): Promis
       </Routes>
     </MemoryRouter>,
   );
-  fireEvent.click(await screen.findByRole('button', { name: /enter the requisition manually/i }));
+  // §4 — reach the review form via Import (no manual path). The intake text
+  // carries no location so the WL tests set City/State/ZIP explicitly.
+  fireEvent.change(await screen.findByLabelText('Requisition intake'), {
+    target: { value: 'Contract role. Review the details.' },
+  });
+  fireEvent.click(
+    screen.getByRole('button', { name: /import client requisition/i }),
+  );
   fireEvent.change(await screen.findByLabelText('Job title'), { target: { value: 'New Role' } });
   fireEvent.click(screen.getByRole('combobox', { name: 'Company' }));
   fireEvent.click(await screen.findByRole('option', { name: /Acme Corp/i }));

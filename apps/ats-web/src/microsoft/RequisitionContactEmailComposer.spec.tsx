@@ -135,4 +135,52 @@ describe('RequisitionContactEmailComposer', () => {
     expect(onOpenChange).toHaveBeenCalledWith(false);
     expect(sendFn).not.toHaveBeenCalled();
   });
+
+  // G2.3 — the prototype "Review email draft" presentation.
+  it('G2.3: renders the review-draft header, DRAFT · NOT SENT pill and subtext', async () => {
+    renderComposer();
+    expect(await screen.findByText('Review email draft')).toBeInTheDocument();
+    expect(screen.getByTestId('email-composer-status').textContent).toMatch(
+      /DRAFT · NOT SENT/,
+    );
+    expect(
+      screen.getByText(/nothing sends until you click Send/i),
+    ).toBeInTheDocument();
+  });
+
+  it('G2.3: banner cites REQ + title without enumerating inserted fields', async () => {
+    renderComposer();
+    const banner = await screen.findByTestId('email-composer-context');
+    expect(banner.textContent).toMatch(/Draft prepared from/i);
+    expect(banner.textContent).toMatch(/REQ-42 · Senior Engineer/);
+    expect(banner.textContent).toMatch(/Review and edit the message before sending/i);
+  });
+
+  it('G2.3: From shows an M365 CONNECTED badge; To is a locked chip resolved from the record', async () => {
+    renderComposer();
+    expect(await screen.findByTestId('email-composer-from')).toHaveTextContent(
+      'M365 CONNECTED',
+    );
+    expect(screen.getByTestId('email-composer-recipient').textContent).toMatch(
+      /talent@example\.test/,
+    );
+    expect(
+      screen.getByText(/recipient can.t be changed here/i),
+    ).toBeInTheDocument();
+  });
+
+  it('G2.3: footer states logging is automatic (a line, not a checkbox) on the REQ', async () => {
+    renderComposer();
+    await screen.findByTestId('email-composer-body');
+    const line = document.querySelector('.rc-eml__logline');
+    expect(line?.textContent).toMatch(
+      /Sent email is logged to this Talent.s activity on REQ-42 automatically/i,
+    );
+    // It is a static line — NOT a checkbox control.
+    expect(
+      document.querySelector('.rc-eml__logline input[type="checkbox"]'),
+    ).toBeNull();
+    // And there is no "Save draft" affordance (Graph is send-only).
+    expect(screen.queryByText(/Save draft/i)).toBeNull();
+  });
 });

@@ -242,31 +242,16 @@ describe('RequisitionsListView', () => {
     expect(screen.queryByText('Senior Engineer')).not.toBeInTheDocument();
   });
 
-  it('the Owner dropdown narrows to owned/recruited rows (Me) for a read:all principal', async () => {
-    const MINE = makeReq('req-mine', 'My Req', 'open', { owner_id: 'u1' });
-    const THEIRS = makeReq('req-theirs', 'Their Req', 'open', {
-      owner_id: 'u2',
-    });
-    mockFetch([MINE, THEIRS]);
-    renderList({
-      sessionOverride: {
-        sub: 'u1',
-        consumer_type: 'recruiter',
-        tenant_id: 't',
-        scopes: ['requisition:read', 'requisition:read:all'],
-        iat: 0,
-        exp: 0,
-      },
-    });
-    // Default (Owner: Any) shows both.
-    await waitFor(() => expect(screen.getByText('My Req')).toBeInTheDocument());
-    expect(screen.getByText('Their Req')).toBeInTheDocument();
-    // Owner: Me narrows to owned/recruited rows.
-    fireEvent.change(screen.getByLabelText('Filter by owner'), {
-      target: { value: 'me' },
-    });
-    expect(screen.getByText('My Req')).toBeInTheDocument();
-    expect(screen.queryByText('Their Req')).not.toBeInTheDocument();
+  it('§0: no Owner column header and no owner filter are rendered', async () => {
+    mockFetch([OPEN]);
+    renderList();
+    await waitFor(() =>
+      expect(screen.getByText('Senior Engineer')).toBeInTheDocument(),
+    );
+    // Ownership isn't modeled — the Owner column + filter are gone.
+    expect(screen.queryByText('Owner', { selector: '.rc-rt__hc' })).toBeNull();
+    expect(screen.queryByLabelText('Filter by owner')).toBeNull();
+    expect(document.querySelector('.rc-rt__owner')).toBeNull();
   });
 
   it('the scoped search filters by title', async () => {
@@ -503,11 +488,9 @@ describe('RequisitionsListView', () => {
     await waitFor(() =>
       expect(screen.getByText('Platform Engineer')).toBeInTheDocument(),
     );
-    // Recruiter resolves via the roster; the owner cell is avatar-only (mockup
-    // parity), so the resolved name is carried on the cell's title tooltip.
-    await waitFor(() =>
-      expect(screen.getByTitle('Priya Recruiter')).toBeInTheDocument(),
-    );
+    // §0 — ownership isn't modeled: the resolved recruiter/owner name is NOT
+    // surfaced anywhere on the row.
+    expect(screen.queryByTitle('Priya Recruiter')).toBeNull();
     // .dc 3-cell TALENT block (Ruling 3): "In pipeline" is the real Pipeline
     // count; "Submitted"/"Interview" are OWNER-sourced with no requisition-grain
     // rollup, so they render a muted em-dash — never a fabricated count (and never
@@ -658,17 +641,18 @@ describe('RequisitionsListView', () => {
     expect(sub?.textContent ?? '').toContain('REQ-1007');
   });
 
-  it('the is_hot badge is labelled "Priority" (not "Hot", not a star)', async () => {
+  it('G2.1: an is_hot row renders NO per-row Priority pill beside the title', async () => {
     mockFetch([HOT]);
     renderList();
     await waitFor(() =>
       expect(screen.getByText('Hot Role')).toBeInTheDocument(),
     );
-    // Recruiter-facing team-wide priority signal — the row badge reads "Priority".
+    // G2.1 removed the per-row Priority pill to match the prototype. The is_hot
+    // signal now surfaces only via the Attention column + Priority filter chip.
+    expect(document.querySelector('.rc-rt__hot')).toBeNull();
     expect(
-      screen.getByText('Priority', { selector: '.rc-rt__hot' }),
-    ).toBeInTheDocument();
-    expect(screen.queryByText('Hot', { selector: '.rc-rt__hot' })).toBeNull();
+      screen.queryByText('Priority', { selector: '.rc-rt__hot' }),
+    ).toBeNull();
   });
 
   it('R5: the summary line uses only real enum values (open / on hold / closed), no derived bucket', async () => {
@@ -694,25 +678,25 @@ describe('RequisitionsListView', () => {
     ).toBeInTheDocument();
   });
 
-  it('shows the unassigned state in the owner cell and offers no reassign action', async () => {
+  it('§0: renders no owner cell / unassigned tooltip (ownership not modeled)', async () => {
     mockFetch([OPEN]);
     renderList();
     await waitFor(() =>
       expect(screen.getByText('Senior Engineer')).toBeInTheDocument(),
     );
-    // Owner cell is avatar-only (mockup parity); the unassigned state is carried
-    // on the cell's title tooltip, and there is no reassign affordance.
-    expect(screen.getByTitle('Unassigned')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /assign/i })).toBeNull();
+    // The owner cell is gone entirely — no "Unassigned" tooltip, no avatar.
+    expect(screen.queryByTitle('Unassigned')).toBeNull();
+    expect(document.querySelector('.rc-rt__owner')).toBeNull();
   });
 
-  it('surfaces a needs-attention banner for hot requisitions', async () => {
+  it('G2.1: renders NO "needs attention" summary banner above the table', async () => {
     mockFetch([HOT]);
     renderList();
     await waitFor(() =>
-      expect(
-        screen.getByText(/requisition.*need.*attention/i),
-      ).toBeInTheDocument(),
+      expect(screen.getByText('Hot Role')).toBeInTheDocument(),
     );
+    // G2.1 removed the summary banner to match the prototype.
+    expect(screen.queryByText(/requisition.*need.*attention/i)).toBeNull();
+    expect(document.querySelector('.rc-focus')).toBeNull();
   });
 });

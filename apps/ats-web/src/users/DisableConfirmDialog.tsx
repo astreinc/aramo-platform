@@ -3,7 +3,7 @@ import { Button } from '@aramo/fe-foundation';
 import { Dialog } from '@aramo/fe-foundation';
 import { FormField } from '@aramo/fe-foundation';
 import { InlineAlert } from '@aramo/fe-foundation';
-import { useToast } from '@aramo/fe-foundation';
+import { useToast, Input } from '@aramo/fe-foundation';
 
 import { messageForDisableError, type ErrorMessage } from './error-messages';
 import type { TenantUserView } from './types';
@@ -123,7 +123,7 @@ export function DisableConfirmDialog({
         label={<label htmlFor="disable-reason">Reason (optional)</label>}
         helper="Recorded in the audit log; visible only to admins."
       >
-        <input
+        <Input unstyled
           id="disable-reason"
           type="text"
           className="rc-input"

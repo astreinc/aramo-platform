@@ -92,7 +92,11 @@ function installFetch(all: readonly CompanyView[], status = 200) {
         status, headers: { 'Content-Type': 'application/json' },
       });
     }
-    if (url.includes('/v1/tenant/users') || url.includes('/v1/reports/')) {
+    if (
+      url.includes('/v1/tenant/users') ||
+      url.includes('/v1/reports/') ||
+      url.includes('/v1/contacts')
+    ) {
       return new Response(JSON.stringify({ items: [] }), {
         status: 200, headers: { 'Content-Type': 'application/json' },
       });
@@ -126,10 +130,9 @@ describe('CompaniesListView (server-paged, party/role)', () => {
       expect(screen.getByText(/no companies visible to you yet/i)).toBeInTheDocument(),
     );
     expect(screen.getByRole('heading', { name: 'Companies' })).toBeInTheDocument();
-    expect(screen.getByText(/your visible companies/i)).toBeInTheDocument();
   });
 
-  it('renders "Type · Status" relationship pills + industry/tier/location', async () => {
+  it('renders "Type · Status" relationship pills + industry/location', async () => {
     installFetch([
       makeCompany('co-1', 'Acme Corp', {
         city: 'San Francisco', state: 'CA', industry: 'Robotics',
@@ -141,7 +144,6 @@ describe('CompaniesListView (server-paged, party/role)', () => {
     await waitFor(() => expect(screen.getByText('Acme Corp')).toBeInTheDocument());
     const table = screen.getByRole('table');
     expect(within(table).getByText(/Robotics/)).toBeInTheDocument();
-    expect(within(table).getByText(/Key account/)).toBeInTheDocument();
     expect(within(table).getByText(/San Francisco, CA/)).toBeInTheDocument();
     // both roles shown with their own status
     expect(within(table).getByText('Client · Active')).toBeInTheDocument();
@@ -216,26 +218,21 @@ describe('CompaniesListView (server-paged, party/role)', () => {
     ]);
     renderInRouter(<CompaniesListView />);
     await waitFor(() => expect(screen.getByText('Active Co')).toBeInTheDocument());
-    fireEvent.click(screen.getByRole('button', { name: 'Prospect' }));
+    // Relationship status is a single-select dropdown (prototype), not pills.
+    fireEvent.change(screen.getByLabelText('Relationship status'), {
+      target: { value: 'PROSPECT' },
+    });
     await waitFor(() => expect(screen.queryByText('Active Co')).toBeNull());
     expect(screen.getByText('Prospect Co')).toBeInTheDocument();
-  });
-
-  it('toggles between Table and Cards views', async () => {
-    installFetch([makeCompany('co-1', 'Acme Corp')]);
-    renderInRouter(<CompaniesListView />);
-    await waitFor(() => expect(screen.getByText('Acme Corp')).toBeInTheDocument());
-    expect(screen.getByRole('table')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Cards' }));
-    await waitFor(() => expect(screen.queryByRole('table')).toBeNull());
-    expect(screen.getByText('Acme Corp')).toBeInTheDocument();
   });
 
   it('opens the quick-edit drawer from a row', async () => {
     installFetch([makeCompany('co-1', 'Acme Corp')]);
     renderInRouter(<CompaniesListView />);
     await waitFor(() => expect(screen.getByText('Acme Corp')).toBeInTheDocument());
-    fireEvent.click(screen.getByRole('button', { name: /quick edit Acme Corp/i }));
+    // Row click (off the name link) opens the drawer — no separate action button.
+    const row = screen.getByText('Acme Corp').closest('tr');
+    fireEvent.click(row as HTMLElement);
     await waitFor(() =>
       expect(screen.getByTestId('company-edit-drawer')).toBeInTheDocument(),
     );
@@ -265,7 +262,7 @@ describe('CompaniesListView (server-paged, party/role)', () => {
     expect(screen.getByRole('button', { name: /all companies/i })).toBeInTheDocument();
   });
 
-  it('shows the "N of M" count from the server total', async () => {
+  it('shows the visible-company count in the filter row', async () => {
     installFetch([
       makeCompany('co-1', 'A Co'),
       makeCompany('co-2', 'B Co'),
@@ -273,6 +270,6 @@ describe('CompaniesListView (server-paged, party/role)', () => {
     ]);
     renderInRouter(<CompaniesListView />);
     await waitFor(() => expect(screen.getByText('A Co')).toBeInTheDocument());
-    expect(screen.getByText(/of 3 companies/i)).toBeInTheDocument();
+    expect(screen.getByText(/3 companies · click a row/i)).toBeInTheDocument();
   });
 });

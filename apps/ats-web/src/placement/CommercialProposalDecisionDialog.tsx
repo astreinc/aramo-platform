@@ -6,7 +6,7 @@ import {
   InlineAlert,
   RadioGroup,
   type RadioOption,
-  useToast,
+  useToast, Input, TextArea,
 } from '@aramo/fe-foundation';
 import { useState } from 'react';
 
@@ -154,7 +154,7 @@ export function CommercialProposalDecisionDialog({
     >
       {isReject ? (
         <FormField label="Rejection reason" error={fieldError['note']}>
-          <textarea
+          <TextArea unstyled
             className="rc-input"
             rows={2}
             maxLength={2000}
@@ -167,7 +167,7 @@ export function CommercialProposalDecisionDialog({
       ) : (
         <>
           <FormField label="Client reference (optional)">
-            <input
+            <Input unstyled
               className="rc-input"
               value={clientReference}
               onChange={(e) => setClientReference(e.target.value)}
@@ -186,7 +186,7 @@ export function CommercialProposalDecisionDialog({
             />
           </fieldset>
           <FormField label="Note (optional)">
-            <textarea
+            <TextArea unstyled
               className="rc-input"
               rows={2}
               maxLength={2000}

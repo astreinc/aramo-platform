@@ -5,7 +5,7 @@ import {
   Button,
   DataTable,
   InlineAlert,
-  type TableColumn,
+  type TableColumn, Input, Select,
 } from '@aramo/fe-foundation';
 
 import { platformApi, type PlatformTenantSummary } from '../platform-api';
@@ -95,7 +95,7 @@ export function TenantsListView() {
           void load(status, q);
         }}
       >
-        <select
+        <Select unstyled
           aria-label="Filter by status"
           className="tc-input"
           value={status}
@@ -107,8 +107,8 @@ export function TenantsListView() {
               {s === '' ? 'All statuses' : s}
             </option>
           ))}
-        </select>
-        <input
+        </Select>
+        <Input unstyled
           aria-label="Search name or slug"
           className="tc-input"
           placeholder="Search name or slug…"

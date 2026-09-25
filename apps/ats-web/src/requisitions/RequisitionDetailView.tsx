@@ -1,7 +1,7 @@
-import { InlineAlert, useSession, useToast, type Session } from '@aramo/fe-foundation';
+import { ApiError, InlineAlert, useSession, useToast, type Session } from '@aramo/fe-foundation';
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { Tabs, type TabItem } from '@aramo/fe-foundation';
+import { Tabs, type TabItem, Button } from '@aramo/fe-foundation';
 
 import { listActivities } from '../activity/activity-api';
 import { ActivityTimeline } from '../activity/ActivityTimeline';
@@ -9,7 +9,6 @@ import { LogNoteDialog } from '../activity/LogNoteDialog';
 import type { ActivityView } from '../activity/types';
 import { getCompany } from '../companies/companies-api';
 import { getContact } from '../contacts/contacts-api';
-import { collapseToCurrentEpisode } from '../pipeline/rollup';
 import { listPipelinesForRequisition } from '../pipeline/pipeline-api';
 import { PIPELINE_STATUS_LABELS, type PipelineView } from '../pipeline/types';
 import { listOffers } from '../offers/offers-api';
@@ -28,7 +27,6 @@ import { REQUIREMENT_STATUS_LABELS } from '../pre-start/types';
 import { findSubmittalForTalentJob } from '../submittals/submittals-api';
 import { SUBMITTAL_STATE_LABELS } from '../submittals/types';
 import { useEntityCrumb } from '../shell/breadcrumb';
-import { resolveUserNames } from '../users/users-api';
 import { getTalent, updateTalent } from '../talent/talent-api';
 import type { AttachmentView, TalentRecordView } from '../talent/types';
 import { TasksPanel } from '../task/TasksPanel';
@@ -51,9 +49,8 @@ import {
   lifecycleActionsFor,
   type LifecycleAction,
 } from './approval-affordance';
-import { CockpitFieldRow, type SaveFieldFn } from './cockpit-fields';
-import { COCKPIT_FIELDS, type CockpitSection } from './field-affordance';
-import { ProfileWorkbenchPanel } from './ProfileWorkbenchPanel';
+import { RequisitionForm } from './RequisitionForm';
+import { RequirementSkills } from './RequirementSkills';
 import {
   getRequisition,
   listRequisitionAttachments,
@@ -86,27 +83,9 @@ import {
 //   assignment detail, per-placement commercial proposals, and the talent-journey
 //   downstream cells. No per-placement read is issued at first paint.
 
-const SECTION_TITLES: Readonly<Record<CockpitSection, string>> = {
-  identity: 'Identity',
-  classification: 'Classification',
-  work_arrangement: 'Work arrangement',
-  duration: 'Duration & schedule',
-  source: 'Source',
-  compensation: 'Compensation',
-  financial: 'Financial planning',
-  system: 'System',
-};
-
-const SECTION_ORDER: readonly CockpitSection[] = [
-  'identity',
-  'classification',
-  'work_arrangement',
-  'duration',
-  'source',
-  'compensation',
-  'financial',
-];
-
+// G2.5 — the cockpit section table (SECTION_TITLES/SECTION_ORDER) is removed;
+// the Overview now renders the shared RequisitionForm, whose sections are the
+// New-requisition sections.
 
 // Offer states still in play (FE mirror of the BE OPEN offer position). An offer
 // in one of these can be expiring; the terminal states cannot.
@@ -160,10 +139,13 @@ type TabId =
 // The resolved tab is clamped to the AVAILABLE set (fallback Overview) so the
 // default can never point at a tab the actor cannot see.
 function defaultTabFor(scopes: readonly string[], available: ReadonlySet<TabId>): TabId {
+  // Talent is the default working surface when the actor can read the pipeline
+  // (recruiters, owners); Commercial/Assignments are fallbacks for actors whose
+  // only relevant scope is approval/assignment.
   let preferred: TabId = 'overview';
-  if (scopes.includes(COMMERCIAL_APPROVE)) preferred = 'commercial';
-  else if (scopes.includes(PIPELINE_CHANGE_STATUS) || scopes.includes(PIPELINE_READ))
+  if (scopes.includes(PIPELINE_CHANGE_STATUS) || scopes.includes(PIPELINE_READ))
     preferred = 'talent';
+  else if (scopes.includes(COMMERCIAL_APPROVE)) preferred = 'commercial';
   else if (scopes.includes(ASSIGNMENT_EXTEND) || scopes.includes(PRE_START_ACT))
     preferred = 'assignments';
   return available.has(preferred) ? preferred : 'overview';
@@ -180,7 +162,6 @@ export function RequisitionDetailView({
   const [req, setReq] = useState<RequisitionView | null>(null);
   const [pipelines, setPipelines] = useState<readonly PipelineView[]>([]);
   const [talents, setTalents] = useState<Record<string, TalentRecordView>>({});
-  const [userNames, setUserNames] = useState<Record<string, string>>({});
   const [companyName, setCompanyName] = useState<string | null>(null);
   const [contactName, setContactName] = useState<string | null>(null);
   const [attachments, setAttachments] = useState<readonly AttachmentView[]>([]);
@@ -194,6 +175,9 @@ export function RequisitionDetailView({
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [tab, setTab] = useState<TabId | null>(null);
+  // G2.5b — whole-form Overview edit. Entered only via the header Edit button;
+  // exited by the sticky edit bar's Cancel/Save.
+  const [editing, setEditing] = useState(false);
 
   const sessionState = useSession();
   const toast = useToast();
@@ -242,7 +226,6 @@ export function RequisitionDetailView({
           coRes,
           contactRes,
           talentResults,
-          rosterRes,
           attachRes,
           reqActRes,
           pipeActResults,
@@ -254,7 +237,6 @@ export function RequisitionDetailView({
             ? getContact(reqRes.contact_id)
             : Promise.reject(new Error('no contact')),
           Promise.allSettled(ids.map((id) => getTalent(id))),
-          resolveUserNames(),
           listRequisitionAttachments(reqId),
           listActivities('requisition', reqId),
           Promise.allSettled(pids.map((id) => listActivities('pipeline', id))),
@@ -279,10 +261,6 @@ export function RequisitionDetailView({
             if (id !== undefined && r.status === 'fulfilled') map[id] = r.value;
           });
           setTalents(map);
-        }
-        // §5 D4c — recruiter/owner names from the directory (incl. departed).
-        if (rosterRes.status === 'fulfilled') {
-          setUserNames(rosterRes.value);
         }
         if (attachRes.status === 'fulfilled' && Array.isArray(attachRes.value.items)) {
           setAttachments(attachRes.value.items);
@@ -334,7 +312,9 @@ export function RequisitionDetailView({
     );
   }, []);
 
-  const saveField: SaveFieldFn = async (key, value) => {
+  // G2.5 — retained ONLY for the governed status transition (lifecycle actions);
+  // ordinary field edits now flow through the Overview form's whole-form save.
+  const saveField = async (key: string, value: unknown): Promise<void> => {
     if (req === null) return;
     // T1-e (§2.4) — a status change is a governed transition and the server
     // requires the expected version. Send the version we last read alongside
@@ -347,6 +327,23 @@ export function RequisitionDetailView({
         : { [key]: value }
     ) as unknown as UpdateRequisitionRequest;
     setReq(await updateRequisition(req.id, body));
+  };
+
+  // G2.5b — the Overview whole-form save. ONE PATCH carrying the changed
+  // editable fields + the read-then-write `version` (existing CAS authority);
+  // status is NOT included (it stays a governed transition). On success the
+  // response's incremented version refreshes the header ("Edited …") and edit
+  // mode exits. A CAS conflict throws → DetailsPanel keeps the draft + surfaces it.
+  const saveOverviewEdits = async (
+    body: UpdateRequisitionRequest,
+  ): Promise<void> => {
+    if (req === null) return;
+    const updated = await updateRequisition(req.id, {
+      ...body,
+      version: req.version,
+    } as UpdateRequisitionRequest);
+    setReq(updated);
+    setEditing(false);
   };
 
   // L1-E — run a named lifecycle action. AWAITED + catching (replaces the prior
@@ -398,10 +395,8 @@ export function RequisitionDetailView({
   const present = (key: string): boolean =>
     Object.prototype.hasOwnProperty.call(reqRecord, key);
 
-  // Owner = recruiter_id, else owner_id (directive Header). Resolved via the
-  // directory (departed users still resolve).
-  const ownerId = req.recruiter_id ?? req.owner_id ?? null;
-  const ownerName = ownerId !== null ? (userNames[ownerId] ?? null) : null;
+  // §0 — no owner is derived or shown on the detail header (ownership isn't
+  // modeled; creator ≠ owner).
   // Header line-2 clauses (each omitted when absent). WL-B4/R13 — render
   // "City, State ZIP" (e.g. "Washington, DC 20005") with partial values clean:
   // no stray null/undefined, no dangling comma when a part is missing.
@@ -422,11 +417,13 @@ export function RequisitionDetailView({
     content: (
       <DetailsPanel
         req={req}
+        companyName={companyName}
         contactName={contactName}
         present={present}
         scopes={scopes}
-        saveField={saveField}
-        onProfileLinked={refresh}
+        editing={editing}
+        onCancel={() => setEditing(false)}
+        onSave={saveOverviewEdits}
       />
     ),
   });
@@ -518,7 +515,7 @@ export function RequisitionDetailView({
     content: (
       <div className="rc-mt-16">
         <div className="rc-viewhead">
-          <h2 className="rc-section-h">Requisition activity</h2>
+          <h2 className="rc-section-h">Activity — one timeline, every lifecycle</h2>
           <div className="rc-viewhead__actions">
             <LogNoteDialog
               requisitionId={req.id}
@@ -551,11 +548,17 @@ export function RequisitionDetailView({
       label: 'Tasks',
       content: (
         <div className="rc-mt-16">
+          <div className="rc-viewhead">
+            <h2 className="rc-section-h">Tasks on this requisition</h2>
+          </div>
           <TasksPanel
             ownerType="requisition"
             ownerId={req.id}
             canWrite={canWriteTasks}
           />
+          <p className="rc-muted-line rc-mt-8">
+            Tasks consolidate actionable work across lifecycles.
+          </p>
         </div>
       ),
     });
@@ -605,9 +608,10 @@ export function RequisitionDetailView({
               {RECRUITING_STATUS_LABELS[req.status]}
             </StatusPill>
           </h1>
-          {/* Line 2 — company · city, state · arrangement · type/Contract · Owner
-              · external. NO company icon (prototype has none). Each clause is
-              omitted when its value is absent; company is a link. */}
+          {/* Line 2 — company · city, state · arrangement · type/Contract ·
+              external. NO company icon (prototype has none); each clause is
+              omitted when absent; company is a link. §0 — NO "· Owner <name>"
+              (ownership isn't modeled; creator ≠ owner). */}
           <div className="rc-dhead__co">
             <Link to={`/companies/${req.company_id}`}>
               {companyName ?? 'Company'}
@@ -615,26 +619,25 @@ export function RequisitionDetailView({
             {headerPlace !== '' ? <span> · {headerPlace}</span> : null}
             {headerArrangement !== null ? <span> · {headerArrangement}</span> : null}
             {headerType !== null ? <span> · {headerType}</span> : null}
-            {ownerName !== null ? (
-              <span> · Owner <span>{ownerName}</span></span>
-            ) : null}
             {req.external_req_id !== null ? (
               <span className="mono"> · {req.external_req_id}</span>
             ) : null}
           </div>
-          {/* Line 3 — aging + optimistic-concurrency version, both from
-              RequisitionView. An "Approved <date> by <approver>" clause is
-              DELIBERATELY OMITTED: the view carries no approver/approved-at
-              field, so it is never fabricated (masked-by-absence). */}
+          {/* §0 — second line shows only aging; the version number and any
+              "Created … by <user>" are removed (created-by is an audit fact shown
+              only in Activity, never here, and never as "Owner"). An "· Edited
+              <when>" clause is appended once the record has been edited. */}
           <div className="rc-dhead__sub">
             Open {daysOpen(req.created_at)} days
-            <span className="mono"> · v{req.version}</span>
+            {req.updated_at !== req.created_at ? (
+              <span> · Edited {formatDate(req.updated_at)}</span>
+            ) : null}
           </div>
         </div>
         <div className="rc-dhead__actions">
           {/* PR-14 — personal bookmark. NOT the team-wide HOT pill; never
               toggles is_hot, invisible to other users. */}
-          <button
+          <Button unstyled
             type="button"
             className={`rc-hbtn${req.bookmarked ? ' rc-hbtn--on' : ''}`}
             aria-pressed={req.bookmarked}
@@ -643,7 +646,7 @@ export function RequisitionDetailView({
           >
             <Icons.IconBookmark />
             {req.bookmarked ? 'Bookmarked' : 'Bookmark'}
-          </button>
+          </Button>
           {canLogNote ? (
             <LogNoteDialog
               requisitionId={req.id}
@@ -652,10 +655,20 @@ export function RequisitionDetailView({
               onSaved={refresh}
             />
           ) : null}
-          <button className="rc-hbtn" onClick={() => setTab('overview')}>
+          {/* G2.5b — Edit enters whole-form Overview edit (switching to the
+              Overview tab from anywhere); it reads "Editing" while active. */}
+          <Button
+            unstyled
+            className={`rc-hbtn${editing ? ' rc-hbtn--primary' : ''}`}
+            aria-pressed={editing}
+            onClick={() => {
+              setTab('overview');
+              setEditing(true);
+            }}
+          >
             <Icons.IconPencil />
-            Edit
-          </button>
+            {editing ? 'Editing' : 'Edit'}
+          </Button>
           {/* L1-E — the named LIFECYCLE ACTIONS, gated by (current status × scope
               × submitter-context). Status is DISPLAYED as the pill above; the user
               changes the lifecycle ONLY through these named actions mirroring the
@@ -668,7 +681,7 @@ export function RequisitionDetailView({
             submitterId: req.pending_approval_submitter_id,
             actorId: session?.sub ?? null,
           }).map((aff) => (
-            <button
+            <Button unstyled
               key={aff.action}
               type="button"
               className={`rc-hbtn${aff.action === 'APPROVE' ? ' rc-hbtn--primary' : ''}`}
@@ -678,7 +691,7 @@ export function RequisitionDetailView({
               }}
             >
               {aff.label}
-            </button>
+            </Button>
           ))}
           {/* SoD — the submitter of a pending_approval requisition (holding the
               approve scope) sees the reason their own Approve is suppressed; Reject
@@ -699,6 +712,8 @@ export function RequisitionDetailView({
         </div>
       </div>
 
+      {/* Snapshot strip (eager, grounded cards) then the attention rail — both
+          above the tabs, matching the prototype. */}
       <SnapshotStrip
         req={req}
         pipelines={pipelines}
@@ -765,9 +780,9 @@ function SnapshotCard({
     return <div className={className}>{inner}</div>;
   }
   return (
-    <button type="button" className={className} onClick={onClick}>
+    <Button unstyled type="button" className={className} onClick={onClick}>
       {inner}
-    </button>
+    </Button>
   );
 }
 
@@ -901,9 +916,9 @@ function AttnRow({
         {detail !== undefined ? <span className="rc-attn__detail"> {detail}</span> : null}
       </span>
       {age !== undefined ? <span className="rc-attn__age">{age}</span> : null}
-      <button type="button" className="rc-attn__link" onClick={onClick}>
+      <Button unstyled type="button" className="rc-attn__link" onClick={onClick}>
         {linkLabel}
-      </button>
+      </Button>
     </div>
   );
 }
@@ -1113,10 +1128,9 @@ function TalentJourney({
   const [selected, setSelected] = useState<PipelineView | null>(null);
   // Lazy CLIENT/PRE-START population, keyed by talent_record_id.
   const [cells, setCells] = useState<Record<string, JourneyCells>>({});
-  const inPlay = useMemo(
-    () => collapseToCurrentEpisode(pipelines).length,
-    [pipelines],
-  );
+  // Find Talent ▾ menu (prototype): the two sourcing entry points.
+  const [findOpen, setFindOpen] = useState(false);
+  const canSource = scopes.includes('talent:source');
 
   // Least-visibility: the read rides its existing scope; without it the cell
   // stays "—" and NO fetch is ever issued.
@@ -1163,10 +1177,60 @@ function TalentJourney({
     <div className="rc-tj">
       <div className="rc-tj__inner" role="table" aria-label="Talent journey">
         <div className="rc-tj__head">
-          <span className="rc-tj__title">Talent journey — {inPlay} in play</span>
-          <span className="rc-tj__sub">
-            Each status is owned by its lifecycle — click to open it
-          </span>
+          <span className="rc-tj__title">Talent journey</span>
+          {/* Find Talent ▾ — the two sourcing entry points (prototype). Gated on
+              talent:source (the /sourcing route's scope); no menu without it. */}
+          {canSource ? (
+            <div className="rc-tj__find">
+              <Button
+                unstyled
+                type="button"
+                className="rc-tj__findbtn"
+                aria-haspopup="menu"
+                aria-expanded={findOpen}
+                onClick={() => setFindOpen((o) => !o)}
+              >
+                Find Talent <Icons.IconChevronDown />
+              </Button>
+              {findOpen ? (
+                <>
+                  <Button
+                    unstyled
+                    type="button"
+                    aria-label="Close menu"
+                    className="rc-tj__findveil"
+                    onClick={() => setFindOpen(false)}
+                  >
+                    <span aria-hidden="true" />
+                  </Button>
+                  <div className="rc-tj__findmenu" role="menu">
+                    <Link
+                      to="/sourcing"
+                      role="menuitem"
+                      className="rc-tj__finditem"
+                      onClick={() => setFindOpen(false)}
+                    >
+                      <span className="rc-tj__findt">Rediscover existing Talent</span>
+                      <span className="rc-tj__findd">
+                        Search your tenant&apos;s eligible, known Talent pool for this requisition
+                      </span>
+                    </Link>
+                    <Link
+                      to="/sourcing"
+                      role="menuitem"
+                      className="rc-tj__finditem"
+                      onClick={() => setFindOpen(false)}
+                    >
+                      <span className="rc-tj__findt">Source new Talent</span>
+                      <span className="rc-tj__findd">
+                        Discover people not yet in your working Talent pool
+                      </span>
+                    </Link>
+                  </div>
+                </>
+              ) : null}
+            </div>
+          ) : null}
           {/* Full pipeline → the requisitions list (the prototype target). */}
           <Link to="/requisitions" className="rc-tj__full">
             Full pipeline →
@@ -1178,11 +1242,14 @@ function TalentJourney({
               Each cell still reads from its OWNING aggregate; only the column
               header presentation is the unified-journey vocabulary. */}
           <span className="rc-tj__ch">Talent</span>
+          <span className="rc-tj__ch">Email</span>
+          <span className="rc-tj__ch">Phone</span>
           <span className="rc-tj__ch">Recruiting</span>
           <span className="rc-tj__ch">Client</span>
           <span className="rc-tj__ch">Offer</span>
           <span className="rc-tj__ch">Pre-Start</span>
           <span className="rc-tj__ch">Employment</span>
+          <span className="rc-tj__ch">Right to represent</span>
         </div>
         {pipelines.length === 0 ? (
           <div className="rc-tj__row" role="row">
@@ -1192,6 +1259,8 @@ function TalentJourney({
           pipelines.map((p) => {
             const t = talents[p.talent_record_id];
             const name = t ? `${t.first_name} ${t.last_name}`.trim() : 'Talent';
+            const email = t?.email1 ?? null;
+            const phone = t?.phone_cell ?? t?.phone_work ?? t?.phone_home ?? null;
             const offer = canReadOffers
               ? liveOfferFor(offers, p.talent_record_id)
               : null;
@@ -1202,7 +1271,7 @@ function TalentJourney({
             return (
               <div key={p.id} className="rc-tj__row" role="row">
                 {/* TALENT → the talent side panel (owning surface). */}
-                <button
+                <Button unstyled
                   type="button"
                   className="rc-tj__talent"
                   onClick={() => openRow(p)}
@@ -1218,16 +1287,28 @@ function TalentJourney({
                       </span>
                     ) : null}
                   </span>
-                </button>
+                </Button>
+                {/* EMAIL — mailto (primary email1); "—" when absent. */}
+                {email !== null && email !== '' ? (
+                  <a className="rc-tj__mail" href={`mailto:${email}`} title={email}>
+                    {email}
+                  </a>
+                ) : (
+                  <span className="rc-tj__cell rc-tj__empty">—</span>
+                )}
+                {/* PHONE — cell, then work, then home; "—" when absent. */}
+                <span className="rc-tj__cell rc-tj__phone">
+                  {phone !== null && phone !== '' ? phone : '—'}
+                </span>
                 {/* PIPELINE → the recruiting stepper in the side panel. */}
-                <button
+                <Button unstyled
                   type="button"
                   className="rc-tj__cell"
                   onClick={() => openRow(p)}
                   aria-label={`Pipeline: ${PIPELINE_STATUS_LABELS[p.status]}`}
                 >
                   <StagePill status={p.status} />
-                </button>
+                </Button>
                 {/* CLIENT — authoritative submittal-state summary for this talent,
                     populated LAZILY when the row is opened (the pipeline→submittal
                     linkage read; never derived from the pipeline stage). */}
@@ -1236,7 +1317,7 @@ function TalentJourney({
                 </span>
                 {/* OFFER → the offer surface in the side panel. */}
                 {offer !== null ? (
-                  <button
+                  <Button unstyled
                     type="button"
                     className="rc-tj__cell"
                     onClick={() => openRow(p)}
@@ -1247,7 +1328,7 @@ function TalentJourney({
                         Expires {Math.max(0, offerDaysLeft(offer))}d
                       </span>
                     ) : null}
-                  </button>
+                  </Button>
                 ) : (
                   <span className="rc-tj__cell rc-tj__empty">—</span>
                 )}
@@ -1258,16 +1339,30 @@ function TalentJourney({
                 </span>
                 {/* ASSIGNMENT → the Assignments surface (drill). */}
                 {placement !== null ? (
-                  <button
+                  <Button unstyled
                     type="button"
                     className="rc-tj__cell"
                     onClick={() => onNavigate('assignments')}
                   >
                     {PLACEMENT_STATE_LABELS[placement.state]}
-                  </button>
+                  </Button>
                 ) : (
                   <span className="rc-tj__cell rc-tj__empty">—</span>
                 )}
+                {/* RTR — Right to Represent. Send action is being wired in a
+                    separate slice; the button is placed (unwired) so the column
+                    matches the prototype. No backend call is issued yet. */}
+                <span className="rc-tj__rtr">
+                  <Button
+                    unstyled
+                    type="button"
+                    className="rc-tj__rtrbtn"
+                    title="Send RTR — wiring in progress"
+                  >
+                    <Icons.IconMail />
+                    Send RTR
+                  </Button>
+                </span>
               </div>
             );
           })
@@ -1308,6 +1403,26 @@ function talentLabel(
   return t ? `${t.first_name} ${t.last_name}`.trim() : 'Talent';
 }
 
+// Shared per-tab empty state — mirrors the prototype's dashed "nothing here yet"
+// card (title + explanatory body). Used by the tabs whose prototype view is an
+// empty state; the populated tables/lists render instead once data exists.
+function TabEmpty({
+  title,
+  children,
+}: {
+  readonly title: string;
+  readonly children: ReactNode;
+}) {
+  return (
+    <div className="rc-mt-16">
+      <div className="rc-tabempty">
+        <div className="rc-tabempty__t">{title}</div>
+        <p className="rc-tabempty__b">{children}</p>
+      </div>
+    </div>
+  );
+}
+
 function OffersTab({
   offers,
   talents,
@@ -1315,6 +1430,15 @@ function OffersTab({
   readonly offers: readonly OfferView[];
   readonly talents: Record<string, TalentRecordView>;
 }) {
+  if (offers.length === 0) {
+    return (
+      <TabEmpty title="No offers on this requisition">
+        Create offer becomes available when a Talent reaches Client — Selected.
+        Offers carry Talent-facing terms only; employer financials live in
+        Commercial.
+      </TabEmpty>
+    );
+  }
   const columns: ReadonlyArray<TableColumn<OfferView>> = [
     {
       key: 'talent',
@@ -1459,6 +1583,19 @@ function PreStartPanel({
 
   const list = Object.values(rows);
 
+  // Empty state mirrors the prototype's "No placements in pre-start" card.
+  // ("onboarding readiness" in the mock → "pre-start readiness" here, per the
+  // codebase's Pre-Start lifecycle vocabulary.)
+  if (canReadPlacements && list.length === 0) {
+    return (
+      <TabEmpty title="No placements in pre-start">
+        When an offer is accepted, pre-start readiness appears here: requirements,
+        blockers, and days to start. Readiness is derived from requirement
+        completion — never toggled manually.
+      </TabEmpty>
+    );
+  }
+
   return (
     <div className="rc-mt-16">
       <Card flush>
@@ -1469,8 +1606,6 @@ function PreStartPanel({
           <p className="rc-muted-line rc-mt-8">
             Placement visibility is required to summarise pre-start readiness.
           </p>
-        ) : list.length === 0 ? (
-          <p className="rc-empty">No committed placements to check yet.</p>
         ) : (
           <ul className="rc-filelist">
             {list.map((row) => (
@@ -1548,7 +1683,7 @@ function PlacementDrillList({
         const isOpen = openId === p.id;
         return (
           <li key={p.id} className="rc-filelist__row" style={{ display: 'block' }}>
-            <button
+            <Button unstyled
               type="button"
               className="rc-linkbtn"
               aria-expanded={isOpen}
@@ -1557,7 +1692,7 @@ function PlacementDrillList({
               {talentLabel(talents, p.talent_record_id)} ·{' '}
               {PLACEMENT_STATE_LABELS[p.state]}
               {isOpen ? ' ▾' : ' ▸'}
-            </button>
+            </Button>
             {isOpen ? <div className="rc-mt-8">{renderPanel(p.id)}</div> : null}
           </li>
         );
@@ -1575,6 +1710,15 @@ function AssignmentsTab({
   readonly talents: Record<string, TalentRecordView>;
   readonly session: Session | undefined;
 }) {
+  if (placements.length === 0) {
+    return (
+      <TabEmpty title="No assignments yet">
+        Started work appears here as assignments — start, expected end,
+        extensions, and capacity consumption. Permanent placements show
+        guarantee-period tracking instead.
+      </TabEmpty>
+    );
+  }
   return (
     <div className="rc-mt-16">
       <Card flush>
@@ -1614,6 +1758,39 @@ function CommercialTab({
   readonly talents: Record<string, TalentRecordView>;
   readonly session: Session | undefined;
 }) {
+  // No placements yet → the prototype's requisition-level scaffold: a "Current
+  // terms" card (fields shown as "—" until work starts) + a "Proposals &
+  // approvals" card. No values are computed here — the "—"s are literal empties,
+  // per masked-by-absence. Real per-assignment terms appear via the drill-through
+  // once placements exist.
+  if (placements.length === 0) {
+    return (
+      <div className="rc-mt-16 rc-comm2">
+        <div className="rc-commcard">
+          <div className="rc-commcard__t">Current terms</div>
+          <div className="rc-commgrid">
+            <CommTerm label="Pay rate" value="—" />
+            <CommTerm label="Bill rate" value="—" />
+            <CommTerm label="Margin" value="— · derived" />
+            <CommTerm label="Effective date" value="—" />
+          </div>
+          <p className="rc-commcard__note">
+            Commercial terms are recorded per assignment once work starts.
+            Requisition-level targets live in Financial planning (Overview).
+          </p>
+        </div>
+        <div className="rc-commcard">
+          <div className="rc-commcard__t rc-commcard__t--tight">
+            Proposals &amp; approvals
+          </div>
+          <p className="rc-commcard__body">
+            No pending proposals. Rate revisions raised on an assignment will
+            appear here for approval, with current → proposed impact.
+          </p>
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="rc-mt-16">
       <Card flush>
@@ -1638,6 +1815,17 @@ function CommercialTab({
   );
 }
 
+// One read-only "Current terms" field (empty scaffold) — a small muted label
+// over a muted plain-text value, per the prototype (not a boxed input).
+function CommTerm({ label, value }: { readonly label: string; readonly value: string }) {
+  return (
+    <div className="rc-commterm">
+      <div className="rc-commterm__l">{label}</div>
+      <div className="rc-commterm__v">{value}</div>
+    </div>
+  );
+}
+
 // ── Attachments tab ──
 
 function AttachmentsPanel({
@@ -1645,27 +1833,38 @@ function AttachmentsPanel({
 }: {
   readonly attachments: readonly AttachmentView[];
 }) {
+  // Empty: the prototype's centered dashed "Attach documents" prompt (upload is
+  // a separate, unbuilt capability — this is the affordance, no live uploader).
+  if (attachments.length === 0) {
+    return (
+      <div className="rc-mt-16">
+        <div className="rc-attdrop">
+          <div className="rc-attdrop__t">Attach documents</div>
+          <div className="rc-attdrop__s">
+            Job description, client requirements, rate card · PDF, DOCX, XLSX ·{' '}
+            {attachments.length} files attached
+          </div>
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="rc-mt-16">
       <Card flush>
         <div className="rc-card__head">
           <h2>Attachments</h2>
         </div>
-        {attachments.length === 0 ? (
-          <p className="rc-empty">No attachments on this requisition yet.</p>
-        ) : (
-          <ul className="rc-filelist">
-            {attachments.map((a) => (
-              <li key={a.id} className="rc-filelist__row">
-                <Icons.IconList />
-                <span className="rc-filelist__nm">{a.file_name}</span>
-                <span className="rc-filelist__meta mono">
-                  {formatBytes(a.size_bytes)}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
+        <ul className="rc-filelist">
+          {attachments.map((a) => (
+            <li key={a.id} className="rc-filelist__row">
+              <Icons.IconList />
+              <span className="rc-filelist__nm">{a.file_name}</span>
+              <span className="rc-filelist__meta mono">
+                {formatBytes(a.size_bytes)}
+              </span>
+            </li>
+          ))}
+        </ul>
       </Card>
     </div>
   );
@@ -1679,90 +1878,175 @@ function AttachmentsPanel({
 // collapses — no CSS hiding, no sensitive field loaded to hide it. Compensation
 // actuals ride the same masked-by-absence discipline. ──
 
-function OvRow({ k, value, ok }: { readonly k: string; readonly value: string; readonly ok?: boolean }) {
-  return (
-    <div>
-      <div className="rc-ov__k">{k}</div>
-      <div className={`rc-ov__v${ok ? ' rc-ov__v--ok' : ''}`}>{value}</div>
-    </div>
-  );
+// G2.5 — normalize a RequisitionView into the shared form's string value map.
+// Dates reduce to YYYY-MM-DD (the date-input shape); booleans to 'true'/'false';
+// everything else to a string ('' for null). Masked fields are simply absent
+// from `req` (BE omit) and `present()` skips them — never blanked here.
+function toFormValues(req: RequisitionView): Record<string, string> {
+  const r = req as unknown as Record<string, unknown>;
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(r)) {
+    if (v === null || v === undefined) out[k] = '';
+    else if (typeof v === 'boolean') out[k] = v ? 'true' : 'false';
+    else if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(v)) out[k] = v.slice(0, 10);
+    else out[k] = String(v);
+  }
+  return out;
+}
+
+// G2.5a — the Overview tab. Renders the SHARED RequisitionForm in view mode: a
+// single full-width column of section cards (§5 — no right rail). The
+// per-field click-to-edit cockpit is gone; whole-form edit arrives via the
+// header Edit button (G2.5b). Requirement skills stay owned by the existing
+// ProfileWorkbenchPanel, dropped into the form's skills slot.
+// G2.5b — the Overview form's editable keys (client/contact/status are excluded:
+// client/contact reassignment isn't a field edit here, and status is a governed
+// transition). Booleans + numbers coerce back from the draft's string map; ''
+// clears a field (→ null).
+const OVERVIEW_BOOLEAN_KEYS = new Set([
+  'is_hot',
+  'allow_subcontractors',
+  'relocation_offered',
+  'extension_possible',
+]);
+const OVERVIEW_NUMBER_KEYS = new Set([
+  'openings',
+  'travel_percent',
+  'hours_per_week',
+  'duration_value',
+  'onsite_days_per_week',
+]);
+// margin_percent / markup_percent are DERIVED downstream — read-only in the form,
+// so they are deliberately absent here (never written back).
+const OVERVIEW_EDITABLE_KEYS: readonly string[] = [
+  'title', 'job_type', 'openings', 'is_hot', 'city', 'state', 'postal_code',
+  'work_arrangement', 'onsite_days_per_week', 'duration_value', 'duration_unit',
+  'start_date', 'end_date', 'bill_rate_amount', 'pay_rate_amount', 'rate_type',
+  'allow_subcontractors', 'description', 'notes',
+  'work_authorization', 'labor_category', 'role_family', 'seniority_level',
+  'headcount_reason', 'travel_percent', 'relocation_offered', 'hours_per_week',
+  'extension_possible', 'source_system', 'external_req_id',
+  'target_margin_percent', 'markup_percent_target', 'rate_card_id',
+  'min_bill_rate', 'max_bill_rate', 'min_pay_rate', 'max_pay_rate',
+];
+
+function coerceOverviewValue(key: string, str: string): unknown {
+  if (OVERVIEW_BOOLEAN_KEYS.has(key)) return str === 'true';
+  if (str === '') return null;
+  if (OVERVIEW_NUMBER_KEYS.has(key)) {
+    const n = Number(str);
+    return Number.isFinite(n) ? n : null;
+  }
+  return str;
 }
 
 function DetailsPanel({
   req,
+  companyName,
   contactName,
   present,
   scopes,
-  saveField,
-  onProfileLinked,
+  editing,
+  onCancel,
+  onSave,
 }: {
   readonly req: RequisitionView;
+  readonly companyName: string | null;
   readonly contactName: string | null;
   readonly present: (key: string) => boolean;
   readonly scopes: readonly string[];
-  readonly saveField: SaveFieldFn;
-  readonly onProfileLinked: () => void;
+  readonly editing: boolean;
+  readonly onCancel: () => void;
+  readonly onSave: (body: UpdateRequisitionRequest) => Promise<void>;
 }) {
-  const reqRecord = req as unknown as Record<string, unknown>;
-  const place = [req.city, req.state].filter(Boolean).join(', ');
-  const arrangement = remoteLabel(req.work_arrangement, req.onsite_days_per_week);
-  const filled = req.openings - req.openings_available;
-  const clientStatus = clientStatusValue(req.client_submittal_status ?? null);
+  const original = toFormValues(req);
+  const [draft, setDraft] = useState<Record<string, string>>(original);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // (Re)seed the draft from the current record whenever edit mode is entered.
+  useEffect(() => {
+    if (editing) {
+      setDraft(toFormValues(req));
+      setError(null);
+      setBusy(false);
+    }
+  }, [editing, req]);
+
+  const doSave = async (): Promise<void> => {
+    // Same required fields as create (client is inherited + display-only here,
+    // so it is always satisfied; title is the editable required field).
+    if ((draft['title'] ?? '').trim() === '') {
+      setError('Job title is required.');
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    const body: Record<string, unknown> = {};
+    for (const key of OVERVIEW_EDITABLE_KEYS) {
+      if (!present(key)) continue; // never write a masked field
+      if ((draft[key] ?? '') !== (original[key] ?? '')) {
+        body[key] = coerceOverviewValue(key, draft[key] ?? '');
+      }
+    }
+    try {
+      await onSave(body as UpdateRequisitionRequest);
+    } catch (e) {
+      setError(
+        e instanceof ApiError && e.status === 409
+          ? 'This requisition changed since you opened it. Cancel and reopen to edit the latest version.'
+          : 'Your changes could not be saved. Please try again.',
+      );
+      setBusy(false);
+    }
+  };
+
   return (
-    <div className="rc-mt-16 rc-stack">
-      {/* Demand + Client summary (the prototype Overview cards). Read-only, and
-          masked-by-absence — only present values render; the prototype's
-          fabricated "Submittal deadline" is OMITTED (no such field). */}
-      <div className="rc-ov">
-        <div className="rc-ov__card">
-          <div className="rc-ov__h">Demand</div>
-          <div className="rc-ov__grid">
-            <OvRow k="Openings" value={`${req.openings} · ${filled} filled · ${req.openings_available} available`} />
-            <OvRow k="Job type" value={req.job_type ?? req.type ?? '—'} />
-            <OvRow k="Location" value={place || '—'} />
-            <OvRow k="Arrangement" value={arrangement ?? '—'} />
-            <OvRow k="Start" value={req.start_date !== null ? formatDate(req.start_date) : '—'} />
-            <OvRow k="End" value={req.end_date !== null ? formatDate(req.end_date) : '—'} />
-          </div>
+    <div className="rc-mt-16 rc-ov-form">
+      {editing ? (
+        <div className="rc-editbar" role="region" aria-label="Editing requisition">
+          <Icons.IconPencil />
+          <span className="rc-editbar__msg">
+            <b>Editing REQ-{req.requisition_number}.</b> Saving creates version{' '}
+            <span className="mono">v{req.version + 1}</span> and is logged to the
+            audit trail. Nothing changes until you save.
+          </span>
+          <Button
+            unstyled
+            className="rc-btn rc-btn--sm"
+            onClick={onCancel}
+            disabled={busy}
+          >
+            Cancel
+          </Button>
+          <Button
+            unstyled
+            className="rc-btn rc-btn--sm rc-btn--primary"
+            onClick={() => void doSave()}
+            disabled={busy}
+          >
+            {busy ? 'Saving…' : 'Save changes'}
+          </Button>
         </div>
-        <div className="rc-ov__card">
-          <div className="rc-ov__h">Client</div>
-          <div className="rc-ov__grid">
-            <OvRow k="Client status" value={clientStatus} ok={clientStatus === 'Open'} />
-            <OvRow k="Contact" value={contactName ?? '—'} />
-            <OvRow k="Work authorization" value={req.work_authorization ?? '—'} />
-            <OvRow k="Source" value={req.source_system ?? '—'} />
-          </div>
-        </div>
-      </div>
-      {SECTION_ORDER.map((section) => {
-        const fields = COCKPIT_FIELDS.filter(
-          (f) => f.section === section && present(f.key),
-        );
-        if (fields.length === 0) return null;
-        return (
-          <Card key={section}>
-            <h3 className="req-cockpit__section-title">
-              {SECTION_TITLES[section]}
-            </h3>
-            <div className="req-cockpit__grid">
-              {fields.map((f) => (
-                <CockpitFieldRow
-                  key={f.key}
-                  field={f}
-                  raw={reqRecord[f.key]}
-                  scopes={scopes}
-                  onSave={saveField}
-                />
-              ))}
-            </div>
-          </Card>
-        );
-      })}
-      <ProfileWorkbenchPanel
-        requisitionId={req.id}
+      ) : null}
+      {error !== null ? <InlineAlert variant="error">{error}</InlineAlert> : null}
+      <RequisitionForm
+        mode={editing ? 'edit' : 'view'}
+        values={editing ? draft : original}
+        present={present}
         scopes={scopes}
-        onProfileLinked={onProfileLinked}
+        disabled={busy}
+        onChange={(k, v) => setDraft((d) => ({ ...d, [k]: v }))}
+        clientDisplay={companyName ?? 'Client'}
+        contactDisplay={contactName}
+        statusDisplay={RECRUITING_STATUS_LABELS[req.status]}
+        skillsSlot={
+          <RequirementSkills
+            requisitionId={req.id}
+            mode={editing ? 'edit' : 'view'}
+            scopes={scopes}
+          />
+        }
       />
     </div>
   );

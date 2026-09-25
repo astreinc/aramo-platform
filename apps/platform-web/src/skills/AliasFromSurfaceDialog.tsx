@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Button, Dialog, FormField, InlineAlert } from '@aramo/fe-foundation';
+import { Button, Dialog, FormField, InlineAlert, Input, Select } from '@aramo/fe-foundation';
 
 import { skillsApi, ALIAS_TYPES, type SkillAliasType } from './skills-api';
 import { skillErrorMessage } from './skill-errors';
@@ -58,7 +58,7 @@ export function AliasFromSurfaceDialog({
     >
       {error ? <InlineAlert variant="error">{error}</InlineAlert> : null}
       <FormField label="Alias surface">
-        <input className="tc-input" value={surface} readOnly />
+        <Input unstyled className="tc-input" value={surface} readOnly />
       </FormField>
       <FormField label="Destination skill" helper="Choose the canonical skill this surface should resolve to.">
         <SkillPicker
@@ -69,13 +69,13 @@ export function AliasFromSurfaceDialog({
         />
       </FormField>
       <FormField label="Alias type">
-        <select className="tc-input" value={aliasType} onChange={(e) => setAliasType(e.target.value as SkillAliasType)}>
+        <Select unstyled className="tc-input" value={aliasType} onChange={(e) => setAliasType(e.target.value as SkillAliasType)}>
           {ALIAS_TYPES.map((t) => (
             <option key={t} value={t}>
               {t}
             </option>
           ))}
-        </select>
+        </Select>
       </FormField>
     </Dialog>
   );

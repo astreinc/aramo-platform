@@ -1,4 +1,4 @@
-import { Button, Dialog, FormField, InlineAlert, RadioGroup, type RadioOption, useToast } from '@aramo/fe-foundation';
+import { Button, Dialog, FormField, InlineAlert, RadioGroup, type RadioOption, useToast, Input } from '@aramo/fe-foundation';
 import { useState } from 'react';
 
 import { isValidCurrency, isValidMoney } from '../placement/commercial-format';
@@ -131,7 +131,7 @@ export function GuaranteeTermsFormDialog({ open, mode, requisitionId, onClose, o
       }
     >
       <FormField label="Effective from">
-        <input
+        <Input unstyled
           className="rc-input"
           type="date"
           aria-label="Effective from"
@@ -142,7 +142,7 @@ export function GuaranteeTermsFormDialog({ open, mode, requisitionId, onClose, o
         />
       </FormField>
       <FormField label="Guarantee duration (days)">
-        <input
+        <Input unstyled
           className="rc-input"
           type="number"
           min={1}
@@ -158,7 +158,7 @@ export function GuaranteeTermsFormDialog({ open, mode, requisitionId, onClose, o
         <RadioGroup name="terms-remedy-policy" value={remedyPolicy} options={POLICY_OPTIONS} onValueChange={setRemedyPolicy} disabled={busy} />
       </fieldset>
       <FormField label="Guarantee exposure amount">
-        <input
+        <Input unstyled
           className="rc-input"
           type="text"
           inputMode="decimal"
@@ -170,7 +170,7 @@ export function GuaranteeTermsFormDialog({ open, mode, requisitionId, onClose, o
         />
       </FormField>
       <FormField label="Currency">
-        <input
+        <Input unstyled
           className="rc-input"
           type="text"
           maxLength={3}
@@ -186,7 +186,7 @@ export function GuaranteeTermsFormDialog({ open, mode, requisitionId, onClose, o
         <RadioGroup name="terms-source-type" value={sourceType} options={SOURCE_OPTIONS} onValueChange={setSourceType} disabled={busy} />
       </fieldset>
       <FormField label="Source reference (optional)">
-        <input
+        <Input unstyled
           className="rc-input"
           type="text"
           maxLength={255}

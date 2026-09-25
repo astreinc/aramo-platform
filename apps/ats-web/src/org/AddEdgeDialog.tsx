@@ -3,7 +3,7 @@ import { Button } from '@aramo/fe-foundation';
 import { Dialog } from '@aramo/fe-foundation';
 import { FormField } from '@aramo/fe-foundation';
 import { InlineAlert } from '@aramo/fe-foundation';
-import { useToast } from '@aramo/fe-foundation';
+import { useToast, Select } from '@aramo/fe-foundation';
 
 import type { AssignableUser } from '../users/users-api';
 
@@ -142,7 +142,7 @@ export function AddEdgeDialog({
           </InlineAlert>
         )}
         <FormField label={<label htmlFor="add-edge-manager">Manager</label>}>
-          <select
+          <Select unstyled
             id="add-edge-manager"
             className="rc-input"
             value={manager}
@@ -156,10 +156,10 @@ export function AddEdgeDialog({
                 {displayFor(u)}
               </option>
             ))}
-          </select>
+          </Select>
         </FormField>
         <FormField label={<label htmlFor="add-edge-report">Report</label>}>
-          <select
+          <Select unstyled
             id="add-edge-report"
             className="rc-input"
             value={report}
@@ -173,7 +173,7 @@ export function AddEdgeDialog({
                 {displayFor(u)}
               </option>
             ))}
-          </select>
+          </Select>
         </FormField>
       </form>
     </Dialog>

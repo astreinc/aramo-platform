@@ -4,7 +4,7 @@ import {
   ApiError,
   Button,
   FormField,
-  InlineAlert,
+  InlineAlert, Checkbox, Input,
 } from '@aramo/fe-foundation';
 
 import { platformApi, ALL_CAPABILITIES } from '../platform-api';
@@ -70,7 +70,7 @@ export function ProvisionTenantView() {
 
       <form className="pw-field-row" onSubmit={(e) => void submit(e)}>
         <FormField label="Tenant name">
-          <input
+          <Input unstyled
             className="tc-input"
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -81,7 +81,7 @@ export function ProvisionTenantView() {
           label="Owner email"
           helper="A business email — the owner's domain becomes the tenant's allowed domain."
         >
-          <input
+          <Input unstyled
             className="tc-input"
             type="email"
             value={ownerEmail}
@@ -90,7 +90,7 @@ export function ProvisionTenantView() {
           />
         </FormField>
         <FormField label="Owner display name (optional)">
-          <input
+          <Input unstyled
             className="tc-input"
             value={ownerDisplayName}
             onChange={(e) => setOwnerDisplayName(e.target.value)}
@@ -101,8 +101,8 @@ export function ProvisionTenantView() {
           <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
             {ALL_CAPABILITIES.map((c) => (
               <label key={c} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                <input
-                  type="checkbox"
+                <Checkbox
+                 
                   checked={caps.includes(c)}
                   onChange={() => toggleCap(c)}
                 />
@@ -113,8 +113,8 @@ export function ProvisionTenantView() {
         </FormField>
         <FormField label="Owner invitation">
           <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-            <input
-              type="checkbox"
+            <Checkbox
+             
               checked={inviteOwner}
               onChange={(e) => setInviteOwner(e.target.checked)}
             />

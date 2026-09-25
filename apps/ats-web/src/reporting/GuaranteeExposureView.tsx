@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react';
+import { Button, Input } from '@aramo/fe-foundation';
 
 import { useEntityCrumb } from '../shell/breadcrumb';
 import { ErrorState, LoadingState, PageHeader } from '../ui';
@@ -65,15 +66,15 @@ export function GuaranteeExposureView(): JSX.Element {
       <form onSubmit={run}>
         <label>
           From
-          <input type="datetime-local" value={from} onChange={(e) => setFrom(e.target.value)} data-testid="ge-from" />
+          <Input type="datetime-local" value={from} onChange={(e) => setFrom(e.target.value)} data-testid="ge-from" />
         </label>
         <label>
           To
-          <input type="datetime-local" value={to} onChange={(e) => setTo(e.target.value)} data-testid="ge-to" />
+          <Input type="datetime-local" value={to} onChange={(e) => setTo(e.target.value)} data-testid="ge-to" />
         </label>
-        <button type="submit" data-testid="ge-run">
+        <Button type="submit" data-testid="ge-run">
           Run report
-        </button>
+        </Button>
       </form>
 
       {status === 'loading' ? <LoadingState /> : null}

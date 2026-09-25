@@ -4,7 +4,7 @@ import {
   Dialog,
   DialogClose,
   FormField,
-  InlineAlert,
+  InlineAlert, TextArea,
 } from '@aramo/fe-foundation';
 
 import { revokeErrorMessage } from './error-messages';
@@ -77,7 +77,7 @@ export function RevokeDialog({
       }
     >
       <FormField label="Revocation reason">
-        <textarea
+        <TextArea
           value={reason}
           onChange={(e) => setReason(e.target.value)}
           rows={3}

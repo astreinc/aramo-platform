@@ -19895,7 +19895,7 @@
   ],
   "scanScope": {
     "dirs": [".github/workflows", ".husky", "ci/scripts", "deploy", "scripts", "tools"],
-    "files": 71,
+    "files": 72,
     "huskyPresent": false
   },
   "scripts": [
@@ -20305,6 +20305,7 @@
         { "kind": "prose", "path": "deploy/seed-prod.test.sh" },
         { "kind": "prose", "path": "deploy/singlebox-compose.test.sh" },
         { "kind": "prose", "path": "scripts/run-script-tests.sh" },
+        { "kind": "prose", "path": "scripts/verify-raw-element-guard.sh" },
         { "kind": "prose", "path": "scripts/verify-vocabulary.sh" },
         { "kind": "prose", "path": "tools/db-sync-local.sh" },
         { "kind": "prose", "path": "tools/db-sync-local.test.sh" },

@@ -5,7 +5,7 @@ import {
   Dialog,
   FormField,
   InlineAlert,
-  type ComboboxItem,
+  type ComboboxItem, Checkbox, Input, TextArea,
 } from '@aramo/fe-foundation';
 
 import { skillsApi, type Skill } from './skills-api';
@@ -78,7 +78,7 @@ export function ConfirmDialog({
       </div>
       {requireAck ? (
         <label style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8 }}>
-          <input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} />
+          <Checkbox checked={ack} onChange={(e) => setAck(e.target.checked)} />
           <span>{ackLabel ?? 'I understand.'}</span>
         </label>
       ) : null}
@@ -178,7 +178,7 @@ export function MergeDialog({
         every referencing row synchronously.
       </p>
       <label style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8 }}>
-        <input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} />
+        <Checkbox checked={ack} onChange={(e) => setAck(e.target.checked)} />
         <span>
           I understand this merges “{loser.canonical_name}”
           {winner ? ` into “${winner.canonical_name}”` : ''}.
@@ -244,10 +244,10 @@ export function OverrideDialog({
         {' '}and enqueues a durable re-reconcile. This is a targeted correction — not a free-form edit.
       </p>
       <FormField label="Governed surface form (optional)" helper="Scope the correction to one surface, when applicable.">
-        <input className="tc-input" value={surfaceForm} onChange={(e) => setSurfaceForm(e.target.value)} />
+        <Input unstyled className="tc-input" value={surfaceForm} onChange={(e) => setSurfaceForm(e.target.value)} />
       </FormField>
       <FormField label="Reason (required)">
-        <textarea className="tc-input" rows={3} value={reason} onChange={(e) => setReason(e.target.value)} />
+        <TextArea unstyled className="tc-input" rows={3} value={reason} onChange={(e) => setReason(e.target.value)} />
       </FormField>
     </Dialog>
   );

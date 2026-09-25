@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Button } from '@aramo/fe-foundation';
 
 import {
   getMicrosoftBindingStatus as defaultLoadStatus,
@@ -83,7 +84,7 @@ export function MicrosoftAccountConnection(
         {label}
       </span>
       {status !== null && !connected ? (
-        <button
+        <Button unstyled
           type="button"
           className="rc-hbtn rc-hbtn--primary"
           data-testid="microsoft-account-connect"
@@ -91,7 +92,7 @@ export function MicrosoftAccountConnection(
           onClick={onConnect}
         >
           {reconnect ? 'Reconnect' : 'Connect account'}
-        </button>
+        </Button>
       ) : null}
       {error !== null ? (
         <p className="rc-warnnote" role="status" data-testid="microsoft-account-error">

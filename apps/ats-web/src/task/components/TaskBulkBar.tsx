@@ -1,3 +1,5 @@
+import { Button } from '@aramo/fe-foundation';
+
 import { Icons } from '../../ui';
 
 // Tasks workspace — the fixed bulk-action bar (mockup parity). Complete /
@@ -30,22 +32,22 @@ export function TaskBulkBar({
       </span>
       <span className="rc-bulkbar__sep" />
 
-      <button type="button" onClick={onComplete} disabled={busy} data-testid="bulk-complete">
+      <Button type="button" onClick={onComplete} disabled={busy} data-testid="bulk-complete">
         <Icons.IconCheck />
         Complete
-      </button>
-      <button type="button" onClick={onReschedule} disabled={busy} data-testid="bulk-reschedule">
+      </Button>
+      <Button type="button" onClick={onReschedule} disabled={busy} data-testid="bulk-reschedule">
         <Icons.IconClock />
         Reschedule
-      </button>
-      <button type="button" onClick={onSnooze} disabled={busy} data-testid="bulk-snooze">
+      </Button>
+      <Button type="button" onClick={onSnooze} disabled={busy} data-testid="bulk-snooze">
         <Icons.IconChevronRight />
         Snooze
-      </button>
+      </Button>
 
       {/* Deferred — bulk reassign needs an assignable-users roster + assign
           scope (the carry). Disabled, never faked. */}
-      <button
+      <Button
         type="button"
         disabled
         title="Bulk reassign needs an assignable-users roster + assign scope (carry)."
@@ -53,16 +55,16 @@ export function TaskBulkBar({
       >
         <Icons.IconUserPlus />
         Reassign
-      </button>
+      </Button>
 
-      <button
+      <Button unstyled
         type="button"
         className="rc-bulkbar__x"
         aria-label="Clear selection"
         onClick={onClear}
       >
         <Icons.IconX />
-      </button>
+      </Button>
     </div>
   );
 }

@@ -1,5 +1,11 @@
 import { useCallback, useState } from 'react';
-import { ApiError, Button, Card, InlineAlert } from '@aramo/fe-foundation';
+import {
+  ApiError,
+  Button,
+  Card,
+  InlineAlert,
+  Input,
+} from '@aramo/fe-foundation';
 
 import { portalApi } from '../portal-api';
 
@@ -90,7 +96,8 @@ export function RightsView() {
           Type your email address to confirm. Your sign-in and platform identity
           will be permanently deleted and you will be signed out.
         </p>
-        <input
+        <Input
+          unstyled
           className="po-input"
           type="email"
           value={confirmEmail}

@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ApiError, Button, Dialog, FormField, InlineAlert } from '@aramo/fe-foundation';
+import { ApiError, Button, Dialog, InlineAlert, Input, TextArea } from '@aramo/fe-foundation';
+
+import { useMe } from '../shell/me-api';
 
 import {
   generateRequisitionContactDraft as defaultDraft,
@@ -63,6 +65,12 @@ export function RequisitionContactEmailComposer(
 ): JSX.Element {
   const draftFn = props.draftFn ?? defaultDraft;
   const sendFn = props.sendFn ?? defaultSend;
+
+  // From identity — the recruiter's own M365-connected mailbox. Loading-safe:
+  // `me` is null until /me resolves (and on error), so the From row shows a
+  // neutral placeholder and never blocks the draft. Presentation-only — the
+  // sender is server-owned at send time; this is display, not a submitted field.
+  const me = useMe();
 
   const [drafting, setDrafting] = useState(false);
   const [draft, setDraft] = useState<RequisitionContactDraft | null>(null);
@@ -149,15 +157,42 @@ export function RequisitionContactEmailComposer(
   const sendDisabled =
     drafting || sending || draft === null || subject.trim() === '' || body.trim() === '';
 
+  const senderLabel =
+    me === null
+      ? 'your connected mailbox'
+      : me.user.display_name === null
+        ? me.user.email
+        : `${me.user.display_name} <${me.user.email}>`;
+
+  const reqRef = draft?.context.requisition_reference ?? '';
+
   return (
     <Dialog
       open={props.open}
       onOpenChange={props.onOpenChange}
-      title="Email this talent"
-      description="Review and edit the message. The recipient is resolved by Aramo and cannot be changed here."
-      size="lg"
+      size="xl"
+      title={
+        <span className="rc-eml__hd">
+          <span className="rc-eml__hd-ic" aria-hidden="true">
+            <MailIcon />
+          </span>
+          <span className="rc-eml__hd-txt">Review email draft</span>
+          <span className="rc-eml__pill" data-testid="email-composer-status">
+            <span className="rc-eml__pill-dot" aria-hidden="true" />
+            DRAFT · NOT SENT
+          </span>
+        </span>
+      }
+      description="Sent via your connected Microsoft 365 mailbox · nothing sends until you click Send"
       footer={
         <>
+          <span className="rc-eml__logline">
+            <span className="rc-eml__logline-ic" aria-hidden="true">
+              <CheckIcon />
+            </span>
+            Sent email is logged to this Talent&apos;s activity
+            {reqRef === '' ? '' : ` on ${reqRef}`} automatically.
+          </span>
           <Button
             type="button"
             variant="secondary"
@@ -187,14 +222,58 @@ export function RequisitionContactEmailComposer(
           <span data-testid="email-composer-draft-error">{draftError}</span>
         </InlineAlert>
       ) : draft !== null ? (
-        <div>
-          <FormField label="To (resolved by Aramo — not editable)">
-            {/* Display-only: recipient is server-owned (INV-3). NOT an input. */}
-            <div data-testid="email-composer-recipient">{recipientLabel}</div>
-          </FormField>
-          <p data-testid="email-composer-context">
-            {draft.context.requisition_title} ({draft.context.requisition_reference})
-          </p>
+        <div className="rc-eml">
+          {/* Banner — the draft's origin. We deliberately do NOT enumerate which
+              fields were inserted (directive G2.3). */}
+          <div className="rc-eml__banner" data-testid="email-composer-context">
+            <span className="rc-eml__banner-ic" aria-hidden="true">
+              <InfoIcon />
+            </span>
+            <span>
+              Draft prepared from{' '}
+              <b>
+                {draft.context.requisition_reference} ·{' '}
+                {draft.context.requisition_title}
+              </b>
+              . Review and edit the message before sending.
+            </span>
+          </div>
+
+          <div className="rc-eml__meta">
+            {/* From — the recruiter's own M365 identity (read-only). */}
+            <span className="rc-eml__label">From</span>
+            <span className="rc-eml__from" data-testid="email-composer-from">
+              <span className="rc-eml__from-txt">{senderLabel}</span>
+              <span className="rc-eml__badge">M365 CONNECTED</span>
+            </span>
+
+            {/* To — server-owned recipient (INV-3): a locked chip, NOT an input. */}
+            <span className="rc-eml__label">To</span>
+            <span>
+              <span className="rc-eml__chip" data-testid="email-composer-recipient">
+                {recipientLabel}
+                <span className="rc-eml__chip-lock" aria-hidden="true">
+                  <LockIcon />
+                </span>
+              </span>
+              <span className="rc-eml__hint">
+                Resolved from the Talent record — recipient can&apos;t be changed
+                here.
+              </span>
+            </span>
+
+            {/* Subject — editable, seeded from the generated draft. */}
+            <span className="rc-eml__label">Subject</span>
+            <Input
+              type="text"
+              data-testid="email-composer-subject"
+              value={subject}
+              onChange={(e) => setSubject(e.target.value)}
+              disabled={sending}
+              aria-label="Email subject"
+            />
+          </div>
+
           {draft.warnings !== undefined && draft.warnings.length > 0 ? (
             <InlineAlert variant="error">
               <ul data-testid="email-composer-warning">
@@ -204,29 +283,18 @@ export function RequisitionContactEmailComposer(
               </ul>
             </InlineAlert>
           ) : null}
-          <FormField label="Subject">
-            <input
-              type="text"
-              data-testid="email-composer-subject"
-              value={subject}
-              onChange={(e) => setSubject(e.target.value)}
-              disabled={sending}
-              aria-label="Email subject"
-            />
-          </FormField>
-          <FormField
-            label="Message"
-            helper="This is the exact message sent under your name. Edit it as needed, then send."
-          >
-            <textarea
-              data-testid="email-composer-body"
-              rows={10}
-              value={body}
-              onChange={(e) => setBody(e.target.value)}
-              disabled={sending}
-              aria-label="Email body"
-            />
-          </FormField>
+
+          {/* Body — editable, large (min 340px per G2.3). */}
+          <TextArea
+            className="rc-eml__body"
+            data-testid="email-composer-body"
+            rows={16}
+            value={body}
+            onChange={(e) => setBody(e.target.value)}
+            disabled={sending}
+            aria-label="Email body"
+          />
+
           {sendError !== null ? (
             <InlineAlert variant="error">
               <span data-testid="email-composer-send-error">{sendError}</span>
@@ -235,5 +303,42 @@ export function RequisitionContactEmailComposer(
         </div>
       ) : null}
     </Dialog>
+  );
+}
+
+// Decorative inline glyphs (presentation only). Kept local to the composer so
+// the modal matches the prototype without pulling new shared icon exports.
+function MailIcon(): JSX.Element {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="4" width="20" height="16" rx="2" />
+      <path d="m22 7-10 6L2 7" />
+    </svg>
+  );
+}
+
+function LockIcon(): JSX.Element {
+  return (
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="4" y="11" width="16" height="10" rx="2" />
+      <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+    </svg>
+  );
+}
+
+function CheckIcon(): JSX.Element {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M20 6 9 17l-5-5" />
+    </svg>
+  );
+}
+
+function InfoIcon(): JSX.Element {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 8h.01M12 11v5" />
+    </svg>
   );
 }

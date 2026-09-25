@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { hasScope, useSession, type Session } from '@aramo/fe-foundation';
+import { hasScope, useSession, type Session, Input, Select } from '@aramo/fe-foundation';
 
 import { Button, InlineAlert } from '../ui';
 import { formatPhone } from '../format/phone';
@@ -233,14 +233,14 @@ export function TalentEditDrawer({ talent, onClose, onSaved }: Props) {
               {talent.first_name} {talent.last_name} · changes are versioned and logged
             </div>
           </div>
-          <button
+          <Button unstyled
             type="button"
             className="talent-detail__drawer-x"
             aria-label="Close"
             onClick={onClose}
           >
             ×
-          </button>
+          </Button>
         </header>
 
         <div className="talent-detail__drawer-body">
@@ -250,15 +250,15 @@ export function TalentEditDrawer({ talent, onClose, onSaved }: Props) {
             <div className="talent-detail__refgrid">
               <label className={`talent-detail__field${err(errors.firstName)}`}>
                 <span>First name *</span>
-                <input value={firstName} onChange={(e) => setFirstName(e.target.value)} />
+                <Input value={firstName} onChange={(e) => setFirstName(e.target.value)} />
               </label>
               <label className={`talent-detail__field${err(errors.lastName)}`}>
                 <span>Last name *</span>
-                <input value={lastName} onChange={(e) => setLastName(e.target.value)} />
+                <Input value={lastName} onChange={(e) => setLastName(e.target.value)} />
               </label>
               <label className="talent-detail__field">
                 <span>Title</span>
-                <input
+                <Input
                   value={title}
                   placeholder="e.g. Sr. Cloud Engineer"
                   onChange={(e) => setTitle(e.target.value)}
@@ -272,7 +272,7 @@ export function TalentEditDrawer({ talent, onClose, onSaved }: Props) {
               {emailEditable ? (
                 <label className={`talent-detail__field${err(errors.emailFormat)}`}>
                   <span>Email</span>
-                  <input
+                  <Input
                     type="email"
                     value={email1}
                     placeholder="name@email.com"
@@ -288,7 +288,7 @@ export function TalentEditDrawer({ talent, onClose, onSaved }: Props) {
               {phoneEditable ? (
                 <label className="talent-detail__field">
                   <span>Phone</span>
-                  <input
+                  <Input
                     type="tel"
                     value={phoneCell}
                     placeholder="(555) 555-5555"
@@ -313,15 +313,15 @@ export function TalentEditDrawer({ talent, onClose, onSaved }: Props) {
             <div className="talent-detail__refgrid">
               <label className={`talent-detail__field${err(errors.city)}`}>
                 <span>City *</span>
-                <input value={city} onChange={(e) => setCity(e.target.value)} />
+                <Input value={city} onChange={(e) => setCity(e.target.value)} />
               </label>
               <label className={`talent-detail__field${err(errors.state)}`}>
                 <span>State *</span>
-                <input value={state} onChange={(e) => setState(e.target.value)} />
+                <Input value={state} onChange={(e) => setState(e.target.value)} />
               </label>
               <label className="talent-detail__field">
                 <span>Country</span>
-                <input
+                <Input
                   value={country}
                   placeholder="US"
                   onChange={(e) => setCountry(e.target.value)}
@@ -329,21 +329,21 @@ export function TalentEditDrawer({ talent, onClose, onSaved }: Props) {
               </label>
               <label className="talent-detail__field">
                 <span>Work authorization</span>
-                <select value={workAuth} onChange={(e) => setWorkAuth(e.target.value)}>
+                <Select value={workAuth} onChange={(e) => setWorkAuth(e.target.value)}>
                   <option value="">Select…</option>
                   {WORK_AUTHORIZATION_VALUES.map((v) => (
                     <option key={v} value={v}>{WORK_AUTHORIZATION_LABELS[v]}</option>
                   ))}
-                </select>
+                </Select>
               </label>
               <label className="talent-detail__field">
                 <span>Engagement type</span>
-                <select value={engagement} onChange={(e) => setEngagement(e.target.value)}>
+                <Select value={engagement} onChange={(e) => setEngagement(e.target.value)}>
                   <option value="">Not stated</option>
                   {ENGAGEMENT_TYPE_VALUES.map((v) => (
                     <option key={v} value={v}>{ENGAGEMENT_LABELS[v]}</option>
                   ))}
-                </select>
+                </Select>
               </label>
             </div>
           </DrawerSection>
@@ -352,7 +352,7 @@ export function TalentEditDrawer({ talent, onClose, onSaved }: Props) {
             <div className="talent-detail__refgrid">
               <label className="talent-detail__field">
                 <span>Desired rate</span>
-                <input
+                <Input
                   value={desiredPay}
                   onChange={(e) => setDesiredPay(e.target.value)}
                   placeholder="e.g. $95/hr"
@@ -360,16 +360,16 @@ export function TalentEditDrawer({ talent, onClose, onSaved }: Props) {
               </label>
               <label className="talent-detail__field">
                 <span>Availability</span>
-                <select value={availability} onChange={(e) => setAvailability(e.target.value)}>
+                <Select value={availability} onChange={(e) => setAvailability(e.target.value)}>
                   <option value="">Not stated</option>
                   {AVAILABILITY_STATUS_VALUES.map((v) => (
                     <option key={v} value={v}>{AVAILABILITY_LABELS[v]}</option>
                   ))}
-                </select>
+                </Select>
               </label>
               <label className="talent-detail__field">
                 <span>Available from</span>
-                <input
+                <Input
                   type="date"
                   value={availableFrom}
                   onChange={(e) => setAvailableFrom(e.target.value)}
@@ -391,6 +391,7 @@ export function TalentEditDrawer({ talent, onClose, onSaved }: Props) {
               </div>
               <label className="tc-button tc-button--secondary tc-button--sm talent-detail__resume-btn">
                 Replace
+                {/* eslint-disable-next-line no-restricted-syntax -- G1/A3 escape hatch: native file picker — distinct native behavior, no fe-foundation primitive */}
                 <input
                   type="file"
                   accept=".pdf,.doc,.docx"

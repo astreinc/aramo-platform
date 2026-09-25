@@ -181,6 +181,14 @@ services:
       - ADDRESS_AUTOCOMPLETE_ENABLED
       - ADDRESS_AUTOCOMPLETE_PROVIDER
       - GOOGLE_PLACES_API_KEY
+      # Microsoft 365 delegated-OAuth "Connect" (D-INT-1): the authorize/START step
+      # reads these two from process.env (apps/api microsoft-config.resolver.ts +
+      # libs/microsoft-graph oauth-state). Bare-name passthrough — a var read by
+      # code but ABSENT here never reaches the container → the start step 500s and
+      # the recruiter sees "We couldn't start the Microsoft connection". api-only
+      # (the /v1/integrations/microsoft/callback route lives on the api).
+      - MSGRAPH_REDIRECT_URI
+      - MSGRAPH_OAUTH_STATE_KEY
       - IMPORT_FAILURE_THRESHOLD_PCT
       # identity fingerprint pepper (Step 4b / ADR-0016): the platform secret
       # keying the cross-tenant email fingerprint, held SEPARATE from the DB.

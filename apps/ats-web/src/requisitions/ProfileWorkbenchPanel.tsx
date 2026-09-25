@@ -4,7 +4,7 @@ import {
   Card,
   FormField,
   InlineAlert,
-  useToast,
+  useToast, Select, TextArea,
 } from '@aramo/fe-foundation';
 
 import {
@@ -341,7 +341,7 @@ export function ProfileWorkbenchPanel({
                     label="Brief"
                     helper="Describe the role in plain language. The AI drafts a JD and a structured profile you can review."
                   >
-                    <textarea
+                    <TextArea
                       value={brief}
                       onChange={(ev) => setBrief(ev.target.value)}
                       rows={5}
@@ -373,7 +373,7 @@ export function ProfileWorkbenchPanel({
               {phase === 'review' ? (
                 <div className="req-profile__review">
                   <FormField label="JD text">
-                    <textarea
+                    <TextArea
                       value={reviewJd}
                       onChange={(ev) => setReviewJd(ev.target.value)}
                       rows={8}
@@ -382,7 +382,7 @@ export function ProfileWorkbenchPanel({
                     />
                   </FormField>
                   <FormField label="Role family">
-                    <select
+                    <Select
                       value={reviewProfile.role_family ?? ''}
                       aria-label="Draft role family"
                       disabled={busy}
@@ -400,10 +400,10 @@ export function ProfileWorkbenchPanel({
                           {enterpriseLabel(rf)}
                         </option>
                       ))}
-                    </select>
+                    </Select>
                   </FormField>
                   <FormField label="Seniority level">
-                    <select
+                    <Select
                       value={reviewProfile.seniority_level ?? ''}
                       aria-label="Draft seniority level"
                       disabled={busy}
@@ -421,10 +421,10 @@ export function ProfileWorkbenchPanel({
                           {enterpriseLabel(sl)}
                         </option>
                       ))}
-                    </select>
+                    </Select>
                   </FormField>
                   <FormField label="Required skills" helper="Comma or newline separated.">
-                    <textarea
+                    <TextArea
                       value={requiredText}
                       onChange={(ev) => setRequiredText(ev.target.value)}
                       rows={2}
@@ -433,7 +433,7 @@ export function ProfileWorkbenchPanel({
                     />
                   </FormField>
                   <FormField label="Preferred skills" helper="Comma or newline separated.">
-                    <textarea
+                    <TextArea
                       value={preferredText}
                       onChange={(ev) => setPreferredText(ev.target.value)}
                       rows={2}
@@ -442,7 +442,7 @@ export function ProfileWorkbenchPanel({
                     />
                   </FormField>
                   <FormField label="Critical skills" helper="Comma or newline separated.">
-                    <textarea
+                    <TextArea
                       value={criticalText}
                       onChange={(ev) => setCriticalText(ev.target.value)}
                       rows={2}

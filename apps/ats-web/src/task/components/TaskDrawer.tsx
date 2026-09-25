@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
+import { Button } from '@aramo/fe-foundation';
 
 import { Icons, StatusPill } from '../../ui';
 import {
@@ -106,9 +107,9 @@ export function TaskDrawer({
           <h3 ref={headingRef} tabIndex={-1} className="rc-drawer__title">
             {task.title}
           </h3>
-          <button type="button" className="rc-drawer__x" aria-label="Close" onClick={onClose}>
+          <Button unstyled type="button" className="rc-drawer__x" aria-label="Close" onClick={onClose}>
             <Icons.IconX />
-          </button>
+          </Button>
         </div>
         <div className="rc-drawer__body">
           <div className="rc-drawer__chips">
@@ -156,22 +157,22 @@ export function TaskDrawer({
         </div>
         {canWrite ? (
           <div className="rc-drawer__foot">
-            <button type="button" className="rc-btn rc-btn--primary" onClick={() => onToggleDone(task)} data-testid="drawer-complete">
+            <Button unstyled type="button" className="rc-btn rc-btn--primary" onClick={() => onToggleDone(task)} data-testid="drawer-complete">
               <Icons.IconCheck />
               {done ? 'Reopen' : 'Complete'}
-            </button>
-            <button type="button" className="rc-btn" onClick={() => onReschedule(task)} data-testid="drawer-reschedule">
+            </Button>
+            <Button unstyled type="button" className="rc-btn" onClick={() => onReschedule(task)} data-testid="drawer-reschedule">
               <Icons.IconClock />
               Reschedule
-            </button>
-            <button type="button" className="rc-btn" onClick={() => onEdit(task)} data-testid="drawer-edit">
+            </Button>
+            <Button unstyled type="button" className="rc-btn" onClick={() => onEdit(task)} data-testid="drawer-edit">
               <Icons.IconPencil />
               Edit
-            </button>
-            <button type="button" className="rc-btn" disabled title="Reassign needs an assignable-users roster + assign scope (carry).">
+            </Button>
+            <Button unstyled type="button" className="rc-btn" disabled title="Reassign needs an assignable-users roster + assign scope (carry).">
               <Icons.IconUserPlus />
               Reassign
-            </button>
+            </Button>
           </div>
         ) : null}
       </aside>

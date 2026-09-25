@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { Session } from '@aramo/fe-foundation';
+import { ToastProvider, type Session } from '@aramo/fe-foundation';
 
 import type { RecruitingStatus, RequisitionView } from '../requisitions/types';
 
@@ -141,16 +141,18 @@ function installFetch(map: FetchMap) {
 
 function renderAt(path: string, session: Session) {
   return render(
-    <MemoryRouter initialEntries={[path]}>
-      <Routes>
-        <Route
-          path="/companies/:companyId"
-          element={<CompanyDetailView sessionOverride={session} />}
-        />
-        <Route path="/companies" element={<p>Companies list</p>} />
-        <Route path="/requisitions/:reqId" element={<p>Req detail</p>} />
-      </Routes>
-    </MemoryRouter>,
+    <ToastProvider>
+      <MemoryRouter initialEntries={[path]}>
+        <Routes>
+          <Route
+            path="/companies/:companyId"
+            element={<CompanyDetailView sessionOverride={session} />}
+          />
+          <Route path="/companies" element={<p>Companies list</p>} />
+          <Route path="/requisitions/:reqId" element={<p>Req detail</p>} />
+        </Routes>
+      </MemoryRouter>
+    </ToastProvider>,
   );
 }
 
@@ -169,13 +171,10 @@ describe('CompanyDetailView (account hub)', () => {
     expect(screen.getAllByText('San Francisco, CA').length).toBeGreaterThan(0);
     expect(screen.getByRole('link', { name: 'acme.example.com' })).toBeInTheDocument();
     expect(screen.getByText(/Client since 2023/i)).toBeInTheDocument();
-    // status active → "Client" pill; tier a → "Key account"
-    expect(screen.getByText('Client')).toBeInTheDocument();
-    // KPI strip + reserved seam (NOT a fabricated metric)
-    expect(screen.getByText('Open reqs')).toBeInTheDocument();
-    expect(
-      screen.getByRole('region', { name: /Account briefing/i }),
-    ).toBeInTheDocument();
+    // status active → "Client" (header pill + Relationships & status card row)
+    expect(screen.getAllByText('Client').length).toBeGreaterThan(0);
+    // KPI strip (the account-briefing seam is removed per the prototype)
+    expect(screen.getByText('Open requisitions')).toBeInTheDocument();
   });
 
   it('renders real per-company metrics in the KPI strip + rule-based briefing', async () => {
@@ -203,9 +202,6 @@ describe('CompanyDetailView (account hub)', () => {
     await waitFor(() => expect(screen.getByText('40%')).toBeInTheDocument());
     // revenue band appears in the KPI strip + Overview "Key facts"
     expect(screen.getAllByText('$10M–$50M').length).toBeGreaterThan(0);
-    // briefing restates the real counts only (facts; no evaluative verdict)
-    expect(screen.getByText(/2 open reqs/i)).toBeInTheDocument();
-    expect(screen.getByText(/4 submitted/i)).toBeInTheDocument();
   });
 
   it('renders the account team (owner + assigned members) on Overview', async () => {
@@ -227,6 +223,33 @@ describe('CompanyDetailView (account hub)', () => {
     await waitFor(() => expect(screen.getByText('Olive Owner')).toBeInTheDocument());
     // the assigned member (deduped from the owner) resolves its name
     expect(screen.getByText('Manny Mate')).toBeInTheDocument();
+    // WITHOUT company:assign there is no Manage affordance.
+    expect(screen.queryByRole('link', { name: 'Manage' })).toBeNull();
+  });
+
+  it('Overview "Manage" switches to the Account team TAB in place (no navigation)', async () => {
+    installFetch({
+      '/v1/companies/co-1': makeCompany(),
+      '/v1/companies/co-1/team': { owner_user_id: 'usr-owner', member_user_ids: [] },
+      '/v1/companies/co-1/assignments': { items: [] },
+    });
+    renderAt('/companies/co-1', makeSession(['company:read', 'company:assign']));
+    await waitFor(() => expect(screen.getByText('Account team')).toBeInTheDocument());
+    // Overview tab is active first
+    expect(screen.getByRole('tab', { name: 'Overview' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    // Manage is a button (not a link to a separate screen) and switches tabs
+    const manage = screen.getByTestId('overview-manage-team');
+    expect(manage.tagName).toBe('BUTTON');
+    fireEvent.click(manage);
+    await waitFor(() =>
+      expect(screen.getByRole('tab', { name: /Account team/ })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      ),
+    );
   });
 
   it('Placements tab lists placed talent at the company (report+req scopes)', async () => {
@@ -265,7 +288,7 @@ describe('CompanyDetailView (account hub)', () => {
       expect(screen.getByRole('tab', { name: 'Overview' })).toBeInTheDocument(),
     );
     expect(screen.queryByRole('tab', { name: /Contacts/ })).toBeNull();
-    expect(screen.queryByRole('tab', { name: /Jobs/ })).toBeNull();
+    expect(screen.queryByRole('tab', { name: /Requisitions/ })).toBeNull();
     expect(screen.queryByRole('tab', { name: /Activity/ })).toBeNull();
   });
 
@@ -288,8 +311,9 @@ describe('CompanyDetailView (account hub)', () => {
     await waitFor(() =>
       expect(screen.getByRole('tab', { name: 'Overview' })).toBeInTheDocument(),
     );
+    expect(screen.getByRole('tab', { name: /Account team/ })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /Contacts/ })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: /Jobs/ })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /Requisitions/ })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /Activity/ })).toBeInTheDocument();
   });
 
@@ -326,7 +350,7 @@ describe('CompanyDetailView (account hub)', () => {
     await waitFor(() =>
       expect(screen.getByRole('heading', { name: /Acme Corp/i })).toBeInTheDocument(),
     );
-    fireEvent.click(screen.getByRole('tab', { name: /Jobs/ }));
+    fireEvent.click(screen.getByRole('tab', { name: /Requisitions/ }));
     await waitFor(() =>
       expect(screen.getByText('Senior Engineer')).toBeInTheDocument(),
     );
@@ -378,9 +402,10 @@ describe('CompanyDetailView (account hub)', () => {
     ).toBeInTheDocument();
   });
 
-  it('renders the header "Edit" button (opens the quick-edit drawer) only when company:edit is granted', async () => {
-    // Company Party/Role (ADR-0032, R6) — Edit is now a button opening the
-    // slide-over quick-edit drawer, not a link to a retired /edit page.
+  it('renders the header "Edit" button (flips Overview to inline edit) only when company:edit is granted', async () => {
+    // Company Party/Role (ADR-0032, R6) — Edit flips the Overview cards to edit
+    // in place (company-overview-fields), not a link to a retired /edit page and
+    // not a drawer.
     installFetch({ '/v1/companies/co-1': makeCompany() });
     const { unmount } = renderAt(
       '/companies/co-1',
@@ -399,27 +424,121 @@ describe('CompanyDetailView (account hub)', () => {
     expect(screen.queryByTestId('company-detail-edit')).toBeNull();
   });
 
-  it('Edit makes the hub editable in place (Full Edit form appears, read metrics hide)', async () => {
-    // Company Party/Role (ADR-0032, R6) — Full Edit Company = inline edit, not
-    // a drawer and not a separate page.
+  it('Edit flips Overview to inline edit IN PLACE (fields become controls, KPI strip + tabs stay)', async () => {
+    // Company Party/Role (ADR-0032, R6) — inline in-place edit: the same cards
+    // flip to controls, the page chrome (KPI strip, tabs) does NOT disappear.
+    installFetch({ '/v1/companies/co-1': makeCompany() });
+    renderAt('/companies/co-1', makeSession(['company:read', 'company:edit']));
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: /Acme Corp/i })).toBeInTheDocument(),
+    );
+    // read view: the company name is a read box, not an input
+    expect(screen.queryByLabelText('Company name')).toBeNull();
+    expect(screen.getByText('Open requisitions')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('company-detail-edit'));
+    // sticky edit banner + Save appear …
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /save changes/i })).toBeInTheDocument(),
+    );
+    // … fields are now controls seeded from the company …
+    const nameInput = screen.getByLabelText('Company name') as HTMLInputElement;
+    expect(nameInput.value).toBe('Acme Corp');
+    // … and the KPI strip + tabs REMAIN (edit is in place, not a takeover)
+    expect(screen.getByText('Open requisitions')).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Overview' })).toBeInTheDocument();
+  });
+
+  it('Edit from another tab jumps back to Overview (edit is in place there)', async () => {
+    // prototype startEdit: setState({ editing:true, tab:'Overview' }).
     installFetch({
       '/v1/companies/co-1': makeCompany(),
-      '/v1/companies/co-1/departments': { items: [] },
-      '/v1/contacts': { items: [] },
+      '/v1/requisitions': { items: [] },
+    });
+    renderAt(
+      '/companies/co-1',
+      makeSession(['company:read', 'company:edit', 'requisition:read']),
+    );
+    await waitFor(() =>
+      expect(screen.getByRole('tab', { name: /Requisitions/ })).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByRole('tab', { name: /Requisitions/ }));
+    await waitFor(() =>
+      expect(screen.getByRole('tab', { name: /Requisitions/ })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      ),
+    );
+    // Edit → snaps back to Overview and enters edit mode
+    fireEvent.click(screen.getByTestId('company-detail-edit'));
+    await waitFor(() =>
+      expect(screen.getByRole('tab', { name: 'Overview' })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      ),
+    );
+    expect(screen.getByLabelText('Company name')).toBeInTheDocument();
+  });
+
+  it('Save PATCHes only the changed fields via updateCompany and exits edit mode', async () => {
+    installFetch({
+      '/v1/companies/co-1': makeCompany(),
     });
     renderAt('/companies/co-1', makeSession(['company:read', 'company:edit']));
     await waitFor(() =>
       expect(screen.getByRole('heading', { name: /Acme Corp/i })).toBeInTheDocument(),
     );
-    // read view shows the KPI strip
-    expect(screen.getByText('Open reqs')).toBeInTheDocument();
     fireEvent.click(screen.getByTestId('company-detail-edit'));
-    // the full edit form appears in place …
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: /save changes/i })).toBeInTheDocument(),
+      expect(screen.getByLabelText('Company name')).toBeInTheDocument(),
     );
-    // … and the read KPI strip is gone (same view is now editable)
-    expect(screen.queryByText('Open reqs')).toBeNull();
+    fireEvent.change(screen.getByLabelText('Company name'), {
+      target: { value: 'Acme Robotics' },
+    });
+    fireEvent.click(screen.getByTestId('company-detail-save'));
+
+    // the PATCH carries only the changed key (minimal diff)
+    await waitFor(() => {
+      const calls = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls;
+      const patch = calls.find(
+        (c) =>
+          String(c[0]).includes('/v1/companies/co-1') &&
+          (c[1] as RequestInit | undefined)?.method === 'PATCH',
+      );
+      expect(patch).toBeDefined();
+      const body = JSON.parse(String((patch?.[1] as RequestInit).body));
+      expect(body).toEqual({ name: 'Acme Robotics' });
+    });
+    // edit mode exits — the Save button is gone
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: /save changes/i })).toBeNull(),
+    );
+  });
+
+  it('Cancel discards the draft with NO mutation (no PATCH, read view restored)', async () => {
+    installFetch({ '/v1/companies/co-1': makeCompany() });
+    renderAt('/companies/co-1', makeSession(['company:read', 'company:edit']));
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: /Acme Corp/i })).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByTestId('company-detail-edit'));
+    await waitFor(() =>
+      expect(screen.getByLabelText('Company name')).toBeInTheDocument(),
+    );
+    fireEvent.change(screen.getByLabelText('Company name'), {
+      target: { value: 'Should Not Persist' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^cancel$/i }));
+
+    // back to read view, no input, no PATCH ever issued
+    await waitFor(() => expect(screen.queryByLabelText('Company name')).toBeNull());
+    const calls = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls;
+    const patch = calls.find(
+      (c) => (c[1] as RequestInit | undefined)?.method === 'PATCH',
+    );
+    expect(patch).toBeUndefined();
+    // the header still shows the original name
+    expect(screen.getByRole('heading', { name: /Acme Corp/i })).toBeInTheDocument();
   });
 
   it('renders the "Add contact" header action when contact:create is granted', async () => {

@@ -7,7 +7,7 @@ import {
   useSession,
   type Session,
 } from '@aramo/fe-foundation';
-import { Tabs, type TabItem } from '@aramo/fe-foundation';
+import { Tabs, type TabItem, Select } from '@aramo/fe-foundation';
 
 import {
   Button,
@@ -498,7 +498,7 @@ export function TalentDetailView({ sessionOverride }: TalentDetailViewProps) {
             Add to requisition
           </Button>
           {canVerifyIdentity ? (
-            <button
+            <Button unstyled
               type="button"
               className="tc-button tc-button--sm talent-detail__verify"
               data-testid="verify-email-btn-email1"
@@ -508,7 +508,7 @@ export function TalentDetailView({ sessionOverride }: TalentDetailViewProps) {
             >
               <Icons.IconAlert />
               {verifyPending ? 'Verification sent' : 'Verify identity'}
-            </button>
+            </Button>
           ) : null}
           <Button
             variant="secondary"
@@ -873,33 +873,33 @@ function DocumentsCard({ talentId }: { talentId: string }) {
             {items.map((a) => (
               <li key={a.id} className="talent-detail__doc">
                 <span className="talent-detail__doc-name">
-                  <button
+                  <Button unstyled
                     type="button"
                     className="talent-detail__doc-link"
                     onClick={() => previewDoc(a)}
                   >
                     {a.file_name}
-                  </button>
+                  </Button>
                   <span className="talent-detail__doc-meta">
                     {a.is_resume ? 'Resume · ' : ''}
                     {bytes(a.size_bytes)}
                     {a.mime !== null ? ` · ${a.mime}` : ''}
                   </span>
                 </span>
-                <button
+                <Button unstyled
                   type="button"
                   className="talent-detail__doc-dl"
                   onClick={() => previewDoc(a)}
                 >
                   Preview
-                </button>
-                <button
+                </Button>
+                <Button unstyled
                   type="button"
                   className="talent-detail__doc-dl"
                   onClick={() => downloadDoc(a.id)}
                 >
                   Download
-                </button>
+                </Button>
               </li>
             ))}
           </ul>
@@ -912,13 +912,13 @@ function DocumentsCard({ talentId }: { talentId: string }) {
             <div className="talent-detail__doc-preview">
               <div className="talent-detail__doc-preview-head">
                 <span className="talent-detail__doc-preview-name">{preview.name}</span>
-                <button
+                <Button unstyled
                   type="button"
                   className="talent-detail__doc-dl"
                   onClick={() => setPreview(null)}
                 >
                   Close
-                </button>
+                </Button>
               </div>
               {isPreviewableMime(preview.mime) ? (
                 <iframe
@@ -930,7 +930,7 @@ function DocumentsCard({ talentId }: { talentId: string }) {
                 <p className="talent-detail__empty">
                   Inline preview isn't available for this file type
                   {preview.mime !== null ? ` (${preview.mime})` : ''}.{' '}
-                  <button
+                  <Button unstyled
                     type="button"
                     className="talent-detail__doc-link"
                     onClick={() =>
@@ -938,7 +938,7 @@ function DocumentsCard({ talentId }: { talentId: string }) {
                     }
                   >
                     Open in a new tab
-                  </button>
+                  </Button>
                 </p>
               )}
             </div>
@@ -1338,7 +1338,7 @@ function AddToRequisitionDialog({
         <>
           <label className="talent-detail__dialog-field">
             <span>Requisition</span>
-            <select
+            <Select
               value={reqId}
               onChange={(e) => setReqId(e.target.value)}
               aria-label="Requisition"
@@ -1347,7 +1347,7 @@ function AddToRequisitionDialog({
               {reqs.map((r) => (
                 <option key={r.id} value={r.id}>{r.title}</option>
               ))}
-            </select>
+            </Select>
           </label>
           {actionErr !== null ? (
             <InlineAlert variant="error">{actionErr}</InlineAlert>

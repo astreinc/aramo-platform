@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { hasScope, useSession, useToast, type Session } from '@aramo/fe-foundation';
+import { hasScope, useSession, useToast, type Session, Input } from '@aramo/fe-foundation';
 
 import { Button, Card, ErrorState, LoadingState, safeErrorMessage } from '../ui';
 import { SettingCardHead } from '../settings/components';
@@ -139,6 +139,7 @@ export function LlmProvidersPanel({ sessionOverride, loadFn, setActiveFn, setKey
             <legend className="rc-field-label">Active provider</legend>
             {state.overview.providers.map((p) => (
               <label key={p.provider} className="rc-radio-row">
+                {/* eslint-disable-next-line no-restricted-syntax -- G1/A3 escape hatch: native radio in a custom per-row layout; no clean fe-foundation RadioGroup mapping without redesign */}
                 <input
                   type="radio"
                   name="llm-active-provider"
@@ -156,6 +157,7 @@ export function LlmProvidersPanel({ sessionOverride, loadFn, setActiveFn, setKey
             ))}
             {COMING_SOON.map((cs) => (
               <label key={cs.key} className="rc-radio-row rc-muted-line">
+                {/* eslint-disable-next-line no-restricted-syntax -- G1/A3 escape hatch: native radio in a custom per-row layout; no clean fe-foundation RadioGroup mapping without redesign */}
                 <input type="radio" name="llm-active-provider" disabled data-testid={`llm-comingsoon-${cs.key}`} />
                 <span>{cs.label}</span>
                 <span className="rc-muted-line">Coming soon</span>
@@ -168,7 +170,7 @@ export function LlmProvidersPanel({ sessionOverride, loadFn, setActiveFn, setKey
               <div key={p.provider} className="rc-stack" data-testid={`llm-key-block-${p.provider}`}>
                 <label className="rc-field">
                   <span className="rc-field-label">{PROVIDER_LABEL[p.provider] ?? p.provider} API key</span>
-                  <input
+                  <Input unstyled
                     type="password"
                     autoComplete="off"
                     className="rc-input"

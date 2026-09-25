@@ -6,7 +6,7 @@ import {
   InlineAlert,
   RadioGroup,
   type RadioOption,
-  useToast,
+  useToast, Input, TextArea,
 } from '@aramo/fe-foundation';
 import { useState } from 'react';
 
@@ -164,7 +164,7 @@ export function CommercialProposeDialog({
       }
     >
       <FormField label="Proposed pay rate" error={fieldError['pay']}>
-        <input
+        <Input unstyled
           className="rc-input"
           inputMode="decimal"
           value={pay}
@@ -174,7 +174,7 @@ export function CommercialProposeDialog({
         />
       </FormField>
       <FormField label="Proposed bill rate" error={fieldError['bill']}>
-        <input
+        <Input unstyled
           className="rc-input"
           inputMode="decimal"
           value={bill}
@@ -184,7 +184,7 @@ export function CommercialProposeDialog({
         />
       </FormField>
       <FormField label="Currency" error={fieldError['currency']}>
-        <input
+        <Input unstyled
           className="rc-input"
           maxLength={3}
           value={currency}
@@ -204,7 +204,7 @@ export function CommercialProposeDialog({
         />
       </fieldset>
       <FormField label="Reason" error={fieldError['reason']}>
-        <textarea
+        <TextArea unstyled
           className="rc-input"
           rows={2}
           maxLength={2000}

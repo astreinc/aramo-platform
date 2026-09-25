@@ -1,3 +1,5 @@
+import { Button, Input } from '@aramo/fe-foundation';
+
 import { Icons } from '../../ui';
 import type { SearchToken } from '../talent-workspace';
 
@@ -39,16 +41,16 @@ export function TokenSearch({
           <span className="rc-token__k">{t.key}:</span>
           {t.value}
           {!t.supported ? <span className="rc-token__warn">·ignored</span> : null}
-          <button
+          <Button
             type="button"
             aria-label={`Remove ${t.key}:${t.value}`}
             onClick={() => onRemove(i)}
           >
             <Icons.IconX />
-          </button>
+          </Button>
         </span>
       ))}
-      <input
+      <Input unstyled
         className="rc-tokenbox__input"
         value={draft}
         onChange={(e) => onDraftChange(e.target.value)}

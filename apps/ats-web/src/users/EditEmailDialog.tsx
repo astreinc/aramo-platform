@@ -4,7 +4,7 @@ import {
   Dialog,
   FormField,
   InlineAlert,
-  useToast,
+  useToast, Input,
 } from '@aramo/fe-foundation';
 
 import { messageForLifecycleActionError, type ErrorMessage } from './error-messages';
@@ -111,7 +111,7 @@ export function EditEmailDialog({
         </InlineAlert>
       )}
       <FormField label={<label htmlFor="edit-email-input">New email</label>}>
-        <input
+        <Input unstyled
           id="edit-email-input"
           type="email"
           className="rc-input"

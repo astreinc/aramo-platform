@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Button } from '@aramo/fe-foundation';
 
 import {
   getPipelineResumeEdition,
@@ -146,7 +147,7 @@ function ResumeRow({
           the pipeline edition payload also lacks the attachment identity the
           attachment download API needs. Edition-aware viewing is TI-1H, so the
           action is inert here (never binds, issues no PUT). */}
-      <button
+      <Button unstyled
         type="button"
         className="rc-cdp__resumeprev"
         data-testid={`resume-preview-${edition.edition_id}`}
@@ -154,9 +155,9 @@ function ResumeRow({
         title="Résumé preview is coming soon"
       >
         Preview
-      </button>
+      </Button>
       {canSetSelection && !isSelected ? (
-        <button
+        <Button unstyled
           type="button"
           className="rc-cdp__resumeuse"
           data-testid={`resume-use-${edition.edition_id}`}
@@ -164,7 +165,7 @@ function ResumeRow({
           onClick={onUse}
         >
           {busy ? 'Setting…' : 'Use this résumé'}
-        </button>
+        </Button>
       ) : null}
     </li>
   );

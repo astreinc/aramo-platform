@@ -64,6 +64,7 @@ describe('Contact ?paged=true (controller param parsing)', () => {
       preference: 'contactable',
       company_id: VISIBLE_A,
       is_hot: 'true',
+      is_primary: 'true',
       quiet: 'true',
       former: 'true',
       cold_callable: 'true',
@@ -92,6 +93,7 @@ describe('Contact ?paged=true (controller param parsing)', () => {
       preference: ['contactable'],
       company_id: [VISIBLE_A],
       is_hot: true,
+      is_primary: true,
       quiet: true,
       former: true,
       cold_callable: true,
@@ -192,6 +194,7 @@ describe('Contact searchPaged WHERE + facet construction (repo)', () => {
         tenant_id: TENANT_ID,
         relationship_role: ['decision_maker'],
         is_hot: true,
+        is_primary: true,
         quiet: true,
       },
       makeVisibility(),
@@ -200,6 +203,7 @@ describe('Contact searchPaged WHERE + facet construction (repo)', () => {
     expect(itemWhere.company_id).toEqual({ in: [VISIBLE_A, VISIBLE_B] });
     expect(itemWhere.relationship_role).toEqual({ in: ['decision_maker'] });
     expect(itemWhere.is_hot).toBe(true);
+    expect(itemWhere.is_primary).toBe(true);
     // quiet → last_activity OR pushed into the AND accumulator (composes, not clobbers).
     expect(Array.isArray(itemWhere.AND)).toBe(true);
     // total count uses the BASE where (no relationship_role/is_hot selection).

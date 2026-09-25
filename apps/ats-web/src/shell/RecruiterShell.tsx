@@ -9,7 +9,6 @@ import {
   IconCompanies,
   IconContacts,
   IconDesk,
-  IconLogout,
   IconRequisitions,
   IconShield,
   IconSourcing,
@@ -234,21 +233,13 @@ function RecruiterShellInner({
   const rail = (
     <Rail
       user={
-        <>
-          <RailUser
-            initials={railInitials}
-            name={railName}
-            role={railRole ?? undefined}
-          />
-          <button
-            type="button"
-            className="rc-rail__logout"
-            onClick={handleLogout}
-          >
-            <IconLogout />
-            <span>Log out</span>
-          </button>
-        </>
+        // G2.7 — the left-nav user block shows identity ONLY, matching the
+        // prototype. Sign out lives in the top-right avatar menu (UserMenu).
+        <RailUser
+          initials={railInitials}
+          name={railName}
+          role={railRole ?? undefined}
+        />
       }
     >
       <AramoBrand />

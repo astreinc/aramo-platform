@@ -1,3 +1,4 @@
+import { Button } from '@aramo/fe-foundation';
 import { useState } from 'react';
 
 import { requestRtr, sendRtr, getRtrStatus } from './rtr-api';
@@ -62,20 +63,20 @@ export function RtrPanel({ talentId, requisitionId, companyId }: RtrPanelProps):
     <section className="rtr-panel" aria-label="Right to Represent">
       <h3>Right to Represent</h3>
       {documentId === null ? (
-        <button type="button" onClick={() => void onRequest()} disabled={busy}>
+        <Button unstyled type="button" onClick={() => void onRequest()} disabled={busy}>
           Request RTR
-        </button>
+        </Button>
       ) : (
         <div className="rtr-actions">
           <p>
             Status: <strong>{status !== null ? (STATUS_LABEL[status] ?? status) : 'Unknown'}</strong>
           </p>
-          <button type="button" onClick={() => void onSend()} disabled={busy || status === 'EXECUTED'}>
+          <Button unstyled type="button" onClick={() => void onSend()} disabled={busy || status === 'EXECUTED'}>
             Send for signature
-          </button>
-          <button type="button" onClick={() => void onRefresh()} disabled={busy}>
+          </Button>
+          <Button unstyled type="button" onClick={() => void onRefresh()} disabled={busy}>
             Refresh status
-          </button>
+          </Button>
         </div>
       )}
       {error.length > 0 && <p className="rtr-error" role="alert">{error}</p>}

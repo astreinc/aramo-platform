@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Button, Card, FormField, InlineAlert } from '@aramo/fe-foundation';
+import { Button, Card, FormField, InlineAlert, Checkbox, Input, TextArea } from '@aramo/fe-foundation';
 
 import { createErrorMessage } from './error-messages';
 import { createSubmittal } from './submittals-api';
@@ -105,7 +105,7 @@ export function CreateStep({
     >
       <form onSubmit={handleSubmit} noValidate>
         <FormField label="Talent full name">
-          <input
+          <Input
             type="text"
             value={fullName}
             onChange={(e) => setFullName(e.target.value)}
@@ -114,7 +114,7 @@ export function CreateStep({
           />
         </FormField>
         <FormField label="Location">
-          <input
+          <Input
             type="text"
             value={location}
             onChange={(e) => setLocation(e.target.value)}
@@ -125,8 +125,8 @@ export function CreateStep({
         </FormField>
         <FormField label="Contact available">
           <label>
-            <input
-              type="checkbox"
+            <Checkbox
+             
               checked={contactAvailable}
               onChange={(e) => setContactAvailable(e.target.checked)}
             />{' '}
@@ -134,7 +134,7 @@ export function CreateStep({
           </label>
         </FormField>
         <FormField label="Recruiter conversation summary">
-          <textarea
+          <TextArea
             value={recruiterSummary}
             onChange={(e) => setRecruiterSummary(e.target.value)}
             rows={4}

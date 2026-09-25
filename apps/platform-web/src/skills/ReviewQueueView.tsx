@@ -8,7 +8,7 @@ import {
   useCursorPager,
   type CursorPage,
   type Session,
-  type TableColumn,
+  type TableColumn, Input, Select,
 } from '@aramo/fe-foundation';
 
 import {
@@ -95,7 +95,7 @@ export function ReviewQueueView({ session }: { readonly session: Session }) {
           setApplied(draft);
         }}
       >
-        <select
+        <Select unstyled
           aria-label="Source domain"
           className="tc-input"
           value={draft.sourceDomain}
@@ -105,8 +105,8 @@ export function ReviewQueueView({ session }: { readonly session: Session }) {
           <option value="">All domains</option>
           <option value="talent">talent</option>
           <option value="requisition">requisition</option>
-        </select>
-        <input
+        </Select>
+        <Input unstyled
           aria-label="Minimum occurrences"
           className="tc-input"
           type="number"
@@ -116,7 +116,7 @@ export function ReviewQueueView({ session }: { readonly session: Session }) {
           onChange={(e) => setDraft({ ...draft, minOccurrence: e.target.value })}
           style={{ minWidth: 140 }}
         />
-        <input
+        <Input unstyled
           aria-label="Surface search"
           className="tc-input"
           placeholder="Search surface…"

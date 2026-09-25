@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { InlineAlert, useToast } from '@aramo/fe-foundation';
+import { InlineAlert, useToast, Button, Input, Select, TextArea } from '@aramo/fe-foundation';
 
 // PR-A2 P2 — the net-new, reusable INLINE-EDIT primitive (consumer layer;
 // mirrors the existing components/Tabs.tsx pattern). The substrate-confirm
@@ -153,14 +153,14 @@ export function InlineEditField({
       multiline && hasValue && !expanded ? ' inline-edit__value--clamp' : '';
     const reveal =
       multiline && hasValue && (overflowing || expanded) ? (
-        <button
+        <Button unstyled
           type="button"
           className="inline-edit__reveal"
           aria-expanded={expanded}
           onClick={() => setExpanded((e) => !e)}
         >
           {expanded ? 'Show less' : 'Show more'}
-        </button>
+        </Button>
       ) : null;
     if (!canEdit) {
       return (
@@ -179,7 +179,7 @@ export function InlineEditField({
     return (
       <div className={rootClass} data-testid={testId}>
         <span className="inline-edit__label">{label}</span>
-        <button
+        <Button unstyled
           type="button"
           className="inline-edit__display"
           onClick={beginEdit}
@@ -191,7 +191,7 @@ export function InlineEditField({
           <span className="inline-edit__pencil" aria-hidden="true">
             ✎
           </span>
-        </button>
+        </Button>
         {reveal}
       </div>
     );
@@ -207,7 +207,7 @@ export function InlineEditField({
       <span className="inline-edit__label">{label}</span>
       <div className="inline-edit__editor">
         {multiline ? (
-          <textarea
+          <TextArea
             ref={(el) => {
               inputRef.current = el;
             }}
@@ -223,7 +223,7 @@ export function InlineEditField({
             onBlur={() => void commit()}
           />
         ) : (
-          <input
+          <Input
             ref={(el) => {
               inputRef.current = el;
             }}
@@ -324,7 +324,7 @@ export function InlineSelectField({
     return (
       <div className="inline-edit" data-testid={testId}>
         <span className="inline-edit__label">{label}</span>
-        <button
+        <Button unstyled
           type="button"
           className="inline-edit__display"
           onClick={() => {
@@ -337,7 +337,7 @@ export function InlineSelectField({
           <span className="inline-edit__pencil" aria-hidden="true">
             ✎
           </span>
-        </button>
+        </Button>
       </div>
     );
   }
@@ -346,7 +346,7 @@ export function InlineSelectField({
     <div className="inline-edit inline-edit--editing" data-testid={testId}>
       <span className="inline-edit__label">{label}</span>
       <div className="inline-edit__editor">
-        <select
+        <Select
           autoFocus
           disabled={saving}
           value={value ?? ''}
@@ -363,7 +363,7 @@ export function InlineSelectField({
               {o.label}
             </option>
           ))}
-        </select>
+        </Select>
         {saving ? <span className="inline-edit__status">Saving…</span> : null}
         {error !== null ? (
           <InlineAlert variant="error">{error}</InlineAlert>
@@ -467,7 +467,7 @@ export function InlineChipInput({
               : EMPTY_DISPLAY}
           </span>
         ) : (
-          <button
+          <Button unstyled
             type="button"
             className="inline-edit__display"
             onClick={beginEdit}
@@ -485,7 +485,7 @@ export function InlineChipInput({
             <span className="inline-edit__pencil" aria-hidden="true">
               ✎
             </span>
-          </button>
+          </Button>
         )}
       </div>
     );
@@ -499,7 +499,7 @@ export function InlineChipInput({
           {draft.map((c) => (
             <span key={c} className="inline-chips__chip">
               {c}
-              <button
+              <Button unstyled
                 type="button"
                 className="inline-chips__remove"
                 aria-label={`Remove ${c}`}
@@ -507,11 +507,11 @@ export function InlineChipInput({
                 onClick={() => removeChip(c)}
               >
                 ×
-              </button>
+              </Button>
             </span>
           ))}
         </span>
-        <input
+        <Input
           type="text"
           value={entry}
           disabled={saving}
@@ -527,22 +527,22 @@ export function InlineChipInput({
           }}
         />
         <div className="inline-chips__actions">
-          <button
+          <Button unstyled
             type="button"
             className="inline-edit__save"
             disabled={saving}
             onClick={() => void commit()}
           >
             {saving ? 'Saving…' : 'Save'}
-          </button>
-          <button
+          </Button>
+          <Button unstyled
             type="button"
             className="inline-edit__cancel"
             disabled={saving}
             onClick={cancel}
           >
             Cancel
-          </button>
+          </Button>
         </div>
         {error !== null ? (
           <InlineAlert variant="error">{error}</InlineAlert>

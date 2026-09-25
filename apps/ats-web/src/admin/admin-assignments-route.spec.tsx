@@ -70,7 +70,7 @@ describe('admin assignments route gating', () => {
       const { unmount } = renderAt(path, makeSession(NON_ADMIN));
       expect(screen.getByText(/don't have permission/i)).toBeInTheDocument();
       expect(screen.getByText(/tenant:admin:\*/)).toBeInTheDocument();
-      expect(screen.queryByText('Company assignments')).not.toBeInTheDocument();
+      expect(screen.queryByRole('heading', { name: /Account team/i })).toBeNull();
       expect(screen.queryByText('Requisition assignments')).not.toBeInTheDocument();
       expect(screen.queryByText('Team clients')).not.toBeInTheDocument();
       unmount();
@@ -86,7 +86,9 @@ describe('admin assignments route gating', () => {
     );
     renderAt('/admin/companies/c-1/assignments', makeSession(['tenant:admin:settings']));
     await waitFor(() =>
-      expect(screen.getByText('Company assignments')).toBeInTheDocument(),
+      expect(
+        screen.getByRole('heading', { name: /Account team/i }),
+      ).toBeInTheDocument(),
     );
     expect(screen.queryByText(/don't have permission/i)).not.toBeInTheDocument();
   });

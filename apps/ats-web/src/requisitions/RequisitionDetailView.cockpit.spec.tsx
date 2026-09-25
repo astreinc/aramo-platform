@@ -3,6 +3,7 @@ import {
   render as rawRender,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import type { ReactElement } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
@@ -32,8 +33,8 @@ vi.mock('../pipeline/pipeline-api', () => ({
     Promise.resolve({ id: 't', first_name: 'A', last_name: 'B' }),
   transitionPipeline: () => Promise.resolve(),
 }));
-vi.mock('./ProfileWorkbenchPanel', () => ({
-  ProfileWorkbenchPanel: () => <div data-testid="profile-panel" />,
+vi.mock('./RequirementSkills', () => ({
+  RequirementSkills: () => <div data-testid="skills-panel" />,
 }));
 
 // The cockpit (inline-edit sections + workbench) lives in the Overview tab
@@ -167,8 +168,8 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('RequisitionDetailView cockpit — headline UX reachable', () => {
-  it('renders the cockpit (title heading + Identity section) for an entitled user', async () => {
+describe('RequisitionDetailView Overview (G2.5a view mode)', () => {
+  it('renders the shared form sections + profile panel for an entitled user', async () => {
     installFetch((req) => {
       if (req.method === 'GET' && req.url.includes('/v1/requisitions/req-1')) {
         return { status: 200, body: baseView() };
@@ -177,62 +178,60 @@ describe('RequisitionDetailView cockpit — headline UX reachable', () => {
     });
     mount(makeSession(['requisition:read', 'requisition:edit']));
     await openDetails();
-    expect(screen.getByText('Identity')).toBeInTheDocument();
-    expect(screen.getByTestId('profile-panel')).toBeInTheDocument();
+    // The Overview is the shared RequisitionForm — its section cards, not the
+    // old cockpit's Identity/Classification grouping.
+    expect(screen.getByText('Role & client')).toBeInTheDocument();
+    expect(screen.getByText('Job title')).toBeInTheDocument();
+    expect(screen.getByTestId('skills-panel')).toBeInTheDocument();
   });
 });
 
-describe('RequisitionDetailView cockpit — per-field affordance', () => {
-  it('full editor sees an EDIT affordance on an OPEN field (Title)', async () => {
+describe('RequisitionDetailView Overview — view mode is read-only (G2.5a)', () => {
+  it('shows fields as read-only value boxes with NO per-field edit affordance', async () => {
     installFetch(() => ({ status: 200, body: baseView() }));
     mount(makeSession(['requisition:read', 'requisition:edit']));
     await openDetails();
-    expect(
-      screen.getByRole('button', { name: /edit title/i }),
-    ).toBeInTheDocument();
+    // §5 — no per-field click-to-edit; whole-form edit arrives via the header
+    // Edit button (G2.5b). The Overview renders no inputs in view mode.
+    expect(screen.queryByRole('button', { name: /edit title/i })).toBeNull();
+    expect(document.querySelector('.rc-ov-form input')).toBeNull();
+    expect(document.querySelector('.rc-ov-form .rc-vbox')).not.toBeNull();
   });
 
-  it('recruiter (read-only) sees NO edit affordance on OPEN fields', async () => {
+  it('the Job title value renders read-only from the payload', async () => {
     installFetch(() => ({ status: 200, body: baseView() }));
     mount(makeSession(['requisition:read']));
     await openDetails();
-    expect(screen.queryByRole('button', { name: /edit title/i })).toBeNull();
-    // The value is still shown (read-only).
-    expect(screen.getByTestId('cockpit-field-title')).toHaveTextContent(
-      'Senior Engineer',
-    );
+    const box = screen
+      .getByText('Job title')
+      .closest('.rc-ifield')
+      ?.querySelector('.rc-vbox');
+    expect(box?.textContent).toBe('Senior Engineer');
   });
 
-  it('compensation section is ABSENT when the payload omits comp fields (masking by absence)', async () => {
+  it('Commercials is ABSENT when the payload omits comp fields (masking by absence)', async () => {
     installFetch(() => ({ status: 200, body: baseView() }));
     mount(makeSession(['requisition:read', 'requisition:edit']));
     await openDetails();
-    expect(screen.queryByText('Compensation')).toBeNull();
-    expect(screen.queryByTestId('cockpit-field-pay_rate_amount')).toBeNull();
+    // bill_rate_amount is masked (omitted) → its row is not rendered.
+    expect(
+      screen.queryByText('Bill rate (max)'),
+    ).toBeNull();
   });
 
-  it('pay editor sees Compensation with pay fields editable; derived views read-only', async () => {
+  it('Commercials bill rate renders (read-only) when PRESENT in the payload', async () => {
     installFetch(() => ({
       status: 200,
-      body: baseView({
-        pay_rate_amount: '60.00',
-        pay_rate_currency: 'USD',
-        pay_rate_period: 'HOURLY',
-        margin_amount: '12.00',
-      }),
+      body: baseView({ bill_rate_amount: '85.00' }),
     }));
-    mount(makeSession(['requisition:read', 'compensation:edit:pay']));
+    mount(makeSession(['requisition:read', 'compensation:view:bill']));
     await openDetails();
-    expect(screen.getByText('Compensation')).toBeInTheDocument();
-    // Pay field editable.
-    expect(
-      screen.getByRole('button', { name: /edit pay rate/i }),
-    ).toBeInTheDocument();
-    // Derived margin present but NOT editable (DERIVED bucket).
-    expect(screen.getByTestId('cockpit-field-margin_amount')).toHaveTextContent(
-      '12.00',
-    );
-    expect(screen.queryByRole('button', { name: /edit margin$/i })).toBeNull();
+    expect(screen.getByText('Commercials')).toBeInTheDocument();
+    const box = screen
+      .getByText('Bill rate (max)')
+      .closest('.rc-ifield')
+      ?.querySelector('.rc-vbox');
+    expect(box?.textContent).toContain('85.00');
   });
 });
 
@@ -250,27 +249,14 @@ describe('RequisitionDetailView — status is DISPLAYED, not an editable cockpit
   });
 });
 
-describe('RequisitionDetailView cockpit — backend is truth', () => {
-  it('a save the backend rejects (403) surfaces a permission error (FE affordance is cosmetic)', async () => {
-    const calls = installFetch((req) => {
-      if (req.method === 'PATCH') {
-        return { status: 403, body: { error: { code: 'INSUFFICIENT_PERMISSIONS' } } };
-      }
-      return { status: 200, body: baseView() };
-    });
+describe('RequisitionDetailView Overview — no inline save in view mode (G2.5a)', () => {
+  it('view mode issues NO PATCH — there is no per-field save affordance', async () => {
+    const calls = installFetch(() => ({ status: 200, body: baseView() }));
     mount(makeSession(['requisition:read', 'requisition:edit']));
     await openDetails();
-    fireEvent.click(screen.getByRole('button', { name: /edit title/i }));
-    const input = screen.getByLabelText('Title');
-    fireEvent.change(input, { target: { value: 'Forced change' } });
-    fireEvent.keyDown(input, { key: 'Enter' });
-    await waitFor(() =>
-      expect(
-        screen.getByText(/do not have permission to change this field/i),
-      ).toBeInTheDocument(),
-    );
-    // The PATCH was attempted (backend, not the FE, is the gate).
-    expect(calls.some((c) => c.method === 'PATCH')).toBe(true);
+    // No inline editor to trigger a field PATCH (whole-form save is G2.5b).
+    expect(screen.queryByRole('button', { name: /edit title/i })).toBeNull();
+    expect(calls.some((c) => c.method === 'PATCH')).toBe(false);
   });
 });
 
@@ -298,16 +284,16 @@ describe('RequisitionDetailView — PR-17 hybrid onsite frequency', () => {
     expect(document.body.textContent).toContain('Hybrid · 3 days on-site');
   });
 
-  it('the cockpit exposes an editable Onsite days / week field', async () => {
+  it('Onsite days / week renders as a Location field in the Overview (per the Detail prototype)', async () => {
     installFetch(() => ({
       status: 200,
       body: baseView({ work_arrangement: 'hybrid', onsite_days_per_week: 3 }),
     }));
     mount(makeSession(['requisition:read', 'requisition:edit']));
     await openDetails();
-    const field = screen.getByTestId('cockpit-field-onsite_days_per_week');
-    expect(field).toBeInTheDocument();
-    expect(field).toHaveTextContent('3');
+    // The Detail prototype's ovLoc section lists "Onsite days / week" alongside
+    // Work arrangement — present-gated, so it shows when the payload carries it.
+    expect(screen.getByText('Onsite days / week')).toBeTruthy();
   });
 });
 
@@ -345,5 +331,71 @@ describe('RequisitionDetailView — PR-15 internal requisition number', () => {
     expect(text).toContain('VMS-88');
     // Internal number appears before the external identifier in the header.
     expect(text.indexOf('REQ-1007')).toBeLessThan(text.indexOf('VMS-88'));
+  });
+});
+
+describe('RequisitionDetailView Overview — edit mode + save (G2.5b)', () => {
+  it('the header Edit button enters edit mode: fields become inputs + a sticky edit bar', async () => {
+    installFetch(() => ({ status: 200, body: baseView() }));
+    mount(makeSession(['requisition:read', 'requisition:edit']));
+    await screen.findByRole('heading', { name: /Senior Engineer/ });
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    expect(await screen.findByText(/Editing REQ-1000\./)).toBeInTheDocument();
+    expect(screen.getByLabelText('Job title')).toHaveValue('Senior Engineer');
+    // The button now reads "Editing".
+    expect(screen.getByRole('button', { name: 'Editing' })).toBeInTheDocument();
+  });
+
+  it('Cancel discards changes and returns to view without a PATCH', async () => {
+    const calls = installFetch(() => ({ status: 200, body: baseView() }));
+    mount(makeSession(['requisition:read', 'requisition:edit']));
+    await screen.findByRole('heading', { name: /Senior Engineer/ });
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    fireEvent.change(await screen.findByLabelText('Job title'), {
+      target: { value: 'Changed Title' },
+    });
+    // Scope to the edit bar — the header also has a lifecycle "Cancel" action.
+    const bar = screen.getByRole('region', { name: 'Editing requisition' });
+    fireEvent.click(within(bar).getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(screen.queryByLabelText('Job title')).toBeNull());
+    expect(calls.some((c) => c.method === 'PATCH')).toBe(false);
+  });
+
+  it('Save issues ONE PATCH with only the changed field + the CAS version, then returns to view', async () => {
+    const calls = installFetch((req) => {
+      if (req.method === 'PATCH') {
+        return { status: 200, body: baseView({ title: 'Changed Title', version: 1 }) };
+      }
+      return { status: 200, body: baseView() };
+    });
+    mount(makeSession(['requisition:read', 'requisition:edit']));
+    await screen.findByRole('heading', { name: /Senior Engineer/ });
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    fireEvent.change(await screen.findByLabelText('Job title'), {
+      target: { value: 'Changed Title' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    await waitFor(() => expect(calls.some((c) => c.method === 'PATCH')).toBe(true));
+    const patch = calls.find((c) => c.method === 'PATCH');
+    const body = patch?.body as Record<string, unknown>;
+    expect(body['title']).toBe('Changed Title');
+    expect(body['version']).toBe(0); // read-then-write CAS token
+    // Only the changed field is sent — not a full dump.
+    expect(body['city']).toBeUndefined();
+    // Returns to view mode.
+    await waitFor(() => expect(screen.queryByLabelText('Job title')).toBeNull());
+  });
+
+  it('Save validates the required Job title — an empty title blocks the PATCH', async () => {
+    const calls = installFetch(() => ({ status: 200, body: baseView() }));
+    mount(makeSession(['requisition:read', 'requisition:edit']));
+    await screen.findByRole('heading', { name: /Senior Engineer/ });
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    fireEvent.change(await screen.findByLabelText('Job title'), {
+      target: { value: '   ' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    expect(await screen.findByText(/Job title is required/i)).toBeInTheDocument();
+    expect(calls.some((c) => c.method === 'PATCH')).toBe(false);
   });
 });

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Button } from '@aramo/fe-foundation';
 
 import { Icons } from '../ui';
 
@@ -132,13 +133,13 @@ export function ResumePreview(props: {
         <div className="rc-rpreview__hdactions">
           {action ?? null}
           {canExpand ? (
-            <button
+            <Button unstyled
               type="button"
               className="rc-rpreview__expand"
               onClick={() => setExpanded(true)}
             >
               Expand
-            </button>
+            </Button>
           ) : null}
         </div>
       </div>
@@ -152,13 +153,13 @@ export function ResumePreview(props: {
         >
           <div className="rc-rpreview__ovbar">
             <span className="rc-rpreview__ovtitle">{fileName}</span>
-            <button
+            <Button unstyled
               type="button"
               className="rc-rpreview__ovclose"
               onClick={() => setExpanded(false)}
             >
               Close
-            </button>
+            </Button>
           </div>
           {isPdf && pdfUrl !== null ? (
             <iframe className="rc-rpreview__ovframe" title="Résumé full preview" src={pdfUrl} />

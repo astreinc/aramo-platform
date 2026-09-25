@@ -1,3 +1,5 @@
+import { Button } from '@aramo/fe-foundation';
+
 import { offerActionsFor, type OfferAffordance } from './offer-affordance';
 import { RECRUITING_OFFER_STATE_LABELS } from './labels';
 import type { OfferState } from './types';
@@ -25,14 +27,14 @@ export function OfferPanel({ state, scopes, onAction }: OfferPanelProps): JSX.El
       {actions.length > 0 ? (
         <div className="rc-offer__actions">
           {actions.map((a) => (
-            <button
+            <Button unstyled
               key={a.action}
               type="button"
               className={`rc-hbtn${a.action === 'ACCEPT' ? ' rc-hbtn--primary' : ''}`}
               onClick={() => onAction(a)}
             >
               {a.label}
-            </button>
+            </Button>
           ))}
         </div>
       ) : null}

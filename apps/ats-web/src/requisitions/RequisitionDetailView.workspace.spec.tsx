@@ -78,6 +78,7 @@ interface MockOpts {
   readonly placements?: unknown[];
   readonly submittal?: Record<string, unknown> | null;
   readonly preStart?: Record<string, unknown>;
+  readonly profile?: Record<string, unknown>;
 }
 
 // Installs the app fetch and returns the captured GET urls (for fan-out proofs).
@@ -91,6 +92,10 @@ function mockApi(opts: MockOpts = {}): { urls: string[] } {
         status: s,
         headers: { 'Content-Type': 'application/json' },
       });
+    // Profile read must be matched BEFORE the generic requisition GET.
+    if (url.includes('/v1/requisitions/req-1/profile')) {
+      return json(opts.profile ?? { has_profile: false });
+    }
     if (url.includes('/v1/requisitions/req-1')) return json(opts.req ?? reqView());
     if (url.includes('/v1/pipelines')) return json({ items: opts.pipelines ?? [] });
     if (url.includes('/v1/offers')) return json({ items: opts.offers ?? [] });
@@ -155,6 +160,17 @@ describe('RequisitionDetailView workspace — scope-driven default order', () =>
 
   it('pipeline:read → default Talent', async () => {
     mount(['requisition:read', 'pipeline:read']);
+    await screen.findByRole('heading', { name: /Staff Platform Engineer/ });
+    await waitFor(() => expect(selectedTabName()).toMatch(/Talent/));
+  });
+
+  it('pipeline:read + commercials:approve → default Talent (pipeline wins)', async () => {
+    mount([
+      'requisition:read',
+      'pipeline:read',
+      'assignment:commercials:read',
+      'assignment:commercials:approve',
+    ]);
     await screen.findByRole('heading', { name: /Staff Platform Engineer/ });
     await waitFor(() => expect(selectedTabName()).toMatch(/Talent/));
   });
@@ -260,11 +276,10 @@ describe('RequisitionDetailView workspace — prototype structure (no MetaStrip 
 describe('RequisitionDetailView workspace — snapshot + attention (grounded only)', () => {
   afterEach(() => vi.restoreAllMocks());
 
-  it('renders eager snapshot cards from requisition-grain data', async () => {
+  it('renders the eager snapshot cards (prototype)', async () => {
     mount(['requisition:read', 'pipeline:read']);
     await screen.findByRole('heading', { name: /Staff Platform Engineer/ });
     expect(screen.getByText('Capacity')).toBeInTheDocument();
-    expect(screen.getByText('Client status')).toBeInTheDocument();
     expect(screen.getByText('Aging')).toBeInTheDocument();
   });
 
@@ -402,13 +417,14 @@ describe('RequisitionDetailView workspace — load model (no first-paint fan-out
     );
   });
 
-  it('a snapshot card drills through to its tab', async () => {
+  it('selecting the Offers tab shows the Offers panel', async () => {
     mount(['requisition:read', 'pipeline:read', 'offer:create']);
     await screen.findByRole('heading', { name: /Staff Platform Engineer/ });
-    // Default is Talent; the Offers snapshot card switches to the Offers tab.
-    fireEvent.click(screen.getByRole('button', { name: /Offers/ }));
+    // Navigate via the tab (unambiguous vs. the snapshot Offers card).
+    fireEvent.click(screen.getByRole('tab', { name: /Offers/ }));
     await waitFor(() => expect(selectedTabName()).toMatch(/Offers/));
-    expect(await screen.findByText(/No offers on this requisition yet\./)).toBeInTheDocument();
+    // Empty state matches the prototype's "No offers on this requisition" card.
+    expect(await screen.findByText(/No offers on this requisition/)).toBeInTheDocument();
   });
 
   const PIPELINE_TAL1 = [
@@ -468,8 +484,56 @@ describe('RequisitionDetailView workspace — load model (no first-paint fan-out
     // Close + reopen the SAME row → cache hit, NO refetch.
     fireEvent.click(screen.getByRole('button', { name: 'Close' }));
     fireEvent.click(await screen.findByRole('button', { name: /Marcus Adeyemi/ }));
-    await screen.findByText('Talent journey'); // panel reopened
+    await screen.findByRole('list', { name: 'Talent journey' }); // panel reopened
     expect(submittalCalls()).toBe(1);
     expect(preStartCalls()).toBe(1);
+  });
+});
+
+describe('RequisitionDetailView Overview — edit does not blank (real RequirementSkills)', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('entering edit renders the form even when the profile omits skill arrays', async () => {
+    // The profile endpoint returns a shape WITHOUT required/preferred arrays —
+    // previously this threw in the skills section and blanked the whole Overview.
+    mount(['requisition:read', 'requisition:edit'], {
+      profile: { has_profile: false },
+    });
+    await screen.findByRole('heading', { name: /Staff Platform Engineer/ });
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    // The form still renders (no blank) — Job title input + the skills section.
+    expect(await screen.findByLabelText('Job title')).toBeInTheDocument();
+    expect(screen.getByText('Requirement skills')).toBeInTheDocument();
+  });
+});
+
+describe('RequisitionDetailView Overview — edit renders with a realistic profile', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('edit mode renders the edit bar + fields for a req with a full profile', async () => {
+    mount(['requisition:read', 'requisition:edit', 'requisition:profile:edit'], {
+      req: reqView({
+        duration_value: 12,
+        duration_unit: null,
+        job_type: null,
+        work_arrangement: null,
+      }),
+      profile: {
+        has_profile: true,
+        jd_text: 'Analyze workflows.',
+        role_family: 'business_analyst',
+        seniority_level: null,
+        required_skills: [{ name: 'Business analysis' }],
+        preferred_skills: [{ name: 'Multi-family lending' }],
+        critical_skills: [],
+        generated_by: 'manual',
+      },
+    });
+    await screen.findByRole('heading', { name: /Staff Platform Engineer/ });
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    // The edit bar + form must render (a throw anywhere blanks the whole panel).
+    expect(await screen.findByText(/Editing REQ-/)).toBeInTheDocument();
+    expect(screen.getByLabelText('Job title')).toBeInTheDocument();
+    expect(screen.getByText('Business analysis')).toBeInTheDocument();
   });
 });

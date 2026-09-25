@@ -3,7 +3,7 @@ import {
   Combobox,
   FormField,
   RadioGroup,
-  type ComboboxItem,
+  type ComboboxItem, Input, Select,
 } from '@aramo/fe-foundation';
 
 import { ISO_4217_CURRENCIES } from './iso-4217-currency';
@@ -219,7 +219,7 @@ function RateGroup({
     <fieldset className="req-form__rate-group">
       <legend>{legend}</legend>
       <FormField label="Amount">
-        <input
+        <Input
           type="text"
           inputMode="decimal"
           pattern={DECIMAL_PATTERN}
@@ -239,7 +239,7 @@ function RateGroup({
         />
       </FormField>
       <FormField label="Period">
-        <select
+        <Select
           value={value[periodFieldKey]}
           onChange={(ev) => set(periodFieldKey, ev.target.value as RatePeriod | '')}
           aria-label={`${legend} period`}
@@ -249,7 +249,7 @@ function RateGroup({
               {opt.label}
             </option>
           ))}
-        </select>
+        </Select>
       </FormField>
     </fieldset>
   );
@@ -263,7 +263,7 @@ function SalaryGroup({
     <fieldset className="req-form__rate-group">
       <legend>Salary</legend>
       <FormField label="Amount">
-        <input
+        <Input
           type="text"
           inputMode="decimal"
           pattern={DECIMAL_PATTERN}
@@ -296,7 +296,7 @@ function PlacementFeeGroup({
       <legend>Placement fee</legend>
       {visible.has('placement_fee_percent') ? (
         <FormField label="Percent">
-          <input
+          <Input
             type="text"
             inputMode="decimal"
             pattern={DECIMAL_PATTERN}
@@ -308,7 +308,7 @@ function PlacementFeeGroup({
       ) : null}
       {visible.has('placement_fee_amount') ? (
         <FormField label="Amount">
-          <input
+          <Input
             type="text"
             inputMode="decimal"
             pattern={DECIMAL_PATTERN}
