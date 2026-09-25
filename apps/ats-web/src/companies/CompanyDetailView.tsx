@@ -787,7 +787,7 @@ function OverviewPanel({
           </div>
           <ul className="rc-detail-list rc-mt-8">
             <li className="rc-tmrow">
-              <Avatar name={ownerName ?? 'Unassigned'} size="md" />
+              <Avatar name={ownerName ?? 'Unassigned'} size="sm" />
               <div>
                 <div className="rc-tmrow__nm">{ownerName ?? 'Unassigned'}</div>
                 <div className="rc-tmrow__rl">Account owner</div>
