@@ -1,7 +1,8 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Inject, Post, Query, UseGuards } from '@nestjs/common';
 import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
 import { AramoError, RequestId } from '@aramo/common';
 import { RequireScopes, RolesGuard } from '@aramo/authorization';
+import { COMPANY_CLIENT_CHECK_PORT, type CompanyClientCheckPort } from '@aramo/requisition';
 import { EntitlementGuard, RequireCapability } from '@aramo/entitlement';
 import {
   EngagementPolicyService,
@@ -26,6 +27,11 @@ export class EngagementController {
   constructor(
     private readonly policy: EngagementPolicyService,
     private readonly gate: EngagementGateService,
+    // CSP PR-5 — CLIENT-scope authoring is ownership-guarded through the SAME
+    // established CompanyClientCheckPort seam used by pre-start + client-submittal,
+    // closing the engagement parity gap (a CLIENT engagement policy could
+    // previously be published against a company_id not owned by the tenant).
+    @Inject(COMPANY_CLIENT_CHECK_PORT) private readonly clientCheck: CompanyClientCheckPort,
   ) {}
 
   /** Provider-neutral evidence-channel capabilities (voice + email available per COMM-C2B). */
@@ -70,6 +76,29 @@ export class EngagementController {
     @AuthContext() auth: AuthContextType,
     @RequestId() requestId: string,
   ): Promise<{ published: unknown }> {
+    // CSP PR-5 — a CLIENT-scoped engagement policy MUST target a company the tenant
+    // owns as a CLIENT. Verified through the CompanyClientCheckPort BEFORE any write,
+    // mirroring pre-start + client-submittal. (TENANT/REQUISITION scopes are untouched.)
+    if (dto.scope === 'CLIENT') {
+      if (!dto.scope_ref) {
+        throw new AramoError('ENGAGEMENT_POLICY_SCHEMA_INVALID', 'CLIENT scope requires scope_ref', 422, {
+          requestId,
+          details: { reason: 'SCOPE_REF_REQUIRED', scope: dto.scope },
+        });
+      }
+      const owned = await this.clientCheck.isClientCompany({
+        tenant_id: auth.tenant_id,
+        company_id: dto.scope_ref,
+      });
+      if (!owned) {
+        throw new AramoError(
+          'ENGAGEMENT_POLICY_SCHEMA_INVALID',
+          'scope_ref is not a CLIENT company of this tenant',
+          422,
+          { requestId, details: { reason: 'COMPANY_NOT_CLIENT', scope: dto.scope, scope_ref: dto.scope_ref } },
+        );
+      }
+    }
     const definition = {
       schema_version: dto.schema_version,
       scope: dto.scope,
