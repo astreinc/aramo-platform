@@ -5952,3 +5952,19 @@ button.rc-tj__cell:hover { color: #022ac0; text-decoration: underline; }
 .rc-pol-link { border: none; background: none; color: #022ac0; font: 600 12.5px 'Hanken Grotesk', system-ui, sans-serif; cursor: pointer; padding: 0; white-space: nowrap; }
 .rc-pol-link--muted { color: #5c6770; }
 .rc-pol__foot { font-size: 11.5px; color: #93a0a8; margin-top: 12px; line-height: 1.55; }
+
+/* CSP Policies — segmented toggle to the prototype spec (grey pill group, white active pill) */
+.rc-toggle { display: inline-flex; background: #eef1f4; border: none; border-radius: 8px; padding: 2px; gap: 2px; overflow: visible; }
+.rc-toggle > button, .rc-toggle > .tc-button {
+  border: none; background: transparent; color: #5c6770; border-right: none;
+  border-radius: 6px; padding: 5px 10px; font: 500 11.5px 'Hanken Grotesk', system-ui, sans-serif; cursor: pointer;
+}
+.rc-toggle > button.is-on, .rc-toggle > .is-on {
+  background: #fff; color: #011f8d; font-weight: 700; box-shadow: 0 1px 2px rgba(15, 25, 40, 0.14);
+}
+.rc-toggle > button:disabled { opacity: 0.45; cursor: not-allowed; }
+.rc-toggle--sm > button { padding: 4px 9px; font-size: 11px; }
+
+/* CSP Policies — editor/detail back link + header spacing */
+.rc-pol-back { display: inline-flex; align-items: center; gap: 4px; border: none; background: none; color: #022ac0; font: 600 12.5px 'Hanken Grotesk', system-ui, sans-serif; cursor: pointer; padding: 0; margin-bottom: 10px; white-space: nowrap; }
+.rc-pol-back:hover { color: #3355e0; }

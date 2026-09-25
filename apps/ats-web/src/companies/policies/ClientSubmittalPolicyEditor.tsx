@@ -10,6 +10,7 @@ import {
 
 import { PolicySourceBadge } from './PolicySourceBadge';
 import { PublishBar } from './PublishBar';
+import { PolicyEditorHeader } from './PolicyEditorHeader';
 import { SUBMITTAL_KEYS, submittalLabel, submittalDescription, type SubmittalKey } from './labels';
 
 function describeChoice(s: { choice: 'inherit' | 'required' | 'not_required'; override_class: 'HARD_DENY' | 'OVERRIDABLE' }): string {
@@ -235,16 +236,12 @@ export function ClientSubmittalPolicyEditor({
 
 function PanelShell({ onBack, children }: { onBack: () => void; children: React.ReactNode }): JSX.Element {
   return (
-    <div className="rc-policy-detail">
-      <div className="rc-policy-detail__head">
-        <Button unstyled className="rc-link-action" onClick={onBack}>
-          ‹ Policies
-        </Button>
-        <h3 className="rc-section-h">Client Submittal Policy</h3>
-        <p className="rc-muted-line">
-          Effective policy = tenant defaults + this client’s changes. A tenant floor cannot be weakened here.
-        </p>
-      </div>
+    <div className="rc-pol">
+      <PolicyEditorHeader
+        onBack={onBack}
+        title="Client Submittal Policy"
+        subtitle="Effective policy = tenant defaults + this client’s changes. A tenant floor cannot be weakened here."
+      />
       {children}
     </div>
   );
