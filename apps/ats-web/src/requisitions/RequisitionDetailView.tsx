@@ -9,7 +9,7 @@ import { LogNoteDialog } from '../activity/LogNoteDialog';
 import type { ActivityView } from '../activity/types';
 import { getCompany } from '../companies/companies-api';
 import { getContact } from '../contacts/contacts-api';
-import { listPipelinesForRequisition } from '../pipeline/pipeline-api';
+import { listPipelinesForRequisition, voidPipelineEpisode } from '../pipeline/pipeline-api';
 import { PIPELINE_STATUS_LABELS, type PipelineView } from '../pipeline/types';
 import { listOffers } from '../offers/offers-api';
 import { RECRUITING_OFFER_STATE_LABELS } from '../offers/labels';
@@ -43,6 +43,7 @@ import {
 import { GuaranteeTermsPanel } from './GuaranteeTermsPanel';
 import { TalentDetailPanel } from './TalentDetailPanel';
 import { RequisitionTalentBoard } from './RequisitionTalentBoard';
+import { RemoveFromRequisitionModal } from './RemoveFromRequisitionModal';
 import { AddTalentDialog } from './AddTalentDialog';
 import {
   CLOSE_SUBMITTALS_HELPER,
@@ -447,6 +448,7 @@ export function RequisitionDetailView({
           canReadPlacements={canReadPlacements}
           onToggleHot={handleToggleHot}
           onPipelineUpdated={handlePipelineUpdated}
+          onPipelineRemoved={(id) => setPipelines((prev) => prev.filter((p) => p.id !== id))}
           onNavigate={setTab}
         />
       ),
@@ -1111,6 +1113,7 @@ function TalentJourney({
   canReadPlacements,
   onToggleHot,
   onPipelineUpdated,
+  onPipelineRemoved,
   onNavigate,
 }: {
   readonly req: RequisitionView;
@@ -1124,11 +1127,18 @@ function TalentJourney({
   readonly canReadPlacements: boolean;
   readonly onToggleHot: (talentId: string, next: boolean) => Promise<void>;
   readonly onPipelineUpdated: (updated: PipelineView) => void;
+  readonly onPipelineRemoved: (pipelineId: string) => void;
   readonly onNavigate: (tab: TabId) => void;
 }) {
   const [selected, setSelected] = useState<PipelineView | null>(null);
   // TB-2 — the Talent surface's List|Board view mode (List is the default working surface).
   const [talentView, setTalentView] = useState<'list' | 'board'>('list');
+  // Accidental-Add Correction — the "Remove from requisition" (VOID) flow. `voidTarget` opens
+  // the correction confirmation; `boardRefresh` forces a Board re-fetch after a removal.
+  const [voidTarget, setVoidTarget] = useState<{ pipelineId: string; talentName: string } | null>(null);
+  const [voidBusy, setVoidBusy] = useState(false);
+  const [voidError, setVoidError] = useState('');
+  const [boardRefresh, setBoardRefresh] = useState(0);
   // Lazy CLIENT/PRE-START population, keyed by talent_record_id.
   const [cells, setCells] = useState<Record<string, JourneyCells>>({});
   // Find Talent ▾ menu (prototype): the two sourcing entry points.
@@ -1186,6 +1196,46 @@ function TalentJourney({
     [talents],
   );
 
+  // Accidental-Add Correction — open the "Remove from requisition" confirmation.
+  const requestVoid = useCallback((pipelineId: string, talentName: string) => {
+    setVoidError('');
+    setVoidTarget({ pipelineId, talentName });
+  }, []);
+
+  // Confirm the correction: read the CAS token from the already-loaded pipeline (no extra
+  // round-trip), call the governed endpoint, and on success remove the card locally + refresh.
+  // The server is authoritative — it re-checks no_contact + no engagement + no downstream and
+  // returns a typed refusal (surfaced verbatim) when ineligible.
+  const confirmVoid = useCallback(async () => {
+    if (voidTarget === null) return;
+    const episode = pipelines.find((p) => p.id === voidTarget.pipelineId);
+    if (episode === undefined) return;
+    setVoidBusy(true);
+    setVoidError('');
+    try {
+      await voidPipelineEpisode(episode.id, { reason: 'ADDED_BY_MISTAKE', expected_version: episode.version });
+      onPipelineRemoved(episode.id); // remove from the active List (parent-owned pipelines state)
+      if (selected?.id === episode.id) setSelected(null); // close the drawer if open on this Talent
+      setBoardRefresh((n) => n + 1); // refetch the Board (the card disappears)
+      setVoidTarget(null);
+    } catch (e) {
+      const code = e instanceof ApiError ? e.code : '';
+      setVoidError(
+        code === 'PIPELINE_VOID_HAS_ENGAGEMENT'
+          ? 'This Talent already has engagement on this requisition, so it can no longer be removed as an accidental add.'
+          : code === 'PIPELINE_VOID_HAS_DOWNSTREAM_ACTIVITY'
+            ? 'This Talent has downstream activity on this requisition and can no longer be removed as an accidental add.'
+            : code === 'PIPELINE_VOID_NOT_ALLOWED_FROM_STATE'
+              ? 'This Talent has progressed past the initial stage and can no longer be removed as an accidental add.'
+              : code === 'PIPELINE_TRANSITION_CONFLICT'
+                ? 'This Talent was updated in another session; refresh and try again.'
+                : e instanceof Error ? e.message : 'Could not remove the Talent from this requisition.',
+      );
+    } finally {
+      setVoidBusy(false);
+    }
+  }, [voidTarget, pipelines, selected, onPipelineRemoved]);
+
   return (
     <div className="rc-tj">
       <div className="rc-tboard__toolbar" role="tablist" aria-label="Talent view">
@@ -1219,6 +1269,8 @@ function TalentJourney({
             const p = pipelines.find((x) => x.id === pid);
             if (p !== undefined) openRow(p);
           }}
+          onRequestVoid={requestVoid}
+          refreshToken={boardRefresh}
         />
       ) : (
       <div className="rc-tj__inner" role="table" aria-label="Talent journey">
@@ -1434,6 +1486,15 @@ function TalentJourney({
             // CLIENT/PRE-START cells and refetch (the row is still open).
             fetchCells(u.talent_record_id);
           }}
+        />
+      ) : null}
+      {voidTarget !== null ? (
+        <RemoveFromRequisitionModal
+          talentName={voidTarget.talentName}
+          busy={voidBusy}
+          error={voidError}
+          onCancel={() => { if (!voidBusy) { setVoidTarget(null); setVoidError(''); } }}
+          onConfirm={() => void confirmVoid()}
         />
       ) : null}
     </div>

@@ -5799,3 +5799,20 @@ button.rc-tj__cell:hover { color: #022ac0; text-decoration: underline; }
 .rc-tboard__card[draggable="true"] { cursor: grab; }
 .rc-tboard__card--tracked { background: var(--surface-2, #f6f8fc); border-style: dashed; }
 .rc-tboard__tracked { font-weight: 600; color: var(--muted, #64748b); background: var(--surface, #fff); border: 1px solid var(--line, #e2e8f0); border-radius: 999px; padding: 1px 7px; }
+
+/* Accidental-Add Correction — the destructive Board action + the "Remove from requisition"
+   correction confirmation modal (§15). Destructive tone (danger) WITHOUT "Delete" language. */
+.rc-tboard__action--danger { color: var(--danger, #a8412f); background: var(--danger-tint, #f7e9e6); border-color: var(--danger, #a8412f); }
+.rc-tboard__action--danger:hover { background: var(--surface, #fff); }
+.rc-voidmodal__scrim { position: fixed; inset: 0; background: rgba(20, 35, 48, 0.42); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+.rc-voidmodal { background: var(--surface, #fff); border-radius: var(--r-lg, 13px); border: 1px solid var(--line, #e5e9ed); box-shadow: 0 12px 40px rgba(20, 35, 48, 0.2); width: min(440px, 92vw); padding: 22px 24px; }
+.rc-voidmodal__title { font-size: 1.02rem; font-weight: 700; color: var(--ink, #1b2730); margin: 0 0 10px; }
+.rc-voidmodal__body { font-size: 0.86rem; color: var(--muted, #5c6770); line-height: 1.5; margin: 0 0 14px; }
+.rc-voidmodal__reason { display: flex; flex-direction: column; gap: 3px; background: var(--surface-2, #fafbfc); border: 1px solid var(--line, #e5e9ed); border-radius: var(--r-md, 9px); padding: 9px 11px; margin-bottom: 12px; }
+.rc-voidmodal__reason-label { font-size: 0.66rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; color: var(--muted, #5c6770); }
+.rc-voidmodal__reason-value { font-size: 0.88rem; color: var(--ink, #1b2730); }
+.rc-voidmodal__error { color: var(--danger, #a8412f); font-size: 0.8rem; margin: 0 0 12px; }
+.rc-voidmodal__actions { display: flex; justify-content: flex-end; gap: 10px; }
+.rc-voidmodal__cancel { font-size: 0.84rem; font-weight: 600; color: var(--muted, #5c6770); background: transparent; border: 1px solid var(--line, #e5e9ed); border-radius: var(--r-md, 9px); padding: 7px 15px; cursor: pointer; }
+.rc-voidmodal__confirm { font-size: 0.84rem; font-weight: 600; color: #fff; background: var(--danger, #a8412f); border: 1px solid var(--danger, #a8412f); border-radius: var(--r-md, 9px); padding: 7px 15px; cursor: pointer; }
+.rc-voidmodal__confirm:disabled, .rc-voidmodal__cancel:disabled { opacity: 0.6; cursor: default; }

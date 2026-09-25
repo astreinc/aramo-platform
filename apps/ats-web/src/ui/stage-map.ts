@@ -33,6 +33,7 @@ const STAGE_TONE: Record<PipelineStatus, StageTone> = {
   qualified: 'info', // affirmative milestone, still an active "Qualifying" tone
   not_in_consideration: 'danger',
   completed: 'ok', // canonical success terminal
+  voided: 'neutral', // administrative correction — excluded from the board upstream
 };
 
 export function stageTone(status: PipelineStatus): StageTone {
@@ -65,6 +66,7 @@ const STATUS_TO_BUCKET: Record<PipelineStatus, FunnelBucketKey> = {
   qualified: 'qualified', // the affirmative recruiter milestone
   not_in_consideration: 'closed', // disposition terminal
   completed: 'closed', // canonical success terminal
+  voided: 'closed', // voided episodes are dropped before counting (§16); defensive only
 };
 
 export function funnelBucket(status: PipelineStatus): FunnelBucketKey {

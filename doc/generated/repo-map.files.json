@@ -807,6 +807,8 @@
     "apps/ats-web/src/requisitions/NewRequisitionView.worklocation.spec.tsx",
     "apps/ats-web/src/requisitions/ProfileWorkbenchPanel.spec.tsx",
     "apps/ats-web/src/requisitions/ProfileWorkbenchPanel.tsx",
+    "apps/ats-web/src/requisitions/RemoveFromRequisitionModal.spec.tsx",
+    "apps/ats-web/src/requisitions/RemoveFromRequisitionModal.tsx",
     "apps/ats-web/src/requisitions/RequirementSkills.tsx",
     "apps/ats-web/src/requisitions/RequisitionCreateView.tsx",
     "apps/ats-web/src/requisitions/RequisitionDetailView.approval.spec.tsx",
