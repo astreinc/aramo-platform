@@ -6668,7 +6668,8 @@ components:
     # ── Pipeline episode (VOID response) ──
     PipelineEpisodeView:
       type: object
-      description: The Pipeline episode read model (core fields; the enriched list read adds optional rate columns not restated here).
+      additionalProperties: false
+      description: The Pipeline episode read model returned by the VOID command (core fields; the enriched GET list read adds optional rate columns not restated here and is a distinct response).
       required: [id, tenant_id, talent_record_id, requisition_id, status, version, created_at, updated_at]
       properties:
         id: { type: string, format: uuid }

@@ -166,6 +166,8 @@ const PIPELINE_L2D_PROVENANCE = resolve(
 const PIPELINE_CANONICALIZE_ENUM = resolve(
   ROOT,
   'libs/pipeline/prisma/migrations/20260831120000_pipeline_canonicalize_status_enum/migration.sql',
+  'libs/pipeline/prisma/migrations/20260925120000_pipeline_void_add_enum_value/migration.sql',
+  'libs/pipeline/prisma/migrations/20260925120100_pipeline_void_live_index_recreate/migration.sql',
 );
 // L2-B — the consent-schema IdempotencyKey table backs the required
 // Idempotency-Key on POST /v1/pipelines. Self-contained (no cross-schema FK).

@@ -121,6 +121,8 @@ const EXACT_ALLOWLIST = new Set<string>([
   // when its Pipeline is purged.
   'libs/pipeline/prisma/migrations/20260828160000_l2d_pipeline_entry_provenance/migration.sql',
   'libs/pipeline/prisma/migrations/20260831120000_pipeline_canonicalize_status_enum/migration.sql',
+  'libs/pipeline/prisma/migrations/20260925120000_pipeline_void_add_enum_value/migration.sql',
+  'libs/pipeline/prisma/migrations/20260925120100_pipeline_void_live_index_recreate/migration.sql',
   // TALENT-INTEL-1 / TI-1D-D — the TalentRequisitionResume append-only migration:
   // its reject-DELETE trigger carries the same exact-value tenant_reset escape
   // (a governed tenant reset can purge the working-selection history), mirroring

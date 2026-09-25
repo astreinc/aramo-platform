@@ -64,6 +64,8 @@ const MIGRATIONS = [
   'libs/pipeline/prisma/migrations/20260828150000_l2c_pipeline_disposition/migration.sql',
   'libs/pipeline/prisma/migrations/20260828160000_l2d_pipeline_entry_provenance/migration.sql',
   'libs/pipeline/prisma/migrations/20260831120000_pipeline_canonicalize_status_enum/migration.sql',
+  'libs/pipeline/prisma/migrations/20260925120000_pipeline_void_add_enum_value/migration.sql',
+  'libs/pipeline/prisma/migrations/20260925120100_pipeline_void_live_index_recreate/migration.sql',
   // ADR-0024 PR-3 — the create transaction writes here.
   'libs/policy-store/prisma/migrations/20260730120000_init_policy_store/migration.sql',
   'libs/policy-store/prisma/migrations/20260730160000_add_policy_decision_record/migration.sql',

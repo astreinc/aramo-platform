@@ -79,6 +79,9 @@ const PIPELINE_MIGRATIONS = [
   '20260828150000_l2c_pipeline_disposition',
   '20260828160000_l2d_pipeline_entry_provenance',
   '20260831120000_pipeline_canonicalize_status_enum',
+  // Accidental-Add Correction — the voided enum + 3-member live-index recreate.
+  '20260925120000_pipeline_void_add_enum_value',
+  '20260925120100_pipeline_void_live_index_recreate',
 ].map((d) =>
   resolve(__dirname, `../../../pipeline/prisma/migrations/${d}/migration.sql`),
 );

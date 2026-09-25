@@ -51,6 +51,8 @@ const MIGRATIONS = [
   'libs/pipeline/prisma/migrations/20260828150000_l2c_pipeline_disposition/migration.sql',
   'libs/pipeline/prisma/migrations/20260828160000_l2d_pipeline_entry_provenance/migration.sql',
   'libs/pipeline/prisma/migrations/20260831120000_pipeline_canonicalize_status_enum/migration.sql',
+  'libs/pipeline/prisma/migrations/20260925120000_pipeline_void_add_enum_value/migration.sql',
+  'libs/pipeline/prisma/migrations/20260925120100_pipeline_void_live_index_recreate/migration.sql',
   'libs/placement-pipeline-bridge/prisma/migrations/20260831120000_l2g_init_placement_pipeline_bridge/migration.sql',
 ].map((p) => resolve(ROOT, p));
 
