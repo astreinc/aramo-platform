@@ -61,7 +61,7 @@ beforeEach(() => {
 describe('EffectivePolicyPreview', () => {
   it('renders Tenant defaults, Client changes, and Effective policy from the layers read', async () => {
     render(<EffectivePolicyPreview domain="client-submittal" companyId="co-1" onBack={vi.fn()} />);
-    await waitFor(() => expect(screen.getByText('Tenant defaults')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('Tenant default')).toBeInTheDocument());
     expect(screen.getByText('Client changes')).toBeInTheDocument();
     expect(screen.getByText('Effective policy')).toBeInTheDocument();
     // Effective section surfaces the client-added badge from backend provenance.
@@ -86,7 +86,7 @@ describe('CompanyPoliciesView routing', () => {
     await waitFor(() => expect(screen.getByText('Client Submittal Policy')).toBeInTheDocument());
     // Each card has a "View effective policy"; click the first.
     fireEvent.click(screen.getAllByText('View effective policy')[0]!);
-    await waitFor(() => expect(screen.getByText('Tenant defaults')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('Tenant default')).toBeInTheDocument());
     fireEvent.click(screen.getByText('‹ Policies'));
     await waitFor(() => expect(screen.getByText('Client Submittal Policy')).toBeInTheDocument());
   });

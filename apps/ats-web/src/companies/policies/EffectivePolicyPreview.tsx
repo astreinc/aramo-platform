@@ -80,22 +80,40 @@ async function loadPreview(domain: PolicyDomain, companyId: string): Promise<Pre
   };
 }
 
-function Section({ title, rows }: { title: string; rows: readonly Row[] }): JSX.Element {
+type ColTone = 'tenant' | 'client' | 'effective';
+
+function markFor(tone: ColTone, r: Row): { glyph: string; cls: string } {
+  const required = r.setting === 'Required' || r.setting === 'Blocking';
+  if (tone === 'tenant') return required ? { glyph: '✓', cls: 'ok' } : { glyph: '✕', cls: 'muted' };
+  if (tone === 'client') return { glyph: '+', cls: 'added' };
+  const floored = 'provenance' in r && (r as EffRow).provenance.tenant_floor;
+  return floored ? { glyph: '🔒', cls: 'ok' } : { glyph: '✓', cls: 'ok' };
+}
+
+function Column({ title, sub, tone, rows }: { title: string; sub: string; tone: ColTone; rows: readonly Row[] }): JSX.Element {
   return (
-    <div className="rc-preview-section">
-      <h4 className="rc-preview-section__h">{title}</h4>
+    <div className={`rc-preview-col rc-preview-col--${tone}`}>
+      <div className="rc-preview-col__head">
+        <span className="rc-preview-col__h">{title}</span>
+        <span className="rc-muted-line">{sub}</span>
+      </div>
       {rows.length === 0 ? (
-        <p className="rc-muted-line">None.</p>
+        <p className="rc-muted-line">
+          {tone === 'client' ? 'No changes — this client uses tenant defaults.' : 'Nothing required.'}
+        </p>
       ) : (
-        <ul className="rc-policy-reqs">
-          {rows.map((r) => (
-            <li key={r.label} className="rc-policy-req">
-              <span className="rc-policy-req__label">{r.label}</span>
-              {'provenance' in r ? <PolicySourceBadge provenance={(r as EffRow).provenance} /> : <span />}
-              <span className="rc-policy-req__setting">{r.setting}</span>
-            </li>
-          ))}
-        </ul>
+        rows.map((r) => {
+          const m = markFor(tone, r);
+          return (
+            <div key={r.label} className="rc-preview-item">
+              <span className={`rc-preview-item__mark rc-preview-item__mark--${m.cls}`}>{m.glyph}</span>
+              <span className="rc-preview-item__text">
+                {r.label} — {r.setting}
+              </span>
+              {tone === 'effective' && 'provenance' in r ? <PolicySourceBadge provenance={(r as EffRow).provenance} /> : null}
+            </div>
+          );
+        })
       )}
     </div>
   );
@@ -141,11 +159,15 @@ export function EffectivePolicyPreview({
       {error !== null ? <p className="rc-muted-line">{error}</p> : null}
       {data !== null ? (
         <div className="rc-preview">
-          <Section title="Tenant defaults" rows={data.tenant} />
-          {data.client !== null ? <Section title="Client changes" rows={data.client} /> : null}
-          <Section title="Effective policy" rows={data.effective} />
+          <Column title="Tenant default" sub="applies to every client" tone="tenant" rows={data.tenant} />
+          <Column title="Client changes" sub="this client" tone="client" rows={data.client ?? []} />
+          <Column title="Effective policy" sub="what is enforced" tone="effective" rows={data.effective} />
         </div>
       ) : null}
+      <p className="rc-footnote">
+        Requisitions for this client can add further requirements of their own; they cannot weaken
+        tenant-floor requirements.
+      </p>
     </div>
   );
 }
