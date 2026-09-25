@@ -39,31 +39,35 @@ beforeEach(() => {
 });
 
 describe('EngagementPolicyEditor', () => {
-  it('renders the voice + email channels and the enforcement selector (no generic add)', async () => {
+  it('renders the voice + email channels in the 4-column table; the catalog is the closed verifiable set (no generic rule builder)', async () => {
     render(<EngagementPolicyEditor companyId="co-1" onBack={vi.fn()} />);
     await waitFor(() => expect(screen.getByRole('group', { name: 'Voice engagement setting' })).toBeInTheDocument());
     expect(screen.getByRole('group', { name: 'Email engagement setting' })).toBeInTheDocument();
-    expect(screen.getByRole('group', { name: 'Enforcement mode' })).toBeInTheDocument();
-    expect(screen.queryByText('+ Add requirement')).not.toBeInTheDocument();
+    // the "+ Add requirement" affordance exists, but opens the closed catalog — never a
+    // generic predicate builder. For engagement the verifiable set is exactly voice + email.
+    fireEvent.click(screen.getByText('+ Add requirement'));
+    expect(screen.getByText(/only channels Aramo can verify/i)).toBeInTheDocument();
   });
 
-  it('choosing Required for voice reveals the minimum-strength selector', async () => {
-    render(<EngagementPolicyEditor companyId="co-1" onBack={vi.fn()} />);
-    const voice = await screen.findByRole('group', { name: 'Voice engagement setting' });
-    expect(screen.queryByRole('group', { name: 'Voice minimum strength' })).not.toBeInTheDocument();
-    fireEvent.click(within(voice).getByText('Required'));
-    await waitFor(() => expect(screen.getByRole('group', { name: 'Voice minimum strength' })).toBeInTheDocument());
-  });
-
-  it('publish sends the CLIENT layer + enforcement_mode then refetches', async () => {
+  it('choosing Required for a channel reveals its runtime-override control', async () => {
     render(<EngagementPolicyEditor companyId="co-1" onBack={vi.fn()} />);
     const email = await screen.findByRole('group', { name: 'Email engagement setting' });
-    expect(screen.getByText('Publish changes')).toBeDisabled();
+    expect(screen.queryByRole('group', { name: 'Email engagement runtime override' })).not.toBeInTheDocument();
     fireEvent.click(within(email).getByText('Required'));
-    await waitFor(() => expect(screen.getByText('Publish changes')).not.toBeDisabled());
+    await waitFor(() => expect(screen.getByRole('group', { name: 'Email engagement runtime override' })).toBeInTheDocument());
+  });
+
+  it('publish sends the CLIENT layer + derived enforcement_mode then refetches', async () => {
+    render(<EngagementPolicyEditor companyId="co-1" onBack={vi.fn()} />);
+    const email = await screen.findByRole('group', { name: 'Email engagement setting' });
+    expect(screen.getByRole('button', { name: 'Publish changes' })).toBeDisabled();
+    fireEvent.click(within(email).getByText('Required'));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Publish changes' })).not.toBeDisabled());
 
     const loadsBefore = m.getEngagementLayers.mock.calls.length;
-    fireEvent.click(screen.getByText('Publish changes'));
+    fireEvent.click(screen.getByRole('button', { name: 'Publish changes' }));
+    // confirm in the modal
+    fireEvent.click(await screen.findByRole('button', { name: 'Publish' }));
     await waitFor(() => expect(m.publishEngagement).toHaveBeenCalledTimes(1));
     expect(m.publishEngagement).toHaveBeenCalledWith({
       scope: 'CLIENT',

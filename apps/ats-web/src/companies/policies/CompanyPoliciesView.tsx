@@ -44,16 +44,31 @@ export function CompanyPoliciesView({
     return (
       <ClientSubmittalPolicyEditor
         companyId={companyId}
+        companyName={companyName}
         onBack={back}
         onPreview={() => setOpen({ domain: 'client-submittal', mode: 'effective' })}
       />
     );
   }
   if (open.mode === 'configure' && open.domain === 'engagement') {
-    return <EngagementPolicyEditor companyId={companyId} onBack={back} />;
+    return (
+      <EngagementPolicyEditor
+        companyId={companyId}
+        companyName={companyName}
+        onBack={back}
+        onPreview={() => setOpen({ domain: 'engagement', mode: 'effective' })}
+      />
+    );
   }
   if (open.mode === 'configure' && open.domain === 'pre-start') {
-    return <PreStartPolicyEditor companyId={companyId} onBack={back} />;
+    return (
+      <PreStartPolicyEditor
+        companyId={companyId}
+        companyName={companyName}
+        onBack={back}
+        onPreview={() => setOpen({ domain: 'pre-start', mode: 'effective' })}
+      />
+    );
   }
   return <EffectivePolicyPreview domain={open.domain} companyId={companyId} onBack={back} />;
 }

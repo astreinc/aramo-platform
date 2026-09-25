@@ -58,13 +58,15 @@ describe('ClientSubmittalPolicyEditor', () => {
     render(<ClientSubmittalPolicyEditor companyId="co-1" onBack={vi.fn()} />);
     const billRate = await screen.findByRole('group', { name: 'Bill rate setting' });
     // Nothing changed yet → publish is disabled.
-    expect(screen.getByText('Publish changes')).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Publish changes' })).toBeDisabled();
     fireEvent.click(within(billRate).getByText('Required'));
-    await waitFor(() => expect(screen.getByText('1 change')).toBeInTheDocument());
-    expect(screen.getByText('Publish changes')).not.toBeDisabled();
+    await waitFor(() => expect(screen.getByText('1 change to publish')).toBeInTheDocument());
+    expect(screen.getByRole('button', { name: 'Publish changes' })).not.toBeDisabled();
 
     const loadsBefore = m.getClientSubmittalLayers.mock.calls.length;
-    fireEvent.click(screen.getByText('Publish changes'));
+    fireEvent.click(screen.getByRole('button', { name: 'Publish changes' }));
+    // confirm in the modal
+    fireEvent.click(await screen.findByRole('button', { name: 'Publish' }));
     await waitFor(() => expect(m.publishClientSubmittal).toHaveBeenCalledTimes(1));
     expect(m.publishClientSubmittal).toHaveBeenCalledWith({
       scope: 'CLIENT',

@@ -49,6 +49,16 @@ export function blockingSetting(blocking: boolean): string {
   return blocking ? 'Blocking' : 'Non-blocking';
 }
 
+// The editor detail subtitle (prototype): "<client> · effective policy = tenant defaults
+// + this client’s changes · published version <v>". `nextVersion` is the version the next
+// publish will create, so the currently-published version is one less (min 1 — the tenant
+// baseline a fresh client inherits).
+export function detailSubtitle(companyName: string | undefined, nextVersion: string | undefined): string {
+  const client = companyName !== undefined && companyName.length > 0 ? companyName : 'This client';
+  const published = nextVersion === undefined ? '—' : String(Math.max(1, (Number.parseInt(nextVersion, 10) || 1) - 1));
+  return `${client} · effective policy = tenant defaults + this client’s changes · published version ${published}`;
+}
+
 export const DOMAIN_TITLES: Record<PolicyDomain, string> = {
   engagement: 'Engagement Policy',
   'client-submittal': 'Client Submittal Policy',

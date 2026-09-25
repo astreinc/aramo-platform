@@ -36,35 +36,35 @@ beforeEach(() => {
 });
 
 describe('PreStartPolicyEditor', () => {
-  it('renders a presence toggle for every requirement type in the closed registry', async () => {
+  it('renders every requirement type in the closed registry as an ordered checklist card', async () => {
     render(<PreStartPolicyEditor companyId="co-1" onBack={vi.fn()} />);
-    await waitFor(() => expect(screen.getByRole('group', { name: 'Background check presence' })).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('Background check')).toBeInTheDocument());
     for (const label of ['Drug screen', 'I-9 verification', 'Credential verification', 'Badge provisioning', 'Client paperwork', 'NDA']) {
+      expect(screen.getByText(label)).toBeInTheDocument();
+      // non-floored requirements expose the presence toggle
       expect(screen.getByRole('group', { name: `${label} presence` })).toBeInTheDocument();
     }
   });
 
-  it('a tenant-floored requirement shows the Tenant floor badge and can be inherited but not weakened', async () => {
+  it('a tenant-floored requirement shows the Tenant floor badge and locks presence (cannot be weakened)', async () => {
     render(<PreStartPolicyEditor companyId="co-1" onBack={vi.fn()} />);
-    const grp = await screen.findByRole('group', { name: 'Background check presence' });
+    await waitFor(() => expect(screen.getByText('Background check')).toBeInTheDocument());
+    // the floor is surfaced …
     expect(screen.getAllByText('Tenant floor').length).toBeGreaterThanOrEqual(1);
-    // Inherit is allowed (inheriting a floor is valid) …
-    expect(within(grp).getByText('Inherit')).not.toBeDisabled();
-    // … but overriding it locks the dimensions (can't weaken below the floor).
-    fireEvent.click(within(grp).getByText('Required'));
-    const blocking = await screen.findByRole('group', { name: 'Background check blocking' });
-    expect(within(blocking).getByText('Non-blocking')).toBeDisabled();
+    // … and its presence is a locked chip, never an editable toggle
+    expect(screen.queryByRole('group', { name: 'Background check presence' })).not.toBeInTheDocument();
   });
 
   it('adding a requirement publishes the CLIENT set (draft→publish) then refetches', async () => {
     render(<PreStartPolicyEditor companyId="co-1" onBack={vi.fn()} />);
     const drug = await screen.findByRole('group', { name: 'Drug screen presence' });
-    expect(screen.getByText('Publish changes')).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Publish changes' })).toBeDisabled();
     fireEvent.click(within(drug).getByText('Required'));
-    await waitFor(() => expect(screen.getByText('Publish changes')).not.toBeDisabled());
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Publish changes' })).not.toBeDisabled());
 
     const loadsBefore = m.getPreStartLayers.mock.calls.length;
-    fireEvent.click(screen.getByText('Publish changes'));
+    fireEvent.click(screen.getByRole('button', { name: 'Publish changes' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Publish' }));
     await waitFor(() => expect(m.publishPreStart).toHaveBeenCalledTimes(1));
     const arg = m.publishPreStart.mock.calls[0]![0];
     expect(arg.scope_ref_id).toBe('co-1');

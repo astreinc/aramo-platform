@@ -8,10 +8,11 @@ import {
   type ClientSubmittalRequirementDef,
 } from '../policies-api';
 
+import { AddRequirementButton } from './AddRequirementButton';
 import { PolicySourceBadge } from './PolicySourceBadge';
 import { PublishBar } from './PublishBar';
 import { PolicyEditorHeader } from './PolicyEditorHeader';
-import { SUBMITTAL_KEYS, submittalLabel, submittalDescription, type SubmittalKey } from './labels';
+import { SUBMITTAL_KEYS, submittalLabel, submittalDescription, detailSubtitle, type SubmittalKey } from './labels';
 
 function describeChoice(s: { choice: 'inherit' | 'required' | 'not_required'; override_class: 'HARD_DENY' | 'OVERRIDABLE' }): string {
   if (s.choice === 'inherit') return 'Inherit';
@@ -68,11 +69,13 @@ function initialRow(client: ClientSubmittalRequirementDef | undefined): RowState
 
 export function ClientSubmittalPolicyEditor({
   companyId,
+  companyName,
   onBack,
   onPreview,
   onPublished,
 }: {
   companyId: string;
+  companyName?: string;
   onBack: () => void;
   onPreview?: () => void;
   onPublished?: () => void;
@@ -117,8 +120,9 @@ export function ClientSubmittalPolicyEditor({
     };
   }, [load]);
 
-  if (error !== null) return <PanelShell onBack={onBack}>{<p className="rc-muted-line">{error}</p>}</PanelShell>;
-  if (loaded === null || rows === null || initial === null) return <PanelShell onBack={onBack}>{null}</PanelShell>;
+  const subtitle = detailSubtitle(companyName, loaded?.nextVersion);
+  if (error !== null) return <PanelShell onBack={onBack} subtitle={subtitle}>{<p className="rc-muted-line">{error}</p>}</PanelShell>;
+  if (loaded === null || rows === null || initial === null) return <PanelShell onBack={onBack} subtitle={subtitle}>{null}</PanelShell>;
 
   const changes = SUBMITTAL_KEYS.filter(
     (k) => rows[k].choice !== initial[k].choice || rows[k].override_class !== initial[k].override_class,
@@ -152,7 +156,7 @@ export function ClientSubmittalPolicyEditor({
   };
 
   return (
-    <PanelShell onBack={onBack}>
+    <PanelShell onBack={onBack} subtitle={subtitle}>
       <div className="rc-editor-card">
         <div className="rc-editor-head">
           <span>Requirement</span>
@@ -167,7 +171,10 @@ export function ClientSubmittalPolicyEditor({
             const prov = loaded.provenanceByKey[k];
             const tenantSetting = tenant === undefined ? 'not set' : tenant.disposition === 'REQUIRED' ? 'Required' : 'Not required';
             const clientSetting = rows[k].choice === 'required' ? 'Required' : rows[k].choice === 'not_required' ? 'Not required' : 'Inherit';
-            const showOverride = rows[k].choice === 'required';
+            // runtime override applies whenever the EFFECTIVE setting is Required — a floor,
+            // an explicit Required, or an inherited-required key (prototype `ovApplies`).
+            const showOverride =
+              isFloor || rows[k].choice === 'required' || (rows[k].choice === 'inherit' && tenant?.disposition === 'REQUIRED');
             const delta = isFloor
               ? 'Tenant floor — cannot be weakened at client scope'
               : tenant === undefined
@@ -222,10 +229,13 @@ export function ClientSubmittalPolicyEditor({
             );
           })}
         </ul>
+        <AddRequirementButton catalog={[]} emptyText="Every submittal requirement Aramo can verify today is already shown for this client." />
       </div>
       <PublishBar
         changes={changes.map((k) => `${submittalLabel(k)}: ${describeChoice(initial[k])} → ${describeChoice(rows[k])}`)}
         publishing={publishing}
+        title="Client Submittal Policy"
+        nextVersion={loaded.nextVersion}
         onCancel={onBack}
         onPreview={onPreview}
         onPublish={() => void publish()}
@@ -234,14 +244,10 @@ export function ClientSubmittalPolicyEditor({
   );
 }
 
-function PanelShell({ onBack, children }: { onBack: () => void; children: React.ReactNode }): JSX.Element {
+function PanelShell({ onBack, subtitle, children }: { onBack: () => void; subtitle: string; children: React.ReactNode }): JSX.Element {
   return (
     <div className="rc-pol">
-      <PolicyEditorHeader
-        onBack={onBack}
-        title="Client Submittal Policy"
-        subtitle="Effective policy = tenant defaults + this client’s changes. A tenant floor cannot be weakened here."
-      />
+      <PolicyEditorHeader onBack={onBack} title="Client Submittal Policy" subtitle={subtitle} />
       {children}
     </div>
   );
