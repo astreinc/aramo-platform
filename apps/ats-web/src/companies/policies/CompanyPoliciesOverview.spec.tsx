@@ -4,15 +4,28 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 // PA-3 — the overview renders three cards straight from the effective reads. Every
 // badge (Tenant floor / Client-added / …) is backend truth off `provenance`; the test
 // pins that the FE surfaces it rather than recomputing it.
-const { getClientSubmittalEffective, getEngagementEffective, getPreStartEffective } = vi.hoisted(() => ({
+const {
+  getClientSubmittalEffective,
+  getEngagementEffective,
+  getPreStartEffective,
+  getClientSubmittalHistory,
+  getEngagementHistory,
+  getPreStartHistory,
+} = vi.hoisted(() => ({
   getClientSubmittalEffective: vi.fn(),
   getEngagementEffective: vi.fn(),
   getPreStartEffective: vi.fn(),
+  getClientSubmittalHistory: vi.fn().mockResolvedValue({ versions: [] }),
+  getEngagementHistory: vi.fn().mockResolvedValue({ versions: [] }),
+  getPreStartHistory: vi.fn().mockResolvedValue({ versions: [] }),
 }));
 vi.mock('../policies-api', () => ({
   getClientSubmittalEffective,
   getEngagementEffective,
   getPreStartEffective,
+  getClientSubmittalHistory,
+  getEngagementHistory,
+  getPreStartHistory,
 }));
 
 import { CompanyPoliciesOverview } from './CompanyPoliciesOverview';
@@ -102,7 +115,8 @@ describe('CompanyPoliciesOverview', () => {
     await waitFor(() => expect(screen.getByText('Work authorization')).toBeInTheDocument());
     // Two floored requirements across the cards (work auth + background check).
     expect(screen.getAllByText('Tenant floor').length).toBeGreaterThanOrEqual(2);
-    expect(screen.getByText('Client-added')).toBeInTheDocument();
+    // "Client-added" appears in the row badge AND the header legend.
+    expect(screen.getAllByText('Client-added').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('Bill rate')).toBeInTheDocument();
   });
 

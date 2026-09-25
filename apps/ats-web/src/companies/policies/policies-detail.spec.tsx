@@ -48,6 +48,10 @@ beforeEach(() => {
   m.getPreStartLayers.mockResolvedValue({
     layers: { tenant: { present: true, definitions: [] }, client: null, requisition: null, effective: { definitions: [] } },
   });
+  // Overview also reads engagement/pre-start client-scope history for each card's meta
+  // (getClientSubmittalHistory keeps its 2-version fixture above for the history panel).
+  m.getEngagementHistory.mockResolvedValue({ versions: [] });
+  m.getPreStartHistory.mockResolvedValue({ versions: [] });
   // Overview effective reads (for the container test).
   m.getClientSubmittalEffective.mockResolvedValue({ effective: { composite_version: 'v', layers: [], requirements: [] } });
   m.getEngagementEffective.mockResolvedValue({ governed: true, effective: { composite_version: 'v', layers: [], enforcement_mode: 'ENFORCING', requirements: [] } });

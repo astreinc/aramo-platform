@@ -342,7 +342,7 @@ export function CompanyDetailView({ sessionOverride }: CompanyDetailViewProps) {
         label: 'Policies',
         content: (
           <div className="rc-mt-16">
-            <CompanyPoliciesView companyId={company.id} canConfigure={canConfigurePolicies} />
+            <CompanyPoliciesView companyId={company.id} companyName={company.name} canConfigure={canConfigurePolicies} />
           </div>
         ),
       });

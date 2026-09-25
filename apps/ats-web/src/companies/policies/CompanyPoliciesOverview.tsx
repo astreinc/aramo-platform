@@ -3,8 +3,11 @@ import { useEffect, useState } from 'react';
 import { Card, StatusPill, Button } from '../../ui';
 import {
   getClientSubmittalEffective,
+  getClientSubmittalHistory,
   getEngagementEffective,
+  getEngagementHistory,
   getPreStartEffective,
+  getPreStartHistory,
   type ClientSubmittalEffectiveView,
   type EngagementEffectiveView,
   type PreStartEffectiveView,
@@ -65,6 +68,8 @@ interface DomainCardData {
   readonly title: string;
   readonly description: string;
   readonly version: string | null;
+  readonly overrides: number;
+  readonly meta: string | null;
   readonly rows: readonly OverviewRow[];
   readonly summary: string;
   readonly loaded: boolean;
@@ -78,12 +83,25 @@ function summarize(rows: readonly OverviewRow[], overridable: number, floors: nu
   return parts.join(' · ');
 }
 
+function overrideCount(rows: readonly OverviewRow[]): number {
+  return rows.filter((r) => r.provenance.client_override || r.provenance.client_added).length;
+}
+function metaLine(versions: readonly { version: string; published_at?: string | null; published_by?: string | null }[]): string | null {
+  const v = versions[0];
+  if (v === undefined) return null;
+  const d = v.published_at === null || v.published_at === undefined ? null : new Date(v.published_at);
+  const date = d !== null && !Number.isNaN(d.getTime()) ? d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: '2-digit' }) : null;
+  return `Version ${v.version}${date !== null ? ` · Published ${date}` : ''}${v.published_by ? ` · ${v.published_by}` : ''}`;
+}
+
 export function CompanyPoliciesOverview({
   companyId,
+  companyName,
   canConfigure,
   onOpen,
 }: {
   companyId: string;
+  companyName?: string;
   canConfigure?: Partial<Record<PolicyDomain, boolean>>;
   onOpen?: (domain: PolicyDomain, mode: PolicyMode) => void;
 }): JSX.Element {
@@ -93,15 +111,20 @@ export function CompanyPoliciesOverview({
   useEffect(() => {
     let live = true;
     void (async () => {
-      const [sub, eng, pre] = await Promise.allSettled([
+      const [sub, eng, pre, subH, engH, preH] = await Promise.allSettled([
         getClientSubmittalEffective(companyId),
         getEngagementEffective(companyId),
         getPreStartEffective(companyId),
+        getClientSubmittalHistory('CLIENT', companyId),
+        getEngagementHistory('CLIENT', companyId),
+        getPreStartHistory('CLIENT', companyId),
       ]);
       if (!live) return;
       const subView = sub.status === 'fulfilled' ? sub.value.effective : null;
       const engView = eng.status === 'fulfilled' ? eng.value.effective : null;
       const preView = pre.status === 'fulfilled' ? pre.value.effective : null;
+      const vers = (h: PromiseSettledResult<{ versions: readonly { version: string; published_at?: string | null; published_by?: string | null }[] }>) =>
+        h.status === 'fulfilled' ? h.value.versions : [];
       const subRows = submittalRows(subView);
       const engRows = engagementRows(engView);
       const preRows = preStartRows(preView);
@@ -111,6 +134,8 @@ export function CompanyPoliciesOverview({
           title: 'Engagement Policy',
           description: 'Communication evidence required before client submittal.',
           version: engView?.composite_version ?? null,
+          overrides: overrideCount(engRows),
+          meta: metaLine(vers(engH)),
           rows: engRows,
           summary: summarize(engRows, 0, 0),
           loaded: eng.status === 'fulfilled',
@@ -120,6 +145,8 @@ export function CompanyPoliciesOverview({
           title: 'Client Submittal Policy',
           description: 'What must be satisfied before talent is submitted to this client.',
           version: subView?.composite_version ?? null,
+          overrides: overrideCount(subRows),
+          meta: metaLine(vers(subH)),
           rows: subRows,
           summary: summarize(
             subRows,
@@ -133,6 +160,8 @@ export function CompanyPoliciesOverview({
           title: 'Pre-Start Policy',
           description: 'What must be complete before a placement can start.',
           version: preView?.version ?? null,
+          overrides: overrideCount(preRows),
+          meta: metaLine(vers(preH)),
           rows: preRows,
           summary: summarize(
             preRows,
@@ -151,14 +180,36 @@ export function CompanyPoliciesOverview({
     };
   }, [companyId]);
 
+  const clientLabel = companyName === undefined ? 'Client policy' : `Client policy · ${companyName}`;
   return (
     <div className="rc-policies">
       <div className="rc-policies__head">
-        <h3 className="rc-section-h">Policies</h3>
-        <p className="rc-muted-line">
-          Authored here and enforced where the work happens — submittal checks on the requisition,
-          engagement evidence on communication, and the Pre-Start checklist on the placement.
-        </p>
+        <div>
+          <h3 className="rc-section-h">Policies</h3>
+          <p className="rc-muted-line">Configure lifecycle requirements for working with this client.</p>
+        </div>
+        {/* §6 — the provenance legend; the badges themselves are backend truth. */}
+        <div className="rc-policies__legend">
+          <span className="rc-muted-line">Source:</span>
+          <StatusPill tone="neutral">Inherited from tenant</StatusPill>
+          <StatusPill tone="info">Client override</StatusPill>
+          <StatusPill tone="warn">Client-added</StatusPill>
+        </div>
+      </div>
+      {/* §5 — the TENANT → CLIENT → REQUISITION layering, in business language. */}
+      <div className="rc-tier-strip">
+        <div className="rc-tier">
+          <span className="rc-tier__n">1</span>
+          <span><b>Tenant defaults</b><span className="rc-muted-line">Baseline requirements for every client</span></span>
+        </div>
+        <div className="rc-tier rc-tier--active">
+          <span className="rc-tier__n rc-tier__n--active">2</span>
+          <span><b>{clientLabel}</b><span className="rc-muted-line">Adds or overrides where tenant policy permits</span></span>
+        </div>
+        <div className="rc-tier">
+          <span className="rc-tier__n">3</span>
+          <span><b>Requisition requirements</b><span className="rc-muted-line">Can add more; cannot weaken locked requirements</span></span>
+        </div>
       </div>
       {error !== null ? <p className="rc-muted-line">{error}</p> : null}
       <div className="rc-policy-cards">
@@ -168,11 +219,12 @@ export function CompanyPoliciesOverview({
               <h4 className="rc-policy-card__title">{c.title}</h4>
               <p className="rc-muted-line">{c.description}</p>
               <div className="rc-policy-card__meta">
-                {c.version !== null ? (
-                  <StatusPill tone="info">{c.version}</StatusPill>
+                {c.overrides > 0 ? (
+                  <StatusPill tone="info">{c.overrides} client override{c.overrides === 1 ? '' : 's'}</StatusPill>
                 ) : (
                   <StatusPill tone="neutral">Tenant defaults only</StatusPill>
                 )}
+                {c.meta !== null ? <span className="rc-muted-line">{c.meta}</span> : null}
               </div>
             </div>
             <ul className="rc-policy-reqs">
@@ -184,7 +236,7 @@ export function CompanyPoliciesOverview({
                 </li>
               ))}
               {c.loaded && c.rows.length === 0 ? (
-                <li className="rc-muted-line">No effective requirements.</li>
+                <li className="rc-muted-line">No effective requirements — inherits tenant defaults.</li>
               ) : null}
             </ul>
             <p className="rc-footnote">{c.summary}</p>
@@ -197,13 +249,17 @@ export function CompanyPoliciesOverview({
               <Button unstyled className="rc-link-action" onClick={() => onOpen?.(c.domain, 'effective')}>
                 View effective policy
               </Button>
-              <Button unstyled className="rc-link-action" onClick={() => onOpen?.(c.domain, 'history')}>
+              <Button unstyled className="rc-link-action rc-link-action--muted" onClick={() => onOpen?.(c.domain, 'history')}>
                 History
               </Button>
             </div>
           </Card>
         ))}
       </div>
+      <p className="rc-footnote">
+        Policies are authored here and enforced where the work happens — submittal checks on the
+        requisition, engagement evidence on communication, and the Pre-Start checklist on the placement.
+      </p>
     </div>
   );
 }

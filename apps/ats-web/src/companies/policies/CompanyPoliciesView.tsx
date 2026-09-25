@@ -17,9 +17,11 @@ import { PreStartPolicyEditor } from './PreStartPolicyEditor';
 // read-only effective preview so the affordance is never a dead end.
 export function CompanyPoliciesView({
   companyId,
+  companyName,
   canConfigure,
 }: {
   companyId: string;
+  companyName?: string;
   canConfigure?: Partial<Record<PolicyDomain, boolean>>;
 }): JSX.Element {
   const [open, setOpen] = useState<{ domain: PolicyDomain; mode: PolicyMode } | null>(null);
@@ -29,6 +31,7 @@ export function CompanyPoliciesView({
     return (
       <CompanyPoliciesOverview
         companyId={companyId}
+        companyName={companyName}
         canConfigure={canConfigure}
         onOpen={(domain, mode) => setOpen({ domain, mode })}
       />
