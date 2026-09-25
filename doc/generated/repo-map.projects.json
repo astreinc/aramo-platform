@@ -3166,6 +3166,12 @@
       { "project": "matching", "status": "production" },
       { "project": "object-storage", "status": "production" },
       { "project": "outbox-publisher", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/pipeline/src/tests/pipeline-void-correction.integration.spec.ts",
+        "project": "pipeline",
+        "status": "excluded"
+      },
       { "project": "pipeline", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",

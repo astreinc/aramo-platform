@@ -767,6 +767,18 @@ export const ERROR_CODES = [
   // lacking the pipeline:complete capability. HTTP 403. `completed` is a system
   // consequence of a downstream event carrying lineage, never a recruiter action.
   'PIPELINE_COMPLETE_SYSTEM_ONLY',
+  // Accidental-Add Correction — VOID (remove from requisition) refused: the episode is
+  // not in `no_contact` (strict v1 eligibility, §5). HTTP 422. VOID is an accidental-add
+  // correction that may only run before any meaningful recruiting activity.
+  'PIPELINE_VOID_NOT_ALLOWED_FROM_STATE',
+  // Accidental-Add Correction — VOID refused: meaningful requisition-specific engagement
+  // (email/voice) exists for this Talent + requisition (§7). HTTP 409. Removing an
+  // accidentally-added Talent must never erase a real recruiting interaction.
+  'PIPELINE_VOID_HAS_ENGAGEMENT',
+  // Accidental-Add Correction — VOID refused: a downstream business record
+  // (Submittal / ClientSelection / Offer / Placement / Pre-Start) exists for this
+  // Talent + requisition (§6). HTTP 409. The episode has advanced past accidental-add.
+  'PIPELINE_VOID_HAS_DOWNSTREAM_ACTIVITY',
   // Lane 2 / L2-I (D1) — a provider-disposition mapping row was authored with a target
   // that is NOT in the canonical author-time vocabulary (recruiter named actions +
   // non-system RECRUITER/TALENT/ENGAGEMENT disposition reasons). System-only COMPLETE and

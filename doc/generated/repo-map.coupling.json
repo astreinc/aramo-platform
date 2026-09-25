@@ -16692,6 +16692,11 @@
       "to": "libs/pipeline/src/lib/pipeline-state.ts"
     },
     {
+      "from": "libs/pipeline/prisma/migrations/20260925120100_pipeline_void_live_index_recreate/migration.sql",
+      "status": "unscoped",
+      "to": "libs/pipeline/src/lib/pipeline-state.ts"
+    },
+    {
       "from": "libs/pipeline/prisma/schema.prisma",
       "status": "unscoped",
       "to": "doc/05-conventions.md"
@@ -16922,6 +16927,42 @@
     {
       "excludedBy": "src/tests/**/*",
       "from": "libs/pipeline/src/tests/pipeline-l2d-entry-provenance.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/requisition/prisma/migrations/20260907120000_add_requisition_postal_code/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/pipeline/src/tests/pipeline-void-correction.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/activity/prisma/migrations/20260602140000_init_activity_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/pipeline/src/tests/pipeline-void-correction.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/activity/prisma/migrations/20260801120000_add_activity_redaction_fields/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/pipeline/src/tests/pipeline-void-correction.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/activity/prisma/migrations/20260921160000_rn1_activity_note_extension/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/pipeline/src/tests/pipeline-void-correction.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/metering/prisma/migrations/20260601150000_init_metering_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/pipeline/src/tests/pipeline-void-correction.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/requisition/prisma/migrations/20260602100000_init_requisition_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/pipeline/src/tests/pipeline-void-correction.integration.spec.ts",
       "status": "excluded",
       "to": "libs/requisition/prisma/migrations/20260907120000_add_requisition_postal_code/migration.sql"
     },

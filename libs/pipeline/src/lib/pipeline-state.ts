@@ -45,6 +45,11 @@ export const PIPELINE_STATUS_VALUES = [
   'not_in_consideration',
   // the canonical SUCCESSFUL terminal (system-only COMPLETE; SB-3).
   'completed',
+  // administrative correction of an accidental Pipeline entry (Accidental-Add
+  // Correction Directive). Terminal · non-active · non-recruiting · non-disposition
+  // · non-success. Reached ONLY via the governed VOID command (never a generic
+  // transition / recruiter /actions), and only from `no_contact`.
+  'voided',
 ] as const;
 
 export type PipelineStatus = (typeof PIPELINE_STATUS_VALUES)[number];
@@ -109,6 +114,12 @@ const LEGAL_TRANSITIONS: Record<PipelineStatus, readonly PipelineStatus[]> = {
   not_in_consideration: [],
   // the canonical SUCCESSFUL terminal (system-only COMPLETE, SB-3).
   completed: [],
+  // administrative-correction terminal (VOID). No outgoing transitions and — by
+  // design — NO INCOMING edge in this matrix: `no_contact → voided` is NOT a legal
+  // generic transition. VOID is a named business command that owns the correction
+  // (§9); the dedicated repository `void()` performs the write without consulting
+  // this matrix, and the immutable episode is never reopened (§12).
+  voided: [],
 };
 
 // EXPLICIT terminal partition. Both terminals have empty legal edges, so the
@@ -116,6 +127,10 @@ const LEGAL_TRANSITIONS: Record<PipelineStatus, readonly PipelineStatus[]> = {
 export const CANONICAL_TERMINAL_STATUSES: readonly PipelineStatus[] = [
   'not_in_consideration',
   'completed',
+  // VOID — administrative correction. Terminal + live-slot-releasing so a voided
+  // (tenant,talent,requisition) episode frees the slot and the Talent may be added
+  // again later as a fresh `no_contact` episode (§2/§12).
+  'voided',
 ];
 
 // The live-slot exclusion set. A status occupies the single live-episode slot
@@ -185,3 +200,20 @@ export function isRecruiterPipelineAction(v: unknown): v is RecruiterPipelineAct
 // surface is a 422 VALIDATION_ERROR (§5); `completed` is reached only via the
 // internal COMPLETE command (pipeline:complete capability).
 export const SYSTEM_COMPLETE_ACTION = 'COMPLETE' as const;
+
+// Accidental-Add Correction — the governed VOID command. Deliberately NOT in
+// RECRUITER_ACTION_TO_STATUS: VOID needs cross-domain engagement + downstream
+// guards that the pipeline lib cannot compose (ADR-0029 wall), so it is orchestrated
+// at apps/api and reaches the dedicated repository `void()` command — never the bare
+// recruiter /actions or /transition surfaces. A body carrying this action on
+// /actions is rejected (like COMPLETE).
+export const VOID_ACTION = 'VOID' as const;
+
+// The v1 reason vocabulary for VOID — closed, single-valued (§4). NOT a
+// PipelineDisposition reason (§3: never `added_by_mistake` under
+// not_in_consideration); it is carried on the void history row's `note`.
+export const VOID_REASON_VALUES = ['ADDED_BY_MISTAKE'] as const;
+export type VoidReason = (typeof VOID_REASON_VALUES)[number];
+export function isVoidReason(v: unknown): v is VoidReason {
+  return typeof v === 'string' && (VOID_REASON_VALUES as readonly string[]).includes(v);
+}

@@ -61,6 +61,7 @@ enum PipelineStatus {
   qualified // affirmative recruiter milestone
   not_in_consideration
   completed // canonical successful terminal (system-only COMPLETE)
+  voided // administrative correction of an accidental add (governed VOID; terminal, slot-releasing)
 
   @@schema("pipeline")
 }

@@ -11,17 +11,18 @@ import { LIVE_EPISODE_EXCLUSION_STATUSES } from '../lib/pipeline-state.js';
 // live-slot EXCLUSION set as a LITERAL PostgreSQL enum list, because a migration
 // is immutable SQL and cannot import the TypeScript status registry.
 //
-// Legacy-Pipeline-Canonicalization — after the retired values are physically gone
-// the exclusion set collapses to the TWO canonical terminals (`not_in_consideration`
-// + `completed`). This guard parses the CANONICALIZE migration (the last one that
-// recreates the index) and asserts its predicate equals LIVE_EPISODE_EXCLUSION_STATUSES.
-// A partition change fails this proof until a new migration updates the DB invariant.
+// Accidental-Add Correction — the exclusion set now carries the THREE canonical
+// terminals (`not_in_consideration` + `completed` + `voided`); a voided episode
+// releases the live slot. The LAST migration that recreates `Pipeline_live_episode_key`
+// is the VOID index-recreate; this guard parses IT and asserts its predicate equals
+// LIVE_EPISODE_EXCLUSION_STATUSES. A partition change fails this proof until a new
+// migration updates the DB invariant.
 //
 // Pure unit test (no Postgres): it parses the migration file and compares to the
 // registry-derived exclusion set.
 const CANONICALIZE_MIGRATION = resolve(
   __dirname,
-  '../../prisma/migrations/20260831120000_pipeline_canonicalize_status_enum/migration.sql',
+  '../../prisma/migrations/20260925120100_pipeline_void_live_index_recreate/migration.sql',
 );
 
 // Extract the exclusion set encoded by the `Pipeline_live_episode_key` CREATE's
@@ -45,13 +46,13 @@ function parsePartialIndexExclusions(sql: string): string[] {
     .sort();
 }
 
-describe('B-index-parity: canonicalize migration predicate == LIVE_EPISODE_EXCLUSION_STATUSES', () => {
-  it('the partial-index NOT IN list equals the 2-member canonical-terminal exclusion set', () => {
+describe('B-index-parity: live-index migration predicate == LIVE_EPISODE_EXCLUSION_STATUSES', () => {
+  it('the partial-index NOT IN list equals the 3-member canonical-terminal exclusion set (incl. voided)', () => {
     const parsed = parsePartialIndexExclusions(readFileSync(CANONICALIZE_MIGRATION, 'utf8'));
     const registry = [...LIVE_EPISODE_EXCLUSION_STATUSES].sort();
 
-    // The canonical exclusion set = the two canonical terminals only.
-    expect(registry).toEqual(['completed', 'not_in_consideration']);
+    // The canonical exclusion set = the three canonical terminals (VOID releases the slot).
+    expect(registry).toEqual(['completed', 'not_in_consideration', 'voided']);
     expect(parsed).toEqual(registry);
   });
 });
