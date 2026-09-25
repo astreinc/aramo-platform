@@ -151,6 +151,43 @@ describe('RequisitionTalentBoard (TB-2)', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('boom');
   });
 
+  // TB-5 — a governed drag from Interviewing onto Client Selected routes to the governed surface;
+  // an ungoverned drop (missing scope / no matching action) is rejected (snaps back).
+  it('accepts a governed drag (interview → selected) and routes to the governed surface', async () => {
+    const onSelectCard = vi.fn();
+    const c = card({
+      talent_record_id: 't1', pipeline_id: 'pipe-9', column: 'interview', owner: 'client_selection',
+      next_actions: [{ key: 'client_selection.mark_selected', label: 'Mark client selected', owner: 'client_selection', command_route: 'POST /v1/client-selection/x/transition', required_scope: 'client-selection:transition' }],
+    });
+    mockGet.mockResolvedValue(board({ total_active: 1, columns: [{ key: 'interview', owner: 'client_selection', count: 1, cards: [c] }] }));
+    render(<RequisitionTalentBoard requisitionId="r1" talentNames={NAMES} scopes={['client-selection:transition']} onSelectCard={onSelectCard} />);
+    await screen.findByLabelText('Talent board');
+
+    const cardEl = screen.getByText('Ada Lovelace').closest('.rc-board__card') as HTMLElement;
+    const selectedCol = screen.getByLabelText('Client Selected');
+    fireEvent.dragStart(cardEl);
+    fireEvent.dragOver(selectedCol);
+    fireEvent.drop(selectedCol);
+    expect(onSelectCard).toHaveBeenCalledWith('pipe-9');
+  });
+
+  it('rejects an ungoverned drop (missing scope) — no routing, card snaps back', async () => {
+    const onSelectCard = vi.fn();
+    const c = card({
+      talent_record_id: 't1', pipeline_id: 'pipe-9', column: 'interview', owner: 'client_selection',
+      next_actions: [{ key: 'client_selection.mark_selected', label: 'Mark client selected', owner: 'client_selection', command_route: 'POST /x', required_scope: 'client-selection:transition' }],
+    });
+    mockGet.mockResolvedValue(board({ total_active: 1, columns: [{ key: 'interview', owner: 'client_selection', count: 1, cards: [c] }] }));
+    render(<RequisitionTalentBoard requisitionId="r1" talentNames={NAMES} scopes={[]} onSelectCard={onSelectCard} />);
+    await screen.findByLabelText('Talent board');
+
+    const cardEl = screen.getByText('Ada Lovelace').closest('.rc-board__card') as HTMLElement;
+    const selectedCol = screen.getByLabelText('Client Selected');
+    fireEvent.dragStart(cardEl);
+    fireEvent.drop(selectedCol);
+    expect(onSelectCard).not.toHaveBeenCalled();
+  });
+
   // TB-3 — the bounded next-action menu, scope-gated.
   it('renders a projected next action only when the actor holds its required scope', async () => {
     const withAction = card({

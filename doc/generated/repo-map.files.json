@@ -821,6 +821,8 @@
     "apps/ats-web/src/requisitions/TalentJourneySection.tsx",
     "apps/ats-web/src/requisitions/approval-affordance.spec.ts",
     "apps/ats-web/src/requisitions/approval-affordance.ts",
+    "apps/ats-web/src/requisitions/board-governed-move.spec.ts",
+    "apps/ats-web/src/requisitions/board-governed-move.ts",
     "apps/ats-web/src/requisitions/compensation-visibility.ts",
     "apps/ats-web/src/requisitions/decimal-format.ts",
     "apps/ats-web/src/requisitions/enterprise-fields.ts",

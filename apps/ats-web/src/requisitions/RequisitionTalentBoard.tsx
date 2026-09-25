@@ -11,6 +11,7 @@ import {
   type BoardColumnView,
   type RequisitionTalentBoardView,
 } from './requisition-talent-board-api';
+import { governedDropTargets, resolveGovernedMove } from './board-governed-move';
 
 // Requisition Talent Board (TB-2) — the read-only Board experience for Requisition Detail →
 // Talent. A projection surface only: it renders the backend-authoritative column placement,
@@ -57,17 +58,26 @@ function BoardCard({
   name,
   scopes,
   onSelect,
+  onDragStart,
+  onDragEnd,
 }: {
   card: BoardCardView;
   name: string;
   scopes: readonly string[];
   onSelect: () => void;
+  onDragStart: () => void;
+  onDragEnd: () => void;
 }): JSX.Element {
   // Scope-gate the projected next actions (TB-3): only actions the actor can perform are
   // offered. The server re-authorizes on execution — this is presentation, not the boundary.
   const performable = card.next_actions.filter((a) => scopes.includes(a.required_scope));
   return (
-    <div className="rc-board__card">
+    <div
+      className="rc-board__card"
+      draggable
+      onDragStart={(e) => { e.dataTransfer?.setData?.('text/plain', card.pipeline_id); onDragStart(); }}
+      onDragEnd={onDragEnd}
+    >
       <Button unstyled type="button" className="rc-board__card-main" onClick={onSelect} aria-label={`Open ${name}`}>
         <span className="rc-board__card-name">{name}</span>
         <span className="rc-board__card-meta">
@@ -120,19 +130,44 @@ function BoardColumn({
   talentNames,
   scopes,
   onSelectCard,
+  isDropTarget,
+  onDragStartCard,
+  onDragEndCard,
+  onDropCard,
 }: {
   column: BoardColumnView;
   talentNames: RequisitionTalentBoardProps['talentNames'];
   scopes: readonly string[];
   onSelectCard: (pipelineId: string) => void;
+  isDropTarget: boolean;
+  onDragStartCard: (card: BoardCardView) => void;
+  onDragEndCard: () => void;
+  onDropCard: (targetColumn: BoardColumnKey) => void;
 }): JSX.Element {
   // The Qualified column splits into its two readiness bands (§6); every other column is flat.
   const isQualified = column.key === 'qualified';
   const ready = isQualified ? column.cards.filter((c) => c.readiness?.band === 'ready_to_submit') : [];
   const needs = isQualified ? column.cards.filter((c) => c.readiness?.band !== 'ready_to_submit') : [];
+  const renderCard = (c: BoardCardView): JSX.Element => (
+    <BoardCard
+      key={c.pipeline_id}
+      card={c}
+      name={talentLabel(talentNames, c.talent_record_id)}
+      scopes={scopes}
+      onSelect={() => onSelectCard(c.pipeline_id)}
+      onDragStart={() => onDragStartCard(c)}
+      onDragEnd={onDragEndCard}
+    />
+  );
 
   return (
-    <section className="rc-board__col" aria-label={BOARD_COLUMN_LABELS[column.key]}>
+    <section
+      className={`rc-board__col${isDropTarget ? ' rc-board__col--drop' : ''}`}
+      aria-label={BOARD_COLUMN_LABELS[column.key]}
+      data-drop-target={isDropTarget || undefined}
+      onDragOver={(e) => { if (isDropTarget) e.preventDefault(); }}
+      onDrop={(e) => { if (isDropTarget) { e.preventDefault(); onDropCard(column.key); } }}
+    >
       <header className="rc-board__col-head">
         <span className="rc-board__col-title">{BOARD_COLUMN_LABELS[column.key]}</span>
         <span className="rc-board__col-count">{column.count}</span>
@@ -145,24 +180,18 @@ function BoardColumn({
             {ready.length > 0 && (
               <div className="rc-board__band-group">
                 <p className="rc-board__band-label">Ready to submit</p>
-                {ready.map((c) => (
-                  <BoardCard key={c.pipeline_id} card={c} name={talentLabel(talentNames, c.talent_record_id)} scopes={scopes} onSelect={() => onSelectCard(c.pipeline_id)} />
-                ))}
+                {ready.map(renderCard)}
               </div>
             )}
             {needs.length > 0 && (
               <div className="rc-board__band-group">
                 <p className="rc-board__band-label">Needs action</p>
-                {needs.map((c) => (
-                  <BoardCard key={c.pipeline_id} card={c} name={talentLabel(talentNames, c.talent_record_id)} scopes={scopes} onSelect={() => onSelectCard(c.pipeline_id)} />
-                ))}
+                {needs.map(renderCard)}
               </div>
             )}
           </>
         ) : (
-          column.cards.map((c) => (
-            <BoardCard key={c.pipeline_id} card={c} name={talentLabel(talentNames, c.talent_record_id)} scopes={scopes} onSelect={() => onSelectCard(c.pipeline_id)} />
-          ))
+          column.cards.map(renderCard)
         )}
       </div>
     </section>
@@ -173,6 +202,8 @@ export function RequisitionTalentBoard({ requisitionId, talentNames, onSelectCar
   const [board, setBoard] = useState<RequisitionTalentBoardView | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
+  // TB-5 — the card currently being governed-dragged (null when idle).
+  const [dragging, setDragging] = useState<BoardCardView | null>(null);
 
   useEffect(() => {
     let live = true;
@@ -193,6 +224,20 @@ export function RequisitionTalentBoard({ requisitionId, talentNames, onSelectCar
     );
   }, [board]);
 
+  // TB-5 — the columns the dragged card MAY be governed-dropped into (§3.2 ceiling; scope-gated).
+  const validTargets = dragging !== null ? governedDropTargets(dragging, COLUMN_ORDER, scopes) : null;
+
+  // A governed drop: accepted ONLY when it maps to the card's projected governed action; the
+  // mutation flows through the existing governed command surface (never a Board-side write).
+  const onDropCard = (targetColumn: BoardColumnKey): void => {
+    if (dragging === null) return;
+    const move = resolveGovernedMove({ card: dragging, targetColumn, columnOrder: COLUMN_ORDER, scopes });
+    const card = dragging;
+    setDragging(null);
+    if (move.ok) onSelectCard(card.pipeline_id); // route to the governed command surface (TB-3 path)
+    // Rejected drops snap back (no-op) — the governance is the resolver, not the drop target.
+  };
+
   if (loading) return <p className="rc-board__status" role="status">Loading board…</p>;
   if (error.length > 0) return <p className="rc-board__status rc-board__status--error" role="alert">{error}</p>;
   if (board === null) return <p className="rc-board__status">No board.</p>;
@@ -201,7 +246,17 @@ export function RequisitionTalentBoard({ requisitionId, talentNames, onSelectCar
     <div className="rc-board" aria-label="Talent board">
       <div className="rc-board__cols">
         {columns.map((col) => (
-          <BoardColumn key={col.key} column={col} talentNames={talentNames} scopes={scopes} onSelectCard={onSelectCard} />
+          <BoardColumn
+            key={col.key}
+            column={col}
+            talentNames={talentNames}
+            scopes={scopes}
+            onSelectCard={onSelectCard}
+            isDropTarget={validTargets?.has(col.key) ?? false}
+            onDragStartCard={setDragging}
+            onDragEndCard={() => setDragging(null)}
+            onDropCard={onDropCard}
+          />
         ))}
       </div>
       {board.closed.total > 0 && (
