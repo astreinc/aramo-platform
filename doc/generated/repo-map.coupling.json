@@ -11655,6 +11655,11 @@
     {
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
+      "to": "apps/api/src/requisition-talent-board/requisition-talent-board.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
       "to": "apps/api/src/rtr/rtr.controller.ts"
     },
     {
