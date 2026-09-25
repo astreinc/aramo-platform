@@ -301,6 +301,36 @@ export class ClientTalentRestrictionRepository {
     return rows.map((r) => projectView(r, now));
   }
 
+  // Requisition Talent Board (TB-4) — BATCHED: the SET of talent record ids ACTIVELY
+  // restricted at ONE client company, for a whole talent set, in ONE query (never a per-talent
+  // `findCurrentForClientTalent` loop — directive §19). Same active-window predicate as the
+  // per-pair reader (effective_from ≤ now AND scheduled_end_at null|future AND effective_to
+  // null|future). `now` is passed in for deterministic reads. Read-only; tenant-scoped.
+  async findActiveRestrictedTalentIds(input: {
+    tenant_id: string;
+    client_company_id: string;
+    talent_record_ids: readonly string[];
+    now: Date;
+  }): Promise<Set<string>> {
+    const out = new Set<string>();
+    if (input.talent_record_ids.length === 0) return out;
+    const rows = (await this.prisma.clientTalentRestriction.findMany({
+      where: {
+        tenant_id: input.tenant_id,
+        client_company_id: input.client_company_id,
+        talent_record_id: { in: Array.from(new Set(input.talent_record_ids)) },
+        effective_from: { lte: input.now },
+        AND: [
+          { OR: [{ scheduled_end_at: null }, { scheduled_end_at: { gt: input.now } }] },
+          { OR: [{ effective_to: null }, { effective_to: { gt: input.now } }] },
+        ],
+      },
+      select: { talent_record_id: true },
+    })) as Array<{ talent_record_id: string }>;
+    for (const r of rows) out.add(r.talent_record_id);
+    return out;
+  }
+
   // Full source-attributed history within the one client-talent context
   // (active and ended). Never a cross-client surface.
   async findHistoryForClientTalent(input: {

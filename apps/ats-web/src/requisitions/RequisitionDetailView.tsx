@@ -42,6 +42,7 @@ import {
 
 import { GuaranteeTermsPanel } from './GuaranteeTermsPanel';
 import { TalentDetailPanel } from './TalentDetailPanel';
+import { RequisitionTalentBoard } from './RequisitionTalentBoard';
 import { AddTalentDialog } from './AddTalentDialog';
 import {
   CLOSE_SUBMITTALS_HELPER,
@@ -1126,6 +1127,8 @@ function TalentJourney({
   readonly onNavigate: (tab: TabId) => void;
 }) {
   const [selected, setSelected] = useState<PipelineView | null>(null);
+  // TB-2 — the Talent surface's List|Board view mode (List is the default working surface).
+  const [talentView, setTalentView] = useState<'list' | 'board'>('list');
   // Lazy CLIENT/PRE-START population, keyed by talent_record_id.
   const [cells, setCells] = useState<Record<string, JourneyCells>>({});
   // Find Talent ▾ menu (prototype): the two sourcing entry points.
@@ -1173,8 +1176,51 @@ function TalentJourney({
     [cells, fetchCells],
   );
 
+  // TB-2 — talent display names for the Board (keyed by talent_record_id). Reuses the
+  // requisition's already-loaded `talents` enrichment; the Board never re-fetches per card.
+  const boardTalentNames = useMemo(
+    () =>
+      Object.fromEntries(
+        Object.entries(talents).map(([id, t]) => [id, `${t.first_name} ${t.last_name}`.trim()]),
+      ),
+    [talents],
+  );
+
   return (
     <div className="rc-tj">
+      <div className="rc-tboard__toolbar" role="tablist" aria-label="Talent view">
+        <Button
+          unstyled
+          type="button"
+          role="tab"
+          aria-selected={talentView === 'list'}
+          className={`rc-tboard__toggle${talentView === 'list' ? ' rc-tboard__toggle--on' : ''}`}
+          onClick={() => setTalentView('list')}
+        >
+          List
+        </Button>
+        <Button
+          unstyled
+          type="button"
+          role="tab"
+          aria-selected={talentView === 'board'}
+          className={`rc-tboard__toggle${talentView === 'board' ? ' rc-tboard__toggle--on' : ''}`}
+          onClick={() => setTalentView('board')}
+        >
+          Board
+        </Button>
+      </div>
+      {talentView === 'board' ? (
+        <RequisitionTalentBoard
+          requisitionId={req.id}
+          talentNames={boardTalentNames}
+          scopes={scopes}
+          onSelectCard={(pid) => {
+            const p = pipelines.find((x) => x.id === pid);
+            if (p !== undefined) openRow(p);
+          }}
+        />
+      ) : (
       <div className="rc-tj__inner" role="table" aria-label="Talent journey">
         <div className="rc-tj__head">
           <span className="rc-tj__title">Talent journey</span>
@@ -1368,6 +1414,7 @@ function TalentJourney({
           })
         )}
       </div>
+      )}
       {selected !== null ? (
         <TalentDetailPanel
           entry={selected}

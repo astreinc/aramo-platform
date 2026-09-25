@@ -187,6 +187,33 @@ export class EngagementGateService {
     };
   }
 
+  /**
+   * Requisition Talent Board (TB-4) — REQUISITION-GRAIN engagement applicability, resolved ONCE
+   * for a requisition (NO per-talent evidence read). This is the batchable part of the gate:
+   *   - 'dormant'        — tenant not governed + no effective policy → gate does not enforce
+   *                        (every talent is engagement-satisfied, authoritatively).
+   *   - 'policy_missing' — tenant governed but no effective policy → fail-closed (every talent
+   *                        is engagement-blocked, authoritatively).
+   *   - 'policy_present' — an effective policy exists → the verdict is PER-TALENT (needs
+   *                        `readFacts` per talent). The Board does NOT batch that here, so it
+   *                        must treat readiness as UNAVAILABLE (never assert Ready) — never a
+   *                        neutralized/default engagement value that could false-positive.
+   * Mirrors `readReadiness`'s three-state resolution WITHOUT reading evidence facts.
+   */
+  async resolveApplicability(input: {
+    tenant_id: string;
+    company_id: string | null;
+    requisition_id: string;
+  }): Promise<'dormant' | 'policy_missing' | 'policy_present'> {
+    const policy = await this.policy.resolveEffective(input.tenant_id, {
+      company_id: input.company_id,
+      requisition_id: input.requisition_id,
+    });
+    if (policy !== null) return 'policy_present';
+    const governed = await this.policy.isTenantGoverned(input.tenant_id);
+    return governed ? 'policy_missing' : 'dormant';
+  }
+
   private async recordProvenance(
     input: EngagementAssessInput,
     policy: ResolvedEngagementPolicy | null,

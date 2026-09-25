@@ -1031,4 +1031,68 @@ export class SubmittalRepository {
 
     return { submittal: submittalView, event: eventView };
   }
+
+  // Requisition Talent Board (TB-1) — BATCHED read of ALL submittals for ONE
+  // requisition, visibility-scoped. Submittal inherits its requisition's
+  // visibility (`job_id ∈ visible_requisition_ids`; null = see-all — AUTHZ-D4b,
+  // as `findByIdForActor`). The Board composer needs the whole submittal set for a
+  // requisition in ONE query (no per-talent `findByTenantTalentJobForActor` loop,
+  // directive §19). Projects the Board-relevant columns EXPLICITLY — including
+  // `pipeline_id` and `resume_edition_id`, which the default `projectView` omits
+  // (they are the Board's join key + frozen résumé evidence, §13). Read-only.
+  async listByRequisitionForBoard(input: {
+    tenant_id: string;
+    requisition_id: string;
+    visible_requisition_ids: ReadonlySet<string> | null;
+    limit?: number;
+  }): Promise<
+    Array<{
+      id: string;
+      talent_id: string;
+      job_id: string;
+      pipeline_id: string | null;
+      resume_edition_id: string | null;
+      state: SubmittalStateValue;
+      confirmed_at: string | null;
+    }>
+  > {
+    // Visibility gate: a requisition outside the actor's visible set yields the
+    // empty set (never widen; mirrors the per-id readers).
+    if (
+      input.visible_requisition_ids !== null &&
+      !input.visible_requisition_ids.has(input.requisition_id)
+    ) {
+      return [];
+    }
+    const rows = (await this.prisma.talentSubmittalRecord.findMany({
+      where: { tenant_id: input.tenant_id, job_id: input.requisition_id },
+      select: {
+        id: true,
+        talent_id: true,
+        job_id: true,
+        pipeline_id: true,
+        resume_edition_id: true,
+        state: true,
+        confirmed_at: true,
+      },
+      take: Math.min(input.limit ?? 500, 1000),
+    })) as Array<{
+      id: string;
+      talent_id: string;
+      job_id: string;
+      pipeline_id: string | null;
+      resume_edition_id: string | null;
+      state: SubmittalStateValue;
+      confirmed_at: Date | null;
+    }>;
+    return rows.map((r) => ({
+      id: r.id,
+      talent_id: r.talent_id,
+      job_id: r.job_id,
+      pipeline_id: r.pipeline_id,
+      resume_edition_id: r.resume_edition_id,
+      state: r.state,
+      confirmed_at: r.confirmed_at === null ? null : r.confirmed_at.toISOString(),
+    }));
+  }
 }

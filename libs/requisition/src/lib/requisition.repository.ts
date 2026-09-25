@@ -1887,6 +1887,18 @@ export class RequisitionRepository {
    * passes; the row is invisible). Returns null also for genuine
    * not-in-tenant cases; both surface as 404 to the caller.
    */
+  // Requisition Talent Board (TB-4) — the requisition's client company_id ONLY (for the
+  // client-restriction + engagement resolution). A minimal tenant-scoped read: the Board has
+  // ALREADY enforced requisition visibility (its 404 concealment gate + visibility-scoped
+  // owner reads), so this does not re-derive visibility. Returns null if absent.
+  async findCompanyId(args: { tenant_id: string; id: string }): Promise<string | null> {
+    const row = await this.prisma.requisition.findFirst({
+      where: { tenant_id: args.tenant_id, id: args.id },
+      select: { company_id: true },
+    });
+    return (row?.company_id as string | undefined) ?? null;
+  }
+
   async findByIdForActor(args: {
     tenant_id: string;
     id: string;
