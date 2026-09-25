@@ -7,7 +7,7 @@ import {
   InlineAlert,
   hasScope,
   type Session,
-  type TableColumn,
+  type TableColumn, Checkbox, Input,
 } from '@aramo/fe-foundation';
 
 import { skillsApi, type Skill } from './skills-api';
@@ -82,7 +82,7 @@ export function SkillsRegistryView({ session }: { readonly session: Session }) {
       </div>
 
       <div className="pw-toolbar">
-        <input
+        <Input unstyled
           aria-label="Search canonical or normalized name"
           className="tc-input"
           placeholder="Search name…"
@@ -91,8 +91,8 @@ export function SkillsRegistryView({ session }: { readonly session: Session }) {
           style={{ minWidth: 240 }}
         />
         <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <input
-            type="checkbox"
+          <Checkbox
+           
             checked={includeInactive}
             onChange={(e) => setIncludeInactive(e.target.checked)}
           />

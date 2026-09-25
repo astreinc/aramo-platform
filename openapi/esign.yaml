@@ -1,0 +1,359 @@
+openapi: 3.1.0
+info:
+  title: Aramo Native E-Sign Service (DOC-3)
+  version: 0.1.0
+  description: >
+    The ATS-neutral Native E-Sign Service Core (apps/esign-service). The
+    `/v1/esign/envelopes` surface is the provider seam apps/api's
+    SignatureProviderPort HTTP adapter calls (trusted service-to-service; the
+    authoritative tenant_id is supplied by the caller). The `/v1/esign/signing`
+    surface is the public signer transport — tenant context is resolved from the
+    capability token, never accepted from the client. Transport only: no
+    RTR/Submittal/Offer/recruiter-workflow logic (those consume this seam in DOC-5/6).
+paths:
+  /v1/esign/envelopes:
+    post:
+      operationId: createSignatureEnvelope
+      summary: Create a signature envelope (DRAFT) with documents + signers.
+      description: Trusted service-to-service; the authoritative tenant_id is supplied by the caller.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateEnvelopeRequest'
+      responses:
+        '201':
+          description: The created envelope summary.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeSummary'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+  /v1/esign/envelopes/{id}/send:
+    post:
+      operationId: sendSignatureEnvelope
+      summary: Send the envelope (DRAFT -> SENT); issues signer capability sessions.
+      description: Transitions DRAFT to SENT and issues one signing capability session per signer.
+      parameters:
+        - $ref: '#/components/parameters/EnvelopeId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tenant_id]
+              properties:
+                tenant_id:
+                  type: string
+                  format: uuid
+      responses:
+        '200':
+          description: The updated envelope summary.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeSummary'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /v1/esign/envelopes/{id}:
+    get:
+      operationId: getSignatureEnvelope
+      summary: Get an envelope summary.
+      description: Returns the tenant-scoped envelope summary; a cross-tenant id is a 404.
+      parameters:
+        - $ref: '#/components/parameters/EnvelopeId'
+        - name: tenant_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: The envelope summary.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeSummary'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/esign/envelopes/{id}/void:
+    post:
+      operationId: voidSignatureEnvelope
+      summary: Void an envelope.
+      description: Voids a non-terminal envelope with a recorded reason.
+      parameters:
+        - $ref: '#/components/parameters/EnvelopeId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tenant_id, reason]
+              properties:
+                tenant_id:
+                  type: string
+                  format: uuid
+                reason:
+                  type: string
+      responses:
+        '200':
+          description: The voided envelope summary.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeSummary'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /v1/esign/envelopes/{id}/evidence:
+    get:
+      operationId: getSignatureEvidence
+      summary: Retrieve envelope evidence metadata (event-chain hash + software signature).
+      description: Returns evidence metadata (hashes + signature); verifiable independently of signing.
+      parameters:
+        - $ref: '#/components/parameters/EnvelopeId'
+        - name: tenant_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: The evidence summary.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvidenceSummary'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/esign/envelopes/{id}/executed:
+    get:
+      operationId: getExecutedArtifacts
+      summary: Pull executed document bytes + certificate (base64) for the Documents write-back.
+      description: Service-to-service pull for the Documents write-back; bytes are base64 (the event bus carries only refs).
+      parameters:
+        - $ref: '#/components/parameters/EnvelopeId'
+        - name: tenant_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Executed artifacts (bytes never traverse the event bus).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [envelope_id, documents, certificate]
+                properties:
+                  envelope_id:
+                    type: string
+                    format: uuid
+                  documents:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        envelope_document_id: { type: string, format: uuid }
+                        document_ref: { type: [string, 'null'], format: uuid }
+                        document_revision_ref: { type: [string, 'null'], format: uuid }
+                        executed_sha256: { type: string }
+                        byte_size: { type: integer }
+                        executed_base64: { type: string }
+                  certificate:
+                    type: [object, 'null']
+                    properties:
+                      certificate_sha256: { type: string }
+                      byte_size: { type: integer }
+                      certificate_base64: { type: string }
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/esign/signing/exchange:
+    post:
+      operationId: exchangeSigningToken
+      summary: Exchange a raw capability token for an active signing session.
+      description: The tenant is resolved server-side from the capability token; the client sends no tenant id.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token:
+                  type: string
+      responses:
+        '200':
+          description: The resolved signing session context.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  session_id:
+                    type: string
+                    format: uuid
+                  envelope_id:
+                    type: string
+                    format: uuid
+                  signer_id:
+                    type: string
+                    format: uuid
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+components:
+  parameters:
+    EnvelopeId:
+      name: id
+      in: path
+      required: true
+      description: The signature envelope id (UUID).
+      schema:
+        type: string
+        format: uuid
+  responses:
+    BadRequest:
+      description: The request failed validation.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: The envelope was not found in the caller's tenant.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Conflict:
+      description: An illegal envelope transition.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: The signing capability token is invalid or expired.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+  schemas:
+    ErrorResponse:
+      type: object
+      description: The canonical Aramo error envelope.
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+    CreateEnvelopeRequest:
+      type: object
+      required:
+        - tenant_id
+        - subject
+        - execution_mode
+        - created_by
+        - documents
+        - signers
+      properties:
+        tenant_id:
+          type: string
+          format: uuid
+        subject:
+          type: string
+        execution_mode:
+          type: string
+          enum: [ACKNOWLEDGEMENT, SINGLE_SIGNATURE, MULTI_SIGNATURE]
+        created_by:
+          type: string
+          format: uuid
+        idempotency_key:
+          type: string
+        documents:
+          type: array
+          items:
+            type: object
+            required: [document_ref, document_revision_ref, title, source_sha256, ordinal]
+            properties:
+              document_ref:
+                type: string
+                format: uuid
+              document_revision_ref:
+                type: string
+                format: uuid
+              title:
+                type: string
+              source_sha256:
+                type: string
+              ordinal:
+                type: integer
+        signers:
+          type: array
+          items:
+            type: object
+            required: [email, name, signing_order]
+            properties:
+              email:
+                type: string
+              name:
+                type: string
+              signing_order:
+                type: integer
+              signer_role:
+                type: string
+    EnvelopeSummary:
+      type: object
+      required:
+        - envelope_id
+        - status
+        - signers
+      properties:
+        envelope_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [DRAFT, SENT, IN_PROGRESS, COMPLETED, DECLINED, VOIDED, EXPIRED]
+        signers:
+          type: array
+          items:
+            type: object
+            properties:
+              signer_id:
+                type: string
+                format: uuid
+              email:
+                type: string
+              status:
+                type: string
+                enum: [PENDING, VIEWED, SIGNED, DECLINED]
+    EvidenceSummary:
+      type: object
+      required:
+        - envelope_id
+        - status
+      properties:
+        envelope_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+        event_chain_hash:
+          type: [string, 'null']
+        signature:
+          type: [string, 'null']
+        signature_algorithm:
+          type: [string, 'null']
+        completed_at:
+          type: [string, 'null']
+          format: date-time

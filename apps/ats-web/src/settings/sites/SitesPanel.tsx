@@ -156,16 +156,16 @@ export function SitesPanel({
       align: 'right',
       render: ({ site }) => (
         <div className="rc-row-actions">
-          <button
+          <Button unstyled
             type="button"
             className="rc-link-action"
             onClick={() => setDialog({ kind: 'edit', site })}
             data-testid={`site-edit-${site.id}`}
           >
             Edit
-          </button>
+          </Button>
           {site.is_active ? (
-            <button
+            <Button unstyled
               type="button"
               className="rc-link-action"
               onClick={() => {
@@ -175,18 +175,18 @@ export function SitesPanel({
               data-testid={`site-deactivate-${site.id}`}
             >
               Deactivate
-            </button>
+            </Button>
           ) : (
-            <button
+            <Button unstyled
               type="button"
               className="rc-link-action"
               onClick={() => onToggleActive(site, true)}
               data-testid={`site-reactivate-${site.id}`}
             >
               Reactivate
-            </button>
+            </Button>
           )}
-          <button
+          <Button unstyled
             type="button"
             className="rc-link-action rc-link-danger"
             onClick={() => {
@@ -196,7 +196,7 @@ export function SitesPanel({
             data-testid={`site-delete-${site.id}`}
           >
             Delete
-          </button>
+          </Button>
         </div>
       ),
     },

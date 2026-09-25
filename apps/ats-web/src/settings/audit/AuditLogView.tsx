@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { TableColumn } from '@aramo/fe-foundation';
+import { Input, Select } from '@aramo/fe-foundation';
 
 import { Button, DataTable, InlineAlert, safeErrorMessage, StatusPill } from '../../ui';
 import { SettingHint } from '../components';
@@ -113,7 +114,7 @@ export function AuditLogView({ fetchFn }: Props = {}) {
       >
         <label className="rc-ifield">
           <span>Event type</span>
-          <select
+          <Select unstyled
             className="rc-input"
             value={draft.event_type ?? ''}
             onChange={(e) => setDraft({ ...draft, event_type: e.target.value || undefined })}
@@ -125,11 +126,11 @@ export function AuditLogView({ fetchFn }: Props = {}) {
                 {o.label}
               </option>
             ))}
-          </select>
+          </Select>
         </label>
         <label className="rc-ifield">
           <span>Actor ID</span>
-          <input
+          <Input unstyled
             className="rc-input"
             value={draft.actor_id ?? ''}
             placeholder="user UUID"
@@ -139,7 +140,7 @@ export function AuditLogView({ fetchFn }: Props = {}) {
         </label>
         <label className="rc-ifield">
           <span>Subject ID</span>
-          <input
+          <Input unstyled
             className="rc-input"
             value={draft.subject_id ?? ''}
             placeholder="entity UUID"
@@ -149,7 +150,7 @@ export function AuditLogView({ fetchFn }: Props = {}) {
         </label>
         <label className="rc-ifield">
           <span>From</span>
-          <input
+          <Input unstyled
             className="rc-input"
             type="date"
             value={draft.from ?? ''}
@@ -159,7 +160,7 @@ export function AuditLogView({ fetchFn }: Props = {}) {
         </label>
         <label className="rc-ifield">
           <span>To</span>
-          <input
+          <Input unstyled
             className="rc-input"
             type="date"
             value={draft.to ?? ''}

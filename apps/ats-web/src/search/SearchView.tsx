@@ -6,7 +6,7 @@ import {
   PageHeader,
   hasScope,
   useSession,
-  type Session,
+  type Session, Input,
 } from '@aramo/fe-foundation';
 
 import type { CompanyView, ContactView } from '../companies/types';
@@ -304,7 +304,7 @@ export function SearchView({ sessionOverride }: SearchViewProps = {}) {
       ) : (
         <>
           <FormField label="Search">
-            <input
+            <Input
               id="search-input"
               type="search"
               aria-label="Search"

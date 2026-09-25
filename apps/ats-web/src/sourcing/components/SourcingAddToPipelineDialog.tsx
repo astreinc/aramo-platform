@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Button, Dialog, InlineAlert } from '@aramo/fe-foundation';
+import { Button, Dialog, InlineAlert, Input } from '@aramo/fe-foundation';
 
 import { listRequisitions } from '../../requisitions/requisitions-api';
 import { isClosedStatus, type RequisitionView } from '../../requisitions/types';
@@ -72,7 +72,7 @@ export function SourcingAddToPipelineDialog({ open, onClose, onPick, busy }: Pro
     >
       <label className="rc-field">
         <span className="rc-field__label">Search requisitions</span>
-        <input
+        <Input unstyled
           className="rc-select"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
@@ -93,7 +93,7 @@ export function SourcingAddToPipelineDialog({ open, onClose, onPick, busy }: Pro
         <ul className="rc-pick">
           {options.map((r) => (
             <li key={r.id}>
-              <button
+              <Button unstyled
                 type="button"
                 className="rc-pick__row"
                 onClick={() => onPick(r.id)}
@@ -105,7 +105,7 @@ export function SourcingAddToPipelineDialog({ open, onClose, onPick, busy }: Pro
                 ) : (
                   <Icons.IconPlus />
                 )}
-              </button>
+              </Button>
             </li>
           ))}
         </ul>

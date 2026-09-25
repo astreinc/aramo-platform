@@ -1,6 +1,9 @@
-import { useState } from 'react';
-import { Button, FormField } from '@aramo/fe-foundation';
+import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { Button, FormField, Checkbox, Input, Select, TextArea } from '@aramo/fe-foundation';
 
+import { fetchAssignableUsers } from '../../users/users-api';
+import { searchContacts } from '../../contacts/contacts-api';
 import { companyTypes, relStatusFor } from '../company-workspace';
 import type {
   CompanyRelationshipInput,
@@ -13,19 +16,43 @@ import type {
 // slide-over, matching the Companies.dc.html panel: COMPANY (relationship rows
 // with per-role status, name, industry, do-not-contact, website, phone,
 // location) · ENGAGEMENT (payment terms) · Notes. The full field set
-// (firmographics, commercial defaults, departments, address block, billing
-// contact) lives in the detail-page "Full Edit" — NOT here.
+// (firmographics, commercial defaults, address block) lives in the detail-page
+// in-place inline edit (company-overview-fields) — NOT here.
 //
-// Relationship body-building mirrors CompanyForm exactly (per-role status;
+// Relationship body-building matches the detail inline edit (per-role status;
 // Amendment-3 de-select → INACTIVE transition, not delete) and is covered by
 // this component's own spec.
 
+// Relationship status options — prototype list (no "On hold" in the drawer).
 const REL_STATUS_OPTS: readonly { value: string; label: string }[] = [
   { value: 'PROSPECT', label: 'Prospect' },
   { value: 'ACTIVE', label: 'Active' },
-  { value: 'ON_HOLD', label: 'On hold' },
   { value: 'INACTIVE', label: 'Inactive' },
 ];
+
+// Fixed industry vocabulary (prototype select).
+const INDUSTRY_OPTS: readonly string[] = [
+  'Technology', 'Healthcare', 'Government', 'Banking', 'Insurance',
+  'Manufacturing', 'Retail',
+];
+
+// Payment terms (prototype select) — value is the stored token, label the UI.
+const PAYMENT_TERM_OPTS: readonly { value: string; label: string }[] = [
+  { value: 'net_30', label: 'Net 30' },
+  { value: 'net_45', label: 'Net 45' },
+  { value: 'net_60', label: 'Net 60' },
+];
+
+// The primary-contact write the drawer performs after the company save (create
+// or update). Null when the two name fields are empty (nothing to persist).
+export interface PrimaryContactPayload {
+  readonly existingId: string | null;
+  readonly first_name: string;
+  readonly last_name: string;
+  readonly title: string;
+  readonly phone_cell: string;
+  readonly email1: string;
+}
 
 interface FormState {
   name: string;
@@ -35,7 +62,15 @@ interface FormState {
   city: string;
   notes: string;
   payment_terms: string;
+  owner_id: string;
   communication_restricted: boolean;
+  // Primary contact (prototype section).
+  pc_existing_id: string | null;
+  pc_first: string;
+  pc_last: string;
+  pc_title: string;
+  pc_mobile: string;
+  pc_email: string;
   rel_client: boolean;
   rel_client_status: string;
   rel_vendor: boolean;
@@ -48,7 +83,9 @@ function initialState(c: CompanyView | null): FormState {
   if (c === null) {
     return {
       name: '', industry: '', url: '', phone1: '', city: '', notes: '',
-      payment_terms: '', communication_restricted: false,
+      payment_terms: '', owner_id: '', communication_restricted: false,
+      pc_existing_id: null, pc_first: '', pc_last: '', pc_title: '',
+      pc_mobile: '', pc_email: '',
       rel_client: true, rel_client_status: 'PROSPECT',
       rel_vendor: false, rel_vendor_status: 'PROSPECT',
       rel_partner: false, rel_partner_status: 'PROSPECT',
@@ -63,7 +100,11 @@ function initialState(c: CompanyView | null): FormState {
     city: c.city ?? '',
     notes: c.notes ?? '',
     payment_terms: c.payment_terms ?? '',
+    owner_id: c.owner_id ?? '',
     communication_restricted: c.communication_restricted,
+    // Primary contact hydrates asynchronously (fetched by company id).
+    pc_existing_id: null, pc_first: '', pc_last: '', pc_title: '',
+    pc_mobile: '', pc_email: '',
     rel_client: types.includes('CLIENT'),
     rel_client_status: relStatusFor(c, 'CLIENT') ?? 'ACTIVE',
     rel_vendor: types.includes('VENDOR'),
@@ -93,6 +134,7 @@ function buildCreate(s: FormState, canSeeCommercial: boolean): CreateCompanyRequ
   if (s.notes.trim() !== '') b['notes'] = s.notes.trim();
   if (canSeeCommercial && s.payment_terms.trim() !== '')
     b['payment_terms'] = s.payment_terms.trim();
+  if (s.owner_id !== '') b['owner_id'] = s.owner_id;
   return b as unknown as CreateCompanyRequest;
 }
 
@@ -129,17 +171,37 @@ function buildPatch(
   diff(s.city, initial.city, 'city');
   diff(s.notes, initial.notes, 'notes');
   if (canSeeCommercial) diff(s.payment_terms, initial.payment_terms ?? '', 'payment_terms');
+  if (s.owner_id !== (initial.owner_id ?? ''))
+    b['owner_id'] = s.owner_id === '' ? null : s.owner_id;
   return b as unknown as UpdateCompanyRequest;
+}
+
+// The primary-contact write — null unless BOTH names are present (a contact
+// requires first + last). The drawer persists this after the company save.
+function buildPc(s: FormState): PrimaryContactPayload | null {
+  const first = s.pc_first.trim();
+  const last = s.pc_last.trim();
+  if (first === '' || last === '') return null;
+  return {
+    existingId: s.pc_existing_id,
+    first_name: first,
+    last_name: last,
+    title: s.pc_title.trim(),
+    phone_cell: s.pc_mobile.trim(),
+    email1: s.pc_email.trim(),
+  };
 }
 
 interface CommonProps {
   readonly canSeeCommercial: boolean;
   readonly submitting: boolean;
   readonly onCancel: () => void;
+  /** Footer "Full Edit Company" deep-link (edit mode). */
+  readonly fullRecordHref?: string;
 }
 type CompanyQuickEditFormProps =
-  | (CommonProps & { readonly mode: 'create'; readonly onSubmit: (b: CreateCompanyRequest) => Promise<void> })
-  | (CommonProps & { readonly mode: 'edit'; readonly initial: CompanyView; readonly onSubmit: (b: UpdateCompanyRequest) => Promise<void> });
+  | (CommonProps & { readonly mode: 'create'; readonly onSubmit: (b: CreateCompanyRequest, pc: PrimaryContactPayload | null) => Promise<void> })
+  | (CommonProps & { readonly mode: 'edit'; readonly initial: CompanyView; readonly onSubmit: (b: UpdateCompanyRequest, pc: PrimaryContactPayload | null) => Promise<void> });
 
 export function CompanyQuickEditForm(props: CompanyQuickEditFormProps) {
   const [state, setState] = useState<FormState>(() =>
@@ -148,15 +210,76 @@ export function CompanyQuickEditForm(props: CompanyQuickEditFormProps) {
   const set = <K extends keyof FormState>(k: K, v: FormState[K]) =>
     setState((s) => ({ ...s, [k]: v }));
 
+  // Account-owner options — the active tenant roster (names now populated on
+  // invite; a departed owner still shown as an explicit fallback option).
+  const [owners, setOwners] = useState<readonly { value: string; label: string }[]>(
+    [],
+  );
+  useEffect(() => {
+    let cancelled = false;
+    void fetchAssignableUsers()
+      .then((users) => {
+        if (!cancelled)
+          setOwners(
+            users.map((u) => ({ value: u.user_id, label: u.display_name ?? u.user_id })),
+          );
+      })
+      .catch(() => {
+        if (!cancelled) setOwners([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const ownerOpts =
+    state.owner_id !== '' && !owners.some((o) => o.value === state.owner_id)
+      ? [{ value: state.owner_id, label: state.owner_id }, ...owners]
+      : owners;
+
+  // Hydrate the primary-contact fields (edit mode) from the company's existing
+  // primary contact — best-effort; absence leaves the fields empty (create-new).
+  const editCompanyId = props.mode === 'edit' ? props.initial.id : null;
+  useEffect(() => {
+    if (editCompanyId === null) return;
+    let cancelled = false;
+    const params = new URLSearchParams({
+      paged: 'true',
+      is_primary: 'true',
+      company_id: editCompanyId,
+      page_size: '1',
+    });
+    void searchContacts(params)
+      .then((page) => {
+        const ct = page.items[0];
+        if (cancelled || ct === undefined) return;
+        setState((s) => ({
+          ...s,
+          pc_existing_id: ct.id,
+          pc_first: ct.first_name,
+          pc_last: ct.last_name,
+          pc_title: ct.title ?? '',
+          pc_mobile: ct.phone_cell ?? '',
+          pc_email: ct.email1 ?? '',
+        }));
+      })
+      .catch(() => {
+        /* no contact:read → fields stay empty */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [editCompanyId]);
+
   const canSubmit =
     state.name.trim() !== '' && selectedRels(state).length > 0 && !props.submitting;
 
   async function onSubmit(ev: React.FormEvent): Promise<void> {
     ev.preventDefault();
+    const pc = buildPc(state);
     if (props.mode === 'create') {
-      await props.onSubmit(buildCreate(state, props.canSeeCommercial));
+      await props.onSubmit(buildCreate(state, props.canSeeCommercial), pc);
     } else {
-      await props.onSubmit(buildPatch(state, props.initial, props.canSeeCommercial));
+      await props.onSubmit(buildPatch(state, props.initial, props.canSeeCommercial), pc);
     }
   }
 
@@ -170,8 +293,8 @@ export function CompanyQuickEditForm(props: CompanyQuickEditFormProps) {
   ) => (
     <div className="company-form__relrow">
       <label className="company-form__check">
-        <input
-          type="checkbox"
+        <Checkbox
+         
           checked={on}
           onChange={(e) => set(onKey, e.target.checked as never)}
         />{' '}
@@ -180,7 +303,7 @@ export function CompanyQuickEditForm(props: CompanyQuickEditFormProps) {
           <small>{desc}</small>
         </span>
       </label>
-      <select
+      <Select
         value={statusVal}
         onChange={(e) => set(statusKey, e.target.value as never)}
         aria-label={`${label} status`}
@@ -189,7 +312,7 @@ export function CompanyQuickEditForm(props: CompanyQuickEditFormProps) {
         {REL_STATUS_OPTS.map((o) => (
           <option key={o.value} value={o.value}>{o.label}</option>
         ))}
-      </select>
+      </Select>
     </div>
   );
 
@@ -209,7 +332,7 @@ export function CompanyQuickEditForm(props: CompanyQuickEditFormProps) {
           </p>
         </FormField>
         <FormField label="Company name">
-          <input
+          <Input
             type="text"
             value={state.name}
             onChange={(e) => set('name', e.target.value)}
@@ -219,54 +342,128 @@ export function CompanyQuickEditForm(props: CompanyQuickEditFormProps) {
         </FormField>
         <div className="company-form__row2">
           <FormField label="Industry">
-            <input
-              type="text"
+            <Select
               value={state.industry}
               onChange={(e) => set('industry', e.target.value)}
               aria-label="Industry"
-            />
+            >
+              <option value="">Select…</option>
+              {INDUSTRY_OPTS.map((i) => (
+                <option key={i} value={i}>{i}</option>
+              ))}
+            </Select>
           </FormField>
           <FormField label="Do not contact">
             <label className="company-form__check">
-              <input
-                type="checkbox"
+              <Checkbox
+
                 checked={state.communication_restricted}
                 onChange={(e) => set('communication_restricted', e.target.checked)}
               />{' '}
-              Company-wide — overrides all relationships
+              Company-wide · overrides all relationships
             </label>
           </FormField>
         </div>
         <div className="company-form__row2">
           <FormField label="Website">
-            <input type="text" value={state.url} onChange={(e) => set('url', e.target.value)} placeholder="https://" aria-label="Website" />
+            <Input type="text" value={state.url} onChange={(e) => set('url', e.target.value)} placeholder="https://" aria-label="Website" />
           </FormField>
           <FormField label="Phone">
-            <input type="text" value={state.phone1} onChange={(e) => set('phone1', e.target.value)} aria-label="Phone" />
+            <Input type="text" value={state.phone1} onChange={(e) => set('phone1', e.target.value)} placeholder="(555) 000-0000" aria-label="Phone" />
           </FormField>
         </div>
         <FormField label="Location">
-          <input type="text" value={state.city} onChange={(e) => set('city', e.target.value)} placeholder="City" aria-label="Location" />
+          <Input type="text" value={state.city} onChange={(e) => set('city', e.target.value)} placeholder="City, State" aria-label="Location" />
         </FormField>
       </fieldset>
 
-      {props.canSeeCommercial ? (
-        <fieldset className="company-form__section" disabled={props.submitting}>
-          <legend>Engagement</legend>
-          <FormField label="Payment terms">
-            <input type="text" value={state.payment_terms} onChange={(e) => set('payment_terms', e.target.value)} placeholder="e.g. net_30" aria-label="Payment terms" />
+      <fieldset className="company-form__section" disabled={props.submitting}>
+        <legend>Primary contact</legend>
+        <div className="company-form__row2">
+          <FormField label="First name">
+            <Input type="text" value={state.pc_first} onChange={(e) => set('pc_first', e.target.value)} aria-label="First name" />
           </FormField>
-        </fieldset>
-      ) : null}
+          <FormField label="Last name">
+            <Input type="text" value={state.pc_last} onChange={(e) => set('pc_last', e.target.value)} aria-label="Last name" />
+          </FormField>
+        </div>
+        <div className="company-form__row2">
+          <FormField label="Title">
+            <Input type="text" value={state.pc_title} onChange={(e) => set('pc_title', e.target.value)} placeholder="e.g. VP Engineering" aria-label="Contact title" />
+          </FormField>
+          <FormField label="Mobile">
+            <Input type="text" value={state.pc_mobile} onChange={(e) => set('pc_mobile', e.target.value)} placeholder="(555) 000-0000" aria-label="Mobile" />
+          </FormField>
+        </div>
+        <FormField label="Email">
+          <Input type="text" value={state.pc_email} onChange={(e) => set('pc_email', e.target.value)} placeholder="name@company.com" aria-label="Contact email" />
+        </FormField>
+      </fieldset>
 
       <fieldset className="company-form__section" disabled={props.submitting}>
-        <legend>Notes</legend>
+        <legend>Engagement</legend>
+        <div className="company-form__row2">
+          <FormField label="Account owner">
+            <Select
+              value={state.owner_id}
+              onChange={(e) => set('owner_id', e.target.value)}
+              aria-label="Account owner"
+            >
+              <option value="">Unassigned</option>
+              {ownerOpts.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </Select>
+          </FormField>
+          {props.canSeeCommercial ? (
+            <FormField label="Payment terms">
+              <Select
+                value={state.payment_terms}
+                onChange={(e) => set('payment_terms', e.target.value)}
+                aria-label="Payment terms"
+              >
+                <option value="">Select…</option>
+                {PAYMENT_TERM_OPTS.map((p) => (
+                  <option key={p.value} value={p.value}>{p.label}</option>
+                ))}
+              </Select>
+            </FormField>
+          ) : null}
+        </div>
         <FormField label="Notes">
-          <textarea rows={3} value={state.notes} onChange={(e) => set('notes', e.target.value)} aria-label="Notes" />
+          <TextArea
+            rows={3}
+            value={state.notes}
+            onChange={(e) => set('notes', e.target.value)}
+            placeholder="MSA status, submittal rules, rate cards…"
+            aria-label="Notes"
+          />
         </FormField>
+      </fieldset>
+
+      {/* Documents — a visual affordance matching the prototype. Company-level
+          attachment upload is not yet built in the backend (only requisition /
+          talent), so the dropzone is non-interactive for now. */}
+      <fieldset className="company-form__section" disabled={props.submitting}>
+        <legend>Documents</legend>
+        <div className="company-form__dropzone" aria-hidden="true">
+          <div className="company-form__dz-title">Attach documents</div>
+          <div className="company-form__dz-sub">
+            MSA, rate cards, NDAs, insurance certs · PDF, DOCX, XLSX · up to 25 MB
+          </div>
+        </div>
       </fieldset>
 
       <div className="company-form__actions">
+        {props.fullRecordHref !== undefined ? (
+          <Link
+            to={props.fullRecordHref}
+            className="company-form__full"
+            data-testid="company-open-full-record"
+          >
+            Full Edit Company
+          </Link>
+        ) : null}
         <Button type="button" variant="ghost" onClick={props.onCancel}>
           Cancel
         </Button>

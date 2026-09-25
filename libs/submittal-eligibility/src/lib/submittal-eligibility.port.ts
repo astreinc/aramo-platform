@@ -14,6 +14,10 @@ import type {
   SubmittalWindowStatusValue,
 } from './submittal-eligibility-vocab.js';
 
+// DOC-5 (R-5-8, PL-2) — the version stays 'v1'. Adding `EligibilityContext.document`
+// is an ADDITIVE OPTIONAL member, identical in shape/discipline to the COMM-C3
+// `EligibilityContext.engagement?` addition, which was made at v1 WITHOUT a bump.
+// That accepted additive-optional precedent governs here: v1 is retained.
 /** Versioned contract tag — bump on any breaking change to the shapes below. */
 export const SUBMITTAL_ELIGIBILITY_PORT_VERSION = 'v1' as const;
 
@@ -29,7 +33,14 @@ export type EligibilityDenyCode =
   // port never reads Communications/Policy — it only honours what it is passed.
   | 'CLIENT_SUBMITTAL_ENGAGEMENT_POLICY_MISSING'
   | 'CLIENT_SUBMITTAL_ENGAGEMENT_INCOMPLETE'
-  | 'CLIENT_SUBMITTAL_ENGAGEMENT_EVIDENCE_UNAVAILABLE';
+  | 'CLIENT_SUBMITTAL_ENGAGEMENT_EVIDENCE_UNAVAILABLE'
+  // DOC-5 — document-readiness (RTR) refusal (409). The apps/api orchestrator
+  // pre-resolves the PL-1 same-document executed-RTR verdict; this pure port
+  // never reads Documents — it only honours the passed verdict.
+  | 'SUBMITTAL_RTR_NOT_EXECUTED';
+
+/** DOC-5 document-readiness deny reasons (subset of EligibilityDenyCode). */
+export type DocumentEligibilityDenyCode = 'SUBMITTAL_RTR_NOT_EXECUTED';
 
 /** COMM-C3 engagement deny reasons (subset of EligibilityDenyCode). */
 export type EngagementEligibilityDenyCode =
@@ -49,6 +60,21 @@ export interface EngagementEligibilityInput {
   /** Present iff !satisfied — the typed 409 engagement refusal. */
   readonly deny: EngagementEligibilityDenyCode | null;
   /** Bounded, non-sensitive channels blocking the gate (for the refusal body). */
+  readonly missing?: readonly string[];
+}
+
+/**
+ * DOC-5 (R-5-7) — the minimal typed document-readiness (RTR) verdict. The apps/api
+ * orchestrator resolves the PL-1 predicate (ONE EXECUTED RIGHT_TO_REPRESENT
+ * Document jointly associated to the exact Talent SUBJECT + Requisition REGARDING)
+ * and passes ONLY this verdict. Absent ⇒ no document gating. This pure port never
+ * reads Documents.
+ */
+export interface DocumentEligibilityInput {
+  readonly satisfied: boolean;
+  /** Present iff !satisfied — the typed 409 document refusal. */
+  readonly deny: DocumentEligibilityDenyCode | null;
+  /** Bounded, non-sensitive requirement labels blocking the gate. */
   readonly missing?: readonly string[];
 }
 
@@ -75,6 +101,12 @@ export interface EligibilityContext {
    * restriction gates.
    */
   readonly engagement?: EngagementEligibilityInput;
+  /**
+   * DOC-5 — the pre-resolved document-readiness (RTR) verdict. Optional (additive,
+   * v1-retained). Checked LAST — AFTER window + restriction + engagement — per the
+   * locked order window → restriction → engagement → document → eligible.
+   */
+  readonly document?: DocumentEligibilityInput;
 }
 
 /** The derived effective window status + why (for provenance + refusal mapping). */
@@ -145,10 +177,15 @@ export function evaluateEligibility(
   if (ctx.restriction_active) {
     return { eligible: false, status, deny: 'TALENT_RESTRICTED_AT_CLIENT' };
   }
-  // COMM-C3 — engagement gate (last; after window + restriction). The orchestrator
+  // COMM-C3 — engagement gate (after window + restriction). The orchestrator
   // passes a pre-resolved verdict; this pure function only honours it.
   if (ctx.engagement !== undefined && !ctx.engagement.satisfied && ctx.engagement.deny !== null) {
     return { eligible: false, status, deny: ctx.engagement.deny };
+  }
+  // DOC-5 — document-readiness (RTR) gate (LAST, after engagement). Locked order:
+  // window → restriction → engagement → document → eligible.
+  if (ctx.document !== undefined && !ctx.document.satisfied && ctx.document.deny !== null) {
+    return { eligible: false, status, deny: ctx.document.deny };
   }
   return { eligible: true, status };
 }

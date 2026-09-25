@@ -77,6 +77,8 @@ services:
       - NGINX_TENANT_SERVER_NAME=${NGINX_TENANT_SERVER_NAME:-localhost}
       - NGINX_ADMIN_SERVER_NAME=${NGINX_ADMIN_SERVER_NAME:-admin.localhost}
       - NGINX_PORTAL_SERVER_NAME=${NGINX_PORTAL_SERVER_NAME:-portal.localhost}
+      # DOC-4 (R-4-10) — external-signer SPA host (DEPLOY=NO until provisioned).
+      - NGINX_SIGN_SERVER_NAME=${NGINX_SIGN_SERVER_NAME:-sign.localhost}
       - NGINX_CERT_DIR=${NGINX_CERT_DIR:-/etc/letsencrypt/live/aramo.ai}
     ports:
       - '80:80'
@@ -179,6 +181,14 @@ services:
       - ADDRESS_AUTOCOMPLETE_ENABLED
       - ADDRESS_AUTOCOMPLETE_PROVIDER
       - GOOGLE_PLACES_API_KEY
+      # Microsoft 365 delegated-OAuth "Connect" (D-INT-1): the authorize/START step
+      # reads these two from process.env (apps/api microsoft-config.resolver.ts +
+      # libs/microsoft-graph oauth-state). Bare-name passthrough — a var read by
+      # code but ABSENT here never reaches the container → the start step 500s and
+      # the recruiter sees "We couldn't start the Microsoft connection". api-only
+      # (the /v1/integrations/microsoft/callback route lives on the api).
+      - MSGRAPH_REDIRECT_URI
+      - MSGRAPH_OAUTH_STATE_KEY
       - IMPORT_FAILURE_THRESHOLD_PCT
       # identity fingerprint pepper (Step 4b / ADR-0016): the platform secret
       # keying the cross-tenant email fingerprint, held SEPARATE from the DB.
@@ -260,6 +270,25 @@ services:
       - *identity_pepper
       # Portal login mail rides the standing SES mailer path (SPF/DMARC/sandbox-exit
       # release-blocking, exactly as for TR-3).
+      - MAILER_PROVIDER
+      - SES_FROM_ADDRESS
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  esign-service:
+    # DOC-3 — Native E-Sign Service Core backend. DEPLOY=NO (config lands with the
+    # slice; not exposed until DOC-4 adds sign-web + the sign.aramo.ai nginx block).
+    # Container-internal only (never port-published). Referenced, not built here.
+    image: ${ARAMO_ESIGN_IMAGE:-aramo/esign-service:local}
+    container_name: aramo-prod-esign
+    restart: unless-stopped
+    environment:
+      # PORT 3003 matches main.ts's default (api=3000, auth=3001, platform-admin=3002).
+      - PORT=3003
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-aramo}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@postgres:5432/${POSTGRES_DB:-aramo}?schema=public
+      # E-Sign signer notifications ride the standing SES mailer path (SigningNotificationPort → MailerPort).
       - MAILER_PROVIDER
       - SES_FROM_ADDRESS
     depends_on:

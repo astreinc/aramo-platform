@@ -152,6 +152,17 @@ export const SEED_IDS = {
     'attachment:read': '01900000-0000-7000-8000-000000000084',
     'attachment:create': '01900000-0000-7000-8000-000000000085',
     'attachment:delete': '01900000-0000-7000-8000-000000000086',
+    // DOC-1a — Documents domain scopes (dedicated 0x1d1+ range). DOC-2 reconciled
+    // document_type:manage -> document:manage (R22 canonical; same 0x1d3 row id).
+    'document:read': '01900000-0000-7000-8000-0000000001d1',
+    'document:create': '01900000-0000-7000-8000-0000000001d2',
+    'document:manage': '01900000-0000-7000-8000-0000000001d3',
+    'document:execute': '01900000-0000-7000-8000-0000000001d8', // DOC-3 (E-Sign request/send)
+    // DOC-2 — Templates + Requirements scopes (contiguous 0x1d4+ range).
+    'document_template:read': '01900000-0000-7000-8000-0000000001d4',
+    'document_template:manage': '01900000-0000-7000-8000-0000000001d5',
+    'document_requirement:read': '01900000-0000-7000-8000-0000000001d6',
+    'document_requirement:manage': '01900000-0000-7000-8000-0000000001d7',
     'pipeline:read': '01900000-0000-7000-8000-000000000087',
     // Lane 2 / L2-F (F1) — Client-Selection owner scopes.
     'client-selection:create': '01900000-0000-7000-8000-0000000000f3',
@@ -2501,6 +2512,91 @@ const RESUME_SELECT_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
   return map;
 })();
 
+// DOC-1a — Documents domain grants. Dedicated bundle (append-don't-renumber;
+// the frozen ROLE_SCOPE_ASSIGNMENTS / AUTHZ1_BUNDLES arrays are untouched).
+// document:read + document:create → the ATS delivery matrix
+// (recruiter/account_manager/tenant_admin/tenant_owner); document:manage
+// (DOC-2 reconciled from document_type:manage) → admins (tenant_admin/tenant_owner).
+// 10 grants total; the rename is grant-neutral (same iteration order → same row ids).
+export const DOCUMENTS_SEED_BUNDLES: ReadonlyArray<
+  readonly [string, readonly string[]]
+> = [
+  ['tenant_admin', ['document:read', 'document:create', 'document:manage']],
+  ['tenant_owner', ['document:read', 'document:create', 'document:manage']],
+  ['recruiter', ['document:read', 'document:create']],
+  ['account_manager', ['document:read', 'document:create']],
+];
+
+// Deterministic RoleScope row ids for the 10 Documents grants. Fresh contiguous
+// range 0x1300+ (all prior generated ranges stay untouched). The (role, scope)
+// iteration order pins the assignment. DO NOT REORDER.
+const DOCUMENTS_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
+  const map: Record<string, string> = {};
+  let i = 0x1300;
+  for (const [role, scopes] of DOCUMENTS_SEED_BUNDLES) {
+    for (const scope of scopes) {
+      map[`${role}:${scope}`] =
+        `01900000-0000-7000-8000-${i.toString(16).padStart(12, '0')}`;
+      i++;
+    }
+  }
+  return map;
+})();
+
+// DOC-2 — Templates + Requirements grants. Dedicated bundle at 0x1310+
+// (append-don't-renumber; the DOC-1a 0x1300 range is frozen). Templates/requirements
+// READ → the ATS delivery matrix; MANAGE (incl. requirement waiver) → admins.
+// 12 grants total.
+export const DOCUMENTS_DOC2_SEED_BUNDLES: ReadonlyArray<
+  readonly [string, readonly string[]]
+> = [
+  ['tenant_admin', ['document_template:read', 'document_template:manage', 'document_requirement:read', 'document_requirement:manage']],
+  ['tenant_owner', ['document_template:read', 'document_template:manage', 'document_requirement:read', 'document_requirement:manage']],
+  ['recruiter', ['document_template:read', 'document_requirement:read']],
+  ['account_manager', ['document_template:read', 'document_requirement:read']],
+];
+
+// Deterministic RoleScope row ids for the 12 DOC-2 grants. Fresh contiguous range
+// 0x1310+ (DOC-1a's 0x1300 range untouched). Iteration order pins the assignment.
+const DOCUMENTS_DOC2_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
+  const map: Record<string, string> = {};
+  let i = 0x1310;
+  for (const [role, scopes] of DOCUMENTS_DOC2_SEED_BUNDLES) {
+    for (const scope of scopes) {
+      map[`${role}:${scope}`] =
+        `01900000-0000-7000-8000-${i.toString(16).padStart(12, '0')}`;
+      i++;
+    }
+  }
+  return map;
+})();
+
+// DOC-3 — Native E-Sign grant. Dedicated bundle at 0x1320+ (append-don't-renumber;
+// DOC-1a 0x1300 + DOC-2 0x1310 frozen). document:execute → the ATS delivery matrix
+// (request/send a signature envelope via the E-Sign seam). 4 grants total.
+export const DOCUMENTS_DOC3_SEED_BUNDLES: ReadonlyArray<
+  readonly [string, readonly string[]]
+> = [
+  ['tenant_admin', ['document:execute']],
+  ['tenant_owner', ['document:execute']],
+  ['recruiter', ['document:execute']],
+  ['account_manager', ['document:execute']],
+];
+
+// Deterministic RoleScope row ids for the 4 DOC-3 grants. Fresh range 0x1320+.
+const DOCUMENTS_DOC3_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
+  const map: Record<string, string> = {};
+  let i = 0x1320;
+  for (const [role, scopes] of DOCUMENTS_DOC3_SEED_BUNDLES) {
+    for (const scope of scopes) {
+      map[`${role}:${scope}`] =
+        `01900000-0000-7000-8000-${i.toString(16).padStart(12, '0')}`;
+      i++;
+    }
+  }
+  return map;
+})();
+
 interface IdentityPrismaClient {
   tenant: typeof PrismaClient.prototype.tenant;
   user: typeof PrismaClient.prototype.user;
@@ -2873,6 +2969,16 @@ export async function runIdentitySeed(
   await upsertScope(prisma, SEED_IDS.scopes['address:lookup'], 'address:lookup', 'WL-B2 (R6/R14) — query the shared address-lookup proxy (GET /v1/address-lookup/autocomplete + /details) off the external provider. DEDICATED, least-privilege: grants ONLY the authority to query the lookup service; it NEVER implies authority to create/update a Company or Requisition or to mutate any aggregate (those keep their own company:create / requisition:create|edit gates). GRANTED to the UNION of address-enabled surface authors — every company:create holder ∪ every requisition:create/:edit holder: tenant_admin + recruiter (ROLE_SCOPE_ASSIGNMENTS) and tenant_owner + account_manager + recruiting_manager + lead_recruiter (ADDRESS_LOOKUP_SEED_BUNDLES). NO scope.created (scope-seed precedent).');
 
   // 7. RoleScope assignments — pre-AUTHZ-1 (88 rows: 13 + 12 + 52 + 11).
+  // DOC-1a — register the Documents domain scopes (before any grant loop).
+  await upsertScope(prisma, SEED_IDS.scopes['document:read'], 'document:read', 'DOC-1a — read documents, document types, document events and artifacts (tenant-scoped). NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['document:create'], 'document:create', 'DOC-1a — create a document, prepare it, and add resource associations. NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['document:execute'], 'document:execute', 'DOC-3 — request/send a signature envelope via the E-Sign seam (SignatureProviderPort). NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['document:manage'], 'document:manage', 'DOC-2 (reconciled from document_type:manage, R22) — manage document types + templates config (admin act). NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['document_template:read'], 'document_template:read', 'DOC-2 — read document templates and template versions (tenant-scoped). NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['document_template:manage'], 'document_template:manage', 'DOC-2 — create/activate/retire document templates and versions (admin act). NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['document_requirement:read'], 'document_requirement:read', 'DOC-2 — read document requirements and requirement status (tenant-scoped). NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['document_requirement:manage'], 'document_requirement:manage', 'DOC-2 — create/satisfy/waive document requirements (admin act; waiver authority). NO scope.created (scope-seed precedent).');
+
   for (const [roleKey, scopeKeys] of Object.entries(ROLE_SCOPE_ASSIGNMENTS)) {
     const role_id = roleIdForKey(roleKey);
     for (const scopeKey of scopeKeys) {
@@ -3626,6 +3732,68 @@ export async function runIdentitySeed(
       if (rsId === undefined) {
         throw new Error(
           `ResumeSelect-Role-Matrix: Missing generated RoleScope id for ${roleKey}:${scopeKey}`,
+        );
+      }
+      const scope_id = scopeIdForKey(scopeKey);
+      await prisma.roleScope.upsert({
+        where: { role_id_scope_id: { role_id, scope_id } },
+        update: {},
+        create: { id: rsId, role_id, scope_id },
+      });
+    }
+  }
+
+  // DOC-1a — Documents domain grants (range 0x1300+). All 10 (role, scope) pairs
+  // are seeded HERE via the dedicated DOCUMENTS_SEED_BUNDLES — none are in
+  // ROLE_SCOPE_ASSIGNMENTS / AUTHZ1_BUNDLES, so no pair is double-granted.
+  for (const [roleKey, scopeKeys] of DOCUMENTS_SEED_BUNDLES) {
+    const role_id = roleIdForKey(roleKey);
+    for (const scopeKey of scopeKeys) {
+      const rsId = DOCUMENTS_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
+      if (rsId === undefined) {
+        throw new Error(
+          `Documents-Role-Matrix: Missing generated RoleScope id for ${roleKey}:${scopeKey}`,
+        );
+      }
+      const scope_id = scopeIdForKey(scopeKey);
+      await prisma.roleScope.upsert({
+        where: { role_id_scope_id: { role_id, scope_id } },
+        update: {},
+        create: { id: rsId, role_id, scope_id },
+      });
+    }
+  }
+
+  // DOC-2 — Templates + Requirements grants (range 0x1310+). All 12 (role, scope)
+  // pairs seeded via the dedicated DOCUMENTS_DOC2_SEED_BUNDLES — none in
+  // ROLE_SCOPE_ASSIGNMENTS / AUTHZ1_BUNDLES / DOCUMENTS_SEED_BUNDLES.
+  for (const [roleKey, scopeKeys] of DOCUMENTS_DOC2_SEED_BUNDLES) {
+    const role_id = roleIdForKey(roleKey);
+    for (const scopeKey of scopeKeys) {
+      const rsId = DOCUMENTS_DOC2_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
+      if (rsId === undefined) {
+        throw new Error(
+          `Documents-DOC2-Role-Matrix: Missing generated RoleScope id for ${roleKey}:${scopeKey}`,
+        );
+      }
+      const scope_id = scopeIdForKey(scopeKey);
+      await prisma.roleScope.upsert({
+        where: { role_id_scope_id: { role_id, scope_id } },
+        update: {},
+        create: { id: rsId, role_id, scope_id },
+      });
+    }
+  }
+
+  // DOC-3 — Native E-Sign grant (range 0x1320+). All 4 (role, scope) pairs seeded
+  // via the dedicated DOCUMENTS_DOC3_SEED_BUNDLES — none in the frozen arrays.
+  for (const [roleKey, scopeKeys] of DOCUMENTS_DOC3_SEED_BUNDLES) {
+    const role_id = roleIdForKey(roleKey);
+    for (const scopeKey of scopeKeys) {
+      const rsId = DOCUMENTS_DOC3_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
+      if (rsId === undefined) {
+        throw new Error(
+          `Documents-DOC3-Role-Matrix: Missing generated RoleScope id for ${roleKey}:${scopeKey}`,
         );
       }
       const scope_id = scopeIdForKey(scopeKey);

@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { Button, Checkbox, Input } from '@aramo/fe-foundation';
 
 import { Icons } from '../../ui';
 import { useDetailsAutoClose } from '../use-details-auto-close';
@@ -77,13 +78,13 @@ function Pill({
 
 function DoneRow() {
   return (
-    <button
+    <Button unstyled
       type="button"
       className="rc-fpop__done"
       onClick={(e) => e.currentTarget.closest('details')?.removeAttribute('open')}
     >
       Done
-    </button>
+    </Button>
   );
 }
 
@@ -123,7 +124,7 @@ export function FilterBar({
       <Pill label="Skills" count={facets.skills.length}>
         <div className="rc-fpop__search">
           <Icons.IconSearch />
-          <input
+          <Input
             type="text"
             value={skillQuery}
             placeholder="Type a skill"
@@ -132,30 +133,30 @@ export function FilterBar({
           />
         </div>
         <div className="rc-seg" role="group" aria-label="Skill match mode">
-          <button
+          <Button unstyled
             type="button"
             className={facets.skillMatch === 'any' ? 'on' : ''}
             aria-pressed={facets.skillMatch === 'any'}
             onClick={() => onSkillMatch('any')}
           >
             Match any
-          </button>
-          <button
+          </Button>
+          <Button unstyled
             type="button"
             className={facets.skillMatch === 'all' ? 'on' : ''}
             aria-pressed={facets.skillMatch === 'all'}
             onClick={() => onSkillMatch('all')}
           >
             Match all
-          </button>
+          </Button>
         </div>
         {skills.length === 0 ? (
           <p className="rc-facet__note">No skills in the loaded set.</p>
         ) : (
           skills.slice(0, 12).map((s) => (
             <label key={s.value} className="rc-fopt">
-              <input
-                type="checkbox"
+              <Checkbox
+               
                 checked={facets.skills.includes(s.value)}
                 onChange={() => onToggleSkill(s.value)}
               />
@@ -178,8 +179,8 @@ export function FilterBar({
         ) : (
           availability.map((a) => (
             <label key={a.value} className="rc-fopt">
-              <input
-                type="checkbox"
+              <Checkbox
+               
                 checked={facets.availability.includes(a.value)}
                 onChange={() => onToggleAvailability(a.value)}
               />
@@ -198,8 +199,8 @@ export function FilterBar({
         ) : (
           sources.map((s) => (
             <label key={s.value} className="rc-fopt">
-              <input
-                type="checkbox"
+              <Checkbox
+               
                 checked={facets.sources.includes(s.value)}
                 onChange={() => onToggleSource(s.value)}
               />
@@ -218,8 +219,8 @@ export function FilterBar({
         ) : (
           engagement.map((e) => (
             <label key={e.value} className="rc-fopt">
-              <input
-                type="checkbox"
+              <Checkbox
+               
                 checked={facets.engagementTypes.includes(e.value)}
                 onChange={() => onToggleEngagement(e.value)}
               />
@@ -233,7 +234,7 @@ export function FilterBar({
 
       {/* Location — server FILTER (city/state ILIKE); free text, no count */}
       <Pill label="Location" count={facets.location.trim() !== '' ? 1 : 0}>
-        <input
+        <Input unstyled
           type="text"
           className="rc-facet__input"
           placeholder="City or state"
@@ -248,7 +249,7 @@ export function FilterBar({
       {/* Hot — server FILTER + full-set COUNT */}
       <Pill label="Hot" count={facets.hotOnly ? 1 : 0}>
         <label className="rc-fopt">
-          <input type="checkbox" checked={facets.hotOnly} onChange={onToggleHot} />
+          <Checkbox checked={facets.hotOnly} onChange={onToggleHot} />
           Hot talent only
           <span className="rc-fopt__ct num">{serverFacets?.hot ?? 0}</span>
         </label>
@@ -263,9 +264,9 @@ export function FilterBar({
         <DoneRow />
       </Pill>
 
-      <button type="button" className="rc-fbar__reset" onClick={onReset}>
+      <Button unstyled type="button" className="rc-fbar__reset" onClick={onReset}>
         Reset filters
-      </button>
+      </Button>
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Select } from '@aramo/fe-foundation';
 
 import { Button } from '../ui';
 import { StatChip } from '../settings/components';
@@ -70,7 +71,7 @@ function EvidenceRow(props: {
       <span data-testid={props.statusTestId}>
         <StatChip tone={props.statusTone}>{props.statusLabel}</StatChip>
       </span>
-      <button
+      <Button unstyled
         type="button"
         role="switch"
         aria-checked={props.on}
@@ -82,7 +83,7 @@ function EvidenceRow(props: {
         onClick={props.onToggle}
       >
         <span className="eng-tog__knob" />
-      </button>
+      </Button>
     </div>
   );
 }
@@ -293,7 +294,7 @@ export function EngagementPolicyPanel(props: EngagementPolicyPanelProps): JSX.El
         {voiceRequired && (
           <label className="eng-strength">
             Minimum voice evidence strength
-            <select
+            <Select unstyled
               className="rc-select"
               data-testid="engagement-policy-voice-strength"
               value={voiceStrength}
@@ -302,7 +303,7 @@ export function EngagementPolicyPanel(props: EngagementPolicyPanelProps): JSX.El
             >
               <option value="RECRUITER_ATTESTED">Recruiter attested</option>
               <option value="PROVIDER_VERIFIED">Provider verified</option>
-            </select>
+            </Select>
           </label>
         )}
 
@@ -333,7 +334,7 @@ export function EngagementPolicyPanel(props: EngagementPolicyPanelProps): JSX.El
           {ENFORCEMENT_OPTIONS.map((opt) => {
             const on = enforcementMode === opt.mode;
             return (
-              <button
+              <Button unstyled
                 key={opt.mode}
                 type="button"
                 role="radio"
@@ -350,7 +351,7 @@ export function EngagementPolicyPanel(props: EngagementPolicyPanelProps): JSX.El
                   <span className="eng-mode__lb">{opt.label}</span>
                   <span className="eng-mode__desc">{opt.desc}</span>
                 </span>
-              </button>
+              </Button>
             );
           })}
         </div>

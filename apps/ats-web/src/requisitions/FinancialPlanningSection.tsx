@@ -1,4 +1,4 @@
-import { FormField } from '@aramo/fe-foundation';
+import { FormField, Input } from '@aramo/fe-foundation';
 
 import { DECIMAL_PATTERN } from './decimal-format';
 import {
@@ -43,7 +43,7 @@ function MoneyField({
 }) {
   return (
     <FormField label={label}>
-      <input
+      <Input
         type="text"
         inputMode="decimal"
         pattern={DECIMAL_PATTERN}
@@ -90,7 +90,7 @@ export function FinancialPlanningSection({
       />
 
       <FormField label="Rate card ID">
-        <input
+        <Input
           type="text"
           value={value.rate_card_id}
           onChange={(ev) => set('rate_card_id', ev.target.value)}

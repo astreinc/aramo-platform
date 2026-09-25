@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { hasScope, type Session } from '@aramo/fe-foundation';
+import { hasScope, type Session, Button } from '@aramo/fe-foundation';
 
 import type { TalentRecordView } from '../talent/types';
 
@@ -74,9 +74,9 @@ export function CallButton({
   if (cap.kind === 'available') {
     return (
       <>
-        <button type="button" className="rc-comm-call" onClick={() => setOpen(true)}>
+        <Button unstyled type="button" className="rc-comm-call" onClick={() => setOpen(true)}>
           Call
-        </button>
+        </Button>
         {open ? (
           <CallDrawer
             talent={talent}
@@ -92,7 +92,7 @@ export function CallButton({
   }
 
   return (
-    <button
+    <Button unstyled
       type="button"
       className="rc-comm-call"
       disabled
@@ -100,6 +100,6 @@ export function CallButton({
       aria-busy={cap.kind === 'loading'}
     >
       Call
-    </button>
+    </Button>
   );
 }

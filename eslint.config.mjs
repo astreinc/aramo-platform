@@ -13,6 +13,41 @@
 import nx from '@nx/eslint-plugin';
 import importX from 'eslint-plugin-import-x';
 
+// Vocabulary anti-terms (Rule 5) as reusable no-restricted-syntax selectors, so the
+// apps/** raw-element guard below can re-declare no-restricted-syntax (flat-config
+// overrides per rule id) WITHOUT dropping vocabulary enforcement.
+const VOCAB_RESTRICTED = [
+  { selector: 'Identifier[name=/candidate/i]', message: "Use 'talent' (not 'candidate') — see doc/02-claude-code-discipline.md Rule 5." },
+  { selector: 'Literal[value=/candidate/i]', message: "Use 'talent' (not 'candidate') in string literals — see doc/02-claude-code-discipline.md Rule 5." },
+  { selector: 'Identifier[name=/customer/i]', message: "Use 'tenant' (not 'customer') — see doc/02-claude-code-discipline.md Rule 5." },
+  { selector: 'Literal[value=/customer/i]', message: "Use 'tenant' (not 'customer') in string literals — see doc/02-claude-code-discipline.md Rule 5." },
+  { selector: 'Identifier[name=/outreach/i]', message: "Use 'selection' (not 'outreach' as entity name) — see doc/02-claude-code-discipline.md Rule 5." },
+  { selector: 'Literal[value=/outreach/i]', message: "Use 'selection' (not 'outreach' as entity name) in string literals — see doc/02-claude-code-discipline.md Rule 5." },
+  { selector: 'Identifier[name=/evaluation/i]', message: "Use 'examination' (not 'evaluation' as entity name) — see doc/02-claude-code-discipline.md Rule 5." },
+  { selector: 'Literal[value=/evaluation/i]', message: "Use 'examination' (not 'evaluation' as entity name) in string literals — see doc/02-claude-code-discipline.md Rule 5." },
+  { selector: 'Identifier[name=/submission/i]', message: "Use 'submittal' (not 'submission' as entity name) — see doc/02-claude-code-discipline.md Rule 5." },
+  { selector: 'Literal[value=/submission/i]', message: "Use 'submittal' (not 'submission' as entity name) in string literals — see doc/02-claude-code-discipline.md Rule 5." },
+];
+
+// G1 / R2 (Aramo-UI-HotFix-Console-Defect-Register-v1_0-LOCKED) — the fail-closed
+// raw interactive-control guard. Native interactive elements are BANNED in
+// application code (apps/**); use the @aramo/fe-foundation primitives (with
+// `unstyled` to preserve an existing app-owned presentation class). The native
+// elements live ONLY inside libs/fe-foundation (not matched by the apps block).
+// A genuinely uncovered native need (file/hidden, custom-layout radio) uses a
+// narrowly-commented `eslint-disable-next-line no-restricted-syntax` (A3).
+const RAW_ELEMENT_COMPONENT = {
+  button: 'Button',
+  input: 'Input (or Checkbox for type=checkbox)',
+  select: 'Select',
+  textarea: 'TextArea',
+  dialog: 'Dialog',
+};
+const RAW_ELEMENT_RESTRICTED = Object.entries(RAW_ELEMENT_COMPONENT).map(([el, comp]) => ({
+  selector: `JSXOpeningElement[name.name='${el}']`,
+  message: `Raw <${el}> is banned in app code (G1/R2). Use the @aramo/fe-foundation ${comp} component — add \`unstyled\` to keep an existing app-owned class. A genuinely native need uses a commented eslint-disable-next-line no-restricted-syntax.`,
+}));
+
 // I15 (ADR-0029) — the CIP(Pipeline)⊥ATS import wall, enforced by nx module
 // boundaries via project scope tags (libs/<lib>/project.json "tags").
 //   - scope:cip MUST NOT import scope:ats  ← THE WALL
@@ -44,6 +79,10 @@ const SCOPE_DEP_CONSTRAINTS = [
   { sourceTag: 'scope:ats', onlyDependOnLibsWithTags: ['scope:ats', 'scope:cip', 'scope:boundary', 'scope:shared'] },
   { sourceTag: 'scope:platform', onlyDependOnLibsWithTags: ['scope:platform', 'scope:boundary', 'scope:shared'] },
   { sourceTag: 'scope:portal', onlyDependOnLibsWithTags: ['scope:portal', 'scope:boundary', 'scope:shared'] },
+  // DOC-4 (R-4-2) — scope:sign is the external-signer SPA wall (apps/sign-web at
+  // sign.aramo.ai). It must NOT reach scope:ats, scope:cip, scope:platform, or
+  // scope:portal — it talks only to the E-Sign public signer transport over HTTP.
+  { sourceTag: 'scope:sign', onlyDependOnLibsWithTags: ['scope:sign', 'scope:boundary', 'scope:shared'] },
   // Auth-Decoupling PR-5b (ADR-0021 §4) — scope:auth is the portable identity core
   // (libs/auth-core). It must NOT reach scope:ats, scope:cip, scope:platform, or
   // scope:portal; its legal closure is scope:auth + scope:boundary + scope:shared
@@ -166,6 +205,12 @@ export default [
             // a Symbol needs the token imported by construction. @aramo/mailer
             // NOT added (MAILER_PORT is a plain string token).
             '@aramo/identity',
+            // DOC-3 (2026-09-23): verify-esign.ts test-bootstraps
+            // apps/esign-service's AppModule to verify the aramo-core →
+            // esign-service provider pact. Production apps/api reaches E-Sign
+            // ONLY over HTTP (SignatureProviderPort); this app-boundary crossing
+            // is the test-environment exception, narrowly scoped to this project.
+            '@aramo/esign-service',
           ],
           depConstraints: SCOPE_DEP_CONSTRAINTS,
         },
@@ -178,49 +223,22 @@ export default [
     // not subject to identifier/literal scanning here.
     files: ['apps/**/*.{ts,tsx,js,jsx}', 'libs/**/*.{ts,tsx,js,jsx}'],
     rules: {
-      'no-restricted-syntax': [
-        'error',
-        {
-          selector: "Identifier[name=/candidate/i]",
-          message: "Use 'talent' (not 'candidate') — see doc/02-claude-code-discipline.md Rule 5.",
-        },
-        {
-          selector: "Literal[value=/candidate/i]",
-          message: "Use 'talent' (not 'candidate') in string literals — see doc/02-claude-code-discipline.md Rule 5.",
-        },
-        {
-          selector: "Identifier[name=/customer/i]",
-          message: "Use 'tenant' (not 'customer') — see doc/02-claude-code-discipline.md Rule 5.",
-        },
-        {
-          selector: "Literal[value=/customer/i]",
-          message: "Use 'tenant' (not 'customer') in string literals — see doc/02-claude-code-discipline.md Rule 5.",
-        },
-        {
-          selector: "Identifier[name=/outreach/i]",
-          message: "Use 'selection' (not 'outreach' as entity name) — see doc/02-claude-code-discipline.md Rule 5.",
-        },
-        {
-          selector: "Literal[value=/outreach/i]",
-          message: "Use 'selection' (not 'outreach' as entity name) in string literals — see doc/02-claude-code-discipline.md Rule 5.",
-        },
-        {
-          selector: "Identifier[name=/evaluation/i]",
-          message: "Use 'examination' (not 'evaluation' as entity name) — see doc/02-claude-code-discipline.md Rule 5.",
-        },
-        {
-          selector: "Literal[value=/evaluation/i]",
-          message: "Use 'examination' (not 'evaluation' as entity name) in string literals — see doc/02-claude-code-discipline.md Rule 5.",
-        },
-        {
-          selector: "Identifier[name=/submission/i]",
-          message: "Use 'submittal' (not 'submission' as entity name) — see doc/02-claude-code-discipline.md Rule 5.",
-        },
-        {
-          selector: "Literal[value=/submission/i]",
-          message: "Use 'submittal' (not 'submission' as entity name) in string literals — see doc/02-claude-code-discipline.md Rule 5.",
-        },
-      ],
+      'no-restricted-syntax': ['error', ...VOCAB_RESTRICTED],
+    },
+  },
+  // G1 / R2 (Aramo-UI-HotFix-Console-Defect-Register-v1_0-LOCKED) — the fail-closed
+  // raw interactive-control guard, APPLICATION CODE ONLY (apps/**). fe-foundation
+  // primitives wrap the native elements inside libs/fe-foundation (not matched
+  // here). This block re-declares no-restricted-syntax; because flat-config rules
+  // override per rule id, it MUST re-include VOCAB_RESTRICTED so apps/** keeps
+  // vocabulary enforcement, then adds RAW_ELEMENT_RESTRICTED.
+  {
+    // Application UI source only — NOT tests (specs legitimately render raw
+    // elements as fixtures; the A3 inventory is tests-excluded).
+    files: ['apps/**/*.{ts,tsx,jsx}'],
+    ignores: ['**/*.spec.{ts,tsx,jsx}', '**/*.test.{ts,tsx,jsx}'],
+    rules: {
+      'no-restricted-syntax': ['error', ...VOCAB_RESTRICTED, ...RAW_ELEMENT_RESTRICTED],
     },
   },
   // CI-B0 (Aramo-CI-Conversation-Intelligence-Directive-v1_2-LOCKED §29):

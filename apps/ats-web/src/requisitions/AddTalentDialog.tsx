@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Button, Dialog, InlineAlert, useToast } from '@aramo/fe-foundation';
+import { Button, Dialog, InlineAlert, useToast, Input } from '@aramo/fe-foundation';
 
 import { addTalentToPipeline } from '../pipeline/pipeline-api';
 import { listTalent } from '../talent/talent-api';
@@ -78,10 +78,10 @@ export function AddTalentDialog({
 
   return (
     <>
-      <button className="rc-hbtn rc-hbtn--primary" onClick={() => setOpen(true)}>
+      <Button unstyled className="rc-hbtn rc-hbtn--primary" onClick={() => setOpen(true)}>
         <Icons.IconPlus />
         Add talent
-      </button>
+      </Button>
       <Dialog
         open={open}
         onOpenChange={(next) => {
@@ -101,7 +101,7 @@ export function AddTalentDialog({
       >
         <label className="rc-field">
           <span className="rc-field__label">Search talent</span>
-          <input
+          <Input unstyled
             className="rc-select"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -124,7 +124,7 @@ export function AddTalentDialog({
               const name = `${t.first_name} ${t.last_name}`.trim();
               return (
                 <li key={t.id}>
-                  <button
+                  <Button unstyled
                     className="rc-pick__row"
                     onClick={() => void add(t.id)}
                     disabled={busyId !== null}
@@ -139,7 +139,7 @@ export function AddTalentDialog({
                     ) : (
                       <Icons.IconPlus />
                     )}
-                  </button>
+                  </Button>
                 </li>
               );
             })}

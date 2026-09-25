@@ -307,6 +307,7 @@ function Panel({
                           data-testid={`comm-provider-option-${def.channel}-${p.initials}`}
                           style={{ display: 'flex', gap: 8, alignItems: 'center', opacity: p.ready ? 1 : 0.55 }}
                         >
+                          {/* eslint-disable-next-line no-restricted-syntax -- G1/A3 escape hatch: native radio in a custom per-row layout; no clean fe-foundation RadioGroup mapping without redesign */}
                           <input
                             type="radio"
                             name={`provider-${def.channel}`}

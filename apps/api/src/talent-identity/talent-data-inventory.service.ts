@@ -66,10 +66,16 @@ export class TalentDataInventoryService {
       )
     ).rows;
 
+    // DOC-1b cutover — the S3 ref for a talent document now lives on the
+    // canonical documents.DocumentArtifact.storage_locator, reached via the
+    // UUID-only TalentDocument.document_id link. Alias keeps the shape stable.
     const document_refs = (
       await pg.query(
-        `SELECT id, file_storage_ref FROM talent_evidence."TalentDocument"
-         WHERE talent_id = ANY($1::uuid[])`,
+        `SELECT td.id, a.storage_locator AS file_storage_ref
+           FROM talent_evidence."TalentDocument" td
+           JOIN documents."Document" doc ON doc.id = td.document_id
+           JOIN documents."DocumentArtifact" a ON a.document_id = doc.id
+          WHERE td.talent_id = ANY($1::uuid[])`,
         [record_ids],
       )
     ).rows;

@@ -115,7 +115,7 @@ describe('RequisitionDetailView — named lifecycle actions (L1-E)', () => {
   it('RBAC — no edit-status scope → none of Close / Hold / Cancel / Close-submittals', async () => {
     mockApi('open');
     mount('open', ['requisition:read']);
-    await screen.findByText('Northwind Robotics');
+    await screen.findByRole('link', { name: 'Northwind Robotics' });
     for (const name of ['Close', 'Put on hold', 'Cancel', 'Close submittals']) {
       expect(screen.queryByRole('button', { name })).toBeNull();
     }
@@ -136,7 +136,7 @@ describe('RequisitionDetailView — approval + segregation of duties (L1-E)', ()
   it('pending_approval WITHOUT requisition:approve → no Approve/Reject (full editor cannot approve)', async () => {
     mockApi('pending_approval', { submitterId: 'someone-else' });
     mount('pending_approval', ['requisition:read', 'requisition:edit']);
-    await screen.findByText('Northwind Robotics');
+    await screen.findByRole('link', { name: 'Northwind Robotics' });
     expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Reject' })).toBeNull();
   });

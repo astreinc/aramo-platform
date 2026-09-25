@@ -107,6 +107,7 @@ export class ContactController {
         ...(preference === undefined ? {} : { preference }),
         ...(companyIds === undefined ? {} : { company_id: companyIds }),
         ...(qp['is_hot'] === 'true' ? { is_hot: true } : {}),
+        ...(qp['is_primary'] === 'true' ? { is_primary: true } : {}),
         ...(qp['quiet'] === 'true' ? { quiet: true } : {}),
         ...(qp['former'] === 'true' ? { former: true } : {}),
         ...(qp['cold_callable'] === 'true' ? { cold_callable: true } : {}),

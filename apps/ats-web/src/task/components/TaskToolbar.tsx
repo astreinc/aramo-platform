@@ -1,3 +1,5 @@
+import { Button, Checkbox, Select } from '@aramo/fe-foundation';
+
 import { Icons } from '../../ui';
 import { PRIORITY_LABELS, TYPE_LABELS } from '../task-vocab';
 import {
@@ -42,23 +44,23 @@ export function TaskToolbar({
   return (
     <div className="rc-tasks__controls">
       <div className="rc-seg" role="group" aria-label="View">
-        <button type="button" className={view === 'list' ? 'on' : ''} aria-pressed={view === 'list'} onClick={() => onView('list')} data-testid="view-list">
+        <Button unstyled type="button" className={view === 'list' ? 'on' : ''} aria-pressed={view === 'list'} onClick={() => onView('list')} data-testid="view-list">
           <Icons.IconList />
           List
-        </button>
-        <button type="button" className={view === 'board' ? 'on' : ''} aria-pressed={view === 'board'} onClick={() => onView('board')} data-testid="view-board">
+        </Button>
+        <Button unstyled type="button" className={view === 'board' ? 'on' : ''} aria-pressed={view === 'board'} onClick={() => onView('board')} data-testid="view-board">
           <Icons.IconColumns />
           Board
-        </button>
-        <button type="button" className={view === 'cal' ? 'on' : ''} aria-pressed={view === 'cal'} onClick={() => onView('cal')} data-testid="view-cal">
+        </Button>
+        <Button unstyled type="button" className={view === 'cal' ? 'on' : ''} aria-pressed={view === 'cal'} onClick={() => onView('cal')} data-testid="view-cal">
           <Icons.IconClock />
           Calendar
-        </button>
+        </Button>
       </div>
 
       <label className="rc-tfilter">
         <span className="rc-sr">Type</span>
-        <select
+        <Select
           aria-label="Filter by type"
           value={typeFilter ?? ''}
           onChange={(e) => onTypeFilter(e.target.value === '' ? null : (e.target.value as TaskType))}
@@ -70,12 +72,12 @@ export function TaskToolbar({
               {TYPE_LABELS[t]}
             </option>
           ))}
-        </select>
+        </Select>
       </label>
 
       <label className="rc-tfilter">
         <span className="rc-sr">Priority</span>
-        <select
+        <Select
           aria-label="Filter by priority"
           value={priorityFilter ?? ''}
           onChange={(e) =>
@@ -89,12 +91,12 @@ export function TaskToolbar({
               {PRIORITY_LABELS[p]}
             </option>
           ))}
-        </select>
+        </Select>
       </label>
 
       <label className="rc-tcheck">
-        <input
-          type="checkbox"
+        <Checkbox
+         
           checked={showCompleted}
           onChange={(e) => onShowCompleted(e.target.checked)}
           data-testid="show-completed"
@@ -102,7 +104,7 @@ export function TaskToolbar({
         Show completed
       </label>
 
-      <button
+      <Button unstyled
         type="button"
         className={`rc-btn${suggested ? ' rc-btn--on' : ''}`}
         aria-pressed={suggested}
@@ -113,7 +115,7 @@ export function TaskToolbar({
       >
         <Icons.IconBolt />
         Suggested order
-      </button>
+      </Button>
     </div>
   );
 }

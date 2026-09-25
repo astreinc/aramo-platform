@@ -6,6 +6,7 @@ import {
   Card,
   Dialog,
   InlineAlert,
+  TextArea,
 } from '@aramo/fe-foundation';
 
 import { portalApi, type PortalDisputeDetail } from '../portal-api';
@@ -148,7 +149,8 @@ export function DisputeDetailView() {
 
             {isOpen && (
               <div className="po-dispute-respond">
-                <textarea
+                <TextArea
+                  unstyled
                   className="po-textarea"
                   rows={3}
                   value={reply}

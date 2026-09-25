@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Button } from '@aramo/fe-foundation';
 
 import { Icons, InlineAlert, PageHeader } from '../ui';
 
@@ -189,7 +190,7 @@ export function TalentEditView() {
 
       <div className="rc-addfoot">
         <div className="rc-addfoot__actions">
-          <button
+          <Button unstyled
             type="button"
             className="rc-btn rc-btn--primary"
             disabled={!canSave}
@@ -197,15 +198,15 @@ export function TalentEditView() {
           >
             <Icons.IconCheck />
             {submitting ? 'Saving…' : 'Save changes'}
-          </button>
-          <button
+          </Button>
+          <Button unstyled
             type="button"
             className="rc-btn"
             disabled={submitting}
             onClick={() => navigate(`/talent/${talent.id}`)}
           >
             Cancel
-          </button>
+          </Button>
         </div>
         <p className="rc-addfoot__note">
           Email and phone are identity anchors and are managed separately · provenance is recorded automatically.
@@ -363,6 +364,7 @@ function EditResumePanel({
 
   const action = (
     <>
+      {/* eslint-disable-next-line no-restricted-syntax -- G1/A3 escape hatch: native file picker — distinct native behavior, no fe-foundation primitive */}
       <input
         ref={inputRef}
         type="file"
@@ -372,14 +374,14 @@ function EditResumePanel({
       />
       {status === 'done' ? <span className="rc-secnote">Added ✓</span> : null}
       {status === 'error' ? <span className="rc-secnote">Upload failed</span> : null}
-      <button
+      <Button unstyled
         type="button"
         className="rc-rpreview__expand"
         disabled={disabled || status === 'uploading'}
         onClick={() => inputRef.current?.click()}
       >
         {status === 'uploading' ? 'Uploading…' : 'Add résumé'}
-      </button>
+      </Button>
     </>
   );
 
@@ -389,7 +391,7 @@ function EditResumePanel({
       <ul className="rc-redition-list" aria-label="Résumé editions">
         {editions.map((e) => (
           <li key={e.edition_id} className="rc-redition">
-            <button
+            <Button unstyled
               type="button"
               className="rc-redition__pick"
               aria-pressed={e.edition_id === selectedId}
@@ -397,18 +399,18 @@ function EditResumePanel({
             >
               {e.filename}
               {e.label !== null ? ` — ${e.label}` : ''}
-            </button>
+            </Button>
             {e.is_default ? (
               <span className="rc-secnote rc-redition__default">Default</span>
             ) : (
-              <button
+              <Button unstyled
                 type="button"
                 className="rc-redition__setdefault"
                 disabled={disabled}
                 onClick={() => onMakeDefault(e.edition_id)}
               >
                 Make default
-              </button>
+              </Button>
             )}
             {/* TI-1F-C §4-L — the governed-extraction lifecycle + review action. */}
             {resumeReviewLabel(e.processing_status) !== null ? (
@@ -418,22 +420,22 @@ function EditResumePanel({
             ) : null}
             {e.processing_status === 'READY_FOR_REVIEW' ? (
               <>
-                <button
+                <Button unstyled
                   type="button"
                   className="rc-redition__confirm"
                   disabled={disabled || reviewingId === e.edition_id}
                   onClick={() => onConfirm(e.edition_id)}
                 >
                   {reviewingId === e.edition_id ? 'Confirming…' : 'Confirm'}
-                </button>
-                <button
+                </Button>
+                <Button unstyled
                   type="button"
                   className="rc-redition__reject"
                   disabled={disabled || reviewingId === e.edition_id}
                   onClick={() => onReject(e.edition_id)}
                 >
                   Reject
-                </button>
+                </Button>
               </>
             ) : null}
           </li>

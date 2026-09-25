@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { InlineAlert } from '@aramo/fe-foundation';
+import { InlineAlert, Button } from '@aramo/fe-foundation';
 
 import type { ContactView } from '../../companies/types';
 import { Icons } from '../../ui';
@@ -132,14 +132,14 @@ export function ContactEditDrawer({
             </span>
           ) : null}
         </h3>
-        <button
+        <Button unstyled
           type="button"
           className="rc-drawer__x"
           aria-label="Close"
           onClick={onClose}
         >
           <Icons.IconX />
-        </button>
+        </Button>
       </div>
 
       <div className="rc-drawer__body">

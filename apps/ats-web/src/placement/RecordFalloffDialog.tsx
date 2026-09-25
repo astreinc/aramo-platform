@@ -1,4 +1,4 @@
-import { Button, Dialog, FormField, InlineAlert, RadioGroup, type RadioOption, useToast } from '@aramo/fe-foundation';
+import { Button, Dialog, FormField, InlineAlert, RadioGroup, type RadioOption, useToast, Input } from '@aramo/fe-foundation';
 import { useState } from 'react';
 
 import {
@@ -90,7 +90,7 @@ export function RecordFalloffDialog({ open, placementId, onClose, onRecorded, re
       }
     >
       <FormField label="Effective date">
-        <input
+        <Input unstyled
           className="rc-input"
           type="date"
           aria-label="Falloff effective date"

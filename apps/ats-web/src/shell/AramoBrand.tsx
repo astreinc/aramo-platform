@@ -1,4 +1,4 @@
-import { useRailCollapse } from '@aramo/fe-foundation';
+import { useRailCollapse, Button } from '@aramo/fe-foundation';
 import { Link } from 'react-router-dom';
 
 // REQ-PIXEL-PARITY-1 (+A1) — the app-level rail brand, rendered at the TOP OF
@@ -62,7 +62,7 @@ export function AramoBrand() {
 
   if (collapsed) {
     return (
-      <button
+      <Button unstyled
         type="button"
         className="rc-railbrand rc-railbrand--collapsed"
         title="Open sidebar"
@@ -75,7 +75,7 @@ export function AramoBrand() {
         <span className="rc-railbrand__mark rc-railbrand__mark--panel">
           <PanelIcon />
         </span>
-      </button>
+      </Button>
     );
   }
 
@@ -89,7 +89,7 @@ export function AramoBrand() {
           aramo<span className="rc-railbrand__ai">.ai</span>
         </span>
       </Link>
-      <button
+      <Button unstyled
         type="button"
         className="rc-railbrand__collapse"
         title="Collapse sidebar"
@@ -97,7 +97,7 @@ export function AramoBrand() {
         onClick={toggle}
       >
         <PanelIcon />
-      </button>
+      </Button>
     </div>
   );
 }

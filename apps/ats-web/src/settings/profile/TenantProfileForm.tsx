@@ -1,4 +1,4 @@
-import { ApiError, Combobox, useToast, type ComboboxItem } from '@aramo/fe-foundation';
+import { ApiError, Combobox, Input, useToast, type ComboboxItem } from '@aramo/fe-foundation';
 import { useEffect, useMemo, useState } from 'react';
 import { IconBuilding } from '@aramo/fe-foundation';
 
@@ -196,7 +196,7 @@ export function TenantProfileForm({ fetchFn, saveFn }: Props = {}) {
                       testId={`profile-field-${fd.field}`}
                     />
                   ) : (
-                    <input
+                    <Input unstyled
                       className="rc-input"
                       type={fd.kind === 'email' ? 'email' : fd.kind === 'url' ? 'url' : 'text'}
                       value={v[fd.field]}

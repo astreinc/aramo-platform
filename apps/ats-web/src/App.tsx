@@ -440,6 +440,11 @@ export function App() {
                         </RouteGuard>
                       }
                     />
+                    {/* Account-team management lives IN the company detail page as
+                        the "Account team" tab (CompanyDetailView) — the sidebar
+                        "Manage" affordance switches to that tab in place. The
+                        standalone recruiter screen was retired (the admin ID-lookup
+                        tool under /admin/… remains for deep-linking by id). */}
                     <Route
                       path="contacts"
                       element={

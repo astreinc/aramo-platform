@@ -1,0 +1,19 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "../../dist/libs/esign",
+    "rootDir": "src",
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "declaration": true,
+    "tsBuildInfoFile": "../../dist/libs/esign/.tsbuildinfo",
+    "types": ["node"],
+    "paths": {
+      "@aramo/common": ["../../dist/libs/common/src/index.d.ts"],
+      "@aramo/documents-contracts": ["../../dist/libs/documents-contracts/src/index.d.ts"],
+      "@aramo/documents-rendering": ["../../dist/libs/documents-rendering/src/index.d.ts"]
+    }
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/tests/**/*", "**/*.spec.ts"]
+}

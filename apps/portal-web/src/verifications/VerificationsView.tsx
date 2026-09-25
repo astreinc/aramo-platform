@@ -6,6 +6,7 @@ import {
   Card,
   Dialog,
   InlineAlert,
+  TextArea,
 } from '@aramo/fe-foundation';
 
 import { portalApi, type PortalVerificationItem } from '../portal-api';
@@ -177,7 +178,8 @@ export function VerificationsView() {
           {pending ? (KIND_LABELS[pending.kind] ?? pending.kind).toLowerCase() : 'item'}.
           A person will review it.
         </p>
-        <textarea
+        <TextArea
+          unstyled
           className="po-textarea"
           rows={4}
           value={statement}

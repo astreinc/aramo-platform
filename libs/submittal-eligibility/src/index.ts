@@ -21,6 +21,8 @@ export type {
   EligibilityDenyCode,
   EngagementEligibilityDenyCode,
   EngagementEligibilityInput,
+  DocumentEligibilityDenyCode,
+  DocumentEligibilityInput,
   SubmittalPolicyInputs,
   EligibilityContext,
   WindowStatusDerivation,

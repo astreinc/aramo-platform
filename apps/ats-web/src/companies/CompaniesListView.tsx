@@ -2,21 +2,17 @@ import {
   InlineAlert,
   hasScope,
   useSession,
-  type Session,
+  type Session, Button, Input, Select,
 } from '@aramo/fe-foundation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { resolveUserNames } from '../users/users-api';
-import { Avatar, Card, Icons, StatusPill, Tag } from '../ui';
+import { searchContacts } from '../contacts/contacts-api';
+import { Avatar, Card, Icons, StatusPill } from '../ui';
 
-import { CompanyBulkBar } from './components/CompanyBulkBar';
 import { CompanyEditDrawer } from './components/CompanyEditDrawer';
-import {
-  getCompanyMetrics,
-  searchCompanies,
-  updateCompany,
-} from './companies-api';
+import { getCompanyMetrics, searchCompanies } from './companies-api';
 import { listErrorMessage } from './error-messages';
 import type { CompanyView } from './types';
 import {
@@ -26,13 +22,11 @@ import {
   REL_STATUS_TONES,
   TIER_LABELS,
   buildCompanyQuery,
-  lastContactLabel,
   locationOf,
   matchesText,
   relStatusLabel,
   relTypeLabel,
   tabCountFrom,
-  tierLabel,
   type CompanyFacets,
   type CompanyMetrics,
   type FacetFlag,
@@ -63,8 +57,6 @@ const FLAG_LABELS: Record<FacetFlag, string> = {
   off_limits: 'Off-limits',
 };
 
-type ViewMode = 'table' | 'cards';
-
 interface CompaniesListViewProps {
   readonly sessionOverride?: Session;
   // Company Party/Role (ADR-0032, R6) — /companies/new resolves to this
@@ -89,34 +81,29 @@ export function CompaniesListView({
   const [metricsById, setMetricsById] = useState<Record<string, CompanyMetrics>>(
     {},
   );
+  // Primary contact per company (list "Primary contact" column) — best-effort,
+  // degrades to "—" without contact:read. One primary per company.
+  const [primaryById, setPrimaryById] = useState<
+    Record<string, { name: string; title: string | null }>
+  >({});
 
   const [scope, setScope] = useState<ScopeMode>('all');
   const [tab, setTab] = useState<RelationshipTab>('all');
   const [facetState, setFacetState] = useState<FacetState>(EMPTY_FACETS);
   const [query, setQuery] = useState('');
-  const [vmode, setVmode] = useState<ViewMode>('table');
-
-  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const [editState, setEditState] = useState<EditState | null>(
     initialCreate ? { mode: 'create', company: null } : null,
   );
-  const [busy, setBusy] = useState(false);
-  const [notice, setNotice] = useState<string | null>(null);
   const loadMoreRef = useRef<HTMLButtonElement | null>(null);
 
   const sessionState = useSession();
   const session: Session | null =
     sessionOverride ??
     (sessionState.status === 'authenticated' ? sessionState.session : null);
-  const myId = session?.sub ?? null;
   const canCreate =
     session !== null &&
     Array.isArray(session.scopes) &&
     hasScope(session, 'company:create');
-  const canAssign =
-    session !== null &&
-    Array.isArray(session.scopes) &&
-    hasScope(session, 'company:edit');
   const canSeeCommercial =
     session !== null &&
     Array.isArray(session.scopes) &&
@@ -169,12 +156,11 @@ export function CompaniesListView({
     [scope, tab, facetState],
   );
 
-  // Debounced refetch on any server-filter change; resets page + selection.
+  // Debounced refetch on any server-filter change; resets the page.
   useEffect(() => {
     let cancelled = false;
     const handle = setTimeout(() => {
       if (cancelled) return;
-      setSelected(new Set());
       void fetchPage(null, false);
     }, 150);
     return () => {
@@ -212,6 +198,43 @@ export function CompaniesListView({
     };
   }, [items]);
 
+  // Primary contact per loaded company — best-effort (contact:read; one batched,
+  // visibility-scoped read via ?company_id=<page>&is_primary=true). Deduped like
+  // metrics so ids are never refetched; degrades to "—" on 403.
+  const requestedPrimary = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const missing = items
+      .map((c) => c.id)
+      .filter((id) => !requestedPrimary.current.has(id));
+    if (missing.length === 0) return;
+    for (const id of missing) requestedPrimary.current.add(id);
+    let cancelled = false;
+    const params = new URLSearchParams({
+      paged: 'true',
+      is_primary: 'true',
+      company_id: missing.join(','),
+      page_size: String(Math.min(missing.length, 200)),
+    });
+    void searchContacts(params)
+      .then((page) => {
+        if (cancelled) return;
+        setPrimaryById((prev) => {
+          const next = { ...prev };
+          for (const ct of page.items) {
+            const name = `${ct.first_name} ${ct.last_name}`.trim();
+            next[ct.company_id] = { name, title: ct.title ?? null };
+          }
+          return next;
+        });
+      })
+      .catch(() => {
+        /* no contact:read → primary contact stays absent; column shows — */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [items]);
+
   // The text box filters the LOADED page (client-side; no ?q=).
   const visible = useMemo(
     () => items.filter((c) => matchesText(c, query)),
@@ -239,42 +262,8 @@ export function CompaniesListView({
         : [...f.flags, value],
     }));
 
-  const resetAll = () => {
-    setFacetState(EMPTY_FACETS);
-    setScope('all');
-    setTab('all');
-    setQuery('');
-  };
-
-  const toggleSel = (id: string) =>
-    setSelected((s) => {
-      const next = new Set(s);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-
   const loadMore = () => {
     if (nextCursor !== null) void fetchPage(nextCursor, true);
-  };
-
-  const assignToMe = async () => {
-    if (myId === null || selected.size === 0) return;
-    const ids = visible.filter((c) => selected.has(c.id)).map((c) => c.id);
-    setBusy(true);
-    setNotice(null);
-    try {
-      await Promise.all(ids.map((id) => updateCompany(id, { owner_id: myId })));
-      setItems((prev) =>
-        prev.map((c) => (selected.has(c.id) ? { ...c, owner_id: myId } : c)),
-      );
-      setNotice(`Assigned ${ids.length} to you.`);
-      setSelected(new Set());
-    } catch {
-      setNotice('Couldn’t reassign — please try again.');
-    } finally {
-      setBusy(false);
-    }
   };
 
   // ── active filter chips ──
@@ -309,9 +298,15 @@ export function CompaniesListView({
   // server type facets (stable base-where counts).
   const relCount = (t: string): number =>
     facets?.relationship_type?.find((b) => b.value === t)?.count ?? 0;
+  // Open-reqs total is summed from the metrics loaded so far (grows as pages
+  // load); tenants that fit one page show the exact tenant-wide total.
+  const openReqsTotal = Object.values(metricsById).reduce(
+    (sum, m) => sum + m.open_reqs,
+    0,
+  );
   const headline =
     facets !== null && facets.relationship_type !== undefined
-      ? `${total} ${total === 1 ? 'company' : 'companies'} · ${relCount('CLIENT')} client, ${relCount('VENDOR')} vendor, ${relCount('PARTNER')} partner relationships`
+      ? `${total} ${total === 1 ? 'company' : 'companies'} · ${relCount('CLIENT')} client, ${relCount('VENDOR')} vendor, ${relCount('PARTNER')} partner relationships · ${openReqsTotal} open reqs`
       : null;
   const editingId = editState?.company?.id ?? null;
   const openEdit = (c: CompanyView) => setEditState({ mode: 'edit', company: c });
@@ -329,64 +324,21 @@ export function CompaniesListView({
     >
       <div className="rc-viewhead">
         <div>
-          <div className="rc-titlerow">
-            <h1 className="rc-h1">Companies</h1>
-            <div className="rc-scopetabs" role="group" aria-label="Scope">
-              <button
-                type="button"
-                className={scope === 'mine' ? 'on' : ''}
-                aria-pressed={scope === 'mine'}
-                onClick={() => setScope('mine')}
-              >
-                My accounts
-              </button>
-              <button
-                type="button"
-                className={scope === 'all' ? 'on' : ''}
-                aria-pressed={scope === 'all'}
-                onClick={() => setScope('all')}
-              >
-                All
-              </button>
-            </div>
-          </div>
+          <h1 className="rc-h1">Companies</h1>
           {headline !== null ? (
             <p className="rc-sub rc-sub--count">{headline}</p>
           ) : null}
-          <p className="rc-sub">
-            <Icons.IconShield className="rc-sub__icon" aria-hidden="true" />
-            Your visible companies — the organizations you can see through
-            assignments, reports, or pod-client teams.
-          </p>
         </div>
         <div className="rc-viewhead__actions">
-          <div className="rc-scopetabs" role="group" aria-label="View mode">
-            <button
-              type="button"
-              className={vmode === 'table' ? 'on' : ''}
-              aria-pressed={vmode === 'table'}
-              onClick={() => setVmode('table')}
-            >
-              Table
-            </button>
-            <button
-              type="button"
-              className={vmode === 'cards' ? 'on' : ''}
-              aria-pressed={vmode === 'cards'}
-              onClick={() => setVmode('cards')}
-            >
-              Cards
-            </button>
-          </div>
           {canCreate ? (
-            <button
+            <Button unstyled
               type="button"
               className="rc-hbtn rc-hbtn--primary"
               onClick={openCreate}
               data-testid="company-new"
             >
               <Icons.IconPlus /> New company
-            </button>
+            </Button>
           ) : null}
         </div>
       </div>
@@ -397,7 +349,7 @@ export function CompaniesListView({
         {RELATIONSHIP_TABS.map((t) => {
           const count = tabCountFrom(facets, total, t.key);
           return (
-            <button
+            <Button unstyled
               key={t.key}
               type="button"
               className={`rc-view${tab === t.key ? ' on' : ''}`}
@@ -408,84 +360,81 @@ export function CompaniesListView({
               {count !== null ? (
                 <span className="rc-view__ct num">{count}</span>
               ) : null}
-            </button>
+            </Button>
           );
         })}
       </div>
 
-      {/* Relationship STATUS filter pills (lifecycle within the active tab). */}
-      <div className="rc-views" role="group" aria-label="Status">
-        <span className="rc-views__lbl">Status</span>
-        {REL_STATUS_ORDER.map((s) => {
-          const on = facetState.relationship_status.includes(s);
-          return (
-            <button
-              key={s}
-              type="button"
-              className={`rc-view${on ? ' on' : ''}`}
-              aria-pressed={on}
-              onClick={() => toggleStr('relationship_status', s)}
-            >
+      {/* One-line filter row (prototype): search + relationship-status / industry /
+          owner dropdowns + result count. Owner maps to the scope query (Me=mine,
+          Anyone=all); status/industry are single-select server facets. */}
+      <div className="rc-cofilters">
+        <div className="rc-tokenbox rc-cofilters__search">
+          <Icons.IconSearch className="rc-tokenbox__icon" aria-hidden="true" />
+          <Input unstyled
+            className="rc-tokenbox__input"
+            type="search"
+            placeholder="Search companies"
+            aria-label="Search companies"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+        </div>
+        <Select unstyled
+          className="rc-filterpill"
+          aria-label="Relationship status"
+          value={facetState.relationship_status[0] ?? ''}
+          onChange={(e) =>
+            setFacetState((f) => ({
+              ...f,
+              relationship_status: e.target.value === '' ? [] : [e.target.value],
+            }))
+          }
+        >
+          <option value="">Relationship status: Any</option>
+          {REL_STATUS_ORDER.map((s) => (
+            <option key={s} value={s}>
               {relStatusLabel(s)}
-            </button>
-          );
-        })}
-      </div>
-
-      <div className="rc-tokenbox">
-        <Icons.IconSearch className="rc-tokenbox__icon" aria-hidden="true" />
-        <input
-          className="rc-tokenbox__input"
-          type="search"
-          placeholder="Filter loaded accounts by name, industry, location or tag"
-          aria-label="Filter companies"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-        />
-      </div>
-
-      <div className="rc-activebar">
-        <span className="rc-activebar__count num">
-          {visible.length}
-          <small> of {total} companies</small>
+            </option>
+          ))}
+        </Select>
+        <Select unstyled
+          className="rc-filterpill"
+          aria-label="Industry"
+          value={facetState.industry[0] ?? ''}
+          onChange={(e) =>
+            setFacetState((f) => ({
+              ...f,
+              industry: e.target.value === '' ? [] : [e.target.value],
+            }))
+          }
+        >
+          <option value="">Industry: Any</option>
+          {(facets?.industry ?? []).map((b) => (
+            <option key={b.value} value={b.value}>
+              {b.value}
+            </option>
+          ))}
+        </Select>
+        <Select unstyled
+          className="rc-filterpill"
+          aria-label="Owner"
+          value={scope}
+          onChange={(e) => setScope(e.target.value === 'mine' ? 'mine' : 'all')}
+        >
+          <option value="all">Owner: Anyone</option>
+          <option value="mine">Owner: Me</option>
+        </Select>
+        <span className="rc-cofilters__result">
+          {visible.length} {visible.length === 1 ? 'company' : 'companies'} · click
+          a row for details
         </span>
-        {chips.length > 0 ? <span className="rc-activebar__sep" /> : null}
-        {chips.map((c, i) => (
-          <span key={`${c.k}-${c.label}-${i}`} className="rc-fchip">
-            <span className="rc-fchip__k">{c.k}</span> {c.label}
-            <button
-              type="button"
-              aria-label={`Remove ${c.k} ${c.label}`}
-              onClick={c.clear}
-            >
-              <Icons.IconX />
-            </button>
-          </span>
-        ))}
-        {chips.length > 0 ? (
-          <button type="button" className="rc-activebar__clear" onClick={resetAll}>
-            Clear all
-          </button>
-        ) : null}
       </div>
 
       {error !== null ? <InlineAlert variant="error">{error}</InlineAlert> : null}
-      {notice !== null ? (
-        <p role="status" className="rc-notice">
-          {notice}
-        </p>
-      ) : null}
 
       <div className="rc-mt-16">
         <Card flush>
-          <div className="rc-rtools">
-            <span className="rc-rtools__note">
-              {selected.size > 0
-                ? `${selected.size} selected`
-                : `${visible.length} companies`}
-            </span>
-          </div>
-
           {loading ? (
             <p className="rc-empty">Loading companies…</p>
           ) : visible.length === 0 ? (
@@ -494,58 +443,32 @@ export function CompaniesListView({
                 ? 'No companies match these filters.'
                 : 'No companies visible to you yet.'}
             </p>
-          ) : vmode === 'cards' ? (
-            <div className="rc-cocards">
-              {visible.map((c) => (
-                <CompanyCard
-                  key={c.id}
-                  company={c}
-                  metrics={metricsById[c.id] ?? null}
-                  onOpen={() => openEdit(c)}
-                />
-              ))}
-            </div>
           ) : (
             <div className="rc-tablewrap">
-              <table className="rc-table">
+              <table className="rc-table rc-cotable">
                 <thead>
                   <tr>
-                    <th scope="col" style={{ width: 34 }}>
-                      <input
-                        type="checkbox"
-                        aria-label="Select all"
-                        checked={
-                          visible.length > 0 && selected.size >= visible.length
-                        }
-                        onChange={(e) =>
-                          setSelected(
-                            e.target.checked
-                              ? new Set(visible.map((c) => c.id))
-                              : new Set(),
-                          )
-                        }
-                      />
-                    </th>
                     <th scope="col">Company</th>
-                    <th scope="col">Relationships</th>
-                    <th scope="col">Open reqs</th>
-                    <th scope="col">Active</th>
+                    <th scope="col">Relationships · status</th>
+                    <th scope="col">Primary contact</th>
+                    <th scope="col" className="num">Open reqs</th>
+                    <th scope="col" className="num">Placements</th>
+                    <th scope="col">Phone</th>
                     <th scope="col">Owner</th>
-                    <th scope="col">Last contact</th>
-                    <th scope="col" aria-label="Row actions" />
                   </tr>
                 </thead>
                 <tbody>
                   {visible.map((c) => {
-                    const tier = tierLabel(c.client_tier);
-                    const subtitle = [c.industry, tier, locationOf(c)]
+                    const subtitle = [c.industry, locationOf(c)]
                       .filter((s) => s !== null && s !== '' && s !== '—')
                       .join(' · ');
                     const m = metricsById[c.id];
+                    const pc = primaryById[c.id];
+                    const owner = ownerName(c);
                     return (
                       <tr
                         key={c.id}
-                        className={`rc-row--clickable${selected.has(c.id) ? ' rc-row--sel' : ''}${editingId === c.id ? ' rc-row--active' : ''}`}
+                        className={`rc-row--clickable${editingId === c.id ? ' rc-row--active' : ''}`}
                         onClick={(e) => {
                           if (
                             e.target instanceof Element &&
@@ -555,14 +478,6 @@ export function CompaniesListView({
                           openEdit(c);
                         }}
                       >
-                        <td>
-                          <input
-                            type="checkbox"
-                            aria-label={`Select ${c.name}`}
-                            checked={selected.has(c.id)}
-                            onChange={() => toggleSel(c.id)}
-                          />
-                        </td>
                         <td>
                           <Link to={`/companies/${c.id}`} className="rc-link-strong">
                             <span className="rc-ent">
@@ -601,6 +516,18 @@ export function CompaniesListView({
                             ) : null}
                           </span>
                         </td>
+                        <td>
+                          {pc !== undefined ? (
+                            <span className="rc-copc">
+                              <span className="rc-copc__nm">{pc.name}</span>
+                              {pc.title ? (
+                                <span className="rc-copc__ti">{pc.title}</span>
+                              ) : null}
+                            </span>
+                          ) : (
+                            <span className="rc-consent-stub">—</span>
+                          )}
+                        </td>
                         <td className="num">
                           {m !== undefined ? (
                             m.open_reqs
@@ -615,19 +542,21 @@ export function CompaniesListView({
                             <span className="rc-consent-stub">—</span>
                           )}
                         </td>
-                        <td>{ownerName(c)}</td>
-                        <td className="lastcell">{lastContactLabel(c)}</td>
+                        <td className="rc-cophone">
+                          {c.phone1 !== null && c.phone1 !== '' ? (
+                            c.phone1
+                          ) : (
+                            <span className="rc-consent-stub">—</span>
+                          )}
+                        </td>
                         <td>
-                          <div className="rc-rowq">
-                            <button
-                              type="button"
-                              title="Quick edit"
-                              aria-label={`Quick edit ${c.name}`}
-                              onClick={() => openEdit(c)}
-                            >
-                              <Icons.IconOpen />
-                            </button>
-                          </div>
+                          {owner === '—' ? (
+                            <span className="rc-consent-stub">—</span>
+                          ) : (
+                            <span title={owner}>
+                              <Avatar name={owner} size="sm" />
+                            </span>
+                          )}
                         </td>
                       </tr>
                     );
@@ -637,7 +566,7 @@ export function CompaniesListView({
 
               {nextCursor !== null && query.trim() === '' ? (
                 <div className="rc-loadmore">
-                  <button
+                  <Button unstyled
                     ref={loadMoreRef}
                     type="button"
                     className="tc-button tc-button--ghost"
@@ -645,26 +574,20 @@ export function CompaniesListView({
                     disabled={loadingMore}
                   >
                     {loadingMore ? 'Loading…' : 'Load more companies'}
-                  </button>
+                  </Button>
                 </div>
               ) : null}
             </div>
           )}
 
           <p className="rc-footnote">
-            Companies shown are the clients visible to you through assignments,
-            reports, or pod-client teams.
+            A company is an organization; each relationship (Client · Vendor ·
+            Partner) carries its own status. <b>Do not contact</b> is the only
+            company-wide flag and overrides every relationship. A company holding
+            two relationships appears under both tabs.
           </p>
         </Card>
       </div>
-
-      <CompanyBulkBar
-        count={selected.size}
-        busy={busy}
-        canAssign={canAssign}
-        onAssignToMe={assignToMe}
-        onClear={() => setSelected(new Set())}
-      />
 
       {editState !== null ? (
         <CompanyEditDrawer
@@ -679,54 +602,3 @@ export function CompaniesListView({
   );
 }
 
-// ── Card (Cards view mode) — same data as the row, no fabricated stats. ──
-function CompanyCard({
-  company,
-  metrics,
-  onOpen,
-}: {
-  readonly company: CompanyView;
-  readonly metrics: CompanyMetrics | null;
-  readonly onOpen: () => void;
-}) {
-  const tier = tierLabel(company.client_tier);
-  return (
-    <button type="button" className="rc-cocard" onClick={onOpen}>
-      <div className="rc-cocard__top">
-        <Avatar name={company.name} size="md" />
-        <div className="rc-cocard__id">
-          <span className="rc-ent__nm">
-            {company.name}
-            {company.is_hot ? <Icons.IconFlame className="rc-ent__flame" /> : null}
-          </span>
-          <span className="rc-ent__rl">{company.industry ?? locationOf(company)}</span>
-        </div>
-      </div>
-      <div className="rc-cocard__meta">
-        {(company.relationships ?? []).map((r) => (
-          <StatusPill key={r.id} tone={REL_STATUS_TONES[r.status] ?? 'neutral'} dot>
-            {relTypeLabel(r.type)} · {relStatusLabel(r.status)}
-          </StatusPill>
-        ))}
-        {company.communication_restricted ? (
-          <StatusPill tone="danger">Do not contact</StatusPill>
-        ) : null}
-        {tier !== null ? <Tag>{tier}</Tag> : null}
-      </div>
-      <div className="rc-cocard__foot">
-        <span className="rc-cocard__stat">
-          <small>Open reqs</small>
-          {metrics !== null ? metrics.open_reqs : '—'}
-        </span>
-        <span className="rc-cocard__stat">
-          <small>Active</small>
-          {metrics !== null ? metrics.active_placements : '—'}
-        </span>
-        <span className="rc-cocard__stat">
-          <small>Last contact</small>
-          {lastContactLabel(company)}
-        </span>
-      </div>
-    </button>
-  );
-}

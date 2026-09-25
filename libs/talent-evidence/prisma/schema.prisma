@@ -472,28 +472,25 @@ model TalentWorkAuthorization {
 }
 
 // §2.2 #8 — TalentDocument (Ingested).
+// DOC-1b — TalentDocument is a Talent-specific projection over the canonical
+// documents.Document (linked by document_id). The generic file metadata
+// (uploaded_by_actor_id, uploaded_at, document_type, filename, file_storage_ref,
+// mime_type, size_bytes) moved to documents.{Document,DocumentRevision,
+// DocumentArtifact} and was dropped from this table (contract phase). What
+// remains is Talent-intelligence-specific: parse status, upload-time consent
+// scope, retention policy, active flag.
 model TalentDocument {
   id                       String                        @id @db.Uuid
   talent_id                String                        @db.Uuid
   tenant_id                String                        @db.Uuid
 
-  // Forward reference → identity domain (Actor/Recruiter). UUID-only, no FK.
-  uploaded_by_actor_id     String                        @db.Uuid
-
-  uploaded_at              DateTime                      @db.Timestamptz
-  document_type            TalentDocumentType
-  filename                 String
-  file_storage_ref         String
-  mime_type                String
-
-  // §2.2 size_bytes is `number`; logical integer (byte count). Int suffices
-  // for documents up to ~2GB, which exceeds any v1 document type's expected size.
-  size_bytes               Int
-
   parse_status             TalentDocumentParseStatus
   consent_scope_at_upload  String[]
   retention_policy         TalentDocumentRetentionPolicy
   is_active                Boolean
+
+  // UUID-only link to the canonical documents.Document (no cross-schema FK; §7.3).
+  document_id              String?                       @db.Uuid
 
   @@index([tenant_id])
   @@index([tenant_id, talent_id])

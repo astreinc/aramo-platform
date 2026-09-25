@@ -520,6 +520,20 @@
   width: min(680px, calc(100vw - var(--sp-8)));
 }
 
+/* xl — a wide review/compose surface (e.g. the requisition email draft). The
+   header (title + description) and footer stay fixed; only the body scrolls. */
+.tc-dialog__content--xl {
+  width: min(980px, calc(100vw - var(--sp-8)));
+  max-height: min(860px, 94vh);
+  overflow: hidden;
+}
+
+.tc-dialog__content--xl .tc-dialog__body {
+  overflow-y: auto;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
 .tc-dialog__title {
   margin: 0;
   font-size: var(--fs-16);
@@ -627,6 +641,68 @@
 
 .tc-input[disabled] {
   background-color: var(--c-surface-2);
+  cursor: not-allowed;
+}
+
+/* ─── TextArea + Select (G1 primitives) — mirror the .tc-input box ─── */
+
+.tc-textarea {
+  width: 100%;
+  min-height: calc(var(--control-h-md) * 3);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-md);
+  border: 1px solid var(--c-border-strong);
+  background-color: var(--c-surface);
+  font-size: var(--fs-14);
+  color: var(--c-text);
+  font-family: var(--font-sans);
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.tc-textarea:focus {
+  outline: none;
+  border-color: var(--c-accent);
+  box-shadow: 0 0 0 3px var(--c-accent-soft);
+}
+
+.tc-textarea[disabled] {
+  background-color: var(--c-surface-2);
+  cursor: not-allowed;
+}
+
+.tc-select {
+  width: 100%;
+  height: var(--control-h-md);
+  padding: 0 var(--sp-3);
+  border-radius: var(--r-md);
+  border: 1px solid var(--c-border-strong);
+  background-color: var(--c-surface);
+  font-size: var(--fs-14);
+  color: var(--c-text);
+  font-family: var(--font-sans);
+  cursor: pointer;
+}
+
+.tc-select:focus {
+  outline: none;
+  border-color: var(--c-accent);
+  box-shadow: 0 0 0 3px var(--c-accent-soft);
+}
+
+.tc-select[disabled] {
+  background-color: var(--c-surface-2);
+  cursor: not-allowed;
+}
+
+.tc-checkbox {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--c-accent);
+  cursor: pointer;
+}
+
+.tc-checkbox[disabled] {
   cursor: not-allowed;
 }
 

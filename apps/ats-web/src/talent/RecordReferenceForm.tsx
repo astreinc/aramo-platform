@@ -1,4 +1,5 @@
 import { useCallback, useState } from 'react';
+import { Button, Input, Select, TextArea } from '@aramo/fe-foundation';
 
 import { Card, InlineAlert } from '../ui';
 
@@ -75,23 +76,23 @@ export function RecordReferenceForm({ recordId }: Props): JSX.Element {
         <div className="talent-detail__refgrid">
           <label className="talent-detail__field">
             <span>Referee name</span>
-            <input value={name} onChange={(e) => setName(e.target.value)} required />
+            <Input value={name} onChange={(e) => setName(e.target.value)} required />
           </label>
           <label className="talent-detail__field">
             <span>Referee email (optional)</span>
-            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+            <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
           </label>
           <label className="talent-detail__field">
             <span>Referee company (optional)</span>
-            <input value={company} onChange={(e) => setCompany(e.target.value)} />
+            <Input value={company} onChange={(e) => setCompany(e.target.value)} />
           </label>
           <label className="talent-detail__field">
             <span>Referee role (optional)</span>
-            <input value={role} onChange={(e) => setRole(e.target.value)} />
+            <Input value={role} onChange={(e) => setRole(e.target.value)} />
           </label>
           <label className="talent-detail__field">
             <span>Relationship</span>
-            <input
+            <Input
               value={relationship}
               onChange={(e) => setRelationship(e.target.value)}
               placeholder="e.g. former manager"
@@ -100,7 +101,7 @@ export function RecordReferenceForm({ recordId }: Props): JSX.Element {
           </label>
           <label className="talent-detail__field">
             <span>About</span>
-            <select
+            <Select
               value={statementClass}
               onChange={(e) => setStatementClass(e.target.value as StatementClass)}
             >
@@ -109,21 +110,21 @@ export function RecordReferenceForm({ recordId }: Props): JSX.Element {
                   {o.label}
                 </option>
               ))}
-            </select>
+            </Select>
           </label>
         </div>
         <label className="talent-detail__field talent-detail__field--full">
           <span>What the referee said</span>
-          <textarea value={statement} onChange={(e) => setStatement(e.target.value)} required />
+          <TextArea value={statement} onChange={(e) => setStatement(e.target.value)} required />
         </label>
         <div className="talent-detail__refactions">
-          <button
+          <Button unstyled
             type="submit"
             disabled={busy}
             className="tc-button tc-button--primary tc-button--md"
           >
             {busy ? 'Recording…' : 'Record reference'}
-          </button>
+          </Button>
         </div>
         {message !== null && (
           <div role="status">

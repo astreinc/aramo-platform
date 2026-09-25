@@ -1,0 +1,30 @@
+{
+  "name": "documents-contracts",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/documents-contracts/src",
+  "projectType": "library",
+  "tags": ["scope:boundary"],
+  "targets": {
+    "build": {
+      "executor": "@nx/js:tsc",
+      "outputs": ["{options.outputPath}"],
+      "options": {
+        "outputPath": "dist/libs/documents-contracts",
+        "main": "libs/documents-contracts/src/index.ts",
+        "tsConfig": "libs/documents-contracts/tsconfig.lib.json"
+      }
+    },
+    "lint": {
+      "executor": "@nx/eslint:lint",
+      "options": {
+        "lintFilePatterns": ["libs/documents-contracts/**/*.ts"]
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "vitest run --passWithNoTests --root libs/documents-contracts"
+      }
+    }
+  }
+}

@@ -5,7 +5,7 @@ import {
   InlineAlert,
   hasScope,
   useSession,
-  type Session,
+  type Session, Checkbox, Select,
 } from '@aramo/fe-foundation';
 import {
   useCallback,
@@ -110,8 +110,8 @@ function ColumnsMenu({
       <div className="rc-hmenu__body">
         {COLUMN_OPTIONS.map(([key, label]) => (
           <label key={key} className="rc-fopt">
-            <input
-              type="checkbox"
+            <Checkbox
+             
               checked={cols[key]}
               onChange={() => setCols((c) => ({ ...c, [key]: !c[key] }))}
             />
@@ -142,7 +142,7 @@ function SortMenu({
       </summary>
       <div className="rc-hmenu__body">
         {SORT_OPTIONS.map(([key, label]) => (
-          <button
+          <Button unstyled
             key={key}
             type="button"
             className="rc-sortopt"
@@ -153,7 +153,7 @@ function SortMenu({
             <span className="rc-sortopt__dir">
               {sortKey === key ? (sortDir === 'asc' ? '↑' : '↓') : ''}
             </span>
-          </button>
+          </Button>
         ))}
       </div>
     </details>
@@ -530,30 +530,30 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
           <div className="rc-titlerow">
             <h1 className="rc-h1">Talent</h1>
             <div className="rc-scopetabs" role="group" aria-label="Scope">
-              <button
+              <Button unstyled
                 type="button"
                 className={scope === 'mine' ? 'on' : ''}
                 aria-pressed={scope === 'mine'}
                 onClick={() => pickScope('mine')}
               >
                 My talent
-              </button>
-              <button
+              </Button>
+              <Button unstyled
                 type="button"
                 className={scope === 'team' ? 'on' : ''}
                 aria-pressed={scope === 'team'}
                 onClick={() => pickScope('team')}
               >
                 My team
-              </button>
-              <button
+              </Button>
+              <Button unstyled
                 type="button"
                 className={scope === 'all' ? 'on' : ''}
                 aria-pressed={scope === 'all'}
                 onClick={() => pickScope('all')}
               >
                 All
-              </button>
+              </Button>
             </div>
           </div>
           <p className="rc-sub">
@@ -577,7 +577,7 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
       <div className="rc-views" role="group" aria-label="Views">
         <span className="rc-views__lbl">Views</span>
         {VIEWS.map((v) => (
-          <button
+          <Button unstyled
             key={v.key}
             type="button"
             className={`rc-view${activeView === v.key ? ' on' : ''}`}
@@ -588,16 +588,16 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
             {viewCounts[v.key] !== undefined ? (
               <span className="rc-view__ct num">{viewCounts[v.key]}</span>
             ) : null}
-          </button>
+          </Button>
         ))}
-        <button
+        <Button unstyled
           type="button"
           className="rc-view rc-view--save"
           disabled
           title="Saved views need a backend saved-view API (carry)."
         >
           <Icons.IconBookmark /> Save current view
-        </button>
+        </Button>
       </div>
 
       <TokenSearch
@@ -621,17 +621,17 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
         {chips.map((c, i) => (
           <span key={`${c.k}-${c.label}-${i}`} className="rc-fchip">
             <span className="rc-fchip__k">{c.k}</span> {c.label}
-            <button type="button" aria-label={`Remove ${c.k} ${c.label}`} onClick={c.clear}>
+            <Button type="button" aria-label={`Remove ${c.k} ${c.label}`} onClick={c.clear}>
               <Icons.IconX />
-            </button>
+            </Button>
           </span>
         ))}
         {chips.length > 0 ? (
-          <button type="button" className="rc-activebar__clear" onClick={resetAll}>
+          <Button unstyled type="button" className="rc-activebar__clear" onClick={resetAll}>
             Clear all
-          </button>
+          </Button>
         ) : null}
-        <button
+        <Button unstyled
           type="button"
           className={`rc-hbtn${filtersOpen ? ' rc-hbtn--on' : ''}`}
           style={{ marginLeft: 'auto' }}
@@ -639,7 +639,7 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
           onClick={() => setFiltersOpen((o) => !o)}
         >
           <Icons.IconFilter /> {filtersOpen ? 'Hide filters' : 'Filters'}
-        </button>
+        </Button>
       </div>
 
       {error !== null ? <InlineAlert variant="error">{error}</InlineAlert> : null}
@@ -701,13 +701,13 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
             </span>
             <div className="rc-rtools__right">
               {/* Columns + Sort now live in the page header (.rc-viewhead__actions). */}
-              <button
+              <Button unstyled
                 type="button"
                 className="rc-mini"
                 onClick={() => setDensity((d) => (d === 'comfortable' ? 'compact' : 'comfortable'))}
               >
                 <Icons.IconDensity /> {density === 'comfortable' ? 'Comfortable' : 'Compact'}
-              </button>
+              </Button>
             </div>
           </div>
 
@@ -719,8 +719,8 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
                 <thead>
                   <tr>
                     <th scope="col" style={{ width: 34 }}>
-                      <input
-                        type="checkbox"
+                      <Checkbox
+                       
                         aria-label="Select all"
                         checked={items.length > 0 && selected.size >= items.length}
                         onChange={(e) =>
@@ -729,26 +729,26 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
                       />
                     </th>
                     <th scope="col">
-                      <button
+                      <Button unstyled
                         type="button"
                         className="rc-th-sort"
                         aria-sort={sortKey === 'name' ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}
                         onClick={() => toggleSort('name')}
                       >
                         Talent {sortKey === 'name' ? (sortDir === 'asc' ? '↑' : '↓') : ''}
-                      </button>
+                      </Button>
                     </th>
                     {cols.contact ? <th scope="col">Contact</th> : null}
                     {cols.location ? (
                       <th scope="col">
-                        <button
+                        <Button unstyled
                           type="button"
                           className="rc-th-sort"
                           aria-sort={sortKey === 'location' ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}
                           onClick={() => toggleSort('location')}
                         >
                           Location {sortKey === 'location' ? (sortDir === 'asc' ? '↑' : '↓') : ''}
-                        </button>
+                        </Button>
                       </th>
                     ) : null}
                     {cols.rate ? <th scope="col">Rate</th> : null}
@@ -779,8 +779,8 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
                         }}
                       >
                         <td>
-                          <input
-                            type="checkbox"
+                          <Checkbox
+                           
                             aria-label={`Select ${fullName(t)}`}
                             checked={selected.has(t.id)}
                             onChange={() => toggleSel(t.id)}
@@ -859,14 +859,14 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
                         ) : null}
                         <td>
                           <div className="rc-rowq">
-                            <button
+                            <Button
                               type="button"
                               title="Preview"
                               aria-label={`Preview ${fullName(t)}`}
                               onClick={() => setDrawerIndex(i)}
                             >
                               <Icons.IconOpen />
-                            </button>
+                            </Button>
                           </div>
                         </td>
                       </tr>
@@ -877,7 +877,7 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
 
               {nextCursor !== null ? (
                 <div className="rc-loadmore">
-                  <button
+                  <Button unstyled
                     ref={loadMoreRef}
                     type="button"
                     className="tc-button tc-button--ghost"
@@ -885,7 +885,7 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
                     disabled={loadingMore}
                   >
                     {loadingMore ? 'Loading…' : 'Load more talent'}
-                  </button>
+                  </Button>
                 </div>
               ) : null}
             </div>
@@ -1006,7 +1006,7 @@ function AddToReqDialog({
       ) : (
         <label className="rc-field">
           <span className="rc-field__label">Requisition</span>
-          <select className="rc-select" value={reqId} onChange={(e) => setReqId(e.target.value)}>
+          <Select unstyled className="rc-select" value={reqId} onChange={(e) => setReqId(e.target.value)}>
             <option value="">Select a requisition…</option>
             {reqs.map((r) => (
               <option key={r.id} value={r.id}>
@@ -1014,7 +1014,7 @@ function AddToReqDialog({
                 {r.external_req_id ? ` · ${r.external_req_id}` : ''}
               </option>
             ))}
-          </select>
+          </Select>
         </label>
       )}
     </Dialog>

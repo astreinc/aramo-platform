@@ -1,4 +1,4 @@
-import { IconFlame } from '@aramo/fe-foundation';
+import { IconFlame, Button } from '@aramo/fe-foundation';
 
 interface HotToggleProps {
   /** Current hot state (the talent's is_hot flag). */
@@ -25,7 +25,7 @@ export function HotToggle({
 }: HotToggleProps) {
   const interactive = onToggle !== undefined && !disabled;
   return (
-    <button
+    <Button unstyled
       type="button"
       className={`rc-hot${hot ? ' rc-hot--on' : ''}`}
       aria-pressed={hot}
@@ -35,6 +35,6 @@ export function HotToggle({
       onClick={interactive ? () => onToggle(!hot) : undefined}
     >
       <IconFlame aria-hidden="true" />
-    </button>
+    </Button>
   );
 }

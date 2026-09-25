@@ -45,6 +45,7 @@ export function ResumeDropzone({
         </div>
         <h2>Upload resume</h2>
         <p>Drag &amp; drop or click to browse · PDF, DOCX</p>
+        {/* eslint-disable-next-line no-restricted-syntax -- G1/A3 escape hatch: native file picker — distinct native behavior, no fe-foundation primitive */}
         <input
           ref={inputRef}
           type="file"

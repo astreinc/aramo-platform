@@ -106,6 +106,20 @@ describe('RecruiterShell', () => {
     expect(screen.getByRole('link', { name: 'Talent' })).not.toHaveAttribute('aria-current');
   });
 
+  it('§5: on Requisition Detail, only Requisitions is active — NOT Contacts', () => {
+    renderShell(
+      makeSession(['requisition:read', 'contact:read']),
+      '/requisitions/req-1',
+    );
+    expect(screen.getByRole('link', { name: 'Requisitions' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+    expect(screen.getByRole('link', { name: 'Contacts' })).not.toHaveAttribute(
+      'aria-current',
+    );
+  });
+
   // Enterprise "one clear H1" ruling: the app shell no longer renders a
   // route/section title in the TopBar (it duplicated each page's own
   // H1/PageHeader, and the left rail already marks the active module). The
@@ -145,11 +159,17 @@ describe('RecruiterShell', () => {
   });
 
 
+  // G2.7 — Sign out now lives in the top-right avatar (UserMenu), not the rail.
+  const signOutViaAvatarMenu = () => {
+    fireEvent.click(screen.getByRole('button', { name: /Account/ }));
+    fireEvent.click(screen.getByRole('menuitem', { name: /Sign out/i }));
+  };
+
   it('logs out via POST /logout then runs the completion seam', async () => {
     const post = vi.spyOn(apiClient, 'post').mockResolvedValue(undefined);
     const onLogoutComplete = vi.fn();
     renderShell(makeSession(['requisition:read']), '/requisitions', onLogoutComplete);
-    fireEvent.click(screen.getByRole('button', { name: /Log out/ }));
+    signOutViaAvatarMenu();
     await waitFor(() => expect(onLogoutComplete).toHaveBeenCalledOnce());
     expect(post).toHaveBeenCalledWith('/auth/recruiter/logout');
   });
@@ -158,7 +178,7 @@ describe('RecruiterShell', () => {
     vi.spyOn(apiClient, 'post').mockRejectedValue(new Error('network'));
     const onLogoutComplete = vi.fn();
     renderShell(makeSession(['requisition:read']), '/requisitions', onLogoutComplete);
-    fireEvent.click(screen.getByRole('button', { name: /Log out/ }));
+    signOutViaAvatarMenu();
     await waitFor(() => expect(onLogoutComplete).toHaveBeenCalledOnce());
   });
 
@@ -176,8 +196,9 @@ describe('RecruiterShell', () => {
     );
     // The admin nav is visible (proves we're on the admin surface)…
     expect(screen.getByRole('link', { name: 'Settings' })).toBeInTheDocument();
-    // …and the one logout control still terminates the shared session.
-    fireEvent.click(screen.getByRole('button', { name: /Log out/ }));
+    // …and the one logout control (avatar menu → Sign out) still terminates the
+    // shared session.
+    signOutViaAvatarMenu();
     await waitFor(() => expect(onLogoutComplete).toHaveBeenCalledOnce());
     expect(post).toHaveBeenCalledWith('/auth/recruiter/logout');
   });

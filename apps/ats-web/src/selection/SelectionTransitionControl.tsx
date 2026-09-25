@@ -81,14 +81,14 @@ export function SelectionTransitionControl({
             <ul className="move-to-menu__targets" role="menu">
               {targets.map((target) => (
                 <li key={target} role="none">
-                  <button
+                  <Button unstyled
                     type="button"
                     role="menuitem"
                     className="move-to-menu__target"
                     onClick={() => setSelected(target)}
                   >
                     {SELECTION_STATE_LABELS[target]}
-                  </button>
+                  </Button>
                 </li>
               ))}
             </ul>

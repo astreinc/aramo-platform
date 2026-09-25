@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { Button } from '@aramo/fe-foundation';
 
 import type {
   JourneyOwner,
@@ -248,14 +249,14 @@ export function TalentJourneySection({
             <div className="rc-cjr__nextbody">
               <p className="rc-cjr__nexttxt">{nextRecruiting.label}</p>
               {canAdvancePipeline ? (
-                <button
+                <Button unstyled
                   type="button"
                   className="rc-cjr__cta"
                   disabled={pipelineBusy}
                   onClick={() => onRecruitingAdvance(nextRecruiting.to)}
                 >
                   {nextRecruiting.label}
-                </button>
+                </Button>
               ) : (
                 <p className="rc-cjr__why">You do not have permission for this action.</p>
               )}

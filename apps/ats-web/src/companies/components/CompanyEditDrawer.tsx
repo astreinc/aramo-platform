@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { InlineAlert } from '@aramo/fe-foundation';
+import { InlineAlert, Button } from '@aramo/fe-foundation';
 
 import { Icons } from '../../ui';
+import { createContact, updateContact } from '../../contacts/contacts-api';
 import { createCompany, updateCompany } from '../companies-api';
 import { createErrorMessage, updateErrorMessage } from '../error-messages';
 import type {
@@ -11,7 +11,36 @@ import type {
   UpdateCompanyRequest,
 } from '../types';
 
-import { CompanyQuickEditForm } from './CompanyQuickEditForm';
+import {
+  CompanyQuickEditForm,
+  type PrimaryContactPayload,
+} from './CompanyQuickEditForm';
+
+// Persist the drawer's primary-contact section after the company save — update
+// the existing primary, else create one (is_primary) on the company. Best-effort:
+// a contact failure must NOT undo the company save (already committed).
+async function savePrimaryContact(
+  companyId: string,
+  pc: PrimaryContactPayload | null,
+): Promise<void> {
+  if (pc === null) return;
+  const body = {
+    first_name: pc.first_name,
+    last_name: pc.last_name,
+    ...(pc.title === '' ? {} : { title: pc.title }),
+    ...(pc.phone_cell === '' ? {} : { phone_cell: pc.phone_cell }),
+    ...(pc.email1 === '' ? {} : { email1: pc.email1 }),
+  };
+  try {
+    if (pc.existingId !== null) {
+      await updateContact(pc.existingId, body);
+    } else {
+      await createContact({ ...body, company_id: companyId, is_primary: true });
+    }
+  } catch {
+    /* company already saved; a contact-write failure is non-blocking */
+  }
+}
 
 // Company Party/Role (ADR-0032, R6) — the right slide-over quick-edit. Create
 // and edit share this one panel (the prototype's create/edit drawer). Replaces
@@ -83,11 +112,15 @@ export function CompanyEditDrawer({
 
   if (!open) return null;
 
-  async function onCreate(body: CreateCompanyRequest): Promise<void> {
+  async function onCreate(
+    body: CreateCompanyRequest,
+    pc: PrimaryContactPayload | null,
+  ): Promise<void> {
     setSubmitting(true);
     setSubmitError(null);
     try {
       const created = await createCompany(body);
+      await savePrimaryContact(created.id, pc);
       onSaved(created);
     } catch (err) {
       setSubmitError(createErrorMessage(err));
@@ -95,12 +128,16 @@ export function CompanyEditDrawer({
     }
   }
 
-  async function onUpdate(body: UpdateCompanyRequest): Promise<void> {
+  async function onUpdate(
+    body: UpdateCompanyRequest,
+    pc: PrimaryContactPayload | null,
+  ): Promise<void> {
     if (company === null) return;
     setSubmitting(true);
     setSubmitError(null);
     try {
       const updated = await updateCompany(company.id, body);
+      await savePrimaryContact(company.id, pc);
       onSaved(updated);
     } catch (err) {
       setSubmitError(updateErrorMessage(err));
@@ -128,23 +165,14 @@ export function CompanyEditDrawer({
             </span>
           ) : null}
         </h3>
-        {mode === 'edit' && company !== null ? (
-          <Link
-            to={`/companies/${company.id}`}
-            className="rc-drawer__full"
-            data-testid="company-open-full-record"
-          >
-            Open full record →
-          </Link>
-        ) : null}
-        <button
+        <Button unstyled
           type="button"
           className="rc-drawer__x"
           aria-label="Close"
           onClick={onClose}
         >
           <Icons.IconX />
-        </button>
+        </Button>
       </div>
 
       <div className="rc-drawer__body">
@@ -159,6 +187,7 @@ export function CompanyEditDrawer({
             onCancel={onClose}
             submitting={submitting}
             canSeeCommercial={canSeeCommercial}
+            fullRecordHref={`/companies/${company.id}`}
           />
         ) : (
           <CompanyQuickEditForm

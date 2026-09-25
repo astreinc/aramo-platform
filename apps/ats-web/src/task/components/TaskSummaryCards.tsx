@@ -1,3 +1,5 @@
+import { Button } from '@aramo/fe-foundation';
+
 import type { SummaryCounts, SummaryKey } from '../workspace';
 
 // Tasks workspace — the summary metric strip. Each card is a click-filter:
@@ -25,7 +27,7 @@ export function TaskSummaryCards({ counts, activeKey, onSelect }: TaskSummaryCar
         const value = counts[c.key];
         const on = activeKey === c.key;
         return (
-          <button
+          <Button unstyled
             type="button"
             key={c.key}
             className={`rc-scard${c.over ? ' rc-scard--over' : ''}${on ? ' rc-scard--on' : ''}`}
@@ -35,7 +37,7 @@ export function TaskSummaryCards({ counts, activeKey, onSelect }: TaskSummaryCar
           >
             <span className="rc-scard__v num">{value}</span>
             <span className="rc-scard__l">{c.label}</span>
-          </button>
+          </Button>
         );
       })}
     </div>

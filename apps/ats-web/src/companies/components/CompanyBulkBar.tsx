@@ -1,3 +1,5 @@
+import { Button } from '@aramo/fe-foundation';
+
 import { Icons } from '../../ui';
 
 // CompanyBulkBar — fixed action bar shown when ≥1 account is selected (mirrors
@@ -34,7 +36,7 @@ export function CompanyBulkBar({
           scope (never a disabled control naming the scope). Disabled only while
           a submit is in flight. */}
       {canAssign ? (
-        <button
+        <Button
           type="button"
           onClick={onAssignToMe}
           disabled={busy}
@@ -42,26 +44,26 @@ export function CompanyBulkBar({
         >
           <Icons.IconUserPlus />
           Assign to me
-        </button>
+        </Button>
       ) : null}
 
       {/* Honest carries — disabled with reason */}
-      <button
+      <Button
         type="button"
         disabled
         title="Saved lists aren't granted to recruiters yet (saved-list scope carry)."
       >
         <Icons.IconList />
         Add to list
-      </button>
-      <button
+      </Button>
+      <Button
         type="button"
         disabled
         title="Account tags aren't editable in bulk yet (carry)."
       >
         <Icons.IconTag />
         Tag
-      </button>
+      </Button>
 
       <span className="rc-bulkbar__sep" />
       <span
@@ -72,14 +74,14 @@ export function CompanyBulkBar({
         Export off
       </span>
 
-      <button
+      <Button unstyled
         type="button"
         className="rc-bulkbar__x"
         aria-label="Clear selection"
         onClick={onClear}
       >
         <Icons.IconX />
-      </button>
+      </Button>
     </div>
   );
 }

@@ -1,5 +1,11 @@
 import { useState } from 'react';
-import { Button, Card, FormField, InlineAlert } from '@aramo/fe-foundation';
+import {
+  Button,
+  Card,
+  FormField,
+  InlineAlert,
+  Input,
+} from '@aramo/fe-foundation';
 
 import { portalApi } from './portal-api';
 
@@ -69,8 +75,7 @@ export function LoginPage() {
         </p>
         <form id="po-login-form" onSubmit={handleSubmit}>
           <FormField label="Email">
-            <input
-              className="tc-input"
+            <Input
               type="email"
               name="email"
               autoComplete="email"

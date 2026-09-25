@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react';
+import { Button, Input } from '@aramo/fe-foundation';
 
 import { useEntityCrumb } from '../shell/breadcrumb';
 import { ErrorState, LoadingState, PageHeader } from '../ui';
@@ -65,7 +66,7 @@ export function FallthroughView(): JSX.Element {
       <form onSubmit={run}>
         <label>
           From
-          <input
+          <Input
             type="datetime-local"
             value={from}
             onChange={(e) => setFrom(e.target.value)}
@@ -74,16 +75,16 @@ export function FallthroughView(): JSX.Element {
         </label>
         <label>
           To
-          <input
+          <Input
             type="datetime-local"
             value={to}
             onChange={(e) => setTo(e.target.value)}
             data-testid="ft-to"
           />
         </label>
-        <button type="submit" data-testid="ft-run">
+        <Button type="submit" data-testid="ft-run">
           Run report
-        </button>
+        </Button>
       </form>
 
       {status === 'loading' ? <LoadingState /> : null}

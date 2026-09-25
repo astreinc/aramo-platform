@@ -4,7 +4,7 @@ import {
   InlineAlert,
   hasScope,
   useSession,
-  type Session,
+  type Session, Select,
 } from '@aramo/fe-foundation';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
@@ -28,7 +28,6 @@ import {
   Avatar,
   Card,
   FilterChip,
-  Icons,
   ScopedSearch,
   StatusPill,
   Toolbar,
@@ -144,10 +143,9 @@ export function RequisitionsListView({
   const [statusFilter, setStatusFilter] = useState<RecruitingStatus | ''>('');
   const [sort, setSort] = useState<SortKey>('focus');
   const [query, setQuery] = useState('');
-  // REQ-PIXEL-PARITY-1 (hybrid) — prototype Location + Owner dropdowns, additive
-  // to the wired chips. FE-derived from the loaded set (city/state, owner ids).
+  // Prototype Location dropdown, additive to the wired chips. FE-derived from
+  // the loaded set (city/state). (§0 — the Owner dropdown was removed.)
   const [locationFilter, setLocationFilter] = useState('');
-  const [ownerFilter, setOwnerFilter] = useState('');
 
   const sessionState = useSession();
   const session: Session | null =
@@ -287,13 +285,6 @@ export function RequisitionsListView({
       if (client !== '' && r.company_id !== client) return false;
       if (statusFilter !== '' && r.status !== statusFilter) return false;
       if (locationFilter !== '' && locationKeyOf(r) !== locationFilter) return false;
-      if (ownerFilter !== '') {
-        const ownerMatch =
-          ownerFilter === 'me'
-            ? isMine(r)
-            : r.recruiter_id === ownerFilter || r.owner_id === ownerFilter;
-        if (!ownerMatch) return false;
-      }
       if (q !== '') {
         const hay = `${r.title} ${companyNames[r.company_id] ?? ''} ${
           r.external_req_id ?? ''
@@ -309,28 +300,12 @@ export function RequisitionsListView({
     client,
     statusFilter,
     locationFilter,
-    ownerFilter,
     query,
     sort,
     myId,
     companyNames,
     pipelineCounts,
   ]);
-
-  // Needs-attention: hot, or aging (open >= AGING_DAYS with nothing submitted).
-  // Derived from the already-loaded set within the current scope — no new call,
-  // no fabricated signal.
-  const focusItems = useMemo(
-    () =>
-      filtered
-        .filter((r) => {
-          if (isClosedStatus(r.status)) return false;
-          if (r.is_hot) return true;
-          return daysOpen(r) >= AGING_DAYS;
-        })
-        .slice(0, 6),
-    [filtered, pipelineCounts],
-  );
 
   // R5 — the summary line uses ONLY real enum values (open / on hold /
   // closed). No derived bucket, and no total implying these sum.
@@ -415,37 +390,9 @@ export function RequisitionsListView({
         <InlineAlert variant="error">{error}</InlineAlert>
       ) : null}
 
-      {focusItems.length > 0 ? (
-        <div className="rc-focus">
-          <div className="rc-focus__ic">
-            <Icons.IconBolt />
-          </div>
-          <div className="rc-focus__body">
-            <h2 className="rc-focus__h">
-              {focusItems.length} requisition
-              {focusItems.length === 1 ? '' : 's'}{' '}
-              {focusItems.length === 1 ? 'needs' : 'need'} attention
-            </h2>
-            <div className="rc-focus__row">
-              {focusItems.map((r) => (
-                <button
-                  key={r.id}
-                  type="button"
-                  className="rc-focus__k"
-                  onClick={() => scrollToRow(r.id)}
-                >
-                  <span
-                    className="rc-focus__d"
-                    style={{ background: r.is_hot ? 'var(--hot)' : 'var(--warn)' }}
-                  />
-                  <span className="rc-focus__t">{r.title} —</span>{' '}
-                  {focusReason(r, pipelineCounts)}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      ) : null}
+      {/* G2.1 — the "needs attention" summary banner above the table is removed
+          to match the prototype. The aging/priority signal remains available per
+          row (Attention column) and via the Priority filter chip + Sort. */}
 
       <Toolbar float>
         {/* Search first (prototype). Then the prototype dropdowns, then the two
@@ -455,7 +402,7 @@ export function RequisitionsListView({
           value={query}
           onChange={setQuery}
         />
-        <select
+        <Select unstyled
           className="rc-fsel"
           aria-label="Filter by status"
           value={statusFilter}
@@ -467,7 +414,7 @@ export function RequisitionsListView({
               {RECRUITING_STATUS_LABELS[s]}
             </option>
           ))}
-        </select>
+        </Select>
         {/* Searchable company filter (type to navigate). */}
         <span className="rc-fcombo">
           <Combobox
@@ -485,7 +432,7 @@ export function RequisitionsListView({
             testId="company-filter"
           />
         </span>
-        <select
+        <Select unstyled
           className="rc-fsel"
           aria-label="Filter by location"
           value={locationFilter}
@@ -497,23 +444,9 @@ export function RequisitionsListView({
               {loc}
             </option>
           ))}
-        </select>
-        <select
-          className="rc-fsel"
-          aria-label="Filter by owner"
-          value={ownerFilter}
-          onChange={(e) => setOwnerFilter(e.target.value)}
-        >
-          <option value="">Any owner</option>
-          {myId !== null ? <option value="me">Me</option> : null}
-          {ownerFilterOptions(items, userNames)
-            .filter((o) => o.id !== myId)
-            .map((o) => (
-              <option key={o.id} value={o.id}>
-                {o.name}
-              </option>
-            ))}
-        </select>
+        </Select>
+        {/* §0 — the "owner" filter is removed: ownership isn't modeled and it
+            must never map to created_by. */}
         <FilterChip
           active={mode === 'hot'}
           onClick={() => setMode(mode === 'hot' ? 'none' : 'hot')}
@@ -527,7 +460,7 @@ export function RequisitionsListView({
           Bookmarked
         </FilterChip>
         <span className="rc-toolbar__grow" />
-        <select
+        <Select unstyled
           className="rc-fsel"
           aria-label="Sort requisitions"
           value={sort}
@@ -537,7 +470,7 @@ export function RequisitionsListView({
           <option value="aging">Sort: Aging</option>
           <option value="pipeline">Sort: Pipeline</option>
           <option value="new">Sort: Newest</option>
-        </select>
+        </Select>
       </Toolbar>
 
       <Card flush className="rc-mt-16">
@@ -560,7 +493,6 @@ export function RequisitionsListView({
                 <span className="rc-rt__hc">Capacity</span>
                 <span className="rc-rt__hc">Client Status</span>
                 <span className="rc-rt__hc">Attention</span>
-                <span className="rc-rt__hc">Owner</span>
                 <span className="rc-rt__hc">Updated</span>
                 <span className="rc-rt__hc">Status</span>
               </div>
@@ -570,7 +502,6 @@ export function RequisitionsListView({
                   req={r}
                   companyName={companyNames[r.company_id]}
                   funnel={funnels[r.id]}
-                  ownerName={ownerName(r, userNames)}
                   onToggleBookmark={toggleBookmark}
                   expanded={expandedId === r.id}
                   onToggle={() => toggleExpand(r.id)}
@@ -613,7 +544,6 @@ interface RequisitionRowProps {
   readonly req: RequisitionView;
   readonly companyName: string | undefined;
   readonly funnel: ReqFunnel | undefined;
-  readonly ownerName: string | null;
   readonly onToggleBookmark: (id: string, next: boolean) => void;
   readonly expanded: boolean;
   readonly onToggle: () => void;
@@ -626,7 +556,6 @@ function RequisitionRow({
   req,
   companyName,
   funnel,
-  ownerName: owner,
   onToggleBookmark,
   expanded,
   onToggle,
@@ -709,7 +638,7 @@ function RequisitionRow({
       {/* Leading ★ column — the personal favorite (PR-14), prototype's first
           column. It re-skins the bookmark to a star and never touches is_hot;
           the team-wide signal stays the "Priority" pill beside the title. */}
-      <button
+      <Button unstyled
         type="button"
         className={`rc-rt__star${req.bookmarked ? ' rc-rt__star--on' : ''}`}
         aria-pressed={req.bookmarked}
@@ -721,7 +650,7 @@ function RequisitionRow({
         }}
       >
         {req.bookmarked ? '★' : '☆'}
-      </button>
+      </Button>
 
       {/* Requisition */}
       <div className="rc-rt__req">
@@ -733,11 +662,9 @@ function RequisitionRow({
           >
             {req.title}
           </Link>
-          {/* Team-wide operational priority signal (is_hot). Recruiter-facing
-              label is "Priority"; the underlying flag/permission are unchanged. */}
-          {req.is_hot ? (
-            <span className="rc-rt__hot">Priority</span>
-          ) : null}
+          {/* G2.1 — the per-row Priority pill is removed to match the prototype;
+              the team-wide is_hot signal now surfaces only via the Attention
+              column and the Priority filter chip. */}
         </div>
         {idParts.length > 0 ? (
           <div className="rc-rt__sub">
@@ -830,14 +757,7 @@ function RequisitionRow({
         </span>
       </div>
 
-      {/* Owner */}
-      <div className="rc-rt__owner" title={owner ?? 'Unassigned'}>
-        {owner != null ? (
-          <Avatar name={owner} size="sm" />
-        ) : (
-          <Avatar initials="?" size="sm" />
-        )}
-      </div>
+      {/* §0 — Owner cell removed (ownership isn't modeled; creator ≠ owner). */}
 
       {/* Updated */}
       <div className="rc-rt__upd">{relativeTime(req.updated_at)}</div>
@@ -884,7 +804,7 @@ function RequisitionRow({
                   const name = talentNames[e.talent_record_id];
                   const bucket = funnelBucket(e.status);
                   return (
-                    <button
+                    <Button unstyled
                       key={e.id}
                       type="button"
                       className="rc-texp__row"
@@ -926,7 +846,7 @@ function RequisitionRow({
                       <span className="rc-texp__cell rc-texp__cell--r mono">
                         {e.desired_rate || '—'}
                       </span>
-                    </button>
+                    </Button>
                   );
                 })}
               </div>
@@ -944,11 +864,6 @@ function RequisitionRow({
 
 function rowDomId(id: string): string {
   return `req-row-${id}`;
-}
-
-function scrollToRow(id: string): void {
-  const el = document.getElementById(rowDomId(id));
-  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
 function daysOpen(r: RequisitionView): number {
@@ -971,15 +886,6 @@ function relativeTime(iso: string): string {
   if (days < 30) return `${days}d ago`;
   const months = Math.floor(days / 30);
   return `${months}mo ago`;
-}
-
-function focusReason(
-  r: RequisitionView,
-  counts: Record<string, ReqPipelineCount>,
-): string {
-  const age = daysOpen(r);
-  if (r.is_hot) return `priority · ${age}d open`;
-  return `aging · ${age}d open`;
 }
 
 // Per-row ATTENTION (.dc column). GROUNDED-ONLY: derived exclusively from
@@ -1034,15 +940,6 @@ function rowAttention(
   return { tone: 'muted', text: '—', dotColor: muted };
 }
 
-function ownerName(
-  r: RequisitionView,
-  names: Record<string, string>,
-): string | null {
-  const id = r.recruiter_id ?? r.owner_id;
-  if (id === null) return null;
-  return names[id] ?? null;
-}
-
 function locationOf(r: RequisitionView): string {
   const place = [[r.city, r.state].filter(Boolean).join(', '), r.postal_code]
     .filter(Boolean)
@@ -1090,20 +987,6 @@ function locationOptions(items: readonly RequisitionView[]): readonly string[] {
     if (k !== '') set.add(k);
   }
   return [...set].sort((a, b) => a.localeCompare(b));
-}
-
-function ownerFilterOptions(
-  items: readonly RequisitionView[],
-  names: Record<string, string>,
-): ReadonlyArray<{ id: string; name: string }> {
-  const seen = new Map<string, string>();
-  for (const r of items) {
-    const id = r.recruiter_id ?? r.owner_id;
-    if (id != null && !seen.has(id)) seen.set(id, names[id] ?? '—');
-  }
-  return [...seen.entries()]
-    .map(([id, name]) => ({ id, name }))
-    .sort((a, b) => a.name.localeCompare(b.name));
 }
 
 function sortRows(

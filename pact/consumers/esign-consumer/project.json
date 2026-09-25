@@ -1,0 +1,27 @@
+{
+  "name": "esign-consumer-pact",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "pact/consumers/esign-consumer/src",
+  "projectType": "library",
+  "tags": ["pact-consumer"],
+  "targets": {
+    "lint": {
+      "executor": "@nx/eslint:lint",
+      "options": {
+        "lintFilePatterns": ["pact/consumers/esign-consumer/**/*.ts"]
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "echo 'Pact contract tests are excluded from the aggregate test target. Run nx pact-test esign-consumer-pact (or invoke vitest directly) to execute them.'"
+      }
+    },
+    "pact-test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "vitest run --passWithNoTests --root pact/consumers/esign-consumer"
+      }
+    }
+  }
+}

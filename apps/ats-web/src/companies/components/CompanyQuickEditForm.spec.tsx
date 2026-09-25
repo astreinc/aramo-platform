@@ -54,17 +54,45 @@ describe('CompanyQuickEditForm', () => {
       <CompanyQuickEditForm mode="create" canSeeCommercial={false} submitting={false} onCancel={vi.fn()} onSubmit={onSubmit} />,
     );
     fireEvent.change(screen.getByLabelText('Company name'), { target: { value: 'NewCo' } });
-    // add a VENDOR role with ON_HOLD
+    // add a VENDOR role with INACTIVE (drawer status options: Prospect/Active/
+    // Inactive — "On hold" is not offered in the quick-edit drawer per prototype)
     fireEvent.click(screen.getByRole('checkbox', { name: /Vendor/i }));
-    fireEvent.change(screen.getByLabelText('Vendor status'), { target: { value: 'ON_HOLD' } });
+    fireEvent.change(screen.getByLabelText('Vendor status'), { target: { value: 'INACTIVE' } });
     fireEvent.click(screen.getByRole('button', { name: /save company/i }));
     await vi.waitFor(() => expect(onSubmit).toHaveBeenCalled());
     const body = onSubmit.mock.calls[0][0];
     expect(body.name).toBe('NewCo');
     expect(body.relationships).toEqual([
       { type: 'CLIENT', status: 'PROSPECT' },
-      { type: 'VENDOR', status: 'ON_HOLD' },
+      { type: 'VENDOR', status: 'INACTIVE' },
     ]);
+  });
+
+  it('create: Primary contact fields feed the pc payload (2nd onSubmit arg)', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    render(
+      <CompanyQuickEditForm mode="create" canSeeCommercial={false} submitting={false} onCancel={vi.fn()} onSubmit={onSubmit} />,
+    );
+    fireEvent.change(screen.getByLabelText('Company name'), { target: { value: 'NewCo' } });
+    fireEvent.change(screen.getByLabelText('First name'), { target: { value: 'Ram' } });
+    fireEvent.change(screen.getByLabelText('Last name'), { target: { value: 'Mohoni' } });
+    fireEvent.change(screen.getByLabelText('Contact email'), { target: { value: 'ram@x.com' } });
+    fireEvent.click(screen.getByRole('button', { name: /save company/i }));
+    await vi.waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    expect(onSubmit.mock.calls[0][1]).toMatchObject({
+      existingId: null, first_name: 'Ram', last_name: 'Mohoni', email1: 'ram@x.com',
+    });
+  });
+
+  it('create: no Primary contact names → pc payload is null (nothing to persist)', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    render(
+      <CompanyQuickEditForm mode="create" canSeeCommercial={false} submitting={false} onCancel={vi.fn()} onSubmit={onSubmit} />,
+    );
+    fireEvent.change(screen.getByLabelText('Company name'), { target: { value: 'NewCo' } });
+    fireEvent.click(screen.getByRole('button', { name: /save company/i }));
+    await vi.waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    expect(onSubmit.mock.calls[0][1]).toBeNull();
   });
 
   it('create is blocked with no role selected (≥1 required, VR8)', () => {

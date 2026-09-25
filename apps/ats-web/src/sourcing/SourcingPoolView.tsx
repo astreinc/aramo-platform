@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { hasScope, InlineAlert, useSession, type Session } from '@aramo/fe-foundation';
+import { hasScope, InlineAlert, useSession, type Session, Button } from '@aramo/fe-foundation';
 
 import { Avatar, BandPill, Card, Icons, StatusPill } from '../ui';
 
@@ -165,13 +165,13 @@ export function SourcingPoolView({ sessionOverride }: SourcingPoolViewProps = {}
                         </td>
                         <td>
                           <div className="rc-rowq">
-                            <button
+                            <Button
                               type="button"
                               aria-label={`Open ${name}`}
                               onClick={() => setDrawerIndex(i)}
                             >
                               <Icons.IconOpen />
-                            </button>
+                            </Button>
                           </div>
                         </td>
                       </tr>
@@ -183,7 +183,7 @@ export function SourcingPoolView({ sessionOverride }: SourcingPoolViewProps = {}
 
             {nextCursor !== null ? (
               <div className="rc-loadmore">
-                <button
+                <Button unstyled
                   ref={loadMoreRef}
                   type="button"
                   className="tc-button tc-button--ghost"
@@ -191,7 +191,7 @@ export function SourcingPoolView({ sessionOverride }: SourcingPoolViewProps = {}
                   disabled={loadingMore}
                 >
                   {loadingMore ? 'Loading…' : 'Load more'}
-                </button>
+                </Button>
               </div>
             ) : null}
           </div>

@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { Button, Checkbox } from '@aramo/fe-foundation';
 
 import { Icons } from '../../ui';
 import {
@@ -49,8 +50,8 @@ export function TaskRowItem({
       data-testid="task-row"
     >
       {canWrite ? (
-        <input
-          type="checkbox"
+        <Checkbox unstyled
+         
           className="rc-trow__sel"
           aria-label={`Select ${task.title}`}
           checked={selected}
@@ -60,7 +61,7 @@ export function TaskRowItem({
       ) : null}
 
       {canWrite ? (
-        <button
+        <Button unstyled
           type="button"
           className="rc-trow__check"
           aria-label={done ? `Reopen ${task.title}` : `Complete ${task.title}`}
@@ -69,7 +70,7 @@ export function TaskRowItem({
           data-testid="task-toggle"
         >
           <Icons.IconCheck />
-        </button>
+        </Button>
       ) : (
         <span className="rc-trow__check rc-trow__check--ro" aria-hidden="true">
           {done ? <Icons.IconCheck /> : null}
@@ -96,9 +97,9 @@ export function TaskRowItem({
 
       <div className="rc-trow__main">
         <div className="rc-trow__title">
-          <button type="button" className="rc-trow__titlebtn" onClick={() => onOpen(task)}>
+          <Button unstyled type="button" className="rc-trow__titlebtn" onClick={() => onOpen(task)}>
             {task.title}
-          </button>
+          </Button>
           {task.source === 'auto' ? <span className="rc-trow__auto">Auto</span> : null}
         </div>
         <div className="rc-trow__meta">
@@ -123,15 +124,15 @@ export function TaskRowItem({
 
       {canWrite ? (
         <div className="rc-trow__act">
-          <button type="button" title="Snooze 1 day" aria-label={`Snooze ${task.title}`} onClick={() => onSnooze(task)} data-testid="task-snooze">
+          <Button type="button" title="Snooze 1 day" aria-label={`Snooze ${task.title}`} onClick={() => onSnooze(task)} data-testid="task-snooze">
             <Icons.IconClock />
-          </button>
-          <button type="button" title="Reschedule to tomorrow" aria-label={`Reschedule ${task.title}`} onClick={() => onReschedule(task)} data-testid="task-reschedule">
+          </Button>
+          <Button type="button" title="Reschedule to tomorrow" aria-label={`Reschedule ${task.title}`} onClick={() => onReschedule(task)} data-testid="task-reschedule">
             <Icons.IconChevronRight />
-          </button>
-          <button type="button" title="Open" aria-label={`Open ${task.title}`} onClick={() => onOpen(task)} data-testid="task-open">
+          </Button>
+          <Button type="button" title="Open" aria-label={`Open ${task.title}`} onClick={() => onOpen(task)} data-testid="task-open">
             <Icons.IconOpen />
-          </button>
+          </Button>
         </div>
       ) : null}
     </li>

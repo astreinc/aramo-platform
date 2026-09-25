@@ -1,6 +1,6 @@
 import * as RadixPopover from '@radix-ui/react-popover';
 import { useState } from 'react';
-import { Button, FormField, InlineAlert } from '@aramo/fe-foundation';
+import { Button, FormField, InlineAlert, TextArea } from '@aramo/fe-foundation';
 
 import { recruiterNextStates } from './legal-transitions';
 import {
@@ -86,14 +86,14 @@ export function MoveToMenu({ from, disabled, onSubmit }: MoveToMenuProps) {
             <ul className="move-to-menu__targets" role="menu">
               {targets.map((target) => (
                 <li key={target} role="none">
-                  <button
+                  <Button unstyled
                     type="button"
                     role="menuitem"
                     className="move-to-menu__target"
                     onClick={() => setSelected(target)}
                   >
                     {PIPELINE_STATUS_LABELS[target]}
-                  </button>
+                  </Button>
                 </li>
               ))}
             </ul>
@@ -109,7 +109,7 @@ export function MoveToMenu({ from, disabled, onSubmit }: MoveToMenuProps) {
                 Move to <strong>{PIPELINE_STATUS_LABELS[selected]}</strong>?
               </p>
               <FormField label="Note (optional)">
-                <textarea
+                <TextArea
                   value={note}
                   onChange={(e) => setNote(e.target.value)}
                   rows={3}
