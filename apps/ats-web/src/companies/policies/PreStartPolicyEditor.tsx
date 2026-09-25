@@ -26,13 +26,13 @@ type WaiverMode = 'NOT_WAIVABLE' | 'CLIENT_AUTHORITY_ONLY' | 'AUTHORIZED_INTERNA
 type Satisfaction = 'SELF_ATTEST' | 'VERIFICATION_REQUIRED';
 
 const TYPES = [
-  { type: 'BACKGROUND_CHECK', label: 'Background check' },
-  { type: 'DRUG_SCREEN', label: 'Drug screen' },
-  { type: 'I9_VERIFICATION', label: 'I-9 verification' },
-  { type: 'CREDENTIAL_VERIFICATION', label: 'Credential verification' },
-  { type: 'BADGE_PROVISIONING', label: 'Badge provisioning' },
-  { type: 'CLIENT_PAPERWORK', label: 'Client paperwork' },
-  { type: 'NDA', label: 'NDA' },
+  { type: 'BACKGROUND_CHECK', label: 'Background check', desc: 'Criminal and employment history' },
+  { type: 'DRUG_SCREEN', label: 'Drug screen', desc: '10-panel screen through the approved vendor' },
+  { type: 'I9_VERIFICATION', label: 'I-9 verification', desc: 'Employment eligibility verification' },
+  { type: 'CREDENTIAL_VERIFICATION', label: 'Credential verification', desc: 'Degrees and certifications' },
+  { type: 'BADGE_PROVISIONING', label: 'Badge provisioning', desc: 'Building access badge issued' },
+  { type: 'CLIENT_PAPERWORK', label: 'Client paperwork', desc: 'Client onboarding forms and policies' },
+  { type: 'NDA', label: 'NDA', desc: 'Client non-disclosure agreement signed' },
 ] as const;
 type PreStartType = (typeof TYPES)[number]['type'];
 const WAIVERS: readonly { mode: WaiverMode; label: string }[] = [
@@ -155,7 +155,7 @@ export function PreStartPolicyEditor({
   return (
     <Shell onBack={onBack}>
       <ul className="rc-editor-rows">
-        {TYPES.map(({ type, label }) => {
+        {TYPES.map(({ type, label, desc }, i) => {
           const isFloor = loaded.floored.has(type);
           const prov = loaded.provenance[type];
           const r = rows[type];
@@ -163,11 +163,13 @@ export function PreStartPolicyEditor({
           return (
             <li key={type} className="rc-prestart-row">
               <div className="rc-prestart-row__head">
-                <div className="rc-editor-row__label">
+                <span className="rc-prestart-row__ord">{i + 1}</span>
+                <div className="rc-editor-row__label rc-prestart-row__labelcol">
                   <span className="rc-policy-req__label">{label}</span>
-                  {isFloor ? <StatusPill tone="brand">Tenant floor</StatusPill> : null}
-                  {prov !== undefined ? <PolicySourceBadge provenance={prov} /> : null}
+                  <span className="rc-muted-line">{desc}</span>
                 </div>
+                {isFloor ? <StatusPill tone="brand">Tenant floor</StatusPill> : null}
+                {prov !== undefined ? <PolicySourceBadge provenance={prov} /> : null}
                 <div className="rc-toggle" role="group" aria-label={`${label} presence`}>
                   <Button unstyled className={!r.include ? 'is-on' : ''} onClick={() => patch(type, { include: false })}>
                     Inherit
