@@ -9,7 +9,14 @@ import {
 } from '../policies-api';
 
 import { PolicySourceBadge } from './PolicySourceBadge';
+import { PublishBar } from './PublishBar';
 import { SUBMITTAL_KEYS, submittalLabel, type SubmittalKey } from './labels';
+
+function describeChoice(s: { choice: 'inherit' | 'required' | 'not_required'; override_class: 'HARD_DENY' | 'OVERRIDABLE' }): string {
+  if (s.choice === 'inherit') return 'Inherit';
+  if (s.choice === 'not_required') return 'Not required';
+  return `Required (${s.override_class === 'OVERRIDABLE' ? 'Lead / Admin' : 'Not allowed'})`;
+}
 
 // CSP PA-4 — the Client Submittal Policy editor (§12). A bounded domain form over the
 // canonical requirement keys (§13) — never a generic rule builder (§37). The FE submits
@@ -183,17 +190,12 @@ export function ClientSubmittalPolicyEditor({
           );
         })}
       </ul>
-      <div className="rc-editor-bar">
-        <span className="rc-editor-bar__count">
-          {changes.length === 0 ? 'No changes yet' : `${changes.length} change${changes.length === 1 ? '' : 's'}`}
-        </span>
-        <Button variant="secondary" onClick={onBack} disabled={publishing}>
-          Cancel
-        </Button>
-        <Button onClick={() => void publish()} disabled={publishing || changes.length === 0}>
-          Publish changes
-        </Button>
-      </div>
+      <PublishBar
+        changes={changes.map((k) => `${submittalLabel(k)}: ${describeChoice(initial[k])} → ${describeChoice(rows[k])}`)}
+        publishing={publishing}
+        onCancel={onBack}
+        onPublish={() => void publish()}
+      />
     </PanelShell>
   );
 }

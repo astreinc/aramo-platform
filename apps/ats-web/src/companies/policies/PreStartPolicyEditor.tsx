@@ -10,6 +10,11 @@ import {
 } from '../policies-api';
 
 import { PolicySourceBadge } from './PolicySourceBadge';
+import { PublishBar } from './PublishBar';
+
+function describeRow(s: { include: boolean; blocking: boolean }): string {
+  return s.include ? `Required · ${s.blocking ? 'Blocking' : 'Non-blocking'}` : 'Inherit';
+}
 
 // CSP PA-6 — the Pre-Start Policy editor (§20-22). A bounded form over the closed
 // requirement-type registry; the authoritative dimensions are Blocking, Waiver mode and
@@ -203,17 +208,12 @@ export function PreStartPolicyEditor({
           );
         })}
       </ul>
-      <div className="rc-editor-bar">
-        <span className="rc-editor-bar__count">
-          {changes.length === 0 ? 'No changes yet' : `${changes.length} change${changes.length === 1 ? '' : 's'}`}
-        </span>
-        <Button variant="secondary" onClick={onBack} disabled={publishing}>
-          Cancel
-        </Button>
-        <Button onClick={() => void publish()} disabled={publishing || changes.length === 0}>
-          Publish changes
-        </Button>
-      </div>
+      <PublishBar
+        changes={changes.map(({ type, label }) => `${label}: ${describeRow(initial[type])} → ${describeRow(rows[type])}`)}
+        publishing={publishing}
+        onCancel={onBack}
+        onPublish={() => void publish()}
+      />
     </Shell>
   );
 }

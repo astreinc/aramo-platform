@@ -5809,3 +5809,14 @@ button.rc-tj__cell:hover { color: #022ac0; text-decoration: underline; }
 .rc-prestart-row { padding: 14px 0; border-top: 1px solid var(--rc-hairline, #eef1f4); }
 .rc-prestart-row__head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .rc-prestart-row__dims { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; padding-left: 4px; }
+
+/* CSP Policies — publish change summary + responsive editor rows (PA-7) */
+.rc-change-summary { margin-top: 16px; padding: 12px 14px; background: #f6f8fb; border: 1px solid var(--rc-hairline, #eef1f4); border-radius: 8px; }
+.rc-change-summary__h { font-weight: 600; color: #0f1928; font-size: 0.85rem; }
+.rc-change-summary__list { list-style: none; margin: 6px 0 0; padding: 0; }
+.rc-change-summary__list > li { color: #3a454e; font-size: 0.85rem; padding: 2px 0; }
+@media (max-width: 1024px) {
+  .rc-editor-row { grid-template-columns: 1fr; align-items: start; }
+  .rc-editor-row__ovr { justify-content: flex-start; }
+  .rc-prestart-row__head { align-items: flex-start; }
+}

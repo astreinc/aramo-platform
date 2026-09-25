@@ -11,6 +11,7 @@ import {
 } from '../policies-api';
 
 import { PolicySourceBadge } from './PolicySourceBadge';
+import { PublishBar } from './PublishBar';
 import { engagementLabel } from './labels';
 
 // CSP PA-5 — the Engagement Policy editor (§18/§19). A bounded form over the executable
@@ -110,17 +111,26 @@ export function EngagementPolicyEditor({
   if (error !== null) return <Shell onBack={onBack}>{<p className="rc-muted-line">{error}</p>}</Shell>;
   if (loaded === null || channels === null || initial === null) return <Shell onBack={onBack}>{null}</Shell>;
 
-  const changed =
-    mode !== initial.mode ||
-    CHANNELS.some(
-      ({ channel }) =>
-        channels[channel].choice !== initial.channels[channel].choice ||
-        channels[channel].minimum_strength !== initial.channels[channel].minimum_strength,
-    );
-
   const setChoice = (ch: Channel, choice: Choice): void => setChannels({ ...channels, [ch]: { ...channels[ch], choice } });
   const setStrength = (ch: Channel, minimum_strength: Strength): void =>
     setChannels({ ...channels, [ch]: { ...channels[ch], minimum_strength } });
+
+  const enfLabel = (mm: EngagementEnforcementMode): string => ENFORCEMENT.find((e) => e.mode === mm)?.label ?? mm;
+  const describeChannel = (s: ChannelState, ch: Channel): string =>
+    s.choice === 'inherit'
+      ? 'Inherit'
+      : s.choice === 'not_required'
+        ? 'Not required'
+        : ch === 'voice'
+          ? `Required (${s.minimum_strength === 'PROVIDER_VERIFIED' ? 'Provider-verified' : 'Recruiter-attested'})`
+          : 'Required';
+  const summaries: string[] = [];
+  if (mode !== initial.mode) summaries.push(`Enforcement: ${enfLabel(initial.mode)} → ${enfLabel(mode)}`);
+  for (const { channel } of CHANNELS) {
+    if (channels[channel].choice !== initial.channels[channel].choice || channels[channel].minimum_strength !== initial.channels[channel].minimum_strength) {
+      summaries.push(`${engagementLabel(channel)}: ${describeChannel(initial.channels[channel], channel)} → ${describeChannel(channels[channel], channel)}`);
+    }
+  }
 
   const publish = async (): Promise<void> => {
     setPublishing(true);
@@ -201,15 +211,7 @@ export function EngagementPolicyEditor({
           );
         })}
       </ul>
-      <div className="rc-editor-bar">
-        <span className="rc-editor-bar__count">{changed ? 'Unsaved changes' : 'No changes yet'}</span>
-        <Button variant="secondary" onClick={onBack} disabled={publishing}>
-          Cancel
-        </Button>
-        <Button onClick={() => void publish()} disabled={publishing || !changed}>
-          Publish changes
-        </Button>
-      </div>
+      <PublishBar changes={summaries} publishing={publishing} onCancel={onBack} onPublish={() => void publish()} />
     </Shell>
   );
 }
