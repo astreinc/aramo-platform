@@ -130,6 +130,9 @@ export function closedReasonLabel(reason: string): string {
 export const BOARD_BLOCKER_LABELS: Record<string, string> = {
   resume_not_selected: 'Résumé not selected',
   rtr_not_executed: 'Right to represent not executed',
+  client_restricted: 'Restricted at client',
+  engagement_policy_missing: 'Engagement policy not set',
+  engagement_readiness_unavailable: 'Engagement readiness unavailable',
   submittal_window_passed: 'Submittal window passed',
   submittal_limit_reached: 'Submittal limit reached',
   submittals_closed: 'Submittals closed',

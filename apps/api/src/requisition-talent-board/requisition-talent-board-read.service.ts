@@ -22,10 +22,19 @@ import {
   evaluateEligibility,
   type SubmittalPolicyInputs,
   type DocumentEligibilityInput,
+  type EngagementEligibilityInput,
 } from '@aramo/submittal-eligibility';
-import { RequisitionAssignmentRepository } from '@aramo/requisition';
+import { RequisitionAssignmentRepository, RequisitionRepository } from '@aramo/requisition';
+import { ClientTalentRestrictionRepository } from '@aramo/client-talent-restriction';
 
 import { DocumentReadinessGate } from '../rtr/document-readiness.gate.js';
+import { EngagementGateService } from '../engagement/engagement-gate.service.js';
+
+// TB-4 — the requisition-grain engagement applicability (resolved once; see
+// EngagementGateService.resolveApplicability). Drives a TRUTHFUL band: 'policy_present' means
+// the per-talent engagement verdict is not batch-evaluable here, so readiness is UNAVAILABLE
+// (never a false-positive Ready) — never a neutralized default.
+type EngagementApplicability = 'dormant' | 'policy_missing' | 'policy_present';
 
 import type {
   BoardCardView,
@@ -165,6 +174,9 @@ export class RequisitionTalentBoardReadService {
     private readonly readiness: RequisitionSubmittalEligibilityReader,
     private readonly assignment: RequisitionAssignmentRepository,
     private readonly documentReadiness: DocumentReadinessGate,
+    private readonly requisitions: RequisitionRepository,
+    private readonly restriction: ClientTalentRestrictionRepository,
+    private readonly engagement: EngagementGateService,
     @Inject('RequisitionTalentBoardLogger') private readonly logger: AramoLogger,
   ) {}
 
@@ -193,14 +205,18 @@ export class RequisitionTalentBoardReadService {
       );
     }
 
-    // Stage 0 — the Pipeline spine: every talent-on-requisition, ALL statuses (active
-    // + terminal), ONE query. This is the join key the whole Board fans out from.
-    const pipelineRows = await this.pipeline.listByRequisitionsAndStatus({
-      tenant_id,
-      requisition_ids: [requisition_id],
-      statuses: PIPELINE_STATUS_VALUES,
-      limit: 1000,
-    });
+    // Stage 0 — the Pipeline spine (the join key the Board fans out from) + the requisition's
+    // company_id (needed for the TB-4 client-restriction + engagement resolution), read in
+    // parallel (both need only requisition_id).
+    const [pipelineRows, company_id] = await Promise.all([
+      this.pipeline.listByRequisitionsAndStatus({
+        tenant_id,
+        requisition_ids: [requisition_id],
+        statuses: PIPELINE_STATUS_VALUES,
+        limit: 1000,
+      }),
+      this.requisitions.findCompanyId({ tenant_id, id: requisition_id }),
+    ]);
 
     const pipelineIds = pipelineRows.map((r) => r.id);
     const talentIds = pipelineRows.map((r) => r.talent_record_id);
@@ -208,7 +224,7 @@ export class RequisitionTalentBoardReadService {
     // Stage 1 — the owner reads, BATCHED + CONCURRENT (never per-card). Offer + Placement are
     // requisition-scoped in one call each; résumé + history are SET reads; the TB-4 readiness
     // substrate (raw policy inputs + the batched RTR gate) is read here too.
-    const [submittals, resumeByTalent, historyByPipeline, offers, placements, readinessMap, assignments, policyInputsMap, rtrByTalent] =
+    const [submittals, resumeByTalent, historyByPipeline, offers, placements, readinessMap, assignments, policyInputsMap, rtrByTalent, restrictedTalentIds, engagementApplicability] =
       await Promise.all([
         this.submittal.listByRequisitionForBoard({
           tenant_id,
@@ -228,6 +244,13 @@ export class RequisitionTalentBoardReadService {
         // TB-4 — raw policy inputs (for the pure eligibility port) + the batched RTR gate.
         this.readiness.loadPolicyInputsByRequisitionIds(tenant_id, [requisition_id]),
         this.documentReadiness.assessMany({ tenant_id, requisition_id, talent_ids: talentIds }),
+        // TB-4 — authoritative client-restriction (batched) + requisition-grain engagement
+        // applicability (resolved once). Both feed the REAL eligibility port per card; neither
+        // is neutralized to fabricate a positive Ready.
+        company_id === null
+          ? Promise.resolve(new Set<string>())
+          : this.restriction.findActiveRestrictedTalentIds({ tenant_id, client_company_id: company_id, talent_record_ids: talentIds, now: args.now }),
+        this.engagement.resolveApplicability({ tenant_id, company_id, requisition_id }),
       ]);
 
     // Stage 2 — ClientSelection for the whole submittal set, ONE IN-list read.
@@ -297,6 +320,8 @@ export class RequisitionTalentBoardReadService {
           req_readiness,
           policy,
           rtr_verdict: rtrByTalent.get(row.talent_record_id) ?? null,
+          restriction_active: restrictedTalentIds.has(row.talent_record_id),
+          engagement: engagementApplicability,
           assigned_recruiter_user_id,
           now: args.now,
         }),
@@ -349,6 +374,8 @@ export class RequisitionTalentBoardReadService {
       req_readiness: { status: 'open' | 'paused' | 'closed'; reason: string | null };
       policy: { inputs: SubmittalPolicyInputs; consumed_count: number };
       rtr_verdict: DocumentEligibilityInput | null;
+      restriction_active: boolean;
+      engagement: EngagementApplicability;
       assigned_recruiter_user_id: string | null;
       now: Date;
     },
@@ -360,14 +387,23 @@ export class RequisitionTalentBoardReadService {
     // no RTR concern, so it stays null rather than fabricating an EXECUTED value the verdict
     // shape cannot distinguish from ungated.
     const rtr_state = ctx.rtr_verdict !== null && !ctx.rtr_verdict.satisfied ? 'NOT_EXECUTED' : null;
-    // Readiness band (§6) is meaningful only for the Qualified column. TB-4: re-grounded on
-    // the REAL `evaluateEligibility` port (window via the raw policy inputs + the DOC-5 RTR
-    // verdict) — no duplicated policy logic. restriction/engagement remain the submit
-    // transaction's authority (the band is an advisory pre-check; §7). The résumé-selected
-    // fact is an orthogonal Board pre-check (not part of the policy port).
+    // Readiness band (§6) — meaningful only for the Qualified column. TB-4 (remediated): grounded
+    // on the REAL `evaluateEligibility` port over ALL applicable submit gates — window (raw policy
+    // inputs), client restriction (authoritative batched), engagement (requisition-grain
+    // applicability), and RTR. READY TO SUBMIT is asserted ONLY when every applicable gate is
+    // satisfied; when engagement is applicable but not batch-evaluable ('policy_present'),
+    // readiness is UNAVAILABLE → NEEDS ACTION, NEVER a false-positive Ready.
     const readiness: BoardReadiness | null =
       winner.column === 'qualified'
-        ? deriveReadiness(ctx.req_readiness, resume, ctx.policy, ctx.rtr_verdict, ctx.now)
+        ? deriveQualifiedReadiness({
+            req_readiness: ctx.req_readiness,
+            resume,
+            policy: ctx.policy,
+            rtr_verdict: ctx.rtr_verdict,
+            restriction_active: ctx.restriction_active,
+            engagement: ctx.engagement,
+            now: ctx.now,
+          })
         : null;
 
     return {
@@ -531,34 +567,58 @@ function deriveDwell(
   };
 }
 
-// The Qualified band (§6) — TB-4: re-grounded on the REAL `evaluateEligibility` port (window
-// via the raw policy inputs + the DOC-5 RTR verdict), NOT a Board re-derivation of policy
-// (TE-9: one decision authority, no duplicated logic). The band is an ADVISORY pre-check — the
-// submit transaction remains the authority for restriction + engagement (passed neutral here;
-// restriction_active:false, engagement omitted → the port's documented no-gate defaults, §7).
-// The résumé-selected fact is an orthogonal Board pre-check (never part of the policy port).
-// requisition_state/reason stay the requisition-grain window display (deriveByRequisitionIds).
-function deriveReadiness(
-  req_readiness: { status: 'open' | 'paused' | 'closed'; reason: string | null },
-  resume: BoardResume,
-  policy: { inputs: SubmittalPolicyInputs; consumed_count: number },
-  rtr_verdict: DocumentEligibilityInput | null,
-  now: Date,
-): BoardReadiness {
-  const decision = evaluateEligibility(policy.inputs, {
-    now,
-    consumed_count: policy.consumed_count,
-    restriction_active: false, // submit-tx authoritative for restriction (advisory band, §7)
-    ...(rtr_verdict !== null ? { document: rtr_verdict } : {}),
+// The engagement verdict passed to the pure port for a given requisition-grain applicability.
+// - dormant        → satisfied (authoritative: the real gate returns satisfied when not governed).
+// - policy_missing  → the fail-closed deny (authoritative: governed tenant, no effective policy).
+// - policy_present  → NOT passed to the port here; the band instead records a distinct
+//                     'engagement_readiness_unavailable' blocker so it NEVER asserts Ready
+//                     (the per-talent evidence read is not batched — never neutralized).
+function engagementVerdict(applicability: EngagementApplicability): EngagementEligibilityInput | undefined {
+  switch (applicability) {
+    case 'dormant':
+      return { satisfied: true, deny: null };
+    case 'policy_missing':
+      return { satisfied: false, deny: 'CLIENT_SUBMITTAL_ENGAGEMENT_POLICY_MISSING', missing: [] };
+    case 'policy_present':
+      return undefined; // handled as an explicit UNAVAILABLE blocker below
+  }
+}
+
+// The Qualified band (§6) — TB-4 (remediated). Grounded on the REAL `evaluateEligibility` port
+// over EVERY applicable submit gate — window (raw policy inputs), client restriction
+// (authoritative, batched), engagement (requisition-grain applicability), RTR (DOC-5) — plus the
+// orthogonal Board résumé pre-check. NO duplicated policy logic (TE-9: the port is the one
+// authority). The invariant: READY TO SUBMIT ⟺ every applicable gate satisfied; if engagement is
+// applicable but not batch-evaluable, readiness is UNAVAILABLE → NEEDS ACTION, never a
+// false-positive Ready. The submit transaction re-evaluates all of this authoritatively at
+// mutation time; the band is a truthful preflight, not the authority.
+export function deriveQualifiedReadiness(args: {
+  req_readiness: { status: 'open' | 'paused' | 'closed'; reason: string | null };
+  resume: BoardResume;
+  policy: { inputs: SubmittalPolicyInputs; consumed_count: number };
+  rtr_verdict: DocumentEligibilityInput | null;
+  restriction_active: boolean;
+  engagement: EngagementApplicability;
+  now: Date;
+}): BoardReadiness {
+  const engagement = engagementVerdict(args.engagement);
+  const decision = evaluateEligibility(args.policy.inputs, {
+    now: args.now,
+    consumed_count: args.policy.consumed_count,
+    restriction_active: args.restriction_active, // authoritative (batched), not neutralized
+    ...(engagement !== undefined ? { engagement } : {}),
+    ...(args.rtr_verdict !== null ? { document: args.rtr_verdict } : {}),
   });
   const blockers: string[] = [];
   if (!decision.eligible && decision.deny !== undefined) blockers.push(denyToBlocker(decision.deny));
+  // Engagement applicable but not batch-evaluable → readiness UNAVAILABLE (never Ready).
+  if (args.engagement === 'policy_present') blockers.push('engagement_readiness_unavailable');
   // Orthogonal Board pre-check: a submit needs a selected résumé (not part of the policy port).
-  if (resume.source === 'none') blockers.push('resume_not_selected');
+  if (args.resume.source === 'none') blockers.push('resume_not_selected');
   const band: QualifiedBand = blockers.length === 0 ? 'ready_to_submit' : 'needs_action';
   return {
-    requisition_state: req_readiness.status,
-    requisition_reason: req_readiness.reason,
+    requisition_state: args.req_readiness.status,
+    requisition_reason: args.req_readiness.reason,
     blockers,
     band,
   };
@@ -573,6 +633,13 @@ function denyToBlocker(deny: string): string {
       return 'submittal_limit_reached';
     case 'SUBMITTALS_CLOSED':
       return 'submittals_closed';
+    case 'TALENT_RESTRICTED_AT_CLIENT':
+      return 'client_restricted';
+    case 'CLIENT_SUBMITTAL_ENGAGEMENT_POLICY_MISSING':
+      return 'engagement_policy_missing';
+    case 'CLIENT_SUBMITTAL_ENGAGEMENT_INCOMPLETE':
+    case 'CLIENT_SUBMITTAL_ENGAGEMENT_EVIDENCE_UNAVAILABLE':
+      return 'engagement_readiness_unavailable';
     case 'SUBMITTAL_RTR_NOT_EXECUTED':
       return 'rtr_not_executed';
     default:

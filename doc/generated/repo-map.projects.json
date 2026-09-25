@@ -2677,7 +2677,15 @@
       },
       { "project": "outbox-publisher", "status": "production" }
     ],
-    "@aramo/client-talent-restriction": [{ "project": "api", "status": "production" }],
+    "@aramo/client-talent-restriction": [
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/tb1-requisition-talent-board.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      { "project": "api", "status": "production" }
+    ],
     "@aramo/cold-ingest-extraction": [
       {
         "excludedBy": "src/tests/**/*",

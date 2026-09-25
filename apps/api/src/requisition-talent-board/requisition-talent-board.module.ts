@@ -8,10 +8,12 @@ import { ClientSelectionModule } from '@aramo/client-selection';
 import { SubmittalModule } from '@aramo/submittal';
 import { SubmittalEligibilityModule } from '@aramo/submittal-eligibility';
 import { RequisitionModule } from '@aramo/requisition';
+import { ClientTalentRestrictionModule } from '@aramo/client-talent-restriction';
 
 import { OfferModule } from '../offer/offer.module.js';
 import { PlacementModule } from '../placement/placement.module.js';
 import { DocumentReadinessModule } from '../rtr/document-readiness.module.js';
+import { EngagementGateModule } from '../engagement/engagement-gate.module.js';
 
 import { RequisitionTalentBoardController } from './requisition-talent-board.controller.js';
 import { RequisitionTalentBoardReadService } from './requisition-talent-board-read.service.js';
@@ -36,6 +38,8 @@ import { RequisitionTalentBoardReadService } from './requisition-talent-board-re
     SubmittalEligibilityModule,
     RequisitionModule,
     DocumentReadinessModule,
+    ClientTalentRestrictionModule,
+    EngagementGateModule,
   ],
   controllers: [RequisitionTalentBoardController],
   providers: [

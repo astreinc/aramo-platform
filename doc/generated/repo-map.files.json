@@ -320,6 +320,7 @@
     "apps/api/src/tests/auth-hardening-d4b-name-resolver.integration.spec.ts",
     "apps/api/src/tests/authz-d4a-team-models.integration.spec.ts",
     "apps/api/src/tests/authz-d4b-visibility-matrix.integration.spec.ts",
+    "apps/api/src/tests/board-readiness.unit.spec.ts",
     "apps/api/src/tests/canonical-match-shadow.comparator.spec.ts",
     "apps/api/src/tests/canonical-match-shadow.config.spec.ts",
     "apps/api/src/tests/canonical-match-shadow.integration.spec.ts",

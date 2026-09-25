@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import { Client } from 'pg';
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AramoError } from '@aramo/common';
 import { PipelineRepository, PipelinePrismaService } from '@aramo/pipeline';
 import { SubmittalRepository, PrismaService as SubmittalPrismaService } from '@aramo/submittal';
@@ -13,9 +13,11 @@ import { OfferRepository, PlacementRepository, PrismaService as PlacementPrismaS
 import { RequisitionSubmittalEligibilityReader, PrismaService as EligibilityPrismaService } from '@aramo/submittal-eligibility';
 import { RequisitionAssignmentRepository, RequisitionPrismaService } from '@aramo/requisition';
 import { DocumentsRepository, DocumentIdempotencyService, PrismaService as DocumentsPrismaService } from '@aramo/documents';
+import { ClientTalentRestrictionRepository, PrismaService as CtrPrismaService } from '@aramo/client-talent-restriction';
 
 import { RequisitionTalentBoardReadService } from '../requisition-talent-board/requisition-talent-board-read.service.js';
 import { DocumentReadinessGate, RIGHT_TO_REPRESENT_TYPE_ID } from '../rtr/document-readiness.gate.js';
+import type { EngagementGateService } from '../engagement/engagement-gate.service.js';
 
 // Requisition Talent Board (TB-1) — the Board read-composer, end-to-end against real
 // Postgres 17. The composer is constructed with the REAL owner read repositories over the
@@ -42,6 +44,7 @@ const MIGRATIONS = [
   ...migrationsFor('placement'),
   ...migrationsFor('submittal-eligibility'),
   ...migrationsFor('documents'),
+  ...migrationsFor('client-talent-restriction'),
 ];
 
 // Dollar-quote-, single-quote- AND line-comment-aware DDL splitter (the comment-blind-splitter
@@ -87,7 +90,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     let readinessReader: RequisitionSubmittalEligibilityReader;
     let assignmentRepo: RequisitionAssignmentRepository;
     let documentReadiness: DocumentReadinessGate;
+    let restrictionRepo: ClientTalentRestrictionRepository;
     const prismas: Array<{ $disconnect: () => Promise<void> }> = [];
+    // TB-4 harness controls: the requisition→company_id map (a trivial select, stubbed for
+    // harness simplicity; the restriction READER + rows are REAL) and the engagement-gate
+    // applicability (its own 3-state resolution is a separate unit concern — here we drive the
+    // board's HANDLING of each verdict deterministically).
+    const companyIdByReq = new Map<string, string | null>();
+    let engagementMode: 'dormant' | 'policy_missing' | 'policy_present' = 'dormant';
 
     beforeAll(async () => {
       container = await new PostgreSqlContainer('postgres:17').start();
@@ -107,7 +117,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const eligibilityPrisma = new EligibilityPrismaService(url);
       const requisitionPrisma = new RequisitionPrismaService(url);
       const documentsPrisma = new DocumentsPrismaService(url);
-      for (const p of [pipelinePrisma, submittalPrisma, csPrisma, placementPrisma, eligibilityPrisma, requisitionPrisma, documentsPrisma]) {
+      const ctrPrisma = new CtrPrismaService(url);
+      for (const p of [pipelinePrisma, submittalPrisma, csPrisma, placementPrisma, eligibilityPrisma, requisitionPrisma, documentsPrisma, ctrPrisma]) {
         await (p as unknown as { $connect: () => Promise<void> }).$connect();
         prismas.push(p as never);
       }
@@ -120,6 +131,16 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       assignmentRepo = new RequisitionAssignmentRepository(requisitionPrisma as never);
       const docsRepo = new DocumentsRepository(documentsPrisma, new DocumentIdempotencyService(documentsPrisma) as never);
       documentReadiness = new DocumentReadinessGate(docsRepo);
+      restrictionRepo = new ClientTalentRestrictionRepository(ctrPrisma as never, NOOP_LOGGER);
+      // Trivial company_id select — stubbed (the restriction READER + seeded rows are real).
+      const requisitionsStub = {
+        findCompanyId: async (a: { tenant_id: string; id: string }): Promise<string | null> =>
+          companyIdByReq.get(a.id) ?? null,
+      } as unknown as ConstructorParameters<typeof RequisitionTalentBoardReadService>[8];
+      // Engagement applicability — driven per test (dormant | policy_missing | policy_present).
+      const engagementStub = {
+        resolveApplicability: async (): Promise<'dormant' | 'policy_missing' | 'policy_present'> => engagementMode,
+      } as unknown as EngagementGateService;
       service = new RequisitionTalentBoardReadService(
         pipelineRepo,
         submittalRepo,
@@ -129,9 +150,17 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         readinessReader,
         assignmentRepo,
         documentReadiness,
+        requisitionsStub,
+        restrictionRepo,
+        engagementStub,
         NOOP_LOGGER,
       );
     }, 240_000);
+
+    beforeEach(() => {
+      companyIdByReq.clear();
+      engagementMode = 'dormant';
+    });
 
     afterAll(async () => {
       for (const p of prismas) await p.$disconnect().catch(() => undefined);
@@ -227,6 +256,20 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
            (id, tenant_id, document_type_id, resource_type, resource_id, relationship, status, created_by)
          VALUES ($1,$2,$3,'REQUISITION',$4,'REGARDING','UNSATISFIED',$5)`,
         [randomUUID(), tenant, RIGHT_TO_REPRESENT_TYPE_ID, req, randomUUID()],
+      );
+    }
+    // TB-4 — an ACTIVE client-talent restriction (the requisition's company_id must be wired via
+    // companyIdByReq so the composer resolves the same client company).
+    async function seedRestriction(tenant: string, companyId: string, talent: string): Promise<void> {
+      await db.query(
+        `INSERT INTO client_talent_restriction."ClientTalentRestriction"
+           (id, tenant_id, client_company_id, talent_record_id, source_reference, reason_code, recorded_by,
+            effective_from, restriction_type, asserted_by_type, source_system, recorded_at)
+         VALUES ($1,$2,$3,$4,$5,'client_do_not_resubmit',$6, TIMESTAMPTZ '2026-01-01T00:00:00Z',
+                 'CLIENT_DO_NOT_RESUBMIT'::"client_talent_restriction"."RestrictionType",
+                 'CLIENT'::"client_talent_restriction"."AssertedByType",
+                 'CLIENT_EMAIL'::"client_talent_restriction"."SourceSystem", now())`,
+        [randomUUID(), tenant, companyId, talent, `src-${randomUUID()}`, randomUUID()],
       );
     }
     // TB-4 — an EXECUTED RTR document jointly associated to (talent SUBJECT, requisition REGARDING).
@@ -619,6 +662,101 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(card.readiness?.band).toBe('ready_to_submit');
       expect(card.readiness?.blockers).toEqual([]);
       expect(card.rtr_state).toBeNull();
+    });
+
+    // ---------------------------------------------------------------------------------------
+    // TB4-4 (remediation) — an ACTIVE client restriction authoritatively blocks Ready: the band
+    // is NEEDS ACTION with client_restricted (never a false-positive Ready). REAL restriction row.
+    // ---------------------------------------------------------------------------------------
+    it('TB4-4: an active client restriction → NEEDS ACTION + client_restricted (authoritative, never Ready)', async () => {
+      const tenant = randomUUID(); const talent = randomUUID(); const req = randomUUID(); const company = randomUUID();
+      companyIdByReq.set(req, company);
+      await seedPipeline(tenant, req, talent, 'qualified');
+      await seedResume(tenant, talent, req, randomUUID(), new Date('2026-01-10T00:00:00Z'));
+      await seedRestriction(tenant, company, talent); // ACTIVE restriction at this client
+
+      const board = await call(tenant, req);
+      const card = cardsIn(board, 'qualified')[0]!;
+      expect(card.readiness?.band).toBe('needs_action');
+      expect(card.readiness?.blockers).toContain('client_restricted');
+    });
+
+    // ---------------------------------------------------------------------------------------
+    // TB4-5 (remediation) — engagement policy MISSING (governed tenant, no effective policy) →
+    // authoritative fail-closed: NEEDS ACTION + engagement_policy_missing, never Ready.
+    // ---------------------------------------------------------------------------------------
+    it('TB4-5: engagement policy missing → NEEDS ACTION + engagement_policy_missing (never Ready)', async () => {
+      engagementMode = 'policy_missing';
+      const tenant = randomUUID(); const talent = randomUUID(); const req = randomUUID();
+      await seedPipeline(tenant, req, talent, 'qualified');
+      await seedResume(tenant, talent, req, randomUUID(), new Date('2026-01-10T00:00:00Z'));
+
+      const board = await call(tenant, req);
+      const card = cardsIn(board, 'qualified')[0]!;
+      expect(card.readiness?.band).toBe('needs_action');
+      expect(card.readiness?.blockers).toContain('engagement_policy_missing');
+    });
+
+    // ---------------------------------------------------------------------------------------
+    // TB4-6 (remediation) — an engagement policy is PRESENT but its per-talent verdict is not
+    // batch-evaluable → readiness UNAVAILABLE → NEEDS ACTION, NEVER a false-positive Ready even
+    // when every other gate is satisfied (the exact anti-false-positive invariant).
+    // ---------------------------------------------------------------------------------------
+    it('TB4-6: engagement policy present (per-talent unavailable) → NEEDS ACTION + engagement_readiness_unavailable, never Ready', async () => {
+      engagementMode = 'policy_present';
+      const tenant = randomUUID(); const talent = randomUUID(); const req = randomUUID();
+      await seedPipeline(tenant, req, talent, 'qualified');
+      await seedResume(tenant, talent, req, randomUUID(), new Date('2026-01-10T00:00:00Z')); // everything else clear
+
+      const board = await call(tenant, req);
+      const card = cardsIn(board, 'qualified')[0]!;
+      expect(card.readiness?.band).toBe('needs_action'); // NOT ready — engagement unproven
+      expect(card.readiness?.blockers).toEqual(['engagement_readiness_unavailable']);
+    });
+
+    // ---------------------------------------------------------------------------------------
+    // TB4-7 (remediation) — live re-decision: a card Ready on preflight flips to NOT ready once a
+    // restriction lands (proves the band is a LIVE authoritative read, not a cached assertion; the
+    // submit transaction re-evaluates the same gates transactionally at mutation time).
+    // ---------------------------------------------------------------------------------------
+    it('TB4-7: preflight Ready then a restriction lands → re-read is NOT ready (live re-decision)', async () => {
+      const tenant = randomUUID(); const talent = randomUUID(); const req = randomUUID(); const company = randomUUID();
+      companyIdByReq.set(req, company);
+      await seedPipeline(tenant, req, talent, 'qualified');
+      await seedResume(tenant, talent, req, randomUUID(), new Date('2026-01-10T00:00:00Z'));
+
+      const before = await call(tenant, req);
+      expect(cardsIn(before, 'qualified')[0]!.readiness?.band).toBe('ready_to_submit');
+      await seedRestriction(tenant, company, talent); // authoritative fact changes
+      const after = await call(tenant, req);
+      expect(cardsIn(after, 'qualified')[0]!.readiness?.band).toBe('needs_action');
+      expect(cardsIn(after, 'qualified')[0]!.readiness?.blockers).toContain('client_restricted');
+    });
+
+    // ---------------------------------------------------------------------------------------
+    // TB4-8 (remediation) — the same Talent facts under a DIFFERENT requisition policy yield a
+    // different readiness: an open-window requisition is Ready; a PAUSED-window one is NEEDS
+    // ACTION (submittals_closed), proving policy — not the Board — drives readiness.
+    // ---------------------------------------------------------------------------------------
+    it('TB4-8: same facts, different requisition policy → different readiness (policy drives it)', async () => {
+      const tenant = randomUUID();
+      const reqOpen = randomUUID(); const tOpen = randomUUID();
+      await seedPipeline(tenant, reqOpen, tOpen, 'qualified');
+      await seedResume(tenant, tOpen, reqOpen, randomUUID(), new Date('2026-01-10T00:00:00Z'));
+      const reqPaused = randomUUID(); const tPaused = randomUUID();
+      await seedPipeline(tenant, reqPaused, tPaused, 'qualified');
+      await seedResume(tenant, tPaused, reqPaused, randomUUID(), new Date('2026-01-10T00:00:00Z'));
+      // A PAUSED submittal policy on the second requisition (manual_override = PAUSED).
+      await db.query(
+        `INSERT INTO submittal_policy."RequisitionSubmittalPolicy" (id, tenant_id, requisition_id, manual_override, updated_at)
+         VALUES ($1,$2,$3,'PAUSED'::"submittal_policy"."SubmittalWindowStatus", now())`,
+        [randomUUID(), tenant, reqPaused],
+      );
+
+      expect(cardsIn(await call(tenant, reqOpen), 'qualified')[0]!.readiness?.band).toBe('ready_to_submit');
+      const paused = cardsIn(await call(tenant, reqPaused), 'qualified')[0]!;
+      expect(paused.readiness?.band).toBe('needs_action');
+      expect(paused.readiness?.blockers).toContain('submittals_closed');
     });
 
     // ---------------------------------------------------------------------------------------
