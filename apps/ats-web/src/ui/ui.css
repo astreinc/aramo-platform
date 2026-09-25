@@ -5801,3 +5801,6 @@ button.rc-tj__cell:hover { color: #022ac0; text-decoration: underline; }
   border-top: 1px solid var(--rc-hairline, #eef1f4); background: #fff;
 }
 .rc-editor-bar__count { margin-right: auto; color: #3a454e; font-size: 0.85rem; }
+
+/* CSP Policies — engagement enforcement selector (PA-5) */
+.rc-enf { display: flex; align-items: center; gap: 12px; padding: 8px 0 4px; }

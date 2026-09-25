@@ -216,6 +216,16 @@ export function getEngagementHistory(
 ): Promise<{ versions: readonly PolicyVersionHistoryEntry[] }> {
   return apiClient.get(`/v1/engagement/policy/history${historyQ(scope, scopeRef)}`);
 }
+export function publishEngagement(body: {
+  scope: PolicyScope;
+  scope_ref?: string | null;
+  version: string;
+  schema_version: number;
+  requirements: readonly EngagementRequirementDef[];
+  enforcement_mode?: EngagementEnforcementMode;
+}): Promise<{ published: unknown }> {
+  return apiClient.post('/v1/engagement/policy', body);
+}
 
 // ---- Pre-Start endpoints ---------------------------------------------------------
 export function getPreStartEffective(
