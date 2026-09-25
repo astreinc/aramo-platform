@@ -5899,3 +5899,10 @@ button.rc-tj__cell:hover { color: #022ac0; text-decoration: underline; }
 .rc-tier__n--active { background: var(--brand-strong, #022AC0); }
 .rc-policy-card__meta { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
 .rc-link-action--muted { color: #5c6770 !important; }
+
+/* CSP Policies — equal-height overview cards with footer actions pinned to the bottom */
+.rc-policy-cards { align-items: stretch; }
+.rc-policy-card { display: flex; flex-direction: column; height: 100%; }
+.rc-policy-card .rc-policy-reqs { flex: 1 1 auto; }
+.rc-policy-card .rc-policy-card__actions { margin-top: auto; padding-top: 12px; border-top: 1px solid var(--rc-hairline, #eef1f4); }
+.rc-policy-card .rc-footnote { margin-top: 8px; }

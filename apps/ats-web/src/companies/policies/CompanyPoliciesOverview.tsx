@@ -230,7 +230,7 @@ export function CompanyPoliciesOverview({
       {error !== null ? <p className="rc-muted-line">{error}</p> : null}
       <div className="rc-policy-cards">
         {cards.map((c) => (
-          <Card key={c.domain}>
+          <Card key={c.domain} className="rc-policy-card">
             <div className="rc-policy-card__head">
               <h4 className="rc-policy-card__title">{c.title}</h4>
               <p className="rc-muted-line">{c.description}</p>
