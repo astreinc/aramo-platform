@@ -16,6 +16,8 @@ import {
   DocumentIdempotencyService,
   PrismaService as DocumentsPrismaService,
 } from '@aramo/documents';
+// CSP PR-3 — the REAL client-submittal-policy service over the same policy_store DB.
+import { ClientSubmittalPolicyService } from '@aramo/client-submittal-policy';
 
 // COMM-C3 — the engagement gate is composed into the orchestrator; imported here
 // to construct the real gate against the same test DB (dormant unless a policy is
@@ -30,6 +32,10 @@ import { EngagementGateService } from '../engagement/engagement-gate.service.js'
 // which declare an RTR requirement — stay unchanged. This is the load-bearing
 // proof that existing submits remain ungated with the REAL gate wired.
 import { DocumentReadinessGate } from '../rtr/document-readiness.gate.js';
+// CSP PR-3 — the REAL client-submittal-policy service over the same policy_store
+// DB. Ungoverned tenants (no published client-submittal-policy) resolve null, so
+// the decision step is a no-op and the pre-CSP proofs stay unchanged.
+import { ClientSubmittalPolicyGatewayAdapter } from '../client-submittal-policy/client-submittal-policy-gateway.adapter.js';
 
 // Lane L8-B1 (v1.2) — the load-bearing atomicity + authority proofs for the
 // "Submit Talent to Client" orchestrator (real Postgres 17, 7 schemas). These
@@ -75,6 +81,8 @@ const mig = (p: string): string => resolve(ROOT, p);
 const MIGRATIONS = [
   'libs/metering/prisma/migrations/20260601150000_init_metering_model/migration.sql',
   'libs/requisition/prisma/migrations/20260602100000_init_requisition_model/migration.sql',
+  // CSP PR-3 — the submit command now reads Requisition.bill_rate_amount (bill_rate_present fact).
+  'libs/requisition/prisma/migrations/20260605123400_add_compensation_fields_to_requisition/migration.sql',
   // L1-C — the D6 submit gate reads requisition.status against the CANONICAL
   // RecruitingStatus enum ('open' / 'draft' / 'submittals_closed' / …). The init
   // migration above ships the superseded RequisitionStatus enum (active/full/…),
@@ -142,6 +150,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     let commsPrisma: CommunicationsPrismaService;
     let docsPrisma: DocumentsPrismaService;
     let engagementPolicy: EngagementPolicyService;
+    let clientSubmittalPolicy: ClientSubmittalPolicyService;
     let svc: InstanceType<typeof SubmitTalentToClientService>;
 
     beforeAll(async () => {
@@ -171,7 +180,18 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const documentReadiness = new DocumentReadinessGate(
         new DocumentsRepository(docsPrisma, new DocumentIdempotencyService(docsPrisma)),
       );
-      svc = new SubmitTalentToClientService(db, logger, gate, documentReadiness);
+      clientSubmittalPolicy = new ClientSubmittalPolicyService(
+        new ClientSubmittalPolicyGatewayAdapter(db as never),
+      );
+      // CSP PR-3 — the submit's governed path reads talent_record.TalentRecord.
+      // work_authorization. The curated migration set omits the talent_record
+      // schema (ungoverned tenants never touch it), so create the minimal shape the
+      // query needs; the governed proofs below seed rows into it.
+      await sql.query(`CREATE SCHEMA IF NOT EXISTS talent_record`);
+      await sql.query(
+        `CREATE TABLE talent_record."TalentRecord" (id uuid PRIMARY KEY, tenant_id uuid NOT NULL, work_authorization text)`,
+      );
+      svc = new SubmitTalentToClientService(db, logger, gate, documentReadiness, clientSubmittalPolicy);
     }, 180_000);
 
     afterAll(async () => {
@@ -743,6 +763,98 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(rows.rows[0].inputs.overridden).toBe(true);
       expect(rows.rows[0].inputs.override_reason).toBe('Client phone-screened; evidence sync pending.');
       expect(rows.rows[0].inputs.missing).toEqual(['voice']); // evidence NOT fabricated — still recorded missing
+    });
+
+    // ---- CSP PR-3: the Client Submittal Policy governs the submit --------------
+    // A published TENANT client-submittal-policy that REQUIRES work_authorization_present
+    // with HARD_DENY. The submit SUPPLIES the fact (from talent_record); the generic
+    // engine decides ONCE, AFTER the existing hard/eligibility gates and BEFORE slot
+    // consumption. Directive PR-3 proof uses work_authorization (never RTR).
+    async function publishWorkAuthHardDeny(t: string): Promise<void> {
+      await clientSubmittalPolicy.publish({
+        tenant_id: t,
+        scope: 'TENANT',
+        scope_ref: null,
+        version: '1.0.0',
+        definition: {
+          requirements: [
+            {
+              key: 'work_authorization_present',
+              disposition: 'REQUIRED',
+              override_class: 'HARD_DENY',
+              override_policy: 'DEFAULT',
+            },
+          ],
+        },
+        published_by: randomUUID(),
+      });
+    }
+    async function seedTalentRecord(t: string, id: string, workAuth: string | null): Promise<void> {
+      await sql.query(
+        `INSERT INTO talent_record."TalentRecord" (id,tenant_id,work_authorization) VALUES ($1,$2,$3)`,
+        [id, t, workAuth],
+      );
+    }
+    async function setupGovernedSubmit(
+      t: string,
+      workAuth: string | null,
+    ): Promise<{ req: string; sub: string }> {
+      const talent = randomUUID(), req = randomUUID(), pipe = randomUUID(), sub = randomUUID();
+      await seedRequisition(t, req, 'open');
+      await seedPipeline(t, pipe, talent, req);
+      await seedSubmittal(t, sub, talent, req, pipe);
+      await seedRequisitionResume(t, talent, req, TI1DD_EDITION);
+      await seedTalentRecord(t, talent, workAuth);
+      return { req, sub };
+    }
+
+    it('CSP-1: governed client REQUIRES work-authorization (HARD_DENY); work_auth ABSENT → DENY, NO slot, NO provenance', async () => {
+      const t = randomUUID();
+      await publishWorkAuthHardDeny(t);
+      const { req, sub } = await setupGovernedSubmit(t, null);
+      // BEFORE: nothing consumed, no decision recorded.
+      expect(await count('submittal_policy."SubmittalConsumption"', 'requisition_id=$1', [req])).toBe('0');
+      await expect(
+        svc.submitToClient({
+          tenant_id: t,
+          submittal_id: sub,
+          event_id: randomUUID(),
+          actor_id: randomUUID(),
+          requestId: 'csp-deny',
+        }),
+      ).rejects.toMatchObject({
+        code: 'CLIENT_SUBMITTAL_WORK_AUTHORIZATION_PRESENT_REQUIRED',
+        statusCode: 409,
+      });
+      // AFTER (non-vacuous): the DENY rolled the tx back — NO slot, NO CLIENT_SUBMITTAL record.
+      expect(await count('submittal_policy."SubmittalConsumption"', 'requisition_id=$1', [req])).toBe('0');
+      expect(
+        await count('policy_store."PolicyDecisionRecord"', "tenant_id=$1 AND resource='CLIENT_SUBMITTAL'", [t]),
+      ).toBe('0');
+    });
+
+    it('CSP-2: SAME governed client, work_auth PRESENT → ALLOW, slot consumed, CLIENT_SUBMITTAL provenance written', async () => {
+      const t = randomUUID();
+      await publishWorkAuthHardDeny(t);
+      const { req, sub } = await setupGovernedSubmit(t, 'US_CITIZEN');
+      const res = await svc.submitToClient({
+        tenant_id: t,
+        submittal_id: sub,
+        event_id: randomUUID(),
+        actor_id: randomUUID(),
+        requestId: 'csp-allow',
+      });
+      expect(res.state).toBe('submitted_to_ats');
+      expect(await count('submittal_policy."SubmittalConsumption"', 'requisition_id=$1', [req])).toBe('1');
+      const rows = await sql.query(
+        `SELECT decision, reason_code, inputs FROM policy_store."PolicyDecisionRecord"
+          WHERE tenant_id=$1 AND resource='CLIENT_SUBMITTAL' ORDER BY occurred_at DESC LIMIT 1`,
+        [t],
+      );
+      expect(rows.rows[0].decision).toBe('ALLOW');
+      expect(rows.rows[0].reason_code).toBe('CLIENT_SUBMITTAL_ALLOWED_DEFAULT');
+      // The PII-free facts ride `derived`; work_authorization_present is now true.
+      expect(rows.rows[0].inputs.derived.work_authorization_present).toBe(true);
     });
   },
 );

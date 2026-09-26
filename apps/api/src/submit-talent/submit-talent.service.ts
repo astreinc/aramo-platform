@@ -8,6 +8,12 @@ import {
   evaluateEligibility,
   type SubmittalPolicyInputs,
 } from '@aramo/submittal-eligibility';
+import {
+  CLIENT_SUBMITTAL_ACTION,
+  CLIENT_SUBMITTAL_RESOURCE,
+  ClientSubmittalPolicyService,
+} from '@aramo/client-submittal-policy';
+import { insertPolicyDecisionRecordInTx } from '@aramo/policy-store';
 
 import { EngagementGateService } from '../engagement/engagement-gate.service.js';
 import { DocumentReadinessGate } from '../rtr/document-readiness.gate.js';
@@ -51,6 +57,10 @@ export interface SubmitTalentToClientInput {
   readonly actor_can_override?: boolean;
   /** COMM PART A — an explicit engagement-policy override with a recorded reason. */
   readonly engagement_override?: { readonly reason: string } | undefined;
+  // CSP PR-3 — whether the actor holds client-submittal-policy:override (JWT-frozen
+  // scope membership; never a role name), and the recorded override reason.
+  readonly submittal_actor_can_override?: boolean;
+  readonly submittal_override_reason?: string | null;
 }
 
 export interface SubmitTalentToClientResult {
@@ -103,6 +113,9 @@ export class SubmitTalentToClientService {
     // DOC-5 — the document-readiness (RTR) gate; resolves the same-document
     // executed-RTR verdict on its own connection. Checked LAST in the order.
     private readonly documentReadiness: DocumentReadinessGate,
+    // CSP PR-3 — the Client Submittal Policy service; resolves the effective per-
+    // client policy (StoredPolicyVersion layers) and decides via the generic engine.
+    private readonly clientSubmittalPolicy: ClientSubmittalPolicyService,
   ) {}
 
   async submitToClient(
@@ -187,14 +200,18 @@ export class SubmitTalentToClientService {
       // (409) — no free pass for a missing requisition. details.status carries the
       // current status (null when absent). This gate only READS status; it never
       // writes it (Rule 3 / H4 one-way).
-      const reqStatusRows = await tx.$queryRawUnsafe<Array<{ status: string; company_id: string | null }>>(
-        `SELECT "status","company_id" FROM "requisition"."Requisition"
+      const reqStatusRows = await tx.$queryRawUnsafe<
+        Array<{ status: string; company_id: string | null; bill_rate_amount: string | number | null }>
+      >(
+        `SELECT "status","company_id","bill_rate_amount" FROM "requisition"."Requisition"
           WHERE "id" = $1::uuid AND "tenant_id" = $2::uuid`,
         requisition_id,
         tenant_id,
       );
       const requisition_status = reqStatusRows[0]?.status;
       const company_id = reqStatusRows[0]?.company_id ?? null;
+      // CSP PR-3 — Client Submittal Policy fact: a bill rate is recorded on the requisition.
+      const bill_rate_present = reqStatusRows[0]?.bill_rate_amount != null;
       if (requisition_status !== 'open') {
         throw err(
           'REQUISITION_NOT_OPEN',
@@ -283,6 +300,76 @@ export class SubmitTalentToClientService {
         throw err(decision.deny, `Submittal not eligible: ${decision.deny}`, 409, {
           submittal_id,
           requisition_id,
+        });
+      }
+
+      // 4b — CSP PR-3: Client Submittal Policy (the configurable per-client layer).
+      // Runs AFTER the existing hard/eligibility gates and BEFORE slot consumption, so
+      // a policy denial consumes NO slot. The command SUPPLIES the facts; the pure
+      // generic engine decides. resolveEffective is fail-closed (FLOOR); a null result
+      // (no published client-submittal policy) is a no-op (an ungoverned tenant).
+      const clientPolicy = await this.clientSubmittalPolicy.resolveEffective(tenant_id, {
+        company_id,
+        requisition_id,
+      });
+      if (clientPolicy !== null) {
+        const workAuthRows = await tx.$queryRawUnsafe<Array<{ work_authorization: string | null }>>(
+          `SELECT "work_authorization" FROM "talent_record"."TalentRecord"
+            WHERE "id" = $1::uuid AND "tenant_id" = $2::uuid`,
+          talent_record_id,
+          tenant_id,
+        );
+        const facts = {
+          resume_selected: resume_edition_id !== undefined,
+          engagement_satisfied: engagement.satisfied,
+          rtr_present: document.satisfied,
+          work_authorization_present: (workAuthRows[0]?.work_authorization ?? null) !== null,
+          bill_rate_present,
+        };
+        const policyDecision = this.clientSubmittalPolicy.decide(tenant_id, clientPolicy, facts, requestId);
+        const overridden =
+          policyDecision.decision === 'REQUIRES_OVERRIDE' &&
+          policyDecision.required_capabilities.length > 0 &&
+          (input.submittal_actor_can_override ?? false) &&
+          (input.submittal_override_reason ?? null) !== null;
+        const proceed =
+          policyDecision.decision === 'ALLOW' || policyDecision.decision === 'ALLOW_WITH_AUDIT' || overridden;
+        if (!proceed) {
+          throw err(policyDecision.reason_code, `Client submittal policy: ${policyDecision.reason_code}`, 409, {
+            submittal_id,
+            requisition_id,
+            required_capabilities: policyDecision.required_capabilities,
+          });
+        }
+        // §D12 provenance (in-tx): composite layer identity is the deterministic
+        // policy_version; PII-free facts ride `derived`; an override records its
+        // reason + capabilities. Written iff the submit commits.
+        await insertPolicyDecisionRecordInTx(tx as never, {
+          tenant_id,
+          decision: policyDecision.decision,
+          policy_version: clientPolicy.composite_version,
+          rule_id: policyDecision.provenance.map((p) => p.rule_id).join(',') || '__default__',
+          reason_code: policyDecision.reason_code,
+          resource: CLIENT_SUBMITTAL_RESOURCE,
+          action: CLIENT_SUBMITTAL_ACTION,
+          inputs: {
+            resource: CLIENT_SUBMITTAL_RESOURCE,
+            action: CLIENT_SUBMITTAL_ACTION,
+            declared: {},
+            derived: { ...facts },
+            capabilities: {},
+            ...(overridden
+              ? {
+                  override: {
+                    reason_code: input.submittal_override_reason ?? null,
+                    capabilities: policyDecision.required_capabilities,
+                  },
+                }
+              : {}),
+          },
+          actor_id: input.actor_id,
+          origin: 'ui',
+          correlation_id: requestId,
         });
       }
 

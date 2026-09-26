@@ -400,6 +400,13 @@ export const SEED_SCOPE_KEYS = [
   // policy, WITH a recorded reason + authoritative provenance. tenant_admin +
   // tenant_owner only.
   'engagement:policy:override',
+  // CSP PR-2 — Client Submittal Policy admin (read/write) + runtime override.
+  // read/write: view/publish a per-scope (TENANT/CLIENT/REQUISITION) Client Submittal
+  // Policy version. override: proceed past an OVERRIDABLE client-submittal requirement
+  // at Submit to client WITH a recorded reason. tenant_admin + tenant_owner only.
+  'client-submittal-policy:read',
+  'client-submittal-policy:write',
+  'client-submittal-policy:override',
   // Requisition Approval sub-workflow — decide the pending_approval → open /
   // → draft (APPROVE / REJECT) governed transitions.
   'requisition:approve',

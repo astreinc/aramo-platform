@@ -38,6 +38,20 @@ export function isScopeType(v: unknown): v is ScopeTypeValue {
   return typeof v === 'string' && (SCOPE_TYPE_VALUES as readonly string[]).includes(v);
 }
 
+// OverridePolicy — governs whether a MORE-SPECIFIC scope (CLIENT/REQUISITION) may
+// relax a requirement inherited from a broader (TENANT/CLIENT) layer. DEFAULT: the
+// more-specific layer may override freely. FLOOR: a non-relaxable floor — a more-
+// specific layer may only STRENGTHEN it, never weaken it. The FLOOR is INHERITED:
+// once a broader scope marks a requirement_type FLOOR, every more-specific layer
+// stays bound by it regardless of that layer's own override_policy (see
+// floor-strictness.ts for the strictness relation).
+export const OVERRIDE_POLICY_VALUES = ['DEFAULT', 'FLOOR'] as const;
+export type OverridePolicyValue = (typeof OVERRIDE_POLICY_VALUES)[number];
+export function isOverridePolicy(v: unknown): v is OverridePolicyValue {
+  return typeof v === 'string' && (OVERRIDE_POLICY_VALUES as readonly string[]).includes(v);
+}
+export const DEFAULT_OVERRIDE_POLICY: OverridePolicyValue = 'DEFAULT';
+
 // L5-P6 (ruling P4) — the requirement's SATISFACTION POLICY: what SATISFIED requires.
 // SELF_ATTEST — the ordinary :act path may satisfy directly (upload/self-declare).
 // VERIFICATION_REQUIRED — SATISFIED is reachable ONLY via the governed :verify op by a
@@ -164,6 +178,8 @@ export interface RequirementDefinitionInput {
   waiver_mode: WaiverModeValue;
   // L5-P6 — optional; absent = SELF_ATTEST (matches the DB column default).
   satisfaction_policy?: SatisfactionPolicyValue;
+  // CSP PR-1 — optional; absent = DEFAULT (matches the DB column default).
+  override_policy?: OverridePolicyValue;
 }
 
 export function isRequirementDefinitionInput(v: unknown): v is RequirementDefinitionInput {
@@ -177,7 +193,9 @@ export function isRequirementDefinitionInput(v: unknown): v is RequirementDefini
     typeof e['sequence'] === 'number' &&
     isWaiverMode(e['waiver_mode']) &&
     // L5-P6 — optional; when present it must be a valid policy.
-    (e['satisfaction_policy'] === undefined || isSatisfactionPolicy(e['satisfaction_policy']))
+    (e['satisfaction_policy'] === undefined || isSatisfactionPolicy(e['satisfaction_policy'])) &&
+    // CSP PR-1 — optional; when present it must be a valid override_policy.
+    (e['override_policy'] === undefined || isOverridePolicy(e['override_policy']))
   );
 }
 
@@ -195,6 +213,9 @@ export function canonicalizeDefinitions(defs: readonly RequirementDefinitionInpu
       waiver_mode: d.waiver_mode,
       // L5-P6 — part of the config, so it participates in the version checksum.
       satisfaction_policy: d.satisfaction_policy ?? DEFAULT_SATISFACTION_POLICY,
+      // CSP PR-1 — part of the config: a FLOOR is a materially different immutable
+      // identity than a DEFAULT, so it participates in the version checksum.
+      override_policy: d.override_policy ?? DEFAULT_OVERRIDE_POLICY,
     }));
   return JSON.stringify(canonical);
 }

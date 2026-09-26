@@ -41,10 +41,11 @@ datasource db {
 // scope. Publication lifecycle: draft -> published -> superseded (§4.1). At most
 // one open published set per (tenant, scope, scope_ref_id).
 //
-// SCOPE (§4b finding — TENANT-ONLY): `scope` ∈ SCOPE_TYPE_VALUES (only 'TENANT'
-// today; scope_ref_id == tenant_id). Client/requisition scopes and their
-// precedence are DEFERRED (ruled) — the (scope, scope_ref_id) columns are the
-// seam; no precedence resolution is implemented.
+// SCOPE: `scope` ∈ SCOPE_TYPE_VALUES (TENANT | CLIENT | REQUISITION). For TENANT,
+// scope_ref_id == tenant_id; CLIENT/REQUISITION carry an in-tenant opaque
+// client/requisition ref. resolveEffective merges the layered TENANT -> CLIENT ->
+// REQUISITION chain; a FLOOR requirement may only be strengthened down-scope
+// (override_policy on the Definition; see floor-strictness.ts).
 model PreStartRequirementSet {
   id           String @id @db.Uuid
   tenant_id    String @db.Uuid
@@ -88,6 +89,11 @@ model PreStartRequirementDefinition {
   waiver_mode      String
   // L5-P6 — SELF_ATTEST | VERIFICATION_REQUIRED (config on Definition; frozen snapshot on Instance).
   satisfaction_policy String @default("SELF_ATTEST")
+  // CSP PR-1 (§D4-A) — DEFAULT | FLOOR. A FLOOR requirement may only be STRENGTHENED
+  // by a more-specific scope (never weakened); see floor-strictness.ts. Definition-only:
+  // the floor-validated effective blocking/waiver/satisfaction values are what
+  // materialize onto the Instance, so the Instance snapshot carries no override_policy.
+  override_policy String @default("DEFAULT")
 
   created_at DateTime @default(now()) @db.Timestamptz(6)
 

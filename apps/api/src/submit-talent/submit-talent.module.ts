@@ -10,6 +10,7 @@ import {
 
 import { EngagementGateModule } from '../engagement/engagement-gate.module.js';
 import { DocumentReadinessModule } from '../rtr/document-readiness.module.js';
+import { ClientSubmittalPolicyModule } from '../client-submittal-policy/client-submittal-policy.module.js';
 
 import { SubmitTalentController } from './submit-talent.controller.js';
 import { SubmitTalentToClientService } from './submit-talent.service.js';
@@ -21,7 +22,7 @@ import { SubmitTalentToClientService } from './submit-talent.service.js';
 // transaction on the submittal-eligibility connection (bound as 'SubmitTalentDb')
 // and issues cross-schema parameterized raw SQL confined to that boundary.
 @Module({
-  imports: [AuthModule, SubmittalEligibilityModule, SubmittalModule, ConsentModule, EngagementGateModule, DocumentReadinessModule],
+  imports: [AuthModule, SubmittalEligibilityModule, SubmittalModule, ConsentModule, EngagementGateModule, DocumentReadinessModule, ClientSubmittalPolicyModule],
   controllers: [SubmitTalentController],
   providers: [
     SubmitTalentToClientService,

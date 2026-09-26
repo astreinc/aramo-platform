@@ -1,7 +1,8 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Inject, Post, Query, UseGuards } from '@nestjs/common';
 import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
 import { AramoError, RequestId } from '@aramo/common';
 import { RequireScopes, RolesGuard } from '@aramo/authorization';
+import { COMPANY_CLIENT_CHECK_PORT, type CompanyClientCheckPort } from '@aramo/requisition';
 import { EntitlementGuard, RequireCapability } from '@aramo/entitlement';
 import {
   EngagementPolicyService,
@@ -26,6 +27,11 @@ export class EngagementController {
   constructor(
     private readonly policy: EngagementPolicyService,
     private readonly gate: EngagementGateService,
+    // CSP PR-5 — CLIENT-scope authoring is ownership-guarded through the SAME
+    // established CompanyClientCheckPort seam used by pre-start + client-submittal,
+    // closing the engagement parity gap (a CLIENT engagement policy could
+    // previously be published against a company_id not owned by the tenant).
+    @Inject(COMPANY_CLIENT_CHECK_PORT) private readonly clientCheck: CompanyClientCheckPort,
   ) {}
 
   /** Provider-neutral evidence-channel capabilities (voice + email available per COMM-C2B). */
@@ -50,15 +56,96 @@ export class EngagementController {
     @Query('requisition_id') requisitionId: string | undefined,
     @Query('company_id') companyId: string | undefined,
     @AuthContext() auth: AuthContextType,
+    @RequestId() requestId: string,
   ): Promise<{ governed: boolean; effective: unknown }> {
+    await this.assertClientOwned(auth.tenant_id, companyId, requestId);
     const [governed, effective] = await Promise.all([
       this.policy.isTenantGoverned(auth.tenant_id),
-      this.policy.resolveEffective(auth.tenant_id, {
+      // CSP PA-2c — the annotated read/admin view (per-channel source + provenance +
+      // effective enforcement_mode). Provenance is backend truth, never FE-inferred.
+      this.policy.resolveEffectiveView(auth.tenant_id, {
         company_id: companyId ?? null,
         requisition_id: requisitionId ?? null,
       }),
     ]);
     return { governed, effective };
+  }
+
+  /** The raw per-layer read (§8): each scope's own definition + merged effective. */
+  @Get('policy/layers')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('engagement:policy:read')
+  async layers(
+    @Query('requisition_id') requisitionId: string | undefined,
+    @Query('company_id') companyId: string | undefined,
+    @AuthContext() auth: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<{ layers: unknown }> {
+    await this.assertClientOwned(auth.tenant_id, companyId, requestId);
+    const layers = await this.policy.readLayers(auth.tenant_id, {
+      company_id: companyId ?? null,
+      requisition_id: requisitionId ?? null,
+    });
+    return { layers };
+  }
+
+  /** The immutable version history for one engagement policy scope (§10), newest first. */
+  @Get('policy/history')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('engagement:policy:read')
+  async history(
+    @Query('scope') scope: string | undefined,
+    @Query('scope_ref') scopeRef: string | undefined,
+    @AuthContext() auth: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<{ versions: unknown }> {
+    const resolvedScope = this.assertScope(scope, requestId);
+    if (resolvedScope === 'CLIENT') {
+      await this.assertClientOwned(auth.tenant_id, scopeRef, requestId, true);
+    } else if (resolvedScope === 'REQUISITION' && !scopeRef) {
+      throw new AramoError('ENGAGEMENT_POLICY_SCHEMA_INVALID', 'REQUISITION scope requires scope_ref', 422, {
+        requestId,
+        details: { reason: 'SCOPE_REF_REQUIRED', scope: resolvedScope },
+      });
+    }
+    const versions = await this.policy.history(auth.tenant_id, resolvedScope, scopeRef ?? null);
+    return { versions };
+  }
+
+  private assertScope(scope: string | undefined, requestId: string): 'TENANT' | 'CLIENT' | 'REQUISITION' {
+    if (scope !== 'TENANT' && scope !== 'CLIENT' && scope !== 'REQUISITION') {
+      throw new AramoError('ENGAGEMENT_POLICY_SCHEMA_INVALID', 'scope must be TENANT | CLIENT | REQUISITION', 422, {
+        requestId,
+        details: { reason: 'INVALID_SCOPE', scope: scope ?? null },
+      });
+    }
+    return scope;
+  }
+
+  // §27 — a client-level read carrying a company_id must target a company the caller
+  // tenant owns as a CLIENT (the same CompanyClientCheckPort seam as publish).
+  private async assertClientOwned(
+    tenantId: string,
+    companyId: string | undefined,
+    requestId: string,
+    required = false,
+  ): Promise<void> {
+    if (!companyId) {
+      if (required) {
+        throw new AramoError('ENGAGEMENT_POLICY_SCHEMA_INVALID', 'CLIENT scope requires scope_ref', 422, {
+          requestId,
+          details: { reason: 'SCOPE_REF_REQUIRED', scope: 'CLIENT' },
+        });
+      }
+      return;
+    }
+    const owned = await this.clientCheck.isClientCompany({ tenant_id: tenantId, company_id: companyId });
+    if (!owned) {
+      throw new AramoError('ENGAGEMENT_POLICY_SCHEMA_INVALID', 'company_id is not a CLIENT company of this tenant', 422, {
+        requestId,
+        details: { reason: 'COMPANY_NOT_CLIENT', company_id: companyId },
+      });
+    }
   }
 
   /** Publish a new immutable engagement-policy version (validated + activation-guarded). */
@@ -70,6 +157,29 @@ export class EngagementController {
     @AuthContext() auth: AuthContextType,
     @RequestId() requestId: string,
   ): Promise<{ published: unknown }> {
+    // CSP PR-5 — a CLIENT-scoped engagement policy MUST target a company the tenant
+    // owns as a CLIENT. Verified through the CompanyClientCheckPort BEFORE any write,
+    // mirroring pre-start + client-submittal. (TENANT/REQUISITION scopes are untouched.)
+    if (dto.scope === 'CLIENT') {
+      if (!dto.scope_ref) {
+        throw new AramoError('ENGAGEMENT_POLICY_SCHEMA_INVALID', 'CLIENT scope requires scope_ref', 422, {
+          requestId,
+          details: { reason: 'SCOPE_REF_REQUIRED', scope: dto.scope },
+        });
+      }
+      const owned = await this.clientCheck.isClientCompany({
+        tenant_id: auth.tenant_id,
+        company_id: dto.scope_ref,
+      });
+      if (!owned) {
+        throw new AramoError(
+          'ENGAGEMENT_POLICY_SCHEMA_INVALID',
+          'scope_ref is not a CLIENT company of this tenant',
+          422,
+          { requestId, details: { reason: 'COMPANY_NOT_CLIENT', scope: dto.scope, scope_ref: dto.scope_ref } },
+        );
+      }
+    }
     const definition = {
       schema_version: dto.schema_version,
       scope: dto.scope,

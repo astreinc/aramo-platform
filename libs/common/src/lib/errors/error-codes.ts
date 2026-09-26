@@ -629,6 +629,10 @@ export const ERROR_CODES = [
   'CLIENT_SUBMITTAL_ENGAGEMENT_POLICY_MISSING',
   'CLIENT_SUBMITTAL_ENGAGEMENT_INCOMPLETE',
   'CLIENT_SUBMITTAL_ENGAGEMENT_EVIDENCE_UNAVAILABLE',
+  // CSP PR-2 — CLIENT_SUBMITTAL_POLICY_INVALID (422): a domain-validation refusal on a
+  // client-submittal-policy definition (malformed, checksum mismatch fail-closed, or a
+  // FLOOR requirement weakened by a more-specific scope during resolution/publish).
+  'CLIENT_SUBMITTAL_POLICY_INVALID',
   // DOC-5 (R-5-10, 409): the document-readiness gate found no EXECUTED
   // RIGHT_TO_REPRESENT jointly associated to this exact Talent + Requisition.
   'SUBMITTAL_RTR_NOT_EXECUTED',

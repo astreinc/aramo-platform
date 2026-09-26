@@ -176,3 +176,93 @@ describe('enforcement_mode resolution (PART A / A2 backward-compat)', () => {
     expect(eff?.enforcement_mode).toBe('ENFORCING');
   });
 });
+
+describe('read-side provenance / raw layers / history (PA-2b)', () => {
+  const COMPANY = '00000000-0000-7000-8000-0000000000c1';
+  const pkgTenant = engagementPackageName('TENANT', null);
+
+  it('resolveEffectiveView: inherited channel + client-overridden channel + effective enforcement_mode', async () => {
+    const svc = new EngagementPolicyService(
+      fakeGateway([
+        row(def('TENANT', null, [voiceReq('RECRUITER_ATTESTED'), emailReq(false)]), 'v1'),
+        row(defMode('CLIENT', COMPANY, [voiceReq('PROVIDER_VERIFIED')], 'ENFORCING_WITH_OVERRIDE'), 'v1'),
+      ]),
+    );
+    const view = await svc.resolveEffectiveView(TENANT, { company_id: COMPANY });
+    const byCh = Object.fromEntries((view?.requirements ?? []).map((r) => [r.channel, r]));
+    expect(byCh['voice']!.source.scope).toBe('CLIENT');
+    expect(byCh['voice']!.provenance).toEqual({ inherited: false, client_override: true, client_added: false });
+    expect(byCh['email']!.source.scope).toBe('TENANT');
+    expect(byCh['email']!.provenance).toEqual({ inherited: true, client_override: false, client_added: false });
+    expect(view?.enforcement_mode).toBe('ENFORCING_WITH_OVERRIDE');
+    expect(view?.layers.map((l) => l.scope)).toEqual(['TENANT', 'CLIENT']);
+  });
+
+  it('resolveEffectiveView: a client-added channel is flagged client_added', async () => {
+    const svc = new EngagementPolicyService(
+      fakeGateway([
+        row(def('TENANT', null, [voiceReq('RECRUITER_ATTESTED')]), 'v1'),
+        row(def('CLIENT', COMPANY, [emailReq(true)]), 'v1'),
+      ]),
+    );
+    const view = await svc.resolveEffectiveView(TENANT, { company_id: COMPANY });
+    const byCh = Object.fromEntries((view?.requirements ?? []).map((r) => [r.channel, r]));
+    expect(byCh['voice']!.provenance.inherited).toBe(true);
+    expect(byCh['email']!.source.scope).toBe('CLIENT');
+    expect(byCh['email']!.provenance).toEqual({ inherited: false, client_override: false, client_added: true });
+  });
+
+  it('resolveEffective (decision path) shape unchanged — raw merged requirements + enforcement_mode', async () => {
+    const svc = new EngagementPolicyService(
+      fakeGateway([
+        row(def('TENANT', null, [voiceReq('RECRUITER_ATTESTED'), emailReq(false)]), 'v1'),
+        row(defMode('CLIENT', COMPANY, [voiceReq('PROVIDER_VERIFIED')], 'ENFORCING_WITH_OVERRIDE'), 'v1'),
+      ]),
+    );
+    const eff = await svc.resolveEffective(TENANT, { company_id: COMPANY });
+    expect(eff?.requirements.map((r) => r.channel).sort()).toEqual(['email', 'voice']);
+    expect(eff?.requirements.find((r) => r.channel === 'voice')?.minimum_strength).toBe('PROVIDER_VERIFIED');
+    expect(eff?.enforcement_mode).toBe('ENFORCING_WITH_OVERRIDE');
+    const view = await svc.resolveEffectiveView(TENANT, { company_id: COMPANY });
+    expect(eff?.composite_version).toBe(view?.composite_version);
+  });
+
+  it('readLayers: raw tenant + client defs (+ per-layer enforcement_mode) + merged effective', async () => {
+    const svc = new EngagementPolicyService(
+      fakeGateway([
+        row(def('TENANT', null, [voiceReq('RECRUITER_ATTESTED'), emailReq(false)]), 'v1'),
+        row(defMode('CLIENT', COMPANY, [voiceReq('PROVIDER_VERIFIED')], 'ENFORCING_WITH_OVERRIDE'), 'v1'),
+      ]),
+    );
+    const layers = await svc.readLayers(TENANT, { company_id: COMPANY });
+    expect(layers.tenant.present).toBe(true);
+    expect(layers.tenant.requirements.map((r) => r.channel).sort()).toEqual(['email', 'voice']);
+    expect(layers.client?.present).toBe(true);
+    expect(layers.client?.enforcement_mode).toBe('ENFORCING_WITH_OVERRIDE');
+    expect(layers.requisition).toBeNull();
+    expect(layers.effective?.requirements.length).toBe(2);
+  });
+
+  it('readLayers: an absent client layer is marked not-present', async () => {
+    const svc = new EngagementPolicyService(fakeGateway([row(def('TENANT', null, [voiceReq('RECRUITER_ATTESTED')]), 'v1')]));
+    const layers = await svc.readLayers(TENANT, { company_id: COMPANY });
+    expect(layers.client?.present).toBe(false);
+    expect(layers.client?.requirements).toEqual([]);
+  });
+
+  it('history: versions newest first with lifecycle status', async () => {
+    const d = def('TENANT', null, [voiceReq('RECRUITER_ATTESTED')]);
+    const mk = (version: string, from: string, to: string | null): StoredPolicyVersionRow => ({
+      package_name: pkgTenant, version, definition: d, checksum: computeChecksum(d),
+      effective_from: new Date(from), effective_to: to === null ? null : new Date(to),
+      published_by: TENANT, published_at: new Date(from),
+    });
+    const svc = new EngagementPolicyService(
+      fakeGateway([mk('v1', '2026-01-01T00:00:00Z', '2026-06-01T00:00:00Z'), mk('v2', '2026-06-01T00:00:00Z', null)]),
+    );
+    const hist = await svc.history(TENANT, 'TENANT', null, new Date('2026-09-01T00:00:00Z'));
+    expect(hist.map((h) => h.version)).toEqual(['v2', 'v1']);
+    expect(hist[0]!.status).toBe('current');
+    expect(hist[1]!.status).toBe('superseded');
+  });
+});
