@@ -161,7 +161,16 @@ const PIPELINE_L2D_PROVENANCE = resolve(
 const PIPELINE_CANONICALIZE_ENUM = resolve(
   ROOT,
   'libs/pipeline/prisma/migrations/20260831120000_pipeline_canonicalize_status_enum/migration.sql',
+);
+// Pipeline-VOID — enum-add commits first (own query()) so the index-recreate can
+// USE the 'voided' literal. SEPARATE const + apply-list entry each (never extra
+// resolve() args — that ENOTDIRs).
+const PIPELINE_VOID_ADD_ENUM = resolve(
+  ROOT,
   'libs/pipeline/prisma/migrations/20260925120000_pipeline_void_add_enum_value/migration.sql',
+);
+const PIPELINE_VOID_LIVE_INDEX_RECREATE = resolve(
+  ROOT,
   'libs/pipeline/prisma/migrations/20260925120100_pipeline_void_live_index_recreate/migration.sql',
 );
 // L2-B — the consent-schema IdempotencyKey table (backing the required
@@ -294,6 +303,8 @@ const MIGRATIONS = [
   PIPELINE_L2C_DISPOSITION,
   PIPELINE_L2D_PROVENANCE,
   PIPELINE_CANONICALIZE_ENUM,
+  PIPELINE_VOID_ADD_ENUM,
+  PIPELINE_VOID_LIVE_INDEX_RECREATE,
   POLICY_STORE_INIT,
   POLICY_DECISION_RECORD,
   resolve(ROOT, 'libs/requisition/prisma/migrations/20260803120000_recruiting_status_supersession/migration.sql'),
