@@ -90,8 +90,12 @@ function pipelineOwnedStage(status: PipelineView['status']): JourneyStageName | 
       return 'COMPLETED';
     case 'not_in_consideration':
       return 'NOT_IN_CONSIDERATION';
+    // Accidental-Add Correction — a `voided` episode was administratively removed; it
+    // contributes NO pipeline-owned journey stage (§11 — never an active/recruiting status).
+    case 'voided':
+      return null;
     default: {
-      // Exhaustive over the canonical 7-state enum — unreachable.
+      // Exhaustive over the canonical 8-state enum — unreachable.
       const _exhaustive: never = status;
       return _exhaustive;
     }

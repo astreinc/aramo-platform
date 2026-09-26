@@ -24,6 +24,9 @@ export const LEGAL_TRANSITIONS: Record<
   not_in_consideration: [],
   // the canonical SUCCESSFUL terminal (system-only COMPLETE, SB-3).
   completed: [],
+  // administrative-correction terminal (VOID). No incoming generic edge and no
+  // outgoing edge — reached ONLY via the dedicated correction endpoint (§9).
+  voided: [],
 };
 
 // L2-C (§5) — statuses a recruiter can NEVER select as a move target, even

@@ -100,6 +100,18 @@ export async function applyPipelineAction(
   );
 }
 
+// Accidental-Add Correction — "Remove from requisition" (VOID). A governed
+// correction, NOT a recruiting disposition and NOT a delete. The backend is
+// authoritative: it re-checks no_contact + no engagement + no downstream and
+// returns a typed refusal (PIPELINE_VOID_*) when ineligible. CAS via
+// expected_version. On success the episode becomes terminal `voided`.
+export async function voidPipelineEpisode(
+  pipelineId: string,
+  body: { reason: 'ADDED_BY_MISTAKE'; expected_version: number },
+): Promise<PipelineView> {
+  return apiClient.post<PipelineView>(`/v1/pipelines/${pipelineId}/void`, body);
+}
+
 // Kanban card-name lookup. R1 fetches per visible pipeline in parallel
 // (Promise.all); see ./types.ts TalentRecordSummary for the carry note.
 export async function getTalentRecord(id: string): Promise<TalentRecordSummary> {

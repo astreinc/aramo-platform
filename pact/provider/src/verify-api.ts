@@ -669,6 +669,18 @@ const PIPELINE_CANONICALIZE_ENUM_MIGRATION = resolve(
   ROOT,
   'libs/pipeline/prisma/migrations/20260831120000_pipeline_canonicalize_status_enum/migration.sql',
 );
+// Accidental-Add Correction — the `voided` enum ADD VALUE (own tx) + the 3-member live-index
+// recreate. SEPARATE consts + apply-list entries (never an extra resolve() arg — that ENOTDIRs).
+// Required so the provider DB carries the 8-value enum the regenerated client emits (the repo's
+// live-episode check sends `status NOT IN (…,'voided')`).
+const PIPELINE_VOID_ADD_ENUM_MIGRATION = resolve(
+  ROOT,
+  'libs/pipeline/prisma/migrations/20260925120000_pipeline_void_add_enum_value/migration.sql',
+);
+const PIPELINE_VOID_INDEX_MIGRATION = resolve(
+  ROOT,
+  'libs/pipeline/prisma/migrations/20260925120100_pipeline_void_live_index_recreate/migration.sql',
+);
 // TI-1D-D — the TalentRequisitionResume append-only working-selection table (+
 // append-only trigger pair). The regenerated pipeline Prisma client SELECTs it
 // on the GET/PUT /v1/pipelines/{id}/resume-edition routes the ats-web pipeline
@@ -3549,6 +3561,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         PIPELINE_L2C_DISPOSITION_MIGRATION,
         PIPELINE_L2D_PROVENANCE_MIGRATION,
         PIPELINE_CANONICALIZE_ENUM_MIGRATION,
+        PIPELINE_VOID_ADD_ENUM_MIGRATION,
+        PIPELINE_VOID_INDEX_MIGRATION,
         // TI-1D-D — TalentRequisitionResume table + append-only triggers, applied
         // at the end of the pipeline sequence (independent new table).
         PIPELINE_TI1DD_REQUISITION_RESUME_MIGRATION,

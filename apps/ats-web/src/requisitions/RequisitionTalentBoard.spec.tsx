@@ -182,6 +182,33 @@ describe('RequisitionTalentBoard (TB-2)', () => {
     expect(screen.getAllByRole('button', { name: /^Open Talent / }).length).toBe(total);
   });
 
+  // Accidental-Add Correction — the "Remove from requisition" (pipeline.void) action renders
+  // distinctly and opens the confirmation (onRequestVoid), only when the server projects it.
+  it('renders "Remove from requisition" from the pipeline.void action and calls onRequestVoid', async () => {
+    const onRequestVoid = vi.fn();
+    const c = card({
+      talent_record_id: 't1', pipeline_id: 'pipe-void', column: 'pipeline', owner: 'pipeline', owner_state: 'no_contact',
+      next_actions: [
+        { key: 'pipeline.contact', label: 'Mark contacted', owner: 'pipeline', command_route: 'POST /v1/pipelines/pipe-void/actions', required_scope: 'pipeline:change-status' },
+        { key: 'pipeline.void', label: 'Remove from requisition', owner: 'pipeline', command_route: 'POST /v1/pipelines/pipe-void/void', required_scope: 'pipeline:change-status' },
+      ],
+    });
+    mockGet.mockResolvedValue(board({ total_active: 1, columns: [{ key: 'pipeline', owner: 'pipeline', count: 1, cards: [c] }] }));
+    render(<RequisitionTalentBoard requisitionId="r1" talentNames={NAMES} scopes={['pipeline:change-status']} onSelectCard={vi.fn()} onRequestVoid={onRequestVoid} />);
+    const btn = await screen.findByRole('button', { name: 'Remove from requisition' });
+    fireEvent.click(btn);
+    expect(onRequestVoid).toHaveBeenCalledWith('pipe-void', 'Ada Lovelace');
+  });
+
+  it('does not render "Remove from requisition" when the server did not project pipeline.void', async () => {
+    const c = card({ talent_record_id: 't1', pipeline_id: 'p1', column: 'pipeline', owner: 'pipeline', owner_state: 'no_contact',
+      next_actions: [{ key: 'pipeline.contact', label: 'Mark contacted', owner: 'pipeline', command_route: 'POST /v1/pipelines/p1/actions', required_scope: 'pipeline:change-status' }] });
+    mockGet.mockResolvedValue(board({ total_active: 1, columns: [{ key: 'pipeline', owner: 'pipeline', count: 1, cards: [c] }] }));
+    render(<RequisitionTalentBoard requisitionId="r1" talentNames={NAMES} scopes={['pipeline:change-status']} onSelectCard={vi.fn()} onRequestVoid={vi.fn()} />);
+    await screen.findByLabelText('Talent board');
+    expect(screen.queryByRole('button', { name: 'Remove from requisition' })).not.toBeInTheDocument();
+  });
+
   // TB-6 — a downstream (handoff) card is presented as tracked read-only, not draggable.
   it('marks a downstream card as Tracked (read-only) with its owner label', async () => {
     const c = card({

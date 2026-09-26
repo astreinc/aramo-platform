@@ -21,6 +21,7 @@ import {
   RECRUITER_ACTION_TO_STATUS,
   type PipelineStatus,
   type RecruiterPipelineAction,
+  type VoidReason,
 } from './pipeline-state.js';
 import {
   isRecruiterDispositionAuthority,
@@ -825,6 +826,135 @@ export class PipelineRepository {
       visible_requisition_ids: args.visible_requisition_ids,
       ...(disposition === undefined ? {} : { disposition }),
     });
+  }
+
+  // Accidental-Add Correction — the governed VOID command (no_contact → voided).
+  // A DEDICATED command (NOT routed through transition(): `no_contact → voided` is
+  // deliberately NOT a legal generic edge — §9, the named action owns correction).
+  // It enforces: (1) 404 concealment, (2) CAS on expected_version, (3) from-status =
+  // `no_contact` ONLY (PIPELINE_VOID_NOT_ALLOWED_FROM_STATE otherwise). The engagement
+  // + downstream non-existence guards live at the apps/api orchestrator (ADR-0029
+  // wall) and are enforced BEFORE this call. Writes a `no_contact → voided` history
+  // row carrying the reason as its note, releases the live-episode slot (voided is a
+  // canonical terminal → the partial live index excludes it, and `ended_at` is set),
+  // and writes NO PipelineDisposition (§3 — VOID is never a recruiting disposition).
+  async void(args: {
+    tenant_id: string;
+    id: string;
+    reason: VoidReason;
+    expected_version: number;
+    changed_by_id: string;
+    requestId: string;
+    visible_requisition_ids: ReadonlySet<string> | null;
+  }): Promise<PipelineView> {
+    const current = await this.prisma.pipeline.findFirst({
+      where: { tenant_id: args.tenant_id, id: args.id },
+    });
+    // Concealment — missing OR not-visible both surface as the SAME 404.
+    if (
+      current === null ||
+      (args.visible_requisition_ids !== null &&
+        !args.visible_requisition_ids.has((current as PipelineRow).requisition_id))
+    ) {
+      throw new AramoError(
+        'NOT_FOUND',
+        'Pipeline not found in tenant (or not visible to actor)',
+        404,
+        { requestId: args.requestId, details: { id: args.id } },
+      );
+    }
+    const row = current as PipelineRow;
+    // CAS — a stale version means a concurrent write advanced the row; refuse before
+    // any write (no last-write-wins).
+    if (args.expected_version !== row.version) {
+      throw new AramoError(
+        'PIPELINE_TRANSITION_CONFLICT',
+        'Pipeline was modified concurrently; refresh and retry',
+        409,
+        {
+          requestId: args.requestId,
+          details: { pipeline_id: args.id, current_status: row.status, current_version: row.version },
+        },
+      );
+    }
+    // Strict v1 eligibility (state axis): VOID ONLY from no_contact (§5). Every other
+    // state — active or terminal — is refused; there is no override path.
+    if (row.status !== 'no_contact') {
+      throw new AramoError(
+        'PIPELINE_VOID_NOT_ALLOWED_FROM_STATE',
+        `VOID (remove from requisition) is only allowed from no_contact; current status is ${row.status}`,
+        422,
+        { requestId: args.requestId, details: { pipeline_id: args.id, current_status: row.status } },
+      );
+    }
+
+    const tenant_id = args.tenant_id;
+    const requisition_id = row.requisition_id;
+    const talent_record_id = row.talent_record_id;
+    const site_id = row.site_id ?? undefined;
+    const eventInstant = new Date();
+    const correctionNote = `pipeline no_contact -> voided (accidental-add correction: ${args.reason})`;
+
+    const { updatedRow, historyRow } = await this.prisma.$transaction(async (tx) => {
+      // Release the live-episode slot: status → voided (a canonical terminal, so the
+      // partial live index no longer covers this row) + CAS version bump + ended_at.
+      const updated = await tx.pipeline.update({
+        where: { id: args.id },
+        data: {
+          status: 'voided',
+          version: { increment: 1 },
+          ended_at: eventInstant,
+          ended_by_id: args.changed_by_id,
+        },
+      });
+      // Durable history — the accidental add + its correction remain visible (§10).
+      const history = await tx.pipelineStatusHistory.create({
+        data: {
+          tenant_id,
+          pipeline_id: args.id,
+          status_from: 'no_contact',
+          status_to: 'voided',
+          changed_by_id: args.changed_by_id,
+          note: args.reason, // ADDED_BY_MISTAKE — NOT a PipelineDisposition (§3)
+        },
+      });
+      await insertActivityInTx(tx, {
+        tenant_id,
+        ...(site_id === undefined ? {} : { site_id }),
+        type: 'pipeline_status_change',
+        subject_type: 'pipeline',
+        subject_id: args.id,
+        notes: correctionNote,
+        created_by_id: args.changed_by_id,
+      });
+      await recordUsage(tx, { tenant_id, event_type: 'pipeline.state_transition' });
+      await tx.outboxEvent.create({
+        data: {
+          tenant_id,
+          event_type: 'pipeline.state_transition',
+          event_payload: {
+            pipeline_id: args.id,
+            talent_record_id,
+            requisition_id,
+            from_status: 'no_contact',
+            to_status: 'voided',
+            version: updated.version,
+          },
+        },
+      });
+      return { updatedRow: updated, historyRow: history };
+    });
+
+    this.logger.log({
+      event: 'pipeline_voided',
+      tenant_id,
+      pipeline_id: args.id,
+      requisition_id,
+      talent_record_id,
+      reason: args.reason,
+      history_id: (historyRow as PipelineStatusHistoryRow).id,
+    });
+    return projectView(updatedRow as PipelineRow);
   }
 
   // Lane 2 / L2-C (SB-3) — the SYSTEM-ONLY COMPLETE command (qualified → completed).

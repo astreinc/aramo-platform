@@ -46,6 +46,12 @@ export interface RequisitionTalentBoardProps {
   /** The actor's scopes — the Board hides a next action the actor cannot perform (TB-3).
    *  UI hiding is never the boundary: the server re-authorizes every governed command. */
   readonly scopes?: readonly string[];
+  /** Accidental-Add Correction — open the "Remove from requisition" confirmation for a card.
+   *  The action is projected by the server (pipeline.void in next_actions); this only opens
+   *  the confirmation. */
+  readonly onRequestVoid?: (pipelineId: string, talentName: string) => void;
+  /** Bump to force a re-fetch (e.g. after a successful VOID removes a card). */
+  readonly refreshToken?: unknown;
 }
 
 function talentLabel(names: RequisitionTalentBoardProps['talentNames'], id: string): string {
@@ -61,6 +67,7 @@ function BoardCard({
   onSelect,
   onDragStart,
   onDragEnd,
+  onRequestVoid,
 }: {
   card: BoardCardView;
   name: string;
@@ -68,10 +75,14 @@ function BoardCard({
   onSelect: () => void;
   onDragStart: () => void;
   onDragEnd: () => void;
+  onRequestVoid?: (pipelineId: string, talentName: string) => void;
 }): JSX.Element {
   // Scope-gate the projected next actions (TB-3): only actions the actor can perform are
   // offered. The server re-authorizes on execution — this is presentation, not the boundary.
-  const performable = card.next_actions.filter((a) => scopes.includes(a.required_scope));
+  // The VOID (Remove from requisition) action is separated out — it is a destructive
+  // correction rendered distinctly, opening a confirmation rather than routing to the drawer.
+  const performable = card.next_actions.filter((a) => scopes.includes(a.required_scope) && a.key !== 'pipeline.void');
+  const voidAction = card.next_actions.find((a) => a.key === 'pipeline.void' && scopes.includes(a.required_scope));
   // TB-6 — a downstream (handoff) card is TRACKED read-only: not governed-draggable; its
   // commands live in the owning surface. The Board only projects its state + owner.
   return (
@@ -117,7 +128,7 @@ function BoardCard({
           </span>
         )}
       </Button>
-      {performable.length > 0 && (
+      {(performable.length > 0 || voidAction !== undefined) && (
         <div className="rc-tboard__actions" aria-label={`Actions for ${name}`}>
           {performable.map((a) => (
             // The governed command executes in the owning drawer surface (TB-3 routes there;
@@ -127,6 +138,19 @@ function BoardCard({
               {a.label}
             </Button>
           ))}
+          {voidAction !== undefined && onRequestVoid !== undefined && (
+            // Accidental-Add Correction — a DESTRUCTIVE correction (red), separated. Opens the
+            // confirmation; the backend re-checks eligibility on execution.
+            <Button
+              unstyled
+              type="button"
+              className="rc-tboard__action rc-tboard__action--danger"
+              onClick={() => onRequestVoid(card.pipeline_id, name)}
+              title={voidAction.command_route}
+            >
+              {voidAction.label}
+            </Button>
+          )}
         </div>
       )}
     </div>
@@ -142,6 +166,7 @@ function BoardColumn({
   onDragStartCard,
   onDragEndCard,
   onDropCard,
+  onRequestVoid,
 }: {
   column: BoardColumnView;
   talentNames: RequisitionTalentBoardProps['talentNames'];
@@ -151,6 +176,7 @@ function BoardColumn({
   onDragStartCard: (card: BoardCardView) => void;
   onDragEndCard: () => void;
   onDropCard: (targetColumn: BoardColumnKey) => void;
+  onRequestVoid?: (pipelineId: string, talentName: string) => void;
 }): JSX.Element {
   // The Qualified column splits into its two readiness bands (§6); every other column is flat.
   const isQualified = column.key === 'qualified';
@@ -165,6 +191,7 @@ function BoardColumn({
       onSelect={() => onSelectCard(c.pipeline_id)}
       onDragStart={() => onDragStartCard(c)}
       onDragEnd={onDragEndCard}
+      onRequestVoid={onRequestVoid}
     />
   );
 
@@ -206,7 +233,7 @@ function BoardColumn({
   );
 }
 
-export function RequisitionTalentBoard({ requisitionId, talentNames, onSelectCard, scopes = [] }: RequisitionTalentBoardProps): JSX.Element {
+export function RequisitionTalentBoard({ requisitionId, talentNames, onSelectCard, scopes = [], onRequestVoid, refreshToken }: RequisitionTalentBoardProps): JSX.Element {
   const [board, setBoard] = useState<RequisitionTalentBoardView | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
@@ -222,7 +249,7 @@ export function RequisitionTalentBoard({ requisitionId, talentNames, onSelectCar
       .catch((e) => { if (live) setError(e instanceof Error ? e.message : String(e)); })
       .finally(() => { if (live) setLoading(false); });
     return () => { live = false; };
-  }, [requisitionId]);
+  }, [requisitionId, refreshToken]);
 
   // Render every column in canonical order, even when the backend omitted an empty one.
   const columns = useMemo(() => {
@@ -264,6 +291,7 @@ export function RequisitionTalentBoard({ requisitionId, talentNames, onSelectCar
             onDragStartCard={setDragging}
             onDragEndCard={() => setDragging(null)}
             onDropCard={onDropCard}
+            onRequestVoid={onRequestVoid}
           />
         ))}
       </div>

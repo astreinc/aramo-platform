@@ -32,11 +32,14 @@ const EXPECTED_LEGAL: Record<PipelineStatus, readonly PipelineStatus[]> = {
   qualified: ['qualifying', 'not_in_consideration', 'completed'],
   not_in_consideration: [],
   completed: [],
+  // `voided` (accidental-add correction) has NO incoming generic edge and no outgoing
+  // edge: it is reached ONLY via the dedicated VOID command, never canTransition (§9).
+  voided: [],
 };
 
 describe('PIPELINE_STATUS_VALUES — closed-list tuple', () => {
-  it('contains the canonical 7 values', () => {
-    expect(PIPELINE_STATUS_VALUES).toHaveLength(7);
+  it('contains the canonical 8 values (7 recruiting + the voided correction terminal)', () => {
+    expect(PIPELINE_STATUS_VALUES).toHaveLength(8);
     expect([...PIPELINE_STATUS_VALUES].sort()).toEqual([
       'completed',
       'contacted',
@@ -45,6 +48,7 @@ describe('PIPELINE_STATUS_VALUES — closed-list tuple', () => {
       'qualified',
       'qualifying',
       'talent_responded',
+      'voided',
     ]);
   });
 
@@ -117,8 +121,18 @@ describe('canTransition — legal forward + backward + exit edges', () => {
   });
 });
 
+describe('canTransition — the accidental-add correction terminal (voided) has no generic edges', () => {
+  it('no_contact → voided is NOT a legal generic transition (VOID owns the correction, §9)', () => {
+    expect(canTransition('no_contact', 'voided')).toBe(false);
+    // No state can generically transition INTO voided.
+    for (const from of ALL_STATES) {
+      if (from !== 'voided') expect(canTransition(from, 'voided')).toBe(false);
+    }
+  });
+});
+
 describe('canTransition — terminal states have no outgoing edges', () => {
-  it.each(['not_in_consideration', 'completed'] as const)(
+  it.each(['not_in_consideration', 'completed', 'voided'] as const)(
     'rejects every transition out of %s except no-op',
     (terminal) => {
       for (const to of ALL_STATES) {

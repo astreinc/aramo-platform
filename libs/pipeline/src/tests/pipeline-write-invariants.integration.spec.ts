@@ -61,6 +61,8 @@ const MIGRATIONS = [
   '../../prisma/migrations/20260828150000_l2c_pipeline_disposition/migration.sql',
   '../../prisma/migrations/20260828160000_l2d_pipeline_entry_provenance/migration.sql',
   '../../prisma/migrations/20260831120000_pipeline_canonicalize_status_enum/migration.sql',
+  '../../prisma/migrations/20260925120000_pipeline_void_add_enum_value/migration.sql',
+  '../../prisma/migrations/20260925120100_pipeline_void_live_index_recreate/migration.sql',
 ].map((p) => resolve(__dirname, p));
 
 // The legal recruiter chain no_contact -> ... -> qualified. Every hop is a legal

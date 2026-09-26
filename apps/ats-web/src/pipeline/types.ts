@@ -20,6 +20,9 @@ export const PIPELINE_STATUS_VALUES = [
   'not_in_consideration',
   // the canonical SUCCESSFUL terminal (system-only COMPLETE; SB-3).
   'completed',
+  // administrative correction of an accidental add (governed VOID). Terminal,
+  // slot-releasing; NOT a recruiting Closed disposition (excluded from the board).
+  'voided',
 ] as const;
 export type PipelineStatus = (typeof PIPELINE_STATUS_VALUES)[number];
 
@@ -39,6 +42,7 @@ export const PIPELINE_STATUS_LABELS: Record<PipelineStatus, string> = {
   qualified: 'Qualified',
   not_in_consideration: 'Not in consideration',
   completed: 'Completed',
+  voided: 'Removed (added by mistake)',
 };
 
 // REQ-PIXEL-PARITY-1-A2 (P2-A) — the derived "Next Action" per stage. This is
@@ -56,6 +60,7 @@ export const PIPELINE_NEXT_ACTION: Record<PipelineStatus, string> = {
   // `completed` is the canonical success terminal (reached only via the system
   // COMPLETE command, never a recruiter action).
   completed: 'Closed — completed',
+  voided: 'Removed from requisition',
 };
 
 export interface PipelineView {

@@ -1032,6 +1032,7 @@
       "RESUME_EDITION_READER",
       "SYSTEM_COMPLETE_ACTION",
       "VALID_OVERRIDE_REASON_CODES",
+      "VOID_REASON_VALUES",
       "canTransition",
       "isLiveStatus",
       "isOverrideReasonCode",
@@ -1043,6 +1044,7 @@
       "isRecruiterPipelineAction",
       "isValidDispositionReason",
       "isValidInitiatedByKind",
+      "isVoidReason",
       "legalNextStates",
       "projectEntryProvenanceForEvent",
       "projectExternalSourceEventToEntryProvenance",
@@ -2851,6 +2853,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/pipeline-void-orchestrator.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/pre-start-requirement/waiver-authority.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -3233,6 +3241,12 @@
       { "project": "matching", "status": "production" },
       { "project": "object-storage", "status": "production" },
       { "project": "outbox-publisher", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/pipeline/src/tests/pipeline-void-correction.integration.spec.ts",
+        "project": "pipeline",
+        "status": "excluded"
+      },
       { "project": "pipeline", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
@@ -3580,6 +3594,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/microsoft-meeting-create.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/pipeline-void-orchestrator.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -5162,6 +5182,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/pipeline-void-orchestrator.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/requisition-lifecycle-package.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -5206,6 +5232,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/offer-lifecycle-package.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/pipeline-void-orchestrator.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -5909,6 +5941,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/l2h-talent-journey.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/pipeline-void-orchestrator.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
