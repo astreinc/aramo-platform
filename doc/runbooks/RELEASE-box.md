@@ -1,4 +1,4 @@
-# Aramo — Box Deploy Runbook v2.3
+# Aramo — Box Deploy Runbook v2.4
 
 **Status:** Canonical operational runbook — v2.2
 **Scope:** Planned-window deploys to the single prod box (`/opt/aramo`), build-on-box model
@@ -10,6 +10,19 @@ window.
 *[v2.1 INVERSION, per PO ruling: the repo-tracked file is now the source of truth — matching the six
 sibling runbooks already in `doc/runbooks/`. OneDrive is the mirror. This reverses v2.0's
 declaration.]*
+
+**Changelog v2.3 → v2.4**
+- **nginx ⊥ esign-service HARD STARTUP COUPLING (post-mortem, `e176db48`).** The nginx image's
+  baked `sign.aramo.ai` server block renders `proxy_pass http://esign-service:3003` and nginx
+  resolves that upstream **at config-load** — so recreating nginx while `esign-service` is NOT a
+  running container aborts nginx with `[emerg] host not found in upstream "esign-service"` and
+  **crash-loops the front door** (true even when `NGINX_SIGN_SERVER_NAME` is unset — the empty
+  server block still parses). **The prod app topology is 5 containers: api · auth-service ·
+  platform-admin · esign-service · nginx.** `SERVICES` MUST include `esign-service` whenever it
+  includes `nginx`, and `esign-service` must be built + running BEFORE nginx is recreated.
+  `deploy/build-images.sh` now builds all 5 images (was 4 — the miss that enabled the incident).
+  esign-service is container-internal only (never port-published; externally unreachable while
+  `NGINX_SIGN_SERVER_NAME` is unset). See the HARD STOP below.
 
 **Changelog v2.2 → v2.3**
 - **BUILD precedes SEED (ordering change).** STAGE C (the requisition-lifecycle
@@ -57,7 +70,10 @@ assumed; everything is verified.
 ═══ FILL IN BEFORE RUNNING ═══
 TARGET_SHA   = <exact commit to deploy, e.g. bb1954e>   ← what main should be at
 SERVICES     = <which to rebuild/recreate, e.g. api auth-service>   ← NOT nginx unless a UI/SPA
-                 change requires it (the SPA is baked into the nginx image — see note in STEP 4)
+                 change requires it (the SPA is baked into the nginx image — see note in STEP 4).
+                 ← If SERVICES includes nginx it MUST also include esign-service (nginx resolves the
+                   esign upstream at config-load; recreating nginx without esign-service crash-loops
+                   the front door — see HARD STOPS). Prod topology = 5 containers.
 RUN_MIGRATE  = <yes/no>   ← yes if this batch includes new DB migrations
 RUN_SEED     = <yes/no>   ← yes if this batch needs seed backfills/assertions
 NOTES        = <anything special for THIS deploy, or "none">   ← e.g. the specific proof to run
@@ -269,6 +285,14 @@ endpoint, a routing change, a UI element). Prove the *change*, not just that the
 - **STOP at any failed gate** and report the exact output. Never proceed past a failure "to see if
   it works."
 - Recreate **ONLY** the listed services — never postgres/redis unless NOTES explicitly says so.
+- **nginx ⊥ esign-service coupling — recreating nginx REQUIRES esign-service built + running first.**
+  The nginx image bakes the `sign.aramo.ai` block with `proxy_pass http://esign-service:3003`; nginx
+  resolves that upstream at config-load, so a recreate with `esign-service` absent fails
+  `[emerg] host not found in upstream "esign-service"` and crash-loops the front door (DOWN).
+  `build-images.sh` builds esign-service (5 images); before cutting nginx to the new image, confirm
+  `aramo-prod-esign` is Up on `aramo-singlebox_default`. Recovery if it bounces: pin the new nginx to
+  `aramo/nginx:<sha>`, restore `:local` from the rollback-floor image, recreate nginx (front door
+  back in seconds), bring esign up, then cut nginx forward.
 - `migrate`/`seed` reporting **already-applied is FINE** (a prior interrupted run may have done
   them); only ERRORS stop you.
 

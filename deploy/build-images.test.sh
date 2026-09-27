@@ -5,7 +5,8 @@
 # working tree it ships in.
 #
 # Proves: exit 2 (bad SHA), exit 3 (HEAD mismatch), exit 4 (dirty tree),
-# exit 0 + all 4 image builds reached (authorized SHA + clean tree).
+# exit 0 + all 5 image builds reached (authorized SHA + clean tree) —
+# api, auth-service, platform-admin, esign-service, nginx.
 #
 # Run:  bash deploy/build-images.test.sh   (exit 0 = all cases correct)
 
@@ -56,7 +57,7 @@ run "CASE B valid SHA != HEAD  → exit 3, no build"  "$NOTHEAD"   3  0
 ( cd "$TMP/repo" && echo dirty > dirty.txt )
 run "CASE C dirty tree         → exit 4, no build"  "$HEAD"      4  0
 ( cd "$TMP/repo" && rm -f dirty.txt )   # restore clean
-run "CASE D HEAD + clean tree  → exit 0, 4 builds"  "$HEAD"      0  4
+run "CASE D HEAD + clean tree  → exit 0, 5 builds"  "$HEAD"      0  5
 
 echo "build-images.test: ${pass} passed, ${fail} failed"
 [ "$fail" -eq 0 ]

@@ -38,7 +38,13 @@ if [ -n "$(git status --porcelain)" ]; then
 fi
 
 echo "[build] repo=${ROOT_DIR} revision=${AUTHORIZED_SHA}"
-for S in api auth-service platform-admin; do
+# esign-service IS built here: the nginx image's baked sign.aramo.ai block renders
+# `proxy_pass http://esign-service:3003` and nginx resolves that upstream at
+# config-load — so recreating nginx with esign-service absent crash-loops the
+# front door (`[emerg] host not found in upstream "esign-service"`). The prod app
+# topology is 5 containers (api, auth-service, platform-admin, esign-service,
+# nginx); nginx must never be recreated without esign-service built + running.
+for S in api auth-service platform-admin esign-service; do
   echo "[build] building aramo/${S}:local"
   docker build --no-cache -f "${ROOT_DIR}/apps/${S}/Dockerfile" \
     --build-arg GIT_REVISION="${AUTHORIZED_SHA}" -t "aramo/${S}:local" "${ROOT_DIR}"
@@ -47,4 +53,4 @@ echo "[build] building aramo/nginx:local"
 docker build --no-cache -f "${ROOT_DIR}/deploy/nginx/Dockerfile" \
   --build-arg GIT_REVISION="${AUTHORIZED_SHA}" -t "aramo/nginx:local" "${ROOT_DIR}"
 
-echo "[build] OK — 4 images stamped ${AUTHORIZED_SHA} from ${ROOT_DIR}"
+echo "[build] OK — 5 images stamped ${AUTHORIZED_SHA} from ${ROOT_DIR}"
