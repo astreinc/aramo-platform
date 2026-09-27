@@ -14861,6 +14861,7 @@
       "to": "tools/db-sync-local.sh"
     },
     { "from": "docker-compose.images.yml", "status": "unscoped", "to": "tools/local-stack.sh" },
+    { "from": "docker-compose.prod.yml", "status": "unscoped", "to": "deploy/build-images.sh" },
     { "from": "docker-compose.yml", "status": "unscoped", "to": "doc/runbooks/local-run.md" },
     { "from": "docker-compose.yml", "status": "unscoped", "to": "tools/local-stack.sh" },
     {
