@@ -616,3 +616,196 @@
   color: var(--faint);
   padding: 0;
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   AI / LLM provider (Settings → Integrations). A bordered, selectable card per
+   provider — custom radio dot + provider avatar + name/note + status chip — then
+   the active-provider key row. The mock's grammar on the canonical token layer.
+   The native radio stays in the DOM (a11y + tests) but is visually replaced by
+   .set-llm__dot; the whole row is the <label>, so the row IS the control.
+   ══════════════════════════════════════════════════════════════════════════ */
+.set-llm__head {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.set-llm {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.set-llm > legend {
+  /* the fieldset is labelled for a11y; the rows carry the visible UI */
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+.set-llm__row {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  box-sizing: border-box;
+  text-align: left;
+  border: 1.5px solid var(--line);
+  background: #fff;
+  border-radius: var(--r-md);
+  padding: 11px 13px;
+  margin: 0;
+  cursor: pointer;
+}
+.set-llm__row:hover {
+  border-color: var(--brand);
+}
+.set-llm__row--active {
+  border-color: var(--brand);
+  background: rgba(232, 237, 251, 0.4);
+}
+/* Unwired providers: shown as supported-provider rows to match the design, but
+   the radio is disabled (never selectable) — the row cannot become active. */
+.set-llm__row--soon,
+.set-llm__row--soon:hover {
+  cursor: not-allowed;
+  border-color: var(--line);
+}
+/* native radio kept for a11y + tests, visually replaced by the dot */
+.set-llm__radio {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  pointer-events: none;
+}
+.set-llm__dot {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  box-sizing: border-box;
+  border-radius: 50%;
+  border: 1.5px solid #c6cdd4;
+  background: #fff;
+  display: grid;
+  place-items: center;
+}
+.set-llm__dot::after {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: transparent;
+}
+.set-llm__row--active .set-llm__dot {
+  border-color: var(--brand);
+}
+.set-llm__row--active .set-llm__dot::after {
+  background: var(--brand);
+}
+.set-llm__radio:focus-visible + .set-llm__dot {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+.set-llm__av {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  display: grid;
+  place-items: center;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.set-llm__av--anthropic { background: #fbeadf; color: #c0410c; }
+.set-llm__av--openai { background: #e6f2ea; color: #1f7a4d; }
+.set-llm__av--azure { background: #e8edfb; color: #011f8d; }
+.set-llm__av--gemini { background: #faefd8; color: #946011; }
+.set-llm__av--bedrock { background: #eef1f4; color: #54606a; }
+.set-llm__body {
+  flex: 1;
+  min-width: 150px;
+}
+.set-llm__name {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+.set-llm__note {
+  display: block;
+  font-size: 0.7rem;
+  color: var(--muted);
+  margin-top: 1px;
+}
+.set-llm__tag {
+  flex: none;
+}
+/* ── active-provider key row ── */
+.set-llm__key {
+  border-top: 1px solid #f2f4f6;
+  margin-top: 3px;
+  padding-top: 14px;
+}
+.set-llm__keyhead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.set-llm__keylabel {
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+.set-llm__keysub {
+  font-size: 0.7rem;
+  color: var(--faint);
+}
+.set-llm__keyrow {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.set-llm__keyinput {
+  flex: 1;
+  min-width: 260px;
+  box-sizing: border-box;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  padding: 9px 12px;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--ink);
+  background: #fff;
+  outline: none;
+}
+.set-llm__keyinput:focus {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px var(--brand-tint);
+}
+.set-llm__secure {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  margin-top: 9px;
+  font-size: 0.7rem;
+  color: var(--faint);
+  line-height: 1.5;
+}
+.set-llm__secure > svg {
+  flex: none;
+  margin-top: 1px;
+  color: var(--ok);
+}

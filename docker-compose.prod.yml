@@ -277,9 +277,13 @@ services:
         condition: service_healthy
 
   esign-service:
-    # DOC-3 — Native E-Sign Service Core backend. DEPLOY=NO (config lands with the
-    # slice; not exposed until DOC-4 adds sign-web + the sign.aramo.ai nginx block).
-    # Container-internal only (never port-published). Referenced, not built here.
+    # DOC-3 — Native E-Sign Service Core backend. Container-internal only (never
+    # port-published; externally unreachable while NGINX_SIGN_SERVER_NAME is unset).
+    # ⚠ REQUIRED whenever nginx runs: the nginx image bakes the sign.aramo.ai block
+    # with `proxy_pass http://esign-service:3003`, which nginx resolves at
+    # config-load — recreating nginx without esign-service running crash-loops the
+    # front door (`[emerg] host not found in upstream`). Built by deploy/build-images.sh
+    # (5 images); bring esign-service up BEFORE cutting nginx to a new image.
     image: ${ARAMO_ESIGN_IMAGE:-aramo/esign-service:local}
     container_name: aramo-prod-esign
     restart: unless-stopped

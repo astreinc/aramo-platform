@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
-import { hasScope, useSession, useToast, type Session, Input } from '@aramo/fe-foundation';
+import { hasScope, useSession, useToast, type Session, Input, IconShield } from '@aramo/fe-foundation';
 
 import { Button, Card, ErrorState, LoadingState, safeErrorMessage } from '../ui';
-import { SettingCardHead } from '../settings/components';
+import { SettingCardHead, StatChip } from '../settings/components';
 
 import {
   clearProviderKey as defaultClear,
@@ -18,21 +18,59 @@ import {
 // mirroring the connector panel:
 //   - no `integration:read`  → renders nothing AND makes no fetch;
 //   - read only              → shows the active provider + per-provider status;
-//   - `integration:write`    → select-provider + Set / Rotate / Clear per provider.
+//   - `integration:write`    → select-provider + Set / Rotate / Clear for the
+//                              active provider's key.
 // WRITE-ONLY: key values are never fetched or displayed — only the has-key boolean.
 //
 // The SELECTABLE providers come from the server overview (the wired set — no dead
-// knobs). Unwired providers render as static "coming soon", never selectable.
+// knobs). Unwired providers render as static, disabled "coming soon" rows, never
+// selectable. The key controls target the ACTIVE provider (select a provider to
+// manage its key); the endpoints stay per-provider and write-only.
 
-const PROVIDER_LABEL: Record<LlmProvider, string> = {
-  anthropic: 'Anthropic',
-  openai: 'OpenAI',
+interface ProviderMeta {
+  readonly label: string;
+  readonly note: string;
+  readonly initials: string;
+  readonly av: string;
+}
+
+const PROVIDER_META: Record<LlmProvider, ProviderMeta> = {
+  anthropic: {
+    label: 'Anthropic',
+    note: 'Claude · governed extraction reference models',
+    initials: 'AN',
+    av: 'anthropic',
+  },
+  openai: {
+    label: 'OpenAI',
+    note: 'GPT-4 class · direct API key',
+    initials: 'OA',
+    av: 'openai',
+  },
 };
 
-const COMING_SOON: ReadonlyArray<{ key: string; label: string }> = [
-  { key: 'azure', label: 'Azure OpenAI' },
-  { key: 'gemini', label: 'Google Gemini' },
-  { key: 'bedrock', label: 'AWS Bedrock' },
+const COMING_SOON: ReadonlyArray<{ key: string; label: string; note: string; initials: string; av: string }> = [
+  {
+    key: 'azure',
+    label: 'Azure OpenAI',
+    note: 'Your Azure subscription · regional data residency',
+    initials: 'AZ',
+    av: 'azure',
+  },
+  {
+    key: 'gemini',
+    label: 'Google Gemini',
+    note: 'Gemini API via Google AI Studio or Vertex',
+    initials: 'GG',
+    av: 'gemini',
+  },
+  {
+    key: 'bedrock',
+    label: 'AWS Bedrock',
+    note: 'Anthropic/other models inside your AWS account',
+    initials: 'BR',
+    av: 'bedrock',
+  },
 ];
 
 const KEY_PLACEHOLDER: Record<LlmProvider, string> = {
@@ -90,7 +128,7 @@ export function LlmProvidersPanel({ sessionOverride, loadFn, setActiveFn, setKey
     try {
       const overview = await doSetActive(provider);
       setState({ status: 'ready', overview });
-      toast.show(`${PROVIDER_LABEL[provider]} is now the active provider.`);
+      toast.show(`${PROVIDER_META[provider].label} is now the active provider.`);
     } catch (e) {
       toast.show(safeErrorMessage(e, 'Failed to select provider.'));
     } finally {
@@ -105,7 +143,7 @@ export function LlmProvidersPanel({ sessionOverride, loadFn, setActiveFn, setKey
     try {
       await doSetKey(provider, draft);
       setDraftKeys((d) => ({ ...d, [provider]: '' })); // never retain the value
-      toast.show(`${PROVIDER_LABEL[provider]} key saved.`);
+      toast.show(`${PROVIDER_META[provider].label} key saved.`);
       refresh();
     } catch (e) {
       toast.show(safeErrorMessage(e, 'Failed to save key.'));
@@ -117,7 +155,7 @@ export function LlmProvidersPanel({ sessionOverride, loadFn, setActiveFn, setKey
     setBusy(true);
     try {
       await doClear(provider);
-      toast.show(`${PROVIDER_LABEL[provider]} key cleared.`);
+      toast.show(`${PROVIDER_META[provider].label} key cleared.`);
       refresh();
     } catch (e) {
       toast.show(safeErrorMessage(e, 'Failed to clear key.'));
@@ -125,82 +163,145 @@ export function LlmProvidersPanel({ sessionOverride, loadFn, setActiveFn, setKey
     }
   };
 
+  const overview = state.status === 'ready' ? state.overview : null;
+  const activeProvider = overview?.active_provider ?? null;
+  const activeStatus = overview?.providers.find((p) => p.provider === activeProvider) ?? null;
+  const activeConfigured = activeStatus?.configured ?? false;
+  const activeLabel = activeProvider !== null ? (PROVIDER_META[activeProvider]?.label ?? activeProvider) : '';
+
   return (
     <Card>
       <SettingCardHead
-        title="AI / LLM provider"
-        sub="Bring your own model provider. Aramo routes every governed AI feature (résumé extraction and more) to your tenant's active provider using your own key. Keys are stored securely and never displayed after saving. Aramo never falls back to a shared key or another provider."
+        title={
+          <span className="set-llm__head">
+            AI / LLM provider
+            {overview !== null && (
+              <StatChip tone={activeConfigured ? 'ok' : 'warn'} dot>
+                {activeConfigured ? `Configured · ${activeLabel}` : `Key required · ${activeLabel}`}
+              </StatChip>
+            )}
+          </span>
+        }
+        sub="Your tenant's own model provider and API key power governed résumé extraction and other AI features. Bring your own key from any supported provider — the key is stored securely, never displayed after saving, and Aramo never falls back to a shared platform key."
       />
       {state.status === 'loading' && <LoadingState label="Loading status…" />}
       {state.status === 'error' && <ErrorState message={state.message} onRetry={refresh} />}
       {state.status === 'ready' && (
         <div className="rc-stack">
-          <fieldset className="rc-fieldset" data-testid="llm-active-provider">
-            <legend className="rc-field-label">Active provider</legend>
-            {state.overview.providers.map((p) => (
-              <label key={p.provider} className="rc-radio-row">
-                {/* eslint-disable-next-line no-restricted-syntax -- G1/A3 escape hatch: native radio in a custom per-row layout; no clean fe-foundation RadioGroup mapping without redesign */}
+          <fieldset className="set-llm" data-testid="llm-active-provider">
+            <legend>Active provider</legend>
+            {state.overview.providers.map((p) => {
+              const meta = PROVIDER_META[p.provider];
+              const active = state.overview.active_provider === p.provider;
+              const tag: { tone: 'ok' | 'warn' | 'muted'; label: string } = active
+                ? p.configured
+                  ? { tone: 'ok', label: 'ACTIVE · CONFIGURED' }
+                  : { tone: 'warn', label: 'ACTIVE · KEY NEEDED' }
+                : { tone: 'muted', label: p.configured ? 'Configured' : 'Supported' };
+              return (
+                <label key={p.provider} className={`set-llm__row${active ? ' set-llm__row--active' : ''}`}>
+                  {/* eslint-disable-next-line no-restricted-syntax -- G1/A3 escape hatch: native radio kept for a11y + tests; visually replaced by .set-llm__dot */}
+                  <input
+                    type="radio"
+                    name="llm-active-provider"
+                    className="set-llm__radio"
+                    value={p.provider}
+                    checked={active}
+                    disabled={!canWrite || busy}
+                    onChange={() => onSelectActive(p.provider)}
+                    data-testid={`llm-active-${p.provider}`}
+                  />
+                  <span className="set-llm__dot" aria-hidden="true" />
+                  <span className={`set-llm__av set-llm__av--${meta.av}`} aria-hidden="true">
+                    {meta.initials}
+                  </span>
+                  <span className="set-llm__body">
+                    <span className="set-llm__name">{meta.label}</span>
+                    <span className="set-llm__note">{meta.note}</span>
+                  </span>
+                  <span className="set-llm__tag" data-testid={`llm-status-${p.provider}`}>
+                    <StatChip tone={tag.tone}>{tag.label}</StatChip>
+                  </span>
+                </label>
+              );
+            })}
+            {COMING_SOON.map((cs) => (
+              <label key={cs.key} className="set-llm__row set-llm__row--soon">
+                {/* eslint-disable-next-line no-restricted-syntax -- G1/A3 escape hatch: disabled native radio kept for a11y + tests (unwired = never selectable) */}
                 <input
                   type="radio"
                   name="llm-active-provider"
-                  value={p.provider}
-                  checked={state.overview.active_provider === p.provider}
-                  disabled={!canWrite || busy}
-                  onChange={() => onSelectActive(p.provider)}
-                  data-testid={`llm-active-${p.provider}`}
+                  className="set-llm__radio"
+                  disabled
+                  data-testid={`llm-comingsoon-${cs.key}`}
                 />
-                <span>{PROVIDER_LABEL[p.provider] ?? p.provider}</span>
-                <span className="rc-muted-line" data-testid={`llm-status-${p.provider}`}>
-                  {p.configured ? 'Configured' : 'Not configured'}
+                <span className="set-llm__dot" aria-hidden="true" />
+                <span className={`set-llm__av set-llm__av--${cs.av}`} aria-hidden="true">
+                  {cs.initials}
                 </span>
-              </label>
-            ))}
-            {COMING_SOON.map((cs) => (
-              <label key={cs.key} className="rc-radio-row rc-muted-line">
-                {/* eslint-disable-next-line no-restricted-syntax -- G1/A3 escape hatch: native radio in a custom per-row layout; no clean fe-foundation RadioGroup mapping without redesign */}
-                <input type="radio" name="llm-active-provider" disabled data-testid={`llm-comingsoon-${cs.key}`} />
-                <span>{cs.label}</span>
-                <span className="rc-muted-line">Coming soon</span>
+                <span className="set-llm__body">
+                  <span className="set-llm__name">{cs.label}</span>
+                  <span className="set-llm__note">{cs.note}</span>
+                </span>
+                <span className="set-llm__tag">
+                  <StatChip tone="muted">Supported</StatChip>
+                </span>
               </label>
             ))}
           </fieldset>
 
-          {canWrite &&
-            state.overview.providers.map((p) => (
-              <div key={p.provider} className="rc-stack" data-testid={`llm-key-block-${p.provider}`}>
-                <label className="rc-field">
-                  <span className="rc-field-label">{PROVIDER_LABEL[p.provider] ?? p.provider} API key</span>
-                  <Input unstyled
-                    type="password"
-                    autoComplete="off"
-                    className="rc-input"
-                    placeholder={p.configured ? 'Enter a new key to rotate' : (KEY_PLACEHOLDER[p.provider] ?? 'key')}
-                    value={draftKeys[p.provider] ?? ''}
-                    onChange={(e) => setDraftKeys((d) => ({ ...d, [p.provider]: e.target.value }))}
-                    data-testid={`llm-key-input-${p.provider}`}
-                  />
-                </label>
-                <div className="rc-row">
-                  <Button
-                    onClick={() => onSaveKey(p.provider)}
-                    disabled={busy || (draftKeys[p.provider] ?? '').length === 0}
-                    data-testid={`llm-key-save-${p.provider}`}
-                  >
-                    {p.configured ? 'Rotate key' : 'Set key'}
-                  </Button>
-                  {p.configured && (
-                    <Button
-                      variant="secondary"
-                      onClick={() => onClearKey(p.provider)}
-                      disabled={busy}
-                      data-testid={`llm-key-clear-${p.provider}`}
-                    >
-                      Clear
-                    </Button>
-                  )}
-                </div>
+          {canWrite && activeProvider !== null && (
+            <div className="set-llm__key" data-testid={`llm-key-block-${activeProvider}`}>
+              <div className="set-llm__keyhead">
+                <span className="set-llm__keylabel">API key</span>
+                <span className="set-llm__keysub">
+                  ·{' '}
+                  {activeConfigured
+                    ? `a key is on file for ${activeLabel}`
+                    : `no key on file for ${activeLabel} yet`}
+                </span>
               </div>
-            ))}
+              <div className="set-llm__keyrow">
+                <Input
+                  unstyled
+                  type="password"
+                  autoComplete="off"
+                  className="set-llm__keyinput"
+                  placeholder={
+                    activeConfigured ? 'Enter a new key to rotate' : (KEY_PLACEHOLDER[activeProvider] ?? 'key')
+                  }
+                  value={draftKeys[activeProvider] ?? ''}
+                  onChange={(e) => setDraftKeys((d) => ({ ...d, [activeProvider]: e.target.value }))}
+                  data-testid={`llm-key-input-${activeProvider}`}
+                />
+                <Button
+                  onClick={() => onSaveKey(activeProvider)}
+                  disabled={busy || (draftKeys[activeProvider] ?? '').length === 0}
+                  data-testid={`llm-key-save-${activeProvider}`}
+                >
+                  {activeConfigured ? 'Rotate key' : 'Save key'}
+                </Button>
+                {activeConfigured && (
+                  <Button
+                    variant="secondary"
+                    onClick={() => onClearKey(activeProvider)}
+                    disabled={busy}
+                    data-testid={`llm-key-clear-${activeProvider}`}
+                  >
+                    Clear
+                  </Button>
+                )}
+              </div>
+              <div className="set-llm__secure">
+                <IconShield />
+                <span>
+                  Keys are tenant-scoped and stored in the platform vault under your tenant. Switching
+                  providers keeps the previous key in custody until you clear it; the switch is versioned
+                  and logged. Résumé data is sent only to the provider you select here.
+                </span>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </Card>
