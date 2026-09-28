@@ -228,7 +228,7 @@ describe('RequisitionDetailView — header / meta / pipeline (2D)', () => {
     ).toBeInTheDocument();
   });
 
-  it('Talent tab: Email (mailto) + Phone cells + Send RTR button per row', async () => {
+  it('Talent tab: Email (mailto) + Phone cells + RTR action per row', async () => {
     mockApi();
     mountDetail();
     await screen.findByRole('heading', { name: /Senior Rust Engineer/ });
@@ -236,8 +236,9 @@ describe('RequisitionDetailView — header / meta / pipeline (2D)', () => {
     const mail = await screen.findByRole('link', { name: 'marcus@example.com' });
     expect(mail).toHaveAttribute('href', 'mailto:marcus@example.com');
     expect(screen.getByText('+1 202-555-0104')).toBeInTheDocument();
-    // Send RTR button placed per row (unwired placeholder — one per talent).
-    expect(screen.getAllByRole('button', { name: /Send RTR/ })).toHaveLength(2);
+    // OC-5 — the inert placeholder is replaced by the wired RtrPanel; its initial
+    // "Request RTR" affordance renders once per talent row (no API call on mount).
+    expect(screen.getAllByRole('button', { name: /Request RTR/ })).toHaveLength(2);
     // Find Talent ▾ is gated on talent:source — absent for this session.
     expect(screen.queryByRole('button', { name: /Find Talent/ })).toBeNull();
   });
