@@ -33,6 +33,7 @@
     "apps/api/src/requisition-talent-board/requisition-talent-board.controller.ts": "AP",
     "apps/api/src/pipeline-void/pipeline-void.controller.ts": "AP",
     "apps/api/src/documents/documents-esign.controller.ts": "SS",
+    "apps/api/src/integrations/esign/esign-events.controller.ts": "SS",
     "apps/api/src/communications/communications.controller.ts": "AP",
     "apps/api/src/communications/requisition-contact-draft.controller.ts": "AP",
     "apps/api/src/engagement/engagement.controller.ts": "AP",

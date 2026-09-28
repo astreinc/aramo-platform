@@ -17,6 +17,10 @@ import {
   ZOOM_WEBHOOK_MAX_BODY_BYTES,
   ZOOM_WEBHOOK_ROUTE,
 } from './communications/zoom-webhook.constants.js';
+import {
+  ESIGN_EVENTS_MAX_BODY_BYTES,
+  ESIGN_EVENTS_WEBHOOK_ROUTE,
+} from './integrations/esign/esign-webhook.constants.js';
 
 async function bootstrap(): Promise<void> {
   const port = process.env['PORT'] ?? 3000;
@@ -51,6 +55,14 @@ async function bootstrap(): Promise<void> {
   app.use(
     ZOOM_WEBHOOK_ROUTE,
     express.raw({ type: () => true, limit: ZOOM_WEBHOOK_MAX_BODY_BYTES }),
+  );
+  // E-Sign OC v2 — route-scoped RAW body for the canonical E-Sign lifecycle-event
+  // receiver ONLY: the x-aramo-esign-signature HMAC covers `${timestamp}.${raw
+  // body}`, so the exact signed bytes must survive to the verifier (never the
+  // re-serialized JSON).
+  app.use(
+    ESIGN_EVENTS_WEBHOOK_ROUTE,
+    express.raw({ type: () => true, limit: ESIGN_EVENTS_MAX_BODY_BYTES }),
   );
   // Restore Nest's default global parsers for every other route (behaviour-
   // preserving — Nest uses express json+urlencoded under the hood).

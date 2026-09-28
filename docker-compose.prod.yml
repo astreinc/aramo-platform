@@ -96,6 +96,12 @@ services:
       - api
       - auth-service
       - platform-admin
+      # E-Sign OC v2 (OC-4) — nginx bakes the sign.aramo.ai block with
+      # `proxy_pass http://esign-service:3003` and resolves that upstream at
+      # config-load, so esign-service must be started before nginx or the front
+      # door crash-loops ([emerg] host not found in upstream). Matches the bare
+      # depends_on convention used for the other backends.
+      - esign-service
     # Reload loop (Ruling 4): pick up a renewed cert every 6h without a restart.
     # NO docker socket mounted anywhere (rejected: root-equivalent surface).
     # E18: the inner exec chains through the image's ENTRYPOINT
@@ -171,6 +177,10 @@ services:
       # transactional mailer (Email-S1): ses|stub + the fixed SES sender
       - MAILER_PROVIDER
       - SES_FROM_ADDRESS
+      # E-Sign OC v2 — shared HMAC secret Core uses to VERIFY the E-Sign lifecycle
+      # webhook (POST /v1/integrations/esign/events). Same value as esign-service's
+      # ESIGN_WEBHOOK_SIGNING_SECRET; unset ⇒ the receiver returns 503 (dark).
+      - ESIGN_WEBHOOK_SIGNING_SECRET
       # DNS resolver for domain verification (Domain-Enforcement P2b): node|stub.
       # REQUIRED — loadDnsConfig fails LOUD if unset (api crash-loops). api-only;
       # auth-service does not load the DNS module.
@@ -295,6 +305,15 @@ services:
       # E-Sign signer notifications ride the standing SES mailer path (SigningNotificationPort → MailerPort).
       - MAILER_PROVIDER
       - SES_FROM_ADDRESS
+      # OC-1 — the Sign Web origin used to build signer URLs (the raw capability
+      # token is appended in-memory inside esign-service and never leaves it).
+      - ESIGN_SIGN_WEB_BASE_URL
+      # E-Sign OC v2 — canonical outbound lifecycle webhook to Aramo Core. Target
+      # defaults to the api origin; the shared secret signs the HMAC (empty ⇒ the
+      # delivery worker fails closed and the outbox retries).
+      - DOCUMENTS_API_URL
+      - ESIGN_WEBHOOK_TARGET_URL
+      - ESIGN_WEBHOOK_SIGNING_SECRET
     depends_on:
       postgres:
         condition: service_healthy

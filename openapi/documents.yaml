@@ -169,10 +169,20 @@ paths:
   /v1/documents/{id}/artifacts:
     get:
       operationId: listDocumentArtifacts
-      summary: List a document's artifacts.
-      description: Returns the document's stored artifacts. Requires `document:read`.
+      summary: List a document's artifacts (optionally filtered to a specific role).
+      description: >
+        Returns the document's stored artifacts. Requires `document:read`. The optional
+        `role` query filter resolves a SPECIFIC artifact role (e.g. EXECUTED vs
+        EXECUTION_CERTIFICATE) rather than the undifferentiated collection.
       parameters:
         - $ref: '#/components/parameters/DocumentId'
+        - name: role
+          in: query
+          required: false
+          description: Filter to a single artifact role.
+          schema:
+            type: string
+            enum: [TEMPLATE_SOURCE, SOURCE_UPLOAD, RENDERED_UNSIGNED, EXECUTED, EXECUTION_CERTIFICATE, PREVIEW, ATTACHMENT]
       responses:
         '200':
           description: The document's artifacts.
@@ -579,6 +589,75 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '422':
           $ref: '#/components/responses/BadRequest'
+  /v1/integrations/esign/events:
+    post:
+      operationId: receiveEsignLifecycleEvent
+      summary: Canonical E-Sign → Core lifecycle-event webhook receiver (Independent-Digital-Signature-Platform Directive §9).
+      description: >
+        Consumer-owned, authenticated receiver for GENERIC E-Sign lifecycle events. The E-Sign
+        platform delivers each event with two headers: `X-Aramo-Esign-Timestamp` (unix seconds)
+        and `X-Aramo-Esign-Signature` (base64 HMAC-SHA256 over the string `{timestamp}.{raw
+        request body}`, keyed by the shared webhook secret). Core verifies the signature and a
+        bounded timestamp window (±300s) before processing, then interprets the event
+        idempotently (dedup by `event_id`). Delivery is at-least-once; a 2xx is returned ONLY
+        after durable acceptance. This is the canonical callback contract; the transitional
+        `/v1/documents/esign-writeback` endpoint is retained for internal compatibility only.
+      parameters:
+        - name: X-Aramo-Esign-Timestamp
+          in: header
+          required: true
+          description: Unix epoch seconds when the event was signed. Rejected if outside ±300s of now.
+          schema:
+            type: string
+        - name: X-Aramo-Esign-Signature
+          in: header
+          required: true
+          description: base64(HMAC-SHA256(secret, "{timestamp}.{raw body}")).
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [event_id, event_type, event_version, occurred_at, tenant_id, envelope_id, correlation_id]
+              properties:
+                event_id: { type: string, description: Stable across every delivery retry (the durable outbox row id). }
+                event_type: { type: string, description: 'Generic signing fact, e.g. esign.envelope.executed.v1.' }
+                event_version: { type: integer }
+                occurred_at: { type: string, format: date-time }
+                tenant_id: { type: string, format: uuid }
+                envelope_id: { type: string, format: uuid }
+                correlation_id: { type: string }
+                artifact_refs:
+                  type: object
+                  description: Identifier-only references (no bytes/PII).
+                  properties:
+                    executed_document_ids:
+                      type: array
+                      items: { type: string, format: uuid }
+                    has_certificate: { type: boolean }
+      responses:
+        '200':
+          description: Event durably accepted (or acknowledged-and-ignored for a non-completion event).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [received]
+                properties:
+                  received: { type: boolean }
+                  event_id: { type: string }
+                  ignored: { type: boolean }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          description: Missing, stale, or invalid signature.
+        '422':
+          $ref: '#/components/responses/BadRequest'
+        '503':
+          description: Webhook verification is not provisioned (signing secret unset).
 components:
   parameters:
     DocumentId:

@@ -4504,6 +4504,30 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/oc6-rtr-webhook-e2e.integration.spec.ts",
+      "status": "excluded",
+      "to": "apps/api/src/main.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/oc6-rtr-webhook-e2e.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/documents/prisma/migrations/20260921180000_init_documents_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/oc6-rtr-webhook-e2e.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/documents/prisma/migrations/20260922130000_doc2_templates_rendering_requirements/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/oc6-rtr-webhook-e2e.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/documents/prisma/migrations/20260923170000_doc5_seed_rtr_document_type/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/outreach-send-consent-revoked.integration.spec.ts",
       "status": "excluded",
       "to": "libs/ai-draft/prisma/migrations/20260525170000_init/migration.sql"
@@ -11746,6 +11770,11 @@
     {
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
+      "to": "apps/api/src/integrations/esign/esign-events.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
       "to": "apps/api/src/microsoft/microsoft-authorization.controller.ts"
     },
     {
@@ -18085,6 +18114,11 @@
       "from": "pact/consumers/esign-consumer/src/esign.consumer.test.ts",
       "status": "unscoped",
       "to": "apps/api/src/documents/esign-writeback.ts"
+    },
+    {
+      "from": "pact/consumers/esign-source-consumer/src/webhook.consumer.test.ts",
+      "status": "unscoped",
+      "to": "pact/provider/src/verify-api.ts"
     },
     {
       "from": "pact/consumers/ingestion-consumer/src/ingestion.consumer.test.ts",

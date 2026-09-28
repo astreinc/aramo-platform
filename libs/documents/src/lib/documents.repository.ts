@@ -213,10 +213,11 @@ export class DocumentsRepository {
     });
   }
 
-  async listArtifacts(tenant_id: string, document_id: string) {
+  async listArtifacts(tenant_id: string, document_id: string, role?: string) {
     await this.getDocument(tenant_id, document_id);
     return this.prisma.documentArtifact.findMany({
-      where: { tenant_id, document_id },
+      // OC-8 — optional artifact_role filter (EXECUTED vs EXECUTION_CERTIFICATE …).
+      where: { tenant_id, document_id, ...(role !== undefined ? { artifact_role: role } : {}) },
       orderBy: { created_at: 'asc' },
     });
   }

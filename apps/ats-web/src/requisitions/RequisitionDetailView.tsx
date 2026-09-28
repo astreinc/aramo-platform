@@ -9,6 +9,8 @@ import { LogNoteDialog } from '../activity/LogNoteDialog';
 import type { ActivityView } from '../activity/types';
 import { getCompany } from '../companies/companies-api';
 import { getContact } from '../contacts/contacts-api';
+import { OfferLetterPanel } from '../offer-document/OfferLetterPanel';
+import { RtrPanel } from '../rtr/RtrPanel';
 import { listPipelinesForRequisition, voidPipelineEpisode } from '../pipeline/pipeline-api';
 import { PIPELINE_STATUS_LABELS, type PipelineView } from '../pipeline/types';
 import { listOffers } from '../offers/offers-api';
@@ -1473,19 +1475,18 @@ function TalentJourney({
                 ) : (
                   <span className="rc-tj__cell rc-tj__empty">—</span>
                 )}
-                {/* RTR — Right to Represent. Send action is being wired in a
-                    separate slice; the button is placed (unwired) so the column
-                    matches the prototype. No backend call is issued yet. */}
+                {/* RTR — Right to Represent (OC-5). The wired action for this
+                    (talent, requisition, company): request → send for signature →
+                    DERIVED status. Status/readiness stay backend-authoritative
+                    (never inferred from "sent"); the column header labels it, so
+                    the panel's own heading is suppressed. */}
                 <span className="rc-tj__rtr">
-                  <Button
-                    unstyled
-                    type="button"
-                    className="rc-tj__rtrbtn"
-                    title="Send RTR — wiring in progress"
-                  >
-                    <Icons.IconMail />
-                    Send RTR
-                  </Button>
+                  <RtrPanel
+                    talentId={p.talent_record_id}
+                    requisitionId={req.id}
+                    companyId={req.company_id}
+                    hideHeading
+                  />
                   {/* Accidental-Add Correction — "Remove from requisition" appears ONLY when the
                       backend deems this episode VOID-eligible (server-authoritative; never from
                       the No-contact status alone). Opens the shared correction confirmation. */}
@@ -1629,6 +1630,18 @@ function OffersTab({
         ) : (
           <span className="rc-muted-line">—</span>
         ),
+    },
+    {
+      // OC-7 — the evidence-only Offer Letter surface for this offer. Request →
+      // send for signature → DERIVED letter status + executed-artifact access.
+      // Signing NEVER transitions the Offer aggregate (the State column stays
+      // authoritative); the panel makes the dual state legible (Offer SENT while
+      // Letter EXECUTED). Signer identity is server-resolved from the Offer.
+      key: 'offer-letter',
+      header: 'Offer letter',
+      render: (o) => (
+        <OfferLetterPanel offerId={o.id} offerState={RECRUITING_OFFER_STATE_LABELS[o.state]} hideHeading />
+      ),
     },
   ];
   return (

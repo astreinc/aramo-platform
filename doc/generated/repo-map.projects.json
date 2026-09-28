@@ -618,6 +618,7 @@
     "@aramo/esign": [
       "DOCUMENT_SOURCE_PROVIDER_PORT",
       "DisclosureNotAcceptedError",
+      "ESIGN_LIFECYCLE_EVENT_VERSION",
       "ESIGN_SCHEMA",
       "EVENT_PUBLISHER_PORT",
       "EVIDENCE_MANIFEST_SIGNER_PORT",
@@ -631,6 +632,7 @@
       "EsignService",
       "ExecutionService",
       "LocalEventPublisher",
+      "OutboxDeliveryService",
       "OutboxService",
       "PrismaService",
       "SIGNING_NOTIFICATION_PORT",
@@ -640,10 +642,13 @@
       "SigningSessionExpiredError",
       "SigningSessionInvalidError",
       "SoftwareEvidenceManifestSigner",
+      "WEBHOOK_DELIVERY_PORT",
+      "backoffMs",
       "computeEventHash",
       "generateSigningToken",
       "hashSigningToken",
-      "signingSessionExpiresAt"
+      "signingSessionExpiresAt",
+      "toLifecycleEvent"
     ],
     "@aramo/esign-service": ["AppModule"],
     "@aramo/events": ["EventsModule"],
@@ -3770,6 +3775,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/oc6-rtr-webhook-e2e.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/submit-talent.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -3880,7 +3891,25 @@
     "@aramo/esign": [
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/esign-service/src/tests/esign-delivery.worker.spec.ts",
+        "project": "esign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/esign-service/src/tests/kms-evidence-manifest-signer.spec.ts",
+        "project": "esign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/esign-service/src/tests/native-signature-provider.spec.ts",
+        "project": "esign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/esign-service/src/tests/webhook-event-publisher.spec.ts",
         "project": "esign-service",
         "status": "excluded"
       },

@@ -1,18 +1,30 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import {
   type CreateEnvelopeRequest,
   type EnvelopeSummary,
   type EvidenceSummary,
   type SignatureProviderPort,
 } from '@aramo/documents-contracts';
-import { EsignRepository, EsignService } from '@aramo/esign';
+import {
+  EsignRepository,
+  EsignService,
+  type IssuedSession,
+  SIGNING_NOTIFICATION_PORT,
+  type SigningNotificationPort,
+} from '@aramo/esign';
 
 // DOC-3 §229 — the NATIVE (non-third-party) implementation of the provider-neutral
 // SignatureProviderPort, backed by the E-Sign domain (libs/esign). A future
 // DocuSign/AdobeSign provider implements the SAME contract without touching this.
 @Injectable()
 export class NativeAramoSignatureProvider implements SignatureProviderPort {
-  constructor(private readonly repo: EsignRepository, private readonly service: EsignService) {}
+  private readonly logger = new Logger('NativeAramoSignatureProvider');
+
+  constructor(
+    private readonly repo: EsignRepository,
+    private readonly service: EsignService,
+    @Optional() @Inject(SIGNING_NOTIFICATION_PORT) private readonly notifier?: SigningNotificationPort,
+  ) {}
 
   private async summarize(tenant_id: string, envelope_id: string): Promise<EnvelopeSummary> {
     const full = await this.repo.getEnvelopeFull(tenant_id, envelope_id);
@@ -39,10 +51,52 @@ export class NativeAramoSignatureProvider implements SignatureProviderPort {
     return this.summarize(req.tenant_id, env.id);
   }
 
+  // OC-1 — send mints one signer session per signer; we dispatch the initial
+  // SIGNATURE_REQUEST so each Talent actually receives a usable Sign Web URL. The
+  // raw capability token stays ENTIRELY inside E-Sign: it is used only here, in
+  // memory, to construct the signer URL, and is never persisted, logged, returned
+  // to Core, or emitted in telemetry.
   async sendEnvelope(tenant_id: string, envelope_id: string): Promise<EnvelopeSummary> {
     const env = await this.repo.getEnvelope(tenant_id, envelope_id);
-    await this.service.send(tenant_id, envelope_id, env.created_by);
+    const { sessions } = await this.service.send(tenant_id, envelope_id, env.created_by);
+    await this.dispatchSigningRequests(tenant_id, envelope_id, sessions);
     return this.summarize(tenant_id, envelope_id);
+  }
+
+  private async dispatchSigningRequests(tenant_id: string, envelope_id: string, sessions: IssuedSession[]): Promise<void> {
+    if (this.notifier === undefined || sessions.length === 0) return;
+    const base = process.env['ESIGN_SIGN_WEB_BASE_URL'];
+    if (base === undefined || base === '') {
+      // Explicit signal (no token): the envelope is SENT but no signer link can be
+      // built without a configured Sign Web origin.
+      this.logger.warn(`SIGNATURE_REQUEST not dispatched for envelope ${envelope_id}: ESIGN_SIGN_WEB_BASE_URL is unset`);
+      return;
+    }
+    const full = await this.repo.getEnvelopeFull(tenant_id, envelope_id);
+    const signersById = new Map(full.signers.map((s) => [s.id, s]));
+    const origin = base.replace(/\/+$/, '');
+    for (const session of sessions) {
+      const signer = signersById.get(session.signer_id);
+      if (signer === undefined) continue;
+      const signing_url = `${origin}/s/${session.raw_token}`;
+      try {
+        const result = await this.notifier.notify({
+          kind: 'SIGNATURE_REQUEST',
+          to_email: signer.email,
+          to_name: signer.name,
+          envelope_subject: full.subject,
+          signing_url,
+        });
+        if (!result.delivered) {
+          // Never falsely imply success; never log the token/url.
+          this.logger.warn(`SIGNATURE_REQUEST reported not delivered — envelope ${envelope_id} signer ${signer.id}`);
+        }
+      } catch (err) {
+        // A delivery-provider failure is a RETRYABLE condition, not envelope
+        // corruption. Surface it explicitly (never the token/url).
+        this.logger.warn(`SIGNATURE_REQUEST delivery failed — envelope ${envelope_id} signer ${signer.id}: ${(err as Error).message}`);
+      }
+    }
   }
 
   async getEnvelope(tenant_id: string, envelope_id: string): Promise<EnvelopeSummary> {

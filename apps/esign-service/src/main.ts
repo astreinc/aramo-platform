@@ -11,6 +11,9 @@ async function bootstrap(): Promise<void> {
   app.useGlobalPipes(
     new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
   );
+  // E-Sign OC v2 (DEC-B) — enable Nest lifecycle signals so the outbound delivery
+  // worker stops cleanly (onApplicationShutdown) on SIGTERM/SIGINT.
+  app.enableShutdownHooks();
   Logger.log('aramo esign-service starting', 'Bootstrap');
   await app.listen(port);
 }

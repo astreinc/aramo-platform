@@ -120,6 +120,16 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('DOC-3 esign schem
     await expect(mkSigner(1)).rejects.toThrow(/unique|duplicate/i);
   });
 
+  it('OutboxEvent carries durable delivery retry state (DEC-A: attempt/backoff/diagnostic)', async () => {
+    const cols = await db.query(
+      `SELECT column_name FROM information_schema.columns WHERE table_schema='esign' AND table_name='OutboxEvent'`,
+    );
+    const names = cols.rows.map((x) => x.column_name);
+    expect(names).toEqual(
+      expect.arrayContaining(['attempt_count', 'next_attempt_at', 'last_attempt_at', 'last_error_code']),
+    );
+  });
+
   it('stores only a SigningSession token hash (unique), never a raw token column', async () => {
     const env = await newEnvelope();
     const signerId = randomUUID();

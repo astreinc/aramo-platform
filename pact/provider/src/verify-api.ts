@@ -3789,6 +3789,13 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // MAILER_PORT at binding; AppModule already imports it (via IdentityModule
       // and now directly for the verification flow), so this env must resolve.
       process.env['MAILER_PROVIDER'] = 'stub';
+      // E-Sign OC v2 (B8) — the generic lifecycle webhook contract. The provider
+      // (EsignEventsController) verifies HMAC over `${timestamp}.${raw body}` within
+      // a STRICT (unchanged) window; the requestFilter below re-signs each replayed
+      // webhook with a FRESH timestamp over the exact forwarded bytes, so production
+      // tolerance is never weakened for Pact. TEST-ONLY secret; matches the value the
+      // consumer/requestFilter sign with.
+      process.env['ESIGN_WEBHOOK_SIGNING_SECRET'] = 'pact-test-esign-webhook-secret';
 
       // PR-A1a §6 — recruiter accessJwt carries 'submittal:create'.
       // PR-A1a-2 §3 — adds 'submittal:approve' for the 5 newly-guarded
@@ -4266,6 +4273,13 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // the controller boundary with the same whitelist + transform
       // settings as production.
       app.use(cookieParser());
+      // E-Sign OC v2 (B8) — mirror apps/api/src/main.ts's route-scoped RAW body for
+      // the E-Sign lifecycle webhook so the provider reads the EXACT signed bytes
+      // (production parses this one route as a raw Buffer, not JSON). Registered
+      // BEFORE app.init() so it precedes Nest's default json parser; scoped to the
+      // one path, so no other pact interaction's body parsing changes.
+      const expressForEsignRaw = require('express') as typeof import('express');
+      app.use('/v1/integrations/esign/events', expressForEsignRaw.raw({ type: () => true }));
       app.useGlobalPipes(
         new ValidationPipe({
           whitelist: true,
@@ -4652,6 +4666,11 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       },
       // A revision id with no source artifact ⇒ getSourceBase64 → null → 404. No seed.
       'a document revision without a source artifact exists': async () => undefined,
+      // E-Sign OC v2 (B8) — generic lifecycle webhook. Self-contained/no-op: the
+      // contracted interaction is a NON-completion event the receiver authenticates
+      // and acknowledges WITHOUT any write-back (no seed needed). The full
+      // completion→write-back path is proven by the OC-6 E2E, not here.
+      'aramo-core can receive an E-Sign lifecycle webhook': async () => undefined,
 
       // ===== SKILL-TAX-1F-B2 platform skill-governance pacts =====
       // The canonical taxonomy is platform-global (no tenant scope). TRUNCATE the
@@ -8639,6 +8658,29 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         // 'Bearer eyJfake.token' (recruiter → accessJwt) so the controller's
         // consumer_type==='platform' assertion returns 403.
         req.headers['authorization'] = `Bearer ${platformJwt}`;
+      }
+      // E-Sign OC v2 (B8) — re-sign the generic lifecycle webhook with a FRESH
+      // timestamp over the EXACT bytes the proxy forwards to the provider
+      // (Buffer.from(JSON.stringify(req.body)) — see pact proxyRequest/parseBody).
+      // This makes the recorded (dynamic) signature replayable against the STRICT,
+      // unchanged production HMAC+timestamp check — no tolerance weakening. The
+      // filter only makes the dynamic auth material replayable; accept/reject
+      // crypto semantics stay covered by the dedicated verifier unit tests.
+      // Gate on the esign signature header (always present on the recorded webhook)
+      // — more reliable than url/method. The proxy forwards
+      // Buffer.from(JSON.stringify(req.body)) (see parseBody), so we sign the same.
+      const esignReq = req as unknown as { body?: unknown };
+      if (req.headers['x-aramo-esign-signature'] !== undefined && esignReq.body !== undefined && esignReq.body !== null) {
+        const { createHmac } = require('node:crypto') as typeof import('node:crypto');
+        const forwarded = Buffer.isBuffer(esignReq.body)
+          ? esignReq.body
+          : Buffer.from(JSON.stringify(esignReq.body));
+        const ts = String(Math.floor(Date.now() / 1000));
+        const sig = createHmac('sha256', 'pact-test-esign-webhook-secret')
+          .update(`${ts}.${forwarded.toString('utf8')}`)
+          .digest('base64');
+        req.headers['x-aramo-esign-timestamp'] = ts;
+        req.headers['x-aramo-esign-signature'] = sig;
       }
       next();
     }
