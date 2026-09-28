@@ -93,7 +93,7 @@
     "cookie-parser": "~1.4.7",
     "decimal.js": "10.6.0",
     "disposable-email-domains-js": "^1.25.0",
-    "free-email-domains": "^1.9.47",
+    "free-email-domains": "^1.12.8",
     "jose": "~6.2.3",
     "mammoth": "~1.12.0",
     "openai": "~4.104.0",
