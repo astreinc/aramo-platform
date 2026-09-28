@@ -27,9 +27,11 @@ export interface OfferLetterPanelProps {
   offerId: string;
   /** The Offer aggregate's own state (e.g. SENT) — shown for the dual-state view; unchanged by signing. */
   offerState: string;
+  /** Suppress the panel's own heading when the host surface already labels it (e.g. a table column). */
+  hideHeading?: boolean;
 }
 
-export function OfferLetterPanel({ offerId, offerState }: OfferLetterPanelProps): JSX.Element {
+export function OfferLetterPanel({ offerId, offerState, hideHeading = false }: OfferLetterPanelProps): JSX.Element {
   const [documentId, setDocumentId] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -72,7 +74,7 @@ export function OfferLetterPanel({ offerId, offerState }: OfferLetterPanelProps)
 
   return (
     <section className="offer-letter-panel" aria-label="Offer Letter">
-      <h3>Offer Letter</h3>
+      {!hideHeading && <h3>Offer Letter</h3>}
       {/* Dual-state view (PL-1): the Offer's own status is independent of the letter's. */}
       <p className="offer-letter-offer-state">
         Offer: <strong>{offerState}</strong>
@@ -94,8 +96,12 @@ export function OfferLetterPanel({ offerId, offerState }: OfferLetterPanelProps)
           </Button>
           {executed && (
             <div className="offer-letter-executed">
-              <a href={`/v1/documents/${documentId}/artifacts`}>View Executed Offer</a>
-              <a href={`/v1/documents/${documentId}/artifacts`}>View Execution Certificate</a>
+              {/* OC-8 — role-distinct resolution: each action targets a SPECIFIC
+                  artifact role, not the undifferentiated collection endpoint. */}
+              <a href={`/v1/documents/${documentId}/artifacts?role=EXECUTED`}>View Executed Offer</a>
+              <a href={`/v1/documents/${documentId}/artifacts?role=EXECUTION_CERTIFICATE`}>
+                View Execution Certificate
+              </a>
             </div>
           )}
         </div>

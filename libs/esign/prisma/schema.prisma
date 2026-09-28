@@ -229,8 +229,17 @@ model OutboxEvent {
   event_payload Json
   created_at    DateTime  @default(now()) @db.Timestamptz
   published_at  DateTime? @db.Timestamptz
+  // E-Sign OC v2 (DEC-A) — durable outbound-delivery retry/backoff state. E-Sign
+  // owns reliable lifecycle-event delivery, so the outbox persists attempt
+  // bookkeeping + a backoff schedule instead of a blind fixed-interval retry.
+  // last_error_code is a bounded, sanitized short diagnostic (never raw bodies).
+  attempt_count   Int       @default(0)
+  next_attempt_at DateTime? @db.Timestamptz
+  last_attempt_at DateTime? @db.Timestamptz
+  last_error_code String?   @db.VarChar(64)
 
   @@index([published_at])
+  @@index([published_at, next_attempt_at])
   @@schema("esign")
 }
 

@@ -9,6 +9,8 @@ import {
 } from '@aramo/documents';
 import { ObjectStorageModule, ObjectStorageService } from '@aramo/object-storage';
 
+import { EsignEventsController } from '../integrations/esign/esign-events.controller.js';
+
 import { AramoS3DocumentStorageAdapter } from './aramo-s3-document-storage.adapter.js';
 import {
   DOCUMENTS_ESIGN_PRISMA,
@@ -25,7 +27,7 @@ const DOCUMENTS_ESIGN_STORAGE = 'DOCUMENTS_ESIGN_STORAGE';
 
 @Module({
   imports: [ObjectStorageModule],
-  controllers: [DocumentsEsignController],
+  controllers: [DocumentsEsignController, EsignEventsController],
   providers: [
     { provide: DOCUMENTS_ESIGN_PRISMA, useFactory: (): DocumentsPrismaService => new DocumentsPrismaService() },
     {

@@ -12,12 +12,16 @@ import { EsignWriteBackOrchestrator } from './esign-writeback.js';
 // DOC-4 (R-4-7) — the apps/api endpoints for the executed-artifact seam.
 //   GET  /v1/documents/revisions/:id/source  — source PDF bytes esign pulls for
 //                                               executed-document production.
-//   POST /v1/documents/esign-writeback        — the idempotent write-back the
-//                                               event consumer (SNS→HTTP / poller)
-//                                               invokes: pull executed artifacts
-//                                               from esign-service then store the
-//                                               permanent EXECUTED + CERTIFICATE.
+//   POST /v1/documents/esign-writeback        — TRANSITIONAL / INTERNAL-COMPAT ONLY.
 // Service-to-service; tenant_id is passed authoritatively by the trusted caller.
+//
+// E-Sign OC v2 (Independent-Digital-Signature-Platform Directive sections 9, 11,
+// 31.10): `esign-writeback` is NO LONGER the canonical E-Sign -> Core callback. The
+// canonical contract is the authenticated generic lifecycle webhook
+// `POST /v1/integrations/esign/events` (EsignEventsController), which invokes the
+// SAME EsignWriteBackOrchestrator IN-PROCESS. This HTTP endpoint is retained only as
+// transitional/internal-compatibility substrate and may be retired in a later
+// increment; do not build new callers against it.
 
 @Controller('v1/documents')
 export class DocumentsEsignController {

@@ -42,6 +42,20 @@ export {
   type EsignDomainEvent,
 } from './lib/ports/event-publisher.port.js';
 export { OutboxService } from './lib/outbox.service.js';
+export { OutboxDeliveryService, type DeliveryBatchResult } from './lib/outbox-delivery.service.js';
+export { backoffMs } from './lib/outbox-backoff.js';
+export {
+  ESIGN_LIFECYCLE_EVENT_VERSION,
+  toLifecycleEvent,
+  type EsignLifecycleEvent,
+  type EsignLifecycleEventArtifactRefs,
+  type OutboxRowForLifecycleEvent,
+} from './lib/ports/lifecycle-event.js';
+export {
+  WEBHOOK_DELIVERY_PORT,
+  type WebhookDeliveryPort,
+  type WebhookDeliveryResult,
+} from './lib/ports/webhook-delivery.port.js';
 export {
   EVIDENCE_MANIFEST_SIGNER_PORT,
   SoftwareEvidenceManifestSigner,

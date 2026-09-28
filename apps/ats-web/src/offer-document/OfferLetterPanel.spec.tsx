@@ -48,6 +48,13 @@ describe('OfferLetterPanel', () => {
     // Executed-view links appear only post-execution.
     expect(screen.getByText('View Executed Offer')).toBeInTheDocument();
     expect(screen.getByText('View Execution Certificate')).toBeInTheDocument();
+    // OC-8 — the two actions resolve DISTINCT artifact roles, not two labels over
+    // the same collection endpoint.
+    const executedHref = screen.getByText('View Executed Offer').closest('a')?.getAttribute('href');
+    const certHref = screen.getByText('View Execution Certificate').closest('a')?.getAttribute('href');
+    expect(executedHref).toBe('/v1/documents/doc-1/artifacts?role=EXECUTED');
+    expect(certHref).toBe('/v1/documents/doc-1/artifacts?role=EXECUTION_CERTIFICATE');
+    expect(executedHref).not.toBe(certHref);
   });
 
   it('surfaces a backend error', async () => {

@@ -7,9 +7,11 @@ import {
   EXECUTION_PRODUCER_PORT,
   EsignModule,
   ExecutionService,
+  OutboxDeliveryService,
   OutboxService,
   SIGNING_NOTIFICATION_PORT,
   SoftwareEvidenceManifestSigner,
+  WEBHOOK_DELIVERY_PORT,
 } from '@aramo/esign';
 import { DOCUMENT_RENDERING_PORT, PdfLibDocumentRenderingAdapter } from '@aramo/documents-rendering';
 import { MailerModule } from '@aramo/mailer';
@@ -20,6 +22,8 @@ import { MailerSigningNotificationAdapter } from './mailer-signing-notification.
 import { kmsEvidenceSignerFromEnv } from './kms-evidence-manifest-signer.js';
 import { DocumentSourceHttpAdapter } from './document-source-http.adapter.js';
 import { eventPublisherFromEnv } from './sns-event-publisher.js';
+import { HttpWebhookEventPublisher } from './webhook-event-publisher.js';
+import { EsignDeliveryWorker } from './esign-delivery.worker.js';
 
 // DOC-3/DOC-4 — apps/esign-service composition root. Composes the ATS-neutral
 // E-Sign domain (EsignModule.forRoot) and binds the full DOC-4 executed-document
@@ -44,6 +48,12 @@ import { eventPublisherFromEnv } from './sns-event-publisher.js';
         { provide: EVENT_PUBLISHER_PORT, useFactory: () => eventPublisherFromEnv(process.env) },
         OutboxService,
         { provide: EXECUTION_PRODUCER_PORT, useClass: ExecutionService },
+        // E-Sign OC v2 — canonical outbound lifecycle-event delivery: HMAC-signed
+        // webhook publisher + the durable-outbox delivery service + the lifecycle
+        // worker that drains it (E-Sign owns reliable delivery + retry).
+        { provide: WEBHOOK_DELIVERY_PORT, useClass: HttpWebhookEventPublisher },
+        OutboxDeliveryService,
+        EsignDeliveryWorker,
       ],
     }),
   ],

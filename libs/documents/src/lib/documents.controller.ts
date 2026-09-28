@@ -7,6 +7,7 @@ import {
   HttpStatus,
   Param,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { AramoError, RequestId } from '@aramo/common';
@@ -231,11 +232,33 @@ export class DocumentsController {
   @Get(':id/artifacts')
   @HttpCode(HttpStatus.OK)
   @RequireScopes('document:read')
-  async artifacts(@AuthContext() auth: AuthContextType, @Param('id') id: string, @RequestId() requestId: string) {
+  async artifacts(
+    @AuthContext() auth: AuthContextType,
+    @Param('id') id: string,
+    @RequestId() requestId: string,
+    @Query('role') role?: string,
+  ) {
+    // OC-8 — optional artifact-role filter so a caller resolves a SPECIFIC role
+    // (e.g. EXECUTED vs EXECUTION_CERTIFICATE) rather than the undifferentiated
+    // collection. Tenant-scoped; role validated against the controlled vocabulary.
+    if (role !== undefined && !DOCUMENT_ARTIFACT_ROLES.has(role)) {
+      throw new AramoError('VALIDATION_ERROR', `unknown artifact role: ${role}`, 400, { requestId });
+    }
     try {
-      return await this.repo.listArtifacts(auth.tenant_id, id);
+      return await this.repo.listArtifacts(auth.tenant_id, id, role);
     } catch (e) {
       throw toHttp(e, requestId);
     }
   }
 }
+
+// The DocumentArtifact.artifact_role controlled vocabulary (mirrors the DB CHECK).
+const DOCUMENT_ARTIFACT_ROLES = new Set<string>([
+  'TEMPLATE_SOURCE',
+  'SOURCE_UPLOAD',
+  'RENDERED_UNSIGNED',
+  'EXECUTED',
+  'EXECUTION_CERTIFICATE',
+  'PREVIEW',
+  'ATTACHMENT',
+]);
