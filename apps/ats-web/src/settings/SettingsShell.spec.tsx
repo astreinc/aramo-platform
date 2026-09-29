@@ -142,7 +142,7 @@ describe('Honest seams — no dead knobs', () => {
     const cases: [string, () => void][] = [
       ['settings/localization', () => undefined],
       ['settings/security', () => undefined],
-      ['settings/email', () => undefined],
+      // 'settings/email' is now LIVE (D-EMAIL-TPL-1 ET-6) — covered by EmailTemplatesPanel.spec.
       ['settings/fields', () => undefined],
       ['settings/integrations', () => undefined],
       ['settings/billing', () => undefined],
