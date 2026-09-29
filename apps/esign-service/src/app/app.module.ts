@@ -41,6 +41,9 @@ import { EsignDeliveryWorker } from './esign-delivery.worker.js';
     CommonModule,
     EsignModule.forRoot({
       imports: [MailerModule, ObjectStorageModule],
+      // PX-V1 F3 — EsignSignerController (declared at AppModule level) injects the
+      // source resolver; export the token so Nest can resolve it at app boot.
+      extraExports: [DOCUMENT_SOURCE_PROVIDER_PORT],
       evidenceSigner: {
         provide: EVIDENCE_MANIFEST_SIGNER_PORT,
         useFactory: () => kmsEvidenceSignerFromEnv(process.env) ?? new SoftwareEvidenceManifestSigner(),
