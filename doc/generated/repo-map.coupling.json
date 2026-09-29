@@ -2934,6 +2934,18 @@
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/comm-b5-call-initiation.integration.spec.ts",
       "status": "excluded",
+      "to": "libs/communications/prisma/migrations/20260928140000_email_template/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/comm-b5-call-initiation.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/communications/prisma/migrations/20260929120000_comm_interaction_template_provenance/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/comm-b5-call-initiation.integration.spec.ts",
+      "status": "excluded",
       "to": "libs/consent/prisma/migrations/20260429164414_initial_consent_schema/migration.sql"
     },
     {
@@ -2988,6 +3000,18 @@
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/comm-b6-zoom-webhook.integration.spec.ts",
       "status": "excluded",
+      "to": "libs/communications/prisma/migrations/20260928140000_email_template/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/comm-b6-zoom-webhook.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/communications/prisma/migrations/20260929120000_comm_interaction_template_provenance/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/comm-b6-zoom-webhook.integration.spec.ts",
+      "status": "excluded",
       "to": "libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql"
     },
     {
@@ -3024,6 +3048,18 @@
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/comm-b7-disposition-timeline.integration.spec.ts",
       "status": "excluded",
+      "to": "libs/communications/prisma/migrations/20260928140000_email_template/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/comm-b7-disposition-timeline.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/communications/prisma/migrations/20260929120000_comm_interaction_template_provenance/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/comm-b7-disposition-timeline.integration.spec.ts",
+      "status": "excluded",
       "to": "libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql"
     },
     {
@@ -3055,6 +3091,18 @@
       "from": "apps/api/src/tests/comm-b8-provider-reference.integration.spec.ts",
       "status": "excluded",
       "to": "libs/communications/prisma/migrations/20260921170000_comm_c4_email_content_capture/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/comm-b8-provider-reference.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/communications/prisma/migrations/20260928140000_email_template/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/comm-b8-provider-reference.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/communications/prisma/migrations/20260929120000_comm_interaction_template_provenance/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -3145,6 +3193,18 @@
       "from": "apps/api/src/tests/communications-authz.integration.spec.ts",
       "status": "excluded",
       "to": "libs/communications/prisma/migrations/20260921170000_comm_c4_email_content_capture/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/communications-authz.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/communications/prisma/migrations/20260928140000_email_template/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/communications-authz.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/communications/prisma/migrations/20260929120000_comm_interaction_template_provenance/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -3577,6 +3637,66 @@
       "from": "apps/api/src/tests/domain-verification.integration.spec.ts",
       "status": "excluded",
       "to": "libs/identity/prisma/migrations/20260709130000_add_tenant_lifecycle_status/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/email-template-authz.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/communications/prisma/migrations/20260825120000_init_communications/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/email-template-authz.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/communications/prisma/migrations/20260905130000_comm_c2b_provider_identity_email_tenant/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/email-template-authz.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/communications/prisma/migrations/20260905140000_comm_c2b_meeting_channel/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/email-template-authz.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/communications/prisma/migrations/20260921170000_comm_c4_email_content_capture/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/email-template-authz.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/communications/prisma/migrations/20260928140000_email_template/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/email-template-authz.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/communications/prisma/migrations/20260929120000_comm_interaction_template_provenance/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/email-template-authz.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/conversation-intelligence/prisma/migrations/20260907130000_ci_requisition_analysis_context_init/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/email-template-authz.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/conversation-intelligence/prisma/migrations/20260909120000_ci_b6_processing_run/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/email-template-authz.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/email-template-authz.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/integration/prisma/migrations/20260814170000_init_integration_connection/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -7465,6 +7585,18 @@
       "from": "apps/api/src/tests/submit-talent.integration.spec.ts",
       "status": "excluded",
       "to": "libs/communications/prisma/migrations/20260921170000_comm_c4_email_content_capture/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/submit-talent.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/communications/prisma/migrations/20260928140000_email_template/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/submit-talent.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/communications/prisma/migrations/20260929120000_comm_interaction_template_provenance/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -11710,6 +11842,11 @@
     {
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
+      "to": "apps/api/src/communications/email-template.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
       "to": "apps/api/src/communications/requisition-contact-draft.controller.ts"
     },
     {
@@ -13202,6 +13339,151 @@
     },
     {
       "from": "doc/directives/Aramo-CI-Conversation-Intelligence-Directive-v1_2-LOCKED.md",
+      "status": "unscoped",
+      "to": "scripts/verify-vocabulary.sh"
+    },
+    {
+      "from": "doc/directives/Aramo-Email-Notifications-Reusable-Templates-V1-Implementation-Directive-v1_0-LOCKED.md",
+      "status": "unscoped",
+      "to": "apps/api/src/communications/dto/requisition-contact-draft.dto.ts"
+    },
+    {
+      "from": "doc/directives/Aramo-Email-Notifications-Reusable-Templates-V1-Implementation-Directive-v1_0-LOCKED.md",
+      "status": "unscoped",
+      "to": "apps/api/src/communications/requisition-contact-draft.controller.ts"
+    },
+    {
+      "from": "doc/directives/Aramo-Email-Notifications-Reusable-Templates-V1-Implementation-Directive-v1_0-LOCKED.md",
+      "status": "unscoped",
+      "to": "apps/api/src/communications/requisition-contact-template.port.ts"
+    },
+    {
+      "from": "doc/directives/Aramo-Email-Notifications-Reusable-Templates-V1-Implementation-Directive-v1_0-LOCKED.md",
+      "status": "unscoped",
+      "to": "apps/api/src/communications/system-requisition-contact-template.service.ts"
+    },
+    {
+      "from": "doc/directives/Aramo-Email-Notifications-Reusable-Templates-V1-Implementation-Directive-v1_0-LOCKED.md",
+      "status": "unscoped",
+      "to": "apps/api/src/microsoft/microsoft-authorization.controller.ts"
+    },
+    {
+      "from": "doc/directives/Aramo-Email-Notifications-Reusable-Templates-V1-Implementation-Directive-v1_0-LOCKED.md",
+      "status": "unscoped",
+      "to": "apps/api/src/microsoft/microsoft-config.resolver.ts"
+    },
+    {
+      "from": "doc/directives/Aramo-Email-Notifications-Reusable-Templates-V1-Implementation-Directive-v1_0-LOCKED.md",
+      "status": "unscoped",
+      "to": "apps/api/src/microsoft/microsoft-email.service.ts"
+    },
+    {
+      "from": "doc/directives/Aramo-Email-Notifications-Reusable-Templates-V1-Implementation-Directive-v1_0-LOCKED.md",
+      "status": "unscoped",
+      "to": "apps/ats-web/src/App.tsx"
+    },
+    {
+      "from": "doc/directives/Aramo-Email-Notifications-Reusable-Templates-V1-Implementation-Directive-v1_0-LOCKED.md",
+      "status": "unscoped",
+      "to": "apps/ats-web/src/settings/SettingsShell.tsx"
+    },
+    {
+      "from": "doc/directives/Aramo-Email-Notifications-Reusable-Templates-V1-Implementation-Directive-v1_0-LOCKED.md",
+      "status": "unscoped",
+      "to": "apps/ats-web/src/settings/sections/SeamSections.tsx"
+    },
+    {
+      "from": "doc/directives/Aramo-Email-Notifications-Reusable-Templates-V1-Implementation-Directive-v1_0-LOCKED.md",
+      "status": "unscoped",
+      "to": "apps/ats-web/src/shell/RecruiterShell.tsx"
+    },
+    {
+      "from": "doc/directives/Aramo-Email-Notifications-Reusable-Templates-V1-Implementation-Directive-v1_0-LOCKED.md",
+      "status": "unscoped",
+      "to": "doc/02-claude-code-discipline.md"
+    },
+    {
+      "from": "doc/directives/Aramo-Email-Notifications-Reusable-Templates-V1-Implementation-Directive-v1_0-LOCKED.md",
+      "status": "unscoped",
+      "to": "doc/05-conventions.md"
+    },
+    {
+      "from": "doc/directives/Aramo-Email-Notifications-Reusable-Templates-V1-Implementation-Directive-v1_0-LOCKED.md",
+      "status": "unscoped",
+      "to": "libs/communications/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/directives/Aramo-Email-Notifications-Reusable-Templates-V1-Implementation-Directive-v1_0-LOCKED.md",
+      "status": "unscoped",
+      "to": "libs/communications/src/lib/communications.repository.ts"
+    },
+    {
+      "from": "doc/directives/Aramo-Email-Notifications-Reusable-Templates-V1-Implementation-Directive-v1_0-LOCKED.md",
+      "status": "unscoped",
+      "to": "libs/documents/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/directives/Aramo-Email-Notifications-Reusable-Templates-V1-Implementation-Directive-v1_0-LOCKED.md",
+      "status": "unscoped",
+      "to": "libs/esign/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/directives/Aramo-Email-Notifications-Reusable-Templates-V1-Implementation-Directive-v1_0-LOCKED.md",
+      "status": "unscoped",
+      "to": "libs/fe-foundation/src/ui/AppShell.tsx"
+    },
+    {
+      "from": "doc/directives/Aramo-Email-Notifications-Reusable-Templates-V1-Implementation-Directive-v1_0-LOCKED.md",
+      "status": "unscoped",
+      "to": "libs/identity/src/lib/dto/scope.dto.ts"
+    },
+    {
+      "from": "doc/directives/Aramo-Email-Notifications-Reusable-Templates-V1-Implementation-Directive-v1_0-LOCKED.md",
+      "status": "unscoped",
+      "to": "libs/integration/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/directives/Aramo-Email-Notifications-Reusable-Templates-V1-Implementation-Directive-v1_0-LOCKED.md",
+      "status": "unscoped",
+      "to": "libs/mailer/src/lib/mailer.config.ts"
+    },
+    {
+      "from": "doc/directives/Aramo-Email-Notifications-Reusable-Templates-V1-Implementation-Directive-v1_0-LOCKED.md",
+      "status": "unscoped",
+      "to": "libs/mailer/src/lib/mailer.module.ts"
+    },
+    {
+      "from": "doc/directives/Aramo-Email-Notifications-Reusable-Templates-V1-Implementation-Directive-v1_0-LOCKED.md",
+      "status": "unscoped",
+      "to": "libs/mailer/src/lib/mailer.port.ts"
+    },
+    {
+      "from": "doc/directives/Aramo-Email-Notifications-Reusable-Templates-V1-Implementation-Directive-v1_0-LOCKED.md",
+      "status": "unscoped",
+      "to": "libs/mailer/src/lib/ses-mailer.adapter.ts"
+    },
+    {
+      "from": "doc/directives/Aramo-Email-Notifications-Reusable-Templates-V1-Implementation-Directive-v1_0-LOCKED.md",
+      "status": "unscoped",
+      "to": "libs/mailer/src/lib/stub-mailer.adapter.ts"
+    },
+    {
+      "from": "doc/directives/Aramo-Email-Notifications-Reusable-Templates-V1-Implementation-Directive-v1_0-LOCKED.md",
+      "status": "unscoped",
+      "to": "libs/microsoft-graph/src/lib/ports/microsoft-graph.port.ts"
+    },
+    {
+      "from": "doc/directives/Aramo-Email-Notifications-Reusable-Templates-V1-Implementation-Directive-v1_0-LOCKED.md",
+      "status": "unscoped",
+      "to": "pact/consumers/ats-web/src/communications.consumer.test.ts"
+    },
+    {
+      "from": "doc/directives/Aramo-Email-Notifications-Reusable-Templates-V1-Implementation-Directive-v1_0-LOCKED.md",
+      "status": "unscoped",
+      "to": "pact/provider/src/verify-api.ts"
+    },
+    {
+      "from": "doc/directives/Aramo-Email-Notifications-Reusable-Templates-V1-Implementation-Directive-v1_0-LOCKED.md",
       "status": "unscoped",
       "to": "scripts/verify-vocabulary.sh"
     },
@@ -15937,6 +16219,11 @@
       "to": "openapi/common.yaml"
     },
     {
+      "from": "libs/communications/prisma/migrations/20260928140000_email_template/migration.sql",
+      "status": "unscoped",
+      "to": "doc/05-conventions.md"
+    },
+    {
       "from": "libs/communications/prisma/schema.prisma",
       "status": "unscoped",
       "to": "doc/05-conventions.md"
@@ -18274,6 +18561,16 @@
       "from": "pact/provider/src/verify-api.ts",
       "status": "unscoped",
       "to": "libs/communications/prisma/migrations/20260921170000_comm_c4_email_content_capture/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "libs/communications/prisma/migrations/20260928140000_email_template/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "libs/communications/prisma/migrations/20260929120000_comm_interaction_template_provenance/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",
