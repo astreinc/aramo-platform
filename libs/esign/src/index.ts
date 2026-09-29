@@ -16,6 +16,10 @@ export {
   EsignService,
   type IssuedSession,
   type SessionContext,
+  type SignerFieldView,
+  type SignerDocumentMeta,
+  type SignerDocumentView,
+  type SignerSourceDescriptor,
 } from './lib/esign.service.js';
 export {
   SIGNING_NOTIFICATION_PORT,
