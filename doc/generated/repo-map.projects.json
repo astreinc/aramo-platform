@@ -3922,6 +3922,12 @@
     "@aramo/esign": [
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/esign-service/src/tests/app-module-boot.spec.ts",
+        "project": "esign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/esign-service/src/tests/envelope-document-source.resolver.spec.ts",
         "project": "esign-service",
         "status": "excluded"

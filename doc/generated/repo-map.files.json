@@ -1203,6 +1203,7 @@
     "apps/esign-service/src/app/sns-event-publisher.ts",
     "apps/esign-service/src/app/webhook-event-publisher.ts",
     "apps/esign-service/src/main.ts",
+    "apps/esign-service/src/tests/app-module-boot.spec.ts",
     "apps/esign-service/src/tests/envelope-document-source.resolver.spec.ts",
     "apps/esign-service/src/tests/envelope-field-mapper.spec.ts",
     "apps/esign-service/src/tests/esign-delivery.worker.spec.ts",
