@@ -34,8 +34,10 @@ export class RoleCatalogService {
     for (const role of roles) {
       const scopeKeys = role.role_scopes.map((rs) => rs.scope.key);
       // Exclude the platform tier (super_admin) — any platform:* scope marks a
-      // non-tenant role; the tenant catalog never includes it.
-      if (scopeKeys.some((k) => k.startsWith('platform:'))) continue;
+      // non-tenant role; the tenant catalog never includes it. PX-V1 PX-3 — the
+      // same partition for E-Sign product roles: any esign:* scope marks an
+      // esign_* product role, kept OUT of the ATS tenant RolePicker.
+      if (scopeKeys.some((k) => k.startsWith('platform:') || k.startsWith('esign:'))) continue;
 
       const scopes = [...new Set(scopeKeys)].sort();
       const meta = ROLE_CATALOG_META[role.key];

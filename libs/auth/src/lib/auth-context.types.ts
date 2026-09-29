@@ -11,7 +11,10 @@
 // the DDR §13.1 tripwire is the consumer_type check at tenant guards (a
 // platform token never satisfies a tenant guard; a tenant token never
 // satisfies a platform guard).
-export const CONSUMER_TYPES = ['recruiter', 'portal', 'ingestion', 'platform'] as const;
+// PX-V1 PX-3 — `esign` is the E-Sign SENDER product consumer (esign.aramo.ai).
+// A distinct product identity on the SHARED Aramo identity substrate; it is NOT
+// an ATS consumer and carries only esign:* scopes via esign_* roles.
+export const CONSUMER_TYPES = ['recruiter', 'portal', 'ingestion', 'platform', 'esign'] as const;
 export type ConsumerType = (typeof CONSUMER_TYPES)[number];
 
 // AUTHZ-2: the sentinel tenant_id stamped on every platform JWT. Backed by a
