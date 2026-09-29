@@ -311,6 +311,36 @@ components:
                 type: integer
               signer_role:
                 type: string
+        fields:
+          description: >-
+            PX-V1 F2 — OPTIONAL positioned signature/date fields defined at
+            envelope creation. Each references a document by ordinal and,
+            optionally, a signer by signing_order. Omitted by ATS RTR/Offer
+            callers, which remain valid unchanged.
+          type: array
+          items:
+            type: object
+            required: [document_ordinal, field_type, page_number, x, y]
+            properties:
+              document_ordinal:
+                type: integer
+              signer_signing_order:
+                type: integer
+              field_type:
+                type: string
+                enum: [SIGNATURE, INITIALS, SIGN_DATE, SIGNER_NAME, TEXT, CHECKBOX, ACKNOWLEDGEMENT]
+              page_number:
+                type: integer
+              x:
+                type: number
+              y:
+                type: number
+              width:
+                type: number
+              height:
+                type: number
+              required:
+                type: boolean
     EnvelopeSummary:
       type: object
       required:

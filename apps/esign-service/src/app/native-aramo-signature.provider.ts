@@ -13,6 +13,12 @@ import {
   type SigningNotificationPort,
 } from '@aramo/esign';
 
+import {
+  type CreatedDocumentRef,
+  type CreatedSignerRef,
+  resolveAndValidateFields,
+} from './envelope-field-mapper.js';
+
 // DOC-3 §229 — the NATIVE (non-third-party) implementation of the provider-neutral
 // SignatureProviderPort, backed by the E-Sign domain (libs/esign). A future
 // DocuSign/AdobeSign provider implements the SAME contract without touching this.
@@ -42,11 +48,24 @@ export class NativeAramoSignatureProvider implements SignatureProviderPort {
       execution_mode: req.execution_mode,
       created_by: req.created_by,
     });
+    const createdDocs: CreatedDocumentRef[] = [];
     for (const doc of req.documents) {
-      await this.repo.addDocument({ tenant_id: req.tenant_id, envelope_id: env.id, ...doc });
+      const row = await this.repo.addDocument({ tenant_id: req.tenant_id, envelope_id: env.id, ...doc });
+      createdDocs.push({ id: row.id, ordinal: doc.ordinal });
     }
+    const createdSigners: CreatedSignerRef[] = [];
     for (const signer of req.signers) {
-      await this.repo.addSigner({ tenant_id: req.tenant_id, envelope_id: env.id, ...signer });
+      const row = await this.repo.addSigner({ tenant_id: req.tenant_id, envelope_id: env.id, ...signer });
+      createdSigners.push({ id: row.id, signing_order: signer.signing_order });
+    }
+    // PX-V1 F2 — activate the SignatureField model through the create path. Fields
+    // are OPTIONAL: existing ATS callers (RTR/Offer) supply none and are unchanged.
+    // resolveAndValidateFields fails closed before any field row is written.
+    if (req.fields !== undefined && req.fields.length > 0) {
+      const toAdd = resolveAndValidateFields(req.tenant_id, req.fields, createdDocs, createdSigners);
+      for (const field of toAdd) {
+        await this.repo.addField(field);
+      }
     }
     return this.summarize(req.tenant_id, env.id);
   }
