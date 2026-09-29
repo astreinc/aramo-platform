@@ -325,6 +325,12 @@ const COMMUNICATIONS_EMAIL_TEMPLATE_MIGRATION = resolve(
   ROOT,
   'libs/communications/prisma/migrations/20260928140000_email_template/migration.sql',
 );
+// D-EMAIL-TPL-1 (ET-8) — CommunicationInteraction template provenance. SEPARATE
+// const (single resolve() arg — a 2nd arg would concatenate → ENOTDIR).
+const COMMUNICATIONS_TEMPLATE_PROVENANCE_MIGRATION = resolve(
+  ROOT,
+  'libs/communications/prisma/migrations/20260929120000_comm_interaction_template_provenance/migration.sql',
+);
 // PR-A1c §4 sweep — metering schema applied because every selection +
 // submittal state-transition write method (the methods the pact provider
 // formerly exercised through the retired thin-consumer pacts) now emits
@@ -3531,6 +3537,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         COMMUNICATIONS_C2B_MEETING_MIGRATION,
         COMMUNICATIONS_C4_MIGRATION,
         COMMUNICATIONS_EMAIL_TEMPLATE_MIGRATION,
+        COMMUNICATIONS_TEMPLATE_PROVENANCE_MIGRATION,
         // PR-A1c §4 — metering schema (in-tx UsageEvent INSERT in every
         // selection + submittal state-transition write method).
         METERING_INIT_MIGRATION,

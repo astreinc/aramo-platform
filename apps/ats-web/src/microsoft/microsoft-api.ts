@@ -58,6 +58,11 @@ export interface SendEmailInput {
   readonly subject: string;
   readonly body: string;
   readonly idempotency_key: string;
+  // D-EMAIL-TPL-1 (ET-8) — DESCRIPTIVE provenance of the reviewed draft, relayed
+  // from the draft response (server-origin). Not authoritative; the server records
+  // it as metadata only. Omitted for legacy/other send paths → columns stay null.
+  readonly template_key?: string;
+  readonly template_id?: string;
 }
 
 export interface CreateMeetingInput {

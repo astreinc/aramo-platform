@@ -189,6 +189,10 @@ export function RequisitionContactEmailComposer(
       subject,
       body,
       idempotency_key: idempotencyKey.current,
+      // ET-8 — descriptive provenance of the draft actually reviewed (relayed
+      // from its server-authored context). Never re-resolved; metadata only.
+      template_key: draft.context.template_key,
+      template_id: draft.context.template_id,
     })
       .then((result) => {
         props.onSent?.(result);

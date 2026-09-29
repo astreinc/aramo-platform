@@ -181,6 +181,15 @@ model CommunicationInteraction {
   subject String?
   body    String?
 
+  // D-EMAIL-TPL-1 (ET-8) — DESCRIPTIVE template provenance of the draft the
+  // recruiter reviewed. NOT a source of sent-email truth (subject/body above are):
+  // never re-resolved at send time and never drives authorization/content. Both
+  // nullable — legacy/other sends leave them null. No template_version (D-5):
+  //   code-owned default → template_key='requisition-contact', template_id=null
+  //   tenant override     → template_key='requisition-contact', template_id=<row id>
+  template_key String?
+  template_id  String?
+
   started_at   DateTime? @db.Timestamptz
   ringing_at   DateTime? @db.Timestamptz
   connected_at DateTime? @db.Timestamptz

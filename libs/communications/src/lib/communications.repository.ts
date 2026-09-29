@@ -35,6 +35,9 @@ export interface InteractionRow {
   join_reference: string | null;
   subject: string | null;
   body: string | null;
+  // D-EMAIL-TPL-1 (ET-8) — descriptive template provenance (nullable).
+  template_key: string | null;
+  template_id: string | null;
   started_at: Date | null;
   ringing_at: Date | null;
   connected_at: Date | null;
@@ -90,6 +93,10 @@ export class CommunicationsRepository {
     // COMM-C4 — final sent subject/body for an email-channel interaction.
     subject?: string | null;
     body?: string | null;
+    // D-EMAIL-TPL-1 (ET-8) — descriptive template provenance (nullable). Stored
+    // verbatim; never re-resolved. The caller maps the code-default sentinel → null.
+    template_key?: string | null;
+    template_id?: string | null;
     started_at?: Date | null;
     ended_at?: Date | null;
   }): Promise<InteractionRow> {
@@ -109,6 +116,8 @@ export class CommunicationsRepository {
         join_reference: args.join_reference ?? null,
         subject: args.subject ?? null,
         body: args.body ?? null,
+        template_key: args.template_key ?? null,
+        template_id: args.template_id ?? null,
         started_at: args.started_at ?? null,
         ended_at: args.ended_at ?? null,
       },

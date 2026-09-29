@@ -53,6 +53,21 @@ export class SendMicrosoftEmailRequestDto {
   @MinLength(8)
   @MaxLength(200)
   idempotency_key!: string;
+
+  // D-EMAIL-TPL-1 (ET-8) — DESCRIPTIVE template provenance of the reviewed draft,
+  // relayed from the server-authored draft response. NOT authoritative: the server
+  // records it as metadata and NEVER uses it for authorization, template lookup, or
+  // to change the sent content (subject/body above remain the truth). template_id
+  // is a plain string (the code-default value is a sentinel, not a row UUID).
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  template_key?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  template_id?: string;
 }
 
 export class CreateMicrosoftMeetingRequestDto {

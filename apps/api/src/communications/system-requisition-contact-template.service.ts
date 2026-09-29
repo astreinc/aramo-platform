@@ -14,7 +14,11 @@ import {
 // DEC-1: the optional role-summary block is a source-preserving excerpt of an
 // authoritative requisition field — never an LLM summary/paraphrase.
 
-const TEMPLATE_ID = 'system.requisition-contact.v1';
+// D-EMAIL-TPL-1 — the code-owned default's template_id sentinel. Exported so the
+// send path (ET-8) can map it to NULL provenance: a draft from the code default
+// records template_id=null, an override records its row id.
+export const SYSTEM_REQUISITION_CONTACT_TEMPLATE_ID = 'system.requisition-contact.v1';
+const TEMPLATE_ID = SYSTEM_REQUISITION_CONTACT_TEMPLATE_ID;
 const TEMPLATE_VERSION = '1';
 
 // Cap for the deterministic role-summary excerpt (characters).

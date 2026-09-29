@@ -7371,6 +7371,11 @@ components:
         subject: { type: string, minLength: 1, maxLength: 998 }
         body: { type: string, minLength: 1, maxLength: 100000 }
         idempotency_key: { type: string, minLength: 8, maxLength: 200 }
+        # D-EMAIL-TPL-1 (ET-8) — DESCRIPTIVE template provenance of the reviewed
+        # draft (server-origin, relayed). Not authoritative; recorded as metadata.
+        # template_id is a plain string (the code-default value is a sentinel).
+        template_key: { type: string, maxLength: 120 }
+        template_id: { type: string, maxLength: 200 }
     MicrosoftEmailSendResult:
       type: object
       additionalProperties: false

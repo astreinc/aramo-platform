@@ -408,5 +408,63 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(pipelines.applyActions.every((a) => a === 'CONTACT')).toBe(true);
       expect(pipelines.applyActions).not.toContain('RESPOND');
     });
+
+    // ---- D-EMAIL-TPL-1 (ET-8) — descriptive template provenance ----
+    // Provenance is metadata about the draft the recruiter reviewed; it is never a
+    // source of sent-email truth (subject/body are) and is never re-resolved.
+
+    async function provenanceOf(
+      interactionId: string,
+    ): Promise<{ template_key: string | null; template_id: string | null; subject: string | null; body: string | null }> {
+      const r = await db.query(
+        `SELECT template_key, template_id, subject, body FROM communications."CommunicationInteraction" WHERE id=$1`,
+        [interactionId],
+      );
+      return r.rows[0];
+    }
+
+    it('ET-8: code-default draft → template_key set, template_id null (sentinel mapped); edited subject/body persisted', async () => {
+      const view = await svc.sendRecruiterEmail(
+        baseArgs({
+          subject: 'Edited subject',
+          body: 'Edited body',
+          template_key: 'requisition-contact',
+          template_id: 'system.requisition-contact.v1', // the code-default sentinel
+        }),
+      );
+      const p = await provenanceOf(view.interaction_id);
+      expect(p.template_key).toBe('requisition-contact');
+      expect(p.template_id).toBeNull(); // default has no override row id
+      expect(p.subject).toBe('Edited subject'); // final edited content remains the truth
+      expect(p.body).toBe('Edited body');
+    });
+
+    it('ET-8: tenant-override draft → template_key set, template_id = the override row id', async () => {
+      const overrideId = randomUUID();
+      const view = await svc.sendRecruiterEmail(
+        baseArgs({ template_key: 'requisition-contact', template_id: overrideId }),
+      );
+      const p = await provenanceOf(view.interaction_id);
+      expect(p.template_key).toBe('requisition-contact');
+      expect(p.template_id).toBe(overrideId);
+    });
+
+    it('ET-8: provenance is recorded from the REVIEWED draft verbatim, never re-resolved at send time', async () => {
+      // An id that matches NO current effective template. A re-resolution at send
+      // time would produce something else (or null); recording it verbatim proves
+      // the send path never re-looks-up the template after the recruiter reviewed.
+      const reviewedId = 'override-reviewed-not-current';
+      const view = await svc.sendRecruiterEmail(
+        baseArgs({ template_key: 'requisition-contact', template_id: reviewedId }),
+      );
+      expect((await provenanceOf(view.interaction_id)).template_id).toBe(reviewedId);
+    });
+
+    it('ET-8: a send with NO template provenance leaves both columns null (legacy/other paths — no regression)', async () => {
+      const view = await svc.sendRecruiterEmail(baseArgs());
+      const p = await provenanceOf(view.interaction_id);
+      expect(p.template_key).toBeNull();
+      expect(p.template_id).toBeNull();
+    });
   },
 );
