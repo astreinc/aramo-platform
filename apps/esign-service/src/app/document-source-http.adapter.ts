@@ -13,6 +13,10 @@ export class DocumentSourceHttpAdapter implements DocumentSourceProviderPort {
   }
 
   async getSourcePdf(input: DocumentSourceRequest): Promise<Uint8Array> {
+    // CORE_REF only — the OWNED path is served by the object-storage resolver.
+    if (typeof input.document_revision_ref !== 'string' || input.document_revision_ref.length === 0) {
+      throw new Error('CORE_REF source fetch requires a document_revision_ref');
+    }
     const url = `${this.baseUrl()}/v1/documents/revisions/${input.document_revision_ref}/source?tenant_id=${encodeURIComponent(input.tenant_id)}`;
     const res = await fetch(url, { headers: { 'X-Esign-Service': '1' } });
     if (!res.ok) {

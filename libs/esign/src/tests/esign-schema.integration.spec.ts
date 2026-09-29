@@ -86,6 +86,43 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('DOC-3 esign schem
     await expect(newEnvelope('NONSENSE')).rejects.toThrow(/status_check|violates check/i);
   });
 
+  // PX-V1 F1 (D-1) — EnvelopeDocument source-mode ownership.
+  it('accepts an OWNED source document with no Documents refs, and enforces the mode shape', async () => {
+    const env = await newEnvelope();
+    const insertDoc = (cols: {
+      source_mode: string;
+      document_ref: string | null;
+      document_revision_ref: string | null;
+      source_object_key: string | null;
+    }) =>
+      db.query(
+        `INSERT INTO "esign"."EnvelopeDocument"
+           (id, tenant_id, envelope_id, source_mode, document_ref, document_revision_ref, source_object_key, title, source_sha256, ordinal)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,'agreement.pdf','sha',1)`,
+        [randomUUID(), TENANT, env, cols.source_mode, cols.document_ref, cols.document_revision_ref, cols.source_object_key],
+      );
+
+    // OWNED with an object key and NULL Documents refs — the standalone path — is accepted.
+    await expect(
+      insertDoc({ source_mode: 'OWNED', document_ref: null, document_revision_ref: null, source_object_key: 'esign/source/t/e/obj' }),
+    ).resolves.toBeDefined();
+
+    // OWNED without an object key violates the shape CHECK (fail-closed).
+    await expect(
+      insertDoc({ source_mode: 'OWNED', document_ref: null, document_revision_ref: null, source_object_key: null }),
+    ).rejects.toThrow(/source_shape_check|violates check/i);
+
+    // CORE_REF without revision refs violates the shape CHECK (legacy path stays strict).
+    await expect(
+      insertDoc({ source_mode: 'CORE_REF', document_ref: null, document_revision_ref: null, source_object_key: null }),
+    ).rejects.toThrow(/source_shape_check|violates check/i);
+
+    // An unknown mode is rejected by the mode CHECK.
+    await expect(
+      insertDoc({ source_mode: 'NONSENSE', document_ref: null, document_revision_ref: null, source_object_key: 'k' }),
+    ).rejects.toThrow(/source_mode_check|violates check/i);
+  });
+
   it('SignatureEvent is append-only: UPDATE and DELETE are rejected', async () => {
     const env = await newEnvelope();
     const evId = await appendEvent(env, null, 'h0');

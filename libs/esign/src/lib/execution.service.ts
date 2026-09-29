@@ -66,8 +66,10 @@ export class ExecutionService implements ExecutionProducerPort {
     for (const doc of full.documents) {
       const sourcePdf = await this.source.getSourcePdf({
         tenant_id,
+        source_mode: doc.source_mode === 'OWNED' ? 'OWNED' : 'CORE_REF',
         document_ref: doc.document_ref,
         document_revision_ref: doc.document_revision_ref,
+        source_object_key: doc.source_object_key,
       });
       const source_sha256 = sha256Hex(sourcePdf);
 

@@ -2,6 +2,7 @@ import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { CommonModule, RequestIdMiddleware } from '@aramo/common';
 import {
   DOCUMENT_SOURCE_PROVIDER_PORT,
+  DOCUMENT_STORAGE_PORT,
   EVENT_PUBLISHER_PORT,
   EVIDENCE_MANIFEST_SIGNER_PORT,
   EXECUTION_PRODUCER_PORT,
@@ -15,12 +16,15 @@ import {
 } from '@aramo/esign';
 import { DOCUMENT_RENDERING_PORT, PdfLibDocumentRenderingAdapter } from '@aramo/documents-rendering';
 import { MailerModule } from '@aramo/mailer';
+import { ObjectStorageModule } from '@aramo/object-storage';
 
 import { EsignProviderController, EsignSignerController } from './esign-http.controller.js';
 import { NativeAramoSignatureProvider } from './native-aramo-signature.provider.js';
 import { MailerSigningNotificationAdapter } from './mailer-signing-notification.adapter.js';
 import { kmsEvidenceSignerFromEnv } from './kms-evidence-manifest-signer.js';
 import { DocumentSourceHttpAdapter } from './document-source-http.adapter.js';
+import { EnvelopeDocumentSourceResolver } from './envelope-document-source.resolver.js';
+import { EsignObjectStorageDocumentAdapter } from './esign-object-storage-document.adapter.js';
 import { eventPublisherFromEnv } from './sns-event-publisher.js';
 import { HttpWebhookEventPublisher } from './webhook-event-publisher.js';
 import { EsignDeliveryWorker } from './esign-delivery.worker.js';
@@ -36,14 +40,18 @@ import { EsignDeliveryWorker } from './esign-delivery.worker.js';
   imports: [
     CommonModule,
     EsignModule.forRoot({
-      imports: [MailerModule],
+      imports: [MailerModule, ObjectStorageModule],
       evidenceSigner: {
         provide: EVIDENCE_MANIFEST_SIGNER_PORT,
         useFactory: () => kmsEvidenceSignerFromEnv(process.env) ?? new SoftwareEvidenceManifestSigner(),
       },
       extraProviders: [
         { provide: DOCUMENT_RENDERING_PORT, useClass: PdfLibDocumentRenderingAdapter },
-        { provide: DOCUMENT_SOURCE_PROVIDER_PORT, useClass: DocumentSourceHttpAdapter },
+        // PX-V1 F1 — source resolution dispatches on source_mode: CORE_REF via the
+        // HTTP adapter (legacy ATS pull), OWNED via E-Sign's own object storage.
+        DocumentSourceHttpAdapter,
+        { provide: DOCUMENT_STORAGE_PORT, useClass: EsignObjectStorageDocumentAdapter },
+        { provide: DOCUMENT_SOURCE_PROVIDER_PORT, useClass: EnvelopeDocumentSourceResolver },
         { provide: SIGNING_NOTIFICATION_PORT, useClass: MailerSigningNotificationAdapter },
         { provide: EVENT_PUBLISHER_PORT, useFactory: () => eventPublisherFromEnv(process.env) },
         OutboxService,

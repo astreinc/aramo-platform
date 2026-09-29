@@ -28,7 +28,14 @@ export {
   DOCUMENT_SOURCE_PROVIDER_PORT,
   type DocumentSourceProviderPort,
   type DocumentSourceRequest,
+  type EnvelopeDocumentSourceMode,
 } from './lib/ports/document-source-provider.port.js';
+export {
+  DOCUMENT_STORAGE_PORT,
+  type DocumentStoragePort,
+  type PutOwnedSourceInput,
+  type PutOwnedSourceResult,
+} from './lib/ports/document-storage.port.js';
 export {
   EXECUTION_PRODUCER_PORT,
   type ExecutionProducerPort,
