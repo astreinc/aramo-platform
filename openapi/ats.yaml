@@ -4600,6 +4600,208 @@ paths:
           $ref: 'common.yaml#/components/responses/UnprocessableEntity'
       security:
         - BearerAuth: []
+  /v1/communications/email-templates:
+    get:
+      operationId: listEmailTemplates
+      summary: List effective reusable email templates (D-EMAIL-TPL-1).
+      description: |
+        List the tenant's effective email templates. Requires the `ats` capability
+        and `communication:template:read`. Each entry is either a tenant OVERRIDE
+        row (`is_system_default=false`, editable) or the read-only code-owned
+        default (`is_system_default=true`, `id=null`). The code default is never a
+        mutable row — it can only be overridden by creating a tenant template.
+      responses:
+        '200':
+          description: The tenant's effective templates.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/EmailTemplateView'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+      security:
+        - BearerAuth: []
+    post:
+      operationId: createEmailTemplate
+      summary: Create a tenant email-template override (D-EMAIL-TPL-1).
+      description: |
+        Create a tenant OVERRIDE for a template category. Requires the `ats`
+        capability and `communication:template:manage`. `template_key` is derived
+        server-side from the category. Subject/body are validated against the closed
+        merge-field allowlist — an unknown token is rejected. Creating an override
+        never mutates the code-owned default.
+
+        Refusals: 409 EMAIL_TEMPLATE_ALREADY_EXISTS (an override already exists);
+        422 EMAIL_TEMPLATE_INVALID_MERGE_TOKEN (a token outside the allowlist).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateEmailTemplateRequest'
+      responses:
+        '201':
+          description: The created tenant template override.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmailTemplateView'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '409':
+          $ref: 'common.yaml#/components/responses/Conflict'
+        '422':
+          $ref: 'common.yaml#/components/responses/UnprocessableEntity'
+      security:
+        - BearerAuth: []
+  /v1/communications/email-templates/{id}:
+    get:
+      operationId: getEmailTemplate
+      summary: Read a tenant email-template override by id (D-EMAIL-TPL-1).
+      description: |
+        Read one tenant template override. Requires `communication:template:read`.
+        Tenant-scoped: an unknown id or another tenant's id both return 404
+        EMAIL_TEMPLATE_NOT_FOUND (no cross-tenant enumeration).
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: The tenant template override.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmailTemplateView'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+    patch:
+      operationId: updateEmailTemplate
+      summary: Update a tenant email-template override (D-EMAIL-TPL-1).
+      description: |
+        Update a tenant override (name/subject/body). Requires
+        `communication:template:manage`. The resulting subject/body are validated
+        against the closed allowlist. Tenant-scoped (404 on cross-tenant). The
+        code-owned default is never editable through this route.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateEmailTemplateRequest'
+      responses:
+        '200':
+          description: The updated tenant template override.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmailTemplateView'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '422':
+          $ref: 'common.yaml#/components/responses/UnprocessableEntity'
+      security:
+        - BearerAuth: []
+  /v1/communications/email-templates/{id}/deactivate:
+    post:
+      operationId: deactivateEmailTemplate
+      summary: Deactivate a tenant email-template override (D-EMAIL-TPL-1).
+      description: |
+        Deactivate a tenant override → the tenant falls back to the code-owned
+        default. Requires `communication:template:manage`. Tenant-scoped (404 on
+        cross-tenant). Idempotent-safe soft deactivation (no hard delete).
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: The override was deactivated (tenant now uses the default).
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+  /v1/communications/email-templates/{id}/preview:
+    post:
+      operationId: previewEmailTemplate
+      summary: Preview email-template content against a sample context (D-EMAIL-TPL-1).
+      description: |
+        Render the SUBMITTED template content against a server-owned SAMPLE context.
+        Requires `communication:template:read`. Merge fields are the closed
+        allowlist only; an unknown token is rejected (422). No client-supplied
+        business values are used — the context is server-owned sample data.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PreviewEmailTemplateRequest'
+      responses:
+        '200':
+          description: The rendered preview (subject/body/warnings).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmailTemplatePreview'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '422':
+          $ref: 'common.yaml#/components/responses/UnprocessableEntity'
+      security:
+        - BearerAuth: []
   /v1/communications/interactions/{interactionId}:
     get:
       operationId: getCommunicationInteraction
@@ -7214,6 +7416,54 @@ components:
             requisition_title: { type: string }
             template_id: { type: string }
             template_version: { type: string }
+        warnings:
+          type: array
+          items: { type: string }
+    EmailTemplateView:
+      type: object
+      additionalProperties: false
+      required: [id, template_key, category, name, subject_template, body_template, is_system_default, is_active, updated_at]
+      properties:
+        # null id = the read-only code-owned system default (never a mutable row).
+        id: { type: [string, 'null'], format: uuid }
+        template_key: { type: string }
+        category: { type: string, enum: [requisition_initial_contact] }
+        name: { type: string }
+        subject_template: { type: string }
+        body_template: { type: string }
+        is_system_default: { type: boolean }
+        is_active: { type: boolean }
+        updated_at: { type: [string, 'null'], format: date-time }
+    CreateEmailTemplateRequest:
+      type: object
+      additionalProperties: false
+      required: [category, name, subject_template, body_template]
+      properties:
+        category: { type: string, enum: [requisition_initial_contact] }
+        name: { type: string, minLength: 1, maxLength: 200 }
+        subject_template: { type: string, minLength: 1, maxLength: 998 }
+        body_template: { type: string, minLength: 1, maxLength: 100000 }
+    UpdateEmailTemplateRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 200 }
+        subject_template: { type: string, minLength: 1, maxLength: 998 }
+        body_template: { type: string, minLength: 1, maxLength: 100000 }
+    PreviewEmailTemplateRequest:
+      type: object
+      additionalProperties: false
+      required: [subject_template, body_template]
+      properties:
+        subject_template: { type: string, minLength: 1, maxLength: 998 }
+        body_template: { type: string, minLength: 1, maxLength: 100000 }
+    EmailTemplatePreview:
+      type: object
+      additionalProperties: false
+      required: [subject, body, warnings]
+      properties:
+        subject: { type: string }
+        body: { type: string }
         warnings:
           type: array
           items: { type: string }

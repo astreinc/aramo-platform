@@ -36,6 +36,7 @@
     "apps/api/src/integrations/esign/esign-events.controller.ts": "SS",
     "apps/api/src/communications/communications.controller.ts": "AP",
     "apps/api/src/communications/requisition-contact-draft.controller.ts": "AP",
+    "apps/api/src/communications/email-template.controller.ts": "AP",
     "apps/api/src/engagement/engagement.controller.ts": "AP",
     "apps/api/src/microsoft/microsoft-authorization.controller.ts": "AP",
     "apps/api/src/microsoft/microsoft-callback.controller.ts": "AP",

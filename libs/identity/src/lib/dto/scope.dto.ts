@@ -440,6 +440,12 @@ export const SEED_SCOPE_KEYS = [
   // execution scopes, mirroring the communication:voice:call precedent.
   'communication:email:send',
   'communication:meeting:create',
+  // D-EMAIL-TPL-1 (ET-4) — reusable email-template management. `read` gates
+  // list/get/preview; `manage` gates create/update/deactivate (admin tier).
+  // GRANTED read → recruiter/account_manager/tenant_admin/tenant_owner; manage →
+  // tenant_admin/tenant_owner.
+  'communication:template:read',
+  'communication:template:manage',
 ] as const;
 export type SeedScopeKey = (typeof SEED_SCOPE_KEYS)[number];
 
