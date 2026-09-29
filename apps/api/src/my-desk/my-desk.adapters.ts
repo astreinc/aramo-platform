@@ -5,7 +5,7 @@ import {
 } from '@aramo/client-selection';
 import { CompanyRepository } from '@aramo/company';
 import { OfferRepository, PlacementRepository } from '@aramo/placement';
-import { PipelineRepository } from '@aramo/pipeline';
+import { ACTIVE_FLOW_STAGES, PipelineRepository } from '@aramo/pipeline';
 import { RequisitionRepository } from '@aramo/requisition';
 import { TalentRecordRepository } from '@aramo/talent-record';
 import { TaskRepository } from '@aramo/task';
@@ -17,7 +17,7 @@ import type {
   DeskDayWindow,
   DeskInterviewRow,
   DeskOfferRow,
-  DeskPipelineRow,
+  DeskRequisitionCounts,
   DeskRequisitionRow,
   DeskTaskOwnerType,
   DeskTaskRow,
@@ -85,21 +85,79 @@ export class MyDeskReadAdapter implements MyDeskReadPort {
     }));
   }
 
-  async listPipelinesForRequisitions(
+  async countsForRequisitions(
     ctx: DeskActorContext,
     requisition_ids: readonly string[],
-  ): Promise<readonly DeskPipelineRow[]> {
-    if (requisition_ids.length === 0) return [];
-    const rows = await this.pipelines.listForActor({
+  ): Promise<ReadonlyMap<string, DeskRequisitionCounts>> {
+    if (requisition_ids.length === 0) return new Map();
+    const ids = [...requisition_ids];
+    // Five indexed groupBy reads across the owning domains — NO row loading,
+    // NO LIST_LIMIT. Each returns [{requisition_id, count}] for the SAME id set.
+    const [pipeline, qualified, withClient, offer, started] = await Promise.all([
+      this.pipelines.countByRequisition({
+        tenant_id: ctx.tenant_id,
+        requisition_ids: ids,
+        statuses: ACTIVE_FLOW_STAGES,
+      }),
+      this.pipelines.countByRequisition({
+        tenant_id: ctx.tenant_id,
+        requisition_ids: ids,
+        statuses: ['qualified'],
+      }),
+      this.clientSelection.countWithClientByRequisition({
+        tenant_id: ctx.tenant_id,
+        requisition_ids: ids,
+      }),
+      this.offers.countLiveByRequisition({
+        tenant_id: ctx.tenant_id,
+        requisition_ids: ids,
+      }),
+      this.placements.countStartedByRequisition({
+        tenant_id: ctx.tenant_id,
+        requisition_ids: ids,
+      }),
+    ]);
+    type MutableCounts = {
+      pipeline: number;
+      qualified: number;
+      with_client: number;
+      offer: number;
+      started: number;
+    };
+    const acc = new Map<string, MutableCounts>();
+    const ensure = (reqId: string): MutableCounts => {
+      let m = acc.get(reqId);
+      if (m === undefined) {
+        m = { pipeline: 0, qualified: 0, with_client: 0, offer: 0, started: 0 };
+        acc.set(reqId, m);
+      }
+      return m;
+    };
+    for (const r of pipeline) ensure(r.requisition_id).pipeline = r.count;
+    for (const r of qualified) ensure(r.requisition_id).qualified = r.count;
+    for (const r of withClient) ensure(r.requisition_id).with_client = r.count;
+    for (const r of offer) ensure(r.requisition_id).offer = r.count;
+    for (const r of started) ensure(r.requisition_id).started = r.count;
+    return acc;
+  }
+
+  async activeRequisitionsByTalent(
+    ctx: DeskActorContext,
+    talent_ids: readonly string[],
+  ): Promise<ReadonlyMap<string, readonly string[]>> {
+    if (talent_ids.length === 0) return new Map();
+    const rows = await this.pipelines.listActiveRequisitionsByTalent({
       tenant_id: ctx.tenant_id,
-      visible_requisition_ids: new Set(requisition_ids),
-      limit: LIST_LIMIT,
+      talent_record_ids: [...talent_ids],
+      visible_requisition_ids: ctx.visible_requisition_ids,
     });
-    return rows.map((p) => ({
-      requisition_id: p.requisition_id,
-      talent_record_id: p.talent_record_id,
-      status: p.status,
-    }));
+    const out = new Map<string, string[]>();
+    for (const r of rows) {
+      const list = out.get(r.talent_record_id) ?? [];
+      list.push(r.requisition_id);
+      out.set(r.talent_record_id, list);
+    }
+    return out;
   }
 
   async listInterviewsInWindow(

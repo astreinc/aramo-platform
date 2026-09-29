@@ -516,13 +516,19 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(blocked.severity).toBe('high');
     });
 
-    it('requisition counts: pipeline_count excludes terminal, qualified_count is exact', async () => {
+    it('requisition counts: all five counts via indexed groupBy (terminal-excluded), no LIST_LIMIT', async () => {
       const { body } = await getMyDesk(recruiterJwt);
       const a1 = body.requisitions.find((r: any) => r.id === reqA1);
       // reqA1 active pipelines: kevin(qualifying), marcus(qualifying), kiran(qualified), emily(qualified); samuel(voided) excluded.
       expect(a1.pipeline_count).toBe(4);
       expect(a1.qualified_count).toBe(2);
-      expect(a1.with_client_count).toBe(0); // A7 seam (increment 2)
+      // Increment-2 downstream counts (real, from owning-domain groupBy):
+      // with_client = CLIENT_REVIEW ∪ INTERVIEW: csOld(kiran)+csNew(emily) CLIENT_REVIEW; samuel SELECTED excluded → 2.
+      expect(a1.with_client_count).toBe(2);
+      // offer = SENT ∪ NEGOTIATION ∪ ACCEPTED: ofExpiring(liam,SENT)+ofAccepted(emily,ACCEPTED)+ofFar(kevin,SENT) → 3.
+      expect(a1.offer_count).toBe(3);
+      // started = STARTED only: plStarted(kiran); plBlocked(samuel,BLOCKED) excluded → 1.
+      expect(a1.started_count).toBe(1);
     });
 
     it('summary/list consistency: card counts derive from the same arrays', async () => {

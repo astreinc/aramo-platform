@@ -168,6 +168,30 @@ export class OfferRepository {
     return rows.map(toView);
   }
 
+  // My-Desk "offer" count — LIVE offers (SENT ∪ NEGOTIATION ∪ ACCEPTED) per
+  // requisition, via an indexed groupBy (no row loading). DRAFT (not yet sent)
+  // and terminal DECLINED / EXPIRED / RESCINDED are excluded. Visibility is the
+  // caller's already-resolved requisition set.
+  async countLiveByRequisition(args: {
+    tenant_id: string;
+    requisition_ids: readonly string[];
+  }): Promise<Array<{ requisition_id: string; count: number }>> {
+    if (args.requisition_ids.length === 0) return [];
+    const rows = await this.prisma.offer.groupBy({
+      by: ['requisition_id'],
+      where: {
+        tenant_id: args.tenant_id,
+        requisition_id: { in: [...args.requisition_ids] },
+        state: { in: ['SENT', 'NEGOTIATION', 'ACCEPTED'] },
+      },
+      _count: { _all: true },
+    });
+    return rows.map((r) => ({
+      requisition_id: r.requisition_id as string,
+      count: r._count._all,
+    }));
+  }
+
   async create(input: CreateOfferInput): Promise<OfferView> {
     // L4-A / P1 — validate the Talent-facing compensation snapshot at the write
     // boundary (all-or-nothing; CONTRACT sub-annual / PERMANENT ANNUAL; ISO-4217 +

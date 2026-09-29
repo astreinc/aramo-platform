@@ -7,7 +7,6 @@ import type {
   DeskBlockedPlacementRow,
   DeskInterviewRow,
   DeskOfferRow,
-  DeskPipelineRow,
   DeskRequisitionRow,
   DeskTaskRow,
   MyDeskReadPort,
@@ -36,7 +35,8 @@ function fakePort(overrides: Partial<MyDeskReadPort> = {}): MyDeskReadPort {
   const base: MyDeskReadPort = {
     listMyTasks: async () => [],
     listMyRequisitions: async () => [],
-    listPipelinesForRequisitions: async () => [],
+    countsForRequisitions: async () => new Map(),
+    activeRequisitionsByTalent: async () => new Map(),
     listInterviewsInWindow: async () => [],
     listAwaitingClient: async () => [],
     listBlockedPlacements: async () => [],
@@ -139,9 +139,7 @@ describe('MyDeskService.compose — priority queue from tasks', () => {
           task({ id: 't3', title: 'Log call', type: 'call', owner_type: 'talent_record', owner_id: 'tal-1' }),
         ],
         listMyRequisitions: async () => [reqRow({ id: 'req-1', requisition_number: 1001 })],
-        listPipelinesForRequisitions: async () => [
-          { requisition_id: 'req-1', talent_record_id: 'tal-1', status: 'qualifying' },
-        ],
+        activeRequisitionsByTalent: async () => new Map([['tal-1', ['req-1']]]),
         resolveTalentNames: async () => new Map([['tal-1', 'Kevin Brooks']]),
       }),
     );
@@ -161,10 +159,7 @@ describe('MyDeskService.compose — priority queue from tasks', () => {
           reqRow({ id: 'req-1', requisition_number: 1001 }),
           reqRow({ id: 'req-2', requisition_number: 1004 }),
         ],
-        listPipelinesForRequisitions: async () => [
-          { requisition_id: 'req-1', talent_record_id: 'tal-2', status: 'qualifying' },
-          { requisition_id: 'req-2', talent_record_id: 'tal-2', status: 'contacted' },
-        ],
+        activeRequisitionsByTalent: async () => new Map([['tal-2', ['req-1', 'req-2']]]),
         resolveTalentNames: async () => new Map([['tal-2', 'Marcus Lee']]),
       }),
     );
@@ -187,20 +182,18 @@ function reqRow(over: Partial<DeskRequisitionRow> & { id: string }): DeskRequisi
 }
 
 describe('MyDeskService.compose — my requisitions table', () => {
-  it('projects company name, days-open, and pipeline/qualified counts', async () => {
-    const pipelines: DeskPipelineRow[] = [
-      { requisition_id: 'req-1', talent_record_id: 'tal-a', status: 'qualifying' },
-      { requisition_id: 'req-1', talent_record_id: 'tal-b', status: 'qualified' },
-      { requisition_id: 'req-1', talent_record_id: 'tal-c', status: 'qualified' },
-      { requisition_id: 'req-1', talent_record_id: 'tal-d', status: 'voided' }, // terminal — excluded from pipeline_count
-      { requisition_id: 'req-2', talent_record_id: 'tal-e', status: 'contacted' },
-    ];
+  it('projects company name, days-open, and ALL counts from the groupBy projection (incl. real downstream)', async () => {
     const svc = new MyDeskService(
       fakePort({
         listMyRequisitions: async () => [
           reqRow({ id: 'req-1', requisition_number: 1001, title: 'BA', company_id: 'co-1', created_at: '2026-09-13T12:00:00Z' }),
         ],
-        listPipelinesForRequisitions: async () => pipelines.filter((p) => p.requisition_id === 'req-1'),
+        countsForRequisitions: async (_ctx, reqIds) => {
+          expect(reqIds).toEqual(['req-1']); // exactly the visible reqs, no 200-row load
+          return new Map([
+            ['req-1', { pipeline: 3, qualified: 2, with_client: 1, offer: 1, started: 0 }],
+          ]);
+        },
         resolveCompanyNames: async () => new Map([['co-1', 'Freddie Mac']]),
       }),
     );
@@ -208,12 +201,37 @@ describe('MyDeskService.compose — my requisitions table', () => {
     expect(row.code).toBe('REQ-1001');
     expect(row.client_name).toBe('Freddie Mac');
     expect(row.days_open).toBe(16); // Sep 13 → Sep 29
-    expect(row.pipeline_count).toBe(3); // qualifying + 2 qualified, voided excluded
+    expect(row.pipeline_count).toBe(3);
     expect(row.qualified_count).toBe(2);
-    // Increment-1 seam: downstream-owned counts are not yet composed.
-    expect(row.with_client_count).toBe(0);
-    expect(row.offer_count).toBe(0);
+    // Increment-2: downstream counts are now REAL (no longer hardcoded 0).
+    expect(row.with_client_count).toBe(1);
+    expect(row.offer_count).toBe(1);
     expect(row.started_count).toBe(0);
+  });
+
+  it('signal surfaces the most-advanced non-zero stage', async () => {
+    const svc = new MyDeskService(
+      fakePort({
+        listMyRequisitions: async () => [reqRow({ id: 'req-1', requisition_number: 1001 })],
+        countsForRequisitions: async () =>
+          new Map([['req-1', { pipeline: 5, qualified: 2, with_client: 1, offer: 1, started: 1 }]]),
+      }),
+    );
+    const [row] = (await svc.compose(CTX, NOW, TZ)).requisitions;
+    expect(row.signal).toBe('1 started');
+  });
+
+  it('a requisition with no counts row renders zeros and the sourcing signal', async () => {
+    const svc = new MyDeskService(
+      fakePort({
+        listMyRequisitions: async () => [reqRow({ id: 'req-9', requisition_number: 1009 })],
+        countsForRequisitions: async () => new Map(),
+      }),
+    );
+    const [row] = (await svc.compose(CTX, NOW, TZ)).requisitions;
+    expect(row.pipeline_count).toBe(0);
+    expect(row.with_client_count).toBe(0);
+    expect(row.signal).toBe('No pipeline yet');
   });
 });
 

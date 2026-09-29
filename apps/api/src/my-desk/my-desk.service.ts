@@ -10,6 +10,7 @@ import {
   MY_DESK_READ_PORT,
   type DeskActorContext,
   type DeskInterviewRow,
+  type DeskRequisitionCounts,
   type DeskTaskOwnerType,
   type DeskTaskRow,
   type DeskTaskType,
@@ -53,13 +54,6 @@ const OWNER_ROUTE: Record<DeskTaskOwnerType, string | null> = {
   company: '/companies',
   contact: null,
 };
-
-// Pipeline stages excluded from the live "in pipeline" tally (terminal).
-const TERMINAL_PIPELINE_STATUSES = new Set([
-  'not_in_consideration',
-  'completed',
-  'voided',
-]);
 
 // Offer states that can still be "expiring" (awaiting a talent response).
 const OPEN_OFFER_STATES = new Set(['SENT', 'NEGOTIATION']);
@@ -110,26 +104,36 @@ export class MyDeskService {
     ]);
 
     const reqIds = requisitions.map((r) => r.id);
-    const pipelines =
-      reqIds.length === 0
-        ? []
-        : await this.port.listPipelinesForRequisitions(ctx, reqIds);
 
-    // Task→requisition enrichment: a talent-owned task adopts a requisition
-    // ONLY when the talent sits on exactly one ACTIVE (non-terminal) pipeline in
-    // the visible set — an unambiguous authoritative relationship. Two or more
-    // active pipelines is ambiguous; we leave the context null rather than guess
-    // (Architect ruling / directive §34: never invent context).
-    const talentActiveReqs = new Map<string, Set<string>>();
-    for (const p of pipelines) {
-      if (TERMINAL_PIPELINE_STATUSES.has(p.status)) continue;
-      const set = talentActiveReqs.get(p.talent_record_id) ?? new Set<string>();
-      set.add(p.requisition_id);
-      talentActiveReqs.set(p.talent_record_id, set);
-    }
+    // The only talents needing task→requisition enrichment are the owners of
+    // talent-owned tasks — a bounded set, NOT the whole pipeline table.
+    const taskTalentIds = dedupe(
+      tasks
+        .filter((t) => t.owner_type === 'talent_record')
+        .map((t) => t.owner_id),
+    );
+
+    const [counts, activeReqsByTalent] = await Promise.all([
+      reqIds.length === 0
+        ? (new Map<string, DeskRequisitionCounts>() as ReadonlyMap<
+            string,
+            DeskRequisitionCounts
+          >)
+        : this.port.countsForRequisitions(ctx, reqIds),
+      taskTalentIds.length === 0
+        ? (new Map<string, readonly string[]>() as ReadonlyMap<
+            string,
+            readonly string[]
+          >)
+        : this.port.activeRequisitionsByTalent(ctx, taskTalentIds),
+    ]);
+
+    // Task→requisition enrichment: adopt a requisition ONLY when the talent
+    // sits on exactly ONE active pipeline (unambiguous); two or more is
+    // ambiguous → leave null rather than guess (Architect ruling / directive §34).
     const talentToReq = new Map<string, string | null>();
-    for (const [talentId, reqs] of talentActiveReqs) {
-      talentToReq.set(talentId, reqs.size === 1 ? ([...reqs][0] ?? null) : null);
+    for (const [talentId, reqs] of activeReqsByTalent) {
+      talentToReq.set(talentId, reqs.length === 1 ? (reqs[0] ?? null) : null);
     }
 
     // Interview day filter is re-applied server-side against the civil day (the
@@ -228,7 +232,7 @@ export class MyDeskService {
     ];
 
     const requisitionRows = requisitions.map((r) =>
-      this.toRequisitionRow(r, pipelines, nowMs, timeZone, companyNames),
+      this.toRequisitionRow(r, counts, nowMs, timeZone, companyNames),
     );
 
     return {
@@ -314,16 +318,12 @@ export class MyDeskService {
       created_at: string;
       is_hot: boolean;
     },
-    pipelines: readonly { requisition_id: string; status: string }[],
+    counts: ReadonlyMap<string, DeskRequisitionCounts>,
     nowMs: number,
     timeZone: string,
     companyNames: ReadonlyMap<string, string>,
   ): DeskRequisitionRowView {
-    const mine = pipelines.filter((p) => p.requisition_id === r.id);
-    const pipeline_count = mine.filter(
-      (p) => !TERMINAL_PIPELINE_STATUSES.has(p.status),
-    ).length;
-    const qualified_count = mine.filter((p) => p.status === 'qualified').length;
+    const c = counts.get(r.id) ?? EMPTY_COUNTS;
     return {
       id: r.id,
       code: `REQ-${r.requisition_number}`,
@@ -331,20 +331,35 @@ export class MyDeskService {
       client_name: companyNames.get(r.company_id) ?? null,
       days_open: agingDaysInTimeZone(Date.parse(r.created_at), nowMs, timeZone),
       status: r.status as DeskRequisitionRowView['status'],
-      pipeline_count,
-      qualified_count,
-      // Downstream-owned (A7 seam) — composed in backend increment 2.
-      with_client_count: 0,
-      offer_count: 0,
-      started_count: 0,
-      signal:
-        qualified_count > 0
-          ? `${qualified_count} qualified`
-          : pipeline_count > 0
-            ? 'Sourcing — nobody qualified yet'
-            : 'No pipeline yet',
+      pipeline_count: c.pipeline,
+      qualified_count: c.qualified,
+      // Downstream-owned (A7 seam) — composed server-side via owning-domain
+      // groupBy reads (Increment-2), FE renders as-is.
+      with_client_count: c.with_client,
+      offer_count: c.offer,
+      started_count: c.started,
+      signal: requisitionSignal(c),
     };
   }
+}
+
+const EMPTY_COUNTS: DeskRequisitionCounts = {
+  pipeline: 0,
+  qualified: 0,
+  with_client: 0,
+  offer: 0,
+  started: 0,
+};
+
+// FACTS-only operational signal (directive §22), derived from the authoritative
+// counts. Most-advanced-stage-first so the recruiter sees the sharpest signal.
+function requisitionSignal(c: DeskRequisitionCounts): string {
+  if (c.started > 0) return `${c.started} started`;
+  if (c.offer > 0) return `${c.offer} at offer`;
+  if (c.with_client > 0) return `${c.with_client} with client`;
+  if (c.qualified > 0) return `${c.qualified} qualified`;
+  if (c.pipeline > 0) return 'Sourcing — nobody qualified yet';
+  return 'No pipeline yet';
 }
 
 function dedupe(ids: readonly string[]): string[] {

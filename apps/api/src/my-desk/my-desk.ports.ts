@@ -48,14 +48,21 @@ export interface DeskTaskRow {
   readonly owner_id: string;
 }
 
-// A pipeline row, used to tally per-requisition counts (≤ qualified — the
-// pipeline-owned stages) AND to resolve a talent-owned task's requisition when
-// the talent sits on a single active pipeline. status is a loose string (the
-// desk does not re-declare the pipeline enum).
-export interface DeskPipelineRow {
-  readonly requisition_id: string;
-  readonly talent_record_id: string;
-  readonly status: string;
+// Per-requisition counts, each produced by an indexed groupBy in the owning
+// domain (NOT by loading rows into memory — Increment-2 replaced the bounded
+// LIST_LIMIT tally). Every count is visibility-scoped and terminal-excluded per
+// its owning domain's state vocab.
+export interface DeskRequisitionCounts {
+  // Pipeline-owned: active stages (excludes not_in_consideration/completed/voided).
+  readonly pipeline: number;
+  // Pipeline-owned: status = 'qualified'.
+  readonly qualified: number;
+  // client-selection: CLIENT_REVIEW ∪ INTERVIEW (non-terminal "with client").
+  readonly with_client: number;
+  // offer: SENT ∪ NEGOTIATION ∪ ACCEPTED (live offers).
+  readonly offer: number;
+  // placement: STARTED only.
+  readonly started: number;
 }
 
 export interface DeskRequisitionRow {
@@ -116,10 +123,20 @@ export interface DeskDayWindow {
 export interface MyDeskReadPort {
   listMyTasks(ctx: DeskActorContext): Promise<readonly DeskTaskRow[]>;
   listMyRequisitions(ctx: DeskActorContext): Promise<readonly DeskRequisitionRow[]>;
-  listPipelinesForRequisitions(
+  // Per-requisition counts via indexed groupBy reads (no row loading, no
+  // LIST_LIMIT). Missing requisition ids default to all-zero.
+  countsForRequisitions(
     ctx: DeskActorContext,
     requisition_ids: readonly string[],
-  ): Promise<readonly DeskPipelineRow[]>;
+  ): Promise<ReadonlyMap<string, DeskRequisitionCounts>>;
+  // Active (non-terminal) requisition ids per talent — bounded to the talent
+  // ids the desk already holds (task owners), for the unambiguous talent-owned-
+  // task → requisition enrichment. A talent on a single active pipeline yields
+  // one id; multiple → ambiguous (the service leaves it null).
+  activeRequisitionsByTalent(
+    ctx: DeskActorContext,
+    talent_ids: readonly string[],
+  ): Promise<ReadonlyMap<string, readonly string[]>>;
   listInterviewsInWindow(
     ctx: DeskActorContext,
     window: DeskDayWindow,

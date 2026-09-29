@@ -2626,6 +2626,30 @@ export class PlacementRepository {
     return rows.map(projectView);
   }
 
+  // My-Desk "started" count — placements in the STARTED state per requisition,
+  // via an indexed groupBy (no row loading). All other states (PRE_START,
+  // BLOCKED, READY_TO_START, NO_SHOW, FELL_THROUGH) are excluded. Visibility is
+  // the caller's already-resolved requisition set.
+  async countStartedByRequisition(args: {
+    tenant_id: string;
+    requisition_ids: readonly string[];
+  }): Promise<Array<{ requisition_id: string; count: number }>> {
+    if (args.requisition_ids.length === 0) return [];
+    const rows = await this.prisma.placementProcess.groupBy({
+      by: ['requisition_id'],
+      where: {
+        tenant_id: args.tenant_id,
+        requisition_id: { in: [...args.requisition_ids] },
+        state: 'STARTED',
+      },
+      _count: { _all: true },
+    });
+    return rows.map((r) => ({
+      requisition_id: r.requisition_id as string,
+      count: r._count._all,
+    }));
+  }
+
   // Track 6 / T6-B3 — the single 409 for a commercial-lifecycle state conflict
   // (§20). NO new ErrorCode: the reused ASSIGNMENT_COMMERCIAL_REVISION_CONFLICT
   // carries the machine-readable discriminator in details.reason. The closed reason

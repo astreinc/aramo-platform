@@ -206,6 +206,33 @@ export class ClientSelectionProcessRepository {
     return (rows as ProcessRow[]).map(projectView);
   }
 
+  // My-Desk "with client" count — non-terminal processes (CLIENT_REVIEW ∪
+  // INTERVIEW: a submittal sitting with the client with no final decision) per
+  // requisition, via an indexed groupBy (no row loading). Terminal SELECTED /
+  // DECLINED / WITHDRAWN are excluded. Visibility is the caller's already-
+  // resolved requisition set.
+  async countWithClientByRequisition(args: {
+    tenant_id: string;
+    requisition_ids: readonly string[];
+  }): Promise<Array<{ requisition_id: string; count: number }>> {
+    if (args.requisition_ids.length === 0) return [];
+    const rows = await this.prisma.clientSelectionProcess.groupBy({
+      by: ['requisition_id'],
+      where: {
+        tenant_id: args.tenant_id,
+        requisition_id: { in: [...args.requisition_ids] },
+        state: {
+          in: ['CLIENT_REVIEW', 'INTERVIEW'] satisfies ClientSelectionState[],
+        },
+      },
+      _count: { _all: true },
+    });
+    return rows.map((r) => ({
+      requisition_id: r.requisition_id as string,
+      count: r._count._all,
+    }));
+  }
+
   // Drive a legal, CAS-guarded state transition. Concealment (404) + CAS (409) +
   // legality (422) precede the atomic tx (UPDATE + event + outbox).
   async transition(args: {
