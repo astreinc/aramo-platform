@@ -21,6 +21,11 @@ export class EsignModule {
   static forRoot(opts?: {
     evidenceSigner?: Provider;
     extraProviders?: Provider[];
+    // Tokens from extraProviders that must cross the module boundary so an
+    // AppModule-level controller can inject them (e.g. DOCUMENT_SOURCE_PROVIDER_PORT
+    // for the signer source route). Constrained to configured provider tokens —
+    // NOT a broad export escape hatch.
+    extraExports?: Array<string | symbol>;
     imports?: ModuleMetadata['imports'];
   }): DynamicModule {
     return {
@@ -33,7 +38,7 @@ export class EsignModule {
         opts?.evidenceSigner ?? DEFAULT_EVIDENCE_SIGNER,
         ...(opts?.extraProviders ?? []),
       ],
-      exports: [PrismaService, EsignRepository, EsignService],
+      exports: [PrismaService, EsignRepository, EsignService, ...(opts?.extraExports ?? [])],
     };
   }
 }

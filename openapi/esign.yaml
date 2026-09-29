@@ -209,6 +209,90 @@ paths:
                     format: uuid
         '401':
           $ref: '#/components/responses/Unauthorized'
+  /v1/esign/signing/document:
+    post:
+      operationId: getSignerDocumentView
+      summary: The signer's document view — positioned fields + document metadata.
+      description: >-
+        PX-V1 F3 — token-authorized, disclosure-gated. Tenant is resolved
+        server-side from the capability token; the response carries no tenant id
+        and no source bytes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token:
+                  type: string
+      responses:
+        '200':
+          description: Document metadata + the signer's positioned fields.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  documents:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        document_id: { type: string, format: uuid }
+                        title: { type: string }
+                        ordinal: { type: integer }
+                  fields:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        field_id: { type: string, format: uuid }
+                        document_id: { type: string, format: uuid }
+                        field_type: { type: string }
+                        page_number: { type: integer }
+                        x: { type: number }
+                        y: { type: number }
+                        width: { type: [number, 'null'] }
+                        height: { type: [number, 'null'] }
+                        required: { type: boolean }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: Disclosure not yet accepted for this signer.
+  /v1/esign/signing/source:
+    post:
+      operationId: getSignerDocumentSource
+      summary: The frozen source PDF bytes for a document in the signing session.
+      description: >-
+        PX-V1 F3 — token-authorized, disclosure-gated. Bytes are resolved
+        mode-agnostically (OWNED → E-Sign object storage, CORE_REF → Documents
+        pull) and returned base64; the response carries no tenant id.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, document_id]
+              properties:
+                token: { type: string }
+                document_id: { type: string, format: uuid }
+      responses:
+        '200':
+          description: The base64-encoded source PDF plus its content type.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  source_base64: { type: string }
+                  content_type: { type: string }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: Disclosure not yet accepted for this signer.
 components:
   parameters:
     EnvelopeId:
@@ -311,6 +395,36 @@ components:
                 type: integer
               signer_role:
                 type: string
+        fields:
+          description: >-
+            PX-V1 F2 — OPTIONAL positioned signature/date fields defined at
+            envelope creation. Each references a document by ordinal and,
+            optionally, a signer by signing_order. Omitted by ATS RTR/Offer
+            callers, which remain valid unchanged.
+          type: array
+          items:
+            type: object
+            required: [document_ordinal, field_type, page_number, x, y]
+            properties:
+              document_ordinal:
+                type: integer
+              signer_signing_order:
+                type: integer
+              field_type:
+                type: string
+                enum: [SIGNATURE, INITIALS, SIGN_DATE, SIGNER_NAME, TEXT, CHECKBOX, ACKNOWLEDGEMENT]
+              page_number:
+                type: integer
+              x:
+                type: number
+              y:
+                type: number
+              width:
+                type: number
+              height:
+                type: number
+              required:
+                type: boolean
     EnvelopeSummary:
       type: object
       required:

@@ -47,7 +47,7 @@ export interface CompactTokenInput {
   audience: string;
   sub: string;
   tenant_id: string;
-  consumer_type?: 'recruiter' | 'portal' | 'ingestion' | 'platform';
+  consumer_type?: 'recruiter' | 'portal' | 'ingestion' | 'platform' | 'esign';
   authz_version?: number;
   site_id?: string;
   ttlSeconds?: number;

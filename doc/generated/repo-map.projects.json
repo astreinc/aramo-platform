@@ -617,6 +617,7 @@
     ],
     "@aramo/esign": [
       "DOCUMENT_SOURCE_PROVIDER_PORT",
+      "DOCUMENT_STORAGE_PORT",
       "DisclosureNotAcceptedError",
       "ESIGN_LIFECYCLE_EVENT_VERSION",
       "ESIGN_SCHEMA",
@@ -2167,6 +2168,12 @@
         "project": "entitlement",
         "status": "excluded"
       },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/entitlement/src/tests/px3-esign-entitlement.spec.ts",
+        "project": "entitlement",
+        "status": "excluded"
+      },
       { "project": "entitlement", "status": "production" },
       { "project": "examination", "status": "production" },
       { "project": "export", "status": "production" },
@@ -3198,6 +3205,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/identity/src/tests/px3-esign-sender-authz.integration.spec.ts",
+        "project": "identity",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/identity/src/tests/seed-platform-owner.integration.spec.ts",
         "project": "identity",
         "status": "excluded"
@@ -3801,6 +3814,18 @@
         "status": "excluded"
       },
       { "project": "api", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/esign-service/src/tests/envelope-field-mapper.spec.ts",
+        "project": "esign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/esign-service/src/tests/native-signature-provider-fields.spec.ts",
+        "project": "esign-service",
+        "status": "excluded"
+      },
       { "project": "esign-service", "status": "production" }
     ],
     "@aramo/documents-rendering": [
@@ -3815,6 +3840,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/esign/src/tests/esign-flow.integration.spec.ts",
+        "project": "esign",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/esign/src/tests/execution-stamping.integration.spec.ts",
         "project": "esign",
         "status": "excluded"
       },
@@ -3891,13 +3922,37 @@
     "@aramo/esign": [
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/esign-service/src/tests/app-module-boot.spec.ts",
+        "project": "esign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/esign-service/src/tests/envelope-document-source.resolver.spec.ts",
+        "project": "esign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/esign-service/src/tests/esign-delivery.worker.spec.ts",
         "project": "esign-service",
         "status": "excluded"
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/esign-service/src/tests/esign-signer-source.spec.ts",
+        "project": "esign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/esign-service/src/tests/kms-evidence-manifest-signer.spec.ts",
+        "project": "esign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/esign-service/src/tests/native-signature-provider-fields.spec.ts",
         "project": "esign-service",
         "status": "excluded"
       },
@@ -5162,6 +5217,7 @@
         "status": "unscoped"
       },
       { "project": "attachment", "status": "production" },
+      { "project": "esign-service", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/resume-parse/src/tests/resume-parse.integration.spec.ts",

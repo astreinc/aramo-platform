@@ -6,6 +6,7 @@ export {
   type CreateEnvelopeRequest,
   type ProviderDocumentInput,
   type ProviderSignerInput,
+  type ProviderFieldInput,
   type ProviderSignerSummary,
   type EnvelopeSummary,
   type EvidenceSummary,

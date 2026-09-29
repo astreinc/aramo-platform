@@ -88,6 +88,12 @@ export const SEED_IDS = {
     // (holds every comp scope BY DESIGN — the see-all bypass applies; see
     // SEE_ALL_ROLE_KEYS extension below). Catalog +1 tenant role.
     auditor_with_financials: '01900000-0000-7000-8000-00000000001e',
+    // PX-V1 PX-3 — E-Sign sender product roles (dedicated 0x2a0+ range; namespace-
+    // separate from the ATS tenant roles, excluded from the tenant RolePicker).
+    esign_owner: '01900000-0000-7000-8000-0000000002a0',
+    esign_admin: '01900000-0000-7000-8000-0000000002a1',
+    esign_sender: '01900000-0000-7000-8000-0000000002a2',
+    esign_viewer: '01900000-0000-7000-8000-0000000002a3',
   },
   scopes: {
     'consent:read': '01900000-0000-7000-8000-000000000020',
@@ -163,6 +169,10 @@ export const SEED_IDS = {
     'document_template:manage': '01900000-0000-7000-8000-0000000001d5',
     'document_requirement:read': '01900000-0000-7000-8000-0000000001d6',
     'document_requirement:manage': '01900000-0000-7000-8000-0000000001d7',
+    // PX-V1 PX-3 — E-Sign sender product scopes (dedicated 0x1e0+ range).
+    'esign:envelope:create': '01900000-0000-7000-8000-0000000001e0',
+    'esign:envelope:send': '01900000-0000-7000-8000-0000000001e1',
+    'esign:envelope:read': '01900000-0000-7000-8000-0000000001e2',
     'pipeline:read': '01900000-0000-7000-8000-000000000087',
     // Lane 2 / L2-F (F1) — Client-Selection owner scopes.
     'client-selection:create': '01900000-0000-7000-8000-0000000000f3',
@@ -2644,6 +2654,32 @@ const DOCUMENTS_DOC3_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
   return map;
 })();
 
+// PX-V1 PX-3 — E-Sign SENDER product grant. Dedicated bundle at 0x1350+ (0x1330/
+// 0x1340 frozen by CSP PR-2). esign_* roles hold ONLY esign:* scopes — never an
+// ATS scope, never document:execute. 10 grants total.
+export const ESIGN_SENDER_SEED_BUNDLES: ReadonlyArray<
+  readonly [string, readonly string[]]
+> = [
+  ['esign_owner', ['esign:envelope:create', 'esign:envelope:send', 'esign:envelope:read']],
+  ['esign_admin', ['esign:envelope:create', 'esign:envelope:send', 'esign:envelope:read']],
+  ['esign_sender', ['esign:envelope:create', 'esign:envelope:send', 'esign:envelope:read']],
+  ['esign_viewer', ['esign:envelope:read']],
+];
+
+// Deterministic RoleScope row ids for the 10 E-Sign grants. Fresh range 0x1350+.
+const ESIGN_SENDER_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
+  const map: Record<string, string> = {};
+  let i = 0x1350;
+  for (const [role, scopes] of ESIGN_SENDER_SEED_BUNDLES) {
+    for (const scope of scopes) {
+      map[`${role}:${scope}`] =
+        `01900000-0000-7000-8000-${i.toString(16).padStart(12, '0')}`;
+      i++;
+    }
+  }
+  return map;
+})();
+
 interface IdentityPrismaClient {
   tenant: typeof PrismaClient.prototype.tenant;
   user: typeof PrismaClient.prototype.user;
@@ -2790,6 +2826,13 @@ export async function runIdentitySeed(
   await upsertRole(prisma, SEED_IDS.roles.auditor_with_financials, 'auditor_with_financials', 'Auditor with Financials — compliance reads + every compensation:view:* (the see-all-comp grant; gated by audit.financials_enabled)');
   // AUTHZ-2 — 1 platform role (super_admin; platform:* scope namespace).
   await upsertRole(prisma, SEED_IDS.roles.super_admin, 'super_admin', 'Super Admin — platform-tier operator (Aramo SaaS). Provisions tenants, invites Tenant Owners + platform admins. Holds ONLY platform:* scopes; never a tenant scope.');
+  // PX-V1 PX-3 — E-Sign sender product roles. Namespace-separate from the ATS
+  // tenant roles (like super_admin): they hold ONLY esign:* scopes and are excluded
+  // from the tenant ATS RolePicker. Shared Aramo identity; independent E-Sign product.
+  await upsertRole(prisma, SEED_IDS.roles.esign_owner, 'esign_owner', 'E-Sign Owner — top authority of an E-Sign organization; full envelope authority (create/send/read).');
+  await upsertRole(prisma, SEED_IDS.roles.esign_admin, 'esign_admin', 'E-Sign Admin — administrative operator of an E-Sign organization; full envelope authority (create/send/read).');
+  await upsertRole(prisma, SEED_IDS.roles.esign_sender, 'esign_sender', 'E-Sign Sender — creates and dispatches envelopes for signature (create/send/read). No org administration.');
+  await upsertRole(prisma, SEED_IDS.roles.esign_viewer, 'esign_viewer', 'E-Sign Viewer — read-only access to envelopes + signing history (read).');
 
   // 6. Scopes (6 pre-A1a + 7 PR-A1a = 13 entries).
   await upsertScope(prisma, SEED_IDS.scopes['consent:read'], 'consent:read', 'Read consent state');
@@ -3028,6 +3071,10 @@ export async function runIdentitySeed(
   await upsertScope(prisma, SEED_IDS.scopes['document_template:manage'], 'document_template:manage', 'DOC-2 — create/activate/retire document templates and versions (admin act). NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['document_requirement:read'], 'document_requirement:read', 'DOC-2 — read document requirements and requirement status (tenant-scoped). NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['document_requirement:manage'], 'document_requirement:manage', 'DOC-2 — create/satisfy/waive document requirements (admin act; waiver authority). NO scope.created (scope-seed precedent).');
+  // PX-V1 PX-3 — E-Sign sender product scopes (dedicated ESIGN_SENDER_SEED_BUNDLES).
+  await upsertScope(prisma, SEED_IDS.scopes['esign:envelope:create'], 'esign:envelope:create', 'PX-V1 PX-3 — create an E-Sign envelope (upload PDF, place fields). E-Sign sender product scope; NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['esign:envelope:send'], 'esign:envelope:send', 'PX-V1 PX-3 — dispatch an E-Sign envelope for signature. E-Sign sender product scope; NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['esign:envelope:read'], 'esign:envelope:read', 'PX-V1 PX-3 — list/track E-Sign envelopes + evidence. E-Sign sender product scope; NO scope.created (scope-seed precedent).');
 
   for (const [roleKey, scopeKeys] of Object.entries(ROLE_SCOPE_ASSIGNMENTS)) {
     const role_id = roleIdForKey(roleKey);
@@ -3880,6 +3927,26 @@ export async function runIdentitySeed(
       if (rsId === undefined) {
         throw new Error(
           `Documents-DOC3-Role-Matrix: Missing generated RoleScope id for ${roleKey}:${scopeKey}`,
+        );
+      }
+      const scope_id = scopeIdForKey(scopeKey);
+      await prisma.roleScope.upsert({
+        where: { role_id_scope_id: { role_id, scope_id } },
+        update: {},
+        create: { id: rsId, role_id, scope_id },
+      });
+    }
+  }
+
+  // PX-V1 PX-3 — E-Sign sender product grant (range 0x1350+). esign_* roles ← only
+  // esign:* scopes, via the dedicated ESIGN_SENDER_SEED_BUNDLES (never ATS bundles).
+  for (const [roleKey, scopeKeys] of ESIGN_SENDER_SEED_BUNDLES) {
+    const role_id = roleIdForKey(roleKey);
+    for (const scopeKey of scopeKeys) {
+      const rsId = ESIGN_SENDER_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
+      if (rsId === undefined) {
+        throw new Error(
+          `ESign-Sender-Role-Matrix: Missing generated RoleScope id for ${roleKey}:${scopeKey}`,
         );
       }
       const scope_id = scopeIdForKey(scopeKey);

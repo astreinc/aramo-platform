@@ -99,6 +99,12 @@ export const SEED_SCOPE_KEYS = [
   'document_template:manage',   // tenant_admin+ (create/activate/retire templates + versions)
   'document_requirement:read',  // recruiter+ (read requirement status)
   'document_requirement:manage',// tenant_admin+ (create/satisfy/waive requirements)
+  // PX-V1 PX-3 — E-Sign SENDER product scopes (esign.aramo.ai). Distinct `esign:`
+  // namespace granted ONLY to esign_* roles — never to ATS roles, never reusing
+  // the ATS document:execute scope. dedicated ESIGN_SEED_BUNDLES (range 0x1330+).
+  'esign:envelope:read',        // esign_viewer+ (list/track envelopes)
+  'esign:envelope:create',      // esign_sender+ (upload PDF, place fields, create envelope)
+  'esign:envelope:send',        // esign_sender+ (dispatch an envelope for signature)
   'pipeline:read',              // recruiter+
   // TI-1D-D — set the Requisition-context résumé selection (PUT
   // /v1/pipelines/{id}/resume-edition). DEDICATED mutation scope, EXPLICIT

@@ -26,6 +26,7 @@ describe('roles-catalog metadata', () => {
   it('every tenant SEED_ROLE_KEY (except super_admin) has catalog metadata', () => {
     for (const key of SEED_ROLE_KEYS) {
       if (key === 'super_admin') continue; // platform tier — excluded
+      if (key.startsWith('esign_')) continue; // PX-V1 PX-3 — E-Sign product tier, excluded from the ATS RolePicker
       expect(ROLE_CATALOG_META[key], `meta for ${key}`).toBeDefined();
     }
   });

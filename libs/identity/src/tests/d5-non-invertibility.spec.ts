@@ -331,9 +331,11 @@ describe('AUTHZ-D5 — per-role view-set matches the LOCKED matrix', () => {
   it('every role absent from the bundle table sees no comp fields', () => {
     const bundleRoles = new Set(D5_COMPENSATION_BUNDLES.map(([k]) => k));
     const absentRoles = [...SEED_ROLE_KEYS].filter((k) => !bundleRoles.has(k));
-    // Sanity: the four roles known to be intentionally absent per the
-    // commit plan §2 matrix.
-    expect(absentRoles.length).toBe(4);
+    // Sanity: the four ATS roles known to be intentionally absent per the
+    // commit plan §2 matrix, plus the four PX-V1 PX-3 E-Sign product roles
+    // (esign_owner/admin/sender/viewer) — E-Sign roles hold ONLY esign:* scopes
+    // and never any compensation field, so they correctly see no comp fields.
+    expect(absentRoles.length).toBe(8);
     for (const role of absentRoles) {
       expect(maskedKeys(role).size, `${role} (absent role) leaked comp fields`).toBe(0);
     }

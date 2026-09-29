@@ -90,6 +90,11 @@ describe('seed role catalog (§6 closed set, PR-A1a expansion, AUTHZ-1 + AUTHZ-1
       'back_office',
       'candidate',
       'delivery_manager',
+      // PX-V1 PX-3 — E-Sign product roles (namespace-separate from ATS tenant roles).
+      'esign_admin',
+      'esign_owner',
+      'esign_sender',
+      'esign_viewer',
       'finance',
       'lead_recruiter',
       'recruiter',

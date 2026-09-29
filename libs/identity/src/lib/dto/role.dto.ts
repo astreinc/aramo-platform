@@ -57,6 +57,14 @@ export const SEED_ROLE_KEYS = [
   'auditor_with_financials',
   // AUTHZ-2 — 1 platform role (super_admin; platform:* scope namespace only).
   'super_admin',
+  // PX-V1 PX-3 — E-Sign SENDER product roles (esign.aramo.ai). Namespace-separate
+  // from the ATS tenant roles (like super_admin): they hold ONLY esign:* scopes and
+  // are excluded from the tenant ATS RolePicker (role-catalog exclusion by `esign:`
+  // prefix). Shared Aramo identity substrate; independent E-Sign product.
+  'esign_owner',
+  'esign_admin',
+  'esign_sender',
+  'esign_viewer',
 ] as const;
 export type SeedRoleKey = (typeof SEED_ROLE_KEYS)[number];
 
