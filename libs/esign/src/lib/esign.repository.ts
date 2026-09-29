@@ -5,6 +5,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from './prisma/prisma.service.js';
 import { computeEventHash } from './hash-chain.js';
 import { EnvelopeNotFoundError, SignerNotFoundError } from './domain/errors.js';
+import { type EnvelopeDocumentSourceMode } from './ports/document-source-provider.port.js';
 
 // DOC-3 boundary 1-2 — E-Sign persistence + append-only hash-chained event
 // ledger. ATS-neutral: Documents referenced by opaque UUID only. Any Prisma tx
@@ -19,11 +20,18 @@ export interface CreateEnvelopeInput {
   created_by: string;
 }
 
+// PX-V1 F1 — CORE_REF (legacy ATS: document_ref/document_revision_ref) OR OWNED
+// (standalone: source_object_key + content_type/byte_size). source_mode defaults
+// to CORE_REF so every existing caller is unchanged.
 export interface AddDocumentInput {
   tenant_id: string;
   envelope_id: string;
-  document_ref: string;
-  document_revision_ref: string;
+  source_mode?: EnvelopeDocumentSourceMode;
+  document_ref?: string | null;
+  document_revision_ref?: string | null;
+  source_object_key?: string | null;
+  content_type?: string | null;
+  byte_size?: number | null;
   title: string;
   source_sha256: string;
   ordinal: number;

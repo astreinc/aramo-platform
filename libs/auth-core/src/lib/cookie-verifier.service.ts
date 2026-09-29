@@ -18,7 +18,7 @@ export interface CookieJwtPayload {
   // auth-service; reuse the PKCE/JWKS pipeline). Matches CONSUMER_TYPES
   // in libs/auth/auth-context.types.ts.
   sub: string;
-  consumer_type: 'recruiter' | 'portal' | 'ingestion' | 'platform';
+  consumer_type: 'recruiter' | 'portal' | 'ingestion' | 'platform' | 'esign';
   tenant_id: string;
   // HF-AUTH-1 — the compact cookie carries an authorization REVISION, NOT a scope
   // list. /session resolves the effective scopes server-side for its response body.
@@ -28,7 +28,9 @@ export interface CookieJwtPayload {
   exp: number;
 }
 
-const CONSUMER_TYPES = ['recruiter', 'portal', 'ingestion', 'platform'] as const;
+// PX-V1 PX-3 — keep in lockstep with libs/auth CONSUMER_TYPES (hand-copied to
+// avoid the cross-package import); `esign` = the E-Sign sender product consumer.
+const CONSUMER_TYPES = ['recruiter', 'portal', 'ingestion', 'platform', 'esign'] as const;
 
 @Injectable()
 export class CookieVerifierService {

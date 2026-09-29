@@ -18,7 +18,7 @@ export interface Session {
   // Inc-2 PR-2: 'platform' added so the platform console's session (whose token
   // carries consumer_type='platform') types cleanly. The FE never branches on
   // this field (RouteGuard keys on scopes); it is carried for completeness.
-  consumer_type: 'recruiter' | 'portal' | 'ingestion' | 'platform';
+  consumer_type: 'recruiter' | 'portal' | 'ingestion' | 'platform' | 'esign';
   tenant_id: string;
   scopes: string[];
   iat: number;

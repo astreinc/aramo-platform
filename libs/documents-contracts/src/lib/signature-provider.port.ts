@@ -22,6 +22,23 @@ export interface ProviderSignerInput {
   signer_role?: string;
 }
 
+// PX-V1 F2 — a positioned signature/date/text field on a document. References the
+// document by its ordinal and (optionally) the signer by signing_order, since
+// server-assigned ids are not known to the caller at create time. ADDITIVE +
+// OPTIONAL on CreateEnvelopeRequest: existing ATS callers (RTR/Offer) that supply
+// no fields remain valid and unchanged.
+export interface ProviderFieldInput {
+  document_ordinal: number; // references ProviderDocumentInput.ordinal
+  signer_signing_order?: number; // references ProviderSignerInput.signing_order
+  field_type: string; // SIGNATURE|INITIALS|SIGN_DATE|SIGNER_NAME|TEXT|CHECKBOX|ACKNOWLEDGEMENT
+  page_number: number;
+  x: number;
+  y: number;
+  width?: number;
+  height?: number;
+  required?: boolean;
+}
+
 export interface CreateEnvelopeRequest {
   tenant_id: string;
   subject: string;
@@ -29,6 +46,7 @@ export interface CreateEnvelopeRequest {
   created_by: string;
   documents: ProviderDocumentInput[];
   signers: ProviderSignerInput[];
+  fields?: ProviderFieldInput[];
   idempotency_key?: string;
 }
 

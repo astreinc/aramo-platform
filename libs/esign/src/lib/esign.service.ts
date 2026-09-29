@@ -57,6 +57,42 @@ export interface SessionContext {
   signer_id: string;
 }
 
+// PX-V1 F3 — the signer-scoped document view (fields + doc metadata) returned to
+// Sign Web. Carries NO tenant_id: tenant is resolved server-side from the token.
+export interface SignerFieldView {
+  field_id: string;
+  document_id: string;
+  field_type: string;
+  page_number: number;
+  x: number;
+  y: number;
+  width: number | null;
+  height: number | null;
+  required: boolean;
+}
+
+export interface SignerDocumentMeta {
+  document_id: string;
+  title: string;
+  ordinal: number;
+}
+
+export interface SignerDocumentView {
+  documents: SignerDocumentMeta[];
+  fields: SignerFieldView[];
+}
+
+// Server-side source descriptor (NOT returned to the client) used by the
+// composition root to fetch bytes via the mode-dispatching source resolver.
+export interface SignerSourceDescriptor {
+  tenant_id: string;
+  source_mode: 'OWNED' | 'CORE_REF';
+  document_ref: string | null;
+  document_revision_ref: string | null;
+  source_object_key: string | null;
+  content_type: string;
+}
+
 @Injectable()
 export class EsignService {
   constructor(
@@ -210,6 +246,51 @@ export class EsignService {
       where: { id: fieldId },
       data: { value: input.value, signature_method: input.signature_method ?? null, filled_at: new Date() },
     });
+  }
+
+  // ── PX-V1 F3 — signer document view: positioned fields + document metadata for
+  // the Sign Web viewer. Disclosure-gated (same guard as fillField). Returns only
+  // the signer's own (or unbound) fields; NO tenant_id, NO source bytes. ──
+  async getSignerDocumentView(ctx: SessionContext): Promise<SignerDocumentView> {
+    if (!(await this.hasAcceptedDisclosure(ctx.tenant_id, ctx.signer_id))) throw new DisclosureNotAcceptedError(ctx.signer_id);
+    const full = await this.repo.getEnvelopeFull(ctx.tenant_id, ctx.envelope_id);
+    const documents = full.documents.map((d) => ({ document_id: d.id, title: d.title, ordinal: d.ordinal }));
+    const fields = full.documents.flatMap((d) =>
+      d.fields
+        .filter((f) => f.signer_id === ctx.signer_id || f.signer_id === null)
+        .map((f) => ({
+          field_id: f.id,
+          document_id: d.id,
+          field_type: f.field_type,
+          page_number: f.page_number,
+          x: f.x,
+          y: f.y,
+          width: f.width,
+          height: f.height,
+          required: f.required,
+        })),
+    );
+    fields.sort((a, b) => a.page_number - b.page_number || a.y - b.y || a.x - b.x);
+    return { documents, fields };
+  }
+
+  // ── PX-V1 F3 — resolve the server-side source descriptor for a document in the
+  // session's envelope. Disclosure-gated. The descriptor (incl. tenant_id) is for
+  // the composition root's source resolver ONLY and is never returned to the
+  // client. ──
+  async resolveSignerSource(ctx: SessionContext, documentId: string): Promise<SignerSourceDescriptor> {
+    if (!(await this.hasAcceptedDisclosure(ctx.tenant_id, ctx.signer_id))) throw new DisclosureNotAcceptedError(ctx.signer_id);
+    const full = await this.repo.getEnvelopeFull(ctx.tenant_id, ctx.envelope_id);
+    const doc = full.documents.find((d) => d.id === documentId);
+    if (doc === undefined) throw new SigningSessionInvalidError('document not in session');
+    return {
+      tenant_id: ctx.tenant_id,
+      source_mode: doc.source_mode === 'OWNED' ? 'OWNED' : 'CORE_REF',
+      document_ref: doc.document_ref,
+      document_revision_ref: doc.document_revision_ref,
+      source_object_key: doc.source_object_key,
+      content_type: doc.content_type ?? 'application/pdf',
+    };
   }
 
   // ── Complete a signer: all required fields filled -> SIGNED; if all signers

@@ -20,7 +20,7 @@ const DEFAULT_GRACE_SECONDS = 30;
 
 export interface RefreshInput {
   // AUTHZ-2: 'platform' is the 4th consumer_type (Lead ruling 3).
-  consumer: 'recruiter' | 'portal' | 'ingestion' | 'platform';
+  consumer: 'recruiter' | 'portal' | 'ingestion' | 'platform' | 'esign';
   refreshCookie: string | undefined;
 }
 

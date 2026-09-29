@@ -45,13 +45,21 @@ model SignatureEnvelope {
   @@schema("esign")
 }
 
-/// A frozen Documents revision attached to an envelope. UUID-ref only (no FK).
+/// A source document attached to an envelope. Two source modes (PX-V1 F1):
+/// CORE_REF = a frozen Core Documents revision pulled over HTTP (legacy ATS path,
+/// UUID-ref only, no FK); OWNED = an uploaded PDF E-Sign owns in object storage
+/// (source_object_key). document_ref/document_revision_ref are set only for
+/// CORE_REF; source_object_key/content_type/byte_size only for OWNED.
 model EnvelopeDocument {
-  id                    String @id @db.Uuid
-  tenant_id             String @db.Uuid
-  envelope_id           String @db.Uuid
-  document_ref          String @db.Uuid
-  document_revision_ref String @db.Uuid
+  id                    String  @id @db.Uuid
+  tenant_id             String  @db.Uuid
+  envelope_id           String  @db.Uuid
+  source_mode           String  @default("CORE_REF")
+  document_ref          String? @db.Uuid
+  document_revision_ref String? @db.Uuid
+  source_object_key     String?
+  content_type          String?
+  byte_size             Int?
   title                 String
   source_sha256         String
   ordinal               Int

@@ -22,7 +22,7 @@ export interface JwtIssuancePayload {
   // auth-service, reuse the issuance pipeline). The platform JWT carries
   // tenant_id = PLATFORM_TENANT_SENTINEL_ID (Lead ruling 2 B1); the DDR §13.1
   // tripwire is enforced at the route guard layer (consumer_type partition).
-  consumer_type: 'recruiter' | 'portal' | 'ingestion' | 'platform';
+  consumer_type: 'recruiter' | 'portal' | 'ingestion' | 'platform' | 'esign';
   tenant_id: string;
   // HF-AUTH-1 — the compact token carries the principal's authorization REVISION,
   // NOT the effective scope list. Effective scopes are resolved server-side at the

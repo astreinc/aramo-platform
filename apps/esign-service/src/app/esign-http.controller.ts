@@ -1,7 +1,7 @@
-import { Body, Controller, Get, Headers, HttpCode, HttpStatus, Param, Post, Query, Req } from '@nestjs/common';
+import { Body, Controller, Get, Headers, HttpCode, HttpStatus, Inject, Param, Post, Query, Req } from '@nestjs/common';
 import type { Request } from 'express';
 import { AramoError, RequestId } from '@aramo/common';
-import { EsignService } from '@aramo/esign';
+import { DOCUMENT_SOURCE_PROVIDER_PORT, type DocumentSourceProviderPort, EsignService } from '@aramo/esign';
 import {
   DisclosureNotAcceptedError,
   EnvelopeIllegalTransitionError,
@@ -115,7 +115,44 @@ export class EsignProviderController {
 
 @Controller('v1/esign/signing')
 export class EsignSignerController {
-  constructor(private readonly service: EsignService) {}
+  constructor(
+    private readonly service: EsignService,
+    @Inject(DOCUMENT_SOURCE_PROVIDER_PORT) private readonly sourceProvider: DocumentSourceProviderPort,
+  ) {}
+
+  // PX-V1 F3 — the signer document VIEW: positioned fields + document metadata for
+  // the Sign Web viewer. Token-authorized (tenant resolved server-side),
+  // disclosure-gated. Returns NO tenant_id and NO source bytes.
+  @Post('document')
+  @HttpCode(HttpStatus.OK)
+  async document(@Body() body: { token: string }, @RequestId() requestId: string) {
+    validate(typeof body?.token === 'string' && body.token.length > 0, 'token is required', requestId);
+    try {
+      const ctx = await this.service.resolveSession(body.token);
+      return await this.service.getSignerDocumentView(ctx);
+    } catch (e) {
+      throw toHttp(e, requestId);
+    }
+  }
+
+  // PX-V1 F3 — the frozen SOURCE PDF bytes for a document in the session, resolved
+  // mode-agnostically (OWNED → E-Sign storage, CORE_REF → Documents pull). Bytes
+  // are delivered ONLY inside a valid, disclosure-gated session. tenant_id stays
+  // server-side (in the descriptor); the response carries only bytes + type.
+  @Post('source')
+  @HttpCode(HttpStatus.OK)
+  async source(@Body() body: { token: string; document_id: string }, @RequestId() requestId: string) {
+    validate(typeof body?.token === 'string' && body.token.length > 0, 'token is required', requestId);
+    validate(typeof body?.document_id === 'string' && body.document_id.length > 0, 'document_id is required', requestId);
+    try {
+      const ctx = await this.service.resolveSession(body.token);
+      const descriptor = await this.service.resolveSignerSource(ctx, body.document_id);
+      const bytes = await this.sourceProvider.getSourcePdf(descriptor);
+      return { source_base64: Buffer.from(bytes).toString('base64'), content_type: descriptor.content_type };
+    } catch (e) {
+      throw toHttp(e, requestId);
+    }
+  }
 
   @Post('exchange')
   @HttpCode(HttpStatus.OK)

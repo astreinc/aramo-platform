@@ -16,7 +16,7 @@ export interface ResolveSessionInput {
   provider_subject: string;
   // The IdP-VERIFIED email (the adapter normalises it for reconcile-by-email).
   verified_email: string;
-  consumer: 'recruiter' | 'portal' | 'ingestion' | 'platform';
+  consumer: 'recruiter' | 'portal' | 'ingestion' | 'platform' | 'esign';
 }
 
 // `principal_id` / `context_id` are opaque to auth (they happen to be a user id and

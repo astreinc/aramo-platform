@@ -54,7 +54,7 @@ export interface CallbackInput {
   // the env-var routing per-consumer is a readiness-track follow-on
   // (real Cognito + IAM + 2 pools before PROD), since the proofs use
   // JwtIssuerService directly to mint platform JWTs (mocked Cognito).
-  consumer: 'recruiter' | 'portal' | 'ingestion' | 'platform';
+  consumer: 'recruiter' | 'portal' | 'ingestion' | 'platform' | 'esign';
   code: string | undefined;
   state: string | undefined;
   cognitoError: string | undefined;
