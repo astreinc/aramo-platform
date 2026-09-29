@@ -13091,6 +13091,51 @@
       "to": "tools/local-run-link.sh"
     },
     {
+      "from": "doc/backlog/Aramo-E-Sign-Product-Experience-V1-Implementation-Directive-v1_0.md",
+      "status": "unscoped",
+      "to": "apps/esign-service/src/app/document-source-http.adapter.ts"
+    },
+    {
+      "from": "doc/backlog/Aramo-E-Sign-Product-Experience-V1-Implementation-Directive-v1_0.md",
+      "status": "unscoped",
+      "to": "ci/scripts/verify-frontdoor-conf.ts"
+    },
+    {
+      "from": "doc/backlog/Aramo-E-Sign-Product-Experience-V1-Implementation-Directive-v1_0.md",
+      "status": "unscoped",
+      "to": "deploy/nginx/templates/aramo.conf.template"
+    },
+    {
+      "from": "doc/backlog/Aramo-E-Sign-Product-Experience-V1-Implementation-Directive-v1_0.md",
+      "status": "unscoped",
+      "to": "libs/documents-rendering/src/lib/pdf-lib-document-rendering.adapter.ts"
+    },
+    {
+      "from": "doc/backlog/Aramo-E-Sign-Product-Experience-V1-Implementation-Directive-v1_0.md",
+      "status": "unscoped",
+      "to": "libs/entitlement/src/lib/capability.ts"
+    },
+    {
+      "from": "doc/backlog/Aramo-E-Sign-Product-Experience-V1-Implementation-Directive-v1_0.md",
+      "status": "unscoped",
+      "to": "libs/esign/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/backlog/Aramo-E-Sign-Product-Experience-V1-Implementation-Directive-v1_0.md",
+      "status": "unscoped",
+      "to": "libs/esign/src/lib/esign.repository.ts"
+    },
+    {
+      "from": "doc/backlog/Aramo-E-Sign-Product-Experience-V1-Implementation-Directive-v1_0.md",
+      "status": "unscoped",
+      "to": "libs/esign/src/tests/esign-flow.integration.spec.ts"
+    },
+    {
+      "from": "doc/backlog/Aramo-E-Sign-Product-Experience-V1-Implementation-Directive-v1_0.md",
+      "status": "unscoped",
+      "to": "pact/provider/src/verify-api.ts"
+    },
+    {
       "from": "doc/backlog/add-talent-consent-capture.md",
       "status": "unscoped",
       "to": "apps/ats-web/src/talent/consent.ts"
