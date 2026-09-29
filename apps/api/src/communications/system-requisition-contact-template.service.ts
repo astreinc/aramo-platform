@@ -63,6 +63,28 @@ function roleSummaryExcerpt(source: string | null): string | null {
   return (word > 0 ? window.slice(0, word) : window).trim();
 }
 
+// D-EMAIL-TPL-1 (ET-5) — the authoritative token→value map for a tenant email
+// template rendered against the SAME reloaded requisition-contact context the code
+// default uses. Reuses the governed label maps + deterministic role excerpt (no
+// second copy of those facts). Keys are the closed merge-field allowlist; values
+// are server-resolved (never browser-supplied), so a tenant template renders from
+// authoritative context exactly like the code default.
+export function buildRequisitionContactTemplateValues(
+  context: RequisitionContactContext,
+): Record<string, string | null> {
+  return {
+    'talent.first_name': present(context.talent_first_name),
+    'requisition.title': present(context.requisition_title),
+    'requisition.reference': present(context.requisition_reference),
+    'requisition.location': present(context.location),
+    'requisition.engagement_type': label(ENGAGEMENT_LABELS, context.engagement_type),
+    'requisition.work_arrangement': label(WORK_ARRANGEMENT_LABELS, context.work_arrangement),
+    'recruiter.display_name': present(context.recruiter_display_name),
+    'company.name': present(context.tenant_recruiting_company_name),
+    'role.summary_excerpt': roleSummaryExcerpt(context.role_summary_source),
+  };
+}
+
 @Injectable()
 export class SystemRequisitionContactTemplateService implements RequisitionContactTemplateResolver {
   resolveDefault(context: RequisitionContactContext): HydratedDraft {

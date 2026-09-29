@@ -7386,11 +7386,14 @@ components:
       additionalProperties: false
       # COMM-C4 — ids only; the backend reloads all business facts and resolves
       # the recipient itself. No recipient/subject/body is accepted here.
+      # ET-5 — optional template_key is the ONLY new client input (a logical key,
+      # not business truth); absent → the code default. An invalid key fails closed.
       required: [talent_record_id, requisition_id]
       properties:
         talent_record_id: { type: string, format: uuid }
         requisition_id: { type: string, format: uuid }
         pipeline_id: { type: string, format: uuid }
+        template_key: { type: string, maxLength: 120 }
     RequisitionContactEmailDraft:
       type: object
       additionalProperties: false
@@ -7410,12 +7413,14 @@ components:
         context:
           type: object
           additionalProperties: false
-          required: [requisition_reference, requisition_title, template_id, template_version]
+          required: [requisition_reference, requisition_title, template_id, template_version, template_key]
           properties:
             requisition_reference: { type: string }
             requisition_title: { type: string }
             template_id: { type: string }
             template_version: { type: string }
+            # ET-5 — the logical template key the draft was rendered from (provenance).
+            template_key: { type: string }
         warnings:
           type: array
           items: { type: string }

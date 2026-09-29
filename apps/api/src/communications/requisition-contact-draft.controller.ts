@@ -9,6 +9,7 @@ import { TalentEmailUnavailableError } from '../microsoft/email-recipient-resolv
 import { RequisitionContactEmailDraftRequestDto } from './dto/requisition-contact-draft.dto.js';
 import { RequisitionContactContextError } from './requisition-contact-context.error.js';
 import {
+  EmailTemplateKeyNotFoundError,
   RequisitionContactDraftService,
   type RequisitionContactDraftView,
 } from './requisition-contact-draft.service.js';
@@ -39,6 +40,7 @@ export class RequisitionContactDraftController {
         talent_record_id: body.talent_record_id,
         requisition_id: body.requisition_id,
         pipeline_id: body.pipeline_id,
+        template_key: body.template_key,
       });
     } catch (err) {
       throw this.mapError(err, requestId);
@@ -46,6 +48,14 @@ export class RequisitionContactDraftController {
   }
 
   private mapError(err: unknown, requestId: string): AramoError {
+    if (err instanceof EmailTemplateKeyNotFoundError) {
+      return new AramoError(
+        'EMAIL_TEMPLATE_NOT_FOUND',
+        'no such email template for requisition contact',
+        404,
+        { requestId },
+      );
+    }
     if (err instanceof RequisitionContactContextError) {
       return new AramoError(
         'COMMUNICATION_REQUISITION_CONTACT_CONTEXT_INVALID',
