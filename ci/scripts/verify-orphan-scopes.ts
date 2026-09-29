@@ -52,6 +52,12 @@ export const CLASSIFICATIONS: Record<string, Classification> = {
   'identity:user:read': { cls: 'ACTIVE_RESERVED', reason: 'Lead-ratified auditor/compliance bundle (E2 §182); read surface deferred to Reporting/Audit DDR' },
   'identity:tenant:read': { cls: 'ACTIVE_RESERVED', reason: 'same auditor/compliance bundle' },
   'examination:read': { cls: 'ACTIVE_RESERVED', reason: 'examination-read gate reserved by the OpenAPI contract (x-required-scope on 5 routes; PR-A1a-2 §48); no live handler yet' },
+  // PX-V1 PX-3-auth — E-Sign sender product scopes, granted to the esign_* product
+  // roles now; LITERAL route enforcement (@RequireScopes on /v1/esign/sender/*)
+  // lands in PX-1 (the authenticated E-Sign sender surface). Reserved, not orphaned.
+  'esign:envelope:read': { cls: 'ACTIVE_RESERVED', reason: 'PX-3-auth granted to esign_* roles; literal enforcement lands in PX-1 on the authenticated /v1/esign/sender/* surface' },
+  'esign:envelope:create': { cls: 'ACTIVE_RESERVED', reason: 'PX-3-auth granted to esign_* roles; literal enforcement lands in PX-1 on the authenticated /v1/esign/sender/* surface' },
+  'esign:envelope:send': { cls: 'ACTIVE_RESERVED', reason: 'PX-3-auth granted to esign_* roles; literal enforcement lands in PX-1 on the authenticated /v1/esign/sender/* surface' },
   // SKILL-TAX-1F-B2 — platform:skill:read / platform:skill:manage are now LITERALLY
   // enforced by the SkillGovernanceController @RequireScopes handlers (the platform
   // taxonomy-governance admin API), so their ACTIVE_RESERVED classification entries
