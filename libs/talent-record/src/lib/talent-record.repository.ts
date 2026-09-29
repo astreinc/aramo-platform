@@ -679,6 +679,33 @@ export class TalentRecordRepository {
     return (rows as TalentRecordRow[]).map(projectView);
   }
 
+  // Batch id → "First Last" resolution for cross-schema enrichment (e.g. the
+  // My-Desk read surfaces the talent display name for pipeline/interview/
+  // client-selection ids it already holds). One set-based, tenant-scoped query —
+  // never per-row. Returns talent_id → display name; ids not resolvable
+  // in-tenant are simply absent. No record_status filter: an id already held by
+  // a live domain row should still resolve a name even if the record was later
+  // superseded (mirrors findById's informative-stale posture, never a list).
+  async findNamesByIds(args: {
+    tenant_id: string;
+    ids: readonly string[];
+  }): Promise<Map<string, string>> {
+    if (args.ids.length === 0) return new Map();
+    const rows = await this.prisma.talentRecord.findMany({
+      where: { tenant_id: args.tenant_id, id: { in: [...new Set(args.ids)] } },
+      select: { id: true, first_name: true, last_name: true },
+    });
+    const out = new Map<string, string>();
+    for (const r of rows as Array<{
+      id: string;
+      first_name: string;
+      last_name: string;
+    }>) {
+      out.set(r.id, `${r.first_name} ${r.last_name}`.trim());
+    }
+    return out;
+  }
+
   // TR-2a-1 — stable keyset enumeration over ALL of a tenant's TalentRecords,
   // ordered (created_at, id) ascending, for the anchor-producer backfill (an
   // apps/api system op — no visibility scoping; it must see every record). The

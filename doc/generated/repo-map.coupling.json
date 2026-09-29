@@ -116,6 +116,11 @@
       "to": "ci/config/api-surface-manifest.json"
     },
     {
+      "from": "apps/api/src/my-desk/dto/my-desk.view.ts",
+      "status": "production",
+      "to": "scripts/verify-vocabulary.sh"
+    },
+    {
       "from": "apps/api/src/policy/requisition-lifecycle.package.ts",
       "status": "production",
       "to": "scripts/verify-vocabulary.sh"

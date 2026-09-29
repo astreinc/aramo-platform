@@ -1819,6 +1819,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/my-desk.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/outreach-send-consent-revoked.integration.spec.ts",
         "project": "api",
         "status": "excluded"

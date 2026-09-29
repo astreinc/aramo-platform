@@ -177,6 +177,35 @@ export class ClientSelectionProcessRepository {
     return (rows as ProcessRow[]).map(projectView);
   }
 
+  // My-Desk "Awaiting client" read — the processes still in CLIENT_REVIEW for a
+  // caller's visible requisitions, oldest first. Narrow by design: state is
+  // fixed to the awaiting-decision state and the requisition set is the
+  // already-resolved visibility set (null = see-all short-circuit; empty set =
+  // nothing visible). A read projection only — no transition, no state.
+  async listInReviewForRequisitions(args: {
+    tenant_id: string;
+    visible_requisition_ids: ReadonlySet<string> | null;
+    limit?: number;
+  }): Promise<ClientSelectionProcessView[]> {
+    const limit = Math.min(args.limit ?? 100, 200);
+    const where: Record<string, unknown> = {
+      tenant_id: args.tenant_id,
+      state: 'CLIENT_REVIEW' satisfies ClientSelectionState,
+    };
+    if (args.visible_requisition_ids !== null) {
+      if (args.visible_requisition_ids.size === 0) return [];
+      where['requisition_id'] = {
+        in: Array.from(args.visible_requisition_ids),
+      };
+    }
+    const rows = await this.prisma.clientSelectionProcess.findMany({
+      where,
+      orderBy: { created_at: 'asc' },
+      take: limit,
+    });
+    return (rows as ProcessRow[]).map(projectView);
+  }
+
   // Drive a legal, CAS-guarded state transition. Concealment (404) + CAS (409) +
   // legality (422) precede the atomic tx (UPDATE + event + outbox).
   async transition(args: {
