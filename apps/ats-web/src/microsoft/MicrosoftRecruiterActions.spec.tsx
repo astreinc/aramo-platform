@@ -23,6 +23,7 @@ function draft(over: Partial<RequisitionContactDraft> = {}): RequisitionContactD
       requisition_title: 'Senior Engineer',
       template_id: 'system.requisition-contact.v1',
       template_version: '1',
+      template_key: 'requisition-contact',
     },
     ...over,
   };
@@ -57,6 +58,7 @@ describe('MicrosoftRecruiterActions', () => {
         loadStatusFn={vi.fn().mockResolvedValue(status({}))}
         draftFn={draftFn}
         sendEmailFn={sendEmailFn}
+        listTemplatesFn={vi.fn().mockResolvedValue([])}
       />,
     );
     fireEvent.click(await screen.findByTestId('microsoft-send-email'));
@@ -83,6 +85,7 @@ describe('MicrosoftRecruiterActions', () => {
         loadStatusFn={vi.fn().mockResolvedValue(status({}))}
         draftFn={draftFn}
         sendEmailFn={sendEmailFn}
+        listTemplatesFn={vi.fn().mockResolvedValue([])}
       />,
     );
     fireEvent.click(await screen.findByTestId('microsoft-send-email'));
