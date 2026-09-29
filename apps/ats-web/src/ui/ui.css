@@ -6121,3 +6121,104 @@ button.rc-tj__cell:hover { color: #022ac0; text-decoration: underline; }
 .rc-tj__voidbtn:hover { text-decoration: underline; }
 .rc-cdp__btn--danger { color: var(--danger, #a8412f); background: var(--danger-tint, #f7e9e6); border: 1px solid var(--danger, #a8412f); }
 .rc-cdp__btn--danger:hover { background: var(--surface, #fff); }
+
+/* ─────────────── My Desk (recruiter command center, route /) ───────────────
+   Compact enterprise density mirroring the approved prototype. Read/work
+   projection surface — no new tokens beyond the two kind tones (teal/purple)
+   that have no design-system equivalent. */
+.rc-desk { display: flex; flex-direction: column; gap: 18px; }
+.rc-desk-head { display: flex; align-items: flex-end; gap: 16px; flex-wrap: wrap; }
+.rc-desk-head__lead { min-width: 0; }
+.rc-desk-date { font-size: 0.72rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.rc-desk-headline { color: var(--c-text-muted, var(--muted)); font-size: 0.9rem; margin-top: 3px; }
+.rc-desk-head__actions { margin-left: auto; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+.rc-desk-scope { display: inline-flex; background: var(--faint); border-radius: 9px; padding: 3px; gap: 2px; }
+.rc-desk-scope__btn { border: none; background: transparent; color: var(--muted); border-radius: 7px; padding: 6px 12px; font: 500 0.8rem var(--font-sans); cursor: pointer; }
+.rc-desk-scope__btn.is-on { background: var(--surface); color: var(--brand-strong); font-weight: 700; box-shadow: var(--elev); }
+.rc-desk-scope__btn:disabled { opacity: 0.55; cursor: not-allowed; }
+
+.rc-desk-btn { border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 9px; padding: 8px 14px; font: 600 0.8rem var(--font-sans); white-space: nowrap; text-decoration: none; }
+.rc-desk-btn:hover { background: var(--faint); }
+.rc-desk-btn--primary { border-color: var(--brand); background: var(--brand); color: #fff; }
+.rc-desk-btn--primary:hover { background: var(--brand-strong); color: #fff; }
+
+.rc-desk-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; }
+.rc-desk-card { text-align: left; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 13px 15px; cursor: pointer; display: flex; flex-direction: column; gap: 3px; font: inherit; }
+.rc-desk-card:hover { border-color: var(--brand); }
+.rc-desk-card--hot { background: var(--hot-tint); border-color: var(--hot); }
+.rc-desk-card__label { font-size: 0.78rem; font-weight: 600; color: var(--muted); }
+.rc-desk-card__n { font-size: 1.6rem; font-weight: 700; line-height: 1.15; color: var(--ink); }
+.rc-desk-card--hot .rc-desk-card__n { color: var(--danger); }
+.rc-desk-card__sub { font-size: 0.74rem; color: var(--muted); }
+
+.rc-desk-split { display: flex; gap: 18px; align-items: flex-start; flex-wrap: wrap; }
+.rc-desk-col { flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 18px; }
+.rc-desk-col--rail { flex: 1 1 330px; }
+@media (max-width: 960px) { .rc-desk-col--rail { flex-basis: 100%; } }
+
+.rc-desk-subtle { font-size: 0.76rem; color: var(--muted); margin-top: 2px; }
+.rc-desk-count { margin-left: auto; font-size: 0.76rem; color: var(--muted); }
+.rc-desk-note { padding: 10px 18px; border-top: 1px solid var(--line); font-size: 0.76rem; color: var(--muted); }
+
+.rc-desk-tabs { display: flex; gap: 18px; padding: 8px 18px 0; border-bottom: 1px solid var(--line); overflow-x: auto; }
+.rc-desk-tab { border: none; background: none; padding: 8px 0 9px; border-bottom: 2px solid transparent; color: var(--muted); font: 500 0.82rem var(--font-sans); cursor: pointer; white-space: nowrap; display: flex; align-items: center; gap: 6px; }
+.rc-desk-tab.is-on { border-bottom-color: var(--brand); color: var(--brand-strong); font-weight: 700; }
+.rc-desk-tab__n { font-family: var(--font-mono); font-size: 0.66rem; background: var(--faint); color: var(--muted); border-radius: 10px; padding: 0 6px; }
+
+.rc-desk-group { display: flex; align-items: center; gap: 8px; padding: 12px 18px 6px; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.rc-desk-group--overdue { color: var(--danger); }
+.rc-desk-group--today { color: var(--brand-strong); }
+
+.rc-desk-row { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 11px 18px; border-top: 1px solid var(--line); }
+.rc-desk-row:hover { background: var(--faint); }
+.rc-desk-ic { width: 32px; height: 32px; border-radius: 9px; display: grid; place-items: center; font-size: 0.78rem; font-weight: 700; }
+.rc-desk-row__body { min-width: 0; }
+.rc-desk-row__top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.rc-desk-row__who { font-size: 0.84rem; font-weight: 700; color: var(--ink); text-decoration: none; }
+.rc-desk-row__who:hover { color: var(--brand-strong); }
+.rc-desk-row__req { font-family: var(--font-mono); font-size: 0.72rem; color: var(--muted); text-decoration: none; }
+.rc-desk-row__why { display: block; font-size: 0.78rem; color: var(--c-text-muted, var(--muted)); margin-top: 3px; }
+.rc-desk-row__right { display: flex; align-items: center; gap: 10px; justify-content: flex-end; white-space: nowrap; }
+
+.rc-desk-kindbadge { font-size: 0.64rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; border-radius: 10px; padding: 1px 7px; }
+.rc-desk-kind--blue { background: var(--info-tint); color: var(--info); }
+.rc-desk-kind--green { background: var(--ok-tint); color: var(--ok); }
+.rc-desk-kind--amber { background: var(--hot-tint); color: var(--hot); }
+.rc-desk-kind--grey { background: var(--faint); color: var(--muted); }
+.rc-desk-kind--teal { background: #eaf3f6; color: #2e6a80; }
+.rc-desk-kind--purple { background: #efeaf7; color: #6a4a9c; }
+
+.rc-desk-due { font-size: 0.76rem; font-weight: 600; }
+.rc-desk-due--overdue { color: var(--danger); }
+.rc-desk-due--today { color: var(--ink); }
+.rc-desk-due--upcoming { color: var(--muted); }
+.rc-desk-action-pending { font-size: 0.76rem; color: var(--muted); }
+
+.rc-desk-reqcell { display: flex; flex-direction: column; min-width: 0; }
+.rc-desk-reqcell__t { font-weight: 700; font-size: 0.82rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rc-desk-reqcell__s { font-size: 0.72rem; color: var(--muted); }
+.rc-desk-status { font-size: 0.72rem; font-weight: 700; text-transform: capitalize; }
+.rc-desk-signal { font-size: 0.76rem; font-weight: 600; color: var(--muted); }
+.rc-muted { color: var(--muted); }
+
+.rc-desk-iv { display: grid; grid-template-columns: 60px minmax(0, 1fr); gap: 12px; padding: 11px 18px; border-top: 1px solid var(--line); }
+.rc-desk-iv__time { font-size: 0.82rem; font-weight: 700; color: var(--brand-strong); }
+.rc-desk-iv__who { display: block; font-size: 0.82rem; font-weight: 700; }
+.rc-desk-iv__what { display: block; font-size: 0.76rem; color: var(--muted); margin-top: 2px; }
+
+.rc-desk-exc { padding: 11px 18px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 6px; }
+.rc-desk-exc__head { display: flex; align-items: center; gap: 8px; }
+.rc-desk-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+.rc-desk-dot--high { background: var(--danger); }
+.rc-desk-dot--medium { background: var(--hot); }
+.rc-desk-exc__title { font-size: 0.82rem; font-weight: 700; }
+.rc-desk-exc__body { font-size: 0.76rem; color: var(--muted); padding-left: 15px; }
+.rc-desk-exc__link { font-size: 0.76rem; font-weight: 600; color: var(--brand-strong); padding-left: 15px; text-decoration: none; }
+.rc-desk-exc__owner { font-size: 0.74rem; color: var(--muted); padding-left: 15px; }
+
+.rc-desk-await { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 10px 18px; border-top: 1px solid var(--line); }
+.rc-desk-await__who { display: block; font-size: 0.82rem; font-weight: 700; }
+.rc-desk-await__what { display: block; font-size: 0.76rem; color: var(--muted); margin-top: 1px; }
+.rc-desk-age { font-size: 0.76rem; font-weight: 700; color: var(--muted); background: var(--faint); border-radius: 10px; padding: 2px 9px; white-space: nowrap; }
+.rc-desk-age--old { color: var(--danger); background: var(--danger-tint); }

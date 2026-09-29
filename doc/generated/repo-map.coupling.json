@@ -11158,14 +11158,9 @@
       "to": "libs/contact/src/lib/dto/contact.view.ts"
     },
     {
-      "from": "apps/ats-web/src/dashboard/types.ts",
+      "from": "apps/ats-web/src/dashboard/my-desk-types.ts",
       "status": "production",
-      "to": "libs/calendar/src/lib/dto/calendar-event-type.ts"
-    },
-    {
-      "from": "apps/ats-web/src/dashboard/types.ts",
-      "status": "production",
-      "to": "libs/reporting/src/lib/dto/report.view.ts"
+      "to": "apps/api/src/my-desk/dto/my-desk.view.ts"
     },
     {
       "excludedBy": "src/**/*.spec.ts",

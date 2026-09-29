@@ -33,7 +33,7 @@ export function IndexRoute() {
   }
 
   if (hasScope(state.session, 'dashboard:read')) {
-    return <DashboardView session={state.session} />;
+    return <DashboardView />;
   }
 
   // The dashboard:read-less actor lands on /requisitions (the prior

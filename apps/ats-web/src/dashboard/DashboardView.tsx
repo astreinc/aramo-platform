@@ -1,600 +1,481 @@
-import { InlineAlert, type Session } from '@aramo/fe-foundation';
-import { useEffect, useState } from 'react';
+import { Button, InlineAlert } from '@aramo/fe-foundation';
+import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 
-import { listCompanies } from '../companies/companies-api';
-import { listAllPipelines } from '../pipeline/pipeline-api';
-import { rollupByRequisition, type ReqPipelineCount } from '../pipeline/rollup';
-import { listRequisitions } from '../requisitions/requisitions-api';
-import { RECRUITING_STATUS_TONE as STATUS_TONE } from '../requisitions/status-tone';
-import {
-  isClosedStatus,
-  type RequisitionView,
-} from '../requisitions/types';
-import { listMyTasks } from '../task/task-api';
-import type { TaskOwnerType, TaskPriority, TaskType, TaskView } from '../task/types';
-import {
-  ActionItem,
-  ActivityFeed,
-  Card,
-  CardHead,
-  DataTable,
-  Icons,
-  KpiCard,
-  MetricCard,
-  StatusPill,
-  TitleCell,
-  funnelBucket,
-  FUNNEL_BUCKETS,
-  type ActionKind,
-  type ActivityFeedItem,
-  type FunnelBucketKey,
-  type TableColumn,
-} from '../ui';
+import { useMe } from '../shell/me-api';
+import { DataTable, EmptyState, safeErrorMessage, type TableColumn } from '../ui';
 
-import { getDashboard, getRecruiterMetrics } from './dashboard-api';
-import { dashboardErrorMessage } from './error-messages';
-import { KPI_ORDER, toKpiDisplay } from './kpi';
-import {
-  ACTIVITY_TYPE_LABELS,
-  CALENDAR_EVENT_TYPE_LABELS,
-  REQUISITION_STATUS_LABELS,
-  type CalendarEventView,
-  type DashboardView as DashboardViewModel,
-  type PipelineRollupItem,
-  type RecruiterMetricView,
-} from './types';
+import { getMyDesk } from './my-desk-api';
+import type {
+  DeskItemKind,
+  DeskPriorityItemView,
+  DeskRequisitionRowView,
+  DeskUrgency,
+  MyDeskView,
+} from './my-desk-types';
 
-// My Desk — the ats-web home, rebuilt to the enterprise mockup.
-// EVERYTHING is principal-scoped server-side (it is "my" desk: there is no
-// all-users view and no persona/role toggle — the shape comes from the
-// principal's token, not a switcher). Wired to REAL data with NO fabricated
-// fields, per the Go-Live Hardening Charter §7.2:
-//   - GET /v1/dashboard      → pipeline funnel rollup, placement count,
-//                              recent-activity feed, today's agenda (visibility-
-//                              scoped server-side; "my" agenda = owner === me)
-//   - GET /v1/requisitions   → "my open reqs" (server-scoped to assigned reqs,
-//                              NOT a client visibility filter) + derived counts
-//   - GET /v1/tasks?me       → "Needs you" (assignee=me, server-scoped) + the
-//                              deterministic facts briefing
-//   - GET /v1/companies      → company-id → name resolution (never a UUID)
-//   - GET /v1/pipelines      → per-req Pipeline/Submitted counts (one call)
-//
-// REMOVED (charter §3): the "Viewing as" persona switcher + its explainer; the
-// "AI-assisted · you decide" briefing badge + prescriptive "Suggested focus";
-// any fit/match verdict on a person (R10/Core). The briefing is a FACTS-ONLY
-// deterministic rollup — counts only, no verdict, no "AI" framing.
-//
-// VERIFY-THEN-HALT (KPI cards): the mockup's Submittals·wk / Interviews set /
-// Placements·MTD / Avg-time-to-submit carry sparklines, goal-progress and
-// trend deltas. NONE of time-windowing (·wk / MTD), a goal/target config, a
-// time-series, or a trend delta is backed (KNOWN_SETTINGS has no goal key; the
-// reporting lib computes no per-recruiter windowed metric). So those are
-// HALTED: the desk renders only the backed, visibility-scoped current-state
-// counts as plain MetricCards (no sparkline, no goal bar, no "+2 vs last wk").
+// My Desk — the ats-web recruiter command center (route `/`). A READ/WORK
+// PROJECTION of GET /v1/my-desk: the FE renders what the backend already
+// derived and NEVER re-derives business meaning (urgency + ordering are
+// server-authoritative; every card/tab count is derived from the returned
+// arrays, so a badge can never drift from its list). FACTS-ONLY (R10): no
+// verdict, no fabricated confirmation/channel/ownership, no snooze — those are
+// backend Increment-2. The queue answers, per row: why · how urgent · what next.
 
-
-const OWNER_ROUTE: Record<TaskOwnerType, string | null> = {
-  requisition: '/requisitions',
-  talent_record: '/talent',
-  company: '/companies',
-  contact: null, // no recruiter contact-detail deep-link for tasks yet (carried)
+const KIND: Record<DeskItemKind, { label: string; tone: string }> = {
+  follow_up: { label: 'Follow-up', tone: 'blue' },
+  client: { label: 'Client', tone: 'teal' },
+  rtr: { label: 'RTR', tone: 'amber' },
+  submittal: { label: 'Submittal', tone: 'green' },
+  engagement: { label: 'Engagement', tone: 'purple' },
+  task: { label: 'Task', tone: 'grey' },
 };
 
-const OWNER_LABEL: Record<TaskOwnerType, string> = {
-  requisition: 'Requisition',
-  talent_record: 'Talent',
-  company: 'Company',
-  contact: 'Contact',
+// kind → queue tab bucket (Follow-ups groups follow_up+client; Submittals groups
+// submittal+rtr — mirrors the prototype's tab folding).
+const KIND_TAB: Record<DeskItemKind, TabKey> = {
+  follow_up: 'follow',
+  client: 'follow',
+  rtr: 'submit',
+  submittal: 'submit',
+  engagement: 'eng',
+  task: 'task',
 };
 
-// task.type → the action-row icon kind. Presentation only — the kind is a
-// projection of the BE task.type field, never a computed verdict.
-const TYPE_KIND: Record<TaskType, ActionKind> = {
-  follow_up: 'followup',
-  interview: 'interview',
-  screen: 'interview',
-  consent: 'consent',
-  call: 'reply',
-  email: 'reply',
-  admin: 'task',
-};
+type TabKey = 'all' | 'overdue' | 'follow' | 'submit' | 'eng' | 'task';
+const TABS: readonly { key: TabKey; label: string }[] = [
+  { key: 'all', label: 'All' },
+  { key: 'overdue', label: 'Overdue' },
+  { key: 'follow', label: 'Follow-ups' },
+  { key: 'submit', label: 'Submittals' },
+  { key: 'eng', label: 'Engagement' },
+  { key: 'task', label: 'Tasks' },
+];
 
-// task.type → the row's single affordance label. The link target is the task's
-// owner entity (server-immutable owner_type/owner_id).
-const TYPE_ACTION: Record<TaskType, string> = {
-  follow_up: 'Nudge',
-  interview: 'Prep',
-  screen: 'Prep',
-  consent: 'Refresh', // Refresh = the consent-refresh task type (charter §7.2)
-  call: 'Reply',
-  email: 'Reply',
-  admin: 'Open',
-};
+const SECTIONS: readonly { key: DeskUrgency; label: string }[] = [
+  { key: 'overdue', label: 'Overdue' },
+  { key: 'today', label: 'Due today' },
+  { key: 'upcoming', label: 'Coming up' },
+];
 
-const PRIORITY_ORDINAL: Record<TaskPriority, number> = { high: 0, med: 1, low: 2 };
-
-const DAY_MS = 86_400_000;
-
-function startOfDay(ms: number): number {
-  const d = new Date(ms);
-  d.setHours(0, 0, 0, 0);
-  return d.getTime();
-}
-
-type DueClass = 'overdue' | 'today' | 'future' | 'none';
-
-function dueClass(due: string | null): DueClass {
-  if (due === null) return 'none';
-  const ms = Date.parse(due);
-  if (Number.isNaN(ms)) return 'none';
-  const day = startOfDay(ms);
-  const today = startOfDay(Date.now());
-  if (day < today) return 'overdue';
-  if (day === today) return 'today';
-  return 'future';
-}
-
-function daysSince(iso: string): number {
-  const then = new Date(iso).getTime();
-  if (Number.isNaN(then)) return 0;
-  return Math.max(0, Math.floor((Date.now() - then) / DAY_MS));
-}
-
-function relativeTime(iso: string): string {
-  const days = daysSince(iso);
-  if (days === 0) return 'today';
-  if (days === 1) return 'yesterday';
-  if (days < 7) return `${days}d ago`;
-  const weeks = Math.floor(days / 7);
-  return weeks < 5 ? `${weeks}w ago` : `${Math.floor(days / 30)}mo ago`;
-}
-
-function isOverdue(due: string | null): boolean {
-  if (due === null) return false;
-  const d = new Date(due).getTime();
-  return !Number.isNaN(d) && d < Date.now();
-}
-
-// Bucket the BE pipeline rollup ({status, count}[]) into the 6 funnel cells.
-// Reuses the shared funnelBucket projection so the desk ribbon can never drift
-// from the requisition-detail ribbon.
-function funnelFromRollup(
-  byStatus: readonly PipelineRollupItem[],
-): readonly { key: FunnelBucketKey; label: string; count: number }[] {
-  const tally = new Map<FunnelBucketKey, number>();
-  for (const { status, count } of byStatus) {
-    const b = funnelBucket(status);
-    tally.set(b, (tally.get(b) ?? 0) + count);
-  }
-  return FUNNEL_BUCKETS.map((b) => ({
-    key: b.key,
-    label: b.label,
-    count: tally.get(b.key) ?? 0,
-  }));
-}
-
-interface DashboardViewProps {
-  readonly session: Session;
-}
-
-export function DashboardView({ session }: DashboardViewProps) {
-  const [dash, setDash] = useState<DashboardViewModel | null>(null);
-  const [reqs, setReqs] = useState<readonly RequisitionView[]>([]);
-  const [companyNames, setCompanyNames] = useState<Record<string, string>>({});
-  const [tasks, setTasks] = useState<readonly TaskView[]>([]);
-  const [pipelineCounts, setPipelineCounts] = useState<
-    Record<string, ReqPipelineCount>
-  >({});
-  const [metrics, setMetrics] = useState<readonly RecruiterMetricView[] | null>(
-    null,
-  );
+export function DashboardView() {
+  const me = useMe();
+  const [desk, setDesk] = useState<MyDeskView | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [tab, setTab] = useState<TabKey>('all');
+  const [scope, setScope] = useState<'mine' | 'team'>('mine');
 
-  useEffect(() => {
-    let cancelled = false;
+  const load = useCallback(() => {
     setLoading(true);
     setError(null);
-    void Promise.allSettled([
-      getDashboard(),
-      listRequisitions(),
-      listMyTasks('open'),
-      listCompanies(),
-      listAllPipelines(),
-      getRecruiterMetrics(),
-    ]).then(([dashRes, reqRes, taskRes, coRes, pipeRes, metricRes]) => {
-      if (cancelled) return;
-      if (dashRes.status === 'fulfilled') {
-        setDash(dashRes.value);
-      } else {
-        setError(dashboardErrorMessage(dashRes.reason));
-      }
-      if (reqRes.status === 'fulfilled') setReqs(reqRes.value.items);
-      if (taskRes.status === 'fulfilled') setTasks(taskRes.value.items);
-      if (coRes.status === 'fulfilled') {
-        const map: Record<string, string> = {};
-        for (const c of coRes.value.items) map[c.id] = c.name;
-        setCompanyNames(map);
-      }
-      if (pipeRes.status === 'fulfilled') {
-        setPipelineCounts(rollupByRequisition(pipeRes.value.items));
-      }
-      // Metrics degrade independently — a 403/500 here leaves the rest of the
-      // desk coherent (the KPI strip falls back to the backed plain counts).
-      if (metricRes.status === 'fulfilled') setMetrics(metricRes.value.items);
-      setLoading(false);
-    });
-    return () => {
-      cancelled = true;
-    };
+    getMyDesk()
+      .then((v) => setDesk(v))
+      .catch((e) => setError(safeErrorMessage(e, 'Could not load your desk right now.')))
+      .finally(() => setLoading(false));
   }, []);
+  useEffect(() => load(), [load]);
 
-  if (loading) {
+  if (loading && desk === null) {
     return <p className="rc-muted-line">Loading your desk…</p>;
   }
-  if (error !== null) {
-    return <InlineAlert variant="error">{error}</InlineAlert>;
+  if (error !== null && desk === null) {
+    return (
+      <InlineAlert variant="error">
+        {error}{' '}
+        <Button unstyled className="rc-link-action" onClick={load}>
+          Retry
+        </Button>
+      </InlineAlert>
+    );
   }
+  if (desk === null) return null;
 
-  const openReqs = reqs.filter((r) => !isClosedStatus(r.status));
-  const hotCount = openReqs.filter((r) => r.is_hot).length;
+  // --- everything below is derived from the returned arrays (no drift) ---
+  const overdue = desk.priority_items.filter((i) => i.urgency === 'overdue').length;
+  const dueToday = desk.priority_items.filter((i) => i.urgency === 'today').length;
+  const ivCount = desk.interviews_today.length;
+  const awaitingCount = desk.awaiting_client.length;
+  const excCount = desk.exceptions.length;
+  const oldestWaiting = desk.awaiting_client.reduce((m, w) => Math.max(m, w.waiting_days), 0);
 
-  // Priority sort = the task ordinal (high → med → low → none), then earliest
-  // due, then oldest. R10-safe (the task ordinal, not a computed verdict).
-  const queue = [...tasks].sort((a, b) => {
-    const pa = a.priority != null ? PRIORITY_ORDINAL[a.priority] : 3;
-    const pb = b.priority != null ? PRIORITY_ORDINAL[b.priority] : 3;
-    if (pa !== pb) return pa - pb;
-    const da = a.due_date != null ? Date.parse(a.due_date) : Infinity;
-    const db = b.due_date != null ? Date.parse(b.due_date) : Infinity;
-    if (da !== db) return da - db;
-    return Date.parse(a.created_at) - Date.parse(b.created_at);
-  });
+  const headline = `${overdue} overdue · ${dueToday} due today · ${ivCount} interviews · ${excCount} exceptions`;
 
-  // FACTS-ONLY briefing — deterministic counts from the principal's real
-  // tasks/reqs. No verdict, no "AI", no suggested-focus.
-  const dueToday = tasks.filter((t) => dueClass(t.due_date) === 'today').length;
-  const overdue = tasks.filter((t) => dueClass(t.due_date) === 'overdue').length;
-  const followupsOverdue = tasks.filter(
-    (t) => t.type === 'follow_up' && dueClass(t.due_date) === 'overdue',
-  ).length;
-  const facts: readonly { n: number; label: string }[] = [
-    dueToday > 0
-      ? { n: dueToday, label: dueToday === 1 ? 'task due today' : 'tasks due today' }
-      : null,
-    overdue > 0
-      ? { n: overdue, label: overdue === 1 ? 'task overdue' : 'tasks overdue' }
-      : null,
-    followupsOverdue > 0
-      ? { n: followupsOverdue, label: 'follow-ups overdue' }
-      : null,
-    hotCount > 0
-      ? {
-          n: hotCount,
-          label: hotCount === 1 ? 'hot requisition' : 'hot requisitions',
-        }
-      : null,
-  ].filter((f): f is { n: number; label: string } => f !== null);
+  const inTab = desk.priority_items.filter((i) =>
+    tab === 'all'
+      ? true
+      : tab === 'overdue'
+        ? i.urgency === 'overdue'
+        : KIND_TAB[i.kind] === tab,
+  );
+  const groups = SECTIONS.map((s) => ({
+    ...s,
+    items: inTab.filter((i) => i.urgency === s.key),
+  })).filter((g) => g.items.length > 0);
 
-  // "Today" agenda — my scheduled items for today, by time. The dashboard
-  // bundles upcoming calendar events (tenant/site-scoped); the principal slice
-  // is owner === me. (Carry: a server-side ?owner_id=me filter on the calendar
-  // list would make this server-scoped rather than a client owner-filter.)
-  const today = startOfDay(Date.now());
-  const agenda = (dash?.upcoming_events ?? [])
-    .filter(
-      (e) =>
-        e.owner_id === session.sub &&
-        startOfDay(Date.parse(e.starts_at)) === today,
-    )
-    .slice()
-    .sort((a, b) => Date.parse(a.starts_at) - Date.parse(b.starts_at));
+  const tabCount = (k: TabKey): number =>
+    k === 'all'
+      ? desk.priority_items.length
+      : k === 'overdue'
+        ? overdue
+        : desk.priority_items.filter((i) => KIND_TAB[i.kind] === k).length;
 
-  const funnelCells = funnelFromRollup(dash?.pipeline_rollup.by_status ?? []);
-  const pipelineTotal = dash?.pipeline_rollup.total ?? 0;
+  const firstName = me?.user?.display_name?.trim().split(/\s+/)[0] ?? '';
 
-  const reqColumns: ReadonlyArray<TableColumn<RequisitionView>> = [
+  const scrollTo = (id: string) => {
+    const el = document.getElementById(id);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  const cards: readonly {
+    label: string;
+    n: number;
+    sub: string;
+    hot?: boolean;
+    onClick: () => void;
+  }[] = [
+    { label: 'Overdue', n: overdue, sub: 'Past their due date', hot: overdue > 0, onClick: () => setTab('overdue') },
+    { label: 'Due today', n: dueToday, sub: 'Follow-ups, RTRs, submittals', onClick: () => setTab('all') },
+    { label: 'Interviews today', n: ivCount, sub: 'Scheduled today', onClick: () => scrollTo('desk-interviews') },
+    { label: 'Awaiting client', n: awaitingCount, sub: awaitingCount > 0 ? `Oldest ${oldestWaiting}d` : 'None waiting', onClick: () => scrollTo('desk-awaiting') },
+    { label: 'Exceptions', n: excCount, sub: 'Stuck or broken', hot: excCount > 0, onClick: () => scrollTo('desk-exceptions') },
+  ];
+
+  const reqColumns: readonly TableColumn<DeskRequisitionRowView>[] = [
     {
-      key: 'title',
+      key: 'req',
       header: 'Requisition',
       render: (r) => (
         <Link to={`/requisitions/${r.id}`} className="rc-link-strong">
-          <TitleCell
-            name={r.title}
-            subtitle={companySubtitle(r, companyNames)}
-            hot={r.is_hot}
-          />
+          <span className="rc-desk-reqcell">
+            <span className="rc-desk-reqcell__t">{r.title}</span>
+            <span className="rc-desk-reqcell__s">
+              <span className="num">{r.code}</span>
+              {r.client_name !== null ? ` · ${r.client_name}` : ''} · {r.days_open}d open
+            </span>
+          </span>
         </Link>
       ),
     },
-    {
-      key: 'pipeline',
-      header: 'Pipeline',
-      align: 'right',
-      render: (r) => <span className="num">{pipelineCounts[r.id]?.active ?? 0}</span>,
-    },
-    {
-      key: 'days',
-      header: 'Days open',
-      align: 'right',
-      render: (r) => <span className="num">{daysSince(r.created_at)}</span>,
-    },
-    {
-      key: 'status',
-      header: 'Status',
-      render: (r) =>
-        r.is_hot ? (
-          <StatusPill tone="hot">Hot</StatusPill>
-        ) : (
-          <StatusPill tone={STATUS_TONE[r.status]} dot>
-            {REQUISITION_STATUS_LABELS[r.status]}
-          </StatusPill>
-        ),
-    },
+    { key: 'status', header: 'Status', render: (r) => <span className="rc-desk-status">{r.status}</span> },
+    { key: 'pipeline', header: 'Pipeline', align: 'right', render: (r) => <span className="num">{r.pipeline_count}</span> },
+    { key: 'qualified', header: 'Qualified', align: 'right', render: (r) => <span className="num">{r.qualified_count}</span> },
+    { key: 'with_client', header: 'With client', align: 'right', render: (r) => <span className="num rc-muted">{r.with_client_count}</span> },
+    { key: 'offer', header: 'Offer', align: 'right', render: (r) => <span className="num rc-muted">{r.offer_count}</span> },
+    { key: 'started', header: 'Started', align: 'right', render: (r) => <span className="num rc-muted">{r.started_count}</span> },
+    { key: 'signal', header: 'Signal', render: (r) => <span className="rc-desk-signal">{r.signal}</span> },
   ];
 
-  const activityItems: readonly ActivityFeedItem[] = (
-    dash?.recent_activity ?? []
-  ).map((a) => ({
-    id: a.id,
-    text: a.notes ?? ACTIVITY_TYPE_LABELS[a.type] ?? a.type,
-    when: relativeTime(a.created_at),
-  }));
-
-  // KPI strip — the 4 mockup cards from REAL per-recruiter metrics (ordered).
-  // When the metrics call is unavailable, fall back to the backed plain counts.
-  const kpiByKey = new Map((metrics ?? []).map((m) => [m.key, m]));
-  const kpiDisplays =
-    metrics !== null
-      ? KPI_ORDER.map((k) => kpiByKey.get(k))
-          .filter((m): m is RecruiterMetricView => m !== undefined)
-          .map(toKpiDisplay)
-      : [];
-
   return (
-    <section>
-      <div className="rc-viewhead">
-        <h1 className="rc-h1">My desk</h1>
-        <p className="rc-sub">{deskSummary(tasks.length, hotCount)}</p>
-      </div>
-
-      <div className="rc-brief rc-mt-16">
-        <div className="rc-brief__ic" aria-hidden="true">
-          <Icons.IconBolt />
+    <section className="rc-desk">
+      <div className="rc-desk-head">
+        <div className="rc-desk-head__lead">
+          <div className="rc-desk-date">{formatDeskDate(desk.server_date)}</div>
+          <h1 className="rc-h1">
+            {timeGreeting()}
+            {firstName !== '' ? `, ${firstName}` : ''}
+          </h1>
+          <div className="rc-desk-headline">{headline}</div>
         </div>
-        {facts.length === 0 ? (
-          <span className="rc-brief__none">
-            You're all caught up — nothing is due today.
+        <div className="rc-desk-head__actions">
+          <span className="rc-desk-scope" role="tablist" aria-label="Work scope">
+            <Button
+              unstyled
+              role="tab"
+              aria-selected={scope === 'mine'}
+              className={`rc-desk-scope__btn${scope === 'mine' ? ' is-on' : ''}`}
+              onClick={() => setScope('mine')}
+            >
+              My work
+            </Button>
+            <Button
+              unstyled
+              className="rc-desk-scope__btn"
+              disabled
+              title="Team view is for Lead recruiters — coming soon"
+            >
+              My team
+            </Button>
           </span>
-        ) : (
-          <div className="rc-brief__facts">
-            {facts.map((f) => (
-              <span key={f.label} className="rc-fact">
-                <b>{f.n}</b> {f.label}
-              </span>
-            ))}
-          </div>
-        )}
+          <Link to="/requisitions/new" className="rc-desk-btn">
+            Import client requisition
+          </Link>
+          <Link to="/talent/new" className="rc-desk-btn rc-desk-btn--primary">
+            Add talent
+          </Link>
+        </div>
       </div>
 
-      {kpiDisplays.length > 0 ? (
-        <div className="rc-metrics rc-metrics--spaced">
-          {kpiDisplays.map((k) => (
-            <KpiCard
-              key={k.key}
-              label={k.label}
-              value={k.value}
-              unit={k.unit}
-              delta={k.delta}
-              series={k.series}
-              seriesTone={k.seriesTone}
-              pace={k.pace}
-            />
-          ))}
-        </div>
-      ) : (
-        // Fallback — backed plain counts when /recruiter-metrics is unavailable.
-        <div className="rc-metrics rc-metrics--spaced">
-          <MetricCard
-            icon={<Icons.IconRequisitions />}
-            label="Open reqs"
-            value={openReqs.length}
-            hint={hotCount > 0 ? `${hotCount} hot` : undefined}
-          />
-          <MetricCard
-            icon={<Icons.IconTalent />}
-            label="Talent"
-            value={dash?.tenant_counts.talent_records ?? 0}
-          />
-          <MetricCard
-            icon={<Icons.IconActivity />}
-            label="In pipeline"
-            value={pipelineTotal}
-          />
-          <MetricCard
-            icon={<Icons.IconTasks />}
-            label="Placements"
-            value={dash?.placement.placed_pipelines ?? 0}
-            hint="in your view"
-          />
-        </div>
-      )}
+      <div className="rc-desk-cards">
+        {cards.map((c) => (
+          <Button
+            key={c.label}
+            unstyled
+            className={`rc-desk-card${c.hot === true ? ' rc-desk-card--hot' : ''}`}
+            onClick={c.onClick}
+          >
+            <span className="rc-desk-card__label">{c.label}</span>
+            <span className="rc-desk-card__n num">{c.n}</span>
+            <span className="rc-desk-card__sub">{c.sub}</span>
+          </Button>
+        ))}
+      </div>
 
-      <div className="rc-grid2">
-        <div className="rc-stack">
-          <Card flush>
-            <CardHead
-              title="Needs you"
-              actions={
-                <Link to="/tasks" className="rc-card__head-more">
-                  All tasks
-                </Link>
-              }
-            />
-            {queue.length === 0 ? (
-              <p className="rc-empty">Nothing needs you right now.</p>
+      <div className="rc-desk-split">
+        <section className="rc-desk-col">
+          <div className="rc-card">
+            <div className="rc-card__head">
+              <div>
+                <h2>Priority queue</h2>
+                <div className="rc-desk-subtle">
+                  Next actions across your requisitions, ranked by urgency.
+                </div>
+              </div>
+              <span className="rc-desk-count">{desk.priority_items.length} open</span>
+            </div>
+            <div className="rc-desk-tabs" role="tablist" aria-label="Priority queue filter">
+              {TABS.map((t) => (
+                <Button
+                  key={t.key}
+                  unstyled
+                  role="tab"
+                  aria-selected={tab === t.key}
+                  className={`rc-desk-tab${tab === t.key ? ' is-on' : ''}`}
+                  onClick={() => setTab(t.key)}
+                >
+                  {t.label}
+                  <span className="rc-desk-tab__n num">{tabCount(t.key)}</span>
+                </Button>
+              ))}
+            </div>
+            {groups.length === 0 ? (
+              <EmptyState title="You're caught up" message="Nothing needs your attention in this view." />
             ) : (
-              queue.map((t) => (
-                <ActionItem
-                  key={t.id}
-                  kind={taskKind(t)}
-                  title={t.title}
-                  priority={t.priority ?? undefined}
-                  badges={taskBadges(t)}
-                  context={OWNER_LABEL[t.owner_type]}
-                  time={t.due_date !== null ? formatDue(t.due_date) : undefined}
-                  action={taskAction(t)}
-                />
+              groups.map((g) => (
+                <div key={g.key}>
+                  <div className={`rc-desk-group rc-desk-group--${g.key}`}>
+                    {g.label} · {g.items.length}
+                  </div>
+                  {g.items.map((item) => (
+                    <QueueRow key={item.id} item={item} />
+                  ))}
+                </div>
               ))
             )}
-          </Card>
+            <div className="rc-desk-note">
+              Items appear here automatically from pipeline state, engagement,
+              client feedback and tasks.
+            </div>
+          </div>
 
-          <Card flush>
-            <CardHead
-              title="My open reqs"
-              actions={
-                <Link to="/requisitions" className="rc-card__head-more">
-                  All requisitions
-                </Link>
-              }
-            />
-            <DataTable<RequisitionView>
-              columns={reqColumns}
-              rows={openReqs}
-              rowKey={(r) => r.id}
-              emptyMessage="No open requisitions in your view."
-            />
-          </Card>
-        </div>
-
-        <aside className="rc-stack">
-          <Card flush>
-            <CardHead title="Today" />
-            {agenda.length === 0 ? (
-              <p className="rc-empty">Nothing scheduled today.</p>
-            ) : (
-              <div className="rc-agenda">
-                {agenda.map((e) => (
-                  <div key={e.id} className="rc-agenda__row">
-                    <div className="rc-agenda__time">{eventTime(e)}</div>
-                    <div className="rc-agenda__body">
-                      <div className="rc-agenda__t">{e.title}</div>
-                      <div className="rc-agenda__s">
-                        {CALENDAR_EVENT_TYPE_LABELS[e.type]}
-                      </div>
-                    </div>
-                  </div>
-                ))}
+          <div className="rc-card">
+            <div className="rc-card__head">
+              <div>
+                <h2>My requisitions</h2>
+                <div className="rc-desk-subtle">
+                  Where your talent sits on each requisition you're assigned to.
+                </div>
               </div>
-            )}
-          </Card>
+              <Link to="/requisitions" className="rc-card__head-more">
+                All requisitions
+              </Link>
+            </div>
+            <DataTable<DeskRequisitionRowView>
+              columns={reqColumns}
+              rows={[...desk.requisitions]}
+              rowKey={(r) => r.id}
+              emptyMessage="No requisitions assigned to you yet."
+            />
+          </div>
+        </section>
 
-          <Card flush>
-            <CardHead title="My active pipeline" />
-            <div className="rc-feed-wrap">
-              <div className="rc-funnel">
-                {funnelCells.map((c) => (
-                  <div
-                    key={c.key}
-                    className={`rc-fstage${
-                      c.count > 0 ? ' rc-fstage--has' : ' rc-fstage--dim'
-                    }`}
-                  >
-                    <div className="rc-fstage__bar" />
-                    <div className="rc-fstage__n num">{c.count}</div>
-                    <div className="rc-fstage__l">{c.label}</div>
-                  </div>
-                ))}
+        <aside className="rc-desk-col rc-desk-col--rail">
+          <div className="rc-card" id="desk-interviews">
+            <div className="rc-card__head">
+              <h2>Today's interviews</h2>
+              <span className="rc-desk-count">{ivCount} scheduled</span>
+            </div>
+            {ivCount === 0 ? (
+              <p className="rc-empty">No interviews scheduled today.</p>
+            ) : (
+              desk.interviews_today.map((iv) => (
+                <div key={iv.id} className="rc-desk-iv">
+                  <span className="rc-desk-iv__time num">{formatTime(iv.scheduled_at)}</span>
+                  <span className="rc-desk-iv__body">
+                    <span className="rc-desk-iv__who">{iv.talent_name ?? 'Talent'}</span>
+                    <span className="rc-desk-iv__what">
+                      {interviewLabel(iv.interview_type)}
+                      {iv.round !== null ? ` · Round ${iv.round}` : ''}
+                      {iv.requisition_label !== null ? ` · ${iv.requisition_label}` : ''}
+                    </span>
+                  </span>
+                </div>
+              ))
+            )}
+          </div>
+
+          <div className="rc-card" id="desk-exceptions">
+            <div className="rc-card__head">
+              <div>
+                <h2>Exceptions</h2>
+                <div className="rc-desk-subtle">Things that are stuck or broken.</div>
               </div>
             </div>
-          </Card>
-
-          <Card>
-            <CardHead title="Activity" />
-            {activityItems.length === 0 ? (
-              <p className="rc-empty">No recent activity.</p>
+            {excCount === 0 ? (
+              <p className="rc-empty">No blocked items need your attention.</p>
             ) : (
-              <div className="rc-feed-wrap">
-                <ActivityFeed items={activityItems} />
-              </div>
+              desk.exceptions.map((x) => (
+                <div key={x.id} className="rc-desk-exc">
+                  <span className="rc-desk-exc__head">
+                    <span className={`rc-desk-dot rc-desk-dot--${x.severity}`} aria-hidden="true" />
+                    <span className="rc-desk-exc__title">{x.title}</span>
+                  </span>
+                  <span className="rc-desk-exc__body">{x.body}</span>
+                  {x.requisition_id !== null ? (
+                    <Link to={`/requisitions/${x.requisition_id}`} className="rc-desk-exc__link">
+                      Open requisition
+                    </Link>
+                  ) : x.owner_label !== null ? (
+                    <span className="rc-desk-exc__owner">{x.owner_label}</span>
+                  ) : null}
+                </div>
+              ))
             )}
-          </Card>
+          </div>
+
+          <div className="rc-card" id="desk-awaiting">
+            <div className="rc-card__head">
+              <div>
+                <h2>Awaiting client</h2>
+                <div className="rc-desk-subtle">
+                  Submittals with no client decision yet, oldest first.
+                </div>
+              </div>
+            </div>
+            {awaitingCount === 0 ? (
+              <p className="rc-empty">Nothing is waiting on a client decision.</p>
+            ) : (
+              desk.awaiting_client.map((w) => (
+                <div key={w.id} className="rc-desk-await">
+                  <span className="rc-desk-await__body">
+                    <span className="rc-desk-await__who">{w.talent_name ?? 'Talent'}</span>
+                    <span className="rc-desk-await__what">
+                      {w.requisition_label !== null ? `${w.requisition_label} · ` : ''}
+                      {w.reason}
+                    </span>
+                  </span>
+                  <span className={`rc-desk-age${w.waiting_days >= 7 ? ' rc-desk-age--old' : ''}`}>
+                    {w.waiting_days}d
+                  </span>
+                </div>
+              ))
+            )}
+          </div>
         </aside>
       </div>
     </section>
   );
 }
 
-// --- presentational helpers ---
-
-function taskKind(t: TaskView): ActionKind {
-  if (t.type != null) return TYPE_KIND[t.type];
-  return dueClass(t.due_date) === 'overdue' ? 'overdue' : 'task';
-}
-
-function taskBadges(t: TaskView) {
-  const cls = dueClass(t.due_date);
+function QueueRow({ item }: { item: DeskPriorityItemView }) {
+  const kind = KIND[item.kind];
+  const who = item.talent_name ?? item.label;
+  const whoHref =
+    item.talent_id !== null
+      ? `/talent/${item.talent_id}`
+      : item.requisition_id !== null
+        ? `/requisitions/${item.requisition_id}`
+        : null;
   return (
-    <>
-      {t.type === 'consent' ? (
-        <StatusPill tone="ok" dot>
-          Consent
-        </StatusPill>
-      ) : null}
-      {cls === 'today' ? (
-        <StatusPill tone="hot" dot>
-          Due today
-        </StatusPill>
-      ) : null}
-    </>
+    <div className="rc-desk-row">
+      <span
+        className={`rc-desk-ic rc-desk-kind--${kind.tone}`}
+        title={kind.label}
+        aria-hidden="true"
+      >
+        {kind.label.charAt(0)}
+      </span>
+      <span className="rc-desk-row__body">
+        <span className="rc-desk-row__top">
+          {whoHref !== null ? (
+            <Link to={whoHref} className="rc-desk-row__who">
+              {who}
+            </Link>
+          ) : (
+            <span className="rc-desk-row__who">{who}</span>
+          )}
+          {item.requisition_id !== null && item.requisition_label !== null ? (
+            <Link to={`/requisitions/${item.requisition_id}`} className="rc-desk-row__req num">
+              {item.requisition_label}
+            </Link>
+          ) : null}
+          <span className={`rc-desk-kindbadge rc-desk-kind--${kind.tone}`}>{kind.label}</span>
+        </span>
+        {item.reason !== '' ? (
+          <span className="rc-desk-row__why">{item.reason}</span>
+        ) : null}
+      </span>
+      <span className="rc-desk-row__right">
+        <span className={`rc-desk-due rc-desk-due--${item.urgency}`}>
+          {urgencyLabel(item.urgency)}
+        </span>
+        {item.primary_action !== null ? (
+          <DeskAction action={item.primary_action} />
+        ) : null}
+      </span>
+    </div>
   );
 }
 
-function taskAction(t: TaskView) {
-  const base = OWNER_ROUTE[t.owner_type];
-  if (base === null) return undefined;
-  const label = t.type != null ? TYPE_ACTION[t.type] : 'Open';
-  return (
-    <Link to={`${base}/${t.owner_id}`} className="rc-link-action">
-      {label}
-    </Link>
-  );
-}
-
-function eventTime(e: CalendarEventView): string {
-  if (e.all_day) return 'All day';
-  const d = new Date(e.starts_at);
-  if (Number.isNaN(d.getTime())) return '';
-  return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
-}
-
-function companySubtitle(
-  r: RequisitionView,
-  names: Record<string, string>,
-): string {
-  const company = names[r.company_id];
-  const code = r.external_req_id;
-  if (company != null && code != null) return `${company} · ${code}`;
-  if (company != null) return company;
-  if (code != null) return code;
-  return '';
-}
-
-function deskSummary(openTasks: number, hot: number): string {
-  const parts: string[] = [
-    openTasks === 1 ? '1 open task' : `${openTasks} open tasks`,
-  ];
-  if (hot > 0) {
-    parts.push(hot === 1 ? '1 hot requisition' : `${hot} hot requisitions`);
+function DeskAction({ action }: { action: NonNullable<DeskPriorityItemView['primary_action']> }) {
+  if (action.href !== null) {
+    return (
+      <Link to={action.href} className="rc-link-action">
+        {action.label}
+      </Link>
+    );
   }
-  return parts.join(' · ');
+  // Non-navigation action kinds arrive with backend Increment-2; until then a
+  // desk item always carries a navigable href, so this branch renders a plain,
+  // non-fabricated label rather than inventing a mutation.
+  return <span className="rc-desk-action-pending">{action.label}</span>;
 }
 
-function formatDue(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return isOverdue(iso)
-    ? 'Overdue'
-    : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+// --- presentational helpers (no business derivation) ---
+
+function timeGreeting(): string {
+  const h = new Date().getHours();
+  if (h < 12) return 'Good morning';
+  if (h < 18) return 'Good afternoon';
+  return 'Good evening';
+}
+
+// Format the server-provided civil date "YYYY-MM-DD" WITHOUT a timezone shift:
+// build a local Date from the parts (never `new Date(iso)`, which is UTC).
+function formatDeskDate(serverDate: string): string {
+  const [y, m, d] = serverDate.split('-').map((n) => Number(n));
+  if (!y || !m || !d) return '';
+  const dt = new Date(y, m - 1, d);
+  return dt
+    .toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })
+    .toUpperCase();
+}
+
+function formatTime(iso: string): string {
+  const dt = new Date(iso);
+  if (Number.isNaN(dt.getTime())) return '';
+  return dt.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+}
+
+// Urgency word — server-authoritative classification (§38); the FE never
+// recomputes a day-diff against the browser clock.
+function urgencyLabel(u: DeskUrgency): string {
+  return u === 'overdue' ? 'Overdue' : u === 'today' ? 'Today' : 'Upcoming';
+}
+
+function interviewLabel(type: string): string {
+  return type
+    .split('_')
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ');
 }
