@@ -158,13 +158,14 @@ export const SETTINGS_NAV: readonly NavGroup[] = [
     heading: 'Communication',
     items: [
       {
+        // D-EMAIL-TPL-1 (ET-6) — LIVE: tenant email-template management (system
+        // default + override). Notification preferences remain deferred (D-9).
         key: 'email',
         label: 'Email & notifications',
         icon: <IconMail />,
         to: '/admin/settings/email',
         match: '/admin/settings/email',
-        status: 'soon',
-        badge: SOON,
+        status: 'live',
       },
     ],
   },

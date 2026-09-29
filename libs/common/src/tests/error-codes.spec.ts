@@ -281,6 +281,10 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       // COMM-C4 (RCE-1) — 1 requisition-contact draft context refusal (422;
       // details.reason: requisition_not_found | talent_not_associated_with_requisition).
       'COMMUNICATION_REQUISITION_CONTACT_CONTEXT_INVALID',
+      // D-EMAIL-TPL-1 (ET-4) — 3 reusable email-template codes (404 / 409 / 422).
+      'EMAIL_TEMPLATE_NOT_FOUND',
+      'EMAIL_TEMPLATE_ALREADY_EXISTS',
+      'EMAIL_TEMPLATE_INVALID_MERGE_TOKEN',
     ]);
   });
 });

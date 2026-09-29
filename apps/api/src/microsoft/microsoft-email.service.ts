@@ -9,6 +9,8 @@ import {
 } from '@aramo/microsoft-graph';
 import { PipelineRepository } from '@aramo/pipeline';
 
+import { SYSTEM_REQUISITION_CONTACT_TEMPLATE_ID } from '../communications/system-requisition-contact-template.service.js';
+
 import { EMAIL_CONSENT_GATE, type EmailConsentGate } from './email-consent-gate.port.js';
 import {
   EMAIL_RECIPIENT_RESOLVER,
@@ -49,6 +51,13 @@ export interface SendRecruiterEmailArgs {
   readonly subject: string;
   readonly body: string;
   readonly idempotency_key: string;
+  // D-EMAIL-TPL-1 (ET-8) — DESCRIPTIVE provenance of the draft the recruiter
+  // reviewed, relayed from the server-authored draft response (NOT browser-
+  // authoritative, never re-resolved here). Recorded verbatim as metadata; it
+  // never drives authorization, template lookup, or the sent content. The
+  // code-default sentinel is mapped to a null template_id below.
+  readonly template_key?: string | null;
+  readonly template_id?: string | null;
   readonly authContext: AuthContextType;
   readonly requestId: string;
 }
@@ -145,6 +154,15 @@ export class MicrosoftEmailService {
         // COMM-C4 — persist the FINAL reviewed subject/body as durable evidence.
         subject: args.subject,
         body: args.body,
+        // D-EMAIL-TPL-1 (ET-8) — descriptive provenance of the reviewed draft.
+        // Verbatim key; the code-default sentinel maps to a null template_id so
+        // a default-origin draft records template_id=null and an override records
+        // its row id. Never re-resolved against the tenant's CURRENT template.
+        template_key: args.template_key ?? null,
+        template_id:
+          args.template_id == null || args.template_id === SYSTEM_REQUISITION_CONTACT_TEMPLATE_ID
+            ? null
+            : args.template_id,
       });
       interactionId = interaction.id;
     } catch {

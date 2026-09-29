@@ -400,6 +400,10 @@ export const SEED_IDS = {
     'client-submittal-policy:read': '01900000-0000-7000-8000-000000001102',
     'client-submittal-policy:write': '01900000-0000-7000-8000-000000001103',
     'client-submittal-policy:override': '01900000-0000-7000-8000-000000001104',
+    // D-EMAIL-TPL-1 (ET-4) — reusable email-template management scopes. Next free
+    // scope suffix after 0x1104 (append-don't-renumber): 0x1105 / 0x1106.
+    'communication:template:read': '01900000-0000-7000-8000-000000001105',
+    'communication:template:manage': '01900000-0000-7000-8000-000000001106',
     // Requisition Lane 1-A (Create-Governance) — next-free suffix 0xe3
     // (0xdd/0xe1/0xe2 are taken by integration:write / assignment:extend /
     // assignment:commercials:approve; 0xde freed by the HYG-1 submittal-policy:write
@@ -2232,6 +2236,31 @@ const COMMUNICATION_C2B_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() =>
   return map;
 })();
 
+// D-EMAIL-TPL-1 (ET-4) — reusable email-template management grants. read →
+// recruiter/account_manager/tenant_admin/tenant_owner; manage → tenant_admin/
+// tenant_owner. Fresh disjoint RoleScope id range 0x1360+ (R-SYNC: E-Sign PX-V1
+// owns 0x1350–0x1359; append-don't-renumber; 6 grants = read×4 + manage×2).
+export const EMAIL_TEMPLATE_SEED_BUNDLES: ReadonlyArray<
+  readonly [string, readonly string[]]
+> = [
+  ['recruiter', ['communication:template:read']],
+  ['account_manager', ['communication:template:read']],
+  ['tenant_admin', ['communication:template:read', 'communication:template:manage']],
+  ['tenant_owner', ['communication:template:read', 'communication:template:manage']],
+];
+const EMAIL_TEMPLATE_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
+  const map: Record<string, string> = {};
+  let i = 0x1360;
+  for (const [role, scopes] of EMAIL_TEMPLATE_SEED_BUNDLES) {
+    for (const scope of scopes) {
+      map[`${role}:${scope}`] =
+        `01900000-0000-7000-8000-${i.toString(16).padStart(12, '0')}`;
+      i++;
+    }
+  }
+  return map;
+})();
+
 // COMM PART A — Engagement Policy OVERRIDE grants. engagement:policy:override ->
 // tenant_admin + tenant_owner (the authorized-user/manager tier; recruiter/
 // account_manager excluded). A DEDICATED, DISJOINT bundle (range 0xf40+,
@@ -3058,6 +3087,8 @@ export async function runIdentitySeed(
   await upsertScope(prisma, SEED_IDS.scopes['client-submittal-policy:override'], 'client-submittal-policy:override', 'CSP PR-2 — proceed past an OVERRIDABLE Client Submittal Policy requirement at Submit to client WITH a recorded reason, captured in authoritative decision provenance. Scope-based authority (never a role-name check); HARD_DENY requirements are never overridable. GRANTED to tenant_admin, tenant_owner only. NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['communication:email:send'], 'communication:email:send', 'COMM-C2B — send recruiter email through the bound delegated Microsoft identity (POST /v1/integrations/microsoft/email). Server-side contacting-consent gate precedes any provider execution; provider-neutral email evidence is recorded on success. GRANTED to recruiter, account_manager, tenant_admin, tenant_owner (mirrors communication:voice:call). NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['communication:meeting:create'], 'communication:meeting:create', 'COMM-C2B — create a Teams meeting through the bound delegated Microsoft identity (POST /v1/integrations/microsoft/meeting; create-link-only, no Talent invite). Records provider-neutral meeting evidence (join reference + Talent x Requisition association). GRANTED to recruiter, account_manager, tenant_admin, tenant_owner (mirrors communication:voice:call). NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['communication:template:read'], 'communication:template:read', 'D-EMAIL-TPL-1 — read reusable email templates (list/get/preview) under Settings. GRANTED to recruiter, account_manager, tenant_admin, tenant_owner. NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['communication:template:manage'], 'communication:template:manage', 'D-EMAIL-TPL-1 — manage reusable email templates (create/update/deactivate the tenant override; the code-owned default is never mutated). GRANTED to tenant_admin, tenant_owner. NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['requisition:create:establish'], 'requisition:create:establish', 'Requisition Lane 1-A (Create-Governance) — the functional create qualifier that unlocks the governed initial-state establishment mode (MANUAL-ESTABLISH + SYSTEM). Grants authority to ENTER the governed establishment mode; never permits arbitrary statuses (the establishment-authorization gate still bounds { draft, open }). CATALOG-ONLY in v1: GRANTED to NO human tenant role (recruiter / recruiting_manager / delivery_manager / account_manager never receive it, so no human bypasses draft->approval via the manual create path); held programmatically by system/bootstrap establishment identities + passed by bootstrap/test helpers only. The INTEGRATION import path does NOT use this scope — it reuses the existing requisition:import:write. NO scope.created (scope-seed precedent); NO RoleScope grant.');
   await upsertScope(prisma, SEED_IDS.scopes['address:lookup'], 'address:lookup', 'WL-B2 (R6/R14) — query the shared address-lookup proxy (GET /v1/address-lookup/autocomplete + /details) off the external provider. DEDICATED, least-privilege: grants ONLY the authority to query the lookup service; it NEVER implies authority to create/update a Company or Requisition or to mutate any aggregate (those keep their own company:create / requisition:create|edit gates). GRANTED to the UNION of address-enabled surface authors — every company:create holder ∪ every requisition:create/:edit holder: tenant_admin + recruiter (ROLE_SCOPE_ASSIGNMENTS) and tenant_owner + account_manager + recruiting_manager + lead_recruiter (ADDRESS_LOOKUP_SEED_BUNDLES). NO scope.created (scope-seed precedent).');
 
@@ -3605,6 +3636,25 @@ export async function runIdentitySeed(
       const rsId = PIPELINE_MAPPING_ADMIN_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
       if (rsId === undefined) {
         throw new Error(`L2-I Pipeline-Mapping-Admin-Role-Matrix: Missing generated RoleScope id for ${roleKey}:${scopeKey}`);
+      }
+      const scope_id = scopeIdForKey(scopeKey);
+      await prisma.roleScope.upsert({
+        where: { role_id_scope_id: { role_id, scope_id } },
+        update: {},
+        create: { id: rsId, role_id, scope_id },
+      });
+    }
+  }
+
+  // D-EMAIL-TPL-1 (ET-4) — reusable email-template management grants (6 rows;
+  // range 0x1350+). read -> recruiter/account_manager/tenant_admin/tenant_owner;
+  // manage -> tenant_admin/tenant_owner.
+  for (const [roleKey, scopeKeys] of EMAIL_TEMPLATE_SEED_BUNDLES) {
+    const role_id = roleIdForKey(roleKey);
+    for (const scopeKey of scopeKeys) {
+      const rsId = EMAIL_TEMPLATE_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
+      if (rsId === undefined) {
+        throw new Error(`D-EMAIL-TPL-1 Email-Template-Role-Matrix: Missing generated RoleScope id for ${roleKey}:${scopeKey}`);
       }
       const scope_id = scopeIdForKey(scopeKey);
       await prisma.roleScope.upsert({

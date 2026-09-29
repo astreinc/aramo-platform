@@ -147,6 +147,9 @@ export class MicrosoftAuthorizationController {
         subject: body.subject,
         body: body.body,
         idempotency_key: body.idempotency_key,
+        // ET-8 — descriptive provenance of the reviewed draft (server records as-is).
+        template_key: body.template_key,
+        template_id: body.template_id,
         authContext: auth,
         requestId,
         visible_requisition_ids: visibleReqIds,

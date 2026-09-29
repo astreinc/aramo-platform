@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common';
 import { PrismaService } from './prisma/prisma.service.js';
 import { CommunicationsRepository } from './communications.repository.js';
 import { CommunicationsService } from './communications.service.js';
+import { EmailTemplateRepository } from './email-template.repository.js';
 import { VoiceProviderRegistry } from './provider/voice-provider.registry.js';
 
 // CommunicationsModule — COMM-V1 provider-neutral domain substrate (COMM-B1).
@@ -17,8 +18,9 @@ import { VoiceProviderRegistry } from './provider/voice-provider.registry.js';
     PrismaService,
     CommunicationsRepository,
     CommunicationsService,
+    EmailTemplateRepository,
     VoiceProviderRegistry,
   ],
-  exports: [CommunicationsService, CommunicationsRepository, VoiceProviderRegistry],
+  exports: [CommunicationsService, CommunicationsRepository, EmailTemplateRepository, VoiceProviderRegistry],
 })
 export class CommunicationsModule {}
