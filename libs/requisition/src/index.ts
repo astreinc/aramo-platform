@@ -12,6 +12,7 @@ export {
 } from './lib/requisition.repository.js';
 export { RequisitionAssignmentRepository } from './lib/requisition-assignment.repository.js';
 export { PrismaService as RequisitionPrismaService } from './lib/prisma/prisma.service.js';
+export type { RequisitionSearchRow } from './lib/requisition.repository.js';
 // SKILL-TAX-1D — requisition canonical skill seam (internal; no HTTP/scope/UI).
 export { RequisitionSkillCanonicalizationModule } from './lib/requisition-skill-canonicalization.module.js';
 export {

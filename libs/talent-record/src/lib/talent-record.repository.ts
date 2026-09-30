@@ -506,6 +506,37 @@ export class TalentRecordRepository {
     });
   }
 
+  // Enterprise Search (GS-1) — exact-identifier retrieval leg for the Talent adapter.
+  // Matches email1 OR email2 exactly (case-insensitive) INSIDE the same pool-open
+  // authority contract as list()/searchByResumeText: tenant + optional site + live-only.
+  // This is NOT a bypass of that contract — an exact-email match in another tenant, or
+  // (when site-scoped) another site, is structurally absent. Returns the lean views the
+  // adapter maps to SearchHits.
+  async searchByExactEmail(args: {
+    tenant_id: string;
+    site_id?: string;
+    email: string;
+    limit?: number;
+  }): Promise<TalentRecordView[]> {
+    const email = args.email.trim();
+    if (email === '') return [];
+    const limit = Math.min(args.limit ?? 50, 200);
+    const rows = await this.prisma.talentRecord.findMany({
+      where: {
+        tenant_id: args.tenant_id,
+        record_status: 'live',
+        ...(args.site_id === undefined ? {} : { site_id: args.site_id }),
+        OR: [
+          { email1: { equals: email, mode: 'insensitive' } },
+          { email2: { equals: email, mode: 'insensitive' } },
+        ],
+      },
+      orderBy: { created_at: 'desc' },
+      take: limit,
+    });
+    return (rows as TalentRecordRow[]).map(projectView);
+  }
+
   // Proactive duplicate-check projection. Same tenant-wide, live-only,
   // case-insensitive email1 predicate as findActiveByEmail (the create-time
   // 409 backstop) — but returns the display fields the Add-Talent
