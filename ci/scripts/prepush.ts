@@ -140,6 +140,9 @@ steps.push(['pipeline:write-authority:check', () => run('npm run --silent pipeli
 // idiom as placement:sql:check; mirrors the CI repo-map:check wall + the
 // .githooks/pre-push hook so staleness is caught before CI, unconditionally.
 steps.push(['repo-map:check', () => run('npm run --silent repo-map:check')]);
+// GS-2 P1 — canonical Postgres test-image tripwire: no literal `postgres:` container image
+// outside ARAMO_POSTGRES_TEST_IMAGE (prevents DB test-runtime drift once vector is required).
+steps.push(['pg-test-image:check', () => run('npm run --silent pg-test-image:check')]);
 // GLH-1 (ATS Go-Live Hardening Charter v1.5) — CI-integrity walls. Config-only, cheap,
 // unconditional. env:passthrough-check = prod compose/env parity; aggregate-gate:check =
 // deployment-gate.needs membership (build/verify-vocabulary/GLH walls stay required).

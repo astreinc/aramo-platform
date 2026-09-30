@@ -2,6 +2,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
+import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
 import { Client } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -21,7 +22,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('DOC-6 OFFER_LETTE
   let db: Client;
 
   beforeAll(async () => {
-    container = await new PostgreSqlContainer('postgres:17').start();
+    container = await new PostgreSqlContainer(ARAMO_POSTGRES_TEST_IMAGE).start();
     db = new Client({ connectionString: container.getConnectionUri() });
     await db.connect();
     // pg's native multi-statement query is comment-safe (no splitDdl trap).

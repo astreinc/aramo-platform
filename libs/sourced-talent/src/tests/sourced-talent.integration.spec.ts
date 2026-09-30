@@ -6,7 +6,8 @@ import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testconta
 // SRC-1 PR-1 (R8) — normalize via @aramo/common (NOT the @aramo/identity twin at
 // libs/identity/src/lib/util/email-domain.ts). Exercising R8's disambiguation in
 // code, not just prose: fixtures pre-normalize with these exact imports.
-import { normalizeEmail, normalizePhone } from '@aramo/common';
+import {
+  ARAMO_POSTGRES_TEST_IMAGE, normalizeEmail, normalizePhone } from '@aramo/common';
 
 import { PrismaService } from '../lib/prisma/prisma.service.js';
 import { SourcedTalentRepository } from '../lib/sourced-talent.repository.js';
@@ -65,7 +66,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     let repo: SourcedTalentRepository;
 
     beforeAll(async () => {
-      container = await new PostgreSqlContainer('postgres:17').start();
+      container = await new PostgreSqlContainer(ARAMO_POSTGRES_TEST_IMAGE).start();
       const url = container.getConnectionUri();
       const setupClient = new PrismaService(url);
       await setupClient.$connect();

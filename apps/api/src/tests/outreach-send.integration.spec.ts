@@ -19,7 +19,8 @@ import {
   type CryptoKey,
   type KeyObject,
 } from 'jose';
-import { AramoError } from '@aramo/common';
+import {
+  ARAMO_POSTGRES_TEST_IMAGE, AramoError } from '@aramo/common';
 import { EFFECTIVE_AUTHORIZATION_RESOLVER } from '@aramo/auth';
 
 import { AppModule } from '../app.module.js';
@@ -160,7 +161,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     const mutableDraftProvider: MutableProvider = { next: { kind: 'value' } };
 
     beforeAll(async () => {
-      container = await new PostgreSqlContainer('postgres:17').start();
+      container = await new PostgreSqlContainer(ARAMO_POSTGRES_TEST_IMAGE).start();
       const url = container.getConnectionUri();
       setup = new Client({ connectionString: url });
       await setup.connect();

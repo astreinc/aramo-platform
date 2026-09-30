@@ -3,7 +3,8 @@ import { resolve } from 'node:path';
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
-import { computeEmailFingerprint } from '@aramo/common';
+import {
+  ARAMO_POSTGRES_TEST_IMAGE, computeEmailFingerprint } from '@aramo/common';
 
 import { PrismaService } from '../lib/prisma/prisma.service.js';
 import { IdentityIndexRepository } from '../lib/identity-index.repository.js';
@@ -53,7 +54,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     let repo: IdentityIndexRepository;
 
     beforeAll(async () => {
-      container = await new PostgreSqlContainer('postgres:17').start();
+      container = await new PostgreSqlContainer(ARAMO_POSTGRES_TEST_IMAGE).start();
       const url = container.getConnectionUri();
       const migrationSql = readFileSync(MIGRATION_PATH, 'utf8');
 

@@ -12477,6 +12477,11 @@
       "status": "unscoped",
       "to": "openapi/portal.yaml"
     },
+    {
+      "from": "ci/scripts/verify-postgres-test-image.ts",
+      "status": "unscoped",
+      "to": "libs/common/src/lib/testing/postgres-test-image.ts"
+    },
     { "from": "deploy/RUNBOOK.md", "status": "unscoped", "to": "doc/runbooks/RELEASE-box.md" },
     {
       "from": "deploy/backup/pg-backup.sh",
@@ -18079,6 +18084,21 @@
       "to": "pact/provider/src/verify-api.ts"
     },
     {
+      "from": "libs/talent-embedding/prisma/schema.prisma",
+      "status": "unscoped",
+      "to": "doc/05-conventions.md"
+    },
+    {
+      "from": "libs/talent-embedding/project.json",
+      "status": "unscoped",
+      "to": "libs/talent-embedding/src/index.ts"
+    },
+    {
+      "from": "libs/talent-embedding/project.json",
+      "status": "unscoped",
+      "to": "libs/talent-embedding/tsconfig.lib.json"
+    },
+    {
       "from": "libs/talent-evidence/prisma/schema.prisma",
       "status": "unscoped",
       "to": "doc/05-conventions.md"
@@ -18255,6 +18275,11 @@
     },
     { "from": "package.json", "status": "unscoped", "to": "ci/scripts/verify-placement-sql.ts" },
     { "from": "package.json", "status": "unscoped", "to": "ci/scripts/verify-portal-refusal.ts" },
+    {
+      "from": "package.json",
+      "status": "unscoped",
+      "to": "ci/scripts/verify-postgres-test-image.ts"
+    },
     { "from": "package.json", "status": "unscoped", "to": "ci/scripts/verify-repo-map.ts" },
     { "from": "package.json", "status": "unscoped", "to": "deploy/jiti-tsconfig-runner.mjs" },
     { "from": "package.json", "status": "unscoped", "to": "doc/00-README.md" },
@@ -18386,6 +18411,11 @@
       "to": "libs/submittal-eligibility/prisma/schema.prisma"
     },
     { "from": "package.json", "status": "unscoped", "to": "libs/submittal/prisma/schema.prisma" },
+    {
+      "from": "package.json",
+      "status": "unscoped",
+      "to": "libs/talent-embedding/prisma/schema.prisma"
+    },
     {
       "from": "package.json",
       "status": "unscoped",
@@ -20357,6 +20387,11 @@
     {
       "from": "tsconfig.base.json",
       "status": "unscoped",
+      "to": "libs/talent-embedding/src/index.ts"
+    },
+    {
+      "from": "tsconfig.base.json",
+      "status": "unscoped",
       "to": "libs/talent-evidence/src/index.ts"
     },
     {
@@ -20515,6 +20550,11 @@
       "to": "libs/submittal-eligibility/src/index.ts"
     },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/submittal/src/index.ts" },
+    {
+      "from": "vitest.shared.ts",
+      "status": "unscoped",
+      "to": "libs/talent-embedding/src/index.ts"
+    },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/talent-evidence/src/index.ts" },
     {
       "from": "vitest.shared.ts",
@@ -20540,7 +20580,7 @@
   ],
   "scanScope": {
     "dirs": [".github/workflows", ".husky", "ci/scripts", "deploy", "scripts", "tools"],
-    "files": 72,
+    "files": 73,
     "huskyPresent": false
   },
   "scripts": [
@@ -20795,6 +20835,14 @@
       ]
     },
     {
+      "name": "pg-test-image:check",
+      "references": [
+        { "kind": "npm-run", "path": "ci/scripts/prepush.ts" },
+        { "kind": "prose", "path": "ci/scripts/prepush.ts" },
+        { "kind": "prose", "path": "ci/scripts/verify-postgres-test-image.ts" }
+      ]
+    },
+    {
       "name": "pipeline:write-authority:check",
       "references": [
         { "kind": "npm-run", "path": ".github/workflows/ci.yml" },
@@ -20942,6 +20990,7 @@
         { "kind": "prose", "path": "ci/scripts/verify-error-codes.ts" },
         { "kind": "prose", "path": "ci/scripts/verify-frontdoor-conf.ts" },
         { "kind": "prose", "path": "ci/scripts/verify-pipeline-write-authority.ts" },
+        { "kind": "prose", "path": "ci/scripts/verify-postgres-test-image.ts" },
         { "kind": "prose", "path": "deploy/build-images.test.sh" },
         { "kind": "prose", "path": "deploy/migrate-prod.sh" },
         { "kind": "prose", "path": "deploy/migrate-prod.test.sh" },

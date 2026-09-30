@@ -6,7 +6,8 @@ import {
   PostgreSqlContainer,
   type StartedPostgreSqlContainer,
 } from '@testcontainers/postgresql';
-import { makeMockLogger } from '@aramo/common';
+import {
+  ARAMO_POSTGRES_TEST_IMAGE, makeMockLogger } from '@aramo/common';
 
 import { TalentSubmittalEventRepository } from '../lib/talent-submittal-event.repository.js';
 import { PrismaService } from '../lib/prisma/prisma.service.js';
@@ -102,7 +103,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     }
 
     beforeAll(async () => {
-      container = await new PostgreSqlContainer('postgres:17').start();
+      container = await new PostgreSqlContainer(ARAMO_POSTGRES_TEST_IMAGE).start();
       client = new PrismaService(container.getConnectionUri());
       await client.$connect();
       for (const m of MIGRATIONS) {

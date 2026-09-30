@@ -6547,7 +6547,7 @@ components:
       properties:
         signal:
           type: string
-          enum: [exact, lexical]
+          enum: [exact, lexical, semantic]
         field: { type: string }
         relevance: { type: number }
     # ── TALENT-INTEL-1 TI-1D-C — résumé editions ──

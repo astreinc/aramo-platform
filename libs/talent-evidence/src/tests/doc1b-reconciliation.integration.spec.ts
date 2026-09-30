@@ -3,6 +3,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
+import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
 import { Client } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -43,7 +44,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('DOC-1b TalentDocu
   }
 
   beforeAll(async () => {
-    container = await new PostgreSqlContainer('postgres:17').start();
+    container = await new PostgreSqlContainer(ARAMO_POSTGRES_TEST_IMAGE).start();
     db = new Client({ connectionString: container.getConnectionUri() });
     await db.connect();
     // documents schema first (DOC-1b writes into it).

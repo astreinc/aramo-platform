@@ -81,6 +81,8 @@ describe('TalentEvidenceRepository — surface', () => {
         // Talent-detail work-history read (LOCKED scope expansion — Add-Talent
         // Governed-LLM extraction; declared 'from résumé' rows for display).
         'findWorkHistoryByTalent',
+        // Enterprise Search GS-2A — authoritative work-history for the PII-min semantic projection.
+        'findAuthoritativeWorkHistoryForEmbedding',
         // Full-profile EDIT (LOCKED scope expansion) — the ONE sanctioned mutation
         // on the work-history surface: a bounded REPLACE-SET (atomic delete of the
         // talent's source='resume' rows + recreate of the reviewed set). A conscious

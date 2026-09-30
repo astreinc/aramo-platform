@@ -21,6 +21,7 @@ import { SignJWT, importPKCS8 } from 'jose';
 import request from 'supertest';
 import { v7 as uuidv7 } from 'uuid';
 import {
+  ARAMO_POSTGRES_TEST_IMAGE,
   AramoExceptionFilter,
   CommonModule,
   RequestIdMiddleware,
@@ -345,7 +346,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     }
 
     beforeAll(async () => {
-      container = await new PostgreSqlContainer('postgres:17').start();
+      container = await new PostgreSqlContainer(ARAMO_POSTGRES_TEST_IMAGE).start();
       const url = container.getConnectionUri();
 
       const setup = new IdentityPrismaService(url);

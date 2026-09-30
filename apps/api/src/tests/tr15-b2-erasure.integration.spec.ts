@@ -5,6 +5,7 @@ import {
   PostgreSqlContainer,
   type StartedPostgreSqlContainer,
 } from '@testcontainers/postgresql';
+import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
 import { Client } from 'pg';
 import { v7 as uuidv7 } from 'uuid';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -80,7 +81,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     }
 
     beforeAll(async () => {
-      container = await new PostgreSqlContainer('postgres:17').start();
+      container = await new PostgreSqlContainer(ARAMO_POSTGRES_TEST_IMAGE).start();
       db = new Client({ connectionString: container.getConnectionUri() });
       await db.connect();
       for (const p of allMigrations()) {
@@ -131,6 +132,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           [uuidv7(), rid, TENANT],
         );
       }
+      // Enterprise Search GS-2A semantic index (record keyspace) — one for the live record AND the
+      // HUSK, to prove the erase inventory reaches the embedding across the husk chain (UUID ref, no FK).
+      for (const rid of [REC, HUSK]) {
+        await db.query(
+          `INSERT INTO talent_embedding."TalentEmbedding" (id, tenant_id, talent_record_id, created_at, updated_at) VALUES ($1::uuid,$2::uuid,$3::uuid,now(),now())`,
+          [uuidv7(), TENANT, rid],
+        );
+      }
       // Consent ledger (record keyspace) + a RETAINED audit grant row.
       await db.query(
         `INSERT INTO consent."TalentConsentEvent" (id, talent_record_id, tenant_id, scope, action, captured_method, consent_version, occurred_at) VALUES ($1::uuid,$2::uuid,$3::uuid,'profile_storage','granted','import','source-derived-v1',now())`,
@@ -163,6 +172,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const c = (t: string): number => report.steps.find((s) => s.table === t)!.count;
       expect(c('talent_record."TalentRecord"')).toBe(2); // live + husk
       expect(c('talent_evidence."TalentEducationEntry"')).toBe(2); // record + husk (the HALT-note holder, reached)
+      expect(c('talent_embedding."TalentEmbedding"')).toBe(2); // GS-2A semantic index: record + husk, reached
       expect(c('consent."TalentConsentEvent"')).toBe(1);
       expect(c('talent_trust."EvidenceRecord"')).toBe(1);
       expect(c('talent_trust."EvidenceEvent"')).toBe(1);
@@ -206,6 +216,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Every seeded holder is emptied of this human — both keyspaces + the husk.
       expect(await count('talent_record."TalentRecord"', 'id = ANY($1::uuid[])', [[REC, HUSK]])).toBe(0);
       expect(await count('talent_evidence."TalentEducationEntry"', 'talent_id = ANY($1::uuid[])', [[REC, HUSK]])).toBe(0); // HALT-note holder reached, incl husk
+      expect(await count('talent_embedding."TalentEmbedding"', 'talent_record_id = ANY($1::uuid[])', [[REC, HUSK]])).toBe(0); // GS-2A residue: zero embedding rows survive erase
       expect(await count('consent."TalentConsentEvent"', 'talent_record_id = $1::uuid', [REC])).toBe(0);
       expect(await count('talent_trust."EvidenceRecord"', 'subject_id = $1::uuid', [SUBJ])).toBe(0);
       expect(await count('talent_trust."EvidenceEvent"', 'evidence_id = $1::uuid', [EV])).toBe(0);

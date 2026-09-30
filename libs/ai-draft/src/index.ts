@@ -41,6 +41,33 @@ export {
   type ActiveProviderResolver,
 } from './lib/providers/active-provider-resolver.js';
 
+// Enterprise Search GS-2 P2 — the embedding boundary. SEPARATE from the completion-provider
+// governance above (ruling 5): consumers depend on EMBEDDING_PORT + the governance/union, never a
+// vendor SDK, and never infer the embedding provider from the chat provider.
+export {
+  WIRED_EMBEDDING_PROVIDERS,
+  isEmbeddingProvider,
+  isEmbeddingModelAllowed,
+  resolveEmbeddingModel,
+  embeddingModelDimension,
+  EMBEDDING_MODEL_ALLOWLIST,
+  EMBEDDING_PROVIDER_DEFAULT_MODEL,
+  EMBEDDING_MODEL_DIMENSION,
+  type EmbeddingProvider,
+} from './lib/embedding/embedding-provider.js';
+export {
+  EMBEDDING_PORT,
+  EmbeddingUnavailableError,
+  type EmbeddingPort,
+  type EmbedInput,
+  type EmbedResult,
+} from './lib/embedding/embedding.port.js';
+export {
+  ACTIVE_EMBEDDING_PROVIDER_RESOLVER,
+  type ActiveEmbeddingProviderResolver,
+} from './lib/embedding/active-embedding-provider-resolver.js';
+export { OpenAiEmbeddingProvider } from './lib/embedding/openai-embedding.provider.js';
+
 export type { GenerateDraftInput } from './lib/dto/generate-draft-input.dto.js';
 export type { GenerateDraftResult } from './lib/dto/generate-draft-result.dto.js';
 export type { AiDraftEventView } from './lib/dto/ai-draft-event.view.js';

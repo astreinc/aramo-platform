@@ -20,6 +20,7 @@ import cookieParser from 'cookie-parser';
 import request from 'supertest';
 import { v7 as uuidv7 } from 'uuid';
 import {
+  ARAMO_POSTGRES_TEST_IMAGE,
   CommonModule,
   resolveIdentityMigrations,
   resolveAuthStorageMigrations,
@@ -88,7 +89,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     let refreshTokens: RefreshTokenService;
 
     beforeAll(async () => {
-      container = await new PostgreSqlContainer('postgres:17').start();
+      container = await new PostgreSqlContainer(ARAMO_POSTGRES_TEST_IMAGE).start();
       const url = container.getConnectionUri();
       const setup = new IdentityPrismaService(url);
       await setup.$connect();

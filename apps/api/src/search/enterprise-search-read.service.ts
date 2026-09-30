@@ -100,7 +100,12 @@ export class EnterpriseSearchReadService implements EnterpriseSearchPort {
 
   // Exact-signal hits precede lexical; within a tier, higher relevance first (directive §18).
   private orderHits(hits: SearchHit[]): SearchHit[] {
-    const tier = (h: SearchHit): number => (h.match.signal === 'exact' ? 0 : 1);
+    // Frozen three-band order (GS-2A): exact → lexical → semantic. Relevance orders only
+    // WITHIN a band; a band boundary always dominates the relevance weight. An exact hit
+    // outranks every lexical hit, and a lexical hit outranks every semantic hit, regardless
+    // of relevance magnitude.
+    const tier = (h: SearchHit): number =>
+      h.match.signal === 'exact' ? 0 : h.match.signal === 'lexical' ? 1 : 2;
     return [...hits].sort((a, b) => tier(a) - tier(b) || b.match.relevance - a.match.relevance);
   }
 }

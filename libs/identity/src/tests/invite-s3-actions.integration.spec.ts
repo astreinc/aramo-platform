@@ -6,7 +6,8 @@ import {
   PostgreSqlContainer,
   type StartedPostgreSqlContainer,
 } from '@testcontainers/postgresql';
-import { createAramoLogger } from '@aramo/common';
+import {
+  ARAMO_POSTGRES_TEST_IMAGE, createAramoLogger } from '@aramo/common';
 import type { MailerPort } from '@aramo/mailer';
 
 import { IdentityAuditRepository } from '../lib/audit/identity-audit.repository.js';
@@ -67,7 +68,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     const cognitoCalls: string[] = [];
 
     beforeAll(async () => {
-      container = await new PostgreSqlContainer('postgres:17').start();
+      container = await new PostgreSqlContainer(ARAMO_POSTGRES_TEST_IMAGE).start();
       const url = container.getConnectionUri();
 
       const setup = new PrismaService(url);

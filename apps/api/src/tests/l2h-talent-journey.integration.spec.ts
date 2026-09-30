@@ -5,7 +5,8 @@ import { resolve } from 'node:path';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import { Client } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { AramoError } from '@aramo/common';
+import {
+  ARAMO_POSTGRES_TEST_IMAGE, AramoError } from '@aramo/common';
 import { PipelineRepository, PipelinePrismaService } from '@aramo/pipeline';
 import { SubmittalRepository, PrismaService as SubmittalPrismaService } from '@aramo/submittal';
 import {
@@ -70,7 +71,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     const prismas: Array<{ $disconnect: () => Promise<void> }> = [];
 
     beforeAll(async () => {
-      container = await new PostgreSqlContainer('postgres:17').start();
+      container = await new PostgreSqlContainer(ARAMO_POSTGRES_TEST_IMAGE).start();
       const url = container.getConnectionUri();
       db = new Client({ connectionString: url });
       await db.connect();

@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
+import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
 import { RedisContainer, type StartedRedisContainer } from '@testcontainers/redis';
 import { Global, Module } from '@nestjs/common';
 import { Test, type TestingModule } from '@nestjs/testing';
@@ -65,7 +66,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     beforeAll(async () => {
       [redisContainer, pgContainer] = await Promise.all([
         new RedisContainer('redis:7').start(),
-        new PostgreSqlContainer('postgres:17').start(),
+        new PostgreSqlContainer(ARAMO_POSTGRES_TEST_IMAGE).start(),
       ]);
 
       const pgUrl = pgContainer.getConnectionUri();

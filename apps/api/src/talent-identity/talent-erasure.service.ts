@@ -103,6 +103,11 @@ const INVENTORY: ErasureStep[] = [
   { label: 'talent_trust."PortalDispute"', keyspace: 'evidence-set', where: `id IN (SELECT dispute_id FROM talent_trust."PortalDisputeWorkItem" WHERE subject_id = ANY($1::uuid[]))` },
   { label: 'talent_trust."ResolutionSubjectRef"', keyspace: 'subject', where: `subject_id = ANY($1::uuid[])` },
   { label: 'talent_trust."ResolutionSubject"', keyspace: 'subject', where: `id = ANY($1::uuid[])` }, // LAST trust row (parent)
+  // ---- Enterprise Search GS-2A semantic index (record keyspace) — cross-schema UUID ref to
+  //      talent_record.TalentRecord.id, NO FK (repo invariant). The embedding is a PII-derived
+  //      holder, so erasure reaches it EXPLICITLY here (deleted before the husk record; the dry-run
+  //      counts it) rather than via a cross-schema cascade this codebase does not use. ----
+  { label: 'talent_embedding."TalentEmbedding"', keyspace: 'record', where: `talent_record_id = ANY($1::uuid[])` },
   // ---- GROUP C the husk records (record keyspace) — cascades resume_text (S3) + provenance + contradiction ----
   { label: 'talent_record."TalentRecord"', keyspace: 'record', where: `id = ANY($1::uuid[])` },
 ];

@@ -24,6 +24,10 @@ import {
   RECONCILIATION_DRAIN_INTERVAL_MS,
 } from '../requisition-integration/reconciliation-drain.queue.constants.js';
 import {
+  TALENT_EMBEDDING_QUEUE_NAME,
+  TALENT_EMBEDDING_TICK_INTERVAL_MS,
+} from '../embedding/talent-embedding.queue.constants.js';
+import {
   OFFER_EXPIRY_QUEUE_NAME,
   OFFER_EXPIRY_INTERVAL_MS,
 } from '../offer/offer-expiry.queue.constants.js';
@@ -93,6 +97,17 @@ const SCHEDULES = [
     job_name: 'tick',
     job_id: 'resume-reindex-60s',
     repeat: { every: 60_000 },
+  },
+  // Enterprise Search GS-2A Slice-5b — the talent-embedding tick. Every 300s: reconcile (enqueue new
+  // live Talents lacking an embedding row) then drain the pending set (consent → projection → embed →
+  // persist). DARK by default (EMBEDDING_PROCESSING_ENABLED) even with Redis configured; silent
+  // without Redis (CI / local dev). No embedding is generated + no vector table is required until the
+  // PROD pgvector runtime is attested + the GS-2A migration applied.
+  {
+    queue_name: TALENT_EMBEDDING_QUEUE_NAME,
+    job_name: 'tick',
+    job_id: 'talent-embedding-300s',
+    repeat: { every: TALENT_EMBEDDING_TICK_INTERVAL_MS },
   },
   // SRC-2 PR-1 — the cold-ingest extraction sweep. Drains resolved arrivals whose
   // résumé still needs extraction (identity evidence for promotion). Every 60s,

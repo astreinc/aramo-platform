@@ -358,7 +358,11 @@ services:
         condition: service_healthy
 
   postgres:
-    image: postgres:17
+    # GS-2 P1 — desired image is pgvector-capable PG17. This is the REPOSITORY desired-state
+    # declaration only. ⚠ OPS PREREQUISITE — NOT YET ATTESTED: the running prod DB container
+    # must be recreated on this image (same PG17 major, same volume/data preserved) and prove
+    # `CREATE EXTENSION vector;` succeeds BEFORE any vector-requiring migration deploys.
+    image: pgvector/pgvector:pg17
     container_name: aramo-prod-postgres
     restart: unless-stopped
     environment:

@@ -730,6 +730,39 @@ export class TalentEvidenceRepository {
     });
   }
 
+  // Enterprise Search GS-2A — authoritative work-history rows for the Talent SEMANTIC-SOURCE
+  // projection (P3). Returns ONLY authoritative entries (is_authoritative = true) and ONLY the
+  // fields the compact recruiting-facts projection admits: role_title, employer_name, the DISTILLED
+  // experience_summary (sanitized downstream), the free-text location (coarse-normalized downstream),
+  // + start_date/id for deterministic ordering. It deliberately does NOT select description_text —
+  // raw résumé-derived free text is excluded from the semantic source with no fallback (P3 ruling).
+  async findAuthoritativeWorkHistoryForEmbedding(args: {
+    tenant_id: string;
+    talent_id: string;
+  }): Promise<
+    Array<{
+      id: string;
+      role_title: string;
+      employer_name: string;
+      experience_summary: string | null;
+      location: string | null;
+      start_date: Date | null;
+    }>
+  > {
+    return this.prisma.talentWorkHistoryEntry.findMany({
+      where: { tenant_id: args.tenant_id, talent_id: args.talent_id, is_authoritative: true },
+      select: {
+        id: true,
+        role_title: true,
+        employer_name: true,
+        experience_summary: true,
+        location: true,
+        start_date: true,
+      },
+      orderBy: [{ start_date: 'desc' }, { id: 'asc' }],
+    });
+  }
+
   // Gate-1 G1-B — exists/count guard for the examine endpoint's LAZY extraction
   // (run extraction only when the talent has NO declared skill evidence). The
   // idempotency guard is this exists-check, NOT an upsert: re-running extraction

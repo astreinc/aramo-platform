@@ -4,7 +4,8 @@ import { resolve } from 'node:path';
 
 import { type INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
-import { AramoExceptionFilter } from '@aramo/common';
+import {
+  ARAMO_POSTGRES_TEST_IMAGE, AramoExceptionFilter } from '@aramo/common';
 import { JwtAuthGuard } from '@aramo/auth';
 import { EntitlementGuard } from '@aramo/entitlement';
 import { DocumentsModule } from '@aramo/documents';
@@ -37,7 +38,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('DOC-1a documents 
   let app: INestApplication;
 
   beforeAll(async () => {
-    container = await new PostgreSqlContainer('postgres:17').start();
+    container = await new PostgreSqlContainer(ARAMO_POSTGRES_TEST_IMAGE).start();
     const url = container.getConnectionUri();
     process.env['DATABASE_URL'] = url;
     db = new Client({ connectionString: url });

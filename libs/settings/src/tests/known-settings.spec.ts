@@ -15,17 +15,19 @@ import {
 // Settings S4 adds the SECOND entry: `audit.financials_enabled` (boolean,
 // default false) — the GATE toggle for the auditor_with_financials grant.
 
-describe('KNOWN_SETTINGS — the closed-set registry (4 keys)', () => {
-  it('ships exactly the 4 known-keys (S2 + S4 + metrics.goals + TENANT-LLM-2 llm.active_provider)', () => {
+describe('KNOWN_SETTINGS — the closed-set registry (5 keys)', () => {
+  it('ships exactly the 5 known-keys (S2 + S4 + metrics.goals + llm.active_provider + GS-2 embedding.active_provider)', () => {
     expect([...Object.keys(KNOWN_SETTINGS)].sort()).toEqual([
       'audit.financials_enabled',
       'compensation.display_default',
+      'embedding.active_provider',
       'llm.active_provider',
       'metrics.goals',
     ]);
     expect([...KNOWN_SETTING_KEYS].sort()).toEqual([
       'audit.financials_enabled',
       'compensation.display_default',
+      'embedding.active_provider',
       'llm.active_provider',
       'metrics.goals',
     ]);
@@ -88,6 +90,26 @@ describe('KNOWN_SETTINGS — audit.financials_enabled (Settings S4 — the GATE 
     expect(definition.validate(undefined)).toBe(false);
     expect(definition.validate({})).toBe(false);
     expect(definition.validate([])).toBe(false);
+  });
+});
+
+describe('KNOWN_SETTINGS — embedding.active_provider (GS-2 — the wired embedding selector)', () => {
+  it('carries the default `openai` and is internal', () => {
+    const definition = KNOWN_SETTINGS['embedding.active_provider'];
+    expect(definition.key).toBe('embedding.active_provider');
+    expect(definition.default).toBe('openai');
+    expect(definition.internal).toBe(true);
+  });
+
+  it('validator accepts ONLY the wired embedding set (openai) — independent of llm.active_provider', () => {
+    const definition = KNOWN_SETTINGS['embedding.active_provider'];
+    expect(definition.validate('openai')).toBe(true);
+    // 'anthropic' is a valid CHAT provider but NOT a wired embedding provider — the two selectors
+    // are independent.
+    expect(definition.validate('anthropic')).toBe(false);
+    expect(definition.validate('azure')).toBe(false);
+    expect(definition.validate('')).toBe(false);
+    expect(definition.validate(null)).toBe(false);
   });
 });
 

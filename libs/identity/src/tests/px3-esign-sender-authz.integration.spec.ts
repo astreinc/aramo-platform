@@ -3,7 +3,8 @@ import { resolve } from 'node:path';
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
-import { resolveIdentityMigrations } from '@aramo/common';
+import {
+  ARAMO_POSTGRES_TEST_IMAGE, resolveIdentityMigrations } from '@aramo/common';
 
 import { PrismaService } from '../lib/prisma/prisma.service.js';
 import { RoleRepository } from '../lib/role.repository.js';
@@ -51,7 +52,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('PX-V1 PX-3 esign_
   }
 
   beforeAll(async () => {
-    container = await new PostgreSqlContainer('postgres:17').start();
+    container = await new PostgreSqlContainer(ARAMO_POSTGRES_TEST_IMAGE).start();
     const url = container.getConnectionUri();
     const setup = new PrismaService(url);
     await setup.$connect();

@@ -225,6 +225,7 @@ export default defineConfig({
       // ResetBatch store. Mirrors the tsconfig.base.json @aramo/tenant-reset
       // alias so vitest runtime resolves the apps/api integration spec import.
       '@aramo/tenant-reset': resolve(root, 'libs/tenant-reset/src/index.ts'),
+      '@aramo/talent-embedding': resolve(root, 'libs/talent-embedding/src/index.ts'),
       '@aramo/talent-evidence': resolve(root, 'libs/talent-evidence/src/index.ts'),
       // Gate-1 G1-A — talent-extraction (declared-evidence production; 3rd
       // ai-draft consumer per ADR-0015 v1.3).
