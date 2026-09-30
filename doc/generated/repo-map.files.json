@@ -2263,6 +2263,7 @@
     "libs/conversation-transcript/src/tests/transcript-state-machine.spec.ts",
     "libs/conversation-transcript/tsconfig.json",
     "libs/conversation-transcript/tsconfig.lib.json",
+    "libs/conversation-transcript/vitest.config.ts",
     "libs/documents-contracts/project.json",
     "libs/documents-contracts/src/index.ts",
     "libs/documents-contracts/src/lib/signature-provider.port.ts",
