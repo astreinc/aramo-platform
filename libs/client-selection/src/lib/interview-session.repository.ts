@@ -254,6 +254,38 @@ export class InterviewSessionRepository {
     return row === null ? null : projectView(row);
   }
 
+  // My-Desk "Today's interviews" read — sessions scheduled within a half-open
+  // [from, to) instant window for the caller's visible requisitions, earliest
+  // first. Narrow by design: a bounded time window + the already-resolved
+  // visibility set (null = see-all short-circuit; empty set = nothing visible).
+  // A read projection only. The caller re-applies the exact civil-day filter and
+  // any state filtering (this returns all states in the window).
+  async listScheduledInWindowForRequisitions(args: {
+    tenant_id: string;
+    from: Date;
+    to: Date;
+    visible_requisition_ids: ReadonlySet<string> | null;
+    limit?: number;
+  }): Promise<InterviewSessionView[]> {
+    const limit = Math.min(args.limit ?? 100, 200);
+    const where: Record<string, unknown> = {
+      tenant_id: args.tenant_id,
+      scheduled_at: { gte: args.from, lt: args.to },
+    };
+    if (args.visible_requisition_ids !== null) {
+      if (args.visible_requisition_ids.size === 0) return [];
+      where['requisition_id'] = {
+        in: Array.from(args.visible_requisition_ids),
+      };
+    }
+    const rows = (await this.prisma.interviewSession.findMany({
+      where,
+      orderBy: { scheduled_at: 'asc' },
+      take: limit,
+    })) as SessionRow[];
+    return rows.map(projectView);
+  }
+
   // Drive a legal, CAS-guarded session transition. Concealment (404) + CAS (409) +
   // legality (422) precede the atomic tx (UPDATE + event + outbox). RESCHEDULED also
   // sets the new scheduled_at. There is NO no-op short-circuit: the only same-state

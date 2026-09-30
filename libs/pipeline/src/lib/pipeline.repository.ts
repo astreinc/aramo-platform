@@ -1373,6 +1373,39 @@ export class PipelineRepository {
     }));
   }
 
+  // Active (non-terminal) requisition ids per talent, for the bounded set of
+  // talent ids a caller already holds (e.g. My Desk task owners). DISTINCT so a
+  // re-entered episode does not duplicate the (talent, requisition) pair. Used
+  // to resolve a talent's unambiguous single active requisition — never a broad
+  // pipeline scan. Visibility: `null` = see-all; empty set = nothing visible.
+  async listActiveRequisitionsByTalent(args: {
+    tenant_id: string;
+    talent_record_ids: readonly string[];
+    visible_requisition_ids: ReadonlySet<string> | null;
+  }): Promise<Array<{ talent_record_id: string; requisition_id: string }>> {
+    if (args.talent_record_ids.length === 0) return [];
+    const where: Record<string, unknown> = {
+      tenant_id: args.tenant_id,
+      talent_record_id: { in: [...new Set(args.talent_record_ids)] },
+      status: { in: [...ACTIVE_FLOW_STAGES] },
+    };
+    if (args.visible_requisition_ids !== null) {
+      if (args.visible_requisition_ids.size === 0) return [];
+      where['requisition_id'] = {
+        in: Array.from(args.visible_requisition_ids),
+      };
+    }
+    const rows = await this.prisma.pipeline.findMany({
+      where,
+      select: { talent_record_id: true, requisition_id: true },
+      distinct: ['talent_record_id', 'requisition_id'],
+    });
+    return rows.map((r) => ({
+      talent_record_id: r.talent_record_id as string,
+      requisition_id: r.requisition_id as string,
+    }));
+  }
+
   // Per-company placements — list pipeline rows in a status set for a set of
   // requisitions (reporting folds them to the company). Returns the minimal
   // projection the placements surface needs. Empty id list short-circuits.

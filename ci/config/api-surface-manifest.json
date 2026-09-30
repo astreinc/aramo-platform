@@ -40,6 +40,7 @@
     "apps/api/src/engagement/engagement.controller.ts": "AP",
     "apps/api/src/microsoft/microsoft-authorization.controller.ts": "AP",
     "apps/api/src/microsoft/microsoft-callback.controller.ts": "AP",
+    "apps/api/src/my-desk/my-desk.controller.ts": "AP",
     "apps/api/src/offer-document/offer-document.controller.ts": "AP",
     "apps/api/src/offer/offer.controller.ts": "AP",
     "apps/api/src/pipeline-integration/pipeline-provider-mapping-admin.controller.ts": "AP",

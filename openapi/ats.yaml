@@ -188,6 +188,46 @@ paths:
           $ref: 'common.yaml#/components/responses/NotFound'
       security:
         - BearerAuth: []
+  # ── My Desk Command Center (read projection) ──
+  # GET /v1/my-desk — the recruiter landing composition. A READ PROJECTION over
+  # authoritative domain state: never a source of workflow truth, never mutating.
+  # One visibility-scoped payload; the FE derives every card and tab count from the
+  # returned arrays. Reuses the `dashboard:read` scope + `ats` capability (My Desk
+  # IS the dashboard landing). Tenant + visibility are resolved server-side.
+  /v1/my-desk:
+    get:
+      operationId: getMyDesk
+      summary: The recruiter My Desk command-center read projection.
+      description: |
+        Composes the signed-in recruiter's desk from authoritative domain state: a
+        priority queue (submittal-ready / RTR-required / voice-required / follow-up
+        / task work kinds, urgency-ordered), today's interviews, items awaiting a
+        client decision, exceptions, and the recruiter's requisitions with pipeline
+        / qualified / downstream counts. READ-ONLY: no mutation, no snooze, no
+        action execution. Requires the `dashboard:read` scope and the `ats`
+        capability; visibility is site- and requisition-scoped and resolved
+        server-side (no client-supplied tenant/user/requisition id is trusted).
+      parameters:
+        - name: site_id
+          in: query
+          required: false
+          description: Optional site scope for a multi-site principal (server-validated against the principal's sites).
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: The composed desk projection.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MyDeskView'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+      security:
+        - BearerAuth: []
   # ── Pipeline Accidental-Add Correction Directive v1.0 (VOID) ──
   # Remove a Talent from a requisition when added by mistake — an administrative
   # correction, NOT a recruiting disposition and NOT a delete. Governed + strict:
@@ -6982,6 +7022,206 @@ components:
           items: { $ref: '#/components/schemas/BoardColumnView' }
         closed: { $ref: '#/components/schemas/BoardClosedSummary' }
         total_active: { type: integer }
+    MyDeskView:
+      type: object
+      additionalProperties: false
+      description: |
+        The recruiter command-center read projection (My Desk). Every card and tab
+        count on the FE is derived from these arrays — there is no summary field to
+        drift. `server_date` and each item's `urgency` are computed server-side
+        against the app timezone; the FE renders them, it does not re-derive them.
+      required:
+        - generated_at
+        - server_date
+        - priority_items
+        - interviews_today
+        - awaiting_client
+        - exceptions
+        - requisitions
+      properties:
+        generated_at: { type: string, format: date-time }
+        server_date:
+          type: string
+          description: The server-side calendar date in the app timezone (YYYY-MM-DD), used for greeting/aging without a browser tz shift.
+        priority_items:
+          type: array
+          items: { $ref: '#/components/schemas/DeskPriorityItemView' }
+        interviews_today:
+          type: array
+          items: { $ref: '#/components/schemas/DeskInterviewView' }
+        awaiting_client:
+          type: array
+          items: { $ref: '#/components/schemas/DeskAwaitingClientView' }
+        exceptions:
+          type: array
+          items: { $ref: '#/components/schemas/DeskExceptionView' }
+        requisitions:
+          type: array
+          items: { $ref: '#/components/schemas/DeskRequisitionRowView' }
+    DeskActionView:
+      type: object
+      additionalProperties: false
+      description: A bounded governed next action for a desk item; `href` is a navigable target into the owning flow, or null when there is no direct target.
+      required: [kind, label, href]
+      properties:
+        kind:
+          type: string
+          enum:
+            - log_call
+            - log_voice_call
+            - reply_client
+            - send_rtr
+            - send_reminder
+            - submit_to_client
+            - start_qualification
+            - update_talent
+            - open_task
+            - review_advisory
+            - update_email
+        label: { type: string }
+        href: { type: [string, 'null'] }
+    DeskPriorityItemView:
+      type: object
+      additionalProperties: false
+      description: One row in the urgency-ordered priority queue. The `kind` names the derived work type; `reason` carries the FACTS behind the row, never a verdict.
+      required:
+        - id
+        - kind
+        - talent_id
+        - talent_name
+        - requisition_id
+        - requisition_label
+        - label
+        - reason
+        - due_at
+        - urgency
+        - primary_action
+      properties:
+        id: { type: string }
+        kind:
+          type: string
+          enum: [follow_up, client, rtr, submittal, engagement, task]
+        talent_id: { type: [string, 'null'], format: uuid }
+        talent_name: { type: [string, 'null'] }
+        requisition_id: { type: [string, 'null'], format: uuid }
+        requisition_label: { type: [string, 'null'] }
+        label: { type: string }
+        reason: { type: string }
+        due_at: { type: [string, 'null'], format: date-time }
+        urgency: { type: string, enum: [overdue, today, upcoming] }
+        primary_action:
+          oneOf:
+            - $ref: '#/components/schemas/DeskActionView'
+            - type: 'null'
+    DeskInterviewView:
+      type: object
+      additionalProperties: false
+      description: An interview scheduled today for one of the recruiter's requisitions.
+      required:
+        - id
+        - scheduled_at
+        - talent_id
+        - talent_name
+        - requisition_id
+        - requisition_label
+        - interview_type
+        - round
+        - confirmation
+      properties:
+        id: { type: string }
+        scheduled_at: { type: string, format: date-time }
+        talent_id: { type: [string, 'null'], format: uuid }
+        talent_name: { type: [string, 'null'] }
+        requisition_id: { type: [string, 'null'], format: uuid }
+        requisition_label: { type: [string, 'null'] }
+        interview_type: { type: string }
+        round: { type: [integer, 'null'] }
+        confirmation:
+          type: string
+          enum: [confirmed, talent_not_confirmed, unknown]
+    DeskExceptionView:
+      type: object
+      additionalProperties: false
+      description: A blocked / at-risk item surfaced on the right rail; `owned_by_me` distinguishes the recruiter's own items from those owned elsewhere.
+      required:
+        - id
+        - kind
+        - severity
+        - title
+        - body
+        - talent_id
+        - requisition_id
+        - owned_by_me
+        - owner_label
+        - primary_action
+      properties:
+        id: { type: string }
+        kind:
+          type: string
+          enum: [pre_start_blocked, offer_expiring, identity_advisory]
+        severity: { type: string, enum: [high, medium] }
+        title: { type: string }
+        body: { type: string }
+        talent_id: { type: [string, 'null'], format: uuid }
+        requisition_id: { type: [string, 'null'], format: uuid }
+        owned_by_me: { type: boolean }
+        owner_label: { type: [string, 'null'] }
+        primary_action:
+          oneOf:
+            - $ref: '#/components/schemas/DeskActionView'
+            - type: 'null'
+    DeskAwaitingClientView:
+      type: object
+      additionalProperties: false
+      description: A talent awaiting a client decision, with the aging (`waiting_days`) since it entered client review.
+      required:
+        - id
+        - talent_id
+        - talent_name
+        - requisition_id
+        - requisition_label
+        - reason
+        - waiting_days
+        - since
+      properties:
+        id: { type: string }
+        talent_id: { type: [string, 'null'], format: uuid }
+        talent_name: { type: [string, 'null'] }
+        requisition_id: { type: [string, 'null'], format: uuid }
+        requisition_label: { type: [string, 'null'] }
+        reason: { type: string }
+        waiting_days: { type: integer }
+        since: { type: string, format: date-time }
+    DeskRequisitionRowView:
+      type: object
+      additionalProperties: false
+      description: One of the recruiter's requisitions with its funnel counts (pipeline / qualified / with-client / offer / started) and a short signal string.
+      required:
+        - id
+        - code
+        - title
+        - client_name
+        - days_open
+        - status
+        - pipeline_count
+        - qualified_count
+        - with_client_count
+        - offer_count
+        - started_count
+        - signal
+      properties:
+        id: { type: string, format: uuid }
+        code: { type: string }
+        title: { type: string }
+        client_name: { type: [string, 'null'] }
+        days_open: { type: integer }
+        status: { type: string }
+        pipeline_count: { type: integer }
+        qualified_count: { type: integer }
+        with_client_count: { type: integer }
+        offer_count: { type: integer }
+        started_count: { type: integer }
+        signal: { type: string }
     CommunicationCapabilities:
       type: object
       additionalProperties: false

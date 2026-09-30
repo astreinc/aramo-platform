@@ -17,6 +17,14 @@ export {
   deriveWindowStatus,
   evaluateEligibility,
 } from './lib/submittal-eligibility.port.js';
+
+// The neutral submittal-readiness seam (composes the port; copies no rules). The
+// shared decision authority for the Requisition Talent Board AND My Desk.
+export { deriveSubmittalReadiness } from './lib/submittal-readiness.js';
+export type {
+  SubmittalEngagementApplicability,
+  SubmittalReadinessResult,
+} from './lib/submittal-readiness.js';
 export type {
   EligibilityDenyCode,
   EngagementEligibilityDenyCode,
