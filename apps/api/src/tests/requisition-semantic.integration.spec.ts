@@ -76,6 +76,7 @@ const REQ_ASSIGNED = uuidv7(); // hidden company but actor assigned
 const REQ_HIDDEN = uuidv7(); // hidden company, no assignment → absent
 const REQ_CLOSED = uuidv7(); // visible company, TERMINAL (closed) → eligible
 const REQ_TENANT_B = uuidv7(); // other tenant → absent
+const REQ_NOEMB = uuidv7(); // tenant A, live, NO embedding row → the reconcile anti-join target
 
 function unit(hot: number): number[] {
   const v = new Array<number>(1536).fill(0);
@@ -93,6 +94,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     let container: StartedPostgreSqlContainer;
     let prisma: RequisitionPrismaService;
     let svc: EnterpriseSearchReadService;
+    let embeddingRepo: RequisitionEmbeddingRepository;
 
     beforeAll(async () => {
       container = await new PostgreSqlContainer(ARAMO_POSTGRES_TEST_IMAGE).start();
@@ -107,7 +109,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       prisma = new RequisitionPrismaService(url);
       await prisma.$connect();
       const repo = new RequisitionRepository(prisma, {} as never, {} as never, {} as never, {} as never);
-      const embeddingRepo = new RequisitionEmbeddingRepository(prisma);
+      embeddingRepo = new RequisitionEmbeddingRepository(prisma);
 
       let n = 1000;
       const seed = async (id: string, tenant: string, company: string, status: 'open' | 'closed'): Promise<void> => {
@@ -131,6 +133,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Direct assignment for the actor on the hidden-company req.
       await prisma.requisitionAssignment.create({
         data: { id: uuidv7(), tenant_id: TENANT_A, requisition_id: REQ_ASSIGNED, user_id: ACTOR },
+      });
+      // A live requisition with NO embedding row — the reconcile anti-join target (no saveReady).
+      await prisma.requisition.create({
+        data: { id: REQ_NOEMB, tenant_id: TENANT_A, title: 'Needs embedding', requisition_number: 2000, company_id: COMPANY_VISIBLE, status: 'open' },
       });
 
       svc = new EnterpriseSearchReadService([
@@ -182,6 +188,18 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const ids = await reqHits('zzz nomatch semantic only', authority({ see_all_requisition: true }));
       expect(ids).toEqual(expect.arrayContaining([REQ_VISIBLE, REQ_ASSIGNED, REQ_HIDDEN, REQ_CLOSED]));
       expect(ids).not.toContain(REQ_TENANT_B);
+    });
+
+    it('reconcile anti-join returns ONLY requisitions lacking an embedding row (churn-free)', async () => {
+      const refs = await embeddingRepo.listReqsMissingEmbedding(100);
+      const ids = refs.map((r) => r.requisition_id);
+      expect(ids).toContain(REQ_NOEMB);
+      expect(ids).not.toContain(REQ_VISIBLE); // already has a ready embedding
+      expect(ids).not.toContain(REQ_CLOSED);
+      // Enqueue it; it becomes pending, the embedded ones are untouched.
+      await embeddingRepo.enqueue({ tenant_id: TENANT_A, requisition_id: REQ_NOEMB });
+      expect((await embeddingRepo.getDescriptor({ tenant_id: TENANT_A, requisition_id: REQ_NOEMB }))?.status).toBe('pending');
+      expect((await embeddingRepo.getDescriptor({ tenant_id: TENANT_A, requisition_id: REQ_VISIBLE }))?.status).toBe('ready');
     });
 
     it('marks the semantic hits with signal=semantic', async () => {
