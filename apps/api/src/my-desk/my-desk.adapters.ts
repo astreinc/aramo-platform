@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { ClientTalentRestrictionRepository } from '@aramo/client-talent-restriction';
 import {
   ClientSelectionProcessRepository,
   InterviewSessionRepository,
@@ -7,8 +8,17 @@ import { CompanyRepository } from '@aramo/company';
 import { OfferRepository, PlacementRepository } from '@aramo/placement';
 import { ACTIVE_FLOW_STAGES, PipelineRepository } from '@aramo/pipeline';
 import { RequisitionRepository } from '@aramo/requisition';
+import { SubmittalRepository } from '@aramo/submittal';
+import {
+  RequisitionSubmittalEligibilityReader,
+  deriveSubmittalReadiness,
+  type SubmittalPolicyInputs,
+} from '@aramo/submittal-eligibility';
 import { TalentRecordRepository } from '@aramo/talent-record';
 import { TaskRepository } from '@aramo/task';
+
+import { DocumentReadinessGate } from '../rtr/document-readiness.gate.js';
+import { EngagementGateService } from '../engagement/engagement-gate.service.js';
 
 import type {
   DeskActorContext,
@@ -17,6 +27,7 @@ import type {
   DeskDayWindow,
   DeskInterviewRow,
   DeskOfferRow,
+  DeskReadinessRow,
   DeskRequisitionCounts,
   DeskRequisitionRow,
   DeskTaskOwnerType,
@@ -44,6 +55,12 @@ export class MyDeskReadAdapter implements MyDeskReadPort {
     private readonly offers: OfferRepository,
     private readonly talent: TalentRecordRepository,
     private readonly companies: CompanyRepository,
+    // Submittal-readiness authorities (reused, never re-implemented).
+    private readonly eligibilityReader: RequisitionSubmittalEligibilityReader,
+    private readonly documentReadiness: DocumentReadinessGate,
+    private readonly restriction: ClientTalentRestrictionRepository,
+    private readonly engagement: EngagementGateService,
+    private readonly submittals: SubmittalRepository,
   ) {}
 
   async listMyTasks(ctx: DeskActorContext): Promise<readonly DeskTaskRow[]> {
@@ -158,6 +175,180 @@ export class MyDeskReadAdapter implements MyDeskReadPort {
       out.set(r.talent_record_id, list);
     }
     return out;
+  }
+
+  async listQualifiedReadiness(
+    ctx: DeskActorContext,
+    requisitions: readonly { id: string; company_id: string }[],
+  ): Promise<readonly DeskReadinessRow[]> {
+    if (requisitions.length === 0) return [];
+    const reqIds = requisitions.map((r) => r.id);
+    const companyByReq = new Map(requisitions.map((r) => [r.id, r.company_id]));
+
+    // Enumerate the QUALIFIED (talent, requisition) pairs across the visible
+    // reqs. NOTE: bounded by a 500-row ceiling — a very wide desk truncates
+    // here (accepted; the submit transaction remains authoritative regardless).
+    const qualified = await this.pipelines.listByRequisitionsAndStatus({
+      tenant_id: ctx.tenant_id,
+      requisition_ids: reqIds,
+      statuses: ['qualified'],
+      limit: 500,
+    });
+    const talentsByReq = new Map<string, string[]>();
+    for (const q of qualified) {
+      const list = talentsByReq.get(q.requisition_id) ?? [];
+      list.push(q.talent_record_id);
+      talentsByReq.set(q.requisition_id, list);
+    }
+    if (talentsByReq.size === 0) return [];
+
+    // Policy inputs are a single set-read across all requisitions.
+    const policyByReq =
+      await this.eligibilityReader.loadPolicyInputsByRequisitionIds(
+        ctx.tenant_id,
+        reqIds,
+      );
+
+    // Fan out the per-requisition readiness composition (each requisition's
+    // reads are batched over its qualified talents; readReadiness is issued only
+    // for policy_present talents).
+    const now = new Date();
+    const perReq = await Promise.all(
+      [...talentsByReq.entries()].map(([reqId, talentIds]) => {
+        const policy = policyByReq.get(reqId);
+        if (policy === undefined) {
+          return Promise.resolve([] as DeskReadinessRow[]);
+        }
+        return this.readinessForRequisition(
+          ctx,
+          reqId,
+          talentIds,
+          companyByReq.get(reqId) ?? null,
+          policy,
+          now,
+        );
+      }),
+    );
+    return perReq.flat();
+  }
+
+  private async readinessForRequisition(
+    ctx: DeskActorContext,
+    requisition_id: string,
+    talent_ids: readonly string[],
+    company_id: string | null,
+    policy: { inputs: SubmittalPolicyInputs; consumed_count: number },
+    now: Date,
+  ): Promise<DeskReadinessRow[]> {
+    const [rtrByTalent, restrictedSet, engagement, resumeRows, submittalRows] =
+      await Promise.all([
+        this.documentReadiness.assessMany({
+          tenant_id: ctx.tenant_id,
+          requisition_id,
+          talent_ids: [...talent_ids],
+        }),
+        company_id === null
+          ? Promise.resolve(new Set<string>())
+          : this.restriction.findActiveRestrictedTalentIds({
+              tenant_id: ctx.tenant_id,
+              client_company_id: company_id,
+              talent_record_ids: [...talent_ids],
+              now,
+            }),
+        this.engagement.resolveApplicability({
+          tenant_id: ctx.tenant_id,
+          company_id,
+          requisition_id,
+        }),
+        this.pipelines.listCurrentRequisitionResumes({
+          tenant_id: ctx.tenant_id,
+          requisition_id,
+          talent_record_ids: [...talent_ids],
+        }),
+        this.submittals.listByRequisitionForBoard({
+          tenant_id: ctx.tenant_id,
+          requisition_id,
+          visible_requisition_ids: ctx.visible_requisition_ids,
+        }),
+      ]);
+    const submittalByTalent = new Map(submittalRows.map((s) => [s.talent_id, s]));
+
+    // Per-grain engagement truth — issued ONLY for policy_present (the batch
+    // applicability cannot evaluate per-talent evidence), batched together.
+    const readinessByTalent = new Map<
+      string,
+      Awaited<ReturnType<EngagementGateService['readReadiness']>>
+    >();
+    if (engagement === 'policy_present') {
+      const results = await Promise.all(
+        talent_ids.map((talent_id) =>
+          this.engagement.readReadiness({
+            tenant_id: ctx.tenant_id,
+            talent_id,
+            requisition_id,
+            company_id,
+          }),
+        ),
+      );
+      talent_ids.forEach((talent_id, i) => {
+        const r = results[i];
+        if (r !== undefined) readinessByTalent.set(talent_id, r);
+      });
+    }
+
+    const rows: DeskReadinessRow[] = [];
+    for (const talent_id of talent_ids) {
+      const rtr_verdict = rtrByTalent.get(talent_id) ?? null;
+      const restriction_active = restrictedSet.has(talent_id);
+      const submittalRow = submittalByTalent.get(talent_id) ?? null;
+      const resume_selected =
+        (submittalRow?.resume_edition_id ?? null) !== null ||
+        resumeRows.get(talent_id) !== undefined;
+      const readiness = deriveSubmittalReadiness({
+        policy,
+        rtr_verdict,
+        restriction_active,
+        engagement,
+        resume_selected,
+        now,
+      });
+      // RTR is unmet for this pair (independent of which gate the port reports
+      // first) — read the document verdict directly.
+      const rtr_required = rtr_verdict !== null && !rtr_verdict.satisfied;
+      let submittal_ready: boolean;
+      let voice_required = false;
+      if (engagement === 'policy_present') {
+        // The batch band is conservatively UNAVAILABLE; the per-grain verdict is
+        // the truth for both submittal-ready and the voice predicate.
+        const rr = readinessByTalent.get(talent_id);
+        const voice = rr?.results.find((x) => x.channel === 'voice');
+        const email = rr?.results.find((x) => x.channel === 'email');
+        voice_required =
+          voice !== undefined &&
+          voice.required &&
+          (voice.status === 'missing' ||
+            voice.status === 'insufficient_strength') &&
+          email !== undefined &&
+          email.status === 'satisfied';
+        submittal_ready =
+          rr !== undefined &&
+          rr.satisfied &&
+          readiness.deny === null &&
+          !readiness.resume_missing;
+      } else {
+        submittal_ready = readiness.band === 'ready_to_submit';
+      }
+      if (submittal_ready || rtr_required || voice_required) {
+        rows.push({
+          talent_id,
+          requisition_id,
+          submittal_ready,
+          rtr_required,
+          voice_required,
+        });
+      }
+    }
+    return rows;
   }
 
   async listInterviewsInWindow(

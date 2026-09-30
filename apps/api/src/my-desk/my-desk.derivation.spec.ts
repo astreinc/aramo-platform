@@ -108,9 +108,10 @@ describe('comparePriorityItems (deterministic explainable order, §13)', () => {
     id: string,
     urgency: DeskUrgency,
     due_at: string | null,
+    kind: DeskPriorityItemView['kind'] = 'task',
   ): DeskPriorityItemView => ({
     id,
-    kind: 'task',
+    kind,
     talent_id: null,
     talent_name: null,
     requisition_id: null,
@@ -145,5 +146,21 @@ describe('comparePriorityItems (deterministic explainable order, §13)', () => {
       .sort(comparePriorityItems)
       .map((i) => i.id);
     expect(sorted).toEqual(['a', 'm', 'y', 'z']);
+  });
+
+  it('within a section, kind precedence (submittal>rtr>engagement>follow_up>task) outranks due time', () => {
+    // A due task would sort before a null-due item on due alone; kind precedence
+    // must place the derived actionable work first regardless.
+    const sorted = [
+      item('t', 'today', '2026-09-29T08:00:00Z', 'task'),
+      item('v', 'today', null, 'engagement'),
+      item('s', 'today', null, 'submittal'),
+      item('f', 'today', '2026-09-29T07:00:00Z', 'follow_up'),
+      item('r', 'today', null, 'rtr'),
+    ]
+      .slice()
+      .sort(comparePriorityItems)
+      .map((i) => i.id);
+    expect(sorted).toEqual(['s', 'r', 'v', 'f', 't']);
   });
 });

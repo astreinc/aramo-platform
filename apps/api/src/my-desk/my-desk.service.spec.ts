@@ -37,6 +37,7 @@ function fakePort(overrides: Partial<MyDeskReadPort> = {}): MyDeskReadPort {
     listMyRequisitions: async () => [],
     countsForRequisitions: async () => new Map(),
     activeRequisitionsByTalent: async () => new Map(),
+    listQualifiedReadiness: async () => [],
     listInterviewsInWindow: async () => [],
     listAwaitingClient: async () => [],
     listBlockedPlacements: async () => [],
@@ -312,5 +313,124 @@ describe('MyDeskService.compose — exceptions', () => {
       severity: 'medium',
       kind: 'offer_expiring',
     });
+  });
+});
+
+describe('MyDeskService.compose — domain-derived work kinds', () => {
+  const REQS = [reqRow({ id: 'req-1', requisition_number: 1001 })];
+  const readiness = (
+    over: Partial<import('./my-desk.ports.js').DeskReadinessRow> & {
+      talent_id: string;
+    },
+  ) => ({
+    talent_id: over.talent_id,
+    requisition_id: over.requisition_id ?? 'req-1',
+    submittal_ready: over.submittal_ready ?? false,
+    rtr_required: over.rtr_required ?? false,
+    voice_required: over.voice_required ?? false,
+  });
+
+  it('emits a submittal-ready item with the submit CTA into the existing flow', async () => {
+    const svc = new MyDeskService(
+      fakePort({
+        listMyRequisitions: async () => REQS,
+        listQualifiedReadiness: async () => [
+          readiness({ talent_id: 'tal-h', submittal_ready: true }),
+        ],
+        resolveTalentNames: async () => new Map([['tal-h', 'Hannah Kim']]),
+      }),
+    );
+    const item = (await svc.compose(CTX, NOW, TZ)).priority_items.find(
+      (i) => i.kind === 'submittal',
+    )!;
+    expect(item.label).toBe('Hannah Kim');
+    expect(item.requisition_label).toBe('REQ-1001');
+    expect(item.reason).toMatch(/ready to submit/i);
+    expect(item.primary_action).toEqual({
+      kind: 'submit_to_client',
+      label: 'Submit to client',
+      href: '/talent/tal-h/submittal/req-1',
+    });
+  });
+
+  it('emits an RTR-required item with the Send RTR CTA', async () => {
+    const svc = new MyDeskService(
+      fakePort({
+        listMyRequisitions: async () => REQS,
+        listQualifiedReadiness: async () => [
+          readiness({ talent_id: 'tal-m', rtr_required: true }),
+        ],
+        resolveTalentNames: async () => new Map([['tal-m', 'Marcus Lee']]),
+      }),
+    );
+    const item = (await svc.compose(CTX, NOW, TZ)).priority_items.find(
+      (i) => i.kind === 'rtr',
+    )!;
+    expect(item.primary_action?.kind).toBe('send_rtr');
+    expect(item.primary_action?.href).toBe('/talent/tal-m/submittal/req-1');
+  });
+
+  it('emits a voice-required engagement item with the Log voice call CTA', async () => {
+    const svc = new MyDeskService(
+      fakePort({
+        listMyRequisitions: async () => REQS,
+        listQualifiedReadiness: async () => [
+          readiness({ talent_id: 'tal-r', voice_required: true }),
+        ],
+        resolveTalentNames: async () => new Map([['tal-r', 'Ravi Shankar']]),
+      }),
+    );
+    const item = (await svc.compose(CTX, NOW, TZ)).priority_items.find(
+      (i) => i.kind === 'engagement',
+    )!;
+    expect(item.primary_action?.kind).toBe('log_voice_call');
+    expect(item.primary_action?.href).toBe('/talent/tal-r');
+  });
+
+  it('a fully-satisfied readiness row produces NO derived item (disappears when satisfied)', async () => {
+    const svc = new MyDeskService(
+      fakePort({
+        listMyRequisitions: async () => REQS,
+        listQualifiedReadiness: async () => [readiness({ talent_id: 'tal-ok' })],
+      }),
+    );
+    const view = await svc.compose(CTX, NOW, TZ);
+    expect(view.priority_items).toHaveLength(0);
+  });
+
+  it('a ready talent yields ONLY the submittal item (natural mutual exclusion, no duplicate)', async () => {
+    const svc = new MyDeskService(
+      fakePort({
+        listMyRequisitions: async () => REQS,
+        listQualifiedReadiness: async () => [
+          readiness({ talent_id: 'tal-h', submittal_ready: true }),
+        ],
+        resolveTalentNames: async () => new Map([['tal-h', 'Hannah Kim']]),
+      }),
+    );
+    const kinds = (await svc.compose(CTX, NOW, TZ)).priority_items
+      .filter((i) => i.talent_id === 'tal-h')
+      .map((i) => i.kind);
+    expect(kinds).toEqual(['submittal']);
+  });
+
+  it('orders derived work ahead of a due task within the same urgency section (precedence)', async () => {
+    const svc = new MyDeskService(
+      fakePort({
+        listMyTasks: async () => [
+          task({ id: 'tk', title: 'A task', type: 'admin', owner_type: 'requisition', owner_id: 'req-1', due_date: '2026-09-29T09:00:00Z' }),
+        ],
+        listMyRequisitions: async () => REQS,
+        listQualifiedReadiness: async () => [
+          readiness({ talent_id: 'tal-h', submittal_ready: true }),
+          readiness({ talent_id: 'tal-m', rtr_required: true }),
+        ],
+        resolveTalentNames: async () =>
+          new Map([['tal-h', 'Hannah Kim'], ['tal-m', 'Marcus Lee']]),
+      }),
+    );
+    const kinds = (await svc.compose(CTX, NOW, TZ)).priority_items.map((i) => i.kind);
+    // submittal > rtr > task, all 'today'.
+    expect(kinds).toEqual(['submittal', 'rtr', 'task']);
   });
 });

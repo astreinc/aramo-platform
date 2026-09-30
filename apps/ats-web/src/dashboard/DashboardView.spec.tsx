@@ -23,7 +23,7 @@ function makeDesk(overrides: Partial<MyDeskView> = {}): MyDeskView {
     server_date: '2026-09-29',
     priority_items: [
       { id: 'a', kind: 'rtr', talent_id: 't1', talent_name: 'Marcus Lee', requisition_id: 'r1', requisition_label: 'REQ-1001', label: 'Marcus Lee', reason: 'Qualified 4 days ago · RTR not sent.', due_at: '2026-09-27T12:00:00Z', urgency: 'overdue', primary_action: { kind: 'open_task', label: 'Open task', href: '/talent/t1' } },
-      { id: 'b', kind: 'submittal', talent_id: 't2', talent_name: 'Hannah Kim', requisition_id: 'r1', requisition_label: 'REQ-1001', label: 'Hannah Kim', reason: 'Ready to submit.', due_at: '2026-09-29T12:00:00Z', urgency: 'today', primary_action: { kind: 'open_task', label: 'Open task', href: '/talent/t2' } },
+      { id: 'b', kind: 'submittal', talent_id: 't2', talent_name: 'Hannah Kim', requisition_id: 'r1', requisition_label: 'REQ-1001', label: 'Hannah Kim', reason: 'Ready to submit — all Submittal Policy checks met.', due_at: null, urgency: 'today', primary_action: { kind: 'submit_to_client', label: 'Submit to client', href: '/talent/t2/submittal/r1' } },
       { id: 'c', kind: 'task', talent_id: null, talent_name: null, requisition_id: 'r2', requisition_label: 'REQ-1004', label: 'Send prep notes', reason: '', due_at: '2026-10-01T12:00:00Z', urgency: 'upcoming', primary_action: { kind: 'open_task', label: 'Open task', href: '/requisitions/r2' } },
     ],
     interviews_today: [
@@ -89,6 +89,18 @@ describe('DashboardView (My Desk)', () => {
     // the row's primary action is a navigable link to the owning entity
     const action = screen.getAllByRole('link', { name: 'Open task' })[0];
     expect(action).toHaveAttribute('href', '/talent/t1');
+  });
+
+  it('renders a domain-derived submittal-ready item with the Submit-to-client CTA routing into the submittal flow', async () => {
+    getMyDeskMock.mockResolvedValue(makeDesk());
+    renderDesk();
+    const submit = await screen.findByRole('link', { name: 'Submit to client' });
+    expect(submit).toHaveAttribute('href', '/talent/t2/submittal/r1');
+    // it renders under the person + the ready reason (FACTS, not a verdict).
+    expect(screen.getByText('Hannah Kim')).toBeInTheDocument();
+    expect(
+      screen.getByText('Ready to submit — all Submittal Policy checks met.'),
+    ).toBeInTheDocument();
   });
 
   it('filters the queue by tab (Submittals shows rtr+submittal, hides tasks)', async () => {

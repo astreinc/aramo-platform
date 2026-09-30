@@ -6,7 +6,11 @@
 // ordering comparator (directive §13), and the prototype's due-badge phrasing.
 // There is NO priority-ordinal number here (R10 / directive §40).
 
-import type { DeskPriorityItemView, DeskUrgency } from './dto/my-desk.view.js';
+import type {
+  DeskItemKind,
+  DeskPriorityItemView,
+  DeskUrgency,
+} from './dto/my-desk.view.js';
 
 const DAY_MS = 86_400_000;
 
@@ -89,15 +93,30 @@ const URGENCY_ORDER: Record<DeskUrgency, number> = {
   upcoming: 2,
 };
 
-// Deterministic, explainable order (directive §13): urgency section first, then
-// earliest due within a section (a null due sorts last), then a stable id
-// tie-break. No hidden ordinal — every position is reproducible from the fields.
+// Presentation precedence WITHIN an urgency section (Architect ruling): the
+// domain-derived actionable work is ordered ahead of generic follow-ups/tasks,
+// most-actionable first. Explicit + deterministic — no hidden ordinal.
+const KIND_PRECEDENCE: Record<DeskItemKind, number> = {
+  submittal: 0,
+  rtr: 1,
+  engagement: 2,
+  client: 3,
+  follow_up: 3,
+  task: 4,
+};
+
+// Deterministic, explainable order (directive §13, §9): urgency section first,
+// then the kind precedence, then earliest due within a section (a null due
+// sorts last), then a stable id tie-break. No hidden ordinal — every position
+// is reproducible from the fields.
 export function comparePriorityItems(
   a: DeskPriorityItemView,
   b: DeskPriorityItemView,
 ): number {
   const sectionDelta = URGENCY_ORDER[a.urgency] - URGENCY_ORDER[b.urgency];
   if (sectionDelta !== 0) return sectionDelta;
+  const kindDelta = KIND_PRECEDENCE[a.kind] - KIND_PRECEDENCE[b.kind];
+  if (kindDelta !== 0) return kindDelta;
   const da = a.due_at !== null ? Date.parse(a.due_at) : Number.POSITIVE_INFINITY;
   const db = b.due_at !== null ? Date.parse(b.due_at) : Number.POSITIVE_INFINITY;
   if (da !== db) return da - db;

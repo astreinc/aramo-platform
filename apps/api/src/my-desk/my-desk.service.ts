@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 
 import {
   agingDaysInTimeZone,
@@ -10,6 +10,7 @@ import {
   MY_DESK_READ_PORT,
   type DeskActorContext,
   type DeskInterviewRow,
+  type DeskReadinessRow,
   type DeskRequisitionCounts,
   type DeskTaskOwnerType,
   type DeskTaskRow,
@@ -69,6 +70,8 @@ function parseMs(iso: string | null): number | null {
 
 @Injectable()
 export class MyDeskService {
+  private readonly logger = new Logger(MyDeskService.name);
+
   constructor(
     @Inject(MY_DESK_READ_PORT) private readonly port: MyDeskReadPort,
   ) {}
@@ -113,7 +116,7 @@ export class MyDeskService {
         .map((t) => t.owner_id),
     );
 
-    const [counts, activeReqsByTalent] = await Promise.all([
+    const [counts, activeReqsByTalent, readinessRows] = await Promise.all([
       reqIds.length === 0
         ? (new Map<string, DeskRequisitionCounts>() as ReadonlyMap<
             string,
@@ -126,6 +129,27 @@ export class MyDeskService {
             readonly string[]
           >)
         : this.port.activeRequisitionsByTalent(ctx, taskTalentIds),
+      reqIds.length === 0
+        ? ([] as readonly DeskReadinessRow[])
+        : this.port
+            .listQualifiedReadiness(
+              ctx,
+              requisitions.map((r) => ({ id: r.id, company_id: r.company_id })),
+            )
+            // Section-level resilience (directive §28): the derived work kinds
+            // are a best-effort enrichment composed across several domains
+            // (incl. the Redis-backed engagement gate). If that heavier read
+            // fails, degrade to no derived items rather than failing the whole
+            // desk — the recruiter still sees tasks, counts, interviews,
+            // awaiting-client and exceptions.
+            .catch((err: unknown) => {
+              this.logger.warn(
+                `my-desk: qualified-readiness read failed, degrading derived kinds: ${String(
+                  err,
+                )}`,
+              );
+              return [] as readonly DeskReadinessRow[];
+            }),
     ]);
 
     // Task→requisition enrichment: adopt a requisition ONLY when the talent
@@ -164,17 +188,22 @@ export class MyDeskService {
       ...awaiting.map((w) => w.talent_id),
       ...blocked.map((b) => b.talent_record_id),
       ...expiringOffers.map((o) => o.talent_record_id),
+      ...readinessRows.map((r) => r.talent_id),
     ]);
     const [talentNames, companyNames] = await Promise.all([
       this.port.resolveTalentNames(ctx, talentIds),
       this.port.resolveCompanyNames(ctx, dedupe(requisitions.map((r) => r.company_id))),
     ]);
 
-    const priority_items = tasks
-      .map((t) =>
+    // The queue = task-derived items + domain-derived work items (submittal-
+    // ready / RTR-required / voice-required), ranked by the one deterministic
+    // comparator (urgency → kind precedence → due → id).
+    const priority_items = [
+      ...tasks.map((t) =>
         this.toPriorityItem(t, nowMs, timeZone, reqLabel, talentNames, talentToReq),
-      )
-      .sort(comparePriorityItems);
+      ),
+      ...toDerivedItems(readinessRows, reqLabel, talentNames),
+    ].sort(comparePriorityItems);
 
     const interviews_today = interviewsToday
       .map((iv) => this.toInterview(iv, reqLabel, talentNames))
@@ -360,6 +389,73 @@ function requisitionSignal(c: DeskRequisitionCounts): string {
   if (c.qualified > 0) return `${c.qualified} qualified`;
   if (c.pipeline > 0) return 'Sourcing — nobody qualified yet';
   return 'No pipeline yet';
+}
+
+// Map the per-(talent, requisition) readiness rows into domain-derived work
+// items. FACTS-only reason lines; each CTA enters an EXISTING owning-domain
+// route (the submittal flow / talent detail) — My Desk orchestrates, never
+// mutates. The three flags are naturally mutually exclusive with submittal_ready
+// (a ready talent has RTR + engagement satisfied), so no dedup rule is needed;
+// a not-ready talent may legitimately carry both an RTR and a voice item (two
+// distinct obligations). Item ids are stable + deterministic.
+function toDerivedItems(
+  rows: readonly DeskReadinessRow[],
+  reqLabel: ReadonlyMap<string, string>,
+  talentNames: ReadonlyMap<string, string>,
+): DeskPriorityItemView[] {
+  const items: DeskPriorityItemView[] = [];
+  for (const row of rows) {
+    const talentName = talentNames.get(row.talent_id) ?? null;
+    const base = {
+      talent_id: row.talent_id,
+      talent_name: talentName,
+      requisition_id: row.requisition_id,
+      requisition_label: reqLabel.get(row.requisition_id) ?? null,
+      label: talentName ?? 'Talent',
+      due_at: null,
+      urgency: 'today' as const,
+    };
+    if (row.submittal_ready) {
+      items.push({
+        ...base,
+        id: `submittal:${row.requisition_id}:${row.talent_id}`,
+        kind: 'submittal',
+        reason: 'Ready to submit — all Submittal Policy checks met.',
+        primary_action: {
+          kind: 'submit_to_client',
+          label: 'Submit to client',
+          href: `/talent/${row.talent_id}/submittal/${row.requisition_id}`,
+        },
+      });
+    }
+    if (row.rtr_required) {
+      items.push({
+        ...base,
+        id: `rtr:${row.requisition_id}:${row.talent_id}`,
+        kind: 'rtr',
+        reason: 'Qualified · Right to Represent not sent.',
+        primary_action: {
+          kind: 'send_rtr',
+          label: 'Send RTR',
+          href: `/talent/${row.talent_id}/submittal/${row.requisition_id}`,
+        },
+      });
+    }
+    if (row.voice_required) {
+      items.push({
+        ...base,
+        id: `voice:${row.requisition_id}:${row.talent_id}`,
+        kind: 'engagement',
+        reason: 'Email logged · voice engagement required before submittal.',
+        primary_action: {
+          kind: 'log_voice_call',
+          label: 'Log voice call',
+          href: `/talent/${row.talent_id}`,
+        },
+      });
+    }
+  }
+  return items;
 }
 
 function dedupe(ids: readonly string[]): string[] {

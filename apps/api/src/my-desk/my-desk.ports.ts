@@ -76,6 +76,25 @@ export interface DeskRequisitionRow {
   readonly is_hot: boolean;
 }
 
+// Per-(talent, requisition) submittal-readiness for a QUALIFIED-pipeline talent,
+// composed server-side from the SAME domain authorities the Requisition Talent
+// Board uses (the neutral deriveSubmittalReadiness seam + document/engagement
+// gates) — My Desk copies no eligibility policy. The three flags are naturally
+// mutually exclusive on the shared gates: `submittal_ready` requires RTR +
+// engagement satisfied, so a ready talent never also carries rtr/voice.
+export interface DeskReadinessRow {
+  readonly talent_id: string;
+  readonly requisition_id: string;
+  // Genuinely ready to submit (all applicable gates satisfied; the submit
+  // transaction re-checks authoritatively — this is a truthful preflight).
+  readonly submittal_ready: boolean;
+  // An RTR document requirement is unmet for this (talent, requisition).
+  readonly rtr_required: boolean;
+  // Voice engagement is required but unsatisfied while email is satisfied
+  // (per-grain readReadiness predicate).
+  readonly voice_required: boolean;
+}
+
 export interface DeskInterviewRow {
   readonly id: string;
   readonly scheduled_at: string;
@@ -137,6 +156,15 @@ export interface MyDeskReadPort {
     ctx: DeskActorContext,
     talent_ids: readonly string[],
   ): Promise<ReadonlyMap<string, readonly string[]>>;
+  // Submittal-readiness for every QUALIFIED-pipeline talent across the caller's
+  // visible requisitions (each carrying its company_id for the engagement/
+  // restriction reads). Composes the shared readiness authorities per
+  // requisition over the qualified talents (bounded; readReadiness fanned out
+  // only for policy_present talents).
+  listQualifiedReadiness(
+    ctx: DeskActorContext,
+    requisitions: readonly { id: string; company_id: string }[],
+  ): Promise<readonly DeskReadinessRow[]>;
   listInterviewsInWindow(
     ctx: DeskActorContext,
     window: DeskDayWindow,

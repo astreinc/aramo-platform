@@ -68,18 +68,25 @@ const MIGRATION_FILES: string[] = [
   ...migrationsFor('client-selection'),
   ...migrationsFor('placement'),
   ...migrationsFor('task'),
+  // Increment-2 derived-kinds composition (submittal-readiness) authorities.
+  ...migrationsFor('submittal-eligibility'),
+  ...migrationsFor('documents'),
+  ...migrationsFor('client-talent-restriction'),
   // Not read by the desk — applied only so the CI processing reconciler's
   // onModuleInit scan (a background job) finds its table and does not raise an
   // unrelated unhandled rejection during the run.
   ...migrationsFor('conversation-intelligence'),
 ];
 
-// Comment-aware DDL splitter (skips ';' inside -- lines and $$ bodies).
+// DDL splitter that skips ';' inside -- line comments, $$ bodies, AND
+// single-quoted string literals (with '' escapes) — a documents migration
+// carries a ';' inside a COMMENT-string, which a comment/$$-only splitter breaks.
 function splitDdl(sql: string): string[] {
   const out: string[] = [];
   let cur = '';
   let inDollar = false;
   let inLineComment = false;
+  let inString = false;
   for (let i = 0; i < sql.length; i++) {
     const ch = sql[i];
     if (inLineComment) {
@@ -87,8 +94,25 @@ function splitDdl(sql: string): string[] {
       if (ch === '\n') inLineComment = false;
       continue;
     }
+    if (inString) {
+      cur += ch;
+      if (ch === "'") {
+        if (sql[i + 1] === "'") {
+          cur += "'";
+          i += 1; // an escaped '' — stay inside the string
+        } else {
+          inString = false;
+        }
+      }
+      continue;
+    }
     if (!inDollar && ch === '-' && sql[i + 1] === '-') {
       inLineComment = true;
+      cur += ch;
+      continue;
+    }
+    if (!inDollar && ch === "'") {
+      inString = true;
       cur += ch;
       continue;
     }
@@ -245,6 +269,30 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         [randomUUID(), a.tenant, randomUUID(), a.req, a.talent, a.state, new Date(a.createdMs)],
       );
     }
+    async function seedSubmittal(a: {
+      tenant: string;
+      talent: string;
+      req: string;
+      resume_edition_id: string | null;
+      state: string;
+    }) {
+      await db.query(
+        `INSERT INTO submittal."TalentSubmittalRecord"
+           (id, tenant_id, talent_id, job_id, evidence_package_id, pinned_examination_id, resume_edition_id, state, created_by, created_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8::"submittal"."SubmittalState",$9,now())`,
+        [
+          randomUUID(),
+          a.tenant,
+          a.talent,
+          a.req,
+          randomUUID(),
+          randomUUID(),
+          a.resume_edition_id,
+          a.state,
+          ADMIN,
+        ],
+      );
+    }
     async function seedPlacement(a: {
       tenant: string;
       req: string;
@@ -374,6 +422,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         ['emily', 'Emily', 'Carter'],
         ['samuel', 'Samuel', 'Ortiz'],
         ['liam', 'Liam', 'OConnor'],
+        ['hannah', 'Hannah', 'Kim'],
       ];
       for (const [key, first, last] of names) {
         tal[key] = await seedTalent(TENANT_A, first, last);
@@ -411,6 +460,19 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await seedPipeline(TENANT_A, reqA1, tal['kiran'], 'qualified');
       await seedPipeline(TENANT_A, reqA1, tal['emily'], 'qualified');
       await seedPipeline(TENANT_A, reqA1, tal['samuel'], 'voided'); // terminal — excluded from count
+
+      // --- Submittal-ready (derived kind): Hannah is qualified on reqA2 with a
+      // selected résumé, no RTR requirement, no restriction, no policy → every
+      // applicable gate satisfied → 'ready_to_submit'. On reqA2 so the reqA1
+      // count assertions are undisturbed.
+      await seedPipeline(TENANT_A, reqA2, tal['hannah'], 'qualified');
+      await seedSubmittal({
+        tenant: TENANT_A,
+        talent: tal['hannah'],
+        req: reqA2,
+        resume_edition_id: randomUUID(),
+        state: 'ready_for_review',
+      });
 
       // --- Interviews: today (visible), tomorrow (window-excluded), unassigned (hidden) ---
       await seedInterview({ tenant: TENANT_A, req: reqA1, talent: tal['rahul'], whenMs: now, state: 'SCHEDULED' });
@@ -529,6 +591,21 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(a1.offer_count).toBe(3);
       // started = STARTED only: plStarted(kiran); plBlocked(samuel,BLOCKED) excluded → 1.
       expect(a1.started_count).toBe(1);
+    });
+
+    it('derived kind: a qualified talent with every gate satisfied surfaces a submittal-ready item (real composition, reused authorities)', async () => {
+      const { body } = await getMyDesk(recruiterJwt);
+      const ready = body.priority_items.find(
+        (i: any) => i.kind === 'submittal' && i.talent_name === 'Hannah Kim',
+      );
+      expect(ready).toBeDefined();
+      expect(ready.requisition_id).toBe(reqA2);
+      expect(ready.reason).toMatch(/ready to submit/i);
+      expect(ready.primary_action).toEqual({
+        kind: 'submit_to_client',
+        label: 'Submit to client',
+        href: `/talent/${tal['hannah']}/submittal/${reqA2}`,
+      });
     });
 
     it('summary/list consistency: card counts derive from the same arrays', async () => {

@@ -2,13 +2,18 @@ import { Module } from '@nestjs/common';
 import { AuthModule } from '@aramo/auth';
 import { AuthorizationModule } from '@aramo/authorization';
 import { ClientSelectionModule } from '@aramo/client-selection';
+import { ClientTalentRestrictionModule } from '@aramo/client-talent-restriction';
 import { CompanyModule } from '@aramo/company';
 import { EntitlementModule } from '@aramo/entitlement';
 import { PipelineModule } from '@aramo/pipeline';
 import { RequisitionModule } from '@aramo/requisition';
+import { SubmittalModule } from '@aramo/submittal';
+import { SubmittalEligibilityModule } from '@aramo/submittal-eligibility';
 import { TalentRecordModule } from '@aramo/talent-record';
 import { TaskModule } from '@aramo/task';
 
+import { DocumentReadinessModule } from '../rtr/document-readiness.module.js';
+import { EngagementGateModule } from '../engagement/engagement-gate.module.js';
 import { OfferModule } from '../offer/offer.module.js';
 import { PlacementModule } from '../placement/placement.module.js';
 
@@ -39,6 +44,13 @@ import { MyDeskService } from './my-desk.service.js';
     CompanyModule,
     PlacementModule,
     OfferModule,
+    // Submittal-readiness authorities (the same domain seams the Requisition
+    // Talent Board composes) for the derived work kinds — no policy duplicated.
+    SubmittalEligibilityModule,
+    SubmittalModule,
+    ClientTalentRestrictionModule,
+    DocumentReadinessModule,
+    EngagementGateModule,
   ],
   controllers: [MyDeskController],
   providers: [
