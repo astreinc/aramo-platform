@@ -228,6 +228,60 @@ paths:
           $ref: 'common.yaml#/components/responses/Forbidden'
       security:
         - BearerAuth: []
+  # GET /v1/talent-360/{talentId} — the person-centric recruiter workspace read
+  # projection, replacing the Talent Detail experience. A READ COMPOSITION over
+  # authoritative domains (Talent / Pipeline / Submittal / ClientSelection /
+  # Interview / Offer / Placement / Communications / Task / Activity / Documents /
+  # Consent / Talent-Trust): never workflow truth, never mutating. Base scope
+  # `talent:read` + `ats`; each composed SECTION additionally honors its own
+  # contributing domain scope. Tenant + visibility are resolved server-side.
+  /v1/talent-360/{talentId}:
+    get:
+      operationId: getTalent360
+      summary: The person-centric Talent 360 recruiter workspace read projection.
+      description: |
+        Composes one Talent's recruiting relationship from authoritative domain
+        state: identity/contact header, relationship KPI strip, active + closed
+        opportunities (with the per-episode journey), system-derived attention,
+        human tasks, recent activity, professional profile, documents, identity
+        outcomes, contactability, and relationship/ownership. READ-ONLY: no
+        mutation, no workflow. Requires `talent:read` + the `ats` capability.
+
+        CONTRACT — partial-page by scope (this distinction is part of the product
+        contract, not an implementation detail): a scope-gated section is `null`
+        when the caller does NOT hold the contributing domain scope
+        (authorization-hidden), and an OBJECT with empty arrays / `0` counts when
+        the caller is authorized but the Talent has none (authorized-empty). The
+        scope-gated sections are `opportunities` (pipeline:read), `attention`
+        (pipeline:read), `tasks` (task:read), `recent_activity` (activity:read ∪
+        communication:read), `documents` (document:read), `identity` (talent:read),
+        and the strip counts + `last_contact`. `authorized_sections` records which
+        were composed for this caller. A superseded Talent returns the header with
+        `record_status: superseded` + the survivor pointer and every section
+        suppressed (never reconstructs stale state).
+      parameters:
+        - name: talentId
+          in: path
+          required: true
+          description: The Talent record id.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: The composed Talent 360 projection.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Talent360View'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
   # ── Pipeline Accidental-Add Correction Directive v1.0 (VOID) ──
   # Remove a Talent from a requisition when added by mistake — an administrative
   # correction, NOT a recruiting disposition and NOT a delete. Governed + strict:
@@ -7022,6 +7076,432 @@ components:
           items: { $ref: '#/components/schemas/BoardColumnView' }
         closed: { $ref: '#/components/schemas/BoardClosedSummary' }
         total_active: { type: integer }
+    Talent360View:
+      type: object
+      additionalProperties: false
+      description: |
+        The person-centric Talent 360 read projection. A composition over
+        authoritative domains — the FE renders it and owns only presentation
+        state; it never re-derives backend truth (waiting duration, interview-today,
+        recruiting-ready, contactability, ownership, identity advisory, signed-doc
+        state, KPI counts all come from here). Scope-gated sections are `null` when
+        the caller lacks the contributing scope (authorization-hidden) and an
+        object with empty arrays / `0` when authorized-but-empty.
+      required:
+        - generated_at
+        - server_date
+        - header
+        - relationship_strip
+        - opportunities
+        - attention
+        - tasks
+        - recent_activity
+        - documents
+        - identity
+        - profile
+        - relationship
+        - authorized_sections
+      properties:
+        generated_at: { type: string, format: date-time }
+        server_date:
+          type: string
+          description: The server-side calendar date in the app timezone (YYYY-MM-DD).
+        header: { $ref: '#/components/schemas/TalentHeaderView' }
+        relationship_strip: { $ref: '#/components/schemas/RelationshipStripView' }
+        opportunities:
+          description: null when pipeline:read is absent; else { active, closed } (possibly empty).
+          oneOf:
+            - $ref: '#/components/schemas/OpportunitiesView'
+            - type: 'null'
+        attention:
+          description: null when pipeline:read is absent; else the (possibly empty) attention list.
+          type: ['array', 'null']
+          items: { $ref: '#/components/schemas/AttentionItemView' }
+        tasks:
+          description: null when task:read is absent; else the (possibly empty) task list.
+          type: ['array', 'null']
+          items: { $ref: '#/components/schemas/TalentTaskView' }
+        recent_activity:
+          description: null when neither activity:read nor communication:read is held.
+          oneOf:
+            - $ref: '#/components/schemas/RecentActivityView'
+            - type: 'null'
+        documents:
+          description: null when document:read is absent.
+          oneOf:
+            - $ref: '#/components/schemas/DocumentsView'
+            - type: 'null'
+        identity:
+          description: null when the identity section is not authorized (or a superseded record).
+          oneOf:
+            - $ref: '#/components/schemas/IdentityView'
+            - type: 'null'
+        profile: { $ref: '#/components/schemas/ProfileView' }
+        relationship: { $ref: '#/components/schemas/RelationshipView' }
+        authorized_sections: { $ref: '#/components/schemas/Talent360AuthorizedSections' }
+    TalentHeaderView:
+      type: object
+      additionalProperties: false
+      required:
+        - talent_id
+        - first_name
+        - last_name
+        - display_name
+        - title
+        - location
+        - experience_summary
+        - email
+        - phone
+        - work_authorization
+        - desired_compensation
+        - engagement_type
+        - availability
+        - recruiting_ready
+        - contactability
+        - actions
+        - record_status
+        - superseded_by_record_id
+      properties:
+        talent_id: { type: string, format: uuid }
+        first_name: { type: string }
+        last_name: { type: string }
+        display_name: { type: string }
+        title: { type: [string, 'null'] }
+        location: { type: [string, 'null'] }
+        experience_summary: { type: [string, 'null'] }
+        email: { type: [string, 'null'] }
+        phone: { type: [string, 'null'] }
+        work_authorization: { type: [string, 'null'] }
+        desired_compensation:
+          description: Talent-stated desired compensation (free text). Not the requisition commercial rate; see the compensation-mask authority for those.
+          type: [string, 'null']
+        engagement_type: { type: [string, 'null'] }
+        availability: { $ref: '#/components/schemas/TalentAvailabilityView' }
+        recruiting_ready: { $ref: '#/components/schemas/RecruitingReadyView' }
+        contactability: { $ref: '#/components/schemas/ContactabilityView' }
+        actions: { $ref: '#/components/schemas/TalentActionCapabilities' }
+        record_status: { type: string, enum: [live, superseded] }
+        superseded_by_record_id: { type: [string, 'null'], format: uuid }
+    TalentAvailabilityView:
+      type: object
+      additionalProperties: false
+      required: [status, detail]
+      properties:
+        status: { type: [string, 'null'] }
+        detail: { type: [string, 'null'] }
+    RecruitingReadyView:
+      type: object
+      additionalProperties: false
+      description: The landed informational recruiting-ready predicate. `rule` describes the ACTUAL rule (record + a contact channel + work-auth); it never claims consent/identity semantics.
+      required: [ready, rule]
+      properties:
+        ready: { type: boolean }
+        rule: { type: string }
+    ContactabilityView:
+      type: object
+      additionalProperties: false
+      description: Outcomes of the consent authority; never inferred from email/phone presence.
+      required: [summary, recruiting_permitted, email_permitted, phone_permitted, sms_permitted]
+      properties:
+        summary: { type: string, enum: [contactable, expiring_lt_30d, do_not_contact] }
+        recruiting_permitted: { type: boolean }
+        email_permitted: { type: boolean }
+        phone_permitted: { type: boolean }
+        sms_permitted: { type: boolean }
+    TalentActionCapabilities:
+      type: object
+      additionalProperties: false
+      description: Which header actions the backend domains currently permit (the FE reuses the existing flow for each).
+      required: [can_email, can_call, can_add_to_requisition, can_log_activity, can_edit_profile]
+      properties:
+        can_email: { type: boolean }
+        can_call: { type: boolean }
+        can_add_to_requisition: { type: boolean }
+        can_log_activity: { type: boolean }
+        can_edit_profile: { type: boolean }
+    RelationshipStripView:
+      type: object
+      additionalProperties: false
+      description: KPI summaries of authoritative state. A null count means the contributing scope is unheld; 0 means authorized-but-none.
+      required: [active_opportunities, submittals, interviews_today, offers, assignments, last_contact]
+      properties:
+        active_opportunities: { type: [integer, 'null'] }
+        submittals: { type: [integer, 'null'] }
+        interviews_today: { type: [integer, 'null'] }
+        offers: { type: [integer, 'null'] }
+        assignments: { type: [integer, 'null'] }
+        last_contact:
+          oneOf:
+            - $ref: '#/components/schemas/LastContactView'
+            - type: 'null'
+    LastContactView:
+      type: object
+      additionalProperties: false
+      required: [at, channel]
+      properties:
+        at: { type: string, format: date-time }
+        channel: { type: string }
+    OpportunitiesView:
+      type: object
+      additionalProperties: false
+      required: [active, closed]
+      properties:
+        active:
+          type: array
+          items: { $ref: '#/components/schemas/ActiveOpportunityView' }
+        closed:
+          type: array
+          items: { $ref: '#/components/schemas/ClosedOpportunityView' }
+    OpportunityActionView:
+      type: object
+      additionalProperties: false
+      required: [kind, label, href]
+      properties:
+        kind: { type: string }
+        label: { type: string }
+        href: { type: [string, 'null'] }
+    ActiveOpportunityView:
+      type: object
+      additionalProperties: false
+      required:
+        - pipeline_id
+        - requisition_id
+        - requisition_code
+        - client_name
+        - role_title
+        - stage
+        - contextual_state
+        - age_label
+        - owner_label
+        - next_action
+        - journey
+        - open_journey_href
+      properties:
+        pipeline_id: { type: string, format: uuid }
+        requisition_id: { type: string, format: uuid }
+        requisition_code: { type: string }
+        client_name: { type: [string, 'null'] }
+        role_title: { type: [string, 'null'] }
+        stage: { type: string }
+        contextual_state: { type: [string, 'null'] }
+        age_label: { type: [string, 'null'] }
+        owner_label: { type: [string, 'null'] }
+        next_action:
+          oneOf:
+            - $ref: '#/components/schemas/OpportunityActionView'
+            - type: 'null'
+        journey:
+          type: object
+          description: The authoritative per-episode journey (owner-attributed, GET-only) — the same shape as GET /v1/pipelines/{id}/journey. A SUMMARY, not a second state machine.
+        open_journey_href: { type: string }
+    ClosedOpportunityView:
+      type: object
+      additionalProperties: false
+      required: [pipeline_id, requisition_id, requisition_code, client_name, role_title, outcome, closed_at, open_journey_href]
+      properties:
+        pipeline_id: { type: string, format: uuid }
+        requisition_id: { type: string, format: uuid }
+        requisition_code: { type: string }
+        client_name: { type: [string, 'null'] }
+        role_title: { type: [string, 'null'] }
+        outcome: { type: string }
+        closed_at: { type: [string, 'null'], format: date-time }
+        open_journey_href: { type: string }
+    AttentionItemView:
+      type: object
+      additionalProperties: false
+      description: A system-derived attention item (FROM ARAMO) — self-clearing, sourced from live domain state, retaining requisition context.
+      required: [id, kind, kicker, title, subtitle, requisition_id, requisition_label, action]
+      properties:
+        id: { type: string }
+        kind: { type: string }
+        kicker: { type: string }
+        title: { type: string }
+        subtitle: { type: [string, 'null'] }
+        requisition_id: { type: [string, 'null'], format: uuid }
+        requisition_label: { type: [string, 'null'] }
+        action:
+          oneOf:
+            - $ref: '#/components/schemas/OpportunityActionView'
+            - type: 'null'
+    TalentTaskView:
+      type: object
+      additionalProperties: false
+      description: A human-created task (FROM PEOPLE) — distinct from system-derived attention.
+      required: [id, title, status, due_date, requisition_id, requisition_label]
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        status: { type: string }
+        due_date: { type: [string, 'null'], format: date-time }
+        requisition_id: { type: [string, 'null'], format: uuid }
+        requisition_label: { type: [string, 'null'] }
+    RecentActivityItemView:
+      type: object
+      additionalProperties: false
+      required: [id, occurred_at, category, title, body, requisition_id, requisition_label, actor_label, channel]
+      properties:
+        id: { type: string }
+        occurred_at: { type: string, format: date-time }
+        category: { type: string }
+        title: { type: string }
+        body: { type: [string, 'null'] }
+        requisition_id: { type: [string, 'null'], format: uuid }
+        requisition_label: { type: [string, 'null'] }
+        actor_label: { type: [string, 'null'] }
+        channel: { type: [string, 'null'] }
+    RecentActivityView:
+      type: object
+      additionalProperties: false
+      required: [items, category_counts, has_more]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/RecentActivityItemView' }
+        category_counts:
+          type: object
+          additionalProperties: { type: integer }
+        has_more: { type: boolean }
+    ProfileFactView:
+      type: object
+      additionalProperties: false
+      required: [label, value, source]
+      properties:
+        label: { type: string }
+        value: { type: string }
+        source: { type: [string, 'null'] }
+    ProfileSkillView:
+      type: object
+      additionalProperties: false
+      required: [label, verified]
+      properties:
+        label: { type: string }
+        verified: { type: boolean }
+    WorkHistoryEntryView:
+      type: object
+      additionalProperties: false
+      required: [role, organization, span, source]
+      properties:
+        role: { type: string }
+        organization: { type: string }
+        span: { type: string }
+        source: { type: [string, 'null'] }
+    ProfileView:
+      type: object
+      additionalProperties: false
+      required: [summary, facts, skills, work_history]
+      properties:
+        summary: { type: [string, 'null'] }
+        facts:
+          type: array
+          items: { $ref: '#/components/schemas/ProfileFactView' }
+        skills:
+          type: array
+          items: { $ref: '#/components/schemas/ProfileSkillView' }
+        work_history:
+          type: array
+          items: { $ref: '#/components/schemas/WorkHistoryEntryView' }
+    TalentDocumentView:
+      type: object
+      additionalProperties: false
+      description: Signed state is DISPLAYED from the Documents/e-sign authority; Talent 360 never stores it.
+      required: [id, kind, requisition_id, requisition_label, meta, signed, signed_at]
+      properties:
+        id: { type: string, format: uuid }
+        kind: { type: string }
+        requisition_id: { type: [string, 'null'], format: uuid }
+        requisition_label: { type: [string, 'null'] }
+        meta: { type: [string, 'null'] }
+        signed: { type: boolean }
+        signed_at: { type: [string, 'null'], format: date-time }
+    DocumentsView:
+      type: object
+      additionalProperties: false
+      required: [key_documents, total]
+      properties:
+        key_documents:
+          type: array
+          items: { $ref: '#/components/schemas/TalentDocumentView' }
+        total: { type: integer }
+    IdentityAdvisoryView:
+      type: object
+      additionalProperties: false
+      required: [advisory_id, label]
+      properties:
+        advisory_id: { type: string }
+        label: { type: string }
+    IdentityView:
+      type: object
+      additionalProperties: false
+      description: Recruiter-facing identity OUTCOMES only — never the internal trust machinery.
+      required: [primary_email_confirmed, mobile_confirmed, advisory]
+      properties:
+        primary_email_confirmed: { type: boolean }
+        mobile_confirmed: { type: boolean }
+        advisory:
+          oneOf:
+            - $ref: '#/components/schemas/IdentityAdvisoryView'
+            - type: 'null'
+    RelationshipHistoryView:
+      type: object
+      additionalProperties: false
+      description: Single-TalentRecord counts for this increment — no merged-human/identity-cluster lifetime claim.
+      required: [known_since, requisitions, submittals, interviews, placements]
+      properties:
+        known_since: { type: [string, 'null'], format: date-time }
+        requisitions: { type: integer }
+        submittals: { type: integer }
+        interviews: { type: integer }
+        placements: { type: integer }
+    OwnershipContactView:
+      type: object
+      additionalProperties: false
+      required: [user_id, name, requisition_id, requisition_label]
+      properties:
+        user_id: { type: string, format: uuid }
+        name: { type: [string, 'null'] }
+        requisition_id: { type: [string, 'null'], format: uuid }
+        requisition_label: { type: [string, 'null'] }
+    OwnershipView:
+      type: object
+      additionalProperties: false
+      description: owner_provenance is labeled by its actual provenance semantics (never an authoritative Talent-owner assignment); also_working_with derives from active-opportunity recruiters.
+      required: [owner_provenance, also_working_with, source, source_channel]
+      properties:
+        owner_provenance:
+          oneOf:
+            - type: object
+              additionalProperties: false
+              required: [user_id, name]
+              properties:
+                user_id: { type: string, format: uuid }
+                name: { type: [string, 'null'] }
+            - type: 'null'
+        also_working_with:
+          type: array
+          items: { $ref: '#/components/schemas/OwnershipContactView' }
+        source: { type: [string, 'null'] }
+        source_channel: { type: [string, 'null'] }
+    RelationshipView:
+      type: object
+      additionalProperties: false
+      required: [history, ownership]
+      properties:
+        history: { $ref: '#/components/schemas/RelationshipHistoryView' }
+        ownership: { $ref: '#/components/schemas/OwnershipView' }
+    Talent360AuthorizedSections:
+      type: object
+      additionalProperties: false
+      description: Which scope-gated sections were composed for this caller (true) vs authorization-hidden (false).
+      required: [opportunities, attention, tasks, activity, communications, documents, identity]
+      properties:
+        opportunities: { type: boolean }
+        attention: { type: boolean }
+        tasks: { type: boolean }
+        activity: { type: boolean }
+        communications: { type: boolean }
+        documents: { type: boolean }
+        identity: { type: boolean }
     MyDeskView:
       type: object
       additionalProperties: false

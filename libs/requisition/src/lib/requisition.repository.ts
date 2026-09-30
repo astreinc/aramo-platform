@@ -2237,4 +2237,52 @@ export class RequisitionRepository {
     });
     return rows.map((r) => r.id);
   }
+
+  // Talent 360 — resolve a SET of requisition ids to the lean summary the
+  // person-centric read projection needs (code/title/client/status/owner). A
+  // single tenant-scoped SELECT over an id set (NO N+1, NO 200-row cap, NO comp
+  // fields, NO derived-margin compute) — the caller already holds the ids from
+  // the talent's pipeline episodes and has resolved visibility separately, so
+  // this is a bounded label resolution, not a visibility-scoped list. Ids not in
+  // the tenant are simply absent. Empty set → [] (no query). Read-only.
+  async findSummariesByIds(args: {
+    tenant_id: string;
+    ids: readonly string[];
+  }): Promise<
+    Array<{
+      id: string;
+      requisition_number: number;
+      title: string;
+      company_id: string;
+      status: string;
+      is_hot: boolean;
+      owner_id: string | null;
+      recruiter_id: string | null;
+    }>
+  > {
+    if (args.ids.length === 0) return [];
+    const rows = await this.prisma.requisition.findMany({
+      where: { tenant_id: args.tenant_id, id: { in: Array.from(args.ids) } },
+      select: {
+        id: true,
+        requisition_number: true,
+        title: true,
+        company_id: true,
+        status: true,
+        is_hot: true,
+        owner_id: true,
+        recruiter_id: true,
+      },
+    });
+    return rows.map((r) => ({
+      id: r.id,
+      requisition_number: r.requisition_number,
+      title: r.title,
+      company_id: r.company_id,
+      status: r.status,
+      is_hot: r.is_hot,
+      owner_id: r.owner_id,
+      recruiter_id: r.recruiter_id,
+    }));
+  }
 }

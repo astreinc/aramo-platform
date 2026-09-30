@@ -89,6 +89,7 @@ import { TalentJourneyModule } from './talent-journey/talent-journey.module.js';
 import { RequisitionTalentBoardModule } from './requisition-talent-board/requisition-talent-board.module.js';
 import { PipelineVoidModule } from './pipeline-void/pipeline-void.module.js';
 import { MyDeskModule } from './my-desk/my-desk.module.js';
+import { Talent360Module } from './talent-360/talent-360.module.js';
 import { CommunicationsApiModule } from './communications/communications-api.module.js';
 import { EngagementApiModule } from './engagement/engagement-api.module.js';
 import { ClientSubmittalPolicyModule } from './client-submittal-policy/client-submittal-policy.module.js';
@@ -481,6 +482,10 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     // client-selection/placement/offer reads across the A7 seam into one
     // visibility-scoped projection, reads only (dashboard:read).
     MyDeskModule,
+    // Talent 360 — the person-centric recruiter workspace READ composition
+    // (GET /v1/talent-360/:id), replacing the Talent Detail experience. AP-class,
+    // OpenAPI-documented; per-section scope-gated; reads only.
+    Talent360Module,
     CommunicationsApiModule,
     EngagementApiModule,
     ClientSubmittalPolicyModule,
