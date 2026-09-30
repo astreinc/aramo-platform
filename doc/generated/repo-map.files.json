@@ -3467,6 +3467,8 @@
     "libs/submittal-eligibility/src/lib/submittal-eligibility-vocab.ts",
     "libs/submittal-eligibility/src/lib/submittal-eligibility.module.ts",
     "libs/submittal-eligibility/src/lib/submittal-eligibility.port.ts",
+    "libs/submittal-eligibility/src/lib/submittal-readiness.spec.ts",
+    "libs/submittal-eligibility/src/lib/submittal-readiness.ts",
     "libs/submittal-eligibility/src/tests/requisition-eligibility-reader.integration.spec.ts",
     "libs/submittal-eligibility/src/tests/submittal-consumption.concurrency.integration.spec.ts",
     "libs/submittal-eligibility/src/tests/submittal-eligibility.port.unit.spec.ts",

@@ -1395,6 +1395,7 @@
       "SUBMITTAL_WINDOW_STATUS_VALUES",
       "SubmittalEligibilityModule",
       "consumeSlot",
+      "deriveSubmittalReadiness",
       "deriveWindowStatus",
       "evaluateEligibility",
       "isSubmittalAuthority",
