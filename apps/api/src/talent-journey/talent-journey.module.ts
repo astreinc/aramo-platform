@@ -40,5 +40,11 @@ import { TalentJourneyReadService } from './talent-journey-read.service.js';
       useFactory: () => createAramoLogger(TalentJourneyReadService.name),
     },
   ],
+  // Exported so the Talent 360 read-composition (apps/api/src/talent-360) can
+  // reuse the authoritative per-episode journey composer for inline opportunity
+  // expansion — one owner-attributed, GET-only journey per active episode. The
+  // Talent 360 module imports TalentJourneyModule rather than re-deriving any
+  // downstream stage (directive §3.4 / §4).
+  exports: [TalentJourneyReadService],
 })
 export class TalentJourneyModule {}

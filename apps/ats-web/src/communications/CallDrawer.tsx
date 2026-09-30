@@ -33,7 +33,17 @@ interface PhoneOption {
   readonly number: string;
 }
 
-function phoneOptions(t: TalentRecordView): PhoneOption[] {
+// The NARROW talent shape the call path actually needs (id · name · phone
+// numbers) — a subset of TalentRecordView. Lets composed-read callers (Talent
+// 360) invoke the real communications/evidence call path without holding the
+// full detail record. A full TalentRecordView is structurally assignable here,
+// so the existing full-record call sites are unchanged.
+export type CallTalent = Pick<
+  TalentRecordView,
+  'id' | 'first_name' | 'last_name' | 'phone_cell' | 'phone_work' | 'phone_home'
+>;
+
+function phoneOptions(t: CallTalent): PhoneOption[] {
   return [
     { key: 'cell' as const, label: 'Mobile', number: t.phone_cell },
     { key: 'work' as const, label: 'Work', number: t.phone_work },
@@ -61,7 +71,7 @@ type IdentityState =
   | { kind: 'error' };
 
 export interface CallDrawerProps {
-  readonly talent: TalentRecordView;
+  readonly talent: CallTalent;
   readonly onClose: () => void;
   /** Talent × Requisition (+ pipeline) context when launched from the requisition drawer. */
   readonly regarding?: CallRegardingContext;

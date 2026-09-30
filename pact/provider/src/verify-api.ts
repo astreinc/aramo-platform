@@ -3852,6 +3852,11 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           'talent:read',
           'talent:create',
           'talent:edit',
+          // Talent 360 composed read (GET /v1/talent-360/:id) — the documents
+          // section is gated on document:read; the other Talent-360 section
+          // scopes (pipeline/task/activity/communication:read) are already
+          // granted above. Additive; inert for prior interactions.
+          'document:read',
           // D7 — Offer Lifecycle. offer:create gates create; offer:transition gates
           // PATCH; L4/P5 offer:read gates read (list/get) and offer:read:financial
           // unmasks the Talent-facing compensation snapshot. Additive; inert for
@@ -4648,6 +4653,25 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     }
 
     const stateHandlers: Record<string, () => Promise<void>> = {
+      // Talent 360 composed read — the MINIMAL authoritative graph that
+      // exercises the response contract: a TalentRecord (header + always-present
+      // profile/relationship compose) + granted contacting-consent (so
+      // contactability = contactable). No pipelines / documents / communications
+      // are seeded, so every scope-gated section composes AUTHORIZED-EMPTY
+      // ([] / 0) rather than null — pinning the null-vs-empty contract from the
+      // authorized side. Composes existing seedAtsWeb* helpers (no second
+      // mini-platform).
+      'an ats-web recruiter and a Talent 360 record with no downstream activity exist':
+        async () => {
+          await withClient(async (c) => {
+            await seedAtsWebTalentRecord(c, {
+              id: PACT_TALENT_ID,
+              firstName: 'Divya',
+              lastName: 'Vasudevan',
+            });
+            await seedAtsWebContactingConsent(c);
+          });
+        },
       // ===== DOC-4C seam C — esign-service → apps/api source-document pull =====
       // Seed a frozen Document + revision + SOURCE_UPLOAD artifact so
       // RevisionSourceService.getSourceBase64 resolves (object storage is the mock

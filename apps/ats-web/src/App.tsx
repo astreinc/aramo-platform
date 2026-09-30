@@ -58,7 +58,7 @@ import { RolesSection } from './settings/roles/RolesSection';
 import { SubmittalWizard } from './submittals/SubmittalWizard';
 import { MyTasksView } from './task/MyTasksView';
 import { TalentCreateView } from './talent/TalentCreateView';
-import { TalentDetailView } from './talent/TalentDetailView';
+import { Talent360View } from './talent-360/Talent360View';
 import { TalentEditView } from './talent/TalentEditView';
 import { RecruiterShell } from './shell/RecruiterShell';
 import { TalentListView } from './talent/TalentListView';
@@ -310,7 +310,7 @@ export function App() {
                           requireScope="talent:read"
                           sessionStateOverride={state}
                         >
-                          <TalentDetailView />
+                          <Talent360View />
                         </RouteGuard>
                       }
                     />
