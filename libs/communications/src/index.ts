@@ -14,6 +14,22 @@ export {
 } from './lib/communications.repository.js';
 export { PrismaService as CommunicationsPrismaService } from './lib/prisma/prisma.service.js';
 
+// D-EMAIL-TPL-1 — reusable tenant email-template store.
+export {
+  EmailTemplateRepository,
+  EMAIL_TEMPLATE_CATEGORIES,
+  type EmailTemplateCategory,
+  type EmailTemplateRow,
+} from './lib/email-template.repository.js';
+export {
+  EMAIL_TEMPLATE_TOKENS,
+  TemplateValidationError,
+  validateTemplateTokens,
+  renderTemplate,
+  type EmailTemplateToken,
+  type RenderResult,
+} from './lib/email-template-renderer.js';
+
 // Canonical call state machine.
 export {
   CALL_STATE_TRANSITIONS,

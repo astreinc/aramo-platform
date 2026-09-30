@@ -113,6 +113,8 @@ describe('RequisitionContactDraftService (COMM-C4 draft orchestration)', () => {
       requisition_title: 'Business Analyst - Multi-Family',
       template_id: 'system.requisition-contact.v1',
       template_version: '1',
+      // D-EMAIL-TPL-1 (ET-5) — the logical template key the draft rendered from.
+      template_key: 'requisition-contact',
     });
     expect(view.warnings).toBeUndefined();
     // association was checked by a READ (no mutation surface exists on the fake).

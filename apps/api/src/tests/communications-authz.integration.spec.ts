@@ -38,8 +38,11 @@ const COMMUNICATIONS_INIT = resolve(ROOT, 'libs/communications/prisma/migrations
 const COMMUNICATIONS_C2B = resolve(ROOT, 'libs/communications/prisma/migrations/20260905130000_comm_c2b_provider_identity_email_tenant/migration.sql');
 const COMMUNICATIONS_C2B_MEETING = resolve(ROOT, 'libs/communications/prisma/migrations/20260905140000_comm_c2b_meeting_channel/migration.sql');
 const COMMUNICATIONS_C4 = resolve(ROOT, 'libs/communications/prisma/migrations/20260921170000_comm_c4_email_content_capture/migration.sql');
+// D-EMAIL-TPL-1 (ET-1) — reusable email templates. SEPARATE const (never a 2nd resolve() arg — ENOTDIR).
+const COMMUNICATIONS_EMAIL_TEMPLATE = resolve(ROOT, 'libs/communications/prisma/migrations/20260928140000_email_template/migration.sql');
+const COMMUNICATIONS_TEMPLATE_PROVENANCE = resolve(ROOT, 'libs/communications/prisma/migrations/20260929120000_comm_interaction_template_provenance/migration.sql');
 const INTEGRATION_INIT = resolve(ROOT, 'libs/integration/prisma/migrations/20260814170000_init_integration_connection/migration.sql');
-const MIGRATIONS = [ENTITLEMENT_INIT, COMMUNICATIONS_INIT, COMMUNICATIONS_C2B, COMMUNICATIONS_C2B_MEETING, COMMUNICATIONS_C4, INTEGRATION_INIT];
+const MIGRATIONS = [ENTITLEMENT_INIT, COMMUNICATIONS_INIT, COMMUNICATIONS_C2B, COMMUNICATIONS_C2B_MEETING, COMMUNICATIONS_C4, COMMUNICATIONS_EMAIL_TEMPLATE, COMMUNICATIONS_TEMPLATE_PROVENANCE, INTEGRATION_INIT];
 
 const TENANT_A = '01900000-0000-7000-8000-0000000000a1';
 const TENANT_B = '01900000-0000-7000-8000-0000000000b2';

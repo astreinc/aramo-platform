@@ -4,12 +4,12 @@ import {
   IconForm,
   IconGlobe,
   IconLock,
-  IconMail,
   IconPlug,
   IconSliders,
 } from '@aramo/fe-foundation';
 
 import { SettingsSeam, SettingsSection } from '../components';
+import { EmailTemplatesPanel } from '../EmailTemplatesPanel';
 import { RequisitionIngestionView } from '../../requisition-imports/RequisitionIngestionView';
 import { IntegrationConnectionsPanel } from '../../integrations/IntegrationConnectionsPanel';
 import { CommunicationsProvidersPanel } from '../../communications/CommunicationsProvidersPanel';
@@ -75,27 +75,12 @@ export function SecuritySection() {
   );
 }
 
+// D-EMAIL-TPL-1 (ET-6) — Email & notifications is now a LIVE template-management
+// surface (system default + tenant override, RBAC-gated, server-authoritative
+// render/validate). It is no longer a seam. Notification preferences remain
+// deferred (D-9); provider/mailbox setup stays under Integrations → Communications.
 export function EmailSection() {
-  return (
-    <SettingsSection
-      title="Email & notifications"
-      description="How Aramo sends workflow email on your behalf, the templates recruiters use, and what your team is notified about."
-    >
-      <SettingsSeam
-        icon={<IconMail />}
-        title="Sending domain, templates & notifications"
-        vision={[
-          'Verified sending domain (SPF/DKIM/DMARC) and a default sender.',
-          'A template store for submittal, interview, update, offer and consent email.',
-          'Team notification preferences (email / in-app).',
-        ]}
-      >
-        There is no email engine yet — only Cognito’s built-in invite email and a no-op delivery
-        stub. No template store, sending-domain config or notification-prefs model exists, so nothing
-        here would send anything. Built when the email engine ships.
-      </SettingsSeam>
-    </SettingsSection>
-  );
+  return <EmailTemplatesPanel />;
 }
 
 export function FieldsSection() {

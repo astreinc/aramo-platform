@@ -841,6 +841,14 @@ export const ERROR_CODES = [
   // which has no such pipeline). Fail-closed at the draft boundary; the send path
   // re-validates independently.
   'COMMUNICATION_REQUISITION_CONTACT_CONTEXT_INVALID',
+  // D-EMAIL-TPL-1 (ET-4) — reusable email-template management. NOT_FOUND (404):
+  // tenant-safe absence (unknown id OR another tenant's row — no enumeration).
+  // ALREADY_EXISTS (409): a tenant override for the (tenant, template_key) already
+  // exists. INVALID_MERGE_TOKEN (422): a subject/body carries a token outside the
+  // closed allowlist (save/preview rejected; no raw {{…}} can reach a recipient).
+  'EMAIL_TEMPLATE_NOT_FOUND',
+  'EMAIL_TEMPLATE_ALREADY_EXISTS',
+  'EMAIL_TEMPLATE_INVALID_MERGE_TOKEN',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

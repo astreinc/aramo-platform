@@ -437,6 +437,8 @@ describe('ats-web → POST /v1/communications/email-drafts/requisition-contact (
             requisition_title: like('Business Analyst - Multi-Family'),
             template_id: like('system.requisition-contact.v1'),
             template_version: like('1'),
+            // ET-5 — the logical template key the draft was rendered from.
+            template_key: like('requisition-contact'),
           },
         });
       })
@@ -449,6 +451,48 @@ describe('ats-web → POST /v1/communications/email-drafts/requisition-contact (
         expect(res.status).toBe(200);
         const body = (await res.json()) as { to: { editable: boolean } };
         expect(body.to.editable).toBe(false);
+      });
+  });
+
+  it('accepts an optional template_key and echoes it in the response (ET-5 template selection)', async () => {
+    await provider
+      .addInteraction()
+      .given(
+        'a tenant entitled to ats with a caller holding communication:email:send and a Talent associated with a requisition (COMM-C4 draft)',
+      )
+      .uponReceiving('an ats-web requisition-contact email draft preparation with a template_key')
+      .withRequest('POST', '/v1/communications/email-drafts/requisition-contact', (b) => {
+        b.headers({ Cookie: like(ACCESS_COOKIE) });
+        // ids + the ONLY new client input (a logical key, never business truth).
+        b.jsonBody({ talent_record_id: uuid(TALENT_ID), requisition_id: uuid(REQ_ID), template_key: like('requisition-contact') });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          to: {
+            email: regex('.+@.+', 'talent@example.test'),
+            display_name: like('Omvignesh Murugesan'),
+            editable: false,
+          },
+          subject: like('Business Analyst - Multi-Family'),
+          body: like('Hi Omvignesh,'),
+          context: {
+            requisition_reference: like('REQ-1000'),
+            requisition_title: like('Business Analyst - Multi-Family'),
+            template_id: like('system.requisition-contact.v1'),
+            template_version: like('1'),
+            template_key: like('requisition-contact'),
+          },
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/communications/email-drafts/requisition-contact`, {
+          method: 'POST',
+          headers: { Cookie: ACCESS_COOKIE, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ talent_record_id: TALENT_ID, requisition_id: REQ_ID, template_key: 'requisition-contact' }),
+        });
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as { context: { template_key: string } };
+        expect(body.context.template_key).toBe('requisition-contact');
       });
   });
 });

@@ -366,10 +366,14 @@
       "CommunicationsPrismaService",
       "CommunicationsRepository",
       "CommunicationsService",
+      "EMAIL_TEMPLATE_CATEGORIES",
+      "EMAIL_TEMPLATE_TOKENS",
+      "EmailTemplateRepository",
       "FAKE_VOICE_PROVIDER_KEY",
       "FakeVoiceProvider",
       "REQUISITION_EXISTENCE_PORT",
       "TERMINAL_CALL_STATES",
+      "TemplateValidationError",
       "VoiceProviderRegistry",
       "ZOOM_EMBED_LAUNCH_MODE",
       "ZOOM_PHONE_PROVIDER_KEY",
@@ -387,6 +391,8 @@
       "encodeZoomCredential",
       "isTerminalCallState",
       "parseZoomWebhookEnvelope",
+      "renderTemplate",
+      "validateTemplateTokens",
       "verifyZoomWebhookSignature"
     ],
     "@aramo/company": [
@@ -1773,6 +1779,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/domain-verification.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/email-template-authz.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -3606,6 +3618,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/email-template-resolver.service.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/microsoft-delegated-auth.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -4451,6 +4469,12 @@
       {
         "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/ats-web/src/selection/SelectionDetailView.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/settings/EmailTemplatesPanel.spec.tsx",
         "project": "aramo-ats-web",
         "status": "excluded"
       },

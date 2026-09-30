@@ -58,6 +58,11 @@ export interface SendEmailInput {
   readonly subject: string;
   readonly body: string;
   readonly idempotency_key: string;
+  // D-EMAIL-TPL-1 (ET-8) — DESCRIPTIVE provenance of the reviewed draft, relayed
+  // from the draft response (server-origin). Not authoritative; the server records
+  // it as metadata only. Omitted for legacy/other send paths → columns stay null.
+  readonly template_key?: string;
+  readonly template_id?: string;
 }
 
 export interface CreateMeetingInput {
@@ -79,6 +84,9 @@ export interface RequisitionContactDraftInput {
   readonly talent_record_id: string;
   readonly requisition_id: string;
   readonly pipeline_id?: string;
+  // D-EMAIL-TPL-1 (ET-5/ET-7) — optional template selector; absent → the code
+  // default (behaviour unchanged). The ONLY new client input; never a template_id.
+  readonly template_key?: string;
 }
 
 export interface RequisitionContactDraft {
@@ -94,6 +102,8 @@ export interface RequisitionContactDraft {
     readonly requisition_title: string;
     readonly template_id: string;
     readonly template_version: string;
+    // ET-5 — the logical template key the draft was rendered from.
+    readonly template_key: string;
   };
   readonly warnings?: readonly string[];
 }
