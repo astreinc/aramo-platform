@@ -568,3 +568,37 @@ model RequisitionSkillRequirement {
   @@index([tenant_id, canonical_skill_id])
   @@schema("requisition")
 }
+
+// Enterprise Search GS-2B — the Requisition semantic index (pgvector). SAME-schema (requisition) so
+// the OR-union visibility predicate (company_id ∈ visible_client_ids OR assignment EXISTS) co-locates
+// in the vector SQL via same-schema joins (no cross-schema EXISTS). requisition_id is a same-schema FK
+// with ON DELETE CASCADE (migration-owned); the embedding vector(1536) is migration-owned (Unsupported
+// — Prisma never reads/writes it; all vector I/O is raw SQL). Requisitions carry no personal PII and
+// are not RTBF subjects, so this rides in the requisition schema rather than an isolated lib.
+enum RequisitionEmbeddingStatus {
+  pending
+  ready
+  failed
+
+  @@schema("requisition")
+}
+
+model RequisitionEmbedding {
+  id              String                      @id @db.Uuid
+  tenant_id       String                      @db.Uuid
+  requisition_id  String                      @db.Uuid
+  status          RequisitionEmbeddingStatus  @default(pending)
+  embedding       Unsupported("vector(1536)")?
+  source_hash     String?
+  embedding_model String?
+  dimension       Int?
+  attempt_count   Int                         @default(0)
+  last_error      String?
+  created_at      DateTime                    @db.Timestamptz
+  updated_at      DateTime                    @db.Timestamptz
+
+  @@unique([tenant_id, requisition_id])
+  @@index([tenant_id, status])
+  @@index([status])
+  @@schema("requisition")
+}
