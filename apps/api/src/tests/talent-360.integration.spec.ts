@@ -16,6 +16,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { EFFECTIVE_AUTHORIZATION_RESOLVER } from '@aramo/auth';
 
 import { AppModule } from '../app.module.js';
+
 import { establishOpenRequisition } from './support/establish-open-requisition.js';
 import { ConfigurableTestResolver } from './support/test-auth-harness.js';
 
@@ -201,7 +202,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         `INSERT INTO talent_record."TalentRecord"
            (id, tenant_id, site_id, first_name, last_name, email1, phone_cell, work_authorization, owner_id, source, record_status, superseded_by_record_id, key_skills, created_at, updated_at)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,now(),now())`,
-        [id, a.tenant ?? TENANT_A, SITE_A, a.first, a.last, a.email ?? null, a.phone ?? null, a.workAuth ?? null, a.owner ?? null, 'LinkedIn sourcing', a.recordStatus ?? 'live', a.supersededBy ?? null, 'Scrum, SAFe'],
+        [id, a.tenant ?? TENANT_A, SITE_A, a.first, a.last, a.email ?? null, a.phone ?? null, a.workAuth ?? null, a.owner ?? null, 'Referral sourcing', a.recordStatus ?? 'live', a.supersededBy ?? null, 'Scrum, SAFe'],
       );
       return id;
     }

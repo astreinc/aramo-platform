@@ -97,7 +97,7 @@ const FIXTURE = {
   },
   relationship: {
     history: { known_since: '2024-03-01T00:00:00Z', requisitions: 5, submittals: 3, interviews: 2, placements: 0 },
-    ownership: { owner_provenance: { user_id: 'u1', name: 'Purush P.' }, also_working_with: [{ user_id: 'u2', name: 'Sanjay Kumar', requisition_id: 'r2', requisition_label: 'REQ-1032' }], source: 'LinkedIn sourcing', source_channel: null },
+    ownership: { owner_provenance: { user_id: 'u1', name: 'Purush P.' }, also_working_with: [{ user_id: 'u2', name: 'Sanjay Kumar', requisition_id: 'r2', requisition_label: 'REQ-1032' }], source: 'Referral sourcing', source_channel: null },
   },
   authorized_sections: { opportunities: true, attention: true, tasks: true, activity: true, communications: true, documents: true, identity: true },
 };

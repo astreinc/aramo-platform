@@ -14,6 +14,7 @@ import { TaskRepository } from '@aramo/task';
 
 import { DossierService } from '../talent-identity/dossier.service.js';
 import { TalentJourneyReadService } from '../talent-journey/talent-journey-read.service.js';
+import type { TalentRequisitionJourney } from '../talent-journey/dto/talent-journey.view.js';
 
 import type {
   ActivityRow,
@@ -31,7 +32,6 @@ import type {
   TaskRow,
   WorkHistoryRow,
 } from './talent-360.ports.js';
-import type { TalentRequisitionJourney } from '../talent-journey/dto/talent-journey.view.js';
 
 // The concrete Talent360ReadPort — the ONLY layer that touches the real domain
 // repositories/services. It maps each aggregate's view down to the narrow

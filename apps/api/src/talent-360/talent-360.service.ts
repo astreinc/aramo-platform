@@ -2,6 +2,8 @@ import { Inject, Injectable } from '@nestjs/common';
 import { AramoError } from '@aramo/common';
 import { ACTIVE_FLOW_STAGES } from '@aramo/pipeline';
 
+import type { TalentRequisitionJourney } from '../talent-journey/dto/talent-journey.view.js';
+
 import {
   TALENT_360_READ_PORT,
   type ActivityRow,
@@ -13,7 +15,6 @@ import {
   type TalentCoreRow,
 } from './talent-360.ports.js';
 import { TALENT_360_RECENT_ACTIVITY_LIMIT } from './talent-360.adapters.js';
-import type { TalentRequisitionJourney } from '../talent-journey/dto/talent-journey.view.js';
 import type {
   ActiveOpportunityView,
   AttentionItemView,

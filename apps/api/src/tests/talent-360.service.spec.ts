@@ -66,7 +66,7 @@ function core(overrides: Partial<TalentCoreRow> = {}): TalentCoreRow {
     availability_status: 'available_now',
     date_available: null,
     key_skills: 'Scrum, SAFe, Jira',
-    source: 'LinkedIn sourcing',
+    source: 'Referral sourcing',
     owner_id: 'u-1',
     created_at: '2024-03-01T00:00:00Z',
     recruiting_ready: true,

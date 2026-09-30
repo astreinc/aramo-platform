@@ -22,6 +22,7 @@
 // appears anywhere (R10 / R4).
 
 import type { RecruitingStatus } from '@aramo/requisition';
+
 import type { TalentRequisitionJourney } from '../../talent-journey/dto/talent-journey.view.js';
 
 // ---------------------------------------------------------------------------

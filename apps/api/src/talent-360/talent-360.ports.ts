@@ -8,6 +8,7 @@
 // mirroring the My Desk MyDeskReadPort precedent.
 
 import type { VisibilityContextShape } from '@aramo/common';
+
 import type { TalentRequisitionJourney } from '../talent-journey/dto/talent-journey.view.js';
 
 // The authenticated, visibility-resolved actor context handed to every port.

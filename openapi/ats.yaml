@@ -7360,6 +7360,69 @@ components:
         kind: { type: string }
         label: { type: string }
         href: { type: [string, 'null'] }
+    JourneyStageElementView:
+      type: object
+      additionalProperties: false
+      description: One journey stage, attributed to its owner aggregate + the exact owner row that establishes it. A stage with no backing owner row is never emitted.
+      required: [stage, owner, source_object_id]
+      properties:
+        stage: { type: string }
+        owner: { type: string }
+        source_object_id: { type: string }
+        occurred_at: { type: string, format: date-time }
+    JourneySubStatesView:
+      type: object
+      additionalProperties: false
+      description: One state value per composed owner (state enums only; no commercial/compensation field). null = the owner has no row on this lineage.
+      required:
+        - pipeline_stage
+        - submittal_state
+        - selection_state
+        - interview_state
+        - offer_state
+        - placement_state
+        - pre_start_state
+        - assignment_state
+      properties:
+        pipeline_stage: { type: [string, 'null'] }
+        submittal_state: { type: [string, 'null'] }
+        selection_state: { type: [string, 'null'] }
+        interview_state: { type: [string, 'null'] }
+        offer_state: { type: [string, 'null'] }
+        placement_state: { type: [string, 'null'] }
+        pre_start_state: { type: [string, 'null'] }
+        assignment_state: { type: [string, 'null'] }
+    JourneyActionView:
+      type: object
+      additionalProperties: false
+      description: An owner-specific action affordance naming the owner's existing command route. The journey read issues zero writes.
+      required: [action, owner, command_route]
+      properties:
+        action: { type: string }
+        owner: { type: string }
+        command_route: { type: string }
+    TalentRequisitionJourneyView:
+      type: object
+      additionalProperties: false
+      description: The authoritative per-episode journey (owner-attributed, GET-only) — the same shape as GET /v1/pipelines/{id}/journey. A SUMMARY, not a second state machine.
+      required:
+        - requisition_id
+        - talent_record_id
+        - current_journey_stage
+        - stages
+        - sub_states
+        - actions
+      properties:
+        requisition_id: { type: string }
+        talent_record_id: { type: string }
+        current_journey_stage: { type: string }
+        stages:
+          type: array
+          items: { $ref: '#/components/schemas/JourneyStageElementView' }
+        sub_states: { $ref: '#/components/schemas/JourneySubStatesView' }
+        actions:
+          type: array
+          items: { $ref: '#/components/schemas/JourneyActionView' }
     ActiveOpportunityView:
       type: object
       additionalProperties: false
@@ -7391,8 +7454,7 @@ components:
             - $ref: '#/components/schemas/OpportunityActionView'
             - type: 'null'
         journey:
-          type: object
-          description: The authoritative per-episode journey (owner-attributed, GET-only) — the same shape as GET /v1/pipelines/{id}/journey. A SUMMARY, not a second state machine.
+          $ref: '#/components/schemas/TalentRequisitionJourneyView'
         open_journey_href: { type: string }
     ClosedOpportunityView:
       type: object
@@ -7460,7 +7522,15 @@ components:
           items: { $ref: '#/components/schemas/RecentActivityItemView' }
         category_counts:
           type: object
-          additionalProperties: { type: integer }
+          additionalProperties: false
+          description: Per-category counts over the composed activity window. Keys are the fixed activity categories; a category absent from the window is omitted (client reads count ?? 0).
+          properties:
+            communications: { type: integer }
+            requisitions: { type: integer }
+            client: { type: integer }
+            interviews: { type: integer }
+            documents: { type: integer }
+            tasks: { type: integer }
         has_more: { type: boolean }
     ProfileFactView:
       type: object
