@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
+import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
 import { Client } from 'pg';
 import {
   PrismaService as SkillsPrisma,
@@ -124,7 +125,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     }
 
     beforeAll(async () => {
-      container = await new PostgreSqlContainer('postgres:17').start();
+      container = await new PostgreSqlContainer(ARAMO_POSTGRES_TEST_IMAGE).start();
       const url = container.getConnectionUri();
       const db = new Client({ connectionString: url });
       await db.connect();

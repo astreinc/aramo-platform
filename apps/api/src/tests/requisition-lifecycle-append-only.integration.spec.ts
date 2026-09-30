@@ -5,6 +5,7 @@ import {
   PostgreSqlContainer,
   type StartedPostgreSqlContainer,
 } from '@testcontainers/postgresql';
+import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
 import { Client } from 'pg';
 import { v7 as uuidv7 } from 'uuid';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -70,7 +71,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     }
 
     beforeAll(async () => {
-      container = await new PostgreSqlContainer('postgres:17').start();
+      container = await new PostgreSqlContainer(ARAMO_POSTGRES_TEST_IMAGE).start();
       db = new Client({ connectionString: container.getConnectionUri() });
       await db.connect();
       for (const p of MIGRATIONS) await db.query(readFileSync(p, 'utf8'));

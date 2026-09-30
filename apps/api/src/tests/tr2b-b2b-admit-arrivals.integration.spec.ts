@@ -6,7 +6,8 @@ import {
   PostgreSqlContainer,
   type StartedPostgreSqlContainer,
 } from '@testcontainers/postgresql';
-import { computeEmailFingerprint, loadIdentityAdmissionPolicy } from '@aramo/common';
+import {
+  ARAMO_POSTGRES_TEST_IMAGE, computeEmailFingerprint, loadIdentityAdmissionPolicy } from '@aramo/common';
 import { Client } from 'pg';
 import { v7 as uuidv7 } from 'uuid';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -65,7 +66,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     };
 
     beforeAll(async () => {
-      container = await new PostgreSqlContainer('postgres:17').start();
+      container = await new PostgreSqlContainer(ARAMO_POSTGRES_TEST_IMAGE).start();
       const url = container.getConnectionUri();
       db = new Client({ connectionString: url });
       await db.connect();

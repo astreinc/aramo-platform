@@ -21,8 +21,10 @@ export const SEARCH_ENTITY_TYPES = ['TALENT', 'REQUISITION', 'COMPANY', 'CONTACT
 export type SearchEntityType = (typeof SEARCH_ENTITY_TYPES)[number];
 
 // Which retrieval leg produced a hit — inspectable for tests/debug (directive §11), never
-// a normal user surface. GS-1 activates 'exact' + 'lexical'; GS-2 adds 'semantic' here.
-export type SearchMatchSignal = 'exact' | 'lexical';
+// a normal user surface. GS-1 activated 'exact' + 'lexical'; GS-2A adds 'semantic' (the
+// vector leg). Ordering is a frozen three-band tier (exact > lexical > semantic; see
+// EnterpriseSearchReadService.orderHits) — never a product-visible similarity number.
+export type SearchMatchSignal = 'exact' | 'lexical' | 'semantic';
 
 export interface SearchMatch {
   // The strongest signal that produced this hit. Exact identifier hits outrank merely

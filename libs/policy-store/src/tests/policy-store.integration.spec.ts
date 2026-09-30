@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
+import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
 import type { PolicyPackage } from '@aramo/policy-engine';
 
 import { PolicyStore } from '../lib/policy-store.js';
@@ -57,7 +58,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     let store: PolicyStore;
 
     beforeAll(async () => {
-      container = await new PostgreSqlContainer('postgres:17').start();
+      container = await new PostgreSqlContainer(ARAMO_POSTGRES_TEST_IMAGE).start();
       const url = container.getConnectionUri();
       const migrationSql = readFileSync(MIGRATION_PATH, 'utf8');
 

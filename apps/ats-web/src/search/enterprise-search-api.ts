@@ -9,7 +9,9 @@ import { apiClient } from '@aramo/fe-foundation';
 export type SearchEntityType = 'TALENT' | 'REQUISITION' | 'COMPANY' | 'CONTACT';
 
 export interface SearchMatch {
-  readonly signal: 'exact' | 'lexical';
+  // GS-2A adds 'semantic' (mirrors backend SearchMatchSignal + openapi EnterpriseSearchMatch).
+  // Signal is inspectable only — never rendered as a badge or similarity number to recruiters.
+  readonly signal: 'exact' | 'lexical' | 'semantic';
   readonly field?: string;
   readonly relevance: number;
 }

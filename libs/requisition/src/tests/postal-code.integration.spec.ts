@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
+import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
 import { Client } from 'pg';
 
 // WL-B1 — real-Postgres proof for the additive Requisition.postal_code column.
@@ -38,7 +39,7 @@ describe('Requisition.postal_code — real Postgres round-trip (WL-B1)', () => {
   const company = randomUUID();
 
   beforeAll(async () => {
-    container = await new PostgreSqlContainer('postgres:17').start();
+    container = await new PostgreSqlContainer(ARAMO_POSTGRES_TEST_IMAGE).start();
     sql = new Client({ connectionString: container.getConnectionUri() });
     await sql.connect();
     for (const path of MIGRATIONS) {

@@ -3,6 +3,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
+import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
 import { Client } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { CommunicationsPrismaService, CommunicationsRepository } from '@aramo/communications';
@@ -104,7 +105,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       process.env['ARAMO_ENV'] = 'itest';
       process.env['MSGRAPH_OAUTH_STATE_KEY'] = Buffer.alloc(32, 5).toString('base64url');
 
-      container = await new PostgreSqlContainer('postgres:17').start();
+      container = await new PostgreSqlContainer(ARAMO_POSTGRES_TEST_IMAGE).start();
       const url = container.getConnectionUri();
       db = new Client({ connectionString: url });
       await db.connect();

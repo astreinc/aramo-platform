@@ -6,18 +6,32 @@ import {
   PostgreSqlContainer,
   type StartedPostgreSqlContainer,
 } from '@testcontainers/postgresql';
+import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
 import { v7 as uuidv7 } from 'uuid';
 import { TalentRecordRepository, TalentRecordPrismaService, ResumeTextService } from '@aramo/talent-record';
 import { RequisitionRepository, RequisitionPrismaService } from '@aramo/requisition';
 import { CompanyRepository, CompanyPrismaService } from '@aramo/company';
 import { ContactRepository, ContactPrismaService } from '@aramo/contact';
+import type { EmbeddingPort } from '@aramo/ai-draft';
+import type { TalentEmbeddingSearchPort } from '@aramo/talent-embedding';
 
 import { EnterpriseSearchReadService } from '../search/enterprise-search-read.service.js';
 import { TalentSearchAdapter } from '../search/adapters/talent-search.adapter.js';
 import { RequisitionSearchAdapter } from '../search/adapters/requisition-search.adapter.js';
 import { CompanySearchAdapter } from '../search/adapters/company-search.adapter.js';
 import { ContactSearchAdapter } from '../search/adapters/contact-search.adapter.js';
+import { EmbeddingProcessingConfig } from '../embedding/embedding-processing.config.js';
 import type { SearchAuthorityContext, SearchEntityType } from '../search/enterprise-search.port.js';
+
+// GS-1 e2e: semantic leg dark (EMBEDDING_PROCESSING_ENABLED unset), so these are never invoked.
+const DISABLED_EMBEDDING = {
+  embed: async () => {
+    throw new Error('semantic leg must be dark in this GS-1 e2e spec');
+  },
+} as unknown as EmbeddingPort;
+const EMPTY_SEMANTIC = {
+  searchSemanticForActor: async () => [],
+} as unknown as TalentEmbeddingSearchPort;
 
 // Enterprise Search GS-1 — the FIRST TRUE BACKEND VERTICAL SLICE: the whole /v1/search surface
 // end-to-end across all four entity types, against a REAL Postgres 17 holding all four schemas.
@@ -107,7 +121,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     const contactB = uuidv7();
 
     beforeAll(async () => {
-      container = await new PostgreSqlContainer('postgres:17').start();
+      container = await new PostgreSqlContainer(ARAMO_POSTGRES_TEST_IMAGE).start();
       const url = container.getConnectionUri();
       const setup = new TalentRecordPrismaService(url);
       await setup.$connect();
@@ -133,7 +147,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const companyRepo = new CompanyRepository(companyPrisma);
       const contactRepo = new ContactRepository(contactPrisma, {} as never);
       svc = new EnterpriseSearchReadService([
-        new TalentSearchAdapter(talentRepo),
+        new TalentSearchAdapter(talentRepo, DISABLED_EMBEDDING, EMPTY_SEMANTIC, new EmbeddingProcessingConfig()),
         new RequisitionSearchAdapter(reqRepo),
         new CompanySearchAdapter(companyRepo),
         new ContactSearchAdapter(contactRepo),

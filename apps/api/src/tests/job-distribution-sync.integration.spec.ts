@@ -5,6 +5,7 @@ import {
   PostgreSqlContainer,
   type StartedPostgreSqlContainer,
 } from '@testcontainers/postgresql';
+import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
 import { Client } from 'pg';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -129,7 +130,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     const savedEnv: Record<string, string | undefined> = {};
 
     beforeAll(async () => {
-      container = await new PostgreSqlContainer('postgres:17-alpine').start();
+      container = await new PostgreSqlContainer(ARAMO_POSTGRES_TEST_IMAGE).start();
       const uri = container.getConnectionUri();
       db = new Client({ connectionString: uri });
       await db.connect();

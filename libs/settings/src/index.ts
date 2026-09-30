@@ -10,6 +10,7 @@ export {
   isBoolean,
   isMetricGoalMap,
   isLlmActiveProvider,
+  isEmbeddingActiveProvider,
 } from './lib/known-settings.js';
 export type {
   KnownSettingKey,
@@ -18,6 +19,7 @@ export type {
   CompensationDisplayDefault,
   MetricGoalMap,
   LlmActiveProvider,
+  EmbeddingActiveProvider,
 } from './lib/known-settings.js';
 
 export type { TenantSettingsView } from './lib/dto/tenant-settings.view.js';

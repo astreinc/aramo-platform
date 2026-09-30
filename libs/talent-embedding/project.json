@@ -1,0 +1,30 @@
+{
+  "name": "talent-embedding",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/talent-embedding/src",
+  "projectType": "library",
+  "tags": ["scope:cip"],
+  "targets": {
+    "build": {
+      "executor": "@nx/js:tsc",
+      "outputs": ["{options.outputPath}"],
+      "options": {
+        "outputPath": "dist/libs/talent-embedding",
+        "main": "libs/talent-embedding/src/index.ts",
+        "tsConfig": "libs/talent-embedding/tsconfig.lib.json"
+      }
+    },
+    "lint": {
+      "executor": "@nx/eslint:lint",
+      "options": {
+        "lintFilePatterns": ["libs/talent-embedding/**/*.ts"]
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "vitest run --passWithNoTests --root libs/talent-embedding"
+      }
+    }
+  }
+}

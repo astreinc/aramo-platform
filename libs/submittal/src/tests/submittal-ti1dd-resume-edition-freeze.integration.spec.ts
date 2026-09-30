@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
+import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
 import { Client } from 'pg';
 
 // TALENT-INTEL-1 TI-1D-D (Layer B) — the DB-layer proofs for the frozen send-time
@@ -67,7 +68,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     let c: Client;
 
     beforeAll(async () => {
-      container = await new PostgreSqlContainer('postgres:17').start();
+      container = await new PostgreSqlContainer(ARAMO_POSTGRES_TEST_IMAGE).start();
       c = new Client({ connectionString: container.getConnectionUri() });
       await c.connect();
       for (const m of MIGRATIONS) {

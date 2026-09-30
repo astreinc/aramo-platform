@@ -1,5 +1,5 @@
 {
-  "aliasTotals": { "apps": 3, "libs": 75, "total": 78 },
+  "aliasTotals": { "apps": 3, "libs": 76, "total": 79 },
   "aliases": {
     "@aramo/activity": "libs/activity/src/index.ts",
     "@aramo/ai-draft": "libs/ai-draft/src/index.ts",
@@ -70,6 +70,7 @@
     "@aramo/sourced-talent": "libs/sourced-talent/src/index.ts",
     "@aramo/submittal": "libs/submittal/src/index.ts",
     "@aramo/submittal-eligibility": "libs/submittal-eligibility/src/index.ts",
+    "@aramo/talent-embedding": "libs/talent-embedding/src/index.ts",
     "@aramo/talent-evidence": "libs/talent-evidence/src/index.ts",
     "@aramo/talent-extraction": "libs/talent-extraction/src/index.ts",
     "@aramo/talent-reconcile": "libs/talent-reconcile/src/index.ts",
@@ -103,22 +104,34 @@
       "isNoteVisibility"
     ],
     "@aramo/ai-draft": [
+      "ACTIVE_EMBEDDING_PROVIDER_RESOLVER",
       "ACTIVE_PROVIDER_RESOLVER",
       "AI_DRAFT_EVENT_TYPES",
       "ARAMO_AI_DRAFT_MODEL",
       "AiDraftModule",
       "AiDraftService",
       "AnthropicStructuredGenerationService",
+      "EMBEDDING_MODEL_ALLOWLIST",
+      "EMBEDDING_MODEL_DIMENSION",
+      "EMBEDDING_PORT",
+      "EMBEDDING_PROVIDER_DEFAULT_MODEL",
+      "EmbeddingUnavailableError",
       "LlmKeyNotConfiguredError",
+      "OpenAiEmbeddingProvider",
       "PROVIDER_DEFAULT_MODEL",
       "PROVIDER_MODEL_ALLOWLIST",
       "STRUCTURED_GENERATION_PROVIDER",
       "SecretCacheService",
+      "WIRED_EMBEDDING_PROVIDERS",
       "WIRED_LLM_PROVIDERS",
+      "embeddingModelDimension",
+      "isEmbeddingModelAllowed",
+      "isEmbeddingProvider",
       "isLlmKeyNotConfigured",
       "isLlmProvider",
       "isModelAllowedForProvider",
       "redactPii",
+      "resolveEmbeddingModel",
       "resolveProviderModel"
     ],
     "@aramo/api": ["AppModule"],
@@ -307,6 +320,7 @@
       "ColdIngestExtractionProcessor"
     ],
     "@aramo/common": [
+      "ARAMO_POSTGRES_TEST_IMAGE",
       "AUTH_STORAGE_MIGRATIONS",
       "AramoError",
       "AramoExceptionFilter",
@@ -1343,6 +1357,7 @@
       "TenantSettingService",
       "isBoolean",
       "isCompensationDisplayDefault",
+      "isEmbeddingActiveProvider",
       "isKnownSettingKey",
       "isLlmActiveProvider",
       "isMetricGoalMap"
@@ -1407,6 +1422,16 @@
       "isSubmittalAuthority",
       "isSubmittalPolicyReason",
       "isSubmittalWindowStatus"
+    ],
+    "@aramo/talent-embedding": [
+      "TALENT_EMBEDDING_REPOSITORY_PORT",
+      "TALENT_EMBEDDING_SEARCH_PORT",
+      "TALENT_EMBEDDING_STATUSES",
+      "TALENT_EMBEDDING_TRANSITIONS",
+      "TalentEmbeddingModule",
+      "TalentEmbeddingPrismaService",
+      "TalentEmbeddingRepository",
+      "canTalentEmbeddingTransition"
     ],
     "@aramo/talent-evidence": [
       "PrismaService",
@@ -1589,6 +1614,36 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/ci-b6p-composition.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/enterprise-search-semantic.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/enterprise-search-talent.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/enterprise-search.e2e.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/talent-embedding-lifecycle.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/talent-search-adapter.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -2836,13 +2891,271 @@
       { "project": "ai-draft", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/activity-redaction.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/advisory-resolution.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/ats-a8-2-suggest-mapping.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/ats-batch1-gating.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/ats-batch2-requisition.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/ats-batch3-talent-record-attachment.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/ats-batch4a-pipeline-activity.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/ats-batch4b-talent-link.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/ats-batch5-calendar-saved-list.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/ats-batch6-reporting-dashboard.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/ats-batch7-import-engine.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/ats-batch8-pr-a8-4-export.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/auth-hardening-d1-recruiter-context.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/auth-hardening-d4-assignable-users.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/auth-hardening-d4b-name-resolver.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/authz-d4a-team-models.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/authz-d4b-visibility-matrix.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/canonical-match-shadow.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/canonical-reconcile-activation.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/cb-d2-a1-lifecycle-ingress.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/cb-d2-fg-fieldglass-lifecycle.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/cb-d2-r-reconciliation-drain.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/ci-b5z-zoom-transcript-orchestration.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/ci-b6p-processing.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/client-selection-create-from-submittal.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/client-submittal-policy/client-submittal-policy.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/comm-b5-call-initiation.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/comm-b6-zoom-webhook.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/comm-b7-disposition-timeline.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/comm-b8-provider-reference.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/communications-authz.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/connector-integration-authz.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/conversation-started.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/conversation-started.negative-shape.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/doc6-offer-document.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/documents-http.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/domain-verification.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/email-template-authz.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/enterprise-search-company.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/enterprise-search-contact.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/enterprise-search-requisition.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/enterprise-search-semantic.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/enterprise-search-talent.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/enterprise-search.e2e.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/examine-live-list.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -2860,6 +3173,36 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/invite-s2-public-accept.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/job-distribution-sync.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/l1b-write-visibility.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/l1d1-external-lifecycle-authority.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/l1d3a-mapping-admin.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/l2g-placement-lifecycle-orchestrator.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -2872,7 +3215,67 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/l2i-d1-inbound-orchestrator.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/l2i-d1-mapping-admin-http.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/l2i-d1-provider-mapping-admin.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/manual-capture.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/match-list.negative-shape.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/microsoft-delegated-auth.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/microsoft-email-send.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/microsoft-meeting-create.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/my-desk.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/oc6-rtr-webhook-e2e.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/outreach-send-consent-revoked.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -2884,7 +3287,91 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/outreach-send.negative-shape.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/override-create.negative-shape.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/pipeline-void-orchestrator.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/placement-http.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/placement-read-http.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/policy-add-talent.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/policy-cache-ttl.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/policy-matrix.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/policy-override.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/policy-retrieval.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/policy-set-priority.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/policy-sourcing-add.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/portal-p4b-rtbf.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/portal-refusal.negative-shape.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/pre-start-requirement/pre-start-orchestrator.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -2896,7 +3383,145 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/requisition-bookmarks.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/requisition-closed-live-list.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/requisition-concurrency.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/requisition-lifecycle-append-only.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/requisition-lifecycle-event.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/requisition-lifecycle-wiring.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/requisition-number.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/requisition-onsite-days.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/requisition-transition.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/response-received.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/response-received.negative-shape.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/rn1-requisition-notes.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/selection-create.negative-shape.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/selection-transition.negative-shape.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/selection.controller.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/settings-d2-audit-events.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/settings-d3-tenant-profile.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/settings-d4-sites.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/settings-d5-roles-catalog.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/settings-tenant-get.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/settings-tenant-set.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/skill-correction-engine.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/sourcing-policy-controller.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/src1-e2e-closure.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -2908,7 +3533,49 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/submit-talent.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/submittal-confirm.negative-shape.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/submittal-create.negative-shape.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/submittal-evidence-package.negative-shape.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/submittal-get.negative-shape.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/submittal-revoke.negative-shape.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/support/see-all-visibility.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/t8p2-requisition-import.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -2932,6 +3599,18 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/tenant-policy-coverage.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/tenant-reset.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/tenant-write-freeze.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -2944,7 +3623,121 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/tr12-b1-proposals.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/tr12-b2-queue.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/tr14-b1-dossier-reads.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/tr14-b2-dossier.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/tr15-b1-dispute-resolution.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/tr15-b2-erasure.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/tr2a-b3b-reconcile.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/tr2b-b2a-lifecycle-sweep.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/tr2b-b2b-admit-arrivals.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/tr2b-b2b-erasure-cluster-purge.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/tr3-b2-email-verification.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/tr4-b2-claims-routing.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/tr4-b3-consistency.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/tr5-b1-recompute-sweep.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/tr5-b2-continuity-thinness.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/tr6-b1-maintenance.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/tr7-b1-credential-routing.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/tr8-b1-renewal.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/tr9-b1-reference-attestation.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/trust-proxy-budget.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -3004,7 +3797,25 @@
         "project": "auth-service",
         "status": "excluded"
       },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/trust-proxy-budget.integration.spec.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
       { "project": "auth-service", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/auth-storage/src/tests/host-auth-profile.integration.spec.ts",
+        "project": "auth-storage",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/auth-storage/src/tests/refresh-token.integration.spec.ts",
+        "project": "auth-storage",
+        "status": "excluded"
+      },
       { "project": "auth-storage", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
@@ -3022,6 +3833,24 @@
         "status": "excluded"
       },
       { "project": "canonicalization", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/client-selection/src/tests/client-selection-process.integration.spec.ts",
+        "project": "client-selection",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/client-selection/src/tests/interview-session.integration.spec.ts",
+        "project": "client-selection",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/client-selection/src/tests/journey-projection.integration.spec.ts",
+        "project": "client-selection",
+        "status": "excluded"
+      },
       { "project": "client-selection", "status": "production" },
       { "project": "client-submittal-policy", "status": "production" },
       {
@@ -3038,6 +3867,18 @@
         "status": "excluded"
       },
       { "project": "cold-ingest-extraction", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/communications/src/tests/communications-persistence.integration.spec.ts",
+        "project": "communications",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/communications/src/tests/email-template-store.integration.spec.ts",
+        "project": "communications",
+        "status": "excluded"
+      },
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/company/src/tests/address-lookup.controller.spec.ts",
@@ -3077,7 +3918,19 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/consent/src/tests/consent-portal-actor.integration.spec.ts",
+        "project": "consent",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/consent/src/tests/consent.controller.spec.ts",
+        "project": "consent",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/consent/src/tests/consent.integration.spec.ts",
         "project": "consent",
         "status": "excluded"
       },
@@ -3090,6 +3943,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/consent/src/tests/consent.repository.spec.ts",
+        "project": "consent",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/consent/src/tests/stale-consent.integration.spec.ts",
         "project": "consent",
         "status": "excluded"
       },
@@ -3109,6 +3968,12 @@
       { "project": "contact", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/conversation-intelligence/src/tests/ci-b6-processing.integration.spec.ts",
+        "project": "conversation-intelligence",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/conversation-intelligence/src/tests/requisition-analysis-context-snapshot.integration.spec.ts",
         "project": "conversation-intelligence",
         "status": "excluded"
@@ -3120,8 +3985,98 @@
         "status": "excluded"
       },
       { "project": "conversation-intelligence", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/conversation-transcript/src/tests/conversation-transcript-persistence.integration.spec.ts",
+        "project": "conversation-transcript",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/conversation-transcript/src/tests/transcript-normalization.integration.spec.ts",
+        "project": "conversation-transcript",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/documents/src/tests/doc2-render-service.integration.spec.ts",
+        "project": "documents",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/documents/src/tests/doc2-templates-requirements-repo.integration.spec.ts",
+        "project": "documents",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/documents/src/tests/doc2-templates-requirements.integration.spec.ts",
+        "project": "documents",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/documents/src/tests/doc4-write-back.integration.spec.ts",
+        "project": "documents",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/documents/src/tests/doc5-rtr-readiness.integration.spec.ts",
+        "project": "documents",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/documents/src/tests/doc6-offer-letter-seed.integration.spec.ts",
+        "project": "documents",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/documents/src/tests/documents-core.integration.spec.ts",
+        "project": "documents",
+        "status": "excluded"
+      },
       { "project": "documents", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/entitlement/src/tests/entitlement-reconcile.integration.spec.ts",
+        "project": "entitlement",
+        "status": "excluded"
+      },
       { "project": "entitlement", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/esign/src/tests/esign-flow.integration.spec.ts",
+        "project": "esign",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/esign/src/tests/esign-schema.integration.spec.ts",
+        "project": "esign",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/esign/src/tests/execution-stamping.integration.spec.ts",
+        "project": "esign",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/esign/src/tests/outbox-delivery.integration.spec.ts",
+        "project": "esign",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/esign/src/tests/signer-document-view.integration.spec.ts",
+        "project": "esign",
+        "status": "excluded"
+      },
       { "project": "esign-service", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
@@ -3144,7 +4099,37 @@
       { "project": "evidence", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/examination/src/tests/examination-full.integration.spec.ts",
+        "project": "examination",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/examination/src/tests/examination-live-list.integration.spec.ts",
+        "project": "examination",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/examination/src/tests/examination.immutability.integration.spec.ts",
+        "project": "examination",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/examination/src/tests/examination.repository.integration.spec.ts",
+        "project": "examination",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/examination/src/tests/examination.repository.unit.spec.ts",
+        "project": "examination",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/examination/src/tests/examination.schema.integration.spec.ts",
         "project": "examination",
         "status": "excluded"
       },
@@ -3165,6 +4150,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/identity/src/tests/audit-query.service.spec.ts",
+        "project": "identity",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/identity/src/tests/auth-hardening-d2-reconcile.integration.spec.ts",
         "project": "identity",
         "status": "excluded"
       },
@@ -3266,9 +4257,51 @@
         "status": "excluded"
       },
       { "project": "import", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/ingestion/src/tests/ingestion.integration.spec.ts",
+        "project": "ingestion",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/ingestion/src/tests/source-class-backfill.integration.spec.ts",
+        "project": "ingestion",
+        "status": "excluded"
+      },
       { "project": "ingestion", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/integration/src/tests/connector-persistence.integration.spec.ts",
+        "project": "integration",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/integration/src/tests/pipeline-disposition-mapping.integration.spec.ts",
+        "project": "integration",
+        "status": "excluded"
+      },
       { "project": "integration", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/job-domain/src/tests/job-domain.integration.spec.ts",
+        "project": "job-domain",
+        "status": "excluded"
+      },
       { "project": "mailer", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/matching/src/tests/match-queue.integration.spec.ts",
+        "project": "matching",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/matching/src/tests/matching.persistence.integration.spec.ts",
+        "project": "matching",
+        "status": "excluded"
+      },
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/matching/src/tests/no-llm-boundary.spec.ts",
@@ -3276,18 +4309,114 @@
         "status": "excluded"
       },
       { "project": "matching", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/metering/src/tests/transactional-guarantee.integration.spec.ts",
+        "project": "metering",
+        "status": "excluded"
+      },
       { "project": "object-storage", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/outbox-publisher/src/tests/outbox-publisher.integration.spec.ts",
+        "project": "outbox-publisher",
+        "status": "excluded"
+      },
       { "project": "outbox-publisher", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/pipeline/src/tests/external-source-event.integration.spec.ts",
+        "project": "pipeline",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/pipeline/src/tests/pipeline-capacity-authority-removed-b2.integration.spec.ts",
+        "project": "pipeline",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/pipeline/src/tests/pipeline-l2a-integrity.integration.spec.ts",
+        "project": "pipeline",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/pipeline/src/tests/pipeline-l2b-durable-episode.integration.spec.ts",
+        "project": "pipeline",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/pipeline/src/tests/pipeline-l2c-recruiter-lifecycle.integration.spec.ts",
+        "project": "pipeline",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/pipeline/src/tests/pipeline-l2d-entry-provenance.integration.spec.ts",
+        "project": "pipeline",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/pipeline/src/tests/pipeline-ti1dd-requisition-resume.integration.spec.ts",
+        "project": "pipeline",
+        "status": "excluded"
+      },
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/pipeline/src/tests/pipeline-void-correction.integration.spec.ts",
         "project": "pipeline",
         "status": "excluded"
       },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/pipeline/src/tests/pipeline-write-invariants.integration.spec.ts",
+        "project": "pipeline",
+        "status": "excluded"
+      },
       { "project": "pipeline", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/placement/src/tests/assignment-pipeline.integration.spec.ts",
+        "project": "placement",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/placement/src/tests/commercial-approval.integration.spec.ts",
+        "project": "placement",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/placement/src/tests/commercial-margin-read.integration.spec.ts",
+        "project": "placement",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/placement/src/tests/contract-assignment.integration.spec.ts",
+        "project": "placement",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/placement/src/tests/fallthrough-cohort.integration.spec.ts",
+        "project": "placement",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/placement/src/tests/fill-cohort.integration.spec.ts",
+        "project": "placement",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/placement/src/tests/offer-lifecycle.integration.spec.ts",
         "project": "placement",
         "status": "excluded"
       },
@@ -3297,7 +4426,73 @@
         "project": "placement",
         "status": "excluded"
       },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/placement/src/tests/placement-read.integration.spec.ts",
+        "project": "placement",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/placement/src/tests/placement.repository.integration.spec.ts",
+        "project": "placement",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/placement/src/tests/t5-assignment-rate-version.integration.spec.ts",
+        "project": "placement",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/placement/src/tests/t6-b1-effective-window.integration.spec.ts",
+        "project": "placement",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/placement/src/tests/t6-b2-commercial-revision.integration.spec.ts",
+        "project": "placement",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/placement/src/tests/t6-b3-commercial-cancellation.integration.spec.ts",
+        "project": "placement",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/placement/src/tests/t7-p1-permanent-placement.integration.spec.ts",
+        "project": "placement",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/placement/src/tests/t7-p2-falloff-remedy.integration.spec.ts",
+        "project": "placement",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/placement/src/tests/t7-p3-guarantee-term-versioning.integration.spec.ts",
+        "project": "placement",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/placement/src/tests/t7-px-contract-to-permanent-conversion.integration.spec.ts",
+        "project": "placement",
+        "status": "excluded"
+      },
       { "project": "placement", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/placement-pipeline-bridge/src/tests/inbox.integration.spec.ts",
+        "project": "placement-pipeline-bridge",
+        "status": "excluded"
+      },
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/dashboard.integration.spec.ts",
@@ -3322,8 +4517,38 @@
         "project": "platform-admin",
         "status": "excluded"
       },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/tenant-policy-provisioning.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
       { "project": "platform-admin", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/policy-store/src/tests/decision-record.integration.spec.ts",
+        "project": "policy-store",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/policy-store/src/tests/policy-store.integration.spec.ts",
+        "project": "policy-store",
+        "status": "excluded"
+      },
       { "project": "portal", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/portal-identity/src/tests/portal-identity.integration.spec.ts",
+        "project": "portal-identity",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/pre-start-requirement/src/tests/pre-start-requirement.repository.integration.spec.ts",
+        "project": "pre-start-requirement",
+        "status": "excluded"
+      },
       { "project": "pre-start-requirement", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
@@ -3334,6 +4559,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/reporting/src/tests/assignment-pipeline.spec.ts",
+        "project": "reporting",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/reporting/src/tests/capacity-projection-edge.integration.spec.ts",
         "project": "reporting",
         "status": "excluded"
       },
@@ -3430,6 +4661,18 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/requisition/src/tests/capacity-agreement-b2.integration.spec.ts",
+        "project": "requisition",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/requisition/src/tests/capacity-projection-edge.integration.spec.ts",
+        "project": "requisition",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/requisition/src/tests/compensation-edit-gate.spec.ts",
         "project": "requisition",
         "status": "excluded"
@@ -3442,13 +4685,31 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/requisition/src/tests/external-identity.integration.spec.ts",
+        "project": "requisition",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/requisition/src/tests/financial-edit-gate.spec.ts",
         "project": "requisition",
         "status": "excluded"
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/requisition/src/tests/openings-available-drop-b2.integration.spec.ts",
+        "project": "requisition",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/requisition/src/tests/openings-available-write-demote.spec.ts",
+        "project": "requisition",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/requisition/src/tests/postal-code.integration.spec.ts",
         "project": "requisition",
         "status": "excluded"
       },
@@ -3461,6 +4722,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/requisition/src/tests/requisition-intake.service.spec.ts",
+        "project": "requisition",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/requisition/src/tests/requisition-skill-canonicalization.integration.spec.ts",
         "project": "requisition",
         "status": "excluded"
       },
@@ -3515,13 +4782,79 @@
         "project": "selection",
         "status": "excluded"
       },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/selection/src/tests/selection.schema.integration.spec.ts",
+        "project": "selection",
+        "status": "excluded"
+      },
       { "project": "selection", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/settings/src/tests/settings.integration.spec.ts",
+        "project": "settings",
+        "status": "excluded"
+      },
       { "project": "settings", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/skills-taxonomy/src/tests/skill-alias-version.integration.spec.ts",
+        "project": "skills-taxonomy",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/skills-taxonomy/src/tests/skill-canonicalization-processor.integration.spec.ts",
+        "project": "skills-taxonomy",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/skills-taxonomy/src/tests/skill-correction-task-matrix.integration.spec.ts",
+        "project": "skills-taxonomy",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/skills-taxonomy/src/tests/skill-governance-proposal.integration.spec.ts",
+        "project": "skills-taxonomy",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/skills-taxonomy/src/tests/skill-governance.integration.spec.ts",
+        "project": "skills-taxonomy",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/skills-taxonomy/src/tests/skill-registry.integration.spec.ts",
+        "project": "skills-taxonomy",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/skills-taxonomy/src/tests/skill-relationship-canonicalization.integration.spec.ts",
+        "project": "skills-taxonomy",
+        "status": "excluded"
+      },
       { "project": "skills-taxonomy", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/sourced-talent/src/tests/sourced-talent.integration.spec.ts",
         "project": "sourced-talent",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/submittal/src/tests/drop-empty-engagement-schema.integration.spec.ts",
+        "project": "submittal",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/submittal/src/tests/submittal-ti1dd-resume-edition-freeze.integration.spec.ts",
+        "project": "submittal",
         "status": "excluded"
       },
       {
@@ -3563,7 +4896,49 @@
       { "project": "submittal", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/submittal-eligibility/src/tests/requisition-eligibility-reader.integration.spec.ts",
+        "project": "submittal-eligibility",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/submittal-eligibility/src/tests/submittal-consumption.concurrency.integration.spec.ts",
+        "project": "submittal-eligibility",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/talent-embedding/src/tests/talent-embedding.integration.spec.ts",
+        "project": "talent-embedding",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/talent-evidence/src/tests/doc1b-reconciliation.integration.spec.ts",
+        "project": "talent-evidence",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/talent-evidence/src/tests/talent-evidence.integration.spec.ts",
+        "project": "talent-evidence",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/talent-evidence/src/tests/talent-skill-canonicalization.integration.spec.ts",
+        "project": "talent-evidence",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/talent-reconcile/src/tests/no-llm-boundary.spec.ts",
+        "project": "talent-reconcile",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/talent-reconcile/src/tests/right-to-work-reconcile.integration.spec.ts",
         "project": "talent-reconcile",
         "status": "excluded"
       },
@@ -3571,11 +4946,101 @@
       { "project": "talent-reconcile-signal", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/talent-record/src/tests/profile-hydration.integration.spec.ts",
+        "project": "talent-record",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/talent-record/src/tests/resume-text-edition-history.integration.spec.ts",
+        "project": "talent-record",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/talent-record/src/tests/search-pr1.spec.ts",
         "project": "talent-record",
         "status": "excluded"
       },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/talent-record/src/tests/talent-record-reconcile.integration.spec.ts",
+        "project": "talent-record",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/talent-record/src/tests/tr2a-b3a-supersession.integration.spec.ts",
+        "project": "talent-record",
+        "status": "excluded"
+      },
       { "project": "talent-record", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/talent-trust/src/tests/anchor.integration.spec.ts",
+        "project": "talent-trust",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/talent-trust/src/tests/match.integration.spec.ts",
+        "project": "talent-trust",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/talent-trust/src/tests/resolution-decision.integration.spec.ts",
+        "project": "talent-trust",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/talent-trust/src/tests/resolution.integration.spec.ts",
+        "project": "talent-trust",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/talent-trust/src/tests/source-class-backfill.integration.spec.ts",
+        "project": "talent-trust",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/talent-trust/src/tests/sourced-talent-ref.integration.spec.ts",
+        "project": "talent-trust",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/talent-trust/src/tests/sourcing-pool.integration.spec.ts",
+        "project": "talent-trust",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/talent-trust/src/tests/talent-trust.integration.spec.ts",
+        "project": "talent-trust",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/talent-trust/src/tests/tr2a-b3a-fixpoint-cluster.integration.spec.ts",
+        "project": "talent-trust",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/talent-trust/src/tests/tr4-b1-claim-shapes.integration.spec.ts",
+        "project": "talent-trust",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/talent-trust/src/tests/tr6-b1-engine.integration.spec.ts",
+        "project": "talent-trust",
+        "status": "excluded"
+      },
       { "project": "talent-trust", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
@@ -3716,6 +5181,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/src2-extraction-repair.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/talent-embedding-consent.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -6015,6 +7486,12 @@
     "@aramo/settings": [
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/embedding-resolution.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/identity-module-split.di.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -6127,6 +7604,45 @@
       { "project": "api", "status": "production" },
       { "project": "requisition", "status": "production" }
     ],
+    "@aramo/talent-embedding": [
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/enterprise-search-semantic.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/enterprise-search-talent.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/enterprise-search.e2e.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/talent-embedding-lifecycle.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/talent-embedding-reconcile.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/talent-search-adapter.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      { "project": "api", "status": "production" }
+    ],
     "@aramo/talent-evidence": [
       {
         "excludedBy": "src/tests/**/*",
@@ -6234,6 +7750,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/enterprise-search-semantic.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/enterprise-search-talent.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -6283,6 +7805,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/talent-record-enrichment.service.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/talent-search-adapter.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -7056,6 +8584,13 @@
       "root": "libs/submittal-eligibility",
       "sourceRoot": "libs/submittal-eligibility/src",
       "tags": ["scope:ats"],
+      "targets": ["build", "lint", "test"]
+    },
+    {
+      "name": "talent-embedding",
+      "root": "libs/talent-embedding",
+      "sourceRoot": "libs/talent-embedding/src",
+      "tags": ["scope:cip"],
       "targets": ["build", "lint", "test"]
     },
     {

@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
+import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
 import { RedisContainer, type StartedRedisContainer } from '@testcontainers/redis';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { getQueueToken } from '@nestjs/bullmq';
@@ -62,7 +63,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     let savedRedisUrl: string | undefined;
 
     beforeAll(async () => {
-      pg = await new PostgreSqlContainer('postgres:17').start();
+      pg = await new PostgreSqlContainer(ARAMO_POSTGRES_TEST_IMAGE).start();
       redis = await new RedisContainer('redis:7').start();
 
       savedDbUrl = process.env['DATABASE_URL'];

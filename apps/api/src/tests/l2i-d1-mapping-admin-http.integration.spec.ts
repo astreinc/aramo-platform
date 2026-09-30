@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import type { AddressInfo } from 'node:net';
 
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
+import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { ValidationPipe, type INestApplication } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
@@ -62,7 +63,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       Number((await db.query(`SELECT count(*)::int c FROM integration."PipelineProviderDispositionMapping" WHERE connection_id=$1`, [CONN_A])).rows[0].c);
 
     beforeAll(async () => {
-      container = await new PostgreSqlContainer('postgres:17').start();
+      container = await new PostgreSqlContainer(ARAMO_POSTGRES_TEST_IMAGE).start();
       const dburl = container.getConnectionUri();
       db = new Client({ connectionString: dburl });
       await db.connect();

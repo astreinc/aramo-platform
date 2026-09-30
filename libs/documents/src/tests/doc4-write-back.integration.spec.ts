@@ -3,6 +3,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
+import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
 import { Client } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -75,7 +76,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('DOC-4 Documents w
   }
 
   beforeAll(async () => {
-    container = await new PostgreSqlContainer('postgres:17').start();
+    container = await new PostgreSqlContainer(ARAMO_POSTGRES_TEST_IMAGE).start();
     const url = container.getConnectionUri();
     db = new Client({ connectionString: url });
     await db.connect();

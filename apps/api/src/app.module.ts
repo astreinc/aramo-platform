@@ -100,6 +100,7 @@ import { PipelineIntegrationModule } from './pipeline-integration/pipeline-integ
 import { TenantLlmModule } from './tenant-llm/tenant-llm.module.js';
 import { LlmProviderResolutionModule } from './tenant-llm/llm-provider-resolution.module.js';
 import { LifecyclePollModule } from './requisition-integration/lifecycle-poll.module.js';
+import { TalentEmbeddingWorkerModule } from './embedding/talent-embedding-worker.module.js';
 import { OfferExpiryModule } from './offer/offer-expiry.module.js';
 // CI-B6P — the production Conversation Intelligence processing worker
 // (Anthropic structured-output adapter; DARK by default — CI_PROCESSING_ENABLED).
@@ -405,6 +406,7 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     // CB-D2-A1 (ADR-0030) — the provider-neutral lifecycle-poll worker (scheduled
     // tick → fetch → raw-persist → ingress → cursor-advance; Redis-gated).
     LifecyclePollModule,
+    TalentEmbeddingWorkerModule,
     OfferExpiryModule,
     // CI-B6P — production CI processing (dark by default; app boots with real DI).
     CiProcessingModule,

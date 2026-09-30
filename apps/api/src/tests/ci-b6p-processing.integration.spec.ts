@@ -8,7 +8,8 @@ import { RedisContainer, type StartedRedisContainer } from '@testcontainers/redi
 import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { Test, type TestingModule } from '@nestjs/testing';
-import { CommonModule, RedisConnectionConfig } from '@aramo/common';
+import {
+  ARAMO_POSTGRES_TEST_IMAGE, CommonModule, RedisConnectionConfig } from '@aramo/common';
 import {
   ConversationIntelligenceProcessingService,
   ConversationIntelligenceRunRepository,
@@ -128,7 +129,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     beforeAll(async () => {
       savedEnv = { ...process.env };
       [pg, redis] = await Promise.all([
-        new PostgreSqlContainer('postgres:17').start(),
+        new PostgreSqlContainer(ARAMO_POSTGRES_TEST_IMAGE).start(),
         new RedisContainer('redis:7').start(),
       ]);
       const url = pg.getConnectionUri();

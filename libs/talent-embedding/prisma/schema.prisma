@@ -1,0 +1,55 @@
+// Per-module Prisma schema for the `talent-embedding` module (Enterprise Search GS-2A).
+//
+// Per Architecture v2.1 §7 (Schema-per-Module) and doc/05-conventions.md. This is the
+// FIRST pgvector-backed schema in the program. `talent_record_id` is a cross-schema
+// UUID reference to talent_record.TalentRecord.id — UUID-only, NO FK constraint (§7.3;
+// the repo-wide invariant: 99/99 FKs are same-schema). Erasure of an embedding is enforced
+// by the explicit tr15-b2 erasure INVENTORY (record keyspace), NOT a cross-schema cascade.
+//
+// The `embedding` vector column is modeled as Unsupported — Prisma never emits its DDL; the
+// hand-authored migration owns the real `vector(1536)` column + the HNSW index. The client
+// never selects `embedding` via the model; all vector reads/writes go through raw SQL.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "./generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["talent_embedding"]
+}
+
+// Lifecycle status (mirrors the domain state machine): pending → ready | failed.
+enum TalentEmbeddingStatus {
+  pending
+  ready
+  failed
+
+  @@schema("talent_embedding")
+}
+
+// One semantic-index row per (tenant, Talent). The vector is present only when status = ready.
+model TalentEmbedding {
+  id               String                @id @db.Uuid
+  tenant_id        String                @db.Uuid
+  // Cross-schema UUID ref to talent_record.TalentRecord.id — NO FK (§7.3).
+  talent_record_id String                @db.Uuid
+  site_id          String?               @db.Uuid
+  status           TalentEmbeddingStatus @default(pending)
+  // vector(1536); migration-owned. Prisma never reads/writes this column.
+  embedding        Unsupported("vector(1536)")?
+  // Provenance for version-aware regeneration (source_hash) + persisted model identity.
+  source_hash      String?
+  embedding_model  String?
+  dimension        Int?
+  attempt_count    Int                   @default(0)
+  last_error       String?
+  created_at       DateTime              @db.Timestamptz
+  updated_at       DateTime              @db.Timestamptz
+
+  @@unique([tenant_id, talent_record_id])
+  @@index([tenant_id, status])
+  @@index([status])
+  @@schema("talent_embedding")
+}

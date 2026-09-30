@@ -7,7 +7,8 @@ import {
   PostgreSqlContainer,
   type StartedPostgreSqlContainer,
 } from '@testcontainers/postgresql';
-import { makeMockLogger } from '@aramo/common';
+import {
+  ARAMO_POSTGRES_TEST_IMAGE, makeMockLogger } from '@aramo/common';
 
 import { AiDraftRepository } from '../lib/ai-draft.repository.js';
 import { AiDraftService } from '../lib/ai-draft.service.js';
@@ -60,7 +61,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     let repo: AiDraftRepository;
 
     beforeAll(async () => {
-      container = await new PostgreSqlContainer('postgres:17').start();
+      container = await new PostgreSqlContainer(ARAMO_POSTGRES_TEST_IMAGE).start();
       const url = container.getConnectionUri();
 
       const migrations = [readFileSync(AI_DRAFT_INIT_MIGRATION_PATH, 'utf8')];

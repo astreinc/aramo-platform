@@ -7,6 +7,7 @@ import {
   PostgreSqlContainer,
   type StartedPostgreSqlContainer,
 } from '@testcontainers/postgresql';
+import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
 
 import { PrismaService } from '../lib/prisma/prisma.service.js';
 import { CommercialMarginReadRepository } from '../lib/commercial-margin-read.repository.js';
@@ -69,7 +70,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     let repo: CommercialMarginReadRepository;
 
     beforeAll(async () => {
-      container = await new PostgreSqlContainer('postgres:17').start();
+      container = await new PostgreSqlContainer(ARAMO_POSTGRES_TEST_IMAGE).start();
       client = new PrismaService(container.getConnectionUri());
       await client.$connect();
       for (const path of MIGRATIONS) {

@@ -11,7 +11,8 @@ import { Module } from '@nestjs/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { v7 as uuidv7 } from 'uuid';
 import { Client } from 'pg';
-import { AramoError } from '@aramo/common';
+import {
+  ARAMO_POSTGRES_TEST_IMAGE, AramoError } from '@aramo/common';
 
 import { CanonicalizationModule } from '../lib/canonicalization.module.js';
 import { CanonicalizationOutboxRepository } from '../lib/canonicalization-outbox.repository.js';
@@ -191,7 +192,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     }
 
     beforeAll(async () => {
-      container = await new PostgreSqlContainer('postgres:17').start();
+      container = await new PostgreSqlContainer(ARAMO_POSTGRES_TEST_IMAGE).start();
       const url = container.getConnectionUri();
 
       const setup = new Client({ connectionString: url });

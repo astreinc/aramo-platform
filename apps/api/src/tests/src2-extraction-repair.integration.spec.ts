@@ -12,7 +12,8 @@ import {
 import { Client } from 'pg';
 import express from 'express';
 import { Document, Packer, Paragraph } from 'docx';
-import { AramoError } from '@aramo/common';
+import {
+  ARAMO_POSTGRES_TEST_IMAGE, AramoError } from '@aramo/common';
 import { SourcedTalentModule } from '@aramo/sourced-talent';
 import { CanonicalizationModule, CanonicalizationService } from '@aramo/canonicalization';
 import { TalentTrustModule } from '@aramo/talent-trust';
@@ -185,7 +186,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     };
 
     beforeAll(async () => {
-      container = await new PostgreSqlContainer('postgres:17').start();
+      container = await new PostgreSqlContainer(ARAMO_POSTGRES_TEST_IMAGE).start();
       const url = container.getConnectionUri();
       const setup = new Client({ connectionString: url });
       await setup.connect();

@@ -6,6 +6,9 @@ import { TalentRecordModule } from '@aramo/talent-record';
 import { RequisitionModule } from '@aramo/requisition';
 import { CompanyModule } from '@aramo/company';
 import { ContactModule } from '@aramo/contact';
+import { TalentEmbeddingModule } from '@aramo/talent-embedding';
+
+import { EmbeddingModule } from '../embedding/embedding.module.js';
 
 import { ENTERPRISE_SEARCH_PORT } from './enterprise-search.port.js';
 import { SEARCH_ENTITY_ADAPTERS, type SearchEntityAdapter } from './search-entity-adapter.js';
@@ -30,6 +33,11 @@ import { ContactSearchAdapter } from './adapters/contact-search.adapter.js';
     RequisitionModule,
     CompanyModule,
     ContactModule,
+    // GS-2A — the Talent semantic leg: EmbeddingModule provides EMBEDDING_PORT (query-time
+    // embedding) + EmbeddingProcessingConfig (dark gate); TalentEmbeddingModule provides
+    // TALENT_EMBEDDING_SEARCH_PORT (the visibility-co-located vector retrieval).
+    EmbeddingModule,
+    TalentEmbeddingModule,
   ],
   controllers: [EnterpriseSearchController],
   providers: [

@@ -6,15 +6,30 @@ import {
   PostgreSqlContainer,
   type StartedPostgreSqlContainer,
 } from '@testcontainers/postgresql';
+import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
 import { v7 as uuidv7 } from 'uuid';
 import {
   TalentRecordRepository,
   TalentRecordPrismaService,
   ResumeTextService,
 } from '@aramo/talent-record';
+import type { EmbeddingPort } from '@aramo/ai-draft';
+import type { TalentEmbeddingSearchPort } from '@aramo/talent-embedding';
 
 import { TalentSearchAdapter } from '../search/adapters/talent-search.adapter.js';
+import { EmbeddingProcessingConfig } from '../embedding/embedding-processing.config.js';
 import type { SearchAuthorityContext } from '../search/enterprise-search.port.js';
+
+// GS-1 legs only: the semantic leg is dark (EMBEDDING_PROCESSING_ENABLED unset → isEnabled()=false),
+// so these disabled deps are never invoked and GS-1 retrieval stays byte-identical.
+const DISABLED_EMBEDDING = {
+  embed: async () => {
+    throw new Error('semantic leg must be dark in this GS-1 spec');
+  },
+} as unknown as EmbeddingPort;
+const EMPTY_SEMANTIC = {
+  searchSemanticForActor: async () => [],
+} as unknown as TalentEmbeddingSearchPort;
 
 // Enterprise Search GS-1 — the Talent adapter against a REAL Postgres 17, exercising the
 // three retrieval legs (exact-email, name lexical, résumé FTS) through the real
@@ -98,7 +113,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     }
 
     beforeAll(async () => {
-      container = await new PostgreSqlContainer('postgres:17').start();
+      container = await new PostgreSqlContainer(ARAMO_POSTGRES_TEST_IMAGE).start();
       const url = container.getConnectionUri();
       const setup = new TalentRecordPrismaService(url);
       await setup.$connect();
@@ -113,7 +128,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await prisma.$connect();
       repo = new TalentRecordRepository(prisma);
       resumeText = new ResumeTextService(prisma, fakeObjectStorage as never, fakeLogger as never);
-      adapter = new TalentSearchAdapter(repo);
+      adapter = new TalentSearchAdapter(repo, DISABLED_EMBEDDING, EMPTY_SEMANTIC, new EmbeddingProcessingConfig());
 
       await prisma.talentRecord.create({
         data: { id: talentA1, tenant_id: TENANT_A, site_id: SITE_1, first_name: 'Alice', last_name: 'Kovacs', email1: 'alice@acme.test', current_pay: '120000' },

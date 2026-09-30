@@ -10,6 +10,7 @@ import type { Queue } from 'bullmq';
 import { v7 as uuidv7 } from 'uuid';
 import { Pool } from 'pg';
 
+import { ARAMO_POSTGRES_TEST_IMAGE } from '../lib/testing/postgres-test-image';
 import { CrossSchemaConsistencyModule } from '../lib/cross-schema-consistency/cross-schema-consistency.module.js';
 import { CROSS_SCHEMA_CONSISTENCY_QUEUE_NAME } from '../lib/cross-schema-consistency.queue.constants.js';
 import { CrossSchemaConsistencyRepository } from '../lib/cross-schema-consistency.repository.js';
@@ -64,7 +65,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     beforeAll(async () => {
       [redisContainer, pgContainer] = await Promise.all([
         new RedisContainer('redis:7').start(),
-        new PostgreSqlContainer('postgres:17').start(),
+        new PostgreSqlContainer(ARAMO_POSTGRES_TEST_IMAGE).start(),
       ]);
 
       const pgUrl = pgContainer.getConnectionUri();

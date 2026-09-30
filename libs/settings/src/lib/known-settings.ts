@@ -191,6 +191,26 @@ export function isLlmActiveProvider(value: unknown): value is LlmActiveProvider 
   );
 }
 
+// `embedding.active_provider` — Enterprise Search GS-2. The tenant's active EMBEDDING provider,
+// DELIBERATELY SEPARATE from `llm.active_provider` (an embedding capability is not the chat
+// capability — never inferred from it). Closed WIRED set (§4.5 no-dead-knobs): Phase A ships
+// OpenAI only (Anthropic has no embedding API). DEFAULT 'openai'. Declared here (structurally
+// identical to ai-draft's EmbeddingProvider) to keep settings a leaf — the app-side
+// ActiveEmbeddingProviderResolver bridges it into ai-draft. A tenant with no OpenAI key degrades
+// to semantic-unavailable (enterprise search still works on exact + lexical) — never a fallback.
+export type EmbeddingActiveProvider = 'openai';
+
+const EMBEDDING_ACTIVE_PROVIDER_VALUES: readonly EmbeddingActiveProvider[] = Object.freeze([
+  'openai',
+]);
+
+export function isEmbeddingActiveProvider(value: unknown): value is EmbeddingActiveProvider {
+  return (
+    typeof value === 'string' &&
+    (EMBEDDING_ACTIVE_PROVIDER_VALUES as readonly string[]).includes(value)
+  );
+}
+
 // The closed-set registry. S2 lights up the first key; S3+ register
 // additional keys here with NO migration (the pattern-B win).
 //
@@ -233,6 +253,16 @@ export const KNOWN_SETTINGS = {
     key: 'llm.active_provider',
     default: 'anthropic' as LlmActiveProvider,
     validate: isLlmActiveProvider,
+    internal: true,
+  },
+  // Enterprise Search GS-2 — the tenant's active EMBEDDING provider (see the type definition
+  // above). SEPARATE selector from llm.active_provider. INTERNAL: owned by the embedding/search
+  // substrate, excluded from the generic tenant-settings materialized view; read by the app-side
+  // ActiveEmbeddingProviderResolver. Default 'openai'; no migration (pattern-B).
+  'embedding.active_provider': {
+    key: 'embedding.active_provider',
+    default: 'openai' as EmbeddingActiveProvider,
+    validate: isEmbeddingActiveProvider,
     internal: true,
   },
 } as const satisfies Record<string, SettingDefinition<unknown>>;

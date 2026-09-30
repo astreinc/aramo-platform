@@ -16,7 +16,8 @@
 
 services:
   postgres:
-    image: postgres:17
+    # GS-2 P1 — pgvector-capable PG17 (drop-in for postgres:17; enables CREATE EXTENSION vector).
+    image: pgvector/pgvector:pg17
     container_name: aramo-local-postgres
     environment:
       POSTGRES_USER: aramo
