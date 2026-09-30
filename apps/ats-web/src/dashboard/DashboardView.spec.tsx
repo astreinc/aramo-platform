@@ -1,494 +1,163 @@
-import type { Session } from '@aramo/fe-foundation';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { DashboardView } from './DashboardView';
-import type { DashboardView as DashboardViewModel } from './types';
+import { getMyDesk } from './my-desk-api';
+import type { MyDeskView } from './my-desk-types';
 
-const SESSION: Session = {
-  sub: 'u-1',
-  consumer_type: 'recruiter',
-  tenant_id: 't',
-  scopes: ['dashboard:read', 'task:read'],
-  iat: 0,
-  exp: 0,
-};
+vi.mock('./my-desk-api');
+vi.mock('../shell/me-api', () => ({
+  useMe: () => ({
+    user: { display_name: 'Purush Pichaimuthu', email: 'p@x.example' },
+    roles: [],
+    tenant: { display_name: 'Astre', status: 'active' },
+  }),
+}));
 
-// A calendar event today at 14:00, owned by the principal — for the agenda.
-function eventToday() {
-  const d = new Date();
-  d.setHours(14, 0, 0, 0);
+const getMyDeskMock = vi.mocked(getMyDesk);
+
+function makeDesk(overrides: Partial<MyDeskView> = {}): MyDeskView {
   return {
-    id: 'cal-1',
-    tenant_id: 't',
-    site_id: null,
-    owner_id: 'u-1',
-    type: 'interview' as const,
-    title: 'Panel — Sofia Reyes',
-    description: null,
-    starts_at: d.toISOString(),
-    ends_at: null,
-    all_day: false,
-    created_at: d.toISOString(),
-    updated_at: d.toISOString(),
-  };
-}
-
-function makeDashboard(
-  overrides: Partial<DashboardViewModel> = {},
-): DashboardViewModel {
-  return {
-    tenant_counts: {
-      companies: 12,
-      contacts: 34,
-      talent_records: 56,
-      saved_lists: 7,
-      calendar_events: 8,
-      activities: 90,
-    },
-    requisition_rollup: { total: 6, by_status: [] },
-    pipeline_rollup: { total: 15, by_status: [] },
-    placement: { placed_pipelines: 3, includes_core_submittal_placements: false },
-    upcoming_events: [],
-    recent_activity: [
-      {
-        id: 'act-1',
-        tenant_id: 't',
-        site_id: null,
-        type: 'note',
-        subject_type: 'requisition',
-        subject_id: 'req-1',
-        notes: 'Checked in with the hiring manager.',
-        created_by_id: 'u-1',
-        created_at: '2026-06-11T09:00:00Z',
-      },
+    generated_at: '2026-09-29T16:00:00.000Z',
+    server_date: '2026-09-29',
+    priority_items: [
+      { id: 'a', kind: 'rtr', talent_id: 't1', talent_name: 'Marcus Lee', requisition_id: 'r1', requisition_label: 'REQ-1001', label: 'Marcus Lee', reason: 'Qualified 4 days ago · RTR not sent.', due_at: '2026-09-27T12:00:00Z', urgency: 'overdue', primary_action: { kind: 'open_task', label: 'Open task', href: '/talent/t1' } },
+      { id: 'b', kind: 'submittal', talent_id: 't2', talent_name: 'Hannah Kim', requisition_id: 'r1', requisition_label: 'REQ-1001', label: 'Hannah Kim', reason: 'Ready to submit — all Submittal Policy checks met.', due_at: null, urgency: 'today', primary_action: { kind: 'submit_to_client', label: 'Submit to client', href: '/talent/t2/submittal/r1' } },
+      { id: 'c', kind: 'task', talent_id: null, talent_name: null, requisition_id: 'r2', requisition_label: 'REQ-1004', label: 'Send prep notes', reason: '', due_at: '2026-10-01T12:00:00Z', urgency: 'upcoming', primary_action: { kind: 'open_task', label: 'Open task', href: '/requisitions/r2' } },
+    ],
+    interviews_today: [
+      { id: 'iv1', scheduled_at: '2026-09-29T15:00:00Z', talent_id: 't3', talent_name: 'Rahul Nair', requisition_id: 'r1', requisition_label: 'REQ-1001', interview_type: 'client_interview', round: 1, confirmation: 'unknown' },
+    ],
+    awaiting_client: [
+      { id: 'w1', talent_id: 't4', talent_name: 'Kiran Rao', requisition_id: 'r2', requisition_label: 'REQ-1004', reason: 'Awaiting client decision', waiting_days: 8, since: '2026-09-21T12:00:00Z' },
+    ],
+    exceptions: [
+      { id: 'x1', kind: 'pre_start_blocked', severity: 'high', title: 'Pre-Start blocked · Samuel Ortiz', body: 'Start date at risk.', talent_id: 't5', requisition_id: 'r1', owned_by_me: true, owner_label: null, primary_action: null },
+    ],
+    requisitions: [
+      { id: 'r1', code: 'REQ-1001', title: 'Business Analyst', client_name: 'Freddie Mac', days_open: 16, status: 'open', pipeline_count: 8, qualified_count: 3, with_client_count: 0, offer_count: 0, started_count: 0, signal: '3 qualified' },
     ],
     ...overrides,
   };
 }
 
-const REQS = {
-  items: [
-    {
-      id: 'req-1',
-      title: 'Senior Rust Engineer',
-      company_id: 'co-1',
-      external_req_id: 'REQ-2041',
-      status: 'open',
-      is_hot: true,
-      openings: 3,
-      openings_available: 2,
-      capacity_balance: 2,
-      created_at: '2026-05-30T09:00:00Z',
-    },
-    {
-      id: 'req-2',
-      title: 'Data Platform Lead',
-      company_id: 'co-2',
-      external_req_id: 'REQ-2038',
-      status: 'closed',
-      is_hot: false,
-      openings: 1,
-      openings_available: 0,
-      capacity_balance: 0,
-      created_at: '2026-06-01T09:00:00Z',
-    },
-  ],
-};
-
-const TASKS = {
-  items: [
-    {
-      id: 'task-1',
-      title: 'Send references to D. Okafor',
-      description: null,
-      due_date: '2020-01-01T00:00:00Z', // past → overdue
-      status: 'open',
-      assignee_id: 'me',
-      created_by_user_id: 'u-1',
-      owner_type: 'requisition',
-      owner_id: 'req-1',
-      created_at: '2026-06-10T09:00:00Z',
-      updated_at: '2026-06-10T09:00:00Z',
-    },
-  ],
-};
-
-const COMPANIES = {
-  items: [
-    { id: 'co-1', name: 'Northwind Robotics' },
-    { id: 'co-2', name: 'Cobalt Health' },
-  ],
-};
-
-// E6 Q-4 — the rollup collapses by (talent, req); real /v1/pipelines always
-// carries talent_record_id. Distinct talents keep three distinct entries.
-const PIPELINES = {
-  items: [
-    { id: 'p1', talent_record_id: 't1', requisition_id: 'req-1', status: 'no_contact' },
-    { id: 'p2', talent_record_id: 't2', requisition_id: 'req-1', status: 'qualifying' },
-    { id: 'p3', talent_record_id: 't3', requisition_id: 'req-1', status: 'qualified' },
-  ],
-};
-
-function urlOf(input: RequestInfo | URL): string {
-  if (typeof input === 'string') return input;
-  if (input instanceof URL) return input.href;
-  return input.url;
-}
-
-function mockRoutes(opts: {
-  dashboard?: unknown;
-  dashboardStatus?: number;
-  reqs?: unknown;
-  tasks?: unknown;
-  companies?: unknown;
-  pipelines?: unknown;
-  metrics?: unknown;
-} = {}) {
-  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
-    const url = urlOf(input);
-    const json = (body: unknown, status = 200) =>
-      new Response(JSON.stringify(body), {
-        status,
-        headers: { 'Content-Type': 'application/json' },
-      });
-    if (url.includes('/v1/reports/recruiter-metrics')) {
-      // Default: 404 → the KPI strip falls back to the backed plain counts.
-      if (opts.metrics === undefined) return json({ message: 'no metrics' }, 404);
-      return json(opts.metrics);
-    }
-    if (url.includes('/v1/dashboard')) {
-      return json(opts.dashboard ?? makeDashboard(), opts.dashboardStatus ?? 200);
-    }
-    if (url.includes('/v1/pipelines')) return json(opts.pipelines ?? PIPELINES);
-    if (url.includes('/v1/requisitions')) return json(opts.reqs ?? REQS);
-    if (url.includes('/v1/tasks')) return json(opts.tasks ?? TASKS);
-    if (url.includes('/v1/companies')) return json(opts.companies ?? COMPANIES);
-    return json({ message: 'not found' }, 404);
-  });
-}
-
-const METRICS = {
-  items: [
-    {
-      key: 'submittals_weekly',
-      value: 7,
-      previous: 5,
-      series: [3, 5, 4, 6, 5, 7, 6, 7],
-      goal: 10,
-      period: 'week',
-    },
-    {
-      key: 'placements_monthly',
-      value: 2,
-      previous: 2,
-      series: [0, 1, 1, 2, 1, 2],
-      goal: 3,
-      period: 'month',
-    },
-    {
-      key: 'avg_time_to_submit',
-      value: 1.8,
-      previous: 2.2,
-      series: [2.6, 2.3, 2.1, 2, 1.9, 1.8, 1.9, 1.8],
-      goal: null,
-      period: 'week',
-    },
-  ],
-};
-
 function renderDesk() {
   return render(
     <MemoryRouter>
-      <DashboardView session={SESSION} />
+      <DashboardView />
     </MemoryRouter>,
   );
 }
 
-describe('DashboardView (My desk)', () => {
-  afterEach(() => vi.restoreAllMocks());
+afterEach(() => vi.clearAllMocks());
 
-  it('falls back to the backed plain counts when /recruiter-metrics is unavailable', async () => {
-    mockRoutes(); // no metrics → 404 → fallback strip
-    const { container } = renderDesk();
-    await waitFor(() => expect(screen.getByText('Open reqs')).toBeInTheDocument());
-    // Open reqs = 1 (req-2 is closed); Talent 56; In pipeline 15; Placements 3.
-    // Scope each value to its metric card — a bare getByText('15') would collide
-    // with a date-dependent "days open" cell in the my-open-reqs table.
-    const metric = (label: string) => {
-      const card = screen.getByText(label).closest('.rc-metric');
-      if (card === null) throw new Error(`no metric card for ${label}`);
-      return within(card as HTMLElement);
-    };
-    expect(metric('Talent').getByText('56')).toBeInTheDocument();
-    expect(metric('In pipeline').getByText('15')).toBeInTheDocument();
-    expect(metric('Open reqs').getByText('1 hot')).toBeInTheDocument();
-    expect(screen.getByText('Placements')).toBeInTheDocument();
-    // No fabricated delta windows.
-    expect(container.textContent).not.toMatch(/this week|MTD|\+\d/);
-  });
-
-  it('lists only OPEN reqs in the table, with the company name resolved (gap #8)', async () => {
-    mockRoutes();
+describe('DashboardView (My Desk)', () => {
+  it('calls GET /v1/my-desk on mount and renders the greeting + headline derived from the arrays', async () => {
+    getMyDeskMock.mockResolvedValue(makeDesk());
     renderDesk();
-    await waitFor(() =>
-      expect(screen.getByText('Senior Rust Engineer')).toBeInTheDocument(),
-    );
-    // company_id resolved to a name — never a raw UUID.
-    expect(screen.getByText(/Northwind Robotics · REQ-2041/)).toBeInTheDocument();
-    // The closed req is filtered out of "my open reqs".
-    expect(screen.queryByText('Data Platform Lead')).not.toBeInTheDocument();
-    // The req title is a real link to the detail route.
-    expect(screen.getByRole('link', { name: /Senior Rust Engineer/ })).toHaveAttribute(
-      'href',
-      '/requisitions/req-1',
-    );
+    expect(getMyDeskMock).toHaveBeenCalledTimes(1);
+    // greeting uses the /me display name; date comes from server_date (no tz shift).
+    expect(await screen.findByText(/,\s*Purush/)).toBeInTheDocument();
+    expect(screen.getByText(/tuesday, september 29/i)).toBeInTheDocument();
+    // headline counts are derived from the arrays: 1 overdue · 1 due today · 1 interviews · 1 exceptions
+    expect(screen.getByText('1 overdue · 1 due today · 1 interviews · 1 exceptions')).toBeInTheDocument();
   });
 
-  it('parity: my-open-reqs table shows the Pipeline count (one /v1/pipelines call)', async () => {
-    mockRoutes();
-    const { container } = renderDesk();
-    await waitFor(() =>
-      expect(screen.getByText('Senior Rust Engineer')).toBeInTheDocument(),
-    );
-    // Legacy-Pipeline-Canonicalization — the pipeline-derived "Submitted" column is
-    // removed (the submitted-to-client fact is Submittal-owned, not a Pipeline
-    // count). Only the Pipeline (active) count remains.
-    const reqCard = screen.getByText('My open reqs').closest('.rc-card') as HTMLElement;
-    expect(within(reqCard).getByText('Pipeline')).toBeInTheDocument();
-    expect(within(reqCard).queryByText('Submitted')).not.toBeInTheDocument();
-    // req-1 rollup: active = 3 (no terminal). Scope to the req row.
-    const row = screen.getByRole('link', { name: /Senior Rust Engineer/ })
-      .closest('tr') as HTMLElement;
-    expect(within(row).getByText('3')).toBeInTheDocument();
-    // No fabricated delta windows leaked in.
-    expect(container.textContent).not.toMatch(/this week|MTD|\+\d/);
-  });
-
-  it('aggregates my open tasks into "Needs you today" (overdue marked)', async () => {
-    mockRoutes();
+  it('renders the 5 summary cards with counts from the same arrays', async () => {
+    getMyDeskMock.mockResolvedValue(makeDesk());
     renderDesk();
-    await waitFor(() =>
-      expect(screen.getByText('Send references to D. Okafor')).toBeInTheDocument(),
-    );
-    expect(screen.getByText('Overdue')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Open' })).toHaveAttribute(
-      'href',
-      '/requisitions/req-1',
-    );
+    // Anchor each card on its UNIQUE subtitle (disambiguates "Overdue" from the
+    // queue tab / group header / due badge), then assert its label + count.
+    const overdue = (await screen.findByText('Past their due date')).closest('button')!;
+    expect(overdue).toHaveTextContent('Overdue');
+    expect(overdue).toHaveTextContent('1');
+    const interviews = screen.getByText('Scheduled today').closest('button')!;
+    expect(interviews).toHaveTextContent('Interviews today');
+    expect(interviews).toHaveTextContent('1');
+    const awaiting = screen.getByText('Oldest 8d').closest('button')!;
+    expect(awaiting).toHaveTextContent('Awaiting client');
   });
 
-  it('renders the recent-activity feed', async () => {
-    mockRoutes();
+  it('groups the priority queue by urgency and shows reason + action href', async () => {
+    getMyDeskMock.mockResolvedValue(makeDesk());
     renderDesk();
-    await waitFor(() =>
-      expect(
-        screen.getByText('Checked in with the hiring manager.'),
-      ).toBeInTheDocument(),
-    );
+    expect(await screen.findByText('Overdue · 1')).toBeInTheDocument();
+    expect(screen.getByText('Due today · 1')).toBeInTheDocument();
+    expect(screen.getByText('Coming up · 1')).toBeInTheDocument();
+    expect(screen.getByText('Qualified 4 days ago · RTR not sent.')).toBeInTheDocument();
+    // the row's primary action is a navigable link to the owning entity
+    const action = screen.getAllByRole('link', { name: 'Open task' })[0];
+    expect(action).toHaveAttribute('href', '/talent/t1');
   });
 
-  it('shows honest empty states when there is nothing to do', async () => {
-    mockRoutes({
-      reqs: { items: [] },
-      tasks: { items: [] },
-      dashboard: makeDashboard({ recent_activity: [] }),
-    });
+  it('renders a domain-derived submittal-ready item with the Submit-to-client CTA routing into the submittal flow', async () => {
+    getMyDeskMock.mockResolvedValue(makeDesk());
     renderDesk();
-    await waitFor(() =>
-      expect(screen.getByText('Nothing needs you right now.')).toBeInTheDocument(),
-    );
-    expect(screen.getByText('No open requisitions in your view.')).toBeInTheDocument();
-    expect(screen.getByText('No recent activity.')).toBeInTheDocument();
-  });
-
-  it('degrades gracefully when tasks/companies 403 (only dashboard is the spine)', async () => {
-    // tasks + companies reject (403); dashboard + reqs succeed.
-    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
-      const url = urlOf(input);
-      const json = (b: unknown, s = 200) =>
-        new Response(JSON.stringify(b), {
-          status: s,
-          headers: { 'Content-Type': 'application/json' },
-        });
-      if (url.includes('/v1/dashboard')) return json(makeDashboard());
-      if (url.includes('/v1/requisitions')) return json(REQS);
-      if (url.includes('/v1/tasks')) return json({ message: 'forbidden' }, 403);
-      if (url.includes('/v1/companies')) return json({ message: 'forbidden' }, 403);
-      return json({}, 404);
-    });
-    renderDesk();
-    await waitFor(() =>
-      expect(screen.getByText('Senior Rust Engineer')).toBeInTheDocument(),
-    );
-    // No company name (unresolved) but never a UUID, and the page is coherent.
-    expect(screen.getByText('Nothing needs you right now.')).toBeInTheDocument();
-    expect(screen.queryByText(/co-1/)).not.toBeInTheDocument();
-  });
-
-  it('surfaces a server error when the dashboard call fails', async () => {
-    mockRoutes({ dashboardStatus: 500, dashboard: { message: 'boom' } });
-    renderDesk();
-    await waitFor(() =>
-      expect(
-        screen.getByText(/dashboard service is temporarily unavailable/i),
-      ).toBeInTheDocument(),
-    );
-  });
-
-  it('shows a FACTS-ONLY briefing (real counts, no verdict/AI/focus)', async () => {
-    mockRoutes();
-    const { container } = renderDesk();
-    await waitFor(() => expect(screen.getByText('Open reqs')).toBeInTheDocument());
-    // 1 overdue task (due 2020) + 1 hot req (req-1) — deterministic counts.
-    expect(screen.getByText('task overdue')).toBeInTheDocument();
-    expect(screen.getByText('hot requisition')).toBeInTheDocument();
-    // No prescriptive/AI framing survived the charter §3 removals.
-    expect(container.textContent).not.toMatch(
-      /AI-assisted|Suggested focus|Viewing as/i,
-    );
-  });
-
-  it('renders "My active pipeline" funnel from the backed rollup', async () => {
-    mockRoutes({
-      dashboard: makeDashboard({
-        pipeline_rollup: {
-          total: 4,
-          by_status: [
-            { status: 'no_contact', count: 2 },
-            { status: 'qualifying', count: 1 },
-            { status: 'completed', count: 1 },
-          ],
-        },
-      }),
-    });
-    renderDesk();
-    await waitFor(() =>
-      expect(screen.getByText('My active pipeline')).toBeInTheDocument(),
-    );
-    // Early engagement bucket = no_contact (2); Closed = completed (1). Scope to the funnel card.
-    const card = screen
-      .getByText('My active pipeline')
-      .closest('.rc-card') as HTMLElement;
-    const stage = (label: string) =>
-      within(card).getByText(label).closest('.rc-fstage') as HTMLElement;
-    expect(within(stage('Early engagement')).getByText('2')).toBeInTheDocument();
-    expect(within(stage('Closed')).getByText('1')).toBeInTheDocument();
-  });
-
-  it('lists only TODAY’s agenda items owned by the principal', async () => {
-    mockRoutes({
-      dashboard: makeDashboard({ upcoming_events: [eventToday()] }),
-    });
-    renderDesk();
-    await waitFor(() =>
-      expect(screen.getByText('Panel — Sofia Reyes')).toBeInTheDocument(),
-    );
-  });
-
-  it('hides agenda items owned by another user (my desk only)', async () => {
-    const other = { ...eventToday(), id: 'cal-2', owner_id: 'someone-else' };
-    mockRoutes({ dashboard: makeDashboard({ upcoming_events: [other] }) });
-    renderDesk();
-    await waitFor(() =>
-      expect(screen.getByText('Nothing scheduled today.')).toBeInTheDocument(),
-    );
-    expect(screen.queryByText('Panel — Sofia Reyes')).not.toBeInTheDocument();
-  });
-
-  it('priority-sorts the queue and gives a consent task a Refresh action', async () => {
-    mockRoutes({
-      tasks: {
-        items: [
-          {
-            id: 'low-1',
-            title: 'Low priority admin',
-            description: null,
-            due_date: null,
-            status: 'open',
-            type: 'admin',
-            priority: 'low',
-            source: 'manual',
-            assignee_id: 'me',
-            created_by_user_id: 'u-1',
-            owner_type: 'requisition',
-            owner_id: 'req-9',
-            created_at: '2026-06-10T09:00:00Z',
-            updated_at: '2026-06-10T09:00:00Z',
-          },
-          {
-            id: 'high-1',
-            title: 'Refresh consent for D. Okafor',
-            description: null,
-            due_date: null,
-            status: 'open',
-            type: 'consent',
-            priority: 'high',
-            source: 'manual',
-            assignee_id: 'me',
-            created_by_user_id: 'u-1',
-            owner_type: 'talent_record',
-            owner_id: 'tal-1',
-            created_at: '2026-06-10T09:00:00Z',
-            updated_at: '2026-06-10T09:00:00Z',
-          },
-        ],
-      },
-    });
-    const { container } = renderDesk();
-    await waitFor(() =>
-      expect(
-        screen.getByText('Refresh consent for D. Okafor'),
-      ).toBeInTheDocument(),
-    );
-    // High priority sorts above low.
-    const rows = container.querySelectorAll('.rc-action');
-    expect(rows[0]).toHaveTextContent('Refresh consent for D. Okafor');
-    expect(rows[1]).toHaveTextContent('Low priority admin');
-    // Consent task → "Refresh" action linking to the talent owner.
-    expect(screen.getByRole('link', { name: 'Refresh' })).toHaveAttribute(
-      'href',
-      '/talent/tal-1',
-    );
-    // The consent badge is shown.
-    expect(screen.getByText('Consent')).toBeInTheDocument();
-  });
-
-  it('renders the REAL KPI cards (value/delta/sparkline/goal) from /recruiter-metrics', async () => {
-    mockRoutes({ metrics: METRICS });
-    const { container } = renderDesk();
-    await waitFor(() =>
-      expect(screen.getByText('Submittals · wk')).toBeInTheDocument(),
-    );
-    // The desk KPIs, by their real labels. (Interviews set removed with the
-    // retired Pipeline interview stage — Legacy-Pipeline-Canonicalization.)
-    expect(screen.queryByText('Interviews set')).not.toBeInTheDocument();
-    expect(screen.getByText('Placements · MTD')).toBeInTheDocument();
-    expect(screen.getByText('Avg time-to-submit')).toBeInTheDocument();
-
-    // Submittals: value 7, delta +2 vs last wk (7−5), goal-pace bar present.
-    const kpi = (label: string) =>
-      within(screen.getByText(label).closest('.rc-kpi') as HTMLElement);
-    expect(kpi('Submittals · wk').getByText('7')).toBeInTheDocument();
-    expect(kpi('Submittals · wk').getByText(/\+2 vs last wk/)).toBeInTheDocument();
+    const submit = await screen.findByRole('link', { name: 'Submit to client' });
+    expect(submit).toHaveAttribute('href', '/talent/t2/submittal/r1');
+    // it renders under the person + the ready reason (FACTS, not a verdict).
+    expect(screen.getByText('Hannah Kim')).toBeInTheDocument();
     expect(
-      kpi('Submittals · wk').getByText(/70% of weekly goal \(10\)/),
+      screen.getByText('Ready to submit — all Submittal Policy checks met.'),
     ).toBeInTheDocument();
+  });
 
-    // Avg-time-to-submit fell 2.2→1.8 → an IMPROVEMENT (up tone), "0.4d faster".
-    expect(kpi('Avg time-to-submit').getByText('1.8')).toBeInTheDocument();
-    expect(
-      kpi('Avg time-to-submit').getByText(/0\.4d faster/),
-    ).toBeInTheDocument();
+  it('filters the queue by tab (Submittals shows rtr+submittal, hides tasks)', async () => {
+    getMyDeskMock.mockResolvedValue(makeDesk());
+    renderDesk();
+    await screen.findByText('Marcus Lee');
+    fireEvent.click(screen.getByRole('tab', { name: /submittals/i }));
+    expect(screen.getByText('Marcus Lee')).toBeInTheDocument();
+    expect(screen.getByText('Hannah Kim')).toBeInTheDocument();
+    expect(screen.queryByText('Send prep notes')).not.toBeInTheDocument();
 
-    // Placements MTD: no change (2 vs 2) → flat, "2 of 3 goal" pace.
-    expect(kpi('Placements · MTD').getByText(/2 of 3 goal/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: /^tasks/i }));
+    expect(screen.getByText('Send prep notes')).toBeInTheDocument();
+    expect(screen.queryByText('Marcus Lee')).not.toBeInTheDocument();
+  });
 
-    // Real sparklines are drawn (one per card with ≥2 points): 3 desk KPIs.
-    expect(container.querySelectorAll('.rc-spark').length).toBe(3);
-    // The fallback plain cards are NOT shown.
-    expect(screen.queryByText('Open reqs')).not.toBeInTheDocument();
+  it('renders the right rail: interviews, exceptions, awaiting client', async () => {
+    getMyDeskMock.mockResolvedValue(makeDesk());
+    renderDesk();
+    expect(await screen.findByText('Rahul Nair')).toBeInTheDocument();
+    expect(screen.getByText('Pre-Start blocked · Samuel Ortiz')).toBeInTheDocument();
+    expect(screen.getByText('Kiran Rao')).toBeInTheDocument();
+    expect(screen.getByText('8d')).toBeInTheDocument();
+  });
+
+  it('renders the My Requisitions table with pipeline/qualified counts and zero downstream counts', async () => {
+    getMyDeskMock.mockResolvedValue(makeDesk());
+    renderDesk();
+    const row = (await screen.findByText('Business Analyst')).closest('a')!;
+    expect(row).toHaveAttribute('href', '/requisitions/r1');
+    expect(screen.getByText('3 qualified')).toBeInTheDocument();
+  });
+
+  it('shows honest empty states when everything is clear', async () => {
+    getMyDeskMock.mockResolvedValue(
+      makeDesk({ priority_items: [], interviews_today: [], awaiting_client: [], exceptions: [], requisitions: [] }),
+    );
+    renderDesk();
+    expect(await screen.findByText("You're caught up")).toBeInTheDocument();
+    expect(screen.getByText('No interviews scheduled today.')).toBeInTheDocument();
+    expect(screen.getByText('No blocked items need your attention.')).toBeInTheDocument();
+    expect(screen.getByText('Nothing is waiting on a client decision.')).toBeInTheDocument();
+  });
+
+  it('renders a loading state while the desk is in flight', () => {
+    getMyDeskMock.mockReturnValue(new Promise(() => undefined));
+    renderDesk();
+    expect(screen.getByText('Loading your desk…')).toBeInTheDocument();
+  });
+
+  it('renders an error state with a working retry', async () => {
+    getMyDeskMock.mockRejectedValueOnce(new Error('boom'));
+    renderDesk();
+    const retry = await screen.findByRole('button', { name: 'Retry' });
+    getMyDeskMock.mockResolvedValueOnce(makeDesk());
+    fireEvent.click(retry);
+    expect(await screen.findByText('Marcus Lee')).toBeInTheDocument();
+    expect(getMyDeskMock).toHaveBeenCalledTimes(2);
   });
 });

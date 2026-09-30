@@ -177,6 +177,62 @@ export class ClientSelectionProcessRepository {
     return (rows as ProcessRow[]).map(projectView);
   }
 
+  // My-Desk "Awaiting client" read — the processes still in CLIENT_REVIEW for a
+  // caller's visible requisitions, oldest first. Narrow by design: state is
+  // fixed to the awaiting-decision state and the requisition set is the
+  // already-resolved visibility set (null = see-all short-circuit; empty set =
+  // nothing visible). A read projection only — no transition, no state.
+  async listInReviewForRequisitions(args: {
+    tenant_id: string;
+    visible_requisition_ids: ReadonlySet<string> | null;
+    limit?: number;
+  }): Promise<ClientSelectionProcessView[]> {
+    const limit = Math.min(args.limit ?? 100, 200);
+    const where: Record<string, unknown> = {
+      tenant_id: args.tenant_id,
+      state: 'CLIENT_REVIEW' satisfies ClientSelectionState,
+    };
+    if (args.visible_requisition_ids !== null) {
+      if (args.visible_requisition_ids.size === 0) return [];
+      where['requisition_id'] = {
+        in: Array.from(args.visible_requisition_ids),
+      };
+    }
+    const rows = await this.prisma.clientSelectionProcess.findMany({
+      where,
+      orderBy: { created_at: 'asc' },
+      take: limit,
+    });
+    return (rows as ProcessRow[]).map(projectView);
+  }
+
+  // My-Desk "with client" count — non-terminal processes (CLIENT_REVIEW ∪
+  // INTERVIEW: a submittal sitting with the client with no final decision) per
+  // requisition, via an indexed groupBy (no row loading). Terminal SELECTED /
+  // DECLINED / WITHDRAWN are excluded. Visibility is the caller's already-
+  // resolved requisition set.
+  async countWithClientByRequisition(args: {
+    tenant_id: string;
+    requisition_ids: readonly string[];
+  }): Promise<Array<{ requisition_id: string; count: number }>> {
+    if (args.requisition_ids.length === 0) return [];
+    const rows = await this.prisma.clientSelectionProcess.groupBy({
+      by: ['requisition_id'],
+      where: {
+        tenant_id: args.tenant_id,
+        requisition_id: { in: [...args.requisition_ids] },
+        state: {
+          in: ['CLIENT_REVIEW', 'INTERVIEW'] satisfies ClientSelectionState[],
+        },
+      },
+      _count: { _all: true },
+    });
+    return rows.map((r) => ({
+      requisition_id: r.requisition_id as string,
+      count: r._count._all,
+    }));
+  }
+
   // Drive a legal, CAS-guarded state transition. Concealment (404) + CAS (409) +
   // legality (422) precede the atomic tx (UPDATE + event + outbox).
   async transition(args: {

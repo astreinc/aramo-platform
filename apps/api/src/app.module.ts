@@ -89,6 +89,7 @@ import { TalentJourneyModule } from './talent-journey/talent-journey.module.js';
 import { RequisitionTalentBoardModule } from './requisition-talent-board/requisition-talent-board.module.js';
 import { EnterpriseSearchModule } from './search/enterprise-search.module.js';
 import { PipelineVoidModule } from './pipeline-void/pipeline-void.module.js';
+import { MyDeskModule } from './my-desk/my-desk.module.js';
 import { CommunicationsApiModule } from './communications/communications-api.module.js';
 import { EngagementApiModule } from './engagement/engagement-api.module.js';
 import { ClientSubmittalPolicyModule } from './client-submittal-policy/client-submittal-policy.module.js';
@@ -480,6 +481,11 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     // /v1/pipelines/:id/void); composes the engagement + downstream guards across the
     // ADR-0029 wall and delegates the transition to the pipeline VOID command.
     PipelineVoidModule,
+    // My Desk (increment 1) — the recruiter command-center READ composition
+    // (GET /v1/my-desk); composes task/requisition/pipeline/interview/
+    // client-selection/placement/offer reads across the A7 seam into one
+    // visibility-scoped projection, reads only (dashboard:read).
+    MyDeskModule,
     CommunicationsApiModule,
     EngagementApiModule,
     ClientSubmittalPolicyModule,

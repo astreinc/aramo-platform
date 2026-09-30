@@ -1401,6 +1401,7 @@
       "SUBMITTAL_WINDOW_STATUS_VALUES",
       "SubmittalEligibilityModule",
       "consumeSlot",
+      "deriveSubmittalReadiness",
       "deriveWindowStatus",
       "evaluateEligibility",
       "isSubmittalAuthority",
@@ -1826,6 +1827,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/microsoft-email-send.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/my-desk.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -4240,12 +4247,6 @@
       {
         "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/ats-web/src/contacts/ContactsListView.spec.tsx",
-        "project": "aramo-ats-web",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/**/*.spec.tsx",
-        "from": "apps/ats-web/src/dashboard/DashboardView.spec.tsx",
         "project": "aramo-ats-web",
         "status": "excluded"
       },

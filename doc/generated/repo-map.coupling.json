@@ -116,6 +116,11 @@
       "to": "ci/config/api-surface-manifest.json"
     },
     {
+      "from": "apps/api/src/my-desk/dto/my-desk.view.ts",
+      "status": "production",
+      "to": "scripts/verify-vocabulary.sh"
+    },
+    {
       "from": "apps/api/src/policy/requisition-lifecycle.package.ts",
       "status": "production",
       "to": "scripts/verify-vocabulary.sh"
@@ -11296,14 +11301,9 @@
       "to": "libs/contact/src/lib/dto/contact.view.ts"
     },
     {
-      "from": "apps/ats-web/src/dashboard/types.ts",
+      "from": "apps/ats-web/src/dashboard/my-desk-types.ts",
       "status": "production",
-      "to": "libs/calendar/src/lib/dto/calendar-event-type.ts"
-    },
-    {
-      "from": "apps/ats-web/src/dashboard/types.ts",
-      "status": "production",
-      "to": "libs/reporting/src/lib/dto/report.view.ts"
+      "to": "apps/api/src/my-desk/dto/my-desk.view.ts"
     },
     {
       "excludedBy": "src/**/*.spec.ts",
@@ -11929,6 +11929,11 @@
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
       "to": "apps/api/src/microsoft/microsoft-callback.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "apps/api/src/my-desk/my-desk.controller.ts"
     },
     {
       "from": "ci/config/api-surface-manifest.json",

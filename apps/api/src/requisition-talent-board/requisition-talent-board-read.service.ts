@@ -19,10 +19,9 @@ import {
 } from '@aramo/placement';
 import {
   RequisitionSubmittalEligibilityReader,
-  evaluateEligibility,
+  deriveSubmittalReadiness,
   type SubmittalPolicyInputs,
   type DocumentEligibilityInput,
-  type EngagementEligibilityInput,
 } from '@aramo/submittal-eligibility';
 import { RequisitionAssignmentRepository, RequisitionRepository } from '@aramo/requisition';
 import { ClientTalentRestrictionRepository } from '@aramo/client-talent-restriction';
@@ -46,7 +45,6 @@ import type {
   BoardOwner,
   BoardReadiness,
   BoardResume,
-  QualifiedBand,
   RequisitionTalentBoardView,
 } from './dto/requisition-talent-board.view.js';
 
@@ -603,31 +601,13 @@ function deriveDwell(
   };
 }
 
-// The engagement verdict passed to the pure port for a given requisition-grain applicability.
-// - dormant        → satisfied (authoritative: the real gate returns satisfied when not governed).
-// - policy_missing  → the fail-closed deny (authoritative: governed tenant, no effective policy).
-// - policy_present  → NOT passed to the port here; the band instead records a distinct
-//                     'engagement_readiness_unavailable' blocker so it NEVER asserts Ready
-//                     (the per-talent evidence read is not batched — never neutralized).
-function engagementVerdict(applicability: EngagementApplicability): EngagementEligibilityInput | undefined {
-  switch (applicability) {
-    case 'dormant':
-      return { satisfied: true, deny: null };
-    case 'policy_missing':
-      return { satisfied: false, deny: 'CLIENT_SUBMITTAL_ENGAGEMENT_POLICY_MISSING', missing: [] };
-    case 'policy_present':
-      return undefined; // handled as an explicit UNAVAILABLE blocker below
-  }
-}
-
-// The Qualified band (§6) — TB-4 (remediated). Grounded on the REAL `evaluateEligibility` port
-// over EVERY applicable submit gate — window (raw policy inputs), client restriction
-// (authoritative, batched), engagement (requisition-grain applicability), RTR (DOC-5) — plus the
-// orthogonal Board résumé pre-check. NO duplicated policy logic (TE-9: the port is the one
-// authority). The invariant: READY TO SUBMIT ⟺ every applicable gate satisfied; if engagement is
-// applicable but not batch-evaluable, readiness is UNAVAILABLE → NEEDS ACTION, never a
-// false-positive Ready. The submit transaction re-evaluates all of this authoritatively at
-// mutation time; the band is a truthful preflight, not the authority.
+// The Qualified band (§6) — TB-4 (remediated). The rule authority now lives in
+// the NEUTRAL shared seam `deriveSubmittalReadiness` (@aramo/submittal-eligibility),
+// which the Requisition Talent Board and My Desk both compose (no policy is
+// duplicated in either projection — TE-9). This board wrapper adds ONLY its own
+// presentation concerns: the résumé-presence pre-check (mapped from the board's
+// BoardResume) and the board's UI blocker vocabulary (`denyToBlocker`), plus the
+// requisition_state/reason display fields. Behaviour is unchanged.
 export function deriveQualifiedReadiness(args: {
   req_readiness: { status: 'open' | 'paused' | 'closed'; reason: string | null };
   resume: BoardResume;
@@ -637,26 +617,25 @@ export function deriveQualifiedReadiness(args: {
   engagement: EngagementApplicability;
   now: Date;
 }): BoardReadiness {
-  const engagement = engagementVerdict(args.engagement);
-  const decision = evaluateEligibility(args.policy.inputs, {
+  const readiness = deriveSubmittalReadiness({
+    policy: args.policy,
+    rtr_verdict: args.rtr_verdict,
+    restriction_active: args.restriction_active,
+    engagement: args.engagement,
+    resume_selected: args.resume.source !== 'none',
     now: args.now,
-    consumed_count: args.policy.consumed_count,
-    restriction_active: args.restriction_active, // authoritative (batched), not neutralized
-    ...(engagement !== undefined ? { engagement } : {}),
-    ...(args.rtr_verdict !== null ? { document: args.rtr_verdict } : {}),
   });
   const blockers: string[] = [];
-  if (!decision.eligible && decision.deny !== undefined) blockers.push(denyToBlocker(decision.deny));
-  // Engagement applicable but not batch-evaluable → readiness UNAVAILABLE (never Ready).
-  if (args.engagement === 'policy_present') blockers.push('engagement_readiness_unavailable');
-  // Orthogonal Board pre-check: a submit needs a selected résumé (not part of the policy port).
-  if (args.resume.source === 'none') blockers.push('resume_not_selected');
-  const band: QualifiedBand = blockers.length === 0 ? 'ready_to_submit' : 'needs_action';
+  if (readiness.deny !== null) blockers.push(denyToBlocker(readiness.deny));
+  if (readiness.engagement_unavailable) {
+    blockers.push('engagement_readiness_unavailable');
+  }
+  if (readiness.resume_missing) blockers.push('resume_not_selected');
   return {
     requisition_state: args.req_readiness.status,
     requisition_reason: args.req_readiness.reason,
     blockers,
-    band,
+    band: readiness.band,
   };
 }
 
