@@ -4,78 +4,74 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Session } from '@aramo/fe-foundation';
 
 import { SearchView } from './SearchView';
+import type { SearchResults } from './enterprise-search-api';
 
-// Search FE /search — proofs for the cross-entity quick-search surface.
-// Mirrors the R5-corrected fetch-mock pattern (per-call mockImplementation
-// → fresh Response; MemoryRouter; sessionOverride seam; waitFor the
-// post-fetch signal). The fetch URL is the bare path (apiClient baseUrl '').
+// Enterprise Search GS-1 — SearchView proofs against the UNIFIED /v1/search contract. The view
+// now issues ONE call and renders the grouped, authority-safe response (no per-entity fan-out).
+// Highlight fragments matched substrings into <mark> nodes, so assertions use role-name queries
+// (accessible name concatenates the fragments).
 
 function session(scopes: readonly string[]): Session {
-  return {
-    sub: 'u1',
-    consumer_type: 'recruiter',
-    tenant_id: 't',
-    scopes: [...scopes],
-    iat: 0,
-    exp: 0,
-  } as Session;
+  return { sub: 'u1', consumer_type: 'recruiter', tenant_id: 't', scopes: [...scopes], iat: 0, exp: 0 } as Session;
 }
+const ALL = ['talent:search', 'company:search', 'requisition:search', 'contact:search'];
 
-const ALL_SEARCH = [
-  'talent:search',
-  'company:search',
-  'requisition:search',
-  'contact:search',
-];
+const RESULTS: SearchResults = {
+  query: 'eng',
+  groups: [
+    {
+      entity_type: 'TALENT',
+      hits: [
+        {
+          entity_type: 'TALENT',
+          entity_id: 'tal-1',
+          display_label: 'Jane Doe',
+          subtitle: 'Engineer',
+          snippet: 'led the <mark>Kubernetes</mark> migration',
+          route: '/talent/tal-1',
+          match: { signal: 'lexical', relevance: 0.5 },
+        },
+      ],
+    },
+    {
+      entity_type: 'REQUISITION',
+      hits: [
+        { entity_type: 'REQUISITION', entity_id: 'req-1', display_label: 'Senior Role', subtitle: 'REQ-1042', snippet: null, route: '/requisitions/req-1', match: { signal: 'exact', relevance: 1 } },
+      ],
+    },
+    {
+      entity_type: 'COMPANY',
+      hits: [
+        { entity_type: 'COMPANY', entity_id: 'co-1', display_label: 'Acme Corp', subtitle: null, snippet: null, route: '/companies/co-1', match: { signal: 'lexical', relevance: 0.7 } },
+      ],
+    },
+    {
+      entity_type: 'CONTACT',
+      hits: [
+        { entity_type: 'CONTACT', entity_id: 'ct-1', display_label: 'Sam Smith', subtitle: 'CTO', snippet: null, route: '/companies/co-1', match: { signal: 'lexical', relevance: 0.7 } },
+      ],
+    },
+  ],
+};
 
-// Per-endpoint mock. Each entity returns one identifiable row; an endpoint
-// in `failing` returns 500 (→ ApiError → that section's run rejects).
-function mockFanout(failing: readonly string[] = []) {
-  const json = (items: unknown) =>
-    new Response(JSON.stringify({ items }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' },
-    });
-  const fail = () => new Response('{}', { status: 500 });
+function mockSearch(handler: (url: string) => Response) {
   return vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
     const url = String(input);
-    if (url.includes('/v1/talent-records')) {
-      return failing.includes('talent')
-        ? fail()
-        : json([{ id: 'tal-1', first_name: 'Jane', last_name: 'Doe', email1: null, current_employer: 'Acme' }]);
-    }
-    if (url.includes('/v1/companies')) {
-      return failing.includes('companies') ? fail() : json([{ id: 'co-1', name: 'Acme Corp' }]);
-    }
-    if (url.includes('/v1/requisitions')) {
-      return failing.includes('requisitions')
-        ? fail()
-        : json([{ id: 'req-1', title: 'Senior Engineer', company_id: 'co-1' }]);
-    }
-    if (url.includes('/v1/contacts')) {
-      return failing.includes('contacts')
-        ? fail()
-        : json([{ id: 'ct-1', company_id: 'co-1', first_name: 'Sam', last_name: 'Smith', title: 'CTO' }]);
-    }
+    if (url.includes('/v1/search')) return handler(url);
     return new Response('{}', { status: 404 });
   });
 }
+const ok = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } });
 
-function calledPaths(spy: ReturnType<typeof vi.spyOn>): string[] {
-  return spy.mock.calls.map((c) => String(c[0]));
+function searchCalls(spy: ReturnType<typeof vi.spyOn>): string[] {
+  return spy.mock.calls.map((c) => String(c[0])).filter((u) => u.includes('/v1/search'));
 }
 
-// The entity search calls only (the useSession hook also fetches
-// /auth/recruiter/session — not an entity ?q= call).
-function entitySearchPaths(spy: ReturnType<typeof vi.spyOn>): string[] {
-  return calledPaths(spy).filter((p) => p.includes('/v1/'));
-}
-
-describe('SearchView — scope-gating + fan-out', () => {
+describe('SearchView — unified /v1/search', () => {
   afterEach(() => vi.restoreAllMocks());
 
-  it('zero search scopes → "no access", no input, no fetch', () => {
-    const spy = mockFanout();
+  it('zero search scopes → "no access", no input, no /v1/search call', () => {
+    const spy = mockSearch(() => ok(RESULTS));
     render(
       <MemoryRouter>
         <SearchView sessionOverride={session(['talent:read'])} />
@@ -83,208 +79,73 @@ describe('SearchView — scope-gating + fan-out', () => {
     );
     expect(screen.getByTestId('search-no-access')).toBeInTheDocument();
     expect(screen.queryByLabelText('Search')).toBeNull();
-    expect(entitySearchPaths(spy)).toEqual([]);
+    expect(searchCalls(spy)).toEqual([]);
   });
 
-  it('empty query → no fan-out (prompt to type)', () => {
-    const spy = mockFanout();
+  it('empty query → prompt, no call', () => {
+    const spy = mockSearch(() => ok(RESULTS));
     render(
       <MemoryRouter>
-        <SearchView sessionOverride={session(ALL_SEARCH)} />
+        <SearchView sessionOverride={session(ALL)} />
       </MemoryRouter>,
     );
     expect(screen.getByTestId('search-prompt')).toBeInTheDocument();
-    expect(entitySearchPaths(spy)).toEqual([]);
+    expect(searchCalls(spy)).toEqual([]);
   });
 
-  it('all 4 scopes → typing fans out to all 4 ?q= endpoints + renders 4 sections', async () => {
-    const spy = mockFanout();
+  it('typing issues ONE /v1/search call and renders grouped sections', async () => {
+    const spy = mockSearch(() => ok(RESULTS));
     render(
       <MemoryRouter>
-        <SearchView sessionOverride={session(ALL_SEARCH)} />
+        <SearchView sessionOverride={session(ALL)} />
       </MemoryRouter>,
     );
-    fireEvent.change(screen.getByLabelText('Search'), { target: { value: 'a' } });
-    await waitFor(() => expect(screen.getByText('Jane Doe')).toBeInTheDocument());
-    const paths = calledPaths(spy);
-    expect(paths.some((p) => p.includes('/v1/talent-records?q=a'))).toBe(true);
-    expect(paths.some((p) => p.includes('/v1/companies?q=a'))).toBe(true);
-    expect(paths.some((p) => p.includes('/v1/requisitions?q=a'))).toBe(true);
-    expect(paths.some((p) => p.includes('/v1/contacts?q=a'))).toBe(true);
-    expect(screen.getByText('Acme Corp')).toBeInTheDocument();
-    expect(screen.getByText('Senior Engineer')).toBeInTheDocument();
-    expect(screen.getByText('Sam Smith')).toBeInTheDocument();
-  });
-
-  it('no talent:search → NO Talent section + NO /v1/talent-records call (R2 asymmetry)', async () => {
-    const spy = mockFanout();
-    render(
-      <MemoryRouter>
-        <SearchView
-          sessionOverride={session(['company:search', 'requisition:search', 'contact:search'])}
-        />
-      </MemoryRouter>,
-    );
-    fireEvent.change(screen.getByLabelText('Search'), { target: { value: 'a' } });
-    await waitFor(() => expect(screen.getByText('Acme Corp')).toBeInTheDocument());
-    // The talent ?q= endpoint is NEVER fired (don't fire a 403).
-    expect(calledPaths(spy).some((p) => p.includes('/v1/talent-records'))).toBe(false);
-    // And no Talent section renders.
-    expect(screen.queryByRole('region', { name: 'Talent' })).toBeNull();
-    expect(screen.getByRole('region', { name: 'Companies' })).toBeInTheDocument();
-  });
-
-  it('allSettled isolation — one endpoint 500s, the others still render', async () => {
-    mockFanout(['companies']);
-    render(
-      <MemoryRouter>
-        <SearchView sessionOverride={session(ALL_SEARCH)} />
-      </MemoryRouter>,
-    );
-    fireEvent.change(screen.getByLabelText('Search'), { target: { value: 'a' } });
-    // The other sections render their results...
-    await waitFor(() => expect(screen.getByText('Jane Doe')).toBeInTheDocument());
-    expect(screen.getByText('Senior Engineer')).toBeInTheDocument();
-    // ...while the Companies section shows its error, not a crash.
-    expect(screen.getByText(/companies search could not be completed/i)).toBeInTheDocument();
-  });
-
-  it('R-CONTACTS — contact rows are NON-LINKING; talent rows ARE links', async () => {
-    mockFanout();
-    render(
-      <MemoryRouter>
-        <SearchView sessionOverride={session(ALL_SEARCH)} />
-      </MemoryRouter>,
-    );
-    fireEvent.change(screen.getByLabelText('Search'), { target: { value: 'a' } });
-    await waitFor(() => expect(screen.getByText('Sam Smith')).toBeInTheDocument());
-    // Contact: present but NOT a link (no contact detail view exists).
-    expect(screen.queryByRole('link', { name: /Sam Smith/ })).toBeNull();
-    // Talent: a link to the detail view.
-    expect(screen.getByRole('link', { name: 'Jane Doe' })).toHaveAttribute(
-      'href',
-      '/talent/tal-1',
-    );
-    expect(screen.getByRole('link', { name: 'Acme Corp' })).toHaveAttribute(
-      'href',
-      '/companies/co-1',
-    );
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Search PR-2 — the resume ?resume_q= wiring into the Talent section.
-// ---------------------------------------------------------------------------
-
-// A talent mock distinguishing the name ?q= call from the resume ?resume_q=
-// call. `talentFail` lets a test fail ONE of the two talent calls.
-function mockTalentResume(opts: { talentFail?: 'name' | 'resume' } = {}) {
-  const json = (items: unknown) =>
-    new Response(JSON.stringify({ items }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' },
-    });
-  const fail = () => new Response('{}', { status: 500 });
-  return vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
-    const url = String(input);
-    if (url.includes('/v1/talent-records')) {
-      const isResume = url.includes('resume_q=');
-      if (isResume) {
-        if (opts.talentFail === 'resume') return fail();
-        // resume matches: Jane (also a name match → dedupe + snippet upgrade)
-        // and Bob (resume-only → snippet).
-        return json([
-          { id: 'tal-1', first_name: 'Jane', last_name: 'Doe', email1: null, current_employer: 'Acme', resume_snippet: 'prior <mark>Jane</mark> hit' },
-          { id: 'tal-2', first_name: 'Bob', last_name: 'Lee', email1: null, current_employer: null, resume_snippet: 'led the <mark>Kubernetes</mark> migration' },
-        ]);
-      }
-      if (opts.talentFail === 'name') return fail();
-      // name matches: Jane (dedupes with resume) and Carol (name-only).
-      return json([
-        { id: 'tal-1', first_name: 'Jane', last_name: 'Doe', email1: null, current_employer: 'Acme' },
-        { id: 'tal-3', first_name: 'Carol', last_name: 'Ng', email1: null, current_employer: null },
-      ]);
+    fireEvent.change(screen.getByLabelText('Search'), { target: { value: 'eng' } });
+    await waitFor(() => expect(screen.getByRole('link', { name: 'Jane Doe' })).toBeInTheDocument());
+    const calls = searchCalls(spy);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toContain('/v1/search?q=eng');
+    // Grouped sections present.
+    for (const label of ['Talent', 'Requisitions', 'Companies', 'Contacts']) {
+      expect(screen.getByRole('region', { name: label })).toBeInTheDocument();
     }
-    if (url.includes('/v1/companies')) return json([{ id: 'co-1', name: 'Acme Corp' }]);
-    if (url.includes('/v1/requisitions')) return json([{ id: 'req-1', title: 'Senior Engineer' }]);
-    if (url.includes('/v1/contacts')) return json([{ id: 'ct-1', first_name: 'Sam', last_name: 'Smith', title: 'CTO' }]);
-    return new Response('{}', { status: 404 });
-  });
-}
-
-describe('SearchView — Search PR-2 resume wiring', () => {
-  afterEach(() => vi.restoreAllMocks());
-
-  it('#1 fires TWO talent calls — ?q= AND ?resume_q= (NOT a combined ?q=&resume_q=)', async () => {
-    const spy = mockTalentResume();
-    render(
-      <MemoryRouter>
-        <SearchView sessionOverride={session(['talent:search'])} />
-      </MemoryRouter>,
-    );
-    fireEvent.change(screen.getByLabelText('Search'), { target: { value: 'a' } });
-    await waitFor(() => expect(screen.getByText('Bob Lee')).toBeInTheDocument());
-    const paths = entitySearchPaths(spy);
-    expect(paths.some((p) => p === '/v1/talent-records?q=a')).toBe(true);
-    expect(paths.some((p) => p === '/v1/talent-records?resume_q=a')).toBe(true);
-    // The AND-zeroing combined call is NEVER fired.
-    expect(paths.some((p) => p.includes('q=a&resume_q=') || p.includes('resume_q=a&q='))).toBe(false);
+    // Server-provided routes; contacts now link (to their company).
+    expect(screen.getByRole('link', { name: 'Jane Doe' })).toHaveAttribute('href', '/talent/tal-1');
+    expect(screen.getByRole('link', { name: 'Acme Corp' })).toHaveAttribute('href', '/companies/co-1');
+    expect(screen.getByRole('link', { name: 'Sam Smith' })).toHaveAttribute('href', '/companies/co-1');
   });
 
-  it('#2 merge + dedupe — a talent matched by BOTH name and resume appears once', async () => {
-    mockTalentResume();
+  it('renders a résumé snippet safely (mark markers → text)', async () => {
+    mockSearch(() => ok(RESULTS));
     render(
       <MemoryRouter>
-        <SearchView sessionOverride={session(['talent:search'])} />
+        <SearchView sessionOverride={session(ALL)} />
       </MemoryRouter>,
     );
-    fireEvent.change(screen.getByLabelText('Search'), { target: { value: 'a' } });
-    await waitFor(() => expect(screen.getByText('Bob Lee')).toBeInTheDocument());
-    // Jane is in both the name and resume results — rendered exactly once.
-    expect(screen.getAllByText('Jane Doe')).toHaveLength(1);
+    fireEvent.change(screen.getByLabelText('Search'), { target: { value: 'eng' } });
+    await waitFor(() => expect(screen.getByTestId('resume-snippet')).toBeInTheDocument());
+    expect(screen.getByTestId('resume-snippet').textContent).toContain('Kubernetes');
   });
 
-  it('#3 snippet — a resume-match renders its resume_snippet; a name-only match does not', async () => {
-    mockTalentResume();
+  it('empty result set → honest empty state', async () => {
+    mockSearch(() => ok({ query: 'zzz', groups: [] }));
     render(
       <MemoryRouter>
-        <SearchView sessionOverride={session(['talent:search'])} />
+        <SearchView sessionOverride={session(ALL)} />
       </MemoryRouter>,
     );
-    fireEvent.change(screen.getByLabelText('Search'), { target: { value: 'a' } });
-    await waitFor(() => expect(screen.getByText('Bob Lee')).toBeInTheDocument());
-    // Bob matched via resume → snippet rendered, <mark> stripped to text.
-    expect(screen.getByText(/Matched in resume: led the Kubernetes migration/)).toBeInTheDocument();
-    // Carol matched by name only → no snippet for her row.
-    expect(screen.getByText('Carol Ng')).toBeInTheDocument();
-    const snippets = screen.getAllByTestId('resume-snippet').map((n) => n.textContent ?? '');
-    expect(snippets.some((t) => t.includes('Carol'))).toBe(false);
+    fireEvent.change(screen.getByLabelText('Search'), { target: { value: 'zzz' } });
+    await waitFor(() => expect(screen.getByTestId('search-empty')).toBeInTheDocument());
   });
 
-  it('#4 scope-gate — no talent:search → no Talent section, NEITHER talent call fired', async () => {
-    const spy = mockTalentResume();
+  it('server error → error alert (not a crash, not silent empty)', async () => {
+    mockSearch(() => new Response('{}', { status: 500 }));
     render(
       <MemoryRouter>
-        <SearchView sessionOverride={session(['company:search'])} />
+        <SearchView sessionOverride={session(ALL)} />
       </MemoryRouter>,
     );
-    fireEvent.change(screen.getByLabelText('Search'), { target: { value: 'a' } });
-    await waitFor(() => expect(screen.getByText('Acme Corp')).toBeInTheDocument());
-    expect(entitySearchPaths(spy).some((p) => p.includes('/v1/talent-records'))).toBe(false);
-    expect(screen.queryByRole('region', { name: 'Talent' })).toBeNull();
-  });
-
-  it('#5 allSettled isolation — the name call 500s, the Talent section still renders the resume results', async () => {
-    mockTalentResume({ talentFail: 'name' });
-    render(
-      <MemoryRouter>
-        <SearchView sessionOverride={session(['talent:search'])} />
-      </MemoryRouter>,
-    );
-    fireEvent.change(screen.getByLabelText('Search'), { target: { value: 'a' } });
-    // The resume call survived → Bob (resume-only) renders; the section is NOT in error.
-    await waitFor(() => expect(screen.getByText('Bob Lee')).toBeInTheDocument());
-    expect(screen.getByText(/Matched in resume: led the Kubernetes migration/)).toBeInTheDocument();
-    expect(screen.queryByText(/talent search could not be completed/i)).toBeNull();
+    fireEvent.change(screen.getByLabelText('Search'), { target: { value: 'eng' } });
+    await waitFor(() => expect(screen.getByText(/temporarily unavailable/i)).toBeInTheDocument());
   });
 });
