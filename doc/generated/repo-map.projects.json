@@ -3651,6 +3651,18 @@
       { "from": "tools/seed-e2e-data.ts", "project": "(unscoped)", "status": "unscoped" },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/enterprise-search-company.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/enterprise-search.e2e.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/identity-module-split.di.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -3742,6 +3754,18 @@
     ],
     "@aramo/contact": [
       { "from": "tools/seed-e2e-data.ts", "project": "(unscoped)", "status": "unscoped" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/enterprise-search-contact.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/enterprise-search.e2e.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
       { "project": "api", "status": "production" },
       { "project": "export", "status": "production" },
       { "project": "import", "status": "production" },
@@ -5769,6 +5793,18 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/enterprise-search-requisition.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/enterprise-search.e2e.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/job-distribution-sync.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -6192,6 +6228,18 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/doc6-offer-document.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/enterprise-search-talent.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/enterprise-search.e2e.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
