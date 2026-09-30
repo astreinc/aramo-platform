@@ -146,6 +146,11 @@
       "to": "libs/requisition/src/lib/requisition.module.ts"
     },
     {
+      "from": "apps/api/src/talent-360/dto/talent-360.view.ts",
+      "status": "production",
+      "to": "scripts/verify-vocabulary.sh"
+    },
+    {
       "from": "apps/api/src/talent-anchor/erase-talent.command.ts",
       "status": "production",
       "to": "doc/runbooks/talent-rtbf-erasure.md"
@@ -11560,6 +11565,11 @@
       "to": "libs/submittal/src/lib/submittal-state.ts"
     },
     {
+      "from": "apps/ats-web/src/talent-360/talent-360-types.ts",
+      "status": "production",
+      "to": "apps/api/src/talent-360/dto/talent-360.view.ts"
+    },
+    {
       "from": "apps/ats-web/src/talent/ConsentCapture.tsx",
       "status": "production",
       "to": "doc/go-live-known-limitations.md"
@@ -11657,6 +11667,11 @@
       "from": "apps/ats-web/src/users/types.ts",
       "status": "production",
       "to": "libs/identity/src/lib/identity.repository.ts"
+    },
+    {
+      "from": "apps/ats-web/visual-harness/talent-360-parity.mjs",
+      "status": "unscoped",
+      "to": "openapi/auth.yaml"
     },
     {
       "from": "apps/ats-web/vite.config.ts",
@@ -11994,6 +12009,11 @@
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
       "to": "apps/api/src/submit-talent/submit-talent.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "apps/api/src/talent-360/talent-360.controller.ts"
     },
     {
       "from": "ci/config/api-surface-manifest.json",
@@ -18450,6 +18470,16 @@
     },
     {
       "from": "pact/consumers/ats-web/src/support/ats-web-pact.ts",
+      "status": "unscoped",
+      "to": "pact/provider/src/verify-api.ts"
+    },
+    {
+      "from": "pact/consumers/ats-web/src/talent-360.consumer.test.ts",
+      "status": "unscoped",
+      "to": "openapi/ats.yaml"
+    },
+    {
+      "from": "pact/consumers/ats-web/src/talent-360.consumer.test.ts",
       "status": "unscoped",
       "to": "pact/provider/src/verify-api.ts"
     },

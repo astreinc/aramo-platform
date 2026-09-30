@@ -1,10 +1,8 @@
 import { useEffect, useState } from 'react';
 import { hasScope, type Session, Button } from '@aramo/fe-foundation';
 
-import type { TalentRecordView } from '../talent/types';
-
 import { getCommunicationCapabilities, getMyCommunicationProviderIdentity } from './communications-api';
-import { CallDrawer } from './CallDrawer';
+import { CallDrawer, type CallTalent } from './CallDrawer';
 import type { ZoomEmbedLoader } from './ZoomPhoneEmbed';
 import { COMMUNICATION_VOICE_CALL_SCOPE, type CallRegardingContext, type CommunicationCapabilities, type CommunicationProviderIdentity } from './types';
 
@@ -20,7 +18,7 @@ import { COMMUNICATION_VOICE_CALL_SCOPE, type CallRegardingContext, type Communi
 type CapState = { kind: 'loading' } | { kind: 'available' } | { kind: 'unavailable' };
 
 export interface CallButtonProps {
-  readonly talent: TalentRecordView;
+  readonly talent: CallTalent;
   readonly session: Session | null;
   /**
    * Explicit voice-call authority. When provided it overrides the session-scope
