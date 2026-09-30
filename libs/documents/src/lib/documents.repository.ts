@@ -284,6 +284,70 @@ export class DocumentsRepository {
     return out;
   }
 
+  // Talent 360 — list a TALENT's documents (those where the Talent is the
+  // SUBJECT) for the person-centric read projection. Returns the lean fields the
+  // Overview documents card shows: identity, type key/name, status, executed_at
+  // (the authoritative signed instant — status='EXECUTED' + executed_at IS the
+  // signed outcome in the documents schema; no esign cross-schema join needed),
+  // plus the REGARDING requisition association so a document can carry its
+  // requisition context ("RTR · Freddie Mac"). Tenant-scoped, opaque refs only,
+  // read-only, bounded. Empty result → []. The Talent surface DISPLAYS this;
+  // Documents remains the authority (directive §13).
+  async listForTalent(input: {
+    tenant_id: string;
+    talent_record_id: string;
+    limit?: number;
+  }): Promise<
+    Array<{
+      id: string;
+      title: string;
+      document_type_key: string;
+      document_type_name: string;
+      status: string;
+      executed_at: string | null;
+      created_at: string;
+      regarding_requisition_id: string | null;
+    }>
+  > {
+    const take = Math.min(input.limit ?? 100, 200);
+    const docs = await this.prisma.document.findMany({
+      where: {
+        tenant_id: input.tenant_id,
+        associations: {
+          some: {
+            resource_type: 'TALENT',
+            resource_id: input.talent_record_id,
+            relationship: 'SUBJECT',
+          },
+        },
+      },
+      select: {
+        id: true,
+        title: true,
+        status: true,
+        executed_at: true,
+        created_at: true,
+        document_type: { select: { key: true, name: true } },
+        associations: {
+          where: { resource_type: 'REQUISITION', relationship: 'REGARDING' },
+          select: { resource_id: true },
+        },
+      },
+      orderBy: { created_at: 'desc' },
+      take,
+    });
+    return docs.map((d) => ({
+      id: d.id,
+      title: d.title,
+      document_type_key: d.document_type.key,
+      document_type_name: d.document_type.name,
+      status: d.status,
+      executed_at: d.executed_at === null ? null : d.executed_at.toISOString(),
+      created_at: d.created_at.toISOString(),
+      regarding_requisition_id: d.associations[0]?.resource_id ?? null,
+    }));
+  }
+
   // DOC-5 (R-5-11) — is a document of this type REQUIRED for a resource? Returns
   // the DocumentRequirement (or null). The readiness gate uses this to stay
   // CONDITIONAL: a submit is gated on RTR ONLY when such a requirement exists, so

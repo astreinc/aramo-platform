@@ -92,6 +92,7 @@ import { PipelineVoidModule } from './pipeline-void/pipeline-void.module.js';
 import { MyDeskModule } from './my-desk/my-desk.module.js';
 import { InterviewsModule } from './interviews/interviews.module.js';
 import { InterviewerValidatorModule } from './interviews/interviewer-validator.module.js';
+import { Talent360Module } from './talent-360/talent-360.module.js';
 import { CommunicationsApiModule } from './communications/communications-api.module.js';
 import { EngagementApiModule } from './engagement/engagement-api.module.js';
 import { ClientSubmittalPolicyModule } from './client-submittal-policy/client-submittal-policy.module.js';
@@ -495,6 +496,10 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     // @Global — binds the lib's INTERVIEWER_VALIDATOR port (Slice B §9 schedule-time
     // interviewer tenant-user validation) to an IdentityService-backed adapter.
     InterviewerValidatorModule,
+    // Talent 360 — the person-centric recruiter workspace READ composition
+    // (GET /v1/talent-360/:id), replacing the Talent Detail experience. AP-class,
+    // OpenAPI-documented; per-section scope-gated; reads only.
+    Talent360Module,
     CommunicationsApiModule,
     EngagementApiModule,
     ClientSubmittalPolicyModule,

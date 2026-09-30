@@ -2043,6 +2043,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/talent-360.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/talent-preset.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -4571,7 +4577,7 @@
       },
       {
         "excludedBy": "src/**/*.spec.tsx",
-        "from": "apps/ats-web/src/talent/TalentDetailView.spec.tsx",
+        "from": "apps/ats-web/src/talent-360/Talent360View.spec.tsx",
         "project": "aramo-ats-web",
         "status": "excluded"
       },
